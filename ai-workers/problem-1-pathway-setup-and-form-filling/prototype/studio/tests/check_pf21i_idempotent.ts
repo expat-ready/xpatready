@@ -15,7 +15,7 @@ import { join } from "node:path";
 import type { JobHandler, JobPort } from "../ports/jobs.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261118163000_pf21i_complaint_request_key";
+const NEW = "20261118233000_pf21i_complaint_request_key";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21i_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
@@ -43,6 +43,8 @@ const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts
 const { canonicalJson, readIdempotencyKey, requestHash } = await import("../api/src/platform/idempotency.ts");
 const { EVENT } = await import("../ports/events.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
+const { fakeMail } = await import("../ports/mail.ts");
 
 /** A job runner that counts what it is asked to schedule. */
 const recorder = () => {
@@ -118,7 +120,7 @@ try {
 
   const jobs = recorder();
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);

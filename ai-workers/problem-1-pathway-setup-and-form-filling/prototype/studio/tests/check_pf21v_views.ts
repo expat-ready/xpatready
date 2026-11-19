@@ -46,6 +46,7 @@ const { fakeJobs } = await import("../ports/jobs.ts");
 const { fakeMail } = await import("../ports/mail.ts");
 const { fakeStaff } = await import("../ports/staff.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
 
 /** A job runner that records nothing but its handler (the reminder's runs are PF-21's suite's). */
 const recorder = (): JobPort => {
@@ -61,7 +62,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf21v-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp() {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: recorder() }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: recorder() }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
