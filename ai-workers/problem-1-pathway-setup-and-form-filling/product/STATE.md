@@ -2,7 +2,7 @@
 
 current_lead: local_3eea0506-288c-4b7e-8c3e-5343fafb6212 Lead 90 · 19 Nov 11:37 IST (series 2; new account, Fable 5.2 medium auto, P-725; took over from Lead 87 (series 2, local_019a74ed))
 
-updated: 2026-11-19 11:5x IST: Lead 90 took over on the new account (P-725); Lead B (7), Build Lead C (2), qa 6, qa 7 and standbys 91, 92 started; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-730**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 11:5x IST: Lead 90 took over on the new account (P-725); Lead B (7), Build Lead C (2), qa 6, qa 7 and standbys 91, 92 started; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-731**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -25,7 +25,7 @@ Lead 86 → Lead 87 hand-over block word for word in `ai-workers/problem-1-pathw
 |---|---|---|
 | S10-A168 | 10 Nov to 18 Nov asks | pointer rows word for word in `history/STATE-2026-11-19-0755-lead86s2-asks-pointer-rows-S10-A168.md` |
 | A169-A193 | 18-19 Nov asks (A182 open; A181 founder's clean-up) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1120-lead87s2-asks-A169-A193-rows.md` |
-| A199-A201 | 19 Nov 11:5x IST (spoken, to Lead 90): (A199) R1.80 spot-check "you check at your end, I'm good"; (A200) the GitHub Action pilot: ask one question at a time with a recommendation and do the steps myself where I can; (A201) what are we doing wrong, missing or overdoing that keeps us from 10 Proven a day, judged only on the current operating model and today's data | A199 done 11:5x: Lead 90 read the Validate message and barcode page screenshots (passed, certified, name and birth date agree). A200 open: first question follows A201's. A201 answered 11:5x: the merge step is the constraint (no full run before the label; stacked ~1 h batches; proof records ride the same queue); one change proposed, asked |
+| A199-A201 | 19 Nov 11:5x IST (spoken, to Lead 90): (A199) R1.80 spot-check "you check at your end, I'm good"; (A200) the GitHub Action pilot: ask one question at a time with a recommendation and do the steps myself where I can; (A201) what are we doing wrong, missing or overdoing that keeps us from 10 Proven a day, judged only on the current operating model and today's data | A199 done 11:5x: Lead 90 read the Validate message and barcode page screenshots (passed, certified, name and birth date agree). A200 open: first question follows A201's. A201 answered 11:5x: the merge step is the constraint (no full run before the label; stacked ~1 h batches; proof records ride the same queue); one change proposed and chosen: P-731 full run before the label (row CI-PRE) |
 | A196-A198 | 19 Nov 10:1x-10:5x asks (account switch, go-live question, Stripe test key in the Keychain; A198 webhook secret still owed after #1959) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1155-lead90s2-asks-A196-A198-rows.md` |
 | A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
 
