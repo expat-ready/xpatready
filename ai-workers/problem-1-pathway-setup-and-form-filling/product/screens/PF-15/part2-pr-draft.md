@@ -1,4 +1,4 @@
-**migration** (`20261118223000_pf15_limit_changes`; stamp re-set at PR time, later than main's newest, P-600) · replaces the definer function `platform_entitlement_limit` (now takes the clock) · no shared port contract changed.
+**migration** (`20261119051500_pf15_limit_changes`; stamp re-set at PR time, later than main's newest, P-600) · replaces the definer function `platform_entitlement_limit` (now takes the clock) · no shared port contract changed.
 
 ## What and why
 PF-15 **part 2** (brief `product/design/lead-b-briefs/PF-15.md` part 2, plus the "Part 2 also" lines on `lead-b-front-office`), built overlapped on part 1a (#2130) as Lead 81 started it.
