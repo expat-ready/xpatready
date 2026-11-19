@@ -1,4 +1,23 @@
-Reviewer: Approve a15e5f7ece04fbc91c335d34724e8dd62ebd8104
+Reviewer: Approve a8f388459601623315cf15285b87cf43f8bd25d8
+
+# Round 5: diff-only re-read of a15e5f7ec..a8f388459 (one commit: the test only, plus the round-4 records)
+
+**What changed:** in this part's code, only `tests/check_fo7ts_money_settings.ts` (+8/−1). No migration, rollback or schema file changed.
+
+**R4-1: closed.**
+* A new case (`check_fo7ts_money_settings.ts:702-708`) spends the pre-case money on the party's own invoice first, so pre-case holds 0.00 and only the cap can refuse. It then asserts that the 500.00 bounce on K is refused with `/takes from a case at most what was moved there \(CAD 1\.00\)/` (23514), and that 1.00 on K is accepted.
+* In the R2-M1 case, the 1.01 assertion now names only the cap's words.
+* **A correction to my round-4 note:** as built, the cap refuses that 1.01 before the deposit-total check runs. My `cap.mjs` run showed this. The deposit limit refuses it only once the cap is removed, which is why the old alternation hid the mutation. The builder's reading is right.
+
+**What I ran at a8f388459:**
+* The suite passed 155, failed 0.
+* **Mutation check:** I copied the studio's migrations and this test to a scratch folder and replaced the cap's condition with `IF false`. The suite gave 153 passed, 2 failed, and exactly the two cap cases failed (R2-M1/R3-m2 and R4-1). The cap is now guarded by its tests. The copy and its scratch databases are deleted.
+
+**Verdict: Approve** for `a8f388459601623315cf15285b87cf43f8bd25d8`. No Blocker, Major or Minor of mine is open.
+
+---
+
+Round 4 line (superseded): Reviewer: Approve a15e5f7ece04fbc91c335d34724e8dd62ebd8104
 
 # Round 4: diff-only re-read of fce13845d..a15e5f7ec (one commit)
 
