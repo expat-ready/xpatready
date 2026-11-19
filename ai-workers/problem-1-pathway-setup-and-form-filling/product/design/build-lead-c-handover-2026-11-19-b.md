@@ -2,7 +2,7 @@
 
 Written by Build Lead C (2) (Opus 5.5, worktree branch `claude/build-lead-c-2-89c29d`, pushes to `claude/build-lead-c-647b40`). It replaces `build-lead-c-handover-2026-11-19.md`. The dated log is `build-lead-c-state.md`; the ordered focus list (P-733, feeds P-734's guard ENF-733) is `build-lead-c-p733-list-2026-11-19.md`. Times are IST from `TZ=Asia/Kolkata date`.
 
-**Current Lead:** Lead 93, `local_ce66c66a-3387-466b-9cfa-bcbc781648bd` (since 13:5x IST). Leads 90 to 92 have ended.
+**Current Lead:** Lead 94, `local_8d88d9c8-bb18-4895-af87-797aa32c61bf` (since 15:46 IST). Leads 90 to 93 have ended.
 
 ## Rules in force (beyond P-719 to P-728)
 * **P-731 / P-733 (4):** a PR that failed a merge batch is relabelled only after a green full run on its new head, with every failing suite of that run named. A PR's own `ci` is the fast check, not the full run. Until CI-PRE lands, this is done by hand.
