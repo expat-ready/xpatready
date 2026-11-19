@@ -192,6 +192,14 @@ HEADS="$HEAD1" run proof 7
 ok "proof: no run on any of HEADS: exit 1 with the reason" "$([ $r = 1 ] && grep -q '/run full' <<< "$out" && echo 1)" "exit $r: $out"
 run proof 7
 ok "proof: HEADS not set: exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+# ENF-746a (P-746): qa's proof PR (only qa/ records, the records label) needs no full run for label-guard.sh either
+# (#2328 lost its label to "no full run"); one app file among them and the run is needed again.
+nofull; prj 7 $HEAD1 false records; files 7 "$REC/qa/BUGS.md" "$REC/qa/CAPABILITIES.md" "$REC/qa/reports/2026-11-19-after-merge-r128-works/README.md" "$REC/qa/reports/2026-11-19-after-merge-r128-works/shot.png" "$REC/qa/reports/2026-11-19-after-merge-r128-works/run.txt"
+HEADS="$HEAD1" run proof 7
+ok "ENF-746a proof: a qa-only proof PR with the records label, no full run anywhere: exit 0 (label kept)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+files 7 "$REC/qa/BUGS.md" "$REC/qa/reports/2026-11-19-after-merge-r128-works/README.md" "$S/api/src/form.ts"; HEADS="$HEAD1" run proof 7
+ok "ENF-746a proof: the same PR with one app file (records label or not): exit 1, the full run is still needed" "$([ $r = 1 ] && grep -q '/run full' <<< "$out" && echo 1)" "exit $r: $out"
+prj 7 $HEAD1; files 7 "$S/api/src/form.ts"   # back as the cases below expect
 
 # --- CI-PRE (d): a relabel after a failed merge batch names every failed part of that run
 BSHA=3333333333333333333333333333333333333333; BOK=4444444444444444444444444444444444444444
