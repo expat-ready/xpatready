@@ -123,7 +123,7 @@ try {
   const before3 = all.filter((d) => d < NEW3);
   ok(`FO-7ts DW10 pass (part 3): the migration has its own stamp, later than every migration before it (newest before it: ${before3.at(-1)}), part 2's included (P-600)`,
     all.includes(NEW3) && before3.includes(NEW2) && all.filter((d) => d.slice(0, 14) === NEW3.slice(0, 14)).length === 1);
-  const fnBefore3 = fns(T), src3 = (db: string) => sql(db, `select string_agg(proname || '=' || md5(prosrc), ',' order by proname) from pg_proc where proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back')`);
+  const fnBefore3 = fns(T), src3 = (db: string) => sql(db, `select string_agg(proname || '=' || md5(prosrc), ',' order by proname) from pg_proc where proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`);
   const srcBefore3 = src3(T), checksBefore3 = checksOf(T), text3 = readFileSync(join(MIG, NEW3, "migration.sql"), "utf8");
   { const p = randomUUID();
     ok("FO-7ts part 3 fail (review Minor 4): over a database that already holds a trust refund (no method, no date) the migration refuses, naming the way out, and changes nothing",
@@ -134,10 +134,10 @@ try {
         ${text3}`, /trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead/)
       && sql(T, `select count(*) from money_trust_entry where firm_id = '${firmA}'`) === "0" && sql(T, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0"); }
   psql(T, ["-1", "-f", join(MIG, NEW3, "migration.sql")]);
-  ok("FO-7ts DW10 pass (part 3): right after its own migration it adds and drops no function, replaces money_trust_entry_write, money_invoice_write and (Lead 96's ruling) FO-7lk's money_credit_note_write and money_move_batch_owed_back, all CREATE OR REPLACE and money_, all still run as PF-12's wall reader",
+  ok("FO-7ts DW10 pass (part 3): right after its own migration it adds and drops no function, replaces money_trust_entry_write, money_invoice_write and (Lead 96's rulings) FO-7lk's money_credit_note_write, money_move_batch_owed_back and money_move_line_write, all CREATE OR REPLACE and money_, all still run as PF-12's wall reader",
     JSON.stringify(fns(T)) === JSON.stringify(fnBefore3) && src3(T).split(",").every((x, i) => x !== srcBefore3.split(",")[i])
-    && JSON.stringify(written(text3).map((f) => `${f.name}:${f.replace}`)) === JSON.stringify(["money_trust_entry_write:true", "money_invoice_write:true", "money_credit_note_write:true", "money_move_batch_owed_back:true"])
-    && sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back')`) === "t", { w: written(text3) });
+    && JSON.stringify(written(text3).map((f) => `${f.name}:${f.replace}`)) === JSON.stringify(["money_trust_entry_write:true", "money_invoice_write:true", "money_credit_note_write:true", "money_move_batch_owed_back:true", "money_move_line_write:true"])
+    && sql(T, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader' and array_to_string(p.proconfig, ',') like 'search_path=%') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`) === "t", { w: written(text3) });
   ok("FO-7ts DW10 pass (part 3): money_party_tax_treatment is behind PF-12's walls (forced policy naming the firm, the firm-first trigger)",
     sql(T, `select relforcerowsecurity and relrowsecurity from pg_class where relname = 'money_party_tax_treatment'`) === "t"
     && sql(T, `select count(*) from pg_policy where polrelid = 'money_party_tax_treatment'::regclass and polname = 'pf12_firm'`) === "1"
@@ -767,6 +767,19 @@ try {
       ok("FO-7ts DW26 pass (Lead 96's ruling): undoing a move of two payers' picks racing a third pick on that invoice — 100 races, 0 deadlocks, all commit (money_move_batch_owed_back locks every party it touches first, smaller id first)",
         rb.length === 200 && rb.every((r) => r.ok), { deadlocks: rb.filter((r) => r.code === "40P01").length, codes: [...new Set(rb.map((r) => r.code ?? "ok"))] });
     }
+    {  // Lead 96's ruling (review R2-1, break R2-m1): a move line of a pick takes the payer's and the invoice party's locks smaller id first
+      const ids = [randomUUID(), randomUUID(), randomUUID()].sort(), [Bi, Ap, Dp] = ids;  // the invoice's party B < payer A < D
+      dep(Ap, 200000, { kase: K }); dep(Dp, 200000, { kase: K }); const X = inv(Bi, 200000, { kase: K }), XD = inv(Dp, 200000, { kase: K });
+      const rl: { ok: boolean; code?: string }[] = [];
+      for (let i = 0; i < 100; i++) {
+        const wa = sql(T, te(Ap, "WITHDRAWAL_TO_INVOICE", -10, { inv: X, kase: K, cols: pick() })), wd = sql(T, te(Dp, "WITHDRAWAL_TO_INVOICE", -10, { inv: XD, kase: K })), b = randomUUID();
+        rl.push(...await race([`insert into money_move_batch (id, firm_id, currency, direction, transfer_date, recorded_by) values ('${b}', '${F}', 'CAD', 'TRUST_TO_OPERATING', '2026-11-18', 'user-R');
+          insert into money_move_line (firm_id, batch_id, kind, direction, currency, amount_minor, source_entry_id) values ('${F}', '${b}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 10, '${wa}'), ('${F}', '${b}', 'TRUST_APPLIED', 'TRUST_TO_OPERATING', 'CAD', 10, '${wd}')`,
+          te(Dp, "WITHDRAWAL_TO_INVOICE", -10, { inv: X, kase: K, cols: pick() })]));
+      }
+      ok("FO-7ts DW26 pass (Lead 96's ruling): a move batch whose first line is A's pick on B's invoice, racing D's pick on that invoice — 100 races, 0 deadlocks, all commit (money_move_line_write takes the two party locks smaller id first)",
+        rl.length === 200 && rl.every((r) => r.ok), { deadlocks: rl.filter((r) => r.code === "40P01").length, codes: [...new Set(rl.map((r) => r.code ?? "ok"))] });
+    }
     const lk = (x: string) => `select money_trust_lock('${F}', '${x}', 'CAD')`, [p1, p2] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) }));
     for (const x of [p1, p2]) { await x.connect(); conns.push(x); await x.query("begin"); }
     await p1.query(lk(A)); await p2.query(lk(B));
@@ -799,9 +812,9 @@ try {
     && (() => { try { rb3(EMPTY, WORK); return false; } catch (e) { return /the earlier function texts were not read; run it from the studio folder/.test(String((e as { stderr?: string }).stderr ?? e)); } })()
     && sql(EMPTY, `select count(*) from information_schema.columns where table_name = 'money_trust_entry' and column_name = 'picked_other_funds_by'`) === "1");
   rb3(EMPTY);
-  ok("FO-7ts part 3 rollback: rollback.sql restores money_trust_entry_write as part 2 left it, money_invoice_write as part 1 left it, and money_credit_note_write and money_move_batch_owed_back as FO-7lk left them, exactly, and money_trust_entry's checks as before",
+  ok("FO-7ts part 3 rollback: rollback.sql restores money_trust_entry_write as part 2 left it, money_invoice_write as part 1 left it, and money_credit_note_write, money_move_batch_owed_back and money_move_line_write as FO-7lk left them, exactly, and money_trust_entry's checks as before",
     src3(EMPTY) === srcBefore3 && checksOf(EMPTY) === checksBefore3 && sql(EMPTY, `select count(*) from pg_class where relname in ('money_party_tax_treatment', 'money_invoice_firm_id_issued_at_id_idx')`) === "0"
-    && sql(EMPTY, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back')`) === "t", { s: src3(EMPTY), srcBefore3 });
+    && sql(EMPTY, `select bool_and(p.prosecdef and pg_get_userbyid(p.proowner) = 'xr_wall_reader') from pg_proc p where p.proname in ('money_trust_entry_write', 'money_invoice_write', 'money_credit_note_write', 'money_move_batch_owed_back', 'money_move_line_write')`) === "t", { s: src3(EMPTY), srcBefore3 });
   ok("FO-7ts part 3 pass: after its rollback the migration runs again, and rolls back again", (psql(EMPTY, ["-1", "-f", join(MIG, NEW3, "migration.sql")]), sql(EMPTY, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "1") && (rb3(EMPTY), src3(EMPTY) === srcBefore3));
   psql(EMPTY, ["-1", "-f", join(MIG, NEW2, "rollback.sql")]);
   ok("FO-7ts part 2 rollback: rollback.sql restores money_trust_entry_write exactly as FO-7lk left it and money_trust_entry's checks as before, and drops the credit ledger",

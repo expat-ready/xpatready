@@ -8,8 +8,9 @@
 --     database's time, on one and the same non-null case, never more than the payer holds on that case;
 --   * the newest-issued index money_invoice (firm_id, issued_at DESC, id).
 -- Replaces money_trust_entry_write (FO-7ts part 2's text, changed only as above), money_invoice_write (FO-7ts part 1's
--- text, plus the treatment), and, by Lead 96's ruling, FO-7lk's money_credit_note_write and money_move_batch_owed_back
--- (the two party locks smaller id first, as a pick takes them); no other function is edited or added.
+-- text, plus the treatment), and, by Lead 96's rulings, FO-7lk's money_credit_note_write, money_move_batch_owed_back
+-- and money_move_line_write (the two party locks smaller id first, as a pick takes them); no other function is edited or
+-- added.
 -- Rollback: rollback.sql in this folder (Prisma reads only migration.sql).
 
 -- Trust refunds recorded before this part carry no method or date; they are never filled in silently.
@@ -398,11 +399,13 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- ------------------------------------------- FO-7lk's two other two-party writers: one lock order (Lead 96's ruling)
+-- ----------------------------------------- FO-7lk's three other two-party writers: one lock order (Lead 96's rulings)
 -- A pick holds two party locks, smaller id first (above). money_credit_note_write ("Move back to trust": the withdrawal's
 -- party, then money_issued_invoice's invoice party) and money_move_batch_owed_back (an undo: each line's party, then its
--- invoice row) took them the other way, and a "Move back to trust" credit note racing a pick deadlocked (40P01; review
--- Major 1, break m1). Both are FO-7lk's text, changed only to take the parties smaller id first.
+-- invoice row) and money_move_line_write (a line: the payer's lock, then the invoice row of a pick's other party) took
+-- them the other way, and each deadlocked against a pick (40P01; review Major 1 and R2-1, break m1 and R2-m1). All three
+-- are FO-7lk's text, changed only to take the parties smaller id first. A batch of several lines can still deadlock: the
+-- move route (FO-7m) must insert lines sorted by party (see money_move_line_write).
 CREATE OR REPLACE FUNCTION money_credit_note_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0; whole bigint; inv_party uuid; inv_cur "MoneyCurrency";
 BEGIN
@@ -500,12 +503,125 @@ BEGIN
   RETURN NEW;
 END $$;
 
+CREATE OR REPLACE FUNCTION money_move_line_write() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE b record; s record; party uuid; inv_party uuid; inv_cur "MoneyCurrency"; earlier integer; moved bigint; returned bigint; cap bigint; arrived boolean;
+BEGIN
+  SELECT x.undoes_batch_id, x.currency, x.direction, pg_xact_status(((pg_current_xact_id()::text::bigint >> 32 << 32) | x.xmin::text::bigint)::text::xid8) = 'in progress' AS mine
+    INTO b FROM "money_move_batch" x WHERE x.firm_id = NEW.firm_id AND x.id = NEW.batch_id;
+  IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'batch', NEW.batch_id); END IF;
+  IF b.undoes_batch_id IS NOT NULL THEN
+    RAISE EXCEPTION 'money_move_line: an undo batch carries no lines (the undone batch''s lines go back to the list)' USING ERRCODE = 'check_violation';
+  END IF;
+  IF b.mine IS NOT TRUE THEN
+    RAISE EXCEPTION 'money_move_line: a batch takes its lines in the transaction that records it; a recorded batch is never added to' USING ERRCODE = 'check_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "money_move_batch" u WHERE u.firm_id = NEW.firm_id AND u.undoes_batch_id = NEW.batch_id) THEN
+    RAISE EXCEPTION 'money_move_line: an undone batch never gains a line, also in the transaction that records it' USING ERRCODE = 'check_violation';
+  END IF;
+  IF (NEW.currency, NEW.direction) IS DISTINCT FROM (b.currency, b.direction) THEN
+    RAISE EXCEPTION 'money_move_line: a line is in its batch''s currency and direction (% %); CAD and USD never share a batch', b.currency, b.direction USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'CARD_FEE_ON_TRUST' THEN
+    RAISE EXCEPTION 'money_move_line: card fees on the trust account wait for card payments into trust (held, P-567; FO-7c)' USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT e.kind, e.amount_minor, e.currency, e.person_id, e.company_id, e.invoice_id, e.correction_kind, d.kind AS corrected_kind, p.id AS deposit_payment_id
+    INTO s FROM "money_trust_entry" e LEFT JOIN "money_trust_entry" d ON d.firm_id = e.firm_id AND d.id = e.corrects_entry_id
+      LEFT JOIN "money_payment" p ON p.firm_id = d.firm_id AND p.id = d.payment_id
+    WHERE e.firm_id = NEW.firm_id AND e.id = NEW.source_entry_id;
+  IF NOT FOUND THEN PERFORM money_missing('money_move_line', 'trust entry', NEW.source_entry_id); END IF;
+  -- The party's lock first, before anything that can change is read (break B-22: a "Returned" still open was missed).
+  party := coalesce(s.person_id, s.company_id);
+  -- FO-7ts part 3 (Lead 96's ruling): a pick's line is on the payer, its invoice on another party, whose invoice row it
+  -- touches below; both party locks are taken first, smaller id first, as a pick takes them. Within one line that holds.
+  -- A batch of several lines locks line by line, so it can still deadlock against a pick: the move route (FO-7m) must
+  -- insert a batch's lines sorted by party (the smaller id first), or take every line's locks before the first line.
+  IF NEW.kind = 'TRUST_APPLIED' AND s.invoice_id IS NOT NULL THEN
+    SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i WHERE i.firm_id = NEW.firm_id AND i.id = s.invoice_id;
+    IF inv_party = party THEN inv_party := NULL; END IF;
+  END IF;
+  IF inv_party < party THEN PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur); END IF;
+  PERFORM money_trust_lock(NEW.firm_id, party, s.currency);
+  IF inv_party > party THEN PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur); END IF;
+  IF NEW.kind = 'TRUST_APPLIED' AND s.kind IS DISTINCT FROM 'WITHDRAWAL_TO_INVOICE' THEN
+    RAISE EXCEPTION 'money_move_line: a trust application moves a withdrawal to an invoice, not a %', s.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'WRONG_ACCOUNT' AND (s.kind IS DISTINCT FROM 'CORRECTION' OR s.corrected_kind IS DISTINCT FROM 'DEPOSIT' OR s.correction_kind IS DISTINCT FROM 'WRONG_ACCOUNT') THEN
+    RAISE EXCEPTION 'money_move_line: only a WRONG_ACCOUNT correction of a deposit licenses a wrong-account move out of trust (this entry is a %): a bounced cheque or an entry error never reached the trust account as money to move',
+      coalesce(s.correction_kind::text || ' ', '') || s.kind USING ERRCODE = 'check_violation';
+  END IF;
+  -- A wrong-account line moves only money that arrived: its payment is cleared and was never "Returned" (break B-20: a
+  -- bounced cheque ticked cleared afterwards), read after the party's lock (a "Returned" takes it too) and with the
+  -- payment row share-locked, so a "Cleared" tick written after this snapshot fails to serialise (40001) at REPEATABLE
+  -- READ instead of being missed.
+  IF NEW.kind = 'WRONG_ACCOUNT' THEN
+    SELECT x.cleared AND NOT EXISTS (SELECT 1 FROM "money_trust_entry" r JOIN "money_trust_entry" c ON c.firm_id = r.firm_id AND c.id = NEW.source_entry_id
+             WHERE r.firm_id = NEW.firm_id AND r.corrects_entry_id = c.corrects_entry_id AND r.correction_kind = 'RETURNED')
+      INTO arrived FROM "money_payment" x WHERE x.firm_id = NEW.firm_id AND x.id = s.deposit_payment_id FOR SHARE;
+  END IF;
+  IF NEW.kind = 'WRONG_ACCOUNT' AND arrived IS NOT TRUE THEN
+    RAISE EXCEPTION 'money_move_line: the payment this wrong-account correction names is not cleared, or was returned; it moves only once it has cleared' USING ERRCODE = 'check_violation';
+  END IF;
+  -- FO-7a2 rule 2c: back into trust only a trust application's money a credit note owes ("Move back to trust").
+  IF NEW.direction <> 'TRUST_TO_OPERATING' AND NEW.kind <> 'TRUST_APPLIED' THEN
+    RAISE EXCEPTION 'money_move_line: a % line moves from trust to operating (money into trust waits for its own ledger entry)', NEW.kind USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.currency <> s.currency THEN
+    RAISE EXCEPTION 'money_move_line: a line is in its entry''s currency (%)', s.currency USING ERRCODE = 'check_violation';
+  END IF;
+  NEW.invoice_id := coalesce(NEW.invoice_id, s.invoice_id);
+  IF NEW.person_id IS NULL AND NEW.company_id IS NULL THEN
+    NEW.person_id := s.person_id; NEW.company_id := s.company_id;
+  END IF;
+  IF (NEW.invoice_id, NEW.person_id, NEW.company_id) IS DISTINCT FROM (s.invoice_id, s.person_id, s.company_id) THEN
+    RAISE EXCEPTION 'money_move_line: a line''s invoice and party are its trust entry''s' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    UPDATE "money_invoice" x SET updated_at = now() WHERE x.firm_id = NEW.firm_id AND x.id = s.invoice_id;
+  END IF;
+  SELECT count(*) INTO earlier FROM "money_move_line" l WHERE l.firm_id = NEW.firm_id AND l.source_entry_id = NEW.source_entry_id;
+  moved := money_moved_live(NEW.firm_id, NEW.source_entry_id, NEW.direction);
+  IF NEW.direction = 'OPERATING_TO_TRUST' THEN
+    cap := money_owed_live(NEW.firm_id, NEW.source_entry_id);
+    IF moved + NEW.amount_minor > cap THEN
+      RAISE EXCEPTION 'money_move_line: a TRUST_APPLIED line moves from trust to operating, or back into trust only what a credit note owes (% % owed back, % moved back)', cap, NEW.currency, moved USING ERRCODE = 'check_violation';
+    END IF;
+    NEW.move_ordinal := earlier + 1;
+    NEW.created_at := now();
+    RETURN NEW;
+  END IF;
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    SELECT coalesce(sum(c.amount_minor), 0) INTO returned FROM "money_trust_entry" c WHERE c.firm_id = NEW.firm_id AND c.corrects_entry_id = NEW.source_entry_id;
+  ELSE
+    returned := 0;
+  END IF;
+  -- What a credit note owes back to trust from this application can move out again only after it is moved back (rule 2c).
+  cap := -s.amount_minor - returned + CASE WHEN NEW.kind = 'TRUST_APPLIED' THEN money_owed_live(NEW.firm_id, NEW.source_entry_id) ELSE 0 END;
+  IF moved + NEW.amount_minor > cap THEN
+    RAISE EXCEPTION 'money_move_line: % % would move more than this entry still holds (% % to move: % less % returned to trust, % moved before)',
+      NEW.amount_minor, NEW.currency, cap - moved, NEW.currency, -s.amount_minor, returned, moved USING ERRCODE = 'check_violation';
+  END IF;
+  -- Break B-4 (AG-6-75 rules 3-4): after a reversal took the party below zero, its unmoved trust applications are undone
+  -- money: what moves out never exceeds the party's ledger balance plus what it still has to move, so a shortfall is only
+  -- ever money that had already moved.
+  IF NEW.kind = 'TRUST_APPLIED' THEN
+    SELECT coalesce((SELECT e.balance_after_minor FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND (e.person_id = party OR e.company_id = party)
+      AND e.currency = s.currency ORDER BY e.seq DESC LIMIT 1), 0) INTO returned;
+    IF returned < 0 AND returned + (cap - moved) - NEW.amount_minor < 0 THEN
+      RAISE EXCEPTION 'money_move_line: this party''s trust balance is % % after a reversal; its unmoved trust applications are undone money and do not move (AG-6-75 rule 3)',
+        to_char(returned / 100.0, 'FM999,999,990.00'), s.currency USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  NEW.move_ordinal := earlier + 1;
+  NEW.created_at := now();
+  RETURN NEW;
+END $$;
+
 
 -- PF-12: CREATE OR REPLACE keeps the owner but resets these settings, so they are set again.
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()', 'money_credit_note_write()', 'money_move_batch_owed_back()'] LOOP
+  FOREACH f IN ARRAY ARRAY['money_trust_entry_write()', 'money_invoice_write()', 'money_credit_note_write()', 'money_move_batch_owed_back()', 'money_move_line_write()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;
