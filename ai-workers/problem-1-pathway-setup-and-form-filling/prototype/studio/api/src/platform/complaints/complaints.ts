@@ -6,8 +6,10 @@
 // never deleted. Code SOR/2022-128 s. 24(3)(r), s. 29, s. 37; legal reading Unconfirmed: no counsel; every field, list
 // and period Sample until the College's by-laws are read.
 // Who (Lead 47 on #1753): agent/complaint:record (Owner, Admin, Case Manager) records a complaint; agent/complaint:read
-// (Owner, Admin) reads every one; record + read act on any; the handler reads and handles their own (steps, response,
-// close) without either key. Anyone else gets the same 404 as for another firm's complaint (an id leaks nothing).
+// (Owner, Admin) reads every one; record + read act on any; the handler reads their own without either key and handles
+// it (steps, response, close) only while they hold the record key (PF-21j, QA-517: a handler who lost it, say made
+// Read-only, still reads it but gets 403 on a change). Only a person whose roles grant the record key can be made
+// handler (422 otherwise). Anyone else gets the same 404 as for another firm's complaint (an id leaks nothing).
 // Every change is one transaction: the event first, then the row (the database refuses a row change without its event),
 // one AuditPort line (a failing audit rolls everything back). Job calls run after the commit (JobPort takes no
 // transaction): a rolled-back change never cancels a reminder. The reminder's mail is sent inside its run, after its
@@ -177,6 +179,8 @@ const outbox = (tx: Tx, c: PlatComplaint, e: ComplaintReceived | ComplaintClosed
  *  Idempotency-Key and body, so the route answers 200 instead of 201. */
 export const REPEATED = Symbol("complaint.repeated");
 export const KEY_LOCK = "plat-complaint-key";
+/** PF-21j: the field error for a handler who may not record complaints. */
+export const HANDLER_NEEDS_KEY = "This person cannot handle complaints. Choose someone who may record them.";
 const keyReused = (): never => problem(422, "idempotency-key-reused", "Request key already used", "This request key was already used for a different complaint.");
 
 /** Work to run after the transaction commits (job and mail calls). */
@@ -190,8 +194,8 @@ export class ComplaintsService {
   private handles = (ctx: StaffContext, c: PlatComplaint) => c.handlerStaffId === ctx.staffId.toLowerCase();
   /** Read: the read key, or the handler. */
   private canRead = (ctx: StaffContext, c: PlatComplaint) => this.has(ctx, COMPLAINT_KEYS.read) || this.handles(ctx, c);
-  /** Act: the handler, or someone who holds both keys. */
-  private canAct = (ctx: StaffContext, c: PlatComplaint) => this.handles(ctx, c) || (this.has(ctx, COMPLAINT_KEYS.read) && this.has(ctx, COMPLAINT_KEYS.record));
+  /** Act (PF-21j): the record key, and either being the handler or the read key too. */
+  private canAct = (ctx: StaffContext, c: PlatComplaint) => this.has(ctx, COMPLAINT_KEYS.record) && (this.handles(ctx, c) || this.has(ctx, COMPLAINT_KEYS.read));
   private actor = (ctx: StaffContext) => `staff:${ctx.staffId.toLowerCase()}`;
 
   /** The names behind the staff ids of rows the reader may already see: one read, the firm's staff of any status. */
@@ -214,6 +218,19 @@ export class ComplaintsService {
   /** The handler must be an active staff member of the firm (the foreign key proves the firm; this the state). */
   private async activeStaff(tx: Tx, firmId: string, staffId: string): Promise<boolean> {
     return !!(await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: staffId, status: "ACTIVE" as const }), select: { id: true } }));
+  }
+
+  /** PF-21j: the firm's active staff whose current roles (grants not ended) grant the record key: who can handle one. */
+  private async mayHandle(db: Tx | PrismaClient, firmId: string, extra: Prisma.PlatformStaffWhereInput = {}): Promise<Prisma.PlatformStaffWhereInput> {
+    const roles = (await db.platformRolePermission.findMany({ where: { permissionKey: COMPLAINT_KEYS.record }, select: { role: true } })).map((r) => r.role);
+    return firmScope(firmId, { ...extra, status: "ACTIVE" as const, grants: { some: { endedAt: null, role: { in: roles } } } });
+  }
+
+  /** The handler being set: an active staff member of the firm (422 at the field otherwise, as before), who may record
+   *  complaints (PF-21j: 422 with its own sentence otherwise). */
+  private async checkHandler(tx: Tx, firmId: string, staffId: string) {
+    if (!(await this.activeStaff(tx, firmId, staffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+    if (!(await tx.platformStaff.findFirst({ where: await this.mayHandle(tx, firmId, { id: staffId }), select: { id: true } }))) fieldErrors({ handlerStaffId: HANDLER_NEEDS_KEY });
   }
 
   /** Locks one complaint of the firm for the rest of the transaction, or the 404 (another firm's, none, or not an id). */
@@ -268,7 +285,7 @@ export class ComplaintsService {
           return view(asRecorded, now, await this.days(tx, firmId));
         }
       }
-      if (!(await this.activeStaff(tx, firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+      await this.checkHandler(tx, firmId, v.handlerStaffId);
       const days = await this.days(tx, firmId), due = acknowledgeBy(v.receivedAt, days.cal);
       const c = await tx.platComplaint.create({ data: {
         firmId, subjectKind: v.subjectKind, subjectId: v.subjectId ?? null, complainantName: v.complainantName ?? null, complainantContact: v.complainantContact ?? null,
@@ -320,11 +337,11 @@ export class ComplaintsService {
     };
   }
 
-  /** PF-21v: who can be made handler (key agent/complaint:record): the firm's active staff, by name then id; the id and
-   *  the name only. */
+  /** PF-21v: who can be made handler (key agent/complaint:record): the firm's active staff who may record complaints
+   *  (PF-21j), by name then id; the id and the name only. */
   async handlers(ctx: StaffContext): Promise<HandlerChoices> {
     if (!this.has(ctx, COMPLAINT_KEYS.record)) problem(403, "not-allowed", "Not allowed", "Choosing a handler needs the permission to record complaints.");
-    const items = await this.d.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { status: "ACTIVE" as const }), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
+    const items = await this.d.db.platformStaff.findMany({ where: await this.mayHandle(this.d.db, ctx.firmId), select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] });
     return { items };
   }
 
@@ -392,14 +409,14 @@ export class ComplaintsService {
     });
   }
 
-  /** A new handler (both keys): an active staff member of the firm. */
+  /** A new handler (both keys): an active staff member of the firm who may record complaints (PF-21j). */
   changeHandler(ctx: StaffContext, id: string, input: unknown) {
     const v = parse(Handler, input);
     return this.change(ctx, id, async (tx, c) => {
       if (!this.has(ctx, COMPLAINT_KEYS.record) || !this.has(ctx, COMPLAINT_KEYS.read)) problem(403, "not-allowed", "Not allowed", "Changing the handler needs the permissions to read and record complaints.");
       if (c.status === "CLOSED") closedRefused();
       if (v.handlerStaffId === c.handlerStaffId) fieldErrors({ handlerStaffId: "this person already handles it" });
-      if (!(await this.activeStaff(tx, c.firmId, v.handlerStaffId))) fieldErrors({ handlerStaffId: "choose an active staff member of your firm" });
+      await this.checkHandler(tx, c.firmId, v.handlerStaffId);
       await this.event(tx, ctx, c, "HANDLER_CHANGED", this.d.clock.now(), v.note, { from: c.handlerStaffId, to: v.handlerStaffId });
       await tx.platComplaint.update({ where: this.where(c), data: { handlerStaffId: v.handlerStaffId } });
       return { action: "complaint.handler", summary: "Complaint handler changed", detail: { from: c.handlerStaffId, to: v.handlerStaffId } };
