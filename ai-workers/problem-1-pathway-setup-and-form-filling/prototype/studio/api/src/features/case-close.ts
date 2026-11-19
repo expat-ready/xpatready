@@ -2,12 +2,15 @@
 // the other case routes but behind PF-4's guard: each declares its permission keys (core.ts's guard leaves a declared
 // route to the platform guard, Lead 58's OK on #1818), so a staff session's bearer token and keys decide, never x-actor.
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req } from "@nestjs/common";
+import { CaseRead } from "../core.ts";
 import type { Feature } from "../features.ts";
 import { CaseClose } from "../case-close.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../platform/identity/keys.ts";
 
 type R = { platform?: StaffContext };
 
+// QA-53: a runtime read is a case read (as features/clients.ts; core.ts ConfigReadGuard leaves a keys-declared runtime route to PF-4's guard).
+@CaseRead()
 @Controller("api/runtime/cases/:id")
 export class CaseCloseController {
   constructor(@Inject(CaseClose) private readonly svc: CaseClose) {}
