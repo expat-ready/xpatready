@@ -24,3 +24,18 @@ Case side, audit and client money. Brief paths are under product/design/build-le
 
 ## Recommended post-drain order (replaces CS-DL1b, AUD-1m, CS-NT1)
 J-77 (on #2169's merge) → CS-DL1b (on #2000's merge) → CS-D1t (any time) → AUD-1m 2a then 2b (on #2214's merge) → FO-8 then CS-K1 part 2 → CS-V1 PR 3 (after 2a). R1.65 (CS-D1 parts 1-2) after these. CS-NT1 drops below them (R1.76 has 4 parts). R1.59 stays behind these; no second money lane (Lead 91, 12:4x IST).
+
+## Update 19 Nov 20:3x IST, Build Lead C (3), for P-740 (Release 1 stays 29 Nov; about 9 Proven a day)
+Done since 12:5x: R1.80 (#2235, merged 18:06; qa 8 proves it) and R1.77 (#2263 J-77, merged 19:50; qa 8). #2214 (AUD-1m part 1) merged 18:15; #2289 (2a) is queued.
+
+Lanes, in order. "Trigger" is the merge that makes the part startable. Every lane's touch list is disjoint from the others' and from in-flight PRs, except where noted.
+1. **R1.67** #2253 queued: proven when it merges. Then the **same lane** goes on to CS-D1 part 1 (R1.65, `CS-D1-1.md`), because it uses the same two door files.
+2. **R1.72** #2255 queued: its lane goes on to CS-K1 part 2 with J-72 (`CS-K1-2.md`).
+3. **R1.74** CS-DL1b with J-74 (`CS-DL1b.md`): trigger #2000 (in batch #2292).
+4. **R1.8** AUD-1m 2a (#2289) → 2b (built on `claude/zen-brown-c0s4iz-2b`) → 2c (settings, ruling (A1)), J-8 in the last; lane task_8b2e00b1.
+5. **R1.10** CS-V1 part 3 (`CS-V1-3.md`; 5 methods in one PR; the case half's last part): trigger #2289. Lead to confirm the Bake's tag wait (P-499) is lifted. PF-28 is Lead B's.
+6. **R1.59** FO-7ts part 3 → FO-7b → FO-7g with J-59 (one lane, the `client-money.prisma` chain): trigger #2204. FO-7g needs a cited tax table.
+7. **R1.3** CS-W3 part 0 spike (`CS-W3-0.md`): records only, ready now, no product files.
+8. **R1.76** CS-NT1 part 1 (`CS-NT1-1.md`, 4 parts): ready now. Its new `case-notes.prisma` is free; it shares one read hook in `runtime.ts` with #2255/CS-K1-2, and one add-only line in `ports/notifications.ts` with CS-DL1b (whichever merges second merges main).
+9. **CS-NK1** #2101 (bug, Approve 5819dd091 since 17 Nov, never got the Lead's read): its migration `20261117123500` is earlier than main's newest, so it needs a merge of main, a new stamp (P-600), a diff-only Approve, then the Lead's read.
+Not ready: **R1.97 / R1.105**: AUD-2 (`AUD-2.md`) waits on AUD-1c parts 1-2 (#2129 parked, P-707) and STANDARDS §1. J-105 (`J-105.md`) also waits on Lead B's PF-5 close and PF-11c. R1.102 CS-S1 part 2 waits on Lead B's PF-30a/30s. R1.88 AUD-4 (draft on main; AUD-1a/1b merged) is a candidate once the Lead approves the draft.
