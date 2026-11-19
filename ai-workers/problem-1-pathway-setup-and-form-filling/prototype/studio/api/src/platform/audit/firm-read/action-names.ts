@@ -25,12 +25,15 @@ export const AuditActionNames = {
 export const AREAS = { team: "Team and settings", "front-office": "Front office", money: "Money", messages: "Messages", cases: "Cases", configuration: "Configuration", other: "Other" } as const;
 export type AreaCode = keyof typeof AREAS;
 
+/** The table prefixes of the four platform areas (ports/audit.ts AREA_ENTITY): the one list areaOf and the area filter's
+ *  query both read, so the words and the filter never drift apart. */
+export const AREA_PREFIXES = { team: ["platform", "plat"], "front-office": ["fo"], money: ["money"], messages: ["msg"] } as const satisfies Partial<Record<AreaCode, readonly string[]>>;
+export const prefixPattern = (prefixes: readonly string[]) => `^(${prefixes.join("|")})_`;
+export const ALL_PREFIXES = prefixPattern(Object.values(AREA_PREFIXES).flat());
+
 /** The area of an entity. */
 export function areaOf(entity: string): AreaCode {
-  if (/^(platform|plat)_/.test(entity)) return "team";
-  if (entity.startsWith("fo_")) return "front-office";
-  if (entity.startsWith("money_")) return "money";
-  if (entity.startsWith("msg_")) return "messages";
+  for (const [code, prefixes] of Object.entries(AREA_PREFIXES)) if (new RegExp(prefixPattern(prefixes)).test(entity)) return code as AreaCode;
   if (CASE_ENTITIES.has(entity)) return "cases";
   if (isConfigEntity(entity)) return "configuration";
   return "other";
@@ -41,8 +44,7 @@ export function areaOf(entity: string): AreaCode {
 export const caseEntities = (): string[] => [...CASE_ENTITIES];
 export const configEntities = (): string[] => [...CONFIG_ENTITIES].filter((e) => !CASE_ENTITIES.has(e));
 
-// The platform module's actions on main (sampled 19 Nov from the code and the demo-data copy: `select distinct action
-// from audit_event where firm_id is not null`). Other modules add theirs in their own rows.
+// The platform module's actions. Other modules register theirs from their own files.
 AuditActionNames.register("platform", {
   "platform.setting.change": "Changed a firm setting",
   "platform.staff.owner_created": "Created the firm's first Owner",

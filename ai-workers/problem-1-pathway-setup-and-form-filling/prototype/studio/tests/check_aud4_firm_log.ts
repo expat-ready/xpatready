@@ -140,6 +140,11 @@ try {
   const noFrom = await call(base, "/api/platform/audit?to=2027-01-01", tR), long = await call(base, "/api/platform/audit?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00.001Z", tR);
   const micro = await call(base, "/api/platform/audit?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00.000001Z", tR), exact = await call(base, "/api/platform/audit?from=2026-01-01T00:00:00Z&to=2027-01-01T00:00:00Z", tR);
   ok("AUD-4 DW4 pass: a range of exactly one year is read", exact.status === 200, exact.status);
+  const feb31 = await call(base, "/api/platform/audit?from=2026-01-01&to=2026-02-31", tR), h24 = await call(base, "/api/platform/audit?from=2026-01-01T24:00:00Z&to=2026-03-01", tR);
+  const y0 = await call(base, "/api/platform/audit?from=0000-01-01&to=0000-06-01", tR), area = await call(base, `/api/platform/audit?${R1}&area=constructor`, tR);
+  const badTime = Buffer.from(JSON.stringify(["2026-13-45T99:99:99.000000Z", L.setting])).toString("base64url"), cur = await call(base, `/api/platform/audit?${R1}&cursor=${badTime}`, tR);
+  ok("AUD-4 DW4 fail (break m2-m5): 31 February, hour 24 and year 0 → 400 (never rolled over or a 500); area=constructor → 400; a cursor with an impossible time → 400 BAD_CURSOR",
+    feb31.status === 400 && h24.status === 400 && y0.status === 400 && area.status === 400 && cur.status === 400 && cur.body.code === "BAD_CURSOR", [feb31.status, h24.status, y0.status, area.status, cur.status]);
   ok("AUD-4 DW4 fail: no from → 400 DATES_REQUIRED; one year and a millisecond → 400 naming the limit; a microsecond (more precision than checked) → 400",
     noFrom.status === 400 && noFrom.body.code === "DATES_REQUIRED" && long.status === 400 && long.body.code === "RANGE_TOO_LONG" && /one year/.test(long.body.detail) && micro.status === 400, [noFrom.body?.code, long.body?.code, micro.status]);
 
@@ -174,6 +179,9 @@ try {
   clock.t += 1000; const tR2 = await signIn("user-R", KEY_A);   // the sign-out above ended tR's session
   ok("AUD-4 DW6 pass: the export commits exactly one audit.exported line (plat_audit_export, the row count, the exporter) before its data, and the file holds that count",
     res.status === 200 && exported.length === before + 1 && exported.at(-1) === `plat_audit_export|100000|staff:${R.id}` && res.headers.get("x-export-rows") === "100000" && rows.length === 100001 && rows[0][0] === "When (UTC)", { status: res.status, exported, rows: rows.length });
+  const exLine = ((await call(base, `/api/platform/audit?from=2026-01-01&to=2027-01-01&action=audit.exported`, tR2)).body.lines as any[])[0];
+  ok("AUD-4 DW6 fail (review M2): the export's own line shows no false change: its range is kept as rangeFrom/rangeTo, not a from/to pair",
+    exLine?.changes?.length === 0 && exLine.advanced.detail.rangeFrom === "2025-01-01T00:00:00.000Z" && exLine.advanced.detail.from === undefined && exLine.actionWords === "Exported the activity log", exLine);
   ok(`AUD-4 DW6 pass: a firm action started while the export streams completes without waiting for it (sign-out in ${waited} ms, the file then ${Math.round(sofar / 1024)} KB of ${Math.round(csv.length / 1024)} KB)`, out.status === 200 && waited < 2000 && sofar < csv.length / 2, [out.status, waited, sofar, csv.length]);
   ok("AUD-4 DW6 fail: a line written during the export is not in the file (the snapshot)", !csv.includes("Written during the export.") && !!late, rows.length);
   sql(`create function aud4_force() returns trigger language plpgsql as $$ begin raise exception 'aud4 forced audit failure'; end $$;
@@ -204,6 +212,47 @@ try {
     gonePerson?.active === false && gonePerson.name === "Departed Admin (Sample)" && ids(byLeaver).includes(L.leaver) && (byLeaver.body.lines as any[]).every((l) => l.staffId === D && l.who === "Departed Admin (Sample)"), [gonePerson, ids(byLeaver)]);
   ok("AUD-4 DW8/DW9 fail: another firm's staff are never in people, nor this firm's staff with no line (a colleague who never signed in)",
     !people.some((p) => p.staffId === S.id) && !people.some((p) => p.staffId === E) && people.some((p) => p.staffId === R.id) && people.some((p) => p.staffId === O.id), people);
+
+  // ------------------------------------------------------------------------- DW10: record, area, actor type, simulated people
+  const q = async (extra: string) => ids(await call(base, `/api/platform/audit?from=2026-06-01&to=2026-06-30&${extra}`, tR2));
+  const byEntity = await q("entity=platform_firm_setting"), byKey = await q(`entity=case&entityKey=0c0c0c0c-0000-4000-8000-000000000001`), byType = await q("actorType=SYSTEM");
+  const byO = await q(`person=${O.id}`), byOther = await q("entityKey=no-such-key");
+  ok("AUD-4 DW10 pass: the record filter (entity, entity and key), the actor type and a simulated person (user-O, by staff id) each return exactly their lines",
+    JSON.stringify(byEntity) === JSON.stringify([L.setting]) && JSON.stringify(byKey) === JSON.stringify([L.caseLine]) && byType.includes(L.mystery) && byType.includes(L.support) && !byType.includes(L.setting) && JSON.stringify(byO) === JSON.stringify([L.caseLine]) && byOther.length === 0,
+    { byEntity, byKey, byType, byO });
+  const { areaOf } = await import("../api/src/platform/audit/firm-read/action-names.ts");
+  sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id) values
+    (gen_random_uuid(), '${WS}', '2026-06-10T10:00:00Z', 'system:aud4', 'check.area', 'money_invoice', 'a1', 'Money line', '${A}'),
+    (gen_random_uuid(), '${WS}', '2026-06-10T10:00:01Z', 'system:aud4', 'check.area', 'msg_outbox', 'a2', 'Message line', '${A}'),
+    (gen_random_uuid(), '${WS}', '2026-06-10T10:00:02Z', 'system:aud4', 'check.area', 'combination', 'a3', 'Configuration line', '${A}'),
+    (gen_random_uuid(), '${WS}', '2026-06-10T10:00:03Z', 'system:aud4', 'check.area', 'library field', 'a4', 'Library line', '${A}'),
+    (gen_random_uuid(), '${WS}', '2026-06-10T10:00:04Z', 'system:aud4', 'check.area', 'something new', 'a5', 'Other line', '${A}')`);
+  const every = (await call(base, "/api/platform/audit?from=2026-06-01&to=2026-06-30", tR2)).body.lines as any[];
+  const mismatch: unknown[] = [];
+  for (const code of ["team", "front-office", "money", "messages", "cases", "configuration", "other"]) {
+    const got = new Set(await q(`area=${code}`)), want = every.filter((l) => areaOf(l.advanced.entity) === code).map((l) => l.id);
+    if (!want.length || got.size !== want.length || want.some((i) => !got.has(i))) mismatch.push({ code, got: got.size, want: want.length });
+  }
+  ok("AUD-4 DW10 pass: for each of the 7 areas the area filter returns exactly the lines areaOf names that area (the query and the words never drift)", every.length === 11 && mismatch.length === 0, mismatch);
+  const removed = await q("entity=platform_firm_setting&actorType=SYSTEM"), noArea = await q("area=money&entity=platform_firm_setting");
+  ok("AUD-4 DW10 fail: filters combine (a setting line written by a person is not under actor type SYSTEM; not under Money)", removed.length === 0 && noArea.length === 0, [removed, noArea]);
+
+  // ------------------------------------------------------------------------- the export under load (break M1, M2, m1, m6)
+  const emailish = await fetch(`${base}/api/platform/audit/export?${R1}&entityKey=client@example.com`, { headers: { authorization: `Bearer ${tR2}` } }); await emailish.text();
+  ok("AUD-4 DW6 fail (break m1): an email-shaped filter value never fails the export's line: 200, and the line keeps \"(withheld)\"",
+    emailish.status === 200 && sql("select detail->>'entityKey' from audit_event where action = 'audit.exported' order by at desc limit 1") === "(withheld)", emailish.status);
+  const XB = "from=2025-01-01&to=2025-11-01&action=check.bulk";   // about 87,000 lines, under the limit
+  const paused = await Promise.all([1, 2, 3, 4, 5, 6].map(() => fetch(`${base}/api/platform/audit/export?${XB}`, { headers: { authorization: `Bearer ${tT}` } })));
+  const readers = paused.map((p) => p.body?.getReader());
+  await Promise.all(readers.map((rd) => rd?.read()));   // one chunk each, then every reader stops
+  const t1 = Date.now(); const bx = await fetch(`${base}/api/platform/audit/export?${R1}`, { headers: { authorization: `Bearer ${tS}` } }); const bText = await bx.text(); const bWait = Date.now() - t1;
+  ok(`AUD-4 DW6 pass (break M1): six exports whose readers stopped hold no database connection: firm B's export then answers 200 in ${bWait} ms`,
+    paused.every((p) => p.status === 200 || p.status === 503) && paused.filter((p) => p.status === 200).length >= 2 && bx.status === 200 && bText.includes("When (UTC)") && bWait < 5000, { statuses: paused.map((p) => p.status), b: bx.status, bWait });
+  await Promise.all(readers.map((rd) => rd?.cancel()));
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await call(base, `/api/platform/audit?${R1}`, tR2);
+  const { readdirSync: rd } = await import("node:fs"); const { tmpdir } = await import("node:os");
+  ok("AUD-4 DW6 fail (break m6): readers that leave mid-file end cleanly: the next read works and no export file is left behind", after.status === 200 && !rd(tmpdir()).some((f) => f.startsWith("aud4-export-")), rd(tmpdir()).filter((f) => f.startsWith("aud4-export-")));
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${(e as Error).stack ?? e}`);
 } finally {
