@@ -66,6 +66,10 @@ export const EVENT = {
   PROSPECT_LOST: "prospect.lost",
   /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
   PROSPECT_UNCONVERTED: "prospect.unconverted",
+  /** A call was logged on a lead or a prospect (FO-2 part 4; AG-2-37a): the audit action (no outbox row yet). */
+  CALL_LOGGED: "call.logged",
+  /** A note was added on a lead or a prospect (FO-2 part 4): the audit action (no outbox row). */
+  NOTE_ADDED: "note.added",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",

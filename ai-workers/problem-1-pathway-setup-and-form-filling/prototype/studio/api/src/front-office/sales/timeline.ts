@@ -5,7 +5,7 @@
 // audit line says who). A note's words are staff-only (INTERNAL) and shown; nothing else carries free text.
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
-import { TimelineLine } from "../../../../ports/events.ts";
+import { EVENT, TimelineLine } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { platformAuditWorkspaceId } from "../../platform/audit/audit-event.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
@@ -39,7 +39,7 @@ export class Timeline {
       this.db.$queryRaw<{ id: string; at: Date; actor: string; action: string; summary: string }[]>`
         select id::text, at, actor, action, summary from audit_event
          where workspace_id = ${ws}::uuid and detail->>'firmId' = ${ctx.firmId.toLowerCase()} and entity = ${entity} and entity_key = ${subjectId}
-           and action not in ('call.logged', 'note.added')
+           and action not in (${EVENT.CALL_LOGGED}, ${EVENT.NOTE_ADDED})
          order by at desc, id limit ${MAX_LINES + 1}`,
       this.db.moduleEvent.findMany({ where: { firmId: ctx.firmId, subjectId }, select: { id: true, type: true, occurredAt: true }, orderBy: { seq: "desc" }, take: MAX_LINES + 1 }),
       this.db.foCall.findMany({ where: firmScope(ctx.firmId, own), orderBy: [{ startedAt: "desc" }, { id: "asc" }], take: MAX_LINES + 1 }),

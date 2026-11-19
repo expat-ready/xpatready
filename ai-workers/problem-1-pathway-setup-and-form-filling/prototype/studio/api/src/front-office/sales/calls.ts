@@ -4,6 +4,7 @@
 // or note, one audit line through AuditPort with a typed actor. No outbox row: nothing downstream reads calls yet.
 import { Inject, Injectable } from "@nestjs/common";
 import type { FoCallDirection, FoCallOutcome, PrismaClient } from "@prisma/client";
+import { EVENT } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -95,7 +96,7 @@ export class Activity {
       }
       const first = unanswered.includes(t.leadId);
       await this.ports.audit.record(tx, {
-        firmId: ctx.firmId, actor: actorOf(ctx), action: "call.logged", entity: t.entity, entityKey: t.prospectId ?? t.leadId,
+        firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.CALL_LOGGED, entity: t.entity, entityKey: t.prospectId ?? t.leadId,
         summary: `Staff ${ctx.staffId} logged a${direction === "IN" ? "n incoming" : "n outgoing"} call (${outcome}) on ${t.number}${unanswered.length ? `; the first response of ${unanswered.length} open lead${unanswered.length === 1 ? "" : "s"}` : ""}.`,
         detail: { callId: call.id, direction, outcome, seconds, startedAt: when.toISOString(), firstResponse: first, firstResponseLeadIds: unanswered.slice(0, 50), leadId: t.leadId },
       });
@@ -113,7 +114,7 @@ export class Activity {
       const { t } = await this.locked(tx, ctx, s);
       const note = await tx.foNote.create({ data: { firmId: ctx.firmId, personId: t.personId, leadId: t.prospectId ? null : t.leadId, prospectId: t.prospectId, visibility: "INTERNAL", text: body, byActor: actorOf(ctx) } });
       // The note's words stay in fo_note; the audit line carries ids and the length only (no free text in the trail).
-      await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: "note.added", entity: t.entity, entityKey: t.prospectId ?? t.leadId, summary: `Staff ${ctx.staffId} added a note on ${t.number}.`, detail: { noteId: note.id, length: [...body].length } });
+      await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.NOTE_ADDED, entity: t.entity, entityKey: t.prospectId ?? t.leadId, summary: `Staff ${ctx.staffId} added a note on ${t.number}.`, detail: { noteId: note.id, length: [...body].length } });
       return { id: note.id, visibility: "INTERNAL" as const, text: body, createdAt: note.createdAt };
     });
   }
