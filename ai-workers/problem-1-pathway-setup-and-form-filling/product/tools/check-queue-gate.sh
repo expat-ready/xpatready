@@ -50,7 +50,7 @@ cirun() {  # cirun <head> <status> <conclusion> <started> [attempt] → the chec
   jq -n --arg t "$4" --argjson a "${5:-1}" --arg s "$2" '{id: 77, run_started_at: $t, run_attempt: $a, status: $s}' > "$T/fx/run-77.json"; }
 run() {  # run <mode> <pr> → $out $log $r
   : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main PR=$2 \
-    REVIEWERS="${REV:-}" TRIGGER="${TRIG:-}" FULL_FROM="${FROM:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+    REVIEWERS="${REV:-}" LABELED_AT="${LAT:-}" TRIGGER="${TRIG:-}" FULL_FROM="${FROM:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 # CI-PRE: full <id> <pr> <head> <status> <conclusion> [main's commit] [branch] [event] [path] [repo] → one run of fullruns.json (newest first)
 FR='[]'; fullset() { jq -n --argjson r "$FR" '{workflow_runs: $r}' > "$T/fx/fullruns.json"; }
 full() { FR=$(jq -c --argjson id "$1" --arg t "full-run PR #$2 $3" --arg s "$4" --arg c "$5" --arg sha "${6:-$MAINSHA}" --arg b "${7:-main}" --arg e "${8:-workflow_dispatch}" --arg p "${9:-.github/workflows/ci.yml}" --arg r "${10:-o/r}" \
@@ -139,8 +139,8 @@ full 43 7 $OLD completed success; run label 7
 ok "full run: green only on an older head (stale): refused" "$(nolabel && grep -q 'no full run on 111111111' <<< "$out" && echo 1)" "$out / $log"
 nofull; full 44 7 $HEAD1 completed failure; jobs 44 "kind:success" "shard (3):failure" "shard (5):timed_out" 'packs (C7.3 <img src=x> @someone `id`):failure' "regression (C1.1 C1.2, 2):cancelled" "types:skipped" "ci:failure" "retry-comment:failure"
 TRIG=approve run label 7
-ok "full run: red: refused, naming the failed parts (the summary job aside)" "$(nolabel && grep -q 'the full run on 111111111 failed: shard (3); shard (5); packs (C7.3 img srcx someone id); regression (C1.1 C1.2, 2) (https://github.test/o/r/actions/runs/44)' <<< "$log" && echo 1)" "$out / $log"
-ok "full run: ... and a job's name reaches the comment as plain marks only (no markup, no mention)" "$(! grep -qE '<img|@someone|`id`' <<< "$log" && echo 1)" "$log"
+ok "full run: red: refused, naming the failed parts (the summary job aside)" "$(nolabel && grep -qF 'the full run on 111111111 failed: `shard (3)`; `shard (5)`; `packs (C7.3 img srcx someone id)`; `regression (C1.1 C1.2, 2)` (https://github.test/o/r/actions/runs/44)' <<< "$log" && echo 1)" "$out / $log"
+ok "full run: ... and a job's name reaches the comment as plain marks in a code span (no markup, mention or link)" "$(! grep -qE '<img|@someone|`id`' <<< "$log" && echo 1)" "$log"
 nofull; full 45 7 $HEAD1 in_progress ""; run label 7
 ok "full run: still running: refused" "$(nolabel && grep -q 'has not ended' <<< "$out" && echo 1)" "$out / $log"
 nofull; full 46 7 $HEAD1 completed success; full 47 7 $HEAD1 completed failure; jobs 47 "shard (1):failure"; run label 7
@@ -193,13 +193,13 @@ ok "proof: HEADS not set: exit 2" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 BSHA=3333333333333333333333333333333333333333; BOK=4444444444444444444444444444444444444444
 batch() {  # batch <n> <head sha> <title> [login] [body] → one PR of pulls.json (newest first)
   PL=$(jq -c --argjson n "$1" --arg s "$2" --arg t "$3" --arg u "${4:-mergify[bot]}" --arg b "${5:-}" '[{number: $n, title: $t, body: $b, user: {login: $u}, head: {sha: $s, ref: "mergify/merge-queue/abc", repo: {full_name: "o/r"}}}] + .' <<< "${PL:-[]}"); echo "$PL" > "$T/fx/pulls.json"; }
-bci() { jq -n --arg c "$2" --arg id "$3" '{check_runs: [{app: {slug: "github-actions"}, status: "completed", conclusion: $c, started_at: "2026-11-19T04:00:00Z", details_url: ("https://github.test/o/r/actions/runs/" + $id + "/job/1")}]}' > "$T/fx/checks-$1.json"; }
+bci() { jq -n --arg c "$2" --arg id "$3" '{check_runs: [{app: {slug: "github-actions"}, status: "completed", conclusion: $c, started_at: "2026-11-19T04:00:00Z", completed_at: "2026-11-19T04:30:00Z", details_url: ("https://github.test/o/r/actions/runs/" + $id + "/job/1")}]}' > "$T/fx/checks-$1.json"; }
 cov() { jq -n --arg h $HEAD1 --arg a "${2:-OWNER}" --arg b "$1" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "x"}, author_association: $a, body: $b}]' > "$T/fx/comments-7.json"; }
 nofull; full 50 7 $HEAD1 completed success; PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main"; bci $BSHA failure 900; jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
 cov "nothing yet"; TRIG=approve run label 7
-ok "failed batch: no \"Batch failures covered\" line: refused, naming the run and its failed parts" "$(nolabel && grep -q 'failed merge batch run 900 (failed: shard (3); regression (C1.1 C1.2, 2)) and no PR comment line "Batch failures covered: 900:' <<< "$log" && echo 1)" "$out / $log"
+ok "failed batch: no \"Batch failures covered\" line: refused, naming the run and its failed parts" "$(nolabel && grep -qF 'failed merge batch run 900 (failed: `shard (3)`; `regression (C1.1 C1.2, 2)`) and no PR comment line "Batch failures covered: 900:' <<< "$log" && echo 1)" "$out / $log"
 cov "Batch failures covered: 900: shard (3)"; TRIG=approve run label 7
-ok "failed batch: one failed part missing from the line: refused, naming it" "$(nolabel && grep -q 'does not name every failed part of that merge batch run: missing regression (C1.1 C1.2, 2)' <<< "$log" && echo 1)" "$out / $log"
+ok "failed batch: one failed part missing from the line: refused, naming it" "$(nolabel && grep -qF 'does not name every failed part of that merge batch run: missing `regression (C1.1 C1.2, 2)`' <<< "$log" && echo 1)" "$out / $log"
 cov "Fixed both.
 
 **Batch failures covered:** 900: \`shard (3)\`, regression (C1.1 C1.2, 2)"; run label 7
@@ -213,9 +213,9 @@ ok "failed batch: shard (30) does not name shard (3): refused" "$(nolabel && ech
 cov "Batch failures covered: 900: shard (3) and regression (C1.1 C1.2, 2)x"; run label 7
 ok "failed batch: a part's name inside a longer word does not name it: refused" "$(nolabel && echo 1)" "$out / $log"
 jobs 900 "kind:failure" "ci:failure"; cov "Batch failures covered: 900: kindly fixed"; run label 7
-ok "failed batch: \"kindly\" does not name the part kind: refused" "$(nolabel && grep -q 'missing kind' <<< "$out" && echo 1)" "$out / $log"
+ok "failed batch: \"kindly\" does not name the part kind: refused" "$(nolabel && grep -qF 'missing `kind`' <<< "$out" && echo 1)" "$out / $log"
 jobs 900 "ci:failure" "fast:success"; cov "Batch failures covered: 900:"; run label 7
-ok "failed batch: only the summary job failed (a notes batch): it is the part to name, an empty line is refused" "$(nolabel && grep -q 'missing ci' <<< "$out" && echo 1)" "$out / $log"
+ok "failed batch: only the summary job failed (a notes batch): it is the part to name, an empty line is refused" "$(nolabel && grep -qF 'missing `ci`' <<< "$out" && echo 1)" "$out / $log"
 cov "Batch failures covered: 900: ci"; run label 7
 ok "failed batch: ... and naming it is allowed" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 rm -f "$T/fx/jobs-900.json"; run label 7
@@ -223,6 +223,10 @@ ok "failed batch: its failed parts cannot be read: refused, never passed by an e
 jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
 cov "nothing yet"; run eligible 7
 ok "failed batch: eligible (the sweep) does not ask for the line: a batch's other PRs keep their label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+LAT=2026-11-19T04:10:00Z run eligible 7
+ok "failed batch: eligible with LABELED_AT before the batch failed (a member that kept its label): the line is not asked" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+LAT=2026-11-19T05:00:00Z run eligible 7
+ok "failed batch: eligible with LABELED_AT after the batch failed (a workflow's token put the label back on): the line is asked, exit 1" "$([ $r = 1 ] && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "exit $r: $out"
 HEADS=$HEAD1 RELABEL=1 run proof 7
 ok "proof with RELABEL=1 (the label was just put on by hand): exit 1 without the line" "$([ $r = 1 ] && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "exit $r: $out"
 HEADS=$HEAD1 run proof 7
@@ -243,8 +247,8 @@ PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #5 together on main" "mergi
 "; run label 7
 ok "failed batch: a member the title leaves out is found in the body (title and body together): refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
 PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main"; mv "$T/fx/pulls.json" "$T/fx/pulls-p2.json"
-seq 1000 1099 | jq -c '{number: ., title: "x", body: "", user: {login: "someone"}, head: {sha: "5555555555555555555555555555555555555555", ref: "claude/y", repo: {full_name: "o/r"}}}' | jq -s . > "$T/fx/pulls-p1.json"; run label 7
-ok "failed batch: a batch older than the 100 newest PRs is still found (every PR opened after this one is read): refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
+seq 1000 1099 | jq -c --arg big "$(head -c 12000 /dev/zero | tr '\0' x)" '{number: ., title: "x", body: $big, user: {login: "someone"}, head: {sha: "5555555555555555555555555555555555555555", ref: "claude/y", repo: {full_name: "o/r"}}}' | jq -s . > "$T/fx/pulls-p1.json"; run label 7
+ok "failed batch: a batch older than the 100 newest PRs, each page over 1 MB as GitHub's are, is still found (every PR opened after this one is read): refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
 rm -f "$T/fx/pulls.json" "$T/fx/pulls-p1.json" "$T/fx/pulls-p2.json"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; nofull; full 41 7 $HEAD1 completed success; full 42 9 $HEAD1 completed success
 
 # --- fresh: the status queue-fresh
@@ -286,7 +290,7 @@ ok "event workflow_run: the PR of a finished ci is labelled and judged" "$([ $r 
 prj 9 $HEAD1; printf '{"workflow_run": {"event": "workflow_dispatch", "display_title": "full-run PR #9 %s", "pull_requests": []}}' $HEAD1 > "$T/fx/ev.json"; ev workflow_run
 ok "event workflow_run, a green full run: its PR is judged and labelled" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && echo 1)" "exit $r: $out / $log"
 nofull; full 60 9 $HEAD1 completed failure; jobs 60 "shard (2):failure" "ci:failure"; ev workflow_run
-ok "event workflow_run, a red full run: the PR is told the failed parts, no label" "$([ $r = 0 ] && ! grep -q '^LABEL' <<< "$log" && grep -q '^COMMENT 9 .*the full run on 111111111 failed: shard (2) ' <<< "$log" && echo 1)" "exit $r: $out / $log"
+ok "event workflow_run, a red full run: the PR is told the failed parts, no label" "$([ $r = 0 ] && ! grep -q '^LABEL' <<< "$log" && grep -qF 'the full run on 111111111 failed: `shard (2)` ' <<< "$log" && grep -q '^COMMENT 9 ' <<< "$log" && echo 1)" "exit $r: $out / $log"
 nofull; full 61 9 $HEAD1 completed success; cmt 9 o OWNER "no verdict yet"; ev workflow_run
 ok "event workflow_run, a green full run before the Approve: the PR is told it is green and what the label waits for" "$(! grep -q '^LABEL' <<< "$log" && grep -q '^COMMENT 9 .*full run 61 green on 111111111; the label waits: .*not an Approve' <<< "$log" && echo 1)" "$out / $log"
 cmt 9 o OWNER "Reviewer: Approve $HEAD1"
@@ -329,6 +333,8 @@ import re
 txt=open(sys.argv[3]).read()
 if len(re.findall(r"GATE_B_NOT_TESTED: \"\$\{\{ github.event_name == .workflow_dispatch. && .warn. \|\| .. \}\}\"", txt)) != 3: bad.append("ci.yml: gate B must warn, not fail, on NOT TESTED in a full run (kind, fast, packs), as in a batch")
 if re.search(r"^ *cache: npm *$", txt, re.M): bad.append("ci.yml: a full run (a run of main) must not save to the cache of main")
+kb=[s for s in c["jobs"]["kind"]["steps"] if s.get("id") == "b"][0]
+if "vars.REVIEWERS" not in str(kb["env"].get("REVIEWERS")) or "reviewer:" not in kb["run"] or kb["run"].find("reviewer:") > kb["run"].find("pr-base.sh"): bad.append("ci.yml: a full run must check for a reviewed head before the PR code is merged in")
 if set(ins) != {"pr", "head"}: bad.append("ci.yml workflow_dispatch inputs are not pr and head: %s" % list(ins))
 if "format('"'"'full-run PR #{0} {1}'"'"', inputs.pr, inputs.head)" not in str(c.get("run-name")): bad.append("ci.yml does not name a full run by its inputs")
 print("; ".join(bad) or "ok")' "$W" "${W%/*}/label-guard.yml" "${W%/*}/ci.yml" 2>&1)

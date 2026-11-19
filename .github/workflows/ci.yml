@@ -129,7 +129,7 @@ jobs:
         with: { fetch-depth: 0, filter: "blob:none" }
       - id: b
         name: the test merge on today's main (D6, tools/pr-base.sh; a batch keeps GitHub's merge)
-        env: { HEAD_REF: "${{ github.event.pull_request.head.ref }}", PR_AUTHOR: "${{ github.event.pull_request.user.login }}", HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", FULL_PR: "${{ inputs.pr }}", GH_TOKEN: "${{ github.token }}" }
+        env: { HEAD_REF: "${{ github.event.pull_request.head.ref }}", PR_AUTHOR: "${{ github.event.pull_request.user.login }}", HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", FULL_PR: "${{ inputs.pr }}", GH_TOKEN: "${{ github.token }}", REVIEWERS: "${{ vars.REVIEWERS }}" }
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             # CI-PRE: before any of the PR's code is here (this is still main's tree): the inputs are a number and a
@@ -137,6 +137,12 @@ jobs:
             [[ "$FULL_PR" =~ ^[1-9][0-9]{0,6}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::full run: pr and head must be a number and a 40-hex commit id"; exit 1; }
             now=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq '"\(.head.sha) \(.head.repo.full_name // "")"') || exit 1
             [ "$now" = "$HEAD_SHA $GITHUB_REPOSITORY" ] || { echo "::error::full run: that commit is not the head of this repository's PR #$FULL_PR now"; exit 1; }
+            # Only a reviewed head runs in a run of main, however the run was started (comment-run.yml asks the same;
+            # a dispatch by hand passes it by): "Reviewer: Approve <this head>" by the owner's account or a known reviewer.
+            export WHO="${GITHUB_REPOSITORY%%/*} $REVIEWERS"
+            ok=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$FULL_PR/comments?per_page=100" --jq '[.[] | select(.user.login as $l | (env.WHO | split(" ")) | index($l)) | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+              | select((.body // "") | gsub("[*_`]"; "") | test("(^|\n)\\s*reviewer:\\s*approve[sd]?\\s+" + env.HEAD_SHA + "\\b"; "i"))] | length') || exit 1
+            grep -qx '[1-9][0-9]*' <<< "$ok" || { echo "::error::full run: no \"Reviewer: Approve <this head>\" line by the owner's account or a known reviewer on PR #$FULL_PR"; exit 1; }
           fi
           # A batch only when Mergify opened it (gate B break M2): a builder's branch named mergify/* stays a pull request.
           if [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]]; then range=$(bash "$P/tools/pr-base.sh" queue)

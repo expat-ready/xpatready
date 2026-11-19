@@ -155,7 +155,7 @@ jobs:
                 # Red on this same head: its failing parts by name (the run's jobs; letters, digits and plain marks only,
                 # as a matrix value is worked out from the PR's files), and only they run again (P-371).
                 failed=$(gh api -X GET "repos/$REPO/actions/runs/$id/jobs" -f filter=latest -f per_page=100 \
-                  --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "ci")' | tr -cd 'A-Za-z0-9 ().,_\n-' | cut -c1-120 | sed -n '1,20p' | paste -sd ';' - | sed 's/;/; /g') || failed=""
+                  --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "ci")' | tr -cd 'A-Za-z0-9 ().,_\n-' | cut -c1-120 | sed -n '1,20p' | sed 's/.*/`&`/' | paste -sd ';' - | sed 's/;/; /g') || failed=""
                 if gh api -X POST "repos/$REPO/actions/runs/$id/rerun-failed-jobs" >/dev/null; then
                   reply "the full run for ${head:0:9} ended $conclusion. Failing: ${failed:-not readable}. Only those parts run again, on today's main: $url. A fault in the code needs a fix and a push, then \`/run full\` on the new head. ([this run]($THIS_RUN))"
                 else

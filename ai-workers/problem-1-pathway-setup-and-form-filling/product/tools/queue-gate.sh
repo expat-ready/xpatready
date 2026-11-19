@@ -31,14 +31,14 @@
 #            commit) and, with RELABEL=1 (the label was just put on), the batch rule too; exit 1 and the reason if not.
 #   eligible — exit 0 when `label` would label this PR now (the label aside); used by label-sweep.sh.
 #   event  — reads GITHUB_EVENT_NAME / GITHUB_EVENT_PATH and runs the above for the PR(s) concerned.
-# Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible, proof); REVIEWERS; FULL_FROM; HEADS, RELABEL (proof); API (default https://api.github.com);
+# Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible, proof); REVIEWERS; FULL_FROM; HEADS, RELABEL (proof); LABELED_AT (eligible); API (default https://api.github.com);
 # MAIN_REF (default origin/main; a git copy holding main's history). Exit 0 judged; 1 refused (eligible); 2 error.
 # Test: check-queue-gate.sh.
 set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.v"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -67,6 +67,7 @@ ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id
 FULL_WF=".github/workflows/ci.yml"; TEAM='.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"'
 # A job's name may hold a matrix value worked out from a PR's files: letters, digits and a few plain marks only, so no
 # markup, mention, link or "#n" reference reaches a comment (sanl: a comment line, which keeps its colons).
+tick() { sed 's/.*/`&`/'; }   # a name in a comment sits in a code span: "www.x" never becomes a link
 san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_:\n-'; }
 # Records-only: main's one definition on the PR's file names AND the label "records" that records-label.yml sets from a
 # full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
@@ -76,11 +77,12 @@ failing() {  # a run's id → its failed jobs' names, one a line (the summary jo
     | jq -r '[.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "retry-comment")] | (map(select(. != "ci")) | if length > 0 then . else empty end) // . | .[]' 2>/dev/null | san | cut -c1-120 | grep .; true; }
 comments() { [ -n "${cs:-}" ] || cs=$(pages "repos/$REPO/issues/$PR/comments"); }
 full() {  # $@ commits → full_state (success|failure|pending|none), full_why
-  local p=1 one all='[]' c t id st co url sha first=""; full_state=none; full_why="no full run on ${1:0:9} yet: comment \`/run full\` on the PR (every suite a merge batch runs; P-731)"
+  local p=1 one c t id st co url sha first=""; : > "$H.f"; full_state=none; full_why="no full run on ${1:0:9} yet: comment \`/run full\` on the PR (every suite a merge batch runs; P-731)"
   while [ "$p" -le 3 ]; do   # the 300 newest runs started by hand or by "/run full"
     one=$(api "$API/repos/$REPO/actions/workflows/ci.yml/runs?event=workflow_dispatch&per_page=100&page=$p") || { full_state=unread; full_why="the full runs cannot be read"; return; }
-    all=$(jq -c --argjson a "$all" --arg r "$REPO" --arg wf "$FULL_WF" '$a + [.workflow_runs[]? | select(.event == "workflow_dispatch" and ((.path // "") | split("@")[0]) == $wf
-      and .head_branch == "main" and .head_repository.full_name == $r) | {id, status, conclusion, html_url, head_sha, title: (.display_title // "")}]' <<< "$one") || { full_why="the full runs cannot be read"; return; }
+    # One slim line a run, kept in a file: a page is too large for a command line (breaker R2-M1).
+    jq -c --arg r "$REPO" --arg wf "$FULL_WF" '.workflow_runs[] | select(.event == "workflow_dispatch" and ((.path // "") | split("@")[0]) == $wf
+      and .head_branch == "main" and .head_repository.full_name == $r) | {id, status, conclusion, html_url, head_sha, title: (.display_title // "")}' <<< "$one" >> "$H.f" || { full_state=unread; full_why="the full runs cannot be read"; return; }
     [ "$(jq '.workflow_runs | length' <<< "$one")" -lt 100 ] && break; p=$((p + 1))
   done
   for c in "$@"; do t="full-run PR #$PR $c"
@@ -89,12 +91,12 @@ full() {  # $@ commits → full_state (success|failure|pending|none), full_why
       git merge-base --is-ancestor "$sha" "$MAIN_REF" 2>/dev/null || continue   # the run's workflow file was main's
       if [ "$st $co" = "completed success" ]; then full_state=success; full_why="full run $id green on ${c:0:9}"; return; fi
       [ -n "$first" ] || first="$id"$'\t'"$st"$'\t'"$url"$'\t'"$c"
-    done < <(jq -r --arg t "$t" '.[] | select(.title == $t) | [.id, .status, (.conclusion // "none"), .html_url, .head_sha] | @tsv' <<< "$all")
+    done < <(jq -r --arg t "$t" 'select(.title == $t) | [.id, .status, (.conclusion // "none"), .html_url, .head_sha] | @tsv' "$H.f")
   done
   [ -n "$first" ] || return 0
   IFS=$'\t' read -r id st url c <<< "$first"
   if [ "$st" != completed ]; then full_state=pending; full_why="the full run on ${c:0:9} has not ended ($url)"; return; fi
-  full_state=failure; full_why="the full run on ${c:0:9} failed: $(failing "$id" | paste -sd ';' - | sed 's/;/; /g; s/^$/its failed parts cannot be read/') ($url). Fix and push, then \`/run full\` on the new head; \`/run full\` on this head re-runs only the failed parts"; }
+  full_state=failure; full_why="the full run on ${c:0:9} failed: $(failing "$id" | tick | paste -sd ';' - | sed 's/;/; /g; s/^$/its failed parts cannot be read/') ($url). Fix and push, then \`/run full\` on the new head; \`/run full\` on this head re-runs only the failed parts"; }
 fullproof() {  # $@ the commits a full run may be on → 0, or 1 with $why
   records && return 0
   if [[ "${FULL_FROM:-}" =~ ^20[0-9][0-9]-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z$ ]]; then   # approved before CI-PRE landed
@@ -105,31 +107,35 @@ fullproof() {  # $@ the commits a full run may be on → 0, or 1 with $why
   fi
   full "$@"; [ "$full_state" = success ] && return 0; why=$full_why; return 1; }
 covered() {  # 0 when no failed merge batch held this PR, or a comment line covers the newest one's failed parts; else 1 with $why
-  local prs='[]' one p=1 sha c rid="" names lines n miss=""
+  local one p=1 sha c rid="" names lines n miss=""; : > "$H.p"
   # Every PR opened after this one, newest first (a batch that held it is one of them); 30 pages at most, else refused.
   while :; do
     [ "$p" -le 30 ] || { why="more than 3000 pull requests were opened after this one: its merge batches cannot all be read (ask the tech lead)"; return 1; }
     one=$(api "$API/repos/$REPO/pulls?state=all&sort=created&direction=desc&per_page=100&page=$p") && jq -e 'type == "array"' <<< "$one" >/dev/null || { why="the merge batches cannot be read"; return 1; }
-    prs=$(jq -c --argjson a "$prs" '$a + .' <<< "$one")
+    # One slim line a PR, kept in a file: a page of pull requests is far too large for a command line (breaker R2-M1).
+    jq -c '.[] | {number, title: (.title // ""), body: (.body // ""), login: .user.login, ref: (.head.ref // ""), repo: (.head.repo.full_name // ""), sha: (.head.sha // "")}' <<< "$one" >> "$H.p" || { why="the merge batches cannot be read"; return 1; }
     [ "$(jq --argjson n "$PR" 'length < 100 or any(.[]; .number <= $n)' <<< "$one")" = true ] && break; p=$((p + 1))
   done
   # Mergify's batch PRs naming this PR, newest first: "#n" in the title (merge-queue-causes.py members()) and the body's
   # "pull_requests:" numbers together (flaky.mjs targets(); the title can leave members out, gate-b.mjs). The newest
   # that ended decides: failed, or passed (merged).
-  for sha in $(jq -r --arg r "$REPO" --argjson n "$PR" '[.[] | select(.user.login == "mergify[bot]" and ((.head.ref // "") | startswith("mergify/merge-queue/")) and .head.repo.full_name == $r)
+  for sha in $(jq -rs --arg r "$REPO" --argjson n "$PR" '[.[] | select(.login == "mergify[bot]" and (.ref | startswith("mergify/merge-queue/")) and .repo == $r)
       | select(([(.title // "") | scan("#([0-9]+)") | .[0] | tonumber] + [(.body // "") | scan("(?m)^\\s*-\\s*number:\\s*([0-9]+)\\s*$") | .[0] | tonumber]) | index($n))
-      | .head.sha | select(test("^[0-9a-f]{40}$"))][0:10][]' <<< "$prs"); do
+      | .sha | select(test("^[0-9a-f]{40}$"))][0:10][]' "$H.p"); do
     c=$(api "$API/repos/$REPO/commits/$sha/check-runs?check_name=ci&per_page=100") || { why="a merge batch's ci cannot be read"; return 1; }
-    c=$(jq -r '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last // empty | [.status, (.conclusion // ""), (.details_url // "")] | @tsv' <<< "$c")
+    c=$(jq -r '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last // empty | [.status, (.conclusion // ""), (.completed_at // "0"), (.details_url // "")] | @tsv' <<< "$c")
+    # LABELED_AT (the sweep: when the label now on the PR was put on): a batch that failed after it is not a relabel's
+    # business (the batch's other PRs keep their label); one that failed before it is.
+    if [ -n "${LABELED_AT:-}" ]; then case "$c" in completed$'\t'failure*|completed$'\t'timed_out*) [[ "$(cut -f3 <<< "$c")" < "$LABELED_AT" ]] || continue;; esac; fi
     case "$c" in completed$'\t'success*) return 0;; completed$'\t'failure*|completed$'\t'timed_out*) rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$c"); break;; esac
   done
   [ -n "$rid" ] || return 0
   comments || { why="its comments cannot be read"; return 1; }
   names=$(failing "$rid"); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
   lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
-  [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(paste -sd ';' - <<< "${names:-not readable}" | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
+  [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(tick <<< "$names" | paste -sd ';' - | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
   # A whole name: "kindly" does not name the part "kind", nor "shard (30)" the part "shard (3)".
-  while IFS= read -r n; do [ -z "$n" ] || grep -qE -- "(^|[^A-Za-z0-9_-])$(sed 's/[().]/\\&/g' <<< "$n")([^A-Za-z0-9_-]|\$)" <<< "$lines" || miss="$miss${miss:+; }$n"; done <<< "$names"
+  while IFS= read -r n; do [ -z "$n" ] || grep -qE -- "(^|[^A-Za-z0-9_-])$(sed 's/[().]/\\&/g' <<< "$n")([^A-Za-z0-9_-]|\$)" <<< "$lines" || miss="$miss${miss:+; }\`$n\`"; done <<< "$names"
   [ -z "$miss" ] || { why="the line \"Batch failures covered: $rid:\" does not name every failed part of that merge batch run: missing $miss (P-731 (4))"; return 1; }
   return 0; }
 
@@ -232,7 +238,9 @@ case "${1:-}" in
     fullproof $HEADS || { echo "$why"; exit 1; }
     if [ "${RELABEL:-}" = 1 ]; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
   # 3, not 1, when only the full runs could not be read: label-sweep.sh then keeps the label and tries again.
-  eligible) load || exit 2; judge && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
+  # With LABELED_AT (label-sweep.sh: a label a workflow's token put on, which starts no label-guard run), the batch rule
+  # is asked too, for a batch that failed before that label (breaker R2-M2: a side branch's workflow can label any PR).
+  eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || covered; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
   event) event; exit $?;;
   *) echo "usage: queue-gate.sh label|fresh|eligible|proof|event"; exit 2;;
 esac

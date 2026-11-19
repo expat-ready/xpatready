@@ -222,7 +222,7 @@ ok "full: already green on this head → nothing started" "$([ "$rc" = 0 ] && [ 
 JOBS='{"jobs":[{"name":"kind","conclusion":"success"},{"name":"shard (3)","conclusion":"failure"},{"name":"packs (C7.3 <img src=x> @someone `id`)","conclusion":"timed_out"},{"name":"ci","conclusion":"failure"},{"name":"types","conclusion":"skipped"}]}'
 rc=$(FAKE_JOBS="$JOBS" FAKE_RUNS="$(runs "$(fr 312 completed '"failure"')")" act full)
 ok "full: red on this head → only its failed parts re-run (never a second full run, never a cancel)" "$([ "$rc" = 0 ] && grep -qxF 'api -X POST repos/o/r/actions/runs/312/rerun-failed-jobs' "$W/log" && [ "$(calls dispatches)" = 0 ] && ! grep -qE 'runs/[0-9]+/(cancel|rerun)( |$)' "$W/log" && echo 1 || echo 0)" "rc $rc; $(tr '\n' '|' < "$W/log")"
-ok "full: ... and the reply names the failed parts (the summary job aside), as plain marks only" "$(grep -qF 'Failing: shard (3); packs (C7.3 img srcx someone id).' "$W/replies" && ! grep -qE '<img|@someone|`id`' "$W/replies" && echo 1 || echo 0)" "$(cat "$W/replies")"
+ok "full: ... and the reply names the failed parts (the summary job aside), as plain marks only" "$(grep -qF 'Failing: `shard (3)`; `packs (C7.3 img srcx someone id)`.' "$W/replies" && ! grep -qE '<img|@someone|`id`' "$W/replies" && echo 1 || echo 0)" "$(cat "$W/replies")"
 rc=$(FAKE_RERUN_RC=1 FAKE_JOBS="$JOBS" FAKE_RUNS="$(runs "$(fr 312 completed '"failure"')")" act full)
 ok "full: GitHub refuses the re-run → says so, step fails" "$([ "$rc" != 0 ] && grep -q 'could not be re-run' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
 rc=$(FAKE_RUNS='{"workflow_runs":[{"id":"31;2","status":"completed","conclusion":"failure","html_url":"u","display_title":"full-run PR #7 '$H'"}]}' act full)

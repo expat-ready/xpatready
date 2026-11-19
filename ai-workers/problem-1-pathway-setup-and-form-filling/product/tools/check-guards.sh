@@ -104,8 +104,11 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 batch word|product/tools/queue-gate.sh|s/grep -qE -- "(^.\[^A-Za-z0-9_-\])\$(sed .s\/\[().\]\/\\\\&\/g. <<< "\$n")(\[^A-Za-z0-9_-\].\\\$)"/grep -qF -- "$n"/|check-queue-gate.sh
 15 batch who|product/tools/queue-gate.sh|s/^FULL_WF=\(.*\); TEAM=.*/FULL_WF=\1; TEAM=true/|check-queue-gate.sh
 15 batch run|product/tools/queue-gate.sh|s/Batch failures covered: \*\$rid \*:"/Batch failures covered: *[0-9]* *:"/|check-queue-gate.sh
-15 batch bot|product/tools/queue-gate.sh|s/select(.user.login == "mergify\[bot\]" and /select(/|check-queue-gate.sh
-15 batch sweep|product/tools/queue-gate.sh|s/^\(  eligible) load .. exit 2; judge \&\&\)/\1 covered \&\&/|check-queue-gate.sh
+15 batch bot|product/tools/queue-gate.sh|s/select(.login == "mergify\[bot\]" and /select(/|check-queue-gate.sh
+15 batch sweep|product/tools/queue-gate.sh|s/judge \&\& { \[ -z "\${LABELED_AT:-}" \] .. covered; } \&\&/judge \&\&/|check-queue-gate.sh
+15 batch since|product/tools/queue-gate.sh|s/\[\[ "\$(cut -f3 <<< "\$c")" < "\$LABELED_AT" \]\] .. continue;;/true;;/|check-queue-gate.sh
+15 batch at|product/tools/label-sweep.sh|s/PR=\$pr LABELED_AT="\${at:-}" bash/PR=$pr bash/|check-label-sweep.sh
+15 full reviewed|../../.github/workflows/ci.yml|s/^            grep -qx .\[1-9\]\[0-9\]\*. <<< "\$ok" .. {.*/            true/|check-queue-gate.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
