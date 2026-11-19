@@ -103,3 +103,153 @@ Verdict: Approve 078c0d6fa44e288844e53dfd527d1eedc61a4eaa
 * Suites at this head (after `prisma generate`): pf15_limits 67/0, pf12_walls 100/0, pf3 75/0, pf18a_offices 87/0, pf4c 24/0, fo5_retainers 248/0, cssd1_no_drift 17/0 (own copy on :4434); typecheck reports no new errors.
 
 Verdict: Approve 3f15a6be6fbd459830273e02aa8aab3284c9e38f
+
+## Part 2 review (4c4e0f3d3)
+Diff `origin/claude/runtime-pf15-limits..4c4e0f3d3` only (P-277). The brief is `PF-15.md` on main ("What to build, part 2", DW3, DW8, DW9) plus the "Part 2 also" lines on lead-b-front-office. The rules are SA-3-43, SA-3-58, SA-3-62 and SA-4-56. This part has no screen, so the browser, BIC and journey parts do not apply. Journey score: N/A (no screen; no journey-test report written).
+* **Suites at 4c4e0f3d3:** pf15_cases 32/0, pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0.
+* **Probes:** a scratch database with every migration, run as xr_studio and as xr_app. Then mutation runs on a scratch copy of the migration, with the repository left untouched.
+
+### Blockers
+None.
+
+### Majors
+* **M1. A firm's limit drops before its renewal after a lower, raise, lower sequence (SA-3-43: "until then the firm keeps its current plan version").**
+  * Where: migration `kept` CTE (lines ~132-142). It uses `old_value` of the *oldest* pending lowering, then `greatest(current, that)`.
+  * Probe: team plan, firm renews on the 30th.
+    * 20 Nov: individual cases lowered 150 → 100. Effective 30 Dec.
+    * 21 Nov: raised 100 → 200. The firm reads 200, correct.
+    * 5 Dec: lowered 200 → 50. Effective 30 Jan.
+    * Readings from 5 Dec: **150** on 6 Dec, 200 on 5 Jan, 50 on 31 Jan.
+  * Effect: between the second lowering and the first renewal, the firm is cut from 200 to 150 with no renewal. A firm with 180 active cases is refused, although its notice says "Until then nothing changes". Seats use the same expression.
+  * Fix: take the greatest `old_value` over *all* pending lowerings, with a null among them meaning Unlimited, then `greatest()` with the current value. This gives 200 / 200 / 50 above and keeps the two-lowering case (150 → 100 → 50) right. It also removes the dependence on `approved_at` order, which comes from the app clock.
+  * Add a test for the brief's "raise after a pending lowering" on the same metric. The suite's only raise is on corporate cases, which has no pending lowering.
+* **M2. The tests do not pin the kept-value rules.**
+  * Each of these mutations left `check_pf15_cases.ts` at 32/0:
+    * (a) the kept value replacing `greatest()`, so a raise is ignored while a lowering is pending;
+    * (b) a pending Unlimited ignored (`OR kept IS NULL` removed);
+    * (c) the newest pending lowering instead of the oldest;
+    * (d) `WHILE at <= target`, which wrongly skips a renewal exactly 30 days on;
+    * (e) the trigger's `FOR UPDATE` removed.
+  * The cross-firm guard does fail when removed (good).
+  * Fix: one case each for (a)–(d), with M1's fix in place: a lowering from Unlimited (kept null), two pending lowerings, and a renewal exactly at approval + 30 days. For (e), two concurrent inserts.
+  * My manual race passed: the second change waited and stored `old_value` = the first change's new value, and a same-value twin got "already 15". It is untested.
+* **M3. DW9 "every limit change audited" is not met for raises.**
+  * `limit-changes.ts:64` writes an AuditPort line only per firm a *lowering* reaches.
+  * No `audit_event` line is written for a raise (or Unlimited), or for a lowering on a plan with no live firm. Test line ~127 asserts that a raise writes no line.
+  * The insert-only `platform_limit_change` row records who, when, why and the values, but the brief (part 1 "Every limit change … through `AuditPort.record`", DW9) asks for the trail.
+  * Fix: one line per live firm for every change (`plan.limit.raised` / `plan.limit.lowered`), and say in the PR that a change reaching no firm is recorded only on `platform_limit_change`. The AuditPort needs a firm id, so a firmless line would need Lead B.
+* **M4. Case limits are not in force in the app (SA-3-39 hard, DW8). This needs a recorded decision, not necessarily code.**
+  * `runtime.ts:140` keeps `fakeEntitlements()` (allow-all), and nothing calls `runtime.useEntitlements(new PgEntitlements(…))`. So PF-15's case limits never refuse a case in the running product. DW8 is proved only against the CaseCountPort fake.
+  * The builder's reason holds:
+    * case-side workspaces whose firm key is not a `platform_firm` read limit 0, and would be refused on every opening;
+    * Sample limits (solo 25) could break suites that open many cases.
+  * So binding is a cross-module fail-open/fail-closed choice.
+  * The part-1a review (B-section above, line ~47) expected "part 2 or CS-C1b" to bind it. Today nothing records who does.
+  * Fix: either bind it in `features/platform-entitlements.ts` and run the case-opening suites, or put a "Question for the tech lead" in the PR and get a BACKLOG line naming the row that binds it. Merging without either leaves the gap silent.
+
+* **M5. Any app session can rewrite a plan-wide limit through the definer trigger. This undoes 1a's revoke.**
+  * `xr_data` keeps INSERT on `platform_limit_change` (migration ~line 106). The BEFORE trigger runs as xr_wall_reader and writes `platform_plan_limit` / `seats_limit` for every firm on the plan.
+  * 1a revoked app writes on `platform_plan_limit` for exactly this ("read by the app, never written by it").
+  * Probe: as xr_app in firm A's session (`app.firm_id` set, no bypass), one INSERT set solo's storage to 999999. A backdated `approved_at` (2020) gave firm B an effective date at its next anchor, about 12 days on instead of 30+.
+  * Only the service's key check stands in the way, and PF-12's walls exist so the database holds when app code errs. The breaker reports the same independently (break-report.md, part 2 B1).
+  * Fix: revoke INSERT from xr_data and grant it to `xr_staff_bypass` only, so only the named `asBypass` crossing can insert, or refuse in the trigger unless `current_user` passes the walls. Better still, the trigger should not trust a caller's `approved_at` far from `now()`.
+
+### Minors
+* m1. The rollback comment (line 14) omits `DROP FUNCTION platform_limit_change_firms()`. It also needs 1a's note: the functions are owned by xr_wall_reader, so a role that is not superuser first runs `ALTER FUNCTION … OWNER TO CURRENT_USER`.
+* m2. (moved to M5.)
+* m3. `platform_limit_change` is readable by every firm's session (a catalogue with no wall). Its free-text `reason` and `approved_by` (our staff ids) are internal. Either keep reasons firm-neutral (say so in MODULE.md) or wall the table as one of "our own registers".
+* m4. In `limit-changes.ts:73` the emails go after the commit. One failing `send` stops the loop and throws to the caller although the change committed. A retry then answers 409 LIMIT_UNCHANGED, so the remaining Owners are never told (SA-3-43 notice). Catch per Owner and log, or queue the notices.
+* m5. The `checkDowngrade` words: storage says "allows 100" with no unit, and cases say "Remove 2 active individual cases" (cases are closed or withdrawn, not removed). Seats match SA-4-56 exactly. Wording is Sample.
+* m6. `checkDowngrade` takes `firmId` and a separately bound `CaseCountPort`, so a caller can pass the wrong firm's counter. Name the binding in the doc comment, or take the firm key and build `PgCaseCount` inside.
+* m7. The renewal rule (monthly from `current_period_end`, `trial_ends_at` or `created_at`) is marked Unconfirmed and sent to Lead B. For a yearly subscriber it applies a lowering up to 11 months early. This is not a finding, but keep the question open in the PR.
+* Not a finding: features are empty with `FEATURES_NOTE`. The "Part 2 also" line says part 2 checks features, but PF-17's list is not on main. Record it in the PR as still open.
+
+### What held
+* The BEFORE trigger locks the plan row, re-reads the value after the lock, keeps `old_value` and derives `lowered` itself (the caller cannot forge either). Null = Unlimited is handled in `lowered` and in the read. Seats can never be null (trigger + CHECK).
+* Effective dates use whole months from the anchor (no day drift) and are stored, never recomputed. New firms on the plan get the new value at once. A firm that leaves the plan drops its kept value (joined by plan).
+* The definer functions all pin `search_path` (pg_temp last) and are owned by xr_wall_reader. `platform_entitlement_limit` has PUBLIC revoked and EXECUTE for xr_app only.
+* Cross-firm read, checked by probe: firm A's session gets 0 rows for firm B by id and by key, and 1 for itself. The test fails when the guard is removed.
+* One live subscription: the existing `platform_subscription_one_live` index, tested, and an ENDED row is ignored.
+* Both new tables are insert-only (rows and TRUNCATE). `platform_limit_change_firm` is behind PF-12's wall with the gate trigger. The BYPASS_USES line is named, and the walled-pool run passes.
+* Scope: no route (waits on PF-4s), no runtime.ts edit, no booking (1b). The email follows SA-3-43. No creep beyond the brief.
+
+### Not checked
+* A live server route (none exists).
+* A real mail provider.
+* `prisma migrate diff`: I took the commit's word.
+* The graph tool: not run, because it writes GRAPH.md and this part has no screen.
+
+Reviewer: Changes requested
+Fix list for 4c4e0f3d3: M1, M2, M3, M4 (M4 by code or by a recorded Lead decision), M5. m1 and m3-m6 are optional; m1 and m4 are one-liners.
+
+## Part 2 re-review (ec04e138b)
+Diff `4c4e0f3d3..ec04e138b` only (P-277), with the PF-15 reports left out: the migration, `limit-changes.ts`, `limits.ts` and `check_pf15_cases.ts`.
+* **Suites at ec04e138b:** pf15_cases 51/0, pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0, pf4c 24/0. `tsc -p api/tsconfig.json` reports 0 errors.
+* **Probes:** a scratch database with every migration, run as xr_studio, as xr_app in firm A's session, and as xr_app under `SET ROLE xr_staff_bypass`. Then mutation runs on a scratch copy. Both were removed afterwards.
+
+### Earlier findings
+* **M1 fixed.** The read now keeps the highest `old_value` over all pending lowerings (a null among them means Unlimited), then `greatest()` with today's value.
+  * My earlier sequence (150→100, raise to 200, then 200→50 with a later renewal) now reads 200 at +1 day, 200 at +45 days and 50 at +51 days.
+  * A lowering from Unlimited reads Unlimited, then 7.
+  * A firm that left the plan and came back on a new subscription row reads today's value (`approved_at >= since`).
+* **M2 fixed, with two small gaps.** Mutations now caught:
+  * a kept value overriding a raise;
+  * min instead of max;
+  * the `since` filter dropped;
+  * the seats guard off.
+  * The two gaps are m8 and m9 below.
+* **M3 fixed.** A raise writes `plan.limit.raised` once per firm live on the plan (tested). A plan with no live firm has only the change row as its record. The PR states this, and AuditPort needs a firm id, so this is acceptable.
+* **M4: open as a "Question for the tech lead"**, recommending a separate small item. This is the resolution my finding allowed. No PR is open yet, so I could not see its body: the label step must check that the question is in it.
+* **M5 fixed.**
+  * xr_app in a firm session: INSERT and SELECT on `platform_limit_change` are denied, and a direct `seats_limit` update is refused. A same-value update still passes.
+  * Under `SET ROLE xr_staff_bypass`: a direct seats update is refused, and a change row works.
+  * A caller's `approved_at` of 2020 is replaced by `clock_timestamp()` after the plan lock.
+  * Two changes at once: the second waited, and its `old_value` is the first change's `new_value`, in `approved_at` order.
+  * The seats guard uses `session_user` or the `role` setting with `pg_trigger_depth() = 1`. Suites that write `seats_limit` connect as xr_studio, so they are unaffected.
+* **m1 fixed:** the rollback note lists all four functions, the trigger and the owner step.
+* **m3 fixed:** SELECT is revoked from the app.
+* **m4 fixed:** `sendNotices` catches each send, lists failures, and is re-sendable under one idempotency key per change and Owner. Tested with mail down, then up.
+* **m5 fixed:** per-metric words; the seats sentence is still SA-4-56's exactly.
+* **m6 documented.** **m7 open** with Lead B (renewal question), as agreed.
+* **The breaker's M2 and m2 hold.**
+  * The renewal start (beginning near the target) matched the naive month loop on 200,000 random anchor and target pairs in UTC, month ends included: 0 mismatches.
+  * Infinite dates fall back to `created_at`, and the functions pin `TimeZone = 'UTC'`.
+* **`checkDowngrade`** now refuses a firm other than the session's (tested).
+
+### New minors (not blocking)
+* m8. The tests do not pin null dominance in a mixed set.
+  * Removing `bool_or(old_value IS NULL)` leaves 51/0, because `max` over {null} is already null.
+  * Fix: one case with Unlimited→100 and then 100→50 both pending. It must read Unlimited; without the rule it reads 100.
+* m9. The "30 days to the second" test does not hit exact equality.
+  * `approved_at` carries microseconds, so `WHILE at <= target` also passes. The code (`<`) is right; only the test name overstates.
+  * Likewise, the parallel-changes test goes through the service, which takes the plan lock itself, so removing the trigger's own `FOR UPDATE` passes. My direct race at the role level held with the lock.
+
+(ec04e138b on its own was ready for Approve. The verdict below is on the commit above it.)
+
+### And 89ff016f1 (`git diff ec04e138b..89ff016f1`, the PF-15 reports left out)
+* **The change:** one line in `platform_limit_change_firms`, `at := least(at, target + interval '1 month')`, plus one test.
+  * It means a far-future anchor (the breaker's re-check: a firm's row set to `current_period_end = 9999-12-31`) can no longer keep the old value for ever.
+  * It is applied before the millisecond rounding, and honest anchors at or before target + 1 month are unchanged.
+* **Suites at 89ff016f1:** pf15_cases 52/0, pf15_limits 67/0, pf12_walls 100/0, pf3_platform_schema 75/0.
+* **New minor m10 (with m7's renewal question to Lead B):** the cap also overrides a *genuine* later anchor.
+  * A trial ending more than 60 days after approval (trials may run to 90 days), or a yearly period end, gets the lowering at approval + about 60 days.
+  * That is before the firm's real first renewal.
+  * This is consistent with the "monthly from the anchor" assumption already marked Unconfirmed, so it is not blocking. Name it in the same question.
+  * Note: a firm session can write its own `current_period_end`. That is the root of the breaker's case, but it lies outside this diff.
+
+Reviewer: Approve 89ff016f145e10227ae1dddde6cea41de4b0f59b
+(One condition at the label step: the PR body carries M4's "Question for the tech lead". m8, m9 and m10 are optional.)
+
+## Part 2 re-review on main (46f7e8b32)
+Diff `89ff016f1..46f7e8b32` (P-277), with the PF-15 reports left out. Most of it is main's merge; I checked only part 2's own lines against `origin/main...46f7e8b32`.
+* **m8 fixed (d3b376ee4).** The new case (Unlimited, then 3, then 2, both lowerings pending) fails when I remove the "any Unlimited wins" rule (52/1). Before, that mutation passed.
+* **The re-stamp holds.**
+  * Part 2's migration is now `20261119051500_pf15_limit_changes`, later than main's newest (`20261118230000`). The old `20261118200000_pf15_*` folder is gone.
+  * Its content differs from 89ff016f1 in only two lines: the rollback note names 1a's new folder `20261118213000`, and EXECUTE on the 4-argument `platform_entitlement_limit` goes to `xr_app, xr_staff_bypass`.
+  * That grant mirrors 1a's final grant on the 3-argument function. 1a's merged function changed only that grant since my last read, so the 4-argument replacement drops nothing.
+* **The notice now names its Owner.** It passes `person: { kind: "STAFF", id }`, an optional `Subject` in `ports/mail.ts`, the PF-19r rule for a SERVICE email. check_pf19r_senders is 24/0.
+* **MODULE.md:** part 2 has its own section after 1a's. The invariants it lists match the code reviewed.
+* **Suites at 46f7e8b32:** pf15_cases 53/0, pf15_limits 69/0, pf12_walls 100/0, pf3_platform_schema 75/0, pf19r_senders 24/0.
+* **No new findings.** M4 (the binding question in the PR body) remains the label-step condition. m9 and m10 are still optional.
+
+Reviewer: Approve 46f7e8b3272657e0df279bdc092f5c9a111fe12e
