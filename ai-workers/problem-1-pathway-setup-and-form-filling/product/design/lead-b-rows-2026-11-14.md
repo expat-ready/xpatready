@@ -2045,3 +2045,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 ## Rev 17.39 (19 Nov 06:45 IST)
 * **FO-2 part 3b** (`lead-b-briefs/FO-2p3b.md`), shaped on Lead 84's QA-511 ruling (#2189): the real `ArrivalPort` adapter over `sales/arrival.ts`'s `arrive()` (door BOOKING; no consent → no consent row), bound in `booking/runtime-ports.ts` in place of `fakeArrival()`, with a contract test on the fake and the adapter. No schema change, about 350 lines. R1.28 stays Partial until it merges.
 * Noted from Lead 84: #2185, #2187 and #2188 are Mergify's batch PRs, not duplicates. FO-4 part 2a is on #2011's lane and FO-3st3 on #2103's lane.
+
+## Rev 17.40 (19 Nov 07:15 IST): P-716 (pipeline frozen until Proven 30; lanes work only the last parts of nearly-proven items)
+* **Keep:** #1959 (R1.19/R1.100), #2029 (R1.4), #2012 and J-109 (R1.109), FO-2 part 3b (R1.28).
+* **Proposed to Lead 85:** #2011's lane pushes FO-4 part 2a with a resume note and takes FO-2 part 3b now, rather than waiting for the #2181 fix.
+* **R1.6:** the last parts are PF-6b (never started), then J-6. Proposed: the #2029 lane takes PF-6b after #2029 merges. I asked Lead 85 who owns `claude/screens-j6p2`.
+* **Park:** FO-3st3, FO-3st2, PF-15 part 2 and PF-19b part 3. PF-19e parks unless R1.19 needs PF-5v part 2 (Lead 85 decides). The labelled queue PRs (#2130, #2102, #2103, #1961) merge without lane work.
