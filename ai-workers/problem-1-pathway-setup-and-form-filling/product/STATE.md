@@ -25,9 +25,9 @@ Lead 85 → Lead 86 hand-over block word for word in `history/STATE-2026-11-19-0
 | # | Ask (IST) | Status |
 |---|---|---|
 | S10-A168 | 10 Nov to 18 Nov asks | pointer rows word for word in `history/STATE-2026-11-19-0755-lead86s2-asks-pointer-rows-S10-A168.md` |
-| A192-A193 | finish by capability → P-719; context rule enforced | row word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1040-lead87s2-asks-A192-A193-row.md` |
-| A169-A185 | 18-19 Nov asks (A173, A174, A176, A183 doing; A182 open; A181 founder's clean-up) | rows word for word in `history/STATE-2026-11-19-0832-lead86s2-asks-A169-A185-rows.md` |
+| A169-A193 | 18-19 Nov asks (A182 open; A181 founder's clean-up) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1120-lead87s2-asks-A169-A193-rows.md` |
 | A197 | 19 Nov 10:3x IST (spoken, relayed from a talk with his co-founder): (a) the POC we build Release 1 on had improvements wanted: can we take those features and go live, at what stage; (b) in 2-3 days can those capabilities be proven, any smarter way; (c) is qa proving per item needed, or merge everything first and verify at the end, with verification on GitHub's machines | (a) answered: no go-live in 2-3 days (R1.1 not built, staging after Proven 30 P-718, P-551 accounts, counsel); which POC improvement list is meant: asked; (b) estimate 3-5 Proven tonight, ~10-15 by day 3 if the queue flows (estimate); (c) → P-722 |
+| A198 | 19 Nov 10:5x IST: Stripe test-mode account for J-19 (R1.19 billing walk): founder "Yes, today" | owed by the founder: sign up, Test mode, keep the two keys in his password manager; where they go (a git-ignored env file the demo reads) is told after #1959 merges; never in chat or the repo |
 | A196 | 19 Nov 10:1x IST: usage: "i have another account and we will resume from new account, work everything that way, don't worry about usage" | recorded: no throttling; at the limit the founder switches account, the next Lead resumes from this page (P-557) |
 | A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
 
