@@ -112,7 +112,7 @@ export function ActionDrawer({ action, onAct, onClose, complaint, dates, zone, h
             : save.error && !(save.error instanceof StaffApiError) ? <Notice tone="danger" title="There is a problem">Could not save. Please try again.</Notice> : null}
         </div>
         {a === "handler" ? (
-          <Field label="New handler" error={fe("handlerStaffId") ?? (handlers.isError ? "Could not load the staff list." : null)} hint="An active staff member of your firm.">
+          <Field label="New handler" error={fe("handlerStaffId") ?? (handlers.isError ? "Could not load the staff list." : null)} hint="An active staff member of your firm who may record complaints.">
             <Select value={f.handlerStaffId} onChange={set("handlerStaffId")} required><option value="">Choose</option>{choices.map((h) => <option key={h.id} value={h.id}>{h.displayName}{h.id === me.staffId ? " (you)" : ""}</option>)}</Select>
           </Field>
         ) : null}
