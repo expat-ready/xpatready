@@ -57,7 +57,7 @@ const heldOut = "**C8.2**: every pack is held; nothing to run.\n", fixOut = "**C
 ok("H1 works-set's held and fixture-only exits 0 read as not tested; a green run on the six does not", !!packLine("C8.2", 0, heldOut).untested && !!packLine("C8.2", 0, fixOut).untested && !packLine("C8.2", 0, greenOut).untested);
 const p77ok = { ...p77, suites: [], suitesMissing: [], journeyExists: true }, jok = { kind: "journey", name: p77.journey, exit: 0 };
 const vHeld = verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, heldOut), jok], ...base });
-ok("H2 a held pack makes the verdict FAIL, its row \"not tested\" naming the hold", vHeld.overall === "FAIL" && vHeld.suites[0].result === "not tested" && /REGRESSION-HELD/.test(vHeld.suites[0].note), vHeld.suites[0]);
+ok("H2 a held pack makes the verdict FAIL, its row \"not tested\" naming the hold", vHeld.overall === "FAIL" && vHeld.suites[0].result === "not tested" && /REGRESSION-HELD/.test(vHeld.suites[0].note ?? ""), vHeld.suites[0]);
 ok("H3 the same item with the pack green on the six passes", verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, greenOut), jok], ...base }).overall === "PASS");
 ok("H4 a journey that exits 0 but printed a FAIL line fails", verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, greenOut), { ...jok, fail: 1 }], ...base }).overall === "FAIL");
 
