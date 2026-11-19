@@ -396,3 +396,13 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 22:4x IST 19 Nov: **#2204 FO-7ts part 2 merged 22:39 IST (31b9a4b09)** → R1.59 lane on to FO-7ts-3 (Lead's migration read before label), FO-7b, FO-7g+J-59. **#2101 CS-NK1 merged 22:39 (a345b5552)**: bug closed. Reported to Lead 96. Watch: #2307 #2314 #2321 #2339 + CS-W3-1 PR.
 * 23:1x IST 19 Nov: **#2314 merged 23:09 IST (89512b745)**: AUD-4s concept.md is on main. Part 2 notes (7 areas from `areas`, `who` as given, `ours=1`) added to `build-lead-c-briefs/AUD-4.md` instead of editing main's concept. Watch: #2307 #2321 #2339 + CS-W3-1 PR.
 * 00:3x IST 20 Nov: **CS-K1-2.md answers to the FO-8 lane's four questions** (Lead 96's ask): J-72 walk confirmed, no offer screen needed (follow-up row proposed); a polling publisher for live delivery; stamp recommended `20261120100000_csk1_client_link_check`, check NOT VALID then VALIDATE after the job; FO-2w payload settled by #2321 as built. Posted on #2255.
+* 00:5x IST 20 Nov: **P-745 wave plan in force (Lead 96; `design/waves.md` on lead/2026-11-07-lead31; caps 8 building, 12 Built-not-Proven; finish before start). Focus list re-ordered:**
+  * **Wave 1 (mine):** R1.72 (CS-K1-2 lane waits for #2321, answers in CS-K1-2.md) · R1.74 (#2317 CS-DL1b) · R1.77 (proof only, qa) · R1.67 (QA-520 fix, brief `build-lead-c-briefs/QA-520.md`, a fresh Opus lane) · R1.8 (#2338).
+  * **Wave 2:** R1.10, R1.16, R1.59 (FO-7ts-3 chain continues).
+  * **Parked after their current PR:**
+    * R1.3: #2349 finishes, then CS-W3 parts 2-3 wait.
+    * R1.76: #2320 finishes, then part 2 waits.
+    * R1.88: #2339 finishes; **AUD-4s part 2 does NOT start**.
+    * R1.65: CS-D1-1 not started.
+    * CS-C1r: its #2307 trigger is reported but it waits for its wave.
+  * The "Open a case?" screen row is in Lead 96's next records PR.
