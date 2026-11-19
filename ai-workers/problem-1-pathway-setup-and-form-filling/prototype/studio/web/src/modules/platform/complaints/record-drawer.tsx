@@ -17,6 +17,8 @@ type Form = { subjectKind: string; complainantName: string; complainantContact: 
  *  mid-drawer unmounts the page, and signing in again as the same person brings the drawer back with it (break M3). */
 let kept: { staffId: string; form: Form } | null = null;
 export const hasKept = (staffId: string) => kept?.staffId === staffId;
+/** A fresh Idempotency-Key (visible ASCII, as the route asks), also where crypto.randomUUID is not offered. */
+const newRequestKey = () => globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const LABEL: Record<string, string> = { subjectKind: "Who made it", subjectId: "Who made it", complainantName: "Their name", complainantContact: "How to reach them", receivedAt: "Received", channel: "How it came", category: "About", summary: "What it is about", handlerStaffId: "Handler" };
 
 export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; linked: Linked | null; zone: string | undefined; returnFocus: () => HTMLElement | null }) {
@@ -29,11 +31,15 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
   // Leaving the page while still signed in drops the draft; only an ended session keeps it for the next sign-in.
   React.useEffect(() => () => { if (staffToken()) kept = null; }, []);
   const touched = React.useRef(false), sending = React.useRef(false), summary = React.useRef<HTMLDivElement>(null);
+  // PF-21i: one Idempotency-Key per opening of the drawer, sent on each Record: a retry after a lost answer records once.
+  // Made once (not per render); randomUUID needs a secure context, so plain http from another host falls back (review n2).
+  const requestKey = React.useRef("");
+  if (!requestKey.current) requestKey.current = newRequestKey();
   React.useEffect(() => {
     if (!open) return;
     const back = kept?.staffId === me.staffId ? kept.form : null;
     if (kept && !back) kept = null;   // another person's draft is never shown
-    setF(back ?? blank()); setRestored(!!back); touched.current = !!back; save.reset();
+    setF(back ?? blank()); setRestored(!!back); touched.current = !!back; save.reset(); requestKey.current = newRequestKey();
   }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- a fresh form each time it opens
   React.useEffect(() => { if (zone && !f.receivedAt) setF((x) => ({ ...x, receivedAt: nowLocal(zone) })); }, [zone]);   // eslint-disable-line react-hooks/exhaustive-deps -- the zone arrives once
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => { touched.current = true; const v = e.target.value; setF((x) => { const next = { ...x, [k]: v }; kept = { staffId: me.staffId, form: next }; return next; }); };
@@ -44,7 +50,7 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
       if (f.complainantName.trim()) body.complainantName = f.complainantName.trim();
       if (f.complainantContact.trim()) body.complainantContact = f.complainantContact.trim();
       if (linked && f.subjectKind === linked.kind) body.subjectId = linked.id;
-      return Recorded.parse(await staffApi("/platform/complaints", { method: "POST", json: body }));
+      return Recorded.parse(await staffApi("/platform/complaints", { method: "POST", json: body, headers: { "Idempotency-Key": requestKey.current } }));
     },
     onSettled: () => { sending.current = false; },
     onError: () => setTimeout(() => summary.current?.focus(), 0),
