@@ -55,3 +55,37 @@ Every read comes from the FO-3a feed, and permissions come from `canAnswerAttend
 A real screen reader; an intended user's unaided walk (D17, D20); DST-day rendering (the breaker's list); part 2 (J-S5..J-S8).
 
 Reviewer: Changes requested
+
+## Re-review (19 Nov 2026, head 6ae4077f05cf7a5b816dd0281fc6b5e1b2a0c4f8; diff 7071b6f91..6ae4077f0 only)
+I read the code diff and break-report.md's Majors. `check_fo3st1_calendar_browser.ts` passed **27/27** on a fresh copy (:4552). I then walked the fixes on that copy (reviewer scratchpad `rr-walk*.mjs`, `rr-focus.mjs`) and restored the screenshots the run rewrote.
+* **M1 / break M2 (pinned): fixed.** calendar-page.tsx:53-54,65 pins from the viewer's own feed over a fixed 60-day window. Walked as Client C: 3 pinned this week and 3 still pinned two weeks on. The new case covers a meeting from 9 days ago.
+* **M2 (Move re-hosts): fixed on the screen.** detail-panel.tsx:235 now reads "Free times for <type>. If <host> is not free then, another of its hosts may take it." After a host change, :201 says "The host changed: …" (check case, test :224). The keep-the-host rule is asked on the PR ("Question for the tech lead", 16:50Z), as it should be.
+* **M3 / break M6 (zone): fixed.** new-booking.tsx:337,374-377 adds "(change)", a zone select and both zones on "Chosen:". Walked: Asia/Dubai 21:00 is stored with booker zone Asia/Dubai, and the saved line shows "Booked Client B Sample for …". The person's own zone is asked of the API row.
+* **M4 / break M9 (today): fixed.** calendar-page.tsx:40 uses `dayOf(now, office zone)`; the case runs at 21:30 Toronto.
+* **M5 (skeletons): fixed** in the calendar and the panel (`Loading`). "Loading free times…" is still text; that is minor.
+* **Breaker M1 (bad address): fixed.** `realDate` handles it: 2027-13-45, 2027-02-30 and hour=foo fall back to this week, and `?view=day&hour=x` shows the day. `?date=0000-01-01` still shows "Wed 1 Dec – Wed 1 Dec" and "Could not load the bookings." This is not a blank page; minor.
+* **Breaker M3, M4, M5, M7, M8: fixed.**
+  * M3: the hint is honest.
+  * M4: a hidden person is unchosen (:348).
+  * M5: a Case Officer sees "Client C (you)" and the type's hosts.
+  * M7: host names are remembered across weeks.
+  * M8: blocks are stacked, so names read at 1024 (`rr-week-1024.png`, no sideways scroll).
+* **My minors:**
+  * Fixed: m1, m4 (saved lines), m6 (blocks), m7 (3 green runs), m8 (day select, then that day's times).
+  * m3 is fixed for the panel (focus returns to the block or row; walked for week and list). Closing **New booking** still drops focus to the page body; minor.
+  * Still open as minors, as the builder lists: m2 and m5 (tooltips), the DST note, and a link into Bookings from other areas.
+
+**Size:** 854 changed lines against P-610's 800. That is the tech lead's call on the PR and is not a code finding.
+
+**Journey score now 9/10.**
+* 1 each: task, next step, words, feedback, data, recovery, speed, trust.
+* ½ accessibility: New booking's focus on close; `title` tooltips are hover-only.
+* ½ visual: List's Host and Way to meet columns are still cramped.
+
+**Open:** no Blocker and no Major. Minors to fix later or list with a follow-up:
+* New booking focus on close (new-booking.tsx:357, add `returnFocus` to the New booking button);
+* the `?date=0000-01-01` range label;
+* "Loading free times…" as a skeleton;
+* m2, m5 and the DST note.
+
+Reviewer: Approve 6ae4077f05cf7a5b816dd0281fc6b5e1b2a0c4f8
