@@ -11,7 +11,9 @@
 import type { FoPipeline, FoReasonKind, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { sha256Hex } from "../../../ports/consent.ts";
 import { EVENT } from "../../../ports/events.ts";
+import { ensureMessagesFirm } from "../platform/messages/consent/messages-firm.ts";
 import { firmScope } from "../platform/firm-scope.ts";
 
 export const SEED_ACTOR = "seed:FO-1a";
@@ -118,8 +120,24 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
     data: (await releasedCombinations(tx)).map((c, i) => ({ firmId: id, label: c.label, combinationId: c.id, sortOrder: i + 1, createdBy: actor })),
     skipDuplicates: true,
   });
+  await ensureBookingWording(tx, id, actor);
   await tx.foSalesSetup.update({ where: { firmId: id }, data: { seededAt: new Date(), seededBy: actor } });
   return { firmId: id, seeded: true, stages: stages.count, reasons: reasons.count, webForms, services: services.count };
+}
+
+/** The booking tick's Sample wording (FO-2 part 3b, Lead B's ruling on #2196): the sentence the fake ArrivalPort offered,
+ *  as version 1 of the firm's EMAIL marketing wording, only when the firm has no EMAIL marketing wording at all, so the
+ *  firm's own wording is never replaced. Under publishWording's own lock, so a publisher and this never take one number.
+ *  Returns whether it made the row. */
+export const SAMPLE_BOOKING_WORDING = "I agree that the firm may use these details to arrange and hold my consultation (Sample wording).";
+export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR): Promise<boolean> {
+  const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
+  if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
+  await ensureMessagesFirm(tx, id);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_consent_wording:${id}:EMAIL:MARKETING:en-CA`}))`;
+  if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
+  await tx.msgConsentWording.create({ data: { ...where, locale: "en-CA", version: 1, text: SAMPLE_BOOKING_WORDING, textHash: await sha256Hex(SAMPLE_BOOKING_WORDING), publishedBy: actor } });
+  return true;
 }
 
 /** The subscriber: a `firm.created` event (module_event's envelope; its firm_id is the new firm) seeds that firm's front

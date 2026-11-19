@@ -14,7 +14,7 @@ import { fakeArrival, type ArrivalPort, type FakeArrival } from "../ports/arriva
 import { fakeAudit } from "../ports/audit.ts";
 import { arrivalPortContract, type ArrivalHarness } from "../ports/contracts/arrival-port.contract.ts";
 import { runContract } from "../ports/contracts/contract.ts";
-import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
+import { ensureBookingWording, SAMPLE_BOOKING_WORDING, seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { runtimeBookingPorts } from "../api/src/front-office/booking/runtime-ports.ts";
 import { BOOKING_SOURCE, PrismaArrival } from "../api/src/front-office/sales/arrival-port.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
@@ -231,6 +231,19 @@ try {
   try { await db.$transaction((tx) => failing.bookingArrived(tx, { firmId: A, person: booker("Fail"), bookingId: randomUUID() })); } catch { rolled = true; }
   ok("FO-2p3b DW6 fail: a forced audit failure rolls the arrival back (no person, lead or receipt)", rolled && count("fo_person", `firm_id = '${A}'`) === persons6);
   ok("FO-2p3b DW6 pass: every audit line the adapter wrote has a typed actor", count("audit_event", `actor not similar to '(staff|system|seed):%'`) === 0);
+
+  // ------------------------------------------------------------- DW7: the Sample booking wording (Lead B's ruling on #2196)
+  const words = (f: string) => count("msg_consent_wording", `firm_id = '${f}' and channel = 'EMAIL' and purpose = 'MARKETING'`);
+  const sampleOf = (f: string) => count("msg_consent_wording", `firm_id = '${f}' and channel = 'EMAIL' and purpose = 'MARKETING' and text = '${SAMPLE_BOOKING_WORDING}'`);
+  ok("FO-2p3b DW7 pass: a seeded firm has exactly one Sample booking wording", sampleOf(B) === 1, { sample: sampleOf(B) });
+  await seedSampleFirmsFrontOffice(db);
+  const againB = await db.$transaction((tx) => ensureBookingWording(tx, B));
+  ok("FO-2p3b DW7 fail: a second seed adds no wording", sampleOf(B) === 1 && againB === false, { sample: sampleOf(B), againB });
+  const wordsA = words(A), madeA = await db.$transaction((tx) => ensureBookingWording(tx, A)), newestA = await real.bookingConsentWording(db, A);
+  ok("FO-2p3b DW7 fail: a firm's own wording is never replaced (no row added; the page shows the firm's newest)", madeA === false && words(A) === wordsA && newestA?.wordingId !== undefined && sql(`select text from msg_consent_wording where id = '${newestA.wordingId}'`) !== SAMPLE_BOOKING_WORDING, { madeA, newestA });
+  const C = (await db.platformFirm.create({ data: { key: "fo2p3b-unseeded", operatingName: "Sample Firm C", countryCode: "CA", status: "ACTIVE", contactEmail: "office@firm-c.example" } })).id;
+  const firstC = await real.bookingConsentWording(db, C), secondC = await real.bookingConsentWording(db, C);
+  ok("FO-2p3b DW7 pass: a firm with no wording is offered the Sample one on the public page, made once", firstC?.text === SAMPLE_BOOKING_WORDING && secondC?.wordingId === firstC?.wordingId && words(C) === 1, { firstC, words: words(C) });
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-2p3b: the check stopped — ${String((e as Error).stack ?? e).slice(0, 1200)}`);

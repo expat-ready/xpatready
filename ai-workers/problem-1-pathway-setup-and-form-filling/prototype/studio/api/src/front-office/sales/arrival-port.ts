@@ -11,7 +11,7 @@ import { arrivalKey, ArrivalPerson, ArrivalResult, BookingArrival, type ArrivalP
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, ProspectMovePayload } from "../../../../ports/events.ts";
 import type { z } from "zod";
-import { seedFirmFrontOffice } from "../firm-seed.ts";
+import { ensureBookingWording, seedFirmFrontOffice } from "../firm-seed.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { arrive } from "./arrival.ts";
 import { UUID, type Tx } from "./common.ts";
@@ -90,7 +90,15 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
 
   /** The firm's booking consent sentence: its newest published EMAIL marketing wording (PF-19a), or null (no tick). */
   async bookingConsentWording(db: Tx | PrismaClient, firmId: string): Promise<ConsentWording | null> {
-    const w = await db.msgConsentWording.findFirst({ where: firmScope(firmId, WORDING), orderBy: [{ publishedAt: "desc" }, { version: "desc" }], select: { id: true, text: true } });
+    const id = firmScope(firmId).firmId;
+    const read = () => db.msgConsentWording.findFirst({ where: firmScope(id, WORDING), orderBy: [{ publishedAt: "desc" }, { version: "desc" }], select: { id: true, text: true } });
+    let w = await read();
+    if (!w) {
+      // A firm with no wording yet (seeded before part 3b, or never) gets the Sample one, once (Lead B's ruling on #2196).
+      if ("$transaction" in db) await db.$transaction((tx) => ensureBookingWording(tx, id));
+      else await ensureBookingWording(db, id);
+      w = await read();
+    }
     return w ? { wordingId: w.id, text: w.text } : null;
   }
 
