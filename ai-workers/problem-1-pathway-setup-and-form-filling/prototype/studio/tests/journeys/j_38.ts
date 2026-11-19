@@ -21,7 +21,7 @@
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -100,7 +100,7 @@ try {
   // of the month shown, then "Next month". Which UTC hour is 10:00 in Toronto on a day is read with Intl here (never the
   // product's code) and checked with plain sums below.
   const torontoClock = new Intl.DateTimeFormat("en-GB", { timeZone: FIRM_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  const monthHeading = p.locator("h2[aria-live]");
+  const monthHeading = p.locator("h2[aria-live]"), dayTimes = (d: string) => p.locator("[data-day-times] h3", { hasText: d });
   let at = 0;
   for (let turn = 0; turn < 3 && !at; turn++) {
     if (turn) { const before = await monthHeading.innerText(); await p.getByRole("button", { name: "Next month" }).click(); await monthHeading.filter({ hasNotText: before }).waitFor(); }
@@ -111,6 +111,7 @@ try {
       const t = [14, 15].map((h) => noon + (h - 12) * HOUR).find((x) => torontoClock.format(x) === "10:00") ?? 0;
       if (t < Date.now() + 26 * HOUR) continue;
       await p.getByRole("button", { name: label, exact: true }).click();
+      await dayTimes(label).waitFor();   // the day's own times are drawn before they are read
       if (await p.getByRole("button", { name: `${label}, ${pad(new Date(t).getUTCHours() + 4)}:00 ${BOOKER_ZONE} time`, exact: true }).count()) { at = t; break; }
     }
   }
@@ -126,6 +127,7 @@ try {
   console.log(`NOTE  the moment walked: ${start.toISOString()} = 10:00 Toronto (${season}) = ${pad(dubaiHour)}:00 Dubai, ${mailDay}`);
 
   await p.getByRole("button", { name: day, exact: true }).click();
+  await dayTimes(day).waitFor();
   const slot = p.getByRole("button", { name: slotName, exact: true });
   ok(`J-38 W1: "${slotName}" is offered (10:00 Toronto, shown in the booker's zone)`, (await slot.count()) === 1, await p.locator("[data-day-times] li button").allInnerTexts());
   await shot(p, "W1-2-times"); await axe(p, "W1 the times");
@@ -149,22 +151,25 @@ try {
   ok("J-38 DW1: booking's mail is the real sending path: one outbox row each for the booker and the host, SENT by the local adapter, both in the app's demo inbox (the in-memory fake wrote neither)",
     sent.length === 2 && sentTo(bookerEmail, "person") === 1 && sentTo(hostEmail, "host") === 1 && bookerMails.length === 1 && hostMails.length === 1, { outbox: sent.map((o) => [o.address, o.state, o.idempotencyKey?.replace(row?.id ?? "-", "<booking>")]), inbox: [bookerMails.length, hostMails.length] });
   const bookerMail = bookerMails[0], hostMail = hostMails[0];
+  const seen = (t: string) => t.replace(/#\S+/g, "#<token>").slice(0, 260);   // a failing line shows the mail, never the booker's token
   const bookerText = plain(`${bookerMail?.subject}\n${bookerMail?.body}`), hostText = plain(`${hostMail?.subject}\n${hostMail?.body}`);
 
   // ---------------------------------------------------------------------------------------------- W2, W3: the two mails
-  ok(`J-38 W2: the booker's mail reads "${mailDay} at ${bookerTime}"`, bookerText.includes(`${mailDay} at ${bookerTime}`), bookerText.slice(0, 260));
-  ok("J-38 W2: the booker's mail states no other zone's time (the firm's zone is not in it)", !!bookerMail && !bookerText.includes(FIRM_ZONE) && !/10:00 a\.m\./.test(bookerText), bookerText.slice(0, 260));
+  ok(`J-38 W2: the booker's mail reads "${mailDay} at ${bookerTime}"`, bookerText.includes(`${mailDay} at ${bookerTime}`), seen(bookerText));
+  ok("J-38 W2: the booker's mail states no other zone's time (the firm's zone is not in it)", !!bookerMail && !bookerText.includes(FIRM_ZONE) && !/10:00 a\.m\./.test(bookerText), seen(bookerText));
   ok(`J-38 W3: the host's mail reads "${mailDay} at ${hostTime}", in its subject and its text`, plain(hostMail?.subject ?? "").includes(`${mailDay} at ${hostTime}`) && plain(hostMail?.body ?? "").includes(`${mailDay} at ${hostTime}`), hostText.slice(0, 260));
   ok("J-38 W3: the host's mail states no other zone's time (the booker's zone is not in it)", !!hostMail && !hostText.includes(BOOKER_ZONE) && !hostText.includes(clock12(dubaiHour, 0)), hostText.slice(0, 260));
 
   // ---------------------------------------------------------------------------------------------- W4: the .ics
   const attached = (m?: Mail) => m?.attachments.find((a) => /\.ics$/.test(a.filename));
-  const href = await p.getByRole("link", { name: "Add to calendar" }).getAttribute("href");
-  const download = await fetch(new URL(href ?? "/missing", BASE));
+  // "Add to calendar" pressed as a person presses it: the browser saves the file (a download has no content type to read,
+  // so its name stands in for it).
+  const [saved] = await Promise.all([p.waitForEvent("download", { timeout: 20_000 }), p.getByRole("link", { name: "Add to calendar" }).click()]);
+  const savedAs = saved.suggestedFilename();
   const files = [
     { from: "the booker's mail", type: attached(bookerMail)?.content_type ?? "", text: attached(bookerMail)?.text ?? "" },
     { from: "the host's mail", type: attached(hostMail)?.content_type ?? "", text: attached(hostMail)?.text ?? "" },
-    { from: '"Add to calendar" on the confirmation', type: download.headers.get("content-type") ?? "", text: download.status === 200 ? await download.text() : "" },
+    { from: '"Add to calendar" on the confirmation', type: /\.ics$/.test(savedAs) ? "text/calendar (by its name)" : `named ${savedAs}`, text: readFileSync(await saved.path(), "utf8") },
   ];
   const uid = `${row?.id}@booking.expatready.com`;
   for (const f of files) {
@@ -177,7 +182,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W5: row 42's first step
   const link = /To reschedule or cancel: (\S+)/.exec(bookerMail?.body ?? "")?.[1] ?? "";
-  const linkAt = link.replace(/#.*/, "#<token>");   // the token is never printed
+  const linkAt = link.replace(/#.*/, "#<token>");   // the token is never printed by this file (the walk's browser trace holds the pages' own requests)
   ok("J-38 W5: the booker's mail carries the reschedule link, to this copy's own page for the booker", link.startsWith(`${BASE}/book/${key}/manage#`) && link.length > `${BASE}/book/${key}/manage#`.length + 20, linkAt);
   ok("J-38 W5: the host's mail carries no booker's link", !!hostMail && !/manage#|reschedule or cancel/i.test(hostText), hostText.slice(0, 200));
   const mine = await ctx.newPage();   // the link opened from the mail, in the booker's browser
