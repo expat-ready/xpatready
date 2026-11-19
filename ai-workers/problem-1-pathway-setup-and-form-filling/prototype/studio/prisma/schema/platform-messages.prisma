@@ -95,6 +95,13 @@ enum MsgClass {
   MARKETING
 }
 
+/// Who an outbox row is for (PF-19p, Lead B rev 16.62 on #1955): a firm's message, or a platform account message to a
+/// person before any firm exists (sign-up's verification email). A PLATFORM_ACCOUNT row has no firm, exactly (check).
+enum MsgAudience {
+  FIRM
+  PLATFORM_ACCOUNT
+}
+
 /// An outbox row's state (PF-19b moves it): SUPPRESSED is a message the gate stopped, with its reason.
 enum MsgOutboxState {
   QUEUED
@@ -290,10 +297,13 @@ model MsgTemplateVersion {
 
 /// The sending outbox (PF-19b writes it in the caller's transaction; a worker sends after commit). consent_id is the
 /// consent that allowed a marketing or WhatsApp service send (AG-10-27: why it was allowed). A template version, when
-/// named, is the platform's or the outbox row's own firm's (trigger).
+/// named, is the platform's or the outbox row's own firm's (trigger). PF-19p: audience PLATFORM_ACCOUNT is a platform
+/// account message (no firm: firm_id is NULL exactly then, a check; EMAIL, TRANSACTIONAL, no person, consent or template, check); its
+/// idempotency key is unique among platform rows by a partial index in the migration 20261119003000_pf19p_platform_account_mail.
 model MsgOutbox {
   id                String         @id @default(uuid()) @db.Uuid
-  firmId            String         @map("firm_id") @db.Uuid
+  firmId            String?        @map("firm_id") @db.Uuid
+  audience          MsgAudience    @default(FIRM)
   subjectKind       MsgSubjectKind? @map("subject_kind")
   subjectId         String?        @map("subject_id") @db.Uuid
   channel           MsgChannel
@@ -310,7 +320,7 @@ model MsgOutbox {
   updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz
   sentAt            DateTime?      @map("sent_at") @db.Timestamptz
 
-  firm            MsgFirm             @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
+  firm            MsgFirm?            @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   templateVersion MsgTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   consent         MsgConsent?         @relation(fields: [firmId, consentId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   events          MsgEvent[]

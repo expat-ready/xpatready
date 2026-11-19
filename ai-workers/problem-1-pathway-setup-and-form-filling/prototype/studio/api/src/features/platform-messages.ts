@@ -26,7 +26,7 @@ const publicBase = process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.
 export default {
   controllers: [PlatformInboxController, MessagesPublicController],
   providers: [
-    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels(emailAdapter(config, { files, tokens, publicBase })) }), inject: [Db, PlatformJobs] },
+    { provide: MESSAGE_PORT, useFactory: (db: Db, jobs: PlatformJobs) => new Messages({ db, consent: consentStore, files, jobs, alerts: currentAlerts, channels: appChannels(emailAdapter(config, { files, tokens, publicBase })), log: (l) => console.warn(l) }), inject: [Db, PlatformJobs] },
     { provide: MESSAGES_MAIL, useFactory: (db: Db, messages: Messages) => new MessagesMail({ db, messages, files, log: (l) => console.warn(l) }), inject: [Db, MESSAGE_PORT] },
     { provide: PlatformInbox, useFactory: (db: Db) => new PlatformInbox(db, files, undefined, { tokens, publicBase }), inject: [Db] },
     { provide: Unsubscribe, useFactory: (db: Db) => new Unsubscribe({ db, consent: consentStore, tokens }), inject: [Db] },
