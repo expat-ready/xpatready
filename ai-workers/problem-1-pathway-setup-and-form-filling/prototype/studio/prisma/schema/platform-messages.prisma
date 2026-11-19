@@ -299,7 +299,7 @@ model MsgTemplateVersion {
 /// consent that allowed a marketing or WhatsApp service send (AG-10-27: why it was allowed). A template version, when
 /// named, is the platform's or the outbox row's own firm's (trigger). PF-19p: audience PLATFORM_ACCOUNT is a platform
 /// account message (no firm: firm_id is NULL exactly then, a check; EMAIL, TRANSACTIONAL, no person, consent or template, check); its
-/// idempotency key is unique among platform rows by a partial index in the migration 20261118160000_pf19p_platform_account_mail.
+/// idempotency key is unique among platform rows by a partial index in the migration 20261119003000_pf19p_platform_account_mail.
 model MsgOutbox {
   id                String         @id @default(uuid()) @db.Uuid
   firmId            String?        @map("firm_id") @db.Uuid
