@@ -119,7 +119,7 @@ try {
   BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}`;
   const prefs = new PrismaNotificationPrefs(db);
 
-  const views = Object.fromEntries(await Promise.all(Object.entries({ owner, admin, manager, officer, billing, reader }).map(async ([k, p]) => [k, await call("GET", p.token)])));
+  const views = Object.fromEntries(await Promise.all(Object.entries({ owner, admin, manager, officer, billing, reader }).map(async ([k, p]): Promise<[string, Res]> => [k, await call("GET", p.token)])));
   ok("PF-18a DW5 pass: all six roles may read their own settings (agent/notification:manage-preferences on every starter role)", Object.values(views).every((r: Res) => r.status === 200), Object.fromEntries(Object.entries(views).map(([k, r]) => [k, (r as Res).status])));
   ok("PF-18a DW5 pass: the Owner sees all eight groups, in §3.3's order, each with its default switches and nothing saved", shown(views.owner) === NotificationGroup.options.join(",") && views.owner.body.groups.every((g: any) => g.inApp && g.email && !g.saved && g.label), views.owner.body);
   ok("PF-18a DW5 fail: a Case Officer does not see Team watch (no agent/case:assign) nor Firm and connections (not Owner or Admin); sees Payments (holds agent/invoice:list)", shown(views.officer) === "WORK_HANDED_TO_ME,NEEDS_YOU,MY_DEADLINES,CLIENT_MESSAGED_ME,MENTIONS,PAYMENTS", shown(views.officer));
