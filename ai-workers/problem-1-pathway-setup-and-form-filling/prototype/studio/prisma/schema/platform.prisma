@@ -110,6 +110,7 @@ model PlatformFirm {
 
   // back-relation slot: entitlements (PF-15)
   storageOver PlatformStorageOver? // platform-entitlements.prisma
+  limitChanges PlatformLimitChangeFirm[] // platform-entitlements.prisma (PF-15 part 2)
 
   // back-relation slot: offices (PF-18a)
   offices PlatformOffice[] // platform-offices.prisma
@@ -170,6 +171,7 @@ model PlatformPlan {
 
   // back-relation slot: entitlements (PF-15)
   limits PlatformPlanLimit[] // platform-entitlements.prisma
+  limitChanges PlatformLimitChange[] // platform-entitlements.prisma (PF-15 part 2)
 
   @@map("platform_plan")
 }
