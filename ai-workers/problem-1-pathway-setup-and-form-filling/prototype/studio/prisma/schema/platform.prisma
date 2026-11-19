@@ -265,6 +265,7 @@ model PlatformStaff {
 
   // back-relation slot: offices (PF-18a)
   office PlatformStaffOffice? // platform-offices.prisma (the person's office)
+  notificationPrefs PlatformNotificationPreference[] // platform-offices.prisma (PF-18a part 2: the person's notification switches)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).
