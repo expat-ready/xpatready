@@ -20,20 +20,18 @@ export async function platformAuditWorkspaceId(db: PrismaClient | Tx): Promise<s
 
 export type AuditLine = { firmId: string; firmKey: string; actor: string; action: string; entityKey: string; summary: string; detail: Record<string, unknown> };
 
-/** One audit line through the port: the firm's key leads its summary and stays in detail, as before. */
-const record = (tx: Tx, entity: "platform_staff" | "platform_invitation", l: AuditLine) => auditEvent.record(tx, {
-  firmId: l.firmId, actor: l.actor, action: l.action, entity, entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600),
-  detail: { firmKey: l.firmKey, ...l.detail } as AuditEntry["detail"],
-});
+/** The fields both lines share: the firm's key leads the summary and stays in detail, as before. */
+const lineOf = (l: AuditLine) => ({ firmId: l.firmId, actor: l.actor, action: l.action, entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600),
+  detail: { firmKey: l.firmKey, ...l.detail } as AuditEntry["detail"] });
 
 /** One audit line about a staff member (status, roles, licence record, sessions). */
 export async function auditStaff(tx: Tx, l: AuditLine) {
-  await record(tx, "platform_staff", l);
+  await auditEvent.record(tx, { entity: "platform_staff", ...lineOf(l) });
 }
 
 /** One audit line about an invitation. */
 export async function auditInvitation(tx: Tx, l: AuditLine) {
-  await record(tx, "platform_invitation", l);
+  await auditEvent.record(tx, { entity: "platform_invitation", ...lineOf(l) });
 }
 
 /** The actor word of a staff member on audit lines and events (their staff id; the Sample staff's actor id is in detail). */
