@@ -53,23 +53,38 @@ export const CASE_FILE_KINDS: readonly FileKind[] = ["pdf", "jpeg", "png"];
 const REFUSAL_STATUS: Record<RefusalReason, HttpStatus> = { TOO_LARGE: HttpStatus.PAYLOAD_TOO_LARGE, TOO_MANY_PIXELS: HttpStatus.PAYLOAD_TOO_LARGE,
   NOT_ALLOWED_TYPE: HttpStatus.UNSUPPORTED_MEDIA_TYPE, ZIP: HttpStatus.UNSUPPORTED_MEDIA_TYPE, MACROS: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
   EMPTY: HttpStatus.BAD_REQUEST, DAMAGED: HttpStatus.BAD_REQUEST };
-/** CS-D1t (R1.67): does the PDF open? PF-F4's check reads no PDF structure (that needs a parser), so the reader the app
- *  already has (pypdf, as the form library's upload check) reads the cross-reference table and the page tree, in its
- *  own process, from the bytes on its input (nothing is on disk yet). "damaged": it does not open, or the read did not
- *  end in 20 s. "unchecked": the reader could not be run at all, which is not the file's fault. */
+/** CS-D1t (R1.67): does the PDF open, whole? PF-F4's check reads no PDF structure (that needs a parser), so the reader
+ *  the app already has (pypdf, as the form library's upload check) reads it in its own process, from the bytes on its
+ *  input (nothing is on disk yet): tools/check_pdf_opens.py says what it checks. "damaged": it does not open. "locked":
+ *  it needs a password, so its pages cannot be read. "unchecked": no verdict, which is not the file's fault: the reader
+ *  could not be run, did not end in 20 s, or too many files are already waiting to be read. */
+export type PdfRead = "opens" | "damaged" | "locked" | "unchecked";
 const PDF_READ_MS = 20_000;
-export function pdfOpens(bytes: Uint8Array, py: string = PY): Promise<"opens" | "damaged" | "unchecked"> {
+/** Break M2: at most this many readers at once (each may take 1 GB), and this many uploads waiting for one. */
+export const PDF_READERS = 2, PDF_READERS_WAITING = 8;
+let reading = 0;
+const waiting: (() => void)[] = [];
+export async function pdfOpens(bytes: Uint8Array, py: string = PY, ms: number = PDF_READ_MS): Promise<PdfRead> {
+  if (reading >= PDF_READERS) {
+    if (waiting.length >= PDF_READERS_WAITING) return "unchecked";
+    await new Promise<void>((go) => waiting.push(go));   // the reader that ends hands its place on
+  } else reading++;
+  try { return await readPdf(bytes, py, ms); }
+  finally { const next = waiting.shift(); if (next) next(); else reading--; }
+}
+function readPdf(bytes: Uint8Array, py: string, ms: number): Promise<PdfRead> {
   return new Promise((resolve) => {
     let out = "", done = false;
-    const end = (r: "opens" | "damaged" | "unchecked") => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    const end = (r: PdfRead) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
     const child = spawn(py, ["-I", join(STUDIO, "tools", "check_pdf_opens.py")], { stdio: ["pipe", "pipe", "ignore"] });
-    const timer = setTimeout(() => { child.kill("SIGKILL"); end("damaged"); }, PDF_READ_MS);
+    // Break m1: a read that does not end in time is no verdict on the file (a sound, very large PDF is not "damaged").
+    const timer = setTimeout(() => { child.kill("SIGKILL"); end("unchecked"); }, ms);
     child.on("error", () => end("unchecked"));
     child.stdin.on("error", () => { /* the reader ended before it read everything: its exit says what happened */ });
     child.stdout.on("data", (d: Buffer) => { if (out.length < 4096) out += d.toString("utf8"); });
     child.on("close", () => {
-      try { end((JSON.parse(out.trim().split("\n").pop() ?? "") as { ok?: boolean }).ok === true ? "opens" : "damaged"); }
-      catch { end("unchecked"); }   // no answer line: the reader itself failed (not installed, killed for memory)
+      try { const a = JSON.parse(out.trim().split("\n").pop() ?? "") as { ok?: boolean; locked?: boolean }; end(a.ok === true ? "opens" : a.locked === true ? "locked" : "damaged"); }
+      catch { end("unchecked"); }   // no answer line: the reader itself failed (not installed, killed)
     });
     child.stdin.end(bytes);
   });
@@ -81,7 +96,7 @@ export function pdfOpens(bytes: Uint8Array, py: string = PY): Promise<"opens" | 
  *  the type, the file's extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line.
  *  The doors keep their own 20 MB limit (C6.4 break m5), which is under PF-F4's 25 MB for documents: the multipart limit
  *  on each route refuses a larger file before this runs. */
-export async function checkedCaseFile(f: Upload, opens: typeof pdfOpens = pdfOpens): Promise<Checked & { extension: string; flagWords: string }> {
+export async function checkedCaseFile(f: Upload, opens: (bytes: Uint8Array) => Promise<PdfRead> = pdfOpens): Promise<Checked & { extension: string; flagWords: string }> {
   const r = checkFile({ bytes: f.buffer!, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
   if (!r.ok) return fail(r.message, REFUSAL_STATUS[r.reason]);
   if (r.kind === "pdf") {
@@ -89,6 +104,8 @@ export async function checkedCaseFile(f: Upload, opens: typeof pdfOpens = pdfOpe
     const allowed = CASE_FILE_KINDS.map((k) => KINDS[k].words), list = `${allowed.slice(0, -1).join(", ")} and ${allowed[allowed.length - 1]}`;
     // PF-F4's DAMAGED words for a file its own check cannot judge.
     if (read === "damaged") fail(`This file could not be read: it may be damaged. Allowed here: ${list}. ${NOTHING_STORED}`, REFUSAL_STATUS.DAMAGED);
+    // Not damaged, and not readable either: said as it is, so the person can send a copy that opens.
+    if (read === "locked") fail(`This PDF needs a password to open, so it could not be read. Save a copy without the password and upload that. Allowed here: ${list}. ${NOTHING_STORED}`, REFUSAL_STATUS.DAMAGED);
     // Never stored unchecked: the person is told to try again, and the refusal is not blamed on their file.
     if (read === "unchecked") fail(`This PDF could not be checked just now. Try again in a moment. ${NOTHING_STORED}`, HttpStatus.SERVICE_UNAVAILABLE);
   }

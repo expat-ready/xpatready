@@ -103,7 +103,10 @@ await main("C6.4 storage", "request, upload, Not applicable, kept lines; QA-149"
   ps = await list();
   const docs = line(ps, A, /passport/i)!.documents;
   ok("C6.4 pass: a new passport (PNG) keeps the old one as history: two documents, the new one current", u.status === 201 && docs.length === 2 && docs.filter((d) => d.current).map((d) => d.id).join() === u.body?.document?.id && docs.find((d) => !d.current)?.id === d1?.id, docs);
-  const exact = new Uint8Array(MAX); exact.set(pdf("exact"));
+  // CS-D1t: a PDF of exactly 20 MB that opens (one long line of text; the length is found in a few tries, as the
+  // PDF's own numbers grow with it). Zeros after a PDF's end are refused as damaged now.
+  let exact = pdf("exact");
+  for (let fill = MAX - exact.length, i = 0; i < 20 && exact.length !== MAX; i++) { exact = new Uint8Array(textPdf(["Sample synthetic document exact", "x".repeat(fill)])); fill += MAX - exact.length; }
   u = await up(pass.id.toUpperCase(), [{ name: "Паспорт-护照-\u202Egpj.pdf", bytes: exact }]);
   ok("C6.4 pass: a file of exactly 20 MB is taken, on the line id in capitals, its name kept as typed (UTF-8) without the right-to-left control", u.status === 201 && u.body?.document?.size_bytes === MAX && sql(`select file_name from case_document where id='${u.body?.document?.id}'`) === "Паспорт-护照-gpj.pdf", u.status === 201 ? sql(`select file_name from case_document where id='${u.body?.document?.id}'`) : u.body);
   const onDisk = Number(execFileSync("find", [join(studio, "var"), "-path", `*/workspaces/demo/people/${A}/documents/*`, "-type", "f"], { encoding: "utf8" }).trim().split("\n").filter(Boolean).length);
