@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-724**, 19 Nov 11:0x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-1100-lead87s2-as-of-P-719.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-724**, 19 Nov 10:4x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-1100-lead87s2-as-of-P-719.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 

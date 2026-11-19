@@ -115,7 +115,7 @@ Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-6
 | P-701 | Release 1 invoices charge GST/HST only (no PST, RST or Quebec); Unconfirmed: no accountant or counsel. | prose | 18 Nov |
 | P-702 | 21 Nov: an independent Opus reviewer evaluates the adopted changes (plan #181), 14-17 Nov vs 19-21 Nov on measured numbers; keep, fix or drop each. | prose | 18 Nov |
 
-## Rows moved word for word from RULES.md by Lead 87, 11:0x IST 19 Nov (RULES.md under 25 KB, P-611)
+## Rows moved word for word from RULES.md by Lead 87, 10:4x IST 19 Nov (RULES.md under 25 KB, P-611)
 | ID | Rule | Enforced by | As of |
 |---|---|---|---|
 | P-723 | Drain to ~13:30 IST 19 Nov: only merging approved PRs; then journey by journey (P-348). | prose | 19 Nov |
