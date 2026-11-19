@@ -2092,3 +2092,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * **R1.28 + R1.37** (#2196 queued, FO-2 part 3b): then J-37 on #2011's lane.
 * **Paused:** R1.41 (FO-3st2 starts no new part; #2103 still merges). R1.48 (PF-19b part 3, then J-48) continues.
 * **Re-merges sent:** #2012 2973a8f9b and #1961 c27308ea1, both main-merge-only.
+
+## Rev 17.44 (19 Nov 10:42 IST): P-721 to P-724 binding (RULES.md as of P-724)
+* **The rules:** protect the merge path (re-merge within 30 min; split a failed batch at once). Proof per item; qa never blocks. **Drain to ~13:30 IST**: lanes only get approved PRs merged, nothing new starts. After it, journeys in dependency order, two in parallel, about 6 items per journey; my journey is likely **B, firm set-up** (item list from Lead 87 by ~13:00).
+* Posted word for word on #1959, #2196, #2102, #2103, #2029, #2012, #1961 and #2181 (comments 7000390059 to 7000392038). Lanes without a PR need Lead 87 to type it: J-109, FO-3st2, PF-19b part 3, PF-19e, #2011's (J-37) and the PF-15 part 2 and FO-3st3 parked lanes.
+* **Under the drain:** J-37 and J-48 are new parts, so they wait until after ~13:30. J-109 already has its Approve and only opens its PR, so it counts as getting an approved PR merged.
