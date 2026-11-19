@@ -2,7 +2,7 @@
 
 current_lead: local_019a74ed-6dba-4a9c-9188-04a3e34bda5a Lead 87 · 19 Nov 09:1x IST (series 2; took over from Lead 86 (series 2, local_bb67266d) at ~430k, P-446)
 
-updated: 2026-11-19 10:3x IST: **P-723 (founder): drain to ~13:30, then journey by journey, client case journey first; Lead maps it meanwhile** · earlier lines today word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1045-lead87s2-updated-line-1020-1040.md` (and the history files it names) · milestone: Release 1 proven 11-12 of 101 · rules: **`RULES.md`** (as of **P-719**; P-720 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 10:3x IST: **P-723 + P-724 (founder): drain to ~13:30, then a two-journey factory: A client case (Build Lead C), B firm set-up (Lead B); WIP ~6 per journey, pull on Proven, automatic proof brought forward; Lead maps both journeys meanwhile** · earlier lines today word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1045-lead87s2-updated-line-1020-1040.md` (and the history files it names) · milestone: Release 1 proven 11-12 of 101 · rules: **`RULES.md`** (as of **P-719**; P-720 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
