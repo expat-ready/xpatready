@@ -25,7 +25,7 @@ import { copyFirmHoursTo } from "../../api/src/front-office/booking-seed.ts";
 
 const [NAME, PORT] = [process.argv[2] ?? "j37", Number(process.argv[3] ?? 4437)];
 const STUDIO = join(import.meta.dirname, "..", ".."), BASE = `http://localhost:${PORT}`, TZ = "America/Toronto";
-const SHOTS = join(STUDIO, "var", "walks", "j_37-shots"); mkdirSync(SHOTS, { recursive: true });
+const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-37", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/xr_studio_${NAME}`, options: "-c TimeZone=UTC" }) });
 let pass = 0, fail = 0, held = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
@@ -34,7 +34,7 @@ const run = Date.now().toString(36);
 const headed = process.env.HEADED === "1";
 const browser = await chromium.launch({ headless: !headed, slowMo: headed ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const visitor = async () => { const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: TZ, locale: "en-CA", colorScheme: "light", reducedMotion: "reduce" }); return { ctx, p: await ctx.newPage() }; };
-const inbox = async (address: string) => ((await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`)).json()) as { messages?: { subject: string; text?: string; html?: string }[] }).messages ?? [];
+const inbox = async (address: string) => ((await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`)).json()) as { messages?: { subject: string; body?: string; html?: string }[] }).messages ?? [];
 async function fill(p: Page, given: string, email: string) {
   await p.getByLabel("Given names").fill(given); await p.getByLabel("Family name").fill("Sample"); await p.getByLabel("Email").fill(email);
 }
@@ -69,25 +69,28 @@ try {
   ok("J-37 W3 set-up: booker B, in a second browser, has the same time open", slotB === slotA, [slotA, slotB]);
   await fill(a.p, "Client A", A); await fill(b.p, "Client B", B);
   await a.p.waitForTimeout(3_200);   // the form's minimum fill time (FO-3f), as a person takes
-  await a.p.getByRole("button", { name: "Book this time" }).click();
-  await a.p.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 });
-  ok("J-37 W2: booker A books the time and sees \"You are booked\"", await a.p.locator('[data-public-state="booked"]').count() === 1);
-  await a.p.screenshot({ path: join(SHOTS, "w2-booked-1440.png"), fullPage: true });
-  await b.p.getByRole("button", { name: "Book this time" }).click();
-  await b.p.getByText("This time was just booked.").waitFor({ timeout: 20_000 });
-  const bText = await b.p.locator("main").innerText();
-  const rows = await db.foBooking.findMany({ where: { firmId: firm.id }, select: { status: true } });
-  ok("J-37 W3: booker B is refused (\"This time was just booked.\", \"Please choose another time.\"), offered the next times, answers kept; one booking exists",
-    bText.includes("Please choose another time.") && bText.includes("Next free times")
-    && (await b.p.getByLabel("Email").inputValue()) === B && rows.length === 1, { rows: rows.length, text: bText.slice(0, 300) });
-  await b.p.screenshot({ path: join(SHOTS, "w3-taken-1440.png"), fullPage: true });
+  // A true race (review m1): both press "Book this time" at the same moment; the door lets exactly one through.
+  await Promise.all([a.p.getByRole("button", { name: "Book this time" }).click(), b.p.getByRole("button", { name: "Book this time" }).click()]);
+  const outcome = async (x: Page) => { await x.locator('[data-public-state="booked"], [data-summary]').first().waitFor({ timeout: 20_000 }); return (await x.locator('[data-public-state="booked"]').count()) ? "booked" : "refused"; };
+  const [oa, ob] = await Promise.all([outcome(a.p), outcome(b.p)]);
+  const [win, lose, winMail, loseMail] = oa === "booked" ? [a, b, A, B] : [b, a, B, A];
+  ok("J-37 W2: one booker books the time and sees \"You are booked\"", [oa, ob].filter((o) => o === "booked").length === 1, [oa, ob]);
+  await win.p.screenshot({ path: join(SHOTS, "w2-booked-1440.png"), fullPage: true });
+  const loseText = await lose.p.locator("main").innerText();
+  const rows = await db.foBooking.findMany({ where: { firmId: firm.id }, select: { status: true, staffId: true } });
+  ok("J-37 W3: the other, pressing at the same moment on the same time, is refused (\"This time was just booked.\", \"Please choose another time.\"), offered the next free times, answers kept; exactly one booking, SCHEDULED, with the host",
+    loseText.includes("This time was just booked.") && loseText.includes("Please choose another time.") && loseText.includes("Next free times")
+    && (await lose.p.getByLabel("Email").inputValue()) === loseMail && rows.length === 1 && rows[0].status === "SCHEDULED" && rows[0].staffId === host.id, { rows, text: loseText.slice(0, 300) });
+  await lose.p.screenshot({ path: join(SHOTS, "w3-taken-1440.png"), fullPage: true });
 
-  // ------------------------------------------------------------------- W4: A's confirmation arrives in the demo inbox
+  // ---------------------------------------------------------- W4: the booker's confirmation arrives in the demo inbox
   let mails: Awaited<ReturnType<typeof inbox>> = [];
-  for (let i = 0; i < 60 && !mails.length; i++) { mails = await inbox(A); if (!mails.length) await new Promise((r) => setTimeout(r, 3_000)); }
-  const body = mails.map((m) => `${m.text ?? ""}\n${m.html ?? ""}`).join("\n");
-  ok("J-37 W4: A's confirmation arrives in the demo inbox (the real outbox, sent by the local provider)", mails.length >= 1, mails.map((m) => m.subject));
-  ok("J-37 W4 fail side: booker B, refused, got no booking mail", (await inbox(B)).length === 0);
+  for (let i = 0; i < 60 && !mails.some((m) => /is booked/.test(m.subject)); i++) { mails = await inbox(winMail); if (!mails.length) await new Promise((r) => setTimeout(r, 3_000)); }
+  const body = mails.map((m) => `${m.body ?? ""}\n${m.html ?? ""}`).join("\n");
+  ok("J-37 W4: the booker's confirmation (\"Your Free consultation is booked\") arrives in the demo inbox: the real outbox, sent by the local provider",
+    mails.some((m) => m.subject === "Your Free consultation is booked"), mails.map((m) => m.subject));
+  await new Promise((r) => setTimeout(r, 8_000));   // two job hops' time for a wrong mail to arrive (review m4)
+  ok("J-37 W4 fail side: the refused booker got no booking mail", (await inbox(loseMail)).length === 0);
 
   // -------------------------------------------------------------------- W4b: the reminder after a restart (held)
   hold("J-37 W4b (J-9 W4): restart the API; A's reminder still runs at its due time and arrives in the demo inbox",
@@ -95,10 +98,12 @@ try {
 
   // ------------------------------------------------------------------------- W5: row 42's first step, the manage link
   const link = body.match(/\/book\/[a-z0-9-]+\/manage#[A-Za-z0-9._~-]+/)?.[0];
-  if (link) { await a.p.goto(`${BASE}${link}`); await a.p.getByRole("button", { name: /Reschedule|Cancel/ }).first().waitFor({ timeout: 20_000 }).catch(() => undefined); }
-  const manage = link ? await a.p.locator("main").innerText() : "";
-  ok("J-37 W5: A's mail carries the manage link; it opens A's booking with Reschedule and Cancel (row 42's first step)", !!link && /Reschedule/.test(manage) && /Cancel/.test(manage), { link, manage: manage.slice(0, 200) });
-  await a.p.screenshot({ path: join(SHOTS, "w5-manage-1440.png"), fullPage: true });
+  if (link) { await win.p.goto(`${BASE}${link}`); await win.p.getByRole("button", { name: /Reschedule|Cancel/ }).first().waitFor({ timeout: 20_000 }).catch(() => undefined); }
+  const manage = link ? await win.p.locator("main").innerText() : "", hm = slotA.match(/\d{1,2}:\d{2}/)?.[0] ?? "?";
+  ok("J-37 W5: the mail carries the manage link; it opens this booking at its own time with Reschedule and Cancel (row 42's first step)", !!link && manage.includes(hm) && /Reschedule/.test(manage) && /Cancel/.test(manage), { link, hm, manage: manage.slice(0, 200) });
+  await win.p.screenshot({ path: join(SHOTS, "w5-manage-1440.png"), fullPage: true });
+  await lose.p.goto(`${BASE}/book/${firm.key}/manage#bad.link`); await lose.p.getByText("This link is no longer valid.").waitFor({ timeout: 15_000 }).catch(() => undefined);
+  ok("J-37 W5 fail side: a broken manage link shows \"This link is no longer valid.\"", (await lose.p.locator("main").innerText()).includes("This link is no longer valid."));
   await a.ctx.close(); await b.ctx.close();
 } finally {
   await browser.close(); await db.$disconnect();
