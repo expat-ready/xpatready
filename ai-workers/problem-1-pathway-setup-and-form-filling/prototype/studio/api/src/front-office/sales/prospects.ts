@@ -186,6 +186,12 @@ export class Prospects {
     await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, fromStageId: from, toStageId, cause, byActor: actorOf(ctx) } });
   }
 
+  /** FO-4 part 2a: the reasons Mark lost offers (AG-2-44 rule 2; BR-9): the firm's active prospect reasons in their
+   *  order, exactly those `lost()` accepts (a merge's reason is never chosen). The lists' editing is FO-2 part 5's. */
+  async lostReasons(ctx: StaffContext) {
+    return this.db.foReason.findMany({ where: firmScope(ctx.firmId, { kind: "PROSPECT_LOST" as const, active: true, key: { notIn: MERGE_ONLY } }), select: { id: true, key: true, label: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+  }
+
   private idOf(id: string) { return typeof id === "string" && UUID.test(id) ? id.toLowerCase() : notFound("prospect"); }
 
   /** A person's move (AG-2-26 rules 1-5, 11, 13; BR-8): between open stages of the prospect's own pipeline, with the
