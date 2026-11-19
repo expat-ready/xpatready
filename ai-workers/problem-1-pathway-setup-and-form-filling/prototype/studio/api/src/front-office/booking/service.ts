@@ -18,7 +18,7 @@
 // The host may be chosen among the type's active hosts. The public door never offers those times.
 import { tzOffset } from "@date-fns/tz";
 import { HttpException, HttpStatus } from "@nestjs/common";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { ArrivalPort } from "../../../../ports/arrival.ts";
@@ -31,6 +31,7 @@ import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
+import { sees, visibilityOf, type Visibility } from "../sales/common.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { windowsFor } from "./settings/hours.ts";
@@ -411,18 +412,85 @@ export class BookingService {
    *  with agent/booking:list. Nothing answers them by itself. */
   async attendanceDue(ctx: StaffContext) {
     const now = this.ports.clock.now();
-    const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { status: { in: ACTIVE }, endsAt: { lte: new Date(now.getTime() - 30 * MIN) }, ...(ctx.keys.includes("agent/booking:list") ? {} : { staffId: ctx.staffId }) }), orderBy: { endsAt: "asc" } });
+    const due = new Date(now.getTime() - 30 * MIN);
+    const rows = await this.readSeen(ctx, Prisma.sql`b.status::text IN ('SCHEDULED', 'RESCHEDULED') AND b.ends_at <= ${due}`, { status: { in: ACTIVE }, endsAt: { lte: due } }, "endsAt");
     return rows.map((r) => this.view(r));
   }
 
-  /** The staff list (AG-4-67): the firm's bookings with agent/booking:list, else the person's own as host. */
+  /** The staff list (AG-4-67): with agent/booking:list, the firm's bookings the person may see (FO-3vr: the record rule or
+   *  their own as host), else the person's own as host. */
   async staffList(ctx: StaffContext, query: unknown) {
     const q = parse(z.object({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
     if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
-    const staffId = all ? q.staff : ctx.staffId;
-    const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) }), orderBy: { startsAt: "asc" } });
+    const staffId = all ? q.staff?.toLowerCase() : ctx.staffId;
+    const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) };
+    const rows = all ? await this.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}${staffId ? Prisma.sql` AND b.staff_id = ${staffId}::uuid` : Prisma.empty}`, where, "startsAt")
+      : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, where), orderBy: { startsAt: "asc" } });
     return rows.map((r) => this.view(r));
+  }
+
+  /** The most ids one booking read names (FO-3vr break F1: PostgreSQL takes at most 32,767 parameters in one query). */
+  seenChunk = 10_000;
+  /** The rows of `where` the person may see (`seenWhere`), in `by` order then id: one read, or one per `seenChunk` ids
+   *  when the visible set is larger, merged in the same order. */
+  async readSeen(ctx: StaffContext, narrow: Prisma.Sql, where: Prisma.FoBookingWhereInput, by: "startsAt" | "endsAt"): Promise<BookingRow[]> {
+    const seen = await this.seenWhere(ctx, narrow), orderBy: Prisma.FoBookingOrderByWithRelationInput[] = [by === "startsAt" ? { startsAt: "asc" } : { endsAt: "asc" }, { id: "asc" }];
+    if (!seen.id) return this.db.foBooking.findMany({ where: firmScope(ctx.firmId, where), orderBy });
+    const ids = seen.id.in, out: BookingRow[] = [];
+    for (let i = 0; i === 0 || i < ids.length; i += this.seenChunk) out.push(...await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, id: { in: ids.slice(i, i + this.seenChunk) } }), orderBy }));
+    return ids.length > this.seenChunk ? out.sort((a, b) => a[by].getTime() - b[by].getTime() || a.id.localeCompare(b.id)) : out;
+  }
+
+  /** FO-3vr (AG-4-67 rules 1-3, rule 10 "the record rule in the query"): the bookings of the firm a person may see, as a
+   *  `where` for the one booking read. Everyone-sees-all with view.all (`visibilityOf`, AG-2-64 rule 3) sees every row;
+   *  anyone else sees a row they host (rule 2), or whose record they see: on a prospect, its owner or, when it has no
+   *  active owner, a viewer who sees Unassigned; on a person with leads or prospects and no prospect named, any lead of
+   *  theirs by the lead list's rule (the owner, or no active owner and Unassigned seen; `leads.ts` seenWhere, BR-4) or a
+   *  prospect of theirs by the same owner rule (AG-2-64 rules 2 c, 3; Lead B on #2308: apply); not linked yet (no person, or a person with neither), the
+   *  unassigned-lead rule (rule 3). `narrow` is the caller's own window, so the rule is worked out in SQL over those rows
+   *  only and never after a read or a page cap. */
+  private async seenWhere(ctx: StaffContext, narrow: Prisma.Sql): Promise<{ id?: { in: string[] } }> {
+    const vis = await visibilityOf(this.db, ctx);
+    if (vis.seesAll) return {};
+    const me = ctx.staffId, su = vis.seesUnassigned;
+    const unowned = (col: Prisma.Sql) => Prisma.sql`NOT EXISTS (SELECT 1 FROM platform_staff s WHERE s.firm_id = b.firm_id AND s.id = ${col} AND s.status::text = 'ACTIVE')`;
+    const seenOwner = (col: Prisma.Sql) => Prisma.sql`(${col} = ${me}::uuid OR (${su}::boolean AND ${unowned(col)}))`;
+    const ofPerson = Prisma.sql`(p.primary_contact_person_id = b.person_id OR p.subject_person_id = b.person_id)`;
+    const rows = await this.db.$queryRaw<{ id: string }[]>`SELECT b.id::text AS id FROM fo_booking b
+      WHERE b.firm_id = ${ctx.firmId}::uuid AND ${narrow} AND (
+        b.staff_id = ${me}::uuid
+        OR (b.prospect_id IS NOT NULL AND EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND p.id = b.prospect_id AND ${seenOwner(Prisma.sql`p.owner_staff_id`)}))
+        OR (b.prospect_id IS NULL AND b.person_id IS NOT NULL AND (
+              EXISTS (SELECT 1 FROM fo_lead l WHERE l.firm_id = b.firm_id AND l.person_id = b.person_id AND ${seenOwner(Prisma.sql`l.owner_staff_id`)})
+           OR EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND ${ofPerson} AND ${seenOwner(Prisma.sql`p.owner_staff_id`)})))
+        OR (${su}::boolean AND b.prospect_id IS NULL AND (b.person_id IS NULL OR (
+              NOT EXISTS (SELECT 1 FROM fo_lead l WHERE l.firm_id = b.firm_id AND l.person_id = b.person_id)
+          AND NOT EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND ${ofPerson}))))
+      )`;
+    return { id: { in: rows.map((r) => r.id) } };
+  }
+
+  /** FO-3vr rule 7: whether a person who is not the host sees one booking already read, by the same record rule as
+   *  `seenWhere`, through `sees()` (AG-2-64 rule 3; a deactivated owner counts as no owner, BR-4). */
+  private async seesBooking(ctx: StaffContext, b: BookingRow, vis: Visibility) {
+    if (vis.seesAll) return true;
+    const db = this.db, f = b.firmId;
+    const active = async (ids: (string | null)[]) => new Set((await db.platformStaff.findMany({ where: firmScope(f, { id: { in: ids.filter((x): x is string => !!x) }, status: "ACTIVE" as const }), select: { id: true } })).map((s) => s.id));
+    if (b.prospectId) {
+      const p = await db.foProspect.findFirst({ where: firmScope(f, { id: b.prospectId }), select: { ownerStaffId: true } });
+      if (!p) return false;
+      return sees(vis, ctx, p.ownerStaffId && (await active([p.ownerStaffId])).has(p.ownerStaffId) ? p.ownerStaffId : null);
+    }
+    if (!b.personId) return vis.seesUnassigned;
+    const [leads, prospects] = await Promise.all([
+      db.foLead.findMany({ where: firmScope(f, { personId: b.personId }), select: { ownerStaffId: true } }),
+      db.foProspect.findMany({ where: firmScope(f, { OR: [{ primaryContactPersonId: b.personId }, { subjectPersonId: b.personId }] }), select: { ownerStaffId: true } }),
+    ]);
+    if (!leads.length && !prospects.length) return vis.seesUnassigned;
+    const on = await active([...leads, ...prospects].map((x) => x.ownerStaffId));
+    const owner = (o: string | null) => (o && on.has(o) ? o : null);
+    return [...leads, ...prospects].some((x) => sees(vis, ctx, owner(x.ownerStaffId)));
   }
 
   async staffGet(ctx: StaffContext, bookingId: string) { return this.view(await this.staffBooking(ctx, bookingId)); }
@@ -776,7 +844,10 @@ export class BookingService {
     if (!UUID.test(bookingId)) return notInFirm("booking");
     const b = await this.db.foBooking.findFirst({ where: firmScope(ctx.firmId, { id: bookingId }) });
     if (!b) return notInFirm("booking");
-    if (b.staffId !== ctx.staffId && !ctx.keys.includes("agent/booking:list")) return notInFirm("booking");
+    if (b.staffId === ctx.staffId) return b;   // the host always (AG-4-67 rule 2), with or without the list key
+    if (!ctx.keys.includes("agent/booking:list")) return notInFirm("booking");
+    // FO-3vr rule 7: the record rule; outside it, the one not-found (AG-2-64 rule 4 e).
+    if (!(await this.seesBooking(ctx, b, await visibilityOf(this.db, ctx)))) return notInFirm("booking");
     return b;
   }
 
