@@ -12,6 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { openCasesByRelease } from "../api/src/where-used.ts";
 import { AUTHOR, CLIENT, DB, OFFICER, call, firms, generateCopy, itemsOf, main, ok, openCase, prepare, readinessOf, readyToFile, sendFile, signByHand, sql, until, yearsAgo, inDays } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 import { sampleRelease } from "./lib/sample-release.ts";
 
 type Line = { id: string; what: string; who: string; why: string; form?: string; subject?: string };
@@ -30,7 +31,7 @@ const sqlAsync = (q: string) => new Promise<number>((done) => { const ps = spawn
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** A statement the database must refuse (its trigger or check): psql fails, so sql() answers null. */
 const refused = (q: string) => sql(q) === null;
-const pdf = (label: string) => Buffer.from(`%PDF-1.4\n% SYNTHETIC SPECIMEN: ${label} (Sample)\n%%EOF\n`, "latin1");
+const pdf = (label: string) => textPdf([`SYNTHETIC SPECIMEN: ${label} (Sample)`]);
 
 await main("C9.5", "Adopt a published update on an open case (Visitor visa)", async () => {
   // ---------------------------------------------------------------- the checkpoint
