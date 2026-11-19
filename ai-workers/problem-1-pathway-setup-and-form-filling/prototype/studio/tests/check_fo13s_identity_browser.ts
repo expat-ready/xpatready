@@ -63,7 +63,7 @@ async function pageAs(t: string, width = 1440): Promise<Page> {
   p.on("pageerror", (e) => errors.push(String(e))); return p;
 }
 const panel = (p: Page) => p.locator("[data-identity-panel]");
-const openLead = async (p: Page) => { await p.goto(`${BASE}/front-office/leads/${LID}`); await panel(p).waitFor({ timeout: 30_000 }); await p.waitForFunction(() => !document.querySelector("[data-identity-panel] [role=status]")?.textContent?.startsWith("Loading"), null, { timeout: 15_000 }); };
+const openLead = async (p: Page) => { await p.goto(`${BASE}/front-office/leads/${LID}`); await panel(p).waitFor({ timeout: 30_000 }); await panel(p).locator("[data-loading]").waitFor({ state: "detached", timeout: 15_000 }); };
 const shot = (p: Page, n: string) => p.screenshot({ path: join(SHOTS, `${n}.png`), fullPage: true });
 const axe = async (p: Page, where: string) => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).include("[data-identity-panel], [role=dialog]").analyze(); const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok(`FO-13s axe-core (WCAG 2.2 AA): no serious or critical finding — ${where}`, bad.length === 0, bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)); };
@@ -106,13 +106,33 @@ try {
   ok("FO-13s BR-5 fail: a text file named .pdf is refused on Copy (checked by content, 415), nothing stored", rows() === 0);
 
   // ---------------------------------------------------------------------------------- BR-4 pass, BR-7, BR-9 fail
+  await drawer(o).getByLabel(/^Copy/).setInputFiles([]);
+  // BR-7 (challenge M2): the first Save reaches the server and is stored, but its answer is lost; Save again must send
+  // the same requestId, so the server replays the saved check (one row), never a second one. Without a copy: Playwright's
+  // route.fetch does not carry a multipart file part faithfully.
+  const sentIds: string[] = []; let firstStatus = 0;
+  o.on("request", (r) => { if (r.method() === "POST" && r.url().endsWith(`/people/${PID}/identity-checks`)) sentIds.push(/name="requestId"\r\n\r\n([0-9a-f-]{36})/.exec(r.postDataBuffer()?.toString("latin1") ?? "")?.[1] ?? "?"); });
+  await o.route(`**/api/front-office/people/${PID}/identity-checks`, async (route) => { if (route.request().method() !== "POST") return route.fallback(); const first = await route.fetch(); firstStatus = first.status(); await route.abort("connectionreset"); }, { times: 1 });
+  await save(o);
+  await drawer(o).getByText("Could not reach the server. Your details are kept: Save again to retry the same check.").waitFor({ timeout: 15_000 });
+  ok("FO-13s BR-7: the first Save was stored although its answer was lost (one row), and the panel says to Save again", firstStatus === 201 && rows() === 1, { firstStatus, rows: rows() });
+  await save(o);
+  await drawer(o).waitFor({ state: "detached", timeout: 15_000 });
+  ok("FO-13s BR-7 pass: Save again after a lost answer sends the same requestId and stays one check", rows() === 1 && sentIds.length === 2 && sentIds[0] === sentIds[1] && sentIds[0] !== "?", sentIds);
+  // The same document with its copy, as a new Save (a new panel, a new requestId).
+  await panel(o).getByRole("button", { name: "Record a check" }).click(); await drawer(o).waitFor();
+  await drawer(o).getByLabel(/^Document type/).selectOption("PASSPORT");
+  await drawer(o).getByLabel(/^Issuing country/).fill("CA");
+  await drawer(o).getByLabel(/^Last 4/).fill("q7r2");
+  await drawer(o).getByLabel(/^Expiry date/).fill(TODAY);
+  await drawer(o).getByLabel("Name", { exact: true }).check();
   await drawer(o).getByLabel(/^Copy/).setInputFiles(PDF);
   await save(o);
   await drawer(o).waitFor({ state: "detached", timeout: 15_000 });
   await panel(o).locator("[data-check]").first().waitFor({ timeout: 15_000 });
   const row = panel(o).locator("[data-check]").first();
-  ok("FO-13s BR-4 pass, BR-7: an expiry of the firm's today saves once (one row), and the panel lists it with plain words, ···last 4 and who checked",
-    rows() === 1 && (await row.locator("[data-doc]").innerText()) === "Passport, CA ···Q7R2" && (await row.locator("[data-expiry]").innerText()) === TODAY && /In person/.test(await row.innerText()) && (await row.locator("[data-details]").innerText()) === "Name", await row.innerText());
+  ok("FO-13s BR-4 pass: an expiry of the firm's today saves (a new Save, a second row), and the panel lists it with plain words, ···last 4 and who checked",
+    rows() === 2 && (await row.locator("[data-doc]").innerText()) === "Passport, CA ···Q7R2" && (await row.locator("[data-expiry]").innerText()) === new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${TODAY}T00:00:00Z`)) && /In person/.test(await row.innerText()) && (await row.locator("[data-details]").innerText()) === "Name", await row.innerText());
   ok("FO-13s BR-9 fail: once a check is recorded, the no-check sentence is gone", (await panel(o).locator("[data-no-check]").count()) === 0);
   const dl = o.waitForEvent("download", { timeout: 15_000 });
   await row.getByRole("button", { name: "Open copy" }).click();
@@ -130,14 +150,14 @@ try {
   await o.keyboard.press("Enter");
   await drawer(o).waitFor({ state: "detached", timeout: 15_000 });
   ok("FO-13s keyboard pass: a check typed and saved with the keyboard only (Tab to Save check, Enter) lists first, and focus returns to Record a check",
-    rows() === 2 && /Seen at the office/.test(await panel(o).locator("[data-check]").first().innerText()) && await panel(o).getByRole("button", { name: "Record a check" }).evaluate((e) => e === document.activeElement));
+    rows() === 3 && /Seen at the office/.test(await panel(o).locator("[data-check]").first().innerText()) && await panel(o).getByRole("button", { name: "Record a check" }).evaluate((e) => e === document.activeElement));
   await panel(o).getByRole("button", { name: "Record a check" }).click(); await drawer(o).waitFor(); await o.keyboard.press("Escape");
   ok("FO-13s keyboard: Escape closes an untouched panel without asking", (await drawer(o).count()) === 0);
 
   // ----------------------------------------------------------------------------------------- BR-8 (other keys)
   const bf = await pageAs(tok.BF); await openLead(bf);
   ok("FO-13s BR-8 fail: Billing and finance (no record, no document:show) sees the list but no Record and no Open copy, with the reason",
-    (await panel(bf).locator("[data-check]").count()) === 2 && (await panel(bf).getByRole("button", { name: "Record a check" }).count()) === 0 && (await panel(bf).getByRole("button", { name: "Open copy" }).count()) === 0 && (await panel(bf).locator("[data-why-no-copy]").count()) === 1);
+    (await panel(bf).locator("[data-check]").count()) === 3 && (await panel(bf).getByRole("button", { name: "Record a check" }).count()) === 0 && (await panel(bf).getByRole("button", { name: "Open copy" }).count()) === 0 && (await panel(bf).locator("[data-why-no-copy]").count()) === 1);
   const ro = await pageAs(tok.RO); await openLead(ro);
   ok("FO-13s BR-8: Read-only (document:show, no record) may open the copy but not record", (await panel(ro).getByRole("button", { name: "Open copy" }).count()) === 1 && (await panel(ro).getByRole("button", { name: "Record a check" }).count()) === 0);
 
@@ -145,7 +165,7 @@ try {
   const eng = await fetch(`${BASE}/api/front-office/leads/${LID}/engage`, { method: "POST", headers: { authorization: `Bearer ${tok.O}` } });
   const prospect = await eng.json() as { id: string };
   await o.goto(`${BASE}/front-office/prospects/${prospect.id}`); await panel(o).locator("[data-check]").first().waitFor({ timeout: 30_000 });
-  ok("FO-13s M1: the prospect page shows the same panel with the person's two checks", eng.status === 201 && (await panel(o).locator("[data-check]").count()) === 2, eng.status);
+  ok("FO-13s M1: the prospect page shows the same panel with the person's three checks", eng.status === 201 && (await panel(o).locator("[data-check]").count()) === 3, eng.status);
   await axe(o, "the prospect page");
 
   // ----------------------------------------------------------------------------------------- widths

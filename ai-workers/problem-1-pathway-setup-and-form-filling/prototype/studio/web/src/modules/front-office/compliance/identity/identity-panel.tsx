@@ -12,11 +12,14 @@ import { endSession, setStaffToken, staffApi, StaffApiError, staffToken } from "
 import { can, problemOf } from "../../sales/contract";
 import { useLock, useReturnFocus } from "../../sales/prospect-actions";
 import { useStaff } from "../../sales/sales-frame";
+import { Loading } from "../../sales/loading";
 import { arrivedLabel } from "../../sales/time";
 import { COPY_MAX_BYTES, COPY_TOO_LARGE, DETAILS, detailLabel, DOCUMENT_TYPES, documentLabel, DownloadLink, ID_KEY, IdentityChecks, METHODS, methodLabel, noCheckLine, type IdentityCheck } from "./contract";
 
 const path = (personId: string) => `/front-office/people/${encodeURIComponent(personId)}/identity-checks`;
 const RECORD_REASON = "Recording a check needs a role that works leads: ask your firm's Owner or Admin.";
+/** A stored calendar date (YYYY-MM-DD) in words, formatted in UTC so it never moves a day (challenge m4). */
+const EXPIRY = new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" });
 const COPY_REASON = "Opening a copy needs a role that may open documents.";
 
 /** The multipart Save, with the session's bearer token and staffApi's refusal handling (a 401 ends the session here). */
@@ -38,7 +41,12 @@ async function openCopy(checkId: string) {
   const link = DownloadLink.parse(await staffApi(`/front-office/identity-checks/${encodeURIComponent(checkId)}/copy/download-link`, { method: "POST" }));
   const token = staffToken();
   const res = await fetch(link.url, { headers: token ? { authorization: `Bearer ${token}` } : {} });
-  if (!res.ok) { const t = await res.text(); let d: unknown = t; try { d = JSON.parse(t); } catch { /* text */ } throw new StaffApiError(res.status, problemOf(d, res.status)); }
+  if (!res.ok) {
+    const t = await res.text(); let d: unknown = t; try { d = JSON.parse(t); } catch { /* text */ }
+    const problem = problemOf(d, res.status);
+    if (res.status === 401 && staffToken() === token) { if (token) endSession(problem.code ?? "NOT_SIGNED_IN"); else setStaffToken(null); }
+    throw new StaffApiError(res.status, problem);
+  }
   const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "identity-copy";
   const url = URL.createObjectURL(await res.blob()), a = document.createElement("a");
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -57,7 +65,7 @@ function CheckRow({ c, mayCopy }: { c: IdentityCheck; mayCopy: boolean }) {
       </div>
       <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[7rem_1fr]">
         <dt className="text-text-muted">Document</dt><dd data-doc className="min-w-0 [overflow-wrap:anywhere]">{doc}</dd>
-        {c.documentType ? <><dt className="text-text-muted">Expires</dt><dd data-expiry>{c.documentExpiry ?? "No expiry given"}</dd></> : null}
+        {c.documentType ? <><dt className="text-text-muted">Expires</dt><dd data-expiry>{c.documentExpiry ? EXPIRY.format(new Date(`${c.documentExpiry}T00:00:00Z`)) : "No expiry given"}</dd></> : null}
         <dt className="text-text-muted">Corroborated</dt><dd data-details>{c.details.map(detailLabel).join(", ")}</dd>
         <dt className="text-text-muted">Copy</dt>
         <dd>{!c.hasCopy ? <span className="text-text-muted">No copy</span>
@@ -118,10 +126,9 @@ function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; on
       <form id="fo-identity-form" ref={body} onSubmit={submit} noValidate className="flex flex-col gap-4">
         {general ? <Notice tone="danger" title={general} /> : null}
         {Object.keys(errors).length ? (
-          <div data-error-summary className="rounded-lg border border-border border-l-4 border-l-danger px-4 py-3 text-sm">
-            <p className="font-semibold">{Object.keys(errors).length === 1 ? "One thing to fix" : `${Object.keys(errors).length} things to fix`}</p>
-            <ul className="mt-1 list-disc pl-5 text-text-muted">{Object.entries(errors).map(([k, v]) => <li key={k}><span className="font-medium text-text">{FIELD_LABEL[k] ?? k}:</span> {v}</li>)}</ul>
-          </div>
+          <div data-error-summary><Notice tone="danger" title="There is a problem">
+            <ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{FIELD_LABEL[k] ?? k}: {v}</li>)}</ul>
+          </Notice></div>
         ) : null}
         <Field label="Method" error={errors.method}>
           <Select value={f.method} onChange={(e) => set("method", e.target.value)} disabled={save.isPending}>{METHODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
@@ -174,7 +181,7 @@ export function IdentityCheckPanel({ personId, name }: { personId: string; name:
         <h2 id="fo-identity" className="text-sm font-semibold">Identity check</h2>
         {mayRecord ? <Button size="sm" variant="outline" data-record-check onClick={() => panel(true)}>Record a check</Button> : null}
       </div>
-      {list.isPending ? <p className="mt-2 text-sm text-text-muted" role="status">Loading the identity checks…</p>
+      {list.isPending ? <div className="mt-2"><Loading label="Loading the identity checks" rows={1} /></div>
         : list.isError ? (
           <Notice tone="danger" className="mt-2" title={list.error instanceof StaffApiError ? list.error.message : "Could not load the identity checks."} action={<Button size="sm" variant="outline" onClick={() => void list.refetch()}>Try again</Button>} />
         ) : list.data.checks.length === 0 ? (

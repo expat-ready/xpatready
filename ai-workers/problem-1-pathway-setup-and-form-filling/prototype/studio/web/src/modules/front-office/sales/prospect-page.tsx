@@ -110,7 +110,7 @@ function ProspectBody({ id }: { id: string }) {
           {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
         </aside>
       </div>
-      {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name} /> : null}
+      {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name === "(no name)" ? "" : p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("lost")}>Mark lost</Button></>}>
         <form onSubmit={submit("lost")} className="flex flex-col gap-4">

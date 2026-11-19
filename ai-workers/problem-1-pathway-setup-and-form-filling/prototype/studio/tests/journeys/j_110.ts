@@ -103,7 +103,7 @@ try {
   // ----------------------------------------------------------------------------------------------------------- W3
   const row = panel.locator("[data-check]").first(); await row.waitFor({ timeout: 15_000 });
   ok("J-110 W3 pass: it is listed with plain words, the last 4 only, the expiry and who checked",
-    (await row.locator("[data-doc]").innerText()) === "Passport, IN ···4K9Z" && (await row.locator("[data-expiry]").innerText()) === TODAY && (await row.locator("[data-details]").innerText()) === "Name, Email"
+    (await row.locator("[data-doc]").innerText()) === "Passport, IN ···4K9Z" && (await row.locator("[data-expiry]").innerText()) === new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${TODAY}T00:00:00Z`)) && (await row.locator("[data-details]").innerText()) === "Name, Email"
     && /Document copy/.test(await row.innerText()) && (await row.innerText()).includes(O.displayName), await row.innerText());
   ok("J-110 W3 fail: the no-check sentence is gone", (await panel.locator("[data-no-check]").count()) === 0);
   const dl = o.waitForEvent("download", { timeout: 15_000 });
