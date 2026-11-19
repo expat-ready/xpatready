@@ -58,9 +58,10 @@ Also, on qa-4's ask (06:34 IST, main 9d440b2f4): the R1.28 walk. The four R1.28 
 * Invitation (a known token set, as the row's own check does) → Continue, double-clicked: one staff row, one `accepted` line. The person lands signed in on Profile.
 * Own licence saved. The Owner's Licences list, where a stale save is refused. Security shows the two-step line only.
 * The number is in no audit, event, outbox row or API log. A Case Officer opening by URL sees the raw key (QA-504).
+* Known gaps from the deleted `qa/built/PF-6.md` (asked on #2127; no bug row yet): Reset two-step on the Person panel; the provider's two-step set-up link not returned by the API. Carried into R1.6's note.
 * Note, ruled by Lead 84: the seed stores codes (`rcic`/`CICC`) and the screen stores words. The case-side IMM 5476 adoption row maps both to one code.
 
-**PF-8r (R1.14):** the 01:53 IST schedule did not run, so I dispatched nightly run 44412299740 (04:00 IST, Lead 83's go). Job 135183381279: 10/10, restore in 23 s. On tiny data the RTO is not shown.
+**PF-8r (R1.14):** the 01:53 IST schedule did not run, so I dispatched nightly run 44412299740 (04:00 IST, Lead 83's go). Job 135183381279 green: 10/10, restore in 23 s (the run as a whole ended cancelled: its job suites (3) was cancelled; only the drill job is scored). On tiny data the RTO is not shown.
 
 ## Bugs
 0 Blocker · 0 Critical · 0 Major · 0 new Minor. Evidence added: QA-187 (two routes), QA-504 (/platform/licences). QA-508's closure now points at DECISIONS P-694 (reaching main with #2173), as does R1.58's note.
