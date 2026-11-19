@@ -68,3 +68,19 @@ Read `git diff db745c7fd..cf4d8c398`: 633fefa7f (the fixes), 78f374997 (merge of
 **Journey score at the head: 10/10** (correct data and feedback now 1; see the journey report).
 
 **Verdict: Block** (commit cf4d8c39848799e636513d0d603f55d292fc67f0). To fix: **M3** (make DW6's snapshot case fail when the snapshot is removed). n1 and n2 are recommended. No other finding is open.
+
+---
+
+## Re-review 2: head c448cf1de7a2d706c35ad3f4a61813a6e1201910 (new commit only)
+
+I read `git diff cf4d8c398 c448cf1de -- …/prototype/studio`, which changes routes.ts, service.ts and the check. `tests/check_aud4_firm_log.ts`, run by me at the head: **33 passed, 0 failed**.
+
+* **M3: closed.** DW6 now starts the export and waits for its `audit.exported` line, which commits after the count and before the file is written. It then inserts lines at the oldest end of the range until the export answers, and asserts three things: at least one insert committed before the answer (56 in my run), none of them is in the file, and the file's rows equal `X-Export-Rows`.
+  * **Mutation re-run by me** in a scratch copy (repo untouched), with service.ts set to `read committed, read only`: **31 passed, 2 failed**. Both DW6 cases fail: 49 late lines and 100,050 rows against `X-Export-Rows` 100,000. The snapshot rule's test now fails when the rule is removed.
+* **n2: closed.** The route sets `left` on `close` before the response ends. After taking its place in the queue, the service stops with 499 EXPORT_CANCELLED before any line or file, and the route stays silent. Tested: the 499, and no line written.
+* **n1: closed.** `onModuleInit` removes `aud4-export-*` folders over an hour old and keeps fresh ones. Tested. Deleting a file that another process is still streaming is harmless on Linux, because the open read stream keeps the file readable.
+* **m6: closed.** The sign-out case is bounded at 5 s and says that it guards the future (AUD-1c).
+
+No new findings. Nothing open from either earlier round. Journey score stays **10/10**.
+
+**Verdict: Approve** (commit c448cf1de7a2d706c35ad3f4a61813a6e1201910).
