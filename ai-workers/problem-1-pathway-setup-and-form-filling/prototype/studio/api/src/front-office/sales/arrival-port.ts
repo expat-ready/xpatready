@@ -14,7 +14,7 @@ import type { z } from "zod";
 import { seedFirmFrontOffice } from "../firm-seed.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { arrive } from "./arrival.ts";
-import type { Tx } from "./common.ts";
+import { UUID, type Tx } from "./common.ts";
 
 /** The lead's source for a booking arrival (AG-02 glossary: where a lead came from). */
 export const BOOKING_SOURCE = "Booking page";
@@ -40,18 +40,27 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     const seen = await repeat();
     if (seen) return seen;   // idempotent by key: the same ids, nothing written
     await this.setup(tx, firmId);
-    // The same lock arrive() takes for this email, so a booking and a form post by one person are serialised here too.
-    await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_sales_match:${firmId}:${a.person.email}`}, 0))`;
-    // AG-2-84 rule 8: the people of the firm with this email who have an open prospect (stage kind ACTIVE, AG-2-26 rule 12).
-    const holders = await tx.$queryRaw<{ person_id: string }[]>`
-      select distinct p.primary_contact_person_id::text as person_id from fo_prospect p
-        join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
+    // The same locks arrive() takes, in its order (email and phone, sorted), so a booking and another door's arrival by one
+    // person are serialised and never deadlock (break m1); arrive() takes them again (an advisory lock is re-entrant).
+    for (const k of [a.person.email, a.person.phone ?? null].filter((x): x is string => !!x).sort()) await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_sales_match:${firmId}:${k}`}, 0))`;
+    // AG-2-84 rule 8: the people of the firm with this email who have an open prospect (stage kind ACTIVE, AG-2-26 rule
+    // 12). The prospect rows are locked, so one marked lost meanwhile is seen as it is after that commit (break m2).
+    // The rows are locked alone, then their stages read (review M1, as prospects.ts: a join re-checked after a lock wait
+    // drops a row whose stage changed meanwhile).
+    const locked = await tx.$queryRaw<{ id: string; person_id: string }[]>`
+      select p.id::text, p.primary_contact_person_id::text as person_id from fo_prospect p
         join fo_person f on f.firm_id = p.firm_id and f.id = p.primary_contact_person_id
-       where p.firm_id = ${firmId}::uuid and s.kind = 'ACTIVE' and lower(f.email) = ${a.person.email}`;
+       where p.firm_id = ${firmId}::uuid and lower(f.email) = ${a.person.email} order by p.id for update of p`;
+    const rows = locked.length ? await tx.$queryRaw<{ person_id: string }[]>`
+      select p.primary_contact_person_id::text as person_id from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
+       where p.firm_id = ${firmId}::uuid and p.id = any(${locked.map((l) => l.id)}::uuid[]) and s.kind = 'ACTIVE'` : [];
+    const holders = [...new Set(rows.map((r) => r.person_id))].map((person_id) => ({ person_id }));
     let wording: { wordingId: string; channel: Channel; purpose: Purpose; locale: string; givenAt: Date } | null = null;
     if (a.consent) {
-      const w = await tx.msgConsentWording.findFirst({ where: firmScope(firmId, { id: a.consent.wordingId.toLowerCase(), ...WORDING }), select: { id: true, locale: true } });
-      if (!w) throw new Error("bookingArrived: the consent wording is not the firm's booking wording");   // the booking side checked it; a mismatch is a fault
+      // Only the firm's current booking wording (break m4): the booking side refuses an older one with 409 first.
+      const current = await this.bookingConsentWording(tx, firmId);
+      const w = current && current.wordingId.toLowerCase() === a.consent.wordingId.toLowerCase() ? await tx.msgConsentWording.findFirst({ where: firmScope(firmId, { id: current.wordingId, ...WORDING }), select: { id: true, locale: true } }) : null;
+      if (!w) throw new Error("bookingArrived: the consent wording is not the firm's current booking wording");   // the booking side checked it; a mismatch is a fault
       wording = { wordingId: w.id, ...WORDING, locale: w.locale, givenAt: a.consent.givenAt };
     }
     const p = a.person;
@@ -63,6 +72,7 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     }, this.ports);
     if (!out.created) return (await repeat())!;   // a repeat that raced in on the receipt's key
     const prospectId = holders.length === 1 ? await this.moveToConsult(tx, firmId, holders[0].person_id) : undefined;
+    if (holders.length === 1 && p.phone) await this.keepPhone(tx, firmId, holders[0].person_id, p.phone, prospectId);
     return ArrivalResult.parse({ personId: out.personId!, ...(prospectId ? { prospectId } : {}) });
   }
 
@@ -71,7 +81,7 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
   async bookingForPerson(txIn: Tx | PrismaClient, b: { firmId: string; personId: string; bookingId: string }) {
     const tx = txIn as Tx;
     const firmId = firmScope(b.firmId).firmId;
-    if (!/^[0-9a-f-]{36}$/i.test(b.personId)) return null;
+    if (!UUID.test(b.personId)) return null;   // a strict uuid (break m7), as the read, never a database error
     const person = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: b.personId.toLowerCase() }), select: { id: true } });
     if (!person) return null;
     const prospectId = await this.moveToConsult(tx, firmId, person.id, STAFF_BOOKING);
@@ -84,14 +94,28 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     return w ? { wordingId: w.id, text: w.text } : null;
   }
 
-  /** The person's contact for the booking's messages, or null when not a person of the firm. A part the record lacks is
-   *  empty (a hand-added lead may have a phone and no email); an unreadable phone is left out. */
+  /** The person's contact for the booking's messages, or null when not a person of the firm or without an email. A
+   *  missing name part is empty; an unreadable phone is left out. */
   async contactOf(db: Tx | PrismaClient, firmId: string, personId: string): Promise<z.output<typeof ArrivalPerson> | null> {
-    if (!/^[0-9a-f-]{36}$/i.test(personId)) return null;
+    if (!UUID.test(personId)) return null;
     const f = await db.foPerson.findFirst({ where: firmScope(firmId, { id: personId.toLowerCase() }), select: { givenNames: true, familyName: true, email: true, phone: true, phoneReadable: true } });
     if (!f) return null;
-    const c: z.input<typeof ArrivalPerson> = { givenNames: f.givenNames ?? "", familyName: f.familyName ?? "", email: f.email ?? "", ...(f.phone && f.phoneReadable ? { phone: f.phone } : {}) };
+    // The port's person always has an email (review m2): a person on file without one has no contact the booking's
+    // messages could use, so null (the staff booking then answers 404; question on the PR).
+    if (!f.email) return null;
+    const c: z.input<typeof ArrivalPerson> = { givenNames: f.givenNames ?? "", familyName: f.familyName ?? "", email: f.email, ...(f.phone && f.phoneReadable ? { phone: f.phone } : {}) };
     return c as z.output<typeof ArrivalPerson>;
+  }
+
+  /** The phone a booker on file typed (AG-2-10 rule 3; break M1): an empty phone on the person is filled with it; one
+   *  on file that differs is never overwritten, the typed number is kept as an INTERNAL note on the prospect instead,
+   *  so the host calls the number given. The number is personal data: it stays in fo_person / fo_note, never an audit line. */
+  private async keepPhone(tx: Tx, firmId: string, personId: string, phone: string, prospectId?: string) {
+    const f = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: personId }), select: { phone: true, phoneE164: true } });
+    if (!f) return;
+    if (!f.phone) { await tx.foPerson.update({ where: { id: personId }, data: { phone, phoneReadable: true } }); return; }
+    if ((f.phoneE164 ?? f.phone) === phone) return;
+    await tx.foNote.create({ data: { firmId, personId, prospectId: prospectId ?? null, visibility: "INTERNAL", text: `The booking gave the phone number ${phone} (the one on file was kept).`, byActor: ACTOR } });
   }
 
   /** FO-1a's seed, once, when the firm has no sales setup row yet (as FO-1p's port does): a booking firm whose front
@@ -115,10 +139,14 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
   /** AG-2-26 rules 6 and 8: the person's only open prospect moves forward to its pipeline's CONSULT stage with the cause
    *  BOOKING, once; one already at or past Consult stays; several open prospects move none. Locked in id order. */
   private async moveToConsult(tx: Tx, firmId: string, personId: string, actor = ACTOR): Promise<string | undefined> {
-    const open = await tx.$queryRaw<{ id: string; number: string; type: "INDIVIDUAL" | "CORPORATE"; lead_id: string; owner_staff_id: string | null; stage_id: string; key: string; sort_order: number }[]>`
+    // The person's prospects locked alone, in id order, then read with their stages (review M1): a staff move committed
+    // while this waited is seen as it is now, so "only open prospect" is counted on the rows as they stand.
+    const ids = (await tx.$queryRaw<{ id: string }[]>`
+      select id::text from fo_prospect where firm_id = ${firmId}::uuid and primary_contact_person_id = ${personId}::uuid order by id for update`).map((r) => r.id);
+    const open = ids.length ? await tx.$queryRaw<{ id: string; number: string; type: "INDIVIDUAL" | "CORPORATE"; lead_id: string; owner_staff_id: string | null; stage_id: string; key: string; sort_order: number }[]>`
       select p.id::text, p.number, p.type, p.lead_id::text, p.owner_staff_id::text, p.stage_id::text, s.key, s.sort_order
         from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
-       where p.firm_id = ${firmId}::uuid and p.primary_contact_person_id = ${personId}::uuid and s.kind = 'ACTIVE' order by p.id for update of p`;
+       where p.firm_id = ${firmId}::uuid and p.id = any(${ids}::uuid[]) and s.kind = 'ACTIVE' order by p.id` : [];
     if (open.length !== 1) return undefined;
     const p = open[0];
     const consult = await tx.foStage.findFirst({ where: firmScope(firmId, { pipeline: p.type, key: "CONSULT", active: true }), select: { id: true, key: true, sortOrder: true } });

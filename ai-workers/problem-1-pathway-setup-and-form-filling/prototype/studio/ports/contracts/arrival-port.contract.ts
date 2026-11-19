@@ -120,6 +120,15 @@ export const arrivalPortContract = defineContract("ArrivalPort", (make: () => Pr
     },
   },
   {
+    name: "a booker on file with no phone who types one at booking: the contact then has that phone (AG-2-10 rule 3: a booking carries the phone)",
+    async run() {
+      const h = await make(), email = booker("Phone").email, p = await h.addProspect(h.firmId, email, "BEFORE_CONSULT");
+      await h.tx((t) => h.port.bookingArrived(t, { firmId: h.firmId, person: { ...booker("Phone"), email, phone: "+14165550177" }, bookingId: uuid() }));
+      const c = await h.tx((t) => h.port.contactOf(t, h.firmId, p.personId));
+      expect(c?.phone === "+14165550177", "the typed phone is the person's contact phone", c);
+    },
+  },
+  {
     name: "an arrival in a transaction that rolls back leaves no person and no lead",
     async run() {
       const h = await make(), before = await h.counts(h.firmId);

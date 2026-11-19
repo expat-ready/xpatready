@@ -17,6 +17,7 @@ import { runContract } from "../ports/contracts/contract.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { runtimeBookingPorts } from "../api/src/front-office/booking/runtime-ports.ts";
 import { BOOKING_SOURCE, PrismaArrival } from "../api/src/front-office/sales/arrival-port.ts";
+import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
@@ -154,6 +155,63 @@ try {
   const past = await h.addProspect(A, booker("Past").email, "PAST_CONSULT");
   await book({ firmId: A, person: { ...booker("Past"), email: sql(`select email from fo_person where id = '${past.personId}'`) }, bookingId: randomUUID() });
   ok("FO-2p3b DW4 fail: a prospect already past Consult (Fees discussed) is not moved back", (await h.standing(past.prospectId)).at === "PAST_CONSULT" && count("fo_stage_move", `prospect_id = '${past.prospectId}' and cause = 'BOOKING'`) === 0);
+
+  // Break M1 (AG-2-10 rule 3): the phone a booker on file types is kept: an empty phone is filled; a different one on
+  // file is never overwritten, the typed number goes on an INTERNAL note on the prospect.
+  const ph = await h.addProspect(A, booker("Phone").email, "BEFORE_CONSULT");
+  const phEmail = sql(`select email from fo_person where id = '${ph.personId}'`);
+  await book({ firmId: A, person: { ...booker("Phone"), email: phEmail, phone: "+14165550123" }, bookingId: randomUUID() });
+  ok("FO-2p3b DW4 pass (break M1): a booker on file with no phone → the typed phone is kept on the person (E.164, readable)", sql(`select phone || '|' || phone_readable from fo_person where id = '${ph.personId}'`) === "+14165550123|true");
+  await book({ firmId: A, person: { ...booker("Phone"), email: phEmail, phone: "+14165550199" }, bookingId: randomUUID() });
+  ok("FO-2p3b DW4 fail (break M1): a different typed phone never overwrites the one on file; it is kept as an INTERNAL note on the prospect, and no audit line carries it",
+    sql(`select phone from fo_person where id = '${ph.personId}'`) === "+14165550123" && count("fo_note", `person_id = '${ph.personId}' and prospect_id = '${ph.prospectId}' and visibility = 'INTERNAL' and text like '%+14165550199%'`) === 1
+      && count("audit_event", `detail::text like '%4165550199%' or summary like '%4165550199%'`) === 0);
+  // Break m1: a booking and a hand-added lead with the same email and phone at once never deadlock (one lock order).
+  const leadsSvc = new Leads(db, { audit: auditEvent, consent, publicOrigin: "http://localhost:4400" });
+  const R = (() => { const [id, firmId] = sql(`select id || '|' || firm_id from platform_staff where actor_id = 'user-R'`).split("|"); const keys = sql(`select string_agg(distinct permission_key, ',') from platform_role_permission rp join platform_role_grant g on g.role = rp.role where g.staff_id = '${id}'`).split(","); return { staffId: id, firmId, firmKey: "sample-firm", roles: [], keys, duties: [], authTime: 0, via: "local" } as never; })();
+  const races = [];
+  for (let i = 0; i < 4; i++) {
+    const email = `p3b.race${i}.${randomUUID().slice(0, 6)}@example.com`, phone = `+1416555${String(1000 + i)}`;
+    races.push(Promise.allSettled([book({ firmId: A, person: { givenNames: "Race", familyName: "Sample", email, phone }, bookingId: randomUUID() }), leadsSvc.add(R, { requestId: randomUUID(), givenNames: "Race", familyName: "Sample", email, phone, source: "Phone call" })]));
+  }
+  const settled = (await Promise.all(races)).flat();
+  ok("FO-2p3b DW4 fail (break m1): four rounds of a booking and a hand-added lead with the same email and phone at once all succeed (no deadlock, 40P01)",
+    settled.every((x) => x.status === "fulfilled"), settled.filter((x) => x.status === "rejected").map((x) => String((x as PromiseRejectedResult).reason).slice(0, 120)));
+  // Review M1: a staff move committed while the booking waits on the prospect rows. Two open prospects: one is moved
+  // Engaged → Qualified (still open) by another transaction holding its row; the booking must still see two and move none.
+  const rc = await h.addProspect(A, booker("Race").email, "BEFORE_CONSULT");
+  const rcEmail = sql(`select email from fo_person where id = '${rc.personId}'`);
+  const rc2 = sql(`insert into fo_prospect (firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, created_by, updated_at) select firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, created_by, now() from fo_prospect where id = '${rc.prospectId}' returning id`).split("\n")[0];
+  sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) values ('${A}', '${rc2}', '${stage("ENGAGED")}', 'PERSON', 'seed:fo2p3b-test')`);
+  const first = [rc.prospectId, rc2].sort()[0];
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const mover = db.$transaction(async (tx) => {
+    await tx.$queryRaw`select 1 from fo_prospect where id = ${first}::uuid for update`;
+    await tx.foProspect.update({ where: { id: first }, data: { stageId: stage("QUALIFIED") } });
+    await tx.foStageMove.create({ data: { firmId: A, prospectId: first, fromStageId: stage("ENGAGED"), toStageId: stage("QUALIFIED"), cause: "PERSON", byActor: "seed:fo2p3b-test" } });
+    await gate;
+  }, { timeout: 30_000 });
+  await new Promise((r) => setTimeout(r, 300));
+  const racing = book({ firmId: A, person: { ...booker("Race"), email: rcEmail }, bookingId: randomUUID() });
+  await new Promise((r) => setTimeout(r, 500));
+  release();
+  await mover;
+  const raced = await racing;
+  ok("FO-2p3b DW4 fail (review M1): a staff move committed while the booking waited leaves two open prospects: neither moves to Consult and no prospect is named; still no new lead",
+    raced.prospectId === undefined && (await h.standing(rc.prospectId)).at === "BEFORE_CONSULT" && (await h.standing(rc2)).at === "BEFORE_CONSULT" && count("fo_lead", `person_id = '${rc.personId}'`) === 1
+      && count("fo_stage_move", `prospect_id in ('${rc.prospectId}', '${rc2}') and cause = 'BOOKING'`) === 0, raced);
+  ok("FO-2p3b DW5 pass (review m2): contactOf of a person without an email is null (the port's person always has one)",
+    (await real.contactOf(db, A, (await db.foPerson.create({ data: { firmId: A, givenNames: "Phone", familyName: "Only", phone: "+14165550101", createdBy: "seed:fo2p3b-test" } })).id)) === null);
+
+  // Break m4: only the firm's current booking wording; an older version of the same firm is refused in process too.
+  const newer = await db.$transaction((tx) => consent.publishWording(tx as never, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: "I agree that the firm may send me news by email, version 2 (Sample wording).", by: "seed:fo2p3b-test" }));
+  let staleRefused = false;
+  try { await book({ firmId: A, person: booker("Stale"), consent: { wordingId: wording.id, givenAt: new Date() }, bookingId: randomUUID() }); } catch { staleRefused = true; }
+  const fresh = await book({ firmId: A, person: booker("Fresh"), consent: { wordingId: newer.id, givenAt: new Date() }, bookingId: randomUUID() });
+  ok("FO-2p3b DW2 fail (break m4): an older wording version is refused; the current one is recorded", staleRefused && count("msg_consent", `subject_id = '${fresh.personId}' and wording_id = '${newer.id}'`) === 1);
+  ok("FO-2p3b DW5 fail (break m7): a 36-character id that is no uuid → null, never a database error",
+    (await db.$transaction((tx) => real.bookingForPerson(tx, { firmId: A, personId: "------------------------------------", bookingId: randomUUID() }))) === null && (await real.contactOf(db, A, "------------------------------------")) === null);
 
   // ------------------------------------------------------------------------------------- DW5: bookingForPerson
   const bp = await h.addProspect(A, booker("Staff").email, "BEFORE_CONSULT");
