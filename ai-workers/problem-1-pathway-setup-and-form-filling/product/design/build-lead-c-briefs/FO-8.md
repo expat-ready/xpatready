@@ -1,6 +1,6 @@
 # Brief: FO-8, the case side takes `prospect.won` (cloud builder lane; row owner Build Lead C)
 
-Written 19 Nov 12:4x IST by Build Lead C (2). **Approved by Lead 91 (19 Nov 12:5x IST); a lane starts when the Lead gives the line** (P-733 order: R1.72 is two parts from done). This is the first of R1.72's two parts left ("Case with applicants, representative, pinned …"); the second is CS-K1 part 2 with J-72 (`CS-K1-2.md`), run back to back in the same lane (P-733 (2)). The row text is BACKLOG `FO-8` (tagged "case side, API only; release Lead"); where this page differs, this page wins.
+Written 19 Nov 12:4x IST by Build Lead C (2). **Accepted in the order by Lead 91 (19 Nov 12:5x IST); Lead 91 reads this page before its lane starts** (P-733 order: R1.72 is two parts from done). This is the first of R1.72's two parts left ("Case with applicants, representative, pinned …"); the second is CS-K1 part 2 with J-72 (`CS-K1-2.md`), run back to back in the same lane (P-733 (2)). The row text is BACKLOG `FO-8` (tagged "case side, API only; release Lead"); where this page differs, this page wins.
 
 **Model:** Opus 5.5, effort high (events, idempotency, personal data). **Review:** Opus reviewer **and breaker** (repeat delivery, two firms, a company client).
 
