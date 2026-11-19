@@ -13,6 +13,7 @@ import { Button, Dialog, Field, Input, Notice, Pill, Textarea } from "@/componen
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/lib/api";
 import { Tip, TipProvider } from "@/components/status";
+import { FoldArrow } from "@/components/fold-out";
 import { staffApi, StaffApiError, useMe, useSessionEnd, useStaffToken } from "@/modules/platform/session";
 import { SignInCard } from "@/modules/platform/frame";
 import { CaseDecisionsView, NOTE_MAX, REASON_MAX } from "../../../contracts/runtime";
@@ -177,7 +178,7 @@ function FilingRow({ f, canDecide, open }: { f: Row; canDecide: boolean; open: (
         {f.latest ? <p className="mt-0.5 text-[13px] [overflow-wrap:anywhere]" data-latest-decision={f.latest.outcome}><Outcome code={f.latest.outcome} /> · decided {day(f.latest.decidedOn)}{f.latest.note ? <> · <span className="text-text-muted">“<bdi>{f.latest.note}</bdi>”</span></> : null}</p> : null}
         {f.earlier.length ? <>
           <button type="button" className="mt-0.5 inline-flex min-h-6 items-center text-[13px] font-medium text-text-link hover:underline" aria-expanded={history} onClick={() => setHistory((h) => !h)} data-decision-history-toggle>
-            {f.earlier.length} earlier decision{f.earlier.length === 1 ? "" : "s"}</button>
+            <FoldArrow open={history} />{f.earlier.length} earlier decision{f.earlier.length === 1 ? "" : "s"}</button>
           {history ? <ul className="mt-1 list-disc pl-5 text-[13px] text-text-muted" data-decision-history>{[f.latest!, ...f.earlier].map((d) => <HistoryLine key={d.id} d={d} />)}</ul> : null}
         </> : null}
       </div>
