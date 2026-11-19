@@ -3,6 +3,7 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+#        bash product/tools/lead-watch.sh context-read "<name pct, ...>"   (records the session-context read, step 13)
 set -uo pipefail
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
@@ -14,10 +15,12 @@ SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; 
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
+# context-read "<name pct, ...>" records step 13's read and exits, before the stall-guard stamp is touched.
+if [ "${1:-}" = "context-read" ]; then mkdir -p "$STATE_DIR"; { date +%s; echo "${2:-read}"; } > "$STATE_DIR/context-read"; echo "context read recorded"; exit 0; fi
+
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
 # check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
 # founder at once. The standby's lead-heartbeat.sh reads the same stamp while this Lead is stuck.
-if [ "${1:-}" = "context-read" ]; then mkdir -p "$STATE_DIR"; { date +%s; echo "${2:-read}"; } > "$STATE_DIR/context-read"; echo "context read recorded"; exit 0; fi
 stamp="$STATE_DIR/last-check"; now=$(date +%s)
 if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
