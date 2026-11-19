@@ -14,7 +14,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { PeopleEdit, PeopleEditController, PHONE_EDIT_ACTION, PHONE_REQUIRED, UNREADABLE_PHONE } from "../api/src/front-office/people/edit.ts";
@@ -29,8 +29,7 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-// The Mac's PostgreSQL 18 when it is there, else the one on PATH (the cloud copies and CI).
-const MAC = "/opt/homebrew/opt/postgresql@18/bin", BIN = existsSync(join(MAC, "psql")) ? MAC : "";
+const BIN = "/opt/homebrew/opt/postgresql@18/bin";   // on Linux, cloud-setup.sh's stand-ins
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo9ap_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 
