@@ -11,7 +11,11 @@
 import type { FoPipeline, FoReasonKind, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import type { ConsentPort } from "../../../ports/consent.ts";
 import { EVENT } from "../../../ports/events.ts";
+import { auditEvent } from "../platform/audit/audit-event.ts";
+import { ConsentStore } from "../platform/messages/consent/consent-store.ts";
+import { ensureMessagesFirm } from "../platform/messages/consent/messages-firm.ts";
 import { firmScope } from "../platform/firm-scope.ts";
 
 export const SEED_ACTOR = "seed:FO-1a";
@@ -118,8 +122,26 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
     data: (await releasedCombinations(tx)).map((c, i) => ({ firmId: id, label: c.label, combinationId: c.id, sortOrder: i + 1, createdBy: actor })),
     skipDuplicates: true,
   });
+  await ensureBookingWording(tx, id, actor);
   await tx.foSalesSetup.update({ where: { firmId: id }, data: { seededAt: new Date(), seededBy: actor } });
   return { firmId: id, seeded: true, stages: stages.count, reasons: reasons.count, webForms, services: services.count };
+}
+
+/** The booking tick's Sample wording (FO-2 part 3b, Lead B's ruling on #2196): version 1 of the firm's EMAIL marketing
+ *  wording, only when the firm has no EMAIL marketing wording at all, so the firm's own wording is never replaced. The
+ *  sentence asks for marketing mail in AG-4-19 rule 3's form ("Yes, … may email me news and updates"; "the address above"
+ *  is the form's email box, so the tick never shares the box's label word), since a tick
+ *  on it is recorded as marketing consent (AG-2-84 rule 10: express only). Published through ConsentPort, so it has the
+ *  usual `consent.wording.published` audit line; checked again under publishWording's own lock. Returns whether it made it. */
+export const SAMPLE_BOOKING_WORDING = "Yes, the firm may send me news and updates at the address above. I can stop at any time. (Sample wording)";
+export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR, consent: ConsentPort<Prisma.TransactionClient> = new ConsentStore(auditEvent)): Promise<boolean> {
+  const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
+  if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
+  await ensureMessagesFirm(tx, id);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_consent_wording:${id}:EMAIL:MARKETING:en-CA`}))`;
+  if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
+  await consent.publishWording(tx, { firmId: id, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: SAMPLE_BOOKING_WORDING, by: actor });
+  return true;
 }
 
 /** The subscriber: a `firm.created` event (module_event's envelope; its firm_id is the new firm) seeds that firm's front
