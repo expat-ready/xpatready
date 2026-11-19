@@ -9,7 +9,8 @@ export const FeedItem = z.object({
   startsAt: z.string(), endsAt: z.string(), officeTimeZone: z.string(), bookerTimeZone: z.string(),
   type: z.object({ id: z.string(), name: z.string() }), host: z.object({ id: z.string(), name: z.string() }),
   person: z.object({ id: z.string(), name: z.string(), email: z.string().nullable() }).nullable(),
-  hangsOn: z.object({ kind: z.enum(["lead", "prospect"]), id: z.string(), name: z.string() }).nullable(),
+  hangsOn: z.object({ kind: z.enum(["lead", "prospect", "client"]), id: z.string(), name: z.string() }).nullable(),
+  cancelledBy: z.string().nullable(), selfServiceLimitHours: z.number(), insideSelfServiceLimit: z.boolean(),
   outsideHours: z.boolean(), attendance: z.enum(["COMPLETED", "NO_SHOW"]).nullable(), hasConsultRecord: z.boolean(),
   canAnswerAttendance: z.boolean(), canEdit: z.boolean(), attendanceDue: z.boolean(),
 });
@@ -28,13 +29,13 @@ export const Warnings = z.object({ code: z.literal("WARNINGS"), hostStaffId: z.s
 export const LIST_KEY = "agent/booking:list", CREATE_KEY = "agent/booking:create", TYPES_KEY = "agent/booking-event-type:list";
 export const MODE_WORDS: Record<string, string> = { VIDEO: "Video call", PHONE: "Phone call", IN_PERSON: "In person" };
 /** Status chips by shape and text, never colour alone (concept §5). */
-export const STATUS: Record<string, { label: string; tone: string; tip: (person: string) => string }> = {
+export const STATUS: Record<string, { label: string; tone: string; tip: (person: string, by?: string | null) => string }> = {
   SCHEDULED: { label: "Scheduled", tone: "info", tip: () => "Booked; not yet held." },
   PENDING_PAYMENT: { label: "Scheduled", tone: "info", tip: () => "Booked; not yet held." },
   RESCHEDULED: { label: "Rescheduled", tone: "info", tip: () => "Moved to a new time." },
   COMPLETED: { label: "Attended", tone: "ok", tip: (p) => `The host said ${p} came.` },
   NO_SHOW: { label: "No-show", tone: "neutral", tip: (p) => `The host said ${p} did not come.` },
-  CANCELLED: { label: "Cancelled", tone: "neutral", tip: () => "Cancelled." },
+  CANCELLED: { label: "Cancelled", tone: "neutral", tip: (_p, by) => (by ? `Cancelled by ${by}.` : "Cancelled.") },
   EXPIRED: { label: "Cancelled", tone: "neutral", tip: () => "Cancelled." },
 };
 export const personOf = (b: FeedItem) => b.person?.name || "No name";

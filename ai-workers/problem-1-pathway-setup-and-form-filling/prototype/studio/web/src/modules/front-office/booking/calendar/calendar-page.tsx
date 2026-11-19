@@ -172,7 +172,7 @@ function List({ items, zone, open, hour, clearHour }: { items: FeedItem[]; zone:
           <tr key={b.id} data-row={b.id}>
             <td><button type="button" className="text-left text-text-link underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={() => open(b)}>{longWhen(b.startsAt, zone)}–{hhmm(b.endsAt, zone)}</button></td>
             <td>{personOf(b)}</td><td>{b.type.name}</td><td>{b.host.name}</td><td>{MODE_WORDS[b.mode] ?? b.mode}</td>
-            <td><Pill tone={STATUS[b.status].tone} title={STATUS[b.status].tip(personOf(b))}>{STATUS[b.status].label}</Pill></td>
+            <td><Pill tone={STATUS[b.status].tone} title={STATUS[b.status].tip(personOf(b), b.cancelledBy)}>{STATUS[b.status].label}</Pill></td>
           </tr>
         ))}
       </Table>

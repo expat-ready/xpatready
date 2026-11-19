@@ -38,7 +38,7 @@ export function BookingPanel({ id, onClose }: { id: string; onClose: () => void 
   const who = b ? personOf(b) : "";
   return (
     <Panel open onOpenChange={(o) => { if (!o) onClose(); }} title={b ? `${who} · ${b.type.name}` : "Booking"} bodyLabel="Booking details"
-      badge={b && s ? <Pill tone={s.tone} title={s.tip(who)}>{s.label}</Pill> : null}
+      badge={b && s ? <Pill tone={s.tone} title={s.tip(who, b.cancelledBy)}>{s.label}</Pill> : null}
       footer={<><Button variant="outline" onClick={onClose}>Close</Button>
         {b?.canEdit ? (
           <span className="relative">
@@ -80,6 +80,7 @@ function MoveDialog({ b, onClose }: { b: FeedItem; onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Move this booking" description={`Free times for ${b.host.name}`}
       footer={<><Button variant="outline" onClick={onClose}>Close</Button><Button disabled={!at || write.asking} busy={write.busy && !write.asking} onClick={() => void write.go(false)} data-move>Move</Button></>}>
+      {b.insideSelfServiceLimit ? <p className="mb-3 text-sm text-text-warn" data-inside-limit>This is inside the {b.selfServiceLimitHours}-hour limit. {personOf(b)} can no longer change it online.</p> : null}
       <TimeChooser typeId={b.type.id} zone={b.officeTimeZone} value={at} onChange={setAt} />
       {write.ask}
       {write.error ? <Notice tone="danger" title="Not moved" className="mt-3">{write.error}</Notice> : null}

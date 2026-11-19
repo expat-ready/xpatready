@@ -67,6 +67,7 @@ const tue10 = await db.foBooking.count({ where: { firmId: M.id, startsAt: wall(p
 const due = await book(C.id, O.person.id, new Date(now - 61 * MIN)), notYet = await book(C.id, B.person.id, new Date(now - 59 * MIN + 1), "SCHEDULED", true), gone = await book(C.id, P.person.id, new Date(now - 4 * HOUR), "CANCELLED");
 const others = await book(I.id, B.person.id, new Date(now - 3 * HOUR));   // Client I's, ended: the Owner sees its question on the booking
 const billing = await book(BF.id, P.person.id, new Date(now - 2 * HOUR));   // hosted by Billing and finance (no list key)
+const soon = await book(F.id, P.person.id, new Date(Math.ceil((now + 2 * HOUR) / (30 * MIN)) * 30 * MIN));   // starts within the 4-hour limit
 const onColleague = await book(I.id, B.person.id, wall(plus(nextMonday, 2), "16:00")), cHosts = await book(C.id, B.person.id, wall(plus(nextMonday, 3), "16:00"));
 ok("FO-3st1 setup: firm maple, six staff on the seeded roles, Mon-Fri hours, 60 bookings next week with five at Tue 10:00", tue10 === 5, { tue10 });
 
@@ -179,6 +180,32 @@ try {
   ok("FO-3st1 J-S9 fail: a Case Officer on own only with the list key does not see a booking on a colleague's lead (not in Team, not by its link)", seeOther === 0 && byLink === 1, { seeOther, byLink });
   ok("FO-3st1 J-S9 pass: they see the one they host on that lead", seeOwn === 1, { seeOwn });
   await setting(EVERYONE_SEES_ALL.key, true);
+
+  // --------------------------------------------------------------------------------------------- Reschedule and Cancel (More)
+  const moveSentence = async (id: string) => {
+    await go(ow, `/front-office/bookings/${id}`);
+    await ow.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
+    await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Reschedule" }).click();
+    await ow.getByRole("dialog", { name: "Move this booking" }).waitFor();
+    const t = await ow.locator("[data-inside-limit]").innerText().catch(() => "");
+    await axe("Move this booking", ow);
+    await ow.keyboard.press("Escape");
+    return t;
+  };
+  const [inside, outside] = [await moveSentence(soon.id), await moveSentence(cHosts.id)];
+  ok("FO-3st1 detail pass/fail: More → Reschedule says \"This is inside the 4-hour limit. Client P Sample can no longer change it online.\" for a booking 2 h away, and nothing for one next week",
+    inside === "This is inside the 4-hour limit. Client P Sample can no longer change it online." && outside === "", { inside, outside });
+  await go(ow, `/front-office/bookings/${soon.id}`);
+  await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Cancel booking" }).click();
+  await ow.getByRole("button", { name: "Keep booking" }).click();
+  const kept = (await db.foBooking.findUniqueOrThrow({ where: { id: soon.id } })).status;
+  await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Cancel booking" }).click();
+  await axe("Cancel booking?", ow);
+  await ow.locator("[data-cancel-booking]").click();
+  await ow.getByRole("dialog", { name: /Cancel .*booking\?/ }).waitFor({ state: "detached", timeout: 15_000 });
+  const gone2 = (await db.foBooking.findUniqueOrThrow({ where: { id: soon.id } })).status;
+  const chipTip = await ow.locator("[data-booking-detail]").locator("xpath=ancestor::*[@role='dialog']").locator("span[title^='Cancelled by']").getAttribute("title").catch(() => null);
+  ok("FO-3st1 detail pass/fail: Keep booking changes nothing; Cancel booking cancels it, and its chip says who (\"Cancelled by Client F.\")", kept === "SCHEDULED" && gone2 === "CANCELLED" && chipTip === "Cancelled by Client F.", { kept, gone2, chipTip });
 
   // --------------------------------------------------------------------------------------------- DW10 (keyboard, widths)
   await go(ow, `/front-office/bookings${week}`);
