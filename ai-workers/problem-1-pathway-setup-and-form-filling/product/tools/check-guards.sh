@@ -113,9 +113,11 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 25 trusted|product/tools/pipeline-heartbeat.py|s/ if c.get("author_association") in TRUSTED\]/]/|check-pipeline-heartbeat.sh
 25 istdate|product/tools/pipeline-heartbeat.py|s/    posted = t(c\["created_at"\]).astimezone(IST).date()/    posted = t(c["created_at"]).date()/|check-pipeline-heartbeat.sh
 26 off|product/tools/focus-check.py|s/ for x in subject if x not in items and x not in rows\]/ for x in subject if False]/|check-focus-list.sh
-26 first|product/tools/focus-check.py|s/ + named\[:1\] + / + /|check-focus-list.sh
+26 first|product/tools/focus-check.py|s/ else named\[:1\]) + / else []) + /|check-focus-list.sh
 26 verb|product/tools/focus-check.py|s/ + \[x for x in VERB.findall(text) if known(x) and not exempt(x)\]$//|check-focus-list.sh
-26 own|product/tools/focus-check.py|s/(\[own.group(1)\] if own and known(own.group(1)) else \[\])/[]/|check-focus-list.sh
+26 then|product/tools/focus-check.py|s/.\[Tt\]hen.merges,//|check-focus-list.sh
+26 file|product/tools/focus-check.py|s/BRIEF_FILE.sub(file_row, brief)/brief/|check-focus-list.sh
+26 own|product/tools/focus-check.py|s/(\[own.group(1)\] if own and known(own.group(1)) else named\[:1\])/named[:1]/|check-focus-list.sh
 26 exempt|product/tools/focus-check.py|s/^    exempt = lambda r: .*/    exempt = lambda r: r in area/|check-focus-list.sh
 26 notbuilder|product/tools/focus-check.py|s/(?!\[A-Za-z0-9-\])//|check-focus-list.sh
 26 closed|product/tools/focus-check.py|s/^    if not items:/    if False:/|check-focus-list.sh
