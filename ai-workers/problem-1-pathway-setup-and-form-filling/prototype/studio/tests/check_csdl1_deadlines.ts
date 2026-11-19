@@ -5,8 +5,10 @@
 // weekday and marked "(weekend)" or "(closed day)" (r3); a reminder "N working days before" is counted back over open days,
 // never later than the computed day nor after the date (r5, r6); an open day is a weekday in business hours not on the
 // closed-days list (r4). AG-7-96@894c1c8b r2: a deadline is the anchor plus N calendar days. Each named case has a pass and
-// a fail. Pure functions and the fake clock (P-607): no database, no server, no model call (US$0). Every stage deadline is
-// Sample (P-412 F13 (b)); the dates here are AG-7-94's own test dates, no immigration value.
+// a fail. Part 1: pure functions and the fake clock (P-607). Part 2 (CS-DL1b; DW7-DW11 and W1 here, the browser suite's
+// DW7-DW9 are part 1's): reminders as JobPort jobs on a scratch database it drops at the end (see its section). No server,
+// no model call (US$0). Every stage deadline is Sample (P-412 F13 (b)); the dates are AG-7-94's own test dates or test
+// data, no immigration value.
 //   tsx studio/tests/check_csdl1_deadlines.ts
 import { businessClose, businessDaysBetween, BusinessDayTally, calendarDate, countBack, dayMark, isOpenDay, localDate, NO_SUCH_DATE, zonedInstant, type FirmCalendar } from "../api/src/platform/calendar/working-days.ts";
 import * as complaintDays from "../api/src/platform/complaints/business-days.ts";
@@ -128,5 +130,142 @@ ok("CS-DL1 DW6 fail: real dates pass, 29 Feb only in a leap year (2028), not 202
   calendarDate("2027-02-28") === "2027-02-28" && calendarDate("2028-02-29") === "2028-02-29" && refused(() => calendarDate("2027-02-29")));
 ok("CS-DL1 DW6 fail (breaker: bad dates): 2027-13-01, 2027-04-31, 2027-00-10, 2027-3-7, an empty string, a time stamp, a number and null are all refused",
   ["2027-13-01", "2027-04-31", "2027-00-10", "2027-3-7", "", "2027-03-07T00:00:00Z", 20270307, null, "７０２７-03-07"].every((v) => refused(() => calendarDate(v))));
+
+// ================================================================ Part 2 (CS-DL1b): reminders as jobs
+// A scratch database (every migration, PF-3's Sample firms), cases written as SQL fixtures (replica role, as
+// check_csc1_close.ts does): a done-before "study" stage holding the date and a CURRENT "work" stage whose deadline is
+// that date + 0 days, on a route marked CITED (labelled test data: no immigration value; every real route is Sample).
+// fakeJobs on a FakeClock, fakeNotifications wrapped to count calls; close and reopen through CS-C1a's own service.
+// Sample offsets 7, 2 and 0 working days, at 09:00 Toronto (14:00 UTC before 14 Mar 2027).
+const PGBIN = "/opt/homebrew/opt/postgresql@18/bin", PGA = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], SDB = `xr_studio_csdl1b_${process.pid}`;
+const { execFileSync } = await import("node:child_process"), { readdirSync } = await import("node:fs"), { join } = await import("node:path"), { randomUUID } = await import("node:crypto");
+const sql = (q: string) => execFileSync(join(PGBIN, "psql"), [`postgresql://xr_studio@127.0.0.1:54329/${SDB}`, "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8" }).trim();
+const MIG = join(import.meta.dirname, "..", "prisma", "migrations");
+execFileSync(join(PGBIN, "dropdb"), [...PGA, "--if-exists", SDB]); execFileSync(join(PGBIN, "createdb"), [...PGA, SDB]);
+for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(PGBIN, "psql"), [`postgresql://xr_studio@127.0.0.1:54329/${SDB}`, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: "ignore" });
+const { PrismaPg } = await import("@prisma/adapter-pg"), { PrismaClient } = await import("@prisma/client");
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${SDB}`, options: "-c TimeZone=UTC" }) });
+const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { CaseDeadlines } = await import("../api/src/case-deadlines/reminders.ts");
+const { REMINDER_JOB } = await import("../api/src/case-deadlines/plan.ts");
+const { CaseClose } = await import("../api/src/case-close.ts");
+const { fakeJobs } = await import("../ports/jobs.ts");
+const { fakeNotifications, NOTIFICATION_KIND, NOTIFICATION_GROUP } = await import("../ports/notifications.ts");
+try {
+  await seedSampleFirms(db);
+  const firm = async (key: string) => (await db.platformFirm.findUniqueOrThrow({ where: { key } })).id;
+  const FA = await firm("sample-firm"), FB = await firm("sample-solo");
+  const staff = async (actorId: string) => (await db.platformStaff.findUniqueOrThrow({ where: { actorId } })).id;
+  const [REP, OFF, SOLO] = [await staff("user-R"), await staff("user-O"), await staff("user-S")];
+  const W = randomUUID(), CMB = [randomUUID(), randomUUID()];
+  sql(`set session_replication_role = replica; insert into workspace (id, key, label) values ('${W}', 'csdl1b-${process.pid}', 'CS-DL1b check');
+    insert into route (id, workspace_id, key, label, basis, stages, created_by) values (gen_random_uuid(), '${W}', 'test-cited', 'Test route (labelled test data)', 'CITED', '[{"key":"study"},{"key":"work"}]', 'seed:csdl1b'), (gen_random_uuid(), '${W}', 'test-sample', 'Test route, Sample', 'SAMPLE', '[{"key":"study"},{"key":"work"}]', 'seed:csdl1b')`);
+  const clock = new FakeClock("2027-02-20T12:00:00.000Z"), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
+  const calls: { staffId: string; caseId: string; at: string }[] = [];
+  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: typeof NOTIFICATION_KIND.CASE_STAGE_DEADLINE, i: { kind: "case"; id: string }) { calls.push({ staffId: r.staffId, caseId: i.id, at: clock.now().toISOString() }); return inner.notify(tx, r, k, i); } };
+  const dl = new CaseDeadlines({ db, jobs, notifications, clock });
+  await dl.register({ sweep: false });
+  const closer = new CaseClose(db as never);
+  const ctx = (firmId: string, firmKey: string, staffId: string) => ({ staffId, firmId, firmKey, roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" }) as never;
+  let n = 0;
+  /** A case on `route` whose study date is `date` (null: not recorded); team: user-R and user-O, user-T's officer row ended (firm A), or user-S (firm B). */
+  const newCase = (date: string | null, o: { route?: string; firmKey?: string; firmId?: string } = {}) => {
+    const id = randomUUID(), work = randomUUID(), fk = o.firmKey ?? "sample-firm", fid = o.firmId ?? FA, route = o.route ?? "test-cited";
+    const kd = date ? `{"stage.permit_valid_until": {"value": "${date}", "by": "user-O", "at": "2027-02-01T10:00:00.000Z"}}` : "{}";
+    const spec = (dl: boolean) => JSON.stringify({ key_details: dl ? [] : [{ field: "stage.permit_valid_until", label: "Study permit valid until", type: "DATE" }], ...(dl ? { deadline: { label: "Apply by (test)", from_stage: "study", field: "stage.permit_valid_until", add_days: 0 } } : {}) });
+    const team = fk === "sample-firm" ? `('user-R', 'LEAD_REPRESENTATIVE', null), ('user-O', 'OFFICER', null), ('user-T', 'OFFICER', now())` : `('user-S', 'LEAD_REPRESENTATIVE', null)`;
+    sql(`set session_replication_role = replica;
+      insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id) values ('${id}', '${W}', '${CMB[1]}', 'user-P', 'user-O', 'C-2027-${String(++n).padStart(5, "0")}', '${fk}', '${fid}');
+      insert into case_stage (id, workspace_id, case_id, firm_key, firm_id, ord, stage_key, staff_name, client_name, combination_id, state, key_details, spec, route_key, application_subject_id, started_from) values
+        (gen_random_uuid(), '${W}', '${id}', '${fk}', '${fid}', 1, 'study', 'Study permit', 'Study permit', '${CMB[0]}', 'DONE_BEFORE', '${kd}', '${spec(false)}', '${route}', null, null),
+        ('${work}', '${W}', '${id}', '${fk}', '${fid}', 2, 'work', 'Work permit', 'Work permit', '${CMB[1]}', 'CURRENT', '{}', '${spec(true)}', '${route}', gen_random_uuid(), 'BEGIN');
+      insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by, ended_at, ended_by, end_reason) select gen_random_uuid(), '${W}', '${id}', u, r, 'seed:csdl1b', e::timestamptz, case when e is null then null else 'seed:csdl1b' end, case when e is null then null else 'Test: reassigned' end from (values ${team}) t(u, r, e)`);
+    return { id, work };
+  };
+  const setDate = (id: string, v: string) => sql(`update case_stage set key_details = jsonb_build_object('stage.permit_valid_until', jsonb_build_object('value', '${v}', 'by', 'user-O', 'at', '2027-02-01T10:00:00.000Z'))::json where case_id = '${id}' and stage_key = 'study'`);
+  /** Moves the clock forward hour by hour (the fake runs a due job at the time it moves to, as a worker would). */
+  const walk = async (to: string) => { while (clock.now() < new Date(to)) await clock.set(new Date(Math.min(clock.now().getTime() + 3_600_000, Date.parse(to)))); };
+  const mine = (id: string, status?: string) => jobs.jobs.filter((j) => j.name === REMINDER_JOB && j.payload.caseId === id && (!status || j.status === status));
+  const told = (id: string) => calls.filter((c) => c.caseId === id);
+  const at = (id: string) => told(id).map((c) => c.at.slice(0, 16)).filter((x, i, a) => a.indexOf(x) === i);
+  const withdraw = (id: string) => closer.withdraw(ctx(FA, "sample-firm", REP), id, { reason: "Test: the client withdrew", withdrawnOn: "2027-02-26" });
+  const reopen = (id: string) => closer.reopen(ctx(FA, "sample-firm", REP), id, { reason: "Test: the client came back" });
+
+  ok("CS-DL1 part 2 setup: the kind is added, never reordered: case-stage-deadline, in My deadlines", NOTIFICATION_KIND.CASE_STAGE_DEADLINE === "case-stage-deadline" && Object.keys(NOTIFICATION_KIND)[0] === "PORT_SELF_TEST" && NOTIFICATION_GROUP[NOTIFICATION_KIND.CASE_STAGE_DEADLINE] === "MY_DEADLINES");
+
+  // ---------------------------------------------------------------- DW7 three reminders, each once
+  const a = newCase("2027-03-08"), sample = newCase("2027-03-08", { route: "test-sample" }), w1 = newCase(null);
+  await dl.sweep();
+  ok("CS-DL1 DW7 pass: a cited deadline Mon 8 Mar 2027 arms three keyed jobs at 09:00 Toronto: Thu 25 Feb (7 working days), Thu 4 Mar (2), Mon 8 Mar (on the day)",
+    mine(a.id).map((j) => `${j.payload.offset}@${j.runAt.toISOString()}|${j.key}|${j.firmId}`).join() === [7, 2, 0].map((o, i) => `${o}@${["2027-02-25", "2027-03-04", "2027-03-08"][i]}T14:00:00.000Z|deadline:${a.id}:${a.work}:${o}:2027-03-08:r0|${FA}`).join(), mine(a.id).map((j) => [j.key, j.runAt]));
+  const forced = { caseId: sample.id, stageId: sample.work, offset: 0, due: "2027-03-08", day: "2027-03-08", round: 0 };
+  ok("CS-DL1 DW7 fail (P-412 F13 (b)): the same deadline on a Sample route arms nothing (shown, never reminded), even asked directly, and a forced job for it tells nobody; a case with no date arms nothing",
+    mine(sample.id).length === 0 && (await dl.arm(sample.id)).length === 0 && (await dl.runReminder({ payload: forced, firmId: FA })) === 0 && mine(w1.id).length === 0);
+  await dl.sweep();
+  ok("CS-DL1 DW7 fail: a second run of the scheduler queues nothing new (the keys)", mine(a.id).length === 3 && jobs.jobs.filter((j) => j.name === REMINDER_JOB).length === 3);
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW7 pass: each reminder fires once, to the representative and the current officer (not the officer whose assignment ended): two people at each of the three times",
+    told(a.id).length === 6 && at(a.id).join() === "2027-02-25T14:00,2027-03-04T14:00,2027-03-08T14:00" && told(a.id).every((c) => [REP, OFF].includes(c.staffId)) && mine(a.id, "done").length === 3, told(a.id));
+  const records = inner.sent().length, redo = await dl.runReminder({ payload: mine(a.id)[2].payload, firmId: FA });
+  ok("CS-DL1 DW7 fail (breaker: a redelivered job): the on-the-day job delivered again after its day does nothing; the port holds one record per person and case", redo === 0 && inner.sent().length === records && inner.sent().filter((r) => r.item.id === a.id).length === 2);
+  ok("CS-DL1 DW7 fail: nothing was told on the Sample route's case", told(sample.id).length === 0);
+
+  // ---------------------------------------------------------------- W1 the journey, scripted
+  await clock.set("2027-02-20T12:00:00.000Z");
+  await dl.sweep();
+  ok("CS-DL1 W1: a case on a cited route with its key detail not yet recorded: the deadline can't be set, nothing armed", mine(w1.id).length === 0);
+  setDate(w1.id, "2027-03-08"); await dl.sweep();
+  ok("CS-DL1 W1: the key detail recorded (8 Mar 2027): the three reminders are armed", mine(w1.id, "waiting").length === 3);
+  await withdraw(w1.id); await dl.sweep(); await walk("2027-02-27T12:00:00.000Z");
+  ok("CS-DL1 W1: closed (withdrawn): the waiting reminders are cancelled and none fires (the 25 Feb one included)", mine(w1.id, "cancelled").length === 3 && told(w1.id).length === 0);
+  await reopen(w1.id); await dl.sweep(); await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 W1: reopened: the two still to come are armed (round 1) and fire once each; the passed one never fires late", mine(w1.id).filter((j) => j.key.endsWith(":r1")).map((j) => j.payload.offset).join() === "2,0" && at(w1.id).join() === "2027-03-04T14:00,2027-03-08T14:00" && told(w1.id).length === 4, at(w1.id));
+
+  // ---------------------------------------------------------------- DW8 close and reopen
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const b = newCase("2027-03-08"); await dl.sweep();
+  await walk("2027-02-26T12:00:00.000Z");
+  ok("CS-DL1 DW8 setup: the 7-day reminder fired on 25 Feb", at(b.id).join() === "2027-02-25T14:00");
+  await withdraw(b.id); await reopen(b.id); await dl.sweep();   // breaker: close and reopen in the same minute, one sweep
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW8 pass (breaker: close and reopen in one minute): only those still to come are armed again (2 and 0, round 1) and each fires once; the passed 7-day one does not fire again",
+    at(b.id).join() === "2027-02-25T14:00,2027-03-04T14:00,2027-03-08T14:00" && told(b.id).length === 6 && mine(b.id).filter((j) => j.key.endsWith(":r1")).length === 2, at(b.id));
+  ok("CS-DL1 DW8 fail: the round-0 jobs left waiting by the same-minute close ran and told nobody (a job of an earlier round does nothing)", mine(b.id).filter((j) => j.key.endsWith(":r0") && j.payload.offset !== 7).every((j) => j.status === "done"));
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const c2 = newCase("2027-03-08"); await dl.sweep(); await withdraw(c2.id); await walk("2027-02-20T12:09:00.000Z"); await dl.sweep();
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW8 pass: closing cancels the case's waiting reminders (job key prefix deadline:) and none fires", mine(c2.id, "cancelled").length === 3 && told(c2.id).length === 0 && mine(c2.id).every((j) => j.key.startsWith("deadline:")));
+  await reopen(c2.id); await dl.sweep(); await walk("2027-03-10T12:00:00.000Z");
+  ok("CS-DL1 DW8 fail: reopened after the deadline day, nothing is armed and nothing fires late", mine(c2.id).length === 3 && told(c2.id).length === 0);
+
+  // ---------------------------------------------------------------- DW9 a changed date re-arms
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const d = newCase("2027-03-08"); await dl.sweep(); setDate(d.id, "2027-03-15"); await dl.sweep();
+  await walk("2027-03-16T12:00:00.000Z");
+  ok("CS-DL1 DW9 pass: the date moved to Mon 15 Mar 2027 arms a new set that fires once each: Thu 4 Mar, Thu 11 Mar, Mon 15 Mar (09:00 EDT = 13:00 UTC)",
+    at(d.id).join() === "2027-03-04T14:00,2027-03-11T14:00,2027-03-15T13:00" && told(d.id).length === 6 && mine(d.id).length === 6, at(d.id));
+  ok("CS-DL1 DW9 fail: the old date's three jobs ran and told nobody (25 Feb and 8 Mar never reminded)", mine(d.id).filter((j) => j.payload.due === "2027-03-08").every((j) => j.status === "done") && !at(d.id).some((x) => x.startsWith("2027-02-25") || x.startsWith("2027-03-08")));
+
+  // ---------------------------------------------------------------- DW10 firm walls, DW11 closed days (firm B)
+  const { CLOSED_DAYS, writeSetting } = await import("../api/src/platform/settings.ts");
+  const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
+  await writeSetting(db as never, { firmId: FB, key: CLOSED_DAYS.key, value: ["2027-03-04", "2027-03-05", "2027-03-08"], by: "seed:csdl1b", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const e = newCase("2027-03-08", { firmKey: "sample-solo", firmId: FB });
+  // A stray team row naming firm A's officer by staff id on firm B's case (bad data): firm B's jobs never find firm A's staff.
+  sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values (gen_random_uuid(), '${W}', '${e.id}', '${OFF}', 'OFFICER', 'seed:csdl1b')`);
+  await dl.sweep();
+  ok("CS-DL1 DW11 pass: firm B closed Thu 4, Fri 5 and Mon 8 Mar: the reminders move earlier, never later: Tue 23 Feb (7), Tue 2 Mar (2), Wed 3 Mar (on the day)",
+    mine(e.id).map((j) => j.payload.day).join() === "2027-02-23,2027-03-02,2027-03-03", mine(e.id).map((j) => j.payload.day));
+  ok("CS-DL1 DW11 fail: no reminder day is a closed day, a weekend, or later than firm A's for the same date", mine(e.id).every((j, i) => !["2027-03-04", "2027-03-05", "2027-03-08"].includes(String(j.payload.day)) && String(j.payload.day) <= ["2027-02-25", "2027-03-04", "2027-03-08"][i]));
+  ok("CS-DL1 DW10 pass: firm B's case's jobs carry firm B's id", mine(e.id).every((j) => j.firmId === FB));
+  const cross = await dl.runReminder({ payload: mine(e.id)[0].payload, firmId: FA }), back = await dl.runReminder({ payload: mine(a.id)[0].payload, firmId: FB });
+  ok("CS-DL1 DW10 fail: a job carrying firm A's id refuses firm B's case (never reaching the stray firm A officer), and firm B's id refuses firm A's: nobody told", cross === 0 && back === 0 && told(e.id).length === 0);
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW10 pass: firm B's reminders tell firm B's representative only, never firm A's staff", told(e.id).length === 3 && told(e.id).every((c) => c.staffId === SOLO), told(e.id));
+} finally {
+  await db.$disconnect();
+  execFileSync(join(PGBIN, "dropdb"), [...PGA, "--if-exists", SDB]);
+}
 
 process.exit(summary() ? 1 : 0);
