@@ -2056,3 +2056,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * **PARK:** FO-3st3 (R1.42 is more than 3 parts: FO-3a 2b waits on FO-3vr, then FO-3st1, FO-3st3, J-42) and PF-15 part 2 (R1.20 waits on the founder's D4 rule).
   * **Redirect:** #2103's lane → **J-37** (R1.37). Its parts are on main except FO-2 part 3b's arrival swap, which it merges in when that exists.
   * PF-6b needs no founder decision and goes to the #2029 lane after #2029 merges. #2172 is J-6 part 2.
+* Lead 85 redirected both cloud lanes at 07:2x IST: #2011's lane → FO-2 part 3b, #2103's lane → J-37. The current Lead is now **Lead 86** (`local_bb67266d-be45-4ab8-9ba8-b4f3b4596ebe`).
