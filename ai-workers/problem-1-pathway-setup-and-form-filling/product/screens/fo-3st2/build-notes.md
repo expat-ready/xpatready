@@ -55,3 +55,6 @@ One conflict, the one-line clash the brief foresaw in `account-sections.ts` (PF-
 
 ## Base moved a fourth time (19 Nov 03:3x UTC): #2103's tip c72bca8cd merged in (it merged main; migration restamped to 20261119031000)
 Clean merge; none of the staff frame, session, menu, routes, booking settings, slots or guard files changed in it. Re-run on fresh copies: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52, check_fo3w_booking_browser 67/67, check_pf6_staff_browser 90/90; all exit 0.
+
+## HOLD (19 Nov, Lead 87, 10:4x IST; RULES.md as of P-724: P-721 protect the merge path, P-722 proof per item, P-723 drain, P-724 journey factory)
+FO-3st2 holds. No PR opened, no label. State at hold: branch head is the records commit after the reviewer's Approve on 36dc2484c (base #2103 at c72bca8cd merged in; five suites pass). The scheduled check-ins are cancelled. Resume only on Lead B's next step: then (if #2103 is on main) merge origin/main once, re-run the five suites (FO-3st2, pf1 module routes, pf6a frame, fo3w booking, pf6 staff), diff-only re-review, open the PR non-draft with the Approve and the two questions for the tech lead (duplicate set names; a deactivated colleague editable by URL).
