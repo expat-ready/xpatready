@@ -1,35 +1,43 @@
 # Review: PF-18a part 2, personal notification settings + NotificationPrefsPort (reviewer, 19 Nov 2026)
 
-Branch `claude/runtime-pf18a-notif-prefs`, draft PR #2304. API and schema row with no screen, so it is judged against the brief `design/lead-b-briefs/PF-18a.md` (part 2, DW5, DW7), AG-16-10, AG-16-11, AG-16 §3.3 (lines 555-577) and STANDARDS. DW6 (`hostZone()`) waits for #2284 as instructed, so it is not a finding; a re-review needs it.
+Branch `claude/runtime-pf18a-notif-prefs`, draft PR #2304. API and schema row with no screen, so it is judged against the brief `design/lead-b-briefs/PF-18a.md` (part 2, DW5, DW7), AG-16-10, AG-16-11, AG-16 §3.3 (lines 555-577) and STANDARDS. DW6 (`hostZone()`) arrived in round 3, after #2284.
 
-**Verdict (round 2, `644017db54c1e9330e5ba1ee3b057410c05f200a`): Block.** The round 2 fix for breaker m2 brings in one new Major (a 500), and there is one new Minor. Every round 1 finding is fixed and verified. Journey score **8.5/10** is unchanged (`journey-test-reviewer-2026-11-19.md`); the J9 stale tab now gets 409.
+**Verdict (round 3, `ecc1ec248e2af13dc8901aa6fef8c014241c9387`): Approve.** No open Blocker or Major. DW5, DW6 and DW7 are met; the R2 Major is fixed. One Minor is open (R3-1, a test gap); it does not block. Journey score **8.5/10** is unchanged (`journey-test-reviewer-2026-11-19.md`).
 
-## Round 2: diff only (`git diff 4130eb109..644017db5`, P-277)
-Ran: `check_pf18a_notifications.ts` **65 passed, 0 failed**; a scratch worktree with 11 mutations (10 one at a time, then the two M1 guards together); an isolated copy on **:4433** (never :4400); `module-cards.py pr` with the live PR body: **PASS**.
+## Round 3: diff only (`git diff 644017db5..ecc1ec248 -- ':!*/product/screens/*'`, P-277)
+What I ran:
+* `check_pf18a_notifications.ts`: **72 passed, 0 failed**.
+* Booking suites on this tree: `check_fo3_booking.ts` 133/0 (FO-3h's hostZone cases), `check_pf19b_mail.ts` 28/0, `check_fo2p3b_arrival_port.ts` 51/0.
+* `tsc -p api` clean; `any` count 416, baseline 433.
+* 9 mutations in a scratch worktree: 8 caught.
+* The merge of main: our files change only by 531c1a0f2. Newest migration on main is `20261119081500`, earlier than ours.
 
-| Finding | Fix | Verified by |
-|---|---|---|
-| R1 Major 1, stamp test time bomb | `all.at(-1) === NEW` dropped (test:62) | a later folder `20261120000000_zz_later_row` gives 65/0 (it was 58/1) |
-| R1 m2, lock untested | the parallel saves use opposite orders, and the second one is 409 | lock removed: FAIL 5/5; version check moved out of the lock: FAIL 5/5 |
-| R1 m3, own-only read | the Owner's GET checked after the officer saves | the staff filter dropped from `savedRows`: FAIL |
-| R1 m4, ended grants | an Admin with an ended grant gets no Firm and connections | `endedAt: null` dropped: FAIL |
-| R1 m5 / break m1, stale tab | `version` (hash of the saved rows); 409 with `current` | no check: FAIL; hash ignores values: FAIL; live: stale PUT gives 409 |
-| R1 m6, group 7 email-off items | port rule list (`ports/notification-prefs.ts:11-13`) and `MODULE.rows` | read |
-| R1 m7, PR body | Done-when list, `Duplicate check:`, `Card unchanged:` for features | `module-cards.py pr` PASS |
-| break M1, uncapped problems | max 8 checked before the items (`pipe`), issues capped at 20 | each guard alone survives (they back each other up); both removed: FAIL (6,001 issues); live 7 MB body: 413 in 28 ms |
-| break m2, `__proto__` | `protoKey` refuses it | check off: FAIL (409); **but see R2-1** |
-| break m3, SECURITY on IN_APP | `decide` gives false | mutation back to true: 5 FAIL (suite + contract) |
+| Item | Verified by |
+|---|---|
+| R2-1, `protoKey` 500 | Body and first 8 groups only, no recursion (`service.ts:28-30`). The 5 000-deep cases in the test answer 400. Mutation "groups not checked": FAIL. |
+| R2-2, issue line size | Each line cut to 200 characters (`service.ts:23`). Mutation "cut removed": FAIL (a 32 KB reply). |
+| CodeQL partial replace | The `__proto__` bodies are written out whole (test:150). Same assertion as before. |
+| DW6 `hostZone()` | `service.ts:188`: office zone through `OfficeClockPort`; the firm's zone with no office or no port. Mutations caught: port ignored (FAIL ×2), `zoneFor(firm, null)` (FAIL ×2), host-mail caller (`:594`) without the port (FAIL). A host with no office keeps the firm's zone; moving the host to another office moves the zone. |
+| DW6 injection | `features/front-office-booking.ts` injects `OFFICE_CLOCK`. Caught: factory drops `offices`; `inject` lacks the token; `runtimeBookingPorts` drops it from the result. All features go into one Nest module (`features.ts`), so the token resolves. |
+| Jobs in scope | The host-mail job carries `firmId`, and `platform-jobs.ts:68` runs it in `withFirm`. So `OfficeClock`'s scope check passes where `readSetting` used to read silently. |
 
-### Open findings
-1. **Major (Must): a nested body makes the route answer 500.** `S/api/src/platform/settings/notifications/service.ts:28` `protoKey` recurses into every nested object with no depth limit. Before this fix, `strictObject` refused the unknown key with a 400 without walking inside it.
-   * Failing case (live, :4433): PUT `{"version":"x","groups":[{"group":"MENTIONS","inApp":true,"email":true}],"z":` + `{"a":` × 5 000 + `1` + `}` × 5 000 + `}` (30 KB) returns **500**. The log shows `RangeError` at `protoKey (service.ts:28)` and an Errors metric of 1.
-   * Depths of 100 000 and 400 000, and a 100 000-deep array inside a group item, also return 500.
-   * Any of the six roles can do this. It breaks the file's own rule ("an unknown field refuses the whole save (400)") and the repo's "never a 500" bar (guard, break M1). Each request writes an error-level line with a stack.
-   * Fix: check for an own `__proto__` key only on the body and on each of at most 8 `groups` items. Those are the only objects the schema accepts; anything deeper is already an unknown key. Add the 5 000-deep case to the test.
-2. **Minor (Should): one problem line is still unbounded.** zod's "Unrecognized keys" issue lists every extra key.
-   * Failing case: a 3.5 MB body with 300 000 extra top-level keys returns a 400 that is **3.8 MB**, in 574 ms. With 8 at once, another person's GET took **3.3 s**. The same 8 bodies sent to a route that 404s cost 1.2 s, so this route adds about 2 s on top of JSON parsing.
-   * Same class as break M1, though far smaller (reply 1.1× the request, against 8× before).
-   * Fix: cut each issue string (for example `.slice(0, 200)`) in `refused` (service.ts:23), next to `MAX_ISSUES`.
+The coordinator asked whether an optional `offices` in `BookingPorts` and `runtimeBookingPorts` is a risk. **Acceptable; not a finding.**
+* The app has one production wiring, and three mutations of it are caught.
+* A missing port falls back to the pre-PF-18a behaviour (the firm's zone), not a crash.
+* Making it required would edit two unrelated suites outside the touch list (`check_pf19b_mail.ts`, `check_fo2p3b_arrival_port.ts`).
+* What remains: a second production wiring added later could forget the port. It would then mail the firm's zone.
+
+The brief's "attendance-question emails" do not exist yet: `runAttendanceAsk` only parses its payload. So DW6 has only the host's booking mail to change. Not a finding.
+### Open finding
+1. **R3-1, Minor (Should): the second hostZone caller has no failing test.** Dropping the port from `warningsFor` (`service.ts:718`) survives.
+   * That line sets the time on the staff "Overlaps … 09:00–09:30" warning for a host in another office.
+   * Fix (optional, this PR or FO-3's next): one check that a Calgary host's overlap label reads in Edmonton time.
+   * Note: the label shows the host's office time with no "(Calgary)" tag, which AG-1-74 rule 5 asks for when it differs from the viewer's zone. That label is FO-3h's design, not this row's.
+
+## Round 2 (`644017db5`), fixed in round 3
+All round 1 findings and the breaker's M1 and m1-m3 were fixed and verified by mutation. New then:
+* **R2-1 (Major):** `protoKey` recursed, so a 30 KB body nested 5 000 deep gave 500.
+* **R2-2 (Minor):** an "Unrecognized keys" line was unbounded (a 3.8 MB reply).
 
 ## Brief and requirement fit (DW5, DW7)
 | Case | Result | Evidence |
@@ -42,6 +50,7 @@ Ran: `check_pf18a_notifications.ts` **65 passed, 0 failed**; a scratch worktree 
 | `agent/notification:manage-preferences`, all six roles, own only | Met | test l.112 (six 200s); body `staffId` gives 400; firm B's save leaves firm A alone |
 | DW7: one contract, run by the real adapter and the fake; `check-port-contracts.mjs` | Met | both 6/6; two broken adapters fail it |
 | DW7: migration in a parallel world (demo-shaped copy, `migrate diff` clean) | Met (R1 Major 1 fixed) | test l.70-87 |
+| DW6: host in another office gets the office zone; no office gives the firm's (FO-3h cases pass) | Met (round 3) | test DW6 block; `check_fo3_booking.ts` 133/0 |
 
 The builder's choices, judged:
 * Switches per group: right (AG-16-10 "switches for the eight groups").
@@ -59,7 +68,7 @@ The builder's choices, judged:
 * §4 ports and adapters, contract first (zod in `ports/`, imports zod only): **met**.
 * §5 migrations preserve records, rollback recorded: **met**. Additive only, rollback in the header, demo copy unchanged (test l.79).
 * §5 indexed reads, no N+1: **met**. One query for the rows, one for the role keys.
-* §6 RFC 9457 problems, server authorisation, deny by default: met, **except R2-1** (a 500 on a nested body).
+* §6 RFC 9457 problems, server authorisation, deny by default: met (round 3; R2-1 fixed).
 * §7 module card: **met** (`Card unchanged:` for features; `MODULE.rows/PF-18a.md`).
 * §10 consequential choices recorded: met.
 
@@ -81,9 +90,10 @@ Findings:
 * D17 and D20: simulated only.
 * `graph.mjs` (G1 0, G2 0, G3 161, G4 0, G5 0, G6 17) does not index the empty-path `@Get()`/`@Put()` on `api/platform/me/notifications` (nor part 1's offices GET/POST). That is a tool gap, so no finding.
 * CI itself was not run: the PR is a draft.
-* The builder committed this file and the journey report into the PR at `644017db5`. This round 2 edit is left uncommitted.
+* The builder commits this file into the PR. This round 3 edit is left uncommitted.
+* Live mail delivery of the Calgary host's email in the running app. The suite runs it on `fakeMail`; DI is proven by the one-module feature list.
 
 ## D scores (0-3, this row's scope)
-D1 3 (DW5 and DW7 met; DW6 deferred by instruction) · D2 3 (database and service checks, race-safe) · D3 3 (one enum, one data file) · D4 N/A · D5 2 (round 2: stale tab now 409; a nested body gives 500, R2-1) · D6 2 (§3.3 cited with the date read; no audit, rightly) · D7 N/A (no AI) · D8-D9 N/A · D10 2 (plain detail lines; zod text in `issues`) · D11 2 (`saved` and defaults shown) · D12-D14 N/A · D15 3 (GET 10-17 ms, PUT 26-44 ms) · D16 3 (round 2: every rule mutation caught; R2-1 adds one case) · D17 simulated only · D18 3 (the source block in the data) · D19 N/A (PF-18n and PF-18s close the loop) · D20 simulated only.
+D1 3 (DW5, DW6, DW7 met) · D2 3 (database and service checks, race-safe) · D3 3 (one enum, one data file) · D4 N/A · D5 3 (stale tab gets 409; hostile bodies get 400) · D6 2 (§3.3 cited with the date read; no audit, rightly) · D7 N/A (no AI) · D8-D9 N/A · D10 2 (plain detail lines; zod text in `issues`) · D11 2 (`saved` and defaults shown) · D12-D14 N/A · D15 3 (GET 10-17 ms, PUT 26-44 ms) · D16 3 (round 2: every rule mutation caught; R2-1 adds one case) · D17 simulated only · D18 3 (the source block in the data) · D19 N/A (PF-18n and PF-18s close the loop) · D20 simulated only.
 
-Reviewer: Request changes. Fix R2-1 (Major). R2-2 should land with it.
+Reviewer: Approve ecc1ec248e2af13dc8901aa6fef8c014241c9387 (R3-1 Minor open, non-blocking).
