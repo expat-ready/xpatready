@@ -1,0 +1,30 @@
+{
+  "item": "R1.33",
+  "name": "33 Phone numbers",
+  "pr": 2268,
+  "sha": "7aa9b3b8449b5b501094e8dd14b0b629d77ff117",
+  "run_id": "44619429206",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44619429206",
+  "at": "2026-11-19T21:34:05.325Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_33.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44619429206/artifacts/14575354681",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.33-7aa9b3b8449b5b501094e8dd14b0b629d77ff117.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
