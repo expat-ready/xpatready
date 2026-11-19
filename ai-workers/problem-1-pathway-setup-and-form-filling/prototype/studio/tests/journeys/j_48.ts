@@ -88,8 +88,8 @@ const inbox = async (address: string, want = 1): Promise<Mail[]> => {
   await until(async () => { m = (await api(null, "GET", `/demo/platform-inbox?address=${encodeURIComponent(address)}`)).body?.messages ?? []; return m.length >= want; }, 90_000);
   return m;
 };
-type Row = { id: string; state: string; reason: string | null; provider: string | null; kind: string | null };
-const outboxTo = (address: string): Row[] => JSON.parse(rawSql(`select coalesce(json_agg(json_build_object('id', id, 'state', state, 'reason', state_reason, 'provider', provider_id, 'kind', subject_kind) order by created_at), '[]') from msg_outbox where address = '${address.toLowerCase()}'`));
+type Row = { id: string; state: string; reason: string | null; provider: string | null; kind: string | null; subject: string | null };
+const outboxTo = (address: string): Row[] => JSON.parse(rawSql(`select coalesce(json_agg(json_build_object('id', id, 'state', state, 'reason', state_reason, 'provider', provider_id, 'kind', subject_kind, 'subject', subject_id) order by created_at), '[]') from msg_outbox where address = '${address.toLowerCase()}'`));
 const stateIs = (address: string, state: string, ms = 150_000) => until(async () => outboxTo(address).some((r) => r.state === state), ms);
 /** The one layout (PF-19b): every email's HTML ends with the firm's own "Sent by <firm>" line. */
 const oneLayout = (m: Mail | undefined, f: { name: string }) => !!m && m.html.includes(`Sent by ${f.name}`);
@@ -106,8 +106,9 @@ const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name
 const axeOf = async (p: Page, name: string) => { const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze(); ok(`J-48 ${name}: axe finds no WCAG A/AA violation`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes.length}`)); };
 const noSideways = async (p: Page, name: string) => { for (const w of [1024, 1440]) { await p.setViewportSize({ width: w, height: 900 }); ok(`J-48 ${name} at ${w} px: no sideways page scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)); } };
 
-const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = '${A.id}' and s.status <> 'ENDED' limit 1`).split("|");
-sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 10} where id = '${plan[0]}'`);   // a seat lent for W2's invitation, given back in the finally
+// A seat lent to each firm for its invitation (W2, DW4), given back in the finally.
+const plans = [A, B].map((f) => sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = '${f.id}' and s.status <> 'ENDED' limit 1`).split("|"));
+for (const [id, seats] of plans) sql(`update platform_plan set seats_limit = ${Number(seats) + 10} where id = '${id}'`);
 const invited: [string, string][] = [];   // [token, invitation id], revoked at the end: repeatable on a kept copy
 try {
   // ---------------------------------------------------------------------------------------------- W1 a visitor books
@@ -166,17 +167,19 @@ try {
   // ---------------------------------------------------------------------------------------------- W4 a hard bounce stops the next send
   const k2 = await newCase("w4"), gone = SAMPLE_BOUNCE_ADDRESSES[0];
   sql(`delete from msg_suppression where firm_id = '${A.id}' and address = '${gone}'`);   // a kept copy starts W4 clean
-  const sent4 = await sendTo(k2, gone), bounced = await stateIs(gone, "BOUNCED");
-  const again = await sendTo(k2, gone), rows4 = outboxTo(gone).filter((r) => r.kind === "CASE_PARTY").slice(-2);
+  const mine = () => outboxTo(gone).filter((r) => r.subject === k2.adult);   // this run's rows only: a kept copy holds earlier runs' rows for the same Sample address
+  const sent4 = await sendTo(k2, gone), bounced = await until(async () => mine().some((r) => r.state === "BOUNCED"), 150_000);
+  const again = await sendTo(k2, gone), rows4 = mine();
   ok("J-48 W4 pass: the adult's address hard-bounces (the provider's test event): the message reads BOUNCED and the address is suppressed once",
     sent4.status < 300 && bounced && sql(`select count(*) from msg_suppression where firm_id = '${A.id}' and address = '${gone}' and reason = 'HARD_BOUNCE'`) === "1", { status: sent4.status, rows4 });
   ok("J-48 W4 pass: sending again sends nothing, and the person sending reads why in words (409, \"Not sent: this address does not take email from the firm\")",
-    again.status === 409 && again.body?.code === "ADDRESS_NOT_SENT" && /^Not sent: this address does not take email from the firm/.test(again.body?.detail ?? "") && outboxTo(gone).filter((r) => r.state === "SENT" || r.state === "QUEUED").length === 0, again.body);
-  ok("J-48 W4 fail: an address that did not bounce is not refused (W3's partner gets a second email)", (await sendTo(k1, partner)).status < 300 && (await stateIs(partner, "DELIVERED")));
+    again.status === 409 && again.body?.code === "ADDRESS_NOT_SENT" && /^Not sent: this address does not take email from the firm/.test(again.body?.detail ?? "") && rows4.length === 1 && mine().length === 1, again.body);
+  ok("J-48 W4 fail: an address that did not bounce is not refused (W3's partner gets a second email)", (await sendTo(k1, partner)).status < 300 && (await until(async () => outboxTo(partner).length === 2 && outboxTo(partner).every((r) => r.state === "DELIVERED"), 150_000)), outboxTo(partner));
 
   // ---------------------------------------------------------------------------------------------- W5 where staff read the state
   ok("J-48 W5 pass: W1's and W2's emails read DELIVERED within one worker cycle (the provider's test events, no SES)", (await stateIs(visitor, "DELIVERED")) && (await stateIs(invitee, "DELIVERED")), [outboxTo(visitor), outboxTo(invitee)]);
-  const leadId = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A.id}' and p.email = '${visitor}' limit 1`);
+  // The booking's arrival (FO-2 part 3b, the real ArrivalPort) made the visitor a person with a lead; on the in-memory stand-in there is neither.
+  const leadId = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A.id}' and lower(p.email) = '${visitor}' order by l.created_at desc limit 1`);
   await owner.setViewportSize({ width: 1440, height: 900 }); await owner.goto(`${BASE}/front-office/leads/${leadId}`);
   const box = owner.locator("[data-messages-panel]"); await box.locator("[data-message]").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
   const words = await box.locator("[data-state-word]").allInnerTexts(), boxText = (await box.count()) ? await box.innerText() : "";
@@ -222,20 +225,21 @@ try {
     },
     updateHttpClientConfig() {}, httpHandlerConfigs() { return {}; }, destroy() {},
   };
-  const files = new LocalFiles(join(STUDIO, "var", `isolated-${NAME}`, "front-office-files")), clock = new FakeClock(new Date()), jobs = fakeJobs(clock), consent = new ConsentStore(auditEvent, clock), alerts = fakeAlerts();
+  const files = new LocalFiles(join(STUDIO, "var", `isolated-${NAME}`, "front-office-files")), clock = new FakeClock(new Date()), consent = new ConsentStore(auditEvent, clock), alerts = fakeAlerts();
   const tokens = new UnsubscribeTokens({ current: 3, keys: new Map([[3, new Secret("PLATFORM_SECRET_BOX_KEYS v3", randomBytes(32).toString("base64"))]]) });
   const sesOptions = { files, tokens, publicBase: "https://app.expatready.example", sender: "messages@mail.expatready.example", requestHandler: recorded as never,
     credentials: { accessKeyId: new Secret("SES_ACCESS_KEY_ID", `AKIA${randomBytes(8).toString("hex").toUpperCase()}`), secretAccessKey: new Secret("SES_SECRET_ACCESS_KEY", randomBytes(30).toString("base64")) } };
   const bySetting = (environment: "local" | "test", region: string | null) => emailAdapter({ environment, ses: { region } }, sesOptions);
   connectLocalNotices(null);   // this process's own local sends give no test event
-  const wire = async (environment: "local" | "test", region: string | null) => { const m = new Messages({ db, consent, files, jobs, alerts: () => alerts, channels: channelsOf([["EMAIL", bySetting(environment, region)]]), clock }); await m.register(); return m; };
-  const sendBy = async (m: Messages, firmId: string, address: string) => {
+  type Wired = { m: Messages; jobs: ReturnType<typeof fakeJobs> };   // each wiring has its own job runner: one queue has one handler
+  const wire = async (environment: "local" | "test", region: string | null): Promise<Wired> => { const jobs = fakeJobs(clock), m = new Messages({ db, consent, files, jobs, alerts: () => alerts, channels: channelsOf([["EMAIL", bySetting(environment, region)]]), clock }); await m.register(); return { m, jobs }; };
+  const sendBy = async ({ m, jobs }: Wired, firmId: string, address: string) => {
     const r = await db.$transaction((t) => m.send(t, { firmId, channel: "EMAIL", class: "TRANSACTIONAL", address, content: { subject: "Your documents (Sample)", text: "Sample." }, idempotencyKey: randomUUID() }));
     if (r.state === "QUEUED") { await m.dispatch(firmId, [r.outboxId]); await jobs.runDue(); }
     return { ...r, row: await db.msgOutbox.findUniqueOrThrow({ where: { id: r.outboxId } }) };
   };
   const viaSes = await wire("test", "ca-central-1"), viaLocal = await wire("local", "ca-central-1");
-  const dw2 = async (m: Messages, tag: string) => { const n = seen.length, r = await sendBy(m, A.id, `j48.${tag}.${run}@example.com`); return { r, real: seen.length === n + 1 && seen.at(-1)!.host === "email.ca-central-1.amazonaws.com" && r.row.state === "SENT" && !!r.row.providerId?.startsWith("ses:") }; };
+  const dw2 = async (m: Wired, tag: string) => { const n = seen.length, r = await sendBy(m, A.id, `j48.${tag}.${run}@example.com`); return { r, real: seen.length === n + 1 && seen.at(-1)!.host === "email.ca-central-1.amazonaws.com" && r.row.state === "SENT" && !!r.row.providerId?.startsWith("ses:") }; };
   const s2 = await dw2(viaSes, "ses");
   ok("J-48 DW2 pass: PLATFORM_ENVIRONMENT=test with PLATFORM_SES_REGION picks the SES adapter (one signed request to SES's endpoint, on a recorded answer); local picks the local adapter",
     s2.real && bySetting("local", "ca-central-1") === localEmail && bySetting("test", null) === localEmail && bySetting("test", "ca-central-1") !== localEmail, { row: s2.r.row.providerId, hosts: seen.map((x) => x.host) });
@@ -269,8 +273,9 @@ try {
 
   // ---------------------------------------------------------------------------------------------- DW5 the trial cap
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(clock.now());
+  for (const f of [A, B]) await db.msgFirm.upsert({ where: { firmId: f.id }, create: { firmId: f.id }, update: {} });
   const counter = (firmId: string, n: number) => sql(`insert into msg_send_counter (firm_id, day, sent, updated_at) values ('${firmId}', '${day}', ${n}, now()) on conflict (firm_id, day) do update set sent = ${n}`);
-  const was = { A: sql(`select coalesce((select sent from msg_send_counter where firm_id = '${A.id}' and day = '${day}'), 0)`), B: sql(`select coalesce((select sent from msg_send_counter where firm_id = '${B.id}' and day = '${day}'), 0)`) };
+  const was = [A, B].map((f) => [f.id, sql(`select coalesce((select sent from msg_send_counter where firm_id = '${f.id}' and day = '${day}'), 0)`)]);
   /** The DW5 judge: with 49 sent today, the 50th goes out and the 51st is held QUEUED with "daily limit" and one alert for the firm. */
   const dw5 = async (f: { id: string }, tag: string) => {
     counter(f.id, 49); const before = alerts.raised.filter((a) => a.kind === "send_cap_reached" && a.detail.firmId === f.id).length;
@@ -283,13 +288,13 @@ try {
     ok("J-48 DW5 pass: the 51st email of a trial firm's day is held with \"daily limit\" and one alert (the 52nd adds none)", t5.held, t5);
     ok("J-48 DW5 NR [fails on the stand-in]: a firm that is not on trial sends its 51st", !(await dw5(A, "active")).held);
   } finally {
-    sql(`update platform_firm set status = 'ACTIVE' where id = '${B.id}'`); counter(A.id, Number(was.A)); counter(B.id, Number(was.B));
-    sql(`update msg_outbox set state = 'CANCELLED', state_reason = 'J-48: test rows put away' where state = 'QUEUED' and state_reason = '${HELD_DAILY_LIMIT}' and address like 'j48.%.${run}@example.com'`);
+    sql(`update platform_firm set status = 'ACTIVE' where id = '${B.id}'`); for (const [id, n] of was) counter(id, Number(n));
+    sql(`update msg_outbox set state = 'FAILED', state_reason = 'J-48: test rows put away' where state = 'QUEUED' and state_reason = '${HELD_DAILY_LIMIT}' and address like 'j48.%.${run}@example.com'`);
   }
   ok("J-48: no script error on any page walked", errors.length === 0, errors);
 } finally {
   for (const [t, id] of invited) await api(t, "POST", `/platform/staff/invitations/${id}/revoke`, {}).catch(() => undefined);
-  sql(`update platform_plan set seats_limit = ${Number(plan[1])} where id = '${plan[0]}'`);
+  for (const [id, seats] of plans) sql(`update platform_plan set seats_limit = ${seats} where id = '${id}'`);
   await browser.close(); await db.$disconnect();
 }
 process.exit(summary() ? 1 : 0);
