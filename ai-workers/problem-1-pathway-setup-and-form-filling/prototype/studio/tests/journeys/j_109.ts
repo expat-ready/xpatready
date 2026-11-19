@@ -8,7 +8,8 @@
 //   W5: it ends at the closed complaint in the list (no next capability follows; the list is the end).
 // The swaps (DW): complaints' jobs are PF-14's PlatformJobs (pg-boss) and its clock the system's, both already wired on
 // main in api/src/features/platform-complaints.ts (PF-21w, PF-23w), so this row changes no wiring; the tests show each
-// is real by what only the real port does. Mail stays PF-0p's fakeMail (in memory) until the sending adapter lands.
+// is real by what only the real port does. The reminder's mail goes through the app's MessagePort (MESSAGES_MAIL, #2157,
+// not this row): on a local copy it lands in the demo inbox (GET /api/demo/platform-inbox).
 //   DW1: the reminder is a row in pg-boss's table, due at the acknowledge-by instant; already past due, the app's worker
 //        runs it (Reminder sent on the record); one not yet due waits and its acknowledgement cancels it (an in-memory
 //        runner leaves no row and runs nothing);

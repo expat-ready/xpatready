@@ -1,0 +1,6 @@
+# J-109 branch notes (claude/vibrant-meitner-3t1yfe; the PR opens only after #2012 is on main, P-683)
+
+* **Approve:** `Reviewer: Approve 9f36c65027eb8e5b35e869a7a8a25cfcc6e58850` (R3, diff-only from 62b4bcd95: merges of #2012's tips a7db51a90 and 208c1eb59, which carries origin/main with #2157; both sides kept in complaints.ts and platform/MODULE.md). The commit after it changes only words (m6: the mail now goes through MESSAGES_MAIL), re-reviewed as a words-only diff.
+* **Results on 9f36c6502 (19 Nov):** `tests/journeys/j_109.ts` 26/26 (J-109 W1-W5, DW1-DW2; the DW lines fail on the fake job runner and fake clock, checked 18 Nov); `check_pf21s_complaints_browser.ts` 116/116; `check_pf21_complaints.ts` 107/0; `check_pf21w_routes.ts` 83/0; `check_pf21v_views.ts` 54/0; `check_pf21i_idempotent.ts` 30/0. Typed actors: the walk's are `seed:j109`.
+* **Next:** #2012 on main → merge origin/main once (P-270) → re-run the walk and these suites → open the PR non-draft with the Approve first.
+* **Question for the tech lead (goes in the PR):** a Read-only person chosen as a complaint's handler can see, acknowledge and close it (break-report M1; PF-21v/w code, not this row). Recommendation: a bug row against PF-21v/w; J-109 is not widened.

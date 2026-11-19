@@ -77,3 +77,29 @@ Read: the `j_109.ts` changes (+12/-10), the 9 regenerated screenshots, and `brea
 * **Breaker's other findings.** Its m3 (the "Reminder sent" wording while mail is `fakeMail`) is allowed by the brief and named in the header. Its m1, m4 and m5 belong to existing parts. No new issue in this diff.
 
 Verdict: Approve 62b4bcd95aeb8c69e519e37444905b8230103993
+
+## Re-review R3 (P-277, diff only): `62b4bcd95..9f36c6502`
+* **J-109's own files are unchanged.** `j_109.ts` and the `screens/J-109/` screenshots are identical to `62b4bcd95`. The new J-109 content is only `qa/built/J-109.md` (1 line) and my R2 section.
+* **The merge keeps both sides in `complaints.ts`.**
+  * Against `origin/main`, the head adds exactly PF-21i's changes:
+    * the `lockRequestKey`/`requestHash` import;
+    * `REPEATED`, `KEY_LOCK` and `keyReused`;
+    * the `requestKey`/`requestHash` columns kept out of the view;
+    * the keyed `record()`.
+  * Main's `mailIn` import and the MessagePort reminder (#2157) stay as they are.
+  * Against `62b4bcd95`, the head brings exactly main's changes to this file (I compared the changed lines of the two diffs: identical).
+* **The merge keeps both sides in `platform/MODULE.md`.** Main's lines stay, including PF-19r's "and the complaint reminder" under `MESSAGES_MAIL`. PF-21i's parts are added: the `Idempotency-Key` on `POST`, the `idempotency.ts` entry point, the invariant line and `tests/check_pf21i_idempotent.ts`. Between main and the head, the app differs only in PF-21i's 8 files: complaints, routes, idempotency, migration, schema, drawer, session and the card.
+* **DW1 holds on the new reminder path.**
+  * The wiring is now `systemClock`, `PlatformJobs` and `MESSAGES_MAIL` (`features/platform-complaints.ts:9-21`).
+  * `runAckReminder` writes `REMINDER_SENT` and its audit line, then the email through `mailIn` in the same transaction (`complaints.ts:475-483`). A refused send rolls the run back and the job runs again, so DW1's "completed and one REMINDER_SENT" stays strict: it can fail, never falsely pass.
+  * My runs on copy `j109r3`, port 4438 (never :4400), with the walk run from a scratchpad copy (imports pointed at this checkout, screenshots kept in the scratchpad; the committed shots are untouched): **26 passed, 0 failed, 4 times on the same reused copy.**
+  * After a run, `msg_outbox` holds exactly one SERVICE EMAIL in state SENT for the walk's reminder (`idempotency_key` `mail:complaint.ack_reminder:…`). The reminder goes through MessagePort, not memory.
+  * I did not re-run the PF-21 suites. The coordinator's results are taken as reported.
+* **minor m6 (Should; non-blocking): two records still say mail is `fakeMail`, which stopped being true when main (#2157) moved the reminder to `MESSAGES_MAIL`.**
+  * `j_109.ts:11` says "Mail stays PF-0p's fakeMail (in memory) until the sending adapter lands".
+  * `qa/built/J-109.md` says "Mail stays in memory (fakeMail) … nothing is delivered".
+  * At the head, the reminder email is a SENT outbox row on the app's email adapter.
+  * Fix: say mail is MessagePort's `MESSAGES_MAIL` (from #2157, not this row), and make the PR body's mail note match. The breaker's m3 ("Reminder sent" while nothing leaves) is now moot.
+* Nothing else is open from R1/R2. No Blocker or Major.
+
+Verdict: Approve 9f36c65027eb8e5b35e869a7a8a25cfcc6e58850
