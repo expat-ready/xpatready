@@ -42,7 +42,8 @@ export function TypePanel({ me, typeId, staff, onClose, onOpen, returnFocus }: {
   const post = (path: string, what: string, then?: (r: { id: string }) => void) => run(what, async () => { const r = await staffApi<{ id: string }>(`/front-office/booking-types/${t!.id}${path}`, { method: path ? "POST" : "DELETE" }); then?.(r); });
 
   if (!isNew && detail.isError) return <Panel open onOpenChange={(o) => !o && onClose()} title="Booking type" returnFocus={returnFocus}><Notice tone="danger" title="Not available">{detail.error instanceof StaffApiError ? detail.error.message : "Could not load this type."}</Notice></Panel>;
-  const title = isNew ? W.add : t?.name ?? "Booking type";
+  // A long unbroken name would run under the close button: the title shows its first 40 characters (the field has it all).
+  const full = isNew ? W.add : t?.name ?? "Booking type", title = [...full].length > 40 ? `${[...full].slice(0, 39).join("")}…` : full;
   const footer = !edit ? null : <>
     <Button variant="ghost" onClick={onClose}>Close</Button>
     <div className="flex flex-wrap gap-2">

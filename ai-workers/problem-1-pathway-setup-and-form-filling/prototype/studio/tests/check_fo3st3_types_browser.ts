@@ -78,6 +78,8 @@ try {
   await p.locator("[data-save]").click();
   await p.locator("[data-type-panel]:not([data-type-panel='new'])").waitFor({ timeout: 10_000 });
   ok("FO-3st3 J-T1 pass: 80 characters saves (one more type) and the drawer opens on it", Number(typeCount()) === Number(before1) + 1);
+  const head = await p.locator('[role="dialog"] .text-lg').first().boundingBox(), close = await p.getByRole("button", { name: "Close" }).first().boundingBox();
+  ok("FO-3st3 DW7: an 80-character name's title stays clear of the drawer's close button", !!head && !!close && head.x + head.width <= close.x + 1, [head, close]);
   await shot(p, "panel-1440"); await axe("FO-3st3 DW7 drawer (Owner, 1440)", p);
   await p.keyboard.press("Escape");
 
