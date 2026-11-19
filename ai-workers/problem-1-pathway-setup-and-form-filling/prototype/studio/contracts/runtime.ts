@@ -80,6 +80,11 @@ export const NewCase = z.object({
   }, { message: "Each earlier stage is an object." }), { message: "Earlier stages are a list." }).max(10, "A route has at most 10 earlier stages.").optional(),
 });
 
+/** FO-8: the body of "Open a case?" (POST clients/:id/open-case). The opening's own fields, each optional where the offer
+ *  pre-fills it (the combination, the principal, the representative); the client is the route's and the key is not taken,
+ *  so neither is a field here. Strict: an unknown field is refused by name, never dropped. */
+export const OpenCaseFromOffer = NewCase.omit({ clientId: true, idempotencyKey: true }).partial({ combinationId: true, principal: true }).strict();
+
 /** C6.11 (BR-20, SI-9): the firm admin changes the representative of record, with a reason kept in the history; a new
  *  representative asks for a new IMM 5476 (BR-12). */
 const teamUser = z.string({ message: "Choose a person of your firm." }).trim().regex(/^user-[A-Za-z0-9]{1,8}$/, "Choose a person of your firm.");
