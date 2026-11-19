@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-714**, 19 Nov 06:4x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-0640-lead84s2-as-of-P-710.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-715**, 19 Nov 06:4x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-0640-lead84s2-as-of-P-710.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -159,7 +159,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-691 | Emergency hand merge stays: only a pipeline/CI fix while the queue is broken; full row `rules/tech-lead.md`. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
 | IDX-9 | Night of 18-19 Nov rows (P-703 to P-710) stand as recorded; word for word in `rules/tech-lead.md` › Night of 18-19 Nov. | prose | 19 Nov |
-| IDX-10 | Morning of 19 Nov rows stand as recorded: P-712 (cards never hand-edited), P-713 (parallel via warm lanes), P-714 (account switch: 94% tell, 96% stop, 97% switch); word for word in `rules/tech-lead.md` › Morning of 19 Nov. | prose | 19 Nov |
+| IDX-10 | Morning of 19 Nov rows stand as recorded: P-712 (cards never hand-edited), P-713 (parallel via warm lanes), P-714 (account switch: 94% tell, 96% stop, 97% switch), P-715 (Mergify parallel lanes per module); word for word in `rules/tech-lead.md` › Morning of 19 Nov. | prose | 19 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
