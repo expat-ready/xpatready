@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-740**, 19 Nov 20:0x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-1830-lead94s2-as-of-P-734.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-744**, 20 Nov 00:2x IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-0025-lead96s2-as-of-P-740.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -12,8 +12,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-1 | Milestone plans stand as recorded (M3 done 29/29 10 Nov; the Bake; the Chrome extension, 40 sessions); the decision list is word for word in `rules/goal-and-order.md` › Index lists. | prose | 12 Nov |
 | P-690 | `design/full-power-plan-2026-11-17.md` is the one action list; items leave only when done or dropped by the founder; briefs quote item IDs. | script: plan-watch.py via check-docs.sh and lead-watch.sh | 18 Nov |
 | P-728 | Ten a day: J-test merges in the item's last PR; 6 batches at once only after P-730's conditions; proof automatic at the last merge; J4 beside J2; 4 qa lanes. | prose | 19 Nov |
-| P-724 | Factory (detail: DECISIONS P-724): journeys A client case and B firm set-up in parallel on disjoint files; ≤6 items in flight per journey; start one only when one is Proven; automatic proof. | prose (WIP check owed) | 19 Nov |
-| P-719 | Finish by capability: a lane owns one R1 item's whole chain (parts, J-row, qa); ~8 in flight, parallel, disjoint files; fewest parts left first; next starts when one is Proven. | prose | 19 Nov |
+| IDX-18 | Factory and finish-by-capability rows P-724, P-719 stand: word for word in `rules/goal-and-order.md` › Moved 20 Nov. | prose | 20 Nov |
 | P-418 | Pick order each check: red main, merged work awaiting qa, blockers, Partials, drafted, new. Full row: `rules/tech-lead.md`. | prose | P-612 |
 | P-464 | XFA reuse: ours and theirs head to head per functionality, the better wins, a tie keeps ours; adopt and improve theirs when it is the better base (P-465, P-467). | prose | 11 Nov |
 | P-470 | The XFA code is ours: small fixes in PATCHES.md, extended only where our pathways use the form; never read the ER v2 repository. | prose | 11 Nov |
@@ -154,9 +153,10 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-731 | A PR that failed a batch is relabelled only after a green full run on its head, every failing suite named (P-733 (4)). | CI: label-guard (CI-PRE, owed) | 19 Nov |
 | P-733 | Lanes on the items nearest done first, one lane per item to Proven; PRs near 800 lines; automatic proof on merge; qa walks risky items. | CI: #2233 (owed); prose (focus) | 19 Nov |
 | P-734 | P-733 runs unchanged to 22 Nov evening; no new workflow row before 23 Nov unless a fix; daily number: Proven. | script: ENF-733 (owed) | 19 Nov |
-| IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
+| IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule), P-741 (R1.31 includes FO-2pv, not QA-531) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
 | P-740 | Release 1 stays 29 Nov (founder 19 Nov 20:0x); Proven per day reported each evening; slips said plainly. | prose | 19 Nov |
 | P-739 | Six merge batches at once (max_parallel_checks 6; P-730's hold lifted by the founder 19 Nov); back to 3 if failures cascade. | prose | 19 Nov |
+| IDX-17 | Test-run rows P-742, P-743 (`FULL_RUN_FROM` to 22 Nov 20:00 IST), P-744 (B203 now): word for word in `rules/tech-lead.md` › Moved 20 Nov. | CI: queue-gate.sh FULL_FROM; script: records-only.sh | 20 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
