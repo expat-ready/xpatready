@@ -83,7 +83,7 @@ try {
     });
   const probe = (id: string, firm = FIRM_A) => sql(`insert into aud5b_probe values ('${id}', '${firm}')`);
   const there = (id: string) => sql(`select count(*) from aud5b_probe where id = '${id}'`) === "1";
-  const lineOf = (id: string) => sql(`select coalesce((select detail::text from audit_event where entity_key = '${id}' and action = 'case.file.deleted'), '')`);
+  const lineOf = (id: string) => { try { return sql(`select coalesce((select detail::text from audit_event where entity_key = '${id}' and action = 'case.file.deleted'), '')`); } catch (e) { return `unreadable: ${String(e).slice(0, 200)}`; } };
 
   await setYears(FIRM_A, 8);
   const c1 = uuid(); probe(c1);
@@ -198,6 +198,20 @@ try {
   const src = readFileSync(join(STUDIO, "ports", "keep-period.ts"), "utf8");
   const rule = src.slice(src.indexOf("export function addYears"), src.indexOf("/** The port."));
   ok("pass: check()'s rule never names the College number, and the clock port decides time (P-607: no new Date() in the rule)", rule.length > 500 && !/COLLEGE/.test(rule) && !/new Date\(\)/.test(rule));
+
+  // ------------------------------------------------------------------ review Minors: dates and an unreadable setting
+  const thisYear = await check({ firmId: FIRM_A, class: "our_billing", startedAt: new Date(NOW.getTime() + 200 * 24 * 3600 * 1000), subject: "invoice-this-year" });
+  ok("review m: this year's invoice (its fiscal year ends ahead) → FLOOR, not a refusal", thisYear.verdict === "FLOOR" && thisYear.until?.toISOString() === addYears(new Date(NOW.getTime() + 200 * 24 * 3600 * 1000), 6).toISOString(), thisYear);
+  const end = yearsAgo(6), atEnd = await check({ firmId: FIRM_A, class: "our_billing", startedAt: end, subject: "invoice-edge" });
+  const justIn = await check({ firmId: FIRM_A, class: "our_billing", startedAt: new Date(end.getTime() + 1000), subject: "invoice-edge2" });
+  ok("review m: the floor ends at its date exactly: started 6 years ago to the second → OK; one second later → FLOOR", atEnd.verdict === "OK" && justIn.verdict === "FLOOR", { atEnd, justIn });
+  ok("review m: a floor started on 29 Feb ends on 28 Feb in a common year (Unconfirmed: no counsel)", addYears(new Date("2024-02-29T00:00:00Z"), 1).toISOString() === "2025-02-28T00:00:00.000Z" && addYears(new Date("2024-02-29T00:00:00Z"), 4).toISOString() === "2028-02-29T00:00:00.000Z");
+  const neverWhy = await check({ firmId: FIRM_A, class: "activity_log", startedAt: yearsAgo(1), subject: "audit-line-2" });
+  ok("review m: an activity-log FLOOR says it is never deleted", neverWhy.verdict === "FLOOR" && /Nothing in the product deletes it/.test(neverWhy.why), neverWhy);
+  sql(`insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${FIRM_A}', '${KEY}', '"not a number"', 'test', now()) on conflict (firm_id, key) do update set value = excluded.value`);
+  ok("review m: an unreadable stored setting is refused in words (SETTING_UNREADABLE), never read as not set",
+    await throwsLike(() => check({ firmId: FIRM_A, class: "closed_client_file", startedAt: yearsAgo(3), subject: uuid() }), refused("SETTING_UNREADABLE")));
+  clearYears();
 
   // ---------------------------------------------------- break F3/F4: the firm asked is the firm the caller runs as
   const inB = await throwsLike(() => withFirm(FIRM_B, () => check({ firmId: FIRM_A, class: "our_billing", startedAt: yearsAgo(7), subject: "invoice-x" })), refused("FIRM_SCOPE"));

@@ -160,7 +160,7 @@ export function addYears(d: Date, years: number): Date {
 export function decideKeep(row: KeepPeriodRow, firmYears: number | null, startedAt: Date, now: Date): Exclude<KeepCheckResult, { verdict: "HELD" }> {
   if (row.kind === "REFERENCE") throw new KeepCheckRefused("NOT_A_RECORD_CLASS", `${row.class} is a reference, not a class of record: nothing is deleted on it`);
   if (row.kind === "FLOOR") {
-    if (row.neverDeleted) return { verdict: "FLOOR", until: null, why: row.words };
+    if (row.neverDeleted) return { verdict: "FLOOR", until: null, why: `${row.words} Nothing in the product deletes it.` };
     const until = addYears(startedAt, row.years as number);
     return now.getTime() < until.getTime() ? { verdict: "FLOOR", until, why: row.words } : { verdict: "OK" };
   }
@@ -182,7 +182,9 @@ export async function keepCheck<Tx>(deps: KeepCheckDeps<Tx>, tx: Tx, input: Keep
   const now = deps.clock.now(), start = q.data.startedAt;
   // A start the calendar cannot carry forward, or one in the future, is not a record's real start (break F6).
   if (!Number.isFinite(addYears(start, 50).getTime()) || start.getUTCFullYear() < 1900) throw new KeepCheckRefused("BAD_INPUT", "startedAt: not a real date for a record");
-  if (start.getTime() > now.getTime() + 24 * 3600 * 1000) throw new KeepCheckRefused("BAD_INPUT", "startedAt: a record's period cannot start in the future");
+  // A fiscal year's end may lie up to a year ahead (this year's invoice: FLOOR); any other start, at most a day ahead.
+  const ahead = row.from === "fiscalYearEnd" ? 366 : 1;
+  if (start.getTime() > now.getTime() + ahead * 24 * 3600 * 1000) throw new KeepCheckRefused("BAD_INPUT", "startedAt: a record's period cannot start in the future");
   const subjects = [...holdSubjectsOf(row.class, q.data.subject, start), ...(q.data.also ?? [])];
   const held = await deps.holds.isHeld(tx, q.data.firmId, subjects);
   if (held.held) { const reasons = held.holds.map((h) => h.reason); return { verdict: "HELD", reason: reasons.join("; "), reasons, holds: held.holds }; }
