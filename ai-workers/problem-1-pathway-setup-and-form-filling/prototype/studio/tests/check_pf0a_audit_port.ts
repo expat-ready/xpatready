@@ -133,8 +133,8 @@ try {
   const usr = (await setLines()).at(-1);
   ok("PF-0a PS3 pass: the reset's bare \"system\" is written as system:demo-reset (SYSTEM), and user-R as staff:<their staff id> (FIRM_STAFF)",
     sys?.actor === "system:demo-reset" && sys.actorType === "SYSTEM" && usr?.actor === `staff:${R.id}` && usr.actorType === "FIRM_STAFF", [sys?.actor, usr?.actor]);
-  const unknown = await writeSetting(db, { firmId: R.firmId, key: LANGUAGE.key, value: "fr", by: "user-S", workspaceId: ws }).then(() => false, (e) => e instanceof SettingRefused && /not a known staff member/.test(String((e.getResponse() as { detail?: string }).detail)));
-  ok("PF-0a PS3 fail: a Sample id of another firm (user-S in firm A) or an unknown word is refused, and nothing changes",
+  const unknown = await writeSetting(db, { firmId: R.firmId, key: LANGUAGE.key, value: "fr", by: "user-Z", workspaceId: ws }).then(() => false, (e) => e instanceof SettingRefused && /not a known staff member/.test(String((e.getResponse() as { detail?: string }).detail)));
+  ok("PF-0a PS3 fail: a Sample id with no staff row (user-Z) or an untyped word (test) is refused, and nothing changes",
     unknown && (await writeSetting(db, { firmId: R.firmId, key: LANGUAGE.key, value: "fr", by: "test", workspaceId: ws }).then(() => false, () => true)) && (await readSetting(db, R.firmId, LANGUAGE.key)) === "en");
 
   const WEEK = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => ({ day, opens: "08:30", closes: "18:15" }));

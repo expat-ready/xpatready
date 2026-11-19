@@ -6,7 +6,7 @@
 // which the demo reset never deletes (PF-4, P-571 (1), B-6), with the firm's id on the line (firm_id and detail.firmId), so
 // the firm's own audit view (R1.88) reads it. The reset returns the Sample firms' values through writeSetting
 // (identity/demo-reset.ts), so every value keeps its trail. Who: a typed word as given, the reset's bare "system" as
-// system:demo-reset, a Sample person's id (user-R) as staff:<their staff id in that firm>. A value that is not a short
+// system:demo-reset, a Sample person's id (user-R) as staff:<their staff id> (one row per Sample person). A value that is not a short
 // scalar is kept as fromJson/toJson, pieces of at most 200 characters that join back to its JSON text exactly (joinPieces);
 // a long reason is cut in detail only (200), the full reason staying in the summary.
 // The zod schema in code is the authority (PF-3 review m4): the stored value_schema says as much as JSON Schema can (each
@@ -134,13 +134,14 @@ export function joinPieces(detail: Record<string, unknown>, name: "from" | "to")
 /** At most 200 UTF-16 units (AuditDetail's count), never half of a character. */
 const cut = (t: string) => { let out = ""; for (const ch of t) { if (out.length + ch.length > PIECE) break; out += ch; } return out; };
 /** The actor word the audit line takes (AuditEntry's staff:, system: or seed:): a typed word as given; the demo reset's
- *  bare "system" as system:demo-reset; a Sample person's id as staff:<their staff id in this firm>. Else refused. */
-async function auditActorOf(tx: Tx, firmId: string, by: string): Promise<string> {
+ *  bare "system" as system:demo-reset; a Sample person's id as staff:<their staff id> (the person the word named before;
+ *  each Sample person has one staff row, PF-3). Else refused. */
+async function auditActorOf(tx: Tx, by: string): Promise<string> {
   if (AuditActor.safeParse(by).success) return by;
   if (by === "system") return "system:demo-reset";
-  const staff = /^user-[A-Z]$/.test(by) ? await tx.platformStaff.findFirst({ where: { firmId, actorId: by }, select: { id: true } }) : null;
-  if (staff) return `staff:${staff.id}`;
-  throw new SettingRefused(`"${by.slice(0, 60)}" is not a known staff member of this firm, so the change cannot be recorded.`);
+  const staff = /^user-[A-Z]$/.test(by) ? await tx.platformStaff.findMany({ where: { actorId: by }, select: { id: true }, take: 2 }) : [];
+  if (staff.length === 1) return `staff:${staff[0].id}`;
+  throw new SettingRefused(`"${by.slice(0, 60)}" is not a known staff member, so the change cannot be recorded.`);
 }
 
 export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: string; value: unknown; changed: boolean }> {
@@ -164,7 +165,7 @@ export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: 
       update: { value, changedBy: w.by, changedAt: new Date() },
     });
     await auditEvent.record(tx, {
-      firmId: scope.firmId, actor: await auditActorOf(tx, scope.firmId, w.by), action: "platform.setting.change", entity: "platform_firm_setting",
+      firmId: scope.firmId, actor: await auditActorOf(tx, w.by), action: "platform.setting.change", entity: "platform_firm_setting",
       entityKey: `${scope.firmId}:${w.key}`, summary: `Firm ${firm.key}: setting ${w.key} ${changed ? "changed" : "saved unchanged"}${w.reason ? ` (${w.reason})` : ""}`.slice(0, 600),
       detail: { firmKey: firm.key, key: w.key, ...asDetail("from", from), ...asDetail("to", value), ...(w.reason ? { reason: cut(w.reason) } : {}) } as AuditEntry["detail"],
     });
