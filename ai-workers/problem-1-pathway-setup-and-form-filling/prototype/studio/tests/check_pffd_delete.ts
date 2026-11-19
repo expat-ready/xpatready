@@ -26,14 +26,15 @@ try {
   }
 
   // DW1 to DW3 fail: an adapter that deletes nothing, one that ignores the firm wall, one that lets a deleted key be written again.
-  const keepsBytes = (): FilesPort => { const f = fakeFiles(); return { put: f.put, get: f.get, exists: f.exists, delete: async () => ({ deleted: true }) }; };
-  const noWall = (): FilesPort => { const f = fakeFiles(); return { put: f.put, get: f.get, exists: f.exists, delete: async (_firm, key) => f.delete(FIRM, key) }; };
+  const keepsBytes = (): FilesPort => { const f = fakeFiles(); return { put: f.put, get: f.get, exists: f.exists, delete: async () => ({ deleted: true }), usedBytes: f.usedBytes }; };
+  const noWall = (): FilesPort => { const f = fakeFiles(); return { put: f.put, get: f.get, exists: f.exists, delete: async (_firm, key) => f.delete(FIRM, key), usedBytes: f.usedBytes }; };
   const reusable = (): FilesPort => { const live = new Map<string, Uint8Array>();
     return {
       async put(firm, key, bytes, contentType) { const k = `${firm}|${key}`, had = live.get(k), sha256 = await sha256Hex(bytes); if (had && await sha256Hex(had) !== sha256) throw new FileKeyTaken(key); live.set(k, new Uint8Array(bytes)); return { key, sha256 }; },
       async get(firm, key) { const b = live.get(`${firm}|${key}`); return b ? { key, bytes: new Uint8Array(b), contentType: "text/plain", sha256: await sha256Hex(b) } : null; },
       async exists(firm, key) { return live.has(`${firm}|${key}`); },
       async delete(firm, key) { return { deleted: live.delete(`${firm}|${key}`) }; },
+      async usedBytes(firm) { let n = 0; for (const [k, b] of live) if (k.startsWith(`${firm}|`)) n += b.byteLength; return n; },   // PF-15: the port's new read
     }; };
   const fails = async (make: () => FilesPort, dw: string) => caseOf(dw, (await runContract(filesPortContract, "broken", make, null)).failed) === 1;
   ok("PF-Fd DW1 fail: an adapter whose delete answers true but keeps the bytes fails DW1", await fails(keepsBytes, "DW1"));
