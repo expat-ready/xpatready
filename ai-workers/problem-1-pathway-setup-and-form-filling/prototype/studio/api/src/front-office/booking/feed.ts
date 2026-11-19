@@ -13,16 +13,19 @@ import { z } from "zod";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { sees, visibilityOf } from "../sales/common.ts";
 import { AnyStaff, staffOf, type StaffContext as Ctx } from "../../platform/identity/keys.ts";
 import { Booking, BOOKING_PORTS } from "./public.controller.ts";
+import { partyOf } from "./consult/service.ts";
 import { hostZone, type GivenBookingPorts } from "./service.ts";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN, MAX_DAYS = 62;
 const LIST = "agent/booking:list", EDIT = "agent/booking:edit";
-const ACTIVE = ["SCHEDULED", "RESCHEDULED"];
+const ACTIVE = ["SCHEDULED", "RESCHEDULED"], PIECE = 10_000;
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.example/problems/${slug}`, title, status, detail, ...extra }, status);
-const Instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s));
+// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 400, never a 500 (break F1).
+const Instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s)).refine((d) => d.getTime() >= Date.UTC(2000, 0, 1) && d.getTime() < Date.UTC(2100, 0, 1), "a time between 2000 and 2100");
 const FeedQuery = z.object({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
 
 type Row = Awaited<ReturnType<PrismaClient["foBooking"]["findFirstOrThrow"]>>;
@@ -51,48 +54,72 @@ export class BookingFeed {
     return (await this.items(ctx, [row]))[0];
   }
 
-  /** The rows as the screens show them: every lookup in one read per table, never one per booking. */
+  /** The rows as the screens show them: every lookup one read per table (in pieces of 10,000 ids, break F2), never one
+   *  per booking. */
   async items(ctx: StaffContext, rows: Row[]) {
     if (!rows.length) return [];
     const f = ctx.firmId, ids = rows.map((r) => r.id), now = this.ports.clock.now().getTime();
     const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))];
-    const [zone, types, hosts, people, prospects, leads, records, warned] = await Promise.all([
-      hostZone(this.db, f, ctx.staffId),
-      this.db.foConsultationType.findMany({ where: firmScope(f, { id: { in: uniq(rows.map((r) => r.typeId)) } }), select: { id: true, name: true } }),
-      this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: uniq(rows.map((r) => r.staffId)) } }), select: { id: true, displayName: true } }),
-      this.db.foPerson.findMany({ where: firmScope(f, { id: { in: uniq(rows.map((r) => r.personId)) } }), select: { id: true, givenNames: true, familyName: true, email: true } }),
-      this.db.foProspect.findMany({ where: firmScope(f, { id: { in: uniq(rows.map((r) => r.prospectId)) } }), select: { id: true, number: true } }),
-      this.db.foLead.findMany({ where: firmScope(f, { personId: { in: uniq(rows.filter((r) => !r.prospectId).map((r) => r.personId)) } }), select: { id: true, number: true, personId: true, state: true, createdAt: true }, orderBy: { createdAt: "desc" } }),
-      this.db.foConsultRecord.findMany({ where: firmScope(f, { bookingId: { in: ids } }), select: { bookingId: true } }),
-      // FO-3sa's recorded warning: the latest booked or moved line of each booking names the warnings it was saved over.
-      this.db.$queryRaw<{ key: string; warnings: unknown }[]>`SELECT DISTINCT ON (entity_key) entity_key AS key, detail->'warnings' AS warnings FROM audit_event
-        WHERE firm_id = ${f}::uuid AND entity = 'fo_booking' AND entity_key = ANY(${ids}::text[]) AND action IN ('booking.scheduled', 'booking.rescheduled') ORDER BY entity_key, at DESC`,
+    const pieces = async <T>(xs: string[], read: (part: string[]) => Promise<T[]>) => { const out: T[] = []; for (let i = 0; i < xs.length; i += PIECE) out.push(...await read(xs.slice(i, i + PIECE))); return out; };
+    const personIds = uniq(rows.map((r) => r.personId)), leadPeople = uniq(rows.filter((r) => !r.prospectId).map((r) => r.personId));
+    const [zone, vis, types, hosts, people, prospects, leads, records, lines] = await Promise.all([
+      hostZone(this.db, f, ctx.staffId), visibilityOf(this.db, ctx),
+      pieces(uniq(rows.map((r) => r.typeId)), (part) => this.db.foConsultationType.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, name: true, purpose: true, selfServiceLimitMinutes: true } })),
+      pieces(uniq(rows.map((r) => r.staffId)), (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, displayName: true } })),
+      pieces(personIds, (part) => this.db.foPerson.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, givenNames: true, familyName: true, email: true } })),
+      pieces(uniq(rows.map((r) => r.prospectId)), (part) => this.db.foProspect.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, number: true, ownerStaffId: true } })),
+      pieces(leadPeople, (part) => this.db.foLead.findMany({ where: firmScope(f, { personId: { in: part } }), select: { id: true, number: true, personId: true, state: true, ownerStaffId: true, createdAt: true } })),
+      pieces(ids, (part) => this.db.foConsultRecord.findMany({ where: firmScope(f, { bookingId: { in: part } }), select: { bookingId: true } })),
+      // FO-3sa's recorded warning and who cancelled: the latest line of each kind per booking (one array parameter).
+      this.db.$queryRaw<{ key: string; action: string; actor: string; warnings: unknown }[]>`SELECT DISTINCT ON (entity_key, action IN ('booking.cancelled')) entity_key AS key, action, actor, detail->'warnings' AS warnings
+        FROM audit_event WHERE firm_id = ${f}::uuid AND entity = 'fo_booking' AND entity_key = ANY(${ids}::text[]) AND action IN ('booking.scheduled', 'booking.rescheduled', 'booking.cancelled')
+        ORDER BY entity_key, action IN ('booking.cancelled'), at DESC, id DESC`,
     ]);
     const by = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));
     const [T, H, P, R] = [by(types), by(hosts), by(people), by(prospects)];
+    // Owners count only while active (BR-4); a lead or prospect is named only to a viewer who may open it (break F3).
+    const owners = uniq([...leads, ...prospects].map((x) => x.ownerStaffId));
+    const active = new Set((await pieces(owners, (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part }, status: "ACTIVE" as const }), select: { id: true } }))).map((s) => s.id));
+    const opens = (o: string | null) => sees(vis, ctx, o && active.has(o) ? o : null);
     const leadOf = new Map<string, (typeof leads)[number]>();
-    for (const l of leads) { const cur = leadOf.get(l.personId); if (!cur || (cur.state === "CLOSED" && l.state !== "CLOSED")) leadOf.set(l.personId, l); }   // newest open, else newest
+    // The person's newest lead the viewer may open, an open one (not CLOSED, not ENGAGED) before any other.
+    const rank = (l: (typeof leads)[number]) => (l.state === "OPEN" ? 1 : 0);
+    for (const l of leads) { if (!opens(l.ownerStaffId)) continue; const cur = leadOf.get(l.personId); if (!cur || rank(l) > rank(cur) || (rank(l) === rank(cur) && l.createdAt > cur.createdAt)) leadOf.set(l.personId, l); }
     const hasRecord = new Set(records.map((r) => r.bookingId));
-    const outside = new Set(warned.filter((w) => Array.isArray(w.warnings) && w.warnings.includes("OUTSIDE_HOURS")).map((w) => w.key));
+    const saved = new Map(lines.filter((l) => l.action !== "booking.cancelled").map((l) => [l.key, l]));
+    const cancelled = new Map(lines.filter((l) => l.action === "booking.cancelled").map((l) => [l.key, l.actor]));
+    const staffNames = new Map(hosts.map((h) => [`staff:${h.id}`, h.displayName]));
+    const canceller = async () => { const want = uniq([...cancelled.values()].filter((a) => a.startsWith("staff:") && !staffNames.has(a)).map((a) => a.slice(6)));
+      for (const s of await pieces(want, (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, displayName: true } }))) staffNames.set(`staff:${s.id}`, s.displayName); };
+    await canceller();
     const editKey = ctx.keys.includes(EDIT);
     return rows.map((r) => {
-      const host = H.get(r.staffId), person = r.personId ? P.get(r.personId) : undefined, mine = r.staffId === ctx.staffId;
+      const type = T.get(r.typeId), host = H.get(r.staffId), person = r.personId ? P.get(r.personId) : undefined, mine = r.staffId === ctx.staffId;
       const live = ACTIVE.includes(r.status), answerable = live || r.status === "COMPLETED" || r.status === "NO_SHOW";
-      const started = r.startsAt.getTime() <= now;
-      const prospect = r.prospectId ? R.get(r.prospectId) : undefined, lead = !r.prospectId && r.personId ? leadOf.get(r.personId) : undefined;
+      const ended = r.endsAt.getTime() <= now;
+      const prospect = r.prospectId ? R.get(r.prospectId) : undefined, lead = r.personId ? leadOf.get(r.personId) : undefined;
+      const party = partyOf({ personId: r.personId, prospectId: r.prospectId, type: { purpose: type?.purpose ?? "" } });   // 2a's one rule
+      const caseCall = party?.kind === "client";
+      const warnings = saved.get(r.id)?.warnings, by = cancelled.get(r.id);
+      const limit = type?.selfServiceLimitMinutes ?? 0;
       return {
         id: r.id, status: r.status, mode: r.mode, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),
         officeTimeZone: zone, bookerTimeZone: r.bookerTimeZone,
-        type: { id: r.typeId, name: T.get(r.typeId)?.name ?? "" },
+        type: { id: r.typeId, name: type?.name ?? "" },
         host: { id: r.staffId, name: host?.displayName ?? "" },
         person: person ? { id: person.id, name: [person.givenNames, person.familyName].filter(Boolean).join(" "), email: person.email } : null,
-        hangsOn: prospect ? { kind: "prospect" as const, id: prospect.id, name: prospect.number } : lead ? { kind: "lead" as const, id: lead.id, name: lead.number } : null,
-        outsideHours: outside.has(r.id),
+        hangsOn: caseCall ? (person ? { kind: "client" as const, id: person.id, name: [person.givenNames, person.familyName].filter(Boolean).join(" ") } : null)
+          : prospect ? (opens(prospect.ownerStaffId) ? { kind: "prospect" as const, id: prospect.id, name: prospect.number } : null)
+            : lead ? { kind: "lead" as const, id: lead.id, name: lead.number } : null,
+        outsideHours: Array.isArray(warnings) && warnings.includes("OUTSIDE_HOURS"),
         attendance: r.status === "COMPLETED" || r.status === "NO_SHOW" ? r.status : null,
         hasConsultRecord: hasRecord.has(r.id),
-        // The server's answers for this viewer (STANDARDS §7): the host answers their own, others need the edit key
-        // (AG-4-39); once the meeting has started; never on a cancelled or expired booking (FO-3m).
-        canAnswerAttendance: answerable && started && (mine || editKey),
+        cancelledBy: r.status === "CANCELLED" ? (by ? staffNames.get(by) ?? "the booker" : null) : null,
+        // The booker's own changes stop this many hours before the start (the type's self-service limit, AG-4-38).
+        selfServiceLimitHours: Math.round(limit / 60), insideSelfServiceLimit: live && now >= r.startsAt.getTime() - limit * MIN,
+        // The server's answers for this viewer (STANDARDS §7): the host answers their own, others need the edit key;
+        // asked once the meeting has ended (BR-14; AG-4-39 rule 7); never on a cancelled or expired booking (FO-3m).
+        canAnswerAttendance: answerable && ended && (mine || editKey),
         canEdit: live && editKey,
         // BR-14: pinned only for the viewer's own booking, unanswered, from the end + 30 minutes (AG-4-39 rule 2).
         attendanceDue: mine && live && now >= r.endsAt.getTime() + 30 * MIN,

@@ -447,7 +447,7 @@ export class BookingService {
    *  anyone else sees a row they host (rule 2), or whose record they see: on a prospect, its owner or, when it has no
    *  active owner, a viewer who sees Unassigned; on a person with leads or prospects and no prospect named, any lead of
    *  theirs by the lead list's rule (the owner, or no active owner and Unassigned seen; `leads.ts` seenWhere, BR-4) or a
-   *  prospect of theirs the viewer owns (AG-2-64 rule 2 c); not linked yet (no person, or a person with neither), the
+   *  prospect of theirs by the same owner rule (AG-2-64 rules 2 c, 3; Lead B on #2308: apply); not linked yet (no person, or a person with neither), the
    *  unassigned-lead rule (rule 3). `narrow` is the caller's own window, so the rule is worked out in SQL over those rows
    *  only and never after a read or a page cap. */
   private async seenWhere(ctx: StaffContext, narrow: Prisma.Sql): Promise<{ id?: { in: string[] } }> {
@@ -463,7 +463,7 @@ export class BookingService {
         OR (b.prospect_id IS NOT NULL AND EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND p.id = b.prospect_id AND ${seenOwner(Prisma.sql`p.owner_staff_id`)}))
         OR (b.prospect_id IS NULL AND b.person_id IS NOT NULL AND (
               EXISTS (SELECT 1 FROM fo_lead l WHERE l.firm_id = b.firm_id AND l.person_id = b.person_id AND ${seenOwner(Prisma.sql`l.owner_staff_id`)})
-           OR EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND ${ofPerson} AND p.owner_staff_id = ${me}::uuid)))
+           OR EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND ${ofPerson} AND ${seenOwner(Prisma.sql`p.owner_staff_id`)})))
         OR (${su}::boolean AND b.prospect_id IS NULL AND (b.person_id IS NULL OR (
               NOT EXISTS (SELECT 1 FROM fo_lead l WHERE l.firm_id = b.firm_id AND l.person_id = b.person_id)
           AND NOT EXISTS (SELECT 1 FROM fo_prospect p WHERE p.firm_id = b.firm_id AND ${ofPerson}))))
@@ -476,7 +476,7 @@ export class BookingService {
   private async seesBooking(ctx: StaffContext, b: BookingRow, vis: Visibility) {
     if (vis.seesAll) return true;
     const db = this.db, f = b.firmId;
-    const active = async (ids: (string | null)[]) => new Set((await db.platformStaff.findMany({ where: firmScope(f, { id: { in: ids.filter((x): x is string => !!x) }, status: "ACTIVE" }), select: { id: true } })).map((s) => s.id));
+    const active = async (ids: (string | null)[]) => new Set((await db.platformStaff.findMany({ where: firmScope(f, { id: { in: ids.filter((x): x is string => !!x) }, status: "ACTIVE" as const }), select: { id: true } })).map((s) => s.id));
     if (b.prospectId) {
       const p = await db.foProspect.findFirst({ where: firmScope(f, { id: b.prospectId }), select: { ownerStaffId: true } });
       if (!p) return false;
@@ -488,8 +488,9 @@ export class BookingService {
       db.foProspect.findMany({ where: firmScope(f, { OR: [{ primaryContactPersonId: b.personId }, { subjectPersonId: b.personId }] }), select: { ownerStaffId: true } }),
     ]);
     if (!leads.length && !prospects.length) return vis.seesUnassigned;
-    const on = await active(leads.map((l) => l.ownerStaffId));
-    return leads.some((l) => sees(vis, ctx, l.ownerStaffId && on.has(l.ownerStaffId) ? l.ownerStaffId : null)) || prospects.some((p) => p.ownerStaffId === ctx.staffId);
+    const on = await active([...leads, ...prospects].map((x) => x.ownerStaffId));
+    const owner = (o: string | null) => (o && on.has(o) ? o : null);
+    return [...leads, ...prospects].some((x) => sees(vis, ctx, owner(x.ownerStaffId)));
   }
 
   async staffGet(ctx: StaffContext, bookingId: string) { return this.view(await this.staffBooking(ctx, bookingId)); }

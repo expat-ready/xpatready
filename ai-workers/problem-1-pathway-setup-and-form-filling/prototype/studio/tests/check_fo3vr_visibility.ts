@@ -76,8 +76,8 @@ try {
   const types = new Map<string, string>();
   const typeOf = (f: string) => types.get(f) ?? (types.set(f, sql(`insert into fo_consultation_type (id, firm_id, slug, name, modes, host_staff_ids, minutes, updated_at) values (gen_random_uuid(), '${f}', 'free', 'Free consultation', '{VIDEO}', '{}', 30, now()) returning id`)), types.get(f)!);
   let slot = 0;
-  const booking = (f: string, host: string, link: { personId?: string; prospectId?: string } = {}) => {
-    const s = new Date(T0 + slot++ * HOUR), e = new Date(s.getTime() + 30 * 60_000);
+  const booking = (f: string, host: string, link: { personId?: string; prospectId?: string } = {}, at?: number) => {
+    const s = new Date(at ?? T0 + slot++ * HOUR), e = new Date(s.getTime() + 30 * 60_000);
     sql(`update fo_consultation_type set host_staff_ids = array_append(host_staff_ids, '${host}'::uuid) where id = '${typeOf(f)}' and not ('${host}'::uuid = any(host_staff_ids))`);
     return sql(`insert into fo_booking (id, firm_id, type_id, staff_id, person_id, prospect_id, mode, starts_at, ends_at, visitor_time_zone, updated_at) values (gen_random_uuid(), '${f}', '${typeOf(f)}', '${host}', ${link.personId ? `'${link.personId}'` : "null"}, ${link.prospectId ? `'${link.prospectId}'` : "null"}, 'VIDEO', '${s.toISOString()}', '${e.toISOString()}', 'America/Toronto', now()) returning id`);
   };
@@ -140,6 +140,12 @@ try {
     const pNot = person(A); prospect(colleague.staffId, colleague.staffId, pNot);
     const bNot = booking(A, host, { personId: pNot });
     ok("FO-3vr DW4 fail: the same with the prospect and the lead both a colleague's is not (list, 404 by id)", !(await listed(own)).has(bNot) && (await byId(own, bNot)) === 404);
+    // Lead B on #2308 (apply; AG-2-64 rule 3): a booking naming only the person whose prospect has no active owner (the
+    // lead's owner active) follows the prospect's rule too: seen with assign, not by the own-only officer.
+    const pNo = person(A); prospect(null, colleague.staffId, pNo);
+    const bNo = booking(A, host, { personId: pNo });
+    ok("FO-3vr DW4 pass (AG-2-64 rule 3, person only): the assigner sees a booking naming only the person whose prospect has no active owner (list, 200 by id)", (await listed(assigner)).has(bNo) && (await byId(assigner, bNo)) === 200);
+    ok("FO-3vr DW4 fail: the own-only officer does not (list, 404 by id)", !(await listed(own)).has(bNo) && (await byId(own, bNo)) === 404);
     const beforeOff = await byId(assigner, bTheirs);
     sql(`update platform_staff set status = 'DEACTIVATED' where id = '${colleague.staffId}'`);
     const [offId, offOwn] = [await byId(assigner, bTheirs), await byId(own, bTheirs)];
@@ -188,12 +194,17 @@ try {
   const where = JSON.stringify(bookingReads[0]?.args ?? {});
   ok("FO-3vr DW7 fail: one findMany on fo_booking carries the visibility in its where (the 3 ids from the SQL record rule), and the record rule ran in SQL (fo_lead, fo_prospect, the host), not after a read",
     bookingReads.length === 1 && visible.every((id) => where.includes(id)) && raws.length === 1 && /fo_lead/.test(raws[0]) && /fo_prospect/.test(raws[0]) && /staff_id/.test(raws[0]), { bookingReads: bookingReads.length, raws: raws.length });
-  // Review m2 (break F1): a visible set larger than one read's ids is read in pieces, merged in the same order.
-  const whole = (await svc.attendanceDue(assigner).catch(() => [])).length, before2 = (await svc.staffList(assigner, range)).map((b) => b.id);
-  svc.seenChunk = 2;
-  const pieces = (await svc.staffList(assigner, range)).map((b) => b.id);
+  // Review m2 (break F1) and re-review n1: a visible set larger than one read's ids is read in pieces and merged in
+  // time order. The officer's own bookings are written latest first, so the record rule's ids come back out of time order
+  // and only the merge puts them right; attendance-due is checked the same way.
+  const late = ctx(A, staff(A, "Late officer"), own.keys);
+  const mine = [5, 4, 3, 2, 1].map((d) => booking(A, late.staffId, {}, T0 + 60 * 24 * HOUR + d * HOUR));
+  const one = (await svc.staffList(late, range)).map((b) => b.id), dueOne = (await due(late)).size;
+  svc.seenChunk = 1;
+  const pieces = (await svc.staffList(late, range)).map((b) => b.id), duePieces = await due(late);
   svc.seenChunk = 10_000;
-  ok("FO-3vr DW7 pass/fail: read in pieces of 2 ids, the assigner's list has the same bookings in the same order as in one read (no row lost, none twice)", before2.length >= 3 && pieces.join() === before2.join() && whole >= 0, { one: before2.length, pieces: pieces.length });
+  ok("FO-3vr DW7 pass/fail: read one id at a time, the list has the same bookings in the same (time) order as in one read, and attendance-due the same set",
+    one.length === 5 && pieces.join() === one.join() && one.join() === [...mine].reverse().join() && duePieces.size === dueOne && dueOne === 5, { one, pieces, dueOne, duePieces: duePieces.size });
 } catch (e) {
   ok("FO-3vr: the check ran to the end", false, String((e as Error)?.stack ?? e).slice(0, 1500));
 } finally {
