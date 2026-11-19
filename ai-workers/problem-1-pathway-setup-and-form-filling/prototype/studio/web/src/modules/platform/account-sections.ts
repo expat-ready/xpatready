@@ -9,6 +9,7 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Licences", path: "/platform/licences", key: "agent/firm-credential:manage" },   // PF-6 part 2b
   { label: "Security", path: "/platform/security", key: "agent/security-policy:manage" },   // PF-6 part 2b
   { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
+  { label: "Booking types", path: "/front-office/booking-types", key: "agent/booking-event-type:list" },   // FO-3st3 part 1 (P-626 A3)
 ];
 
 /** The entries this person sees: those with no key, or whose key they hold. */

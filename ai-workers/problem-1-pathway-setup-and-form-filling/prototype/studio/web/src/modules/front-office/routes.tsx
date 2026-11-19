@@ -6,6 +6,7 @@ import type { ModuleRoute } from "@/modules";
 import { BookingListPage } from "./booking-public/list-page";
 import { BookingManagePage } from "./booking-public/manage-page";
 import { BookingTypePage } from "./booking-public/type-page";
+import { BookingTypesPage } from "./booking/settings/types-page";
 import { LeadPage } from "./sales/lead-page";
 import { LeadsPage } from "./sales/leads-page";
 import { WebFormPage } from "./sales/web-form-page";
@@ -14,6 +15,7 @@ export const routes: ModuleRoute[] = [
   { path: "/front-office/web-form/:token", element: <WebFormPage /> },
   { path: "/front-office/leads", element: <LeadsPage /> },
   { path: "/front-office/leads/:id", element: <LeadPage /> },
+  { path: "/front-office/booking-types", element: <BookingTypesPage /> },   // FO-3st3 part 1 (A3: inside PF-6's frame)
   { path: "/book/:firmKey", element: <BookingListPage /> },
   { path: "/book/:firmKey/manage", element: <BookingManagePage /> },
   { path: "/book/:firmKey/:slug", element: <BookingTypePage /> },
