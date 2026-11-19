@@ -21,6 +21,7 @@ import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
+import { winProspect } from "../sales/prospects.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
 
@@ -604,29 +605,14 @@ export class Retainers {
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: filed, endedAt: null }, data: { endedAt: now, endReason: "SIGNED_OFFLINE" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: from as never, currentVersion: filed }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
-      if (r.kind === "RETAINER" && r.prospectId) prospectWon = await this.winProspect(tx, ctx, r.prospectId, now);
+      // FO-2w: the one win (sales/prospects.ts `winProspect`): moves the prospect and raises `prospect.won`, once per prospect.
+      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: () =>
+        this.audit.record(tx, { ...this.line(ctx, "prospect.won", r.prospectId!, "Won: retainer signed on paper", { prospectId: r.prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" }) })) !== null;
       await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer" });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
     return { ...(await this.read(ctx, id)), prospectWon };
-  }
-
-  /** The prospect moves to its pipeline's WON stage, won via SIGNED_OFFLINE, once (a prospect already won stays as it is). */
-  private async winProspect(tx: Tx, ctx: StaffContext, prospectId: string, now: Date): Promise<boolean> {
-    const rows = await tx.$queryRaw<{ stage_id: string; type: string; kind: string }[]>(Prisma.sql`
-      select p.stage_id::text, p.type::text, s.kind::text from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
-       where p.firm_id = ${ctx.firmId}::uuid and p.id = ${prospectId}::uuid for update of p`);
-    const p = rows[0];
-    if (!p || p.kind === "WON") return false;
-    const won = await tx.foStage.findFirst({ where: { firmId: ctx.firmId, pipeline: p.type as never, kind: "WON" } });
-    if (!won) return false;
-    await tx.foProspect.update({ where: { id: prospectId }, data: { stageId: won.id, wonVia: "SIGNED_OFFLINE", wonAt: now, lostReasonId: null, lostReasonKind: null, lostNote: null } });
-    // The chain of moves (FO-1a): a move starts where the last one ended, the first starts nowhere.
-    const last = await tx.foStageMove.findFirst({ where: { firmId: ctx.firmId, prospectId }, orderBy: { seq: "desc" }, select: { toStageId: true } });
-    await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId, fromStageId: last?.toStageId ?? null, toStageId: won.id, cause: "SIGNED_OFFLINE", byActor: `staff:${ctx.staffId}` } });
-    await this.audit.record(tx, { ...this.line(ctx, "prospect.won", prospectId, "Won: retainer signed on paper", { prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" });
-    return true;
   }
 
   /** A download re-checks that the person still sees the retainer the file belongs to (Devin 4575579436: a link outlived
