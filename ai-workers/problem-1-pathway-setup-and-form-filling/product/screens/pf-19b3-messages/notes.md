@@ -31,3 +31,8 @@ Searched `main` (`git grep DELIVERED` under `api/src`: only the type and the uns
 
 Break report (`break-report.md`): Major B1 and Minors m6, m7 fixed in ed67de0b9; m1 (year 0000 cursor) and m2 (cache key under "pf", cleared at sign-out) fixed after it; m3, m4 and m5 are questions 9, 10 and 3 above.
 11. **Case firm id (CS-W1):** cases now carry a nullable `firm_id` (csw1) beside `firm_key`. The case-party rule still uses `firm_key`, since `firm_id` can be empty. When CS-W1 part 2 makes it required, `staff-routes.ts` should switch to `case: { firmId: ctx.firmId }` (the case side's row).
+
+## On hold (Lead 87, 19 Nov 10:5x IST; P-723 drain, nothing new starts)
+* Branch `claude/intelligent-mayer-ymi4sl` at 335922e2a: reviewer Approve on 5890bcc2f (merge with #1961 at 88d03c665; the head adds only review.md). Both suites pass there: delivery 24/0, panel browser 24/24.
+* Not merged and no PR: the PR opens only after #1961 is on main (overlap rule), and #1961 is not. Its tip has moved again (c27308ea1), not merged into this branch.
+* Next step when Lead B says so: merge #1961's tip (or main, once #1961 is merged) once, re-run both suites, diff-only re-review, then open the PR non-draft with the `Card unchanged:` lines, the P-423 schema-read note and the questions above. No label by the builder.
