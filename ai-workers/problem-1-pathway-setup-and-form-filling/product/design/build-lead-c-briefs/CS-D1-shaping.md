@@ -12,7 +12,7 @@ BACKLOG `CS-D1` is one big "batch 5" row (FilesPort, upload doors, the type chec
 | Part | Item | What | Waits on | Size | Brief |
 |---|---|---|---|---|---|
 | **CS-D1t** | **R1.67 file-type check (Partial, this is its one missing part)** | The two case upload doors (`case-documents.ts` `upload()`, `case-checklist.ts` `upload()`) call PF-F4's `checkFile` instead of `mediaOf`; J-67 inside | nothing | ~300 lines | `CS-D1t.md` (ready) |
-| CS-D1 part 1 | R1.65 private storage (Not built) | `CaseDocument` gains `storage_key` and `firm_id` (backfilled, counted); the case side stores through FilesPort under `<firm_id>/case-documents/…` | a schema slot | ~500 lines | to write when R1.65 comes up |
+| CS-D1 part 1 | R1.65 private storage (Not built) | `CaseDocument` gains `storage_key`, `firm_id` (backfilled, counted) and `flags` (PF-F4's "contains scripts", from #2253); both doors move to PF-F4's 25 MB; the case side stores through FilesPort under `<firm_id>/case-documents/…` | a schema slot | ~500 lines | to write when R1.65 comes up |
 | CS-D1 part 2 | R1.65 | both upload paths and both readers (`bytesOf` in both files) switch to FilesPort; `path` kept until proven | part 1 | ~500 lines | later |
 | CS-D1 doors | R1.64 / R1.66 | the case doors register with `UploadDoorPort`; every read goes through PF-F3's gate | **Lead B's PF-F2 and PF-F3** | small each | after Lead B |
 | CS-D1b (row) | R1.65 | signed scans, fee receipts, validated copies move to FilesPort | CS-D1 parts 1-2, PF-F3 | 2 PRs | later |
