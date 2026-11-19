@@ -131,7 +131,7 @@ export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: 
       update: { value, changedBy: w.by, changedAt: new Date() },
     });
     await tx.auditEvent.create({ data: {
-      workspaceId: w.workspaceId, actor: w.by, action: "platform.setting.change", entity: "platform_firm_setting",
+      workspaceId: w.workspaceId, firmId: scope.firmId, actor: w.by, action: "platform.setting.change", entity: "platform_firm_setting",
       entityKey: `${scope.firmId}:${w.key}`, summary: `Firm ${firm.key}: setting ${w.key} ${changed ? "changed" : "saved unchanged"}${w.reason ? ` (${w.reason})` : ""}`.slice(0, 600),
       detail: { firmId: scope.firmId, firmKey: firm.key, key: w.key, from, to: value, ...(w.reason ? { reason: w.reason } : {}) },
     } });
