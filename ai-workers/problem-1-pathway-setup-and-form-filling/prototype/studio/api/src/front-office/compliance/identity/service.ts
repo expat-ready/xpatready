@@ -147,9 +147,6 @@ export class IdentityChecks {
     const p = await this.person(ctx, personId), b = body ?? {};
     const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per Save.");
     const c = parse(b);
-    // FO-13i part 2 (QA-510, P-735): an expiry before the firm's today is refused (422), nothing stored; today still records.
-    if (c.documentExpiry && c.documentExpiry.toISOString().slice(0, 10) < dayIn(await readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), this.clock.now()))
-      problem(422, "Check the details", EXPIRED_DOCUMENT, { code: "INVALID", fields: { documentExpiry: EXPIRED_DOCUMENT } });
     const sha = copy ? await sha256Hex(copy.bytes) : null;
     const replay = async () => {
       const had = await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
@@ -159,6 +156,10 @@ export class IdentityChecks {
       return same ? (await this.list(ctx, p.id)).checks.find((x) => x.id === id)! : problem(409, "Already used", "This request was already used with other details. Start a new Save.", { code: "REQUEST_REUSED" });
     };
     if (await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })) return replay();
+    // FO-13i part 2 (QA-510, P-735): an expiry before the firm's today is refused (422), nothing stored; today still records.
+    // After the replay lookup (a saved check replayed after the firm's midnight returns that check), before the copy is put.
+    if (c.documentExpiry && c.documentExpiry.toISOString().slice(0, 10) < dayIn(await readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), this.clock.now()))
+      problem(422, "Check the details", EXPIRED_DOCUMENT, { code: "INVALID", fields: { documentExpiry: EXPIRED_DOCUMENT } });
     let stored: { key: string; sha256: string } | null = null;
     if (copy) {
       if (copy.size > COPY_MAX_BYTES || copy.bytes.length > COPY_MAX_BYTES) problem(413, "Too large", "The copy is at most 10 MB.", { code: "TOO_LARGE", fields: { copy: "At most 10 MB." } });

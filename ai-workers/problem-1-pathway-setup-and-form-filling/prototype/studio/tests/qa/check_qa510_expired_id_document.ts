@@ -47,7 +47,7 @@ try {
   const local = new LocalIdentity("qa510-check-signing-key-0123456789abcdef", () => Date.now());
   const tok = local.issue(R, { authTimeMs: Date.now() - 60_000, secondStep: true });
   // 19 Nov 23:30 UTC is 20 Nov 05:00 in Kolkata: the firm's today is 2026-11-20.
-  const nowMs = Date.parse("2026-11-19T23:30:00Z");
+  let nowMs = Date.parse("2026-11-19T23:30:00Z");
   sql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${A}', 'platform.time_zone', '"Asia/Kolkata"', 'test') on conflict (firm_id, key) do update set value = excluded.value`);
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: { now: () => nowMs } }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }, ...identity.providers];
   @Module({ controllers: identity.controllers as never[], providers: providers as never[] }) class TestApp {}
@@ -57,9 +57,9 @@ try {
   const pid = "00000000-0000-4000-8000-0000000a5101";
   sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${pid}', '${A}', 'Client A', 'Sample', 'client.a@example.com', 'test', now());
     insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('00000000-0000-4000-8000-0000000a5102', '${A}', '${pid}', 'MANUAL', 'WEBSITE', '${R}', 'test', now())`);
-  const save = async (documentExpiry: string) => {
+  const save = async (documentExpiry: string, requestId: string = crypto.randomUUID()) => {
     const r = await fetch(`${BASE}/people/${pid}/identity-checks`, { method: "POST", headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
-      body: JSON.stringify({ requestId: crypto.randomUUID(), method: "IN_PERSON", documentType: "PASSPORT", issuingCountry: "CA", documentExpiry, documentNumberLast4: "q7r2", details: ["NAME"] }) });
+      body: JSON.stringify({ requestId, method: "IN_PERSON", documentType: "PASSPORT", issuingCountry: "CA", documentExpiry, documentNumberLast4: "q7r2", details: ["NAME"] }) });
     const t = await r.text(); let b: any = t; try { b = JSON.parse(t); } catch { /* text */ }
     return { status: r.status, body: b };
   };
@@ -74,8 +74,21 @@ try {
   ok("QA-510 fail case: the firm's yesterday (still today in UTC) is refused with 422 on documentExpiry", yesterday.status === 422 && yesterday.body?.fields?.documentExpiry === SENTENCE, yesterday);
   const n = sql(`select count(*) from fo_identity_check where person_id='${pid}'`);
   ok("QA-510: the refused expired documents leave no check behind (only the two that recorded)", n === "2", n);
-  const ev = sql(`select count(*) from module_event where type='identity.checked'`);
-  ok("QA-510: a refused check writes no event (two events for the two saved checks)", ev === "2", ev);
+  // A zone behind UTC: 20 Nov 03:00 UTC is 19 Nov 22:00 in Toronto, so the firm's today is still 2026-11-19 (code that read
+  // UTC, or a server set to a zone ahead of it, would refuse this).
+  sql(`update platform_firm_setting set value = '"America/Toronto"' where firm_id = '${A}' and key = 'platform.time_zone'`);
+  nowMs = Date.parse("2026-11-20T03:00:00Z");
+  const west = await save("2026-11-19");
+  ok("QA-510 pass: in a zone behind UTC, the firm's today (still 19 Nov there, 20 Nov in UTC) records (201)", west.status === 201, west);
+  // A replay after the firm's midnight returns the saved check (one row), never 422 (STANDARDS §4 idempotent creates).
+  const rid = crypto.randomUUID(), first = await save("2026-11-19", rid);
+  nowMs += 24 * 3600_000;
+  const again = await save("2026-11-19", rid);
+  ok("QA-510: a check saved on its expiry day and replayed after the firm's midnight returns the same check (201), not 422", first.status === 201 && again.status === 201 && again.body?.id === rid, { first: first.status, again });
+  const fresh = await save("2026-11-19");
+  ok("QA-510 fail case: a new Save of the same document after that midnight is refused (422)", fresh.status === 422 && fresh.body?.fields?.documentExpiry === SENTENCE, fresh);
+  const ev = sql(`select count(*) from module_event where type='identity.checked'`), rows = sql(`select count(*) from fo_identity_check where person_id='${pid}'`);
+  ok("QA-510: a refused check writes no row or event (four saved checks, four events)", ev === "4" && rows === "4", { ev, rows });
 } catch (e) {
   ok("QA-510 ran to the end", false, String((e as Error)?.stack ?? e));
 } finally {
