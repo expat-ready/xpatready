@@ -42,6 +42,24 @@ For the tech lead (Lead 84) to rule on; P-502 (evidence, root cause, a named met
 - *Who folds:* the Lead's records PR (one writer, serial) may fold fragments into the frozen lines when a card is next tidied; nothing depends on it.
 - *Lanes:* the card's `paths:` rule still loads the card. The card's pointer line tells a lane to read `MODULE.rows/` for the full list.
 
+## Every agent aware (founder P-712, "fixed for once and all, every agent aware")
+In (b) the three lines are **frozen**, not generated; the rule is the same.
+
+**The line**, word for word:
+> Never hand-edit a card's `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to the card (P-712; `module-cards.py` fails the PR otherwise).
+
+**Where it goes, in the same tooling PR:**
+1. **Every card (15):** the pointer line, so any agent that loads a card through its `paths:` rule reads it, whatever skill it runs. This reaches the most agents.
+2. **`.claude/skills/next/SKILL.md`:** the builder's flow, where it says to update the card in the same PR.
+3. **`.claude/skills/screen-build/SKILL.md`:** the BUILD stage.
+4. **`.claude/skills/qa/SKILL.md`:** qa's own fixes and its review of a row: a frozen list line edited by hand is a finding.
+5. **The brief:** there is no separate brief template file on main. The brief's shape lives in the `next` skill and `product/tools/brief-check.sh`. So the line goes into the `next` skill's brief section; `brief-check.sh` gets no new required line, because the card check enforces it.
+6. **`RULES.md`:** a P-712 row: the rule, "enforced by: `module-cards.py pr` (CI module-cards)".
+
+**The check is the backstop:** a PR that edits a frozen line fails CI, and its message is the same line. So an agent that missed every document still learns the rule in its first PR.
+
+**One process point for the Lead.** This worktree's sandbox refuses writes to `.claude/skills/`. The skill lines would go into the PR as git objects (commit-tree), not through the local skill files. The `.claude/` paths in the PR then get the Lead's P-423 read like any other. Say if you would rather add the three skill lines in a records PR yourself.
+
 ## Recommendation
 Build (b), one tooling PR:
 - `module-cards.py` `pr` and `tree` changes, with fixture tests in `check-module-cards.sh` and guard mutations;
