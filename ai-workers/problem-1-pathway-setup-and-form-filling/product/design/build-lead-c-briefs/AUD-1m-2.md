@@ -48,7 +48,8 @@ Written 19 Nov 11:5x IST by Build Lead C (2). **Approved for building after the 
 * Update CW1's `LEFT` map in the same PR: 2a removes its 10 files; 2b removes its 10. CW1 keeps its pass and fail lines.
 * No schema and no migration. If one is needed, ask first (P-600 slot).
 
-## The two platform files (question for the tech lead, open)
+## The two platform files
+**Lead 90's answer (19 Nov 11:50 IST): way 1, provided Lead B agrees** (Lead 90 asked Lead B (7) and relays the answer). With Lead B's yes, part 2b moves the 3 writes and names Lead B's OK in its PR body; without it, way 2.
 `platform/identity/audit.ts` (2 writes: `auditStaff`, `auditInvitation`) and `platform/settings.ts` (1 write) are the platform's, not the case side's. The BACKLOG row's check says "`git grep auditEvent.create` under `api/src` finds only the adapter". Two ways, for Lead 90 to decide with Lead B:
 1. **Recommended:** part 2b also moves these 3 writes (one line each, `AREA_ENTITY` already covers `platform_staff` and `platform_invitation`), with Lead B's OK on the touch list in the PR body. Then CW1's final `LEFT` is empty and the row's check holds as written.
 2. They stay, named in CW1's final `LEFT` with a reason, and a Lead B row moves them later. Then R1.8's check is met only when that row merges.
