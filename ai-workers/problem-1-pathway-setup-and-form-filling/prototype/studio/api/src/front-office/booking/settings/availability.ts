@@ -224,7 +224,7 @@ export class AvailabilityService {
   private async target(ctx: StaffContext, staffId: string): Promise<string> {
     if (staffId === "me") return ctx.staffId;
     if (!z.uuid().safeParse(staffId).success) return notInFirm("staff member");
-    const s = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: staffId.toLowerCase(), status: { not: "DEACTIVATED" } }), select: { id: true } });
+    const s = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: staffId.toLowerCase(), status: { not: "DEACTIVATED" as const } }), select: { id: true } });
     return s?.id ?? notInFirm("staff member");
   }
 
