@@ -697,8 +697,15 @@ try {
       const bounce = (amount: number, kase: string | null) => te(G, "CORRECTION", -amount, { corrects: chq, ck: "RETURNED", reason: "Cheque bounced", kase });
       ok("FO-7ts break R2-M1, R3-m2 fail → pass: a 500.00 cheque with 1.00 of it moved to case K — its bounce on K is refused while 499.00 is held before a case; 499.00 before a case, then 1.00 on K, are accepted; beyond 1.00 on K is refused; nothing is left to move or pick",
         refused(T, bounce(100, Kg), /takes from before a case first \(CAD 499\.00 held there\)/, "23514") && !!sql(T, bounce(49900, null))
-        && refused(T, bounce(101, Kg), /at most the deposit|at most what was moved there/) && !!sql(T, bounce(100, Kg))
+        && refused(T, bounce(101, Kg), /takes from a case at most what was moved there \(CAD 1\.00\)/, "23514") && !!sql(T, bounce(100, Kg))
         && refused(T, bounce(1, Kg), /at most what was moved there \(CAD 0\.00\)|at most the deposit/) && refused(T, pairQ(G, 100, randomUUID()), /Only CAD 0\.00 is available/));
+      {  // review R4-1: the cap alone — the pre-case money spent on the party's own invoice first, so only the cap can refuse
+        const G2 = randomUUID(), K2 = randomUUID(); dep(G2, 1000, { kase: M }); const chq2 = dep(G2, 50000, { method: "CHEQUE", cleared: false }); sql(T, pairQ(G2, 100, K2));
+        sql(T, te(G2, "WITHDRAWAL_TO_INVOICE", -49900, { inv: inv(G2, 49900) }));
+        const b2 = (amount: number) => te(G2, "CORRECTION", -amount, { corrects: chq2, ck: "RETURNED", reason: "Cheque bounced", kase: K2 });
+        ok("FO-7ts review R4-1 fail → pass: with nothing held before a case, the 500.00 bounce on K (1.00 moved there) is refused by the cap in its own words; 1.00 on K is accepted",
+          refused(T, b2(50000), /takes from a case at most what was moved there \(CAD 1\.00\)/, "23514") && !!sql(T, b2(100)));
+      }
       const g = new pg.Client({ connectionString: urlOf(T) }), e = new pg.Client({ connectionString: urlOf(T) }); await g.connect(); await e.connect(); conns.push(g, e);
       const p0 = randomUUID(); await g.query("begin"); await g.query(`insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${p0}', '${F}', 'E_TRANSFER', 100, 'CAD', 'TRUST', now(), '${key()}', 'user-R'); ${te(B, "DEPOSIT", 100, { pay: p0, kase: K })}`);
       await e.query("set statement_timeout = '2s'");

@@ -1,3 +1,47 @@
+Breaker: pass a15e5f7ece04fbc91c335d34724e8dd62ebd8104
+
+# FO-7ts part 3: break report, round 4 (head a15e5f7ec, one commit on top of fce13845d)
+
+**What I tested:** a fresh scratch database with every migration at this head, plus a reference database and a rollback database; all three are dropped. Races ran on real connections at READ COMMITTED (RC) and REPEATABLE READ (RR). `check_fo7ts_money_settings.ts`: 154 passed, 0 failed. Nothing was fixed or committed. I found no Blocker, Major or new Minor.
+
+## What held
+
+* **R3-m2 is fixed.**
+  * The round-3 reproduction: W's −500.00 bounce on K, while 500.00 is held before a case, is refused in words ("takes from before a case first (CAD 500.00 held there)").
+  * Booked before a case it is stored. K keeps its 500.00, and nothing is left before a case to move to J.
+* **Pre-case first, then the case (G):** a 500.00 cheque, 300.00 of it moved to K.
+  * The correction on K is refused while 200.00 is held before a case.
+  * 200.00 before a case, then 300.00 on K, are both stored, and every pool ends at 0.
+* **A bounce larger than the pre-case pool plus what was moved can always be booked (X):** a 500.00 cheque; 100.00 moved to K; 300.00 paid X's own invoice before a case.
+  * 100.00 before a case, then 100.00 on K, are both stored. 300.00 more on K is refused (cap 0.00).
+  * The remaining 300.00 is stored before a case, taking that pool and the party to −300.00, with the shortfall shown (−300.00).
+  * So no correction is left that can never be booked: the deposit's own pre-case booking always takes a reversal, even below zero.
+* **A pre-case pool below zero:** a later deposit before a case only reduces the shortfall (−250.00). Moves from that pool stay refused, because the move check refuses at zero or below.
+* **The bounce on K racing a move pair, 20 runs each.** Setup: 300.00 held before a case, the cheque's money already moved to K.
+  * RC: the move was always stored; the bounce on K was stored once the move had emptied the pre-case pool (17) and refused otherwise (3).
+  * RR: the bounce on K was always refused, because its snapshot still saw the 300.00.
+  * Invariant: no booking on K was ever made while the pre-case pool held money (checked by seq).
+* **The bounce on K racing a deposit before a case, 20 runs each:**
+  * RC: the deposit was always stored; the bounce on K was stored 18 times and refused twice.
+  * RR: the stale write fails on the duplicate key (23505).
+  * No booking on K was ever made while the pre-case pool held money.
+* **Unchanged from round 3:**
+  * M1 (kept credit against a correction): refused at RC, fails to serialise (40001) at RR.
+  * A credit note against a pick: 40 of 40 races with no 40P01.
+  * An undo racing a credit note and a pick, 25 runs each at RC and RR: no 40P01.
+  * A single pick-line: no 40P01 at RC or RR.
+  * Two 0.60 corrections against a 1.00 move: both are refused now, because pre-case money is still held (as the rule intends).
+* **Rollback:** run from the wrong folder it is refused. From the studio folder the catalog is identical to part 2, and part 3 then applies again.
+* **R3-m1 wording:** the comments, `FO-7t.md` and `FO-7m.md` now say the route takes every lock its lines need, sorted, before the first line. Both multi-line forms still give 40P01 at RC and RR, the unsorted batch and the batch sorted by line party, as documented. That is assigned to FO-7t part 3.
+
+## Note (not a finding)
+
+* A party can still choose which moved-to case takes a bounce, by first emptying the pre-case pool with a move.
+* Example V: 500.00 cash moved to K, a 500.00 cheque moved to J, then the cheque's bounce booked on K. The result is K 0 and J 500.00.
+* This choice is built in: a move does not name the deposit it came from. It is limited by the cap and needs a deliberate move.
+
+---
+
 Breaker: pass fce13845d0cea57092eb0cc1fa4277fa738c1777
 
 # FO-7ts part 3: break report, round 3 (head fce13845d, main merged, #2204 on main)

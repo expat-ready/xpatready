@@ -1,4 +1,34 @@
-Reviewer: Approve fce13845d0cea57092eb0cc1fa4277fa738c1777
+Reviewer: Approve a15e5f7ece04fbc91c335d34724e8dd62ebd8104
+
+# Round 4: diff-only re-read of fce13845d..a15e5f7ec (one commit)
+
+**What I ran at a15e5f7ec:**
+* `check_fo7ts_money_settings` passed 154, failed 0.
+* fo7a2 35/0, fo7a 122/0, fo7mv 45/0, fo7lk 16/0, prisma 8/0.
+* I wrote a mutation script (`rv/cap.mjs`). Its scratch database is dropped.
+
+## What this commit closes
+* **R3-1: closed.** The `money_move_line_write` comment (`migration.sql:542-545`), the header note before the FO-7lk functions (`migration.sql:415`), and the notes in `FO-7t.md` and `FO-7m.md` now all say that the route takes every lock its lines need before the first line, sorted: each line's party and each pick line's invoice party. They say sorting the lines is not enough. That is the rule my `moveline2.mjs` case needs.
+* **The breaker's R3-m2: closed.**
+  * A pre-case deposit's correction on a moved-to case is refused while the party holds anything before a case (`migration.sql:258-264`). The check is read under the party's lock, in the correction branch, and the error message names the amount held there.
+  * The check is sound. A returned cheque now comes off pre-case money first, then off the case, which can take more than one row.
+  * My `bounce.mjs` case (pre-case at 0 after the move) is unaffected, because the booking on K is still allowed.
+
+## New (does not block)
+**Minor R4-1: the R2-M1 cap is no longer pinned by any test. Reproduced by mutation.**
+* The reordered test (`check_fo7ts_money_settings.ts:698-701`) checks the cap's refusals with `/at most the deposit|at most what was moved there/`.
+* In that sequence, 499.00 is first corrected before a case, so the deposit-limit check refuses 1.01 on K anyway.
+* I removed the cap block (`IF -NEW.amount_minor > on_case …`, `migration.sql:269-271`) from the live function in a scratch database:
+  * the builder's sequence gives the same pass/fail pattern;
+  * a case that does reach the cap gets through. That case: the pre-case money is spent on the party's own invoice first, then the whole 500.00 bounce is booked on K. As built it is refused ("at most what was moved there (CAD 1.00)"); with the cap removed it is **stored**.
+* The test before this commit had pinned the cap with `bounce(50000, Kg)` → `/(CAD 1\.00)/`.
+* **Fix (test only):** add that case, a cheque with 1.00 moved to K whose pre-case money is then spent on the party's own invoice. Assert that the whole bounce on K is refused with `/takes from a case at most what was moved there \(CAD 1\.00\)/`. Then drop the `at most the deposit|` alternative from the two cap assertions.
+
+**Verdict: Approve** for `a15e5f7ece04fbc91c335d34724e8dd62ebd8104`. No Blocker or Major is open; the cap's database code is correct as built. Fix R4-1 in a follow-up, or in this PR as a test-only push, which would then need a diff-only check.
+
+---
+
+Round 3 line (superseded): Reviewer: Approve fce13845d0cea57092eb0cc1fa4277fa738c1777
 
 # Round 3: diff-only re-review of 73adf83e5..fce13845d
 
