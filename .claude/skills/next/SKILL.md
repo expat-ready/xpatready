@@ -15,6 +15,7 @@ Home: `ai-workers/problem-1-pathway-setup-and-form-filling/product/` (P). **The 
 * **Duplicate check first (P-526):** search the row's words and code names in `BACKLOG*.md`, open PRs (records PRs too), `main`'s code and `qa/BUGS.md` (and the team's product on the integration track). Put `Duplicate check: searched <places>; none` or `found <id>` in the PR body. Found → "Question for the tech lead: duplicate of <id>" and stop; the copy that goes is removed before new work. Touch only what the row names; files another open PR touches → ask for the baton.
 * **Requirements (P-604):** read only the requirement text `python3 P/tools/trace-requirements.py --brief <row>` prints for your row; never invent a value, requirement or scope; unknown → write "not known" or ask (A73, P-502).
 * **Finish whole (P-606):** each "Done when" line names the test that proves it before you build; no new capability while one you started has parts merged and parts missing (blocked over 2 h → pull the next ready one); a port's fake and real adapters pass the same contract test.
+* Work one Release 1 item's whole chain (parts, J-row, qa proof); about 8 items in flight; start a new item only when one is Proven (P-719).
 * Not ready (no acceptance test, an open founder question, a new screen part without an approved concept) → write the question with your recommendation for the tech lead and stop.
 * A founder ask: check in minutes that it fits `DECISIONS.md` and the agreed board and moves no other screen, area or row; a knock-on effect → one plain line to the tech lead with your recommendation before building.
 
@@ -23,6 +24,7 @@ Home: `ai-workers/problem-1-pathway-setup-and-form-filling/product/` (P). **The 
 git fetch origin && git checkout -b claude/<area>-<word> origin/main
 ```
 At the first commit: `git push -u origin HEAD && gh pr create --draft --base main` (title and body from `WAY-OF-WORKING.md`, "Every PR"). Push after every step (P-344): a draft push runs only the guard, about a minute, no suites (P-371). Read → write the plan in the PR body → implement. Screens: skill **screen-build**. Your own ports and databases (`WAY-OF-WORKING.md`), never :4400.
+* **Module cards (P-712):** never hand-edit a card's frozen `Tests.`, `Tables.` or `Entry points.` line; add your row's items in `<card without .md>.rows/<ROW>.md` next to the card (one file per row, at most 6 lines starting `Tests:`, `Tables:` or `Entry points:`); `module-cards.py` fails the PR otherwise.
 
 ## 4. Check
 ```

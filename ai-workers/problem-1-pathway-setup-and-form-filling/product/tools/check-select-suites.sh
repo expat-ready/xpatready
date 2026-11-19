@@ -37,9 +37,11 @@ o=$(sel "$Q/official-sources/ircc/manifest.json"); ok "official sources (the app
 o=$(sel "$T/run-suites.sh"); ok "run-suites.sh decides how suites run: everything" "$(all "$o" && echo 1)" "$(head -1 <<< "$o")"
 o=$(sel .github/workflows/ci.yml); ok "ci.yml: everything" "$(all "$o" && echo 1)" "$(head -1 <<< "$o")"
 # Files that cannot change a suite's result choose only the smoke set.
-for f in "$Q/product/STATE.md" "$T/merge-guard.sh" .github/workflows/nightly.yml "$Q/official-sources/ircc/README.md" "$S/screens/x/notes.md"; do
+for f in "$Q/product/STATE.md" "$T/merge-guard.sh" "$Q/official-sources/ircc/README.md" "$S/screens/x/notes.md"; do
   o=$(sel "$f"); ok "$f: only the smoke set" "$(only_smoke "$o" && echo 1)" "$(grep -v '	smoke$' <<< "$o" | head -2 | tr '\n' ' ')"
 done
+# PF-8r: nightly.yml chooses the smoke set and the one suite that reads it (check_pf8r_nightly_job.ts, its restore-drill wiring).
+o=$(sel .github/workflows/nightly.yml); ok "nightly.yml: the smoke set and check_pf8r_nightly_job.ts only" "$([ "$(grep -v '	smoke$' <<< "$o" | cut -f1)" = check_pf8r_nightly_job.ts ] && echo 1)" "$(grep -v '	smoke$' <<< "$o" | head -2 | tr '\n' ' ')"
 # A changed suite runs itself; the three runtime R1 suites run together; a page runs the browser suites that open it.
 o=$(sel "$S/tests/check_queue_tx.ts"); ok "a changed suite runs itself" "$(has "$o" check_queue_tx.ts && echo 1)" "$(head -3 <<< "$o" | tr '\n' ' ')"
 o=$(sel "$S/tests/runtime/check_runtime_r1d.ts"); ok "R1 suites run together" "$(has "$o" check_runtime_r1a.ts && has "$o" check_runtime_r1c.cjs && has "$o" check_runtime_r1d.ts && echo 1)" "$(cut -f1 <<< "$o" | tr '\n' ' ')"

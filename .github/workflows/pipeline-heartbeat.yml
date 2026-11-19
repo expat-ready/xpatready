@@ -1,0 +1,51 @@
+# Pipeline heartbeat (CK-2, founder asks A151 and A154, 17 Nov 2026): outside every session, the set-up is in force
+# (CK-1, conformance-check.py) and the pipeline keeps moving (pipeline-heartbeat.py; thresholds and red_rule in
+# product/design/engineering-approved-setup.json › heartbeat). A red run mails the owner; the reason is in the job
+# summary; the result is the artifact the next run and the board read. One job, read-only, never cancelled, 5 min, US$0.
+name: pipeline-heartbeat
+on:
+  schedule:
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
+    - cron: "11,41 * * * *"   # every 30 min, off the top of the hour (GitHub delays :00 schedules most)
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+concurrency:
+  group: pipeline-heartbeat
+  cancel-in-progress: false
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pyyaml==6.0.3   # conformance-check reads the YAML files
+      - name: set-up conformance (CK-1) on main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/heartbeat"
+          python3 -I "$P/tools/conformance-check.py" --root . --github --json "$RUNNER_TEMP/heartbeat/conformance.json" --md "$GITHUB_STEP_SUMMARY" || true
+      - name: heartbeat (red on a change, red_rule)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -I "$P/tools/pipeline-heartbeat.py" --conformance "$RUNNER_TEMP/heartbeat/conformance.json" --json "$RUNNER_TEMP/heartbeat/heartbeat.json" --md "$GITHUB_STEP_SUMMARY"
+      - name: result for the next run and the board
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-heartbeat
+          path: ${{ runner.temp }}/heartbeat/
+          retention-days: 3
+          if-no-files-found: warn

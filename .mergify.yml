@@ -1,6 +1,8 @@
-# Merge queue with batches (P-201, founder 31 Oct). An approved PR enters the queue; Mergify combines up to 6 of them
-# the way they will land on main, runs the full check once on that batch PR (branch mergify/merge-queue/...), and merges
-# them all when it passes. A failing batch is split until the PR that broke it is found; the others still merge.
+# Merge queue with batches (P-201, founder 31 Oct). An approved PR enters the queue; Mergify combines up to 2 of them
+# (6 until P-715, 19 Nov) the way they will land on main, runs the full check once on that batch PR (branch
+# mergify/merge-queue/...), and merges them all when it passes. A failing batch is split (at most 2 rounds) until the PR
+# that broke it is found; the others still merge. Since P-715 the queue runs in parallel by scope (below); the history
+# of serial checking follows.
 # P-210 (founder 1 Nov, the free fix): one batch checked at a time (the Mac has one test runner: stacked batches were
 # cancelled whenever one ahead failed, 43% of its time on 31 Oct), batches of up to 6, and a PR joins only once its own
 # check is green, so a batch fails only on how PRs combine.
@@ -8,6 +10,124 @@
 # machines, not the one Mac; up to 3 batches are checked at once, each assuming the ones ahead of it pass.
 merge_queue:
   max_parallel_checks: 3
+  # P-715 (Lead 84; founder P-717, 19 Nov ~07:3x IST, the one exception to the P-716 freeze): batches that share no
+  # scope test and merge at the same time, and one failure no longer resets the others. Undo: mode: serial (one line).
+  # Design and evidence: product/design/mergify-parallel-scopes-2026-11-19.md (40% of 118 batches failed in 72 h).
+  mode: parallel
+
+# Scopes: the fenced modules, as their module cards claim them (.claude/rules/modules, product/tools/module-cards.py),
+# plus each module's own schema file; migrations one at a time (capacity 1: a second migration failed queued PRs 60%
+# of the time, design/merge-queue-causes-2026-11-16.md); pipeline work (checks, workflows, Mergify, tools, agent rules)
+# its own lane, never batched with product (P-717 (a)). A PR in no scope (web, the unfenced api files, tests, engine,
+# unscoped schema files) is batched only with other scope-less PRs, untested on top of the module lanes: the design's
+# largest cross-scope risk.
+# barrier_files are the seams every module builds on: a PR touching one conflicts with every scope, so the queue
+# serializes at it. A new or changed blocking check, or a stricter step inside ci, starts report-only (P-717 (b)): it
+# joins no queue_conditions or
+# merge_conditions here, and no required check in the ruleset, until it has run clean for 24 h or 10 PR runs; Mergify
+# has no time-based condition, so the tech lead adds it then, in its own PR.
+scopes:
+  source:
+    files:
+      platform:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/platform-*.prisma"
+      front-office:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/front-office/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/front-office-*.prisma"
+      money:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/client-money/**"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/client-money.prisma"
+      case-side:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/clients.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/assessments.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/team.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/person-link.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/employer-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/earlier-facts.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/findings.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/readiness.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/readiness-inputs.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/document-review-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/filing.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/filing-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/fill-case.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/submission.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/submission-record.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/sign-steps.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/review-rounds.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/review-runs.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/review-run-shapes.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/review-stamp.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/review-items.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/release-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/stage-scope.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/routes-data.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/cases.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/case-search.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/filings.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/evidence.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/submission.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/review.prisma"
+      forms-engine:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/form-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/forms.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/fill.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/fill-trials.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/field-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/draft-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/pqr-drafts.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/answer-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/lines-bulk.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/screen02.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/who-fills.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/edition-published.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/impact.ts"
+          - "packages/xfa-engine/**"
+          - ".github/workflows/xfa-engine.yml"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/forms.prisma"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/answers.prisma"
+      migrations:
+        include:
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/**"
+      pipeline:
+        include:
+          - ".github/**"
+          - ".githooks/**"
+          - ".mergify.yml"
+          - ".claude/**"
+          - "AGENTS.md"
+          - "CLAUDE.md"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+  barrier_files:
+    include:
+      - "**/package.json"
+      - "**/package-lock.json"
+      - ".nvmrc"
+      - "tsconfig.base.json"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"
+  capacities:
+    money: 1
+    migrations: 1
+    pipeline: 1
+
 
 # One product queue (D1, P-416, founder 8 Nov ~09:05 IST "Approve all stands"): M2 is 60/60 (P-415), so the two queues
 # of 4 Nov (M2 first, M3 picked by a hand-kept title regex, which went stale whenever an M3 row was added) are one
@@ -18,11 +138,34 @@ merge_queue:
 # so there is one definition of a record. product skips the label. A records PR is checked only when no product
 # PR waits ahead of it, and a product PR that arrives goes ahead of it, so a records merge never restarts a product batch;
 # records also never share a batch with code. Records merge only through this queue, never outside it.
+# Exception, P-664 (founder 17 Nov, "Yes, verdicts first (Recommended)"; reverses B119 / P-376 (1) for verdict records
+# only): a queue "verdicts", listed FIRST, takes a qa verdict records PR: labelled "records", title starting "qa:" (the
+# qa skill's commit and PR title form) and changing qa/CAPABILITIES.md (a verdict moves a capability row). Every other
+# records PR still goes to "records", last. The title, not the branch, selects qa: of the 7 records PRs touching
+# CAPABILITIES.md among the last 300 closed PRs (17 Nov), all 7 had a "qa:" title and none a claude/qa- branch (cloud
+# sessions name their own branches). No allow_checks_interruption: Mergify's default inserts a higher-priority PR just
+# after the batches whose checks already run, so a verdict never restarts a running product batch.
 # product/screens/B119/check-queue-rules.py reads this file and fails when the queues stop routing that way. The daily
 # records PR (P-336) stays.
 queue_rules:
+  - name: verdicts
+    batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 2 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - label = records
+      - "title ~= ^qa:"
+      - files ~= qa/CAPABILITIES\.md$
+    merge_conditions:
+      - check-success = ci
+    merge_method: merge
   - name: product
-    batch_size: 6
+    batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
+    batch_max_failure_resolution_attempts: 2
     # F6 (founder 6 Nov, "Yes, apply all seven"): a 24-hour trial of 5 min (was 2 min), so batches fill; review 7 Nov
     # ~21:00 IST: kept if PRs per batch rises (baseline 1.6) and approved-to-merged median does not get worse.
     batch_max_wait_time: 5 min
@@ -32,6 +175,8 @@ queue_rules:
       - "label = review: approved"
       - check-success = ci
       - -label=records
+      # P-717 (a): a PR whose every file is pipeline work goes to the queue "pipeline" below, never a product batch.
+      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
       # B170a (#1545, reviewer minor 5; Lead 18, P-214): a PR that changes the XFA engine (the paths that start
       # .github/workflows/xfa-engine.yml) also needs that workflow's own check green; ci does not run the engine's tests.
       - or:
@@ -48,8 +193,29 @@ queue_rules:
     merge_conditions:
       - check-success = ci
     merge_method: merge
+  # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
+  # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
+  # product code and, after product in priority, never holds a product PR back. The XFA engine rule applies here too.
+  - name: pipeline
+    batch_size: 2
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 2 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - -label=records
+      - -files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+    merge_conditions:
+      - check-success = ci
+    merge_method: merge
   - name: records
-    batch_size: 6
+    batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
+    batch_max_failure_resolution_attempts: 2
     batch_max_wait_time: 2 min
     queue_conditions:
       - base = main

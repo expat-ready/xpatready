@@ -33,6 +33,7 @@ import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-s
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
+import { windowsFor } from "./settings/hours.ts";
 import { issueToken, liveToken } from "./tokens.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -215,7 +216,7 @@ export class BookingService {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
     const firm = await this.publicFirm(db, firmKey);
     // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }) });
+    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) });
     if (!type) throw notFound();
     return { firm, type };
   }
@@ -234,7 +235,7 @@ export class BookingService {
   async publicList(firmKey: string, ip: string) {
     this.limit(`slots:ip:${ip}`, this.limits.slotsPerIp);
     const firm = await this.publicFirm(this.db, firmKey);
-    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, showOnBookingPage: true, purpose: "FREE_CONSULT" as const }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
+    const types = await this.db.foConsultationType.findMany({ where: firmScope(firm.id, { active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }), orderBy: [{ name: "asc" }, { slug: "asc" }], select: { name: true, slug: true, minutes: true, modes: true } });
     return { firm: firmContact(firm), types };
   }
 
@@ -347,7 +348,7 @@ export class BookingService {
   async staffCreate(ctx: StaffContext, body: unknown) {
     need(ctx, "agent/booking:create");
     const b = parse(StaffBookingBody, body);
-    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true }) });
+    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) });
     if (!type) throw notInFirm("consultation type");
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     const contact = await this.ports.arrival.contactOf(this.db, ctx.firmId, b.personId);
@@ -648,7 +649,7 @@ export class BookingService {
     const ids = hosts.map((h) => h.id);
     const pad = 2 * DAY;
     const [windows, offs, busyRows, closedDays, firmZone] = await Promise.all([
-      db.foAvailability.findMany({ where: firmScope(firmId, { staffId: { in: ids } }) }),
+      windowsFor(db, firmId, type.id, ids),   // the type's set per host, else the default (FO-3a part 1b)
       db.foTimeOff.findMany({ where: firmScope(firmId, { staffId: { in: ids }, startsAt: { lt: new Date(to.getTime() + pad) }, endsAt: { gt: new Date(from.getTime() - pad) } }) }),
       ids.length ? db.$queryRaw<{ staff_id: string; lo: Date; hi: Date }[]>`SELECT staff_id::text, lower(block_range) AS lo, upper(block_range) AS hi FROM fo_booking
         WHERE firm_id = ${firmScope(firmId).firmId}::uuid AND staff_id = ANY(${ids}::uuid[]) AND status IN ('SCHEDULED', 'RESCHEDULED')
@@ -708,7 +709,7 @@ export class BookingService {
     const s = startsAt.getTime(), e = s + type.minutes * MIN, now = this.ports.clock.now().getTime();
     const [host, windows, offs, closedDays, firmZone, zone] = await Promise.all([
       tx.platformStaff.findFirstOrThrow({ where: firmScope(firmId, { id: staffId }), select: { displayName: true } }),
-      tx.foAvailability.findMany({ where: firmScope(firmId, { staffId }) }),
+      windowsFor(tx, firmId, type.id, [staffId]),
       tx.foTimeOff.findMany({ where: firmScope(firmId, { staffId, startsAt: { lt: new Date(e) }, endsAt: { gt: startsAt } }) }),
       readSetting<string[]>(tx, firmId, CLOSED_DAYS.key), readSetting<string>(tx, firmId, TIME_ZONE.key), hostZone(tx, firmId, staffId),
     ]);

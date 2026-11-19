@@ -27,6 +27,9 @@ export const SEND_QUEUE = "messages.send", SWEEP_QUEUE = "messages.outbox_sweep"
 export const SWEEP_AFTER_MS = 2 * 60_000;
 /** Sample: per firm and kind (lost, held), the rows one sweep queues. */
 export const SWEEP_PER_FIRM = 50;
+/** PF-19b part 2 (break M1): the worker's transaction holds the row while the adapter sends; it must outlive the slowest
+ *  adapter answer (SES: SES_TIMEOUT_MS), else a slow but accepted send rolls back and is sent again. */
+export const DELIVER_TX_MS = 60_000;
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
@@ -84,6 +87,19 @@ export class Messages implements MessagePort<Tx> {
     return { outboxId: id, state, reason, repeated: false };
   }
 
+  /** PF-19r (break M1, M2): whether this QUEUED row will be held by the firm's daily cap when the worker reaches it: the
+   *  day's sent count plus the firm's QUEUED rows written up to it (held ones included) is over the cap. The worker still
+   *  decides (this only lets a caller say so now: "held by the daily limit", never "sent"). */
+  async capHolds(txIn: Tx, firmIdIn: string, outboxId: string): Promise<boolean> {
+    const tx = inTransaction(txIn), { firmId } = firmScope(firmIdIn);
+    const firm = await tx.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { status: true } });
+    const day = dayIn(await readSetting<string>(tx, firmId, TIME_ZONE.key), this.clock.now()), cap = DAILY_CAP[firm.status === "ACTIVE" ? "ACTIVE" : "TRIAL"];
+    const [{ sent }] = await tx.$queryRaw<{ sent: number }[]>`SELECT COALESCE(MAX("sent"), 0)::int AS sent FROM "msg_send_counter" WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date`;
+    const [{ ahead }] = await tx.$queryRaw<{ ahead: number }[]>`SELECT count(*)::int AS ahead FROM "msg_outbox" o, "msg_outbox" me
+      WHERE me."firm_id" = ${firmId}::uuid AND me."id" = ${outboxId}::uuid AND o."firm_id" = me."firm_id" AND o."state" = 'QUEUED' AND (o."created_at", o."id") <= (me."created_at", me."id")`;
+    return sent + ahead > cap;
+  }
+
   async dispatch(firmIdIn: string, outboxIds: string[]): Promise<void> {
     const { firmId } = firmScope(firmIdIn);
     for (const id of outboxIds) await this.d.jobs.enqueue(SEND_QUEUE, { firmId, outboxId: id }, { key: `msg.send:${firmId}:${id}`, firmId });
@@ -122,7 +138,7 @@ export class Messages implements MessagePort<Tx> {
       await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
       await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
       return "sent" as const;
-    });
+    }, { timeout: DELIVER_TX_MS, maxWait: 10_000 });
     // One alert to our team per firm per day: the job key holds the day, so a second held message queues nothing.
     if (alertDay) await this.d.jobs.enqueue(CAP_ALERT_QUEUE, { firmId, day: alertDay }, { key: `msg.cap_alert:${firmId}:${alertDay}`, firmId });
     return out;
