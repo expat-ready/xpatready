@@ -26,3 +26,5 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * P-733 (founder, 12:28 IST): once #2233 is on main, proof is automatic at an item's last merge; qa walks items touching money, permissions, firm walls, schema or IRCC forms (R1.80 IRCC forms; R1.8 permissions and schema) and samples the rest daily. Until #2233 merges, prove as before.
 * **Lead 92** (local_9e102072-cfa3-44e7-b027-32b06363cdb5) took over from Lead 91 at 12:57 IST: walk requests and reports go there.
 * Lead 92 (~13:0x IST): R1.80's verdict belongs to qa 4 (cloud; claimed on #2235, P-722). qa 6 stands down on R1.80; rehearsal 44471642021 stays as supporting evidence. Handed back only if qa 4 cannot run. qa 6 keeps R1.77, R1.74, R1.8.
+* **Lead 93** (local_ce66c66a-3387-466b-9cfa-bcbc781648bd) is current Lead (after Lead 92): reports go there.
+* Batch **#2246** (head 02a6da1c9, on main 8cefcc6): #2235 + #2208 + #2214 + #2000 + #1961 + #2207. qa 6 reads its failing suites when its ci completes.
