@@ -34,7 +34,8 @@ import { pinChain } from "../../engine/runtime/release-update.ts";
 import { openingStages } from "../../engine/runtime/stages.ts";
 import { routeOf, routesOf, writeOpeningStages } from "./routes-data.ts";
 import { groupOfCombination, PgCaseCount } from "./case-count.ts"; // CS-C1b
-import { fakeEntitlements, type EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
+import type { EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
+import type { Prisma } from "@prisma/client";
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
@@ -99,6 +100,8 @@ function pinned<C extends { combinationId: string; pins: { combinationId: string
   const participants: C["participants"] = c.participants.filter((p) => p.role !== "case" || p.subjectId === stage!.applicationSubjectId);
   return { ...c, pins, participants, stage: stage!, allPins: c.pins };
 }
+/** PF-15c: the plan-limit port for one opening, made on its transaction so the limit is read under the opening's lock. */
+export type CaseLimits = (tx: Prisma.TransactionClient) => EntitlementPort;
 export type Reached = Awaited<ReturnType<Runtime["reach"]>>;
 /** C6.16 (challenge M2): who saves an answer, row or group answer: case staff and the case's client (simulated by
  *  x-actor), or an adult on their own link (/api/link/*, actor "person:<subject id>", channel own_link, only their own
@@ -137,10 +140,12 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
 export class Runtime {
   constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
 
-  /** CS-C1b (contract §6): the plan limits; the allow-all fake until PF-15's adapter is bound. */
-  private entitlements: EntitlementPort = fakeEntitlements();
-  /** Binds another EntitlementPort (PF-15's adapter; a test's limits). Returns the one before. */
-  useEntitlements(next: EntitlementPort): EntitlementPort { const was = this.entitlements; this.entitlements = next; return was; }
+  /** CS-C1b (contract §6): the plan limits. PF-15c: features/platform-entitlements.ts binds PgEntitlements, made on
+   *  each opening's transaction (`CaseLimits`); a suite binds its own port. Unbound, an opening fails loudly: never a
+   *  silent allow-all. */
+  private entitlements: CaseLimits = () => { throw new Error("Runtime: no EntitlementPort bound (features/platform-entitlements.ts binds PgEntitlements; a suite binds its own)"); };
+  /** Binds another EntitlementPort, or one made on each opening's transaction. Returns the one before. */
+  useEntitlements(next: EntitlementPort | CaseLimits): EntitlementPort | CaseLimits { const was = this.entitlements; this.entitlements = typeof next === "function" ? next : () => next; return was; }
 
   /** The case, if this person may reach it: the officer any case of the workspace, a client only their own (others are
    *  "not found", as the team's cross-tenant rule). Configuration people hold neither duty. The pin must still match
@@ -307,9 +312,9 @@ export class Runtime {
         if (b.idempotencyKey && await tx.case.findFirst({ where: { workspaceId, firmKey: firm!.key, idempotencyKey: b.idempotencyKey }, select: { id: true } })) return REPLAYED;
         const group = await groupOfCombination(tx, b.combinationId);
         const used = (await new PgCaseCount(tx, firm!.key).activeCounts(tx))[group];
-        const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
+        const limit = await this.entitlements(tx).check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
         if (!limit.allowed) throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED", metric: limit.metric, limit: limit.limit, used: limit.used,
-          detail: `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
+          detail: limit.noLivePlan ? "Your firm has no live subscription, so no case can be opened. Nothing was created. Choose a plan in Settings, Billing." : `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
         // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
         // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
         // opening rolls it back with everything else.
