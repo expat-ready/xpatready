@@ -13,7 +13,7 @@ import { latestConfirmed, matchPeople, offerFrom, sameName, type EarlierAnswer, 
 import { knownOf } from "../../engine/runtime/case.ts";
 import { FIRM_RECORD } from "../../engine/runtime/team.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { actorOf, CaseRead, Db, fail, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
 import { Runtime, type Reached } from "./runtime.ts";
 import { caseName } from "../../contracts/runtime.ts"; // A24-1: the reference, else the case number
 
@@ -165,8 +165,8 @@ export class EarlierFacts {
           sourceJson: { channel: src.channel, actor: src.actor, at: src.at, ...(src.from ? { from: src.from } : {}), earlier_case: offer.case_id, earlier_reference: offer.reference, earlier_answer: from.id, reconfirmed_by: actor.id, reconfirmed_at: at }, verifiedBy: from.verifiedBy, verifiedAt: from.verifiedAt } });
         out.push({ subject: who.subjectId, fact: l.t.fact });
       }
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: REUSED_FACTS, entity: "case", entityKey: c.id, combinationId: c.combinationId, detail: { from_case: offer.case_id, facts: out } as object,
-        summary: `${actor.name} re-confirmed ${out.length} fact${out.length === 1 ? "" : "s"} from the earlier case ${offer.reference} on case ${c.id.slice(0, 8)} (${[...new Set(out.map((x) => x.fact))].join(", ")}); copies: later changes on either case do not reach the other` } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, REUSED_FACTS, "case", c.id,
+        `${actor.name} re-confirmed ${out.length} fact${out.length === 1 ? "" : "s"} from the earlier case ${offer.reference} on case ${c.id.slice(0, 8)} (${[...new Set(out.map((x) => x.fact))].join(", ")}); copies: later changes on either case do not reach the other`, { from_case: offer.case_id, facts: out }, c.combinationId);
       return out;
     }).catch((e: unknown) => { if ((e as { code?: string }).code === "P2002") stale(["an answer saved at the same moment"]); throw e; });
     const n = written.length;
