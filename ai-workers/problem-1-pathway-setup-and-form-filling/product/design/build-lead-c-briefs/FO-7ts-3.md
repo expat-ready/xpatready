@@ -22,6 +22,10 @@ Written 18 Nov by Build Lead C. **Approved for building.** The specification is 
   * **DW25 (pick never below zero):** party A holds CAD 100.00 on case K; party B's invoice on case K is CAD 300.00 → a pick of CAD 100.00 is accepted and A is at 0; a pick of CAD 100.01 is refused with #1991's words. After a returned cheque takes A to CAD −50.00, any pick from A is refused.
   * **DW26 (the lock is the paying party's):** a pick from A and a deposit to A at once run in turn (A's lock), with no 40P01 over 20 runs; a pick from A and a deposit to B do not wait on each other (`pg_locks`).
   * **DW27 (refund details only on a refund):** `refund_method` on a `DEPOSIT` or a `WITHDRAWAL_TO_INVOICE` → refused; a `REFUND_TO_CLIENT` with no method → refused.
+  * **From Lead 91's P-423 read of #2204 (19 Nov 12:5x IST, notes on the PR); each with a pass and a fail:**
+    * **DW28 (a move stays within one party and one currency):** the move route refuses a target case of another party, and a target in another currency, in plain words, nothing stored. The database does not check this, so the route's own test is the only guard.
+    * **DW29 (a REFUNDED credit names its payout):** a credit marked REFUNDED carries a link to the payout record; one without the link is refused, and the payout read back names the credit.
+    * **DW30 (the − half is not a shortfall):** a ledger read or screen shows the − half of a paired move (its one-row negative balance) as a move in progress, never as a shortfall or a negative balance warning.
 * Changed only in the assertion the draft names: `check_fo7a_money_schema.ts` (the "only due_date is a date" list gains `money_trust_entry.refunded_on`, on top of whatever is on `main`).
 * Pass unchanged: `check_fo7a2_ledger_rules.ts`, `check_fo7mv_move_list.ts`, `check_fo7lk_lock_order.ts`, `check_pf12_walls.ts`, `check_prisma_schema.ts`; demo reset and checkpoint load; full `ci` green.
 

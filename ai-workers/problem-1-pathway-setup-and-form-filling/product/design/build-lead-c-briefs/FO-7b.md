@@ -15,6 +15,8 @@ Written 18 Nov by Build Lead C. **Approved for building.** **The specification i
 * **A government-fee line** is always 0 (FO-7a's `money_invoice_line_government_fee_untaxed`).
 * **The database:** FO-7a's `money_invoice_line_tax_check` (`20261115042334_fo7a_client_money_tables/migration.sql` lines 583-584) accepts any tax within one cent of amount × rate. That stays as it is in this row (FO-7b writes no schema). The test below is the guard. Making the check exact is Question 2.
 
+**From Lead 91's P-423 read of #2204 (19 Nov 12:5x IST):** any ledger figure this part shows must not read the − half of a paired move (its one-row negative balance) as a shortfall; a pass (a paired move in progress shows no shortfall) and a fail (a planted check that flags it is caught).
+
 **Done when (P-606):** Lead B's Done when, in `tests/check_fo7b_invoices.ts`, for the part being built, **and** for part 1 these named cases, each through the route (`POST` a draft line), then read back from `money_invoice_line`:
 * **FO-7b R1 (AG-06's example):** a CAD 850.00 `FEE` line at 13 % (`ratePpm` 130000) → tax 110.50, total 960.50.
 * **FO-7b R2 (a half cent goes to even, down):** 0.50 at 13 % (exact 6.5 cents) → **0.06**. **Fail:** a half-up implementation (planted as `Math.round`) gives 0.07, and the case catches it.
