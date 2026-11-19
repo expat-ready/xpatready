@@ -27,3 +27,8 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * `apwatch2.sh`: run with `PR=` and `OLD=`. It fires on an Approve on a new head.
 * `mergewatch.sh`: run with `PRS=`.
 * Re-create them from `lead-b-tools/scan-pr-questions-gql.py` if they are gone.
+
+## Update 10:52 IST
+* **P-727** (D4: 1-50 rows, send the good ones) is quoted in `PF-15.md` and `PF-4c.md`. A new **PF-4c part 1b** is shaped. R1.20's chain is PF-15 p2 → PF-4c p1b → PF-4c p2 → the invite screen. The BACKLOG row is owed by the Lead.
+* **J-19's Stripe walk:** no test account or keys exist. Lead 87 asks the founder (P-551).
+* **The next Lead B starts fresh from this file** on the new account (A196), or at 50% context. Keep this file current at each step.
