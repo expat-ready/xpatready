@@ -398,3 +398,48 @@ This is a diff-only re-review (P-277) of `093d9829b3a7328725fbe0b6fc5e4d0a45072f
 The minors m1-m6 stand as recorded.
 
 **Verdict: Approve** for `093d9829b3a7328725fbe0b6fc5e4d0a45072fe4`. No Blocker or Major is open.
+
+## Review round 12 (bd19821aa: P-712 merge + rename)
+
+This is a diff-only re-review (P-277) of `bd19821aabcfa90e13a6c9456959c42a0a8eef0e`, which adds two commits after round 11's `093d9829b`:
+* `147c6c70f` merges `origin/main` `8cefcc6c6` (P-712 card fragments, FO-3a part 1b, AUD-5 check, records).
+* `bd19821aa` renames the migration folder.
+
+The merge base equals `origin/main` (`8cefcc6c6`), so the two-dot and three-dot diffs are the same.
+
+### Checked
+* **Cards.** `git diff origin/main bd19821aa` on `MODULE.cases.md` (38 lines) and `platform/MODULE.md` (39 lines) adds only CS-DL1's non-frozen text:
+  * the cases deadline invariant;
+  * the `calendar/` Purpose entry and "(its acknowledge-by period, over `calendar/`)";
+  * the `platform_firm_calendar` sentence on the PF-12 line.
+
+  The one blank line before **Invariants (set by).** is gone, as in round 11. The `Tests.`, `Tables.` and `Entry points.` lines of both cards are byte-identical to main's, so no frozen line gains a word. A word diff against main removes only `` `complaints/`; ``, which comes back extended. Main's merged "Sized … two-step" line, its "Row lists (P-712)" line and its merged "Log a name …" line are all kept.
+* **Fragments.** `MODULE.rows/CS-DL1.md` has one line: "Tests: `tests/check_csdl1_deadlines.ts`". `MODULE.cases.rows/CS-DL1.md` has one line naming both CS-DL1 tests. Each starts with "Tests:", is at most 6 lines, is named after its row, and names paths that exist.
+* **`module-cards.py tree`** gives `PASS … 15 cards, tree checked`.
+* **`BASE=origin/main module-cards.py pr`** passes (rc 0, 4 modules touched). I ran it on the PR's 21 changed files with the builder's body file (`scratchpad/body.txt`), whose "Card unchanged:" line covers api-front-office and web-runtime. Without a "Card unchanged:" line it fails, as it should. This session has no GitHub API access, so I could not read the live PR body. The body line is the builder's file; the merge gate will confirm it.
+* **Migration.** The folder is now `20261119071700_csdl1_firm_calendar`. Its sha256 is `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`, the same as `20261119000000_…` at 093d9829b. The rename commit is a 0/0 rename.
+  * It is later than main's newest migration, `20261119031000_fo3a_hour_sets`, and its stamp is used only once. The three repeated stamps are main's old ones.
+  * `git grep 20261119000000 bd19821aa` finds nothing.
+  * This follows Lead 90's ruling.
+* **Scope.** `git diff origin/main...bd19821aa --stat` lists 21 files (+512/-107): round 11's 19 files, the migration under its new name, and the two fragments. Nothing of main's is in it.
+* **Collisions.** Main's 8 first-parent merges since round 11's base `4aa912c92` touch none of these: `case-stages.ts`, `stages.tsx`, `contracts/runtime.ts`, `platform/calendar/`, `platform/complaints/`, `leads.ts`, `open-minutes.ts`. None of them mentions `platform_firm_calendar`, `working-days` or `business-days`.
+  * FO-3a's "hour sets" (`fo_availability_set`, `fo_type_host_set`, `fo_availability.set_id`, `booking/settings/hours.ts`) are each staff member's own booking windows. They are not the firm's `platform.business_hours`, `platform.closed_days` or `platform.time_zone` settings that `platform_firm_calendar` reads. FO-3a still reads `CLOSED_DAYS` and `TIME_ZONE` through `readSetting` itself, unchanged.
+  * A stage deadline is never moved by hours (AG-7-94), so the two do not overlap.
+  * Not a blocker. A follow-up is needed only if a later row makes booking reminders count open days through `calendar/`.
+* **Suites at bd19821aa.**
+  * `tests/check_csdl1_deadlines.ts` passes 37/37 against the shared database.
+  * `tests/check_fo3a_hours_timings.ts` passes 26/26 (exit 0). It applies every migration in order on its own temporary database, so the renamed CS-DL1 migration runs after FO-3a's.
+  * The builder's run-20 logs show PF-12 at 100/100, C6.17 migration at 23/23, FO-7ts at 49/49 and csdl1 at 37/37.
+
+### Note to the builder (not a finding on the PR)
+* Run 20's FO-3a step names `tests/check_fo3a_hour_sets.ts`. That file does not exist; main's FO-3a suites are `check_fo3a_hours_timings.ts` and `check_fo3a_booking_types.ts`. The step logged ERR_MODULE_NOT_FOUND (0/0), so it is not a pass. My `check_fo3a_hours_timings.ts` run (26/26) covers the migration order.
+* Any local database that already applied `20261119000000_…` has that name in `_prisma_migrations`, so it needs a reset. Main's demo never had it.
+
+### Could not check
+* The live PR body and CI for this head (no GitHub API in this session).
+* The builder's browser suite (DW7–DW9) at this head: run 20 was still running.
+* The journey was not re-run, because the screen is unchanged. Round 3's 9.5/10 stands.
+
+The minors m1-m6 stand as recorded. No Blocker or Major is open.
+
+Verdict: Approve for `bd19821aabcfa90e13a6c9456959c42a0a8eef0e`.
