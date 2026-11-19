@@ -85,3 +85,11 @@ Each item has a pass and a fail in `tests/check_fo7ts_money_settings.ts`:
 * Another currency → refused.
 * DW25: CAD 100.00 accepted and A at 0; CAD 100.01 refused with #1991's words; A at −50.00 after a returned cheque → any pick refused.
 * DW26: A's pick and A's deposit run in turn, 20 runs, no 40P01. A's pick and B's deposit do not wait (`pg_locks`).
+
+## Lead 95's read (P-423 plan read, 19 Nov 21:0x IST)
+Lead 95 (local_98ab55d2; Lead 94 has ended) accepted the plan as written, with all three proposals:
+1. The same party on another case: the database keeps accepting it, and the route requires the pick.
+2. Pick fields where nothing is picked: refused, in the words above.
+3. A per-case limit for picks, under the payer's lock, with its own DW case: added in this part.
+
+All steps are built once #2204 merges. The plan is the PR's first comment. Lead 95 reads the final migration before the label.
