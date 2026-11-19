@@ -19,8 +19,9 @@ Demo scaffolding: the configured checkpoint, the Sample case and the finished st
 - The audit trail is insert-only at the database: Reset deletes the demo workspace's Sample lines only inside its own transaction setting, never a platform line (AUD-1a, P-571 (1)).
 - Reset and the configured load first make both Sample firms exist (PF-3's idempotent seed on the `platform.demo.reset` bypass use; never in a production configuration), then fill the cases' platform firm id (CS-W1).
 
-**Tables.** combination, programDef, sourceAttachment, auditEvent, combinationForm, packVersion, configRelease, sampleProfile, sampleFact, formEdition.
+**Tables.** combination, programDef, sourceAttachment, auditEvent, combinationForm, packVersion, configRelease, sampleProfile, sampleFact, formEdition; the reset also empties caseClient and caseClientCounter with the cases (CS-K1).
 **Tests.** `tests/check_b104_checkpoint.ts`, `tests/check_b104_stage_one.ts`, `tests/check_bk12_sample_case.ts`, `tests/check_c102_story_validated_match.ts`, `tests/check_forms_demo.ts`, `tests/check_csw1_firm_id.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.demo.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Offer a demo control on a product screen, or treat Sample as a release.

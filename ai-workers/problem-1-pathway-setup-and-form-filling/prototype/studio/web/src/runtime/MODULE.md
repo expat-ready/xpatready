@@ -21,6 +21,7 @@ The case screens: the case officer's cases, the client's questionnaire and the f
 
 **Tables.** none directly (web).
 **Tests.** `tests/check_bk4a.ts`, `tests/check_bk4b_handoffs.ts`, `tests/check_a24_2_case_list_browser.ts`, `tests/check_c83_review_browser.cjs`, `tests/check_c81_sign_browser.ts`, `tests/check_m3s4_never_waivable.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Decide a permission, a stamp or readiness in the browser; ask the server.

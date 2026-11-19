@@ -4,7 +4,13 @@
 to the code), whose `paths:` frontmatter is the module's files, so a lane editing them loads only that card. US$0.
   python3 product/tools/module-cards.py tree                  # every card resolves, is at most 40 lines; every src file in one module
   python3 product/tools/module-cards.py pr <changed-files> [<body-file>]   # the PR check (run by .github/workflows/module-cards.yml)
-ROOT (env) is the repository root, default the current directory."""
+ROOT (env) is the repository root, default the current directory.
+Row fragments (P-712, design/module-card-conflicts-2026-11-19.md): a card's one-line `Tests.`, `Tables.` and
+`Entry points.` lists are frozen, because every row appending to one line made two PRs conflict. A row puts its items
+in its own file next to the card instead: <card without .md>.rows/<ROW>.md (MODULE.rows/FO-3a.md beside MODULE.md), at
+most 6 lines, each "Tests:", "Tables:" or "Entry points:". A changed fragment counts as the card changed. With BASE
+(env, a git revision; the workflow passes HEAD^1), `pr` fails a frozen line that gains a word, unless that word is in
+one of the card's fragments at BASE (the Lead folding fragments in)."""
 import os, re, subprocess, sys
 
 ROOT = os.environ.get("ROOT", ".")
@@ -12,6 +18,14 @@ RULES = ".claude/rules/modules"
 STUDIO = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
 SRC = (STUDIO + "api/src/", STUDIO + "web/src/")
 MAX_LINES = 40
+FROZEN = ("Tests", "Tables", "Entry points")
+FRAG_MAX = 6
+NEVER = "never hand-edit a card's frozen lists (Tests., Tables., Entry points.); add your row's fragment {rows}<ROW>.md (P-712)"
+
+
+def words(text):
+    """The words of a list line; a word's trailing sentence punctuation is no part of it (review M1)."""
+    return {w.rstrip(".:,;") for w in re.findall(r"[\w./:@-]+", text)} - {""}
 
 
 def braces(p):
@@ -61,8 +75,48 @@ def owners(path, mods):
     return [n for n, (_, pats) in mods.items() if any(r.match(path) for r in pats)]
 
 
+def fragment_card(path):
+    """The card a row fragment belongs to (…/MODULE.rows/X.md → …/MODULE.md), else None."""
+    m = re.match(r"(.*/MODULE(?:\.[\w-]+)?)\.rows/[^/]+\Z", path)
+    return m.group(1) + ".md" if m else None
+
+
 def in_src(path):
-    return path.startswith(SRC) and not re.match(r"MODULE(\.[\w-]+)?\.md\Z", os.path.basename(path))
+    return path.startswith(SRC) and not re.match(r"MODULE(\.[\w-]+)?\.md\Z", os.path.basename(path)) and not fragment_card(path)
+
+
+def frozen_words(text):
+    """{label: set of words} for the card's frozen one-line lists."""
+    out = {}
+    for label in FROZEN:
+        m = re.search(r"^\*\*" + re.escape(label) + r"\.\*\*(.*)$", text, re.M)
+        if m:
+            out[label] = words(m.group(1))
+    return out
+
+
+def git_show(rev, path):
+    r = subprocess.run(["git", "-C", ROOT, "show", f"{rev}:{path}"], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def check_fragment(f):
+    """Problems with one row fragment (its card exists; at most FRAG_MAX lines; each line a frozen label; named paths exist)."""
+    bad, card = [], fragment_card(f)
+    if not os.path.isfile(os.path.join(ROOT, card)):
+        return [f"{f}: a row fragment with no card {card}"]
+    if not re.match(r"[A-Z][A-Za-z0-9-]*\.md\Z", os.path.basename(f)):
+        bad.append(f"{f}: a fragment is named after its row, e.g. FO-3a.md")
+    lines = [l for l in open(os.path.join(ROOT, f), encoding="utf-8").read().splitlines() if l.strip()]
+    if not lines or len(lines) > FRAG_MAX:
+        bad.append(f"{f}: {len(lines)} lines; a fragment has 1 to {FRAG_MAX}")
+    for l in lines:
+        if not re.match(r"(?:" + "|".join(FROZEN) + r"):\s+\S", l):
+            bad.append(f"{f}: line {l[:40]!r} does not start with Tests:, Tables: or Entry points:")
+        for p in re.findall(r"`([^`\s]+/[^`\s]+\.\w+)`", l):
+            if not any(os.path.exists(os.path.join(ROOT, b, p)) for b in ("", STUDIO, os.path.dirname(card))):
+                bad.append(f"{f}: names {p}, which exists neither from the card's folder, the studio nor the repository root")
+    return bad
 
 
 def tree():
@@ -70,6 +124,11 @@ def tree():
     files = subprocess.run(["git", "-C", ROOT, "ls-files", *SRC], capture_output=True, text=True, check=True).stdout.split()
     linked = {c for c, _ in mods.values()}
     for f in files:
+        if fragment_card(f):
+            bad += check_fragment(f)
+            continue
+        if re.search(r"/MODULE(?:\.[\w-]+)?\.rows/", f):
+            bad.append(f"{f}: a row fragment sits directly in its .rows/ folder, not in a subfolder"); continue
         if f.startswith(SRC) and re.match(r"MODULE(\.[\w-]+)?\.md\Z", os.path.basename(f)) and f not in linked:
             bad.append(f"{f}: a card no rule in {RULES}/ links to")
         o = owners(f, mods)
@@ -86,15 +145,34 @@ def pr(changed, body):
         reason = None
     touched, unclaimed = {}, []
     cards = {c for c, _ in mods.values()}
+    fragments = {}
     for f in changed:
         if f in cards:
+            continue
+        if fragment_card(f):
+            fragments.setdefault(fragment_card(f), []).append(f)
+            if os.path.exists(os.path.join(ROOT, f)):
+                bad += check_fragment(f)
             continue
         o = owners(f, mods)
         if in_src(f) and not o and os.path.exists(os.path.join(ROOT, f)):   # a deleted or renamed-away file needs no claim
             unclaimed.append(f)
         for n in o:
             touched.setdefault(n, []).append(f)
-    missing = [n for n in sorted(touched) if mods[n][0] not in changed]
+    missing = [n for n in sorted(touched) if mods[n][0] not in changed and mods[n][0] not in fragments]
+    base = os.environ.get("BASE")
+    for c in sorted(set(changed) & cards):
+        old = git_show(base, c) if base else None
+        if base and old is not None and os.path.isfile(os.path.join(ROOT, c)):
+            now = frozen_words(open(os.path.join(ROOT, c), encoding="utf-8").read())
+            folded = set()
+            rows = subprocess.run(["git", "-C", ROOT, "ls-tree", "--name-only", base, c[:-3] + ".rows/"], capture_output=True, text=True).stdout.split()
+            for r in rows:
+                folded |= words(git_show(base, r) or "")
+            for label, have in now.items():
+                new = sorted(have - frozen_words(old).get(label, set()) - folded)
+                if new:
+                    bad.append(f"{c}: its frozen `{label}.` line gains {', '.join(new[:4])}{' …' if len(new) > 4 else ''}: {NEVER.format(rows=c[:-3] + '.rows/')}")
     for n in missing:
         print(f"module {n}: {len(touched[n])} file(s) changed ({touched[n][0]} …), card {mods[n][0]} not")
     for f in unclaimed:
