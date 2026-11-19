@@ -2120,3 +2120,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Batch #2221 failed** on `check_pf19b_mail` (`page.consent` null). The cause is **#2196**: the real PrismaArrival returns the firm's real booking wording, where the fake gave a Sample one.
   * Ruling (7000698257): `seedFirmFrontOffice` creates the firm's Sample booking consent wording once when the firm has none, and never overwrites the firm's own. Then re-run on main + #2196 + #1961 and get a diff-only Approve.
   * #1961 is cleared (7000698553).
+* 11:07 IST: **#1959 is held until #2029 merges.** #1959 adds 2 bypass uses without the `audit` field that #2029 makes required. Ruling 7000777630: both take `per-firm` (the webhook calls touchFirm for its matched firm; the sweep calls it per event's firm), and both go into check_pf12b's list. Lesson: check an audit-rule PR against every open PR that adds a bypass use, not only against main.
