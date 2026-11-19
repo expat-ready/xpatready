@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --retry) RETRY=1;;
   --names) NAMES=1;;   # print the names and ports this copy would use, run nothing
   --list) LIST=1;;
-  --only) ONLY="${2:-}"; shift;;
+  --only) [ -n "${2:-}" ] || { echo "--only wants \"<suites>\"; no suite was run"; exit 2; }; ONLY="$2"; shift;;
   --skip-green) [ -f "${2:-}" ] || { echo "--skip-green wants a file of remembered suites; no suite was run"; exit 2; }; GREEN="$2"; shift;;
   --changed) [ -n "${2:-}" ] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }; CHANGED="$2"; shift;;
   --changed=*) CHANGED="${1#--changed=}";;

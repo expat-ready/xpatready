@@ -12,7 +12,8 @@
 //   verdict --item R1.n --plan f --results f --sha s --pr n --run-id i --run-url u [--artifact-url u] [--repo o/r]
 //           one verdict JSON (results: one JSON line a run, {kind, name, exit}); PASS only when the journey and every
 //           planned run passed; a missing journey, a missing pack or a run with no result line is FAIL (P-405).
-//   comment --dir d [--saved s]  the one PR comment for every verdict in d.   page --dir d  writes d/README.md, the
+//   pack-line <C> <exit> <log>  one pack's result line; held or fixture only is "not tested" (P-405), never a pass.
+//   comment --dir d [--saved s] [--items "R1.n ..."]  the one PR comment for every verdict in d (an item with none is named).   page --dir d  writes d/README.md, the
 //           founder's page: each proven journey with its video link, newest verdict per item, then the latest FAILs.
 //   scan    <dir>   exit 1 when a key or secret value appears in what would be uploaded (text files, and the trace zips'
 //           contents through unzip); the video and screenshots are pictures of Sample data, covered by the trace's
@@ -77,7 +78,8 @@ export function plan(item, md, studio = S) {
 /** One verdict: every planned run must have a result line with exit 0, and the journey must exist and pass. */
 export function verdict({ item, plan: pl, results, sha, pr, runId, runUrl, artifactUrl = null, repo = "", at = new Date().toISOString() }) {
   const got = (kind, name) => results.filter((r) => r.kind === kind && r.name === name).pop();
-  const row = (kind, name) => { const r = got(kind, name); return { kind, name, result: !r ? "not run" : r.exit === 0 ? "pass" : "fail", exit: r ? r.exit : null, ...(r?.note ? { note: r.note } : {}) }; };
+  // "not tested" (a pack held or run on its fixture only, P-405) and a journey that printed a FAIL line never pass.
+  const row = (kind, name) => { const r = got(kind, name); return { kind, name, result: !r ? "not run" : r.untested ? "not tested" : r.exit === 0 && !(r.fail > 0) ? "pass" : "fail", exit: r ? r.exit : null, ...(r?.note || r?.untested ? { note: [r.untested, r.note].filter(Boolean).join("; ") } : {}) }; };
   const suites = [
     ...pl.packs.map((c) => row("pack", c)),
     ...pl.packsMissing.map((c) => ({ kind: "pack", name: c, result: "fail", exit: null, note: "no acceptance pack for this capability (P-405: never green)" })),
@@ -86,7 +88,7 @@ export function verdict({ item, plan: pl, results, sha, pr, runId, runUrl, artif
     pl.journeyExists ? row("journey", pl.journey) : { kind: "journey", name: pl.journey, result: "fail", exit: null, note: "no J-test file on main" },
   ];
   for (const r of results.filter((x) => x.kind === "scan")) suites.push({ kind: "scan", name: r.name, result: r.exit === 0 ? "pass" : "fail", exit: r.exit, ...(r.note ? { note: r.note } : {}) });
-  const why = !pl.found ? [`${item} has no row in qa/CAPABILITIES.md`] : suites.filter((s) => s.result !== "pass").map((s) => `${s.name}: ${s.result}${s.note ? ` (${s.note})` : ""}`);
+  const why = !pl.found ? [pl.why ?? `${item} has no row in qa/CAPABILITIES.md`] : suites.filter((s) => s.result !== "pass").map((s) => `${s.name}: ${s.result}${s.note ? ` (${s.note})` : ""}`);
   const overall = why.length ? "FAIL" : "PASS";
   return { item, name: pl.name, pr: Number(pr) || null, sha, run_id: String(runId), run_url: runUrl, at, overall, why, suites,
     video: overall === "PASS" ? artifactUrl : null, trace: overall === "PASS" ? null : artifactUrl,
@@ -94,12 +96,29 @@ export function verdict({ item, plan: pl, results, sha, pr, runId, runUrl, artif
     note: "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md." };
 }
 
-const readVerdicts = (dir) => (existsSync(dir) ? readdirSync(dir) : []).filter((f) => /^R1\.\d+-[0-9a-f]{7,40}\.json$/.test(f)).map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")));
+/** Every verdict file in a folder; one that cannot be read is named on stderr and skipped, never the end of the report. */
+export function readVerdicts(dir) {
+  const out = [];
+  for (const f of (existsSync(dir) ? readdirSync(dir) : []).filter((x) => /^R1\.\d+-[0-9a-f]{7,40}\.json$/.test(x))) {
+    try { const v = JSON.parse(readFileSync(join(dir, f), "utf8")); if (v && typeof v.item === "string" && Array.isArray(v.suites)) out.push(v); else throw new Error("not a verdict"); }
+    catch (e) { console.error(`item-proof: skipped ${f}: ${e.message}`); }
+  }
+  return out;
+}
+/** A pack's result line from works-set.mjs --run's exit and output: every pack held, or a pack run on its own fixture
+ *  only, proved nothing on main's data, so it is "not tested" (P-405), never a pass. */
+export function packLine(name, exit, out) {
+  const untested = /every pack is held/.test(out) ? "every pack is held in qa/REGRESSION-HELD.md (red on main)"
+    : /\bfixture only\b/.test(out) ? "ran on its own fixture only, not on the demo data (Not tested, P-405)" : undefined;
+  return { kind: "pack", name, exit, ...(untested ? { untested } : {}) };
+}
 const md = (s) => String(s ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 
 /** The one PR comment for all verdicts of a run. */
-export function comment(vs, saved = "") {
-  const out = [`## Automatic proof (P-728 (3)): ${vs.map((v) => `${v.item} ${v.overall}`).join(", ") || "no item"}`, ""];
+export function comment(vs, saved = "", items = []) {
+  const lost = items.filter((i) => !vs.some((v) => v.item === i));
+  const out = [`## Automatic proof (P-728 (3)): ${[...vs.map((v) => `${v.item} ${v.overall}`), ...lost.map((i) => `${i} no verdict`)].join(", ") || "no item"}`, ""];
+  for (const i of lost) out.push(`### ${i} · **no verdict**: its prove job ended before writing one (see the run); it counts as FAIL.`, "");
   for (const v of vs) {
     out.push(`### ${v.item} ${v.name ? `· ${md(v.name)} ` : ""}· **${v.overall}** on main \`${String(v.sha).slice(0, 9)}\` · [run ${v.run_id}](${v.run_url})`, "", "| Kind | Run | Result |", "|---|---|---|");
     for (const s of v.suites) out.push(`| ${s.kind} | \`${md(s.name)}\` | ${s.result === "pass" ? "pass" : `**${s.result}**`}${s.exit !== null && s.exit !== undefined && s.result !== "pass" ? ` (exit ${s.exit})` : ""}${s.note ? ` · ${md(s.note)}` : ""} |`);
@@ -164,10 +183,13 @@ function main(argv) {
   if (cmd === "plan") { console.log(JSON.stringify(plan(pos[0], readFileSync(opt.caps ?? CAPS, "utf8")), null, 2)); return 0; }
   if (cmd === "verdict") {
     const results = existsSync(opt.results) ? readFileSync(opt.results, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
-    console.log(JSON.stringify(verdict({ item: opt.item, plan: JSON.parse(readFileSync(opt.plan, "utf8")), results, sha: opt.sha, pr: opt.pr, runId: opt["run-id"], runUrl: opt["run-url"], artifactUrl: opt["artifact-url"] || null, repo: opt.repo ?? "" }), null, 2));
+    // No plan (the set-up failed before it): still a verdict, FAIL, so the report always has one (review M1).
+    let pl; try { pl = JSON.parse(readFileSync(opt.plan, "utf8")); } catch { pl = { found: false, why: "the prove job ended before its plan (set-up failed; see the run)", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey: `tests/journeys/j_${String(opt.item).slice(3)}.ts`, journeyExists: false }; }
+    console.log(JSON.stringify(verdict({ item: opt.item, plan: pl, results, sha: opt.sha, pr: opt.pr, runId: opt["run-id"], runUrl: opt["run-url"], artifactUrl: opt["artifact-url"] || null, repo: opt.repo ?? "" }), null, 2));
     return 0;
   }
-  if (cmd === "comment") { process.stdout.write(comment(readVerdicts(opt.dir), opt.saved ?? "")); return 0; }
+  if (cmd === "comment") { process.stdout.write(comment(readVerdicts(opt.dir), opt.saved ?? "", (opt.items ?? "").split(/\s+/).filter((i) => ITEM.test(i)))); return 0; }
+  if (cmd === "pack-line") { console.log(JSON.stringify(packLine(pos[0], Number(pos[1]), existsSync(pos[2] ?? "") ? readFileSync(pos[2], "utf8") : ""))); return 0; }
   if (cmd === "page") { writeFileSync(join(opt.dir, "README.md"), page(readVerdicts(opt.dir))); return 0; }
   if (cmd === "scan") {
     const hits = scan(pos[0]);

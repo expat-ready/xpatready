@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, plan, verdict, comment, page, scan, scanText } from "../tools/item-proof.mjs";
+import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts } from "../tools/item-proof.mjs";
 import { videoSize } from "./journeys/video-size.ts";
 
 const F = join(import.meta.dirname, "fixtures", "item-proof"), TOOL = join(import.meta.dirname, "..", "tools", "item-proof.mjs");
@@ -52,6 +52,25 @@ const vScan = verdict({ item: "R1.6", plan: p6ok, results: [{ kind: "journey", n
 ok("V4 a secret found in the recording fails the verdict", vScan.overall === "FAIL" && vScan.video === null);
 ok("V5 an item with no row fails; never a Works word in the verdict", verdict({ item: "R1.9", plan: p9, results: [], ...base }).overall === "FAIL" && !/"Works"/.test(JSON.stringify(vPass)));
 
+// H: nothing proved is never a pass (review M2, m4): a held or fixture-only pack, a journey that printed FAIL.
+const heldOut = "**C8.2**: every pack is held; nothing to run.\n", fixOut = "**C8.2**: green (C8.2.test.ts fixture only).\n", greenOut = "**C8.2**: green (C8.2.test.ts on the six).\n";
+ok("H1 works-set's held and fixture-only exits 0 read as not tested; a green run on the six does not", !!packLine("C8.2", 0, heldOut).untested && !!packLine("C8.2", 0, fixOut).untested && !packLine("C8.2", 0, greenOut).untested);
+const p77ok = { ...p77, suites: [], suitesMissing: [], journeyExists: true }, jok = { kind: "journey", name: p77.journey, exit: 0 };
+const vHeld = verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, heldOut), jok], ...base });
+ok("H2 a held pack makes the verdict FAIL, its row \"not tested\" naming the hold", vHeld.overall === "FAIL" && vHeld.suites[0].result === "not tested" && /REGRESSION-HELD/.test(vHeld.suites[0].note), vHeld.suites[0]);
+ok("H3 the same item with the pack green on the six passes", verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, greenOut), jok], ...base }).overall === "PASS");
+ok("H4 a journey that exits 0 but printed a FAIL line fails", verdict({ item: "R1.77", plan: p77ok, results: [packLine("C8.2", 0, greenOut), { ...jok, fail: 1 }], ...base }).overall === "FAIL");
+
+// M: a crashed prove job still gives a verdict and a comment (review M1).
+const vc = cli(["verdict", "--item", "R1.77", "--plan", "/nonexistent/plan.json", "--results", "/nonexistent", "--sha", base.sha]);
+const vcj = (() => { try { return JSON.parse(vc.stdout); } catch { return null; } })();
+ok("M1 no plan file: the verdict CLI still writes a FAIL verdict saying the job ended before its plan", vc.status === 0 && vcj?.overall === "FAIL" && /before its plan/.test(vcj.why.join(" ")), vc.stdout.slice(0, 300));
+const md2 = mkdtempSync(join(tmpdir(), "item-proof-bad-"));
+writeFileSync(join(md2, `R1.6-${base.sha}.json`), ""); writeFileSync(join(md2, `R1.77-${base.sha}.json`), JSON.stringify(vFail));
+ok("M2 an empty verdict file is skipped, the readable one kept", readVerdicts(md2).length === 1 && cli(["page", "--dir", md2]).status === 0);
+const cm2 = cli(["comment", "--dir", md2, "--items", "R1.6 R1.77"]);
+ok("M3 the comment names an item with no verdict as \"no verdict\"", cm2.status === 0 && /R1\.6 no verdict/.test(cm2.stdout) && /R1\.77 FAIL/.test(cm2.stdout), cm2.stdout.slice(0, 300));
+
 // C, G: the comment and the founder's page.
 const cm = comment([vPass, vFail], "Verdict file(s): saved");
 ok("C1 one comment names both items, each run, the video and the trace, and says it never marks Works", /R1\.6 PASS, R1\.77 FAIL/.test(cm) && cm.includes(base.runUrl) && /Video of the journey: https:\/\/example\.test\/art\/9/.test(cm) && /Trace and step screenshots/.test(cm) && /never marks Works/.test(cm), cm);
@@ -88,6 +107,7 @@ const wf = readFileSync(join(ROOT, ".github", "workflows", "item-proof.yml"), "u
 ok("W1 it starts on a push to main (a PR's merge commit, found through the API) and by hand from main with a PR number", /\bpush:\s*\n\s*branches: \[main\]/.test(wf) && /commits\/\$SHA\/pulls/.test(wf) && /merge_commit_sha===process\.argv\[1\]/.test(wf) && /workflow_dispatch:/.test(wf) && /if: \$\{\{ github\.ref == 'refs\/heads\/main' \}\}/.test(wf) && !/pull_request_target/.test(wf.replace(/^#.*$/gm, "")));
 ok("W2 every checkout is the commit that started the run (no computed ref: CodeQL); prove is read-only, no credentials kept", !/^\s*with:.*\bref:/m.test(wf) && (wf.match(/persist-credentials: false/g) ?? []).length === 3 && /prove:[\s\S]*?permissions: \{ contents: read \}/.test(wf) && !/head\.sha|head\.ref/.test(wf));
 ok("W3 packs by works-set --run, suites by run-suites --only, the journey by walk.mjs, the scan before the upload", /works-set\.mjs" --run/.test(wf) && /run-suites\.sh" --demo --only/.test(wf) && /walk\.mjs/.test(wf) && wf.indexOf("item-proof.mjs\" scan") < wf.indexOf("upload-artifact"));
+ok("W3b packs go through pack-line; the verdict is written aside under pipefail; the comment step always runs; no report concurrency group", /item-proof\.mjs" pack-line/.test(wf) && /set -o pipefail; mkdir -p "\$RUNNER_TEMP\/verdict"/.test(wf) && /one verdict comment on the merged PR\s*\n\s*if: always\(\)/.test(wf) && !/^\s*concurrency:/m.test(wf));
 ok("W4 the recording is kept 90 days, named proof-<item>-<sha>", /name: proof-\$\{\{ matrix\.item \}\}-\$\{\{ needs\.detect\.outputs\.sha \}\}\s*\n\s*path: [^\n]+\n\s*retention-days: 90/.test(wf));
 ok("W5 verdicts go to the branch auto-verdicts, never main; one comment; CAPABILITIES.md never written", /BRANCH: auto-verdicts/.test(wf) && !/git[^\n]*\bpush\b[^\n]*\bmain\b/.test(wf.replace(/^#.*$/gm, "")) && (wf.match(/issues\/\$PR\/comments/g) ?? []).length === 1 && !/CAPABILITIES\.md"?\s*$/m.test(wf.replace(/^#.*$/gm, "")));
 ok("W6 no secret is read; the PR body reaches the shell only through env", !/secrets\./.test(wf) && !/run:[^\n]*github\.event\.pull_request\.body/.test(wf));

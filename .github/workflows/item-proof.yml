@@ -60,8 +60,18 @@ jobs:
             node -e 'const p=require("./pr.json"); if(!p.merged_at||p.base.ref!=="main"){console.error("PR not merged into main");process.exit(1)}'
           else
             # A push that is not a PR's merge commit (a direct push, a batch's fast-forward) proves nothing.
-            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/$SHA/pulls" > prs.json
-            node -e 'const ps=require("./prs.json").filter(p=>p.merged_at&&p.merge_commit_sha===process.argv[1]&&p.base.ref==="main"); require("fs").writeFileSync("pr.json",JSON.stringify(ps[0]??{}))' "$SHA"
+            # The API can lag a fresh merge (review m1): three tries, then the merge commit's own "Merge pull request #N".
+            for t in 1 2 3; do
+              curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/$SHA/pulls" > prs.json || echo '[]' > prs.json
+              node -e 'const ps=require("./prs.json").filter(p=>p.merged_at&&p.merge_commit_sha===process.argv[1]&&p.base.ref==="main"); require("fs").writeFileSync("pr.json",JSON.stringify(ps[0]??{}))' "$SHA"
+              node -e 'process.exit(require("./pr.json").number?0:1)' && break; sleep $((t * 10))
+            done
+            n=$(git log -1 --format=%s "$SHA" | sed -n 's/^Merge pull request #\([0-9]\{1,7\}\) from .*/\1/p')
+            if ! node -e 'process.exit(require("./pr.json").number?0:1)' && [ -n "$n" ]; then
+              curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/pulls/$n" > p1.json || echo '{}' > p1.json
+              node -e 'const p=require("./p1.json"); require("fs").writeFileSync("pr.json",JSON.stringify(p.merged_at&&p.merge_commit_sha===process.argv[1]?p:{}))' "$SHA"
+              node -e 'process.exit(require("./pr.json").number?0:1)' || echo "::warning::main $SHA says it merges #$n, but GitHub does not return that PR with this merge commit: nothing proved"
+            fi
           fi
           node -e 'const p=require("./pr.json"); require("fs").writeFileSync("body.md",p.body??""); console.log(p.number??"")' > pr.txt
           PR=$(cat pr.txt)
@@ -101,8 +111,10 @@ jobs:
       - name: the packs (works-set.mjs --run; holds kept, a red pack retried once)
         run: |
           for c in $(node -p 'require(process.argv[1]).packs.join(" ")' "$RUNNER_TEMP/plan.json"); do
-            st=0; node "$S/tools/works-set.mjs" --run "$c" || st=$?
-            echo "{\"kind\":\"pack\",\"name\":\"$c\",\"exit\":$st}" >> "$RUNNER_TEMP/results.jsonl"
+            st=0; node "$S/tools/works-set.mjs" --run "$c" > "$RUNNER_TEMP/pack-$c.log" 2>&1 || st=$?
+            cat "$RUNNER_TEMP/pack-$c.log"
+            # Every pack held, or run on its fixture only, is "not tested" (P-405): never a pass (review M2).
+            node "$S/tools/item-proof.mjs" pack-line "$c" "$st" "$RUNNER_TEMP/pack-$c.log" >> "$RUNNER_TEMP/results.jsonl"
           done
       - name: the suites its Done when names (run-suites.sh --only)
         if: always()
@@ -118,8 +130,9 @@ jobs:
           j=$(node -p 'const p=require(process.argv[1]); p.journeyExists ? p.journey : ""' "$RUNNER_TEMP/plan.json")
           [ -n "$j" ] || { echo "no $(node -p 'require(process.argv[1]).journey' "$RUNNER_TEMP/plan.json") on main: the verdict is FAIL"; exit 0; }
           st=0; node "$S/tests/journeys/walk.mjs" "$S/$j" "$RUNNER_TEMP/walk" || st=$?
-          echo "{\"kind\":\"journey\",\"name\":\"$j\",\"exit\":$st}" >> "$RUNNER_TEMP/results.jsonl"
-          echo "$st" > "$RUNNER_TEMP/journey-exit"
+          # Its FAIL and HELD lines count too (walk.json), not only its exit (review m4).
+          node -e 'const fs=require("fs"),[f,j,st]=process.argv.slice(1); let w={}; try{w=JSON.parse(fs.readFileSync(f,"utf8"))}catch{}
+            console.log(JSON.stringify({kind:"journey",name:j,exit:Number(st),fail:w.fail??0,...(w.held?{note:`${w.held} HELD step(s)`}:{})}))' "$RUNNER_TEMP/walk/walk.json" "$j" "$st" >> "$RUNNER_TEMP/results.jsonl"
       - id: pick
         name: no key or secret in the recording; a PASS keeps the video, a FAIL the trace
         if: always()
@@ -131,6 +144,9 @@ jobs:
           [ "$st" = 0 ] || { echo "up=no" >> "$GITHUB_OUTPUT"; exit 0; }
           cp "$w"/walk.json "$w"/README.md "$u"/ 2>/dev/null || true
           ok=$(node "$S/tools/item-proof.mjs" verdict --item "$ITEM" --plan "$RUNNER_TEMP/plan.json" --results "$RUNNER_TEMP/results.jsonl" --sha "$SHA" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).overall')
+          if [ "$ok" = PASS ] && ! ls "$w"/video/*.webm >/dev/null 2>&1; then
+            # A PASS must carry its video (review m3): none recorded fails the verdict.
+            echo '{"kind":"scan","name":"the journey video was recorded","exit":1}' >> "$RUNNER_TEMP/results.jsonl"; ok=FAIL; fi
           if [ "$ok" = PASS ]; then cp -r "$w/video" "$u/"; else cp -r "$w"/trace-*.zip "$w/steps" "$w/walk.log" "$u/" 2>/dev/null || true; fi
           echo "up=yes" >> "$GITHUB_OUTPUT"
       - id: up
@@ -148,10 +164,13 @@ jobs:
           ART: ${{ steps.up.outputs.artifact-url }}
           PR: ${{ needs.detect.outputs.pr }}
         run: |
-          mkdir -p "$RUNNER_TEMP/verdict"
+          set -o pipefail; mkdir -p "$RUNNER_TEMP/verdict"
+          # Never an empty or torn file (review M1): written aside, kept only when it parses.
           node "$S/tools/item-proof.mjs" verdict --item "$ITEM" --plan "$RUNNER_TEMP/plan.json" --results "$RUNNER_TEMP/results.jsonl" --sha "$SHA" --pr "$PR" \
             --run-id "$GITHUB_RUN_ID" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --artifact-url "$ART" --repo "$GITHUB_REPOSITORY" \
-            | tee "$RUNNER_TEMP/verdict/$ITEM-$SHA.json"
+            > "$RUNNER_TEMP/v.json"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$RUNNER_TEMP/v.json"
+          mv "$RUNNER_TEMP/v.json" "$RUNNER_TEMP/verdict/$ITEM-$SHA.json"; cat "$RUNNER_TEMP/verdict/$ITEM-$SHA.json"
           node -p '(v=>`### ${v.item}: ${v.overall}\n${v.why.map(w=>"* "+w).join("\n")}`)(require(process.argv[1]))' "$RUNNER_TEMP/verdict/$ITEM-$SHA.json" >> "$GITHUB_STEP_SUMMARY"
       - name: keep the verdict for the report job
         if: always()
@@ -163,7 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions: { contents: write, pull-requests: write, issues: write }
-    concurrency: { group: item-proof-report, cancel-in-progress: false }   # one push to auto-verdicts at a time
+    # No concurrency group: GitHub keeps one waiting run a group and cancels the rest (review m2); the push loop below
+    # retries a push that lost a race.
     env:
       T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
       V: ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/verdicts/auto
@@ -192,9 +212,10 @@ jobs:
           done
           echo "saved=Verdict file(s) not saved: the push to $BRANCH was refused 4 times (see the run); they are the run's artifacts proof-verdict-*." >> "$GITHUB_OUTPUT"
       - name: one verdict comment on the merged PR
-        env: { GH_TOKEN: "${{ github.token }}", SAVED: "${{ steps.save.outputs.saved }}" }
+        if: always()
+        env: { GH_TOKEN: "${{ github.token }}", SAVED: "${{ steps.save.outputs.saved }}", ITEMS: "${{ join(fromJSON(needs.detect.outputs.items), ' ') }}" }
         run: |
-          if ls verdicts/*.json >/dev/null 2>&1; then node "main/$T/item-proof.mjs" comment --dir verdicts --saved "$SAVED" > comment.md
+          if ls verdicts/*.json >/dev/null 2>&1; then node "main/$T/item-proof.mjs" comment --dir verdicts --saved "$SAVED" --items "$ITEMS" > comment.md
           else printf '## Automatic proof (P-728 (3)): no verdict\n\nThe prove job ended before writing a verdict: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > comment.md; fi
           cat comment.md >> "$GITHUB_STEP_SUMMARY"
           node -e 'process.stdout.write(JSON.stringify({body:require("fs").readFileSync("comment.md","utf8")}))' > payload.json
