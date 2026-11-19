@@ -66,6 +66,10 @@ export const EVENT = {
   PROSPECT_LOST: "prospect.lost",
   /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
   PROSPECT_UNCONVERTED: "prospect.unconverted",
+  /** A call was logged on a lead or a prospect (FO-2 part 4; AG-2-37a): the audit action (no outbox row yet). */
+  CALL_LOGGED: "call.logged",
+  /** A note was added on a lead or a prospect (FO-2 part 4): the audit action (no outbox row). */
+  NOTE_ADDED: "note.added",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
@@ -190,6 +194,15 @@ export const ProspectMovePayload = z.strictObject({
   lostReasonKey: z.string().optional(),
 });
 export type ProspectMovePayload = z.infer<typeof ProspectMovePayload>;
+
+/** One line of a "what happened" timeline (FO-2 part 4; review D10: every reader of what happened uses this one shape,
+ *  never its own). `kind` says where the line was read from: an audit line, an outbox event with no audit line of its
+ *  own, a logged call or a note. `type` is the audit action, the event type, `call` or `note`; `refId` the row's id. */
+export const TimelineLine = z.strictObject({
+  at: z.string().datetime({ offset: true }), kind: z.enum(["AUDIT", "EVENT", "CALL", "NOTE"]), type: z.string().min(1),
+  actor: z.string().nullable(), actorName: z.string().nullable(), summary: z.string(), refId: Uuid.nullable(),
+});
+export type TimelineLine = z.infer<typeof TimelineLine>;
 
 /** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
  *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
