@@ -2097,3 +2097,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **The rules:** protect the merge path (re-merge within 30 min; split a failed batch at once). Proof per item; qa never blocks. **Drain to ~13:30 IST**: lanes only get approved PRs merged, nothing new starts. After it, journeys in dependency order, two in parallel, about 6 items per journey; my journey is likely **B, firm set-up** (item list from Lead 87 by ~13:00).
 * Posted word for word on #1959, #2196, #2102, #2103, #2029, #2012, #1961 and #2181 (comments 7000390059 to 7000392038). Lanes without a PR need Lead 87 to type it: J-109, FO-3st2, PF-19b part 3, PF-19e, #2011's (J-37) and the PF-15 part 2 and FO-3st3 parked lanes.
 * **Under the drain:** J-37 and J-48 are new parts, so they wait until after ~13:30. J-109 already has its Approve and only opens its PR, so it counts as getting an approved PR merged.
+
+## Rev 17.45 (19 Nov 10:49 IST)
+* **The J2 lane plan** is in `lead-b-briefs/J2-lane-plan-2026-11-19.md`:
+  1. R1.100 → R1.19 (PF-19e → PF-5v p2 → PF-5s p1 → J-19);
+  2. R1.23 (PF-13 p1, p2);
+  3. R1.92 (PF-18a p2, PF-18s);
+  4. R1.20 (PF-15 p2, PF-4c p2, invite batch; waits on the founder's D4);
+  5. R1.91 (PF-16; brief owed by me);
+  6. a free slot.
+* **Build Lead C:** R1.76's note routes are FO-2 part 4 (#2181, queued, red only on main's card until #2195). R1.72's FO-8 is BACKLOG's "case side, release Lead" and not built; its FO side (FO-1p) is merged.
