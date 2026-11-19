@@ -13,3 +13,10 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 * Held parts are listed in STATE and nobody builds them (P-251, P-265, P-284); the founder lifted the P-235 to P-248 holds (P-316); Express Entry's police and medical block is the one hard stop besides Validate (P-172, P-315).
 * Questions as a PR comment headed "Question for the tech lead"; every brief says "report to the current Lead (`tools/current-lead.sh`)" (P-293 (2), P-373, P-409). Builders never edit `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`; qa alone edits `qa/CAPABILITIES.md` and `qa/BUGS.md` (P-314).
 * qa: one row per lane, in parallel; packs on GitHub's machines; gate A by screens (P-434). Live AI off and US$0 in every lane; never press a priced button (P-175).
+
+
+## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
+
+| P-385 | Label review: approved only on a `Reviewer: Approve <exact head sha>` comment and green CI; builders label, qa labels paid-result PRs (P-277, P-275). | CI: label-guard.yml, label-guard.sh, label-sweep.sh (tests check-label-guard.sh, check-label-sweep.sh) | P-612 |
+
+| P-683 | Approve on the branch first, then open the PR non-draft (amends P-646). | prose (lane briefs) | 17 Nov |  (moved word for word by Lead 80, 19:0x IST 18 Nov)
