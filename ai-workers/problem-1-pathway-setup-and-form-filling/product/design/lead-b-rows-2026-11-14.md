@@ -2057,3 +2057,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * **Redirect:** #2103's lane → **J-37** (R1.37). Its parts are on main except FO-2 part 3b's arrival swap, which it merges in when that exists.
   * PF-6b needs no founder decision and goes to the #2029 lane after #2029 merges. #2172 is J-6 part 2.
 * Lead 85 redirected both cloud lanes at 07:2x IST: #2011's lane → FO-2 part 3b, #2103's lane → J-37. The current Lead is now **Lead 86** (`local_bb67266d-be45-4ab8-9ba8-b4f3b4596ebe`).
+
+## Rev 17.41 (19 Nov 08:15 IST): P-719 (finish by capability; a lane owns one item's whole chain; about 4 items for me)
+* **In flight:**
+  1. **R1.109**: #2012, then J-109 (the J-109 lane).
+  2. **R1.28 + R1.37**: FO-2 part 3b, then J-37, both on **#2011's lane**. #2103's lane hands J-37 over with a resume note and parks.
+  3. **R1.41**: #2103, FO-3st2, then J-41 (the FO-3st2 lane).
+  4. **R1.48**: PF-19b part 3, then J-48. J-48 is Build Lead C's, and who owns the chain is asked of Lead 86.
+* **Queued, then qa:** R1.4 (#2029) and R1.19's billing part (#1959).
+* **Parked:** the PF-19e lane (R1.100: PF-19e, then PF-5v part 2). I asked whether Proven accepts a Sample terms text (C24/G9).
+* **Next when one reaches Proven:** R1.6 (PF-6b, then J-6) on the #2029 lane, then R1.100.
