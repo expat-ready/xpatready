@@ -2,7 +2,17 @@
 
 Reviewer (Opus, fresh context, did not build it), 19 Nov 2026 20:56 IST. Commit reviewed: **60d5fb9ac14ecca1cb807e5f571b4fd774f51664**, branch `claude/runtime-pf15c-bind-limits`, diff `origin/main...60d5fb9ac` (10 files, +129/−12, under 300). Spec: `design/lead-b-briefs/PF-15.md` on `lead-b-front-office`, "After part 2", bullet PF-15c; BACKLOG row PF-15c; SA-3-4, SA-3-5 (SA-03 v2.29 line 586), SA-3-39. Backend item, no screen: the UI-only dimensions and BIC-01..20 are N/A. The refusal was walked on the existing Open a case dialog (`journey-test-reviewer-2026-11-19.md`). Isolated copies on :4593 only; never :4400.
 
-**Verdict: Block** (changes requested): one Major (M1). The binding is otherwise correct and well tested.
+**Verdict at head 83d643a6c94fb3e5fc039097af43794fc551c70b: Approve.** M1 is fixed; no Blocker or Major is open (re-review below). At 60d5fb9ac the verdict was Block for M1; that history is kept below.
+
+## Re-review at 83d643a6c (diff `60d5fb9ac..83d643a6c`: `runtime.ts` +2/−1, `check_pf15c_case_limits.ts` DW1, records only otherwise)
+* **M1: fixed.** The case 409 now carries `upgradePath: "Change the plan in Settings, Billing, or close or withdraw a case first."` (`runtime.ts:317`), for both the over-limit and the no-live-plan refusals. The over-limit sentence ends "…or it is withdrawn; or choose a larger plan in Settings, Billing." Code, metric, limit, used and the type URL are unchanged. Keeping the inline throw instead of `planLimitReached` is accepted: the body is the same shape and runtime.ts imports nothing from platform/. The "; or" join reads a little awkwardly; it is wording only, not a finding.
+* **DW1 asserts both** (`/Settings, Billing/` on `upgradePath`, `/choose a larger plan/` on `detail`), so it fails if either is removed. Re-run on a fresh copy pf15crv2 on :4593: **11/11**. The rest of the range is records (break-report.md, this file and the journey file, unchanged from what I wrote).
+* **m1, m2, m3: none blocks.** m1 (corporate through the app with the real adapter) is now shown on a running copy by the breaker: 20 parallel corporate openings with 1 slot left gave one 201 (break-report "What held"). It remains a suite gap; Should, not Must. m2 is a carry-over owned by PF-16/PF-17. m3 is a test-strength note.
+* **Breaker F1 (PAYMENT_HOLD still opens cases) and F2 (firm status not read): do not block PF-15c.** "Live" is defined by PF-15 part 2's definer function (`status <> 'ENDED'`, migration `20261119051500_pf15_limit_changes` line 164), which PF-15c does not change. The brief's done-when names "no live plan", and F1 is posted as a Question for the tech lead on the PR, so the gap is not silent. It is a money hole the Lead must place (fix the definer function in its own item); it is not this item's scope. The break report's "reopen skips the limit" belongs to PF-15 part 2 (`case-close.ts:9`).
+* **Journey score after the fix:** 8.5 / 10. "Next step obvious" rises to 1 (the over-limit refusal now names a larger plan); m2 keeps "Settings, Billing" unreachable on main. The journey file stays as written at 60d5fb9ac.
+
+## Review at 60d5fb9ac (first pass, kept as written)
+**Verdict then: Block** (changes requested): one Major (M1). The binding is otherwise correct and well tested.
 
 ## Checks run (at 60d5fb9ac, fresh isolated copy each)
 * `check_pf15c_case_limits.ts` (copy pf15crv): **11/11**. `check_csc1_count.ts` (pf15crva): **40/40**. `check_csk1_client.ts` (pf15crvb): **51/51**.
