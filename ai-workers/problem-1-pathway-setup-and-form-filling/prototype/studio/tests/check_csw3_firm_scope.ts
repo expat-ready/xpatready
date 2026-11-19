@@ -77,9 +77,9 @@ function scratch() {
     const owned = sql(`select string_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.proowner = '${R}'::regrole`);
     ok("CS-W3 DW8 pass: xr_case_lookup owns exactly the five lookup functions (CS-W1's one and these four), all in case_lookup",
       owned === "case_lookup.case_firm_id_of_key(key text),case_lookup.case_firm_of_case(case_id uuid),case_lookup.case_firm_of_client(actor text),case_lookup.case_firm_of_link(token_hash text),case_lookup.case_firm_of_link_session(token_hash text)", owned);
-    const defs = sql(`select string_agg(p.proname || ':' || p.prosecdef || ':' || array_to_string(p.proconfig, ';'), ',' order by p.proname) from pg_proc p where p.proowner = '${R}'::regrole`);
+    const defs = sql(`select string_agg(p.proname || ':' || p.prosecdef || ':' || array_to_string(p.proconfig, ';'), ' | ' order by p.proname) from pg_proc p where p.proowner = '${R}'::regrole`);
     ok("CS-W3 DW8 pass: each is SECURITY DEFINER with search_path pinned, pg_temp last (pg_proc.proconfig)",
-      defs.split(",").length === 5 && defs.split(",").every((d) => d.endsWith(":true:search_path=pg_catalog, public, case_lookup, pg_temp")), defs);
+      defs.split(" | ").length === 5 && defs.split(" | ").every((d) => d.endsWith(":true:search_path=pg_catalog, public, case_lookup, pg_temp")), defs);
     ok("CS-W3 DW8 pass: it cannot log in, is no superuser, passes no wall and owns no table",
       sql(`select rolcanlogin::text || rolsuper || rolbypassrls || (select count(*) from pg_class where relowner = r.oid) from pg_roles r where rolname = '${R}'`) === "falsefalsefalse0");
     ok("CS-W3 DW8 fail: it holds no INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or table-wide SELECT anywhere",
@@ -89,8 +89,9 @@ function scratch() {
     ok("CS-W3 DW8 pass: its only column SELECTs are the ones the lookups read, person_link.id among them",
       cols === "person_link.case_id,person_link.id,person_link.token_hash,person_link_session.link_id,person_link_session.token_hash,platform_firm.id,platform_firm.key,runtime_case.client_actor_id,runtime_case.firm_id,runtime_case.id"
       && sql(`select count(*) from information_schema.column_privileges where grantee = '${R}' and privilege_type <> 'SELECT'`) === "0", cols);
-    ok("CS-W3 DW8 pass: one role-only policy on runtime_case, for xr_case_lookup's reads only",
-      sql(`select string_agg(p.polname || ':' || p.polcmd || ':' || pg_get_expr(p.polqual, p.polrelid) || ':' || (select string_agg(r.rolname, '+') from pg_roles r where r.oid = any(p.polroles)), ',') from pg_policy p where p.polrelid = 'runtime_case'::regclass`) === "case_lookup_read:r:true:xr_case_lookup");
+    const pols = sql(`select string_agg(c.relname || ':' || p.polname || ':' || p.polcmd::text || ':' || pg_get_expr(p.polqual, p.polrelid) || ':' || array_to_string(p.polroles::regrole[], '+'), ',' order by c.relname) from pg_policy p join pg_class c on c.oid = p.polrelid where c.relname in ('runtime_case', 'person_link', 'person_link_session')`);
+    ok("CS-W3 DW8 pass: one role-only policy on each table the lookups read, for xr_case_lookup's reads only",
+      pols === "person_link:case_lookup_read:r:true:xr_case_lookup,person_link_session:case_lookup_read:r:true:xr_case_lookup,runtime_case:case_lookup_read:r:true:xr_case_lookup", pols);
     ok("CS-W3 DW8 fail: no CREATE on public; PUBLIC holds no EXECUTE on any of the five; xr_data's members do",
       sql(`select has_schema_privilege('${R}', 'public', 'CREATE')`) === "f"
       && FNS.every((f) => sql(`select has_function_privilege('public', 'case_lookup.${f}', 'EXECUTE')::text || has_function_privilege('xr_app', 'case_lookup.${f}', 'EXECUTE')`) === "falsetrue"));
@@ -203,7 +204,10 @@ async function api() {
   ok("CS-W3 DW3 fail: another person's case is still 404", pOther.status === 404, pOther.status);
 
   // DW2 and DW9: a link and its session, with the walls on.
-  const S = (await call("POST", `/runtime/cases/${k1.id}/people`, { role: "spouse_or_partner", displayName: "Sample Partner" })).body?.subject_id as string;
+  const auditBefore = Number(sql(`select count(*) from audit_event where case_id = '${k1.id}'`));
+  const added = await call("POST", `/runtime/cases/${k1.id}/people`, { role: "spouse_or_partner", displayName: "Sample Partner" });
+  const auditAfter = Number(sql(`select count(*) from audit_event where case_id = '${k1.id}'`));
+  const S = added.body?.subject_id as string;
   for (const [s, d] of [[k1.P, yearsAgo(40)], [S, yearsAgo(38)]]) await call("PUT", `/runtime/cases/${k1.id}/answers/${s}/person.date_of_birth`, { value: d, expectedId: null });
   const A = `partner.w3.${run}@example.com`;
   const sent = await call("POST", `/runtime/cases/${k1.id}/people/${S}/link`, { address: A }, "user-P");
@@ -214,9 +218,9 @@ async function api() {
   const verified = await call("POST", "/link/code", { token: t, code: codeIn(await inbox(A)) }, null), session = verified.body?.session as string;
   ok("CS-W3 DW9 pass: with the walls on, \"Send to …\" and \"Send me a code\" work for the link's own case (PF-19r reads the case after the door set its firm)",
     sent.status < 300 && !!t && codeSent.status === 200 && verified.status < 300 && !!session, { sent: sent.status, codeSent: codeSent.status, verified: verified.status });
-  const me = await call("GET", "/link/me", undefined, null, session);
+  const me = await call("GET", "/link/me", undefined, null, session), consent = await call("POST", "/link/consent", undefined, null, session);
   const q1 = await call("GET", `/link/cases/${k1.id}/people/${S}/questionnaire`, undefined, null, session), q2 = await call("GET", `/link/cases/${k2.id}/people/${S}/questionnaire`, undefined, null, session);
-  ok("CS-W3 DW2 pass: the link session reads its own person's questions with the walls on", me.status === 200 && q1.status === 200, { me: me.status, q1: q1.status });
+  ok("CS-W3 DW2 pass: the link session reads its own person's questions with the walls on", me.status === 200 && consent.status < 300 && q1.status === 200, { me: me.status, consent: consent.status, q1: q1.status, body: q1.body });
   ok("CS-W3 DW2 fail: the session never reaches another firm's case (404), an unknown token is 404 and an unknown session 401, as today",
     q2.status === 404 && (await call("POST", "/link/code/send", { token: "A".repeat(43) }, null)).status === 404 && (await call("GET", "/link/me", undefined, null, "B".repeat(43))).status === 401, q2);
 
@@ -228,10 +232,7 @@ async function api() {
   ok("CS-W3 DW4 fail: interleaved requests for the other firm's case are each 404, never one that slipped through", crossed.every((r) => r.status === 404), crossed.map((r) => r.status).filter((s) => s !== 404));
 
   // DW10: AUD-1m's case id on a case route's audit line.
-  const before = Number(sql(`select count(*) from audit_event where case_id = '${k1.id}'`));
-  const ans = await call("POST", `/runtime/cases/${k1.id}/people`, { role: "dependent_child", displayName: "Sample Child" });
-  const after = Number(sql(`select count(*) from audit_event where case_id = '${k1.id}'`));
-  ok("CS-W3 DW10 pass: with the walls on, an audit line written in a case route carries its case id (core.ts caseIdOf reads the case as the door's firm)", ans.status < 300 && after > before, { ans: ans.status, before, after });
+  ok("CS-W3 DW10 pass: with the walls on, the audit line of adding a person (a case route) carries its case id (core.ts caseIdOf reads the case as the door's firm)", added.status < 300 && auditAfter > auditBefore, { added: added.status, auditBefore, auditAfter });
   ok("CS-W3 DW10 fail: the same read with no firm set finds no case (what caseIdOf would get without the door, so the line would lose its case id)",
     sql(`select count(*) from runtime_case where id = '${k1.id}'`, "xr_app") === "0");
 

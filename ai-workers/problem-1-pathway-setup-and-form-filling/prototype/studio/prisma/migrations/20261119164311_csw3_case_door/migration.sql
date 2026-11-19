@@ -16,9 +16,11 @@
 --     never PUBLIC. search_path pinned, pg_temp last.
 --   * Column grants: exactly what the functions read. runtime_case (id, firm_id, client_actor_id); person_link (id,
 --     token_hash, case_id) (id: the session's link_id joins on it); person_link_session (token_hash, link_id).
---   * One policy now: runtime_case FOR SELECT TO xr_case_lookup USING (true). It does nothing until CS-W4 enables the
---     wall on runtime_case. person_link and person_link_session get theirs in CS-W2 part links, which walls them.
--- Rollback (in this order): DROP POLICY case_lookup_read ON runtime_case; DROP FUNCTION case_lookup.case_firm_of_case(uuid),
+--   * One role-only policy FOR SELECT TO xr_case_lookup USING (true) on each table the lookups read: runtime_case,
+--     person_link, person_link_session. Each does nothing until a wall is forced on its table (CS-W4; CS-W2 part links for
+--     the link tables), and then keeps the lookups working whichever of those lands first, as CS-W1 makes its role
+--     wherever it is missing (a deviation from the brief, which left the link tables' two to CS-W2: said in the PR).
+-- Rollback (in this order): DROP POLICY case_lookup_read ON runtime_case, ON person_link, ON person_link_session; DROP FUNCTION case_lookup.case_firm_of_case(uuid),
 --   case_lookup.case_firm_of_link(text), case_lookup.case_firm_of_link_session(text), case_lookup.case_firm_of_client(text);
 --   REVOKE SELECT (id, firm_id, client_actor_id) ON runtime_case FROM xr_case_lookup; REVOKE SELECT (id, token_hash, case_id)
 --   ON person_link FROM xr_case_lookup; REVOKE SELECT (token_hash, link_id) ON person_link_session FROM xr_case_lookup;
@@ -28,6 +30,8 @@ GRANT SELECT (id, firm_id, client_actor_id) ON runtime_case TO xr_case_lookup;
 GRANT SELECT (id, token_hash, case_id) ON person_link TO xr_case_lookup;
 GRANT SELECT (token_hash, link_id) ON person_link_session TO xr_case_lookup;
 CREATE POLICY case_lookup_read ON runtime_case FOR SELECT TO xr_case_lookup USING (true);
+CREATE POLICY case_lookup_read ON person_link FOR SELECT TO xr_case_lookup USING (true);
+CREATE POLICY case_lookup_read ON person_link_session FOR SELECT TO xr_case_lookup USING (true);
 
 -- OR REPLACE: a reset that drops only public (Prisma's shadow database) keeps the case_lookup schema and its functions.
 CREATE OR REPLACE FUNCTION case_lookup.case_firm_of_case(case_id uuid) RETURNS uuid
