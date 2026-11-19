@@ -1,7 +1,7 @@
 // PF-21j (QA-517, Major; J-109 breaker M1; map row 109; brief product/design/lead-b-briefs/PF-21j.md, Lead B 19 Nov):
 // only a person who may record complaints (agent/complaint:record) can handle one. Before, canAct trusted the handler
 // whatever their keys and handlers() offered every active staff member, so a Read-only person made handler could
-// acknowledge and close. Named cases H1-H4, each with a passing and a failing case; each failing case fails on the code
+// acknowledge and close. Named cases H1-H5 (H5: the reminder, break M2), each with a passing and a failing case; each failing case fails on the code
 // before PF-21j (the two checks it adds: the handler list and handler setting; the record key on acting).
 // One scratch database (every migration, PF-3's Sample seed) and a Nest app built from the feature's own classes behind
 // PF-4's guard (as PF-21w's suite does), the audit port real, the job runner a recorder. Keys are read from a person's
@@ -38,6 +38,7 @@ const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/id
 const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { ComplaintsService } = await import("../api/src/platform/complaints/complaints.ts");
 const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
 const { fakeMail } = await import("../ports/mail.ts");
 
@@ -125,6 +126,24 @@ try {
   ok("PF-21j H4 pass: … but can still open it (canRead unchanged: the handler reads their own)", open.status === 200 && open.body.id === demotedOnes && open.body.status === "OPEN", open);
   const ownerAck = await call("POST", `/${demotedOnes}/acknowledge`, owner.token, { at: ago(5) });
   ok("PF-21j H4 pass: someone with both keys (the Owner) still acts on it → 200", ownerAck.status === 200, ownerAck);
+
+  // ----------------------------------------------------------------------------------------------------------- H5
+  // Break M2: the acknowledgement reminder goes to the handler only while they may still act on it; one who lost the
+  // record key could not acknowledge, so the firm's Owners and Admins are reminded instead.
+  const svc = nest.get(ComplaintsService);
+  const sentTo = async (id: string) => {
+    const run = await svc.runAckReminder({ firmId: firm, complaintId: id });
+    const e = await db.platComplaintEvent.findFirst({ where: { complaintId: id, kind: "REMINDER_SENT" } });
+    return { run, sentTo: (e?.detail as { sentTo?: string } | null)?.sentTo ?? null };
+  };
+  const keyed = await sentTo(await record(manager.id, "Client K"));
+  ok("PF-21j H5 pass: a handler who holds the record key gets the reminder", keyed.run === "sent" && keyed.sentTo === "handler", keyed);
+  const lost = await person("lost-key", "CASE_MANAGER");
+  const lostOnes = await record(lost.id, "Client L");
+  await db.platformRoleGrant.updateMany({ where: { firmId: firm, staffId: lost.id, endedAt: null }, data: { endedAt: new Date(), endedBy: "seed:pf21j", endReason: "made Read-only (Sample)" } });
+  await db.platformRoleGrant.create({ data: { firmId: firm, staffId: lost.id, role: "READ_ONLY", grantedBy: "seed:pf21j" } });
+  const unkeyed = await sentTo(lostOnes);
+  ok("PF-21j H5 fail: a handler made Read-only is not the one reminded; the firm's Owners and Admins are", unkeyed.run === "sent" && unkeyed.sentTo === "owners_admins", unkeyed);
 } finally {
   await app?.close().catch(() => undefined);
   await db.$disconnect();

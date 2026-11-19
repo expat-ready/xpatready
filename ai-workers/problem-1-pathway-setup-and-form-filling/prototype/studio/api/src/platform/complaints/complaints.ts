@@ -352,7 +352,7 @@ export class ComplaintsService {
     return this.commit(async (tx, after) => {
       const c = await this.lock(tx, firmId, id);
       if (!this.canRead(ctx, c)) return notFound();
-      if (!this.canAct(ctx, c)) problem(403, "not-allowed", "Not allowed", "Changing a complaint needs the permissions to read and record complaints, or being its handler.");
+      if (!this.canAct(ctx, c)) problem(403, "not-allowed", "Not allowed", "Changing a complaint needs the permission to record complaints, as its handler or with the permission to read every complaint.");
       const r = await act(tx, c, after);
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: r.action, entity: "plat_complaint", entityKey: c.id, summary: r.summary, detail: { complaintId: c.id, ...(r.detail ?? {}) } });
       if (r.event) await outbox(tx, c, r.event);
@@ -464,7 +464,9 @@ export class ComplaintsService {
       const c = await tx.platComplaint.findFirst({ where: firmScope(firmId, { id: complaintId }) });
       if (!c || c.status === "CLOSED" || c.acknowledgedAt) return "skipped" as const;
       if (await tx.platComplaintEvent.findFirst({ where: firmScope(firmId, { complaintId, kind: "REMINDER_SENT" as const }), select: { id: true } })) return "skipped" as const;
-      const handler = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: c.handlerStaffId, status: "ACTIVE" as const }), select: { id: true, email: true } });
+      // PF-21j (break M2): the handler is reminded only while they may still act on it (active, with the record key);
+      // one who lost the key could not acknowledge, so the reminder goes to the Owners and Admins instead.
+      const handler = await tx.platformStaff.findFirst({ where: await this.mayHandle(tx, firmId, { id: c.handlerStaffId }), select: { id: true, email: true } });
       const admins = await tx.platformStaff.findMany({
         where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { role: { in: ["OWNER", "ADMIN"] as ("OWNER" | "ADMIN")[] }, endedAt: null } } }), select: { id: true, email: true }, orderBy: { email: "asc" },
       });
@@ -473,7 +475,7 @@ export class ComplaintsService {
       const due = new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "long", timeStyle: "short" }).format(c.acknowledgeBy);
       const now = this.d.clock.now();
       type Tier = { sentTo: "handler" | "owners_admins" | "firm_contact"; to: { address: string; staffId: string | null }[]; text: string };
-      const reach = handler ? "cannot be reached by email" : "is no longer active";
+      const reach = handler ? "cannot be reached by email" : "is no longer active or can no longer handle complaints";
       const tiers: Tier[] = [
         ...(handler ? [{ sentTo: "handler" as const, to: [{ address: handler.email, staffId: handler.id }], text: `A complaint you handle was due to be acknowledged by ${due} (${zone}). Open it in Complaints (reference ${complaintId}) and record the acknowledgement.` }] : []),
         { sentTo: "owners_admins", to: admins.filter((a) => a.id !== handler?.id).map((a) => ({ address: a.email, staffId: a.id })), text: `A complaint was due to be acknowledged by ${due} (${zone}), and its handler ${reach}. Open it in Complaints (reference ${complaintId}), choose a new handler if needed and record the acknowledgement.` },
