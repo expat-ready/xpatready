@@ -1,0 +1,75 @@
+// QA-510 (Gap, Major; R1.110 Done when: "an expired document refused as the basis"; Code SOR/2022-128 s. 24(2)(a) asks for
+// a valid, current document; Unconfirmed: no counsel): FO-13i's identity check records a document whose expiry is already
+// past. Fails on main 34c5e1e99 (201 for an expired passport); passes when an expiry before today (the firm's clock) is
+// refused with 400 naming documentExpiry, while a future expiry still records (201). Set-up as check_fo13i_identity.ts:
+// one scratch database with every migration, the Sample firms, a Nest app of the identity-check feature beside PF-4's
+// guard and the local sign-in stand-in. No server of the app, no browser, no model call (US$0). Dropped at the end.
+//   tsx studio/tests/qa/check_qa510_expired_id_document.ts
+import "reflect-metadata";
+import { Module } from "@nestjs/common";
+import { APP_GUARD, NestFactory } from "@nestjs/core";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
+const STUDIO = join(import.meta.dirname, "..", ".."), MIG = join(STUDIO, "prisma", "migrations");
+const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+const DB = `xr_studio_qa510_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
+const WORK = join(STUDIO, "var", `qa510-check-${process.pid}`);
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
+const psql = (args: string[]) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const sql = (q: string) => psql(["-Atc", q]);
+
+execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
+mkdirSync(WORK, { recursive: true });
+process.env.DATABASE_URL = URL; process.env.FO_FILES_DIR = join(WORK, "files"); process.env.FO_FILES_LINK_KEY = "qa510-check-link-key-0123456789abcdef";
+for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+
+const { ConfigReadGuard, Db } = await import("../../api/src/core.ts");
+const { seedSampleFirms } = await import("../../api/src/platform/seed-sample-firms.ts");
+const { seedSampleFirmsFrontOffice } = await import("../../api/src/front-office/firm-seed.ts");
+const { PlatformClock } = await import("../../api/src/platform/identity/port.ts");
+const { LocalIdentity } = await import("../../api/src/platform/identity/local.ts");
+const { IDENTITY_PORT, PlatformIdentity } = await import("../../api/src/platform/identity/service.ts");
+const { PlatformGuard } = await import("../../api/src/platform/identity/guard.ts");
+const identity = (await import("../../api/src/features/front-office-identity-check.ts")).default;
+
+const apps: { close(): Promise<void> }[] = [];
+try {
+  for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) psql(["-f", join(MIG, d, "migration.sql")]);
+  const db = new Db();
+  await seedSampleFirms(db); await seedSampleFirmsFrontOffice(db);
+  const A = sql(`select id from platform_firm where key='sample-firm'`);
+  const R = sql(`select id from platform_staff where actor_id='user-R'`);
+  const local = new LocalIdentity("qa510-check-signing-key-0123456789abcdef", () => Date.now());
+  const tok = local.issue(R, { authTimeMs: Date.now() - 60_000, secondStep: true });
+  const nowMs = Date.parse("2026-11-19T12:00:00Z");
+  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: { now: () => nowMs } }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }, ...identity.providers];
+  @Module({ controllers: identity.controllers as never[], providers: providers as never[] }) class TestApp {}
+  const app = await NestFactory.create(TestApp, { logger: false });
+  await app.listen(0, "127.0.0.1"); apps.push(app);
+  const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}/api/front-office`;
+  const pid = "00000000-0000-4000-8000-0000000a5101";
+  sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${pid}', '${A}', 'Client A', 'Sample', 'client.a@example.com', 'test', now());
+    insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values ('00000000-0000-4000-8000-0000000a5102', '${A}', '${pid}', 'MANUAL', 'WEBSITE', '${R}', 'test', now())`);
+  const save = async (documentExpiry: string) => {
+    const r = await fetch(`${BASE}/people/${pid}/identity-checks`, { method: "POST", headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
+      body: JSON.stringify({ requestId: crypto.randomUUID(), method: "IN_PERSON", documentType: "PASSPORT", issuingCountry: "CA", documentExpiry, documentNumberLast4: "q7r2", details: ["NAME"] }) });
+    const t = await r.text(); let b: any = t; try { b = JSON.parse(t); } catch { /* text */ }
+    return { status: r.status, body: b };
+  };
+  const future = await save("2031-05-31");
+  ok("QA-510 pass: a passport that expires after today records (201)", future.status === 201, future);
+  const expired = await save("2025-01-31");
+  ok("QA-510 fail case: a passport that expired before today is refused with 400 naming documentExpiry", expired.status === 400 && !!expired.body?.fields?.documentExpiry, expired);
+  ok("QA-510: the refused expired document leaves no check behind", sql(`select count(*) from fo_identity_check where person_id='${pid}'`) === "1", sql(`select count(*) from fo_identity_check where person_id='${pid}'`));
+} catch (e) {
+  ok("QA-510 ran to the end", false, String((e as Error)?.stack ?? e));
+} finally {
+  for (const a of apps) await a.close().catch(() => {});
+  try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* dropped */ }
+  rmSync(WORK, { recursive: true, force: true });
+}
+console.log(`\nQA-510 expired document: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
