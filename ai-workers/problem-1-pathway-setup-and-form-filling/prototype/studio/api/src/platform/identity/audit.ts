@@ -21,13 +21,13 @@ export type AuditLine = { firmId: string; firmKey: string; actor: string; action
 /** One audit line about a staff member (status, roles, licence record, sessions). */
 export async function auditStaff(tx: Tx, l: AuditLine) {
   const workspaceId = await platformAuditWorkspaceId(tx);
-  await tx.auditEvent.create({ data: { workspaceId, actor: l.actor, action: l.action, entity: "platform_staff", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
+  await tx.auditEvent.create({ data: { workspaceId, firmId: l.firmId, actor: l.actor, action: l.action, entity: "platform_staff", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
 }
 
 /** One audit line about an invitation. */
 export async function auditInvitation(tx: Tx, l: AuditLine) {
   const workspaceId = await platformAuditWorkspaceId(tx);
-  await tx.auditEvent.create({ data: { workspaceId, actor: l.actor, action: l.action, entity: "platform_invitation", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
+  await tx.auditEvent.create({ data: { workspaceId, firmId: l.firmId, actor: l.actor, action: l.action, entity: "platform_invitation", entityKey: l.entityKey, summary: `Firm ${l.firmKey}: ${l.summary}`.slice(0, 600), detail: { firmId: l.firmId, firmKey: l.firmKey, ...l.detail } as Prisma.InputJsonValue } });
 }
 
 /** The actor word of a staff member on audit lines and events (their staff id; the Sample staff's actor id is in detail). */

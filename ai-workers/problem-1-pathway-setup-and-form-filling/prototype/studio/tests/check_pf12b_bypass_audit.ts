@@ -29,6 +29,7 @@ import { Messages, type MessagesDeps } from "../api/src/platform/messages/send/m
 import { requestScope } from "../api/src/platform/observability/log.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { WebAddressCatchUp } from "../api/src/platform/web-address/routes.ts";
+import { StorageWatch, STORAGE_DAILY_QUEUE } from "../api/src/platform/entitlements/storage.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -52,10 +53,10 @@ export function unaudited(list: Readonly<Record<string, object>>): string[] {
 ok("PF-12b DW3 pass: every BYPASS_USES entry names how it audits (per-firm, or none with its reason)", unaudited(BYPASS_USES).length === 0, unaudited(BYPASS_USES));
 const broken = { ...BYPASS_USES, "pf12b.new-use": { why: "a use added without its audit field", routes: [] } };
 ok("PF-12b DW3 fail: a use added without `audit`, or with an empty none, is named by the check", JSON.stringify(unaudited(broken)) === '["pf12b.new-use"]' && unaudited({ x: { audit: "none: " } }).length === 1);
-const PER_FIRM = ["job:messages.outbox_sweep", "platform.demo.inbox", "platform.demo.reset", "platform.firms.signup", "platform.web-address.catch-up"];
+const PER_FIRM = ["job:messages.outbox_sweep", "job:platform.entitlements.storage_daily", "platform.demo.inbox", "platform.demo.reset", "platform.firms.signup", "platform.web-address.catch-up"];
 const DOORS = ["fo.booking.public-page", "fo.booking.self-service", "fo.sales.web-form", "platform.identity.authenticate", "platform.identity.invitation", "platform.identity.sign-in", "platform.web-address.host"];
 const perFirm = Object.entries(BYPASS_USES).filter(([, e]) => e.audit === "per-firm").map(([k]) => k).sort();
-ok("PF-12b DW3 pass: the five cross-firm uses audit per firm; the seven own-firm doors say why not yet (part 2 moves them)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => /^none: an own-firm door/.test(BYPASS_USES[d].audit)), perFirm);
+ok("PF-12b DW3 pass: the six cross-firm uses audit per firm; the seven own-firm doors say why not yet (part 2 moves them)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => /^none: an own-firm door/.test(BYPASS_USES[d].audit)), perFirm);
 ok("PF-12b DW3 pass: the two uses that touch no firm say why (the purge: our own register; re-encrypt: every job runs as its firm)", /platform_signup_pending/.test(BYPASS_USES["job:platform.signup.purge"].audit) && /runs as that firm/.test(BYPASS_USES["job:platform.secret_box.reencrypt"].audit));
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
@@ -118,6 +119,16 @@ try {
   ok("PF-12b fail (break m3): touchFirm refuses the client in place of a transaction (its line would commit alone)", clientErr instanceof FirmScopeError, String(clientErr));
   ok("PF-12b pass (break m4): three touches of one firm at the same moment in one transaction write one line", spoof.entries.length === 4, spoof.entries.length);
 
+  // Main's PF-15 use (Lead B, 6999415832): the daily storage measure lists every firm on its bypass use, then measures each
+  // in its own firm scope. Run as the job runner runs it (asJob opens the use; daily() names it again inside).
+  const watch = new StorageWatch({ db, files: { usedBytes: async () => 0 }, mail: null, now: () => clock.now().getTime() });
+  const ran = await asJob(STORAGE_DAILY_QUEUE, () => watch.daily());
+  ok("PF-12b DW1 pass (PF-15's storage_daily): the daily measure writes one line per firm it listed and measures each, also when asJob already opened its use", lines("job:platform.entitlements.storage_daily") === [A, B].sort().map((f) => `${f}:1`).join(",") && ran.measured === 2 && ran.failed === 0, { lines: lines("job:platform.entitlements.storage_daily"), ran });
+  const was15 = onBypassAudit(fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }));
+  const ran2 = await asJob(STORAGE_DAILY_QUEUE, () => watch.daily());
+  onBypassAudit(was15);
+  ok("PF-12b DW2 fail (PF-15's storage_daily): a firm whose line cannot be written is not measured and counts as failed; the others are measured", ran2.measured === 1 && ran2.failed === 1, ran2);
+
   // ---------------------------------------------------------------------------------------------------------- DW2
   const refusing = fakeAudit({ failOn: (e) => e.action === "platform.bypass" });
   sql(`insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${A}', 'platform.language', '"fr"', 'test', now()) on conflict (firm_id, key) do update set value = '"fr"'`);
@@ -178,9 +189,9 @@ try {
   await inRequest({ method: "GET", path: "/api/public/forms/abc" }, () => asBypass("fo.sales.web-form", () => db.foWebForm.findMany({ take: 1 })));
   await asJob("platform.signup.purge", () => s.purgeExpired());
   ok("PF-12b DW7 pass: an own-firm door (the web form's lookup) and the purge (no firm) add no line", total() === before7, { before7, after: total() });
-  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2 };
+  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
-  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => {});
   for (const p of pools) await p.end().catch(() => {});

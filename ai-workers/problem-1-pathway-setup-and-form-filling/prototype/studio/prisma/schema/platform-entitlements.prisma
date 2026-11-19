@@ -1,0 +1,40 @@
+// platform-entitlements.prisma — plan limits and the storage-over mark (PF-15; SA-3-4, SA-3-39, SA-3-40). Owner: Lead B.
+// Seats stay on platform_plan.seats_limit. Rules and Sample rows: migration 20261118213000_pf15_plan_limits. Read and
+// written only through api/src/platform/entitlements/.
+
+/// The metrics a plan limits besides seats. Modes are fixed (SA-3-39): cases hard, storage warn.
+enum PlatformLimitMetric {
+  ACTIVE_INDIVIDUAL_CASES
+  ACTIVE_CORPORATE_CASES
+  STORAGE_MB
+
+  @@map("platform_limit_metric")
+}
+
+/// One plan's limit on one metric (a catalogue). null = Unlimited, 0 = none; no row reads as 0. Sample values.
+model PlatformPlanLimit {
+  planId     String              @map("plan_id") @db.Uuid
+  metric     PlatformLimitMetric
+  limitValue Int?                @map("limit_value")
+  updatedAt  DateTime            @default(now()) @map("updated_at") @db.Timestamptz
+
+  plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([planId, metric])
+  @@map("platform_plan_limit")
+}
+
+/// A firm's storage-over mark (SA-3-40): hard while back_under_at is null and first_over_at is 14 days or more ago.
+model PlatformStorageOver {
+  firmId      String    @id @map("firm_id") @db.Uuid
+  firstOverAt DateTime  @map("first_over_at") @db.Timestamptz
+  alertedAt   DateTime? @map("alerted_at") @db.Timestamptz
+  backUnderAt DateTime? @map("back_under_at") @db.Timestamptz
+  usedBytes   BigInt    @map("used_bytes")
+  limitMb     Int?      @map("limit_mb")
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("platform_storage_over")
+}

@@ -112,6 +112,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "none: it deletes expired pending sign-ups only, our own register with no firm_id (platform_signup_pending, forced with no policy); it reads no firm table" },
+  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true, audit: "none: every re-encrypt job is queued with its firm and runs as that firm (withFirm, not this use); a job of this queue with no firm is refused before any read (reencrypt.ts)" },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
@@ -156,16 +157,21 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
   // outer use's lines only; it is refused before any query runs.
+  // A use inside its own scope (a job handler that names its use again under asJob, e.g. the storage measure) runs where
+  // it is: the same use, the same lines. Any other use inside it is refused.
+  if (store?.bypass === use) return await fn();
   if (store?.bypass) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
 }
 
 // ------------------------------------------------------------------------------------- PF-12b: the bypass audit line
-/** Where touchFirm records (the one trail, audit_event through AuditPort; P-571 (1)). A test replaces it. */
-let bypassAudit: AuditPort<unknown> = auditEvent;
+/** Where touchFirm records (the one trail, audit_event through AuditPort; P-571 (1)). A test replaces it. Read when a line
+ *  is written, never at load: audit-event.ts reaches this file again through audit/context.ts and jobs/pgboss-jobs.ts. */
+let bypassAudit: AuditPort<unknown> | null = null;
+const recorder = (): AuditPort<unknown> => bypassAudit ?? auditEvent;
 /** A test replaces the port bypass lines are recorded through. Returns the one before. */
-export function onBypassAudit(port: AuditPort<unknown>) { const was = bypassAudit; bypassAudit = port; return was; }
+export function onBypassAudit(port: AuditPort<unknown> | null) { const was = recorder(); bypassAudit = port; return was; }
 
 /** A bypass use's audit line could not be written, so the use did not happen (P-607): its transaction rolls back. A
  *  request answers 500 in plain words; a job fails and is retried by the job runner. */
@@ -198,7 +204,7 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
   const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
   const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
   try {
-    await bypassAudit.record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+    await recorder().record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
       summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
   } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
 }

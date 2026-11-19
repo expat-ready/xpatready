@@ -21,6 +21,7 @@ export const CASE_ENTITIES: ReadonlySet<string> = new Set([
   "person link" /* C6.16: an adult's own link (send, code, take back, privacy), person-link.ts */,
   "filing form" /* C7.8 a library form added to one filing, or removed: form-additions.ts */,
   "review round" /* C8.3 representative review, review-rounds.ts: each line names its case */,
+  "case client" /* CS-K1 the case side's client record, clients.ts */,
 ]);
 /** The audit entities written by configuration work. "section" is a case entity too (a case's sections), so it is never
  *  read here without a case: the configuration "section" lines stay with the configuration people. */
