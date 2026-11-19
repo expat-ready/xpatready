@@ -13,7 +13,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
-import { Complaint, nowLocal, Page as ComplaintPage, zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
+import { canAct, Complaint, KEY, nowLocal, Page as ComplaintPage, zonedToIso } from "../web/src/modules/platform/complaints/contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4571), DBNAME = process.argv[3] ?? "xr_studio_screens_pf21s";
@@ -30,6 +30,12 @@ await seedSampleFirms(db); await db.$disconnect();
 const staffOf = (actor: string) => { const [id, email, name] = sql(`select id || '|' || email || '|' || display_name from platform_staff where actor_id = '${actor}'`).split("|"); return { id, email, name }; };
 const R = staffOf("user-R"), T = staffOf("user-T"), O = staffOf("user-O"), S = staffOf("user-S");   // Owner + CM; CM (record key only); Case Officer (no key); sample-solo's Owner
 ok("PF-21s setup: the Sample firms' staff are seeded", !!R.id && !!T.id && !!O.id && !!S.id);
+// PF-21j H6 (break M1): the page decides what to offer with the server's rule (contract.ts canAct): the record key, as
+// the handler or with the read key too. A handler who lost the record key sees the read-only line, not the actions.
+{ const me = (staffId: string, keys: string[]) => ({ staffId, keys }) as unknown as Parameters<typeof canAct>[0], c = { handlerStaffId: T.id };
+  ok("PF-21j H6 pass: the page offers actions to a handler holding the record key, and to someone with both keys", canAct(me(T.id, [KEY.record]), c) && canAct(me(R.id, [KEY.record, KEY.read]), c));
+  ok("PF-21j H6 fail: no action for a handler without the record key (none, or the read key alone)", !canAct(me(T.id, []), c) && !canAct(me(T.id, [KEY.read]), c));
+  ok("PF-21j H6 fail: nor for someone with the record key alone who is not the handler", !canAct(me(O.id, [KEY.record]), c)); }
 async function signIn(firmKey: string, email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
