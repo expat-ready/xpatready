@@ -10,7 +10,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
 import {
-  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, NO_COUNSEL, keepCheck,
+  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, NO_COUNSEL, keepCheck,
   type FirmKeepPeriod, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
 } from "../../../../ports/keep-period.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
@@ -22,7 +22,7 @@ import { readSetting, registerSetting, writeSetting } from "../settings.ts";
 type Tx = Prisma.TransactionClient;
 export const LEGAL_SETTINGS_KEY = "agent/legal-settings:manage";
 /** AUD-5 part 2: the legal-hold store check() asks first (PF-21b's real adapter is provided under this token when it
- *  lands); with none provided, check() refuses (NO_HOLD_STORE), so nothing is ever deleted without asking it. */
+ *  lands); with none provided, check() refuses (KeepCheckNotBuilt), so nothing is ever deleted without asking it. */
 export const KEEP_PERIOD_HOLDS = Symbol("KEEP_PERIOD_HOLDS");
 /** The clock check() reads (P-607: times only from the clock port); the system clock when none is provided. */
 export const KEEP_PERIOD_CLOCK = Symbol("KEEP_PERIOD_CLOCK");
@@ -91,9 +91,7 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
 
   /** Every deleter's one question (BR-7): a hold first, inside the caller's transaction, then the floor, then the firm's
    *  reminder. The caller passes its session or job firm, never a request's. */
-  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> {
-    return keepCheck({ holds: this.holds ?? null, clock: this.clock ?? systemClock, firmYears: async (f) => (await this.forFirm(f)).closedClientFilesYears }, tx, input);
-  }
+  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) throw new KeepCheckNotBuilt(); return keepCheck({ holds: this.holds, clock: this.clock ?? systemClock, firmYears: async (f) => (await this.forFirm(f)).closedClientFilesYears }, tx, input); }
 
   /** GET /api/platform/keep-periods: the table in plain words and the firm's own number (read-only for most staff). */
   async read(s: StaffContext) {

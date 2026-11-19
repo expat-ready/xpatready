@@ -9,7 +9,7 @@
 // This folder imports only zod and its own files (case-side contract v0.1 §1 rule 3).
 import { z } from "zod";
 import { systemClock, type ClockPort } from "./clock.ts";
-import { HoldSubject, type HoldMatch, type LegalHoldPort } from "./legal-hold.ts";
+import type { HoldMatch, HoldSubject, LegalHoldPort } from "./legal-hold.ts";
 
 /** The firm's own number, not a number in code (SA-11-33: "Keep closed client files for ___ years"). */
 export const FIRM_SETTING = "FIRM_SETTING" as const;
@@ -91,27 +91,56 @@ export type FirmKeepPeriod = { closedClientFilesYears: number | null; source: "f
 
 /** What a deleter asks: its firm (the caller's session or job firm, never a value from a request), the class of record,
  *  when that class's period started (the row's `from`: the file's closing, the fiscal year's end, the record's date) and
- *  what is being deleted, as legal-hold subjects (a closed client file: its CASE; firm-wide records: FIRM or a DATE). */
+ *  the record deleted (`subject`: its id; a case id for a closed client file or a client's financial record). */
 export const KeepCheckInput = z.strictObject({
   firmId: FirmId,
   class: KeepClass,
   startedAt: z.date().refine((d) => Number.isFinite(d.getTime()), "a real date"),
-  subjects: z.array(HoldSubject).min(1, "name what is deleted (an empty ask would pass every hold)").max(200),
+  subject: z.string().trim().min(1, "name the record deleted").max(200),
 });
 export type KeepCheckInput = z.input<typeof KeepCheckInput>;
 export type KeepCheckResult =
-  /** A legal hold covers it: refuse, with every hold's reason (BR-7: a hold wins over everything, whatever the class). */
-  | { verdict: "HELD"; reason: string; holds: HoldMatch[] }
+  /** A legal hold covers it: refuse, with every matching hold's reason (BR-7: a hold wins over everything, any class). */
+  | { verdict: "HELD"; reason: string; reasons: string[]; holds: HoldMatch[] }
   /** A floor in code: refuse until `until` (null: never deleted by the product). */
   | { verdict: "FLOOR"; until: Date | null; why: string }
   /** Inside the firm's own reminder: the deleter may go ahead only with a reason, which goes on its audit line (BR-8). */
   | { verdict: "WARN"; until: Date; why: string }
   | { verdict: "OK" };
 
-/** A check that cannot be answered: a REFERENCE class (never deleted on), a bad input, or no legal-hold store wired. A
+/** check() with no legal-hold store wired (KEEP_PERIOD_HOLDS): it refuses before anything else, so nothing is ever
+ *  deleted without asking the hold store (BR-7). The API wires none until PF-21b part 2's real adapter is on main. */
+export class KeepCheckNotBuilt extends Error {
+  constructor() { super("No legal-hold store is wired (KEEP_PERIOD_HOLDS): check() refuses, so nothing may be deleted on it yet (BR-7)"); this.name = "KeepCheckNotBuilt"; }
+}
+
+/** A check that cannot be answered: a bad input, a REFERENCE class (never deleted on), or a class with no hold check. A
  *  deleter that gets it deletes nothing. */
 export class KeepCheckRefused extends Error {
-  constructor(readonly code: "NOT_A_RECORD_CLASS" | "BAD_INPUT" | "NO_HOLD_STORE", message: string) { super(message); this.name = "KeepCheckRefused"; }
+  constructor(readonly code: "BAD_INPUT" | "NOT_A_RECORD_CLASS" | "NO_HOLD_CHECK", message: string) { super(message); this.name = "KeepCheckRefused"; }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The legal-hold subjects (PF-21b's HoldSubject kinds) a deletion of each class asks about: a case's records by their
+ *  CASE, every record by its DATE (a DATE_RANGE hold), and a FIRM or ALL_FIRM_DATA hold matches all of them anyway. A
+ *  class missing here has no hold check yet and is refused in words, never passed as OK; a case class named by anything
+ *  but a case id is refused too. */
+export const HOLD_SUBJECTS: Partial<Record<KeepClass, (subject: string, startedAt: Date) => HoldSubject[] | null>> = {
+  closed_client_file: (s, at) => (UUID.test(s) ? [{ kind: "CASE", id: s }, { kind: "DATE", at }] : null),
+  client_financial: (s, at) => (UUID.test(s) ? [{ kind: "CASE", id: s }, { kind: "DATE", at }] : null),
+  our_billing: (_s, at) => [{ kind: "DATE", at }],
+  breach_record: (_s, at) => [{ kind: "DATE", at }],
+  activity_log: (_s, at) => [{ kind: "DATE", at }],
+  our_staff_audit: (_s, at) => [{ kind: "DATE", at }],
+};
+
+/** The hold subjects of one ask, or the refusal in words. */
+export function holdSubjectsOf(cls: string, subject: string, startedAt: Date): HoldSubject[] {
+  const map = HOLD_SUBJECTS[cls as KeepClass];
+  if (!map) throw new KeepCheckRefused("NO_HOLD_CHECK", `This record type has no hold check yet (${cls}): it cannot be deleted until it has one.`);
+  const subjects = map(subject, startedAt);
+  if (!subjects) throw new KeepCheckRefused("BAD_INPUT", `A ${cls.replace(/_/g, " ")} is named by its case id (a uuid), not "${subject.slice(0, 40)}".`);
+  return subjects;
 }
 
 /** `d` plus whole calendar years (UTC; 29 Feb falls to 28 Feb in a common year). */
@@ -135,18 +164,18 @@ export function decideKeep(row: KeepPeriodRow, firmYears: number | null, started
   return now.getTime() < until.getTime() ? { verdict: "WARN", until, why: `Your firm keeps closed client files for ${firmYears} year${firmYears === 1 ? "" : "s"} after closing. Give a reason to delete this one sooner.` } : { verdict: "OK" };
 }
 
-export type KeepCheckDeps<Tx> = { holds: LegalHoldPort<Tx> | null; clock: ClockPort; firmYears: (firmId: string) => Promise<number | null> };
+export type KeepCheckDeps<Tx> = { holds: LegalHoldPort<Tx>; clock: ClockPort; firmYears: (firmId: string) => Promise<number | null> };
 
-/** The one rule every adapter answers through: the hold first (inside the caller's transaction), then floor, then the
- *  firm's reminder, read once. Never answers OK without asking the hold store. */
+/** The one rule every adapter answers through: the hold first (inside the caller's own transaction: isHeld takes the
+ *  shared hold lock there and keeps it until that transaction ends; no second transaction is opened), then the floor,
+ *  then the firm's reminder, read once. Never answers OK without asking the hold store. */
 export async function keepCheck<Tx>(deps: KeepCheckDeps<Tx>, tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> {
   const q = KeepCheckInput.safeParse(input);
   if (!q.success) throw new KeepCheckRefused("BAD_INPUT", q.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   const row = KEEP_PERIODS.find((r) => r.class === q.data.class)!;
   if (row.kind === "REFERENCE") throw new KeepCheckRefused("NOT_A_RECORD_CLASS", `${row.class} is a reference, not a class of record: nothing is deleted on it`);
-  if (!deps.holds) throw new KeepCheckRefused("NO_HOLD_STORE", "No legal-hold store is wired: nothing may be deleted until one is (BR-7)");
-  const held = await deps.holds.isHeld(tx, q.data.firmId, q.data.subjects);
-  if (held.held) return { verdict: "HELD", reason: held.holds.map((h) => h.reason).join("; "), holds: held.holds };
+  const held = await deps.holds.isHeld(tx, q.data.firmId, holdSubjectsOf(row.class, q.data.subject, q.data.startedAt));
+  if (held.held) { const reasons = held.holds.map((h) => h.reason); return { verdict: "HELD", reason: reasons.join("; "), reasons, holds: held.holds }; }
   const firmYears = row.years === FIRM_SETTING ? await deps.firmYears(q.data.firmId) : null;
   return decideKeep(row, firmYears, q.data.startedAt, deps.clock.now());
 }
@@ -155,7 +184,8 @@ export async function keepCheck<Tx>(deps: KeepCheckDeps<Tx>, tx: Tx, input: Keep
 export interface KeepPeriodPort<Tx = unknown> {
   /** The firm's own number for closed client files; `null` with "not set" when it has none (SA-11-33: no default). */
   forFirm(firmId: string): Promise<FirmKeepPeriod>;
-  /** HELD | FLOOR | WARN | OK in BR-7's order (keepCheck). Throws KeepCheckRefused when it cannot answer. */
+  /** HELD | FLOOR | WARN | OK in BR-7's order (keepCheck), inside the caller's transaction. Throws KeepCheckNotBuilt
+   *  with no hold store wired, KeepCheckRefused when it cannot answer. */
   check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult>;
 }
 
@@ -166,7 +196,7 @@ export type FakeKeepPeriods = KeepPeriodPort<unknown> & {
 
 /** The fake: the same answers as the real adapter, held in memory. `holds` (fakeLegalHolds) and `clock` (FakeClock) are
  *  the test's; without a hold store check() refuses, as the real adapter does. */
-export function fakeKeepPeriods(initial: Record<string, number | null> = {}, opts: { holds?: LegalHoldPort<unknown> | null; clock?: ClockPort } = {}): FakeKeepPeriods {
+export function fakeKeepPeriods(initial: Record<string, number | null> = {}, opts: { holds?: LegalHoldPort<unknown>; clock?: ClockPort } = {}): FakeKeepPeriods {
   const years = new Map<string, number>();
   const set = (firmId: string, y: number | null) => {
     const id = FirmId.parse(firmId).toLowerCase();
@@ -179,8 +209,8 @@ export function fakeKeepPeriods(initial: Record<string, number | null> = {}, opt
       const y = years.get(FirmId.parse(firmId).toLowerCase());
       return y === undefined ? { closedClientFilesYears: null, source: "not set" } : { closedClientFilesYears: y, source: "firm setting" };
     },
-    async check(tx, input) {
-      return keepCheck({ holds: opts.holds ?? null, clock: opts.clock ?? systemClock, firmYears: async (f) => years.get(FirmId.parse(f).toLowerCase()) ?? null }, tx, input);
-    },
+    ...(opts.holds
+      ? { check: (tx: unknown, input: KeepCheckInput) => keepCheck({ holds: opts.holds!, clock: opts.clock ?? systemClock, firmYears: async (f) => years.get(FirmId.parse(f).toLowerCase()) ?? null }, tx, input) }
+      : { async check() { throw new KeepCheckNotBuilt(); } }),
   };
 }
