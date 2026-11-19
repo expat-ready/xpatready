@@ -12,7 +12,7 @@ Written 19 Nov 21:0x IST by Build Lead C (3). Found by PF-15c's breaker (#2307, 
 **What to build:**
 * **One opening check, used by both.** Move the lock, count and check out of `createCase` into one function, e.g. `checkOpening(tx, firmKey, group, entitlements)` in `api/src/case-count.ts`. Its words, its 409 body (including PF-15c's upgrade path) and its group rule (the Pathway's client type: CORPORATE, else individual) stay exactly as they are. `createCase` calls it unchanged in behaviour, and `reopen` calls it.
 * **Lock order in reopen:** take the advisory lock (the firm key from the session's context) **before** `locked()` takes the case row. Then re-read the status, count and check, all in the one transaction. Two reopens, or a reopen and an opening, at the limit end with exactly one success.
-* **The same EntitlementPort binding:** `CaseClose` gets the port the way `Runtime` does since PF-15c (`useEntitlements`, or the feature binding PF-15c uses). There must be no second, allow-all fake on the reopen path.
+* **The same EntitlementPort binding** (Lead B (7), 19 Nov 21:1x IST): `CaseClose` takes the EntitlementPort that PF-15c binds in `features/platform-entitlements.ts`, injected by the port's token, which is the same binding `createCase` uses. Never construct `PgEntitlements` in the case module, and leave no allow-all fake on the reopen path.
 * The reopen's other rules (reason, closing fields cleared, audit line, `case.reopened` event) are unchanged.
 
 **Named test cases** (P-606), file `tests/check_csc1r_reopen_limit.ts`, a pass and a fail each:
