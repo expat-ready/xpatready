@@ -3,7 +3,7 @@ Accepted by Lead 91 as ordered (12:4x IST). P-734: this file feeds the focus-lis
 Case side, audit and client money. Brief paths are under product/design/build-lead-c-briefs/ on claude/build-lead-c-647b40. "In flight" PRs are already built; the part counted is what is left after them.
 
 ## Nothing left after an in-flight PR
-1. R1.80 IRCC forms per applicant: #2235 (evidence) queued. Proof is automatic at its merge; qa walks it (IRCC forms). No lane.
+1. R1.80 IRCC forms per applicant: #2235 MERGED 18:06 IST; proof due. Proof is automatic at its merge; qa walks it (IRCC forms). No lane.
 
 ## One part left
 2. R1.77 decide, withdraw, close, reopen: #2169 MERGED 15:20 IST; J-77 is #2263 (6ef02a932, queued) → J-77 (`J-77.md`, branch claude/j77-journey c81ed249d). Clash: none. Line, after #2169 merges: "Read J-77.md; merge origin/main into claude/j77-journey; diff-only Approve; open the PR as non-draft."
