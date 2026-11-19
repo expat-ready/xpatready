@@ -10,7 +10,7 @@
 * `J-41 W3`: the public page shows no slots that day and slots only inside the hours (the Tuesday cannot be chosen; the Monday offers 10:00 to 11:30 only; the Wednesday, untouched, still 09:00 to 16:30; the slots route says the same).
 * `J-41 W4`: ends at row 37's first step, the slot list (the booker picks 10:00 and reaches "Your details").
 * `J-41 NR` (fails on the stand-in, P-606): before any change, W3's two judges are false.
-* `J-41 DW`: none. Step 0's grep: the booking module's only fakes in a running path are `mail` and `arrival` (`runtime-ports.ts`), used when a booking is made; hours, time off and the slots read use neither, and the walk makes no booking.
+* `J-41 DW`: none. Step 0's grep: the booking module's one fake in a running path is `arrival` (`runtime-ports.ts`; FO-2's row swaps it). Hours, time off and busy times come from the database; the slots read asks `arrival` only for the consent sentence "Your details" shows, which no judge reads, and the walk makes no booking.
 
 ## Found while building
 * The Monday a week ahead can be a month's last day (30 Nov, with the Tuesday on 1 Dec): the walk moves the public calendar forward and back by its own buttons.

@@ -8,10 +8,11 @@
 //   W3: the public page shows no slots that day (the Tuesday cannot be chosen) and slots only inside the hours (the
 //       Monday offers 10:00-11:30 only; the Wednesday, untouched, still starts at 09:00);
 //   W4: ends at row 37's first step, the slot list: the booker picks the Monday's 10:00 and reaches "Your details".
-// Swaps (DW): none. Step 0's grep (`git grep 'fake[A-Z]…(' api/src`, 19 Nov): the booking module's only fakes in a
-// running path are `mail` and `arrival` (runtime-ports.ts), used when a booking is made; hours, time off and the slots
-// read use neither, and this walk makes no booking. Fails on the fake (P-606): with no fake in the path, the stand-in
-// replaced is "no hours or day off set": every W3 judge is run before W1 too and must fail there (the NR lines).
+// Swaps (DW): none. Step 0's grep (`git grep 'fake[A-Z]…(' api/src`, 19 Nov): the booking module's one fake in a running
+// path is `arrival` (runtime-ports.ts; FO-2's row swaps it). Hours, time off and busy times are read from the database;
+// the slots read asks `arrival` only for the consent sentence "Your details" shows, which no judge here reads, and this
+// walk makes no booking. Fails on the fake (P-606): with no fake behind any judge, the stand-in replaced is "no hours
+// or day off set": every W3 judge is run before the host changes anything and must fail there (the NR lines).
 // Dates: the Monday at least a week ahead and its Tuesday and Wednesday, America/Toronto (the Sample firm's zone).
 // Sample rows only; US$0, no model call. Screenshots: product/screens/J-41/screenshots/.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -57,12 +58,15 @@ if (termIds.length) await call(tok, "POST", "/platform/me/terms/accept", { versi
 // The Monday at least a week ahead, its Tuesday and Wednesday (Toronto), in the page's own words.
 const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-GB", { timeZone: TZ, ...o });
 let mon = new Date(Date.now() + 7 * 86_400_000); while (fmt({ weekday: "short" }).format(mon) !== "Mon") mon = new Date(mon.getTime() + 86_400_000);
+const at = (key: string, minutes = 0) => { const [y, m, d] = key.split("-").map(Number); return wallToUtc(y, m, d, minutes, TZ)!; };
+const keyOf = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+// Each next day is read at the day before's local noon plus 24 h, so the hour the run starts never moves a day (review M1).
 const days = [0, 1, 2].map((n) => {
-  const d = new Date(mon.getTime() + n * 86_400_000 + (n ? 3_600_000 : 0)), p = Object.fromEntries(fmt({ weekday: "long", day: "numeric", month: "long", year: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
-  return { key: new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d), words: `${p.weekday} ${p.day} ${p.month}`, month: `${p.month} ${p.year}` };
+  const d = new Date(at(keyOf(mon), 720).getTime() + n * 86_400_000), p = Object.fromEntries(fmt({ weekday: "long", day: "numeric", month: "long", year: "numeric" }).formatToParts(d).map((x) => [x.type, x.value]));
+  return { key: keyOf(d), words: `${p.weekday} ${p.day} ${p.month}`, month: `${p.month} ${p.year}` };
 });
 const [MON, TUE, WED] = days;
-const at = (key: string, minutes = 0) => { const [y, m, d] = key.split("-").map(Number); return wallToUtc(y, m, d, minutes, TZ)!; };
+if (!/^Monday /.test(MON.words) || !/^Tuesday /.test(TUE.words) || !/^Wednesday /.test(WED.words)) throw new Error(`STOP  the walk's days are not Monday, Tuesday, Wednesday: ${JSON.stringify(days)}`);
 
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
@@ -72,7 +76,8 @@ async function page(session: string | null): Promise<Page> {
   const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
   return p;
 }
-const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `j41-${name}.png`), fullPage: true });
+/** The viewport with `sel` scrolled into it (a full-page shot draws the sticky top bar over the week: review m2). */
+const shot = async (p: Page, name: string, sel?: string) => { if (sel) await p.locator(sel).first().scrollIntoViewIfNeeded(); await p.screenshot({ path: join(SHOTS, `j41-${name}.png`) }); };
 /** What a booker with no session sees on the public page for one day: can the day be chosen, and its times if so. */
 async function publicDay(p: Page, d: typeof MON): Promise<{ open: boolean; times: string[] }> {
   const shown = () => p.locator("h2[aria-live]").innerText(), n = (words: string) => { const t = new Date(`1 ${words} UTC`); return t.getUTCFullYear() * 12 + t.getUTCMonth(); };
@@ -113,7 +118,7 @@ try {
   const sets = (await call(tok, "GET", "/front-office/me/availability-sets")).body.sets as { isDefault: boolean; windows: { weekday: number; start: string; end: string }[] }[];
   const saved = sets.find((s) => s.isDefault)?.windows.filter((w) => w.weekday === 1);
   ok("J-41 W1: the host sets Monday to 10:00-12:00 on My account → Availability; \"Save hours\" answers Saved and the server holds it", JSON.stringify(saved) === JSON.stringify([{ weekday: 1, start: "10:00", end: "12:00" }]) && (await p.locator("[data-saved]").innerText()).includes("Existing bookings are not moved."), saved);
-  await shot(p, "w1-hours-saved");
+  await shot(p, "w1-hours-saved", "[data-week-editor]");
 
   // ----------------------------------------------------------------------------------------- W2: adds a day off
   await p.getByRole("button", { name: "Add time off" }).click();
@@ -122,7 +127,7 @@ try {
   const off = (await call(tok, "GET", "/front-office/me/time-off")).body.timeOff as { startsAt: string; endsAt: string }[];
   const row = await p.locator("[data-time-off-row] > span").first().innerText();
   ok("J-41 W2: the host adds the Tuesday as a whole day off; it is listed and saved midnight to midnight (Toronto)", off.length === 1 && off[0].startsAt === at(TUE.key).toISOString() && off[0].endsAt === at(WED.key).toISOString() && /\(whole day\)$/.test(row), { off, row });
-  await shot(p, "w2-day-off-saved");
+  await shot(p, "w2-day-off-saved", "[data-time-off-row]");
   await p.context().close();
 
   // --------------------------------------------- W3: the public page, read by a booker with no session
