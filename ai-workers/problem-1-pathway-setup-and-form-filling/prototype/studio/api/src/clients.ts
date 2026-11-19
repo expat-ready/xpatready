@@ -11,7 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 import { ClientListQuery, INVISIBLE } from "../../contracts/runtime.ts";
-import { hasWord, type FoPersonPort } from "../../ports/fo-person.ts";
+import { FoPersonInvalidInput, hasWord, type FoPersonPort } from "../../ports/fo-person.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,9 +33,13 @@ const partyName = (name: string, number: number) => { const v = name.normalize("
 /** CS-K1 part 2: the front office's party for a client of `firmId`, through the port in the caller's transaction: a
  *  PERSON client a new fo_person, a COMPANY client a new fo_company (never a contact person). */
 async function partyFor(tx: Tx, foPerson: FoPersonPort<Tx>, c: { firmId: string; displayName: string; displayKind: string; clientNumber: number }, actor: string) {
-  const base = { firmId: c.firmId, actor }, name = partyName(c.displayName, c.clientNumber);
-  return c.displayKind === "COMPANY" ? { foCompanyId: (await foPerson.ensureCompanyForClient(tx, { ...base, name })).foCompanyId }
+  const base = { firmId: c.firmId, actor };
+  const ask = async (name: string) => c.displayKind === "COMPANY" ? { foCompanyId: (await foPerson.ensureCompanyForClient(tx, { ...base, name })).foCompanyId }
     : { foPersonId: (await foPerson.ensureForClient(tx, { ...base, displayName: name })).foPersonId };
+  // Review m8: a name the port's text rule still refuses (an unassigned mark, combining marks only) is named by the client
+  // code. The port refuses before it writes anything, so the transaction carries on.
+  try { return await ask(partyName(c.displayName, c.clientNumber)); }
+  catch (e) { if (e instanceof FoPersonInvalidInput) return ask(`Client ${clientCode(c.clientNumber)}`); throw e; }
 }
 
 /** A new client of a firm, inside the caller's transaction: the firm's next number (a rolled-back caller gives it back),

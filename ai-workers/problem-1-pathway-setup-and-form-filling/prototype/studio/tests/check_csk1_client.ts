@@ -376,8 +376,8 @@ try {
     copySql(`select count(*) from case_client where (display_kind = 'COMPANY' and fo_person_id is not null) or (display_kind = 'PERSON' and fo_company_id is not null)`) === "0"
     && /case_client_front_office_link_check/.test(err(`update case_client set fo_company_id = null, fo_person_id = gen_random_uuid() where id = '${corpId}'`, COPY)));
   // Breaker F1: a name the front office's text rule refuses (a Persian name's U+200C, a soft hyphen, "!!") still opens, linked
-  const oddNames = await Promise.all(["\u0639\u0644\u06cc\u200c\u0631\u0636\u0627 Sample", "Sam\u00adple Hyphen", "!!"].map((nm) => open("user-O", {}, nm)));
-  ok("CS-K1 DW9 pass (breaker F1): names with a joiner, a soft hyphen, or no letter at all (\"!!\") open (201) and are linked; the front office's copy drops the marks, and \"!!\" is named by its client code",
+  const oddNames = await Promise.all(["\u0639\u0644\u06cc\u200c\u0631\u0636\u0627 Sample", "Sam\u00adple Hyphen", "!!", "Ab\u2065cd Sample", "\u0bbe\u0bbe\u0bbe"].map((nm) => open("user-O", {}, nm)));
+  ok("CS-K1 DW9 pass (breaker F1): names with a joiner, a soft hyphen, no letter at all (\"!!\"), an unassigned mark or combining marks only (review m8) open (201) and are linked; the front office's copy drops the marks, and \"!!\" is named by its client code",
     oddNames.every((r) => r.status === 201) && oddNames.every((r) => link(r.body?.client_record?.id).startsWith(`PERSON|${FA}|`))
     && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[2].body?.client_record?.id}'`) === `Client ${oddNames[2].body?.client_record?.number}`
     && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[0].body?.client_record?.id}'`) === "\u0639\u0644\u06cc\u0631\u0636\u0627 Sample", oddNames.map((r) => [r.status, r.body?.detail]));

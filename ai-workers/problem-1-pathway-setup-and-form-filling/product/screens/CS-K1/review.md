@@ -180,3 +180,59 @@ Report: `screens/CS-K1/journey-test-reviewer-2026-11-19.md`. Score **8.5 / 10**.
 * J-72 on `main` after #2321 merges: I ran it on a local merge only.
 
 Verdict: Changes needed. Blockers: none. Majors: M1 (`clients.ts:33`, `migration.sql:21`, `live.ts:50-53`), M2 (`j_72.ts:148-164`). Minors: m1-m7 as listed above.
+
+## Part 2 re-review (4715e7873)
+
+Diff only (P-277): `git diff 17b41633f..4715e7873 -- …/prototype` (11 files, +92 / -49). The commits after it touch records only: c25bd2f38 (`qa/built/R1.72.md`) and 19348c3f3 (`screens/CS-K1/`). I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at 4715e7873 merged locally with #2321's head (38d96cf3f, a clean merge), with copies `csk1r3` on :4735 and `j72r3` on :4736. I stopped both and removed the worktree afterwards.
+
+### What I ran
+| What | Result |
+|---|---|
+| `check_csk1_client.ts 4735 xr_studio_csk1r3` (fresh copy) | **64/64** |
+| `j_72.ts j72r3 4736` (`PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500`) | **27/27**: W8 reads `"user-T"`, and W2 took 239 ms |
+| The same J-72 with FO-8's merge-value read switched off (the mutation from my first review) | **26/27: W8 now FAILS with "user-R"**, so the test now catches it |
+| On the validated copy: insert an unlinked PERSON client with `fo_link_pending = true`, and unlink a linked one while setting the flag | both refused by `case_client_pending_guard` |
+| Unlink a linked client without setting the flag | refused by `case_client_front_office_link_check` |
+| Live, with no restart: a pending client via a direct case, wait about 20 s, then a second one, wait again | **both linked**: two `cases.client_link` jobs completed, under keys taken from each one's oldest waiting client |
+| `rollback.sql`, then `migration.sql` again, in one transaction | clean. After the rollback there is no column, trigger, function, check or `_prisma_migrations` row, and all 19 links are kept. Re-applying brings the trigger back |
+| `fo_person.created_by` after a simulated opening (j72r3) | `system:runtime.case-opening` |
+| Five breaker-style names `POST`ed as `x-actor` user-O | three answered as expected (two 201, one 400). **Two still answer 500** (see m8) |
+
+I did not re-run fo8 (the builder reports 43/43), the typecheck or full `ci`.
+
+### My findings
+* **M1: closed.**
+  * `newClient` gets the party through the port and inserts the client already linked (`clients.ts:154-160`). It never writes the flag.
+  * `case_client_pending_guard` (`migration.sql:27-35`) refuses the flag below trigger depth 2. App writes run at depth 1, while the two database triggers' writes run at depth 2 or deeper, so the guard tells them apart. It fires only on `UPDATE OF fo_link_pending`, which is enough: the flag can only change if it is named in the SET list.
+  * The new DW13 fail case covers both of my writes and an unlink without the flag.
+  * The job is now queued again on every run while any client waits (`live.ts:107-109`); I watched it link two clients in a row.
+  * One residue, raised to the Lead below as m9: if the oldest waiting client of a firm fails on every retry, its key stays the same, so the clients behind it in that firm wait as well.
+* **M2: closed.** The signed version names user-T, while the retainer row and the firm default name user-R. The assertion is `benRep === "user-T"` together with the retainer row still naming R (`j_72.ts:148-167`), and the mutation now fails it.
+* **m1: closed.** A simulated opener's port actor is now `system:runtime.case-opening`, and a signed-in opener stays `staff:<id>` (`runtime.ts:340`).
+* **m2: closed.** The handler throws on any failure, so pg-boss retries (`live.ts:36`).
+* **m3: closed.** With nothing waiting, the poll validates once (`live.ts:110`). It ended as `convalidated = t` on j72r3.
+* **m4: closed.** W2 waits at most 3 intervals, the prospect screen gets the 1024/1440 check, W5 is labelled as an API step, and DW-d asserts the 200.
+* **m5: closed.** `MODULE.cases.md:27-28`, `platform/MODULE.md:13` and `firm-scope.ts:73` are updated.
+* **m6: closed.** DW12's fail side is now a refusal by the database.
+* **m7: closed.** Only `catchUpProspectsWon` is inside `asBypass` now (`live.ts:105`). The `case_client` query, the enqueue and the validation run with no scope, which is correct: `case_client` is not walled.
+* **Breaker F1: mostly closed.** The Persian ZWNJ name, the soft hyphen and "!!" open and are linked, with the new DW9 case.
+
+### New or remaining
+* **Minor m8, two names still answer 500, with nothing written (F1 residue):**
+  * `"Ab⁥cd Sample"`: U+2065 is unassigned (Cn), so `NOT_KEPT` keeps it. The port's text rule refuses U+2060-U+2069 by range.
+  * `"ாாா"`: combining marks only. `hasWord` (Alphabetic) is true, but the port's `HAS_WORD` (`\p{L}\p{N}`) is false.
+  * The api log shows `FoPersonInvalidInput` both times.
+  * Neither is a realistic name.
+  * Fix (`clients.ts:134-135`): in `partyFor`, catch `FoPersonInvalidInput` and retry once with `Client <code>`. That holds whatever the port's rule becomes. Or test with both `hasWord(v) && /[\p{L}\p{N}]/u.test(v)` and strip `[⁠-⁯]`.
+* **Minor m9, for the Lead (no change needed now):** the job key is taken from the firm's oldest waiting client (`live.ts:108-109`). If that one client fails on every retry, the key stays used, so the clients behind it in that firm wait too, until it is fixed by hand. Recording the dead job in the log is enough for now.
+* **F4 (an `x-actor` request with no session writes front-office rows): rightly left as a firm-scope question for the tech lead.** It is the same point as my first review's note on (b). It does not block this verdict.
+* **Size:** the PR stays well under 800 lines; this diff adds only 43 net.
+
+### Journey score
+The journey score was not re-scored for this diff-only check. "Correct data" was ½ only because of M1 and M2, and both are now closed. My first walk's 8.5 / 10 stands as the score of record.
+
+No Blocker. No Major. Open Minors: m8, m9.
+
+Verdict: Approve
+
+Reviewer: Approve 4715e7873
