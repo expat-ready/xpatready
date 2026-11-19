@@ -30,6 +30,8 @@ import { requestScope } from "../api/src/platform/observability/log.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { WebAddressCatchUp } from "../api/src/platform/web-address/routes.ts";
 import { StorageWatch, STORAGE_DAILY_QUEUE } from "../api/src/platform/entitlements/storage.ts";
+import { LIMIT_CHANGE_KEY, PlanLimitChanges } from "../api/src/platform/entitlements/limit-changes.ts";
+import { fakeStaff } from "../ports/staff.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -53,10 +55,10 @@ export function unaudited(list: Readonly<Record<string, object>>): string[] {
 ok("PF-12b DW3 pass: every BYPASS_USES entry names how it audits (per-firm, or none with its reason)", unaudited(BYPASS_USES).length === 0, unaudited(BYPASS_USES));
 const broken = { ...BYPASS_USES, "pf12b.new-use": { why: "a use added without its audit field", routes: [] } };
 ok("PF-12b DW3 fail: a use added without `audit`, or with an empty none, is named by the check", JSON.stringify(unaudited(broken)) === '["pf12b.new-use"]' && unaudited({ x: { audit: "none: " } }).length === 1);
-const PER_FIRM = ["job:messages.outbox_sweep", "job:platform.entitlements.storage_daily", "platform.demo.inbox", "platform.demo.reset", "platform.firms.signup", "platform.web-address.catch-up"];
+const PER_FIRM = ["job:messages.outbox_sweep", "job:platform.entitlements.storage_daily", "platform.demo.inbox", "platform.demo.reset", "platform.entitlements.limit-change", "platform.firms.signup", "platform.web-address.catch-up"];
 const DOORS = ["fo.booking.public-page", "fo.booking.self-service", "fo.sales.web-form", "platform.identity.authenticate", "platform.identity.invitation", "platform.identity.sign-in", "platform.web-address.host"];
 const perFirm = Object.entries(BYPASS_USES).filter(([, e]) => e.audit === "per-firm").map(([k]) => k).sort();
-ok("PF-12b DW3 pass: the six cross-firm uses audit per firm; the seven own-firm doors say why not yet (part 2 moves them)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => /^none: an own-firm door/.test(BYPASS_USES[d].audit)), perFirm);
+ok("PF-12b DW3 pass: the seven cross-firm uses audit per firm; the seven own-firm doors say why not yet (part 2 moves them)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => /^none: an own-firm door/.test(BYPASS_USES[d].audit)), perFirm);
 ok("PF-12b DW3 pass: the two uses that touch no firm say why (the purge: our own register; re-encrypt: every job runs as its firm)", /platform_signup_pending/.test(BYPASS_USES["job:platform.signup.purge"].audit) && /runs as that firm/.test(BYPASS_USES["job:platform.secret_box.reencrypt"].audit));
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
@@ -129,6 +131,23 @@ try {
   onBypassAudit(was15);
   ok("PF-12b DW2 fail (PF-15's storage_daily): a firm whose line cannot be written is not measured and counts as failed; the others are measured", ran2.measured === 1 && ran2.failed === 1, ran2);
 
+  // Main's PF-15 part 2 use (Lead B, 7005749630): our team's limit change on a plan reaches every firm live on it. Both
+  // Sample firms are put on one plan for the case, then firm B goes back to its own.
+  const LC = "platform.entitlements.limit-change", ours = fakeStaff({ keys: [LIMIT_CHANGE_KEY] }, clock);
+  sql(`update platform_subscription set status = 'ENDED' where firm_id = '${B}' and status <> 'ENDED'; insert into platform_subscription (id, firm_id, plan_id, status, updated_at) select gen_random_uuid(), '${B}', id, 'ACTIVE', now() from platform_plan where code = 'team'`);
+  const changeRows = () => sql(`select count(*) from platform_limit_change`);
+  const wasLC = onBypassAudit(fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }));
+  const lcErr = await errOf(() => new PlanLimitChanges({ db, audit: auditEvent, mail: null }).change(ours, { plan: "team", metric: "active_individual_cases", value: 140, reason: "Sample lowering, PF-12b" }));
+  onBypassAudit(wasLC);
+  ok("PF-12b DW2 fail (PF-15's limit change): when one firm's line cannot be written the change is refused in plain words and nothing is stored (no change row, no line)", plain(lcErr) && changeRows() === "0" && lines(LC) === "", { lcErr: String(lcErr), rows: changeRows(), lines: lines(LC) });
+  const changed = await new PlanLimitChanges({ db, audit: auditEvent, mail: null }).change(ours, { plan: "team", metric: "active_individual_cases", value: 140, reason: "Sample lowering, PF-12b" });
+  ok("PF-12b DW1 pass (PF-15's limit change): one limit change on a plan with two live firms writes one platform.bypass line to each firm, in the change's own transaction (the same transaction id as its plan.limit.lowered lines)", changed.firms.length === 2 && lines(LC) === [A, B].sort().map((f) => `${f}:1`).join(",")
+    && sql(`select count(distinct xmin::text) from audit_event where (action = 'platform.bypass' and detail->>'use' = '${LC}') or (action = 'plan.limit.lowered' and entity_key = '${changed.changeId}')`) === "1", { firms: changed.firms, lines: lines(LC) });
+  const noticeMail = fakeMail({ clock });
+  const told = await new PlanLimitChanges({ db, audit: auditEvent, mail: noticeMail }).sendNotices(changed.changeId);
+  ok("PF-12b DW1 pass (PF-15's limit change): sending the notices reads both firms' Owners, so each firm gets one more line", told.sent >= 2 && told.failed.length === 0 && lines(LC) === [A, B].sort().map((f) => `${f}:2`).join(","), { told, lines: lines(LC) });
+  sql(`update platform_subscription set status = 'ENDED' where firm_id = '${B}' and status <> 'ENDED'; insert into platform_subscription (id, firm_id, plan_id, status, updated_at) select gen_random_uuid(), '${B}', id, 'ACTIVE', now() from platform_plan where code = 'solo'`);
+
   // ---------------------------------------------------------------------------------------------------------- DW2
   const refusing = fakeAudit({ failOn: (e) => e.action === "platform.bypass" });
   sql(`insert into platform_firm_setting (firm_id, key, value, changed_by, changed_at) values ('${A}', 'platform.language', '"fr"', 'test', now()) on conflict (firm_id, key) do update set value = '"fr"'`);
@@ -189,9 +208,9 @@ try {
   await inRequest({ method: "GET", path: "/api/public/forms/abc" }, () => asBypass("fo.sales.web-form", () => db.foWebForm.findMany({ take: 1 })));
   await asJob("platform.signup.purge", () => s.purgeExpired());
   ok("PF-12b DW7 pass: an own-firm door (the web form's lookup) and the purge (no firm) add no line", total() === before7, { before7, after: total() });
-  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2 };
+  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
-  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2, limit change 2 + its notices 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => {});
   for (const p of pools) await p.end().catch(() => {});
