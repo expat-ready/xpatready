@@ -145,7 +145,10 @@ if (reached) {
   const studio = join(import.meta.dirname, ".."), tsx = join(studio, "node_modules", ".bin", "tsx");
   const releases = () => Number(m3.sql(`select coalesce(max(r.version), 0) from config_release r join combination c on c.id = r.combination_id where c.combination_key = 'vv.single'`) ?? 0);
   if (releases() < 1) spawnSync(tsx, ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "tests/runtime/setup_visitor_visa.ts"), String(PORT), m3.DB], { cwd: join(studio, ".."), stdio: "ignore", timeout: 900_000 });
-  ok("DW4 setup: the copy has a Visitor visa release", releases() >= 1, releases());
+  // Part 3 (review m1): release 2, with signers and channels (acceptance/lib/setup_vv_m3.ts, as check_c81_signing_api runs
+  // it; its own red lines, other rows' S2w and S7a, do not stop it), so a filled case has IMM 5476 signed by hand and scanned.
+  if (releases() < 2) spawnSync(tsx, ["--tsconfig", join(studio, "api", "tsconfig.json"), join(studio, "acceptance/lib/setup_vv_m3.ts"), String(PORT), m3.DB], { cwd: join(studio, ".."), stdio: "ignore", timeout: 900_000 });
+  ok("DW4 setup: the copy has Visitor visa release 2", releases() >= 2, releases());
   const f = await m3.firms(), officer = f.officer ?? m3.OFFICER, rep = f.rep ?? "user-R";
   const c = await m3.openCase(m3.needVisitorVisa(), [{ role: "principal", name: "Sample Client V", dob: m3.yearsAgo(40) }], { representative: rep, caseOfficers: [officer] });
   const subject = c.subjects["Sample Client V"], fid = m3.filingOf((await m3.prepare(c.id, officer)).p, subject)?.id ?? "";
@@ -223,7 +226,7 @@ if (reached) {
     { why: "an oversized after", q: `?after=${"x".repeat(300)}`, field: "after" },
     { why: "an unknown filter", q: "?take=5&extra=1", field: "body" },
   ], { q: "?take=5", expect: (s) => s === 200 });
-  ok("CS-V1 DW4 pass (runtime.ts): the case list keeps take's limit and its default (a take that is not a number is 50, as before)", (page.body?.cases ?? []).length <= 5 && (await m3.call("GET", "/runtime/cases?take=abc", undefined, officer)).status === 200, page.body?.cases?.length);
+  ok("CS-V1 DW4 pass (runtime.ts): the case list keeps take's limit and its default (a take that is not a number is 50, as before; 1.5 is 1, not a 500)", (page.body?.cases ?? []).length <= 5 && (await m3.call("GET", "/runtime/cases?take=abc", undefined, officer)).status === 200 && (await m3.call("GET", "/runtime/cases?take=1.5", undefined, officer)).status === 200, page.body?.cases?.length);
   await dw4("runtime.ts", "GET", (q) => `/runtime/cases/${c.id}/questionnaire${q}`, officer, [
     { why: "mode given twice", q: "?mode=agent&mode=pqr", field: "mode" },
     { why: "an oversized mode", q: `?mode=${"a".repeat(300)}`, field: "mode" },
@@ -232,10 +235,14 @@ if (reached) {
   ], { q: "?mode=agent", expect: (s) => s === 200 });
   ok("CS-V1 DW4 pass (runtime.ts): the questionnaire still answers pqr, sqr, client and none", (await Promise.all(["?mode=pqr", "?mode=sqr", "?mode=client", ""].map(async (q) => (await m3.call("GET", `/runtime/cases/${c.id}/questionnaire${q}`, undefined, officer)).status))).every((s) => s === 200));
   type Item = { id: string; kind: string; form?: string; subject: string; channel?: string; signature?: string };
-  const items = ((await m3.prepare(c.id, officer)).p?.items ?? []) as Item[];
+  // Review m1: a second case with every fact filled, so its forms take their channels and signatures (IMM 5476 signed by
+  // hand and scanned, as check_c81_signing_api reaches it) and the stored 201 path runs here too.
+  const c2 = await m3.openCase(m3.needVisitorVisa(), [{ role: "principal", name: "Sample Client W", dob: m3.yearsAgo(40) }], { representative: rep, caseOfficers: [officer] });
+  await m3.fillEverything(c2.id);
+  const items = ((await m3.prepare(c2.id, officer)).p?.items ?? []) as Item[];
   const online = items.find((i) => i.kind === "form" && i.channel === "ONLINE"), hand = items.find((i) => i.kind === "form" && i.signature === "HAND_SCANNED");
   const anyForm = online ?? hand ?? items.find((i) => i.kind === "form");
-  ok("DW4 setup (part 3): the case has a form item", !!anyForm, items.map((i) => `${i.form} ${i.channel} ${i.signature}`));
+  ok("DW4 setup (part 3): the filled case has a form signed by hand and scanned", !!hand, items.map((i) => `${i.form} ${i.channel} ${i.signature}`));
   const writeRefused = async (file: string, why: string, field: string, send: () => Promise<{ status: number; body?: { errors?: { field?: string; message?: string }[]; detail?: string } }>) => {
     const before = rows(), r = await send(), after = rows();
     ok(`CS-V1 DW4 fail (${file}): ${why} answers 400 naming ${field}, "Nothing was stored.", nothing stored`, r.status === 400 && named(r.body, field) && stored(r.body) && before === after, { status: r.status, body: r.body, before, after });
@@ -258,7 +265,7 @@ if (reached) {
   for (const [why, fields, field] of [["an unknown field", [["extra", "1"]], "body"], ["copy given twice (a list)", [["copy", "a"], ["copy", "b"]], "copy"], ["an oversized copy", [["copy", "c".repeat(200)]], "copy"]] as const)
     await writeRefused("sign-steps.ts", `a signed scan with ${why}`, field, () => upload(fields.map(([k, v]) => [k, v] as [string, string])));
   if (hand) { // the whole order on a "signed by hand and scanned" item: print a generated copy, sign, upload its scan
-    const copy = await m3.generateCopy(c.id, hand.form!, hand.subject);
+    const copy = await m3.generateCopy(c2.id, hand.form!, hand.subject);
     const printed = await m3.call("POST", `/runtime/items/${hand.id}/sign-steps/print`, { copy }, officer);
     const signed = await m3.call("POST", `/runtime/items/${hand.id}/sign-steps/signed`, { copy }, officer);
     ok("CS-V1 DW4 pass (sign-steps.ts): correct steps still answer as before (Printed, then Signed by hand: 200)", printed.status === 200 && signed.status === 200, { printed: printed.status, signed: signed.status, body: signed.status === 200 ? undefined : signed.body ?? printed.body });

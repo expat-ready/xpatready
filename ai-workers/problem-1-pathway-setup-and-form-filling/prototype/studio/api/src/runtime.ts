@@ -1021,7 +1021,7 @@ export class Runtime {
     need(actor, "case");
     const q = parse(CaseListQuery, queryIn ?? {}); // CS-V1 part 3: only take, after, client and q, each once
     const workspaceId = await this.ws.id();
-    const take = Math.min(Math.max(Number(q.take ?? 50) || 50, 1), 100);
+    const take = Math.min(Math.max(Math.trunc(Number(q.take ?? 50)) || 50, 1), 100); // review m2: take=1.5 is 1, never a 500
     // Break m5: one login or none; a list or an empty value is refused, never read as "every client".
     if (q.client !== undefined && (typeof q.client !== "string" || !q.client)) fieldError("client", "Name one client login.");
     const client = q.client ?? null;
