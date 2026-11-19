@@ -45,3 +45,18 @@ Browser, keyboard, axe, 1024 px / 200 % (no screen). `graph.mjs` (it rewrites `q
 Verdict: Changes requested
 
 To fix before Approve: M1 (index the `case_id` read path), M2 (a pass and a fail test for `agent/note:share-with-client`). The Minors may go in the same commit or be answered in the PR body.
+
+## Re-review: head `cb6cc6bb45e2d9c29430468c30c870d4871f688e` (new code commit only)
+I read only `git diff e8cc6fbf..cb6cc6bb -- prototype/studio` (service.ts, case-notes.prisma, the migration, check_csnt1_notes.ts; the commit before it is records only). Reran on this head: `check_csnt1_notes.ts` **56/56**, `check_case_feed` 42/42, `check_csc1_close` 55/55, `check_prisma_schema` 8/8, `typecheck.mjs` no new errors (15 known), `module-cards tree` PASS.
+* **M1 closed.** The index is `(case_id, note_key, version)` in both `case-notes.prisma:34` and `migration.sql` (the migration is unmerged, so editing it in place is fine; DW7's `migrate diff` still names nothing). Both case-only reads now start on the index's first column. The new check asserts the index definition.
+* **M2 closed.** New DW5 fail/pass pair (`check_csnt1_notes.ts` "review M2, m1"). CASE_OFFICER loses the share key in the scratch DB and officer two signs in again. Then: a CLIENT_VISIBLE add, a visibility change both ways and a text edit of a client-visible note each give 403 `MISSING_PERMISSION` with no row written. An INTERNAL add gives 201 and an internal edit 200. The key is restored afterwards. With `needShare` a no-op, the four 403s would become 2xx and the check fails, so the rule's test now fails when the rule is removed. That is from reading the test; I did not mutate the code myself.
+* **m1 closed:** `editText` calls `needShare` when the current version is CLIENT_VISIBLE.
+* **m2 closed:** the new `may(n)` callback runs before the version check, so a stale non-author gets 403 with no `current` in the body (tested).
+* **Break m1:** keys are lowercased before the lock, the history and the audit. The three-letter-case race test gives one 200 and two 409s.
+* **Break m2:** P2003, or the trigger's "no case", maps to 404 inside `run()`. The add's P2002 handler still only takes P2002. Tested with a psql delete racing an add, and no orphan is left.
+* **Break m3:** the API's set (INVISIBLE ∪ HIDDEN ∪ LONE) covers the database's new `case_note_text_check` set, NUL aside (PostgreSQL cannot store it), so the database CHECK cannot 500 on API input. I checked this character by character. LOOKS_BLANK is API-only (stricter than the database), and ZWJ emoji and CRLF are kept (tested).
+* **m3, m5, m6** are answered in the PR body and **m4** (the walk output) goes there too, as the coordinator states. I did not see the PR body. The Lead checks those lines with the label.
+
+No new findings.
+
+Verdict: Approve cb6cc6bb45e2d9c29430468c30c870d4871f688e
