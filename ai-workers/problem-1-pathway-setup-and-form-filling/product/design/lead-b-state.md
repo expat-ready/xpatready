@@ -54,6 +54,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **20:25 IST: reports now go to Lead 95** (`local_98ab55d2-14dd-45cb-90d8-3bd03b26ec61`; Lead 94 handed over).
 
+**21:04 IST (Lead 95):** merged since 20:25: #2252, #2243, #2279 (R1.30 built), #2306 (main's V2 fix). qa: qa 7 holds R1.109, R1.4, R1.41, R1.33; qa 9 holds R1.31+R1.30 and R1.40. New rows and briefs: **PF-21j** (QA-517, R1.109; on the J-109 lane, no branch yet at 21:02), **FO-2pv** (QA-530, R1.31; on the R1.30+R1.31 lane; new file `sales/prospect-edit.ts`), **FO-2w** (in R1.72's chain per Build Lead C (3); BACKLOG row added; lane at the founder's next typed turn). **P-741:** QA-531 (e-signature door, retainer screen) is not in R1.31. j_109.ts is broken on main since #2000 (zonedInstant moved); the fix rides in PF-21j. PF-15c (#2307) is answered: merge as is, held firms get 402 from #1959. CS-C1r (reopen limit) is Build Lead C's. #2268 requeued 21:0x; #2029 relabelled 20:49; #1961 re-stamped 58de32df9; #2302 (J-41) labelled.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
