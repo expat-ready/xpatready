@@ -22,7 +22,7 @@ import { seedField } from "./seed_library.cjs";
 
 const PORT = Number(process.argv[2] ?? 4637), APIDB = process.argv[3] ?? "xr_studio_runtime_csnk1";
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261117123500_csnk1_field_name_key", OLD = "20261025100000_field_name_unique";
+const NEW = "20261119144500_csnk1_field_name_key", OLD = "20261025100000_field_name_unique";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const bin = (n: string) => (BIN ? join(BIN, n) : n);
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
