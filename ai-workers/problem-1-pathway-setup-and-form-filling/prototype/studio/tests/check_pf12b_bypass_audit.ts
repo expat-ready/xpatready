@@ -143,6 +143,11 @@ try {
   const changed = await new PlanLimitChanges({ db, audit: auditEvent, mail: null }).change(ours, { plan: "team", metric: "active_individual_cases", value: 140, reason: "Sample lowering, PF-12b" });
   ok("PF-12b DW1 pass (PF-15's limit change): one limit change on a plan with two live firms writes one platform.bypass line to each firm, in the change's own transaction (the same transaction id as its plan.limit.lowered lines)", changed.firms.length === 2 && lines(LC) === [A, B].sort().map((f) => `${f}:1`).join(",")
     && sql(`select count(distinct xmin::text) from audit_event where (action = 'platform.bypass' and detail->>'use' = '${LC}') or (action = 'plan.limit.lowered' and entity_key = '${changed.changeId}')`) === "1", { firms: changed.firms, lines: lines(LC) });
+  const heldMail = fakeMail({ clock }), ownersB = Number(sql(`select count(*) from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.firm_id = s.firm_id and g.role = 'OWNER' and g.ended_at is null where s.firm_id = '${B}' and s.status = 'ACTIVE'`));
+  const wasN = onBypassAudit(fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }));
+  const held = await new PlanLimitChanges({ db, audit: auditEvent, mail: heldMail }).sendNotices(changed.changeId);
+  onBypassAudit(wasN);
+  ok("PF-12b DW2 fail (PF-15's limit change): at notice time a firm whose line cannot be written is sent nothing and its Owners are listed as failed; the other firm's Owners are told, and nothing is thrown (the change is already committed)", ownersB >= 1 && held.failed.length === ownersB && held.sent >= 1 && heldMail.sent.length === held.sent && heldMail.sent.every((m) => m.firmId === A), { held, ownersB, to: heldMail.sent.map((m) => m.firmId) });
   const noticeMail = fakeMail({ clock });
   const told = await new PlanLimitChanges({ db, audit: auditEvent, mail: noticeMail }).sendNotices(changed.changeId);
   ok("PF-12b DW1 pass (PF-15's limit change): sending the notices reads both firms' Owners, so each firm gets one more line", told.sent >= 2 && told.failed.length === 0 && lines(LC) === [A, B].sort().map((f) => `${f}:2`).join(","), { told, lines: lines(LC) });
