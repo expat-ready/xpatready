@@ -238,6 +238,7 @@ model PlatformStaff {
   revocations PlatformSessionRevocation[]
   foAvailability FoAvailability[] // FO-1b back-relations (front-office-booking.prisma), Lead B's OK on #1741
   foTimeOff      FoTimeOff[]
+  foAvailabilitySets FoAvailabilitySet[] // FO-3a part 1b: named sets of hours
   foBookings     FoBooking[]
 
   // back-relation slot: messages (PF-19a)
