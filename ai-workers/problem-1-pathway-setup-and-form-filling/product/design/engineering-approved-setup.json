@@ -26,7 +26,7 @@
    "version": "1.3.0",
    "date": "2026-11-19",
    "change": "Heartbeat: a PR labelled parked with a valid \"Parked:\" comment (a reason, Owner: a role, Resume: a date at most 7 days after the note) is left out of stalled-lane and its 2 h escalation and listed in the report; a parked PR with no valid note, or past its date, is the alarm parked-expired.",
-   "approval": "the founder, 19 Nov 07:5x IST (\"it is a normal practice. Yes, do it\"), relayed by the tech lead (Lead 85) as a fix to the heartbeat check under P-716 (1)"
+   "approval": "the founder, 19 Nov 07:1x-07:2x IST (\"it is a normal practice. Yes, do it\"), relayed by the tech lead (Lead 85) as a fix to the heartbeat check under P-716 (1)"
   }
  ],
  "settings": {

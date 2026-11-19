@@ -104,6 +104,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 25 parked|product/tools/pipeline-heartbeat.py|s/        if p\["number"\] in away:   # parked: listed below, never a stalled lane/        if False:/|check-pipeline-heartbeat.sh
 25 expired|product/tools/pipeline-heartbeat.py|s/^    if expired:/    if False:/|check-pipeline-heartbeat.sh
 25 resume|product/tools/pipeline-heartbeat.py|s/^    if now.astimezone(IST).date() > day:/    if False:/|check-pipeline-heartbeat.sh
+25 parkread|product/tools/pipeline-heartbeat.py|s/        if hb.get("parked_label", "parked") in p\["labels"\]:/        if False:/|check-pipeline-heartbeat.sh
+25 parkpage|product/tools/pipeline-heartbeat.py|s/^                if len(cs) < 100:/                if True:/|check-pipeline-heartbeat.sh
+25 trusted|product/tools/pipeline-heartbeat.py|s/ if c.get("author_association") in TRUSTED\]/]/|check-pipeline-heartbeat.sh
+25 istdate|product/tools/pipeline-heartbeat.py|s/    posted = t(c\["created_at"\]).astimezone(IST).date()/    posted = t(c["created_at"]).date()/|check-pipeline-heartbeat.sh
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

@@ -9,10 +9,10 @@ state carries over in the previous run's artifact (none readable = every alarm i
   queue-stuck  a queued PR (approved, not a draft, Mergify's queued label) with no merge-queue progress (a batch PR opened, closed or checked,
                or a merge) for over queue_no_progress_min since it was approved;
   stalled-lane an open lane PR idle (no push, comment or CI) over stalled_lane_min and under stalled_lane_max_age_h
-  parked-expired  a PR labelled parked_label without a valid "Parked:" comment, or past its resume date. A valid one
-             (Parked: <reason> / Owner: <role> / Resume: YYYY-MM-DD, at most parked_max_days after the comment) is
-             left out of stalled-lane and its 2 h escalation, and listed in the report (founder, 19 Nov 07:5x IST)
                (older: dormant, reported), not waiting on CI and not queued;
+  parked-expired  a PR labelled parked_label without a valid "Parked:" comment (by an owner, member or collaborator), or past its resume date. A valid one
+             (Parked: <reason> / Owner: <role> / Resume: YYYY-MM-DD, at most parked_max_days after the comment) is
+             left out of stalled-lane and its 2 h escalation, and listed in the report (founder, 19 Nov 07:1x-07:2x IST)
   nightly      after nightly_by_ist IST, no scheduled nightly run since 00:00 IST; conformance: CK-1 has a failed item;
   read-error   GitHub could not be read (a heartbeat that cannot see is never green).
 Report only: P95 queue wait (approval to merge) and P95 batch wait (batch PR opened to ci's first job), last 24 h, over
@@ -30,6 +30,7 @@ API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 IST = timezone(timedelta(hours=5, minutes=30))
 ARTIFACT = "pipeline-heartbeat"
 ALWAYS_RED = ("conformance", "read-error")
+TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")   # whose "Parked:" note counts
 
 QUERY = """query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
@@ -130,11 +131,12 @@ def last_label(items, label, before=None):
 
 def parked_note(comments, now, max_days):
     """The newest comment starting "Parked:", read: {"ok", "why", "resume", "owner"} (founder, 19 Nov: park, never waste)."""
-    notes = [c for c in comments if (c.get("body") or "").lstrip().lower().startswith("parked:")]
+    head = lambda c: (c.get("body") or "").lstrip().lstrip("*").lower()   # "Parked:" or "**Parked:**"
+    notes = [c for c in comments if head(c).startswith("parked:")]
     if not notes:
         return {"ok": False, "why": "no \"Parked:\" comment"}
     c = max(notes, key=lambda c: c.get("created_at") or "")
-    body = c["body"].lstrip()
+    body = c["body"].replace("\r", "").lstrip().lstrip("*")
     reason = body.split("\n", 1)[0][len("parked:"):].strip(" *")
     owner = re.search(r"^[ \t*]*Owner:[ \t*]*(\S.*)$", body, re.M | re.I)
     resume = re.search(r"^[ \t*]*Resume:[ \t*]*(\d{4}-\d{2}-\d{2})", body, re.M | re.I)
@@ -234,7 +236,8 @@ def collect(hb, now, own_id=None, ctx=None):
             p["parked_comments"] = []
             for page in range(1, 4):
                 cs = api("GET", f"{API}/repos/{repo}/issues/{p['number']}/comments?per_page=100&page={page}")
-                p["parked_comments"] += [{"body": c.get("body"), "created_at": c.get("created_at")} for c in cs]
+                p["parked_comments"] += [{"body": c.get("body"), "created_at": c.get("created_at")} for c in cs
+                                         if c.get("author_association") in TRUSTED]   # a public repo: anyone may comment
                 if len(cs) < 100:
                     break
     f["recent_complete"] = complete
@@ -274,7 +277,7 @@ def evaluate(f, hb, conformance=None):
     # Waiting on CI counts only while CI moved in the last 2 x stalled_lane_min (a status that never posts is a stall).
     park, parked, expired = hb.get("parked_label", "parked"), [], []
     for p in lanes:
-        if park in p["labels"]:
+        if park in p["labels"] and not p["head"].startswith(ex):   # excluded branches are never lanes
             n = parked_note(p.get("parked_comments") or [], now, hb.get("parked_max_days", 7))
             (parked if n["ok"] else expired).append((p, n))
     away = {p["number"] for p, _ in parked + expired}
