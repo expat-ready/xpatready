@@ -179,7 +179,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 allow|product/tools/waves.py|s/            elif wave\[i\]\[0\] not in ok and/            elif False and/|check-waves.sh
 28 page|product/tools/waves.py|s/        if norm(old) != norm(gen_block(rows, st)):/        if False:/|check-waves.sh
 28 cap|product/tools/waves.py|s/    if len(building) > CAP_BUILDING:/    if False:/|check-waves.sh
-28 ids|product/tools/waves.py|s/        if miss or extra or dup:/        if False:/|check-waves.sh'
+28 ids|product/tools/waves.py|s/        if miss or extra or dup:/        if False:/|check-waves.sh
+28 pr|product/tools/waves.py|s/               if i in wave and wave\[i\]\[0\] not in ok and not wave\[i\]\[1\].startswith(.allow:.)\]/               if False]/|check-waves.sh
+28 watch|product/tools/lead-watch.sh|/waves.py" wip --prs/d|check-waves.sh
+28 flag|../../.github/workflows/pr-rules.yml|/labels\[\]=outside-wave/d|check-waves.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
