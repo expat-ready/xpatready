@@ -2,7 +2,7 @@
 
 Branch `claude/runtime-pf18a-notif-prefs`, draft PR #2304. API and schema row with no screen, so it is judged against the brief `design/lead-b-briefs/PF-18a.md` (part 2, DW5, DW7), AG-16-10, AG-16-11, AG-16 §3.3 (lines 555-577) and STANDARDS. DW6 (`hostZone()`) arrived in round 3, after #2284.
 
-**Verdict (round 3, `ecc1ec248e2af13dc8901aa6fef8c014241c9387`): Approve.** No open Blocker or Major. DW5, DW6 and DW7 are met; the R2 Major is fixed. One Minor is open (R3-1, a test gap); it does not block. Journey score **8.5/10** is unchanged (`journey-test-reviewer-2026-11-19.md`).
+**Verdict (round 4, `92924d7b95c0c760b65ab7856e3ece13be8653af`): Approve.** Round 4 (diff `ecc1ec248..92924d7b9`, screens excluded) has two fixes. (1) CodeQL: the Calgary time is now compared with `includes()` on the whole string (test:231-232). The suite gives 72/0, and DW6 still fails when the office zone is not used: `hostZone` ignoring the port (2 FAIL), the host-mail caller without the port (1 FAIL), the host mail taking the firm's setting directly (1 FAIL). (2) The front-office card fragment's path now resolves (`module-cards.py tree` PASS). Round 3: no open Blocker or Major; DW5, DW6 and DW7 are met. R3-1 (Minor) stays open and does not block. Journey score **8.5/10**.
 
 ## Round 3: diff only (`git diff 644017db5..ecc1ec248 -- ':!*/product/screens/*'`, P-277)
 What I ran:
@@ -96,4 +96,4 @@ Findings:
 ## D scores (0-3, this row's scope)
 D1 3 (DW5, DW6, DW7 met) · D2 3 (database and service checks, race-safe) · D3 3 (one enum, one data file) · D4 N/A · D5 3 (stale tab gets 409; hostile bodies get 400) · D6 2 (§3.3 cited with the date read; no audit, rightly) · D7 N/A (no AI) · D8-D9 N/A · D10 2 (plain detail lines; zod text in `issues`) · D11 2 (`saved` and defaults shown) · D12-D14 N/A · D15 3 (GET 10-17 ms, PUT 26-44 ms) · D16 3 (round 2: every rule mutation caught; R2-1 adds one case) · D17 simulated only · D18 3 (the source block in the data) · D19 N/A (PF-18n and PF-18s close the loop) · D20 simulated only.
 
-Reviewer: Approve ecc1ec248e2af13dc8901aa6fef8c014241c9387 (R3-1 Minor open, non-blocking).
+Reviewer: Approve 92924d7b95c0c760b65ab7856e3ece13be8653af (R3-1 Minor open, non-blocking).
