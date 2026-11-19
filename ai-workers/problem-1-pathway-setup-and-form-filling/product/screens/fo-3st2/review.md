@@ -112,4 +112,12 @@ Round 3 result (5ff1d61b7): Approve.
 - **Suite re-run by the reviewer** on a fresh copy at :4581 at 1995b5edf (started, then stopped): **53/53**. The builder's other suite results in build-notes are taken as recorded.
 - Minors n1-n3, m3, m5, m6 and m7 are unchanged. Nothing new found.
 
+Round 4 result (1995b5edf): Approve.
+
+## Re-review (round 5) of c7481a33a: base moved again, one conflict, diff only
+- **This row's code is unchanged.** `git diff 1995b5edf..c7481a33a` over `front-office/`, `account-sections.ts` and the test touches only `account-sections.ts`. That is the conflict resolution (44faeaa6d): it keeps this row's "Availability" line as written and adds main's PF-6 part 2b entries "Licence" (`/account/licence`, no key), "Licences" and "Security". The menu now reads Profile · Licence · Availability · Team · Licences · Security · Terms. The test's "menu lists Availability once" case still passes. The three-dot stat against the base branch (now at c1607c3a6) still lists only this row's one-line `account-sections.ts` add plus its own files.
+- **`booking/settings/types.ts` does not touch this screen.** The only change is in `BookingTypesService.get`, which adds `hostSets` to the single booking-type read. The screen never calls that route; it calls only `availability.controller.ts`, and `availability.ts` and the controller are unchanged. The test's public slots route and staff booking read are unchanged too. `frame.tsx`, `session.ts` and the identity guard are unchanged.
+- **Suite re-run by the reviewer** on a fresh copy at :4581 at c7481a33a (started, then stopped): **53/53**. The builder's pf1, pf6a, fo3w and pf6 staff results in build-notes are taken as recorded.
+- The open Minors (n1-n3, m3, m5, m6, m7) are unchanged. Nothing new found.
+
 Verdict: Approve
