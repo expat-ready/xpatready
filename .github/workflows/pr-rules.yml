@@ -3,6 +3,8 @@
 # a recorded exception ("Size exception: P-NNN"); reviewer and breaker agents are pinned to Opus high. Re-runs when the
 # body is edited. Merge-queue PRs (mergify/*) carry a generated body and records PRs (label "records", their own queue)
 # are skipped. No "labeled": a label must never re-run the check the queue waits on (as ci.yml, review 6 Nov).
+# An item's last PR says "Completes: R1.77" on a line of its own (several: "Completes: R1.77, R1.78"); at its merge
+# item-proof.yml runs the item's pack and journey and posts the verdict (P-728 (3)); an unreadable line fails here.
 # The product queue does not wait for this check yet (Lead 58, 15 Nov: gate in a later small PR after a day). Reads only, US$0.
 # Test: product/tools/check-g4-rules.sh.
 name: pr-rules
@@ -27,6 +29,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: body has a testable Done when and a Duplicate check line
         run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
+      - name: a "Completes:" line, if any, names R1 items only (P-728 (3); item-proof.yml proves them at the merge)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs detect
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() }}"
         env:
