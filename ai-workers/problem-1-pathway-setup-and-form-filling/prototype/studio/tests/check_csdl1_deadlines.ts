@@ -161,8 +161,8 @@ try {
   sql(`set session_replication_role = replica; insert into workspace (id, key, label) values ('${W}', 'csdl1b-${process.pid}', 'CS-DL1b check');
     insert into route (id, workspace_id, key, label, basis, stages, created_by) values (gen_random_uuid(), '${W}', 'test-cited', 'Test route (labelled test data)', 'CITED', '[{"key":"study"},{"key":"work"}]', 'seed:csdl1b'), (gen_random_uuid(), '${W}', 'test-sample', 'Test route, Sample', 'SAMPLE', '[{"key":"study"},{"key":"work"}]', 'seed:csdl1b')`);
   const clock = new FakeClock("2027-02-20T12:00:00.000Z"), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
-  const calls: { staffId: string; caseId: string; at: string }[] = [];
-  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: typeof NOTIFICATION_KIND.CASE_STAGE_DEADLINE, i: { kind: "case"; id: string }) { calls.push({ staffId: r.staffId, caseId: i.id, at: clock.now().toISOString() }); return inner.notify(tx, r, k, i); } };
+  const calls: { staffId: string; stageId: string; at: string }[] = [], stageOf = new Map<string, string>();
+  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: typeof NOTIFICATION_KIND.CASE_STAGE_DEADLINE, i: { kind: "case-stage"; id: string }) { calls.push({ staffId: r.staffId, stageId: i.id, at: clock.now().toISOString() }); return inner.notify(tx, r, k, i); } };
   const dl = new CaseDeadlines({ db, jobs, notifications, clock });
   await dl.register({ sweep: false });
   const closer = new CaseClose(db as never);
@@ -180,13 +180,14 @@ try {
         (gen_random_uuid(), '${W}', '${id}', '${fk}', '${fid}', 1, 'study', 'Study permit', 'Study permit', '${CMB[0]}', 'DONE_BEFORE', '${kd}', '${spec(false)}', '${route}', null, null),
         ('${work}', '${W}', '${id}', '${fk}', '${fid}', 2, 'work', 'Work permit', 'Work permit', '${CMB[1]}', 'CURRENT', '{}', '${spec(true)}', '${route}', gen_random_uuid(), 'BEGIN');
       insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by, ended_at, ended_by, end_reason) select gen_random_uuid(), '${W}', '${id}', u, r, 'seed:csdl1b', e::timestamptz, case when e is null then null else 'seed:csdl1b' end, case when e is null then null else 'Test: reassigned' end from (values ${team}) t(u, r, e)`);
+    stageOf.set(id, work);
     return { id, work };
   };
   const setDate = (id: string, v: string) => sql(`update case_stage set key_details = jsonb_build_object('stage.permit_valid_until', jsonb_build_object('value', '${v}', 'by', 'user-O', 'at', '2027-02-01T10:00:00.000Z'))::json where case_id = '${id}' and stage_key = 'study'`);
   /** Moves the clock forward hour by hour (the fake runs a due job at the time it moves to, as a worker would). */
   const walk = async (to: string) => { while (clock.now() < new Date(to)) await clock.set(new Date(Math.min(clock.now().getTime() + 3_600_000, Date.parse(to)))); };
   const mine = (id: string, status?: string) => jobs.jobs.filter((j) => j.name === REMINDER_JOB && j.payload.caseId === id && (!status || j.status === status));
-  const told = (id: string) => calls.filter((c) => c.caseId === id);
+  const told = (id: string) => calls.filter((c) => c.stageId === stageOf.get(id));
   const at = (id: string) => told(id).map((c) => c.at.slice(0, 16)).filter((x, i, a) => a.indexOf(x) === i);
   const withdraw = (id: string) => closer.withdraw(ctx(FA, "sample-firm", REP), id, { reason: "Test: the client withdrew", withdrawnOn: "2027-02-26" });
   const reopen = (id: string) => closer.reopen(ctx(FA, "sample-firm", REP), id, { reason: "Test: the client came back" });
@@ -207,7 +208,7 @@ try {
   ok("CS-DL1 DW7 pass: each reminder fires once, to the representative and the current officer (not the officer whose assignment ended): two people at each of the three times",
     told(a.id).length === 6 && at(a.id).join() === "2027-02-25T14:00,2027-03-04T14:00,2027-03-08T14:00" && told(a.id).every((c) => [REP, OFF].includes(c.staffId)) && mine(a.id, "done").length === 3, told(a.id));
   const records = inner.sent().length, redo = await dl.runReminder({ payload: mine(a.id)[2].payload, key: mine(a.id)[2].key, firmId: FA });
-  ok("CS-DL1 DW7 fail (breaker: a redelivered job): the on-the-day job delivered again after its day does nothing; the port holds one record per person and case", redo === 0 && inner.sent().length === records && inner.sent().filter((r) => r.item.id === a.id).length === 2);
+  ok("CS-DL1 DW7 fail (breaker: a redelivered job): the on-the-day job delivered again after its day does nothing; the port holds one record per person and stage (item kind case-stage)", redo === 0 && inner.sent().length === records && inner.sent().filter((r) => r.item.kind === "case-stage" && r.item.id === a.work).length === 2);
   ok("CS-DL1 DW7 fail: nothing was told on the Sample route's case", told(sample.id).length === 0);
 
   // ---------------------------------------------------------------- W1 the journey, scripted
@@ -230,7 +231,7 @@ try {
   await walk("2027-03-09T12:00:00.000Z");
   ok("CS-DL1 DW8 pass (breaker: close and reopen in one minute): only those still to come are armed again (2 and 0, round 1) and each fires once; the passed 7-day one does not fire again",
     at(b.id).join() === "2027-02-25T14:00,2027-03-04T14:00,2027-03-08T14:00" && told(b.id).length === 6 && mine(b.id).filter((j) => j.key.endsWith(":r1")).length === 2, at(b.id));
-  ok("CS-DL1 DW8 fail: the round-0 jobs left waiting by the same-minute close ran and told nobody (a job of an earlier round does nothing)", mine(b.id).filter((j) => j.key.endsWith(":r0") && j.payload.offset !== 7).every((j) => j.status === "done"));
+  ok("CS-DL1 DW8 fail: the round-0 jobs left waiting by the same-minute close ran and told nobody (a job of an earlier round does nothing): six notifications in all, never ten", told(b.id).length === 6 && mine(b.id).filter((j) => j.key.endsWith(":r0") && j.payload.offset !== 7).every((j) => j.status === "done"));
   await clock.set("2027-02-20T12:00:00.000Z");
   const c2 = newCase("2027-03-08"); await dl.sweep(); await withdraw(c2.id); await walk("2027-02-20T12:09:00.000Z"); await dl.sweep();
   await walk("2027-03-09T12:00:00.000Z");

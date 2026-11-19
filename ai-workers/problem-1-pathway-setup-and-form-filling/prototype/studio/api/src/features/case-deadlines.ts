@@ -15,12 +15,13 @@ import { logPort } from "../platform/observability/log.ts";
 /** PF-18n binds its NotificationPort here (a test binds the fake). */
 export const CASE_DEADLINE_NOTIFICATIONS = "CSDL1_CASE_DEADLINE_NOTIFICATIONS";
 const registered = new WeakSet<JobPort>();
+let saidWaiting = false;
 
 @Injectable()
 export class CaseDeadlineJobs implements OnModuleInit {
   constructor(@Inject(Db) private readonly db: Db, @Inject(PlatformJobs) private readonly jobs: JobPort, @Optional() @Inject(CASE_DEADLINE_NOTIFICATIONS) private readonly notifications?: NotificationPort) {}
   async onModuleInit() {
-    if (!this.notifications) { logPort.info("case_deadlines.waiting", { why: "no NotificationPort bound (PF-18n): stage-deadline reminders are not armed" }); return; }
+    if (!this.notifications) { if (!saidWaiting) logPort.info("case_deadlines_waiting", { why: "no NotificationPort bound (PF-18n): stage-deadline reminders are not armed" }); saidWaiting = true; return; }
     if (registered.has(this.jobs)) return;
     registered.add(this.jobs);
     try { await new CaseDeadlines({ db: this.db, jobs: this.jobs, notifications: this.notifications as never, clock: systemClock }).register({ sweep: true }); }

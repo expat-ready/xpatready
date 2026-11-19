@@ -21,7 +21,7 @@ export const NOTIFICATION_GROUP: Record<NotificationKind, NotificationGroup> = {
   [NOTIFICATION_KIND.CASE_STAGE_DEADLINE]: "MY_DEADLINES",
 };
 /** What a notification points at. Consumers add their own. */
-export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round"] as const;
+export const NOTIFICATION_ITEM_KIND = ["case", "firm", "staff", "review-round", "case-stage"] as const;
 export type NotificationItemKind = (typeof NOTIFICATION_ITEM_KIND)[number];
 export const NotificationKindSchema = z.enum(NOTIFICATION_KIND);
 export const NotificationRecipient = z.strictObject({ staffId: Uuid });

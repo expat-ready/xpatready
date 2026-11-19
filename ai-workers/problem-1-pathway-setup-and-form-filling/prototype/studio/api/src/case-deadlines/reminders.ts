@@ -7,7 +7,7 @@
 //   * The handler (AG-13-14 skip-if-stale): the job's firm must be the case's (else it reads nothing more); the case open,
 //     the stage still current, the date, round and planned run time unchanged (its key is still the one today's calendar
 //     gives), the day not passed; then one NotificationPort call
-//     per person (AG-13-15: the job key and the port's one per person and item keep a redelivery from adding any).
+//     per person on the stage (item kind case-stage; AG-13-15: the job key and the port's one per person and item keep a redelivery from adding any).
 //   * The two consumers, read from the outbox (module_event) by the sweep: `case.closed` cancels the case's waiting
 //     reminder jobs (prefix `deadline:`, so never a recorded-date reminder: AG-7-34 r3, AG16-60); `case.reopened` arms
 //     the ones still to come (AG-7-13 r5). A changed date arms a new set; the old jobs do nothing.
@@ -101,13 +101,13 @@ export class CaseDeadlines {
     const events = await this.p.db.moduleEvent.findMany({ where: { type: { in: [EVENT.CASE_CLOSED, EVENT.CASE_REOPENED] }, seq: { gt: this.seen } }, orderBy: { seq: "asc" }, select: { seq: true, type: true, payload: true } });
     for (const e of events) {
       try { await (e.type === EVENT.CASE_CLOSED ? this.onCaseClosed(e.payload as CaseClosedPayload) : this.onCaseReopened(e.payload as CaseReopenedPayload)); }
-      catch (err) { logPort.error("case_deadlines.consume_failed", err, { type: e.type, seq: String(e.seq) }); }
+      catch (err) { logPort.error("case_deadlines_consume_failed", err, { type: e.type, seq: String(e.seq) }); }
       this.seen = e.seq;
     }
     const open = await this.p.db.$queryRaw<{ id: string }[]>`select c.id::text from runtime_case c join case_stage s on s.case_id = c.id and s.state = 'CURRENT'
       join route r on r.workspace_id = s.workspace_id and r.key = s.route_key where c.status = 'OPEN' and c.firm_id is not null and r.basis = 'CITED'`;
     for (const { id } of open) {
-      try { await this.arm(id); } catch (err) { logPort.error("case_deadlines.arm_failed", err, { caseId: id }); }
+      try { await this.arm(id); } catch (err) { logPort.error("case_deadlines_arm_failed", err, { caseId: id }); }
     }
   }
 
@@ -125,7 +125,7 @@ export class CaseDeadlines {
     const ids = [...new Set(team.map((t) => t.userId))];
     const staff = await this.p.db.platformStaff.findMany({ where: firmScope(firmId, { OR: [{ actorId: { in: ids } }, { id: { in: ids.filter((i) => UUID.test(i)) } }] }), select: { id: true } });
     await this.p.db.$transaction(async (tx) => {
-      for (const s of staff) await this.p.notifications.notify(tx, { staffId: s.id }, NOTIFICATION_KIND.CASE_STAGE_DEADLINE, { kind: "case", id: c.id });
+      for (const s of staff) await this.p.notifications.notify(tx, { staffId: s.id }, NOTIFICATION_KIND.CASE_STAGE_DEADLINE, { kind: "case-stage", id: l.stageId });
     });
     return staff.length;
   }

@@ -60,8 +60,8 @@ try {
   ok("J-74 setup: the Sample firms and their staff are seeded; the representative signs in (local stand-in)", !!FA && !!FB && !!REP && !!OFF && !!R, signed.status);
   sql(`update route set basis = 'CITED' where key = '${routeKey}'`);   // labelled test data (see the header)
   const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
-  const told: { staffId: string; caseId: string; at: string }[] = [];
-  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: Parameters<typeof inner.notify>[2], i: Parameters<typeof inner.notify>[3]) { told.push({ staffId: r.staffId, caseId: i.id, at: clock.now().toISOString().slice(0, 16) }); return inner.notify(tx, r, k, i); } };
+  const told: { staffId: string; stageId: string; at: string }[] = [];
+  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: Parameters<typeof inner.notify>[2], i: Parameters<typeof inner.notify>[3]) { told.push({ staffId: r.staffId, stageId: i.id, at: clock.now().toISOString().slice(0, 16) }); return inner.notify(tx, r, k, i); } };
   const dl = new CaseDeadlines({ db, jobs, notifications, clock });
   await dl.register({ sweep: false });
   const walk = async (to: string) => { while (clock.now() < new Date(to)) await clock.set(new Date(Math.min(clock.now().getTime() + 3_600_000, Date.parse(to)))); };
@@ -120,7 +120,7 @@ try {
   await dl.sweep(); await walk("2027-03-09T12:00:00.000Z");
   const at = [...new Set(told.map((t) => t.at))];
   ok("J-74 W4 (DW2): reopened: the two reminders still to come reach the representative and the officer once each (Wed 3 and Thu 4 Mar, 09:00 Toronto); the passed one never fires late",
-    r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && told.length === 4 && told.every((t) => t.caseId === caseId && [REP, OFF].includes(t.staffId)), { status: r.status, told });
+    r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && told.length === 4 && told.every((t) => t.stageId === one(`select id from case_stage where case_id = '${caseId}' and state = 'CURRENT'`) && [REP, OFF].includes(t.staffId)), { status: r.status, told });
   ok("J-74 walk: no page error on the way", errs.length === 0, errs);
   await b.close();
 } catch (e) {
