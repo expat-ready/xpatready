@@ -30,6 +30,8 @@
 #   --skip-green <file>   suites remembered green (P-371 (3), tools/ci-memory.mjs): "<suite><TAB><why>" lines; each is
 #        left out of this run and shown as "remembered" with its reason. Only a pull request's check passes it.
 #   --list   print the units this run would run (all shards together, after --changed and --skip-green), run nothing.
+#   --only "<check_a.ts check_b.cjs>"   only these studio/tests suites, each by its usage line (P-729: item-proof.yml runs
+#        the suites an R1 row's "Done when" names). A name that is not a studio/tests/check_* file stops the run (exit 2).
 # Each tests/check_*.ts|cjs names its run in a usage line: "isolated.sh <name> <port> start && tsx|node studio/tests/<file>
 # <args>" (an isolated copy: own database, own files, the demo is never touched) or "tsx studio/tests/<file>" (no server).
 # Never calls a model (every suite replays saved runs; US$0). Exit 1 when any suite fails; a summary table either way.
@@ -40,7 +42,7 @@ export PATH="$ROOT/.tools/node-v24.21.0/bin:/opt/homebrew/opt/postgresql@18/bin:
 # GNU timeout: `timeout` on Linux (CI), `gtimeout` from Homebrew coreutils on the Mac. Missing → stop loudly, never run unguarded.
 TIMEOUT="$(command -v timeout || command -v gtimeout || true)"
 [ -n "$TIMEOUT" ] || { echo "GNU timeout is missing (Mac: brew install coreutils, which provides gtimeout); no suite was run"; exit 2; }
-DEMO=0; NAMES=0; LIST=0; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0
+DEMO=0; NAMES=0; LIST=0; ONLY=""; CHANGED=""; SHARD=1; SHARDS=1; SKIPQ=0; DIRECT=; GREEN=""; RETRY=0
 while [ $# -gt 0 ]; do case "$1" in
   --demo) DEMO=1;;
   --skip-quarantined) SKIPQ=1;;
@@ -48,15 +50,17 @@ while [ $# -gt 0 ]; do case "$1" in
   --retry) RETRY=1;;
   --names) NAMES=1;;   # print the names and ports this copy would use, run nothing
   --list) LIST=1;;
+  --only) [ -n "${2:-}" ] || { echo "--only wants \"<suites>\"; no suite was run"; exit 2; }; ONLY="$2"; shift;;
   --skip-green) [ -f "${2:-}" ] || { echo "--skip-green wants a file of remembered suites; no suite was run"; exit 2; }; GREEN="$2"; shift;;
   --changed) [ -n "${2:-}" ] || { echo "--changed wants <base>..<head>; no suite was run"; exit 2; }; CHANGED="$2"; shift;;
   --changed=*) CHANGED="${1#--changed=}";;
   --shard) [[ "${2:-}" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -le "${BASH_REMATCH[2]}" ] || { echo "--shard wants <i>/<n>, 1 <= i <= n; no suite was run"; exit 2; }
     SHARD="${BASH_REMATCH[1]}"; SHARDS="${BASH_REMATCH[2]}"; shift;;
-  *) echo "run-suites.sh: unknown option $1 (--demo, --names, --list, --changed <base>..<head>, --shard <i>/<n>, --skip-quarantined, --direct, --skip-green <file>, --retry); no suite was run"; exit 2;;
+  *) echo "run-suites.sh: unknown option $1 (--demo, --names, --list, --changed <base>..<head>, --shard <i>/<n>, --skip-quarantined, --direct, --skip-green <file>, --retry, --only "<suites>"); no suite was run"; exit 2;;
 esac; shift; done
 # Not regression suites: the 100-program exercise needs its own fixture copy (run by hand, see its usage line).
-SKIP="check_catalogue_scale.cjs"
+# PF-8r's restore drill needs docker and the built image studio-skeleton:test: it runs in nightly.yml's job restore-drill.
+SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # Quarantine (P-205, 31 Oct): a suite that fails at random is skipped in PR and merge-queue checks (--changed) until its
 # fix merges, so one unreliable test cannot stall every batch; the nightly full run still runs it. Remove a name when
 # its fix lands. check_cost_warning_browser.cjs was quarantined 31 Oct and came back 1 Nov when its fix (#177, X8a: the
@@ -185,6 +189,12 @@ if [ -n "$CHANGED" ]; then
     [ "$LIST" = 1 ] || echo "**$(printf '%s\n' "$sel" | grep -c .) suites chosen** for $base..$head ($(printf '%s\n' "$files" | grep -c .) files changed); the full set runs nightly on main."
     [ "$LIST" = 1 ] || { echo; echo "| Chosen suite | Why |"; echo "|---|---|"; printf '%s\n' "$sel" | awk -F'\t' '{ gsub(/\|/, "\\|", $2); print "| " $1 " | " $2 " |" }'; echo; }
   fi
+fi
+# --only: exactly the named suites (each must be a studio/tests/check_* file: a typo never runs nothing and passes).
+if [ -n "$ONLY" ]; then
+  [ -z "$CHANGED" ] || { echo "--only and --changed do not combine; no suite was run"; exit 2; }
+  for f in $ONLY; do [[ "$f" =~ ^check_[A-Za-z0-9_.-]+\.(ts|cjs)$ ]] && [ -f "$TESTS/$f" ] || { echo "--only: $f is not a studio/tests/check_* suite; no suite was run"; exit 2; }; done
+  PICK=" $(printf '%s ' $ONLY)"
 fi
 # --skip-green: REMEMBER, " a b c ", the suites a green run on the same base already passed with unchanged inputs.
 REMEMBER=" "; [ -n "$GREEN" ] && REMEMBER=" $(cut -f1 "$GREEN" | grep -E '^check_[A-Za-z0-9_.-]+$' | tr '\n' ' ')"

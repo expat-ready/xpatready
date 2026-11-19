@@ -16,6 +16,7 @@ import { FindingsPanel } from "./findings";
 import { ReviewPage } from "./review";
 import { AnswerSheetPage } from "./answer-sheet"; // C7.3 (QA-317)
 import { SubmissionPanel } from "./submission"; // C8.2
+import { CaseDecisionPanel, CaseEndLine, CaseStatusPill } from "./case-decision"; // CS-C1s
 import { DocumentsPanel } from "./checklist"; // C6.4 (a)
 import { CaseTeamChip, OpeningTeam, useFirm } from "./team";
 import { EmployerLinkFor, EmployerLinkLine } from "./employer";
@@ -358,7 +359,8 @@ function CasePage() {
     <div className="mx-auto max-w-7xl space-y-5">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold [overflow-wrap:anywhere]"><span data-case-number-h className="tabular-nums">{c.case_number}</span>{c.reference ? <span className="text-lg font-normal text-text-muted" data-case-own-reference>{c.reference}</span> : null}<Pill>{c.status === "OPEN" ? "Open" : c.status}</Pill><ReleasePill c={c} /></h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold [overflow-wrap:anywhere]"><span data-case-number-h className="tabular-nums">{c.case_number}</span>{c.reference ? <span className="text-lg font-normal text-text-muted" data-case-own-reference>{c.reference}</span> : null}<CaseStatusPill caseId={c.id} status={c.status} /><ReleasePill c={c} /></h1>
+          <CaseEndLine caseId={c.id} />
           <div className="mt-1 empty:hidden"><CaseReadinessPill caseId={c.id} /></div>
           {/* BK-3 PR 3 (P-447 (2)): the case names its client and opens their page; the person acting stays the same.
               A24-3 (P-492, CS-8): by the client person's name (one client per case), then a link to the simulated login's cases
@@ -401,6 +403,7 @@ function CasePage() {
       <FormsPanel caseId={c.id} />
       <FindingsPanel caseId={c.id} people={c.people} openLink={`/cases/${c.id}/review`} />
       <SubmissionPanel caseId={c.id} />
+      <CaseDecisionPanel caseId={c.id} />
       {/* C6.16: who answers for each person and their own links, next to the Agent view where their answers are (placed
           below the case panels so its late load never moves them: check_c69_page_browser's focus check). */}
       <OfficerPeoplePanel caseId={c.id} />

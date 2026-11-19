@@ -4,6 +4,7 @@
 // FileKeyTaken), so a stored document never changes under its key; put answers the key and the bytes' sha256 (lower-case
 // hex); a key is lower-case path segments with no `.` or `..` segment. PF-Fd: delete answers deleted true once, then false
 // (also for another firm's key); a deleted key is retired (put refused, even with the same bytes); bad keys are refused.
+// PF-15: usedBytes is the firm's live bytes: a retry adds nothing, a deleted key stops counting, another firm's never counts.
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import { FileKeyTaken, sha256Hex, type FilesPort } from "../files.ts";
 
@@ -122,6 +123,22 @@ export const filesPortContract = defineContract("FilesPort", (make: () => Promis
       const f = await make();
       for (const key of ["../escape.txt", "a/../../b.txt", "Upper/Case.txt", "/leading.txt"]) await expectRefused(() => f.delete(FIRM_A, key), `delete key ${key}`);
       await expectRefused(() => f.delete("firm-a", "ok/key.txt"), "delete with a firm id that is not a uuid");
+    },
+  },
+  {
+    name: "PF-15 usedBytes: the firm's live bytes; a retry adds nothing, a deleted (retired) key and another firm's files never count",
+    async run() {
+      const f = await make();
+      expect(await f.usedBytes(FIRM_A) === 0, "an empty firm uses 0 bytes");
+      await f.put(FIRM_A, "u/one.txt", bytesOf("12345"), "text/plain");
+      await f.put(FIRM_A, "u/deep/two.txt", bytesOf("123"), "text/plain");
+      await f.put(FIRM_A, "u/one.txt", bytesOf("12345"), "text/plain");
+      await f.put(FIRM_B, "u/one.txt", bytesOf("1234567890"), "text/plain");
+      expect(await f.usedBytes(FIRM_A) === 8, "5 + 3 bytes; the retry adds nothing; firm B's 10 do not count", await f.usedBytes(FIRM_A));
+      await f.delete(FIRM_A, "u/one.txt");
+      expect(await f.usedBytes(FIRM_A) === 3, "a deleted key no longer counts", await f.usedBytes(FIRM_A));
+      expect(await f.usedBytes(FIRM_B) === 10, "firm B: its own 10 bytes");
+      await expectRefused(() => f.usedBytes("firm-a"), "a firm id that is not a uuid");
     },
   },
 ]);

@@ -186,7 +186,10 @@ class ProblemErrors implements ExceptionFilter {
     if (e instanceof HttpException) {
       const body = e.getResponse() as any, status = e.getStatus();
       // Upload limits fire before the intake sees the files (break m9): say which limit, in plain words.
-      if (status === 413 || /^(File too large|Too many files)$/.test(String(body?.message ?? ""))) {
+      // CS-D1t (R1.67): a 413 a door worded through PF-F4's check (an image over its limit; it names the allowed types and
+      // ends "Nothing was stored.") is sent in those words, below, not reworded as an upload limit.
+      const fromFileCheck = status === 413 && /Allowed here: .+\. Nothing was stored\.$/.test(String(e.message ?? ""));
+      if (!fromFileCheck && (status === 413 || /^(File too large|Too many files)$/.test(String(body?.message ?? "")))) {
         const many = /files/i.test(String(body?.message));
         // QA-126: a validated copy (C-9) takes one PDF of up to 20 MB, so it is worded with its own limits, not the intake's.
         // C6.4 (break m5): a checklist line takes one PDF, JPEG or PNG of up to 20 MB, worded with its own limits.
@@ -232,7 +235,7 @@ async function main() {
   const port = Number(process.env.STUDIO_PORT ?? 4400);
   // P-214: a new feature registers itself in api/src/features/<feature>.ts, not in the @Module list above.
   await registerFeatures(AppModule);
-  await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production)
+  await (await import("./platform/identity/sample-seed.ts")).seedSampleOnStart(); await (await import("./firms.ts")).fillCaseFirmIdsOnStart();   // P-571 (2), PF-4: PF-3's Sample seed after migrations, only with PLATFORM_SAMPLE_SEED=on (default off; never in production); CS-W1 (breaker M1): then the cases made before the seed get their platform firm
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ["error", "warn"] });
   (await import("./platform/observability/hook.ts")).observe(app); // PF-23: one JSON logger with redaction, request lines and metrics (NFR5-14, BR-16)
   (await import("./front-office/sales/public.ts")).publicFormBodyLimit(app);   // FO-2 (AG-2-49 rule 2): the web form's 32 KB, before the app-wide parser (Lead B's OK on #1813; the release holder's asked)

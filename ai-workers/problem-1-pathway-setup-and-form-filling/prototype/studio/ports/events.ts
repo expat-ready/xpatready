@@ -29,6 +29,9 @@ export const EVENT = {
   COMPLAINT_RECEIVED: "complaint.received",
   /** A complaint was closed with its outcome (platform register, PF-21; FO-13k rev 12). */
   COMPLAINT_CLOSED: "complaint.closed",
+  /** A firm's staff member raised a support ticket to us (platform, PF-18b; AG-16-63). The name is SA-10's domain event
+   *  (04-Doc-2-SuperAdmin-Console.md: "support.ticket_created"), which our console (PF-17) consumes. */
+  SUPPORT_TICKET_RAISED: "support.ticket_created",
   /** A retainer or consultation agreement was drafted from a template (front office, FO-5; contracts §2.3). */
   RETAINER_DRAFTED: "retainer.drafted",
   /** A retainer passed its send check and was sent (front office, FO-5; FO-6 adds the signing request; contracts §2.3). */
@@ -41,6 +44,8 @@ export const EVENT = {
    *  the ended version, `reason` UPDATED). FO-6 cancels the signing request on it. */
   RETAINER_REQUEST_ENDED: "retainer.request_ended",
 
+  /** A client identity check was recorded (front office, FO-13i; Code s. 24(2)(a)). Ids, the method and the detail names only. */
+  IDENTITY_CHECKED: "identity.checked",
   /** A lead arrived: by the web form or added by hand (front office, FO-2; AG-2-84). */
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
@@ -55,11 +60,33 @@ export const EVENT = {
   PROSPECT_TYPE_CHANGED: "prospect.type_changed",
   /** A prospect was won (contracts §2.6; its subject part is FO-2b's `ProspectWonSubject`, contracts §7 §2.6). */
   PROSPECT_WON: "prospect.won",
+  /** A person moved a prospect between open stages (FO-2 part 3; AG-2-26 rule 10). */
+  PROSPECT_STAGE_MOVED: "prospect.stage_moved",
+  /** A prospect was marked lost with a reason (FO-2 part 3; AG-2-44). */
+  PROSPECT_LOST: "prospect.lost",
+  /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
+  PROSPECT_UNCONVERTED: "prospect.unconverted",
+  /** A call was logged on a lead or a prospect (FO-2 part 4; AG-2-37a): the audit action (no outbox row yet). */
+  CALL_LOGGED: "call.logged",
+  /** A note was added on a lead or a prospect (FO-2 part 4): the audit action (no outbox row). */
+  NOTE_ADDED: "note.added",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
   /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
   CASE_REOPENED: "case.reopened",
+  /** The case side made a client from a won prospect (FO-8; P-560; case-side contract v0.1 §4). Written last in the
+   *  transaction that makes the client; module_event.subject_id is the client id. */
+  CLIENT_CREATED: "client.created",
+  /** A case was opened (P-560; contract v0.1 §4). FO-8 writes it on the "Open a case?" offer path, in the opening's own
+   *  transaction; a direct opening does not write it yet. module_event.subject_id is the case id. */
+  CASE_OPENED: "case.opened",
+
+  /** Two front-office persons or companies were merged (front office, FO-9b; AG-2-16; contract v0.1 §3.3, §7). Written
+   *  last in the merge's transaction, the caller's when the case side merges a client. */
+  PERSON_MERGED: "person.merged",
+  /** A front-office merge was undone (front office, FO-9b). */
+  PERSON_UNMERGED: "person.unmerged",
 } as const;
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
 
@@ -121,6 +148,16 @@ export const RetainerEventPayload = z.object({
 }).strict();
 export type RetainerEventPayload = z.infer<typeof RetainerEventPayload>;
 
+/** The payload FO-13i writes for `identity.checked`: ids, the method and the names of the corroborated details only
+ *  (never the document's number, its last 4 characters, its type or country, the copy's key or a link; a consumer reads
+ *  the check). The firm is the outbox row's firm_id; module_event.subject_id is the check's id. */
+export const IdentityCheckedPayload = z.strictObject({
+  checkId: Uuid, personId: Uuid, checkedBy: Uuid,
+  method: z.enum(["IN_PERSON", "VIDEO", "DOCUMENT_COPY", "OTHER"]),
+  details: z.array(z.enum(["NAME", "HOME_ADDRESS", "PHONE", "EMAIL", "BUSINESS_DETAILS"])).min(1).max(5),
+  copyKept: z.boolean(),
+});
+export type IdentityCheckedPayload = z.infer<typeof IdentityCheckedPayload>;
 /** The payload FO-2 writes for every lead.* event: ids and facts only (no name, email or phone; a consumer reads the lead
  *  itself). The firm is the outbox row's firm_id; module_event.subject_id is the lead's id. */
 export const LeadEventPayload = z.object({
@@ -146,6 +183,27 @@ export const ProspectEventPayload = z.strictObject({
 });
 export type ProspectEventPayload = z.infer<typeof ProspectEventPayload>;
 
+/** The payload FO-2 part 3 writes for `prospect.stage_moved`, `prospect.lost` and `prospect.unconverted`: ids and keys
+ *  only (never a note or a reason's words). module_event.subject_id is the prospect's id. */
+export const ProspectMovePayload = z.strictObject({
+  prospectId: Uuid, leadId: Uuid, type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), stageKey: z.string(),
+  ownerStaffId: Uuid.nullable(),
+  /** Why it moved (contracts §2.1 "with cause"; fo_stage_move.cause): PERSON for a person's move, Mark lost and Undo convert. */
+  cause: z.enum(["PERSON", "BOOKING", "RETAINER_SENT", "RETAINER_EXECUTED", "SIGNED_OFFLINE", "CONVERT", "CHANGE_TYPE"]),
+  /** prospect.lost only: the reason's key (AG-2-44 rule 2). */
+  lostReasonKey: z.string().optional(),
+});
+export type ProspectMovePayload = z.infer<typeof ProspectMovePayload>;
+
+/** One line of a "what happened" timeline (FO-2 part 4; review D10: every reader of what happened uses this one shape,
+ *  never its own). `kind` says where the line was read from: an audit line, an outbox event with no audit line of its
+ *  own, a logged call or a note. `type` is the audit action, the event type, `call` or `note`; `refId` the row's id. */
+export const TimelineLine = z.strictObject({
+  at: z.string().datetime({ offset: true }), kind: z.enum(["AUDIT", "EVENT", "CALL", "NOTE"]), type: z.string().min(1),
+  actor: z.string().nullable(), actorName: z.string().nullable(), summary: z.string(), refId: Uuid.nullable(),
+});
+export type TimelineLine = z.infer<typeof TimelineLine>;
+
 /** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
  *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
  *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
@@ -158,6 +216,22 @@ export const ProspectWonSubject = z.discriminatedUnion("subject", [
   z.strictObject({ subject: z.literal("COMPANY"), company: z.strictObject({ id: Uuid, name: z.string().min(1) }), contacts: z.array(WonContact).min(1) }),
 ]);
 export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
+/** The payload of `prospect.won` (contracts §2.6, P-559 (4); written by Convert in FO-2 part 3, AG-2-47 rule 16): the
+ *  contract's fields, with FO-2b's subject part beside them. The person's facts travel as canonical answer keys; a field
+ *  the front office does not hold is null (`person.current_residence_country` is not stored yet), never guessed. */
+export const ProspectWonPayload = z.strictObject({
+  firm_id: Uuid, firm_key: z.string().min(1), prospect_id: Uuid, lead_id: Uuid, won_via: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
+  retainer_id: Uuid.nullable(), representative_staff_id: Uuid.nullable(), representative_actor_id: z.string().nullable(), owner_staff_id: Uuid.nullable(),
+  interested_in: z.strictObject({ serviceId: Uuid, label: z.string(), combinationId: Uuid.nullable() }).nullable(),
+  answers: z.strictObject({
+    "person.given_names": z.string().nullable(), "person.family_name": z.string().nullable(), "person.email": z.string().nullable(),
+    "person.phone_number": z.string().nullable(), "person.current_residence_country": z.string().nullable(),
+  }),
+  consent_ids: z.array(Uuid), sealed_retainer_sha256: z.string().nullable(),
+  /** FO-2 part 3 additions: the type, where it was won from, whether a retainer is signed ("Retainer not signed"), and FO-2b's subject part. */
+  type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), retainerSigned: z.boolean(), subject: ProspectWonSubject,
+});
+export type ProspectWonPayload = z.infer<typeof ProspectWonPayload>;
 
 // CS-C1a (case-side contract v0.1 §4): the case side's close and reopen events, ids and facts only (never the reason's
 // words: a reason is free text and may hold personal data; a consumer reads the case). The firm is the outbox row's
@@ -177,3 +251,32 @@ export const CaseReopenedPayload = z.strictObject({
   reopenedAt: z.iso.datetime({ offset: true }),
 });
 export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;
+
+// FO-8 (P-560; case-side contract v0.1 §4, front-office contracts §2.6): what the case side writes back, ids and codes only
+// (never a name: a consumer reads the client or the case). The firm is also the outbox row's firm_id.
+/** `client.created`: the won prospect and the client made from it (client_number is the client code, CL-00001). */
+export const ClientCreatedPayload = z.strictObject({ firm_id: Uuid, prospect_id: Uuid, client_id: Uuid, client_number: z.string().regex(/^CL-\d{5,}$/) });
+export type ClientCreatedPayload = z.infer<typeof ClientCreatedPayload>;
+/** `case.opened`: the case opened from a won prospect's offer (client_type is the Pathway's, as `case.closed` carries it). */
+export const CaseOpenedPayload = z.strictObject({
+  firm_id: Uuid, prospect_id: Uuid.nullable(), client_id: Uuid, case_id: Uuid, case_number: z.string().min(1), client_type: z.enum(["INDIVIDUAL", "CORPORATE"]).nullable(),
+});
+export type CaseOpenedPayload = z.infer<typeof CaseOpenedPayload>;
+
+// FO-9b part 0: the person merge events, ids only (never a name, email or phone; a consumer reads the records). The firm
+// is the outbox row's firm_id and module_event.subject_id is the survivor's id. `mergeRef` is PersonMergePort's merge_ref.
+export const PersonMergePayload = z.strictObject({ mergeRef: Uuid, kind: z.enum(["PERSON", "COMPANY"]), survivorId: Uuid, loserId: Uuid });
+export type PersonMergePayload = z.infer<typeof PersonMergePayload>;
+/** What a consumer of `person.merged` or `person.unmerged` needs: the outbox row's type and firm, and the payload. */
+export const PersonMerged = z.strictObject({ type: z.literal(EVENT.PERSON_MERGED), firmId: Uuid, payload: PersonMergePayload });
+export type PersonMerged = z.infer<typeof PersonMerged>;
+export const PersonUnmerged = z.strictObject({ type: z.literal(EVENT.PERSON_UNMERGED), firmId: Uuid, payload: PersonMergePayload });
+export type PersonUnmerged = z.infer<typeof PersonUnmerged>;
+
+// PF-18b (AG-16-63): a support ticket raised, ids only (never the ticket's words, its page or a file: a consumer reads the
+// ticket). The firm is the outbox row's firm_id and module_event.subject_id is the ticket id.
+export const SupportTicketRaised = z.strictObject({
+  type: z.literal(EVENT.SUPPORT_TICKET_RAISED), firmId: Uuid, ticketId: Uuid, raisedBy: Uuid, files: z.number().int().min(0).max(3),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type SupportTicketRaised = z.infer<typeof SupportTicketRaised>;

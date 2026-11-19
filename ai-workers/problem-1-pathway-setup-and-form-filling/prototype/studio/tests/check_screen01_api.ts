@@ -198,7 +198,7 @@ function pdf(title: string, text: string) {
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, combination_id) select gen_random_uuid(), workspace_id, 'user-B', 'updated', 'combination', combination_key, 'test edit', id from combination where id='${ss.combinationId}'`);
   r = await call("POST", "/pack/release", { expectedChanges: d.changes }, "user-B");
   ok("BR-14 fail: someone who changed the draft cannot release it (self-approval refused)", r.status === 403 && /different person/.test(r.body.title), r.body.detail);
-  sql(`delete from audit_event where summary='test edit'`);
+  sql(`begin; select set_config('app.audit_sample_reset', 'on', true); delete from audit_event where summary='test edit'; commit`);   // AUD-1a: a demo line, removed as the demo reset may (the setting)
   // The submitter cannot release either: the submission is recorded as the approver persona's for this one try.
   sql(`update review_submission set submitted_by='user-B' where combination_id='${ss.combinationId}' and status='SUBMITTED'`);
   const asB = (await call("GET", "/draft", undefined, "user-B")).body;
@@ -219,7 +219,7 @@ function pdf(title: string, text: string) {
   // B78 (BR-8 reads the one list Preview and a case show): for the Not ready lines, a release that asks each person nothing,
   // the state BR-8 refuses. Its placements come back after them; the touched audit time makes the catalogue read it again.
   const realPlacements = sql(`select snapshot->'placements' from config_release where combination_id = '${ss.combinationId}' order by version desc limit 1`);
-  const placementsOfRelease = (json: string) => { sql(`update config_release set snapshot = jsonb_set(snapshot, '{placements}', '${json.replace(/'/g, "''")}'::jsonb) where combination_id = '${ss.combinationId}' and version = (select max(version) from config_release where combination_id = '${ss.combinationId}')`); sql(`update audit_event set at = now() where id = (select id from audit_event order by at desc limit 1)`); };
+  const placementsOfRelease = (json: string) => { sql(`update config_release set snapshot = jsonb_set(snapshot, '{placements}', '${json.replace(/'/g, "''")}'::jsonb) where combination_id = '${ss.combinationId}' and version = (select max(version) from config_release where combination_id = '${ss.combinationId}')`); sql(`set session_replication_role = replica; update audit_event set at = now() where id = (select id from audit_event order by at desc limit 1); set session_replication_role = origin`) /* AUD-1a: insert-only trail; owner on the scratch copy, triggers off (the app's role can never do this) */; };
   placementsOfRelease("[]");
   ss = await leaf("individual.work_permits.open.spouse_student");
   ok("BR-8 fail: released but not startable is Not ready, with each missing item", ss.status === "NOT_READY" && ss.release.pack === 2 && ss.missing.some((m: any) => m.code === "role_without_questions"), ss.missing.map((m: any) => m.text));
@@ -264,7 +264,7 @@ function pdf(title: string, text: string) {
   ok("P-51 fail (security): a file that is neither a PDF nor a saved web page is refused before it is read", r.one.outcome === "refused" && !Number(sql(`select count(*) from intake_item where file_name='hosts.txt'`)), r.one.message);
   r = await intake([["checklist.pdf", pdf("IMM 9100 E: Document checklist (test)", "IMM 9100 (01-2026) E")]]);
   ok("source-trust: a readable checklist with an unapproved checksum is held outside the library", r.one.outcome === "held" && r.one.kind === "checklist" && /source verification/.test(r.one.message) && !Number(sql(`select count(*) from gov_form_def where form_key='IMM 9100'`)), r.one);
-  const legacyFormId = sql(`with created as (insert into gov_form_def (id, workspace_id, form_key, display_name, form_kind) select gen_random_uuid(), id, 'IMM 9101', 'Unverified legacy test', 'data_form' from workspace limit 1 returning id) select id from created`);
+  const legacyFormId = sql(`with created as (insert into gov_form_def (id, workspace_id, form_key, display_name, form_kind) select gen_random_uuid(), id, 'IMM 9101', 'Unverified legacy test', 'data_form' from workspace where key <> 'platform-audit' limit 1 returning id) select id from created`);
   sql(`insert into form_edition (id, workspace_id, gov_form_def_id, edition_label, official_file, sha256) select gen_random_uuid(), workspace_id, id, 'IMM 9101 (01-2026)', null, '${"e".repeat(64)}' from gov_form_def where id='${legacyFormId}'`);
   const unverifiedLibrary = (await call("GET", "/library/forms")).body;
   ok("source-trust: a legacy unapproved database entry is filtered out of the library picker", !unverifiedLibrary.some((f: any) => f.code === "IMM 9100" || f.code === "IMM 9101") && Number(sql(`select count(*) from gov_form_def where form_key='IMM 9101'`)) === 1);

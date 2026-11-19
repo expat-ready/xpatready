@@ -66,11 +66,14 @@ grep -q 'branch-sweep.sh' "$TOOLS/lead-watch.sh"; ok "(5) lead-watch.sh 3b runs 
 
 # (6) PRs over 800 changed lines, tests included, fail unless the body names a recorded exception.
 printf '| P-1 | 1 Oct | the folder layout |\n| P-610 | 15 Nov | PRs under 800 lines |\n' > "$T/DEC.md"
-ps() { out=$(printf '%s' "$3" | DECISIONS="$T/DEC.md" bash "$TOOLS/pr-size.sh" "$1" "$2"); r=$?; }
+ps() { out=$(printf '%s' "$3" | DECISIONS="$T/DEC.md" bash "$TOOLS/pr-size.sh" "$1" "$2" ${4:+"$4"}); r=$?; }
 ps 600 200 ""; ok "(6) 800 changed lines pass" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 ps 601 200 ""; ok "(6) 801 changed lines fail" "$([ $r = 1 ] && echo "$out" | grep -q '801 changed lines, over 800' && echo 1)" "exit $r: $out"
 ps 900 100 "Size exception: P-610"; ok "(6) over 800 with a recorded exception passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 ps 900 100 "Size exception: P-999"; ok "(6) an exception that is not a DECISIONS row fails" "$([ $r = 1 ] && echo "$out" | grep -q 'P-999 is not a size row' && echo 1)" "exit $r: $out"
+ps 3000 0 "" yes; ok "(6) a records-only PR over 800 passes (P-686)" "$([ $r = 0 ] && echo "$out" | grep -q 'records only (P-686)' && echo 1)" "exit $r: $out"
+ps 3000 0 "" no; ok "(6) a PR that is not records only, over 800, still fails" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+grep -q 'records-only.sh" is-records --files' "$W"; ok "(6) pr-rules.yml asks records-only.sh whether the PR is records only (P-686)" "$([ $? = 0 ] && echo 1)"
 ps 900 100 "Size exception: P-1"; ok "(6) an exception naming a row that is not about size fails" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # Held by Lead 58 (15 Nov): the product queue's `check-success = pr-rules` gate waits for a separate small PR after lanes have seen pr-rules for a day (as module-cards, #1817); its test returns with it.
 grep -q 'pr-size.sh" "$CODE" 0' "$W" && grep -q 'contents: read' "$W" && grep -q 'screens|qa' "$W"; ok "(6) pr-rules.yml runs pr-size.sh on code and test lines only (records under screens/ and qa/ not counted), contents: read" "$([ $? = 0 ] && echo 1)"

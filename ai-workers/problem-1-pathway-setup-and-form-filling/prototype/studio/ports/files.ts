@@ -31,6 +31,9 @@ export interface FilesPort {
    *  key is retired: a later `put` of it is refused (FileKeyTaken) even with the same bytes and type, so a sha256 kept
    *  as proof never points at other bytes. A bad key or firm id is refused as in `put`. */
   delete(firmId: string, key: string): Promise<{ deleted: boolean }>;
+  /** PF-15 (SA-3-40): the bytes the firm's stored files take now: every live file's bytes, a deleted (retired) key's not
+   *  (its bytes are gone). Another firm's files never count. A malformed firm id is refused. */
+  usedBytes(firmId: string): Promise<number>;
 }
 
 /** Refused: the key already holds other bytes or another content type. */
@@ -64,6 +67,7 @@ export function fakeFiles(): FilesPort & { readonly count: number } {
       retired.add(at);
       return { deleted: true };
     },
+    async usedBytes(firmId) { const p = `${FirmId.parse(firmId).toLowerCase()}|`; let n = 0; for (const [k, f] of store) if (k.startsWith(p)) n += f.bytes.byteLength; return n; },
     get count() { return store.size; },
   };
 }

@@ -9,6 +9,7 @@ import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { APP_GUARD, ModulesContainer, NestFactory, Reflector } from "@nestjs/core";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { JobHandler, JobPort } from "../ports/jobs.ts";
@@ -38,6 +39,8 @@ const { ACK_REMINDER_JOB } = await import("../api/src/platform/complaints/compla
 const { EVENT } = await import("../ports/events.ts");
 const { ComplaintJobs } = await import("../api/src/features/platform-complaints.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
+const { fakeMail } = await import("../ports/mail.ts");
 
 /** A job runner that records what it is given (the reminder's runs are PF-21's suite's). */
 const recorder = () => {
@@ -56,7 +59,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf21w-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp(jobs: JobPort) {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: jobs }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -68,6 +71,7 @@ let BASE = "";
 const call = async (method: string, path: string, token?: string, body?: unknown): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
+  if (method === "POST" && path === "") headers["idempotency-key"] = randomUUID();   // PF-21i: a fresh key per create
   const r = await fetch(`${BASE}/api/platform/complaints${path}`, { method, headers, body: body === undefined || method === "GET" ? undefined : JSON.stringify(body) });
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };

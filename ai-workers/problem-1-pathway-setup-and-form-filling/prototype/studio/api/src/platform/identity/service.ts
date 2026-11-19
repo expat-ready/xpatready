@@ -17,10 +17,13 @@ import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
+import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
+import { heldOf } from "../messages/send/mail.ts";
+import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -187,17 +190,19 @@ export class PlatformIdentity implements OnModuleInit {
   }
 
   /** Seats used = ACTIVE + SUSPENDED staff + invitations neither accepted, revoked nor expired (database clock); the
-   *  limit is the live subscription's plan (AG-1-13, AG1-D3). Over it: 409 PLAN_LIMIT_REACHED, with the seats after
-   *  these additions and how many to remove (PF-4c: "7 of 10 seats after these invites"); `words` gives a caller's own
-   *  sentence (the batch invite). Answers the seat line. */
+   *  limit is the live subscription's plan (AG-1-13, AG1-D3), read through EntitlementPort's real adapter in this same
+   *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). Over it: 409 PLAN_LIMIT_REACHED, with
+   *  the seats after these additions and how many to remove (PF-4c: "7 of 10 seats after these invites"); `words` gives a
+   *  caller's own sentence (the batch invite). Answers the seat line. */
   private async seatCheck(tx: Tx, firmId: string, adding = 1, words?: (limit: number, afterInvites: number, removeCount: number, planName: string | null) => string) {
-    const sub = await tx.platformSubscription.findFirst({ where: firmScope(firmId, { status: { not: "ENDED" as const } }), include: { plan: { select: { seatsLimit: true, name: true } } } });
-    const [{ used }] = await tx.$queryRaw<{ used: number }[]>`select ((select count(*) from platform_staff where firm_id = ${firmId}::uuid and status in ('ACTIVE','SUSPENDED'))
-      + (select count(*) from platform_invitation where firm_id = ${firmId}::uuid and accepted_at is null and revoked_at is null and expires_at > now()))::int as used`;
-    const limit = sub?.plan.seatsLimit ?? 0, afterInvites = used + adding, removeCount = Math.max(0, afterInvites - limit);
-    if (removeCount > 0) problem(409, "Plan limit reached", words ? words(limit, afterInvites, removeCount, sub?.plan.name ?? null) : sub
-      ? `Your plan (${sub.plan.name}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
-      : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
+    const limits = new PgEntitlements(tx, () => this.clock.now());
+    const plan = await limits.limitOf(firmId, "seats");
+    const used = await seatsUsed(tx, firmId);
+    const r = await limits.check(firmId, "seats", used + Math.max(adding, 1) - 1);   // one more is allowed below the limit, so `adding` fit while used + adding - 1 is below it
+    const limit = r.allowed ? (plan.limit ?? 0) : r.limit, afterInvites = used + adding, removeCount = r.allowed ? 0 : Math.max(1, afterInvites - limit);
+    if (!r.allowed) problem(409, "Plan limit reached", words ? words(limit, afterInvites, removeCount, plan.planName) : plan.planCode
+      ? `Your plan (${plan.planName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
+      : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", metric: "seats", limit, used, upgradePath: "Change the plan in Settings, Billing.", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
     return { seatsLimit: limit, seatsUsed: used, afterInvites };
   }
 
@@ -326,16 +331,18 @@ export class PlatformIdentity implements OnModuleInit {
     return { ...row, token };
   }
 
-  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is only in the
-   *  email's link, never stored or logged; a failed send leaves the invitation pending (resend sends a new link). */
-  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null): Promise<boolean> {
-    if (!this.mail) return false;
+  /** PF-4b: the invitation email, after the commit (a rolled-back invite sends nothing). The plain token is never in a
+   *  table or a log line; it is in the email's link, which since PF-19r is the rendered message MessagePort keeps under
+   *  msg/<firm>/outbox/ until it is sent (unsealed: question to the tech lead on the PF-19r PR). A failed send leaves the
+   *  invitation pending (resend sends a new link). `emailHeld`: the firm's daily cap holds it until the next day. */
+  private async emailInvitation(actor: StaffContext, to: string, token: string, name: string | null = null): Promise<{ emailed: boolean; emailHeld?: typeof HELD_DAILY_LIMIT }> {
+    if (!this.mail) return { emailed: false };
     try {
       const firm = await this.db.platformFirm.findUnique({ where: { id: actor.firmId }, select: { operatingName: true } });
-      await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
+      const sent = await this.mail.send({ firmId: actor.firmId, to, replyTo: SYSTEM_REPLY_TO, class: "TRANSACTIONAL", templateKey: "identity.invitation", subject: `You are invited to join ${firm?.operatingName ?? "your firm"}`.replace(/[\r\n]+/g, " ").slice(0, 200),
         text: `${name ? `Hello ${name},\n\n` : ""}You are invited to join ${firm?.operatingName ?? "a firm"} on Expat Ready.\nOpen your invitation: /invitation#t=${token}\nIt works for 72 hours. If you did not expect this, ignore this email.` });
-      return true;
-    } catch { return false; }
+      return heldOf(sent) ? { emailed: true, emailHeld: HELD_DAILY_LIMIT } : { emailed: true };
+    } catch { return { emailed: false }; }
   }
 
   /** One person's invitation checks, shared by the single invite and every row of the batch (PF-4c): the role rules, then
@@ -361,7 +368,7 @@ export class PlatformIdentity implements OnModuleInit {
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
-    return { ...answer, emailed: await this.emailInvitation(actor, email, token) };
+    return { ...answer, ...(await this.emailInvitation(actor, email, token)) };
   }
 
   /** PF-4c part 1 (AG-1-69): one form of 1-20 rows in one locked transaction (the firm's row lock takes two batches, or a
@@ -394,8 +401,10 @@ export class PlatformIdentity implements OnModuleInit {
       return { made, seats: seats! };
     });
     const invitations = [];
-    for (const { token, name, ...m } of out.made) invitations.push({ ...m, emailed: await this.emailInvitation(actor, m.email, token, name) });
-    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites };
+    for (const { token, name, ...m } of out.made) invitations.push({ ...m, ...(await this.emailInvitation(actor, m.email, token, name)) });
+    // PF-19r (DW5): the rows the daily cap holds, by their form row (they go out with the next day's first sends).
+    const held = invitations.filter((i) => i.emailHeld).map((i) => i.row);
+    return { invitations, seatsLimit: out.seats.seatsLimit, seatsUsed: out.seats.afterInvites, ...(held.length ? { heldRows: held } : {}) };
   }
 
   async invitations(actor: StaffContext) {
@@ -430,7 +439,7 @@ export class PlatformIdentity implements OnModuleInit {
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
-    return { ...answer, emailed: await this.emailInvitation(actor, answer.email, token) };
+    return { ...answer, ...(await this.emailInvitation(actor, answer.email, token)) };
   }
 
   async revoke(actor: StaffContext, id: string) {
