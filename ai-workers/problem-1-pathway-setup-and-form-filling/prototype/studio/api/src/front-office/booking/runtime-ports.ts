@@ -3,16 +3,18 @@
 // provider takes from the app (FO-3f item 2), so they are left out here. Mail is the app's MailPort over MessagePort
 // (PF-19b: the outbox, the gate, the worker; the local adapter's mail is read at GET /api/demo/platform-inbox; qa #1855).
 // Interim, named for the row that replaces it:
-//   * arrival: fakeArrival (people kept in memory) until FO-2 implements ArrivalPort in api/src/front-office/sales/.
-import { fakeArrival } from "../../../../ports/arrival.ts";
+//   * arrival: FO-2 part 3b's PrismaArrival (sales/arrival-port.ts: the one arrival path, door BOOKING); fakeArrival
+//     stays for the suites that pass it in.
+import { PrismaArrival } from "../sales/arrival-port.ts";
 import { systemClock } from "../../../../ports/clock.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
+import { consentStore } from "../../platform/messages/consent/index.ts";
 import type { GivenBookingPorts } from "./service.ts";
 
 export function runtimeBookingPorts(mail: MailPort): GivenBookingPorts {
   return {
-    audit: auditEvent, clock: systemClock, mail, arrival: fakeArrival(),
+    audit: auditEvent, clock: systemClock, mail, arrival: new PrismaArrival({ audit: auditEvent, consent: consentStore }),
     publicBaseUrl: process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`,
   };
 }
