@@ -99,6 +99,14 @@ def cells(line):
 
 
 # ---------------------------------------------------------------- GitHub (read-only)
+def main_checks(check_runs, full_run_ids):
+    """Main's own check runs: those of a PR's full run (CI-PRE; run ids as strings) are left out."""
+    def run_of(c):
+        m = re.search(r"/actions/runs/(\d+)", c.get("details_url") or "")
+        return m.group(1) if m else None
+    return [c for c in check_runs if run_of(c) not in full_run_ids]
+
+
 class GH:
     def __init__(self, offline):
         self.offline = offline
@@ -1245,7 +1253,13 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     wj("github/pulls.json", pulls)
     # check runs on main's head
     cr = gh.get(f"/commits/{msha}/check-runs?per_page=100")
-    wj("github/main_checks.json", [{"name": c["name"], "status": c["status"], "conclusion": c["conclusion"]} for c in cr.get("check_runs", [])])
+    # CI-PRE (P-731): a PR's full run is a workflow_dispatch run of ci.yml on main's head, so its checks sit on main's
+    # commit; they are that PR's verdict, not main's, and never make "main CI" red.
+    try:
+        full = {str(r["id"]) for r in gh.get(f"/actions/workflows/ci.yml/runs?event=workflow_dispatch&head_sha={msha}&per_page=100").get("workflow_runs", [])}
+    except Exception:
+        full = set()
+    wj("github/main_checks.json", [{"name": c["name"], "status": c["status"], "conclusion": c["conclusion"]} for c in main_checks(cr.get("check_runs", []), full)])
     # guards: label guard workflow on main, and the push guard (ci.yml job "guard") on the newest finished queue run
     gr = []
     # a run cancelled or skipped because a newer event replaced it (the workflow's concurrency group) is not a result: take the
