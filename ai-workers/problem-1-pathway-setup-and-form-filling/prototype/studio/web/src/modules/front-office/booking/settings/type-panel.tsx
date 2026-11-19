@@ -23,12 +23,25 @@ export function TypePanel({ me, typeId, staff, onClose, onOpen, returnFocus }: {
   const detail = useQuery({ queryKey: ["fo", "booking-type", typeId], enabled: !isNew, retry: false, queryFn: async () => TypeDetail.parse(await staffApi(`/front-office/booking-types/${typeId}`)) });
   const t = isNew ? null : detail.data ?? null;
   const [d, setD] = React.useState<Draft>(draftOf(null));
-  React.useEffect(() => { setD(draftOf(t)); }, [t?.id, t?.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- reset on a new read only
+  // A new read replaces the draft only where the person has not typed (break m4: Retire kept a typed name).
+  // The version a save sends is the one the typed draft was based on: another tab's newer read never slips under the
+  // person's typing (the stale save stays a 409); after the person's own action (Retire, a host's set) it moves on.
+  const base = React.useRef<Draft>(draftOf(null)), version = React.useRef<number | null>(null), mine = React.useRef(false);
+  React.useEffect(() => {
+    const next = draftOf(t), clean = JSON.stringify(d) === JSON.stringify(base.current);
+    if (clean || mine.current || version.current === null) { version.current = t?.version ?? null; if (clean) setD(next); }
+    base.current = next; mine.current = false;
+  }, [t?.id, t?.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- on a new read only
+  const dirty = () => JSON.stringify(d) !== JSON.stringify(base.current);
+  const alive = React.useRef(true); React.useEffect(() => () => { alive.current = false; }, []);
+  const inFlight = React.useRef(false), opener = React.useRef<HTMLElement | null>(null);
+  /** Where focus goes after a confirm or a switch (break m6): the button that opened it, else the action now in its place. */
+  const refocus = () => requestAnimationFrame(() => { const el = opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>("[data-switch-on], [data-retire]"); el?.focus(); });
   const [err, setErr] = React.useState<StaffApiError | null>(null), [busy, setBusy] = React.useState<string | null>(null), [ask, setAsk] = React.useState<"retire" | "delete" | null>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
   const fieldErr = (f: string) => err?.field(f) ?? null;
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["fo", "booking-types"] }), qc.invalidateQueries({ queryKey: ["fo", "booking-type"] })]);
-  const run = async (what: string, f: () => Promise<unknown>) => { setBusy(what); setErr(null); try { await f(); await refresh(); return true; } catch (e) { setErr(e instanceof StaffApiError ? e : new StaffApiError(0, { detail: "Could not save. Please try again." } as never)); return false; } finally { setBusy(null); } };
+  const run = async (what: string, f: () => Promise<unknown>) => { if (inFlight.current) return false; inFlight.current = true; setBusy(what); setErr(null); try { await f(); mine.current = true; await refresh(); return true; } catch (e) { setErr(e instanceof StaffApiError ? e : new StaffApiError(0, { detail: "Could not save. Please try again." } as never)); return false; } finally { inFlight.current = false; setBusy(null); } };
   const body = () => {
     const b: Record<string, unknown> = { name: d.name, description: d.description.trim() ? d.description : null, purpose: d.purpose, minutes: Number(d.minutes), modes: d.modes, hostStaffIds: d.hostStaffIds,
       active: d.active, showOnBookingPage: d.showOnBookingPage, allowReschedule: d.allowReschedule, allowCancel: d.allowCancel };
@@ -36,24 +49,25 @@ export function TypePanel({ me, typeId, staff, onClose, onOpen, returnFocus }: {
     return b;
   };
   const save = () => run("save", async () => {
-    if (isNew) { const made = await staffApi<{ id: string }>("/front-office/booking-types", { method: "POST", json: body() }); onOpen(made.id); }
-    else await staffApi(`/front-office/booking-types/${t!.id}`, { method: "PATCH", json: { ...body(), version: t!.version } });
+    if (isNew) { const made = await staffApi<{ id: string }>("/front-office/booking-types", { method: "POST", json: body() }); if (alive.current) onOpen(made.id); }
+    else await staffApi(`/front-office/booking-types/${t!.id}`, { method: "PATCH", json: { ...body(), version: version.current ?? t!.version } });
   });
   const post = (path: string, what: string, then?: (r: { id: string }) => void) => run(what, async () => { const r = await staffApi<{ id: string }>(`/front-office/booking-types/${t!.id}${path}`, { method: path ? "POST" : "DELETE" }); then?.(r); });
 
   if (!isNew && detail.isError) return <Panel open onOpenChange={(o) => !o && onClose()} title="Booking type" returnFocus={returnFocus}><Notice tone="danger" title="Not available">{detail.error instanceof StaffApiError ? detail.error.message : "Could not load this type."}</Notice></Panel>;
-  // A long unbroken name would run under the close button: the title shows its first 40 characters (the field has it all).
-  const full = isNew ? W.add : t?.name ?? "Booking type", title = [...full].length > 40 ? `${[...full].slice(0, 39).join("")}…` : full;
+  // A long unbroken name would run under the close button (the shared Panel does not wrap): a break chance every 12
+  // characters lets it wrap at any width (break m7: wide letters overflowed a 40-character cut).
+  const title = (isNew ? W.add : t?.name ?? "Booking type").replace(/(\S{12})(?=\S)/gu, "$1\u200b");
   const footer = !edit ? null : <>
-    <Button variant="ghost" onClick={onClose}>Close</Button>
+    <Button variant="ghost" onClick={() => { if (!dirty() || window.confirm("Discard your unsaved changes?")) onClose(); }}>Close</Button>
     <div className="flex flex-wrap gap-2">
-      {t ? <Button variant="outline" busy={busy === "dup"} data-duplicate onClick={() => void post("/duplicate", "dup", (r) => onOpen(r.id))}>Duplicate</Button> : null}
-      {t ? (t.active ? <Button variant="outline" data-retire onClick={() => setAsk("retire")}>Retire</Button> : <Button variant="outline" busy={busy === "on"} data-switch-on onClick={() => void post("/switch-on", "on")}>Switch on</Button>) : null}
-      {t ? <Button variant="outline" data-delete onClick={() => setAsk("delete")}>Delete</Button> : null}
+      {t ? <Button variant="outline" busy={busy === "dup"} disabled={!!busy} data-duplicate onClick={() => void post("/duplicate", "dup", (r) => onOpen(r.id))}>Duplicate</Button> : null}
+      {t ? (t.active ? <Button variant="outline" disabled={!!busy} data-retire onClick={(e) => { opener.current = e.currentTarget; setAsk("retire"); }}>Retire</Button> : <Button variant="outline" busy={busy === "on"} disabled={!!busy} data-switch-on onClick={() => { opener.current = null; void post("/switch-on", "on").then(refocus); }}>Switch on</Button>) : null}
+      {t ? <Button variant="outline" disabled={!!busy} data-delete onClick={(e) => { opener.current = e.currentTarget; void detail.refetch().then(() => setAsk("delete")); }}>Delete</Button> : null}
       <Button busy={busy === "save"} disabled={!isNew && !t} data-save onClick={() => void save()}>Save type</Button>
     </div></>;
   return (
-    <Panel open onOpenChange={(o) => !o && onClose()} title={title} returnFocus={returnFocus} footer={footer} bodyLabel={edit ? undefined : `${title}, read-only`}
+    <Panel open onOpenChange={(o) => !o && onClose()} confirmClose={() => !edit || !dirty() || window.confirm("Discard your unsaved changes?")} title={title} returnFocus={returnFocus} footer={footer} bodyLabel={edit ? undefined : `${title}, read-only`}
       badge={t && !t.active ? <span className="rounded-md bg-text/10 px-1.5 py-0.5 text-[11px] text-text-muted">Retired</span> : null}>
       {!isNew && !t ? <p role="status" className="text-sm text-text-muted" data-loading>Loading the booking type…</p> : <div data-type-panel={t?.id ?? "new"}>
         {err && (!Object.keys(err.problem.fields ?? {}).length || err.problem.code === "STALE_VERSION") ? <Notice tone="danger" title={err.problem.code === "STALE_VERSION" ? "Not saved" : "Could not do that"}><span data-panel-error>{err.message}</span></Notice> : null}
@@ -84,9 +98,9 @@ export function TypePanel({ me, typeId, staff, onClose, onOpen, returnFocus }: {
         {t ? <Share t={t} firmKey={me.firmKey} copy={edit} /> : null}
         {t && edit ? <PreviewSection t={t} /> : null}
       </div>}
-      <Dialog open={ask !== null} onOpenChange={(o) => !o && setAsk(null)} title={ask === "retire" ? "Retire" : "Delete"}
-        footer={<><Button variant="ghost" onClick={() => setAsk(null)}>Keep</Button>
-          <Button variant="destructive" data-confirm onClick={() => { const a = ask; setAsk(null); void (a === "retire" ? post("/switch-off", "off") : post("", "del", () => onClose())); }}>{ask === "retire" ? "Retire" : "Delete"}</Button></>}>
+      <Dialog open={ask !== null} onOpenChange={(o) => { if (!o) { setAsk(null); refocus(); } }} title={ask === "retire" ? "Retire" : "Delete"}
+        footer={<><Button variant="ghost" onClick={() => { setAsk(null); refocus(); }}>Keep</Button>
+          <Button variant="destructive" data-confirm onClick={() => { const a = ask; setAsk(null); opener.current = null; void (a === "retire" ? post("/switch-off", "off").then(refocus) : post("", "del", () => onClose())); }}>{ask === "retire" ? "Retire" : "Delete"}</Button></>}>
         <p className="text-sm" data-confirm-text>{t ? (ask === "retire" ? W.retire(t.name) : W.remove(t.name, (t as TypeDetail).futureBookings)) : null}</p>
       </Dialog>
     </Panel>
@@ -133,7 +147,7 @@ function Share({ t, firmKey, copy: canCopy }: { t: BookingType; firmKey: string;
 
 /** AG-4-8: the public page's own times for one date in a zone, and why a day is empty. Reads only. */
 function PreviewSection({ t }: { t: BookingType }) {
-  const [date, setDate] = React.useState(() => new Date().toISOString().slice(0, 10)), [zone, setZone] = React.useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [date, setDate] = React.useState(() => new Date().toLocaleDateString("en-CA")), [zone, setZone] = React.useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [asked, setAsked] = React.useState<{ date: string; zone: string } | null>(null);
   const q = useQuery({ queryKey: ["fo", "booking-type-preview", t.id, asked], enabled: !!asked, retry: false, queryFn: async () => {
     // A window either side of the date covers any zone's day; the server groups the days in `tz`.
@@ -151,7 +165,7 @@ function PreviewSection({ t }: { t: BookingType }) {
     </div>
     <div aria-live="polite" data-preview-result>
       {q.isFetching ? <p role="status" className="text-sm text-text-muted">Loading times…</p>
-        : q.isError ? <p role="alert" className="text-sm text-text-danger">{q.error instanceof StaffApiError ? q.error.message : "Could not load the times."}</p>
+        : q.isError ? <p role="alert" className="text-sm text-text-danger">{q.error instanceof StaffApiError && q.error.status === 400 ? "Choose a date within 62 days and a time zone such as America/Toronto." : q.error instanceof StaffApiError ? q.error.message : "Could not load the times."}</p>
           : why ? <p className="text-sm" data-preview-reason>{why}</p>
             : q.data && day ? <ul className="flex flex-wrap gap-2 text-sm" data-preview-slots>{day.slots.map((s) => <li key={s.startsAt} className="rounded-md border border-border px-2 py-1">{hm(s.startsAt)}</li>)}</ul>
               : null}

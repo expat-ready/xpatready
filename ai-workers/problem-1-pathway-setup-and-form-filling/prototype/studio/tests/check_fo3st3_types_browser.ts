@@ -52,6 +52,7 @@ async function newPage(tok: string, width = 1440): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   await ctx.addInitScript((t) => { if (!sessionStorage.getItem("xr-staff-session")) sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, tok);
   p.on("pageerror", (e) => errors.push(String(e)));
+  p.on("dialog", (dlg) => void dlg.accept());   // "Discard your unsaved changes?" when a drawer with edits closes
   return p;
 }
 const types = async (p: Page, q = "") => { await p.goto(`${BASE}/front-office/booking-types${q}`); await p.locator("[data-type-row], [data-types-empty], [data-types-refused]").first().waitFor({ timeout: 30_000 }); };
@@ -81,6 +82,12 @@ try {
   const head = await p.locator('[role="dialog"] .text-lg').first().boundingBox(), close = await p.getByRole("button", { name: "Close" }).first().boundingBox();
   ok("FO-3st3 DW7: an 80-character name's title stays clear of the drawer's close button", !!head && !!close && head.x + head.width <= close.x + 1, [head, close]);
   await shot(p, "panel-1440"); await axe("FO-3st3 DW7 drawer (Owner, 1440)", p);
+  const wide = await make({ name: "W".repeat(80) });
+  for (const w of [1440, 375]) {
+    const pw = await newPage(ownerTok, w); await types(pw, `?type=${wide.id}`); await pw.locator("[data-type-panel]").waitFor({ timeout: 15_000 });
+    const h = await pw.locator('[role="dialog"] .text-lg').first().boundingBox(), c = await pw.getByRole("button", { name: "Close" }).first().boundingBox();
+    ok(`FO-3st3 DW7 (break m7): 80 wide letters wrap in the drawer title at ${w} px, clear of Close and inside the screen`, !!h && !!c && h.x + h.width <= c.x + 1 && h.x + h.width <= w, [h, c]);
+  }
   await p.keyboard.press("Escape");
 
   // ------------------------------------------------------------------------------- J-T2: Retire and switch on (rule 4)
@@ -137,6 +144,12 @@ try {
   ok("FO-3st3 DW6 fail: a save after another tab's save shows \"Someone else changed this type. Reload to see their changes.\" and keeps the input",
     (await a.locator("[data-panel-error]").innerText()) === "Someone else changed this type. Reload to see their changes." && (await a.locator("[data-name]").inputValue()) === `Stale ${run} A`
     && sql(`select name from fo_consultation_type where id = '${S.id}'`) === `Stale ${run} B`);
+  const n0 = typeCount();
+  await types(a); await a.locator("[data-new-type]").click(); await a.locator("[data-name]").fill(`Burst ${run}`);
+  await a.locator("[data-save]").evaluate((el: HTMLElement) => { el.click(); el.click(); el.click(); });
+  await a.locator("[data-type-panel]:not([data-type-panel='new'])").waitFor({ timeout: 10_000 });
+  ok("FO-3st3 DW6 fail (break m1): three clicks on Save at once make one type", Number(typeCount()) === Number(n0) + 1, [n0, typeCount()]);
+  await a.keyboard.press("Escape");
   const K = await make({ name: `Case review ${run}`, purpose: "CASE_REVIEW" });
   await types(a);
   const cell = await a.locator(`[data-type-row="${K.slug}"] [data-on-page]`).innerText();
@@ -151,6 +164,8 @@ try {
     && await cm.locator("[data-read-only]").count() === 1 && await cm.locator("[data-type-panel] input, [data-type-panel] textarea, [data-type-panel] select, [data-save], [data-delete], [data-retire], [data-duplicate]").count() === 0
     && await cm.locator("[data-share-link]").count() === 1);
   await shot(cm, "read-only-1440"); await axe("FO-3st3 DW7 read-only drawer (Case Manager)", cm);
+  await cm.goto(`${BASE}/front-office/booking-types?type=new`); await cm.locator("[data-type-row]").first().waitFor({ timeout: 15_000 });
+  ok("FO-3st3 J-T4 fail (break M1): a Case Manager opening ?type=new sees the list and no drawer, no page error", await cm.locator("[data-type-panel]").count() === 0 && !errors.some((e) => /hostStaffIds/.test(e)), errors);
   const consoleSave = await cm.evaluate(async ([id, v]) => { const t = JSON.parse(sessionStorage.getItem("xr-staff-session")!).token; return (await fetch(`/api/front-office/booking-types/${id}`, { method: "PATCH", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ name: "Hacked", version: v }) })).status; }, [K.id, K.version] as const);
   ok("FO-3st3 J-T4 fail: the Case Manager's save from the browser console is refused by the server (403)", consoleSave === 403, consoleSave);
   const bill = await newPage(billTok);

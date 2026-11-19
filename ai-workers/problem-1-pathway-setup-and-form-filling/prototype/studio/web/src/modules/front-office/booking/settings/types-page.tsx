@@ -23,7 +23,7 @@ function TypesBody() {
     queryFn: async () => (await staffApi<{ staff: Staff[] }>("/platform/staff")).staff });
   const [params, setParams] = useSearchParams();
   const opener = React.useRef<HTMLElement | null>(null), addButton = React.useRef<HTMLButtonElement>(null);
-  const open = (id: string | null) => { const p = new URLSearchParams(params); if (id) p.set("type", id); else p.delete("type"); setParams(p, { replace: true }); };
+  const open = (id: string | null) => { const p = new URLSearchParams(params); if (id) p.set("type", id); else p.delete("type"); setParams(p, { replace: !id }); };
   const typeId = params.get("type");
   if (list.isError) return <Notice tone="danger" title="Not available"><span data-types-refused>{list.error instanceof StaffApiError ? list.error.message : "Could not load the booking types. Please try again."}</span></Notice>;
   const names = staff.data ?? null, hostWords = (ids: string[]) => !ids.length ? "None" : names ? ids.map((id) => names.find((s) => s.id === id)?.displayName ?? "Former staff").join(", ") : String(ids.length);
@@ -43,7 +43,7 @@ function TypesBody() {
               <td data-on-page>{isCaseType(t) ? W.caseCell : t.onBookingPage ? "Yes" : "No"}</td>
             </tr>)}
           </Table>}
-      {typeId ? <TypePanel key={typeId} me={me} typeId={typeId} staff={names} onClose={() => open(null)} onOpen={(id) => open(id)}
+      {typeId && (typeId !== "new" || edit) ? <TypePanel key={typeId} me={me} typeId={typeId} staff={names} onClose={() => open(null)} onOpen={(id) => open(id)}
         returnFocus={() => (opener.current?.isConnected ? opener.current : addButton.current)} /> : null}
     </section>
   );
