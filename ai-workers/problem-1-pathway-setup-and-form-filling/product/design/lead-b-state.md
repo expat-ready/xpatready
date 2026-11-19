@@ -52,6 +52,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **20:13 IST (Lead 94, P-740: Release 1 stays 29 Nov):** qa split: **qa 7 holds R1.109 and R1.4; qa 9 (cloud) holds R1.31 and R1.40**; I tell each qa lane its own items only. #2262 (J-109) merged 19:50; qa 7 found QA-517 (Major), so R1.109 is Partial; the fix, PF-21j (`lead-b-briefs/PF-21j.md`), is on the warm J-109 lane. Five ready items listed (lane-order "Ready and file-disjoint"): PF-21j is placed; FO-13i p2→FO-13s, FO-3st1, PF-18a p2→PF-18s and PF-15c start at the founder's next typed turn. Briefs owed by me: FO-5b (R1.53), PF-21c (R1.86).
 
+**20:25 IST: reports now go to Lead 95** (`local_98ab55d2-14dd-45cb-90d8-3bd03b26ec61`; Lead 94 handed over).
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
