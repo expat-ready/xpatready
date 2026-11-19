@@ -161,6 +161,28 @@ ok "P-743: a failed batch held it, the full run is green and the line names its 
 nofull; held 7; mv "$T/fx/checks-$BHELD.json" "$T/fx/checks-hidden.json"; run eligible 7
 ok "P-743: the batches cannot be read: not eligible, exit 3 (label-sweep.sh keeps the label and tries again; never passed)" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
 mv "$T/fx/checks-hidden.json" "$T/fx/checks-$BHELD.json"
+# review M1: no failed batch held it, but a full run on the head ended red: refused, and the run is told (never labelled)
+unheld; nofull; full 53 7 $HEAD1 completed failure; jobs 53 "shard (6):failure" "ci:failure"; TRIG=full run label 7
+ok "P-743 (review M1): no failed batch, but the head's full run is red: refused, the comment names its failed parts" "$(nolabel && grep -qF 'the full run on 111111111 failed: `shard (6)`' <<< "$log" && echo 1)" "$out / $log"
+nofull; FAIL_FULL=1 run eligible 7
+ok "P-743 (review M1): no failed batch and the full runs cannot be read: nothing is asked, eligible exits 0 (not 3)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+nofull; full 54 7 $HEAD1 in_progress ""; run label 7
+ok "P-743 (review M1): no failed batch and a full run still running: labelled (nothing is asked)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+# review m2: a failed batch whose run id cannot be read is refused, never passed
+nofull; held 7; jq '.check_runs[0].details_url = "https://github.test/elsewhere"' "$T/fx/checks-$BHELD.json" > "$T/fx/x.json" && mv "$T/fx/x.json" "$T/fx/checks-$BHELD.json"; run label 7
+ok "P-743 (review m2): a failed batch whose run id cannot be read: refused" "$(nolabel && grep -q "failed merge batch's run cannot be read" <<< "$out" && echo 1)" "$out / $log"
+# review m3: the incident itself: the sweep and an innocent batch-mate with no full run
+nofull; held 7; LAT=2026-11-19T04:10:00Z run eligible 7
+ok "P-743 (review m3): sweep, labelled before the batch failed, no full run: eligible, the batch-mate keeps its label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+LAT=2026-11-19T05:00:00Z run eligible 7
+ok "P-743 (review m3): sweep, label put back after the batch failed, no full run: not eligible, the full run is asked" "$([ $r = 1 ] && grep -q '/run full' <<< "$out" && echo 1)" "exit $r: $out"
+# review m1: two PRs in one workflow_run, the held one first: the cache never serves one PR's batch to the other
+prj 9 $HEAD1; files 9 "$S/api/src/form.ts"; cmt 9 o OWNER "Reviewer: Approve $HEAD1"; cirun $HEAD1 completed success 2026-11-15T13:00:00Z
+nofull; held 9; prj 7 $HEAD1; cmt 7 o OWNER "Reviewer: Approve $HEAD1"
+printf '{"workflow_run": {"pull_requests": [{"number": 9}, {"number": 7}]}}' > "$T/fx/ev.json"
+: > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main GITHUB_EVENT_NAME=workflow_run GITHUB_EVENT_PATH="$T/fx/ev.json" bash "$G" event 2>&1); r=$?; log=$(cat "$T/fx/log")
+ok "P-743 (review m1): one workflow_run naming a held PR (9) then an unheld one (7): 7 labelled, 9 refused" "$(grep -qx 'LABEL 7' <<< "$log" && ! grep -qx 'LABEL 9' <<< "$log" && echo 1)" "$out / $log"
+unheld; prj 9 $HEAD1; prj 7 $HEAD1
 # The cases below are CI-PRE's full-run rule itself; since P-743 it applies to a PR a failed batch held, so PR 7 is held.
 held 7; full 41 7 $HEAD1 completed success; full 42 9 $HEAD1 completed success
 run label 7

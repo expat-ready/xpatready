@@ -36,7 +36,8 @@
 #   eligible — exit 0 when `label` would label this PR now (the label aside); used by label-sweep.sh.
 #   event  — reads GITHUB_EVENT_NAME / GITHUB_EVENT_PATH and runs the above for the PR(s) concerned.
 # Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible, proof); REVIEWERS; FULL_FROM; HEADS, RELABEL (proof); LABELED_AT (eligible); API (default https://api.github.com);
-# MAIN_REF (default origin/main; a git copy holding main's history). Exit 0 judged; 1 refused (eligible); 2 error.
+# MAIN_REF (default origin/main; a git copy holding main's history). Exit 0 judged; 1 refused (eligible); 2 error; 3 (eligible)
+# the full runs or the merge batches could not be read inside the full-run rule (label-sweep.sh keeps the label, tries again).
 # Test: check-queue-gate.sh.
 set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
@@ -115,13 +116,16 @@ fullproof() {  # $@ the commits a full run may be on → 0, or 1 with $why
   # P-743: the full run is asked only of a PR a failed merge batch held. Unreadable batches: refused, and eligible exits
   # 3 (label-sweep.sh keeps the label and tries again), as for unreadable full runs.
   held || { full_state=unread; return 1; }
-  [ "$held_state" = failed ] || return 0   # no failed batch held it: no full run (P-743)
+  # No failed batch held it: no full run is asked (P-743), but one that exists on the head and ended red still refuses
+  # (review M1: a known-red head never joins a batch); none, pending or unreadable passes, as nothing is asked.
+  if [ "$held_state" != failed ]; then   # no failed batch held it (P-743)
+    full "$@"; [ "$full_state" = failure ] && { why=$full_why; return 1; }; full_state=""; return 0; fi
   full "$@"; [ "$full_state" = success ] && return 0
   why="$full_why (asked because the merge batch run $held_rid failed with this PR in it, P-743)"; return 1; }
 held() {  # the newest ended merge batch naming this PR → held_state (none|passed|failed), held_rid (its ci run when failed);
   # read once per PR (covered() and fullproof() share it); 1 with $why when the batches cannot be read
   [ "${held_pr:-}" = "$PR" ] && return 0
-  local one p=1 sha c; held_state=none; held_rid=""; : > "$H.p"
+  local one p=1 sha c; held_pr=""; held_state=none; held_rid=""; : > "$H.p"
   # Every PR opened after this one, newest first (a batch that held it is one of them); 30 pages at most, else refused.
   while :; do
     [ "$p" -le 30 ] || { why="more than 3000 pull requests were opened after this one: its merge batches cannot all be read (ask the tech lead)"; return 1; }
@@ -260,7 +264,8 @@ case "${1:-}" in
     # shellcheck disable=SC2086
     fullproof $HEADS || { echo "$why"; exit 1; }
     if [ "${RELABEL:-}" = 1 ]; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
-  # 3, not 1, when only the full runs could not be read: label-sweep.sh then keeps the label and tries again.
+  # 3, not 1, when the full runs or (inside the full-run rule, P-743) the merge batches could not be read: label-sweep.sh
+  # then keeps the label and tries again. covered()'s own unreadable batches (records, FULL_FROM PRs) stay 1.
   # With LABELED_AT (label-sweep.sh: a label a workflow's token put on, which starts no label-guard run), the batch rule
   # is asked too, for a batch that failed before that label (breaker R2-M2: a side branch's workflow can label any PR).
   eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || covered; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
