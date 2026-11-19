@@ -2,7 +2,8 @@
 // board's totals are per currency, never mixed. J-30/J-31 set each prospect's value and currency with SQL (j_30.ts W3);
 // this walk uses only screens and the public API: Owner engages a lead, opens the prospect, looks for any way to enter a
 // deal value and currency (AG-2-2 "an optional deal value"), and reads the board's totals at 400, 1024 and 1440 px.
-// Fails today (QA-530) and passes once a person can set a value. Sample rows only; US$0. Run from prototype/:
+// Fails today (QA-530) and passes once a person can type a value on the prospect's screen, it is stored, and the board's
+// totals show it per currency (review on #2296: no pass from an unrelated control, no assumed route shape). Sample rows only; US$0. Run from prototype/:
 //   zsh studio/tools/isolated.sh qa9v 4477 start --ttl 20 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh qa9v 4477 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/qa/check_r131_gate_a_value.ts qa9v 4477 <shots-dir>
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -41,22 +42,33 @@ const prospectId = pg.url().split("/prospects/")[1].split(/[?#]/)[0];
 await pg.screenshot({ path: join(SHOTS, "r131-prospect-1440.png"), fullPage: true });
 const page = await pg.locator("main").innerText();
 ok("R1.31 gate A: the new prospect's screen shows Value \"Not set\"", /Value\s*Not set/.test(page), page.slice(0, 300));
-const inputs = await pg.locator("main input, main select, main textarea").count();
-const valueBtn = await pg.getByRole("button", { name: /value|amount|edit|currency/i }).count();
-ok("R1.31 gate A (QA-530): the prospect's screen offers a way to set its value and currency (a field or an Edit)", inputs + valueBtn > 0, { inputs, valueBtn });
-// Underneath: no route takes a value (PATCH, PUT on the prospect).
-const tries: [string, number][] = [];
-for (const m of ["PATCH", "PUT"]) {
-  const r = await fetch(`${BASE}/api/front-office/prospects/${prospectId}`, { method: m, headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" }, body: JSON.stringify({ valueCents: 500000, currency: "CAD" }) });
-  tries.push([m, r.status]);
+// A person enters the value on the prospect's own screen, whatever the fix's shape: a field labelled Value or Amount,
+// shown at once or behind a button that names the value (never a generic Edit, owner or lost-reason control), then a
+// currency control if there is one, then Save. Underneath, the stored value must be the one typed (any route may write it).
+const opener = pg.getByRole("button", { name: /(set|edit|add|change) (the )?(deal )?value/i });
+if (await opener.count() > 0) await opener.first().click();
+const field = pg.getByLabel(/^(deal )?(value|amount)\b/i);
+const hasField = await field.count() > 0;
+ok("R1.31 gate A (QA-530): the prospect's screen offers a field for its value (labelled Value or Amount)", hasField, { hasField });
+let stored = "none";
+if (hasField) {
+  await field.first().fill("5000");
+  const cur = pg.getByLabel(/currency/i);
+  if (await cur.count() > 0) {
+    const tag = await cur.first().evaluate((e) => e.tagName);
+    if (tag === "SELECT") await cur.first().selectOption("USD"); else await cur.first().fill("USD");
+  }
+  await pg.getByRole("button", { name: /^save/i }).first().click();
+  await pg.waitForTimeout(1000);
+  stored = sql(`select coalesce(value_cents::text, 'null') || ' ' || coalesce(currency::text, 'null') from fo_prospect where id = '${prospectId}'`);
 }
-ok("R1.31 gate A (QA-530): the API takes a prospect's value (PATCH or PUT /prospects/:id)", tries.some(([, s]) => s < 300), tries);
+ok("R1.31 gate A (QA-530): the value typed on the screen is stored on the prospect (500000 cents with a currency)", /^500000 [A-Z]{3}$/.test(stored), stored);
 for (const w of [400, 1024, 1440]) {
   await pg.setViewportSize({ width: w, height: 900 });
   await pg.goto(`${BASE}/front-office/pipeline`); await pg.locator("[data-stage=\"ENGAGED\"]").waitFor();
   await pg.screenshot({ path: join(SHOTS, `r131-board-${w}.png`), fullPage: true });
   const totals = await pg.locator("[data-open-totals]").innerText().catch(() => "(none)");
-  ok(`R1.31 gate A at ${w} px: the board's open totals show an amount a person entered`, /\d/.test(totals.replace(/\b\d+ (open|prospects?)\b/gi, "")), totals);
+  ok(`R1.31 gate A at ${w} px: the board's open totals show the amount the person entered (5,000), per currency`, /\b[A-Z]{3}\s5,000\b/.test(totals), totals);
 }
 await browser.close(); await db.$disconnect();
 summary("R1.31 gate A (value by screens)");
