@@ -9,6 +9,7 @@ on:
       - ".claude/skills/lead/**"
       - ".claude/skills/next/**"
       - ".claude/skills/qa/**"
+      - ".github/workflows/batch-fail-alert.yml"
       - ".github/workflows/comment-run.yml"
       - ".github/workflows/label-guard.yml"
       - ".github/workflows/nightly.yml"
