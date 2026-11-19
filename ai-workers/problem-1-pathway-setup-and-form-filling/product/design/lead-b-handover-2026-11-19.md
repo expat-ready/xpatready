@@ -41,3 +41,4 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * **J4 (front office):** `lead-b-briefs/J4-lane-plan-2026-11-19.md`. The lanes are R1.28 (#2011's), R1.30+R1.31 (#2102's), R1.108+R1.110 (#2103's) and R1.33 (#2181's), then R1.26+R1.27 and R1.29 in series on the same lanes.
 * **Briefs owed by me before 13:30:** FO-13s (with QA-510) and the FO-9a phone-part amendment.
 * **P-728:** each new item's J-test goes in the same PR as its last part.
+* 11:23 IST: both owed briefs are written: `FO-13s.md` (R1.110: FO-13i part 2 for QA-510, then the Identity panel with J-110) and the `FO-9a.md` amendment (R1.33: the staff phone edit with J-33). R1.108 is out of flight (FO-13c waits on FO-9a and CS-S1b).

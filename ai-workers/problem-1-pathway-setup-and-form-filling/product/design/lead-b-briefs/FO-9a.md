@@ -27,3 +27,19 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
 
 **Rules (standard, every PF/FO brief):** P-559: firm tables, real sign-in and billing are ours in the PF/FO modules (amends P-335/P-357). One row, one session, one PR; new files only outside the touch list. Opus reviewer (P-303); **breaker yes (schema)**; re-review reads only the diff (P-277); label `review: approved` only after `Reviewer: Approve <sha>` and green CI (P-277, P-385); merge `main` only on a conflict (P-270). **Before asking for the label (rows rev 16, Lead 47: 4 of 4 labelled PRs went red after the label on 14 Nov):** run, on `main` merged into your branch, the suites of every CI part that was red on any earlier head of this PR, plus every suite in the shard that shares the demo database with yours, and paste the result lines in the PR. The release holder reads the migration first (P-423). Live AI off, US$0, never a priced button (P-175). No real keys anywhere. Push after every step (P-557). Questions as a PR comment headed "Question for the tech lead"; report to the current Lead (`tools/current-lead.sh`) for the merge queue and to **Lead B** (row owner, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`) for the row. Cross-module port interfaces, their fakes and shared event payload types go in `prototype/studio/ports/` (`zod` only; case-side contract v0.1 §1 rule 3); adapters stay in the module's folder; never import `engine/` or case-side files (rows rev 14.1). Event names come from `prototype/studio/ports/events.ts` (`EVENT.*`, FO-1a); add a new name there, never a string literal (rev 15.1). A database function in your migration carries your area's prefix (`fo_sales_`, `fo_booking_`, `fo_compliance_`, `fo_signing_`, `fo_retainer_`, `money_`, `msg_`, `plat_`, `platform_`), never a bare `fo_` name another area may also use, and your migration's stamp is later than the newest on `main` when it merges (rows rev 15.2, the FO-1a/FO-1b clash). Every token earns its outcome (P-556): read only the files named here and the code you change.
 ---
+
+## Amendment (19 Nov 11:23 IST, Lead B): R1.33's last part, the staff phone edit, with its J-test (J4 lane 4)
+* **What is on `main`:**
+  * an unreadable phone at a public door is kept as typed, with the "Fix number" pill on the leads list and the lead page;
+  * `front-office/duplicates/phone.ts` normalises with `libphonenumber-js`.
+* **What is left (rev 17.21 ruling):**
+  * a **staff edit** of a person's phone **refuses an impossible number**: 422 with `fields: { phone: "This is not a phone number we can read. Add the country code, for example +1 416 555 0100." }`;
+  * a valid number **keeps its country** (stored as E.164 beside what was typed) and clears "Fix number".
+* **The route:** `PATCH /api/front-office/people/:personId` with `{ phone }` only in this part (key `agent/prospect:edit`, own or all as FO-2v). It is audited with ids only, never the number (PF-23).
+* **The screen:** the lead page's Phone row gets an edit control. Fix number opens it.
+* **The J-test (J-33) in this PR:**
+  * a web-form lead with "12" shows Fix number;
+  * staff enter "12" → the field's sentence, and nothing is saved;
+  * staff enter "+1 416 555 0100" → it is saved, the pill goes away, and the list no longer flags it;
+  * firm B's person → 404.
+* **Touch list:** a new `api/src/front-office/people/edit.ts` and its route line, the phone row in `lead-page.tsx`, `tests/check_fo9a_phone_edit.ts`, `tests/journeys/j_33.ts`. No migration if the E.164 column exists on `fo_person` (check at start; if it doesn't, one migration with a stamp later than main's newest, P-600). About 300 lines.

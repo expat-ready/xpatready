@@ -2124,3 +2124,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 
 ## Rev 17.48 (19 Nov 11:22 IST)
 * **P-728:** a J-test merges in the same PR as the item's last part (J-109 and J-37 stay separate). **The J4 lane plan** is `lead-b-briefs/J4-lane-plan-2026-11-19.md`: R1.28; R1.30+R1.31; R1.108+R1.110; R1.33; then R1.26+R1.27 and R1.29 in series. Briefs owed: FO-13s and the FO-9a phone part.
+* 11:23 IST: both owed briefs are written: `FO-13s.md` (R1.110: FO-13i part 2 for QA-510, then the Identity panel with J-110) and the `FO-9a.md` amendment (R1.33: the staff phone edit with J-33). R1.108 is out of flight (FO-13c waits on FO-9a and CS-S1b).
