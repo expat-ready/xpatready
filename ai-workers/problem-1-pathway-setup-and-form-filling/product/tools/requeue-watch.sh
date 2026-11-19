@@ -9,7 +9,7 @@
 #       * its head is the SHA of the last "Reviewer: Approve <sha>" line by the owner's account or a login in REVIEWERS;
 #       * Mergify's reason is CHECKS_FAILED and the failure is main's, not the PR's. Main has no push run (P-85), so main
 #         "at that time" is read in the other merge-queue batches built around left_at that do not contain this PR: at
-#         least MIN_OTHERS of them failed the same job. Or the failed job's log in this PR's batch matches a pipeline
+#         least MIN_OTHERS distinct other PRs' batches failed the same job. Or the failed job's log in this PR's batch matches a pipeline
 #         lock in requeue-locks.txt;
 #       * never twice for the same head SHA (a hidden marker, counted only in POSTER's comments), and at most MAX_DAY
 #         times per PR in 24 h: then one "Question for the tech lead" comment a day instead. A requeue Mergify does not
@@ -112,18 +112,24 @@ for n in $want; do
   why=""; unknown=""
   if [ "$left" -gt 0 ]; then
     [ -n "$batches" ] || batches=$(api "$API/repos/$REPO/pulls?state=all&sort=created&direction=desc&per_page=100" \
-      | jq -c '[.[] | select(.user.login == "mergify[bot]" and (.head.ref | startswith("mergify/merge-queue/")))
-               | {n: .number, sha: .head.sha, t: (.created_at | fromdateiso8601), body: (.body // "")}]') || { batches=""; unknown="the merge-queue batches"; }
-    others=""
-    if [ -n "$batches" ]; then
-      while IFS=$'\t' read -r bn bsha; do
+      | jq -c '{full: (length == 100), oldest: (map(.created_at | fromdateiso8601) | min // 0),
+               list: [.[] | select(.user.login == "mergify[bot]" and (.head.ref | startswith("mergify/merge-queue/")))
+               | {n: .number, sha: .head.sha, t: (.created_at | fromdateiso8601), body: (.body // "")}]}') || { batches=""; unknown="the merge-queue batches"; }
+    # The newest 100 PRs must reach back past the window (an old drop, after an outage): else unjudged, never "own failure".
+    [ -n "$batches" ] && jq -e --argjson l "$left" --argjson w "$WINDOW" '.full and .oldest > $l - $w' <<< "$batches" >/dev/null && unknown="batches that old (older than the newest 100 PRs)"
+    others=""; bad=""
+    if [ -z "$unknown" ]; then
+      while IFS=$'\t' read -r bn bsha members; do
         for j in "${J[@]}"; do
           c=$(api "$API/repos/$REPO/commits/$bsha/check-runs?filter=latest&check_name=$(uri "$j")" | jq -r '[.check_runs[] | .conclusion] | index("failure") != null') || { unknown="batch #$bn's checks"; break 2; }
-          [ "$c" = true ] && { others="$others#$bn "; break; }
+          [ "$c" = true ] && { bad="$bad#$bn "; others="$others $members"; break; }
         done
       done < <(jq -r --argjson l "$left" --argjson w "$WINDOW" --arg me "/pull/$n)" \
-        '.[] | select(.t >= $l - $w and .t <= $l + 300) | select(.body | contains($me) | not) | "\(.n)\t\(.sha)"' <<< "$batches" | head -15)
-      [ -z "$unknown" ] && [ "$(wc -w <<< "$others")" -ge "$MIN_OTHERS" ] && why="\`${jobs}\` also failed in batches ${others% } on main as it was then, without this PR"
+        '.list[] | select(.t >= $l - $w and .t <= $l + 300) | select(.body | contains($me) | not)
+         | "\(.n)\t\(.sha)\t\([.body | scan("/pull/([0-9]+)\\)")[0]] | unique | join(" "))"' <<< "$batches" | head -15)
+      # Mergify retests one PR in several batches: count distinct member PRs of the red batches, not batches (one broken PR is not main).
+      distinct=$(tr ' ' '\n' <<< "$others" | grep -v '^$' | sort -u | grep -c .)
+      [ -z "$unknown" ] && [ "$distinct" -ge "$MIN_OTHERS" ] && why="\`${jobs}\` also failed in batches ${bad% } ($distinct other PRs) on main as it was then, without this PR"
     fi
   fi
   if [ -z "$why" ] && [ -z "$unknown" ] && [ -s "$LOCKS" ]; then   # a known pipeline lock in the failed job's log, in the batch Mergify checked

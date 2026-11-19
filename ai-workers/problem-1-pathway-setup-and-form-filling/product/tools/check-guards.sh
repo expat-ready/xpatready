@@ -183,6 +183,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 stall|product/tools/requeue-watch.sh|s/-gt 1800 \]/-gt 99999999 ]/|check-requeue-watch.sh
 28 day|product/tools/requeue-watch.sh|s/-ge "\$MAX_DAY"/-ge 99/|check-requeue-watch.sh
 28 others|product/tools/requeue-watch.sh|s/-ge "\$MIN_OTHERS"/-ge 0/|check-requeue-watch.sh
+28 distinct|product/tools/requeue-watch.sh|s/others="\$others \$members"/others="$others $members$bn"/|check-requeue-watch.sh
+28 old|product/tools/requeue-watch.sh|s/unknown="batches that old (older than the newest 100 PRs)"/true/|check-requeue-watch.sh
 28 member|product/tools/requeue-watch.sh|s/select(\.body . contains(\$me) . not)/select(true)/|check-requeue-watch.sh
 28 own|product/tools/requeue-watch.sh|s/^  why=""; unknown=""/  why=x; unknown=""/|check-requeue-watch.sh
 28 unknown|product/tools/requeue-watch.sh|s/if \[ -z "\$why" \] \&\& \[ -n "\$unknown" \]; then/if false; then/|check-requeue-watch.sh

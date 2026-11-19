@@ -46,8 +46,8 @@ dequeued() {  # dequeued <pr> <head>, extra comments (JSON) on stdin → fixture
   jq -n --arg h "$2" '{head: {sha: $h}}' > "$T/fx/pull-$1.json"
   { cm o OWNER "Reviewer: Approve $A" 7200; cm "mergify[bot]" CONTRIBUTOR "$(pay checking '[]' '' 99)" 5000
     cm "mergify[bot]" CONTRIBUTOR "$(pay dequeued '["ci","fast"]' "$LEFT")" "${DQ_AGO:-1700}"; cat; } | jq -s . > "$T/fx/comments-$1.json"; }
-batch() {  # batch <n> <sha> <conclusion of fast> <seconds before left_at> [member PR] → one merge-queue draft and its runs
-  jq -n --argjson n "$1" --arg s "$2" --arg t "$(at $((1800 + $4)))" --arg m "${5:-77}" \
+batch() {  # batch <n> <sha> <conclusion of fast> <seconds before left_at> [member PR, default the batch number] → one merge-queue draft and its runs
+  jq -n --argjson n "$1" --arg s "$2" --arg t "$(at $((1800 + $4)))" --arg m "${5:-$1}" \
     '{number: $n, user: {login: "mergify[bot]"}, head: {ref: "mergify/merge-queue/x\($n)", sha: $s}, created_at: $t,
       body: "> Mergify opened it for batch b of the `product` queue, to test [#\($m)](/o/r/pull/\($m)) before it merges into `main`."}' >> "$T/fx/b.jsonl"
   jq -n --arg c "$3" '{check_runs: [{id: 555, name: "ci", conclusion: $c}, {id: 555, name: "fast", conclusion: $c}]}' > "$T/fx/runs-$2.json"
@@ -96,6 +96,10 @@ batch 202 "$(printf '2%.0s' {1..40})" failure 300 10; run
 ok "a batch that contains this PR does not count as main's" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
 batch 203 "$(printf '3%.0s' {1..40})" failure 7200; run
 ok "a batch from outside the hour before left_at does not count" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
+reset; dequeued 10 "$A" < /dev/null; batch 201 "$(printf '1%.0s' {1..40})" failure 600 55; batch 202 "$(printf '2%.0s' {1..40})" failure 300 55; run
+ok "two red batches retesting the same other PR are one broken PR, not main" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
+reset; dequeued 10 "$A" < /dev/null; broken; jq -n '[range(100) | {number: 1, user: {login: "x"}, head: {ref: "x", sha: "x"}, created_at: "2099-01-01T00:00:00Z", body: ""}]' > "$T/fx/batches.json"; run
+ok "a drop older than the newest 100 PRs is left unjudged (exit 2), never an \"own failure\" comment" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 # 3b. A read error: not judged, no comment, exit 2.
 reset; dequeued 10 "$A" < /dev/null; broken; rm -f "$T/fx/runs-$(printf '1%.0s' {1..40}).json"; run
 ok "a batch's checks unreadable → no comment either way, exit 2, the next run tries again" "$([ $r = 2 ] && [ -z "$log" ] && grep -q 'not judged' <<< "$out" && echo 1)" "exit $r: $out / $log"
