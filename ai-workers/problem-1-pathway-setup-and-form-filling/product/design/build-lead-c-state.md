@@ -249,3 +249,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * KEEP: #2169; CS-DL1b after #2000; AUD-5 part 2; AUD-1m; the money lane; CS-V1 PR 2; PF-19r, then J-48.
   * PARK: the CS-K1 part 1 lane (part 2 waits on FoPersonPort and FO-8); the CS-W1 lane after CS-W3 part 0; J-49 (waits on PF-19ad).
   * #2000, #2124, #2167 and #2175 merge as they are.
+* 07:17 IST 19 Nov (Lead 85 agreed): park messages sent to the CS-K1 part 1 lane and the CS-W1 lane (after CS-W3 part 0). Idle cloud lanes may not wake. Watching #2000; when it merges I tell Lead 85, who gives the CS-DL1b line.
