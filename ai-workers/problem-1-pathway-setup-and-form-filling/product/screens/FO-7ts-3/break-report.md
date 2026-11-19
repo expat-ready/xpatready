@@ -1,3 +1,57 @@
+Breaker: fail 73adf83e5c19d82d86517ccf037ac5ce86909856
+
+# FO-7ts part 3: break report, round 2 (head 73adf83e5)
+
+**What I tested:** a fresh scratch database at this head, plus a part-2 reference database and a rollback database; all three are dropped. Races ran on real connections at READ COMMITTED (RC) and REPEATABLE READ (RR). `check_fo7ts_money_settings.ts`: 150 passed, 0 failed. Nothing was fixed or committed. Round 1 is kept in full below (P-188), so the file is now over 100 lines. F = firm; G, B, C = parties; K, J, M = cases.
+
+## Round-1 fixes: all hold
+
+* **M1:** the correction now waits on the advisory lock, then is refused at RC ("must stay paid over"); at RR it fails to serialise (40001). The sequential control is still refused.
+* **M2:** a withdrawal's correction tagged with another case is refused. The bounce variant (a 500.00 cheque before a case, all of it moved to K, then bounced, with the correction put on K) is accepted, and every pool ends at 0.
+* **M3:** a pick on an invoice already paid from operating is refused ("0 due"). Four payers each picking 200.00 on one 300.00 invoice: trust paid never went over 200.00.
+* **m1:**
+  * The forced-order reproduction no longer deadlocks at RC or RR, and a natural race of a pick against a credit note gave 40 of 40 with no 40P01.
+  * A three-line undo racing a "Move back to trust" credit note and a pick, 25 runs each at RC and RR, with the party order alternated: no 40P01 (only 23514 or 40001).
+* **m2:** an invoice issued before part 3 becomes TAXABLE at migration.
+* **m4:** a refund dated today + 2 is refused (dates far in the past are still accepted).
+* **Unchanged:** crossing picks, and a pick racing deposits, a credit note and a write-off, behave as in round 1.
+* **Rollback:** from the wrong folder it is refused. From the studio folder the catalog (all four functions included) is identical to part 2, and part 3 then applies again.
+
+## New findings
+
+**R2-M1 (Major): the moved-to-case exception for a deposit's correction has no amount limit, so the per-case limit (M2) can be bypassed again.**
+* A deposit made before a case may now be corrected on any case its party ever moved money to, for any amount. The amount the correction takes off that case stays visible as pre-case money, which can be moved to another case and picked.
+* Reproduce. G holds 1,000.00 on M.
+  * `brk_dep(G, 50000, NULL)` (cheque Q). Move 1.00 from pre-case to K with the pair (−100 with no case, then +100 on K, naming it).
+  * `INSERT INTO money_trust_entry (firm_id, person_id, case_id, kind, amount_minor, currency, corrects_entry_id, correction_kind, reason, created_by) VALUES (F, G, K, 'CORRECTION', -50000, 'CAD', Q, 'RETURNED', 'Cheque bounced', 'user-R');` This is accepted. G now shows pre-case 499.00 and K −499.00.
+  * Move the 499.00 to J (accepted), then pick 499.00 from G on B's invoice on J (accepted).
+  * Result: G ends at a balance of 501.00 while M still shows 1,000.00. G's money on M paid B's invoice on J. No shortfall is shown, because G's party balance stays positive.
+* `OTHER`, `WRONG_CLIENT` and `RECORDED_BY_MISTAKE` work the same way; no bounced cheque is needed.
+* **Suggested fix:** in the exception, take only what is needed. Put the correction on the moved-to case only when the pre-case pool cannot cover it, and for at most what this party moved to that case net of earlier deposit corrections put there:
+  `-NEW.amount_minor <= sum(+ halves on NEW.case_id) - sum(-(deposit corrections) already on NEW.case_id)`
+  Anything more goes on pre-case. Add a DW case using this reproduction.
+
+**R2-m1 (Minor): a move batch with lines from two parties deadlocks against a pick (new with picks).**
+* `money_move_line_write` takes each line's party lock and then that line's invoice row, one line at a time. A pick takes both parties first, then the row.
+* Reproduce with C < B.
+  * T1: `BEGIN;` insert the batch, then line 1, whose source is B's own withdrawal on iB. This locks B and takes the row of iB.
+  * T2: C picks on iB, in B's case. It locks C, then waits on B.
+  * T1: insert line 2, whose source is C's withdrawal on iD. It waits on C.
+  * Result: 40P01 at RC and at RR.
+* `money_move_line_write` is on the brief's do-not-edit list, so this needs a Lead ruling. Options: the route writes a batch's lines sorted by party, or the line writer also takes the invoice party's lock, smaller id first.
+
+**R2-m2 (Minor): a correction that will be refused still waits on another party's lock.**
+* The new pre-lock reads the corrected entry's invoice and locks its party before the "same party" check runs.
+* Reproduce: X, an unrelated party, writes a correction naming A's pick while B's lock is held. It waits 1.0 s on B, then is refused (23514).
+* This is the FO-7lk break B-1 concern ("a refused write takes no lock of another party"). No money is wrong. Suggested fix: lock the invoice's party only when the corrected entry's party equals `NEW`'s party.
+
+**R2-m3 (Minor, note): an operating payment can race past the M3 cap.**
+* A payment on the invoice touches neither the invoice row nor a party lock.
+* Reproduce: B's payment of 100.00 on iB is left uncommitted while A's pick of 100.00 commits. Both commit at RC and at RR, due ends at −100.00, and B can keep 100.00 as credit.
+* The end state is the same as the allowed order (pick first, then B pays), so this is noted only. A fix would mean the payment writer touches the invoice row (FO-7a, outside this part).
+
+---
+
 Breaker: fail 738531142067de2d88c428d01af98b44a9eec81a
 
 # FO-7ts part 3: break report (Opus breaker, high effort, P-278)

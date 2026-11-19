@@ -115,9 +115,11 @@ BEGIN
   -- invoice's party's: its credit and money_issued_invoice's lock), so both locks are taken here first, the smaller id
   -- first: picks crossing on one case never deadlock (DW26), and the payee's credit is checked under both (break M1).
   -- The invoice's party is read unlocked: an issued invoice's party never changes, and a draft is refused below.
-  IF party IS NOT NULL AND ((NEW.kind = 'WITHDRAWAL_TO_INVOICE' AND NEW.invoice_id IS NOT NULL) OR (NEW.kind = 'CORRECTION' AND NEW.corrects_entry_id IS NOT NULL)) THEN
+  -- Only for a write that can pass (break R2-m2; FO-7lk B-1): a pick, or a correction of this party's own withdrawal.
+  IF party IS NOT NULL AND ((NEW.kind = 'WITHDRAWAL_TO_INVOICE' AND NEW.invoice_id IS NOT NULL AND picked) OR (NEW.kind = 'CORRECTION' AND NEW.corrects_entry_id IS NOT NULL)) THEN
     SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i
-      WHERE i.firm_id = NEW.firm_id AND i.id = coalesce(NEW.invoice_id, (SELECT w.invoice_id FROM "money_trust_entry" w WHERE w.firm_id = NEW.firm_id AND w.id = NEW.corrects_entry_id));
+      WHERE i.firm_id = NEW.firm_id AND i.id = coalesce(NEW.invoice_id, (SELECT w.invoice_id FROM "money_trust_entry" w WHERE w.firm_id = NEW.firm_id AND w.id = NEW.corrects_entry_id
+        AND w.kind = 'WITHDRAWAL_TO_INVOICE' AND w.currency = NEW.currency AND (w.person_id, w.company_id) IS NOT DISTINCT FROM (NEW.person_id, NEW.company_id)));
     IF inv_party = party THEN inv_party := NULL; END IF;
   END IF;
   IF inv_party < party THEN
@@ -139,6 +141,11 @@ BEGIN
   END IF;
   IF NEW.kind = 'REFUND_TO_CLIENT' AND NEW.refunded_on > current_date + 1 THEN  -- break m4: a refund is recorded once made
     RAISE EXCEPTION 'money_trust_entry: a refund is recorded on or after the day it is made, never ahead (%)', NEW.refunded_on USING ERRCODE = 'check_violation';
+  END IF;
+  -- and never before the party's money was in trust (break round 2): its first entry in this currency, read under its lock.
+  IF NEW.kind = 'REFUND_TO_CLIENT' AND NEW.refunded_on < (SELECT min(e.created_at)::date - 1 FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.currency = NEW.currency
+      AND ((NEW.person_id IS NOT NULL AND e.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND e.company_id = NEW.company_id))) THEN
+    RAISE EXCEPTION 'money_trust_entry: a refund is never dated before the party''s money came into trust (%)', NEW.refunded_on USING ERRCODE = 'check_violation';
   END IF;
   -- FO-7ts part 2 (AG-6-60 rules 3, 5, 9; P-634): a move to a case is a pair on this party, read under its lock. The −
   -- half (no case) is an outflow from the pre-case balance: at most what the party holds with no case in this currency,
@@ -243,6 +250,17 @@ BEGIN
         WHERE m.firm_id = NEW.firm_id AND m.kind::text = 'MOVE_TO_CASE' AND m.moved_from_entry_id IS NOT NULL AND m.case_id = NEW.case_id AND m.currency = NEW.currency
           AND ((NEW.person_id IS NOT NULL AND m.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND m.company_id = NEW.company_id)))) THEN
       RAISE EXCEPTION 'money_trust_entry: a correction is on the case of the entry it corrects (a deposit made before a case may also be corrected on a case its party moved money to)' USING ERRCODE = 'check_violation';
+    END IF;
+    -- On such a case, at most what was moved there less the pre-case deposits' corrections already booked there (break
+    -- R2-M1): the rest stays before a case (a deposit may be corrected in more than one row).
+    IF d.case_id IS NULL AND NEW.case_id IS NOT NULL THEN
+      SELECT coalesce(sum(m.amount_minor), 0) INTO on_case FROM "money_trust_entry" m WHERE m.firm_id = NEW.firm_id AND m.currency = NEW.currency AND m.case_id = NEW.case_id
+        AND ((NEW.person_id IS NOT NULL AND m.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND m.company_id = NEW.company_id))
+        AND ((m.kind::text = 'MOVE_TO_CASE' AND m.moved_from_entry_id IS NOT NULL)
+          OR (m.kind = 'CORRECTION' AND EXISTS (SELECT 1 FROM "money_trust_entry" x WHERE x.firm_id = m.firm_id AND x.id = m.corrects_entry_id AND x.kind = 'DEPOSIT' AND x.case_id IS NULL)));
+      IF -NEW.amount_minor > on_case THEN
+        RAISE EXCEPTION 'money_trust_entry: a correction of a deposit made before a case takes from a case at most what was moved there (% %); record the rest before a case', NEW.currency, to_char(greatest(on_case, 0) / 100.0, 'FM999,999,990.00') USING ERRCODE = 'check_violation';
+      END IF;
     END IF;
     -- FO-7a2 (AG-6-75 rules 2, 4): a correction of a deposit with a reversal kind is recorded even below zero, and the
     -- shortfall is shown (money_trust_shortfall). "Returned" is a bounced cheque or wire: an e-Transfer, card, card
@@ -396,9 +414,9 @@ BEGIN
   END IF;
   -- FO-7lk: "Move back to trust" writes a trust entry for the withdrawal's party (money_credit_note_owed_back, after the
   -- insert). Take that party's lock now, before money_issued_invoice touches the invoice row, so this path keeps the
-  -- order a withdrawal to the invoice keeps: the party's lock first, the invoice row second (no 40P01). Only for a
-  -- withdrawal to this invoice (so of the invoice's party): an entry the checks below refuse takes no lock of another
-  -- party (review and break B-1 on 9f30e673: that would be a new two-party order).
+  -- order a withdrawal to the invoice keeps: the party locks first, the invoice row second (no 40P01). Only for a
+  -- withdrawal to this invoice: an entry the checks below refuse takes no lock (FO-7lk break B-1). With a pick that
+  -- withdrawal's party is another than the invoice's (FO-7ts part 3), so both locks are taken, smaller id first.
   IF NEW.overpaid_choice = 'OVERPAID_TO_TRUST' THEN
     SELECT coalesce(e.person_id, e.company_id) AS party, e.currency INTO w FROM "money_trust_entry" e
       WHERE e.firm_id = NEW.firm_id AND e.id = NEW.overpaid_entry_id AND e.kind = 'WITHDRAWAL_TO_INVOICE' AND e.invoice_id = NEW.invoice_id;

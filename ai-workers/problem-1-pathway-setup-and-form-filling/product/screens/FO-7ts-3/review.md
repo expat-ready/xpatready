@@ -1,4 +1,66 @@
-Reviewer: Changes requested e70a2c44e581fd2501bfccedc04c53ce725e9a46
+Reviewer: Changes requested 73adf83e5c19d82d86517ccf037ac5ce86909856
+
+# Round 2: diff-only re-review (P-277) of e70a2c44e..73adf83e5
+
+**What I ran at 73adf83e5:**
+* `check_fo7ts_money_settings` passed 150, failed 0.
+* fo7a2 35/0, fo7a 122/0, fo7mv 45/0, fo7lk 16/0, prisma 8/0, and pf12_walls 100/0 (run with `--tsconfig api/tsconfig.json`).
+* The rollback catalog fingerprint (round 1's method, now including the two FO-7lk functions) is identical before part 3 and after part 3 plus its rollback.
+* I re-ran my round-1 scratch scripts and wrote one new one (`rv/moveline.mjs`). All `rv_fo7ts3_*` scratch databases are dropped.
+
+## Round-1 findings
+
+* **Major 1: closed.**
+  * The diff against FO-7lk's text is only the lock lines.
+    * `money_credit_note_write` (`migration.sql:388-454`) reads the invoice's party and takes the smaller id first.
+    * `money_move_batch_owed_back` (`migration.sql:456-490`) locks every line party and every invoice party, sorted, before any invoice row.
+  * My race (pick against an OVERPAID_TO_TRUST credit note) went from 53 of 100 deadlocks to **0 of 100**.
+  * The builder's two DW26 races of 100 each pass.
+  * `rollback.sql` restores both functions from FO-7lk's text, and the restored-text guard covers them.
+* **Major 2: closed.**
+  * A no-case deposit's correction may now sit on a case its party moved money to (`migration.sql:242-246`). Money returned from a withdrawal stays on its case, and a deposit's reversal can only take money out, so neither direction can inflate a case.
+  * My `bounce.mjs` scenario: the returned cheque is booked on K, and the pick on K is refused ("Only CAD 0.00 is available on it"). The new test covers this as a pass and a fail.
+* **Major 3: closed by ruling.** Lead 96's written ruling, recorded in `challenge.md`, moves DW28 and DW30 to FO-7t part 2 and DW29 to the next `client-money.prisma` PR. Build Lead C may still overrule it.
+* **Minor 1: closed.** DW26 now proves that a deposit to the invoice's party waits, then commits.
+* **Minor 3: closed** (`@updatedAt`).
+* **Minor 4: closed.** The refusal over an existing trust refund is tested, and the test confirms nothing changed.
+* **Minors 2 and 5: closed.** Both are recorded in `challenge.md` and go in the PR body.
+* **Nits 1 and 3: closed.** Nit 2 (the DW26 planted fail) is still weak, but it is outweighed by the new race tests and the builder's mutation numbers (41 and 78 deadlocks with FO-7lk's text put back).
+
+## New in round 2
+
+**Major R2-1: a move batch's line for a pick touches the invoice row without the invoice party's lock, so it deadlocks with a pick on that invoice (40P01). Reproduced.**
+* This is the same class as round-1 Major 1, in the third writer that a pick turns into a two-party writer.
+* `money_move_line_write` (FO-7lk, `20261118210000_fo7lk_trust_lock/migration.sql`, the function from line 244; its lock is on line 272) locks only the line's party, the payer. It then runs `UPDATE money_invoice` on the source withdrawal's invoice (FO-7lk's rule: party lock before any invoice row).
+* **Reproduction** (`rv/moveline.mjs`, at 73adf83e5), with parties B (the invoice's) < A < D:
+  1. T1, a trust-to-operating batch, writes a line for A's pick on B's invoice X. T1 now holds A's lock and X's row.
+  2. T2, a pick by D on X, takes B's lock, then D's, then waits on X's row.
+  3. T1 writes its next line, for D's own withdrawal, and waits on D.
+  4. Result: **40P01**.
+* A batch covering many payers is the normal monthly transfer, so this order is reachable, though it needs a concurrent pick on the same invoice.
+* The brief's Holds forbid editing `money_move_line_write`. The fix is also not fully in the database: lines arrive one statement at a time, so the line-to-line order is set by the caller.
+* **Fix, either is enough:**
+  * **(a)** With the Lead's leave, `money_move_line_write` takes the line's party and the invoice's party smaller id first before the row, and the move route (FO-7m) inserts lines sorted by party, or locks every party up front. Add a DW26 race.
+  * **(b)** A written ruling in `challenge.md` that records this as a known retry, owned by the move route's item, with that item's brief naming the sorted-insert and pre-lock rule.
+* I keep this at Major for the same reason as round 1: it breaks FO-7lk's one lock order. A recorded ruling is enough to clear it.
+
+**Nit R2-1:** the FO-7lk comment kept in `money_credit_note_write` (`migration.sql:396-400`, "an entry the checks below refuse takes no lock of another party … that would be a new two-party order") now contradicts the code below it. Shorten it to point at the part 3 note.
+
+**Nit R2-2:** the rollback's restored-text guard for `money_move_batch_owed_back` (`rollback.sql:31`) checks for the comment text '%FO-7ts part 3%'. That works, but it is fragile. Matching a code token (for example `FOR p IN`) would be sturdier.
+
+## P-610 size: I support the exception
+* The part's own diff is now 841 added and 11 removed, about 852 lines.
+* About 110 of those lines are the full bodies of the two FO-7lk functions. `CREATE OR REPLACE` needs the whole text, and the change in them is about 12 lines.
+* Splitting the fix into its own PR would either leave a known 40P01 on `main` between the two merges, or need a second migration and a second pass of the baton for 12 lines.
+* Without the copied text, the part is about 740 lines.
+
+**Verdict: Changes requested** on `73adf83e5`, for R2-1 only. Everything from round 1 is closed. Once R2-1 is resolved by (a) or (b) with nothing else changed, an Approve needs only a diff check of that change.
+
+---
+
+# Round 1 (kept as the record)
+
+Round 1 line (superseded): Reviewer: Changes requested e70a2c44e581fd2501bfccedc04c53ce725e9a46
 
 # FO-7ts part 3: Opus review (independent, high effort, P-608, P-278)
 

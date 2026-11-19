@@ -9,6 +9,11 @@ The brief is `build-lead-c-briefs/FO-7ts-3.md` on `claude/build-lead-c-647b40`. 
 * **Ruling 2.** DW28 and DW30 move to FO-7t part 2.
 * **Ruling 3.** DW29 goes to a follow-up on the next PR on `client-money.prisma`. The design below is its starting point.
 
+## Needs a ruling (round 2): `money_move_line_write` (review R2-1, Major; break R2-m1, Minor). For the tech lead.
+* **What happens.** FO-7lk's `money_move_line_write` locks a line's party (the payer), then updates the invoice row. For a pick line, that row is another party's, and that party's lock is never taken. Lines arrive one statement at a time, so a batch holding A's lock and invoice X's row can wait on D's lock, while D's pick on X holds D's lock and waits on X's row. The result is 40P01. Both the reviewer and the breaker reproduced it at 73adf83e5. No money goes wrong: one side is refused and can retry.
+* **Why it isn't fixed here.** `money_move_line_write` is on the brief's do-not-edit list.
+* **Asked:** leave to make `money_move_line_write` take the line's payer and its invoice's party smaller id first. That closes the two-lock case for a single line. Across lines, the move route (FO-7m) inserts lines sorted by party, or takes all their locks first: a line-at-a-time trigger cannot order locks across statements. Add one DW26 race test of 100 races. **Recommended:** yes, in this PR, the same as ruling 1. The other choice is a written "known retry, owned by FO-7m".
+
 ## Asked before these rulings (kept as the record)
 
 ### 1. The two-lock order with FO-7lk's `money_credit_note_write` (review Major 1, break m1). For the tech lead.

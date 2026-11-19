@@ -28,7 +28,7 @@ BEGIN  -- run from another folder, sed reads nothing: refuse (the transaction un
   IF (SELECT prosrc FROM pg_proc WHERE proname = 'money_trust_entry_write') LIKE '%picked_other_funds%'
      OR (SELECT prosrc FROM pg_proc WHERE proname = 'money_invoice_write') LIKE '%tax_treatment%'
      OR (SELECT prosrc FROM pg_proc WHERE proname IN ('money_credit_note_write')) LIKE '%inv_party%'
-     OR (SELECT prosrc FROM pg_proc WHERE proname IN ('money_move_batch_owed_back')) LIKE '%FO-7ts part 3%' THEN
+     OR (SELECT prosrc FROM pg_proc WHERE proname IN ('money_move_batch_owed_back')) LIKE '%FOR p IN SELECT DISTINCT%' THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: the earlier function texts were not read; run it from the studio folder';
   END IF;
 END $restored$;
