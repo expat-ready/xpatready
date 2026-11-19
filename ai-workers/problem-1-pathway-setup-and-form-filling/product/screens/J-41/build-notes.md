@@ -19,3 +19,12 @@
 ## Checks (19 Nov)
 * `j_41.ts` 11/11, exit 0, by its header line on a fresh copy (PLATFORM_IDENTITY=local).
 * `walk.mjs j_41` (the recorded walk CI runs) could not record here: this cloud machine has no ffmpeg for the video and installing browsers is not allowed in it. The `walks` workflow records it on the PR.
+
+## Review round 1 (19 Nov, fresh Opus reviewer, on 7a8c5832f): Changes requested, journey 8.5/10; fixed
+* **Major M1, fixed:** a run starting in Toronto's last hour (about 4% of start times) took Wednesday and Thursday for "Tuesday" and "Wednesday" (a +1 h nudge), and the slots-route line then failed. The days are now read at local noon plus 24 h steps, and the walk stops at once if they are not Monday, Tuesday, Wednesday.
+* **Minor m1, fixed:** the swaps note said the slots read uses no fake; it asks FO-2's `arrival` fake for the consent sentence "Your details" shows (no judge reads it; no swap is due in this row). The note and the test's header now say so.
+* **Minor m2, fixed:** the W1 and W2 screenshots had the sticky top bar drawn over the changed rows; they are now viewport shots with the row scrolled into view.
+* Held: every judge is real (the NR lines show both false before any change), "Swaps: none", waits fail loudly, selectors match both pages, the header is read by `walk.mjs`. Reviewer's own runs: 11/11 twice, exit 0.
+
+## The chain for R1.41 (Lead B on #2243, 19 Nov 13:1x IST)
+#2243 (the screen) → #2252 (FO-3a part 1c: one name per set of hours; a deactivated colleague is not a target; breaker M4 and m11) → this PR (J-41 and the records). J-41 runs on the fixed API: its host makes no second set and no colleague is deactivated, so no step changes.
