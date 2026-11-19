@@ -36,3 +36,6 @@ Main's newest migration at 20:26: `20261119071700`. #2204 (080000) and Lead B's 
 * A case-side row later: `case.opened` for a directly opened case (FO-8 question 5).
 * The c617 line-82 timeout of batch #2266 is unexplained. If it recurs, name that batch's PRs to the Lead.
 * Tell AUD-1m 2c's lane that AUD-4's `render.ts` has one pair reader for its pieces shape, if AUD-4 merges first.
+
+## Update 20:3x IST
+* 20:3x IST 19 Nov (Lead 95): **all six lanes were started by Lead 94 at 20:2x IST**: CS-DL1b task 8bc196a8 (so the #2000 trigger is covered), R1.59 FO-7ts-3 chain 55053d4c, CS-V1-3 6f5812c2, CS-W3-0 30f05df7, CS-NT1-1 7f4564af, AUD-4 bb3d9c73. Do not ask for them again. Build Lead C (4) starts from hand-over d at the founder's next typed turn. Lead 95 owes the pick-guard SQL plan read (when #2204 merges) and the #2101 migration read. Next: watch for their first PRs.
