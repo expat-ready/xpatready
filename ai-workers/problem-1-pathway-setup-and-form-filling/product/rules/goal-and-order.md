@@ -114,3 +114,12 @@ Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-6
 | P-700 | qa walks run on GitHub's machines with recordings (item #224); the Mac keeps 1-2 exploratory qa sessions; a reviewed recorded walk counts as gate A. | prose | 18 Nov |
 | P-701 | Release 1 invoices charge GST/HST only (no PST, RST or Quebec); Unconfirmed: no accountant or counsel. | prose | 18 Nov |
 | P-702 | 21 Nov: an independent Opus reviewer evaluates the adopted changes (plan #181), 14-17 Nov vs 19-21 Nov on measured numbers; keep, fix or drop each. | prose | 18 Nov |
+
+## Rows moved word for word from RULES.md by Lead 87, 11:0x IST 19 Nov (RULES.md under 25 KB, P-611)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-723 | Drain to ~13:30 IST 19 Nov: only merging approved PRs; then journey by journey (P-348). | prose | 19 Nov |
+| P-722 | Proof per item, never at the end; qa never blocks merging; proof goes automatic. | prose (qa skill) | 19 Nov |
+| P-721 | Protect the merge path: #2195 first; a dequeued PR re-merges main within 30 min; a failed batch is split at once. | prose | 19 Nov |
+| P-539 | Repository stays public; integration and strategy content only private; full row `rules/tech-lead.md`. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
+| IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684, P-711 size #2169 in DECISIONS) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
