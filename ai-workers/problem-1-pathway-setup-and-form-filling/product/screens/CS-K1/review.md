@@ -236,3 +236,30 @@ No Blocker. No Major. Open Minors: m8, m9.
 Verdict: Approve
 
 Reviewer: Approve 4715e7873
+
+## Part 2 re-review (40639a2de)
+
+Diff only (P-277): `git diff 4715e7873..40639a2de -- …/prototype`, which changes 2 files: `clients.ts` (+7 / -3) and `check_csk1_client.ts` (+2 / -2). The rest of the commit is records. I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at 40639a2de with my copy `csk1r4` on :4737; I stopped the copy and removed the worktree afterwards.
+
+* **m8: closed.**
+  * `partyFor` (`clients.ts:35-43`) asks the port with the cleaned name. On `FoPersonInvalidInput` only, it asks once more with `Client <code>`, and any other error is still thrown.
+  * Carrying on in the same transaction is safe. The port's `parsePersonInput`/`parseCompanyInput` is its first line (`fo-person-port.ts`), so a refusal is a JS throw before any SQL runs, and PostgreSQL never marks the transaction as failed.
+  * The fallback always passes the port's rule: "Client CL-00001" has letters and digits for both the person and the company rule.
+  * The job's `linkClient` goes through the same `partyFor`, so the job is covered too.
+* **What I ran:**
+  * `check_csk1_client.ts 4737 xr_studio_csk1r4` on a fresh copy: **64/64**. The DW9 (breaker F1) case now holds five names, my two included.
+  * My own five names, posted as `x-actor` user-O:
+    * `"Ab⁥cd Sample"` gave 201, and its party is "Client CL-00017".
+    * `"ாாா"` gave 201, and its party is "Client CL-00018".
+    * A tag character gave 201, and its party is "Abcd Sample".
+    * U+2028 gave 400 in words, from the case side's own check.
+    * Two emoji gave 201, and the party is named by its code.
+  * Every client is linked, and none is waiting.
+* **A small gap in the test, not a finding:** the new DW9 names are checked for 201 and a link, not for the party's name. My run above shows both are named by their code.
+* I did not re-run J-72 (this diff does not touch it), `check_fo8`, the typecheck or full `ci`.
+
+No Blocker. No Major. Still open: m9 (the Lead's note on the job key) and F4 (the firm-scope question for the tech lead), as recorded at 4715e7873.
+
+Verdict: Approve
+
+Reviewer: Approve 40639a2de
