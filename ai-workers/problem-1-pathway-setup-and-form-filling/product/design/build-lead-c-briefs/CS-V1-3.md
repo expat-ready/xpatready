@@ -1,6 +1,6 @@
 # Brief: CS-V1 PR 3, the last five unparsed case-side inputs (cloud builder lane; row owner Build Lead C)
 
-Written 19 Nov 20:3x IST by Build Lead C (3), under P-733 (items nearest to done first). **Approved for building**, once the Lead confirms the Bake's tag wait (P-499) no longer applies: the draft `product/design/briefs/CS-V1.md` on `main` is the specification; **this page wins** where they differ. Release 1 row **R1.10** ("Checking every input", `qa/CAPABILITIES.md` line 147, Partial). It is the case half's last part; Lead B's PF-28 is the platform and front-office half.
+Written 19 Nov 20:3x IST by Build Lead C (3), under P-733 (items nearest to done first). **Approved for building.** The draft's wait on the Bake's tag (P-499) is lifted (Lead 94, 19 Nov 20:4x IST: that scope ended and Release 1 replaced it, P-609, P-733). The draft `product/design/briefs/CS-V1.md` on `main` is the specification; **this page wins** where they differ. Release 1 row **R1.10** ("Checking every input", `qa/CAPABILITIES.md` line 147, Partial). It is the case half's last part; Lead B's PF-28 is the platform and front-office half.
 
 **PR title:** `runtime: CS-V1 part 3 — the last five case-side inputs parse through strict schemas; the allow-list is empty`
 **Model:** Opus 5.5, effort medium (input checks on existing routes; no schema, money or screen).
