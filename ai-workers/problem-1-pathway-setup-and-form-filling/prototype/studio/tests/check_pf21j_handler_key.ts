@@ -125,6 +125,12 @@ try {
   ok("PF-21j H4 fail: … and the complaint is unchanged (open, not acknowledged)", JSON.stringify(await db.platComplaint.findFirst({ where: { id: demotedOnes } })) === rowBefore);
   const open = await call("GET", `/${demotedOnes}`, demoted.token);
   ok("PF-21j H4 pass: … but can still open it (canRead unchanged: the handler reads their own)", open.status === 200 && open.body.id === demotedOnes && open.body.status === "OPEN", open);
+  // Review Major 3: only grants not ended count. The demoted person still has their ended Case Manager grant.
+  const listAfter = await call("GET", "/handlers", owner.token);
+  ok("PF-21j H4 fail: an ended Case Manager grant does not count: the handler list leaves the demoted person out", listAfter.status === 200 && !(listAfter.body.items ?? []).some((i: { id: string }) => i.id === demoted.id), listAfter);
+  const anotherOne = await record(manager.id, "Client E");
+  const toDemoted = await call("POST", `/${anotherOne}/handler`, owner.token, { handlerStaffId: demoted.id });
+  ok("PF-21j H4 fail: … and making them a handler again → 422 with its sentence", toDemoted.status === 422 && toDemoted.body.fields?.handlerStaffId === HANDLER_NEEDS_KEY, toDemoted);
   const ownerAck = await call("POST", `/${demotedOnes}/acknowledge`, owner.token, { at: ago(5) });
   ok("PF-21j H4 pass: someone with both keys (the Owner) still acts on it → 200", ownerAck.status === 200, ownerAck);
 

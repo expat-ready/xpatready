@@ -96,7 +96,7 @@ try {
   const as = {} as Record<Role, { id: string; name: string; token: string }>;
   for (const r of ROLES) as[r] = await person(firmA, r.toLowerCase().replace(/_/g, "-"), r);
   const ownerB = await person(firmB, "owner-b", "OWNER");
-  const suspended = await person(firmA, "suspended", "CASE_OFFICER", "SUSPENDED");
+  const suspended = await person(firmA, "suspended", "CASE_MANAGER", "SUSPENDED");   // PF-21j review m3: a role that may record, so only the status leaves them out
   const leaver = await person(firmA, "leaver", "CASE_MANAGER");          // handles one, then is deactivated (DW3)
   const elsewhere = await person(firmA, "elsewhere", "CASE_MANAGER");    // appears only in complaints the handler cannot see
   const handlerP = await person(firmA, "handler", "CASE_MANAGER");     // PF-21j: the handler holds agent/complaint:record (a Case Officer cannot be one)
