@@ -365,3 +365,36 @@ This is a diff-only re-review (P-277) of `956beae7a996654cb26b6361cde0c28352adf2
 The minors m1-m5 stand as recorded.
 
 **Verdict: Approve** for `956beae7a996654cb26b6361cde0c28352adf293`. No Blocker or Major is open.
+
+## Review round 11 (093d9829b, merge + cards)
+
+This is a diff-only re-review (P-277) of `093d9829b3a7328725fbe0b6fc5e4d0a45072fe4`. It is one merge commit with parents `956beae7a` (round 10, approved) and `origin/main` `4aa912c92`. The merge conflicted in the two module cards only.
+
+### Checked
+* **Cards against main.** `git diff origin/main 093d9829b` on the two cards:
+  * `MODULE.cases.md` (37 lines) adds CS-DL1's deadline invariant and its two tests at the end of the Tests line, and nothing else. Main's CS-K1 content is all there: `clients.ts` in paths and Purpose, `GET clients`, `GET clients/:id`, the client invariant, caseClient and caseClientCounter, and `check_csk1_client.ts`. CS-W1's firm-id invariant and test are kept too.
+  * `platform/MODULE.md` (40 lines) adds the `calendar/` Purpose entry, "(its acknowledge-by period, over `calendar/`)" after `complaints/`, the `platform_firm_calendar` definer sentence in the PF-12 wall invariant, and `check_csdl1_deadlines.ts` in Tests. It drops one blank line, the one before **Invariants (set by).**
+  * A word diff against main removes only two tokens: `complaints/`; and the closing `check_css1_index.ts`. Each comes back extended, so no text of main's is lost. AUD-1a (append-only), AUD-1b (the AuditPort invariant and `check_aud1b_adapter.ts`), PF-15 part 1a and PF-19b part 2 are all present unchanged.
+* **The folded invariant.** Round 10's line read "One firm calendar (`calendar/working-days.ts`): a government or legal date is never moved; a reminder counted back lands on the last open day on or before the computed day, never after the date (CS-DL1; AG-7-94)". It now sits inside the `calendar/` Purpose entry as "(CS-DL1: a government or legal date is never moved; a reminder counted back lands on the last open day on or before the computed day, never after the date; AG-7-94)". The rule, its source row and its scope are the same. See m6 for what was lost.
+* **`module-cards.py tree`** reports `PASS  module cards: 15 cards, tree checked` (rc 0).
+* **`contracts/runtime.ts`.** `git diff origin/main 093d9829b` shows only CS-DL1's optional `deadline` fields (`weekday`, `mark`, `shown`, `missed`) and their doc comment. The round-10-to-head delta on this file is the same, line for line, as main's own delta (`c600f2150..4aa912c92`). It auto-merged and nothing of main's was changed.
+* **Round 10 to head.** On the PR's 19 files, `git diff 956beae7a 093d9829b` touches only the two cards and `contracts/runtime.ts`. For every file except the two cards, the changed lines are exactly main's changes (I compared them line by line), so the builder edited no file other than the cards.
+* **Scope.** `git diff origin/main...093d9829b --stat` lists the same 19 files (+512/-109). The one-line drop from round 10's +513/-108 is the folded invariant line.
+* **Migration.** `20261119000000_csdl1_firm_calendar/migration.sql` is unchanged (sha256 `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4` at both 956beae7a and the head). It is later than main's newest, `20261118230000_csk1_case_client`, and its stamp is used only once. The three repeated stamps (20261025090000, 20261031140000, 20261102010000) are main's old ones.
+* **Collisions.** Main changed 109 files between `c600f2150` and `4aa912c92` (PF-15 1a, CS-K1, AUD-1a/1b, records). Only the two cards and `contracts/runtime.ts` are also in the PR. None of main's new files mentions `platform_firm_calendar` or `working-days`, and none touches `case-stages.ts`, `stages.tsx`, `calendar/` or `complaints/`. Main's `settings.ts` change only adds `firmId` to the setting-change audit line, so `readSetting`, which `readFirmCalendar` uses, is unchanged. Main's PF-12 walls test adds `platform_plan_limit` as a later catalogue; its definer-function check is the same rule round 10 already passed. Results of `git grep -n "complaints/business-days" origin/main -- '*.ts'`:
+  * The four hits are the same four as at `c600f2150`. No new importer arrived.
+  * `leads.ts` and `open-minutes.ts` are CS-DL1 files and import from `calendar/working-days.ts` at the head.
+  * `check_pf21_complaints.ts` and `check_pf21v_views.ts` need `acknowledgeBy`, `BusinessDayTally` and `businessDaysBetween`. The head's `business-days.ts` still exports all three.
+* **CS-K1's NOT NULL `client_id`.** The CS-DL1 tests insert no `runtime_case` row directly (the browser suite only reads `firm_key`), so the new constraint does not affect them.
+* **Suite at 093d9829b.** `tests/check_csdl1_deadlines.ts` passes 37/37 against the shared database.
+
+### Minor (new, not blocking)
+* **m6:** folding the invariant into Purpose loses two things. First, the word "One": the old line said this is the one firm calendar, which DW5's one-function-not-a-copy test enforces; Purpose now says "the firm's calendar". Second, the rule is no longer listed under **Invariants (set by).** A later card edit could write "`calendar/` the one firm calendar: …" with no extra line. The rule itself is unchanged, and the cases card also states the deadline side as an invariant.
+
+### Could not check
+* The builder's typecheck and its database and browser suites at this head were still running when I wrote this. CI for this head is also still to come.
+* The journey was not re-run, because the merge does not change the screen. Round 3's 9.5/10 stands.
+
+The minors m1-m6 stand as recorded.
+
+**Verdict: Approve** for `093d9829b3a7328725fbe0b6fc5e4d0a45072fe4`. No Blocker or Major is open.
