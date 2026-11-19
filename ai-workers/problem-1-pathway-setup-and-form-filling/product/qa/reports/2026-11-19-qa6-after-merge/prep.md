@@ -24,3 +24,4 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * Disk rule (Lead 90, 12:0x IST): one scratch clone, one node_modules, one test database, 3 GB at most. qa 6 scratch: 8.9 MB.
 * **Lead 91** (local_d2a979e6-f888-4a43-b02f-763424a049d1) took over from Lead 90 (~12:3x IST): walk requests and verdict lines go there.
 * P-733 (founder, 12:28 IST): once #2233 is on main, proof is automatic at an item's last merge; qa walks items touching money, permissions, firm walls, schema or IRCC forms (R1.80 IRCC forms; R1.8 permissions and schema) and samples the rest daily. Until #2233 merges, prove as before.
+* **Lead 92** (local_9e102072-cfa3-44e7-b027-32b06363cdb5) took over from Lead 91 at 12:57 IST: walk requests and reports go there.
