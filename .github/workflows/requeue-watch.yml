@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  issues: write          # remove `dequeued`, post the queue comment
+  issues: write          # post the queue comment
   pull-requests: write
   checks: read           # main's and the batch's check runs
   actions: read          # the failed job's log, for the pipeline-lock list
@@ -31,4 +31,6 @@ jobs:
           # an app with write access makes "@mergifyio queue" count. Unset: the workflow's own token.
           GH_TOKEN: ${{ secrets.REQUEUE_TOKEN || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          REVIEWERS: ${{ vars.REVIEWERS }}                              # who may approve, as ci.yml and label-guard.yml
+          POSTER: ${{ vars.REQUEUE_LOGIN || 'github-actions[bot]' }}   # the account REQUEUE_TOKEN belongs to, if set
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/requeue-watch.sh

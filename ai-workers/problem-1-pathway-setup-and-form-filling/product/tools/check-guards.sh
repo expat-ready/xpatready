@@ -177,11 +177,15 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 27 tooling|product/tools/check-docs.sh|s/^        \[ -n "\$areas" \] .. continue$/        continue/|check-workflow-lock.sh
 27 closed|product/tools/check-docs.sh|/EXEMPT list in tools\/decision-impact.sh could not be read/d|check-workflow-lock.sh
 28 head|product/tools/requeue-watch.sh|s/if \[ "\$head" != "\$appr" \]; then/if false; then/|check-requeue-watch.sh
-28 who|product/tools/requeue-watch.sh|s/select(\.author_association == "OWNER" or /select(true or /|check-requeue-watch.sh
+28 who|product/tools/requeue-watch.sh|s/(env\.WHO . split(" ")) . index(\$l)/true/|check-requeue-watch.sh
 28 once|product/tools/requeue-watch.sh|/already requeued once for head/s/; continue; fi/; fi/|check-requeue-watch.sh
+28 poster|product/tools/requeue-watch.sh|s/any(\.\[\]; \.user\.login == \$p and /any(.[]; /|check-requeue-watch.sh
+28 stall|product/tools/requeue-watch.sh|s/-gt 1800 \]/-gt 99999999 ]/|check-requeue-watch.sh
 28 day|product/tools/requeue-watch.sh|s/-ge "\$MAX_DAY"/-ge 99/|check-requeue-watch.sh
-28 main|product/tools/requeue-watch.sh|s/grep -qxF "\$j" <<< "\${mfail:-}"/false/|check-requeue-watch.sh
-28 own|product/tools/requeue-watch.sh|s/^  why=""   # is the failure main.s?/  why=x/|check-requeue-watch.sh
+28 others|product/tools/requeue-watch.sh|s/-ge "\$MIN_OTHERS"/-ge 0/|check-requeue-watch.sh
+28 member|product/tools/requeue-watch.sh|s/select(\.body . contains(\$me) . not)/select(true)/|check-requeue-watch.sh
+28 own|product/tools/requeue-watch.sh|s/^  why=""; unknown=""/  why=x; unknown=""/|check-requeue-watch.sh
+28 unknown|product/tools/requeue-watch.sh|s/if \[ -z "\$why" \] \&\& \[ -n "\$unknown" \]; then/if false; then/|check-requeue-watch.sh
 28 paths|product/tools/requeue-watch.sh|/\[ -n "\${paths:-}" \]/d|check-requeue-watch.sh
 28 proof|product/tools/requeue-watch.sh|s/select(\.m > \$lim)/select(false)/|check-requeue-watch.sh
 28 lw|product/tools/lead-watch.sh|/requeue-watch.sh" proof/d|check-requeue-watch.sh
