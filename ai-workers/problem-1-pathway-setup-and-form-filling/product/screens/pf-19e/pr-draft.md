@@ -1,6 +1,6 @@
 # PF-19e: PR draft (overlapped on PF-19p #1961; the PR opens only after #1961 merges)
 
-**State (19 Nov, about 10:2x IST):** at 55d5c9ecd. #1961 left the queue twice (an old migration stamp, then a conflict behind #2124). Its builder merged main again, and it is queued at c27308ea1. That tip is merged in here: only MODULE.md conflicted. The card keeps PF-15's own section and stays within 40 lines; main's copy is at 41, so the blank line before **Purpose** was dropped. All 22 suites passed at 55d5c9ecd: PF-19e 41, PF-19r 28, PF-18b 41, PF-21 107, PF-21b 32, PF-21w 83, PF-21v 54, PF-19b 42, PF-19b2 44, PF-19b mail 29, PF-19p 68, PF-4c 24, PF-6m 12, PF-6m2 19, PF-5t 42, PF-5v 7, PF-12 100, PF-19a 94, PF-6r 17, PF-24 84, PF-4b 57, PF-4 119. Contracts, graph, any and module cards pass. The reviewer approved bf91eacc9. One diff-only re-review of bf91eacc9..HEAD follows the merge of main after #1961 lands; then the PR opens.
+**State (19 Nov, about 13:0x IST):** at b98bc93da. #1961 is queued at 6c775f43c, and that tip is merged in here. Main now has P-712 module-card fragments: PF-19e's entry point and test are in `api/src/platform/MODULE.rows/PF-19e.md`. Its invariants paragraph rides on the card's messages (PF-19b part 2) line, the only line that differs from PF-19p's card. The card is 40 lines and `module-cards.py` tree and pr both PASS. All 22 suites passed at b98bc93da: PF-19e 41, PF-19r 28, PF-18b 41, PF-21 107, PF-21b 32, PF-21w 83, PF-21v 54, PF-19b 42, PF-19b2 44, PF-19b mail 29, PF-19p 68, PF-4c 24, PF-6m 12, PF-6m2 19, PF-5t 42, PF-5v 7, PF-12 100, PF-19a 94, PF-6r 17, PF-24 84, PF-4b 57, PF-4 119. Contracts, graph and any pass. Lead 87's rules apply (P-721 to P-724: drain, nothing new; this is the finishing of PF-19e). The reviewer approved bf91eacc9. One diff-only re-review of bf91eacc9..HEAD follows the merge of main after #1961 lands; then the PR opens.
 
 **Next steps:**
 1. `git fetch origin main && git merge --no-edit origin/main` (P-270).
@@ -73,7 +73,7 @@ Walk at 1440 px on an isolated copy:
 
 Duplicate check: searched BACKLOG*.md, qa/BUGS.md, open PR titles (PF-19*, send/messages.ts, MAIL_PORT) and main's code (`message-body`, `sendSystem`); none.
 
-Card: MODULE.md updated. Cost: US$0, live AI off.
+Card: MODULE.md (the PF-19b part 2 line) and the P-712 fragment `MODULE.rows/PF-19e.md`. Cost: US$0, live AI off.
 
 ## The merge with PF-19r and the amendment (rev 17.31)
 * **One mail API:** PF-19r's `MessagesMail.sendIn`, `ready`, `held`, `mailIn` and `mailReady` are kept. PF-19e's own `sendInTransaction` is dropped. PF-19p's platform branch and PF-19e's system sender are folded in. System mail is never reported held, and the cap's "ahead" count leaves it out.
