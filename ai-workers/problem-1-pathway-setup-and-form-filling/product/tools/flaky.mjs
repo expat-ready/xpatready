@@ -5,10 +5,10 @@
 //   node product/tools/flaky.mjs events [--since <ISO>] [--events <tsv>]...    the retry records, one per line
 //   node product/tools/flaky.mjs count [--since <ISO>] [--events <tsv>]... [--json]
 //        "retries=N passed_on_retry=A failed_twice=B" (daily-numbers.sh reads this line; default: the last 24 h)
-//   node product/tools/flaky.mjs quarantine [--now <ISO>] [--events <tsv>]... [--ledger <tsv>] [--parts <1..9>]
+//   node product/tools/flaky.mjs quarantine [--now <ISO>] [--events <tsv>]... [--ledger <tsv>] [--parts <1..24>]
 //        the suites the rule quarantines, one line "suite|owner|fix_by|runs ..." (CI's kind job passes it to every part
 //        as SUITES_QUARANTINE_AUTO, so all parts deal the same suites); the reasons on stderr
-//   node product/tools/flaky.mjs report --events <retries.tsv> --logs <dir> [--part <1..9>] [--ledger <tsv>]
+//   node product/tools/flaky.mjs report --events <retries.tsv> --logs <dir> [--part <1..24>] [--ledger <tsv>]
 //        F5 (founder 6 Nov): a pass on retry is never silent. One qa/BUGS.md-style bug line per suite that passed only on
 //        retry, with its 1st try's log tail (<dir>/<suite>.try1.log); run-suites.sh --retry prints it into the job
 //        summary and writes it to retry-bugs.md. Prints nothing when no suite passed on retry.
@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUITE = /^check_[A-Za-z0-9_.-]+\.(ts|cjs)$/;
 const OUTCOMES = new Set(["passed on retry", "failed twice"]);
-const PARTS = 9; // ci.yml allows SHARDS 1..9 (--parts: only the first n, one list call each); the Mac path uploads part 1
+const PARTS = 24; // ci.yml allows SHARDS 1..24 (19 Nov; was 1..9) (--parts: only the first n, one list call each); the Mac path uploads part 1
 const DAY = 86400e3;
 
 export function parseEvents(text, extra = {}) {
@@ -162,7 +162,7 @@ export function count(events, since, until = Infinity) {
 // Which artifacts count: this repository's own runs, not expired, recent enough, named for a part.
 export function wanted(art, repoId, since) {
   const wr = art.workflow_run || {};
-  return /^suite-retries-[1-9]$/.test(art.name || "") && !art.expired && Date.parse(art.created_at) >= since &&
+  return /^suite-retries-([1-9]|1[0-9]|2[0-4])$/.test(art.name || "") && !art.expired && Date.parse(art.created_at) >= since &&
     wr.repository_id === repoId && wr.head_repository_id === repoId;
 }
 
@@ -214,8 +214,8 @@ function args(argv) {
     const a = argv[i];
     if (a === "--json") o.json = true;
     else if (["--since", "--now", "--ledger"].includes(a) && argv[i + 1] !== undefined) o[a.slice(2)] = argv[++i];
-    else if (a === "--parts" && /^[1-9]$/.test(argv[i + 1] || "")) o.parts = Number(argv[++i]);
-    else if (a === "--part" && /^[1-9]$/.test(argv[i + 1] || "")) o.part = argv[++i];
+    else if (a === "--parts" && /^([1-9]|1[0-9]|2[0-4])$/.test(argv[i + 1] || "")) o.parts = Number(argv[++i]);
+    else if (a === "--part" && /^([1-9]|1[0-9]|2[0-4])$/.test(argv[i + 1] || "")) o.part = argv[++i];
     else if (a === "--pr" && /^[1-9][0-9]*$/.test(argv[i + 1] || "")) o.pr = Number(argv[++i]);
     else if (a === "--queue") o.queue = true;
     else if (["--logs", "--body"].includes(a) && argv[i + 1] !== undefined) o[a.slice(2)] = argv[++i];
