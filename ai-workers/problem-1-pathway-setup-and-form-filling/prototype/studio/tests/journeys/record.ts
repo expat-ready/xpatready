@@ -1,5 +1,5 @@
 // P-700 (#224): the recording of a journey, loaded before it (tsx --import), so a journey file stays as it is. Every
-// browser context the journey opens gets a video (1440 x 900) and a Playwright trace; every PASS, FAIL or HELD line gets
+// browser context the journey opens gets a video (its viewport scaled to fit 800 x 800, P-729: video-size.ts) and a Playwright trace; every PASS, FAIL or HELD line gets
 // a screenshot of each open page; every fetch the journey makes is logged (method, address, status). A journey with no
 // screens yet (WALK_BOARD=1, set by walk.mjs when its file never starts a browser) gets a recorded step board instead:
 // a page listing its steps and the requests behind each, so its video and trace show the walk honestly as an API walk.
@@ -7,6 +7,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { videoSize } from "./video-size.ts";
 
 const OUT = process.env.WALK_OUT;
 if (!OUT) throw new Error("record.ts: WALK_OUT is not set (run the journey through tests/journeys/walk.mjs)");
@@ -32,7 +33,7 @@ function finishContext(ctx: BrowserContext): Promise<void> {
 function record(browser: Browser): Browser {
   const close = browser.close.bind(browser), newContext = browser.newContext.bind(browser);
   browser.newContext = async (opts = {}) => {
-    const ctx = await newContext({ ...opts, recordVideo: { dir: join(OUT!, "video"), size: opts.viewport ?? { width: 1440, height: 900 } } });
+    const ctx = await newContext({ ...opts, recordVideo: { dir: join(OUT!, "video"), size: videoSize(opts.viewport ?? { width: 1440, height: 900 }) } });
     await ctx.tracing.start({ screenshots: true, snapshots: true, title: process.argv[1] });
     live.add(ctx);
     const ctxClose = ctx.close.bind(ctx);
