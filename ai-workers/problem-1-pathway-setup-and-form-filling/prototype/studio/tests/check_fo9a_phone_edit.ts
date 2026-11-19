@@ -153,7 +153,7 @@ try {
   ok("FO-9a phone E6 fail (review M1): a local-only number with no area code (555 0100, 4165550) → 422, never saved as +15550100",
     sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "555 0100" }))) && sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "4165550" }))) && person(ivy.person.id) === "12|false|-");
   const spellings: [string, string][] = [["011 44 20 7946 0000", "+442079460000"], ["+44 (0) 20 7946 0958", "+442079460958"], ["1 416 555 0108", "+14165550108"], ["\uff14\uff11\uff16 555 0109", "+14165550109"]];
-  const read6: string[] = [];   // one after another: the last save is the last spelling (re-review R1: Promise.all raced on the row lock)
+  const read6: (string | null)[] = [];   // one after another: the last save is the last spelling (re-review R1: Promise.all raced on the row lock)
   for (const [t] of spellings) read6.push((await people.editPhone(R, ivy.person.id, { phone: t })).phone);
   ok("FO-9a phone E6 pass: an international prefix (011), a trunk (0), a leading 1 and full-width digits are read without loss", read6.every((x, i) => x === spellings[i][1]), read6);
   const n6 = audits(ivy.person.id), same = await people.editPhone(R, ivy.person.id, { phone: "416 555 0109" });
