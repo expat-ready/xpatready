@@ -6,7 +6,9 @@
 //   E2 own or all as FO-2v: another firm's person, an unseen person and a malformed id are the same 404, nothing saved;
 //   E3 `{ phone }` only: any other key, an empty phone, a control mark → 422, nothing saved;
 //   E4 audited with ids only, never the number (PF-23);
-//   E5 the route declares agent/prospect:edit; the app's own path under the firm walls (PF-12) saves in its firm only.
+//   E5 the route declares agent/prospect:edit; the app's own path under the firm walls (PF-12) saves in its firm only;
+//   E6 the breaker's findings on b6b6b3d4: no 500 on a long number, no number without its E.164 key, no digit or
+//      extension dropped, one sentence for every refusal, the same number again writes nothing.
 // US$0, no model call.
 //   tsx studio/tests/check_fo9a_phone_edit.ts
 import "reflect-metadata";
@@ -19,6 +21,7 @@ import { join } from "node:path";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { PeopleEdit, PeopleEditController, PHONE_EDIT_ACTION, PHONE_REQUIRED, UNREADABLE_PHONE } from "../api/src/front-office/people/edit.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
+import { Prospects } from "../api/src/front-office/sales/prospects.ts";
 import type { SalesPorts } from "../api/src/front-office/sales/public.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { oneQueryPerCaller, walledPool, withFirm } from "../api/src/platform/firm-scope.ts";
@@ -104,8 +107,22 @@ try {
   ok("FO-9a phone E2 pass: the Case Manager fixes the person on their own lead", (await people.editPhone(T, omar.person.id, { phone: "+1 416 555 0103" })).fixNumber === false);
   const una = await add(R, { givenNames: "Una", familyName: "Unassigned", phone: "12" }); sql(`update fo_lead set owner_staff_id = null where id = '${una.id}'`);
   ok("FO-9a phone E2 pass: an Unassigned lead's person, for someone who may see Unassigned leads (view.all, AG-2-13c rule 6)", (await people.editPhone(T, una.person.id, { phone: "+1 416 555 0104" })).phone === "+14165550104");
+  // Review m3: a person seen only through a prospect the editor owns (Engage, then the prospect handed over), and a deactivated owner's lead counting as Unassigned.
+  const pia = await add(R, { givenNames: "Pia", familyName: "Prospect", phone: "12" });
+  const noProspect = await refusal(() => people.editPhone(T, pia.person.id, { phone: "+1 416 555 0111" }));
+  await new Prospects(db, ports).engage(R, pia.id);   // FO-2 part 3's Engage: the lead stays the Owner's
+  sql(`update fo_prospect set owner_staff_id = '${T.staffId}' where lead_id = '${pia.id}'`);   // handed to the Case Manager (Sample)
+  ok("FO-9a phone E2 pass/fail (review m3): a person on no visible lead is 404 to the Case Manager until a prospect they own names them, then theirs to fix",
+    noProspect?.status === 404 && (await people.editPhone(T, pia.person.id, { phone: "+1 416 555 0111" })).phone === "+14165550111", noProspect);
+  const gus = await add(R, { givenNames: "Gus", familyName: "Inactive", phone: "12" });
+  const before = await refusal(() => people.editPhone(T, gus.person.id, { phone: "+1 416 555 0112" }));
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${R.staffId}'`);
+  const whileInactive = await people.editPhone(T, gus.person.id, { phone: "+1 416 555 0112" }).catch((e) => e);
+  sql(`update platform_staff set status = 'ACTIVE' where id = '${R.staffId}'`);
+  ok("FO-9a phone E2 pass/fail (review m3): the Owner's lead is 404 to the Case Manager while the Owner is active; once the Owner is deactivated the lead counts as Unassigned (BR-4) and is theirs to fix",
+    before?.status === 404 && whileInactive?.phone === "+14165550112", { before, whileInactive: String(whileInactive?.phone ?? whileInactive) });
   await seesAll(true);
-  ok("FO-9a phone E2 pass: with \"everyone sees all\" on, the Case Manager may fix the Owner's person", (await people.editPhone(T, lena.person.id, { phone: "+1 416 555 0100" })).phone === "+14165550100");
+  ok("FO-9a phone E2 pass: with \"everyone sees all\" on, the Case Manager may fix the Owner's person", (await people.editPhone(T, lena.person.id, { phone: "+1 416 555 0110" })).phone === "+14165550110");
 
   // ------------------------------------------------------------------------------------- E3: { phone } only
   const kim = await add(R, { givenNames: "Kim", familyName: "Body", phone: "12", email: "kim@example.org" });
@@ -122,6 +139,23 @@ try {
   ok("FO-9a phone E4 pass: each saved edit is one audit line on fo_person, naming the person and the staff member", lines.length === audits(lena.person.id) && lines.length === 2 && lines.every((l) => l.includes(lena.person.id) && (l.includes(`staff:${R.staffId}`) || l.includes(`staff:${T.staffId}`))), lines);
   const all = sql(`select string_agg(summary || ' ' || detail::text, ' ') from audit_event where action = '${PHONE_EDIT_ACTION}'`);
   ok("FO-9a phone E4 fail: no audit line holds a number, typed or stored (no 4165550, no +44, no 7946)", !/4165550|\+44|7946|555/.test(all), all.slice(0, 300));
+
+  // ------------------------------------------------------------------------------------- E6: the breaker's findings on b6b6b3d4 (F1-F4, F7)
+  const ivy = await add(R, { givenNames: "Ivy", familyName: "Edges", phone: "12" });
+  const sentence = (r: Awaited<ReturnType<typeof refusal>>) => r?.status === 422 && (r.body.fields as Record<string, string>)?.phone === UNREADABLE_PHONE;
+  const long = await refusal(() => people.editPhone(R, ivy.person.id, { phone: "+49 23456789012345" }));
+  ok("FO-9a phone E6 fail (breaker F1): a 16-digit number libphonenumber calls possible (+49 23456789012345) → 422 with the sentence, never a 500; nothing saved", sentence(long) && person(ivy.person.id) === "12|false|-", long);
+  ok("FO-9a phone E6 fail (breaker F2): a number too short for the database's E.164 key (+43 2345) → 422, so a saved number always has its phone_e164", sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "+43 2345" }))));
+  ok("FO-9a phone E6 fail (breaker F3): digits libphonenumber would drop (+86 1234567890123456 read as +8667890123456) or an extension (416 555 0199 ext 12) → 422, nothing lost silently",
+    sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "+86 1234567890123456" }))) && sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "416 555 0199 ext 12" }))) && person(ivy.person.id) === "12|false|-");
+  ok("FO-9a phone E6 fail (breaker F7): over 40 characters or a control mark → the field's one sentence, not a fragment", sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "+1 416 555 0100".padEnd(41, "0") }))) && sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "+1 416\u0007 555 0100" }))));
+  ok("FO-9a phone E6 fail (review M1): a local-only number with no area code (555 0100, 4165550) → 422, never saved as +15550100",
+    sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "555 0100" }))) && sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "4165550" }))) && person(ivy.person.id) === "12|false|-");
+  const spellings: [string, string][] = [["011 44 20 7946 0000", "+442079460000"], ["+44 (0) 20 7946 0958", "+442079460958"], ["1 416 555 0108", "+14165550108"], ["\uff14\uff11\uff16 555 0109", "+14165550109"]];
+  const read6 = await Promise.all(spellings.map(async ([t]) => (await people.editPhone(R, ivy.person.id, { phone: t })).phone));
+  ok("FO-9a phone E6 pass: an international prefix (011), a trunk (0), a leading 1 and full-width digits are read without loss", read6.every((x, i) => x === spellings[i][1]), read6);
+  const n6 = audits(ivy.person.id), same = await people.editPhone(R, ivy.person.id, { phone: "416 555 0109" });
+  ok("FO-9a phone E6 fail (breaker F4): the same number saved again writes nothing (no second audit line)", same.phone === "+14165550109" && audits(ivy.person.id) === n6, { n6, after: audits(ivy.person.id) });
 
   // ------------------------------------------------------------------------------------- E5: the route and the app's own path
   const access = Reflect.getMetadata(PLATFORM_ACCESS, PeopleEditController.prototype.edit) as { keys?: string[] } | undefined;

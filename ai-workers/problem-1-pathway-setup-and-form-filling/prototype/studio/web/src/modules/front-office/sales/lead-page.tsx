@@ -26,8 +26,16 @@ function PhoneRow({ person, mayEdit }: { person: Lead["person"]; mayEdit: boolea
   const [value, setValue] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const field = React.useRef<HTMLInputElement>(null);
-  const open = () => { setValue(person.phone ?? ""); setError(null); setEditing(true); };
-  React.useEffect(() => { if (editing) field.current?.focus(); }, [editing]);
+  // Focus goes back to the control that opened the field (Edit or Fix number) when it closes (breaker F6).
+  const opener = React.useRef<HTMLButtonElement | null>(null);
+  const wasEditing = React.useRef(false);
+  const sending = React.useRef(false);   // one save at a time, also for two clicks in one frame (breaker F4)
+  const open = (e: React.MouseEvent<HTMLButtonElement>) => { opener.current = e.currentTarget; setValue(person.phone ?? ""); setError(null); setEditing(true); };
+  React.useEffect(() => {
+    if (editing) field.current?.focus();
+    else if (wasEditing.current) (opener.current?.isConnected ? opener.current : document.querySelector<HTMLButtonElement>("[data-phone-edit-open]"))?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
   const save = useMutation({
     mutationFn: async (phone: string) => staffApi(`/front-office/people/${encodeURIComponent(person.id)}`, { method: "PATCH", json: { phone } }),
     onSuccess: async () => { setEditing(false); toast.push({ tone: "ok", text: "Phone number saved." }); await qc.invalidateQueries({ queryKey: ["fo", "leads"] }); },
@@ -36,11 +44,12 @@ function PhoneRow({ person, mayEdit }: { person: Lead["person"]; mayEdit: boolea
   const fix = person.fixNumber && person.phone;
   if (editing) {
     return (
-      <form data-phone-edit className="flex flex-col gap-1.5" noValidate onSubmit={(e) => { e.preventDefault(); save.mutate(value); }}>
+      <form data-phone-edit className="flex flex-col gap-1.5" noValidate onKeyDown={(e) => { if (e.key === "Escape" && !save.isPending) setEditing(false); }}
+        onSubmit={(e) => { e.preventDefault(); if (sending.current) return; sending.current = true; save.mutate(value, { onSettled: () => { sending.current = false; } }); }}>
         <label htmlFor="fo-phone-edit" className="sr-only">Phone</label>
         <div className="flex flex-wrap items-center gap-2">
-          <Input id="fo-phone-edit" ref={field} type="tel" inputMode="tel" autoComplete="off" className="max-w-xs" value={value} aria-invalid={!!error} aria-describedby={error ? "fo-phone-edit-error" : "fo-phone-edit-hint"}
-            onChange={(e) => { setValue(e.target.value); setError(null); }} onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }} />
+          <Input id="fo-phone-edit" ref={field} type="tel" inputMode="tel" autoComplete="off" maxLength={40} className="max-w-xs" value={value} aria-invalid={!!error} aria-describedby={error ? "fo-phone-edit-error" : "fo-phone-edit-hint"}
+            onChange={(e) => { setValue(e.target.value); setError(null); }} />
           <Button type="submit" size="sm" busy={save.isPending}>Save</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
         </div>
@@ -54,7 +63,7 @@ function PhoneRow({ person, mayEdit }: { person: Lead["person"]; mayEdit: boolea
       {person.phone ?? <span className="text-text-muted">Not given</span>}
       {fix && mayEdit ? <button type="button" data-fix-number onClick={open} title="This number could not be read as a phone number with its country. Fix it." className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"><Pill tone="warn">Fix number</Pill></button>
         : fix ? <Pill tone="warn" title="This number could not be read as a phone number with its country.">Fix number</Pill> : null}
-      {mayEdit ? <Button type="button" size="sm" variant="ghost" aria-label="Edit phone" onClick={open}>Edit</Button> : null}
+      {mayEdit ? <Button type="button" size="sm" variant="ghost" aria-label="Edit phone" data-phone-edit-open onClick={open}>Edit</Button> : null}
     </span>
   );
 }
