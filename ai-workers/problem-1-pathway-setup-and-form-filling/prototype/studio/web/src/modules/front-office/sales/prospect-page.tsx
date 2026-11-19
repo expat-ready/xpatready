@@ -14,6 +14,7 @@ import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } fro
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
+import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo";
@@ -109,6 +110,7 @@ function ProspectBody({ id }: { id: string }) {
           {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
         </aside>
       </div>
+      {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("lost")}>Mark lost</Button></>}>
         <form onSubmit={submit("lost")} className="flex flex-col gap-4">
