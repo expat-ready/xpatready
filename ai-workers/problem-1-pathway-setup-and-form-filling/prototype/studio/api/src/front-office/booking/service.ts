@@ -476,7 +476,7 @@ export class BookingService {
   private async seesBooking(ctx: StaffContext, b: BookingRow, vis: Visibility) {
     if (vis.seesAll) return true;
     const db = this.db, f = b.firmId;
-    const active = async (ids: (string | null)[]) => new Set((await db.platformStaff.findMany({ where: firmScope(f, { id: { in: ids.filter((x): x is string => !!x) }, status: "ACTIVE" }), select: { id: true } })).map((s) => s.id));
+    const active = async (ids: (string | null)[]) => new Set((await db.platformStaff.findMany({ where: firmScope(f, { id: { in: ids.filter((x): x is string => !!x) }, status: "ACTIVE" as const }), select: { id: true } })).map((s) => s.id));
     if (b.prospectId) {
       const p = await db.foProspect.findFirst({ where: firmScope(f, { id: b.prospectId }), select: { ownerStaffId: true } });
       if (!p) return false;
