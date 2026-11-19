@@ -287,3 +287,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * P-724: after the drain, journeys in dependency order, two in parallel, at most about 6 items in flight per journey; a new item starts only when one is Proven. Mine is likely journey A (client case, enquiry to decision); Lead 87 sends the item list by about 13:00.
   * Passed word for word to my five active lanes: #2000, #2214, #2197, #2204, #2169.
   * Asked Lead 87 whether J-77's PR may open during the drain (recommended yes, as R1.77's proof).
+* 10:43 IST 19 Nov (Lead 87): yes to J-77. P-722 wins over P-723 for a J-row that proves an item whose last part just merged. The J-77 lane gets its Approve now and opens the PR the minute #2169 merges, after merging main once. (Lead 87's earlier '11:0x' stamps were 10:4x.)
