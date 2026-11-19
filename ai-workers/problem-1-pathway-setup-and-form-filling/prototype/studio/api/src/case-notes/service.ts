@@ -29,13 +29,20 @@ export const SHARE_KEY = "agent/note:share-with-client";
 const notFound = (what = "case"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 const invalid = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 
+/** Break m3: hidden characters INVISIBLE (contracts) lets through, which a note never needs: the Arabic letter mark, the
+ *  Mongolian vowel separator, the word joiner and invisible operators, and the tag characters (hidden text). The
+ *  database's case_note_text_check refuses the same set. */
+const HIDDEN = /[\u061c\u180e\u2060-\u2064]|\udb40[\udc00-\udc7f]/;
+/** Characters that draw nothing: a note of only these (and spaces) is empty (Hangul fillers, the Braille blank, the
+ *  soft hyphen). */
+const LOOKS_BLANK = /[\s\u00ad\u115f\u1160\u2800\u3164\uffa0]/g;
 /** A note's words: plain text, trimmed, 1-5,000 characters (code points, as the database's char_length counts them); tab
  *  and new lines kept; no control, invisible or half-surrogate character (a NUL would be a 500 from PostgreSQL). */
 const noteText = z.unknown().transform((v, ctx) => {
   if (typeof v !== "string") { ctx.addIssue({ code: "custom", message: "Write the note as text." }); return z.NEVER; }
-  if (INVISIBLE.test(v) || LONE.test(v)) { ctx.addIssue({ code: "custom", message: "Remove the control or invisible characters from this note." }); return z.NEVER; }
+  if (INVISIBLE.test(v) || HIDDEN.test(v) || LONE.test(v)) { ctx.addIssue({ code: "custom", message: "Remove the control or invisible characters from this note." }); return z.NEVER; }
   const t = v.replace(/^[\s]+|[\s]+$/g, "");
-  if (!t) { ctx.addIssue({ code: "custom", message: "Write the note first." }); return z.NEVER; }
+  if (!t || !t.replace(LOOKS_BLANK, "")) { ctx.addIssue({ code: "custom", message: "Write the note first." }); return z.NEVER; }
   if ([...t].length > NOTE_TEXT_MAX) { ctx.addIssue({ code: "custom", message: `Keep the note to ${NOTE_TEXT_MAX} characters.` }); return z.NEVER; }
   return t;
 });
@@ -121,6 +128,8 @@ export class CaseNotes {
     catch (e) {
       if (e instanceof HttpException) throw e;
       const m = String((e as Error)?.message ?? e);
+      // Break m2: the case was deleted while the note was written (the insert trigger's foreign_key_violation, P2003).
+      if ((e as { code?: string })?.code === "P2003" || /case_note: no case/.test(m)) notFound();
       if (/P2034|could not serialize|deadlock/i.test(m)) problem(409, "Not possible now", "This note changed at the same time. Open it again.", { code: "NOTE_CHANGED" });
       throw e;
     }
@@ -139,9 +148,10 @@ export class CaseNotes {
   }
 
   /** GET notes/:noteKey/versions: every version of one note, newest first (AG-13-24's before and after, readable). */
-  async history(ctx: StaffContext, caseId: string, noteKey: string) {
+  async history(ctx: StaffContext, caseId: string, key: string) {
     const c = await this.caseOf(this.db, ctx, caseId);
-    if (typeof noteKey !== "string" || !UUID.test(noteKey)) return notFound("note");
+    if (typeof key !== "string" || !UUID.test(key)) return notFound("note");
+    const noteKey = key.toLowerCase();
     const rows = await this.db.caseNote.findMany({ where: { caseId: c.id, firmId: c.firmId, noteKey }, orderBy: { version: "desc" } });
     if (!rows.length) return notFound("note");
     const names = await this.names(this.db, c.firmId, rows.flatMap((r) => [r.author, r.byActor]));
@@ -181,14 +191,16 @@ export class CaseNotes {
 
   /** One change to a note: the next version, made on the version the person saw (else 409 NOTE_CHANGED with the current
    *  note). The note is held (an advisory lock on its key) for the transaction, so two changes never write one version. */
-  private async change(ctx: StaffContext, caseId: string, noteKey: string, seen: number, make: (n: Current) => { text?: string; visibility?: NoteVisibility; pinned?: boolean; action: string; summary: string } | null) {
+  private async change(ctx: StaffContext, caseId: string, key: string, seen: number, may: (n: Current) => void, make: (n: Current) => { text?: string; visibility?: NoteVisibility; pinned?: boolean; action: string; summary: string } | null) {
     return this.run(async (tx) => {
       const c = await this.caseOf(tx, ctx, caseId);
-      if (typeof noteKey !== "string" || !UUID.test(noteKey)) return notFound("note");
+      if (typeof key !== "string" || !UUID.test(key)) return notFound("note");
+      const noteKey = key.toLowerCase();   // break m1: one lock and one audit key per note, whatever the letter case
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`case_note:${noteKey}`}, 0))`;
       const [n] = await this.current(tx, c.id, noteKey);
       if (!n || n.firmId !== c.firmId) return notFound("note");
       const names = await this.names(tx, c.firmId, [n.author, n.byActor, `staff:${ctx.staffId}`]);
+      may(n);   // review m2: who may change it comes before whether their version is current
       if (seen !== n.version) problem(409, "This note changed", `Someone changed this note since you opened it (you had version ${seen}; it is now version ${n.version}). Nothing was saved.`, { code: "NOTE_CHANGED", current: this.view(n, names, ctx) });
       const d = make(n);
       if (!d) return { note: this.view(n, names, ctx), unchanged: true };
@@ -205,14 +217,14 @@ export class CaseNotes {
     const v = parsed(NoteTextBody, b);
     return this.change(ctx, caseId, noteKey, v.version, (n) => {
       if (n.author !== `staff:${ctx.staffId}` && !mayEditAny(ctx)) forbidden("Only the note's author, an Owner or an Admin edits a note.", "NOT_NOTE_AUTHOR");
-      return n.text === v.text ? null : { text: v.text, action: "case.note.edited", summary: "Note edited" };
-    });
+      if (n.visibility === "CLIENT_VISIBLE") needShare(ctx);   // review m1: changing words the client reads is showing them
+    }, (n) => (n.text === v.text ? null : { text: v.text, action: "case.note.edited", summary: "Note edited" }));
   }
 
   /** PUT notes/:noteKey/pin: pin or unpin (AG-13-23). */
   async pin(ctx: StaffContext, caseId: string, noteKey: string, b: unknown) {
     const v = parsed(NotePinBody, b);
-    return this.change(ctx, caseId, noteKey, v.version, (n) => (n.pinned === v.pinned ? null : { pinned: v.pinned, action: v.pinned ? "case.note.pinned" : "case.note.unpinned", summary: v.pinned ? "Note pinned" : "Note unpinned" }));
+    return this.change(ctx, caseId, noteKey, v.version, () => undefined, (n) => (n.pinned === v.pinned ? null : { pinned: v.pinned, action: v.pinned ? "case.note.pinned" : "case.note.unpinned", summary: v.pinned ? "Note pinned" : "Note unpinned" }));
   }
 
   /** PUT notes/:noteKey/visibility: INTERNAL or CLIENT_VISIBLE (AG-13-21). Either way needs agent/note:share-with-client
@@ -220,7 +232,7 @@ export class CaseNotes {
   async setVisibility(ctx: StaffContext, caseId: string, noteKey: string, b: unknown) {
     const v = parsed(NoteVisibilityBody, b);
     needShare(ctx);
-    return this.change(ctx, caseId, noteKey, v.version, (n) => (n.visibility === v.visibility ? null
+    return this.change(ctx, caseId, noteKey, v.version, () => undefined, (n) => (n.visibility === v.visibility ? null
       : { visibility: v.visibility, action: v.visibility === "CLIENT_VISIBLE" ? "case.note.marked-client-visible" : "case.note.marked-internal", summary: v.visibility === "CLIENT_VISIBLE" ? "Note marked client-visible" : "Note made internal" }));
   }
 }

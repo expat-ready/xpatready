@@ -9,8 +9,8 @@
 /// One version of one note on a case. A note is every row of its note_key; the current note is its highest version.
 /// An edit, a pin or unpin and a visibility change each write the next version (insert-only: the database refuses
 /// UPDATE, DELETE and TRUNCATE; a case delete takes its notes). firm_id: the case's platform firm (platform_firm by
-/// runtime_case.firm_key, checked by the insert trigger). text: plain, 1-5,000 characters after trim, no control or
-/// invisible characters but tab and new line (CHECKs). visibility: INTERNAL (default) or CLIENT_VISIBLE (AG-13-21).
+/// runtime_case.firm_key, checked by the insert trigger). text: plain, 1-5,000 characters after trim, no control,
+/// direction or hidden character but tab and new line (CHECK; the API also refuses text that only looks blank). visibility: INTERNAL (default) or CLIENT_VISIBLE (AG-13-21).
 /// author: who wrote version 1, the same on every version (trigger); by_actor: who wrote this version. created_at:
 /// the database's clock, never the writer's. idempotency_key and its sha256: STANDARDS §4, on version 1 only.
 model CaseNote {
@@ -31,6 +31,6 @@ model CaseNote {
 
   @@unique([noteKey, version])
   @@unique([caseId, idempotencyKey])
-  @@index([firmId, caseId, noteKey, version])
+  @@index([caseId, noteKey, version])
   @@map("case_note")
 }

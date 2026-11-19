@@ -272,6 +272,53 @@ try {
     again.body.unchanged === true && sql(`select count(*) from case_note where note_key = '${a6.id}'`) === "3" && badPin[0].status === 400 && badPin[1].status === 400 && badPin[2].status === 403,
     [again.body, badPin.map((x) => x.status)]);
 
+  // ------------------------------------------------- review M2, m1: agent/note:share-with-client is its own check
+  // Every seeded role with agent/case:edit also holds the share key, so firm A's Case Officer role loses it here (this
+  // scratch database only) and officer two signs in again.
+  const c7 = newCase();
+  const own7 = (await add(c7, T.OFFICER2, { text: "Officer two shares this.", visibility: "CLIENT_VISIBLE" })).body.note;
+  const int7 = (await add(c7, T.OFFICER2, { text: "Officer two keeps this internal." })).body.note;
+  sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/note:share-with-client'`);
+  const T7 = await tokenOf("csnt1-officer2");
+  const s7 = await Promise.all([add(c7, T7, { text: "Shown without the key", visibility: "CLIENT_VISIBLE" }), put(c7, int7.id, "visibility", T7, { visibility: "CLIENT_VISIBLE", version: 1 }),
+    put(c7, own7.id, "visibility", T7, { visibility: "INTERNAL", version: 1 }), put(c7, own7.id, "text", T7, { text: "New words the client would read", version: 1 })]);
+  ok("CS-NT1 DW5 fail (review M2, m1): without agent/note:share-with-client (but with agent/case:edit): a CLIENT_VISIBLE add, a visibility change either way and an edit of a client-visible note's words → 403 MISSING_PERMISSION; nothing written",
+    s7.every((x) => x.status === 403 && x.body.code === "MISSING_PERMISSION") && versions(c7) === "2", s7.map((x) => [x.status, x.body.code]));
+  const i7 = await add(c7, T7, { text: "An internal note without the key" }), e7 = await put(c7, int7.id, "text", T7, { text: "Officer two edits the internal note", version: 1 });
+  ok("CS-NT1 DW5 pass (review M2): the same person still adds an INTERNAL note (201) and edits an internal note's words (200)", i7.status === 201 && i7.body.note.visibility === "INTERNAL" && e7.status === 200, [i7.body, e7.body]);
+  sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', 'agent/note:share-with-client')`);
+
+  // ------------------------------------------------- review m2, break m1, m2, m3: order of checks, key case, races, hidden text
+  const c8 = newCase();
+  const n8 = (await add(c8, T.CASE_OFFICER, { text: "Officer one's note" })).body.note;
+  await put(c8, n8.id, "pin", T.CASE_OFFICER, { pinned: true, version: 1 });
+  r = await put(c8, n8.id, "text", T.CASE_MANAGER, { text: "The Case Manager, stale", version: 1 });
+  ok("review m2 fail: a non-author on a stale version gets 403 NOT_NOTE_AUTHOR (who may comes before which version), never the current note", r.status === 403 && r.body.code === "NOT_NOTE_AUTHOR" && !r.body.current, r.body);
+  const up = n8.id.toUpperCase(), mixed = n8.id.slice(0, 18).toUpperCase() + n8.id.slice(18);
+  const race8 = await Promise.all([put(c8, n8.id, "text", T.CASE_OFFICER, { text: "Case a", version: 2 }), put(c8, up, "text", T.CASE_OFFICER, { text: "Case b", version: 2 }), put(c8, mixed, "text", T.CASE_OFFICER, { text: "Case c", version: 2 })]);
+  ok("break m1 fail: the same note in other letter cases, edited at once: one 200, the others 409 NOTE_CHANGED (one lock per note), never a bare 409 or 500",
+    race8.filter((x) => x.status === 200).length === 1 && race8.filter((x) => x.status === 409 && x.body.code === "NOTE_CHANGED").length === 2, race8.map((x) => [x.status, x.body.code]));
+  ok("break m1 pass: the history and the audit lines name the note in lower case", (await call(BASE, "GET", N(c8, `/${up}/versions`), { token: T.CASE_OFFICER })).body.versions?.length === 3
+    && sql(`select count(*) from audit_event where entity_key = '${c8}' and detail->>'noteKey' <> lower(detail->>'noteKey')`) === "0");
+  const hidden = await Promise.all(["hi\u2060there", "hi" + String.fromCodePoint(0xe0069, 0xe0067), "\u3164\u3164", "\u2800", " \u00ad ", "a\u061cb"].map((t) => add(c8, T.CASE_OFFICER, { text: t })));
+  ok("break m3 fail: a word joiner, tag characters (hidden text), a note of only Hangul fillers, the Braille blank or a soft hyphen, an Arabic letter mark → 400; nothing written",
+    hidden.every((x) => x.status === 400 && x.body.code === "INVALID") && sql(`select count(distinct note_key) from case_note where case_id = '${c8}'`) === "1", hidden.map((x) => x.status));
+  ok("break m3 fail: the database refuses the same hidden characters on a direct insert (zero-width space, direction override, word joiner, a tag character, C1)",
+    ["E'a\\u200bb'", "E'a\\u202eb'", "E'a\\u2060b'", "E'a\\U000e0041b'", "E'a\\u0085b'"].every((t) => refused(`insert into case_note (firm_id, workspace_id, case_id, note_key, version, text, author, by_actor) select firm_id, workspace_id, case_id, gen_random_uuid(), 1, ${t}, author, by_actor from case_note where note_key = '${n8.id}' and version = 1`, /case_note_text_check/)));
+  ok("break m3 pass: ordinary non-Latin text, an emoji with a joiner and CRLF are kept as typed",
+    (await add(c8, T.CASE_OFFICER, { text: "Résumé — 履歴書 — सारांश 👩‍💻\r\nline two" })).body?.note?.text === "Résumé — 履歴書 — सारांश 👩‍💻\r\nline two");
+  // break m2: a note added while its case is being deleted: 404 once the delete commits, never a 500, no orphan.
+  const gone = newCase();
+  const { spawn } = await import("node:child_process");
+  const del = spawn(join(BIN, "psql"), [urlOf(DB), "-X", "-q", "-c", `begin; delete from runtime_case where id = '${gone}'; select pg_sleep(1.5); commit;`], { stdio: "ignore" });
+  const ended = new Promise((res) => del.on("exit", res));
+  await new Promise((res) => setTimeout(res, 400));
+  r = await add(gone, T.CASE_OFFICER, { text: "Written while the case goes" });
+  await ended;
+  ok("break m2 fail: an add racing its case's delete → 404 NOT_FOUND, never a 500; no orphan note", r.status === 404 && r.body.code === "NOT_FOUND" && sql(`select count(*) from case_note where case_id = '${gone}'`) === "0", r.body);
+  ok("review M1 pass: the case-only read paths use an index whose first column is case_id",
+    sql(`select count(*) from pg_indexes where tablename = 'case_note' and indexdef like '%(case_id, note_key, version)%'`) === "1");
+
   // ---------------------------------------------------------------------------------- audit lines: never the note's words
   const lines = sql(`select coalesce(string_agg(summary || ' ' || coalesce(detail::text, ''), ' | '), '') from audit_event where entity = 'case note'`);
   ok("audit pass: every change wrote a 'case note' line keyed by its case, read as that case's line (case-feed.ts), with its case id",

@@ -11,7 +11,8 @@
 --     and the case's AFTER DELETE trigger removes its notes (the cascade case_decision has).
 --   * a new row names its case's own firm (case_lookup.case_firm_id_of_key(runtime_case.firm_key): the one lookup past
 --     PF-12's wall on platform_firm, CS-W1) and the case's workspace; created_at is the database's clock.
---   * text: 1-5,000 characters after trim, no control character but tab, line feed and carriage return; visibility
+--   * text: 1-5,000 characters after trim, no control, direction-mark or hidden character but tab, line feed and carriage
+--     return (C0, DEL, C1, U+061C, U+180E, U+200B, U+200E, U+200F, U+2028-U+202E, U+2060-U+2064, U+2066-U+2069, U+FEFF, tags); visibility
 --     INTERNAL or CLIENT_VISIBLE; an idempotency key only on version 1, always with its fingerprint.
 -- Rollback (in this order): DROP TRIGGER case_note_follow_case ON "runtime_case"; DROP TABLE "case_note"; DROP FUNCTION
 --   case_note_follow_case(), case_note_check_insert(), case_note_refuse_change(); then delete this folder's row from
@@ -38,7 +39,7 @@ CREATE TABLE "case_note" (
 );
 
 -- CreateIndex
-CREATE INDEX "case_note_firm_id_case_id_note_key_version_idx" ON "case_note"("firm_id", "case_id", "note_key", "version");
+CREATE INDEX "case_note_case_id_note_key_version_idx" ON "case_note"("case_id", "note_key", "version");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "case_note_note_key_version_key" ON "case_note"("note_key", "version");
@@ -52,7 +53,7 @@ ALTER TABLE "case_note"
   ADD CONSTRAINT "case_note_version_check" CHECK ("version" >= 1),
   ADD CONSTRAINT "case_note_text_check" CHECK (
     char_length("text") <= 5000 AND char_length(btrim("text", E' \t\n\r')) >= 1
-    AND "text" !~ '[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]'),
+    AND "text" !~ '[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u180e\u200b\u200e\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]'),
   ADD CONSTRAINT "case_note_actor_check" CHECK (length(btrim("author")) > 0 AND length(btrim("by_actor")) > 0),
   ADD CONSTRAINT "case_note_idempotency_check" CHECK (
     ("idempotency_key" IS NULL) = ("idempotency_fingerprint" IS NULL) AND ("idempotency_key" IS NULL OR "version" = 1));
