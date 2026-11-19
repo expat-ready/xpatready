@@ -15,7 +15,7 @@ The firm's front office: public booking and retainer agreements, with their file
 - A type's `allowReschedule` and `allowCancel` are read inside the change's transaction, after the row lock; a booker's cancel reason is kept on the booking (`cancel_reason`, at most 500, only when CANCELLED), never in the audit entry (FO-3pa, Lead B rev 16.30).
 - A self-service token is `<selector>.<verifier>`: looked up by id, verifier checked (FO-3, BR-10).
 - A web-form post makes nothing on a refusal; its answer never says whether the person is known; a stamp not ours asks for a reload (FO-2, AG-2-49).
-- Sales (leads and prospects): the change, visibility, company and stage-move rules in `sales/README.md` (FO-2, FO-2v, FO-2b, FO-2 part 3).
+- Sales (leads and prospects): the change, visibility, company and stage-move rules in `sales/README.md` (FO-2, FO-2v, FO-2b, FO-2 parts 3-4).
 - Word to PDF never blocks a send: `toPdf` never throws, a failure is "no PDF" and the `.docx` is kept (`withPdf`); over 10 MB or not a zip is refused before sending; only `/forms/libreoffice/convert` is called, no redirect followed; CI and the demo use `fakePdf` (PF-Fp, gate entry 17).
 - The duplicate check only reads (no row, link or audit line); it names a match only to a caller who may open it (a visible lead of the person, or a company the caller sees), any other is a count with the fixed line; `fo_person.phone_e164` is kept by the database from a readable phone, never written by the app; the public form never calls the check (FO-9a, P-574 (2), AG-2-78).
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
