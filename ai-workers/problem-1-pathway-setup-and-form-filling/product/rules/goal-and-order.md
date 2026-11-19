@@ -123,3 +123,8 @@ Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-6
 | P-721 | Protect the merge path: #2195 first; a dequeued PR re-merges main within 30 min; a failed batch is split at once. | prose | 19 Nov |
 | P-539 | Repository stays public; integration and strategy content only private; full row `rules/tech-lead.md`. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
 | IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684, P-711 size #2169 in DECISIONS) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
+| P-608 | Model and effort at every start: Opus 5.5 medium; high for reviewers, breakers, fresh reader, risky rows; Fable 5.2 medium for specifying. Full row: `rules/tokens-money-account.md`. | hook: lane-preflight.sh | 15 Nov |
+| P-597 | The strategy desk runs on Fable 5.2 at high effort, set after the start, with five rules. | prose | 14 Nov |
+| P-599 | Ready rows at least two per lane; first-time green; at most two review rounds; day-3 check 17 Nov (date per P-609). | prose | 14 Nov |
+| P-613 | Plan C: lanes may be added for nearly-done capabilities; a feeding Lead; non-urgent asks batched at 09:00 and 21:00 IST; qa per module group. | prose | 15 Nov |
+| P-614 | Target kept: all 101 by 29 Nov; no gate lowered; the 17 Nov check reports the forecast with the same measures. | prose | 15 Nov |
