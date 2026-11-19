@@ -64,7 +64,8 @@ jobs:
             for t in 1 2 3; do
               curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/$SHA/pulls" > prs.json || echo '[]' > prs.json
               node -e 'const ps=require("./prs.json").filter(p=>p.merged_at&&p.merge_commit_sha===process.argv[1]&&p.base.ref==="main"); require("fs").writeFileSync("pr.json",JSON.stringify(ps[0]??{}))' "$SHA"
-              node -e 'process.exit(require("./pr.json").number?0:1)' && break; sleep $((t * 10))
+              if node -e 'process.exit(require("./pr.json").number?0:1)'; then break; fi
+              if [ "$t" -lt 3 ]; then sleep $((t * 10)); fi
             done
             n=$(git log -1 --format=%s "$SHA" | sed -n 's/^Merge pull request #\([0-9]\{1,7\}\) from .*/\1/p')
             if ! node -e 'process.exit(require("./pr.json").number?0:1)' && [ -n "$n" ]; then
