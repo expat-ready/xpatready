@@ -1,0 +1,12 @@
+{
+  "app": "node --import tsx bin/app.ts",
+  "output": "cdk.out",
+  "notices": false,
+  "versionReporting": false,
+  "pathMetadata": false,
+  "assetMetadata": false,
+  "context": {
+    "cli-telemetry": false,
+    "@aws-cdk/core:target-partitions": ["aws"]
+  }
+}

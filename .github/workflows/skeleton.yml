@@ -12,6 +12,8 @@
 # Mergify's batch PRs (mergify/*, drafts) do not run it: each PR proved its image; it is not a required check.
 # A ready head's run is never cancelled (P-371 (2)): a newer push waits. US$0 (public repository), no model spend,
 # no key: the database has no password and live AI is off.
+# PF-8a: job deploy-synth (below) checks the CDK estate in deploy/ when a PR changes it; a PR that changes only deploy/
+# builds no image (step "changes" skips it), and a push touching only deploy/ is not a reason to rebuild the image.
 name: skeleton
 on:
   pull_request:
@@ -34,6 +36,7 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p2/*.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p5/**/*.ts"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/env/node/**"
+      - "deploy/**"
       - ".github/workflows/skeleton.yml"
   workflow_dispatch:
 permissions:
@@ -60,10 +63,16 @@ jobs:
         env:
           ACTION: ${{ github.event.action }}
           BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           AFTER: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
+          # PF-8a: a PR whose whole change is under deploy/ (the CDK estate) puts nothing into the image: job deploy-synth
+          # checks it. Judged against the base as the event fired; main's newer files only make the list longer (a full run).
+          if [ -n "$BASE" ] && pr=$(git fetch -q --no-tags --depth=1 origin "$BASE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BASE" "$AFTER") \
+             && [ -n "$pr" ] && ! printf '%s\n' "$pr" | grep -qv '^deploy/'; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Skeleton not run: this PR changes only deploy/ (job deploy-synth checks it)." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           # Only a later push to an open PR is judged by its own commits; opened, reopened, ready and by hand always run.
           if [ "$ACTION" != synchronize ] || [ -z "$BEFORE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run ($ACTION)"; exit 0; fi
           # The trigger's own path list, read from this file: one list, never a second copy to keep in step.
@@ -72,6 +81,8 @@ jobs:
           globs=$(awk '/^    paths:/{p=1;next} p&&/^ {0,4}[^ #]/{exit} p{ if ($0 ~ /^      - "[^"]+"$/) { sub(/^      - "/,""); sub(/"$/,""); print } else { print "BAD [" $0 "]" } }' .github/workflows/skeleton.yml)
           [ -n "$globs" ] || { echo "::error::no path list read from skeleton.yml"; exit 1; }
           if printf '%s\n' "$globs" | grep -q '^BAD '; then echo "::error::the paths block must hold only lines of the form - \"glob\": $(printf '%s\n' "$globs" | grep '^BAD ' | head -1)"; exit 1; fi
+          # deploy/ is in the trigger for job deploy-synth only; it never goes into the image.
+          globs=$(printf '%s\n' "$globs" | grep -v '^deploy/')
           # A push that cannot be read (a rewritten branch) runs in full.
           if ! files=$(git fetch -q --no-tags --depth=1 origin "$BEFORE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BEFORE" "$AFTER"); then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run: $BEFORE..$AFTER could not be read"; exit 0; fi
@@ -141,3 +152,64 @@ jobs:
       - name: stop and remove (containers, network, the database volume)
         if: always() && steps.c.outputs.run == 'true'
         run: docker compose -f "$COMPOSE" down -v --remove-orphans
+
+  # PF-8a: the Canadian estate as code (deploy/cdk). Synth needs no AWS account, and this job has no AWS credentials:
+  # no secret, no OpenID Connect role, metadata lookups off. Runs its steps only when the PR changes deploy/ (or this file).
+  deploy-synth:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"
+    defaults:
+      run:
+        working-directory: deploy/cdk
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+
+      - name: changes (does this PR touch deploy/?)
+        id: c
+        working-directory: .
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # By hand, or when the change cannot be read: run. Main's newer files only make the list longer (a run).
+          if [ -z "$BASE" ] || ! files=$(git fetch -q --no-tags --depth=1 origin "$BASE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BASE" "$AFTER"); then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "run (by hand, or the change could not be read)"; exit 0; fi
+          if printf '%s\n' "$files" | grep -qE '^(deploy/|\.github/workflows/skeleton\.yml$)'; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "run: deploy/ changed"; exit 0; fi
+          echo "run=false" >> "$GITHUB_OUTPUT"; echo "deploy-synth not run: this PR changes nothing under deploy/." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        if: steps.c.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: deploy/cdk/package-lock.json
+
+      - name: install (the CDK tree's own lockfile, no install scripts)
+        if: steps.c.outputs.run == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: type check
+        if: steps.c.outputs.run == 'true'
+        run: npm run typecheck
+
+      - name: cdk synth (no AWS credentials)
+        if: steps.c.outputs.run == 'true'
+        run: |
+          # Fails the job if any AWS credential reached it: synth must work without one.
+          if env | grep -qE '^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN|PROFILE|ROLE_ARN|WEB_IDENTITY_TOKEN_FILE)='; then echo "::error::an AWS credential is set in deploy-synth"; exit 1; fi
+          npx cdk synth --quiet
+          ls cdk.out/*.template.json
+
+      - name: assertion tests (region guard, database, buckets, availability)
+        if: steps.c.outputs.run == 'true'
+        run: npm test
+
+      - name: npm audit (no high finding in the CDK tree)
+        if: steps.c.outputs.run == 'true'
+        run: npm audit --omit=dev --audit-level=high
