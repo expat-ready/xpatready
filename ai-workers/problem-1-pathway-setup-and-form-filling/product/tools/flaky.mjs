@@ -236,7 +236,7 @@ function selfTest() {
   ok("B122: a fork's artifact never counts (a fork could otherwise quarantine a suite)", !wanted(art({ workflow_run: { id: 1, repository_id: 7, head_repository_id: 99 } }), repoId, since), "counted");
   ok("B122: an expired artifact does not count", !wanted(art({ expired: true }), repoId, since), "counted");
   ok("B122: an artifact older than the window does not count", !wanted(art({ created_at: "2026-10-20T00:00:00Z" }), repoId, since), "counted");
-  ok("B122: only suite-retries-<1..9> artifacts count", !wanted(art({ name: "suite-logs-shard-2" }), repoId, since) && !wanted(art({ name: "suite-retries-12" }), repoId, since), "counted");
+  ok("B122: only suite-retries-<1..24> artifacts count", !wanted(art({ name: "suite-logs-shard-2" }), repoId, since) && !wanted(art({ name: "suite-retries-25" }), repoId, since) && !wanted(art({ name: "suite-retries-0" }), repoId, since) && !wanted(art({ name: "suite-retries-024" }), repoId, since) && wanted(art({ name: "suite-retries-20" }), repoId, since), "counted");
   const bad = parseEvents("2026-11-05T10:00:00Z\t../../etc/passwd\tpassed on retry\n2026-11-05T10:00:00Z\tcheck_a.ts\tmaybe\nnot-a-date\tcheck_a.ts\tpassed on retry\n");
   ok("B122: a record with a bad suite name, outcome or time is dropped", bad.length === 0, bad);
   try { parseLedger("owner\tcheck_x\n"); ok("B122: a ledger line it cannot read stops loudly", false, "accepted"); }
