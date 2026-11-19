@@ -239,3 +239,17 @@ Diff `4c4e0f3d3..ec04e138b` only (P-277), with the PF-15 reports left out: the m
 
 Reviewer: Approve 89ff016f145e10227ae1dddde6cea41de4b0f59b
 (One condition at the label step: the PR body carries M4's "Question for the tech lead". m8, m9 and m10 are optional.)
+
+## Part 2 re-review on main (46f7e8b32)
+Diff `89ff016f1..46f7e8b32` (P-277), with the PF-15 reports left out. Most of it is main's merge; I checked only part 2's own lines against `origin/main...46f7e8b32`.
+* **m8 fixed (d3b376ee4).** The new case (Unlimited, then 3, then 2, both lowerings pending) fails when I remove the "any Unlimited wins" rule (52/1). Before, that mutation passed.
+* **The re-stamp holds.**
+  * Part 2's migration is now `20261119051500_pf15_limit_changes`, later than main's newest (`20261118230000`). The old `20261118200000_pf15_*` folder is gone.
+  * Its content differs from 89ff016f1 in only two lines: the rollback note names 1a's new folder `20261118213000`, and EXECUTE on the 4-argument `platform_entitlement_limit` goes to `xr_app, xr_staff_bypass`.
+  * That grant mirrors 1a's final grant on the 3-argument function. 1a's merged function changed only that grant since my last read, so the 4-argument replacement drops nothing.
+* **The notice now names its Owner.** It passes `person: { kind: "STAFF", id }`, an optional `Subject` in `ports/mail.ts`, the PF-19r rule for a SERVICE email. check_pf19r_senders is 24/0.
+* **MODULE.md:** part 2 has its own section after 1a's. The invariants it lists match the code reviewed.
+* **Suites at 46f7e8b32:** pf15_cases 53/0, pf15_limits 69/0, pf12_walls 100/0, pf3_platform_schema 75/0, pf19r_senders 24/0.
+* **No new findings.** M4 (the binding question in the PR body) remains the label-step condition. m9 and m10 are still optional.
+
+Reviewer: Approve 46f7e8b3272657e0df279bdc092f5c9a111fe12e
