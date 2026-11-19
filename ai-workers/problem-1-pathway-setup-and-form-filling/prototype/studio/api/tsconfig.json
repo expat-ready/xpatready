@@ -12,5 +12,5 @@
     "types": ["node"],
     "typeRoots": ["../node_modules/@types"]
   },
-  "include": ["src/*.ts", "src/features/**/*.ts", "src/platform/**/*.ts", "src/front-office/**/*.ts", "src/client-money/**/*.ts", "../engine/*.ts", "../tests/*.ts"]
+  "include": ["src/*.ts", "src/features/**/*.ts", "src/platform/**/*.ts", "src/front-office/**/*.ts", "src/client-money/**/*.ts", "src/case-notes/**/*.ts", "../engine/*.ts", "../tests/*.ts"]
 }

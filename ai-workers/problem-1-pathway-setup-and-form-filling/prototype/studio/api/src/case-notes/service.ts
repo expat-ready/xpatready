@@ -185,7 +185,7 @@ export class CaseNotes {
     return this.run(async (tx) => {
       const c = await this.caseOf(tx, ctx, caseId);
       if (typeof noteKey !== "string" || !UUID.test(noteKey)) return notFound("note");
-      await tx.$queryRaw`select pg_advisory_xact_lock(hashtextextended(${`case_note:${noteKey}`}, 0))`;
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`case_note:${noteKey}`}, 0))`;
       const [n] = await this.current(tx, c.id, noteKey);
       if (!n || n.firmId !== c.firmId) return notFound("note");
       const names = await this.names(tx, c.firmId, [n.author, n.byActor, `staff:${ctx.staffId}`]);
