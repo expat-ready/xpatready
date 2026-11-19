@@ -164,6 +164,28 @@ try {
     retyped === "" && follows?.made === false && follows.clientId === co!.clientId && k2.display_kind === "PERSON" && k2.display_name === "Lena Sample" && k2.fo_person_id === lena.person.id && k2.fo_company_id === null && k2.contact === null
     && written(pine.id) === "1:1:1" && count("audit_event", `entity_key = '${pine.id}' and action = 'client.subject_changed'`) === 1 && !again2.results.some((r) => r.prospectId === pine.id), [retyped, follows, k2]);
 
+  // Breaker round 2 (R2-M1, R2-M2): won again as the other type, a click before or during the client's update opens nothing.
+  const bia = await lead("Bia", R, { interestedIn: service }), birch = await corp.engage(R, bia.id, { companyName: `Birch ${tag} Ltd` }) as { id: string };
+  await pros.convert(R, birch.id, {});
+  const birchClient = (await onProspectWon(db, event(birch.id), deps))!.clientId;
+  await pros.undoConvert(R, birch.id, { reason: "It is the person" }); await corp.changeType(R, birch.id, { type: "INDIVIDUAL" }); await pros.convert(R, birch.id, {});
+  const early = await openCase(birchClient);
+  ok("FO-8 DW2 fail (breaker R2-M1): a click before the client has followed its prospect opens nothing (409 OFFER_CHANGED, plain words)",
+    early.status === 409 && early.body?.code === "OFFER_CHANGED" && early.body?.detail === OFFER_REFUSED.CHANGED && count("runtime_case", `client_id = '${birchClient}'`) === 0, [early.status, early.body]);
+  const slowAudit: AuditPort<never> = { async record(tx, e) { if (e.action === "client.subject_changed") await new Promise((r) => setTimeout(r, 1500)); return auditEvent.record(tx, e); } };
+  const slow = onProspectWon(db, event(birch.id), { ...deps, audit: slowAudit as never });
+  await new Promise((r) => setTimeout(r, 400));
+  const during = await openCase(birchClient);
+  await slow;
+  const after = await openCase(birchClient);
+  ok("FO-8 DW2 fail (breaker R2-M2): a click while the client is being updated waits for it and opens nothing (409 OFFER_CHANGED); the client is the person with no case; the next click opens the case with the person as principal",
+    during.status === 409 && during.body?.code === "OFFER_CHANGED" && sql(`select display_kind || '|' || display_name from case_client where id = '${birchClient}'`) === "PERSON|Bia Sample" && after.status === 201 && count("runtime_case", `client_id = '${birchClient}'`) === 1
+    && sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${after.body?.id}' and p.role = 'principal'`) === "Bia Sample", [during.status, during.body, after.status, after.body?.detail]);
+  const emo = await wonPerson(`A${"\u{1F600}".repeat(70)}`, R, { interestedIn: service, email: `emo-${tag}@example.com` }), emoClient = (await onProspectWon(db, event(emo.id), deps))!.clientId;
+  const emoCase = await openCase(emoClient);
+  const emoName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${emoCase.body?.id}' and p.role = 'principal'`);
+  ok("FO-8 DW1 pass (breaker R2-m1, R2-m2): a name of emoji past the opening's 120 (counted as the opening counts) is cut at a whole character and the case opens", emoCase.status === 201 && emoName.length <= 120 && emoName.length >= 118 && !/[\uD800-\uDBFF]$/.test(emoName), [emoCase.status, emoCase.body?.detail, emoName.length]);
+
   // ------------------------------------------------------------------------------------------ DW3: "Open a case?"
   const anaClient = first!.clientId;
   ok("FO-8 DW3 pass: the offer opens nothing by itself: after the client is made there is no case and no case.opened", casesOf(anaClient) === 0 && opened(ana.id) === 0);
@@ -191,7 +213,7 @@ try {
     race.map((r) => r.status).sort().join() === "201,409" && race.find((r) => r.status === 409)?.body?.code === "OFFER_USED" && casesOf(boClient) === 1 && opened(bo.id) === 1, race.map((r) => [r.status, r.body?.code ?? r.body?.detail]));
   const noInterest = await onProspectWon(db, event(cy.id), deps), unchosen = await openCase(noInterest!.clientId);
   ok("FO-8 DW3 fail: a prospect interested in no service pre-fills no combination: the call asks for one (400 on combinationId), nothing opened", unchosen.status === 400 && /combination/i.test(JSON.stringify(unchosen.body)) && casesOf(noInterest!.clientId) === 0, [unchosen.status, unchosen.body]);
-  const offerOfAna = () => offerOf(db, { id: anaClient, firmId: A, prospectId: ana.id, displayName: "Ana Sample" });
+  const offerOfAna = () => offerOf(db, { id: anaClient, firmId: A, prospectId: ana.id, displayName: "Ana Sample", displayKind: "PERSON" });
   const shown = await offerOfAna();
   sql(`set session_replication_role = replica; update combination set retired_at = now() where id = '${VV}'`);
   const retired = await offerOfAna();
