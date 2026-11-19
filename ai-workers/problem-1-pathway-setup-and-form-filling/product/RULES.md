@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-732**, 19 Nov 12:10 IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-1120-lead87s2-as-of-P-724.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-733**, 19 Nov 12:10 IST; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-19-1120-lead87s2-as-of-P-724.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -157,8 +157,8 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | P-691 | Emergency hand merge stays: only a pipeline/CI fix while the queue is broken; full row `rules/tech-lead.md`. | prose (ruleset bypass; library/engineering-change-log.md) | 17 Nov |
 | P-699 | Agents build, review, test and label; when a tool path is stuck, the Lead does the step in the signed-in browser (safety rules still apply). | prose | 18 Nov |
 | IDX-9 | 18-19 Nov rows stand as recorded: P-703 to P-715 and P-716 (freeze to Proven 30), P-717 (records and pipeline in their own lane), P-718 (queue first, staging at Proven 30), P-721 to P-723, P-725 to P-727, P-729, P-730 (19 Nov proof sprint, tracks, hold); word for word in `rules/tech-lead.md`. | prose | 19 Nov |
-| P-731 | A full run passes on a PR's head before the label; a relabel names every failing suite. | CI: label-guard (CI-PRE, owed) | 19 Nov |
-| P-732 | One capability = one PR with its J-test; Proven by the automatic run on merge; qa audits; risk-only heavy gates; affected-only runs. | CI: CI-ONE, CI-AFF, #2233 (owed) | 19 Nov |
+| P-731 | A PR that failed a batch is relabelled only after a green full run on its head, every failing suite named (P-733 (4)). | CI: label-guard (CI-PRE, owed) | 19 Nov |
+| P-733 | Lanes on the items nearest done first, one lane per item to Proven; PRs near 800 lines; automatic proof on merge; qa walks risky items. | CI: #2233 (owed); prose (focus) | 19 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
