@@ -53,7 +53,7 @@ try {
   const firm = await db.platformFirm.create({ data: { key: `j37-${run}`, operatingName: "Sample J-37 firm", countryCode: "CA", status: "ACTIVE", contactEmail: `office-${run}@j37.example` } });
   const host = await db.platformStaff.create({ data: { firmId: firm.id, email: `host-${run}@j37.example`, displayName: "Sample host", status: "ACTIVE" } });
   await copyFirmHoursTo(db, firm.id, [host.id]);
-  await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30 } });
+  await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30, minNoticeMinutes: 240 } });   // 4 h notice: the 1 h reminder is always queued (review n1)
   const path = `/book/${firm.key}/free`, A = `booker-a-${run}@j37-client.example`, B = `booker-b-${run}@j37-client.example`;
 
   // ------------------------------------------------------------------------------------------- W1: the page lists slots
@@ -98,7 +98,9 @@ try {
   const booking = await db.foBooking.findFirstOrThrow({ where: { firmId: firm.id, status: "SCHEDULED" }, select: { id: true } });
   const reminders = () => db.$queryRawUnsafe<{ id: string; key: string; state: string }[]>(`select id::text, data->>'key' as key, state from platform_jobs.job where name = 'booking.reminder' and data->>'key' like $1 order by start_after`, `booking:${booking.id}:%`);
   const queued = await reminders();
-  execFileSync("zsh", [join(STUDIO, "tools", "isolated.sh"), NAME, String(PORT), "restart"], { stdio: ["ignore", "ignore", "inherit"] });
+  // Fail at once, naming the cause, rather than after the restart and the wait (review n1).
+  if (!queued.length) { ok("J-37 W4b set-up: the booking has a reminder queued (none: the slot is within an hour)", false, { bookingId: booking.id }); throw new Error("no reminder queued"); }
+  execFileSync("zsh", [join(STUDIO, "tools", "isolated.sh"), NAME, String(PORT), "restart", "--ttl", "30"], { stdio: ["ignore", "ignore", "inherit"] });
   let ready = 0;
   for (let i = 0; i < 90 && ready !== 200; i++) { try { ready = (await fetch(`${BASE}/api/health/ready`)).status; } catch { /* starting */ } if (ready !== 200) await new Promise((r) => setTimeout(r, 1_000)); }
   const after = await reminders();
