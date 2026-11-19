@@ -85,7 +85,9 @@ try {
   for (const db of [BARE, FULL]) { spawnSync(bin("dropdb"), [...PG, "--if-exists", "--force", db], { stdio: "ignore" }); execFileSync(bin("createdb"), [...PG, db]); }
   for (const d of all.filter((d) => d < NEW)) psql(BARE, ["-f", join(MIG, d, "migration.sql")]);
   for (const d of all) psql(FULL, ["-f", join(MIG, d, "migration.sql")]);
-  ok("setup: this row's migration is the newest on the branch", all[all.length - 1] === NEW, all.slice(-2));
+  // Its own stamp; never "the newest", or the next row's migration turns this red (#2304's
+  // batch, 19 Nov; P-600 (4), as check_pf18a_offices.ts). BARE above stops before NEW whatever comes after it.
+  ok("setup: this row's migration has its own stamp (no other migration shares it)", all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-2));
   for (const db of [BARE, FULL]) sql(db, `insert into workspace (id, key, label) values (gen_random_uuid(), 'csnk1', 'CS-NK1 check (Sample)')`);
   const full = new pg.Client({ connectionString: urlOf(FULL) }), bare = new pg.Client({ connectionString: urlOf(BARE) });
   await full.connect(); await bare.connect();
