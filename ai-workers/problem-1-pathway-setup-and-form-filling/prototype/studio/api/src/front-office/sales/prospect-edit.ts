@@ -5,11 +5,12 @@
 // not see, is 404). One audit line with ids and the currency, never the amount (PF-23); no outbox event (nothing reads
 // one yet); no conversion between currencies, ever. In a file of its own, with its own small controller, so neither
 // prospects.ts nor routes.ts changes while FO-2w edits them.
-import { Body, Controller, Inject, Injectable, Param, Patch, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Injectable, Param, Patch, Req } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
-import { centsOf, CURRENCY_REFUSED, isCurrency } from "../../../../contracts/currencies.ts";
+import { centsOf, CURRENCIES, CURRENCY_REFUSED, isCurrency } from "../../../../contracts/currencies.ts";
 import { Db } from "../../core.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { CURRENCY, readSetting } from "../../platform/settings.ts";
 import { actorOf, notFound, UUID, visibilityOf } from "./common.ts";
 import { Prospects } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
@@ -21,6 +22,12 @@ const refused = (field: string, detail: string) => problem(422, "Check the detai
 @Injectable()
 export class ProspectEdit {
   constructor(@Inject(Db) private readonly db: PrismaClient, @Inject(SALES_PORTS) private readonly ports: SalesPorts, @Inject(Prospects) private readonly prospects: Prospects) {}
+
+  /** What the Value panel offers: the firm's default currency (the setting `platform.currency`, CAD unless the firm
+   *  chose otherwise), shown first for a prospect that has no value yet, and the fixed list. */
+  async currencies(ctx: StaffContext) {
+    return { default: (await readSetting<string>(this.db, ctx.firmId, CURRENCY.key)) ?? CURRENCY.default, currencies: CURRENCIES };
+  }
 
   /** Set, change or clear the value. Both fields are sent: the screen edits them together, and a value never changes
    *  currency by itself. Nothing is written when either is refused. */
@@ -50,6 +57,9 @@ export class ProspectEdit {
 @Controller("api/front-office")
 export class ProspectEditController {
   constructor(@Inject(ProspectEdit) private readonly edit: ProspectEdit) {}
+
+  @Get("prospect-currencies") @PermissionKeys("agent/prospect:show")
+  currencies(@Req() r: { platform?: StaffContext }) { return this.edit.currencies(staffOf(r)); }
 
   @Patch("prospects/:id") @PermissionKeys("agent/prospect:edit")
   value(@Req() r: { platform?: StaffContext }, @Param("id") id: string, @Body() b: Record<string, unknown>) { return this.edit.value(staffOf(r), id, b ?? {}); }

@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Field, Input, Notice, Panel, Pill, Select, Textarea } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { centsOf, CURRENCIES, CURRENCY_REFUSED } from "../../../../../contracts/currencies";
-import { Board, can, KEY, LostReasons, money, Prospect } from "./contract";
+import { Board, can, KEY, LostReasons, money, Prospect, ValueCurrencies } from "./contract";
 import { Loading } from "./loading";
 import { MoveMenu, STALE_NOTE, useLock, useMove, useOwners, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
@@ -32,11 +32,14 @@ function ProspectBody({ id }: { id: string }) {
   const reasons = useQuery({ enabled: open === "lost", queryKey: ["fo", "lost-reasons"], queryFn: async () => LostReasons.parse(await staffApi("/front-office/prospects/lost-reasons")) });
   const lock = useLock(), focus = useReturnFocus();
   const [currency, setCurrency] = React.useState("");
+  // The firm's default currency, for a prospect with no value yet (it is CAD until the answer is in, as the server's default is).
+  const firmCurrency = useQuery({ queryKey: ["fo", "prospect-currencies"], queryFn: async () => ValueCurrencies.parse(await staffApi("/front-office/prospect-currencies")) }).data?.default ?? "CAD";
+  const firstCurrency = (v: Prospect) => (v.valueCents === null ? firmCurrency : v.currency);
   // The Value panel opens on what is stored: the amount as typed digits (never grouped) and the prospect's currency.
   const start = (a: Act | null) => {
     if (a) focus.mark(); else if (open) focus.back();
     const v = a === "value" ? one.data : undefined;
-    setOpen(a); setReasonId(""); setText(v && v.valueCents !== null ? (v.valueCents / 100).toFixed(2) : ""); setCurrency(v?.currency ?? ""); setError(null);
+    setOpen(a); setReasonId(""); setText(v && v.valueCents !== null ? (v.valueCents / 100).toFixed(2) : ""); setCurrency(v ? firstCurrency(v) : ""); setError(null);
   };
   const act = useMutation({
     mutationFn: async (a: Act) => {
@@ -111,7 +114,7 @@ function ProspectBody({ id }: { id: string }) {
           <dl className="mt-2">
             {row("From lead", <Link to={`/front-office/leads/${p.leadId}`} className="text-text-link hover:underline">{p.leadNumber}</Link>)}
             {row("Value", <span className="flex flex-wrap items-center gap-x-3 gap-y-1"><span data-value>{p.valueCents === null ? <span className="text-text-muted">Not set</span> : money(p.valueCents, p.currency)}</span>
-              {can(me, KEY.edit) ? <Button variant="link" size="sm" aria-label={`${p.valueCents === null ? "Set" : "Change"} the value of ${p.number}`} onClick={() => start("value")}>{p.valueCents === null ? "Set value" : "Change value"}</Button> : null}</span>)}
+              {can(me, KEY.edit) ? <Button variant="link" size="sm" aria-label={`${p.valueCents === null ? "Set value" : "Change value"}: ${name}, ${p.number}`} onClick={() => start("value")}>{p.valueCents === null ? "Set value" : "Change value"}</Button> : null}</span>)}
             {row("Engaged", arrivedLabel(p.engagedAt))}
             {owners.oneUser ? null : row("Owner", <span data-owner>{owners.name(p.ownerStaffId)}</span>)}
             {p.stage.kind === "WON" ? row("Won by", p.wonVia === "CONVERTED" ? "Convert to client" : "A signed retainer") : null}
@@ -137,7 +140,7 @@ function ProspectBody({ id }: { id: string }) {
           <Field label="Note (optional)" hint="Only your firm sees it."><Textarea rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} /></Field>
         </form>
       </Panel>
-      <Panel open={open === "value"} onOpenChange={(o) => start(o ? "value" : null)} title="Set the value" description={`${name}, ${p.number}. What this prospect may be worth to the firm. It counts in the board's totals of its own currency; amounts are never converted.`}
+      <Panel open={open === "value"} onOpenChange={(o) => start(o ? "value" : null)} title={p.valueCents === null ? "Set the value" : "Change the value"} description={`${name}, ${p.number}. What this prospect may be worth to the firm. It counts in the board's totals of its own currency; amounts are never converted.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("value")}>Save value</Button></>}>
         <form onSubmit={submit("value")} className="flex flex-col gap-4">
           {general}
@@ -146,8 +149,8 @@ function ProspectBody({ id }: { id: string }) {
           </Field>
           <Field label="Currency" error={error?.field === "currency" ? error.text : null}>
             <Select value={currency} onChange={(e) => { setCurrency(e.target.value); setError(null); }}>
-              {/* The prospect's own currency first, then every code A to Z. */}
-              {[p.currency, ...CURRENCIES.filter((c) => c !== p.currency)].map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
+              {/* A value keeps its own currency first; with no value yet the firm's default comes first; then A to Z. */}
+              {[...new Set([firstCurrency(p), firmCurrency, ...CURRENCIES])].map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
             </Select>
           </Field>
         </form>

@@ -31,7 +31,7 @@ import { chromium, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { platformAuditWorkspaceId } from "../../api/src/platform/audit/audit-event.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
-import { EVERYONE_SEES_ALL, writeSetting } from "../../api/src/platform/settings.ts";
+import { CURRENCY, EVERYONE_SEES_ALL, writeSetting } from "../../api/src/platform/settings.ts";
 import { client, recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -143,7 +143,7 @@ const ana2 = sql(`select id from fo_prospect where lead_id = '${ana.id}' and id 
 // FO-2pv (QA-530): the values are set through the screen, the Value panel on each prospect, never by SQL.
 const valueOf = (id: string) => sql(`select coalesce(value_cents::text, 'null') || '|' || currency from fo_prospect where id = '${id}'`);
 await owner.goto(`${BASE}/front-office/prospects/${anaId}`);
-await owner.getByRole("button", { name: /Set the value of/ }).focus(); await owner.keyboard.press("Enter");
+await owner.getByRole("button", { name: /^Set value: / }).focus(); await owner.keyboard.press("Enter");
 await owner.getByLabel("Amount").waitFor();
 const firstCurrency = await owner.getByLabel("Currency").locator("option").first().getAttribute("value"), currencyCount = await owner.getByLabel("Currency").locator("option").count();
 await owner.keyboard.type("12.345"); await owner.keyboard.press("Enter");
@@ -154,12 +154,24 @@ await shot(owner, "value-panel-1440");
 await owner.getByLabel("Amount").fill("5000"); await owner.keyboard.press("Enter");
 await owner.locator("[data-value]", { hasText: "CAD" }).waitFor();
 ok("J-30 W3v pass (FO-2pv, R1.31): by keyboard only (Enter, type, Enter) the value is saved as CAD 5,000: the prospect's own currency is offered first among the fixed list, the screen shows it, 500000 cents are stored", firstCurrency === "CAD" && currencyCount > 100 && (await owner.locator("[data-value]").innerText()).replace(/\s/g, " ") === "CAD 5,000" && valueOf(anaId) === "500000|CAD", [firstCurrency, currencyCount, valueOf(anaId)]);
-for (const [id, amount, currency] of [[ana2, "3000.00", "USD"], [cyd1.id, "1200", "CAD"]] as const) {
-  await owner.goto(`${BASE}/front-office/prospects/${id}`); await owner.getByRole("button", { name: /Set the value of/ }).click();
-  await owner.getByLabel("Amount").fill(amount); await owner.getByLabel("Currency").selectOption(currency); await owner.getByRole("button", { name: "Save value" }).click();
-  await owner.locator("[data-value]", { hasText: currency }).waitFor();
-}
-ok("J-30 W3v pass: a second prospect is given USD 3,000 and a third CAD 1,200 the same way (each kept in its own currency, nothing converted)", valueOf(ana2) === "300000|USD" && valueOf(cyd1.id) === "120000|CAD", [valueOf(ana2), valueOf(cyd1.id)]);
+// An amount with cents is shown exactly, never rounded (review M1): 5000.50, then back to 5000 for the totals below.
+await owner.getByRole("button", { name: /^Change value: / }).click(); await owner.getByLabel("Amount").fill("5000.50"); await owner.getByRole("button", { name: "Save value" }).click();
+const exact = await toast(owner, /The value of .* is CAD.5,000\.50\./), shownExact = (await owner.locator("[data-value]", { hasText: "5,000.50" }).waitFor({ timeout: 10_000 }).then(() => true, () => false));
+await owner.getByRole("button", { name: /^Change value: / }).click(); const reopened = await owner.getByLabel("Amount").inputValue();
+await owner.getByLabel("Amount").fill("5000"); await owner.getByRole("button", { name: "Save value" }).click(); await owner.locator("[data-value]", { hasText: /CAD.5,000$/ }).waitFor();
+ok("J-30 W3v pass: CAD 5000.50 is shown as CAD 5,000.50 in the toast and on the Value row (not rounded to 5,001), and the panel reopens on 5000.50", exact && shownExact && reopened === "5000.50" && valueOf(anaId) === "500000|CAD", [exact, shownExact, reopened]);
+// The firm's default currency (the setting platform.currency) comes first for a prospect with no value yet (review M2):
+// with the firm set to USD the second prospect is saved in USD without touching the Currency control; then back to CAD.
+const ws30 = await platformAuditWorkspaceId(db), firmCurrency = (value: "CAD" | "USD") => writeSetting(db, { firmId: A, key: CURRENCY.key, value, by: "seed:J-30-test", workspaceId: ws30, reason: "J-30: the firm's default currency" });
+await firmCurrency("USD");
+await owner.goto(`${BASE}/front-office/prospects/${ana2}`); await owner.getByRole("button", { name: /^Set value: / }).click();
+const preselected = await owner.getByLabel("Currency").inputValue();
+await owner.getByLabel("Amount").fill("3000.00"); await owner.getByRole("button", { name: "Save value" }).click(); await owner.locator("[data-value]", { hasText: "USD" }).waitFor();
+await firmCurrency("CAD");
+await owner.goto(`${BASE}/front-office/prospects/${cyd1.id}`); await owner.getByRole("button", { name: /^Set value: / }).click();
+const backToCad = await owner.getByLabel("Currency").inputValue();
+await owner.getByLabel("Amount").fill("1200"); await owner.getByRole("button", { name: "Save value" }).click(); await owner.locator("[data-value]", { hasText: "CAD" }).waitFor();
+ok("J-30 W3v pass: with the firm's default currency set to USD a new value is offered and saved in USD (3,000) untouched; set back to CAD the next one is offered CAD (1,200); each kept in its own currency, nothing converted", preselected === "USD" && backToCad === "CAD" && valueOf(ana2) === "300000|USD" && valueOf(cyd1.id) === "120000|CAD", [preselected, backToCad, valueOf(ana2), valueOf(cyd1.id)]);
 await owner.goto(`${BASE}/front-office/pipeline`);
 const card = (num: string) => owner.locator(`[data-card="${num}"]`), inStage = (key: string, num: string) => owner.locator(`[data-stage="${key}"] [data-card="${num}"]`);
 await inStage("ENGAGED", anaRow[0]).waitFor();
@@ -319,7 +331,8 @@ try {
   const readerTok = await signIn(O.email), reader = await pageAs(readerTok);   // a new session: it carries the role's keys as they are now
   await reader.goto(`${BASE}/front-office/prospects/${ben1.id}`); await reader.locator("[data-no-actions]").waitFor();
   const refused = await api(readerTok, "POST", `/prospects/${ben1.id}/lost`, { reasonId: rs[0].id });
-  ok("J-30 W6 BR-10 fail: without the edit, lose and convert keys the prospect's screen shows no Move to…, Mark lost or Convert, says why, and the API refuses (403)", await reader.getByRole("button", { name: /Move to…|Mark lost|Convert|value/ }).count() === 0 && (await reader.locator("[data-no-actions]").innerText()).includes("You can read this prospect") && refused.status === 403, refused.status);
+  const noValue = await fetch(`${BASE}/api/front-office/prospects/${ben1.id}`, { method: "PATCH", headers: { authorization: `Bearer ${readerTok}`, "content-type": "application/json" }, body: JSON.stringify({ value: "5", currency: "CAD" }) });
+  ok("J-30 W6 BR-10 fail: without the edit, lose and convert keys the prospect's screen shows no Move to…, Mark lost or Convert, says why, and the API refuses both Mark lost and a value edit (403)", await reader.getByRole("button", { name: /Move to…|Mark lost|Convert|value/ }).count() === 0 && (await reader.locator("[data-no-actions]").innerText()).includes("You can read this prospect") && refused.status === 403 && noValue.status === 403 && valueOf(ben1.id) === "null|CAD", [refused.status, noValue.status]);
   await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
   await reader.goto(`${BASE}/front-office/pipeline`); await reader.locator('[data-stage="ENGAGED"] [data-card]').first().waitFor();
   const firstCard = await reader.locator('[data-stage="ENGAGED"] [data-card]').first().getAttribute("data-card"), cardId = sql(`select id from fo_prospect where number = '${firstCard}' and firm_id = '${A}'`), was = moves(cardId);

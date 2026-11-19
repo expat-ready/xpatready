@@ -25,7 +25,7 @@ import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/
 import { dutiesOf, PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
-import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
+import { CURRENCY, EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -80,7 +80,7 @@ try {
 
   // ----------------------------------------------------------------------------------------- DW2: refused at the field
   for (const [what, body, field, words] of [
-    ["a negative amount", { value: "-5", currency: "CAD" }, "value", VALUE_REFUSED], ["three decimal places", { value: "10.123", currency: "CAD" }, "value", VALUE_REFUSED],
+    ["a negative amount", { value: "-5", currency: "CAD" }, "value", VALUE_REFUSED], ["a negative number", { value: -1, currency: "CAD" }, "value", VALUE_REFUSED], ["a number with three places (1.005)", { value: 1.005, currency: "CAD" }, "value", VALUE_REFUSED], ["three decimal places", { value: "10.123", currency: "CAD" }, "value", VALUE_REFUSED],
     ["an amount with a thousands comma", { value: "1,200", currency: "CAD" }, "value", VALUE_REFUSED], ["an exponent (1e3)", { value: "1e3", currency: "CAD" }, "value", VALUE_REFUSED],
     ["no value at all", { currency: "CAD" }, "value", VALUE_REFUSED], ["an amount over 9,999,999.99", { value: "10000000", currency: "CAD" }, "value", VALUE_TOO_LARGE],
     ["an unknown currency (XXQ)", { value: "5", currency: "XXQ" }, "currency", CURRENCY_REFUSED], ["a lower-case currency (cad)", { value: "5", currency: "cad" }, "currency", CURRENCY_REFUSED],
@@ -108,6 +108,11 @@ try {
   await seesAll(true);
   const access = Reflect.getMetadata(PLATFORM_ACCESS, ProspectEditController.prototype.value) as unknown;
   ok("FO-2pv DW4 pass: the PATCH route declares agent/prospect:edit and no other key (PF-4's guard refuses a person without it)", JSON.stringify(access).includes('"agent/prospect:edit"') && !/agent\/prospect:(show|lose|convert|assign)/.test(JSON.stringify(access)), access);
+
+  const d1 = await edit.currencies(R);
+  await writeSetting(db, { firmId: A, key: CURRENCY.key, value: "USD", by: "system:test", workspaceId: ws });
+  const d2 = await edit.currencies(R), d3 = await edit.currencies(SOLO);
+  ok("FO-2pv pass: the panel is told the firm's default currency (CAD, then USD once the firm's setting says so; the other firm still CAD) and the fixed list", d1.default === "CAD" && d2.default === "USD" && d3.default === "CAD" && d2.currencies === CURRENCIES, [d1.default, d2.default, d3.default]);
 
   // --------------------------------------------------------------------------------------- DW5: the audit line (PF-23)
   const audit = sql(`select actor || '|' || summary || '|' || detail::text from audit_event where entity_key = '${ben.id}' and action = '${VALUE_SET}'`);
