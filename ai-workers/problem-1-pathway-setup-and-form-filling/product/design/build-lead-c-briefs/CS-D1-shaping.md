@@ -21,3 +21,9 @@ BACKLOG `CS-D1` is one big "batch 5" row (FilesPort, upload doors, the type chec
 * **Start CS-D1t now.** It is R1.67's only missing part, needs nothing from anyone, and touches files no other in-flight part touches. AUD-1m 2a's files are `document-providers.ts`, `document-sets.ts` and `document-supplies.ts`, not these two, but if both run at once, whichever merges second merges main.
 * R1.65 (parts 1 and 2) is Not built and three parts away. Under P-733 it waits behind the one- and two-part items.
 * The doors part waits on Lead B. Nothing to ask of Lead B now.
+
+## Carried into CS-D1 part 1 from #2253 (19 Nov 14:5x IST)
+* A per-case cap on the PDF reader pool (as `ACTIVE_PER_CASE` in `fill-case.ts`): today one client's slow uploads can make another person's PDF answer 503.
+* The checklist-line door checks the line's state (takes uploads?) before it reads the PDF.
+* The built note's "cut short, even by 10 bytes: refused" is corrected for the ~1 KB window after an earlier end marker of an updated PDF.
+* The `flags` column for "contains scripts" and both doors at PF-F4's 25 MB (above).
