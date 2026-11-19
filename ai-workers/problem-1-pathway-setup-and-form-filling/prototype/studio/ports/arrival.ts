@@ -98,6 +98,8 @@ export function fakeArrival(opts: { wording?: ConsentWording | null; failOn?: (a
   const wording = opts.wording === undefined ? { wordingId: "00000000-0000-4000-8000-00000000c0de", text: "I agree that the firm may use these details to arrange and hold my consultation (Sample wording)." } : opts.wording;
   const pkey = (firmId: string, email: string) => `${firmId.toLowerCase()}|${email.toLowerCase()}`;
   const staffCalls = new Map<string, { prospectId?: string }>();
+  /** People an arrival made, by its transaction: a rolled-back arrival leaves no person (FO-2 part 3b's contract). */
+  const madePeople: { k: string; tx: unknown }[] = [];
   /** AG-2-26: the person's only open prospect moves forward to CONSULT once, never backward; several move none. */
   const moveOnly = (personId: string): string | undefined => {
     const open = prospects.filter((p) => p.personId === personId && p.open);
@@ -114,7 +116,7 @@ export function fakeArrival(opts: { wording?: ConsentWording | null; failOn?: (a
       if (opts.failOn?.(a)) throw new Error(`forced arrival failure: ${key}`);
       const k = pkey(a.firmId, a.person.email);
       let personId = people.get(k), newLead = false;
-      if (!personId) { personId = crypto.randomUUID(); people.set(k, personId); }
+      if (!personId) { personId = crypto.randomUUID(); people.set(k, personId); madePeople.push({ k, tx }); }
       contacts.set(`${a.firmId.toLowerCase()}|${personId}`, a.person);
       const open = prospects.filter((p) => p.personId === personId && p.open);
       const prospectId = moveOnly(personId);
@@ -157,6 +159,7 @@ export function fakeArrival(opts: { wording?: ConsentWording | null; failOn?: (a
     discard(tx) {
       for (let i = calls.length - 1; i >= 0; i--) if (calls[i].tx === tx) calls.splice(i, 1);
       for (let i = leads.length - 1; i >= 0; i--) if (leads[i].tx === tx) leads.splice(i, 1);
+      for (let i = madePeople.length - 1; i >= 0; i--) if (madePeople[i].tx === tx) { people.delete(madePeople[i].k); madePeople.splice(i, 1); }
     },
   };
   return fake;

@@ -4,7 +4,8 @@
 // lead creates; Take it, Close and Reopen edit; Assign assigns. The list and the read are marked @OwnOrAll and swept
 // by PF-6b's check with the retainers (FO-2v). `leads/sources` and `leads/assignees` are declared before `leads/:id`.
 // FO-2 part 3 (sales/prospects.ts): Engage (Individual), the prospects list and read (@OwnOrAll, swept by PF-6b), a
-// person's move and Mark lost (keys edit, lose), Convert and Undo convert (convert).
+// person's move and Mark lost (keys edit, lose), Convert and Undo convert (convert). FO-4 part 2a: the reasons Mark lost
+// offers (`prospects/lost-reasons`, read-only).
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Activity } from "./calls.ts";
@@ -52,6 +53,9 @@ export class SalesController {
 
   @Get("prospects") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   prospectList(@Req() r: R, @Query() q: Record<string, unknown>) { return this.prospects.list(staffOf(r), q ?? {}); }
+
+  @Get("prospects/lost-reasons") @PermissionKeys("agent/prospect:show")   // FO-4 part 2a; declared before prospects/:id
+  prospectLostReasons(@Req() r: R) { return this.prospects.lostReasons(staffOf(r)); }
 
   @Get("prospects/:id") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   prospectRead(@Req() r: R, @Param("id") id: string) { return this.prospects.read(staffOf(r), id); }
