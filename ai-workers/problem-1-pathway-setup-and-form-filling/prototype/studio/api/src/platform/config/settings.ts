@@ -149,6 +149,10 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
  */
 export const SCRUBBED_FROM_ENV: readonly string[] = Object.freeze(SECRET_SETTING_NAMES.filter((n) => n !== "DATABASE_URL"));
 
+/** PF-15 (SA-3-40): our shared team inbox, alerted when a firm with no account manager goes over its storage limit.
+ *  Sample: no real address until the founder names one (there is no account manager on main). */
+export const TEAM_INBOX_SAMPLE = "team-inbox@expatready.example";
+
 let loaded: PlatformConfig | null = null;
 /** This process's configuration, read from process.env the first time it is asked for and then kept (read once). */
 export function platformConfig(): PlatformConfig {
