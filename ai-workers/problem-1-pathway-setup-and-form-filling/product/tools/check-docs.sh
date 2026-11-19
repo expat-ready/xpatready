@@ -39,6 +39,30 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
     if [ -z "$a" ]; then echo "RULES LAG: RULES.md's first line needs 'as of **P-NNN**'"
     elif [ -n "$t" ] && [ $((t - a)) -gt 3 ]; then echo "RULES LAG: RULES.md is as of P-$a but DECISIONS reaches P-$t ($((t - a)) rows behind, at most 3): fold the newer rows into RULES.md, keep the old page in product/history/ (P-440)"; fi
   fi
+  # ENF-733 (b) (founder 19 Nov, P-734 (1), (2)): the engine is locked to the evening of 22 Nov. A DECISIONS row newer than
+  # P-734, dated 19 to 22 Nov, that changes the workflow is refused unless its text carries the word "fix" and says what
+  # is broken ("Broken: ..."). "Changes the workflow" is decision-impact.sh's own split, not a second one: a row listed in
+  # its EXEMPT is a workflow, tooling or scope row; any other row must already show as a capability or a build row there.
+  # A struck-through (withdrawn) row is not checked. DECISIONS dates carry no year: this block goes when the lock ends
+  # (a follow-up for the Lead after 22 Nov), or a row dated 19 to 22 Nov next year would meet it. Test: check-workflow-lock.sh.
+  if [ -f "$D" ]; then
+    ex=$(sed -nE 's/^EXEMPT="([^"]*)".*/\1/p' "$PH/tools/decision-impact.sh" 2>/dev/null | head -1)
+    grep -E '^\| P-[0-9]+ \|[^|]*\b(19|20|21|22) Nov\b[^|]*\|' "$D" | while IFS= read -r row; do
+      id=$(printf '%s\n' "$row" | sed -E 's/^\| (P-[0-9]+) .*/\1/'); [ "${id#P-}" -gt 734 ] || continue
+      if [ -z "$ex" ]; then echo "WORKFLOW LOCK: $id is dated 19 to 22 Nov and newer than P-734, but the EXEMPT list in tools/decision-impact.sh could not be read, so nothing says whether it changes the workflow (P-734)"; continue; fi
+      case "$ex" in *" $id "*) ;; *)
+        # Not in EXEMPT: decision-impact.sh passes it on a capability row or a backlog row naming it (same two lookups
+        # here). When no capability row does and every such backlog row is tooling, qa, records or the Lead's (its area
+        # cell), nothing a person can see carries it: it changes the workflow too (P-618, P-619, P-631 passed this way).
+        grep -qE "^\| C[0-9.]+ .*\b$id\b" "$PH/qa/CAPABILITIES.md" 2>/dev/null && continue
+        areas=$(grep -hE "^\| (B[0-9]+[a-z]?|BK-[0-9]+[a-z]?|PF-[0-9]+[a-z]?|FO-[0-9]+[a-z]?|AUD-[0-9]+) .*\b$id\b" "$PH"/BACKLOG*.md 2>/dev/null | cut -d'|' -f3)
+        [ -n "$areas" ] || continue
+        printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
+      esac
+      printf '%s\n' "$row" | grep -qiE '\bfix(es|ed|ing)?\b' && printf '%s\n' "$row" | grep -qiE '\bbroken: *[^ |]' && continue
+      echo "WORKFLOW LOCK: $id changes the workflow (it is in decision-impact.sh's EXEMPT, or only tooling, qa, records or Lead backlog rows carry it) and is dated before 23 Nov, while P-733 runs unchanged to the evening of 22 Nov (P-734 (1)). Keep it for 23 Nov, or, if it fixes something broken, say so in the row: the word fix, and \"Broken: <what is broken, with its evidence>\""
+    done
+  fi
   # P-611, P-615 (row G-3): RULES.md is a rule register, one row per rule `| ID | Rule | Enforced by | As of |` under that
   # header; a row with no enforcer field (a hook, CI step, script, or "prose") or a page over 25 KB fails, so the start
   # read stays small and every rule says what enforces it. Long text goes to product/rules/*.md. Test: check-rule-register.sh.

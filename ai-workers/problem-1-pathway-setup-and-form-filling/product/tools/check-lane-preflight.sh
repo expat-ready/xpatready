@@ -21,6 +21,8 @@ pf "$(gb 70)" 16 ""; ok "exactly 7 GB and load 16 pass" "$([ $r = 0 ] && echo 1)
 pf "$(gb 150)" 17.2 ""; ok "a 1-minute load of 17.2 is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'load 17.2, over 16' && echo 1)" "exit $r: $out"
 pf "$(gb 150)" 3 "4420 4431 4452 4471"; ok "four running test copies are refused, with their ports" "$([ $r = 1 ] && echo "$out" | grep -q '4 test copies running, cap 4 (ports: 4420 4431 4452 4471' && echo 1)" "exit $r: $out"
 pf "$(gb 30)" 20 "4420 4431 4452 4471"; ok "every reason is named at once" "$([ $r = 1 ] && [ "$(echo "$out" | grep '^REFUSED' | grep -o 'under 7 GB\|over 16\|cap 4' | wc -l | tr -d ' ')" = 3 ] && echo 1)" "$out"
+# The stand-in brief's row X-1 is put on a throwaway focus list, so focus-check.py (ENF-733; test: check-focus-list.sh) is not what these checks see.
+printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"; export FOCUS_LIST="$T/focus-list.md"
 BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'   # passes brief-check.sh --brief (G-4)
 hook() { out=$(jq -n --arg t "$5" --arg p "${6-$BRIEF}" '{tool_name:"start_session", tool_input:{target:$t, prompt:$p}}' | PATH="$T/bin:$PATH" FAKE_KB="$1" FAKE_LOAD="$2" FAKE_PORTS="$3" bash "$P" --hook); r=$?; }
 hook "$(gb 37)" 3 "" x local; ok "hook: a Mac start at 3.7 GB is denied with the reason" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("3.7 GB"))' >/dev/null && echo 1)" "$out"
