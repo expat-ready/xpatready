@@ -83,7 +83,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full event|product/tools/queue-gate.sh|s/select(.event == "workflow_dispatch" and /select(/|check-queue-gate.sh
 15 full branch|product/tools/queue-gate.sh|s/and .head_branch == "main" and/and/|check-queue-gate.sh
 15 full file|product/tools/queue-gate.sh|s/ and ((.path \/\/ "") . split("@")\[0\]) == \$wf//|check-queue-gate.sh
-15 full repo|product/tools/queue-gate.sh|s/ and .head_repository.full_name == \$r) . {id/) | {id/|check-queue-gate.sh
+15 full repo|product/tools/queue-gate.sh|s/and .head_repository.full_name == \$r)\( . {id, status\)/and true)\1/|check-queue-gate.sh
 15 full records|product/tools/queue-gate.sh|s/^  records \&\& return 0/  true \&\& return 0/|check-queue-gate.sh
 15 full from|product/tools/queue-gate.sh|s/ \&\& \[\[ "\$at" < "\$FULL_FROM" \]\] \&\& return 0/ \&\& return 0/|check-queue-gate.sh
 15 full names|product/tools/queue-gate.sh|s/ 2>\/dev\/null . san . cut -c1-120 . grep \.; true; }/ 2>\/dev\/null; true; }/|check-queue-gate.sh
@@ -92,7 +92,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 batch who|product/tools/queue-gate.sh|s/^FULL_WF=\(.*\); TEAM=.*/FULL_WF=\1; TEAM=true/|check-queue-gate.sh
 15 batch run|product/tools/queue-gate.sh|s/Batch failures covered: \*\$rid \*:"/Batch failures covered: *[0-9]* *:"/|check-queue-gate.sh
 15 batch bot|product/tools/queue-gate.sh|s/select(.user.login == "mergify\[bot\]" and /select(/|check-queue-gate.sh
-15 batch sweep|product/tools/queue-gate.sh|s/^  eligible) load .. exit 2; judge \&\&/  eligible) load || exit 2; judge \&\& covered \&\&/|check-queue-gate.sh
+15 batch sweep|product/tools/queue-gate.sh|s/^\(  eligible) load .. exit 2; judge \&\&\)/\1 covered \&\&/|check-queue-gate.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
