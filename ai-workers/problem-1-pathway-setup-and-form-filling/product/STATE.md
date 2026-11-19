@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_98ab55d2-14dd-45cb-90d8-3bd03b26ec61 Lead 95 · 19 Nov 20:2x IST (series 2; new account, P-725; took over from Lead 94 (series 2, local_8d88d9c8) at 475k, P-446)
+current_lead: local_98ab55d2-14dd-45cb-90d8-3bd03b26ec61 Lead 95 · 19 Nov 20:25 IST (series 2; new account, P-725; took over from Lead 94 (series 2, local_8d88d9c8) at 475k, P-446)
 
-updated: 2026-11-19 20:25 IST: Lead 94 handed over to Lead 95; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 12 of 101 · rules: **`RULES.md`** (as of **P-740**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 20:27 IST: Lead 95 took over 20:25 (check 72a1ec87 at :13/:43); #2249 Lead-read on fe314efd6 and labelled 20:27; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 12 of 101 · rules: **`RULES.md`** (as of **P-740**) · this branch: `lead/2026-11-07-lead31`
 
 
 
