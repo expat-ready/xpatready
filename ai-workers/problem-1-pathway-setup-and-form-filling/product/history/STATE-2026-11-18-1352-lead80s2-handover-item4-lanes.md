@@ -1,0 +1,3 @@
+# STATE hand-over item 4 (lanes), moved word for word by Lead 80, 13:5x IST 18 Nov, to keep STATE under 12 KB
+
+4. **Lanes:** Build Lead A (local_1520b573; its claude.ai is signed out: post lane steps from the Lead's built-in browser, which is signed in), Build Lead C (local_d5287293), qa local_bb3bf1ad, enforcement-checks local_f3778712, board keeper local_d01fe726 (daily rebuild 09:00; lean-reads #2113), repo-cleanup local_7f47aef5, founder-setup local_c3e4ea74 (restored from Archived 17 Nov). Disk 40 GB free after the 17 Nov clean-up (the founder's Downloads, caches and the Claude Cowork VM deleted on his word).
