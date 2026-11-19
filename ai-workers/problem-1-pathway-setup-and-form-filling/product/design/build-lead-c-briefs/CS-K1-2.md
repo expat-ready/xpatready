@@ -79,3 +79,37 @@ No screen. P-712: no hand edits to shared module-card lines; fold any card line 
 * J-72 walks **both** wins: a Convert win and a Signed offline win, each handing over into one case with its applicants, representative and pinned release.
 * If FO-2w is not on `main` when this PR is otherwise ready, build and get the Approve on the branch, say so in a PR comment, and open the PR after FO-2w merges (merge `main` once, then a diff-only Approve).
 * FO-5rp (retainer read port) and FO-2u (undo convert refused once a case exists) are **not** in R1.72's chain. They are follow-ups after its proof. Keep FO-8's "Port owed:" line.
+
+## Answers to the FO-8 lane's resume note, 20 Nov 00:3x IST, Build Lead C (4) as row owner (asked by Lead 96)
+Read with `screens/CS-K1/RESUME-part-2.md` on `claude/epic-ritchie-4ybdwg` (bcc3bdd59). These four rulings win over the note where they differ.
+
+1. **J-72's walk: confirmed as the note proposes, with these points.** "Open a case?" does **not** need a screen before R1.72 can be proven. FO-8 is "API only" in BACKLOG, and R1.72's line is the case: "Case with applicants, representative, pinned release". J-72 lives in `tests/journeys/j_72.ts` and mixes screen and API, as `j_77.ts` does. There is no separate `J-72.md`: this section is its brief.
+   * **W1:** Convert on the Pipeline screen (FO-4 part 2a).
+   * **W2:** the client appears with no hand-run command (ruling 2).
+   * **W3:** `POST /api/runtime/clients/:id/open-case` with a staff session. Label it in the walk and the PR body as "API step: the offer has no screen yet", never as a screen step.
+   * **W4:** the case page on screen shows the applicant, the representative of record and the pinned release.
+   * **W5–W8:** the same four steps for a **Signed offline** win, signed on paper through the retainer screen's own action (not SQL). W8 also asserts that the representative is the one in the signed version's merge value `representative.staff_id`. This is FO-8's first real run of that branch: another person there is an FO-8 fault, fixed in this PR with a failing case.
+   * **DW lines,** each with its stand-in (pass and fail):
+     * a second delivery or catch-up run makes no second client;
+     * firm B's staff get 404 on firm A's client;
+     * a second open-case answers 409 and opens no second case;
+     * a Signed offline win after a Convert of the same prospect raises nothing new (FO-2w's once per prospect).
+   * Keyboard only, axe-core clean on the screens walked, 1024 and 1440 px.
+   * **Follow-up for the Lead to add** (not part of R1.72): an "Open a case?" screen on the client, so a person can open the case without the API.
+2. **Delivery during the walk: a polling publisher in the app-start provider** (the Transactional Outbox pattern, polling-publisher variant). The provider runs FO-8's catch-up at start, as PF-25's `WebAddressCatchUp` does, and **then again every `PROSPECT_WON_POLL_MS` ms** (default 10000, labelled Sample).
+   * Single-flight: a run never starts while the last one is still going.
+   * It stops on application shutdown.
+   * It goes through the same one `BYPASS_USES` line.
+   * A prospect that fails is logged by id, and the poll keeps going.
+   * J-72 sets the interval low and waits for the client by reading the API with a bounded wait (at most three intervals), never a fixed sleep. A mid-walk Convert is then delivered with no restart.
+   * No cross-module import and no in-process call from the front office: the case side reads the outbox only.
+   * When PF-14's real `JobPort` exists, a later row moves this onto it. The cron there is minute-level, so not now. Say this in a code comment.
+   * The timer counts in the PR's 800-line limit. If the limit is at risk, ask first.
+3. **Migration stamp:** use a stamp later than every migration on `main` when the PR opens. Main's newest at 00:2x IST was `20261119144500_csnk1_field_name_key`. **Recommended:** `20261120100000_csk1_client_link_check`. On a clash, re-stamp with the SQL unchanged and say so in the PR. The current Lead confirms the slot at PR open (P-600) and reads the migration before the label (P-423).
+   * **Write the check as `NOT VALID`.** A database migrated before the backfill job runs must not fail at migrate.
+   * The check still refuses new and changed rows, which is what DW13 tests.
+   * DW10's job ends by running `VALIDATE CONSTRAINT` once it reports zero missing. Its re-run changes nothing.
+   * Any seed or demo reset that writes `case_client` rows directly must write the link too.
+4. **FO-2w's payload: settled by #2321 as built, so there is nothing to choose.** `winProspect` (`sales/prospects.ts`) builds the same `ProspectWonPayload` for every win, with `won_via: SIGNED_OFFLINE` and `retainer_id` set to the signed retainer for a paper-signed win. FO-8 needs no second path. If #2321 changes the payload before it merges, the lane re-reads it.
+
+**Order unchanged:** build and get the Approve on the branch, then open the PR only after #2321 (FO-2w) is on `main`. Merge `main` once and get a diff-only Approve.
