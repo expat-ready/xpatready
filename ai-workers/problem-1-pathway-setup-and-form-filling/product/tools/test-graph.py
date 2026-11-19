@@ -9,7 +9,10 @@ never hand-kept. Each suite runs under V8's own coverage (run-suites.sh with SUI
   render <graph.json> --html x.html --mermaid x.mmd   people's view: capability -> module diagram and tables
 
 "Exercised" (not merely loaded): a function of the file other than the module wrapper and the transpiler's helpers
-(esbuild's __name/__export/__copyProps/__toCommonJS and the export getter `get`) ran at least once. A file only loaded
+(esbuild's __name/__export/__copyProps/__toCommonJS and the export getter `get`) ran at least once, and it is not one
+that runs when a server merely starts: the part `__boot__` (a copy started and stopped with nothing asked of it,
+test-graph.yml) is the baseline, and its functions are taken away from every suite (measured 20 Nov: without it one API
+suite "exercised" 392 files, every module, through route registration alone). Functions are named by name@offset. A file only loaded
 (imported, nothing called) is counted apart and never makes an edge. Granularity is the suite (one script, one process
 and the copy it starts), not the single check; suites sharing one server (the R1 group) share its coverage. Browser code
 runs in Chromium, outside V8's Node coverage: web/src files reach the graph only through server-side imports. A suite
@@ -48,6 +51,8 @@ def own(fns):
 def collect(covdir, top):
     out = {}
     for d in sorted(os.listdir(covdir)):
+        if not (d.startswith("check_") or d == "__boot__") or not os.path.isdir(os.path.join(covdir, d)):
+            continue   # only suites' folders and the boot baseline
         files = {}
         for j in glob.glob(os.path.join(covdir, d, "*.json")):
             try:
@@ -59,10 +64,10 @@ def collect(covdir, top):
                 if not p or not p.startswith(APP) or "/node_modules/" in p:
                     continue
                 fs = own(r.get("functions", []))
-                hit = {i for i, f in enumerate(fs) if f["ranges"] and f["ranges"][0].get("count", 0) > 0}
+                hit = {f"{f.get('functionName') or ''}@{f['ranges'][0]['startOffset']}" for f in fs if f["ranges"] and f["ranges"][0].get("count", 0) > 0}
                 h, t = files.get(p, (set(), 0))
                 files[p] = (h | hit, max(t, len(fs)))   # several processes (suite, server): union of what ran
-        out[d] = {f: [len(h), t] for f, (h, t) in sorted(files.items())}
+        out[d] = {f: {"total": t, "hit": sorted(h)} for f, (h, t) in sorted(files.items())}
     return out
 
 
@@ -106,11 +111,16 @@ def join(parts, top, commit=""):
     suites = {}
     for p in parts:
         for s, fs in json.load(open(p, encoding="utf-8")).items():
-            suites.setdefault(s, {}).update(fs)
+            for f, v in fs.items():   # a suite or the baseline split over parts: union
+                e = suites.setdefault(s, {}).setdefault(f, {"total": 0, "hit": []})
+                e["total"] = max(e["total"], v["total"]); e["hit"] = sorted(set(e["hit"]) | set(v["hit"]))
+    boot = suites.pop("__boot__", None)
+    base = {f: set(v["hit"]) for f, v in (boot or {}).items()}
+    suites = {s: {f: [len(set(v["hit"]) - base.get(f, set())), v["total"]] for f, v in fs.items()} for s, fs in suites.items()}
     module = cards(top)
     caps, r1suites = capabilities(top)
     g = {"schema": 1, "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "commit": commit, "suites": {}, "files": {}, "modules": {}, "capabilities": {}, "unmapped": []}
+         "commit": commit, "boot_baseline": boot is not None, "suites": {}, "files": {}, "modules": {}, "capabilities": {}, "unmapped": []}
     for s, fs in sorted(suites.items()):
         src = source(s, top)
         text = open(os.path.join(top, src), encoding="utf-8", errors="replace").read() if src else ""

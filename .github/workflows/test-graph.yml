@@ -57,6 +57,11 @@ jobs:
       - name: every studio suite under coverage, part ${{ matrix.shard }} of ${{ env.N }} (verdicts are not judged here)
         run: |
           SUITES_COVERAGE="$RUNNER_TEMP/cov" bash "$P/tools/run-suites.sh" --demo --shard "${{ matrix.shard }}/$N" | tee suites.md || true
+          if [ "${{ matrix.shard }}" = 1 ]; then   # the boot baseline: a copy started and stopped with nothing asked of it
+            mkdir -p "$RUNNER_TEMP/cov/__boot__"; export NODE_V8_COVERAGE="$RUNNER_TEMP/cov/__boot__" NODE_OPTIONS="--import=$PWD/$S/tests/qa/coverage-preload.mjs"
+            zsh "$S/tools/isolated.sh" boot 4499 start && zsh "$S/tools/isolated.sh" boot 4499 stop
+            unset NODE_V8_COVERAGE NODE_OPTIONS
+          fi
           python3 -I "$P/tools/test-graph.py" collect "$RUNNER_TEMP/cov" --out "suites-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -78,6 +83,7 @@ jobs:
         run: |
           n=$(ls parts/suites-*.json 2>/dev/null | wc -l)
           python3 -I "$P/tools/test-graph.py" join parts/suites-*.json --out graph.json --commit "$GITHUB_SHA" | tee line.txt
+          jq -e .boot_baseline graph.json >/dev/null || echo "::warning::no boot baseline (part 1 missing): server start-up counts as exercised"
           python3 -I "$P/tools/test-graph.py" render graph.json --html graph.html --mermaid graph.mmd
           { echo "Test graph on ${GITHUB_SHA:0:9}: $n of $N parts; $(cat line.txt)"; echo; echo '```mermaid'; head -c 40000 graph.mmd; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

@@ -11,10 +11,10 @@ TG="$TOOLS/test-graph.py"
 [ -f "$TG" ] || { ok "test-graph.py exists (B203)" 0 "no $TG"; finish; }
 R=$(mktemp -d "${TMPDIR:-/tmp}/tgraph.XXXXXXXX") && [ -d "$R" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$R"' EXIT
 PH=ai-workers/problem-1-pathway-setup-and-form-filling; S=$PH/prototype/studio
-mkdir -p "$R/.claude/rules/modules" "$R/$S/api/src/b" "$R/$S/engine" "$R/$S/tests" "$R/$PH/product/qa" "$R/cov/check_one" "$R/cov/check_two" "$R/cov/check_three"
+mkdir -p "$R/.claude/rules/modules" "$R/$S/api/src/b" "$R/$S/engine" "$R/$S/tests" "$R/$PH/product/qa" "$R/cov/check_one" "$R/cov/check_two" "$R/cov/check_three" "$R/cov/__boot__" "$R/cov/out"
 card() { printf -- '---\npaths:\n  - "%s"\n---\n# Module card: %s\n' "$S/$2" "$1" > "$R/$S/api/src/$3"; ln -s "../../../$S/api/src/$3" "$R/.claude/rules/modules/$1.md"; }
 card api-a "api/src/a*.ts" MODULE.a.md; card api-b "api/src/b/**" b/MODULE.md
-for f in api/src/a1.ts api/src/a2.ts api/src/b/x.ts engine/e.ts; do echo "export const x = 1;" > "$R/$S/$f"; done
+for f in api/src/a1.ts api/src/a2.ts api/src/a3.ts api/src/b/x.ts engine/e.ts; do echo "export const x = 1;" > "$R/$S/$f"; done
 echo '// proves C1.2: the a rule' > "$R/$S/tests/check_one.ts"; echo '// no id here' > "$R/$S/tests/check_two.cjs"; echo '// C1.2 only loads' > "$R/$S/tests/check_three.ts"
 cat > "$R/$PH/product/qa/CAPABILITIES.md" <<'EOF'
 | Id | Area | Capability | Milestone | Status |
@@ -33,7 +33,9 @@ cat > "$R/cov/check_one/p1.json" <<EOF
  {"scriptId":"4","url":"$(u tests/check_one.ts)","functions":[$W,$(fn t 1)]},
  {"scriptId":"5","url":"node:fs","functions":[$W]}]}
 EOF
-echo "{\"result\":[{\"scriptId\":\"9\",\"url\":\"$(u api/src/a1.ts)\",\"functions\":[$W,$W,$(fn __name 1),$(fn doA 0),$(fn other 4)]}]}" > "$R/cov/check_one/server.json"
+echo "{\"result\":[{\"scriptId\":\"9\",\"url\":\"$(u api/src/a1.ts)\",\"functions\":[$W,$W,$(fn __name 1),$(fn doA 0),$(fn other 4)]},{\"scriptId\":\"8\",\"url\":\"$(u api/src/a3.ts)\",\"functions\":[$W,$W,$(fn route 1)]}]}" > "$R/cov/check_one/server.json"
+echo "{\"result\":[{\"scriptId\":\"1\",\"url\":\"$(u api/src/a3.ts)\",\"functions\":[$W,$W,$(fn route 1)]}]}" > "$R/cov/__boot__/p.json"
+echo "{\"result\":[{\"scriptId\":\"1\",\"url\":\"$(u api/src/b/x.ts)\",\"functions\":[$W,$W,$(fn go 1)]}]}" > "$R/cov/out/p.json"
 echo "{\"result\":[{\"scriptId\":\"1\",\"url\":\"$(u api/src/b/x.ts)\",\"functions\":[$W,$W,$(fn go 1)]}]}" > "$R/cov/check_two/p.json"
 echo '{"result":[{"scriptId":"1","url":"' > "$R/cov/check_two/broken.json"
 echo "{\"result\":[{\"scriptId\":\"1\",\"url\":\"$(u api/src/a2.ts)\",\"functions\":[$W,$W,$(fn get 5),$(fn f 0)]}]}" > "$R/cov/check_three/p.json"
@@ -54,6 +56,9 @@ ok "a file only loaded (the export getter ran, no function did) makes no edge: c
   "$([ "$(q "[g['unmapped'], g['suites']['check_three']['loaded_only'], g['suites']['check_three']['modules'], '$S/api/src/a2.ts' in g['files']]")" = '[["check_three"], 1, [], false]' ] && echo 1)" "$(q "g['suites']['check_three']")"
 ok "a capability no suite names stays listed with no suite (the gap is shown)" "$([ "$(q "g['capabilities']['C9.9']['suites']")" = '[]' ] && echo 1)" "$(q "g['capabilities'].get('C9.9')")"
 ok "file -> suites (for impact analysis): b/x.ts is run by check_two, in module api-b" "$([ "$(q "[g['files']['$S/api/src/b/x.ts'][k] for k in ('module','suites')]")" = '["api-b", ["check_two"]]' ] && echo 1)" "$(q "g['files']")"
+ok "boot baseline: a3.ts's route ran in check_one's server and in a bare start (__boot__): no edge, and the graph says the baseline was there" \
+  "$([ "$(q "['$S/api/src/a3.ts' in g['suites']['check_one']['exercised'], g['boot_baseline'], '__boot__' in g['suites']]")" = '[false, true, false]' ] && echo 1)" "$(q "g['suites']['check_one']")"
+ok "a folder that is not a suite's (run-suites.sh's own out/) is not read as a suite" "$([ "$(q "sorted(g['suites'])")" = '["check_one", "check_three", "check_two"]' ] && echo 1)" "$(q "sorted(g['suites'])")"
 ok "the commit is recorded" "$([ "$(q "g['commit']")" = '"abc1234"' ] && echo 1)" ""
 python3 -I "$TG" render "$R/graph.json" --html "$R/g.html" --mermaid "$R/g.mmd"; rc=$?
 ok "render: an HTML page and a Mermaid diagram with the capability -> module edge" "$([ $rc = 0 ] && grep -q '<title>Test graph</title>' "$R/g.html" && grep -q 'C1_2 --> api_a' "$R/g.mmd" && echo 1)" "exit $rc: $(cat "$R/g.mmd" 2>/dev/null)"
