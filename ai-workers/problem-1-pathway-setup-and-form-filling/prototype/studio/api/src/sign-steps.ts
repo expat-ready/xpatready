@@ -7,8 +7,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Body, Controller, forwardRef, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, forwardRef, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
+import { z } from "zod";
+import { nothingStored, SignedScanFields, SignStepBody } from "../../contracts/runtime.ts"; // CS-V1 part 3
 import { MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB } from "../../contracts/documents.ts";
 import { isPenStep, isSignStep, minorFromAnswers, PEN_STEP_WORDS, PEN_STEPS, penRefusal, SIGN_STEP_WORDS, SIGN_STEPS, signersOf, stepRefusal, type PenStepKey, type SignStepKey, type StepsDone } from "../../engine/runtime/signing.ts";
 import { channelOf, type FormLine } from "../../engine/runtime/prepare.ts";
@@ -33,6 +35,12 @@ const lockCase = (q: Db, caseId: string) => q.$queryRaw`SELECT id FROM runtime_c
 const namedCopy = (body: unknown): string | undefined => {
   const v = (body ?? {}) as { copy?: unknown };
   return v.copy === undefined || v.copy === null || v.copy === "" ? undefined : String(v.copy);
+};
+/** CS-V1 part 3: a body read through its schema; a refusal is the standard 400 naming the field, and nothing was stored. */
+const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
+  const r = schema.safeParse(input);
+  if (!r.success) throw new HttpException(nothingStored(r.error), HttpStatus.BAD_REQUEST);
+  return r.data;
 };
 /** The words of any recorded step (hand-signed and scanned, or signed in pen on Paper, B132). */
 const stepWords = (k: SignStepKey | PenStepKey) => (isSignStep(k) ? SIGN_STEP_WORDS[k] : PEN_STEP_WORDS[k as PenStepKey]);
@@ -84,6 +92,7 @@ export class SignSteps {
 
   /** POST /runtime/items/:id/sign-steps/:key: one step, in order; "print" names the generated copy printed. */
   async step(actor: Actor, itemId: string, keyIn: string, body: unknown) {
+    parse(SignStepBody, body ?? {}); // CS-V1 part 3: only copy, once, as text; the checks below keep their words
     if (!isSignStep(keyIn) && !isPenStep(keyIn)) fail(`No such step: a form signed by hand and scanned takes ${SIGN_STEPS.map((k) => SIGN_STEP_WORDS[k]).join(", ")}; a form signed in pen on Paper takes ${PEN_STEPS.map((k) => PEN_STEP_WORDS[k]).join(", ")}.`, HttpStatus.NOT_FOUND);
     const { c, item, handScanned, pen, blank } = await this.item(actor, itemId);
     // C7.8 (B141 M5): a blank added form has no printing steps: its one upload is the completed (signed) copy. Its one step
@@ -214,6 +223,7 @@ export class SignSteps {
   /** POST /runtime/items/:id/signed-scan: the signed scan (one PDF, JPEG or PNG, judged by its bytes), stored with its
    *  checksum, never changed in place; it marks "Signed scan received". */
   async scan(actor: Actor, itemId: string, files: Upload[] | undefined, body?: unknown) {
+    parse(SignedScanFields, body ?? {}); // CS-V1 part 3: the upload's text fields (only copy), before the file is read or stored
     const { c, item, handScanned, blank } = await this.item(actor, itemId);
     await refuseIfRecorded(this.db, [item.filingId], `the signing of ${item.itemKey}`); // B129: before the file is stored
     if (!handScanned && !blank) fail(`${item.itemKey} is not signed by hand and scanned on this application, so it takes no signed scan. Nothing was stored.`, HttpStatus.CONFLICT);
