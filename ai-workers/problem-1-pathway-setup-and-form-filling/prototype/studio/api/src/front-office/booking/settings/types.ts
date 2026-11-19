@@ -27,6 +27,7 @@ import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { type BookingService, SlotsQuery, wallLabel } from "../service.ts";
 import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
+import { windowsFor } from "./hours.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -164,7 +165,9 @@ export class BookingTypesService {
 
   async get(ctx: StaffContext, id: string) {
     const t = await this.find(this.db, ctx.firmId, id);
-    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id) };
+    // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
+    const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
+    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {
@@ -209,7 +212,7 @@ export class BookingTypesService {
     // The door's own computation (private to the booking service, read by name so the two can never differ).
     const slots: Slot[] = hosts.length ? await this.booking["slotsFor"](this.db, ctx.firmId, t, from, to) : [];
     const [windows, offs] = hosts.length ? await Promise.all([
-      this.db.foAvailability.findMany({ where: firmScope(ctx.firmId, { staffId: { in: hosts } }) }),
+      windowsFor(this.db, ctx.firmId, t.id, hosts),
       this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { staffId: { in: hosts }, startsAt: { lt: new Date(to.getTime() + DAY) }, endsAt: { gt: new Date(from.getTime() - DAY) } }) }),
     ]) : [[], []];
     const group = <T extends { staffId: string }, V>(rows: T[], f: (r: T) => V) => { const m = new Map<string, V[]>(); for (const x of rows) m.set(x.staffId, [...(m.get(x.staffId) ?? []), f(x)]); return m; };
@@ -270,6 +273,8 @@ export class BookingTypesService {
           await slugLock(tx, ctx.firmId);   // one slug choice at a time per firm, so parallel creates of one name all succeed (break M1)
           const slug = asked ?? await this.freeSlug(tx, ctx.firmId, slugOf(String(data.name)));
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
+          // A copy keeps the source's set of hours per host, a child row (AG-4-9 rule 3; FO-3a 1b-i review M1).
+          if (fromId) await tx.foTypeHostSet.createMany({ data: (await tx.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: fromId }) })).map((h) => ({ firmId: h.firmId, typeId: row.id, staffId: h.staffId, setId: h.setId })) });
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
             detail: { ...diff(null, row), ...(fromId ? { copiedFrom: fromId } : {}) } });
           return row;
