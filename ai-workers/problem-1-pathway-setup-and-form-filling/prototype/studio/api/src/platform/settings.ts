@@ -121,8 +121,12 @@ const PIECE = 200, PIECES = 50;
 /** A value as the audit line keeps it: a short scalar as itself; anything else as the pieces of its JSON text. */
 function asDetail(name: "from" | "to", v: unknown): Record<string, unknown> {
   if (v === null || typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= PIECE)) return { [name]: v };
+  // Pieces end on whole characters (review 2c minor 2): a piece cut inside a surrogate pair would hold half a character,
+  // which PostgreSQL's jsonb refuses.
   const text = JSON.stringify(v), pieces: string[] = [];
-  for (let i = 0; i < text.length; i += PIECE) pieces.push(text.slice(i, i + PIECE));
+  let piece = "";
+  for (const ch of text) { if (piece.length + ch.length > PIECE) { pieces.push(piece); piece = ""; } piece += ch; }
+  if (piece) pieces.push(piece);
   if (pieces.length > PIECES) throw new SettingRefused(`The value for this setting is too long for its audit line (${text.length} characters; at most ${PIECE * PIECES}).`);
   return { [`${name}Json`]: pieces };
 }

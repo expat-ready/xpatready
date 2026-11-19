@@ -155,6 +155,12 @@ try {
   ok("PF-0a PS4 fail (A1, Lead 94's condition): a piece over 200 characters or more than 50 pieces is refused by the strict port, and a value needing more than 50 pieces is refused before any write (nothing stored)",
     !AuditEntry.safeParse(entryWith(["x".repeat(201)])).success && !AuditEntry.safeParse(entryWith(Array.from({ length: 51 }, () => "x"))).success && AuditEntry.safeParse(entryWith(toPieces!)).success
     && tooLong && (await readSetting(db, R.firmId, "check.pf0a_long")) === "");
+  const EMOJI = `${"a".repeat(198)}${"📁".repeat(150)}`;
+  const emWritten = await writeSetting(db, { firmId: R.firmId, key: "check.pf0a_long", value: EMOJI, by: "seed:pf0a", workspaceId: ws }).then(() => true, () => false);
+  const em = (await setLines()).at(-1)?.detail as Record<string, unknown>, emPieces = (em?.toJson ?? []) as string[];
+  const whole = (t: string) => !/[\uD800-\uDBFF]$/.test(t) && !/^[\uDC00-\uDFFF]/.test(t);
+  ok("PF-0a PS4 pass (review 2c minor 2): a value of characters outside the basic plane is kept as pieces that each end on a whole character, stored and joined back byte for byte",
+    emWritten && emPieces.length > 1 && emPieces.every((x) => x.length <= 200 && whole(x)) && joinPieces(em, "to") === EMOJI && (await readSetting(db, R.firmId, "check.pf0a_long")) === EMOJI, emPieces.map((x) => x.length));
   const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-Atc", q], { encoding: "utf8" }).trim();
   ok("PF-0a PS4 pass (A1): the database joins the pieces back to the stored value (check_pf4_identity's trail query)",
     sql(`select count(*) from platform_firm_setting s join audit_event a on a.entity_key = s.firm_id || ':' || s.key where s.key = '${BUSINESS_HOURS.key}' and a.detail ? 'toJson' and (select string_agg(p, '' order by n) from jsonb_array_elements_text(a.detail->'toJson') with ordinality as t(p, n))::jsonb = s.value`) === "1");
