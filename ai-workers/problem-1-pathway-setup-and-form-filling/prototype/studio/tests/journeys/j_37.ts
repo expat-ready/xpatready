@@ -17,7 +17,11 @@
 // The real clock, no seam: A books a time about 66 minutes ahead, so the 1 h reminder falls due 6 to 11 minutes after the
 // booking; the API restarts in between and the walk waits for the reminder. For that the test's own consultation type
 // has Sample settings a firm may choose: 60 minutes' notice (default 240), times every 5 minutes, a 30-minute self-service
-// limit (default 240, which would hide Reschedule an hour before), and its one host works every hour of every day.
+// limit (default 240, which would hide Reschedule an hour before), and its one host works every hour of every day. The
+// meeting is 5 minutes (the database's shortest) so a time is offered up to 23:55: with 30 minutes the last start is
+// 23:30, and a run between 22:25 and 22:49 Toronto time would find nothing (review M1).
+// Known gap, one night a year: a run started between 00:49 and 01:29 on the night Toronto's clocks go back (next 7 Nov
+// 2027) aims inside the repeated hour, whose second times the page does not offer; W1 fails then (review m3).
 // Setup a person cannot do through the product yet (firm, host, hours, type: PF-5, PF-4s, FO-3a) is written straight to
 // the copy's database (Sample rows). Sample values only; US$0, no model call. About 12 minutes.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -46,10 +50,14 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pad = (n: number) => String(n).padStart(2, "0");
 
 type Mail = { subject: string; body: string; sent_at: string | null };
-async function inboxNow(address: string): Promise<Mail[]> {
-  const r = await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`);
-  return r.status === 200 ? ((await r.json()) as { messages: Mail[] }).messages.reverse() : [];   // oldest first
+/** The inbox's answer and its mails, oldest first (a refused or failed read is status 0 or the HTTP status, no mails). */
+async function inboxRead(address: string): Promise<{ status: number; mails: Mail[] }> {
+  try {
+    const r = await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(address)}`);
+    return { status: r.status, mails: r.status === 200 ? ((await r.json()) as { messages: Mail[] }).messages.reverse() : [] };
+  } catch { return { status: 0, mails: [] }; }
 }
+const inboxNow = async (address: string) => (await inboxRead(address)).mails;
 /** The demo inbox (stand-in SI-20: it has no screen) until `want` mails are there or `ms` pass; then what arrived. */
 async function inbox(address: string, want: number, ms = 90_000): Promise<Mail[]> {
   const t = Date.now();
@@ -73,7 +81,7 @@ await writeSetting(db, { firmId: firm.id, key: TIME_ZONE.key, value: ZONE, by: "
 await writeSetting(db, { firmId: firm.id, key: CLOSED_DAYS.key, value: [], by: "seed:J-37-test", workspaceId: ws, reason: "J-37: no closed day, stated" });
 const host = await db.platformStaff.create({ data: { firmId: firm.id, email: `host-${run}@j37-firm.example`, displayName: "Sample host", status: "ACTIVE" } });
 await db.foAvailability.createMany({ data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ firmId: firm.id, staffId: host.id, weekday, startMinute: 0, endMinute: 1440, timeZone: ZONE })) });
-await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30,
+await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 5,
   minNoticeMinutes: 60, slotIntervalMinutes: 5, selfServiceLimitMinutes: 30 } });
 const aEmail = `booker-a-${run}@j37-client.example`, bEmail = `booker-b-${run}@j37-client.example`;
 console.log(`setup (not through the product: no firm, staff, hours or type screens in this walk): firm ${key} in ${ZONE}, one host on every hour, type "free" (60 min notice, every 5 min)`);
@@ -138,9 +146,8 @@ try {
   const booking = rows[0];
 
   // ---------------------------------------------------------------------------------------------- W4, DW1, DW2: the confirmation
-  const [aMails, bMails] = [await inbox(aEmail, 1), await inboxNow(bEmail)];
+  const aMails = await inbox(aEmail, 1);
   ok("J-37 W4: A's confirmation arrives in the demo inbox, for that time", aMails.length === 1 && /is booked/.test(aMails[0].subject) && aMails[0].body.includes(`(${ZONE})`), seen(aMails[0]));
-  ok("J-37 W3: B gets no mail (nothing was booked for B)", bMails.length === 0, bMails.map((m) => m.subject));
   const out = await db.msgOutbox.findMany({ where: { firmId: firm.id, address: aEmail }, select: { state: true, providerId: true, idempotencyKey: true } });
   ok("J-37 DW1: A's confirmation is an outbox row SENT by the local adapter (the in-memory fake wrote none)", out.length === 1 && out[0].state === "SENT" && !!out[0].providerId?.startsWith("local:") && out[0].idempotencyKey === `mail:booking:${booking?.id}:${booking?.sequence}:mail-person`, out);
   const person = booking?.personId ? await db.foPerson.findFirst({ where: { firmId: firm.id, id: booking.personId }, select: { email: true, givenNames: true } }) : null;
@@ -162,6 +169,9 @@ try {
     { got: after.map((m) => [m.subject, m.sent_at]), due: new Date(due).toISOString() });
   const remOut = await db.msgOutbox.count({ where: { firmId: firm.id, address: aEmail, state: "SENT", idempotencyKey: { startsWith: `mail:booking:${booking?.id}:` }, AND: { idempotencyKey: { endsWith: ":reminder-1h" } } } });
   ok("J-37 W4b: the reminder ran once (one outbox row)", remOut === 1, remOut);
+  // Read after the wait, when any mail for B would long have arrived; the inbox must answer (review m1).
+  const bBox = await inboxRead(bEmail);
+  ok("J-37 W3: B got no mail at all (nothing was booked for B), the inbox answering 200", bBox.status === 200 && bBox.mails.length === 0, { status: bBox.status, subjects: bBox.mails.map((m) => m.subject) });
 
   // ---------------------------------------------------------------------------------------------- W5: row 42's first step
   const link = /To reschedule or cancel: (\S+)/.exec(aMails[0]?.body ?? "")?.[1] ?? "";
