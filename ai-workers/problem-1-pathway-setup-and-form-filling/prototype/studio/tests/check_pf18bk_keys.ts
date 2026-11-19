@@ -1,5 +1,5 @@
 // PF-18bk (brief: Lead B's briefs, PF-18bk.md, 18 Nov; P-606): support tickets' firm and staff foreign keys, migration
-// 20261119000000_pf18bk_support_keys. Named cases DW1-DW5, each with a passing and a failing case:
+// 20261119010000_pf18bk_support_keys. Named cases DW1-DW5, each with a passing and a failing case:
 //   DW1  a ticket (or a message) for a firm that does not exist is refused by a key, also with every user trigger off;
 //        without the keys the same insert goes in.
 //   DW2  a ticket raised under firm A by firm B's staff is refused with foreign_key_violation (23503) by the key with the
@@ -25,7 +25,7 @@ const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "mi
 const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (existsSync(join(BREW, n)) ? join(BREW, n) : n);
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
-const OWN = "20261119000000_pf18bk_support_keys";
+const OWN = "20261119010000_pf18bk_support_keys";
 const DB = `xr_studio_pf18bk_${process.pid}`, ORPHAN = `xr_studio_pf18bk_orphan_${process.pid}`;
 const WORK = join(STUDIO, "var", `pf18bk-check-${process.pid}`);
 const KEYS = ["platform_support_ticket_firm_id_fkey", "platform_support_ticket_firm_id_raised_by_fkey", "platform_support_message_firm_id_fkey"] as const;

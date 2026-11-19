@@ -37,7 +37,7 @@ BEGIN
   IF no_firm + no_raiser + msg_no_firm > 0 THEN
     RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket(s) without their firm, % without a raiser on that firm''s staff, % support message(s) without their firm', no_firm, no_raiser, msg_no_firm
       USING ERRCODE = 'foreign_key_violation',
-            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then mark the failed attempt rolled back (prisma migrate resolve --rolled-back 20261119000000_pf18bk_support_keys) and deploy again.';
+            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then mark the failed attempt rolled back (prisma migrate resolve --rolled-back 20261119010000_pf18bk_support_keys) and deploy again.';
   END IF;
 
   -- AddForeignKey
