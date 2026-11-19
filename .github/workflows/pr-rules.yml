@@ -6,7 +6,7 @@
 # An item's last PR says "Completes: R1.77" on a line of its own (several: "Completes: R1.77, R1.78"); at its merge
 # item-proof.yml runs the item's pack and journey and posts the verdict (P-728 (3)); an unreadable line fails here.
 # A PR naming an R1 item outside the open waves (design/waves.tsv, P-745) gets the label outside-wave and a warning, never
-# a failure: fixes still merge (P-214); B204. The product queue does not wait for this check yet (Lead 58, 15 Nov: gate in a later small PR after a day). Reads only, US$0.
+# a failure: fixes still merge (P-214); B204. The product queue does not wait for this check yet (Lead 58, 15 Nov: gate in a later small PR after a day). Reads, plus the label outside-wave (B204); US$0.
 # Test: product/tools/check-g4-rules.sh.
 name: pr-rules
 on:
@@ -28,6 +28,8 @@ jobs:
       BODY: "${{ github.event.pull_request.body }}"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # B204: the token can write labels; the PR's own scripts never get it in .git/config
       - name: body has a testable Done when and a Duplicate check line
         run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
       - name: a "Completes:" line, if any, names R1 items only (P-728 (3); item-proof.yml proves them at the merge)
@@ -57,7 +59,7 @@ jobs:
         run: |
           r=0; out=$(printf '%s\n%s\n' "$TITLE" "$BODY" | python3 -I "$T/waves.py" pr 2>&1) || r=$?   # bash -e: keep the code
           ids=$(python3 -I "$T/waves.py" ids 2>&1) || echo "::warning title=waves list::$ids"
-          if [ "$r" = 1 ]; then
+          if [ "$r" = 1 ] && [ "${out#OUTSIDE WAVE}" != "$out" ]; then   # a crash (Python traceback) is not a flag
             while IFS= read -r l; do echo "::warning title=outside-wave::$l"; done <<< "$out"
             [ "$HAS" = true ] || gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$N/labels" -f 'labels[]=outside-wave' >/dev/null \
               || echo "::warning title=outside-wave::the label could not be added"
