@@ -2031,3 +2031,13 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * Waiting: #2102 and #1961.
 * **Stamp clash, my error:** `20261118230000` (given to #1961) was already held by #2167 CS-K1 part 1. My check covered only PRs titled "migration". **#1961 now takes `20261119003000_pf19p_platform_account_mail`** (comment 6995770907), checked against every open PR's migration folders. Lesson: check stamps across **all** open PRs' files, never by title.
 * Not mine to rule: #2000 and #2158 both hold `20261119000000`; reported to Lead 84. #2102 is relabelled at 55da436f3.
+
+## Rev 17.38 (19 Nov 06:38 IST)
+* **#1961 PF-19p:** new Approve on 88d03c665, with the stamp `20261119003000`. All six PRs from the 04:4x round now have Approves, and Lead 84 relabelled #2102 (55da436f3), #2103, #2012, #1959 and #2029.
+* **J-109:** branch `claude/vibrant-meitner-3t1yfe` has Approve 62b4bcd95 (head 087e51be7). It is stale against #2012 and main (conflicts in `complaints.ts` and `MODULE.md`). I sent Lead 84 a line to type: merge both now and re-review, then open the PR once #2012 merges.
+* **P-713 (build in parallel; warm lanes take one row each):**
+  * #2103's lane → **FO-3st3** (overlap on #2103);
+  * #2011's lane → **FO-4 part 2a** (from main; R1.30).
+  * Not assigned: #2102's lane (FO-3a 2b waits on FO-3vr); PF-19r part 2 (Build Lead C's).
+  * P-712: no hand edits to shared module-card lines in new work.
+* Flag to Lead 84: FO-2 part 4 has four open PRs on the same sales files (#2181 queued, #2185, #2187, #2188).
