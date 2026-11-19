@@ -29,6 +29,18 @@ import { draftSourceProblems } from "./source-register.ts";
 import { Forms } from "./forms.ts";
 import { FormLibrary } from "./form-library.ts";
 import { releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
+import { fillCaseFirmIds, forgetFirmIds, whyNot } from "./firms.ts";
+import { asBypass } from "./platform/firm-scope.ts";
+import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
+import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
+/** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform
+ *  rows), then the cases' platform firm. Never in a production configuration (sampleSeedDecision's refusal; breaker m1). */
+const seedSampleFirmsAsDemo = async (db: Db) => {
+  if (!sampleSeedDecision({ ...process.env, PLATFORM_SAMPLE_SEED: "on" }).run) return;
+  await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  // One case written past the database's rules must not block a reset or a load (breaker R2-m3): said in the log, in its words.
+  await fillCaseFirmIds(db).catch((e) => console.warn(`demo: could not fill the cases' platform firm (CS-W1): ${whyNot(e)}`));
+};
 export { BY_HAND_REASON, RELEASE, SAMPLES } from "./features/checkpoint/_constants.ts";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
@@ -434,6 +446,7 @@ export class Demo implements OnModuleInit {
    *  nothing and times nothing itself: a step's refusal stops the load as before ("Loading stopped after: …"). */
   private async loadConfigured(actor: Actor, workspaceId: string, t0: number, log: string[]) {
     if (!this.steps.length) throw new Error("the configured checkpoint has no steps (Demo.onModuleInit did not read api/src/features/checkpoint)"); // review m7
+    await seedSampleFirmsAsDemo(this.db);   // CS-W1 part 1: the checkpoint's cases find their platform firm (PF-3's idempotent seed)
     const ctx = { actor, workspaceId, t0, log, db: this.db, audit: this.audit, result: {}, story: this.storyAsked ? "finished" : undefined,
       get: <T>(cls: new (...a: never[]) => T) => this.moduleRef.get(cls, { strict: false }), settled: (id: string) => this.settled(id) } as CheckpointContext;
     // Before anything is written, a step may swap an official file in the six's load (row 17's IMM 5476 2021).
@@ -536,6 +549,7 @@ export class Demo implements OnModuleInit {
 
   /** Reset's work, once the one-at-a-time claim is held (by reset, or by resetToSix for its whole run). */
   private async wipe(actor: Actor) {
+    await seedSampleFirmsAsDemo(this.db); forgetFirmIds();   // CS-W1 part 1: both Sample firms exist in platform_firm before and after a reset (PF-3's idempotent seed, PF-12's demo bypass)
     const workspaceId = await this.ws.id();
     if (this.story.state !== "running") this.story = { state: "idle" }; // C10.2: a reset forgets the last story's result
     this.ai.forgetQueue(); // queued AI steps of this workspace must not start; running ones find their rows gone and stop
@@ -543,9 +557,11 @@ export class Demo implements OnModuleInit {
     const t0 = Date.now();
     const ws = { workspaceId };
     await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; // AUD-1a: the one path that may delete audit lines (the demo workspace's Sample lines; local to this transaction)
       // Children first; every table is scoped to the demo workspace id.
       await tx.case.deleteMany({ where: ws }); await tx.party.deleteMany({ where: ws }); // runtime lane (R1): cases (with their pins and participants), then people with their answers and rows
       await tx.firmCaseCounter.deleteMany({ where: ws }); // A24-1 (CS-7): every case went, so numbering starts again at 00001
+      await tx.caseClient.deleteMany({ where: ws }); await tx.caseClientCounter.deleteMany({ where: ws }); // CS-K1: the cases' clients went with them; client codes start again at CL-00001
       await tx.route.deleteMany({ where: ws }); // C6.17: the Sample routes (no foreign key to the workspace); a case's stages went with its case
       await tx.proposalItem.deleteMany({ where: ws }); await tx.draftingJob.deleteMany({ where: ws }); await tx.aiBatch.deleteMany({ where: ws });
       await tx.testFamily.deleteMany({ where: ws }); // G4 (forms lane): test families; their keys and runs go with them
@@ -592,7 +608,9 @@ export class Demo implements OnModuleInit {
     for (let pass = 0, left = tables; pass < 4 && left.length; pass++) {
       const blocked: string[] = [];
       for (const t of left) {
-        try { await this.db.$executeRawUnsafe(`DELETE FROM "${t.replace(/"/g, "")}" x WHERE NOT EXISTS (SELECT 1 FROM workspace w WHERE w.id = x.workspace_id)`); }
+        const del = `DELETE FROM "${t.replace(/"/g, "")}" x WHERE NOT EXISTS (SELECT 1 FROM workspace w WHERE w.id = x.workspace_id)`;
+        // AUD-1a: audit lines are insert-only; the sweep's delete of a gone workspace's lines runs in its own transaction with the reset setting.
+        try { if (t === "audit_event") await this.db.$transaction(async (tx) => { await tx.$executeRaw`select set_config('app.audit_sample_reset', 'on', true)`; await tx.$executeRawUnsafe(del); }); else await this.db.$executeRawUnsafe(del); }
         catch { blocked.push(t); } // still pointed at by an orphan row elsewhere: tried again on the next pass
       }
       left = blocked;

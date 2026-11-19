@@ -331,11 +331,12 @@ try {
   await jobs.runDue();
   const row13 = await db.msgOutbox.findUniqueOrThrow({ where: { id: m13.messageId } });
   ok("DW13 pass: staff and system mail sent through MailPort lands in the outbox as TRANSACTIONAL and is sent", row13.class === "TRANSACTIONAL" && row13.address === x13 && row13.state === "SENT", row13);
-  // Held (review M1, question to Lead B): the outbox stores every body (Lead B's ruling), and staff mail carries invitation
-  // tokens and codes PF-4b never stores; until a ruling on such bodies, the app keeps PF-4b's LocalMail for MAIL_PORT.
+  // Was held (review M1): staff mail carries invitation links and codes. PF-19r (Build Lead C's approved brief, 18 Nov:
+  // "the rendered message under msg/<firm>/outbox/ holds the link and the code") binds the app's MAIL_PORT to MESSAGES_MAIL.
   const staffRead = (await import("../api/src/features/platform-staff-read.ts")).default, { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
+  const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
   const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown; useFactory?: unknown }[]).find((p) => p.provide === MAIL_PORT);
-  ok("DW13 held (review M1): the app's MAIL_PORT stays PF-4b's own adapter, so no invitation token or code is stored in the outbox until Lead B rules", !!bound?.useFactory && bound?.useExisting === undefined, bound);
+  ok("DW13 pass (PF-19r): the app's MAIL_PORT is MailPort over MessagePort (MESSAGES_MAIL), so staff and system mail goes through the outbox", bound?.useExisting === MESSAGES_MAIL && bound?.useFactory === undefined, bound);
   const refused13 = await mail.send({ firmId: firmA, to: box("dw13s"), replyTo: "no-reply@expatready.example", class: "SERVICE", subject: "Reminder", text: "x" }).then(() => "sent", (e: Error) => e.name);
   ok("DW13 fail: a service email without its person is refused, nothing in the outbox", refused13 === "MessageRefused" && (await db.msgOutbox.count({ where: { address: { contains: "dw13s" } } })) === 0, refused13);
 

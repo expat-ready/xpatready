@@ -16,7 +16,7 @@ const keys = (rows: Row[]) => new Set(rows.map((r) => r.key));
 (async () => {
   const loaded = await call("POST", "/demo/load");
   ok("setup: the sample inputs load", loaded.status === 201, loaded.body?.message);
-  const ws = sql(`select id from workspace limit 1`);
+  const ws = sql(`select id from workspace where key <> 'platform-audit' limit 1`);
   const fields = (await list("fields")).rows;
 
   // ─────────────────── BR-2: usedBy says what it counts, on all three lists

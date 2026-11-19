@@ -13,10 +13,10 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { CaseClosedPayload, CaseReopenedPayload, EVENT } from "../../ports/events.ts";
-import { Db } from "./core.ts";
+import { Audit, Db } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 // CS-V1 part 2: the checks and their words live in the schemas now (contracts/runtime.ts).
-import { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody, DECISION_OUTCOMES, NOTE_MAX, REASON_MAX } from "../../contracts/runtime.ts";
+import { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody, DECISION_OUTCOMES, NOTE_MAX, REASON_MAX, type CaseDecisionsView } from "../../contracts/runtime.ts";
 import type { z } from "zod";
 export { DECISION_OUTCOMES, NOTE_MAX, REASON_MAX };
 
@@ -84,11 +84,58 @@ export class CaseClose {
   }
 
   private async audit(tx: Tx, ctx: StaffContext, c: { id: string; workspaceId: string; caseNumber: string }, action: string, summary: string, detail: Record<string, unknown>) {
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: `staff:${ctx.staffId}`, action, entity: "case", entityKey: c.id, summary: `${c.caseNumber}: ${summary}`.slice(0, 600), detail: { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue } });
+    await new Audit(tx as never).log(c.workspaceId, `staff:${ctx.staffId}`, action, "case", c.id, `${c.caseNumber}: ${summary}`.slice(0, 600), { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue);
   }
 
   private async closedEvent(tx: Tx, firmId: string, p: CaseClosedPayload) {
     await tx.moduleEvent.create({ data: { firmId, type: EVENT.CASE_CLOSED, subjectId: p.caseId, payload: CaseClosedPayload.parse(p) } });
+  }
+
+  /** CS-C1s: the case's decision and closing, read only (no lock): the closing fields, every active filing of every stage
+   *  with "submitted" and its decisions (newest first), and which of the four acts the case's state allows now (`can`:
+   *  the same checks as decide/withdraw/close/reopen below, made here once so the screen holds no copy; keys stay with
+   *  /platform/me). Firm-scoped as `locked`: another firm's case is 404. */
+  async view(ctx: StaffContext, id: string): Promise<CaseDecisionsView> {
+    if (typeof id !== "string" || !UUID.test(id)) return notFound();
+    const c = await this.db.case.findFirst({
+      where: { id, firmKey: ctx.firmKey },
+      include: {
+        filings: { where: { active: true }, orderBy: { createdAt: "asc" }, select: { id: true, subjectId: true, stage: { select: { id: true, staffName: true, ord: true } }, record: { select: { submittedOn: true } } } },
+        stages: { select: { id: true, staffName: true, state: true } },
+        decisions: { orderBy: [{ recordedAt: "desc" }, { id: "desc" }], select: { id: true, filingId: true, kind: true, outcome: true, decidedOn: true, note: true, recordedAt: true, recordedBy: true } },
+      },
+    });
+    if (!c) return notFound();
+    const firm = await this.db.platformFirm.findUnique({ where: { key: c.firmKey }, select: { id: true } });
+    if (!firm || firm.id !== ctx.firmId) return notFound();
+    const subjects = new Map((await this.db.answerSubject.findMany({ where: { id: { in: c.filings.map((f) => f.subjectId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
+    const staffIds = [...new Set(c.decisions.map((d) => d.recordedBy.replace(/^staff:/, "")).filter((x) => UUID.test(x)))];
+    const names = new Map((await this.db.platformStaff.findMany({ where: { id: { in: staffIds }, firmId: firm.id }, select: { id: true, displayName: true } })).map((s) => [s.id, s.displayName]));
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const decision = (d: (typeof c.decisions)[number]) => ({ id: d.id, outcome: d.outcome, decidedOn: day(d.decidedOn), note: d.note, recordedAt: d.recordedAt.toISOString(), recordedBy: { staffId: d.recordedBy.replace(/^staff:/, ""), name: names.get(d.recordedBy.replace(/^staff:/, "")) ?? null } });
+    const ruled = c.decisions.filter((d) => d.kind === "DECISION");
+    const stageOf = (sid: string | null) => { const s = sid ? c.stages.find((x) => x.id === sid) : undefined; return s ? { id: s.id, label: s.staffName } : null; };
+    const current = c.stages.find((s) => s.state === "CURRENT") ?? null;
+    const filings = c.filings.sort((a, b) => a.stage.ord - b.stage.ord).map((f) => {
+      const mine = ruled.filter((d) => d.filingId === f.id).map(decision);
+      return { id: f.id, person: subjects.get(f.subjectId) ?? null, stage: { id: f.stage.id, label: f.stage.staffName }, current: f.stage.id === current?.id, submitted: !!f.record, submittedOn: f.record ? day(f.record.submittedOn) : null, latest: mine[0] ?? null, earlier: mine.slice(1) };
+    });
+    const open = c.status === "OPEN";
+    const withdrawal = c.decisions.find((d) => d.kind === "WITHDRAWAL");
+    return {
+      case: { id: c.id, caseNumber: c.caseNumber, status: c.status, closeOutcome: c.closeOutcome, closedAt: c.closedAt?.toISOString() ?? null, closedReason: c.closedReason,
+        withdrawnAt: c.withdrawnAt?.toISOString() ?? null, withdrawnOn: c.closeOutcome === "WITHDRAWN" && withdrawal ? day(withdrawal.decidedOn) : null, withdrawReason: c.withdrawReason,
+        closedFromStage: stageOf(c.closedFromStageId), currentStage: current ? { id: current.id, label: current.staffName } : null,
+        // Break M1: each active filing's latest decision (never an inactive filing's), as the panel's rows show them.
+        decisions: !open && c.closeOutcome === "CLOSED_BY_STAFF" ? filings.filter((f) => f.latest).map((f) => ({ person: f.person, outcome: f.latest!.outcome })) : [] },
+      filings, outcomes: [...DECISION_OUTCOMES], sample: true,
+      can: {
+        decide: open ? filings.filter((f) => f.submitted).map((f) => f.id) : [],
+        withdraw: open && ruled.length === 0,
+        close: open && filings.length > 0 && filings.every((f) => f.latest),
+        reopen: c.status === "CLOSED" && !!c.closeOutcome,
+      },
+    };
   }
 
   /** AG-7-33: a decision on one filing recorded as submitted (C8.2's filing record). 201 with the row. */
@@ -128,7 +175,7 @@ export class CaseClose {
       const row = await tx.caseDecision.create({ data: { firmId, caseId: c.id, filingId: null, kind: "WITHDRAWAL", outcome: "WITHDRAWN", decidedOn: on, note: reason, recordedBy: `staff:${ctx.staffId}` } });
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "CLOSED", closedAt: now, closedReason: reason, closeOutcome: "WITHDRAWN", withdrawnAt: now, withdrawReason: reason, closedFromStageId: stage } });
       await this.audit(tx, ctx, c, "case.withdrawn", "Withdrawn with a reason; the case is closed", { decisionId: row.id, withdrawnOn: on.toISOString().slice(0, 10), reason, closedFromStage: stage });
-      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: null, clientType, reason: "WITHDRAWAL", outcome: "WITHDRAWN", closedAt: now.toISOString() });
+      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: c.clientId, clientType, reason: "WITHDRAWAL", outcome: "WITHDRAWN", closedAt: now.toISOString() });
       return { case: caseView(after), withdrawal: { id: row.id, decidedOn: on.toISOString().slice(0, 10) } };
     });
   }
@@ -143,7 +190,7 @@ export class CaseClose {
       const now = new Date(), stage = c.stages[0]?.id ?? null;
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "CLOSED", closedAt: now, closedReason: reason, closeOutcome: "CLOSED_BY_STAFF", closedFromStageId: stage } });
       await this.audit(tx, ctx, c, "case.closed", "Closed by staff with a reason", { closeOutcome: "CLOSED_BY_STAFF", reason, closedFromStage: stage });
-      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: null, clientType, reason: "DECISION", outcome: "CLOSED_BY_STAFF", closedAt: now.toISOString() });
+      await this.closedEvent(tx, firmId, { caseId: c.id, clientId: c.clientId, clientType, reason: "DECISION", outcome: "CLOSED_BY_STAFF", closedAt: now.toISOString() });
       return { case: caseView(after) };
     });
   }
@@ -159,7 +206,7 @@ export class CaseClose {
       const now = new Date(), stage = c.closedFromStageId;
       const after = await tx.case.update({ where: { id: c.id }, data: { status: "OPEN", closedAt: null, closedReason: null, closeOutcome: null, withdrawnAt: null, withdrawReason: null, closedFromStageId: null } });
       await this.audit(tx, ctx, c, "case.reopened", "Reopened with a reason", { reason, ...old });
-      await tx.moduleEvent.create({ data: { firmId, type: EVENT.CASE_REOPENED, subjectId: c.id, payload: CaseReopenedPayload.parse({ caseId: c.id, clientId: null, clientType, stageId: stage, previousOutcome: c.closeOutcome, reopenedAt: now.toISOString() }) } });
+      await tx.moduleEvent.create({ data: { firmId, type: EVENT.CASE_REOPENED, subjectId: c.id, payload: CaseReopenedPayload.parse({ caseId: c.id, clientId: c.clientId, clientType, stageId: stage, previousOutcome: c.closeOutcome, reopenedAt: now.toISOString() }) } });
       return { case: caseView(after), stageId: stage, currentStageId: c.stages[0]?.id ?? null };
     });
   }

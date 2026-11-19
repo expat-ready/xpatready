@@ -10,6 +10,7 @@ import { firmScope } from "../../../platform/firm-scope.ts";
 import type { StaffContext } from "../../../platform/identity/keys.ts";
 import { possibleMatch } from "../arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, type Tx } from "../common.ts";
+import { boardTotals } from "../board-totals.ts";
 import { SALES_PORTS, type SalesPorts } from "../public.ts";
 import { companyMatches, normaliseCompanyName, seesCompany, type Seer } from "./match.ts";
 
@@ -169,9 +170,10 @@ export class Corporate {
       this.db.foStage.findMany({ where: firmScope(ctx.firmId, { pipeline: t, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
       this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { type: t, ...(vis.seesAll ? {} : { ownerStaffId: ctx.staffId }) }), include: { subjectPerson: true, subjectCompany: true }, orderBy: [{ number: "asc" }], take: 1000 }),
     ]);
+    const money = await boardTotals(this.db, ctx.firmId, t, vis.seesAll ? null : ctx.staffId);   // FO-2 part 3: totals per currency, never summed across (R1.31)
     return {
-      type: t, stages: stages.map((s) => ({
-        key: s.key, label: s.label, kind: s.kind,
+      type: t, totals: money.open, stages: stages.map((s) => ({
+        id: s.id, key: s.key, label: s.label, kind: s.kind, totals: money.byStage.get(s.id) ?? [],
         prospects: rows.filter((p) => p.stageId === s.id).map((p) => ({ id: p.id, number: p.number, type: p.type, name: p.subjectCompany?.operatingName ?? nameOf(p.subjectPerson!), ownerStaffId: p.ownerStaffId })),
       })),
     };

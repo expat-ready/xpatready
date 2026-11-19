@@ -111,6 +111,13 @@ model PlatformFirm {
   // back-relation slot: firms (PF-5)
   termsAcceptances PlatformTermsAcceptance[]
 
+  // back-relation slot: entitlements (PF-15)
+  storageOver PlatformStorageOver? // platform-entitlements.prisma
+  limitChanges PlatformLimitChangeFirm[] // platform-entitlements.prisma (PF-15 part 2)
+
+  // back-relation slot: offices (PF-18a)
+  offices PlatformOffice[] // platform-offices.prisma
+
   @@map("platform_firm")
 }
 
@@ -164,6 +171,10 @@ model PlatformPlan {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   subscriptions PlatformSubscription[]
+
+  // back-relation slot: entitlements (PF-15)
+  limits PlatformPlanLimit[] // platform-entitlements.prisma
+  limitChanges PlatformLimitChange[] // platform-entitlements.prisma (PF-15 part 2)
 
   @@map("platform_plan")
 }
@@ -232,6 +243,7 @@ model PlatformStaff {
   revocations PlatformSessionRevocation[]
   foAvailability FoAvailability[] // FO-1b back-relations (front-office-booking.prisma), Lead B's OK on #1741
   foTimeOff      FoTimeOff[]
+  foAvailabilitySets FoAvailabilitySet[] // FO-3a part 1b: named sets of hours
   foBookings     FoBooking[]
 
   // back-relation slot: messages (PF-19a)
@@ -257,6 +269,9 @@ model PlatformStaff {
 
   // back-relation slot: firms (PF-5)
   termsAcceptances PlatformTermsAcceptance[]
+
+  // back-relation slot: offices (PF-18a)
+  office PlatformStaffOffice? // platform-offices.prisma (the person's office)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).

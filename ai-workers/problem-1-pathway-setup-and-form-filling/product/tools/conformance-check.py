@@ -171,6 +171,23 @@ def check_mergify(src, m, rules=None):
     mpc = (d.get("merge_queue") or {}).get("max_parallel_checks")
     out = [item("mergify", "mergify.max_parallel_checks", "pass" if mpc == cfg["max_parallel_checks"] else "fail",
                 cfg["max_parallel_checks"], mpc)]
+    # P-715 (manifest 1.4.0): parallel mode, its barrier files and per-scope capacities; checked when the manifest names
+    # them, so a quiet revert (e.g. migrations' capacity 1, the 60% second-migration cause) fails here, not in the queue.
+    if "mode" in cfg:
+        mode = (d.get("merge_queue") or {}).get("mode", "serial")
+        out.append(item("mergify", "mergify.mode", "pass" if mode == cfg["mode"] else "fail", cfg["mode"], mode))
+    sc = d.get("scopes") if isinstance(d.get("scopes"), dict) else {}
+    if "capacities_required" in cfg:
+        caps = sc.get("capacities") or {}
+        bad = [f"{k} {caps.get(k)} (want {v})" for k, v in cfg["capacities_required"].items() if caps.get(k) != v]
+        out.append(item("mergify", "mergify.capacities", "fail" if bad else "pass",
+                        ", ".join(f"{k} {v}" for k, v in cfg["capacities_required"].items()), "; ".join(bad) or "as approved"))
+    if "barrier_files_required" in cfg:
+        have = set((sc.get("barrier_files") or {}).get("include") or [])
+        miss = [g for g in cfg["barrier_files_required"] if g not in have]
+        out.append(item("mergify", "mergify.barrier_files", "fail" if miss else "pass",
+                        f"all {len(cfg['barrier_files_required'])} barrier patterns",
+                        f"missing {', '.join(miss[:4])}{' …' if len(miss) > 4 else ''}" if miss else "as approved"))
     rules = d.get("queue_rules") or []
     names = [q.get("name") for q in rules]
     out.append(item("mergify", "mergify.queue_order", "pass" if names == cfg["queue_order"] else "fail",
@@ -181,7 +198,8 @@ def check_mergify(src, m, rules=None):
         if q is None:
             out.append(item("mergify", f"mergify.queue.{name}", "fail", f"queue {name}", "no such queue"))
             continue
-        bad = [f"{k} {q.get(k)} (want {want[k]})" for k in ("batch_size", "merge_method") if q.get(k) != want[k]]
+        bad = [f"{k} {q.get(k)} (want {want[k]})" for k in ("batch_size", "merge_method", "batch_max_failure_resolution_attempts")
+               if k in want and q.get(k) != want[k]]
         for key in ("queue_conditions", "merge_conditions"):
             have = {norm_cond(c) for c in q.get(key) or []}
             miss = [c if isinstance(c, str) else json.dumps(c) for c in want[f"{key}_required"]
@@ -291,7 +309,12 @@ def check_heartbeat(src, m, rules=None):
     for c in crons:
         f = c.split()
         if len(f) == 5 and f[1:] == ["*", "*", "*", "*"]:
-            per_hour += 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
+            try:   # minute field: "*" (60 an hour), "*/n", or a list such as "11,41"; anything else counts 0
+                per_hour += 60 if f[0] == "*" else 60 // int(f[0][2:]) if f[0].startswith("*/") else len(f[0].split(","))
+            except (ValueError, ZeroDivisionError):
+                bad.append(f"cron {c!r} not understood")
+    envs = [("workflow", d.get("env"))] + [(f"job {k}", j.get("env")) for k, j in (d.get("jobs") or {}).items()]
+    bad += [f"{w} env uses runner. (GitHub refuses the file: no run, no mail)" for w, e in envs if "runner." in str(e)]
     if per_hour * hb["every_min"] < 60:
         bad.append(f"schedule {crons or 'none'}: {per_hour} run(s) an hour")
     jobs, top = d.get("jobs") or {}, d.get("permissions")

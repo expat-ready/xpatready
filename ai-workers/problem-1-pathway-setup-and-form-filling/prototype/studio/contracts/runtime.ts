@@ -43,6 +43,13 @@ const LIKE_CASE_NUMBER = /^\s*c\s*-\s*\d+\s*-\s*\d+\s*$/i;
 export type CaseListRow = { id: string; case_number: string; reference: string | null; combination: string; status: string; created_at: Date | string;
   client: string; client_name: string | null; filings: number; people?: { label: string; role: string }[] };
 
+/** CS-K1: GET /api/runtime/clients?query=&page= (clients.ts). The search text is cleaned there (control and invisible
+ *  characters dropped, LIKE's wildcards taken literally); a page is a whole number from 1. */
+export const ClientListQuery = z.object({
+  query: z.string({ message: "Search by a name or a client code." }).max(400, "Keep the search to 200 characters.").optional(),
+  page: z.string({ message: "A page is a whole number from 1." }).regex(/^\d{1,5}$/, "A page is a whole number from 1.").optional(),
+});
+
 export const NewCase = z.object({
   combinationId: z.string({ message: "Choose a released combination." }).uuid("Choose a released combination."),
   /** The firm's own reference, optional since A24-1 (CS-7): every case gets a case number at opening. Given, it keeps
@@ -60,6 +67,10 @@ export const NewCase = z.object({
    *  not representatives (in a solo firm, its one person). */
   caseOfficers: z.array(z.string().trim().regex(/^user-[A-Za-z0-9]{1,8}$/, "Choose case officers from your firm."), { message: "Choose case officers from your firm." }).min(1, "Choose at least one case officer.").max(5, "A case has at most 5 case officers.").optional(),
   idempotencyKey: idemKey.optional(),
+  /** CS-K1 (contract §5): an existing client of the opener's firm, reused (FO-8 and CS-98b pass it). Left out: a new client
+   *  is made, named after the principal. Any id that is not a client of the firm (another firm's, or no id at all) is 404
+   *  "No such client.", the same answer, so nothing is learned of another firm. */
+  clientId: z.string({ message: "Name the client by its id." }).trim().max(64, "No such client.").optional(),
   /** C6.17 (BR-3, SA-1B-212): opening at a later stage of a route, each earlier stage ticked "Done before we started"
    *  (or not recorded), with its key details (optional; typed by their field, a wrong type is a 400 on the field). */
   earlier: z.array(z.object({
@@ -68,6 +79,11 @@ export const NewCase = z.object({
     key_details: z.record(z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/, "A key detail is named by its field."), z.union([z.string(), z.null()], { message: "Write a key detail as text." })).optional(),
   }, { message: "Each earlier stage is an object." }), { message: "Earlier stages are a list." }).max(10, "A route has at most 10 earlier stages.").optional(),
 });
+
+/** FO-8: the body of "Open a case?" (POST clients/:id/open-case). The opening's own fields, each optional where the offer
+ *  pre-fills it (the combination, the principal, the representative); the client is the route's and the key is not taken,
+ *  so neither is a field here. Strict: an unknown field is refused by name, never dropped. */
+export const OpenCaseFromOffer = NewCase.omit({ clientId: true, idempotencyKey: true }).partial({ combinationId: true, principal: true }).strict();
 
 /** C6.11 (BR-20, SI-9): the firm admin changes the representative of record, with a reason kept in the history; a new
  *  representative asks for a new IMM 5476 (BR-12). */
@@ -407,7 +423,9 @@ export type CaseStageView = { id: string; key: string; name: string; client_name
   state: "DONE_BEFORE" | "NOT_RECORDED" | "CURRENT" | "ENDED_NEXT_STARTED" | "NOT_STARTED"; words: string; cannot_start_why: string | null; started_from: "BEGIN" | "NEXT_STAGE" | null;
   started_at: string | null; ended_at: string | null; version: number;
   key_details: { field: string; label: string; type: "STRING" | "DATE"; value: string | null; by: string | null; same_every_stage: boolean }[];
-  deadline: { label: string; due: string | null; why: string; sample: true } | null };
+  deadline: { label: string; due: string | null; why: string; sample: true;
+    /** CS-DL1 (AG-7-94 r3): the date with its weekday and a "(weekend)" / "(closed day)" mark, never moved; Missed: before today in the firm's zone. */
+    weekday?: string | null; mark?: "weekend" | "closed day" | null; shown?: string | null; missed?: boolean } | null };
 export type CaseStages = { case_id: string; route: { key: string; label: string; basis: string } | null; stages: CaseStageView[]; current: string; next: string | null };
 /** BR-4: what "Start next stage" will do, shown before the click. */
 export type StartNextPreview = { from: { stage: string; name: string; client_name: string; version: number }; to: { stage: string; name: string; release_version: number; release: string } | null;
@@ -544,6 +562,19 @@ export const CaseDecisionBody = z.strictObject({
 export const CaseWithdrawBody = z.strictObject({ reason: caseReason, withdrawnOn: caseDate }, notHere("a withdrawal"));
 /** POST /runtime/cases/:id/close and /reopen: a reason. */
 export const CaseReasonBody = z.strictObject({ reason: caseReason }, notHere("this request"));
+/** GET /runtime/cases/:id/decisions (CS-C1s): the case's decision and closing, for the case page's panel. Outcome words
+ *  are Sample (`sample: true`) until cited from an official IRCC source (AG-7-33 rule 4). `can` is the case's state only;
+ *  whether the person holds the key comes from /platform/me. */
+const Day = z.string(), Stage = z.object({ id: z.string(), label: z.string() });
+const Decision = z.object({ id: z.string(), outcome: z.string(), decidedOn: Day, note: z.string().nullable(), recordedAt: z.string(), recordedBy: z.object({ staffId: z.string(), name: z.string().nullable() }) });
+export const CaseDecisionsView = z.object({
+  case: z.object({ id: z.string(), caseNumber: z.string(), status: z.string(), closeOutcome: z.string().nullable(), closedAt: z.string().nullable(), closedReason: z.string().nullable(),
+    withdrawnAt: z.string().nullable(), withdrawnOn: Day.nullable(), withdrawReason: z.string().nullable(), closedFromStage: Stage.nullable(), currentStage: Stage.nullable(), decisions: z.array(z.object({ person: z.string().nullable(), outcome: z.string() })) }),
+  filings: z.array(z.object({ id: z.string(), person: z.string().nullable(), stage: Stage, current: z.boolean(), submitted: z.boolean(), submittedOn: Day.nullable(), latest: Decision.nullable(), earlier: z.array(Decision) })),
+  outcomes: z.array(z.string()), sample: z.literal(true),
+  can: z.object({ decide: z.array(z.string()), withdraw: z.boolean(), close: z.boolean(), reopen: z.boolean() }),
+});
+export type CaseDecisionsView = z.infer<typeof CaseDecisionsView>;
 export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
 export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
 export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));

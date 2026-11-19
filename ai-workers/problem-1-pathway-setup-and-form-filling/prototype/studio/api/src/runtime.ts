@@ -6,10 +6,11 @@
 // a case by its id.
 import { additionsOf, withAdditions } from "../../engine/runtime/added-forms.ts";
 import { clientPersonOf, withClient, type StoredChange } from "../../engine/runtime/filing-changes.ts";
-import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
+import type { Prisma } from "@prisma/client";
+import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, optionsOf, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
@@ -19,6 +20,10 @@ import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, ty
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
 import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
+import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
+import { openCaseFromOffer } from "./case-clients/prospect-won.ts"; // FO-8
+import { auditEvent } from "./platform/audit/audit-event.ts";
+import { PermissionKeys, problem, staffOf, type StaffContext } from "./platform/identity/keys.ts";
 import { aiLive } from "./sources.ts";
 import { FIRM_RECORD, openingTeam, REPRESENTATIVE, representativeAnswers, USES_REPRESENTATIVE, type Member } from "../../engine/runtime/team.ts";
 import { employerLinkOffer } from "../../engine/runtime/employer.ts";
@@ -245,7 +250,17 @@ export class Runtime {
     return { who: who!, stored };
   }
 
-  async createCase(actor: Actor, body: unknown) {
+  /** FO-8: the staff member's "Open a case?" click on a client made from a won prospect (case-clients/prospect-won.ts). */
+  async openCaseFromOffer(ctx: StaffContext, clientId: string, body: unknown = {}) {
+    const b = parse(OpenCaseFromOffer, body);   // CS-V1: read through its schema before anything else
+    const actorOrNone = (id: string | null) => { try { return id ? actorOf(id) : null; } catch { return null; } };
+    return openCaseFromOffer<Actor>({ db: this.db, workspaceId: await this.ws.id(), actorOf: actorOrNone, audit: auditEvent, problem,
+      createCase: (actor, b, inTx) => this.createCase(actor, b, inTx),
+      clientTypeOf: async (tx, combinationId) => ((await groupOfCombination(tx, combinationId)) === "corporate" ? "CORPORATE" : "INDIVIDUAL") }, ctx, clientId, b);
+  }
+
+  /** `inTx` (FO-8): a step run last inside the opening's transaction; a refusal there leaves nothing written. */
+  async createCase(actor: Actor, body: unknown, inTx?: (tx: Prisma.TransactionClient, opened: { id: string; caseNumber: string; combinationId: string }) => Promise<void>) {
     need(actor, "case");
     const b = parse(NewCase, body);
     const workspaceId = await this.ws.id();
@@ -295,6 +310,7 @@ export class Runtime {
     let id: string;
     const REPLAYED = "replayed";   // CS-C1b review M1: the transaction found the key's case and wrote nothing
     let stagesWritten: { stages: number; doneBefore: number } = { stages: 1, doneBefore: 0 };
+    let madeClient: { id: string; code: string } | null = null;   // CS-K1: a client made by this opening (none when one was given)
     try {
       id = await this.db.$transaction(async (tx) => {
         // CS-C1b (SA-3-4, SA-3-39, SA-3-47; P-588 (3); contract §7): the plan limit, checked in this transaction before
@@ -308,11 +324,17 @@ export class Runtime {
         const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
         if (!limit.allowed) throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED", metric: limit.metric, limit: limit.limit, used: limit.used,
           detail: `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
+        // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
+        // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
+        // opening rolls it back with everything else.
+        const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
+        const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
+        madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
         // A24-1 (P-492, CS-7, AG-7-3): the firm's next case number for this year, taken in this transaction: an opening
         // made at the same moment waits on the counter row and gets the next one; a refused opening gives its number back.
         const [{ n: caseNumber }] = await tx.$queryRaw<{ n: string }[]>`SELECT runtime_next_case_number(${workspaceId}::uuid, ${firm!.key}, now()) AS n`;
-        const c = await tx.case.create({ data: { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, caseNumber, reference: b.reference ?? null, clientActorId: client!.id, createdBy: actor.id, idempotencyKey: b.idempotencyKey ?? null, idempotencyFingerprint: b.idempotencyKey ? fingerprint : null } });
+        const c = await tx.case.create({ data: { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, caseNumber, reference: b.reference ?? null, clientActorId: client!.id, clientId, createdBy: actor.id, idempotencyKey: b.idempotencyKey ?? null, idempotencyFingerprint: b.idempotencyKey ? fingerprint : null } });
         const caseSubject = await tx.answerSubject.create({ data: { workspaceId, partyId: party.id, subjectKind: "case", label: "The application" } });
         const principal = await tx.answerSubject.create({ data: { workspaceId, partyId: party.id, subjectKind: "principal", label: b.principal.displayName } });
         await tx.caseParticipant.createMany({ data: [{ workspaceId, caseId: c.id, subjectId: caseSubject.id, role: "case", order: 0 }, { workspaceId, caseId: c.id, subjectId: principal.id, role: "principal", order: 1 }] });
@@ -330,6 +352,7 @@ export class Runtime {
           const def = item ? await tx.canonicalField.findFirst({ where: { workspaceId, canonicalFieldKey: x.field, version: item.item_version } }) : null;
           if (def) await tx.clientCanonicalAnswer.create({ data: { workspaceId, partyId: party.id, subjectId: principal.id, canonicalFieldId: def.id, canonicalFieldKey: x.field, valueJson: x.value, status: "DECLARED", sourceJson: { channel: STAGE_RECORD, actor: actor.id, at: at.toISOString() } } });
         }
+        if (inTx) await inTx(tx, { id: c.id, caseNumber, combinationId: b.combinationId });
         return c.id;
       }, { timeout: 15_000, maxWait: 10_000 }); // With the connections busy Prisma's default 2 s and 5 s answered a 500 (P2028)
       if (id === REPLAYED) { const same = await replay(); if (same) return same; }
@@ -341,6 +364,9 @@ export class Runtime {
       fail(b.reference ? "A case with this reference already exists; give the new case its own reference." : "The case could not be given its case number, so nothing was created. Ask the Lead.", HttpStatus.CONFLICT);
     }
     await this.audit.log(workspaceId, actor.id, "opened", "case", id!, `${actor.name} opened case ${short(id!)} on "${combination!.label}" released version ${release!.version} (${release!.sha256.slice(0, 12)}); representative of record ${nameIn(firm!, representative)}, case officers ${officers.map((o) => nameIn(firm!, o)).join(", ")}${stagesWritten.stages > 1 ? `; a stage of a route (${stagesWritten.stages} stages, ${stagesWritten.doneBefore} done before we started)` : ""}`, undefined, b.combinationId);
+    // CS-K1 (Lead 61, comment 6900282370 on #1867): a directly opened case's new client writes an audit line, no client.created.
+    const mc = madeClient as { id: string; code: string } | null;   // set inside the transaction (TS cannot see it)
+    if (mc) await this.audit.log(workspaceId, actor.id, "added", "case client", mc.id, `${actor.name} opened case ${short(id!)} for a new client, ${mc.code}`);
     return { ...(await this.get(actor, id!)), created: true };
   }
 
@@ -352,6 +378,8 @@ export class Runtime {
     const snapshot = this.snapshotOf(c), roleOfRelease = new Map(linesOf(snapshot).map((p) => [p.role, roleWords(p)]));
     const coFiling = new Set(linesOf(snapshot).filter((p) => p.filingMode === "co_files").map((p) => p.role));
     return { id: c.id, ...(team ? { team } : {}), case_number: c.caseNumber, reference: c.reference, status: c.status, combination_id: c.combinationId, client: c.clientActorId,
+      // CS-K1: the case's client record (`client` stays the simulated login that answers, as the screens read it).
+      client_record: await clientLineOf(this.db, c.clientId),
       pin: { release_version: pin.release.version, sha256: pin.contentHash, pinned_at: pin.pinnedAt, revision: pin.revision },
       // G13 (QA-140): the release in the studio's own words.
       release: { label: releaseLabel(pin.release), version: pin.release.version, release: pin.release.packVersion?.version ?? pin.release.version },
@@ -1043,6 +1071,8 @@ export class RuntimeController {
   @Get("cases") list(@Headers("x-actor") a: H, @Query() q: { take?: string; after?: string; client?: string; q?: unknown }) { return this.r.list(actorOf(a), q); }
   @Get("next-case-number") nextCaseNumber(@Headers("x-actor") a: H) { return this.r.nextCaseNumber(actorOf(a)); }
   @Post("cases") create(@Headers("x-actor") a: H, @Body() b: unknown) { return this.r.createCase(actorOf(a), b); }
+  /** FO-8: a staff session (PF-4's guard and the key decide, never x-actor), as features/clients.ts's reads. */
+  @Post("clients/:id/open-case") @PermissionKeys("agent/case:create") openFromOffer(@Req() r: { platform?: StaffContext }, @Param("id") id: string, @Body() b: unknown) { return this.r.openCaseFromOffer(staffOf(r), id, b); }
   @Get("openable") openable(@Headers("x-actor") a: H) { return this.r.openable(actorOf(a)); }
   @Get("combinations/:id/employer-link") employerLink(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.employerLink(actorOf(a), id); }
   @Get("cases/:id") get(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.get(actorOf(a), id); }
