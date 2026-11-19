@@ -6,10 +6,11 @@
 // a case by its id.
 import { additionsOf, withAdditions } from "../../engine/runtime/added-forms.ts";
 import { clientPersonOf, withClient, type StoredChange } from "../../engine/runtime/filing-changes.ts";
-import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, Put, Query, Req } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
+import type { Prisma } from "@prisma/client";
+import { caseName, type CaseListRow, CaseListQuery, ConfirmSection, QuestionnaireQuery, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, optionsOf, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
@@ -20,6 +21,9 @@ import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
 import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
 import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
+import { openCaseFromOffer } from "./case-clients/prospect-won.ts"; // FO-8
+import { auditEvent } from "./platform/audit/audit-event.ts";
+import { PermissionKeys, problem, staffOf, type StaffContext } from "./platform/identity/keys.ts";
 import { aiLive } from "./sources.ts";
 import { FIRM_RECORD, openingTeam, REPRESENTATIVE, representativeAnswers, USES_REPRESENTATIVE, type Member } from "../../engine/runtime/team.ts";
 import { employerLinkOffer } from "../../engine/runtime/employer.ts";
@@ -246,7 +250,17 @@ export class Runtime {
     return { who: who!, stored };
   }
 
-  async createCase(actor: Actor, body: unknown) {
+  /** FO-8: the staff member's "Open a case?" click on a client made from a won prospect (case-clients/prospect-won.ts). */
+  async openCaseFromOffer(ctx: StaffContext, clientId: string, body: unknown = {}) {
+    const b = parse(OpenCaseFromOffer, body);   // CS-V1: read through its schema before anything else
+    const actorOrNone = (id: string | null) => { try { return id ? actorOf(id) : null; } catch { return null; } };
+    return openCaseFromOffer<Actor>({ db: this.db, workspaceId: await this.ws.id(), actorOf: actorOrNone, audit: auditEvent, problem,
+      createCase: (actor, b, inTx) => this.createCase(actor, b, inTx),
+      clientTypeOf: async (tx, combinationId) => ((await groupOfCombination(tx, combinationId)) === "corporate" ? "CORPORATE" : "INDIVIDUAL") }, ctx, clientId, b);
+  }
+
+  /** `inTx` (FO-8): a step run last inside the opening's transaction; a refusal there leaves nothing written. */
+  async createCase(actor: Actor, body: unknown, inTx?: (tx: Prisma.TransactionClient, opened: { id: string; caseNumber: string; combinationId: string }) => Promise<void>) {
     need(actor, "case");
     const b = parse(NewCase, body);
     const workspaceId = await this.ws.id();
@@ -338,6 +352,7 @@ export class Runtime {
           const def = item ? await tx.canonicalField.findFirst({ where: { workspaceId, canonicalFieldKey: x.field, version: item.item_version } }) : null;
           if (def) await tx.clientCanonicalAnswer.create({ data: { workspaceId, partyId: party.id, subjectId: principal.id, canonicalFieldId: def.id, canonicalFieldKey: x.field, valueJson: x.value, status: "DECLARED", sourceJson: { channel: STAGE_RECORD, actor: actor.id, at: at.toISOString() } } });
         }
+        if (inTx) await inTx(tx, { id: c.id, caseNumber, combinationId: b.combinationId });
         return c.id;
       }, { timeout: 15_000, maxWait: 10_000 }); // With the connections busy Prisma's default 2 s and 5 s answered a 500 (P2028)
       if (id === REPLAYED) { const same = await replay(); if (same) return same; }
@@ -546,6 +561,13 @@ export class Runtime {
     const fromFirm = f ? representativeAnswers(f, (await this.db.caseTeamMember.findMany({ where: { caseId: c.id } })).map((m): Member => ({ ...m, role: m.role as Member["role"] })), caseSubject, phoneParts) : [];
     const firmGives = new Set(fromFirm.map((x) => `${x.subjectId}|${x.field}`));
     return { answers: [...a.filter((x) => !firmGives.has(`${x.subjectId}|${x.field}`)), ...fromFirm], rows: r, groups };
+  }
+
+  /** GET /runtime/cases/:id/questionnaire (CS-V1 part 3): ?mode= once, one of its words; pqr, the Agent view, or the
+   *  Client questionnaire (sqr, client or none), as before. */
+  async questionnaire(actor: Actor, caseId: string, queryIn: unknown) {
+    const { mode } = parse(QuestionnaireQuery, queryIn ?? {});
+    return mode === "pqr" ? this.pqr(actor, caseId) : this.view(actor, caseId, mode === "agent" ? "agent" : "sqr");
   }
 
   async view(actor: Actor, caseId: string, mode: Mode) {
@@ -1010,10 +1032,11 @@ export class Runtime {
    *  in one query each for the whole page, never one per row. A case not yet prepared holds none (0).
    *  A24-2 (P-492, design §6): `q=<words>` keeps the cases whose case number, own reference, a person's name or an IRCC
    *  application number contains them (any letter case), inside the same firm filter; the cursor pages the kept cases. */
-  async list(actor: Actor, q: { take?: string; after?: string; client?: string; q?: unknown }) {
+  async list(actor: Actor, queryIn: unknown) {
     need(actor, "case");
+    const q = parse(CaseListQuery, queryIn ?? {}); // CS-V1 part 3: only take, after, client and q, each once
     const workspaceId = await this.ws.id();
-    const take = Math.min(Math.max(Number(q.take ?? 50) || 50, 1), 100);
+    const take = Math.min(Math.max(Math.trunc(Number(q.take ?? 50)) || 50, 1), 100); // review m2: take=1.5 is 1, never a 500
     // Break m5: one login or none; a list or an empty value is refused, never read as "every client".
     if (q.client !== undefined && (typeof q.client !== "string" || !q.client)) fieldError("client", "Name one client login.");
     const client = q.client ?? null;
@@ -1053,15 +1076,17 @@ const searchWhere = (w: string) => {
 @Controller("api/runtime")
 export class RuntimeController {
   constructor(@Inject(Runtime) private readonly r: Runtime) {}
-  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: { take?: string; after?: string; client?: string; q?: unknown }) { return this.r.list(actorOf(a), q); }
+  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: unknown) { return this.r.list(actorOf(a), q); }
   @Get("next-case-number") nextCaseNumber(@Headers("x-actor") a: H) { return this.r.nextCaseNumber(actorOf(a)); }
   @Post("cases") create(@Headers("x-actor") a: H, @Body() b: unknown) { return this.r.createCase(actorOf(a), b); }
+  /** FO-8: a staff session (PF-4's guard and the key decide, never x-actor), as features/clients.ts's reads. */
+  @Post("clients/:id/open-case") @PermissionKeys("agent/case:create") openFromOffer(@Req() r: { platform?: StaffContext }, @Param("id") id: string, @Body() b: unknown) { return this.r.openCaseFromOffer(staffOf(r), id, b); }
   @Get("openable") openable(@Headers("x-actor") a: H) { return this.r.openable(actorOf(a)); }
   @Get("combinations/:id/employer-link") employerLink(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.employerLink(actorOf(a), id); }
   @Get("cases/:id") get(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.get(actorOf(a), id); }
   @Post("cases/:id/people") addPerson(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.r.addPerson(actorOf(a), id, b); }
   @Patch("cases/:id/people/:subject") updatePerson(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Body() b: unknown) { return this.r.updatePerson(actorOf(a), id, s, b); }
-  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query("mode") m?: string) { return m === "pqr" ? this.r.pqr(actorOf(a), id) : this.r.view(actorOf(a), id, m === "agent" ? "agent" : "sqr"); }
+  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.r.questionnaire(actorOf(a), id, q); }
   @Post("cases/:id/review") review(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.review(actorOf(a), id); }
   @Put("cases/:id/answers/:subject/:field") answer(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Param("field") f: string, @Body() b: unknown) { return this.r.putAnswer(actorOf(a), id, s, f, b); }
   /** B128: a relative's answer, its key (`<person>/parent_1`) written as two path parts. */
