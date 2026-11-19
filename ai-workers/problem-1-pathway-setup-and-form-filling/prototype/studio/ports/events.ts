@@ -74,8 +74,8 @@ export const EVENT = {
   /** The case side made a client from a won prospect (FO-8; P-560; case-side contract v0.1 §4). Written last in the
    *  transaction that makes the client; module_event.subject_id is the client id. */
   CLIENT_CREATED: "client.created",
-  /** A staff member opened the case a won prospect's "Open a case?" offered (FO-8; P-560; contract v0.1 §4). Written in
-   *  the opening's own transaction; module_event.subject_id is the case id. */
+  /** A case was opened (P-560; contract v0.1 §4). FO-8 writes it on the "Open a case?" offer path, in the opening's own
+   *  transaction; a direct opening does not write it yet. module_event.subject_id is the case id. */
   CASE_OPENED: "case.opened",
 
   /** Two front-office persons or companies were merged (front office, FO-9b; AG-2-16; contract v0.1 §3.3, §7). Written

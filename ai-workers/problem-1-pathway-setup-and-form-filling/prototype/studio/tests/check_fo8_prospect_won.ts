@@ -92,6 +92,8 @@ try {
   /** A converted person prospect (its `prospect.won` is in the outbox, not delivered). */
   const wonPerson = async (given: string, who: StaffContext = R, extra: Record<string, unknown> = {}) => { const l = await lead(given, who, extra); const p = await pros.engage(who, l.id) as { id: string }; await pros.convert(who, p.id, {}); return { id: p.id, personId: l.person.id }; };
   const event = (prospectId: string) => { const [firmId, payload] = sql(`select firm_id || '~' || payload::text from module_event where type = '${EVENT.PROSPECT_WON}' and subject_id = '${prospectId}' order by seq desc limit 1`).split("~"); return { type: EVENT.PROSPECT_WON as string, firmId, payload: JSON.parse(payload) }; };
+  /** The outbox refuses edits (insert-only), so a test alters a stored row with the triggers off. */
+  const alter = (prospectId: string, path: string, json: string) => sql(`set session_replication_role = replica; update module_event set payload = jsonb_set(payload, '${path}', '${json}'::jsonb) where type = '${EVENT.PROSPECT_WON}' and subject_id = '${prospectId}'`);
   const clientOf = (prospectId: string) => sql(`select id from case_client where prospect_id = '${prospectId}'`);
   const written = (prospectId: string) => [count("case_client", `prospect_id = '${prospectId}'`), count("module_event", `type = '${EVENT.CLIENT_CREATED}' and payload->>'prospect_id' = '${prospectId}'`), count("audit_event", `entity = 'fo_prospect' and entity_key = '${prospectId}' and action = '${EVENT.CLIENT_CREATED}'`)].join(":");
   const counter = (key = "sample-firm") => sql(`select coalesce((select next_value from case_client_counter where firm_key = '${key}' and workspace_id = '${deps.workspaceId}'), 0)`);
@@ -121,17 +123,46 @@ try {
   const other = await onProspectWon(db, { ...event(cy.id), type: EVENT.PROSPECT_LOST }, deps), bad = await thrown(() => onProspectWon(db, { ...event(cy.id), payload: { prospect_id: cy.id } }, deps));
   ok("FO-8 DW1 fail: another event type is ignored, and a payload that is not prospect.won's is refused: nothing written", other === null && !!bad && written(cy.id) === "0:0:0", [other, bad.slice(0, 120)]);
 
+  // Review M1, breaker M1, m1-m3: the delivery is a signal; the outbox's own newest row decides what is made.
+  const dan = await lead("Dan"), danP = await pros.engage(R, dan.id) as { id: string };
+  const forged = await onProspectWon(db, { ...event(ana.id), payload: { ...event(ana.id).payload, prospect_id: danP.id } }, deps);
+  ok("FO-8 DW1 fail (breaker m3): a delivery for a prospect that was never won makes nothing", forged === null && written(danP.id) === "0:0:0", forged);
+  const una = await wonPerson("Una"), stale = event(una.id);
+  await pros.undoConvert(R, una.id, { reason: "Converted by mistake" });
+  const afterUndo = await onProspectWon(db, stale, deps), swept = await catchUpProspectsWon(db, deps);
+  ok("FO-8 DW1 fail (review M1): a prospect.won delivered after its Convert was undone makes nothing, and the catch-up leaves it alone (not made, not failed)",
+    afterUndo === null && written(una.id) === "0:0:0" && !swept.results.some((r) => r.prospectId === una.id) && !swept.failed.some((r) => r.prospectId === una.id), [afterUndo, swept.failed]);
+  await pros.convert(R, una.id, {});
+  const renamed = await onProspectWon(db, { ...stale, payload: { ...stale.payload, answers: { ...stale.payload.answers, "person.given_names": "Forged" }, owner_staff_id: SOLO.staffId } }, deps);
+  ok("FO-8 DW1 pass (review M1, breaker m3): converted again, the client is made from the outbox's own row: a delivered copy with another name and another firm's staff member as owner changes nothing",
+    renamed?.made === true && sql(`select display_name || '|' || file_owner from case_client where prospect_id = '${una.id}'`) === `Una Sample|${R.staffId}`, renamed);
+  const long = await wonPerson("L".repeat(100), R, { familyName: "M".repeat(100), interestedIn: service }), longClient = await onProspectWon(db, event(long.id), deps);
+  const longCase = await openCase(longClient!.clientId);
+  ok("FO-8 DW1 pass (breaker m1, m2): a name at the front office's own limit (100 + 100) still makes the client (cut to 200), and the offer pre-fills a principal the opening accepts (120)",
+    longClient?.made === true && sql(`select length(display_name) from case_client where id = '${longClient.clientId}'`) === "200" && longCase.status === 201
+    && sql(`select length(label) from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${longCase.body?.id}' and p.role = 'principal'`) === "120", [longClient, longCase.status, longCase.body?.detail]);
+
   // ------------------------------------------------------------------------------------------ DW2: a company client
   const lena = await lead("Lena"), pine = await corp.engage(R, lena.id, { companyName: `Pine Bakery ${tag} Ltd` }) as { id: string };
   await pros.convert(R, pine.id, {});
-  const tampered = event(pine.id); tampered.payload = { ...tampered.payload, subject: { subject: "PERSON", personId: lena.person.id } };
-  const asPerson = await thrown(() => onProspectWon(db, tampered, deps));
+  const realSubject = JSON.stringify(event(pine.id).payload.subject);
+  alter(pine.id, "{subject}", JSON.stringify({ subject: "PERSON", personId: lena.person.id }));
+  const asPerson = await thrown(() => onProspectWon(db, event(pine.id), deps));
+  alter(pine.id, "{subject}", realSubject);
   ok("FO-8 DW2 fail: a company prospect's event that says it is a person is refused by the person port; no client", /company/i.test(asPerson) && written(pine.id) === "0:0:0", asPerson.slice(0, 200));
   const co = await onProspectWon(db, event(pine.id), deps);
   const k = JSON.parse(sql(`select row_to_json(k)::text from (select display_name, display_kind, fo_person_id, fo_company_id, contact from case_client where prospect_id = '${pine.id}') k`));
   ok("FO-8 DW2 pass: a company prospect makes a COMPANY client named after the company, linked to the front-office company, with its contact person by id (A44)",
     co?.made === true && written(pine.id) === "1:1:1" && k.display_kind === "COMPANY" && k.display_name === `Pine Bakery ${tag} Ltd` && k.fo_person_id === null
     && k.fo_company_id === sql(`select subject_company_id from fo_prospect where id = '${pine.id}'`) && k.contact?.contactPersonId === lena.person.id && !JSON.stringify(k.contact).includes("Lena"), k);
+
+  await pros.undoConvert(R, pine.id, { reason: "It is the person, not the company" });
+  const retyped = await corp.changeType(R, pine.id, { type: "INDIVIDUAL" }).then(() => "", (e) => String(e?.response?.detail ?? e));
+  await pros.convert(R, pine.id, {});
+  const follows = await onProspectWon(db, event(pine.id), deps), k2 = JSON.parse(sql(`select row_to_json(k)::text from (select display_name, display_kind, fo_person_id, fo_company_id, contact from case_client where prospect_id = '${pine.id}') k`));
+  ok("FO-8 DW2 fail (breaker M2): won again as an individual, the same client (no case yet) follows the prospect: PERSON, the person's name and record, no company left on it, one audit line; no second client or client.created",
+    retyped === "" && follows?.made === false && follows.clientId === co!.clientId && k2.display_kind === "PERSON" && k2.display_name === "Lena Sample" && k2.fo_person_id === lena.person.id && k2.fo_company_id === null && k2.contact === null
+    && written(pine.id) === "1:1:1" && count("audit_event", `entity_key = '${pine.id}' and action = 'client.subject_changed'`) === 1, [retyped, follows, k2]);
 
   // ------------------------------------------------------------------------------------------ DW3: "Open a case?"
   const anaClient = first!.clientId;
@@ -182,6 +213,11 @@ try {
   ok("FO-8 DW5 fail: firm A's event never makes a client in firm B: delivered as firm B's, or naming firm B's key, it is refused and nothing is written", !!crossed && !!keyed && written(eve.id) === "0:0:0" && count("case_client", `firm_key = 'sample-solo' and prospect_id = '${eve.id}'`) === 0, [crossed.slice(0, 120), keyed.slice(0, 120)]);
   const solo = await onProspectWon(db, event(sol.id), deps), mine = await onProspectWon(db, event(eve.id), deps);
   ok("FO-8 DW5 pass: each firm's event makes a client of its own firm, with its own firm's number", solo?.made === true && mine?.made === true && sql(`select firm_key || ':' || firm_id from case_client where id = '${solo.clientId}'`) === `sample-solo:${B}` && sql(`select firm_key from case_client where id = '${mine.clientId}'`) === "sample-firm");
+  const wasB = sql(`select status from platform_firm where id = '${B}'`);
+  sql(`set session_replication_role = replica; update platform_firm set status = 'DELETED' where id = '${B}'`);
+  const gone = await wonPerson("Sam", SOLO).then((p) => onProspectWon(db, event(p.id), deps).then((r) => [r, written(p.id)]));
+  sql(`set session_replication_role = replica; update platform_firm set status = '${wasB}' where id = '${B}'`);
+  ok("FO-8 DW5 fail (breaker m4): a deleted firm's event makes no client", gone[0] === null && gone[1] === "0:0:0", gone);
   const walled = await openCase(mine!.clientId, TS, { clientActor: "user-P", combinationId: VV });
   ok("FO-8 DW5 fail: staff of firm B get 404 \"No such client.\" on firm A's client; nothing opened", walled.status === 404 && /No such client\./.test(JSON.stringify(walled.body)) && casesOf(mine!.clientId) === 0, [walled.status, walled.body]);
   const own = await openCase(solo!.clientId, TS, { clientActor: "user-P", combinationId: VV });
@@ -221,7 +257,7 @@ try {
 
   // ------------------------------------------------------------------------------------------ DW7: the catch-up
   const [ida, jon, kim] = [await wonPerson("Ida"), await wonPerson("Jon"), await wonPerson("Kim")];
-  const breakJon = (key: string) => sql(`set session_replication_role = replica; update module_event set payload = jsonb_set(payload, '{firm_key}', '"${key}"') where type = '${EVENT.PROSPECT_WON}' and subject_id = '${jon.id}'`);
+  const breakJon = (key: string) => alter(jon.id, "{firm_key}", `"${key}"`);
   breakJon("no-such-firm");
   const caught = await catchUpProspectsWon(db, deps);
   ok("FO-8 DW7 fail: the catch-up names the one prospect that fails, in words, and does not stop the others",

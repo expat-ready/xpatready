@@ -11,14 +11,14 @@
 // The representative is read from the signed retainer version's merge values (written once, never changed), never from
 // the retainer row or the payload's copy of it (Lead B rev 16.13, FO-5f question 1).
 //   Run the catch-up: tsx api/src/case-clients/prospect-won.ts
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { pathToFileURL } from "node:url";
 import type { AuditPort } from "../../../ports/audit.ts";
 import { CaseOpenedPayload, ClientCreatedPayload, EVENT, ProspectWonPayload } from "../../../ports/events.ts";
 import type { FoPersonPort } from "../../../ports/fo-person.ts";
 
 type Tx = Prisma.TransactionClient;
-type Reader = Pick<Tx, "caseClient" | "moduleEvent" | "case" | "foRetainerVersion" | "platformStaff">;
+type Reader = Pick<Tx, "caseClient" | "moduleEvent" | "case" | "foRetainerVersion" | "platformStaff" | "configRelease">;
 export const PROSPECT_WON_ACTOR = "system:prospect.won";
 /** The merge value that names a version's representative by id (front-office/retainers/service.ts REPRESENTATIVE_ID). */
 const REPRESENTATIVE_ID = "representative.staff_id";
@@ -29,33 +29,56 @@ export type ProspectWonDeps = { workspaceId: string; foPerson: FoPersonPort<Tx>;
 export type WonEvent = { type: string; firmId: string; payload?: unknown };
 export type WonResult = { prospectId: string; clientId: string; clientNumber: string; made: boolean };
 
-async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, p: ProspectWonPayload): Promise<WonResult> {
+const NOT_SERVED = new Set(["DELETED", "ABANDONED"]);
+const cut = (v: string, max: number) => [...v.trim()].slice(0, max).join("");
+const WON_OR_UNDONE = [EVENT.PROSPECT_WON, EVENT.PROSPECT_UNCONVERTED];
+
+/** The client's subject as the event names it: the front office's person or company (through its port), the name, and
+ *  for a company its contact person, linked by id and never copied (A44; AG-2-77 rule 7): the primary contact first. */
+async function subjectOf(tx: Tx, deps: ProspectWonDeps, firmId: string, p: ProspectWonPayload) {
+  const base = { firmId, actor: PROSPECT_WON_ACTOR, prospectId: p.prospect_id };
+  if (p.subject.subject === "PERSON") {
+    const displayName = cut([p.answers["person.given_names"], p.answers["person.family_name"]].map((x) => x?.trim()).filter(Boolean).join(" "), 200);
+    if (!displayName) throw new Error(`prospect.won: prospect ${p.prospect_id} names no person`);
+    return { displayName, displayKind: "PERSON", foPersonId: (await deps.foPerson.ensureForClient(tx, { ...base, displayName })).foPersonId, foCompanyId: null, contact: Prisma.DbNull };
+  }
+  const displayName = cut(p.subject.company.name, 200), c = p.subject.contacts.find((x) => x.primaryContact) ?? p.subject.contacts[0];
+  return { displayName, displayKind: "COMPANY", foPersonId: null, foCompanyId: (await deps.foPerson.ensureCompanyForClient(tx, { ...base, name: displayName })).foCompanyId, contact: { contactPersonId: c.personId, roles: c.roles } };
+}
+
+async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, delivered: ProspectWonPayload): Promise<WonResult | null> {
+  const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { key: true, status: true } });
   // The outbox row's firm decides: a payload that names another firm, or a key that is not this firm's, makes nothing.
-  if (p.firm_id.toLowerCase() !== firmId.toLowerCase()) throw new Error(`prospect.won: the payload names firm ${p.firm_id}, the event is firm ${firmId}'s`);
-  const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { key: true } });
-  if (!firm || firm.key !== p.firm_key) throw new Error(`prospect.won: "${p.firm_key}" is not the key of firm ${firmId}`);
+  const ofFirm = (p: ProspectWonPayload) => {
+    if (p.firm_id.toLowerCase() !== firmId.toLowerCase()) throw new Error(`prospect.won: the payload names firm ${p.firm_id}, the event is firm ${firmId}'s`);
+    if (!firm || firm.key !== p.firm_key) throw new Error(`prospect.won: "${p.firm_key}" is not the key of firm ${firmId}`);
+  };
+  ofFirm(delivered);
+  if (NOT_SERVED.has(firm!.status)) return null;   // a deleted or abandoned firm gets no new client
   // One delivery at a time per prospect: a second waits here, then finds the first's client.
-  await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`prospect-won:${p.prospect_id}`}))`;
+  await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`prospect-won:${delivered.prospect_id}`}))`;
+  // The delivery is only a signal: what is made comes from the outbox's own newest row for this prospect (insert-only,
+  // so never a forged or stale copy), and only while that row is a `prospect.won` (an Undo convert since then: nothing).
+  const last = await tx.moduleEvent.findFirst({ where: { firmId, subjectId: delivered.prospect_id, type: { in: WON_OR_UNDONE } }, orderBy: { seq: "desc" } });
+  if (last?.type !== EVENT.PROSPECT_WON) return null;
+  const p = ProspectWonPayload.parse(last.payload);
+  ofFirm(p);
   const where = { workspaceId: deps.workspaceId, firmKey: p.firm_key, prospectId: p.prospect_id };
   const held = await tx.caseClient.findFirst({ where });
-  if (held) return { prospectId: p.prospect_id, clientId: held.id, clientNumber: code(held.clientNumber), made: false };
-
-  const base = { firmId, actor: PROSPECT_WON_ACTOR, prospectId: p.prospect_id };
-  let party: { foPersonId?: string; foCompanyId?: string }, displayName: string, contact: Prisma.InputJsonValue | undefined;
-  if (p.subject.subject === "PERSON") {
-    displayName = [p.answers["person.given_names"], p.answers["person.family_name"]].map((x) => x?.trim()).filter(Boolean).join(" ");
-    if (!displayName) throw new Error(`prospect.won: prospect ${p.prospect_id} names no person`);
-    party = await deps.foPerson.ensureForClient(tx, { ...base, displayName, givenNames: p.answers["person.given_names"], familyName: p.answers["person.family_name"], email: p.answers["person.email"], phone: p.answers["person.phone_number"] });
-  } else {
-    displayName = p.subject.company.name;
-    party = await deps.foPerson.ensureCompanyForClient(tx, { ...base, name: displayName });
-    // A44: the company's contact person, linked by id and never copied (AG-2-77 rule 7): the primary contact first.
-    const c = p.subject.contacts.find((x) => x.primaryContact) ?? p.subject.contacts[0];
-    contact = { contactPersonId: c.personId, roles: c.roles };
+  if (held) {
+    // Won again as the other type (Undo convert, Change type, Convert): a client with no case yet follows the prospect.
+    const kind = p.subject.subject === "PERSON" ? "PERSON" : "COMPANY";
+    if (held.displayKind !== kind && !(await tx.case.count({ where: { clientId: held.id } }))) {
+      const { displayName, displayKind, foPersonId, foCompanyId, contact } = await subjectOf(tx, deps, firmId, p);
+      await tx.caseClient.update({ where: { id: held.id }, data: { displayName, displayKind, foPersonId, foCompanyId, contact } });
+      await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: "client.subject_changed", entity: "fo_prospect", entityKey: p.prospect_id,
+        summary: `The prospect was won again as ${kind === "PERSON" ? "a person" : "a company"}; client ${code(held.clientNumber)} follows it.`, detail: { clientId: held.id, prospectId: p.prospect_id, kind } });
+    }
+    return { prospectId: p.prospect_id, clientId: held.id, clientNumber: code(held.clientNumber), made: false };
   }
+  const subject = await subjectOf(tx, deps, firmId, p);
   const [{ n }] = await tx.$queryRaw<{ n: number }[]>`select case_client_next_number(${deps.workspaceId}::uuid, ${p.firm_key}) as n`;
-  const client = await tx.caseClient.create({ data: { ...where, firmId, clientNumber: Number(n), displayName: displayName.trim().slice(0, 200), displayKind: party.foCompanyId ? "COMPANY" : "PERSON",
-    foPersonId: party.foPersonId ?? null, foCompanyId: party.foCompanyId ?? null, fileOwner: p.owner_staff_id, contact, createdBy: PROSPECT_WON_ACTOR } });
+  const client = await tx.caseClient.create({ data: { ...where, firmId, clientNumber: Number(n), ...subject, fileOwner: p.owner_staff_id, createdBy: PROSPECT_WON_ACTOR } });
   const clientNumber = code(client.clientNumber);
   // The line sits on the prospect (the audit port takes area entities only until AUD-1 moves the case side onto it).
   await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: EVENT.CLIENT_CREATED, entity: "fo_prospect", entityKey: p.prospect_id,
@@ -65,7 +88,8 @@ async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, p: Pros
 }
 
 /** The subscriber: a `prospect.won` event (module_event's envelope) makes that prospect's client, once. Any other event
- *  type is ignored. At least once is safe: a repeat changes nothing. */
+ *  type is ignored (null), as is a won event that no longer stands (undone since) or a firm no longer served. At least
+ *  once is safe: a repeat changes nothing. */
 export async function onProspectWon(db: PrismaClient, event: WonEvent, deps: ProspectWonDeps): Promise<WonResult | null> {
   if (event.type !== EVENT.PROSPECT_WON) return null;
   const p = ProspectWonPayload.parse(event.payload);
@@ -74,18 +98,19 @@ export async function onProspectWon(db: PrismaClient, event: WonEvent, deps: Pro
 
 export type WonCatchUp = { results: WonResult[]; failed: { prospectId: string; firmId: string; error: string }[] };
 
-/** Catch-up over the outbox: every prospect with a `prospect.won` and no client (its newest one, in event order), so a
- *  missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
+/** Catch-up over the outbox: every prospect with a `prospect.won` and no client, whose Convert still stands and whose
+ *  firm is still served, so a missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
 export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps): Promise<WonCatchUp> {
   const rows = await db.$queryRaw<{ firm_id: string; prospect_id: string; payload: unknown }[]>`
     select distinct on (e.firm_id, e.subject_id) e.firm_id::text as firm_id, e.subject_id as prospect_id, e.payload
-      from module_event e
-     where e.type = ${EVENT.PROSPECT_WON}
+      from module_event e join platform_firm f on f.id = e.firm_id
+     where e.type = ${EVENT.PROSPECT_WON} and f.status::text not in ('DELETED', 'ABANDONED')
+       and not exists (select 1 from module_event u where u.firm_id = e.firm_id and u.subject_id = e.subject_id and u.type = ${EVENT.PROSPECT_UNCONVERTED} and u.seq > e.seq)
        and not exists (select 1 from case_client c where c.firm_id = e.firm_id and c.workspace_id = ${deps.workspaceId}::uuid and c.prospect_id::text = e.subject_id)
      order by e.firm_id, e.subject_id, e.seq desc`;
   const out: WonCatchUp = { results: [], failed: [] };
   for (const r of rows) {
-    try { out.results.push((await onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps))!); }
+    try { const made = await onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps); if (made) out.results.push(made); }
     catch (e) { out.failed.push({ prospectId: r.prospect_id, firmId: r.firm_id, error: String(e).slice(0, 300) }); }
   }
   return out;
@@ -99,7 +124,7 @@ export type Offer = { clientId: string; prospectId: string; displayName: string;
 export async function offerOf(q: Reader, client: { id: string; firmId: string | null; prospectId: string | null; displayName: string }, exceptCase?: string): Promise<Offer | null> {
   if (!client.prospectId || !client.firmId) return null;
   const firmId = client.firmId;
-  const last = await q.moduleEvent.findFirst({ where: { firmId, subjectId: client.prospectId, type: { in: [EVENT.PROSPECT_WON, EVENT.PROSPECT_UNCONVERTED] } }, orderBy: { seq: "desc" } });
+  const last = await q.moduleEvent.findFirst({ where: { firmId, subjectId: client.prospectId, type: { in: WON_OR_UNDONE } }, orderBy: { seq: "desc" } });
   const won = last?.type === EVENT.PROSPECT_WON ? ProspectWonPayload.safeParse(last.payload) : null;
   const used = await q.case.count({ where: { clientId: client.id, ...(exceptCase ? { id: { not: exceptCase } } : {}) } });
   // The representative: the signed version's own merge values (the paper copy's, else the sent version that was signed).
@@ -110,8 +135,10 @@ export async function offerOf(q: Reader, client: { id: string; firmId: string | 
     const staffId = (signed?.mergeValues as Record<string, unknown> | undefined)?.[REPRESENTATIVE_ID];
     if (typeof staffId === "string" && UUID.test(staffId)) representativeActorId = (await q.platformStaff.findFirst({ where: { firmId, id: staffId }, select: { actorId: true } }))?.actorId ?? null;
   }
-  return { clientId: client.id, prospectId: client.prospectId, displayName: client.displayName, state: used ? "USED" : won?.success ? "OPEN" : "WITHDRAWN",
-    combinationId: won?.success ? won.data.interested_in?.combinationId ?? null : null, representativeActorId };
+  // The combination the lead was interested in, only while it can open a case (released, not retired: contracts §2.6).
+  const wanted = won?.success ? won.data.interested_in?.combinationId ?? null : null;
+  const combinationId = wanted && (await q.configRelease.findFirst({ where: { combinationId: wanted, combination: { retiredAt: null } }, select: { id: true } })) ? wanted : null;
+  return { clientId: client.id, prospectId: client.prospectId, displayName: client.displayName, state: used ? "USED" : won?.success ? "OPEN" : "WITHDRAWN", combinationId, representativeActorId };
 }
 
 export const OFFER_REFUSED = {
@@ -148,14 +175,15 @@ export async function openCaseFromOffer<A>(door: OpenDoor<A>, ctx: { staffId: st
   const actor = door.actorOf(staff?.actorId ?? null) ?? door.problem(409, "Not possible now", "Your sign-in is not linked to a case user yet, so a case cannot be opened from here.", { code: "NO_CASE_USER" });
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
   const { clientId: _c, idempotencyKey: _k, ...given } = b;
+  const name = cut(client.displayName, 120);   // the opening's own limits (2 to 120): a name outside them is asked for
   const request = { ...given, clientId: client.id, combinationId: given.combinationId ?? offer.combinationId ?? undefined,
-    principal: given.principal ?? { displayName: client.displayName }, representative: given.representative ?? offer.representativeActorId ?? undefined };
+    principal: given.principal ?? (name.length >= 2 ? { displayName: name } : undefined), representative: given.representative ?? offer.representativeActorId ?? undefined };
   return door.createCase(actor, request, async (tx, opened) => {
     const now = (await find(tx)) ?? notFound();
     refuse(await offerOf(tx, now, opened.id));
     const clientType = await door.clientTypeOf(tx, opened.combinationId);
     await door.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: EVENT.CASE_OPENED, entity: "fo_prospect", entityKey: offer.prospectId, caseId: opened.id,
-      summary: `Case ${opened.caseNumber} was opened from the won prospect's "Open a case?" offer.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
+      summary: `The won prospect's "Open a case?" offer was taken: ${opened.caseNumber} opened.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CASE_OPENED, subjectId: opened.id,
       payload: CaseOpenedPayload.parse({ firm_id: ctx.firmId, prospect_id: offer.prospectId, client_id: client.id, case_id: opened.id, case_number: opened.caseNumber, client_type: clientType }) } });
   });
