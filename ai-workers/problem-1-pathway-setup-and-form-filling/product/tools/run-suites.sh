@@ -308,7 +308,7 @@ guarded() {  # guarded <log> <command...>: the exit code is timeout's (124 timed
 # preload lets a server stopped by SIGTERM flush it); test-graph.py turns it into the capability -> file -> suite graph.
 # Set before the copy starts (isolated.sh passes the environment on). Unset (every PR, batch and nightly run): nothing.
 cov() { [ -n "${SUITES_COVERAGE:-}" ] || return 0; export NODE_V8_COVERAGE="$SUITES_COVERAGE/${1%.*}"; mkdir -p "$NODE_V8_COVERAGE"
-  export NODE_OPTIONS="--import=$ROOT/$S/tests/qa/coverage-preload.mjs"; }   # absolute: a bare path is read as a package
+  case " ${NODE_OPTIONS:-} " in *coverage-preload.mjs*) ;; *) export NODE_OPTIONS="--import=$ROOT/$S/tests/qa/coverage-preload.mjs${NODE_OPTIONS:+ $NODE_OPTIONS}";; esac; }   # absolute: a bare path is read as a package; added once, never replacing what was set
 run() {  # $1 file, $2 label, rest: command. AGAIN readies a retry (recopy ...); NORETRY says why there is none; both cleared.
   local f="$1" label="$2"; shift 2; local log="$OUT/${f%.*}.log" t0=$SECONDS code=0 code2=0 note="" a src="" rw=""; RF="$f"
   # CI only: one line per suite as it starts, on stderr (the job log), so a part stopped at its job limit, whose table

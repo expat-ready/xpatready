@@ -8,12 +8,15 @@ never hand-kept. Each suite runs under V8's own coverage (run-suites.sh with SUI
                                              R1 items the suite names, and qa/CAPABILITIES.md R1 rows naming the suite)
   render <graph.json> --html x.html --mermaid x.mmd   people's view: capability -> module diagram and tables
 
-"Exercised" (not merely loaded): a function of the file other than the module wrapper and the transpiler's helpers
-(esbuild's __name/__export/__copyProps/__toCommonJS and the export getter `get`) ran at least once, and it is not one
-that runs when a server merely starts: the part `__boot__` (a copy started and stopped with nothing asked of it,
-test-graph.yml) is the baseline, and its functions are taken away from every suite (measured 20 Nov: without it one API
-suite "exercised" 392 files, every module, through route registration alone). Functions are named by name@offset. A file only loaded
-(imported, nothing called) is counted apart and never makes an edge. Granularity is the suite (one script, one process
+"Exercised" (not merely loaded): a function of the file other than the module wrapper (index 0; index 1 too when it is
+nameless and holds every later function, esbuild's CommonJS wrapper) and the transpiler's helpers (__name, __export,
+__copyProps, __toCommonJS, the export getter `get`, keepNames' <static_initializer>) ran. In a server process (one that
+loaded api/src/main.ts) a function counts only when it ran more often than in the boot baseline: `__boot__`, a copy
+started and stopped after isolated.sh's one readiness request (test-graph.yml). The suite's own process is never reduced.
+Measured 20 Nov: with no baseline one API suite "exercised" 392 files, every module, through route registration alone.
+The baseline's functions are kept in graph.json (`boot`): every server suite runs them, so a change to such a file
+reaches every suite with `server: true` (test impact analysis, B203 step 4). Functions are named by name@offset. A file
+only loaded makes no edge (a top-level __name(...) call still counts: a known over-count, never an under-count). Granularity is the suite (one script, one process
 and the copy it starts), not the single check; suites sharing one server (the R1 group) share its coverage. Browser code
 runs in Chromium, outside V8's Node coverage: web/src files reach the graph only through server-side imports. A suite
 with no exercised app file is "unmapped": test impact analysis always runs it (B203: never skipped for want of data).
@@ -25,7 +28,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PH = "ai-workers/problem-1-pathway-setup-and-form-filling"
 STUDIO = PH + "/prototype/studio/"
 APP = tuple(STUDIO + d for d in ("api/src/", "engine/", "contracts/", "web/src/", "ports/"))
-HELPER = re.compile(r"^(__\w+|get)$")
+HELPER = re.compile(r"^(__\w+|get|<static_initializer>)$")
+MAIN = STUDIO + "api/src/main.ts"
 CID, R1ID = re.compile(r"\bC\d+\.\d+\b"), re.compile(r"\bR1\.\d+\b")
 
 
@@ -43,9 +47,18 @@ def rel(url, top):
     return p[len(t):] if p.startswith(t) else None
 
 
+def wrapper(i, fns):
+    if i == 0:
+        return True
+    if i != 1 or fns[1].get("functionName") or len(fns) < 3 or not fns[1]["ranges"]:
+        return False
+    a, b = fns[1]["ranges"][0]["startOffset"], fns[1]["ranges"][0]["endOffset"]
+    return all(f["ranges"] and a <= f["ranges"][0]["startOffset"] and f["ranges"][0]["endOffset"] <= b for f in fns[2:])
+
+
 def own(fns):
-    """The file's own functions: not the wrapper (index 0, 1 when nameless) nor a transpiler helper."""
-    return [f for i, f in enumerate(fns) if not (i < 2 and not f.get("functionName")) and not HELPER.match(f.get("functionName") or "")]
+    """The file's own functions: not a module wrapper nor a transpiler helper."""
+    return [f for i, f in enumerate(fns) if not wrapper(i, fns) and not HELPER.match(f.get("functionName") or "")]
 
 
 def collect(covdir, top):
@@ -53,21 +66,26 @@ def collect(covdir, top):
     for d in sorted(os.listdir(covdir)):
         if not (d.startswith("check_") or d == "__boot__") or not os.path.isdir(os.path.join(covdir, d)):
             continue   # only suites' folders and the boot baseline
-        files = {}
-        for j in glob.glob(os.path.join(covdir, d, "*.json")):
+        files = {}   # file -> {"total", "suite": {fn: count}, "server": {fn: count}}
+        for j in sorted(glob.glob(os.path.join(covdir, d, "*.json"))):
             try:
                 res = json.load(open(j, encoding="utf-8")).get("result", [])
             except (OSError, ValueError):
                 continue   # a process killed mid-write leaves a partial file: skip it, never guess
+            kind = "server" if d == "__boot__" or any(rel(r.get("url", ""), top) == MAIN for r in res) else "suite"
             for r in res:
                 p = rel(r.get("url", ""), top)
                 if not p or not p.startswith(APP) or "/node_modules/" in p:
                     continue
                 fs = own(r.get("functions", []))
-                hit = {f"{f.get('functionName') or ''}@{f['ranges'][0]['startOffset']}" for f in fs if f["ranges"] and f["ranges"][0].get("count", 0) > 0}
-                h, t = files.get(p, (set(), 0))
-                files[p] = (h | hit, max(t, len(fs)))   # several processes (suite, server): union of what ran
-        out[d] = {f: {"total": t, "hit": sorted(h)} for f, (h, t) in sorted(files.items())}
+                e = files.setdefault(p, {"total": 0, "suite": {}, "server": {}})
+                e["total"] = max(e["total"], len(fs))
+                for fn in fs:
+                    c = fn["ranges"][0].get("count", 0) if fn["ranges"] else 0
+                    if c > 0:   # processes of one kind add up (a suite that starts its copy twice counts boot twice: over, never under)
+                        k = f"{fn.get('functionName') or ''}@{fn['ranges'][0]['startOffset']}"
+                        e[kind][k] = e[kind].get(k, 0) + c
+        out[d] = dict(sorted(files.items()))
     return out
 
 
@@ -78,6 +96,10 @@ def cards(top):
     spec.loader.exec_module(mc)
     mods, _ = mc.modules()
     return lambda p: (mc.owners(p, mods) or ["(no card: " + p[len(STUDIO):].split("/")[0] + ")"])[0]
+
+
+# run-suites.sh's R1 unit: three suites (and their set-up) on one copy, one coverage folder named after r1a
+GROUP = {"check_runtime_r1a": ["check_runtime_r1a", "check_runtime_r1c", "check_runtime_r1d", "setup_visitor_visa"]}
 
 
 def source(stem, top):
@@ -103,31 +125,40 @@ def capabilities(top):
         elif re.fullmatch(r"R1\.\d+", cells[0]):
             caps[cells[0]] = {"name": cells[1], "status": cells[3]}
             for s in re.findall(r"\b(check_[A-Za-z0-9_]+)\.(?:ts|cjs)\b", line):
+                s = next((u for u, ms in GROUP.items() if s in ms), s)
                 r1suites.setdefault(s, set()).add(cells[0])
     return caps, r1suites
 
 
 def join(parts, top, commit=""):
-    suites = {}
+    raw = {}
     for p in parts:
         for s, fs in json.load(open(p, encoding="utf-8")).items():
-            for f, v in fs.items():   # a suite or the baseline split over parts: union
-                e = suites.setdefault(s, {}).setdefault(f, {"total": 0, "hit": []})
-                e["total"] = max(e["total"], v["total"]); e["hit"] = sorted(set(e["hit"]) | set(v["hit"]))
-    boot = suites.pop("__boot__", None)
-    base = {f: set(v["hit"]) for f, v in (boot or {}).items()}
-    suites = {s: {f: [len(set(v["hit"]) - base.get(f, set())), v["total"]] for f, v in fs.items()} for s, fs in suites.items()}
+            dst = raw.setdefault(s, {})   # every suite is kept, even one with no app file (review M2: then unmapped)
+            for f, v in fs.items():   # one suite in two parts (never expected): the larger count of each function
+                e = dst.setdefault(f, {"total": 0, "suite": {}, "server": {}})
+                e["total"] = max(e["total"], v["total"])
+                for kind in ("suite", "server"):
+                    for k, c in v[kind].items():
+                        e[kind][k] = max(e[kind].get(k, 0), c)
+    boot = raw.pop("__boot__", None)
+    base = {f: v["server"] for f, v in (boot or {}).items()}
+    suites, server = {}, {}
+    for s, fs in raw.items():
+        suites[s] = {f: [len(set(v["suite"]) | {k for k, c in v["server"].items() if c > base.get(f, {}).get(k, 0)}), v["total"]] for f, v in fs.items()}
+        server[s] = any(v["server"] for v in fs.values())
     module = cards(top)
     caps, r1suites = capabilities(top)
     g = {"schema": 1, "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-         "commit": commit, "boot_baseline": boot is not None, "suites": {}, "files": {}, "modules": {}, "capabilities": {}, "unmapped": []}
+         "commit": commit, "boot_baseline": boot is not None,
+         "boot": {f: sorted(v) for f, v in sorted(base.items()) if v}, "suites": {}, "files": {}, "modules": {}, "capabilities": {}, "unmapped": []}
     for s, fs in sorted(suites.items()):
         src = source(s, top)
-        text = open(os.path.join(top, src), encoding="utf-8", errors="replace").read() if src else ""
+        text = "".join(open(os.path.join(top, x), encoding="utf-8", errors="replace").read() for x in (GROUP.get(s) and [source(y, top) for y in GROUP[s]] or [src]) if x)
         ex = {f: v for f, v in fs.items() if v[0] > 0}
         ids = sorted(set(CID.findall(text)) | set(R1ID.findall(text)) | r1suites.get(s, set()), key=lambda x: [int(n) if n.isdigit() else n for n in re.split(r"[.C]", x)])
         mods = sorted({module(f) for f in ex})
-        g["suites"][s] = {"source": src, "exercised": ex, "loaded_only": len(fs) - len(ex), "modules": mods, "capabilities": ids}
+        g["suites"][s] = {"source": src, "server": server[s], "exercised": ex, "loaded_only": len(fs) - len(ex), "modules": mods, "capabilities": ids}
         if not ex:
             g["unmapped"].append(s)
         for f, (h, t) in ex.items():
@@ -148,8 +179,9 @@ def join(parts, top, commit=""):
     return g
 
 
-def mermaid(g, limit=60):
-    lines = ["flowchart LR"]
+def mermaid(g, limit=60, edges=400):
+    """Capability -> module, at most `limit` capabilities and `edges` edges (Mermaid's default cap is 500)."""
+    lines, n = ["flowchart LR"], 0
     nid = lambda x: re.sub(r"\W", "_", x)
     caps = [c for c, v in sorted(g["capabilities"].items()) if v["suites"]][:limit]
     for c in caps:
@@ -157,15 +189,22 @@ def mermaid(g, limit=60):
         name = re.sub(r'["`\[\]]', "'", v["name"][:40])
         lines.append(f'  {nid(c)}["{c} {name}"]')
         for m in v["modules"]:
-            lines.append(f'  {nid(c)} --> {nid(m)}(["{m}"])')
+            if n >= edges:
+                lines.append(f"  %% cut at {edges} edges: graph.html and graph.json have the rest")
+                return "\n".join(lines) + "\n"
+            lines.append(f'  {nid(c)} --> {nid(m)}(["{m}"])'); n += 1
     return "\n".join(lines) + "\n"
+
+
+def names(xs, n=12):
+    return ", ".join(xs[:n]) + (f" and {len(xs) - n} more" if len(xs) > n else "")
 
 
 def render(g):
     e = html.escape
-    rows = "".join(f"<tr><td>{e(c)}</td><td>{e(v['name'])}</td><td>{e(v['status'])}</td><td>{len(v['suites'])}</td>"
+    rows = "".join(f"<tr><td>{e(c)}</td><td>{e(v['name'])}</td><td>{e(v['status'])}</td><td>{len(v['suites'])}: {e(names(v['suites']))}</td>"
                    f"<td>{e(', '.join(v['modules']))}</td></tr>" for c, v in sorted(g["capabilities"].items()))
-    files = "".join(f"<tr><td>{e(f)}</td><td>{e(v['module'])}</td><td>{v['hit']}/{v['functions']}</td><td>{len(v['suites'])}</td></tr>"
+    files = "".join(f"<tr><td>{e(f)}</td><td>{e(v['module'])}</td><td>{v['hit']}/{v['functions']}</td><td>{len(v['suites'])}: {e(names(v['suites']))}</td></tr>"
                     for f, v in sorted(g["files"].items()))
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Test graph</title><style>body{{font:14px system-ui;margin:16px;max-width:1200px}}table{{border-collapse:collapse;width:100%}}
