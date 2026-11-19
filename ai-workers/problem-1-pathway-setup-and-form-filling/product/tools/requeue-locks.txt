@@ -1,0 +1,6 @@
+# ENF-746b (P-746 (4)): pipeline locks. A failed job whose log matches one of these lines failed because of main's
+# pipeline, not the PR, so requeue-watch.sh may requeue the PR. One extended regular expression per line; after a tab,
+# an optional regular expression of paths: a PR that itself changes a matching file is not covered (its own row can
+# set the lock off). Keep it short: each line is a cause seen on main, with its date.
+# check-docs.sh's DECISIONS lock (P-734), dropped #2315, #2268, #2302, #2323 on 19-20 Nov
+WORKFLOW LOCK: P-[0-9]+	(^|/)DECISIONS\.md$
