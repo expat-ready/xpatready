@@ -126,6 +126,7 @@ else:
     want = [s.get("env", {}).get("REVIEWERS") for s in qg["jobs"]["gate"]["steps"] if "queue-gate.sh" in str(s.get("run", ""))]
     have = [s.get("env", {}).get("REVIEWERS") for s in j["steps"] if "label-sweep.sh" in str(s.get("run", ""))]
     if not want or not want[0] or have != want: out.append(f"the sweep's REVIEWERS {have} is not queue-gate's {want}")
+    if "workflow_dispatch" not in on or "workflow_dispatch" not in j.get("if", ""): out.append("the sweep cannot be run by hand (workflow_dispatch, Lead 84 19 Nov)")
 g = d["jobs"]["guard"].get("if", "")
 if "github.event.pull_request" not in g: out.append("the guard job's if changed: " + g)
 if "github.event.label.name == 'queued'" not in g: out.append("the guard does not run when Mergify puts queued on: " + g)
