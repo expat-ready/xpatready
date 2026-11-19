@@ -1,0 +1,2 @@
+Entry points: `MAIL_PORT` is `SYSTEM_MAIL` (PF-19e: MessagesMail with `system: true`, `Messages.sendSystem`; account and security mail: invitations, two-step reset notices, sign-in codes); `systemMailBlocked` (suppression, then the per-address hourly limit); `messageBodyBox`, `storedBody`, `openStoredBody` (`messages/send/body-seal.ts`: sealed TRANSACTIONAL bodies)
+Tests: tests/check_pf19e_sealed_bodies.ts
