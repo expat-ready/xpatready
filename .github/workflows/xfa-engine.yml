@@ -15,7 +15,7 @@ on:
       - ".nvmrc"
       - ".github/workflows/xfa-engine.yml"
   schedule:
-    - cron: "41 20 * * *"   # 02:11 IST, off the hour and after ci's nightly (20:23 UTC)
+    - cron: "41 20 * * *"   # 02:11 IST, off the hour and after ci's nightly (20:23 UTC); re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
   workflow_dispatch:
 permissions:
   contents: read

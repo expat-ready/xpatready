@@ -23,7 +23,8 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "7,37 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6)
+    - cron: "7,37 * * * *"   # labelled PRs judged again: a refused re-run, a lost event (review m6); re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
+  workflow_dispatch:   # the same pass by hand (Lead 84, 19 Nov): schedules can be dropped
 permissions: {}
 jobs:
   gate:
@@ -33,7 +34,7 @@ jobs:
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'review: approved') ||
-      github.event_name == 'push' || github.event_name == 'schedule'
+      github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # The Mac's own runner (xr-mac), not GitHub's hosted pool (Lead 81; founder "Yes, build it", 21:2x IST 18 Nov). Measured
     # 21:13 IST 18 Nov: about 50 hosted jobs ran at once and 52 waited 15-35 min, so this seconds-long gate (queue-fresh,
     # which Mergify's product queue needs) waited up to an hour behind ci shards. It checks out main only and reads the
