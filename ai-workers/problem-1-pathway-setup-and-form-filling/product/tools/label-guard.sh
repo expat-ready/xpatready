@@ -9,8 +9,14 @@
 # comment says why. The walk starts from the PR's head as GitHub reads it now, never from the push's "before", so a
 # cancelled or failed earlier run cannot let an unreviewed commit through (#1136 review M2). Fails closed: comments or
 # reviews that cannot be read count as no Approve.
+# CI-PRE (P-731, founder 19 Nov, "enforced, not text"): a reviewed head also needs one green full run (comment-run.yml's
+# "/run full": main's ci.yml on the head merged with main) on the head or on a commit of the walk back to its approved
+# commit (a pure merge of main stays exempt, as above), and, when the label was just put on (LABELED), every failed part
+# of the newest failed merge batch that held the PR named in a "Batch failures covered:" comment line. Main's
+# queue-gate.sh proof judges both (records-only PRs exempt) and gives the reason the comment carries.
 # Env: GH_TOKEN, REPO (owner/name), PR, AFTER (the push's head, or the PR's head when the label was added; the PR's
-# current head wins), BEFORE (for the comment; empty when the label was added);
+# current head wins), BEFORE (for the comment; empty when the label was added); LABELED (the label just added, if any);
+# FULL_FROM (queue-gate.sh); QUEUE_GATE (the test's stand-in);
 # API (default https://api.github.com); MAIN_REF (default origin/main). Runs in a git copy holding main and the PR's
 # commits. Exit 0 when nothing was wrong or the label came off; 2 when the label could not be read or removed.
 # Test: check-label-guard.sh.
@@ -62,10 +68,15 @@ pure() {  # $1 a commit → 0 when it is a pure merge of main touching none of t
   [ -z "$both" ] || { why="${1:0:9}'s merge of main changes the PR's own files ($(echo "$both" | paste -sd ' ' -))"; return 1; }
   next=${par[0]}; return 0; }
 
-c=$AFTER; merges=0; why="$headless"
+c=$AFTER; merges=0; why="$headless"; seen=""; unproved=""
 [ -n "$why" ] || git cat-file -e "$c^{commit}" 2>/dev/null || why="the head ${c:0:9} is not in this copy"
 while [ -z "$why" ] && [ "$merges" -le 50 ]; do
+  seen="$seen $c"
   if by=$(approved "$c"); then
+    relabel=0; [ "${LABELED:-}" = "$LABEL" ] && relabel=1
+    unproved=$(PR=$PR HEADS="$seen" RELABEL=$relabel bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" proof 2>&1); p=$?
+    [ "$p" = 1 ] && break
+    [ "$p" = 0 ] || { echo "label-guard: the full-run check could not finish: $unproved"; exit 2; }
     [ "$merges" = 0 ] && echo "kept: ${c:0:9} has a reviewer Approve ($by)" \
       || echo "kept: ${AFTER:0:9} is $merges pure merge(s) of main (P-318 (1)) on ${c:0:9}, which has a reviewer Approve ($by)"
     exit 0; fi
@@ -77,7 +88,10 @@ done
 # No review for the head: the label comes off, and the PR says why.
 enc=$(jq -rn --arg l "$LABEL" '$l|@uri')
 api -X DELETE "$API/repos/$REPO/issues/$PR/labels/$enc" >/dev/null || { echo "label-guard: could not remove the label"; exit 2; }
-body="**Label guard:** \`$LABEL\` removed. The head \`${AFTER:0:9}\`${BEFORE:+ (was \`${BEFORE:0:9}\`)} is not covered by a reviewer Approve: walking back from it, $why, before any commit with an Approve. Only pure merges of main that touch none of this PR's files may follow an approved commit (P-318 (1)).
+[ -z "$unproved" ] || { why=$unproved; body="**Label guard (CI-PRE, P-731):** \`$LABEL\` removed from the head \`${AFTER:0:9}\`: $why.
+
+To label again: the label needs one green full run on the head (comment \`/run full\`; the queue gate labels a reviewed head by itself when it ends green), and after a failed merge batch a comment line naming every failed part of that run."; }
+[ -n "$unproved" ] || body="**Label guard:** \`$LABEL\` removed. The head \`${AFTER:0:9}\`${BEFORE:+ (was \`${BEFORE:0:9}\`)} is not covered by a reviewer Approve: walking back from it, $why, before any commit with an Approve. Only pure merges of main that touch none of this PR's files may follow an approved commit (P-318 (1)).
 
 To label again: the reviewer re-reviews the diff since its last approved commit (P-293), the PR gets a comment line \"Reviewer: Approve\" followed by the new head's SHA, then the label goes back on (founder, 6 Nov ~03:00 IST: \"a label never outlives a review\")."
 api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "$body" '{body: $b}')" >/dev/null || echo "label-guard: label removed, but the comment failed"

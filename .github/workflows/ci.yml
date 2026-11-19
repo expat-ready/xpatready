@@ -64,7 +64,8 @@
 #   that also choose what is tested) and accepts `review: approved` only when it is green. Only this repository's own
 #   branches (comment-run.yml refuses a fork): the run sits on main's side of the Actions cache.
 name: ci
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('full-run PR #{0} {1}', inputs.pr, inputs.head) || '' }}
+# Quoted: " #" would start a YAML comment. Empty on a pull request: GitHub then names the run as before.
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('full-run PR #{0} {1}', inputs.pr, inputs.head) || '' }}"
 on:
   workflow_dispatch:
     inputs:
