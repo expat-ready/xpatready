@@ -1,0 +1,40 @@
+// front-office-consult.prisma — the consult record of an attended booking (FO-3a part 2a). Owner: Lead B (front office).
+// One file per area (DB-SPLIT, P-600): FO-3a part 2a's own file, so its only line in front-office-booking.prisma is
+// FoBooking's back-relation (Lead B's structure ruling, rev 16.43).
+//
+// AG-4-49 (rules 1-9, §7, §8, §12), AG-4-50; concept fo-3-booking BR-15, BR-16, Q3. One record per booking, keyed on
+// (firm_id, booking_id) to fo_booking (firm_id, id), so it can never name another firm's booking. Attended is read from
+// the booking (rule 2), never stored here; a later No-show keeps the record (§12). Rules Prisma cannot say are in the
+// migration 20261119032000_fo3a2_consult_record: minutes 1-1,440, notes at most 10,000 characters, at most 20 items of
+// 1-120 characters, a fee of 0 or more with its currency (CAD or USD, X-6), PF-12's wall. Every value seeded is Sample.
+
+/// The quoted fee's currency (AG-4-49 rule 6; X-6: CAD or USD only).
+enum FoConsultCurrency {
+  CAD
+  USD
+}
+
+/// The outcome of an attended meeting (AG-4-49): time spent (pre-filled with the booked length), notes, the recommended
+/// items (names from the person's "Interested in", plus added ones) and an optional quoted fee in minor units.
+model FoConsultRecord {
+  id                String             @id @default(uuid()) @db.Uuid
+  firmId            String             @map("firm_id") @db.Uuid
+  bookingId         String             @map("booking_id") @db.Uuid
+  timeSpentMinutes  Int                @map("time_spent_minutes")
+  notes             String?
+  recommended       String[]           @default([])
+  quotedFeeMinor    Int?               @map("quoted_fee_minor")
+  quotedFeeCurrency FoConsultCurrency? @map("quoted_fee_currency")
+  /// The optimistic-save counter (STANDARDS §4): a save names the version it read; a stale one is refused (409).
+  version           Int                @default(1)
+  createdBy         String             @map("created_by")
+  updatedBy         String             @map("updated_by")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  booking FoBooking @relation(fields: [firmId, bookingId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One record per booking (AG-4-49 §7: bookingId unique).
+  @@unique([firmId, bookingId])
+  @@map("fo_consult_record")
+}
