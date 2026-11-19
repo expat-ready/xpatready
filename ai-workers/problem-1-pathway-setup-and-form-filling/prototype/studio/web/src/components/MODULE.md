@@ -21,6 +21,7 @@ Shared pieces every screen uses: the frame, the UI kit, AI launch, channels, con
 
 **Tables.** none directly (web).
 **Tests.** `tests/check_bk3_frame.ts`, `tests/check_bk2_fold_outs.ts`, `tests/check_ai_launch_paths.ts`, `tests/check_bk11_release_fill_trials.ts`, `tests/check_focus_ring_browser.cjs`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Add a second header, toast stack or button style.
