@@ -200,5 +200,9 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+# 13. The constraint (ENF-738, P-738, 19 Nov): the merge pipe's bottleneck, measured from GitHub over 3 h, never assumed
+# (19 Nov: a claimed "machine wait" measured 0.1 min; 8 test parts ran 43-60 min). One ACT line names it and the simplest
+# fix; the Lead acts on it at this check. GET only, at most ~50 s; unreadable = an ACT. Test: check-constraint.sh.
+cs=$(python3 -I "$TOOLS/constraint.py" 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs"))); seen "$cs"
 
 exit "$act"
