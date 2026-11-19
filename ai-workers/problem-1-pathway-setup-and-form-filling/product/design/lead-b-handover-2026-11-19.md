@@ -32,3 +32,4 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * **P-727** (D4: 1-50 rows, send the good ones) is quoted in `PF-15.md` and `PF-4c.md`. A new **PF-4c part 1b** is shaped. R1.20's chain is PF-15 p2 → PF-4c p1b → PF-4c p2 → the invite screen. The BACKLOG row is owed by the Lead.
 * **J-19's Stripe walk:** no test account or keys exist. Lead 87 asks the founder (P-551).
 * **The next Lead B starts fresh from this file** on the new account (A196), or at 50% context. Keep this file current at each step.
+* The BACKLOG row PF-4c1b is added by Lead 87 on lead31. The Stripe test-mode account is asked of the founder: only J-19's live walk waits on it, not J2's other items. Keys go only into the demo copy's environment.
