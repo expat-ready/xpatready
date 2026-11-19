@@ -4,6 +4,8 @@ import { Booking, BOOKING_PORTS, BookingPublicController } from "../front-office
 import { runtimeBookingPorts } from "../front-office/booking/runtime-ports.ts";
 import { BookingStaffController } from "../front-office/booking/staff.controller.ts";
 import type { MailPort } from "../../../ports/mail.ts";
+import type { OfficeClockPort } from "../../../ports/offices.ts";
+import { OFFICE_CLOCK } from "../platform/settings/offices/clock.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
 
-export default { controllers: [BookingPublicController, BookingStaffController], providers: [Booking, { provide: BOOKING_PORTS, useFactory: (mail: MailPort) => runtimeBookingPorts(mail), inject: [MESSAGES_MAIL] }] } satisfies Feature;
+export default { controllers: [BookingPublicController, BookingStaffController], providers: [Booking, { provide: BOOKING_PORTS, useFactory: (mail: MailPort, offices: OfficeClockPort) => runtimeBookingPorts(mail, offices), inject: [MESSAGES_MAIL, OFFICE_CLOCK] }] } satisfies Feature;
