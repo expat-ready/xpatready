@@ -55,6 +55,7 @@ const { Retainers } = await import("../api/src/front-office/retainers/service.ts
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
+const { Timeline } = await import("../api/src/front-office/sales/timeline.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -221,7 +222,7 @@ try {
   };
   const L1 = lead(620, R, "Event (PF-6b)"), L2 = lead(630, O, "Referral (PF-6b)");
   const live = (c: StaffContext): StaffContext => ({ ...c, keys: sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${c.staffId}' and g.ended_at is null`).split(",") });
-  const leads = new Leads(db, {} as never), prospects = new Prospects(db, {} as never);
+  const leads = new Leads(db, {} as never), prospects = new Prospects(db, {} as never), timeline = new Timeline(db, leads, prospects);
   const LEADS: typeof EXPECT = {
     on: { "view.all holder (user-R)": [L1, L2], "own-only role copy (user-O)": [L2], "representative (user-T)": [L1, L2], "firm B (user-S)": [] },
     off: { "view.all holder (user-R)": [L1], "own-only role copy (user-O)": [L2], "representative (user-T)": [], "firm B (user-S)": [] },
@@ -238,6 +239,9 @@ try {
     // FO-2 part 3: prospects follow the leads' table (the representative of a retainer owns no prospect).
     "SalesController.prospectRead": { read: (c, id) => prospects.read(live(c), id), ids: [P1, P2], expect: PROSPECTS },
     "SalesController.prospectList": { read: async (c, id) => (await prospects.list(live(c), {})).find((p) => p.id === id), ids: [P1, P2], expect: PROSPECTS },
+    // FO-2 part 4: the timelines follow their record's read (a lead's or a prospect's).
+    "SalesController.leadTimeline": { read: (c, id) => timeline.lead(live(c), id), ids: [L1, L2], expect: LEADS },
+    "SalesController.prospectTimeline": { read: (c, id) => timeline.prospect(live(c), id), ids: [P1, P2], expect: PROSPECTS },
     "SalesController.sources": { read: async (c, id) => (await leads.sources(live(c))).sources.includes(SOURCE_OF[id]), ids: [L1, L2], expect: LEADS },
   };
   const sweep = async (entry: Entry) => {
