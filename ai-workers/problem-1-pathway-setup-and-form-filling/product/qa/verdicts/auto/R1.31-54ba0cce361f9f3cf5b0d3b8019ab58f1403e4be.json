@@ -1,0 +1,30 @@
+{
+  "item": "R1.31",
+  "name": "31 Stage kinds; won by signature; totals per currency",
+  "pr": 2323,
+  "sha": "54ba0cce361f9f3cf5b0d3b8019ab58f1403e4be",
+  "run_id": "44641146727",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44641146727",
+  "at": "2026-11-19T23:57:10.580Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_31.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44641146727/artifacts/14587066146",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.31-54ba0cce361f9f3cf5b0d3b8019ab58f1403e4be.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
