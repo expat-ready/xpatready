@@ -98,7 +98,7 @@ export async function onProspectWon(db: PrismaClient, event: WonEvent, deps: Pro
 
 export type WonCatchUp = { results: WonResult[]; failed: { prospectId: string; firmId: string; error: string }[] };
 
-/** Catch-up over the outbox: every prospect with a `prospect.won` and no client, whose Convert still stands and whose
+/** Catch-up over the outbox: every prospect with a `prospect.won` and no client (or a client with no case that no longer matches who was won), whose Convert still stands and whose
  *  firm is still served, so a missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
 export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps): Promise<WonCatchUp> {
   const rows = await db.$queryRaw<{ firm_id: string; prospect_id: string; payload: unknown }[]>`
@@ -106,7 +106,10 @@ export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDep
       from module_event e join platform_firm f on f.id = e.firm_id
      where e.type = ${EVENT.PROSPECT_WON} and f.status::text not in ('DELETED', 'ABANDONED')
        and not exists (select 1 from module_event u where u.firm_id = e.firm_id and u.subject_id = e.subject_id and u.type = ${EVENT.PROSPECT_UNCONVERTED} and u.seq > e.seq)
-       and not exists (select 1 from case_client c where c.firm_id = e.firm_id and c.workspace_id = ${deps.workspaceId}::uuid and c.prospect_id::text = e.subject_id)
+       and not exists (select 1 from module_event n where n.firm_id = e.firm_id and n.subject_id = e.subject_id and n.type = ${EVENT.PROSPECT_WON} and n.seq > e.seq)
+       and not exists (select 1 from case_client c where c.firm_id = e.firm_id and c.workspace_id = ${deps.workspaceId}::uuid and c.prospect_id::text = e.subject_id
+             -- a client with no case whose kind is no longer the won subject's is taken again: it follows the prospect
+             and (c.display_kind = case when e.payload->'subject'->>'subject' = 'PERSON' then 'PERSON' else 'COMPANY' end or exists (select 1 from runtime_case r where r.client_id = c.id)))
      order by e.firm_id, e.subject_id, e.seq desc`;
   const out: WonCatchUp = { results: [], failed: [] };
   for (const r of rows) {
@@ -183,7 +186,7 @@ export async function openCaseFromOffer<A>(door: OpenDoor<A>, ctx: { staffId: st
     refuse(await offerOf(tx, now, opened.id));
     const clientType = await door.clientTypeOf(tx, opened.combinationId);
     await door.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: EVENT.CASE_OPENED, entity: "fo_prospect", entityKey: offer.prospectId, caseId: opened.id,
-      summary: `The won prospect's "Open a case?" offer was taken: ${opened.caseNumber} opened.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
+      summary: `The won prospect's "Open a case?" offer was taken (the case is in the detail).`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CASE_OPENED, subjectId: opened.id,
       payload: CaseOpenedPayload.parse({ firm_id: ctx.firmId, prospect_id: offer.prospectId, client_id: client.id, case_id: opened.id, case_number: opened.caseNumber, client_type: clientType }) } });
   });

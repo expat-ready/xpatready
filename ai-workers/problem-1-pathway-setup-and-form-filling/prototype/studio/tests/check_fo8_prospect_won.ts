@@ -54,7 +54,7 @@ const { foPersonPort } = await import("../api/src/front-office/people/fo-person-
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
 const { Corporate } = await import("../api/src/front-office/sales/corporate/service.ts");
-const { catchUpProspectsWon, onProspectWon, OFFER_REFUSED, PROSPECT_WON_ACTOR } = await import("../api/src/case-clients/prospect-won.ts");
+const { catchUpProspectsWon, offerOf, onProspectWon, OFFER_REFUSED, PROSPECT_WON_ACTOR } = await import("../api/src/case-clients/prospect-won.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
 type Deps = import("../api/src/case-clients/prospect-won.ts").ProspectWonDeps;
 
@@ -159,10 +159,10 @@ try {
   await pros.undoConvert(R, pine.id, { reason: "It is the person, not the company" });
   const retyped = await corp.changeType(R, pine.id, { type: "INDIVIDUAL" }).then(() => "", (e) => String(e?.response?.detail ?? e));
   await pros.convert(R, pine.id, {});
-  const follows = await onProspectWon(db, event(pine.id), deps), k2 = JSON.parse(sql(`select row_to_json(k)::text from (select display_name, display_kind, fo_person_id, fo_company_id, contact from case_client where prospect_id = '${pine.id}') k`));
-  ok("FO-8 DW2 fail (breaker M2): won again as an individual, the same client (no case yet) follows the prospect: PERSON, the person's name and record, no company left on it, one audit line; no second client or client.created",
+  const sweep = await catchUpProspectsWon(db, deps), follows = sweep.results.find((r) => r.prospectId === pine.id), again2 = await catchUpProspectsWon(db, deps), k2 = JSON.parse(sql(`select row_to_json(k)::text from (select display_name, display_kind, fo_person_id, fo_company_id, contact from case_client where prospect_id = '${pine.id}') k`));
+  ok("FO-8 DW2 fail (breaker M2): won again as an individual, the catch-up takes the same client (no case yet) again and it follows the prospect, once: PERSON, the person's name and record, no company left on it, one audit line; no second client or client.created",
     retyped === "" && follows?.made === false && follows.clientId === co!.clientId && k2.display_kind === "PERSON" && k2.display_name === "Lena Sample" && k2.fo_person_id === lena.person.id && k2.fo_company_id === null && k2.contact === null
-    && written(pine.id) === "1:1:1" && count("audit_event", `entity_key = '${pine.id}' and action = 'client.subject_changed'`) === 1, [retyped, follows, k2]);
+    && written(pine.id) === "1:1:1" && count("audit_event", `entity_key = '${pine.id}' and action = 'client.subject_changed'`) === 1 && !again2.results.some((r) => r.prospectId === pine.id), [retyped, follows, k2]);
 
   // ------------------------------------------------------------------------------------------ DW3: "Open a case?"
   const anaClient = first!.clientId;
@@ -191,6 +191,12 @@ try {
     race.map((r) => r.status).sort().join() === "201,409" && race.find((r) => r.status === 409)?.body?.code === "OFFER_USED" && casesOf(boClient) === 1 && opened(bo.id) === 1, race.map((r) => [r.status, r.body?.code ?? r.body?.detail]));
   const noInterest = await onProspectWon(db, event(cy.id), deps), unchosen = await openCase(noInterest!.clientId);
   ok("FO-8 DW3 fail: a prospect interested in no service pre-fills no combination: the call asks for one (400 on combinationId), nothing opened", unchosen.status === 400 && /combination/i.test(JSON.stringify(unchosen.body)) && casesOf(noInterest!.clientId) === 0, [unchosen.status, unchosen.body]);
+  const offerOfAna = () => offerOf(db, { id: anaClient, firmId: A, prospectId: ana.id, displayName: "Ana Sample" });
+  const shown = await offerOfAna();
+  sql(`set session_replication_role = replica; update combination set retired_at = now() where id = '${VV}'`);
+  const retired = await offerOfAna();
+  sql(`set session_replication_role = replica; update combination set retired_at = null where id = '${VV}'`);
+  ok("FO-8 DW3 fail (breaker m6): the offer names the lead's combination only while it can open a case: released → named; retired → none", shown?.combinationId === VV && retired?.combinationId === null && retired?.state === "USED", [shown, retired]);
   const direct = await call(BASE, "POST", "/api/runtime/cases", { actor: "user-O", body: { combinationId: VV, clientActor: "user-P", principal: { displayName: "Sample Direct" }, representative: "user-R", caseOfficers: ["user-O"] } });
   const noOffer = await openCase(direct.body?.client_record?.id);
   ok("FO-8 DW3 fail: a client that came from no prospect has no offer (409 OFFER_NO_OFFER)", direct.status === 201 && noOffer.status === 409 && noOffer.body?.code === "OFFER_NO_OFFER", [direct.status, noOffer.status, noOffer.body]);
@@ -263,7 +269,7 @@ try {
   ok("FO-8 DW7 fail: the catch-up names the one prospect that fails, in words, and does not stop the others",
     caught.failed.length === 1 && caught.failed[0].prospectId === jon.id && caught.failed[0].firmId === A && /no-such-firm/.test(caught.failed[0].error) && written(jon.id) === "0:0:0" && written(ida.id) === "1:1:1" && written(kim.id) === "1:1:1", caught.failed);
   ok("FO-8 DW7 pass: the catch-up makes good every missed delivery (Ida, Kim, and the earlier ones never delivered), and never a prospect that already has its client",
-    [ida.id, kim.id].every((p) => caught.results.some((r) => r.prospectId === p && r.made)) && caught.results.every((r) => r.made) && !caught.results.some((r) => [ana.id, bo.id, hal.id].includes(r.prospectId)) && written(ana.id) === "1:1:1", caught.results.length);
+    [ida.id, kim.id].every((p) => caught.results.some((r) => r.prospectId === p && r.made)) && !caught.results.some((r) => [ana.id, bo.id, hal.id].includes(r.prospectId)) && written(ana.id) === "1:1:1", caught.results.length);
   breakJon("sample-firm");
   const mended = await catchUpProspectsWon(db, deps), quiet = await catchUpProspectsWon(db, deps);
   ok("FO-8 DW7 pass: once mended, the next run makes the failed one; a run with nothing missed makes nothing", mended.results.length === 1 && mended.results[0].prospectId === jon.id && mended.failed.length === 0 && quiet.results.length === 0 && quiet.failed.length === 0 && written(jon.id) === "1:1:1", [mended, quiet]);
