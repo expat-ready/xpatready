@@ -121,6 +121,7 @@ CASES = [  # what, files, a record by #1139's definition?, the queue it must joi
     case("a workflow plus app code: product (one non-pipeline file is enough)", [".github/workflows/ci.yml", f"{A}/api/src/core.ts"], False, "product", checks=F),
     case("a tool plus a record: product, not pipeline or records", [f"{R}/tools/x.sh", f"{R}/STATE.md"], False, "product"),
     case("a look-alike pipeline path: tools/ outside product/", [f"{A}/tools/gate-b.mjs"], False, "product", checks=F),
+    case("a PR with no files: pipeline (every file of none is pipeline work; still needs the label and ci)", [], False, "pipeline"),
     case("pipeline work without the review label: no queue", [".github/workflows/ci.yml"], False, None, labels=()),
     case("a look-alike name: STATE.md.bak", [f"{R}/STATE.md.bak"], False, "product"),
     case("a look-alike place: STATE.md outside product/", [f"{A}/STATE.md"], False, "product", checks=F),

@@ -49,6 +49,13 @@ else:
                     ("ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", False)):
         n += 1
         if (r.search(f) is None) != pipe: bad.append(f"pipeline pattern: {f} is{'' if pipe else ' not'} pipeline work, read the other way")
+# The pipeline scope and the pipeline pattern name the same paths (review, round 1).
+    pinc = [rx(g) for g in (src.get("pipeline") or {}).get("include") or []]
+    for f in (".github/workflows/ci.yml", ".githooks/pre-push", ".mergify.yml", ".claude/skills/next/SKILL.md", "AGENTS.md",
+              "CLAUDE.md", "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/x.sh"):
+        n += 1
+        if not any(p.match(f) for p in pinc): bad.append(f"pipeline scope: {f} is pipeline work by the queue pattern, not by the scope")
+        if r.search(f) is not None: bad.append(f"pipeline pattern: {f} is in the pipeline scope, not pipeline work by the pattern")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)

@@ -1,6 +1,8 @@
-# Merge queue with batches (P-201, founder 31 Oct). An approved PR enters the queue; Mergify combines up to 6 of them
-# the way they will land on main, runs the full check once on that batch PR (branch mergify/merge-queue/...), and merges
-# them all when it passes. A failing batch is split until the PR that broke it is found; the others still merge.
+# Merge queue with batches (P-201, founder 31 Oct). An approved PR enters the queue; Mergify combines up to 2 of them
+# (6 until P-715, 19 Nov) the way they will land on main, runs the full check once on that batch PR (branch
+# mergify/merge-queue/...), and merges them all when it passes. A failing batch is split (at most 2 rounds) until the PR
+# that broke it is found; the others still merge. Since P-715 the queue runs in parallel by scope (below); the history
+# of serial checking follows.
 # P-210 (founder 1 Nov, the free fix): one batch checked at a time (the Mac has one test runner: stacked batches were
 # cancelled whenever one ahead failed, 43% of its time on 31 Oct), batches of up to 6, and a PR joins only once its own
 # check is green, so a batch fails only on how PRs combine.
@@ -16,9 +18,12 @@ merge_queue:
 # Scopes: the fenced modules, as their module cards claim them (.claude/rules/modules, product/tools/module-cards.py),
 # plus each module's own schema file; migrations one at a time (capacity 1: a second migration failed queued PRs 60%
 # of the time, design/merge-queue-causes-2026-11-16.md); pipeline work (checks, workflows, Mergify, tools, agent rules)
-# its own lane, never batched with product (P-717 (a)). A PR in no scope is batched only with other scope-less PRs.
+# its own lane, never batched with product (P-717 (a)). A PR in no scope (web, the unfenced api files, tests, engine,
+# unscoped schema files) is batched only with other scope-less PRs, untested on top of the module lanes: the design's
+# largest cross-scope risk.
 # barrier_files are the seams every module builds on: a PR touching one conflicts with every scope, so the queue
-# serializes at it. A new or changed blocking check starts report-only (P-717 (b)): it joins no queue_conditions or
+# serializes at it. A new or changed blocking check, or a stricter step inside ci, starts report-only (P-717 (b)): it
+# joins no queue_conditions or
 # merge_conditions here, and no required check in the ruleset, until it has run clean for 24 h or 10 PR runs; Mergify
 # has no time-based condition, so the tech lead adds it then, in its own PR.
 scopes:
