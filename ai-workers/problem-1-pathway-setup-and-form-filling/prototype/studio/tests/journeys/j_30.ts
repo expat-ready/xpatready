@@ -63,7 +63,7 @@ let n = 0;
 /** A Sample lead made for this run: `daysAgo` sets the arrival day (the date filter reads it). */
 const lead = (given: string, owner: string, daysAgo = 0) => {
   const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', '${given}${run}', 'Sample', 'j30.${++n}.${run}@example.org', 'test', now()) returning id`);
-  const id = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at, created_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${owner}', 'test', now(), now() - interval '${daysAgo} days') returning id`);
+  const id = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at, arrived_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${owner}', 'test', now(), now() - interval '${daysAgo} days') returning id`);
   return { id, personId: p, name: `${given}${run} Sample`, number: sql(`select number from fo_lead where id = '${id}'`) };
 };
 const ana = lead("Ana", R.id), ben = lead("Ben", O.id, 12), cyd = lead("Cyd", R.id), many = lead("Many", R.id);
@@ -101,17 +101,17 @@ await owner.goto(`${BASE}/front-office/leads?view=all`);
 const rowOf = (l: { number: string }) => owner.locator(`[data-lead-row="${l.number}"]`);
 await rowOf(ben).waitFor();
 await owner.getByLabel("Owner").selectOption({ label: O.name });
-await rowOf(ana).waitFor({ state: "detached" });
+await rowOf(ana).waitFor({ state: "detached" }); await rowOf(ben).waitFor();
 ok("J-30 W1 pass: Owner = the Case Officer shows their lead and not the Owner's; the choice is in the address", await rowOf(ben).count() === 1 && await rowOf(ana).count() === 0 && owner.url().includes(`owner=${O.id}`), owner.url());
 await owner.getByLabel("Owner").selectOption("");
 const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
 await owner.getByLabel("Arrived from").fill(day(14)); await owner.getByLabel("Arrived to").fill(day(10));
-await rowOf(ana).waitFor({ state: "detached" });
+await rowOf(ana).waitFor({ state: "detached" }); await rowOf(ben).waitFor();
 await shot(owner, "leads-filters-1440");
 await owner.reload(); await rowOf(ben).waitFor();
 ok("J-30 W1 pass: Arrived from/to shows only the lead that arrived 12 days ago, and a reload keeps the filter", await rowOf(ben).count() === 1 && await rowOf(ana).count() === 0 && await owner.getByLabel("Arrived from").inputValue() === day(14));
 await owner.locator("[data-chip=mine]").click();
-ok("J-30 W1 fail: under Mine no Owner filter is offered (it is All open's)", await owner.getByLabel("Owner").count() === 0);
+ok("J-30 W1 fail: under Mine no Owner filter is offered (it is All open's)", await owner.getByLabel("Owner").waitFor({ state: "detached", timeout: 5_000 }).then(() => true, () => false));
 await axeOf(owner, "W1 Leads with filters");
 
 // ---------------------------------------------------------------------------------------- W2: Engage (DW8, BR-7)
@@ -145,7 +145,9 @@ await owner.getByRole("menu").waitFor();
 const offered = await owner.getByRole("menuitem").allInnerTexts();
 ok("J-30 W3 DW9 pass: \"Move to…\" offers the other open stages only: Won, Lost and Nurture are not offered, and the menu says how Won is set", offered.includes("Consult") && !offered.some((x) => /Won|Lost|Nurture|Engaged/.test(x)) && await owner.getByRole("menu").getByText("Won is set when the retainer is signed, or by Convert to client.").isVisible(), offered);
 await shot(owner, "move-to-menu-1440");
-await owner.keyboard.press("ArrowDown"); await owner.keyboard.press("ArrowDown"); await owner.keyboard.press("Enter");   // Qualified, then Consult
+const focused = () => owner.evaluate(() => document.activeElement?.textContent ?? "");
+for (let i = 0; i < 6 && await focused() !== "Consult"; i++) await owner.keyboard.press("ArrowDown");   // opened by Enter, the first item has focus
+await owner.keyboard.press("Enter");
 await inStage("CONSULT", anaRow[0]).waitFor();
 ok("J-30 W3 DW9 pass: chosen by keyboard only (Enter, ArrowDown, Enter), the card is in Consult and one PERSON move is recorded", sql(`select s.key || '|' || m.cause from fo_stage_move m join fo_stage s on s.id = m.to_stage_id where m.prospect_id = '${anaId}' order by m.seq desc limit 1`) === "CONSULT|PERSON");
 // A stale move: the Case Officer moves it first; the Owner's board still shows Consult.
@@ -158,7 +160,7 @@ await owner.goto(`${BASE}/front-office/prospects/${anaId}`); await owner.locator
 const seen2 = (await api(tok.O, "GET", `/prospects/${anaId}`)).body as { version: string };
 await api(tok.O, "POST", `/prospects/${anaId}/move`, { stageId: stage("CONSULT").id, cause: "PERSON", version: seen2.version });
 await owner.getByRole("button", { name: /Move to…/ }).click(); await owner.getByRole("menuitem", { name: "Qualified" }).click();
-ok("J-30 W3 DW9 fail: on the prospect's screen a stale version is refused naming who moved it, and the screen then shows Consult", await toast(owner, new RegExp(`${O.name} moved this to Consult\\. Nothing was changed`)) && await owner.locator("[data-stage-now]", { hasText: "Consult" }).waitFor().then(() => true, () => false));
+ok("J-30 W3 DW9 fail: on the prospect's screen a stale version is refused naming who moved it, and the screen then shows Consult", await toast(owner, `${O.name} moved this to Consult. Nothing was changed.`) && await owner.locator("[data-stage-now]", { hasText: "Consult" }).waitFor().then(() => true, () => false));
 
 // ----------------------------------------------------------------- W4: 200 cards per column page (DW13), sizes, axe
 for (let i = 0; i < 205; i += 5) await Promise.all([0, 1, 2, 3, 4].map(() => engage(many.id)));
@@ -234,14 +236,15 @@ await shot(owner, "board-won-1440");
 // BR-10: a person whose role may read but not work prospects sees no button (the Case Officer's keys are put back after).
 const KEYS = ["agent/prospect:edit", "agent/prospect:lose", "agent/prospect:convert"].map((k) => `'${k}'`).join(",");
 const had = rawSql(`select permission_key from platform_role_permission where role = 'CASE_OFFICER' and permission_key in (${KEYS})`).split("\n").filter(Boolean);
+const ben1 = await engage(ben.id, tok.O);   // the Case Officer's own prospect, so they see one whatever "everyone sees all" says
 try {
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key in (${KEYS})`);
-  const reader = await pageAs(await signIn(O.email));
-  await reader.goto(`${BASE}/front-office/prospects/${cyd1.id}`); await reader.locator("[data-no-actions]").waitFor();
-  const refused = await api(await signIn(O.email), "POST", `/prospects/${cyd1.id}/lost`, { reasonId: rs[0].id });
+  const readerTok = await signIn(O.email), reader = await pageAs(readerTok);   // a new session: it carries the role's keys as they are now
+  await reader.goto(`${BASE}/front-office/prospects/${ben1.id}`); await reader.locator("[data-no-actions]").waitFor();
+  const refused = await api(readerTok, "POST", `/prospects/${ben1.id}/lost`, { reasonId: rs[0].id });
   ok("J-30 W6 BR-10 fail: without the edit, lose and convert keys the prospect's screen shows no Move to…, Mark lost or Convert, says why, and the API refuses (403)", await reader.getByRole("button", { name: /Move to…|Mark lost|Convert/ }).count() === 0 && (await reader.locator("[data-no-actions]").innerText()).includes("You can read this prospect") && refused.status === 403, refused.status);
-  await reader.goto(`${BASE}/front-office/pipeline`); await reader.locator("[data-card]").first().waitFor();
-  ok("J-30 W6 BR-10 fail: the same person's board has no Move to… on any card", await reader.getByRole("button", { name: /Move to…/ }).count() === 0);
+  await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
+  ok("J-30 W6 BR-10 fail: the same person's List has no Move to… on any row", await reader.getByRole("button", { name: /Move to…/ }).count() === 0);
 } finally { for (const k of had) sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', '${k}') on conflict do nothing`); }
 const other = await api(tok.R, "GET", `/prospects/${randomUUID()}`);
 ok("J-30 fail: an unknown prospect is not found (404), and firm B's board shows none of this run's prospects", other.status === 404 && sql(`select count(*) from fo_prospect where firm_id = '${B}' and lead_id in ('${ana.id}', '${cyd.id}', '${many.id}')`) === "0");
