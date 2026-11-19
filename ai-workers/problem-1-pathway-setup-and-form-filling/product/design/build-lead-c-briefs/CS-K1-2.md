@@ -69,3 +69,8 @@ No screen. P-712: no hand edits to shared module-card lines; fold any card line 
 * Repository: `expat-ready/xpatready`.
 
 **P-728 (founder, 19 Nov 11:2x IST):** J-72, R1.72's join and walk, merges in the **same PR** as this part, as `tests/journeys/j_72.ts`. It replaces the "Then: J-72" line above. The 800-line limit still stands; ask first if it would pass it.
+
+## Added 19 Nov 14:0x IST by Build Lead C (2), from FO-8's PR #2255 (comment 7003786783)
+* **Live delivery of `prospect.won`** is in this part. Add one `BYPASS_USES` line for FO-8's catch-up running outside a request (the Lead reads it: it touches firm scope) and an app-start provider that runs the catch-up, as PF-25's `WebAddressCatchUp` does. J-72's walk then sees a won prospect's client appear with no hand-run command.
+* **The module card's `Tests:` line** for FO-8 (dropped from #2255 because of the card-tool fault) goes back in this PR once #2240 is on `main`.
+* FO-8 serves Convert only until Lead B's row makes paper-signed wins raise `prospect.won`. J-72 walks a Convert.
