@@ -125,6 +125,14 @@ try {
     all.includes(NEW3) && before3.includes(NEW2) && all.filter((d) => d.slice(0, 14) === NEW3.slice(0, 14)).length === 1);
   const fnBefore3 = fns(T), src3 = (db: string) => sql(db, `select string_agg(proname || '=' || md5(prosrc), ',' order by proname) from pg_proc where proname in ('money_trust_entry_write', 'money_invoice_write')`);
   const srcBefore3 = src3(T), checksBefore3 = checksOf(T), text3 = readFileSync(join(MIG, NEW3, "migration.sql"), "utf8");
+  { const p = randomUUID();
+    ok("FO-7ts part 3 fail (review Minor 4): over a database that already holds a trust refund (no method, no date) the migration refuses, naming the way out, and changes nothing",
+      refused(T, `begin; update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'user-O' where firm_id = '${firmA}';
+        insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${p}', '${firmA}', 'CASH', 1000, 'CAD', 'TRUST', now(), 'key-fo7ts-old-refund', 'user-R');
+        insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, created_by) values ('${firmA}', '${P1}', 'DEPOSIT', 1000, 'CAD', '${p}', 'user-R');
+        insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, reason, created_by) values ('${firmA}', '${P1}', 'REFUND_TO_CLIENT', -1000, 'CAD', 'Returned', 'user-R');
+        ${text3}`, /trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead/)
+      && sql(T, `select count(*) from money_trust_entry where firm_id = '${firmA}'`) === "0" && sql(T, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0"); }
   psql(T, ["-1", "-f", join(MIG, NEW3, "migration.sql")]);
   ok("FO-7ts DW10 pass (part 3): right after its own migration it adds and drops no function, replaces money_trust_entry_write and money_invoice_write (both CREATE OR REPLACE, money_), and both still run as PF-12's wall reader",
     JSON.stringify(fns(T)) === JSON.stringify(fnBefore3) && src3(T).split(",").every((x, i) => x !== srcBefore3.split(",")[i])
@@ -623,10 +631,11 @@ try {
     const id = sql(T, te(A, "WITHDRAWAL_TO_INVOICE", -5000, { inv: IB, kase: K, cols: pick({ at: "2001-01-01" }) }));
     ok("FO-7ts DW17 pass (Lead 61's test): A's money paying B's invoice on the same case, with the pick, is accepted; who, why and when are stored, when is the database's (a typed 2001 is replaced), and A's balance takes it",
       sql(T, `select picked_other_funds_by || ':' || picked_other_funds_reason || ':' || (picked_other_funds_at > now() - interval '1 minute') from money_trust_entry where id = '${id}'`) === "user-R:The employer agreed to pay these fees from its deposit:true" && held(A) === "20000");
-    ok("FO-7ts DW17 fail: the same pick across two cases, or with no case on either side, is refused even with the pick",
+    ok("FO-7ts DW17 fail: the same pick across two cases, with no case on one side, or with no case on either side, is refused even with the pick",
       refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IB, kase: K2, cols: pick() }), /a pick never crosses cases or clients/, "23514")
       && refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IBnone, kase: K, cols: pick() }), /a pick never crosses cases or clients/)
-      && refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IB, cols: pick() }), /a pick never crosses cases or clients/));
+      && refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IB, cols: pick() }), /a pick never crosses cases or clients/)
+      && refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IBnone, cols: pick() }), /a pick never crosses cases or clients/));
     ok("FO-7ts DW17 fail: a pick with no reason, by someone other than the writer, a lone pick time, or on a deposit is refused",
       refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IB, kase: K, cols: pick({ reason: null }) }), /money_trust_entry_pick_check/, "23514")
       && refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -1000, { inv: IB, kase: K, cols: pick({ by: "user-T" }) }), /money_trust_entry_pick_check/, "23514")
@@ -675,6 +684,14 @@ try {
     ok("FO-7ts break M2 fail → pass: a correction returning money from a withdrawal is refused on another case (no way round the per-case limit); on the withdrawal's own case it is accepted",
       refused(T, te(C, "CORRECTION", 30000, { corrects: wd, kase: K, reason: "Returned to trust" }), /a correction is on the case of the entry it corrects/, "23514")
       && !!sql(T, te(C, "CORRECTION", 30000, { corrects: wd, kase: J, reason: "Returned to trust" })));
+    { // review Major 2 on e70a2c44e: a cheque paid before a case, moved to case K, then returned, comes off K
+      const D = randomUUID(), Jd = randomUUID(); const chq = dep(D, 10000, { method: "CHEQUE", cleared: false }); dep(D, 50000, { kase: Jd }); sql(T, pairQ(D, 10000, K));
+      const ID = inv(B, 10000, { kase: K });
+      ok("FO-7ts review Major 2 fail → pass: the returned cheque's correction is refused on a case its money never reached (J), accepted on K where it was moved; a pick on K then finds nothing there",
+        refused(T, te(D, "CORRECTION", -10000, { corrects: chq, ck: "RETURNED", reason: "Cheque bounced", kase: Jd }), /a correction is on the case of the entry it corrects/, "23514")
+        && !!sql(T, te(D, "CORRECTION", -10000, { corrects: chq, ck: "RETURNED", reason: "Cheque bounced", kase: K }))
+        && refused(T, te(D, "WITHDRAWAL_TO_INVOICE", -100, { inv: ID, kase: K, cols: pick() }), /Only CAD 0\.00 is available on it/, "23514"));
+    }
     const IB2 = inv(B, 10000, { kase: K }); paid(IB2, 6000);
     ok("FO-7ts break M3 fail → pass: B's 100.00 invoice with 60.00 paid into operating — a pick of 40.01 is refused (a pick pays at most what is due), 40.00 is accepted",
       refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -4001, { inv: IB2, kase: K, cols: pick() }), /a pick pays at most what is still due on the invoice \(4000 due\)/, "23514")
@@ -697,10 +714,14 @@ try {
     await g.query("begin"); await g.query(te(A, "WITHDRAWAL_TO_INVOICE", -100, { inv: IB, kase: K, cols: pick() }));
     await c.query("set statement_timeout = '3s'");
     const toC = await c.query(depOf(C)).then(() => "ok", (e: { code?: string }) => e.code);
+    const b = new pg.Client({ connectionString: urlOf(T) }); await b.connect(); conns.push(b); const bpid = (await b.query("select pg_backend_pid() p")).rows[0].p;
+    const toB = b.query(depOf(B)).then(() => "ok", (e: { code?: string }) => e.code);
+    let bWaited = false; for (let i = 0; i < 200 && !bWaited; i++) { bWaited = sql(T, `select count(*) from pg_locks where pid = ${bpid} and locktype = 'advisory' and not granted`) === "1"; if (!bWaited) await new Promise((r) => setTimeout(r, 5)); }
     const toA = c.query(depOf(A)).then(() => "ok", (e: { code?: string }) => e.code);
     let waited = false; for (let i = 0; i < 200 && !waited; i++) { waited = sql(T, `select count(*) from pg_locks where pid = ${cpid} and locktype = 'advisory' and not granted`) === "1"; if (!waited) await new Promise((r) => setTimeout(r, 5)); }
-    await g.query("commit"); const afterA = await toA;
-    for (const x of [g, c]) { await x.end(); conns.splice(conns.indexOf(x), 1); }
+    await g.query("commit"); const afterA = await toA, afterB = await toB;
+    for (const x of [g, c, b]) { await x.end(); conns.splice(conns.indexOf(x), 1); }
+    ok("FO-7ts DW26 (review Minor 1; the brief's line can't hold): a deposit to B, the invoice's party, does wait on the open pick (FO-7lk: the invoice party's lock), then commits", bWaited && afterB === "ok", { bWaited, afterB });
     ok("FO-7ts DW26 pass (pg_locks): with A's pick held open, a deposit to C (not on the invoice) does not wait; a deposit to A waits on A's advisory lock, then commits", toC === "ok" && waited && afterA === "ok", { toC, waited, afterA });
     // A pick holds two party locks (its own, and money_issued_invoice's on the invoice's party, FO-7lk), smaller id first.
     const cross: { ok: boolean; code?: string }[] = [];

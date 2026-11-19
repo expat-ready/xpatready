@@ -1,0 +1,28 @@
+# FO-7ts part 3: what departs from the brief, and the rulings it needs
+
+The brief is `build-lead-c-briefs/FO-7ts-3.md` on `claude/build-lead-c-647b40`. Every point below is also a "Question for the tech lead" on the PR. Evidence is in `review.md`, `break-report.md` and `tests/check_fo7ts_money_settings.ts`. Nothing below was settled silently.
+
+## Needs a ruling before Approve
+
+### 1. The two-lock order with FO-7lk's `money_credit_note_write` (review Major 1, break m1). For the tech lead.
+* **Why a pick holds two locks.** A pick holds the payer's lock and the invoice party's lock, because FO-7lk's `money_issued_invoice` takes the latter. This part takes both, smaller id first. That cures the crossing-picks deadlock: DW26 passes, and without the fix it fails, confirmed by mutation.
+* **Where the order still breaks.** `money_credit_note_write` (FO-7lk) takes the withdrawal's party first, then the invoice's party. Its comment says the withdrawal is "of the invoice's party", which a pick makes untrue. A "Move back to trust" credit note racing a pick can therefore deadlock with 40P01: 53 of 100 races in the reviewer's run, 15 of 40 in the breaker's. No money goes wrong: one side is refused and can retry. `money_move_batch_owed_back` has the same cause; this was found by reading the code and was not reproduced.
+* **Why it isn't fixed here.** The brief's Holds forbid editing `money_credit_note_write`. It names no rule on `money_move_batch_owed_back`, but that function is FO-7lk's too.
+* **Asked:** leave to change the lock lines in both functions, taking the two party locks smaller id first, in this PR, with a DW26 race case for each. Recommended: yes. The other choice is to ship with a known retry and fix it on the next baton.
+
+### 2. DW28, DW29 and DW30 (review Major 3). For Build Lead C, who owns the brief.
+* **DW28, the move route.** No move route exists, and this part's brief says "No route, no screen". Proposed: move it to FO-7t part 2.
+* **DW30, the ledger read.** No ledger read or screen exists. `money_trust_shortfall` already leaves the pair out: DW21 proves it on #2204. Proposed: move it to the first row that reads the ledger (FO-7t part 2, or FO-7b's ledger figure, which `FO-7b.md` already names).
+* **DW29, a REFUNDED credit names its payout.**
+  * **Why it is more than a column.** A credit payout as a `money_refund` row runs into part 2's B4 rule, which refuses refunding a payment that credit was kept from. The order of writes and the amounts need a design that no source gives.
+  * **Proposed design:** `money_credit_entry.refund_id` → `money_refund`, required on `REFUNDED`, one per refund, with the refund's amount equal to the credit's; the credit entry is written first and B4 counts it. It would come either as a follow-up on the next `client-money.prisma` baton, or in this PR if ruled so.
+* **Asked:** a written ruling for each one.
+
+## Recorded deviations (no ruling needed unless you disagree)
+* **DW26's second half.** The brief says "a pick from A and a deposit to B do not wait on each other". That cannot hold when B is the invoice's party: FO-7lk serialises B's ledger under B's lock, and that is FO-7lk's whole point. The test proves both sides. A deposit to B waits and then commits. A deposit to C, a party not on the invoice, does not wait.
+* **The "pass unchanged" suites.** DW27 makes a method and date required on every trust refund. So the `entry` helpers in `check_fo7a2_ledger_rules.ts`, `check_fo7a_money_schema.ts` and `check_fo7mv_move_list.ts` add them on `REFUND_TO_CLIENT` rows only, one line each. No assertion changed and the counts are unchanged (35, 122, 45). `check_fo7a_money_schema.ts` also has the date-list assertion the brief names.
+* **The tax treatment at issue.** A null ("the party's") is set at issue to the party's treatment, or to Taxable, so a later change to the party never moves an issued invoice. Invoices issued before this part are set to Taxable, the value issuing would have chosen.
+* **The correction's case (breaker M2, review Major 2).**
+  * **The rule.** Money returned from a withdrawal goes back to the withdrawal's case. A deposit's correction goes on the deposit's case. A deposit made before any case may instead be corrected on a case its party moved money to: a returned cheque comes off the case its money reached.
+  * **The limit.** Moves are not linked to the deposits they came from, so the database cannot tell which case a pre-case deposit's money reached. A person can still book the reversal on the wrong one of those cases. The route should offer only the cases a move from that money reached.
+* **For the route (breaker m5).** The database cannot prove the payer is on the case. FO-7t part 2's pick route must check it, with a test of a stranger tagged with the case.

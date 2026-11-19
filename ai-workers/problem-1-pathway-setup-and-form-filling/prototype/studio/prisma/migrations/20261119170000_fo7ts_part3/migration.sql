@@ -234,9 +234,14 @@ BEGIN
     IF d.kind NOT IN ('WITHDRAWAL_TO_INVOICE', 'DEPOSIT') THEN
       RAISE EXCEPTION 'money_trust_entry: a correction names a withdrawal (to return money from it) or a deposit (to correct it), never a % (P-603: money leaves trust only to an issued invoice or back to the client)', d.kind USING ERRCODE = 'check_violation';
     END IF;
-    -- FO-7ts part 3 (break M2): and on its case, so a correction never moves money between cases (the per-case limit).
-    IF d.case_id IS DISTINCT FROM NEW.case_id THEN
-      RAISE EXCEPTION 'money_trust_entry: a correction is on the case of the entry it corrects' USING ERRCODE = 'check_violation';
+    -- FO-7ts part 3 (break M2, review Major 2): and on its case, so a correction never moves money between cases (the
+    -- per-case limit). Money returned from a withdrawal goes back to the withdrawal's case. A deposit's correction goes
+    -- on the deposit's case; a deposit made before a case may instead be corrected on a case this party moved money to
+    -- (a returned cheque whose money was moved to a case comes off that case).
+    IF d.case_id IS DISTINCT FROM NEW.case_id AND NOT (d.kind = 'DEPOSIT' AND d.case_id IS NULL AND EXISTS (SELECT 1 FROM "money_trust_entry" m
+        WHERE m.firm_id = NEW.firm_id AND m.kind::text = 'MOVE_TO_CASE' AND m.moved_from_entry_id IS NOT NULL AND m.case_id = NEW.case_id AND m.currency = NEW.currency
+          AND ((NEW.person_id IS NOT NULL AND m.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND m.company_id = NEW.company_id)))) THEN
+      RAISE EXCEPTION 'money_trust_entry: a correction is on the case of the entry it corrects (a deposit made before a case may also be corrected on a case its party moved money to)' USING ERRCODE = 'check_violation';
     END IF;
     -- FO-7a2 (AG-6-75 rules 2, 4): a correction of a deposit with a reversal kind is recorded even below zero, and the
     -- shortfall is shown (money_trust_shortfall). "Returned" is a bounced cheque or wire: an e-Transfer, card, card

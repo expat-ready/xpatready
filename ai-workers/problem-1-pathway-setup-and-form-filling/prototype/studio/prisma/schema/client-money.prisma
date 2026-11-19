@@ -129,9 +129,6 @@ enum MoneyTrustEntryKind {
   MOVE_TO_CASE
 }
 
-/// A credit ledger entry's kind (FO-7ts part 2; AG-6-21 rules 2-3, 5; AG-6-23 rule 1; Lead 61, ruling 5c): KEPT (+, a
-/// payment's extra kept as credit), APPLIED (−, to an invoice of the same holder), REFUNDED (−, paid back), REVERSED
-/// (the opposite sign of the KEPT or APPLIED entry it names).
 /// An invoice's tax treatment (AG-6-4 rule 2 §7; R18): per party (money_party_tax_treatment) or per invoice. FO-7g part 2's
 /// rules use it; an invoice's is fixed at issue.
 enum MoneyTaxTreatment {
@@ -140,6 +137,9 @@ enum MoneyTaxTreatment {
   EXEMPT
 }
 
+/// A credit ledger entry's kind (FO-7ts part 2; AG-6-21 rules 2-3, 5; AG-6-23 rule 1; Lead 61, ruling 5c): KEPT (+, a
+/// payment's extra kept as credit), APPLIED (−, to an invoice of the same holder), REFUNDED (−, paid back), REVERSED
+/// (the opposite sign of the KEPT or APPLIED entry it names).
 enum MoneyCreditKind {
   KEPT
   APPLIED
@@ -564,11 +564,6 @@ model MoneyTrustEntry {
   @@map("money_trust_entry")
 }
 
-/// One entry of a holder's credit ledger (FO-7ts part 2; AG-6-21 rules 2-3, 5 §7 CreditEntry; AG-6-23 rules 1, 4). The
-/// holder is the case, or the party when there is no case; the party is on every entry. seq and balance_after_minor are
-/// the database's, per holder and currency, never below zero. KEPT names its payment, APPLIED its invoice (same holder
-/// and currency, draft or issued), REVERSED the KEPT or APPLIED entry it undoes; REFUNDED and REVERSED carry a reason.
-/// Credit is not trust money. Insert-only.
 /// A party's tax treatment (AG-6-4 rule 2 §7; FO-7ts part 3): one row per party; no row = Taxable.
 model MoneyPartyTaxTreatment {
   id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -577,7 +572,7 @@ model MoneyPartyTaxTreatment {
   companyId String?           @map("company_id") @db.Uuid
   treatment MoneyTaxTreatment
   updatedBy String            @map("updated_by")
-  updatedAt DateTime          @default(now()) @map("updated_at") @db.Timestamptz
+  updatedAt DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   settings MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
 
@@ -586,6 +581,11 @@ model MoneyPartyTaxTreatment {
   @@map("money_party_tax_treatment")
 }
 
+/// One entry of a holder's credit ledger (FO-7ts part 2; AG-6-21 rules 2-3, 5 §7 CreditEntry; AG-6-23 rules 1, 4). The
+/// holder is the case, or the party when there is no case; the party is on every entry. seq and balance_after_minor are
+/// the database's, per holder and currency, never below zero. KEPT names its payment, APPLIED its invoice (same holder
+/// and currency, draft or issued), REVERSED the KEPT or APPLIED entry it undoes; REFUNDED and REVERSED carry a reason.
+/// Credit is not trust money. Insert-only.
 model MoneyCreditEntry {
   id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   firmId            String          @map("firm_id") @db.Uuid
