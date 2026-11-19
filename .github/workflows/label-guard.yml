@@ -18,7 +18,8 @@ on:
     # merge; the sweep runs then too, even if a PR put `queued` on itself first (#1270 breaker, round 2).
     types: [synchronize, labeled, opened]
   schedule:
-    - cron: "*/10 * * * *"   # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
+    - cron: "*/10 * * * *"
   workflow_dispatch:   # the sweep by hand (Lead 84, 19 Nov): schedules can be dropped
   workflow_run:
     workflows: [ci]
