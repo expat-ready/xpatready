@@ -52,3 +52,6 @@ Clean merge; no staff-frame, session or booking-settings file changed in it. Re-
 
 ## Base moved a third time (18 Nov 23:5x UTC): #2103's tip c1607c3a6 merged in (migration restamped to 20261118220000; a type's read names each host's set; main's PF-6 part 2b)
 One conflict, the one-line clash the brief foresaw in `account-sections.ts` (PF-6 part 2b's "Licence" beside "Availability"): both kept, order Profile · Licence · Availability · Team · Licences · Security · Terms; nothing else changed. Re-run on fresh copies: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52, check_fo3w_booking_browser 67/67, check_pf6_staff_browser 90/90 (added: the staff frame changed); all exit 0.
+
+## Base moved a fourth time (19 Nov 03:3x UTC): #2103's tip c72bca8cd merged in (it merged main; migration restamped to 20261119031000)
+Clean merge; none of the staff frame, session, menu, routes, booking settings, slots or guard files changed in it. Re-run on fresh copies: FO-3st2 53/53, check_pf1_module_routes 28/28, check_pf6a_frame_browser 52/52, check_fo3w_booking_browser 67/67, check_pf6_staff_browser 90/90; all exit 0.
