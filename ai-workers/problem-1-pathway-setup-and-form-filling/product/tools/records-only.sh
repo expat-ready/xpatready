@@ -14,7 +14,9 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 2
 P=ai-workers/problem-1-pathway-setup-and-form-filling; T="$P/product/tools"; S="$P/prototype/studio"
 LABEL=records
-RECORD_FILE="^$P/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$"
+# qa's proof evidence may hold the item-proof workflow's auto-verdict.json and other run data: data under
+# product/qa/reports/ is a record too (Lead 96, founder 19 Nov 23:3x IST: a proof PR must not pay a full run, P-731).
+RECORD_FILE="^$P/product/([^/]+/)*[^/]+\.(md|png|jpe?g|gif|webp|svg|txt|html)$|^$P/product/qa/reports/([^/]+/)*[^/]+\.json$"
 
 is_records() {   # stdin: changed paths
   local f; f=$(grep . || true)
@@ -31,6 +33,8 @@ self_test() {
   local bad=0
   t() { local want="$1" what="$2"; shift 2; local got; got=$(printf '%s\n' "$@" | is_records)
     if [ "$got" = "$want" ]; then echo "PASS  $what"; else echo "FAIL  $what (got $got)"; bad=1; fi; }
+  t yes "qa proof evidence with run data (auto-verdict.json)" "$P/product/qa/BUGS.md" "$P/product/qa/reports/r/pack/auto-verdict.json"
+  t no  "a .json outside qa/reports" "$P/product/qa/BUGS.md" "$P/product/screens/12/data.json"
   t yes "qa notes with screenshots" "$P/product/qa/BUGS.md" "$P/product/qa/walks/x/shot.png" "$P/product/qa/runs/out.txt"
   t yes "the Lead's records: STATE, DECISIONS, BACKLOG" "$P/product/STATE.md" "$P/product/DECISIONS.md" "$P/product/BACKLOG.md"
   t yes "a screen's notes and its HTML board" "$P/product/screens/12/build-notes.md" "$P/product/screens/12/board.html"
