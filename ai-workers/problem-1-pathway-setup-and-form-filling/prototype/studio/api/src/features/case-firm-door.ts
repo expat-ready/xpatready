@@ -37,7 +37,7 @@ export type DoorLookups = {
 /** case_firm_of_client's refusal: the client's cases are in more than one firm. */
 export class TwoFirms extends Error {}
 
-const RUNTIME = /^\/api\/runtime(\/|$)/i, LINK = /^\/api\/link(\/|$)/i, LINK_DEMO = /^\/api\/link\/inbox\/?$/i;
+const RUNTIME = /^\/api\/runtime(\/|$)/i, LINK = /^\/api\/link(\/|$)/i;
 const CASE_IN_PATH = /^\/api\/runtime\/cases\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i;
 const CASE_LIST = /^\/api\/runtime\/cases\/?$/i;
 const BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/, TOKEN = /^[A-Za-z0-9_-]{43}$/;
@@ -50,7 +50,6 @@ const actorNamed = (h: string | undefined): Actor | undefined => [...ACTORS, ...
 export async function doorFirm(req: DoorReq, look: DoorLookups): Promise<string | null | undefined> {
   const path = pathOf(req);
   if (LINK.test(path)) {
-    if (LINK_DEMO.test(path)) return undefined;   // the demo inbox (x-actor, every Sample address): no case, no firm
     const bearer = BEARER.exec(first(req.headers.authorization) ?? "");
     if (bearer) return look.ofLinkSession(sha(bearer[1]));
     const token = (req.body as { token?: unknown } | undefined)?.token;
@@ -95,7 +94,9 @@ export function dbLookups(db: Db): DoorLookups {
     ofCase: (id) => one(db.$queryRaw`select case_lookup.case_firm_of_case(${id}::uuid)::text as id`),
     ofClient: async (actorId) => {
       try { return await one(db.$queryRaw`select case_lookup.case_firm_of_client(${actorId})::text as id`); } catch (e) {
-        if (/21000|more than one firm/.test(String((e as { code?: string; message?: string })?.message ?? e) + String((e as { meta?: { code?: string } })?.meta?.code ?? ""))) throw new TwoFirms();
+        // Prisma's raw-query error (P2010) carries the database's SQLSTATE in meta.code, as busy.ts reads it (review m2).
+        const x = e as { code?: string; message?: string; meta?: { code?: string; message?: string } };
+        if (x?.code === "P2010" && (x.meta?.code === "21000" || /case_firm_of_client: .*more than one firm/.test(x.meta?.message ?? x.message ?? ""))) throw new TwoFirms();
         throw e;
       }
     },

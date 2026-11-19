@@ -193,14 +193,14 @@ async function api() {
     list.status === 200 && ids.includes(k1.id) && own.status === 200 && solo.status === 200, { list: list.status, own: own.status, solo: solo.status });
   ok("CS-W3 DW1 fail: the other firm's case is 404 (\"No such case.\") and never in the list", other.status === 404 && /No such case/.test(other.body?.detail ?? "") && !ids.includes(k2.id), other);
   const authorList = await call("GET", "/runtime/cases", undefined, "user-A");
-  ok("CS-W3 DW1 fail: a person with no firm gets 403 on the case list, never an empty 200", authorList.status === 403 && !Array.isArray(authorList.body?.cases), authorList);
+  ok("CS-W3 DW1 fail: a person with no firm gets the door's 403 (NO_FIRM) on the case list, never an empty 200", authorList.status === 403 && authorList.body?.code === "NO_FIRM" && !Array.isArray(authorList.body?.cases), authorList);
   const opened = await open("user-O", "user-P", "walls");
   ok("CS-W3 DW1 pass: with the walls on, the officer opens a case (the first write, party, goes through: the spike's cause 1 is gone)", opened.status === 201 && sql(`select firm_key from runtime_case where id = '${opened.id}'`) === "sample-firm", opened);
 
   // DW3: the simulated client.
   const pOwn = await call("GET", `/runtime/cases/${k1.id}`, undefined, "user-P"), pOther = await call("GET", `/runtime/cases/${k2.id}`, undefined, "user-P");
   const pNoCase = await call("GET", "/runtime/openable", undefined, "user-P");
-  ok("CS-W3 DW3 pass: the client reaches their own case with the walls on, and a route with no case in its path is not refused for their one firm", pOwn.status === 200 && pNoCase.status !== 409, { own: pOwn.status, noCase: pNoCase.status });
+  ok("CS-W3 DW3 pass: the client reaches their own case with the walls on, and a route with no case in its path is not refused for their one firm", pOwn.status === 200 && pNoCase.status === 200, { own: pOwn.status, noCase: pNoCase.status });
   ok("CS-W3 DW3 fail: another person's case is still 404", pOther.status === 404, pOther.status);
 
   // DW2 and DW9: a link and its session, with the walls on.
@@ -245,16 +245,17 @@ async function api() {
 }
 
 // ------------------------------------------------------------------------------------------------- 4. the census
-// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3). Only shrinks: part 2 and part 3 take
-// files off as their areas run with the walls on.
-const ALLOW = `assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
+// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3), plus case-clients/prospect-won (FO-8,
+// merged after the spike). Paths relative to api/src. Only shrinks: part 2 and part 3 take files off as their areas run
+// with the walls on.
+const ALLOW = `case-clients/prospect-won assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
   core demo document-review-counts earlier-facts employer-link filing-changes filing-record fill-case findings finished-story form-additions
   form-library health person-link readiness-inputs readiness release-update review-rounds review-runs review-stamp routes-data runtime
   sample-case sample-validated sign-steps stage-scope studio submission-record submission team where-used`.split(/\s+/).map((f) => `api/src/${f}.ts`);
 function census() {
   const listed = () => execFileSync("bash", [join(STUDIO, "tests", "fixtures", "csw3", "csw3-spike.sh"), "census"], { encoding: "utf8" }).split("\n").slice(2).filter(Boolean).map((l) => l.split("\t")[0]);
   const now = listed(), extra = now.filter((f) => !ALLOW.includes(f));
-  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (42 at part 1)", ALLOW.length === 42 && extra.length === 0, extra);
+  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (43 at part 1)", ALLOW.length === 43 && extra.length === 0, extra);
   const planted = join(STUDIO, "api", "src", `zz-csw3-planted-${process.pid}.ts`);
   writeFileSync(planted, "// a throwaway file the census must catch\nexport const x = (db: any) => db.case.findMany({});\n");
   try {

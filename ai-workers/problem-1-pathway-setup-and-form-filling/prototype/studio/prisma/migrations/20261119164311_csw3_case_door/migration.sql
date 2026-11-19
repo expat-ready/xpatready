@@ -51,7 +51,7 @@ CREATE OR REPLACE FUNCTION case_lookup.case_firm_of_client(actor text) RETURNS u
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, case_lookup, pg_temp AS $fn$
 DECLARE firms uuid[];
 BEGIN
-  SELECT array_agg(DISTINCT c.firm_id) INTO firms FROM public.runtime_case c WHERE c.client_actor_id = actor AND c.firm_id IS NOT NULL;
+  SELECT array_agg(DISTINCT c.firm_id) INTO firms FROM public.runtime_case c WHERE c.client_actor_id = $1 AND c.firm_id IS NOT NULL;
   IF coalesce(cardinality(firms), 0) > 1 THEN
     RAISE EXCEPTION 'case_firm_of_client: this client''s cases are in more than one firm' USING ERRCODE = '21000';
   END IF;
