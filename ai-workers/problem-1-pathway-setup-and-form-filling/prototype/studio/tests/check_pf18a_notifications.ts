@@ -1,5 +1,5 @@
 // PF-18a part 2 (brief design/lead-b-briefs/PF-18a.md; AG-16-10, AG-16-11, AG-16 §3.3; P-600, P-606): each person's notification switches and
-// NotificationPrefsPort. Each "Done when" line of part 2 (DW5, DW7's NotificationPrefsPort share and its migration; DW6 is booking's, below when built) with a
+// NotificationPrefsPort. Each "Done when" line of part 2 (DW5; DW6, booking's host zone through OfficeClockPort; DW7's NotificationPrefsPort share and its migration) with a
 // passing and a failing case. Two scratch databases: "empty" gets every migration (then PF-3's Sample firms); "demo" gets every migration before part 2's,
 // demo-shaped rows and the Sample firms, then part 2's (rows rev 16.7). The routes run in a Nest app built from the feature's own classes beside PF-4's guard
 // and the local stand-in's tokens (as check_pf18a_offices.ts). The walls are checked as xr_app (PF-12). The port's contract runs on the real adapter and on
@@ -39,6 +39,7 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { withFirm } = await import("../api/src/platform/firm-scope.ts");
 const { GROUPS, RULES, readGroups } = await import("../api/src/platform/settings/notifications/groups.ts");
 const { PrismaNotificationPrefs } = await import("../api/src/platform/settings/notifications/prefs.ts");
+const { OFFICE_CLOCK: OFFICE_CLOCK_TOKEN } = await import("../api/src/platform/settings/offices/clock.ts");
 const { NOT_YOURS } = await import("../api/src/platform/settings/notifications/service.ts");
 const feature = (await import("../api/src/features/platform-settings-personal.ts")).default;
 const db = new Db();
@@ -145,8 +146,9 @@ try {
   const big = Array.from({ length: 1_500 }, () => ({ group: "NOPE", inApp: "x", email: "y", z: 1 })), t0 = Date.now();
   const huge = await call("PUT", officer.token, { version: "x", groups: big });
   ok("PF-18a fail (break M1): a body of 1,500 bad groups (under the test app's 100 kB limit; the app allows 5 MB) → 400 at once, with at most 20 problems listed (the size is checked before the items)", huge.status === 400 && huge.body.issues.length <= 20 && JSON.stringify(huge.body).length < 5_000 && Date.now() - t0 < 5_000, [huge.status, huge.body?.issues?.length, Date.now() - t0]);
-  const proto = await Promise.all([JSON.stringify({ version: "x", groups: [{ group: "MENTIONS", inApp: true, email: true }] }).replace("{", '{"__proto__":{"a":1},'), JSON.stringify({ version: "x", groups: [{ group: "MENTIONS", inApp: true, email: true }] }).replace('{"group"', '{"__proto__":{"a":1},"group"')]
-    .map(async (body) => (await fetch(`${BASE}/api/platform/me/notifications`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body })).status));
+  // Each body is written out whole: JSON.stringify would drop a `__proto__` key, and a partial replace is what CodeQL flags (Lead B on #2304).
+  const protoBodies = ['{"__proto__":{"a":1},"version":"x","groups":[{"group":"MENTIONS","inApp":true,"email":true}]}', '{"version":"x","groups":[{"__proto__":{"a":1},"group":"MENTIONS","inApp":true,"email":true}]}'];
+  const proto = await Promise.all(protoBodies.map(async (body) => (await fetch(`${BASE}/api/platform/me/notifications`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body })).status));
   ok("PF-18a fail (break m2): a __proto__ field, in the body or in a group, is refused like any unknown field (400)", proto.every((st) => st === 400), proto);
   const deep = `{"version":"x","groups":[{"group":"MENTIONS","inApp":true,"email":true}],"z":${'{"a":'.repeat(5000)}1${"}".repeat(5000)}}`, deepArr = `{"version":"x","groups":[{"group":"MENTIONS","inApp":true,"email":true,"z":${"[".repeat(5000)}1${"]".repeat(5000)}}]}`;
   const deepRes = await Promise.all([deep, deepArr].map(async (body) => (await fetch(`${BASE}/api/platform/me/notifications`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body })).status));
@@ -187,6 +189,56 @@ try {
   let outside = ""; try { await withFirm(firmB, () => prefs.allows(firmA, owner.id, "NEEDS_YOU", "IN_APP")); } catch (e) { outside = String((e as Error).message); }
   ok("PF-18a fail: the adapter asked for firm A under firm B's scope refuses (never a silent no that drops notices); in firm A's own scope it answers", /not readable here/.test(outside) && (await withFirm(firmA, () => prefs.allows(firmA, owner.id, "MENTIONS", "IN_APP"))) === true, outside);
   ok("PF-18a fail: an unknown group or channel is a programming error (throws), not a quiet false", await prefs.allows(firmA, owner.id, "DIGEST" as never, "EMAIL").then(() => false, () => true) && await prefs.allows(firmA, owner.id, "MENTIONS", "SMS" as never).then(() => false, () => true));
+
+  // ------------------------------------------------------------------------------------------------ DW6: booking's host zone (moved from FO-3h)
+  {
+    const { BookingService, hostZone } = await import("../api/src/front-office/booking/service.ts");
+    const { runtimeBookingPorts } = await import("../api/src/front-office/booking/runtime-ports.ts");
+    const { copyFirmHoursTo } = await import("../api/src/front-office/booking-seed.ts");
+    const { OfficeClock } = await import("../api/src/platform/settings/offices/clock.ts");
+    const { writeSetting, TIME_ZONE } = await import("../api/src/platform/settings.ts");
+    const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
+    const { fakeMail } = await import("../ports/mail.ts"), { fakeJobs } = await import("../ports/jobs.ts"), { FakeClock } = await import("../ports/clock.ts");
+    const { fakeArrival } = await import("../ports/arrival.ts"), { fakeAudit } = await import("../ports/audit.ts");
+    const hz = new FakeClock(new Date("2026-11-16T13:00:00Z"));   // Monday 08:00 Toronto
+    const F = await db.platformFirm.create({ data: { key: "pf18a-dw6", operatingName: "Sample DW6", countryCode: "CA", status: "ACTIVE", contactEmail: "dw6@firm.example" } });
+    await writeSetting(db, { firmId: F.id, key: TIME_ZONE.key, value: "America/Toronto", by: "seed:pf18an", workspaceId: await platformAuditWorkspaceId(db) });
+    const host = async (n: string) => db.platformStaff.create({ data: { firmId: F.id, email: `${n}@staff.example`, displayName: `Sample ${n}` } });
+    const inOffice = await host("dw6-calgary"), noOffice = await host("dw6-none");
+    await copyFirmHoursTo(db, F.id, [inOffice.id, noOffice.id]);
+    const first = await db.platformOffice.create({ data: { firmId: F.id, name: "Toronto", province: "ON", timeZone: "America/Toronto", businessHours: [], closedDays: [], isFirst: true, createdBy: "seed:pf18an" } });
+    const calgary = await db.platformOffice.create({ data: { firmId: F.id, name: "Calgary", province: "AB", timeZone: "America/Edmonton", businessHours: [], closedDays: [], createdBy: "seed:pf18an" } });
+    await db.platformStaffOffice.create({ data: { firmId: F.id, staffId: inOffice.id, officeId: calgary.id, setBy: "seed:pf18an" } });
+    const clock = new OfficeClock(db);
+    const mk = (slug: string, hostId: string) => db.foConsultationType.create({ data: { firmId: F.id, slug, name: `Free consultation ${slug}`, modes: ["VIDEO"], hostStaffIds: [hostId], minutes: 30 } });
+    await mk("cal", inOffice.id); await mk("none", noOffice.id);
+    const run = async (offices: typeof clock | undefined) => {
+      const mail = fakeMail({ clock: hz }), jobs = fakeJobs(hz);
+      const svc = new BookingService(db, { audit: fakeAudit() as never, clock: hz, jobs, mail, arrival: fakeArrival(), offices, publicBaseUrl: "http://localhost:4430", limits: { bookPerIp: 1000, bookPerFirm: 1000, slotsPerIp: 1000, tokenPerIp: 1000 }, warn: () => {} });
+      await svc.registerJobs();
+      const book = async (slug: string, who: string, startsAt: string) => {
+        const page = await svc.publicSlots(F.key, slug, {}, "10.0.0.8"); await hz.advance({ seconds: 5 });
+        return svc.publicBook(F.key, slug, { givenNames: "Client", familyName: who, email: `${who}@client.example`, mode: "VIDEO", startsAt, timeZone: "Asia/Dubai", consent: true, consentWordingId: page.consent!.wordingId, formStamp: page.formStamp }, "10.0.0.8");
+      };
+      return { mail, jobs, book };
+    };
+    // Tue 17 Nov 15:00Z = 10:00 Toronto; Calgary's wall time as this runtime's tz data gives it.
+    const real = await run(clock);
+    await real.book("cal", `dw6a${n}`, "2026-11-17T15:00:00.000Z"); await real.book("none", `dw6b${n}`, "2026-11-17T15:00:00.000Z"); await real.jobs.runDue();
+    const hostMail = (m: typeof real.mail, who: string) => m.inbox(`${who}@staff.example`).find((x) => x.templateKey === "booking.host_booked");
+    const cal = hostMail(real.mail, "dw6-calgary"), none = hostMail(real.mail, "dw6-none");
+    // The Calgary wall time comes from this runtime's own tz data (tzdata 2026e has Alberta on UTC-6 all year; an older table says UTC-7), never typed here.
+    const calWall = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton", timeStyle: "short" }).format(new Date("2026-11-17T15:00:00.000Z")), calRe = new RegExp(`${calWall.replace(/\s/g, "\\s").replace(/\./g, "\\.")} \\(America/Edmonton\\)`);
+    ok(`PF-18a DW6 pass: a host in the Calgary office of a Toronto firm gets the booking mail in the office's zone, "${calWall} (America/Edmonton)", in subject and text`, !!cal && calWall !== "10:00 a.m." && calRe.test(cal.subject) && calRe.test(cal.text) && !/Toronto|Dubai/.test(`${cal.subject}${cal.text}`), cal && `${cal.subject} | ${cal.text}`);
+    ok("PF-18a DW6 pass: a host with no office gets the firm's zone, \"10:00 a.m. (America/Toronto)\" (FO-3h's cases)", !!none && /10:00\sa\.m\. \(America\/Toronto\)/.test(none.subject) && /10:00\sa\.m\. \(America\/Toronto\)/.test(none.text), none && none.subject);
+    ok("PF-18a DW6 fail: without OfficeClockPort (the old hostZone) the Calgary host would read Toronto time: the port is what changes it", (await hostZone(db, F.id, inOffice.id)) === "America/Toronto" && (await hostZone(db, F.id, inOffice.id, clock)) === "America/Edmonton" && (await hostZone(db, F.id, noOffice.id, clock)) === "America/Toronto");
+    await db.platformStaffOffice.update({ where: { staffId: inOffice.id }, data: { officeId: first.id } });
+    ok("PF-18a DW6 pass: moving the host to the Toronto office moves their mails' zone with them", (await hostZone(db, F.id, inOffice.id, clock)) === "America/Toronto");
+    const factory = (feature.providers as never as { provide?: unknown; inject?: unknown[] }[]).find((x) => x.provide === OFFICE_CLOCK_TOKEN);
+    const bookingFeature = (await import("../api/src/features/front-office-booking.ts")).default as { providers: { provide?: unknown; inject?: unknown[]; useFactory?: (...a: unknown[]) => { offices?: unknown } }[] };
+    const bp = bookingFeature.providers.find((x) => Array.isArray(x.inject));
+    ok("PF-18a DW6: the running app gives booking the platform's OfficeClockPort (front-office-booking injects OFFICE_CLOCK into runtimeBookingPorts)", !!factory && !!bp && bp.inject!.includes(OFFICE_CLOCK_TOKEN) && bp.useFactory!({ send: async () => ({ id: "x" }) }, clock).offices === clock && runtimeBookingPorts({ send: async () => ({ id: "x" }) } as never, clock).offices === clock, bp?.inject);
+  }
 
   // ------------------------------------------------------------------------------------------------ the database's rules and walls
   const ins = (staff: string, firm: string, group: string) => `insert into platform_notification_preference (staff_id, firm_id, "group", in_app, email, updated_at) values ('${staff}', '${firm}', '${group}', true, true, now())`;
