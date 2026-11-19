@@ -197,16 +197,16 @@ try {
   const a = newCase("2027-03-08"), sample = newCase("2027-03-08", { route: "test-sample" }), w1 = newCase(null);
   await dl.sweep();
   ok("CS-DL1 DW7 pass: a cited deadline Mon 8 Mar 2027 arms three keyed jobs at 09:00 Toronto: Thu 25 Feb (7 working days), Thu 4 Mar (2), Mon 8 Mar (on the day)",
-    mine(a.id).map((j) => `${j.payload.offset}@${j.runAt.toISOString()}|${j.key}|${j.firmId}`).join() === [7, 2, 0].map((o, i) => `${o}@${["2027-02-25", "2027-03-04", "2027-03-08"][i]}T14:00:00.000Z|deadline:${a.id}:${a.work}:${o}:2027-03-08:r0|${FA}`).join(), mine(a.id).map((j) => [j.key, j.runAt]));
+    mine(a.id).map((j) => `${j.payload.offset}@${j.runAt.toISOString()}|${j.key}|${j.firmId}`).join() === [7, 2, 0].map((o, i) => `${o}@${["2027-02-25", "2027-03-04", "2027-03-08"][i]}T14:00:00.000Z|deadline:${a.id}:${a.work}:${o}:2027-03-08:${["2027-02-25", "2027-03-04", "2027-03-08"][i]}T14:00:r0|${FA}`).join(), mine(a.id).map((j) => [j.key, j.runAt]));
   const forced = { caseId: sample.id, stageId: sample.work, offset: 0, due: "2027-03-08", day: "2027-03-08", round: 0 };
   ok("CS-DL1 DW7 fail (P-412 F13 (b)): the same deadline on a Sample route arms nothing (shown, never reminded), even asked directly, and a forced job for it tells nobody; a case with no date arms nothing",
-    mine(sample.id).length === 0 && (await dl.arm(sample.id)).length === 0 && (await dl.runReminder({ payload: forced, firmId: FA })) === 0 && mine(w1.id).length === 0);
+    mine(sample.id).length === 0 && (await dl.arm(sample.id)).length === 0 && (await dl.runReminder({ payload: forced, key: `deadline:${sample.id}:${sample.work}:0:2027-03-08:2027-03-08T14:00:r0`, firmId: FA })) === 0 && mine(w1.id).length === 0);
   await dl.sweep();
   ok("CS-DL1 DW7 fail: a second run of the scheduler queues nothing new (the keys)", mine(a.id).length === 3 && jobs.jobs.filter((j) => j.name === REMINDER_JOB).length === 3);
   await walk("2027-03-09T12:00:00.000Z");
   ok("CS-DL1 DW7 pass: each reminder fires once, to the representative and the current officer (not the officer whose assignment ended): two people at each of the three times",
     told(a.id).length === 6 && at(a.id).join() === "2027-02-25T14:00,2027-03-04T14:00,2027-03-08T14:00" && told(a.id).every((c) => [REP, OFF].includes(c.staffId)) && mine(a.id, "done").length === 3, told(a.id));
-  const records = inner.sent().length, redo = await dl.runReminder({ payload: mine(a.id)[2].payload, firmId: FA });
+  const records = inner.sent().length, redo = await dl.runReminder({ payload: mine(a.id)[2].payload, key: mine(a.id)[2].key, firmId: FA });
   ok("CS-DL1 DW7 fail (breaker: a redelivered job): the on-the-day job delivered again after its day does nothing; the port holds one record per person and case", redo === 0 && inner.sent().length === records && inner.sent().filter((r) => r.item.id === a.id).length === 2);
   ok("CS-DL1 DW7 fail: nothing was told on the Sample route's case", told(sample.id).length === 0);
 
@@ -259,10 +259,27 @@ try {
     mine(e.id).map((j) => j.payload.day).join() === "2027-02-23,2027-03-02,2027-03-03", mine(e.id).map((j) => j.payload.day));
   ok("CS-DL1 DW11 fail: no reminder day is a closed day, a weekend, or later than firm A's for the same date", mine(e.id).every((j, i) => !["2027-03-04", "2027-03-05", "2027-03-08"].includes(String(j.payload.day)) && String(j.payload.day) <= ["2027-02-25", "2027-03-04", "2027-03-08"][i]));
   ok("CS-DL1 DW10 pass: firm B's case's jobs carry firm B's id", mine(e.id).every((j) => j.firmId === FB));
-  const cross = await dl.runReminder({ payload: mine(e.id)[0].payload, firmId: FA }), back = await dl.runReminder({ payload: mine(a.id)[0].payload, firmId: FB });
+  const cross = await dl.runReminder({ payload: mine(e.id)[0].payload, key: mine(e.id)[0].key, firmId: FA }), back = await dl.runReminder({ payload: mine(a.id)[0].payload, key: mine(a.id)[0].key, firmId: FB });
   ok("CS-DL1 DW10 fail: a job carrying firm A's id refuses firm B's case (never reaching the stray firm A officer), and firm B's id refuses firm A's: nobody told", cross === 0 && back === 0 && told(e.id).length === 0);
   await walk("2027-03-09T12:00:00.000Z");
   ok("CS-DL1 DW10 pass: firm B's reminders tell firm B's representative only, never firm A's staff", told(e.id).length === 3 && told(e.id).every((c) => c.staffId === SOLO), told(e.id));
+
+  // ---------------------------------------------------------------- DW11 (breaker M1, M2): the calendar changes after the arm
+  const { TIME_ZONE } = await import("../api/src/platform/settings.ts");
+  const setA = async (key: string, value: unknown) => writeSetting(db as never, { firmId: FA, key, value, by: "seed:csdl1b", workspaceId: await platformAuditWorkspaceId(db as never) });
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const g = newCase("2027-03-08"); await dl.sweep(); await setA(TIME_ZONE.key, "Australia/Sydney"); await dl.sweep();
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW11 pass (breaker M2): firm A moves to Sydney after the arm: the reminders fire at 09:00 Sydney (22:00 UTC the day before), once each",
+    at(g.id).join() === "2027-02-24T22:00,2027-03-03T22:00,2027-03-07T22:00" && told(g.id).length === 6, at(g.id));
+  ok("CS-DL1 DW11 fail (breaker M2): the Toronto-time jobs armed before the move ran and told nobody", mine(g.id).filter((j) => j.runAt.toISOString().endsWith("T14:00:00.000Z")).every((j) => j.status === "done") && !at(g.id).some((x) => x.endsWith("T14:00")));
+  await setA(TIME_ZONE.key, "America/Toronto");
+  await clock.set("2027-02-20T12:00:00.000Z");
+  const h = newCase("2027-03-08"); await dl.sweep(); await setA(CLOSED_DAYS.key, ["2027-03-04"]); await dl.sweep();
+  await walk("2027-03-09T12:00:00.000Z");
+  ok("CS-DL1 DW11 pass (breaker M1): firm A closes Thu 4 Mar after the arm: the 7-day and 2-day reminders move earlier (Wed 24 Feb, Wed 3 Mar), 8 Mar stays",
+    at(h.id).join() === "2027-02-24T14:00,2027-03-03T14:00,2027-03-08T14:00" && told(h.id).length === 6, at(h.id));
+  ok("CS-DL1 DW11 fail (breaker M1): nothing fires on the earlier plan's days (Thu 25 Feb, Thu 4 Mar, the day the firm closed): those jobs ran and told nobody", !at(h.id).some((x) => x.startsWith("2027-03-04") || x.startsWith("2027-02-25")));
 } finally {
   await db.$disconnect();
   execFileSync(join(PGBIN, "dropdb"), [...PGA, "--if-exists", SDB]);

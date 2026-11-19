@@ -101,10 +101,10 @@ try {
   ok("J-74 DW1 NR: with the defaults (no closed day) the same judge fails: the days would be Thu 25 Feb, Thu 4 Mar, Mon 8 Mar", bare === "2027-02-25,2027-03-04,2027-03-08" && bare !== mine(caseId).map((j) => j.payload.day).join(), bare);
 
   // ---------------------------------------------------------------------------------------------------- DW2, DW4
-  const stray = await dl.runReminder({ payload: mine(caseId)[0].payload, firmId: FB });
+  const stray = await dl.runReminder({ payload: mine(caseId)[0].payload, key: mine(caseId)[0].key, firmId: FB });
   ok("J-74 DW2 NR: a job carrying firm B's id reads nothing of firm A's case and tells nobody", stray === 0 && told.length === 0);
   sql(`update route set basis = 'SAMPLE' where key = '${routeKey}'`);
-  const sampleArm = await dl.arm(caseId), sampleRun = await dl.runReminder({ payload: mine(caseId)[0].payload, firmId: FA });
+  const sampleArm = await dl.arm(caseId), sampleRun = await dl.runReminder({ payload: mine(caseId)[0].payload, key: mine(caseId)[0].key, firmId: FA });
   sql(`update route set basis = 'CITED' where key = '${routeKey}'`);
   ok("J-74 DW4 NR: with the route back to Sample the case arms nothing and a waiting job tells nobody (shown, never reminded)", sampleArm.length === 0 && sampleRun === 0 && told.length === 0);
 

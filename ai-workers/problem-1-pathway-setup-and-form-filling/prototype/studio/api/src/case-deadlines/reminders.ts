@@ -5,7 +5,8 @@
 //     (Sample) in the firm's zone; recipients the case's current OFFICER and LEAD_REPRESENTATIVE (case_team_member,
 //     matched to the firm's staff by platform_staff.actor_id, or by id).
 //   * The handler (AG-13-14 skip-if-stale): the job's firm must be the case's (else it reads nothing more); the case open,
-//     the stage still current, the date unchanged, the round current, the day not passed; then one NotificationPort call
+//     the stage still current, the date, round and planned run time unchanged (its key is still the one today's calendar
+//     gives), the day not passed; then one NotificationPort call
 //     per person (AG-13-15: the job key and the port's one per person and item keep a redelivery from adding any).
 //   * The two consumers, read from the outbox (module_event) by the sweep: `case.closed` cancels the case's waiting
 //     reminder jobs (prefix `deadline:`, so never a recorded-date reminder: AG-7-34 r3, AG16-60); `case.reopened` arms
@@ -111,13 +112,15 @@ export class CaseDeadlines {
   }
 
   /** The reminder job (AG-13-14, AG-13-15). Returns how many people were told (0: stale, or another firm's case). */
-  async runReminder(job: Pick<JobRun, "payload" | "firmId">): Promise<number> {
+  async runReminder(job: Pick<JobRun, "payload" | "firmId" | "key">): Promise<number> {
     const p = ReminderPayload.safeParse(job.payload);
     if (!p.success || !job.firmId || !UUID.test(job.firmId)) return 0;
     const firmId = firmScope(job.firmId).firmId;
     const c = await this.read(p.data.caseId, firmId);   // another firm's case is not read (DW10)
     const l = c?.status === "OPEN" ? await this.live(c) : null;
-    if (!c || !l || l.stageId !== p.data.stageId || l.due !== p.data.due || l.round !== p.data.round || l.today > p.data.day) return 0;
+    // Stale unless the case's state today plans this very job: same stage, date, round, and run time in today's calendar.
+    const want = l ? remindersOf(c!.id, l.stageId, l.due, l.round, l.cal).find((r) => r.offset === p.data.offset) : null;
+    if (!c || !l || !want || want.key !== job.key || l.today > want.day) return 0;
     const team = await this.p.db.caseTeamMember.findMany({ where: { caseId: c.id, endedAt: null, role: { in: RECIPIENT_ROLES } }, select: { userId: true } });
     const ids = [...new Set(team.map((t) => t.userId))];
     const staff = await this.p.db.platformStaff.findMany({ where: firmScope(firmId, { OR: [{ actorId: { in: ids } }, { id: { in: ids.filter((i) => UUID.test(i)) } }] }), select: { id: true } });
