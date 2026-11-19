@@ -125,8 +125,13 @@ class Alert(unittest.TestCase):
             posted, msg = bfa.run_alert(api, 77, cover=stub({}))
             self.assertEqual((posted, api.posts), ([], [])); self.assertIn("nothing to post", msg)
 
+    ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, cwd=HERE).stdout.strip()
+
+    # check-guards.sh --mutate runs this in a copy of the tools with no studio suites: there this case says so and skips,
+    # so each guard-26 mutation must turn a fixture case red by itself.
+    @unittest.skipUnless(os.path.exists(os.path.join(ROOT, S, "tests", "check_engine.ts")), "no studio suites in this copy")
     def test_real_select_suites(self):
-        root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, cwd=HERE).stdout.strip()
+        root = self.ROOT
         reach = bfa.covers([f"{S}/tests/check_engine.ts", f"{S}/api/src/employer-cases.ts"], root)
         self.assertIn("check_engine.ts", reach)
         self.assertGreater(len(reach), 5)
