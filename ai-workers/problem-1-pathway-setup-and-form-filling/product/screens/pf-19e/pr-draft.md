@@ -1,6 +1,6 @@
 # PF-19e: PR draft (overlapped on PF-19p #1961; the PR opens only after #1961 merges)
 
-**State (19 Nov, about 04:5x IST):** at bf91eacc9. The tech lead (Lead 84) said continue: #2157 (PF-19r part 1) merged. origin/main is merged in at 7d7099973, with seven conflicts resolved, and the PF-19e amendment (rev 17.31) is applied. All 22 suites passed at bf91eacc9 (list below). A diff-only re-review of the merge and the amendment is with the reviewer. #1961 (PF-19p) is still queued, and this PR waits for it as planned. When it merges: merge origin/main in once, re-run, get a diff-only re-review, then open the PR.
+**State (19 Nov, about 06:4x IST):** at 4621ddeed. #1961 (PF-19p) is re-stamped to `20261119003000` and has merged main with PF-19r. It is back in the merge queue at 88d03c665. Its tip is merged in here: mail.ts is PF-19p's resolution, which keeps platform account email in `sendIn`, with PF-19e's system sender, never-held and MailSuppressed re-applied. messages.ts and MODULE.md keep this branch's side. All 22 suites passed again at 4621ddeed: PF-19e 41, PF-19r 28, PF-18b 41, PF-21 107, PF-21b 32, PF-21w 83, PF-21v 54, PF-19b 42, PF-19b2 44, PF-19b mail 29, PF-19p 68, PF-4c 24, PF-6m 12, PF-6m2 19, PF-5t 42, PF-5v 7, PF-12 100, PF-19a 94, PF-6r 17, PF-24 84, PF-4b 57, PF-4 119. Contracts, graph, any and module cards pass. The reviewer approved bf91eacc9. One diff-only re-review of bf91eacc9..HEAD follows the merge of main after #1961 lands; then the PR opens.
 
 **Next steps:**
 1. `git fetch origin main && git merge --no-edit origin/main` (P-270).
