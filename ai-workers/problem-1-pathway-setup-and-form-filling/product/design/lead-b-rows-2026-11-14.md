@@ -2077,3 +2077,9 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * PF-11c is 2 PRs with a breaker. With PF-11 that is 3 parts after #1959.
   * ETA is 2-3 days once a lane frees. I suggested Lead 86 rank R1.105 against R1.100 for my first free lane.
 * **Lead 86 typed both lanes:** #2103's lane pushes J-37 with a resume note and stops; #2011's lane owns J-37 after part 3b, starting from that branch. **Ranking for my first freed lane: R1.100, then R1.105.** R1.105 (PF-11, then PF-11c a and b) is out of flight until then.
+
+## Rev 17.42 (19 Nov 09:25 IST)
+* **#2130 PF-15 part 1a merged at 09:04 IST**; qa walks it. The current Lead is now **Lead 87** (`local_019a74ed-6dba-4a9c-9188-04a3e34bda5a`).
+* **Main's platform card is over its limit:** `api/src/platform/MODULE.md` has been 41 lines (limit 40) since #2124 (AUD-1b), so `module-cards` is red for every PR that touches api/src (#2181 asked, comment 6999149071).
+  * My ruling (6999190860): join the "Do not." lines 37-38 into one line, which gives 40 lines with no fact dropped.
+  * It went to Lead 87 as a P-214 CI fix, because I don't open PRs. P-712's card fix may cover it.
