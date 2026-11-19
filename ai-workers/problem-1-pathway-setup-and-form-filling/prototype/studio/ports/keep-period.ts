@@ -107,7 +107,7 @@ export type KeepSubject = z.infer<typeof KeepSubject>;
  *  to a case or a client; our own records (billing, breaches, staff lines) name no case; an activity line may. */
 export const SUBJECT_KINDS: Readonly<Record<KeepClass, readonly KeepSubject["kind"][]>> = Object.freeze({
   activity_log: ["RECORD", "CASE", "PERSON"], our_staff_audit: ["RECORD"], our_billing: ["RECORD"], breach_record: ["RECORD"],
-  client_financial: ["CASE", "PERSON"], closed_client_file: ["CASE"], college_client_file: [],
+  client_financial: ["CASE", "PERSON"], closed_client_file: ["CASE", "PERSON"], college_client_file: [],
 });
 
 /** The input. The firm is the caller's session firm (or the job's firm scope), never one taken from a request: a door
@@ -122,9 +122,9 @@ export const KeepCheckInput = z.strictObject({
   subject: z.union([KeepSubject, z.array(KeepSubject).min(1).max(50)]),
   recordDates: z.array(RealDate).min(1, "name the record's own date (a date-range hold is matched on it)").max(50),
 });
-/** The type also takes a bare string subject (part 1's placeholder shape, still used by part 1's contract case for an
- *  unwired port) so older callers compile; check() refuses it at run time (INVALID_INPUT), never maps it. */
-export type KeepCheckInput = Omit<z.input<typeof KeepCheckInput>, "subject"> & { subject: KeepSubject | string };
+/** The type also takes part 1's placeholder shape (a bare string subject, no recordDates), still used by part 1's
+ *  contract case for an unwired port, so it compiles; check() refuses that shape at run time (INVALID_INPUT). */
+export type KeepCheckInput = Omit<z.input<typeof KeepCheckInput>, "subject" | "recordDates"> & { subject: z.input<typeof KeepCheckInput>["subject"] | string; recordDates?: Date[] };
 
 /** One matching legal hold, as LegalHoldPort reports it (only what a person needs to read). */
 export type KeepHold = { holdId: string; reason: string; placedBy: string; placedAt: Date };
@@ -153,7 +153,7 @@ export type HoldsForCheck<Tx> = { isHeld(tx: Tx, firmId: string, subjects: Reado
 export function subjectsFor(raw: unknown): { input: z.output<typeof KeepCheckInput>; row: KeepPeriodRow; subjects: HoldSubjectOut[] } {
   if (raw && typeof raw === "object" && "class" in raw && !KeepClass.safeParse((raw as { class: unknown }).class).success) throw new KeepCheckRefused("UNKNOWN_CLASS", "This record type is not in the keep-period table, so it cannot be deleted.");
   const p = KeepCheckInput.safeParse(raw);
-  if (!p.success) throw new KeepCheckRefused("INVALID_INPUT", `The delete check needs the firm, the record type, its start date and what is deleted (${p.error.issues[0]?.message ?? "invalid"}).`);
+  if (!p.success) throw new KeepCheckRefused("INVALID_INPUT", "The delete check needs your firm, the record type, the date its keep period starts, the record's own dates and what is deleted.");
   const input = p.data, row = KEEP_PERIODS.find((r) => r.class === input.class)!;
   const named = Array.isArray(input.subject) ? input.subject : [input.subject];
   if (row.kind === "REFERENCE" || !named.every((x) => SUBJECT_KINDS[input.class].includes(x.kind))) throw new KeepCheckRefused("NO_HOLD_CHECK", "This record type has no hold check yet, so it cannot be deleted.");
@@ -172,7 +172,7 @@ const day = (d: Date) => `${d.toISOString().slice(0, 10)} (UTC)`;
 export function decide(row: KeepPeriodRow, startedAt: Date, firmYears: number | null, now: Date): KeepCheckResult {
   if (row.kind === "FLOOR" && typeof row.years === "number") {
     const until = addYears(startedAt, row.years);
-    return now < until ? { verdict: "FLOOR", until, words: `This record is kept until ${day(until)} and cannot be deleted before then. ${row.words}` } : { verdict: "OK" };
+    return now < until ? { verdict: "FLOOR", until, words: `This record is kept until ${day(until)} and cannot be deleted before then. ${row.words}${row.unconfirmed ? ` (${row.unconfirmed})` : ""}` } : { verdict: "OK" };
   }
   if (row.kind === "REMINDER" && firmYears !== null) {
     const until = addYears(startedAt, firmYears);

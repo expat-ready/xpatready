@@ -57,6 +57,8 @@ ok("AUD-5 fail: a port with no LegalHoldPort wired refuses check() (no silent OK
 
 ok("AUD-5 fail: a bare string subject (part 1's placeholder shape) is refused at run time on a wired port, never mapped",
   await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", recordDates: [NOW], startedAt: ago(9), subject: "inv-1" })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
+ok("AUD-5 fail (break M1): a check that names no record date is refused at run time, never matched on the start date alone",
+  await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", startedAt: ago(9), subject: { kind: "RECORD", id: "inv-1" } })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
 // DW9 fail: an adapter that decides the floor and the reminder before the hold (BR-7's order broken).
 const floorFirst = (): KeepCheckHarness => {
   const h = fakeHarness()();
@@ -79,6 +81,10 @@ const rAnyFirm = await runContract(keepPeriodCheckContract, "anyFirm", fakeHarne
   },
 })), null);
 ok("AUD-5 DW11 fail: an adapter that counts another firm's hold fails the other-firm case", rAnyFirm.failed.includes(CASES[2]), rAnyFirm.failed);
+
+// Review M2 fail: an adapter that asks the hold store about the firm only (the class-to-subject map dropped).
+const rFirmOnly = await runContract(keepPeriodCheckContract, "firmOnly", fakeHarness((h) => ({ isHeld: (t, f) => h.isHeld(t, f, [{ kind: "FIRM" }]) })), null);
+ok("AUD-5 fail (review M2): an adapter that sends only the FIRM subject fails the subject-map case (and the case, date and category cases)", rFirmOnly.failed.includes(CASES[5]) && rFirmOnly.failed.includes(CASES[3]) && rFirmOnly.failed.includes(CASES[4]), rFirmOnly.failed);
 
 // The rule itself, firm-free: DW6 and DW8's numbers.
 const row = (c: string) => subjectsFor({ firmId: uuid(), class: c, startedAt: ago(1), recordDates: [ago(1)], subject: { kind: c === "closed_client_file" ? "CASE" : "RECORD", id: c === "closed_client_file" ? uuid() : "r" } }).row;
@@ -146,7 +152,7 @@ try {
   });
   const recent = uuid(), old = uuid();
   store.set(recent, { firmId: FIRM_A, closedAt: ago(2) }); store.set(old, { firmId: FIRM_A, closedAt: ago(8) });
-  const noReason = await Promise.all([undefined, "", "   ", "​\t"].map((r) => refusedWith(() => deleteFile(recent, r), (e) => e instanceof KeepCheckRefused && /Give a reason/.test((e as Error).message))));
+  const noReason = await Promise.all([undefined, "", "   ", "\u200b\t", "\u3164", "\u115f\u1160"].map((r) => refusedWith(() => deleteFile(recent, r), (e) => e instanceof KeepCheckRefused && /Give a reason/.test((e as Error).message))));
   ok("AUD-5 DW7 fail: a closed file inside the firm's 6-year reminder with no reason (none, empty, whitespace, invisible only) is refused; nothing deleted, no audit line",
     noReason.every(Boolean) && store.has(recent) && audit.entries.length === 0, noReason);
   const warned = await deleteFile(recent, "  Client asked for erasure; our copy is with the College.  ");
@@ -172,6 +178,12 @@ try {
     return { before, after };
   });
   ok("break: the setting changed mid-request is read through the deleter's own transaction at each check (6 → OK, 10 → WARN), never from a second transaction", mid.before.verdict === "OK" && mid.after.verdict === "WARN", mid);
+  const unsaved = await db.$transaction(async (t) => {
+    sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
+    await writeSetting(t as never, { firmId: FIRM_A, key: KEY, value: 10, by: BY, workspaceId: ws });   // not committed yet
+    return port.check(t as never, { firmId: FIRM_A, class: "closed_client_file", startedAt: ago(7), recordDates: [ago(7)], subject: { kind: "CASE", id: c1 } });
+  });
+  ok("review m2: the setting is read through the deleter's own transaction (its own uncommitted 10 years → WARN; a read on the root client would see none → OK)", unsaved.verdict === "WARN", unsaved);
   ok("break: a WARN delete with a reason of spaces only is refused (warnReason)", await refusedWith(() => warnReason({ verdict: "WARN", until: NOW, words: "" }, " \n "), (e) => e instanceof KeepCheckRefused));
 
   const far = await Promise.all([new Date(8.64e15), new Date("1850-01-01T00:00:00Z"), new Date(Number.NaN)].map((d) => refusedWith(() => db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "activity_log", startedAt: d, recordDates: [NOW], subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT")));

@@ -100,8 +100,10 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
     return verdictOf(held, row, q.startedAt, firm, this.now());
   }
 
-  /** The door a deleter calls: the firm is the session's, never the request's. `ask` names the class, start date and
-   *  subject only; a body that also names a firm (or anything else) is refused. */
+  /** The door a deleter calls: the firm is the session's, never the request's. `ask` is built by the deleter from the
+   *  STORED record (its class, the date its period starts, its own dates, its case and person), never a request body
+   *  passed through: a client choosing the class or the date could pick an OK (review m3). An ask that names a firm is
+   *  refused. */
   async checkFor(tx: Tx, s: StaffContext, ask: unknown): Promise<KeepCheckResult> {
     if (ask && typeof ask === "object" && "firmId" in ask) throw new KeepCheckRefused("INVALID_INPUT", "The firm is always your own; a delete check never names one.");
     return this.check(tx, { ...(ask as object), firmId: s.firmId } as KeepCheckInput);

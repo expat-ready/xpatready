@@ -6,6 +6,7 @@
 // wins for every class, then the floor, then the firm's reminder), every matching hold's reason, another firm's hold never
 // counts, and a class or subject with no hold check refused in words.
 import { defineContract, expect, expectRefused } from "./contract.ts";
+import { LEGAL_HOLD_CATEGORY } from "../legal-hold.ts";
 import { KEEP_PERIODS, KeepCheckRefused, addYears, type KeepCheckInput, type KeepCheckResult, type KeepClass, type KeepPeriodPort } from "../keep-period.ts";
 
 /** What an adapter's test hands the contract: the port, two firms with no number yet, and a way to set one. */
@@ -66,7 +67,7 @@ export const keepPeriodPortContract = defineContract("KeepPeriodPort", (make: ()
  *  place a hold, and the adapter's "now". **Every make() call gives two fresh firms** with no hold and no setting. */
 export type KeepCheckHarness = KeepPeriodHarness & {
   tx<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
-  placeHold(firmId: string, scope: { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "CATEGORY"; category: "case_documents" } | { kind: "DATE_RANGE"; from: Date; to: Date }, reason: string): Promise<void>;
+  placeHold(firmId: string, scope: { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "PERSON"; id: string } | { kind: "CATEGORY"; category: (typeof LEGAL_HOLD_CATEGORY)[number] } | { kind: "DATE_RANGE"; from: Date; to: Date }, reason: string): Promise<void>;
   now: Date;
 };
 
@@ -137,6 +138,30 @@ export const keepPeriodCheckContract = defineContract("KeepPeriodPort.check", (m
       const both = await ask(g, { firmId: g.firmA, class: "client_financial", startedAt: ago(g, 8), subject: [{ kind: "PERSON", id: p }, { kind: "CASE", id: c }] });
       const personOnly = await ask(g, { firmId: g.firmA, class: "client_financial", startedAt: ago(g, 8), subject: { kind: "PERSON", id: other } });
       expect(both.verdict === "HELD" && personOnly.verdict === "OK", "case and client named: HELD; another client alone: OK", { both, personOnly });
+    },
+  },
+  {
+    name: "review M2: every class asks every hold subject it maps to (each scope placed alone holds it; another case, person or date does not)",
+    async run() {
+      const c = uuid(), p = uuid(), rec = new Date("2020-04-15T00:00:00Z");
+      const asks: { cls: KeepClass; subject: KeepCheckInput["subject"]; scopes: Parameters<KeepCheckHarness["placeHold"]>[1][] }[] = [
+        { cls: "closed_client_file", subject: [{ kind: "CASE", id: c }, { kind: "PERSON", id: p }], scopes: [{ kind: "CASE", id: c }, { kind: "PERSON", id: p }, ...LEGAL_HOLD_CATEGORY.map((category) => ({ kind: "CATEGORY" as const, category }))] },
+        { cls: "client_financial", subject: [{ kind: "CASE", id: c }, { kind: "PERSON", id: p }], scopes: [{ kind: "CASE", id: c }, { kind: "PERSON", id: p }] },
+        { cls: "activity_log", subject: [{ kind: "RECORD", id: "line-9" }, { kind: "PERSON", id: p }], scopes: [{ kind: "PERSON", id: p }] },
+        ...(["our_billing", "breach_record", "our_staff_audit"] as const).map((cls) => ({ cls, subject: { kind: "RECORD" as const, id: `r-${cls}` }, scopes: [] })),
+      ];
+      for (const a of asks) for (const scope of [...a.scopes, { kind: "DATE_RANGE" as const, from: new Date("2020-04-01T00:00:00Z"), to: new Date("2020-04-30T00:00:00Z") }]) {
+        const h = await make();
+        await h.placeHold(h.firmA, scope, `Sample: ${scope.kind}`);
+        const r = await ask(h, { firmId: h.firmA, class: a.cls, startedAt: ago(h, 30), recordDates: [rec], subject: a.subject });
+        expect(r.verdict === "HELD", `${a.cls} held by a ${scope.kind} hold`, { scope, r });
+      }
+      const h = await make();
+      await h.placeHold(h.firmA, { kind: "PERSON", id: uuid() }, "Sample: another person");
+      await h.placeHold(h.firmA, { kind: "CASE", id: uuid() }, "Sample: another case");
+      await h.placeHold(h.firmA, { kind: "DATE_RANGE", from: new Date("2021-01-01T00:00:00Z"), to: new Date("2021-12-31T00:00:00Z") }, "Sample: another year");
+      const r = await ask(h, { firmId: h.firmA, class: "client_financial", startedAt: ago(h, 30), recordDates: [rec], subject: [{ kind: "CASE", id: c }, { kind: "PERSON", id: p }] });
+      expect(r.verdict === "OK", "holds on another case, person and year do not hold it", r);
     },
   },
   {
