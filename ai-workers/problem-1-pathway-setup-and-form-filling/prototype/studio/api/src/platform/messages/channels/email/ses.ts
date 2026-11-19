@@ -9,7 +9,7 @@ import { SESv2Client, SendEmailCommand, type SESv2ClientConfig } from "@aws-sdk/
 import { createTransport } from "nodemailer";
 import type { FilesPort } from "../../../../../../ports/files.ts";
 import type { Secret } from "../../../config/secret.ts";
-import type { ChannelAdapter } from "../../send/messages.ts";
+import { filesSpaceOf, type ChannelAdapter } from "../../send/messages.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./unsubscribe.ts";
 
 export const SES_PROVIDER = "ses";
@@ -42,15 +42,16 @@ export function sesEmail(o: SesOptions): ChannelAdapter {
       if (!o.sender) throw new Error(`messages: SES did not take ${r.outboxId} (no verified sender is set)`);
       const attachments = [];
       for (const k of r.attachments) {
-        const f = await o.files.get(r.firmId, k);
+        const f = await o.files.get(filesSpaceOf(r.firmId), k);
         if (!f) throw new Error(`messages: attachment of ${r.outboxId} is missing`);
         attachments.push({ filename: k.split("/").at(-1)!, content: Buffer.from(f.bytes), contentType: f.contentType });
       }
       try {
         const info = await transport.sendMail({
           from: { name: r.from.name, address: o.sender }, to: r.to, replyTo: r.replyTo, subject: r.subject, text: r.text, html: r.html, attachments,
-          headers: { ...unsubscribeHeaders(r, o.tokens, o.publicBase), [REF_HEADER]: `${r.firmId}/${r.outboxId}` },
-          ses: { EmailTags: [{ Name: "firm", Value: r.firmId }, { Name: "outbox", Value: r.outboxId }], ...(o.configurationSet ? { ConfigurationSetName: o.configurationSet } : {}) },
+          // PF-19p: a platform account message has no firm; it is tagged "platform", which a bounce notice never matches to a firm.
+          headers: { ...unsubscribeHeaders(r, o.tokens, o.publicBase), [REF_HEADER]: `${r.firmId ?? "platform"}/${r.outboxId}` },
+          ses: { EmailTags: [{ Name: "firm", Value: r.firmId ?? "platform" }, { Name: "outbox", Value: r.outboxId }], ...(o.configurationSet ? { ConfigurationSetName: o.configurationSet } : {}) },
         });
         const id = String((info as { response?: unknown }).response ?? "");
         if (!/^[A-Za-z0-9._-]{1,200}$/.test(id)) throw new Error("no message id");
