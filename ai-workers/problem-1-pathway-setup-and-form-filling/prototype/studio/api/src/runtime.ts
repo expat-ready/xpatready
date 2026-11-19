@@ -10,7 +10,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
+import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, optionsOf, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
@@ -251,11 +251,12 @@ export class Runtime {
   }
 
   /** FO-8: the staff member's "Open a case?" click on a client made from a won prospect (case-clients/prospect-won.ts). */
-  async openCaseFromOffer(ctx: StaffContext, clientId: string, body: unknown) {
+  async openCaseFromOffer(ctx: StaffContext, clientId: string, body: unknown = {}) {
+    const b = parse(OpenCaseFromOffer, body);   // CS-V1: read through its schema before anything else
     const actorOrNone = (id: string | null) => { try { return id ? actorOf(id) : null; } catch { return null; } };
     return openCaseFromOffer<Actor>({ db: this.db, workspaceId: await this.ws.id(), actorOf: actorOrNone, audit: auditEvent, problem,
       createCase: (actor, b, inTx) => this.createCase(actor, b, inTx),
-      clientTypeOf: async (tx, combinationId) => ((await groupOfCombination(tx, combinationId)) === "corporate" ? "CORPORATE" : "INDIVIDUAL") }, ctx, clientId, body);
+      clientTypeOf: async (tx, combinationId) => ((await groupOfCombination(tx, combinationId)) === "corporate" ? "CORPORATE" : "INDIVIDUAL") }, ctx, clientId, b);
   }
 
   /** `inTx` (FO-8): a step run last inside the opening's transaction; a refusal there leaves nothing written. */

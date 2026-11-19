@@ -210,6 +210,9 @@ try {
   await db.platformRoleGrant.create({ data: { firmId: A, staffId: mgr.id, role: "CASE_MANAGER", grantedBy: "seed:fo8" } });
   const unlinked = await openCase(anaClient, await tokenOf(`fo8-mgr-${tag}`, "sample-firm"));
   ok("FO-8 DW3 fail: a staff member with no case user yet → 409 NO_CASE_USER in plain words; nothing opened", unlinked.status === 409 && unlinked.body?.code === "NO_CASE_USER" && casesOf(anaClient) === 0, [unlinked.status, unlinked.body]);
+  const extra = await Promise.all([openCase(anaClient, TR, { clientActor: "user-P", representative: "user-R", caseOfficers: ["user-O"], clientId: randomUUID() }), openCase(anaClient, TR, { clientActor: "user-P", surprise: 1 }), openCase(anaClient, TR, { clientActor: 7 })]);
+  ok("FO-8 DW3 fail (CS-V1): the body is read through its strict schema: a client id, an unknown field or a wrong type is 400 naming the field; nothing opened",
+    extra.every((r) => r.status === 400) && /clientId/.test(JSON.stringify(extra[0].body)) && /surprise/.test(JSON.stringify(extra[1].body)) && /clientActor/.test(JSON.stringify(extra[2].body)) && casesOf(anaClient) === 0, extra.map((r) => [r.status, r.body?.detail ?? r.body]));
   const numbers = () => sql(`select coalesce(string_agg(next_value::text, ',' order by year), '') from firm_case_counter where firm_key = 'sample-firm'`);
   const one = await openCase(anaClient);
   const co1 = sql(`select payload::text from module_event where type = '${EVENT.CASE_OPENED}' and subject_id = '${one.body?.id}'`);
