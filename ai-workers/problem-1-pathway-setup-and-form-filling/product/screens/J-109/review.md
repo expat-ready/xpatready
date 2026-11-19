@@ -148,3 +148,25 @@ Verdict: Approve eb49e116b6a088b80c3eb41c6a2c2a90dd706da3
 * Nothing is open. No Blocker, Major or minor.
 
 Verdict: Approve 497af411d3684d464eefe7f86d150ba94aac1dea
+
+## Re-review R6 (P-277, diff only): `497af411d..306dcd2a9`
+* **No J-109 code or evidence changed.** Since R5 the J-109 changes are only `branch-notes.md` and my R5 section, committed unchanged. `j_109.ts` and the screenshots are untouched.
+* **Both sides are kept.**
+  * `complaints.ts` is unchanged since R5. Against `origin/main`, the head still differs only in PF-21i's files: complaints, routes, idempotency, migration, schema, drawer, session. The card fragment is the one addition.
+  * `platform/MODULE.md` is byte-identical to main's, so the frozen lists are untouched (P-712).
+  * PF-21i's items are in `api/src/platform/MODULE.rows/PF-21i.md`: 2 lines, its `Idempotency-Key` entry point, `idempotency.ts`, and `tests/check_pf21i_idempotent.ts`.
+* **Main since 2973a8f9b (merge base 4aa912c92), on the path J-109 walks:**
+  * No change to complaints, messages, jobs, audit, settings, firm scope, identity, observability, the clock, jobs, mail or audit ports, or the platform web module.
+  * The only touch is one back-relation line on `PlatformStaff` (`foAvailabilitySets`, FO-3a) in `platform.prisma`, which complaints never reads.
+* **Does J-109 need a `MODULE.rows` entry? No.** J-109's own files (`tests/journeys/j_109.ts`, `qa/built/J-109.md`, `screens/J-109/*`) are in no module's `paths:`. `module-cards.py pr` on them gives "PASS module cards: 0 module(s) touched". So J-109 needs neither a fragment nor a `Card unchanged:` line.
+  * Checking the whole branch against main instead flags web-shell, from PF-21i's `record-drawer.tsx` and `session.ts`, with no body given. That belongs to #2012's PR body or fragment, not to J-109, whose PR opens after #2012 is on main.
+* **Note for #2012, not J-109:** main now has `20261119031000_fo3a_hour_sets`, which is later than PF-21i's `20261118233000`. Rows rev 15.2 wants PF-21i's stamp to be later than main's newest when it merges, so #2012 needs another re-stamp. J-109 has no migration.
+* **Rerun at the head.**
+  * Copy `j109r6` on :4438 (never :4400). The walk ran from a scratchpad copy, with its screenshots kept in the scratchpad, so the committed shots are untouched.
+  * **26 passed, 0 failed, twice on the same reused copy.**
+  * Underneath, as in R5: `complaint.record` ×4, `.acknowledge` ×4 and `.close` ×2 as `FIRM_STAFF`, and `complaint.reminder` ×2 as `SYSTEM`, all with a `firm_id`.
+  * `msg_outbox` holds 2 reminder emails, both SERVICE and SENT.
+  * I did not re-run the PF-21 suites; I'm relying on the coordinator's results.
+* Nothing is open for J-109. No Blocker, Major or minor.
+
+Verdict: Approve 306dcd2a9f012d21dc4d57e44f26c16a97c32191
