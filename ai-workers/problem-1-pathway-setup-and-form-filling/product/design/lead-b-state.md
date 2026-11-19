@@ -42,6 +42,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **15:28 IST (Lead 93), owners now running:** FO-9a phone part with J-33 (R1.33, list B6): cloud lane task_cbe0c78a, started 15:26 IST on the founder's "Yes, after the check"; brief `FO-9a.md` (19 Nov amendment). J-109 (R1.109): cloud lane task_f1862778 on claude/vibrant-meitner-3t1yfe. PF-8a (R1.1 hosting as code, the founder's ask): running since 15:2x. Not started: PF-15c (R1.20 sits under Further, P-733) and PF-12p (after #1959 is on main). #2012 and #2224 merged 15:15; #2102 and #2181 merged 15:20; #2029 dequeued 15:21 on the #2224 conflict (fix: comment 7005749630); #2251 and #2252 merged main at 15:26 and wait for a re-Approve.
 
+**15:47 IST: reports now go to Lead 94** (`local_8d88d9c8-bb18-4895-af87-797aa32c61bf`; Lead 93 handed over at 15:46 IST, P-446). Since 15:28: #2262 (J-109) opened; #2262 and #2252 hit the tsc heap crash (comment 7006086992; #2250 queued); #2029's merge fix is at 9d81e06a4, approved; #1961 has a new head, 9a1a5ab86, and needs a re-Approve.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
