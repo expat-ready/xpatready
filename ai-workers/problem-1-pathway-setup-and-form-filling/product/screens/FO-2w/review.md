@@ -57,3 +57,12 @@ CI's merge-queue run. The case-side consumer of `prospect.won` (CS-K1 part 2 is 
 6. m5 (note): `sales/README.md:17` is out of date (it predates this PR).
 
 **Verdict: Approve** (no open Blocker or Major; nothing to fix before merge; m1, m6 and m4 can go with FO-6's suite change).
+
+## Re-review at 974a940
+Scope: only `git diff b160758..974a940`. Two files changed. `tests/check_fo2w_won_event.ts` (+17/-3) has the new W4c checks and `retainer()` now takes an optional `companyId`. `screens/FO-2w/review.md` is committed exactly as I wrote it. No source file changed.
+* **m6: closed.** W4c engages a Corporate prospect through `Corporate.engage` and adds a COMPANY retainer (subject COMPANY plus `company_id`, as `fo_retainer_subject_check` requires). That retainer is signed on paper. The checks: `prospectWon` is true, exactly one `prospect.won` is raised, the payload passes the strict `ProspectWonPayload` parse, type is CORPORATE, the subject is COMPANY with this company's id, and the contacts include the engaged person as primary contact. A Convert afterwards gets 409 and raises nothing more. A `wonSubjectOf` that returned PERSON for a company, or named the wrong company or primary contact, would fail it.
+* **m1: withdrawn.** The case I described cannot happen. `fo_retainer_one_live_per_prospect` (fo5 migration `20261114210000`, lines 254-255) is a partial unique index on (firm_id, prospect_id) where kind is RETAINER and status is not WITHDRAWN or EXPIRED. CLIENT_SIGNED, SIGNED and SIGNED_OFFLINE are all live, so a prospect never holds two signed retainers. The `retainerId` narrowing is only a guard, and an untested guard is no finding.
+* **m4: deferred to FO-6.** Accepted: `.gitignore` is outside this touch list. m2, m3 and m5 stay as notes.
+* I re-ran it myself: `check_fo2w_won_event` 19 passed, 0 failed (W4c pass and fail both PASS). The source is unchanged since b160758, so my earlier runs of the other suites, J-31, typecheck and module-cards still hold.
+
+**Verdict: Approve** (no open Blocker or Major).
