@@ -32,3 +32,4 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * **#2169 merged 15:19 IST** (09:49:01Z). R1.77 now waits only on J-77: `claude/j77-journey` (c81ed249d) has no PR yet; asked Lead 93 at 15:23 IST. Batch #2259 (#2235 #2208 #2214 #2000 #1961 #2204 on main a668cfd) running.
 * J-77 PR is **#2263** (opened ~15:3x IST by a fresh cloud lane). On its merge, Lead dispatches walks.yml j_77 on main twice.
 * **Lead 94** (local_8d88d9c8-bb18-4895-af87-797aa32c61bf) took over from Lead 93 at 15:46 IST: reports go there.
+* 16:2x IST, batch **#2259** (ci 44500117743): every shard green; only types, job 135479683421, failed: tsc api heap out of memory (SIGABRT 119 s, 0 files checked). The same OOM hit 7 single-PR ci runs 15:26-15:44 IST (44501033834, 44501826898, 44503847441, …), which passed on re-run after 15:48 IST: a flaky runner limit, not #2000's or #2214's. Sent to Lead 94 with the heap-size suggestion.
