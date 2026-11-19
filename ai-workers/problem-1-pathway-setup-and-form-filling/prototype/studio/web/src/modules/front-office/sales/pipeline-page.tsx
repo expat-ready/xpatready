@@ -4,8 +4,12 @@
 // A column shows 200 cards, then "Load more"; the board scrolls inside itself, never the page. The List is the
 // accessible route and carries the filters: stage (with Lost, found only here), owner and the day it was engaged, all kept
 // in the address. The Corporate switch is FO-4c's.
+// FO-4 part 2a-ii (P-736; AG-2-18 rule 7): a card is also moved by dragging it, with the browser's own drag-and-drop
+// (no package). A drop runs the same move as "Move to…", so the server's rules decide: a drop on Won is refused with
+// AG-2-26 rule 3's words and the card stays; a drop on "Lost" opens the loss flow and moves nothing until a reason is
+// saved. "Move to…" stays the keyboard, screen-reader and touch path (a browser's drag-and-drop needs a mouse).
 import * as React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
@@ -30,22 +34,35 @@ function BoardView() {
   // The value on a card comes from the list (the board route carries names and totals only).
   const rows = useQuery({ queryKey: ["fo", "prospects", "list", ""], queryFn: async () => ProspectRows.parse(await staffApi("/front-office/prospects?type=INDIVIDUAL")) });
   const [more, setMore] = React.useState<Record<string, number>>({});
+  const go = useNavigate();
+  // The card being dragged, and the column the pointer is over (for the outline). Only a person who may move
+  // prospects can start a drag, and only from an open stage, exactly as "Move to…" is offered.
+  const [drag, setDrag] = React.useState<{ id: string; number: string; from: string } | null>(null), [over, setOver] = React.useState<string | null>(null);
+  const target = (id: string, drop: () => void) => ({
+    onDragOver: (e: React.DragEvent) => { if (drag && drag.from !== id) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== id) setOver(id); } },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === id ? null : o)); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(null); if (drag && drag.from !== id) drop(); setDrag(null); },
+  });
   if (board.isPending) return <Loading label="Loading the board" />;
   if (board.isError) return <Failed error={board.error} retry={() => board.refetch()} what="the board" />;
   const stages = board.data.stages.filter((s) => s.kind !== "LOST");
   const value = new Map((rows.data ?? []).map((r) => [r.id, r]));
   const drawn = board.data.stages.reduce((n, s) => n + s.prospects.length, 0);
+  const mayDrag = can(me, KEY.edit), lost = board.data.stages.find((s) => s.kind === "LOST");
+  const ring = (id: string) => (over === id ? " ring-2 ring-primary" : "");
   if (!stages.some((s) => s.prospects.length)) return <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No prospects yet. Engage a lead to start one.</p>;
   return (
     <>
       {/* The board route answers at most 1,000 prospects, oldest first (break M1): past that the screen says so. */}
       {drawn >= 1000 ? <Notice tone="warn" title="The board shows your first 1,000 prospects.">Newer ones are not drawn here. Find them in the List, by stage, owner or date.</Notice> : null}
       <p className="text-sm text-text-muted" data-open-totals>Open prospects by value: <Totals lines={board.data.totals} none="no values yet" /></p>
+      {mayDrag ? <p className="text-xs text-text-muted" data-drag-hint>Drag a card to another stage, or use its “Move to…” button (keyboard and touch).</p> : null}
       <div role="region" aria-label="Pipeline board" tabIndex={0} data-board className="flex gap-3 overflow-x-auto rounded-xl pb-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
         {stages.map((s) => {
           const shown = s.prospects.slice(0, more[s.id] ?? PAGE), left = s.prospects.length - shown.length;
           return (
-            <section key={s.id} aria-labelledby={`fo-stage-${s.key}`} data-stage={s.key} className="flex w-72 shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+            <section key={s.id} aria-labelledby={`fo-stage-${s.key}`} data-stage={s.key} className={`flex w-72 shrink-0 flex-col gap-2 rounded-xl border border-border bg-surface p-3${ring(s.id)}`}
+              {...target(s.id, () => move.mutate({ id: drag!.id, number: drag!.number, from: drag!.from, to: s }))}>
               <header>
                 <h2 id={`fo-stage-${s.key}`} className="flex items-center justify-between gap-2 text-sm font-semibold">{s.label}<span data-count className="text-xs font-normal text-text-muted">{s.prospects.length}</span></h2>
                 <p className="mt-0.5 text-xs text-text-muted"><Totals lines={s.totals} none="No values" /></p>
@@ -54,7 +71,9 @@ function BoardView() {
                 {shown.map((p) => {
                   const v = value.get(p.id);
                   return (
-                    <li key={p.id} data-card={p.number} className="rounded-lg border border-border bg-surface-raised p-3">
+                    <li key={p.id} data-card={p.number} className={`rounded-lg border border-border bg-surface-raised p-3${mayDrag && s.kind === "ACTIVE" ? " cursor-grab active:cursor-grabbing" : ""}${drag?.id === p.id ? " opacity-50" : ""}`}
+                      draggable={mayDrag && s.kind === "ACTIVE"} onDragEnd={() => { setDrag(null); setOver(null); }}
+                      onDragStart={(e) => { e.dataTransfer.setData("text/plain", p.number); e.dataTransfer.effectAllowed = "move"; setDrag({ id: p.id, number: p.number, from: s.id }); }}>
                       <Link to={`/front-office/prospects/${p.id}`} className="text-sm font-medium text-text-link hover:underline [overflow-wrap:anywhere]">{p.name}</Link>
                       <p className="mt-0.5 text-xs text-text-muted">{p.number}{owners.oneUser ? "" : ` · ${owners.name(p.ownerStaffId)}`}{v && v.valueCents !== null ? ` · ${money(v.valueCents, v.currency)}` : ""}</p>
                       {can(me, KEY.edit) && s.kind === "ACTIVE" ? <div className="mt-2 flex justify-end"><MoveMenu prospect={p} from={s.id} stages={stages} move={move} /></div> : null}
@@ -66,6 +85,14 @@ function BoardView() {
             </section>
           );
         })}
+        {/* Lost has no column (lost prospects are in the List): this is only where a card is dropped to mark it lost. */}
+        {mayDrag && can(me, KEY.lose) && lost ? (
+          <section aria-label="Drop here to mark a prospect lost" data-drop-lost className={`flex w-56 shrink-0 flex-col gap-1 rounded-xl border border-dashed border-border p-3 text-sm text-text-muted${ring(lost.id)}`}
+            {...target(lost.id, () => go(`/front-office/prospects/${drag!.id}?lost=1`))}>
+            <h2 className="text-sm font-semibold text-text">{lost.label}</h2>
+            <p className="text-xs">Drop a card here to mark it lost. You are asked why first; nothing moves until you save.</p>
+          </section>
+        ) : null}
       </div>
     </>
   );

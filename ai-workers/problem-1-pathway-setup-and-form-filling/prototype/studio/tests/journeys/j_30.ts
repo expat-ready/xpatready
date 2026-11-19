@@ -9,6 +9,9 @@
 //   W2     DW8: Engage makes a prospect in Engaged; a second Engage says so (BR-7);
 //   W3     the board: totals per currency, never added (R1.31); DW9: "Move to…" by keyboard only, Won not offered, a
 //          move into Won by the API refused, a stale move refused and the screen read again (BR-8);
+//   W3d    FO-4 part 2a-ii (P-736): a card is dragged to another stage at 1440, 1024 and 400 px (the stage, the move
+//          and the audit line read back); a drag onto Won is refused with rule 3's words; a drag onto Lost opens the
+//          loss flow; no drag without the edit key; the keyboard "Move to…" still works;
 //   W4     DW13: 200 cards per column page, then Load more; no sideways page scroll at 375, 1024 and 1440 px; axe;
 //   W5     DW10: Mark lost without a reason is refused at the field; with one it is found under Stage: Lost (BR-9);
 //   W6     DW11: Convert asks yes/no with AG-02's warning; Undo needs a reason and is not offered once a retainer is
@@ -165,6 +168,40 @@ await api(tok.O, "POST", `/prospects/${anaId}/move`, { stageId: stage("CONSULT")
 await owner.getByRole("button", { name: /Move to…/ }).click(); await owner.getByRole("menuitem", { name: "Qualified" }).click();
 ok("J-30 W3 DW9 fail: on the prospect's screen a stale version is refused naming who moved it, and the screen then shows Consult", await toast(owner, `${O.name} moved this to Consult. Nothing was changed.`) && await owner.locator("[data-stage-now]", { hasText: "Consult" }).waitFor().then(() => true, () => false));
 
+// --------------------------------------------- W3d: drag a card (FO-4 part 2a-ii, P-736; AG-2-18 rule 7), three widths
+// The browser's own drag-and-drop; a drop runs the same move as "Move to…". Cyd's card starts in Qualified (A1).
+const stageOf = (id: string) => sql(`select s.key from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${id}'`);
+const moves = (id: string) => sql(`select count(*) from fo_stage_move where prospect_id = '${id}'`), audits = (id: string) => sql(`select count(*) from audit_event where entity_key = '${id}' and action = 'prospect.stage_moved'`);
+// A real mouse path: press on the card, move, bring the target column into view (a person drags to the board's edge and
+// the browser scrolls it; here the board is scrolled), move onto it, release. Playwright's own dragTo scrolls before the
+// drag starts and then picks up whatever card is under the pointer, so it is not used.
+const dragTo = async (pg: Page, num: string, to: string) => {
+  const card = pg.locator(`[data-card="${num}"]`), target = pg.locator(to);
+  await card.scrollIntoViewIfNeeded(); const c = (await card.boundingBox())!;
+  await pg.mouse.move(c.x + 30, c.y + 12); await pg.mouse.down(); await pg.mouse.move(c.x + 45, c.y + 20, { steps: 4 });
+  await target.evaluate((e) => e.scrollIntoView({ inline: "center", block: "nearest" })); const t = (await target.boundingBox())!;
+  await pg.mouse.move(t.x + t.width / 2, t.y + 60, { steps: 8 }); await pg.mouse.up();
+};
+await owner.goto(`${BASE}/front-office/pipeline`); await inStage("QUALIFIED", cyd1.number).waitFor();
+for (const [w, to] of [[1440, "CONSULT"], [1024, "QUALIFIED"], [400, "CONSULT"]] as const) {
+  await owner.setViewportSize({ width: w, height: 900 });
+  const before = [moves(cyd1.id), audits(cyd1.id)].map(Number);
+  await dragTo(owner, cyd1.number, `[data-stage="${to}"]`);
+  ok(`J-30 W3d pass: at ${w} px a card dragged to ${to} lands there; the stage, one PERSON move and one audit line read back; no sideways page scroll`, await inStage(to, cyd1.number).waitFor({ timeout: 10_000 }).then(() => true, () => false) && stageOf(cyd1.id) === to
+    && Number(moves(cyd1.id)) === before[0] + 1 && Number(audits(cyd1.id)) === before[1] + 1 && sql(`select cause from fo_stage_move where prospect_id = '${cyd1.id}' order by seq desc limit 1`) === "PERSON" && await noSideways(owner), [stageOf(cyd1.id), moves(cyd1.id), audits(cyd1.id)]);
+}
+await owner.setViewportSize({ width: 1440, height: 900 });
+await shot(owner, "board-drag-hint-1440");
+const kept = moves(cyd1.id);
+await dragTo(owner, cyd1.number, '[data-stage="RETAINER_SIGNED"]');
+ok("J-30 W3d fail (R1.31): a card dragged onto Won is refused with AG-2-26 rule 3's words, and the card stays in Consult with no new move", await toast(owner, "This stage is set when the prospect becomes a client. Use Convert to client, or Signed offline if the client signed on paper.") && await inStage("CONSULT", cyd1.number).isVisible() && stageOf(cyd1.id) === "CONSULT" && moves(cyd1.id) === kept, [stageOf(cyd1.id), moves(cyd1.id)]);
+await dragTo(owner, cyd1.number, "[data-drop-lost]");
+ok("J-30 W3d pass: a card dragged onto Lost opens the loss flow (why was it lost?) and nothing moves until a reason is saved", await owner.getByLabel("Why was it lost?").waitFor({ timeout: 10_000 }).then(() => true, () => false) && owner.url().includes(`/prospects/${cyd1.id}`) && !owner.url().includes("lost=1") && stageOf(cyd1.id) === "CONSULT" && moves(cyd1.id) === kept);
+await owner.keyboard.press("Escape");
+await owner.goto(`${BASE}/front-office/pipeline`); await inStage("CONSULT", cyd1.number).waitFor();
+await inStage("CONSULT", cyd1.number).getByRole("button", { name: /Move to…/ }).focus(); await owner.keyboard.press("Enter"); await owner.getByRole("menuitem", { name: "Qualified" }).press("Enter");
+ok("J-30 W3d pass: the keyboard \"Move to…\" still works beside drag (the card is back in Qualified)", await inStage("QUALIFIED", cyd1.number).waitFor({ timeout: 10_000 }).then(() => true, () => false) && stageOf(cyd1.id) === "QUALIFIED");
+
 // ----------------------------------------------------------------- W4: 200 cards per column page (DW13), sizes, axe
 for (let i = 0; i < 205; i += 5) await Promise.all([0, 1, 2, 3, 4].map(() => engage(many.id)));
 await owner.goto(`${BASE}/front-office/pipeline`); await owner.locator('[data-stage="ENGAGED"] [data-load-more]').waitFor();
@@ -257,6 +294,11 @@ try {
   await reader.goto(`${BASE}/front-office/prospects/${ben1.id}`); await reader.locator("[data-no-actions]").waitFor();
   const refused = await api(readerTok, "POST", `/prospects/${ben1.id}/lost`, { reasonId: rs[0].id });
   ok("J-30 W6 BR-10 fail: without the edit, lose and convert keys the prospect's screen shows no Move to…, Mark lost or Convert, says why, and the API refuses (403)", await reader.getByRole("button", { name: /Move to…|Mark lost|Convert/ }).count() === 0 && (await reader.locator("[data-no-actions]").innerText()).includes("You can read this prospect") && refused.status === 403, refused.status);
+  await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
+  await reader.goto(`${BASE}/front-office/pipeline`); await reader.locator('[data-stage="ENGAGED"] [data-card]').first().waitFor();
+  const firstCard = await reader.locator('[data-stage="ENGAGED"] [data-card]').first().getAttribute("data-card"), cardId = sql(`select id from fo_prospect where number = '${firstCard}' and firm_id = '${A}'`), was = moves(cardId);
+  await dragTo(reader, firstCard!, '[data-stage="CONSULT"]');
+  ok("J-30 W3d fail (BR-10): without agent/prospect:edit no card can be dragged (not draggable, no Lost drop place, no hint), and a drag attempt moves nothing", await reader.locator('[data-card][draggable="true"]').count() === 0 && await reader.locator("[data-drop-lost], [data-drag-hint]").count() === 0 && stageOf(cardId) === "ENGAGED" && moves(cardId) === was);
   await reader.goto(`${BASE}/front-office/pipeline?view=list`); await reader.locator(`[data-prospect-row="${ben1.number}"]`).waitFor();
   ok("J-30 W6 BR-10 fail: the same person's List has no Move to… on any row", await reader.getByRole("button", { name: /Move to…/ }).count() === 0);
 } finally { for (const k of had) sql(`insert into platform_role_permission (role, permission_key) values ('CASE_OFFICER', '${k}') on conflict do nothing`); }
