@@ -46,6 +46,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **15:48 IST, everything Lead B (7) owns (after a context compaction; nothing lost):** PRs watched: #2029, #1959, #2196, #1961, #2240, #2207, #2243, #2251, #2252, #2262. Branches watched: claude/intelligent-mayer-ymi4sl, claude/screens-fo3st2, claude/screens-fo4p2a-resume. Triggers: see the hand-over file's list. Briefs owed: FO-5b (R1.53) and PF-21c (R1.86). BACKLOG lines owed when Build Lead C's R1.72 chain calls: FO-2w, FO-5rp, FO-2u (shaped in `lead-b-briefs/lane-order-P733-2026-11-19.md`). Open technical questions: none (#2252's answered in 7006086992; #2029's fix in 7005749630). Unconfirmed: PF-19b part 3's lane (due 13:30).
 
+**18:06 IST:** merged since 16:00: #2207 (Mergify parallel mode), #2240 (card tool), #2196 (FO-2 part 3b, ArrivalPort; R1.28 and R1.37), #2251 (FO-4 part 2a-i). Triggers fired: J-37 and J-28 (lanes at the founder's next typed turn), FO-4 part 2a-ii. #2268 (FO-9a phone, R1.33) labelled; owner rulings in 7006779547; follow-ups FO-9a-c and FO-9a-p shaped. #2243's DW8 focus failure (batch #2265) fixed at d19af6038 and bb1174815, relabelled. Batch #2267 failed on #2255's case-clients scope (Build Lead C's). Waiting in the queue: #2029, #2252, #2262, #2268, #2243, #1961.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
