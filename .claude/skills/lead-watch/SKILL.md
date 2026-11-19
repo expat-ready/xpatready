@@ -8,7 +8,7 @@ description: The tech lead's 30-minute check for the Pathway Configurator - reso
 The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **complete** (every capability confirmed by an independent test, P-290), **on time** (the milestone dates), **tokens second only to those** (never a cheaper model or a skipped check to save them). Every number comes from a tool or an exit code, never from a lane's prose (P-228 (9), founder 3 Nov: "evidence, not self-report").
 
 ## Each check: three calls, then act
-1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed; exit = lines to act on) · `list_sessions` only when a lane looks quiet.
+1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed; exit = lines to act on) · `list_sessions` only when a lane looks quiet. **Every check:** `get_usage` on each running Mac session; 45% → it writes its hand-over, 50% → replace it; record with `lead-watch.sh context-read "<name pct, ...>"` (P-565 (2), founder A193).
 2. Act on every `ACT` line in this check. Do not re-read STATE, BACKLOG or DECISIONS on a check; read them only when a ruling needs them.
 3. Tell the founder three to five plain lines in IST (P-302), only what changed, and only a decision, risk or spend unasked. **Open with "🔴 Needs you"** (what, where, what stops; "nothing" when empty), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478).
 
