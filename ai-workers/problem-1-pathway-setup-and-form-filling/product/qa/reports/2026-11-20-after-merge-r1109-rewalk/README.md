@@ -1,6 +1,6 @@
 # qa 7 R1.109 re-walk after PF-21j (20 Nov 2026, ~02:1x IST)
 
-Verdict: **Works** on main 6f6efac88 (QA-517's fix PF-21j #2315 merged 01:53 IST). **QA-517 closed.** New: QA-525 (Gap · Minor, a test gap in H4). Live AI off, US$0, no priced button, no demo; nothing run locally: both walks ran on GitHub's runners, started by the tech lead (Lead 97). Reader: a fresh Opus 5.5 at high effort, ran nothing (P-303). The reader's note that the QA-517 row appears twice in BUGS.md was checked and is not so (one row, line 260 on main b2f0c23b1).
+Verdict: **Works** on main 6f6efac88 (QA-517's fix PF-21j #2315 merged 01:53 IST). **QA-517 closed.** New: QA-525 (Gap · Minor, a test gap in H4). Live AI off, US$0, no priced button, no demo; nothing run locally: both walks ran on GitHub's runners, started by the tech lead (Lead 97). Reader: a fresh Opus 5.5 at high effort, ran nothing (P-303). The reader's note that the QA-517 row appears twice in BUGS.md was checked and is not so (one row, line 260 on main b2f0c23b1); nor does its pack's `bugs-open.md` (here `bugs-open-reader.md`) list QA-517 twice.
 
 ## Files
 | File | What it is |
