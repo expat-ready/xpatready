@@ -297,3 +297,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     5. R1.102: queued until PF-30a lands.
   * R1.80: under P-533 the Lead runs Adobe Validate on the Mac and the founder spot-checks; I offered to run it by computer use if handed it.
   * Asked Lead B for the ETAs of FO-8 and the FO-2 note routes.
+* 10:49 IST 19 Nov (Lead 87): J7 plan approved. R1.77 and R1.74 in flight; R1.72 only if FO-8 lands within a day; R1.76 case-side parts first, in series with R1.72 on runtime.ts; R1.102 queued until PF-30a. **R1.80's QA-165 Adobe run is mine** (computer use from this Mac, P-533; Lead 87 gets the founder's time for the Acrobat grant). CS-K1 part 2 brief written (`CS-K1-2.md`).
