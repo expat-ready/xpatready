@@ -19,7 +19,7 @@
 #            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run), or by hand (workflow_dispatch).
 #   full run — CI-PRE (P-731, founder 19 Nov, "enforced, not text"): the label also needs one green full run on the head:
 #            a run of main's ci.yml by workflow_dispatch (comment-run.yml's "/run full"), named "full-run PR #<n> <head>"
-#            by its own inputs, on a commit of main's history (so its jobs were main's, not the PR's), ended success. A red
+#            by its own inputs, on a commit of main's first-parent chain (so its jobs were main's, not a PR's), ended success. A red
 #            or missing one refuses the label and names the failing parts (the run's failed jobs). A records-only PR
 #            (records-only.sh, main's one definition) is exempt. With FULL_FROM set (the repository variable
 #            FULL_RUN_FROM, a UTC time like 2026-11-20T06:00:00Z), a head whose Approve line is older keeps the earlier
@@ -38,7 +38,7 @@ set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -72,8 +72,8 @@ san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-
 # Records-only: main's one definition on the PR's file names AND the label "records" that records-label.yml sets from a
 # full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
 records() { has records && [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
-failing() {  # a run's id → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable
-  api "$API/repos/$REPO/actions/runs/$1/jobs?filter=latest&per_page=100" 2>/dev/null \
+failing() {  # a run's id [all] → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable. all: in any attempt
+  api "$API/repos/$REPO/actions/runs/$1/jobs?filter=${2:-latest}&per_page=100" 2>/dev/null \
     | jq -r '[.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "retry-comment")] | (map(select(. != "ci")) | if length > 0 then . else empty end) // . | .[]' 2>/dev/null | san | cut -c1-120 | grep .; true; }
 comments() { [ -n "${cs:-}" ] || cs=$(pages "repos/$REPO/issues/$PR/comments"); }
 full() {  # $@ commits → full_state (success|failure|pending|none), full_why
@@ -88,7 +88,10 @@ full() {  # $@ commits → full_state (success|failure|pending|none), full_why
   for c in "$@"; do t="full-run PR #$PR $c"
     while IFS=$'\t' read -r id st co url sha; do
       [[ "$id" =~ ^[0-9]+$ && "$sha" =~ ^[0-9a-f]{40}$ ]] || continue
-      git merge-base --is-ancestor "$sha" "$MAIN_REF" 2>/dev/null || continue   # the run's workflow file was main's
+      # The run's workflow file was main's own: its commit is on main's first-parent chain (the merges main itself holds).
+      # An ancestor is not enough: an intermediate commit of any merged PR is one, with its own ci.yml (breaker R3-M2).
+      [ -s "$H.m" ] || git rev-list --first-parent "$MAIN_REF" > "$H.m" 2>/dev/null
+      grep -qx "$sha" "$H.m" || continue
       if [ "$st $co" = "completed success" ]; then full_state=success; full_why="full run $id green on ${c:0:9}"; return; fi
       [ -n "$first" ] || first="$id"$'\t'"$st"$'\t'"$url"$'\t'"$c"
     done < <(jq -r --arg t "$t" 'select(.title == $t) | [.id, .status, (.conclusion // "none"), .html_url, .head_sha] | @tsv' "$H.f")
@@ -122,16 +125,19 @@ covered() {  # 0 when no failed merge batch held this PR, or a comment line cove
   for sha in $(jq -rs --arg r "$REPO" --argjson n "$PR" '[.[] | select(.login == "mergify[bot]" and (.ref | startswith("mergify/merge-queue/")) and .repo == $r)
       | select(([(.title // "") | scan("#([0-9]+)") | .[0] | tonumber] + [(.body // "") | scan("(?m)^\\s*-\\s*number:\\s*([0-9]+)\\s*$") | .[0] | tonumber]) | index($n))
       | .sha | select(test("^[0-9a-f]{40}$"))][0:10][]' "$H.p"); do
-    c=$(api "$API/repos/$REPO/commits/$sha/check-runs?check_name=ci&per_page=100") || { why="a merge batch's ci cannot be read"; return 1; }
-    c=$(jq -r '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last // empty | [.status, (.conclusion // ""), (.completed_at // "0"), (.details_url // "")] | @tsv' <<< "$c")
+    c=$(api "$API/repos/$REPO/commits/$sha/check-runs?check_name=ci&filter=all&per_page=100") || { why="a merge batch's ci cannot be read"; return 1; }
+    # Every attempt counts (filter=all): a batch that failed stays failed, whatever a later re-run of its run says, and
+    # the time is its first failure's (breaker R3-M1: anyone with write access can re-run a finished run).
+    c=$(jq -r '[.check_runs[] | select(.app.slug == "github-actions" and .status == "completed")] as $a | ([$a[] | select(.conclusion == "failure" or .conclusion == "timed_out")] | sort_by(.completed_at // "0") | first) as $f
+      | if $f then ["failed", ($f.completed_at // "0"), ($f.details_url // "-")] elif any($a[]; .conclusion == "success") then ["passed", "-", "-"] else ["other", "-", "-"] end | @tsv' <<< "$c")
     # LABELED_AT (the sweep: when the label now on the PR was put on): a batch that failed after it is not a relabel's
     # business (the batch's other PRs keep their label); one that failed before it is.
-    if [ -n "${LABELED_AT:-}" ]; then case "$c" in completed$'\t'failure*|completed$'\t'timed_out*) [[ "$(cut -f3 <<< "$c")" < "$LABELED_AT" ]] || continue;; esac; fi
-    case "$c" in completed$'\t'success*) return 0;; completed$'\t'failure*|completed$'\t'timed_out*) rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$c"); break;; esac
+    if [ -n "${LABELED_AT:-}" ]; then case "$c" in failed*) [[ "$(cut -f2 <<< "$c")" < "$LABELED_AT" ]] || continue;; esac; fi
+    case "$c" in passed*) return 0;; failed*) rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$c"); break;; esac
   done
   [ -n "$rid" ] || return 0
   comments || { why="its comments cannot be read"; return 1; }
-  names=$(failing "$rid"); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
+  names=$(failing "$rid" all | sort -u); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
   lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
   [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(tick <<< "$names" | paste -sd ';' - | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
   # A whole name: "kindly" does not name the part "kind", nor "shard (30)" the part "shard (3)".

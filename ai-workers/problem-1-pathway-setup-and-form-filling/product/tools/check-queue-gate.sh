@@ -147,6 +147,10 @@ nofull; full 46 7 $HEAD1 completed success; full 47 7 $HEAD1 completed failure; 
 ok "full run: a green run and a newer red one on the same head: a green is a green, labelled" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 nofull; full 48 7 $HEAD1 completed success "$OFFMAIN"; run label 7
 ok "full run forged: a run whose own commit is not on main's history (a tag or branch named main, the PR's ci.yml): refused" "$(nolabel && echo 1)" "$out / $log"
+nofull; full 48 7 $HEAD1 completed success "$(git -C "$T/git" rev-parse b501)"; run label 7
+ok "full run forged: a run on an intermediate commit of a merged PR (an ancestor of main, not on its first-parent chain: that commit's own ci.yml): refused" "$(nolabel && echo 1)" "$out / $log"
+nofull; full 48 7 $HEAD1 completed success "$(git -C "$T/git" rev-parse main~1)"; run label 7
+ok "full run: a run on an earlier commit of main's own chain counts (main moved on since): labelled" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 nofull; full 48 7 $HEAD1 completed success "$MAINSHA" claude/x; run label 7
 ok "full run forged: a dispatch on the PR's own branch: refused" "$(nolabel && echo 1)" "$out / $log"
 nofull; full 48 7 $HEAD1 completed success "$MAINSHA" main pull_request; run label 7
@@ -197,7 +201,7 @@ bci() { jq -n --arg c "$2" --arg id "$3" '{check_runs: [{app: {slug: "github-act
 cov() { jq -n --arg h $HEAD1 --arg a "${2:-OWNER}" --arg b "$1" '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "x"}, author_association: $a, body: $b}]' > "$T/fx/comments-7.json"; }
 nofull; full 50 7 $HEAD1 completed success; PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main"; bci $BSHA failure 900; jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
 cov "nothing yet"; TRIG=approve run label 7
-ok "failed batch: no \"Batch failures covered\" line: refused, naming the run and its failed parts" "$(nolabel && grep -qF 'failed merge batch run 900 (failed: `shard (3)`; `regression (C1.1 C1.2, 2)`) and no PR comment line "Batch failures covered: 900:' <<< "$log" && echo 1)" "$out / $log"
+ok "failed batch: no \"Batch failures covered\" line: refused, naming the run and its failed parts" "$(nolabel && grep -qF 'failed merge batch run 900 (failed: `regression (C1.1 C1.2, 2)`; `shard (3)`) and no PR comment line "Batch failures covered: 900:' <<< "$log" && echo 1)" "$out / $log"
 cov "Batch failures covered: 900: shard (3)"; TRIG=approve run label 7
 ok "failed batch: one failed part missing from the line: refused, naming it" "$(nolabel && grep -qF 'does not name every failed part of that merge batch run: missing `regression (C1.1 C1.2, 2)`' <<< "$log" && echo 1)" "$out / $log"
 cov "Fixed both.
@@ -231,6 +235,14 @@ HEADS=$HEAD1 RELABEL=1 run proof 7
 ok "proof with RELABEL=1 (the label was just put on by hand): exit 1 without the line" "$([ $r = 1 ] && grep -q 'Batch failures covered: 900' <<< "$out" && echo 1)" "exit $r: $out"
 HEADS=$HEAD1 run proof 7
 ok "proof without RELABEL (a push, Mergify's queued): the batch rule is not asked" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+# a re-run of the failed batch's run (anyone with write access can start one) changes nothing: every attempt counts
+jq -n '{check_runs: [{app: {slug: "github-actions"}, status: "completed", conclusion: "failure", started_at: "2026-11-19T04:00:00Z", completed_at: "2026-11-19T04:30:00Z", details_url: "https://github.test/o/r/actions/runs/900/job/1"},
+  {app: {slug: "github-actions"}, status: "completed", conclusion: "success", started_at: "2026-11-19T08:00:00Z", completed_at: "2026-11-19T08:40:00Z", details_url: "https://github.test/o/r/actions/runs/900/job/9"}]}' > "$T/fx/checks-$BSHA.json"
+run label 7
+ok "failed batch: its run re-run to green later is still a failed batch: refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
+jq '.check_runs[1].conclusion = "failure"' "$T/fx/checks-$BSHA.json" > "$T/fx/x.json" && mv "$T/fx/x.json" "$T/fx/checks-$BSHA.json"; LAT=2026-11-19T05:00:00Z run eligible 7
+ok "failed batch: its run re-run red after the label was put back: the first failure's time counts, the line is still asked" "$([ $r = 1 ] && grep -q 'run 900' <<< "$out" && echo 1)" "exit $r: $out"
+bci $BSHA failure 900
 batch 902 $BOK "merge queue: checking #7 on main"; bci $BOK success 902; run label 7
 ok "failed batch: a newer batch holding the PR passed: nothing to cover, labelled" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main" someone; run label 7

@@ -81,7 +81,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full|product/tools/queue-gate.sh|s/^  fullproof "\$head" .. return 1/  true/|check-queue-gate.sh
 15 full head|product/tools/queue-gate.sh|s/select(.title == \$t)/select(true)/|check-queue-gate.sh
 15 full green|product/tools/queue-gate.sh|s/if \[ "\$st \$co" = "completed success" \]; then/if true; then/|check-queue-gate.sh
-15 full main|product/tools/queue-gate.sh|s/git merge-base --is-ancestor "\$sha" "\$MAIN_REF" 2>\/dev\/null .. continue/true/|check-queue-gate.sh
+15 full main|product/tools/queue-gate.sh|s/^      grep -qx "\$sha" "\$H.m" .. continue/      true/|check-queue-gate.sh
+15 full chain|product/tools/queue-gate.sh|s/git rev-list --first-parent "\$MAIN_REF" > /git rev-list "$MAIN_REF" > /|check-queue-gate.sh
 15 full event|product/tools/queue-gate.sh|s/select(.event == "workflow_dispatch" and /select(/|check-queue-gate.sh
 15 full branch|product/tools/queue-gate.sh|s/and .head_branch == "main" and/and/|check-queue-gate.sh
 15 full file|product/tools/queue-gate.sh|s/ and ((.path \/\/ "") . split("@")\[0\]) == \$wf//|check-queue-gate.sh
@@ -106,7 +107,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 batch run|product/tools/queue-gate.sh|s/Batch failures covered: \*\$rid \*:"/Batch failures covered: *[0-9]* *:"/|check-queue-gate.sh
 15 batch bot|product/tools/queue-gate.sh|s/select(.login == "mergify\[bot\]" and /select(/|check-queue-gate.sh
 15 batch sweep|product/tools/queue-gate.sh|s/judge \&\& { \[ -z "\${LABELED_AT:-}" \] .. covered; } \&\&/judge \&\&/|check-queue-gate.sh
-15 batch since|product/tools/queue-gate.sh|s/\[\[ "\$(cut -f3 <<< "\$c")" < "\$LABELED_AT" \]\] .. continue;;/true;;/|check-queue-gate.sh
+15 batch since|product/tools/queue-gate.sh|s/\[\[ "\$(cut -f2 <<< "\$c")" < "\$LABELED_AT" \]\] .. continue;;/true;;/|check-queue-gate.sh
+15 batch rerun|product/tools/queue-gate.sh|s/sort_by(.completed_at \/\/ "0") . first) as \$f/sort_by(.completed_at \/\/ "0") . last) as $f/|check-queue-gate.sh
 15 batch at|product/tools/label-sweep.sh|s/PR=\$pr LABELED_AT="\${at:-}" bash/PR=$pr bash/|check-label-sweep.sh
 15 full reviewed|../../.github/workflows/ci.yml|s/^            grep -qx .\[1-9\]\[0-9\]\*. <<< "\$ok" .. {.*/            true/|check-queue-gate.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
