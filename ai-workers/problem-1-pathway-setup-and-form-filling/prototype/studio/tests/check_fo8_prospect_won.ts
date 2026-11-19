@@ -97,7 +97,7 @@ try {
   const counter = (key = "sample-firm") => sql(`select coalesce((select next_value from case_client_counter where firm_key = '${key}' and workspace_id = '${deps.workspaceId}'), 0)`);
   const tokenOf = async (actorId: string, firmKey: string) => { const r = await call(BASE, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(`sign-in ${actorId}: ${JSON.stringify(r.body)}`); return r.body.token as string; };
   const TR = await tokenOf("user-R", "sample-firm"), TS = await tokenOf("user-S", "sample-solo");
-  const openCase = (clientId: string, token: string | undefined = TR, body: Record<string, unknown> = { clientActor: "user-P", representative: "user-R", caseOfficers: ["user-O"] }, actor?: string) => call(BASE, "POST", `/api/runtime/clients/${clientId}/open-case`, { token, actor, body });
+  const openCase = (clientId: string, token: string | null = TR, body: Record<string, unknown> = { clientActor: "user-P", representative: "user-R", caseOfficers: ["user-O"] }, actor?: string) => call(BASE, "POST", `/api/runtime/clients/${clientId}/open-case`, { token: token ?? undefined, actor, body });
   const casesOf = (clientId: string) => count("runtime_case", `client_id = '${clientId}'`);
   const opened = (prospectId: string) => count("module_event", `type = '${EVENT.CASE_OPENED}' and payload->>'prospect_id' = '${prospectId}'`);
 
@@ -136,7 +136,7 @@ try {
   // ------------------------------------------------------------------------------------------ DW3: "Open a case?"
   const anaClient = first!.clientId;
   ok("FO-8 DW3 pass: the offer opens nothing by itself: after the client is made there is no case and no case.opened", casesOf(anaClient) === 0 && opened(ana.id) === 0);
-  const closed = await Promise.all([openCase(anaClient, undefined), openCase(anaClient, undefined, undefined, "user-R"), openCase(anaClient, await (async () => { const s = await db.platformStaff.create({ data: { firmId: A, actorId: `fo8-ro-${tag}`, email: `fo8-ro-${tag}@sample.invalid`, displayName: "Sample Reader" } }); await db.platformRoleGrant.create({ data: { firmId: A, staffId: s.id, role: "READ_ONLY", grantedBy: "seed:fo8" } }); return tokenOf(`fo8-ro-${tag}`, "sample-firm"); })())]);
+  const closed = await Promise.all([openCase(anaClient, null), openCase(anaClient, null, undefined, "user-R"), openCase(anaClient, await (async () => { const s = await db.platformStaff.create({ data: { firmId: A, actorId: `fo8-ro-${tag}`, email: `fo8-ro-${tag}@sample.invalid`, displayName: "Sample Reader" } }); await db.platformRoleGrant.create({ data: { firmId: A, staffId: s.id, role: "READ_ONLY", grantedBy: "seed:fo8" } }); return tokenOf(`fo8-ro-${tag}`, "sample-firm"); })())]);
   ok("FO-8 DW3 fail: open-case needs a staff session with agent/case:create: no token or x-actor alone → 401, a Read-only session → 403; nothing opened", closed[0].status === 401 && closed[1].status === 401 && closed[2].status === 403 && casesOf(anaClient) === 0, closed.map((r) => r.status));
   const mgr = await db.platformStaff.create({ data: { firmId: A, actorId: `fo8-mgr-${tag}`, email: `fo8-mgr-${tag}@sample.invalid`, displayName: "Sample Case Manager" } });
   await db.platformRoleGrant.create({ data: { firmId: A, staffId: mgr.id, role: "CASE_MANAGER", grantedBy: "seed:fo8" } });
@@ -190,25 +190,25 @@ try {
   // ------------------------------------------------------------------------------------------ DW6: the representative
   const hex = (x: number) => x.toString(16).padStart(64, "0"), TPL = randomUUID();
   sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample ${tag})', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex(1)}', '{client.name}', 'seed:fo8-test', 'seed:fo8-test', now())`);
-  /** A person prospect with a signed retainer, then converted: the retainer row names R, the signed version's merge values `values`. */
-  const signedThenWon = async (given: string, values: Record<string, unknown>) => {
+  /** A person prospect with a signed retainer, then converted: the signed version's merge values are `values`, and the retainer row is changed after signing to name `row`. */
+  const signedThenWon = async (given: string, values: Record<string, unknown>, row: StaffContext) => {
     const l = await lead(given, R, { interestedIn: service }), p = await pros.engage(R, l.id) as { id: string }, RET = randomUUID(), VER = randomUUID();
-    sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${p.id}', 'PERSON', '${l.person.id}', '${T.staffId}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.staffId}', now());
+    sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${p.id}', 'PERSON', '${l.person.id}', '${row === R ? T.staffId : R.staffId}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.staffId}', now());
       insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '${JSON.stringify(values)}', 'retainers/${RET}/v1.docx', '${hex(11)}', 'staff:${R.staffId}');
       update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'; update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RET}'; update fo_retainer set status = 'SIGNED' where id = '${RET}';
-      set session_replication_role = replica; update fo_retainer set representative_staff_id = '${R.staffId}' where id = '${RET}'`);   // the row changed after signing
+      set session_replication_role = replica; update fo_retainer set representative_staff_id = '${row.staffId}' where id = '${RET}'`);   // the row changed after signing
     await pros.convert(R, p.id, {});
     return { id: p.id, retainer: RET, client: (await onProspectWon(db, event(p.id), deps))!.clientId };
   };
-  const fay = await signedThenWon("Fay", { "client.name": "Fay Sample", "representative.staff_id": T.staffId });
+  const fay = await signedThenWon("Fay", { "client.name": "Fay Sample", "representative.staff_id": T.staffId }, R);
   const fayCase = await openCase(fay.client, TR, { clientActor: "user-P", caseOfficers: ["user-O"] });
   ok("FO-8 DW6 pass: the representative of record comes from the signed version's merge values (user-T), though the retainer row, changed after signing, and the event's own copy name user-R",
     fayCase.status === 201 && sql(`select user_id from case_team_member where case_id = '${fayCase.body?.id}' and role = 'LEAD_REPRESENTATIVE' and ended_at is null`) === "user-T"
     && event(fay.id).payload.retainer_id === fay.retainer && event(fay.id).payload.representative_actor_id === "user-R", [fayCase.status, fayCase.body?.detail ?? fayCase.body, event(fay.id).payload.representative_actor_id]);
-  const gus = await signedThenWon("Gus", { "client.name": "Gus Sample" });
+  const gus = await signedThenWon("Gus", { "client.name": "Gus Sample" }, T);
   const gusCase = await openCase(gus.client, TR, { clientActor: "user-P", caseOfficers: ["user-O"] });
-  ok("FO-8 DW6 fail: a signed version that names no representative pre-fills none: the retainer row's user-R is never used, the call asks for one (400 on representative), nothing opened",
-    gusCase.status === 400 && /representative/i.test(JSON.stringify(gusCase.body)) && casesOf(gus.client) === 0 && event(gus.id).payload.representative_actor_id === "user-R", [gusCase.status, gusCase.body]);
+  ok("FO-8 DW6 fail: a signed version that names no representative pre-fills none: the retainer row's and the event's user-T is never used; the case opens with the firm's own default (user-R), as any opening does",
+    gusCase.status === 201 && sql(`select user_id from case_team_member where case_id = '${gusCase.body?.id}' and role = 'LEAD_REPRESENTATIVE' and ended_at is null`) === "user-R" && event(gus.id).payload.representative_actor_id === "user-T", [gusCase.status, gusCase.body?.detail, event(gus.id).payload.representative_actor_id]);
 
   // ------------------------------------------------------------------------------------------ the undo answer (brief point 4)
   const hal = await wonPerson("Hal", R, { interestedIn: service }), halClient = (await onProspectWon(db, event(hal.id), deps))!.clientId;
