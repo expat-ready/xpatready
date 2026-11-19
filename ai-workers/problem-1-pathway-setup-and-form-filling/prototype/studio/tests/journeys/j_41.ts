@@ -75,7 +75,10 @@ async function page(session: string | null): Promise<Page> {
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `j41-${name}.png`), fullPage: true });
 /** What a booker with no session sees on the public page for one day: can the day be chosen, and its times if so. */
 async function publicDay(p: Page, d: typeof MON): Promise<{ open: boolean; times: string[] }> {
-  for (let i = 0; i < 4 && (await p.locator("h2[aria-live]").innerText()) !== d.month; i++) { await p.getByRole("button", { name: "Next month" }).click(); await p.locator("h2[aria-live]", { hasText: d.month }).waitFor({ timeout: 10_000 }); }
+  const shown = () => p.locator("h2[aria-live]").innerText(), n = (words: string) => { const t = new Date(`1 ${words} UTC`); return t.getUTCFullYear() * 12 + t.getUTCMonth(); };
+  for (let i = 0, at = await shown(); i < 6 && at !== d.month; i++, at = await shown()) {   // the three days can straddle a month's end
+    await p.getByRole("button", { name: n(at) < n(d.month) ? "Next month" : "Previous month" }).click(); await p.waitForFunction((was) => document.querySelector("h2[aria-live]")?.textContent !== was, at, { timeout: 10_000 });
+  }
   await p.locator(`[role="group"][aria-label="${d.month}"]`).waitFor({ timeout: 15_000 });
   const btn = p.getByRole("button", { name: d.words, exact: true });
   if (await btn.isDisabled()) return { open: false, times: [] };
@@ -91,16 +94,19 @@ const INSIDE = ["10:00", "10:30", "11:00", "11:30"];
 const judges = (m: { open: boolean; times: string[] }, t: { open: boolean; times: string[] }) => ({ hours: m.open && JSON.stringify(m.times) === JSON.stringify(INSIDE), dayOff: !t.open });
 
 try {
-  // -------------------------------------------------------------- NR: before the walk, W3's judges must fail
+  // -------------------------------------------------------------------------------- W1: the host opens Availability
+  const p = await page(tok);
+  await p.goto(`${BASE}/account/availability`); await p.locator("[data-week-editor]").waitFor({ timeout: 30_000 });
+  ok("J-41 W1: the host opens My account → Availability and sees the firm's hours as \"Normal hours\" (Monday 09:00-17:00)", (await p.locator("[data-set]").first().innerText()).includes("Normal hours") && (await p.getByLabel("Monday hours 1: start").inputValue()) === "09:00" && (await p.getByLabel("Monday hours 1: end").inputValue()) === "17:00");
+
+  // -------------------------------------------------------------- NR: before any change, W3's judges must fail
   const before = await publicPage();
   const [m0, t0] = [await publicDay(before, MON), await publicDay(before, TUE)], nr = judges(m0, t0);
   ok("J-41 NR (fails with no hours or day off set): the Monday offers the firm's 09:00-17:00, so \"only 10:00-11:30\" is false", !nr.hours && m0.times[0] === "09:00" && m0.times.at(-1) === "16:30", m0);
   ok("J-41 NR (fails with no hours or day off set): the Tuesday can be chosen and has times, so \"no slots that day\" is false", !nr.dayOff && t0.times.length > 0, t0);
   await before.context().close();
 
-  // -------------------------------------------------------------------------------- W1: a host sets weekly hours
-  const p = await page(tok);
-  await p.goto(`${BASE}/account/availability`); await p.locator("[data-week-editor]").waitFor({ timeout: 30_000 });
+  // ------------------------------------------------------------------------------ W1: the host sets weekly hours
   const monday = p.locator('[data-day="Monday"]');
   await monday.getByLabel("Monday hours 1: start").fill("10:00"); await monday.getByLabel("Monday hours 1: end").fill("12:00");
   await p.getByRole("button", { name: "Save hours" }).click(); await p.locator("[data-saved]", { hasText: "Saved." }).waitFor({ timeout: 10_000 });
