@@ -31,8 +31,7 @@ Lead 85 → Lead 86 hand-over block word for word in `history/STATE-2026-11-19-0
 | A196 | 19 Nov 10:1x IST: usage: "i have another account and we will resume from new account, work everything that way, don't worry about usage" | recorded: no throttling; at the limit the founder switches account, the next Lead resumes from this page (P-557) |
 | A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
 
-## Engineering set-up tracker (A160)
-Page https://claude.ai/artifact/EYh8cn1M8rTc3Wba3Pp1dP; the table word for word in `history/STATE-2026-11-18-1755-lead80s2-engineering-setup-tracker.md`; the one action list is `design/full-power-plan-2026-11-17.md` (P-690).
+Engineering set-up tracker (A160): section word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1122-lead87s2-setup-tracker-section.md`.
 
 ## Start here (next Lead)
 📅 **21 Nov: run P-702** (evaluation of the adopted changes, plan #181), result to the founder the same day.
