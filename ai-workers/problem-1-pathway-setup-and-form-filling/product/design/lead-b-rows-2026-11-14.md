@@ -2107,3 +2107,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   5. R1.91 (PF-16; brief owed by me);
   6. a free slot.
 * **Build Lead C:** R1.76's note routes are FO-2 part 4 (#2181, queued, red only on main's card until #2195). R1.72's FO-8 is BACKLOG's "case side, release Lead" and not built; its FO side (FO-1p) is merged.
+* **PF-16 brief** (`lead-b-briefs/PF-16.md`): the BACKLOG row is the spec, split into 2 parts (part 1 plan changes and trial controls, part 2 billing emails through `MESSAGES_MAIL` as TRANSACTIONAL). It starts after #1959 merges; `checkDowngrade` for cases waits on PF-15 part 2.
