@@ -17,3 +17,6 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * Lead 90 (~12:2x IST) opens the R1.80 evidence PR after its reviewer approves 16286b647, then sends qa 6 the number.
 * R1.80's pack: `acceptance/C7.2.test.ts` (11/11 on the checkpoint, 16 Nov). The proof is nightly with `capabilities=C7.2`, `data=checkpoint` on main's head (P-339). Rehearsal run on main 4aa912c92: nightly 44471642021.
 * J-77 rehearsal walk on its branch: refused by the session's permission check (dispatch on another lane's branch). The proof walk runs on main after the merge.
+* R1.80 evidence PR is **#2235** (head 16286b647; Lead 90 labels it on green CI).
+* Rehearsal: nightly **44471642021** (main 4aa912c92, `capabilities=C7.2`, `data=checkpoint`), job 135382343344 "packs (C7.2)": `C7.2.test.ts on the checkpoint: exit 0, 11/11 passed (96 s)`, "Gate B: passed". After #2235 merges, two more runs on the new head (pack run + independent re-run); the merge changes only `evidence/c7-2-adobe-validate/result.json`.
+* #2000 head 093d9829b: 31 PR checks green, not yet in a batch. #2214 head ee835cc53: module-cards failed (jobs 135324426439, 135324314780; MODULE.library.md not updated, P-615 (3)). Sent to Lead 90.
