@@ -1,0 +1,11 @@
+# STATE hand-over block Lead 85 → Lead 86 (moved word for word by Lead 86, 09:1x IST 19 Nov)
+
+## Hand-over: Lead 85 → Lead 86, 07:3x IST 19 Nov (read this first; Lead 84's block below stays)
+Standbys: **Lead 87 (local_019a74ed)**, then **Lead 88 (local_ae7ef2c3)** (started 08:5x by Lead 86 after the founder removed two stale worktrees; disk 9.6 GB). Weekly plan 84% at 07:27 (~2%/h → 96% about 13:30 IST, P-714).
+1. **Founder decisions this morning:** P-716 (07:1x) pipeline freeze until Proven 30, P-712 first; P-717 (07:3x) records, rules and pipeline in their own lane at once, so P-715 resumes as the one exception, new checks run report-only for 24 h first. The CK builder (local_f3778712) builds: (a) `parked` label PR (owners and resume 26 Nov sent), then (b) the P-715 Mergify parallel PR; you read both (P-423).
+2. **Lane rule (Lead 85):** keep a lane if its R1 item is within 3 parts of Proven and waits on nothing outside; else park with a resume note. Build Lead C and Lead B applied it (see the P-716 line in Start here). Cloud lanes redirected via the claude.ai prompt box: #2011's lane → FO-2 part 3b (it also picked "add 2 tiny reads" before my stop message; check it pushed FO-4 2a and switched); #2103's lane → J-37.
+3. **Labelled tonight by Lead 85:** #2193 (qa records), #2195 (P-712, read), #2198 (records to main, DECISIONS to P-717 + RULES). Answered #2124 (standing card-only main merge OK).
+4. **Owed:** RULES.md refresh (as of P-710; P-711-P-717 newer, check-docs fails over 3 lag); relabel #2169 after #2173; CS-DL1b line once #2000 is on main; app view not read since ~05:2x (P-339b); lead-watch SLE quiet list (#1994 #2063 #2069 #2101 #2108 #2177, #2032 dequeued) not yet read; library 9 masters behind.
+5. **Founder open asks:** may Lead close #2152 (lapsed P-704 batch; P-707 said close none); ticket #5023043 open, no GitHub reply (posting the dropped schedules still needs his yes); disk: Teams needs his Finder drag (password), then Empty Trash, Clear cache; public repo kept (free Actions minutes), contributor allanturner1234 = a test commit with fake email x@y via #1955, no access.
+
+Lead 84 → Lead 85 hand-over block word for word in `history/STATE-2026-11-19-0735-lead85s2-handover-84-85-block.md`.
