@@ -33,7 +33,8 @@ export function useStages(caseId: string) {
 
 /** The deadline line (Sample everywhere, BR-8). */
 function Deadline({ d }: { d: NonNullable<CaseStageView["deadline"]> }) {
-  return <p className="text-xs text-text-muted" data-stage-deadline>{d.due ? <>{d.label} <span className="font-medium text-text">{day(d.due)}</span></> : d.why} <Pill tone="warn" title={d.why}>Sample</Pill></p>;
+  // CS-DL1 (AG-7-94 r3): the date with its weekday and mark ("Sun 7 Mar 2027 (weekend)"), never moved; Missed once past.
+  return <p className="text-xs text-text-muted" data-stage-deadline>{d.due ? <>{d.label} <span className="font-medium text-text">{d.shown ?? day(d.due)}</span></> : d.why}{d.missed ? <> <Pill tone="danger" title="The date is before today in the firm's time zone">Missed</Pill></> : null} <Pill tone="warn" title={d.why}>Sample</Pill></p>;
 }
 
 /** The strip under the case header; nothing for a one-stage case (no route) or while it loads. */
