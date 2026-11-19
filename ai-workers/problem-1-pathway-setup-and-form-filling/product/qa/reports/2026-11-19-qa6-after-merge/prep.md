@@ -20,3 +20,5 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 * R1.80 evidence PR is **#2235** (head 16286b647; Lead 90 labels it on green CI).
 * Rehearsal: nightly **44471642021** (main 4aa912c92, `capabilities=C7.2`, `data=checkpoint`), job 135382343344 "packs (C7.2)": `C7.2.test.ts on the checkpoint: exit 0, 11/11 passed (96 s)`, "Gate B: passed". After #2235 merges, two more runs on the new head (pack run + independent re-run); the merge changes only `evidence/c7-2-adobe-validate/result.json`.
 * #2000 head 093d9829b: 31 PR checks green, not yet in a batch. #2214 head ee835cc53: module-cards failed (jobs 135324426439, 135324314780; MODULE.library.md not updated, P-615 (3)). Sent to Lead 90.
+* Founder's choice (12:0x IST, via Lead 90): the Lead starts walks.yml runs for qa lanes; qa sends one line (item, journey, pack run or independent re-run) and gets the run id. qa 6 asks only for walks on main after an item's last part merges; the refused branch rehearsal is not re-requested.
+* Disk rule (Lead 90, 12:0x IST): one scratch clone, one node_modules, one test database, 3 GB at most. qa 6 scratch: 8.9 MB.
