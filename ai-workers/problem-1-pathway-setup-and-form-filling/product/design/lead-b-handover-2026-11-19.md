@@ -101,7 +101,7 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 | R1.72 (Build Lead C's) | **FO-2w** brief `lead-b-briefs/FO-2w.md`; BACKLOG row added; IN R1.72's chain. Lane at the founder's next typed turn | build | — |
 
 ### Blockers to chase
-* **#1961 PF-19p** is still at 58de32df9: its migration folder 20261119003000 must be re-stamped after main's newest (20261119081500, check again). Card-conflict fixer A (cloud, [3516bb]) has had it twice by SendMessage (21:09, 21:56). Lead 96 could not find it in the sidebar. It blocks PF-19b part 3 (R1.48) and R1.8. If no new head appears, ask the Lead for a fresh lane with these steps: git mv the folder to a later stamp, keep the SQL byte for byte, fix lines naming the old stamp, push, then a diff-only Approve.
+* **#1961 PF-19p**: re-stamped by Lead 96 itself (22:00 IST, P-699; fixer A is gone): folder 20261119163000_pf19p_platform_account_mail, SQL unchanged, head 18341ccbb. A diff-only review is running; the Lead labels. When it merges, PF-19b part 3 (R1.48) and R1.8 are unblocked. Don't chase fixer A.
 * **#2308 FO-3vr**: ruled "apply" (AG-2-64 r3, comment 7013874319); waiting for its re-review and Approve.
 
 ### Rows and briefs written today (all in `lead-b-briefs/`)
