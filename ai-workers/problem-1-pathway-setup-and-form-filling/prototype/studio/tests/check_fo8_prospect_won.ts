@@ -51,6 +51,7 @@ const { ConsentStore } = await import("../api/src/platform/messages/consent/cons
 const { EVERYONE_SEES_ALL, writeSetting } = await import("../api/src/platform/settings.ts");
 const { seedSampleFirmsFrontOffice } = await import("../api/src/front-office/firm-seed.ts");
 const { foPersonPort } = await import("../api/src/front-office/people/fo-person-port.ts");
+const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
 const { Corporate } = await import("../api/src/front-office/sales/corporate/service.ts");
@@ -60,7 +61,7 @@ type Deps = import("../api/src/case-clients/prospect-won.ts").ProspectWonDeps;
 
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo8-check-signing-key-0123456789abcdef0", () => clock.now());
-const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: APP_GUARD, useClass: ConfigReadGuard },
+const providers = [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: FO_PERSON_PORT, useValue: foPersonPort }, { provide: APP_GUARD, useClass: ConfigReadGuard },
   { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }];
 @Module({ controllers: [RuntimeController, PlatformIdentityController] as never[], providers: providers as never[] }) class TestApp {}
 const nest = await NestFactory.create(TestApp, { logger: false, abortOnError: false });
@@ -193,9 +194,9 @@ try {
   await changing;
   ok("FO-8 DW2 fail (review N2, breaker R2-M2): a case opened by the direct route while the client is being updated waits for the update's commit (the firm's opening lock), so no case is ever opened on a client that then changes under it",
     directDuring.status === 201 && tDirect >= tChanged && sql(`select display_kind from case_client where id = '${cedarClient}'`) === "PERSON" && count("audit_event", `entity_key = '${cedar.id}' and action = 'client.subject_changed'`) === 1, [directDuring.status, tDirect - tChanged]);
-  const acc = await wonPerson("e\u0301".repeat(70), R, { interestedIn: service, email: `acc-${tag}@example.com` }), accCase = await openCase((await onProspectWon(db, event(acc.id), deps))!.clientId);
+  const acc = await wonPerson("q\u0301".repeat(50), R, { familyName: "q\u0301".repeat(50), interestedIn: service, email: `acc-${tag}@example.com` }), accCase = await openCase((await onProspectWon(db, event(acc.id), deps))!.clientId);
   const accName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${accCase.body?.id}' and p.role = 'principal'`);
-  ok("FO-8 DW1 pass (breaker R2-m2): a cut name never ends on a letter that lost its accent", accCase.status === 201 && accName.length <= 120 && /\u0301 Sample$|\u0301$/.test(accName.normalize("NFD")), [accCase.status, accCase.body?.detail, accName.length]);
+  ok("FO-8 DW1 pass (breaker R2-m2): a cut name never ends on a letter that lost its accent (q + U+0301 has no composed form, so a code-point cut would end on the bare q)", accCase.status === 201 && accName.length <= 120 && accName.length >= 118 && accName.endsWith("q\u0301"), [accCase.status, accCase.body?.detail, accName.length]);
   const emo = await wonPerson(`A${"\u{1F600}".repeat(70)}`, R, { interestedIn: service, email: `emo-${tag}@example.com` }), emoClient = (await onProspectWon(db, event(emo.id), deps))!.clientId;
   const emoCase = await openCase(emoClient);
   const emoName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${emoCase.body?.id}' and p.role = 'principal'`);

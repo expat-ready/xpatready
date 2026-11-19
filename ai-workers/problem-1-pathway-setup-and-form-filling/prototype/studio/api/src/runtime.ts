@@ -20,7 +20,9 @@ import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, ty
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
 import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
-import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
+import { clientCode, clientLineOf, clientOfFirm, linkClient, newClient } from "./clients.ts";
+import { FO_PERSON_PORT, type FoPersonPort } from "../../ports/fo-person.ts";
+import { currentFirm, withFirm } from "./platform/firm-scope.ts";
 import { openCaseFromOffer } from "./case-clients/prospect-won.ts"; // FO-8
 import { auditEvent } from "./platform/audit/audit-event.ts";
 import { PermissionKeys, problem, staffOf, type StaffContext } from "./platform/identity/keys.ts";
@@ -139,7 +141,8 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
 
 @Injectable()
 export class Runtime {
-  constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
+  constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs,
+    @Inject(FO_PERSON_PORT) private readonly foPerson: FoPersonPort<Prisma.TransactionClient>) {}
 
   /** CS-C1b (contract §6): the plan limits; the allow-all fake until PF-15's adapter is bound. */
   private entitlements: EntitlementPort = fakeEntitlements();
@@ -311,8 +314,14 @@ export class Runtime {
     const REPLAYED = "replayed";   // CS-C1b review M1: the transaction found the key's case and wrote nothing
     let stagesWritten: { stages: number; doneBefore: number } = { stages: 1, doneBefore: 0 };
     let madeClient: { id: string; code: string } | null = null;   // CS-K1: a client made by this opening (none when one was given)
+    // CS-K1 part 2: the opening runs as the opener's own platform firm (CS-W1's lookup of its key), so the front office's
+    // party is written under PF-12's walls; never a firm from the request (a staff session of another firm is refused).
+    const [{ f: platformFirm }] = await this.db.$queryRaw<{ f: string | null }[]>`SELECT case_lookup.case_firm_id_of_key(${firm!.key})::text AS f`;
+    const asFirm = currentFirm();
+    if (platformFirm && asFirm && asFirm !== platformFirm) fail(`${actor.name} (simulated) is not staff of your firm, so cannot open its case.`, HttpStatus.FORBIDDEN);
+    const inFirm = <T,>(fn: () => Promise<T>) => (platformFirm && !asFirm ? withFirm(platformFirm, fn) : fn());
     try {
-      id = await this.db.$transaction(async (tx) => {
+      id = await inFirm(() => this.db.$transaction(async (tx) => {
         // CS-C1b (SA-3-4, SA-3-39, SA-3-47; P-588 (3); contract §7): the plan limit, checked in this transaction before
         // anything is written or a number taken. One opening per firm at a time (the lock is held until this commits),
         // so two openings at the same moment cannot both pass; a refusal writes nothing and spends no case number.
@@ -328,6 +337,8 @@ export class Runtime {
         // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
         // opening rolls it back with everything else.
         const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
+        // CS-K1 part 2: the new client's front-office party, in this transaction (a rollback removes both).
+        if (made) await linkClient(tx, this.foPerson, made, `staff:${actor.id}`);
         const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
         madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
@@ -354,7 +365,7 @@ export class Runtime {
         }
         if (inTx) await inTx(tx, { id: c.id, caseNumber, combinationId: b.combinationId });
         return c.id;
-      }, { timeout: 15_000, maxWait: 10_000 }); // With the connections busy Prisma's default 2 s and 5 s answered a 500 (P2028)
+      }, { timeout: 15_000, maxWait: 10_000 })); // With the connections busy Prisma's default 2 s and 5 s answered a 500 (P2028)
       if (id === REPLAYED) { const same = await replay(); if (same) return same; }
     } catch (e) {
       if (!unique(e)) throw e;

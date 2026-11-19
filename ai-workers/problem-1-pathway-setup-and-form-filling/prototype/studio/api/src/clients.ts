@@ -4,12 +4,14 @@
 // guard. A client is the firm's own: its firm key is the staff session's (or the opener's), and another firm's client is
 // 404, never 403 (BR-20). The database keeps the rest: the number from case_client_counter, the text and kind checks, the
 // firm id (CS-W1's fill) and the firm-matched keys from runtime_case (migration 20261118230000_csk1_case_client).
-// No front-office code is read or written here (contract §1 rule 4): fo_person_id and fo_company_id stay empty in part 1.
+// No front-office code is read or written here (contract §1 rule 4): part 2 links a client to its front-office party
+// only through FoPersonPort (linkClient), in the caller's transaction.
 import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 import { ClientListQuery, INVISIBLE } from "../../contracts/runtime.ts";
+import type { FoPersonPort } from "../../ports/fo-person.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,11 +25,27 @@ const line = (c: { id: string; clientNumber: number; displayName: string; displa
   ({ id: c.id, number: clientCode(c.clientNumber), display_name: c.displayName, display_kind: c.displayKind as ClientLine["display_kind"] });
 
 /** A new client of a firm, inside the caller's transaction: the firm's next number (a rolled-back caller gives it back),
- *  COMPANY when the combination's Pathway is CORPORATE, else PERSON. The name is the principal's display name. */
+ *  COMPANY when the combination's Pathway is CORPORATE, else PERSON. The name is the principal's display name. Born
+ *  pending (the link check, CS-K1 part 2): the caller links it in the same transaction (linkClient), which clears it. */
 export async function newClient(tx: Tx, a: { workspaceId: string; firmKey: string; combinationId: string; displayName: string; createdBy: string }) {
   const [{ n, kind }] = await tx.$queryRaw<{ n: number; kind: string }[]>`
     select case_client_next_number(${a.workspaceId}::uuid, ${a.firmKey}) as n, case_client_kind_of(${a.combinationId}::uuid) as kind`;
-  return tx.caseClient.create({ data: { workspaceId: a.workspaceId, firmKey: a.firmKey, clientNumber: Number(n), displayName: a.displayName.trim().slice(0, 200), displayKind: kind, createdBy: a.createdBy } });
+  return tx.caseClient.create({ data: { workspaceId: a.workspaceId, firmKey: a.firmKey, clientNumber: Number(n), displayName: a.displayName.trim().slice(0, 200), displayKind: kind, createdBy: a.createdBy, foLinkPending: true } });
+}
+
+type Linkable = { id: string; firmId: string | null; displayName: string; displayKind: string; foPersonId: string | null; foCompanyId: string | null };
+/** CS-K1 part 2 (P-607): links a client to the front office's party through the port, in the caller's transaction: a
+ *  PERSON client to a new fo_person, a COMPANY client to a new fo_company (never a contact person). The firm is the
+ *  client's own firm_id (CS-W1), never one from a request; a client with no platform firm yet is left as it is. The link
+ *  is written only while both ids are empty (a second caller writes nothing and its port call rolls back with it). */
+export async function linkClient(tx: Tx, foPerson: FoPersonPort<Tx>, c: Linkable, actor: string): Promise<boolean> {
+  if (!c.firmId || c.foPersonId || c.foCompanyId) return false;
+  const base = { firmId: c.firmId, actor };
+  const data = c.displayKind === "COMPANY" ? { foCompanyId: (await foPerson.ensureCompanyForClient(tx, { ...base, name: c.displayName })).foCompanyId }
+    : { foPersonId: (await foPerson.ensureForClient(tx, { ...base, displayName: c.displayName })).foPersonId };
+  const n = await tx.caseClient.updateMany({ where: { id: c.id, firmId: c.firmId, foPersonId: null, foCompanyId: null }, data: { ...data, foLinkPending: false } });
+  if (!n.count) throw new Error(`linkClient: client ${c.id} was linked meanwhile`);   // rolls the port's new party back with the caller
+  return true;
 }
 
 /** A client of this firm in this workspace, or null (an id of another firm, or not an id at all, is null alike). */
