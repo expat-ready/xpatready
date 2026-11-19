@@ -98,6 +98,8 @@ batch 203 "$(printf '3%.0s' {1..40})" failure 7200; run
 ok "a batch from outside the hour before left_at does not count" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
 reset; dequeued 10 "$A" < /dev/null; batch 201 "$(printf '1%.0s' {1..40})" failure 600 55; batch 202 "$(printf '2%.0s' {1..40})" failure 300 55; run
 ok "two red batches retesting the same other PR are one broken PR, not main" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
+reset; dequeued 10 "$A" < /dev/null; batch 201 "$(printf '1%.0s' {1..40})" failure 600 "55)(/o/r/pull/66"; run
+ok "one red batch of two other PRs is one broken batch, not main" "$(grep -q 'not requeued' <<< "$log" && echo 1)" "exit $r: $out / $log"
 reset; dequeued 10 "$A" < /dev/null; broken; jq -n '[range(100) | {number: 1, user: {login: "x"}, head: {ref: "x", sha: "x"}, created_at: "2099-01-01T00:00:00Z", body: ""}]' > "$T/fx/batches.json"; run
 ok "a drop older than the newest 100 PRs is left unjudged (exit 2), never an \"own failure\" comment" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r: $out / $log"
 # 3b. A read error: not judged, no comment, exit 2.
