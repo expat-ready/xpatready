@@ -17,6 +17,7 @@ import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
 import { LocalIdentity } from "./local.ts";
+import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
 import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
@@ -180,17 +181,19 @@ export class PlatformIdentity implements OnModuleInit {
   }
 
   /** Seats used = ACTIVE + SUSPENDED staff + invitations neither accepted, revoked nor expired (database clock); the
-   *  limit is the live subscription's plan (AG-1-13, AG1-D3). Over it: 409 PLAN_LIMIT_REACHED, with the seats after
-   *  these additions and how many to remove (PF-4c: "7 of 10 seats after these invites"); `words` gives a caller's own
-   *  sentence (the batch invite). Answers the seat line. */
+   *  limit is the live subscription's plan (AG-1-13, AG1-D3), read through EntitlementPort's real adapter in this same
+   *  transaction (PF-15: the one plan-limit check; fail closed with no live plan). Over it: 409 PLAN_LIMIT_REACHED, with
+   *  the seats after these additions and how many to remove (PF-4c: "7 of 10 seats after these invites"); `words` gives a
+   *  caller's own sentence (the batch invite). Answers the seat line. */
   private async seatCheck(tx: Tx, firmId: string, adding = 1, words?: (limit: number, afterInvites: number, removeCount: number, planName: string | null) => string) {
-    const sub = await tx.platformSubscription.findFirst({ where: firmScope(firmId, { status: { not: "ENDED" as const } }), include: { plan: { select: { seatsLimit: true, name: true } } } });
-    const [{ used }] = await tx.$queryRaw<{ used: number }[]>`select ((select count(*) from platform_staff where firm_id = ${firmId}::uuid and status in ('ACTIVE','SUSPENDED'))
-      + (select count(*) from platform_invitation where firm_id = ${firmId}::uuid and accepted_at is null and revoked_at is null and expires_at > now()))::int as used`;
-    const limit = sub?.plan.seatsLimit ?? 0, afterInvites = used + adding, removeCount = Math.max(0, afterInvites - limit);
-    if (removeCount > 0) problem(409, "Plan limit reached", words ? words(limit, afterInvites, removeCount, sub?.plan.name ?? null) : sub
-      ? `Your plan (${sub.plan.name}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
-      : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
+    const limits = new PgEntitlements(tx, () => this.clock.now());
+    const plan = await limits.limitOf(firmId, "seats");
+    const used = await seatsUsed(tx, firmId);
+    const r = await limits.check(firmId, "seats", used + Math.max(adding, 1) - 1);   // one more is allowed below the limit, so `adding` fit while used + adding - 1 is below it
+    const limit = r.allowed ? (plan.limit ?? 0) : r.limit, afterInvites = used + adding, removeCount = r.allowed ? 0 : Math.max(1, afterInvites - limit);
+    if (!r.allowed) problem(409, "Plan limit reached", words ? words(limit, afterInvites, removeCount, plan.planName) : plan.planCode
+      ? `Your plan (${plan.planName}) allows ${limit} ${limit === 1 ? "person" : "people"}, counting active, suspended and invited people (${used} now). Revoke a pending invitation or deactivate someone first, or change the plan.`
+      : "Your firm has no live subscription, so nobody can be added.", { code: "PLAN_LIMIT_REACHED", metric: "seats", limit, used, upgradePath: "Change the plan in Settings, Billing.", seatsLimit: limit, seatsUsed: used, afterInvites, removeCount });
     return { seatsLimit: limit, seatsUsed: used, afterInvites };
   }
 

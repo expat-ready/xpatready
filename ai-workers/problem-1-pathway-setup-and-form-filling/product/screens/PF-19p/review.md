@@ -431,3 +431,31 @@ Verdict: Approve 1dddeeed90f1ccdf2be34ecacca02ad50d4edb68
 Findings: none (no Blocker, Major or Minor). m-r6 (the SES send-and-bounce test) stays a follow-up row; I have not reopened it.
 
 Verdict: Approve 8966877d977c261253b050f3cded69016d386c7c
+
+## Re-review (merge of main at 152ff1aef)
+
+19 Nov 2026. Diff-only (P-277). I read only the merge `152ff1aef` (origin/main `4aa912c92` into this branch) on top of my record `88d03c665`, which itself adds only review.md to `8966877d9`. I did not edit any code.
+
+* **Main.** I ran `git fetch origin` first. The local head, the remote branch and `152ff1aef` are the same commit. Main is at `4aa912c92`, the merge's second parent.
+* **MODULE.md: only PF-19p's own words, none of main's touched.** `git diff -U0 origin/main HEAD` on the card shows two changed lines and nothing else:
+  - **Entry points (line 10).** I checked by script that the head's line equals main's line with one insertion, just after main's "`MessagesMail.sendIn` writes in the caller's transaction" and before main's closing `)`: "; PF-19p: `platformAccount: true` for a platform account email with no firm. " followed by the invariant text. Every character of main's line is kept.
+  - **The moved text is word for word.** It is my approved bullet at `8966877d9` with only the leading "- " dropped and its final full stop replaced by the `)` that closes main's `MESSAGES_MAIL` entry. The separate bullet is gone, so the words appear once.
+  - **Tests (line 31).** The head's line is main's line, ending `tests/check_aud1b_adapter.ts`, with `, tests/check_pf19p_platform_mail.ts` added before the full stop.
+  - No other line differs from main, including AUD-1b's audit bullet and PF-15 part 1a's section, which main added since my last read.
+  - **Line count.** Main's card is 41 lines, and so is the head's. PF-19p adds no line.
+* **`module-cards.py tree` fails on main too.** I ran it in a detached worktree of `origin/main`. It printed "platform/MODULE.md: 41 lines, over 40" and exited 1. At the head it prints the same line and also exits 1. The red `module-cards` check is therefore main's own 41 lines (#2195 is folding the card), not this PR's. PF-19p edits none of the other rows' lines, as Lead B asked (P-712).
+* **The rest of the code is unchanged from my approval.** Over `prototype/studio`, `origin/main..HEAD` and `9d440b2f4..8966877d9` (the merge base of my approval and main) name the same 21 files. For each of the 20 files other than MODULE.md, the `-U0` +/− lines are identical. Outside `prototype/studio` the PR changes only PF-19p's own records (review.md, break-report.md and the reviewer journey-test).
+* **Migrations.**
+  - The migration did not move. `20261119003000_pf19p_platform_account_mail` is the only migration this PR adds, and its SQL blob is `46df418d3`, the same at `8966877d9` and at the head.
+  - Main's migrations after `20261118200100` are `20261118210000_fo7lk_trust_lock`, `20261118213000_pf15_plan_limits` and `20261118230000_csk1_case_client`. None names `msg_`, `outbox`, `audience` or `idempotency`. They create `platform_plan_limit`, `platform_storage_over`, `case_client` and `case_client_counter`, and alter `runtime_case`. fo7lk's rollback names none of them either.
+  - `20261119003000` is later than main's newest, `20261118230000_csk1_case_client`.
+  - Three fetched branches carry a `20261119003000_` folder: this PR's, `claude/intelligent-mayer-ymi4sl` and `claude/modest-faraday-0k9dsj`. All three hold the same SQL blob `46df418d3`, so they are branches built on PF-19p. No other migration uses the stamp.
+  - **Watch, not a finding.** Open branches carry later stamps, among them `20261119010000_pf18bk_support_keys` and `20261119031000_fo3a_hour_sets` (now in a Mergify queue branch). If one of them lands on main first, this migration would no longer be the newest, and DW4 and the order rule would call for a re-stamp and another merge read.
+* **Run (at `152ff1aef`).** Both exit 0:
+  - `check_pf19p_platform_mail`: 68/0. DW4 says "newest before it: 20261118230000_csk1_case_client".
+  - `check_pf19r_senders`: 24/0.
+  I did not re-run the other suites. The builder reports them all at exit 0, with tsc clean.
+
+Findings: none (no Blocker, Major or Minor). m-r6 (the SES send-and-bounce test) stays a follow-up row; I have not reopened it.
+
+Verdict: Approve. This approves `152ff1aef`. The new head differs from it only by this record.
