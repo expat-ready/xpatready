@@ -80,3 +80,20 @@ Paths below are relative to `prototype/studio/`.
   * At 1024 px and 200 % zoom (720 CSS px) there is no horizontal overflow and the sentence wraps (scratchpad screenshots `brk-1024.png`, `brk-zoom200.png`). No page errors.
 
 Breaker: 0 Blocker, 1 Major, 6 Minor on b6b6b3d484506b76a133408524956317b463597b
+
+## Re-check on 5cbdee05
+Read only `git diff b6b6b3d4 5cbdee05`. A detached worktree at 5cbdee05 ran as copy brk33 on :4435; it is now stopped and removed, along with the scratch files.
+* **F1, F2, F3 fixed:** `+49 23456789012345`, `+49 123456789012345`, `+43 2345`, `+86 1234567890123456` and `… ext 9` / `#5` / `;ext=5` all give 422 with the sentence. There were no 500s across 24 hostile bodies (numbers, arrays, objects, `true`, `"+"`, `"\u0000"`, a lone surrogate, RLO, 41 characters).
+  * A sweep of all 245 regions' example mobiles found that the international, E.164 and 011-from-Canada formats of every one are accepted unchanged. Full-width digits (including `０１１ ４４ …`), Arabic-Indic digits, Persian digits, `(0)` and a trunk `0` after the country code (`+44 020 …`, `+91 098…`, `+234 0803…`) are accepted.
+* **F4 fixed:** a double-click sends 1 PATCH and writes 1 audit line with 1 toast. Saving the same number again returns 200 with no audit line. Retrying after a 422 or a network failure still saves.
+* **F6 fixed:** Escape (field or Save), Cancel and a save return focus to "Edit phone"; Escape is ignored while saving. **F7 fixed:** one sentence for every refusal; `maxLength=40` cuts a pasted 47-character value and the server refuses the cut text.
+* **Held again:** firm B's person 404; no overflow at 1024 px or 200 %; no page errors. **F5** is with the tech lead, not re-counted.
+* **R1 (Minor): numbers dialled with `00` are refused.**
+  * Repro: `0044 20 7946 0000`, `00 44 20 7946 0000`, `0033 6 12 34 56 78`, `0091 98765 43210` and `00447911123456` all give 422 (API and screen).
+  * The `00${cc}` head at `duplicates/phone.ts:27` can never match, because the first parse with region CA (whose prefix is 011) returns no number for `00…`. Yet the doc comment says the "international prefix (00, 011)" is accepted.
+  * Not a regression (b6b6b3d4 refused these too), but staff in most countries outside North America type 00. The sentence does show the way: type +44.
+* **R2 (Minor): a trunk prefix other than `0` after the country code is now refused, though b6b6b3d4 read it correctly.**
+  * Repro: `+7 8 495 123 45 67`, `+375 8 029 123 45 67`, `+36 06 20 123 4567` and `+54 011 15-2345-6789` give 422. On b6b6b3d4 these gave `+74951234567`, `+375291234567` and `+36201234567`. Cause: `phone.ts:28` allows only one `0`. These are informal ways to write the number, and the sentence lets staff retype it.
+* **R3 (Minor): opened from "Fix number", the field returns focus to "Edit phone", not "Fix number".** The opener is unmounted while the field is open, so `isConnected` is false (`lead-page.tsx:36`); the comment says "Edit or Fix number". Usable: same row.
+
+Breaker: 0 Blocker, 0 Major, 3 Minor on 5cbdee053dc48e2d1c1788cfd7db1f300e4c3f90
