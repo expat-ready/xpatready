@@ -65,7 +65,7 @@ ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id
 
 # --- CI-PRE (P-731): the full run and the failed batch
 FULL_WF=".github/workflows/ci.yml"; TEAM='.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"'
-san() { tr -cd 'A-Za-z0-9 ().,_#:/\n-'; }   # a job's name may hold a matrix value worked out from a PR's files: plain marks only
+san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_#:/\n-'; }   # a job's name may hold a matrix value worked out from a PR's files: plain marks only
 records() { [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
 failing() {  # a run's id → its failed jobs' names, one a line (the summary job "ci" aside); nothing when unreadable
   api "$API/repos/$REPO/actions/runs/$1/jobs?filter=latest&per_page=100" 2>/dev/null \
