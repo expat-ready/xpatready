@@ -47,7 +47,7 @@ import { copyStateOf, readinessOfCase, waitingFactsKey, type PreparedForm, type 
 import { lowestOf } from "../../engine/runtime/readiness-figure.ts";
 import { pdfMapInUse } from "../../engine/programs.ts";
 import { draftNote, releaseOutOfDate, reviewCounts, touchedFilings } from "../../engine/runtime/release-update.ts";
-import { caseName, releaseLabel, type Readiness } from "../../contracts/runtime.ts";
+import { caseName, nothingStored, PdfCopyBody, releaseLabel, type Readiness } from "../../contracts/runtime.ts";
 import { caseInputs, diffCache, pinReleases, targetRelease } from "./release-context.ts";
 /** B171 (B169 review M1): the IRCC account in words, from the Forms tab's own contract (contracts/forms.ts), for every
  *  account: "through PR Portal", "on paper, with no IRCC account"; never the raw key (only "APR Portal" had words). */
@@ -775,14 +775,15 @@ export class CasePrepare {
    *  queued copy marked "Copy, not for filing" (never an item, never counted, never locked or filed). A PDF upload or
    *  Paper item has no separate copy: its own PDF is the deliverable. */
   async pdfCopy(actor: Actor, itemId: string, body: unknown) {
+    const b = PdfCopyBody.safeParse(body ?? {}); // CS-V1 part 3: only idempotencyKey, checked before anything is read
+    if (!b.success) throw new HttpException(nothingStored(b.error), HttpStatus.BAD_REQUEST);
     const item = await this.db.filingItem.findUnique({ where: { id: idOf(itemId, "item") } });
     if (!item) fail("No such item.", HttpStatus.NOT_FOUND);
     const c = await this.r.reach(actor, item!.caseId, "officer");
     if (item!.kind !== "form" || !item!.active) refuse(422, "item", "Only a form on this application has a PDF copy.");
     const now = itemIn(await this.build(actor, c), item!.id) as { channel?: string } | undefined;
     if (now?.channel !== "ONLINE") refuse(409, "item", `${item!.itemKey} is filed as ${CHANNEL_WORDS[(now?.channel ?? "PDF_UPLOAD") as keyof typeof CHANNEL_WORDS]}: its own PDF is what is filed, so there is no separate copy. Make its copy from the form.`);
-    const b = (body ?? {}) as { idempotencyKey?: unknown };
-    return this.forms.generate(actor, c.id, item!.itemKey, item!.subjectId, typeof b.idempotencyKey === "string" ? { idempotencyKey: b.idempotencyKey } : {});
+    return this.forms.generate(actor, c.id, item!.itemKey, item!.subjectId, b.data.idempotencyKey ? { idempotencyKey: b.data.idempotencyKey } : {});
   }
 
   /** C7.3: the answer sheet of an Online form item, for the case officer (a client never reads it). */
