@@ -31,6 +31,7 @@ The Mac runs the tech lead, the :4400 demo, qa and at most two builders with tes
 ## Every PR
 * **Title** names the capability IDs it moves (`forms: C11.15 — …`); the first line says "migration" or names a changed shared contract.
 * **Body:** what and why, the plan, checks and results, before/after screenshots for anything visible, "On the demo:" (page at :4400 and what to try), the cost (US$0 unless approved), context share, "Questions" with your recommendation.
+* **The item's last PR** has a line `Completes: R1.n` (several: `Completes: R1.77, R1.78`; pr-rules checks it): at its merge `.github/workflows/item-proof.yml` runs the item's pack and `tests/journeys/j_<n>.ts` on GitHub's runners, records the journey's video and comments the verdict (P-728 (3), P-729); qa reads it and walks once (gate A).
 * Adds `qa/built/<ID>.md` per capability it finishes (one line: the PR and what a person can now do; P-221).
 * **Builders never edit** `STATE.md`, `DECISIONS.md` or `qa/CAPABILITIES.md`; status goes in the PR body; the tech lead updates the records daily.
 * Every business rule has a passing and a failing test; check labels name the capability IDs they prove (`C1.6: …`); `node P/tools/graph.mjs --check` passes; explicit `any` must not rise (`count-any.mjs`).
