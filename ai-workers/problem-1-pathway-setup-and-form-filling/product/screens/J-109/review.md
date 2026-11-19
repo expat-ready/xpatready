@@ -170,3 +170,14 @@ Verdict: Approve 497af411d3684d464eefe7f86d150ba94aac1dea
 * Nothing is open for J-109. No Blocker, Major or minor.
 
 Verdict: Approve 306dcd2a9f012d21dc4d57e44f26c16a97c32191
+
+## Re-review R7 (P-277, diff only): `306dcd2a9..5b04aab9a`
+* **Three files changed.**
+  * `branch-notes.md`: the R6 record, plus the #2012 migration-stamp note. It matches R6.
+  * My R6 section, committed unchanged.
+  * `MODULE.rows/PF-21i.md`: its Tests line drops the backticks around the test path. Same item, same meaning.
+* **No code, test or screenshot changed** (api, web, tests, ports and prisma are identical apart from the fragment).
+* `module-cards.py pr` on the fragment passes, and so does `tree` (15 cards).
+* No re-run needed. Nothing open for J-109.
+
+Verdict: Approve 5b04aab9ae704e7ad24b16152a8b1af30214d66a
