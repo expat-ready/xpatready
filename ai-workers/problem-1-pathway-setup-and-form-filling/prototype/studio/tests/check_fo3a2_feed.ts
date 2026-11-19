@@ -142,7 +142,7 @@ try {
   const big = await go(`/feed?${weekQ}&view=team`, OWNER);
   await setAll(false);
   const it = big.body?.items?.[0] ?? {};
-  const FIELDS = ["id", "status", "mode", "startsAt", "endsAt", "officeTimeZone", "bookerTimeZone", "type", "host", "person", "hangsOn", "outsideHours", "attendance", "hasConsultRecord", "canAnswerAttendance", "canEdit", "attendanceDue"];
+  const FIELDS = ["id", "status", "mode", "startsAt", "endsAt", "officeTimeZone", "bookerTimeZone", "type", "host", "person", "hangsOn", "outsideHours", "attendance", "hasConsultRecord", "cancelledBy", "selfServiceLimitHours", "insideSelfServiceLimit", "canAnswerAttendance", "canEdit", "attendanceDue"];
   ok("FO-3a2 DW10 pass: 60 bookings in one week come back in one answer, each with every field (times in UTC, the office zone named, person name and email, type, host, the lead it hangs on)",
     big.status === 200 && big.body.items.length === 60 && big.body.items.every((x: Record<string, unknown>) => FIELDS.every((k) => k in x)) && it.officeTimeZone === "America/Toronto" && big.body.officeTimeZone === "America/Toronto"
       && /Z$/.test(it.startsAt) && it.person?.name === "Client M Sample" && /@example\.com$/.test(it.person?.email) && it.type?.name === "Free consultation" && it.host?.name?.startsWith("Sample") && it.hangsOn?.kind === "lead" && /^L-/.test(it.hangsOn?.name), { status: big.status, n: big.body?.items?.length, it });
@@ -170,18 +170,48 @@ try {
   const [at30, ownerView] = [(await go(`/feed/${ended}`, CO)).body, (await go(`/feed/${ended}`, OWNER)).body];
   ok("FO-3a2 BR-14 pass: the host's own booking is due at the end + 30 min (attendanceDue), and the host may answer it", at30.attendanceDue === true && at30.canAnswerAttendance === true, at30);
   ok("FO-3a2 BR-14 fail: at the end + 29 min it is not due yet; for an Owner (not the host) it is never pinned, though the Owner may answer it (edit key)", at29.attendanceDue === false && ownerView.attendanceDue === false && ownerView.canAnswerAttendance === true, { at29: at29.attendanceDue, owner: ownerView });
+  const roEnded = (await go(`/feed/${ended}`, RO)).body;
+  ok("FO-3a2 BR-14 fail (review M2): Read-only (no edit key, not the host) sees the ended booking but may not answer its attendance", roEnded.id === ended && roEnded.canAnswerAttendance === false, roEnded);
+  clock.set(new Date(T0 - 3 * HOUR + 10 * 60_000));   // ten minutes into the meeting
+  const during = (await go(`/feed/${ended}`, CO)).body;
+  ok("FO-3a2 BR-14 fail (review M1; AG-4-39 rule 7): while the meeting runs, nobody is asked yet, not even the host", during.canAnswerAttendance === false && during.attendanceDue === false, during);
+  clock.set(new Date(T0 - 3 * HOUR + 30 * 60_000 + 30 * 60_000));
   sql(`update fo_booking set status = 'CANCELLED' where id = '${ended}'`);
+  await db.auditEvent.create({ data: { workspaceId: ws, firmId: A, actor: `staff:${OWNER.id}`, action: "booking.cancelled", entity: "fo_booking", entityKey: ended, summary: "Booking cancelled.", detail: {} } });
   const cancelled = (await go(`/feed/${ended}`, CO)).body;
+  const ownerName = sql(`select display_name from platform_staff where id = '${OWNER.id}'`);
+  ok("FO-3a2 cancelledBy pass (concept §5 \"Cancelled by <who>.\"): a booking a staff member cancelled names them", cancelled.cancelledBy === ownerName, cancelled.cancelledBy);
+  const byBooker = booking(A, CO2.id, pLead);
+  sql(`update fo_booking set status = 'CANCELLED' where id = '${byBooker}'`);
+  await db.auditEvent.create({ data: { workspaceId: ws, firmId: A, actor: "system:booking-link", action: "booking.cancelled", entity: "fo_booking", entityKey: byBooker, summary: "Booking cancelled.", detail: {} } });
+  const [bb, live] = [(await go(`/feed/${byBooker}`, OWNER)).body, (await go(`/feed/${coHosts}`, OWNER)).body];
+  ok("FO-3a2 cancelledBy fail: one cancelled by the booker's link says \"the booker\"; a booking not cancelled names nobody", bb.cancelledBy === "the booker" && live.cancelledBy === null, { bb: bb.cancelledBy, live: live.cancelledBy });
   ok("FO-3a2 BR-14 fail: a cancelled booking is never due, never answerable, never editable", cancelled.attendanceDue === false && cancelled.canAnswerAttendance === false && cancelled.canEdit === false, cancelled);
   const future = (await go(`/feed/${coHosts}`, CO)).body, futureRO = (await go(`/feed/${coHosts}`, RO)).body;
-  ok("FO-3a2 canEdit pass/fail: a Case Officer (edit key) may move or cancel a booking they see; Read-only (no edit key) may not; nobody answers attendance before the start",
+  ok("FO-3a2 canEdit pass/fail: a Case Officer (edit key) may move or cancel a booking they see; Read-only (no edit key) may not; nobody answers attendance before the end",
     future.canEdit === true && futureRO.canEdit === false && future.canAnswerAttendance === false, { future, futureRO });
   const anyway = booking(A, OWNER.id, pLead);
   await db.auditEvent.create({ data: { workspaceId: ws, firmId: A, actor: `staff:${OWNER.id}`, action: "booking.scheduled", entity: "fo_booking", entityKey: anyway, summary: "Consultation booked (Free consultation), booked anyway: outside hours.", detail: { bookedAnyway: true, warnings: ["OUTSIDE_HOURS"] } } });
   const [wOut, wIn] = [(await go(`/feed/${anyway}`, OWNER)).body, (await go(`/feed/${coHosts}`, OWNER)).body];
   ok("FO-3a2 outsideHours pass/fail: a booking saved over FO-3sa's OUTSIDE_HOURS warning says so; one saved without it does not", wOut.outsideHours === true && wIn.outsideHours === false, { wOut: wOut.outsideHours, wIn: wIn.outsideHours });
+  await db.auditEvent.create({ data: { workspaceId: ws, firmId: A, actor: `staff:${OWNER.id}`, action: "booking.rescheduled", entity: "fo_booking", entityKey: anyway, at: new Date(Date.now() + 60_000), summary: "Moved into hours.", detail: {} } });
+  const moved2 = (await go(`/feed/${anyway}`, OWNER)).body;
+  ok("FO-3a2 outsideHours fail (review m1): moved later to a time with no warning, the latest line wins: no longer outside hours", moved2.outsideHours === false, moved2.outsideHours);
+  // The self-service limit (the type's 240 minutes, 4 hours) for the reschedule dialog's sentence.
+  const startsIn = Date.parse(live.startsAt) - (T0 - 3 * HOUR + 60 * 60_000);
+  clock.set(new Date(Date.parse(live.startsAt) - 5 * HOUR));
+  const early = (await go(`/feed/${coHosts}`, OWNER)).body;
+  clock.set(new Date(T0 - 3 * HOUR + 60 * 60_000));
+  ok("FO-3a2 limit pass/fail: the item names the 4-hour limit; 3 h before the start it is inside it, 5 h before it is not",
+    live.selfServiceLimitHours === 4 && startsIn === 3 * HOUR && live.insideSelfServiceLimit === true && early.insideSelfServiceLimit === false, { hours: live.selfServiceLimitHours, inside: live.insideSelfServiceLimit, early: early.insideSelfServiceLimit, startsIn });
 
   await setAll(false);
+  // Break F3: what a booking hangs on is named only to a viewer who may open it (AG-2-64): the Case Officer hosts a
+  // booking on the colleague's lead and sees the booking, but not the lead's number; the lead's owner does.
+  const [coView, co2View] = [(await go(`/feed/${coHosts}`, CO)).body, (await go(`/feed/${coHosts}`, CO2)).body];
+  ok("FO-3a2 hangsOn fail/pass (break F3): the host who may not open the colleague's lead gets no lead named; the lead's owner gets it", coView.id === coHosts && coView.hangsOn === null && co2View.hangsOn?.kind === "lead", { co: coView.hangsOn, co2: co2View.hangsOn });
+  const y0 = await go(`/feed?from=0000-01-01T00:00:00Z&to=0000-01-05T00:00:00Z`, OWNER);
+  ok("FO-3a2 DW10 fail (break F1): a year outside 2000-2099 is refused with 400, never a 500", y0.status === 400, y0.status);
 
   // ------------------------------------------------------------------------------------------- firm walls
   const inB = booking(B, BOWNER.id, client(B, "Client Z"));
