@@ -185,7 +185,11 @@ const offered = await owner.getByRole("menuitem").allInnerTexts();
 ok("J-30 W3 DW9 pass: \"Move to…\" offers the other open stages only: Won, Lost and Nurture are not offered, and the menu says how Won is set", offered.includes("Consult") && !offered.some((x) => /Won|Lost|Nurture|Engaged/.test(x)) && await owner.getByRole("menu").getByText("Won is set when the retainer is signed, or by Convert to client.").isVisible(), offered);
 await shot(owner, "move-to-menu-1440");
 const focused = () => owner.evaluate(() => document.activeElement?.textContent ?? "");
-for (let i = 0; i < 6 && await focused() !== "Consult"; i++) await owner.keyboard.press("ArrowDown");   // opened by Enter, the first item has focus
+// Opened by Enter, the menu takes the focus a moment later: the arrow keys wait for it (pressed earlier they go to the
+// page and nothing is chosen: walk j_31 on 218bac46d), and Enter is pressed only once Consult really has the focus.
+await owner.waitForFunction(() => !!document.activeElement?.closest('[role="menu"]'), null, { timeout: 10_000 });
+for (let i = 0; i < 8 && await focused() !== "Consult"; i++) { await owner.keyboard.press("ArrowDown"); await owner.waitForTimeout(80); }
+await owner.waitForFunction(() => document.activeElement?.textContent === "Consult", null, { timeout: 5_000 });
 await owner.keyboard.press("Enter");
 await inStage("CONSULT", anaRow[0]).waitFor();
 ok("J-30 W3 DW9 pass: chosen by keyboard only (Enter, ArrowDown, Enter), the card is in Consult, one PERSON move is recorded, and focus is on that card's Move to… again", await owner.waitForFunction((n) => document.activeElement?.getAttribute("data-move") === n, anaRow[0], { timeout: 5_000 }).then(() => true, () => false) && sql(`select s.key || '|' || m.cause from fo_stage_move m join fo_stage s on s.id = m.to_stage_id where m.prospect_id = '${anaId}' order by m.seq desc limit 1`) === "CONSULT|PERSON");
