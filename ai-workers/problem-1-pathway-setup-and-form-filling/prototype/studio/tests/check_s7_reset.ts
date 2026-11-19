@@ -22,7 +22,7 @@ const orphans = () => {
   await call("POST", "/demo/reset", { confirm: "RESET" });
   const l = await call("POST", "/demo/load", {});
   if (l.status >= 300) { console.error("STOP  the sample did not load", l.body); process.exit(2); }
-  const old = sql(`select id from workspace limit 1`);
+  const old = sql(`select id from workspace where key <> 'platform-audit' limit 1`);
   // A canada.ca file the finder saved and a Forms tab line change: the two tables Reset missed before S7.
   const combo = sql(`select id from combination where workspace_id='${old}' limit 1`);
   sql(`insert into form_line_action (id, workspace_id, combination_id, action, detail, "by") values ('${randomUUID()}', '${old}', '${combo}', 'edit', '{}', 'user-A')`);

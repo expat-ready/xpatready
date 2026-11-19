@@ -54,6 +54,7 @@ const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
 const { Retainers } = await import("../api/src/front-office/retainers/service.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
+const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -194,10 +195,11 @@ try {
     return id;
   };
   const tpl = await svc.uploadTemplate(ctx(R), { name: "PF-6b retainer" }, { bytes: buildDocx(["Client: {client.name}", "{#fees}{label}: {amount}{/fees}"]), size: 1000 });
-  const X1 = (await svc.draft(ctx(R), prospect(600, R), { templateId: tpl.id, representativeStaffId: T })).id;
-  const X2 = (await svc.draft(ctx(O), prospect(610, O), { templateId: tpl.id, representativeStaffId: T })).id;
+  const P1 = prospect(600, R), P2 = prospect(610, O);
+  const X1 = (await svc.draft(ctx(R), P1, { templateId: tpl.id, representativeStaffId: T })).id;
+  const X2 = (await svc.draft(ctx(O), P2, { templateId: tpl.id, representativeStaffId: T })).id;
   sql(`delete from platform_role_permission where role = 'CASE_OFFICER' and permission_key = 'agent/prospect:view.all'`);
-  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "check", workspaceId: await platformAuditWorkspaceId(db) });
+  const setAll = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "system:check", workspaceId: await platformAuditWorkspaceId(db) });
   const sees = async (f: () => Promise<unknown>) => { try { return !!(await f()); } catch (e) { if ((e as { getStatus?: () => number }).getStatus?.() === 404) return false; throw e; } };
   /** The expected own/all table: who sees which record, with the firm setting on and off. */
   const EXPECT: Record<"on" | "off", Record<string, string[]>> = {
@@ -219,16 +221,23 @@ try {
   };
   const L1 = lead(620, R, "Event (PF-6b)"), L2 = lead(630, O, "Referral (PF-6b)");
   const live = (c: StaffContext): StaffContext => ({ ...c, keys: sql(`select string_agg(distinct rp.permission_key, ',') from platform_role_grant g join platform_role_permission rp on rp.role = g.role where g.staff_id = '${c.staffId}' and g.ended_at is null`).split(",") });
-  const leads = new Leads(db, {} as never);
+  const leads = new Leads(db, {} as never), prospects = new Prospects(db, {} as never);
   const LEADS: typeof EXPECT = {
     on: { "view.all holder (user-R)": [L1, L2], "own-only role copy (user-O)": [L2], "representative (user-T)": [L1, L2], "firm B (user-S)": [] },
     off: { "view.all holder (user-R)": [L1], "own-only role copy (user-O)": [L2], "representative (user-T)": [], "firm B (user-S)": [] },
+  };
+  const PROSPECTS: typeof EXPECT = {
+    on: { "view.all holder (user-R)": [P1, P2], "own-only role copy (user-O)": [P2], "representative (user-T)": [P1, P2], "firm B (user-S)": [] },
+    off: { "view.all holder (user-R)": [P1], "own-only role copy (user-O)": [P2], "representative (user-T)": [], "firm B (user-S)": [] },
   };
   /** The sweep table: every @OwnOrAll route, with how to read one record through it (DW7 fails a marked route missing here). */
   const SWEEP: Record<string, Entry> = {
     "RetainersController.read": { read: (c, id) => svc.read(c, id) },
     "SalesController.read": { read: (c, id) => leads.read(live(c), id), ids: [L1, L2], expect: LEADS },
     "SalesController.list": { read: async (c, id) => (await leads.list(live(c), "all")).find((l) => l.id === id), ids: [L1, L2], expect: LEADS },
+    // FO-2 part 3: prospects follow the leads' table (the representative of a retainer owns no prospect).
+    "SalesController.prospectRead": { read: (c, id) => prospects.read(live(c), id), ids: [P1, P2], expect: PROSPECTS },
+    "SalesController.prospectList": { read: async (c, id) => (await prospects.list(live(c), {})).find((p) => p.id === id), ids: [P1, P2], expect: PROSPECTS },
     "SalesController.sources": { read: async (c, id) => (await leads.sources(live(c))).sources.includes(SOURCE_OF[id]), ids: [L1, L2], expect: LEADS },
   };
   const sweep = async (entry: Entry) => {

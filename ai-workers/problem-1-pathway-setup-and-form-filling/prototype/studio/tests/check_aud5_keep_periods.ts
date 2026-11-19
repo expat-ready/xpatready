@@ -13,11 +13,9 @@ import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
-import { FakeClock } from "../ports/clock.ts";
-import { fakeLegalHolds } from "../ports/legal-hold.ts";
 import { keepPeriodPortContract, type KeepPeriodHarness } from "../ports/contracts/keep-period-port.contract.ts";
 import {
-  ACTIVITY_LOG_WORDS, ACTIVITY_LOG_YEARS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, KEEP_PERIODS, KeepCheckRefused, checkableRows, fakeKeepPeriods,
+  ACTIVITY_LOG_WORDS, ACTIVITY_LOG_YEARS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, KEEP_PERIODS, KeepCheckNotBuilt, checkableRows, fakeKeepPeriods,
 } from "../ports/keep-period.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -56,10 +54,9 @@ ok("AUD-5 DW1 pass: the firm's closed-file row is the firm's setting, a REMINDER
 ok("AUD-5 DW1 pass: billing records start at the fiscal year's end (SA4-D18), breach records 7 years (SA-11-14, the newer text)", row("our_billing").from === "fiscalYearEnd" && row("our_billing").years === 6 && row("breach_record").years === 7 && row("client_financial").years === 7);
 ok("AUD-5 DW1 fail: the rows check() may use leave the College row out (its number plays no part)", checkableRows().length === 6 && !checkableRows().some((r) => r.class === "college_client_file" || r.kind === "REFERENCE"));
 const srcSvc = readFileSync(join(STUDIO, "api", "src", "platform", "keep-period", "service.ts"), "utf8");
-// Part 2: the one rule (keepCheck) never names the College number, and check() with no hold store refuses.
-const ruleSrc = srcPort.slice(srcPort.indexOf("export function decideKeep"), srcPort.indexOf("/** The port."));
-ok("AUD-5 DW1 fail: check()'s rule (decideKeep, keepCheck) never names the College number; with no hold store check() refuses",
-  ruleSrc.length > 500 && !/COLLEGE/.test(ruleSrc) && /keepCheck\(/.test(srcSvc) && await throwsLike(() => fakeKeepPeriods().check(null, { firmId: "0c0c0c0c-0000-4000-8000-0000000000a1", class: "closed_client_file", startedAt: new Date(0), subjects: [{ kind: "FIRM" }] }), (e) => e instanceof KeepCheckRefused && e.code === "NO_HOLD_STORE"));
+const checkBodies = [/async check\(\) \{[^\n]*\}/.exec(srcPort)?.[0] ?? "", /async check\([^)]*\)[^{]*\{[^\n]*\}/.exec(srcSvc)?.[0] ?? ""];
+ok("AUD-5 DW1 fail: check() (fake and adapter) refuses until part 2 and never names the College number",
+  checkBodies.every((b) => b.includes("KeepCheckNotBuilt") && !/COLLEGE/.test(b)) && await throwsLike(() => fakeKeepPeriods().check(null, { firmId: "0c0c0c0c-0000-4000-8000-0000000000a1", class: "closed_client_file", startedAt: new Date(0), subject: "x" }), (e) => e instanceof KeepCheckNotBuilt), checkBodies);
 
 // --------------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
@@ -211,18 +208,14 @@ try {
   } finally { await walledDb.$disconnect(); }
 
   // ------------------------------------------------------------------------------------------------ DW5: the contract
-  const realHolds = fakeLegalHolds(), realClock = new FakeClock();   // PF-21b part 2's real hold adapter is not on main: its fake
-  const real = new KeepPeriods(db, realHolds as never, realClock), ws = sql("select id from workspace where key = 'platform-audit'");
+  const real = new KeepPeriods(db), ws = sql("select id from workspace where key = 'platform-audit'");
   const clearBoth = async () => { sql(`delete from platform_firm_setting where firm_id in ('${FIRM_A}', '${FIRM_B}') and key = '${KEY}'`); };
-  const realHarness = (): KeepPeriodHarness => ({ port: real as never, firmA: FIRM_A, firmB: FIRM_B, clear: clearBoth, set: async (f, y) => { await writeSetting(db, { firmId: f, key: KEY, value: y, by: "staff:contract", workspaceId: ws }); },
-    holds: { tx: (fn) => realHolds.transaction(fn), place: (i) => realHolds.place(i) }, clock: realClock });
-  const fakeHolds = fakeLegalHolds(), fakeClock = new FakeClock();
-  const fake = fakeKeepPeriods({}, { holds: fakeHolds, clock: fakeClock });
-  const fakeHarness = (): KeepPeriodHarness => ({ port: fake, firmA: FIRM_A, firmB: FIRM_B, clear: async () => { fake.set(FIRM_A, null); fake.set(FIRM_B, null); }, set: async (f, y) => fake.set(f, y),
-    holds: { tx: (fn) => fakeHolds.transaction(fn), place: (i) => fakeHolds.place(i) }, clock: fakeClock });
+  const realHarness = (): KeepPeriodHarness => ({ port: real as never, firmA: FIRM_A, firmB: FIRM_B, clear: clearBoth, set: async (f, y) => { await writeSetting(db, { firmId: f, key: KEY, value: y, by: "staff:contract", workspaceId: ws }); } });
+  const fake = fakeKeepPeriods();
+  const fakeHarness = (): KeepPeriodHarness => ({ port: fake, firmA: FIRM_A, firmB: FIRM_B, clear: async () => { fake.set(FIRM_A, null); fake.set(FIRM_B, null); }, set: async (f, y) => fake.set(f, y) });
   const rFake = await runContract(keepPeriodPortContract, "fakeKeepPeriods", fakeHarness, ok);
   const rReal = await runContract(keepPeriodPortContract, "KeepPeriods", realHarness, ok);
-  ok("AUD-5 DW5 pass: the contract passes for the fake and the real adapter", rFake.failed.length === 0 && rReal.failed.length === 0 && rFake.passed.length === 10 && rReal.passed.length === 10);
+  ok("AUD-5 DW5 pass: the contract passes for the fake and the real adapter", rFake.failed.length === 0 && rReal.failed.length === 0 && rFake.passed.length === 5 && rReal.passed.length === 5);
   const broken = await runContract(keepPeriodPortContract, "broken", () => ({ ...fakeHarness(), port: { ...fake, forFirm: async () => ({ closedClientFilesYears: 6, source: "firm setting" as const }) } }), null);
   ok("AUD-5 DW5 fail: an adapter that gives a default number (6) when nothing is set breaks the contract", broken.failed.length > 0, broken);
   let contracts = 0; try { execFileSync(process.execPath, [join(STUDIO, "tools", "check-port-contracts.mjs")], { stdio: "pipe" }); } catch (e) { contracts = (e as { status?: number }).status ?? 1; }
