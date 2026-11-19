@@ -107,3 +107,4 @@ Everything ran on a scratch extract of exactly `acc82fef9`. My copy `rev_pf21j` 
 **Not checked:** a real screen reader, a visible browser pane, an intended user's unaided walk (D17, D20), and CI on the PR.
 
 Verdict: Approve acc82fef943615a75cbe6d48b13b8b2a8891e036
+Verdict: Approve 542ac63c374044029cf7f393cffbeca7bea24a90 (records-only commit after acc82fef9)
