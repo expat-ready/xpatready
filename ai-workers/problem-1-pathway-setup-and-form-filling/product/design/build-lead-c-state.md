@@ -265,3 +265,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     5. R1.59: FO-7ts parts 2-3 → FO-7b → FO-7g → J-59; money lane.
   * Recommended keeping all 5, with no new item until two reach Proven, or holding R1.59 if exactly 4. No J-rows exist yet; I write each when its last code part is queued.
   * Out of flight: R1.72, R1.10, R1.3, and R1.47/48 (asked Lead 86 whether this is Lead B's).
+* 08:16 IST 19 Nov: J-77 brief written (`build-lead-c-briefs/J-77.md`, R1.77's join and walk, for the CS-C1s part 2 lane once #2169 merges). The BACKLOG row text is for the Lead to add.
