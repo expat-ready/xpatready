@@ -22,6 +22,7 @@ The registration seam: one file per feature, and the step folders of growing run
 
 **Tables.** through the services it registers: sectionQuestion, canonicalField, formEdition, libraryChange, proposalItem, combinationForm, sourceAttachment, formFieldMap.
 **Tests.** `tests/check_features_registry.ts`, `tests/check_pf12_walls.ts`, `tests/check_b104_checkpoint.ts`, `tests/check_checkpoint_review_order.ts`, `tests/check_checkpoint_sheet_stable.ts`, `tests/check_c73_parts_checkpoint.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Edit another feature's step or a shared constructor to add yours; add a numbered file.
