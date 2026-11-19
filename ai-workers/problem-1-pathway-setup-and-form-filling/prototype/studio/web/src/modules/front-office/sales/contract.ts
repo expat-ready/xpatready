@@ -38,7 +38,7 @@ export const PublicForm = z.object({
 export type PublicForm = z.infer<typeof PublicForm>;
 export const Thanks = z.object({ thankYouText: z.string() });
 /** The permission keys each button needs (concept §6 as ruled on #1813: reads use `agent/prospect:show`). */
-export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all" } as const;
+export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all", lose: "agent/prospect:lose", convert: "agent/prospect:convert" } as const;
 /** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
 const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", ENGAGED: "Engaged", CLOSED: "Closed" };
 /** A known stored code in plain words; anything else (a source a person typed: "VIP event", "Event, Toronto") is shown
@@ -51,3 +51,29 @@ export const READ_ONLY_REASON = "You can read leads. Taking one needs a role tha
 export const can = (me: Me | undefined, key: string) => !!me?.keys.includes(key);
 /** Unassigned leads are seen by people who may see all leads or assign them (AG-2-13c rule 6; FO-2 common.ts). */
 export const seesUnassigned = (me: Me | undefined) => can(me, KEY.viewAll) || can(me, KEY.assign);
+// FO-4 part 2a: prospects, mirroring FO-2 part 3 (api/src/front-office/sales/prospects.ts) and FO-2b's board
+// (corporate/service.ts `board()`, with FO-2 part 3's totals per currency: never one sum across currencies, R1.31).
+const Money = z.object({ currency: z.string(), valueCents: z.number(), count: z.number() });
+export type Money = z.infer<typeof Money>;
+const Stage = z.object({ key: z.string(), label: z.string(), kind: z.string() });
+export const Board = z.object({
+  type: z.string(), totals: z.array(Money),
+  stages: z.array(Stage.extend({ id: z.string(), totals: z.array(Money), prospects: z.array(z.object({ id: z.string(), number: z.string(), name: z.string(), ownerStaffId: z.string().nullable() })) })),
+});
+export type Board = z.infer<typeof Board>;
+const reason = z.object({ key: z.string(), label: z.string() }).nullable();
+export const ProspectRows = z.array(z.object({
+  id: z.string(), number: z.string(), name: z.string(), ownerStaffId: z.string().nullable(), stage: Stage,
+  valueCents: z.number().nullable(), currency: z.string(), engagedAt: z.string(), lostReason: reason, wonVia: z.string().nullable(),
+}));
+export const Prospect = z.object({
+  id: z.string(), number: z.string(), type: z.string(), leadId: z.string(), leadNumber: z.string(), ownerStaffId: z.string().nullable(), version: z.string(),
+  stage: Stage.extend({ id: z.string() }), person: z.object({ id: z.string(), name: z.string() }).nullable(), company: z.object({ id: z.string(), name: z.string() }).nullable(),
+  valueCents: z.number().nullable(), currency: z.string(), wonVia: z.string().nullable(), retainerSigned: z.boolean(), lostReason: reason, lostNote: z.string().nullable(), engagedAt: z.string(),
+  warning: z.string().optional(), again: z.boolean().optional(), message: z.string().optional(),
+});
+export type Prospect = z.infer<typeof Prospect>;
+export const LostReasons = z.array(z.object({ id: z.string(), key: z.string(), label: z.string() }));
+export const Assignees = z.object({ oneUser: z.boolean(), assignees: z.array(z.object({ staffId: z.string(), displayName: z.string() })) });
+/** An amount in its own currency (R1.31: amounts of different currencies are listed side by side, never added). */
+export const money = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "code", maximumFractionDigits: 0 }).format(cents / 100);
