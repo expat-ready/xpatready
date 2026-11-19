@@ -1,7 +1,7 @@
 // PF-6 part 2a (BR-1 to BR-3; AG-1-10, -13, -69): Invite people, a right panel. Rows of email and roles (Case Officer
 // ticked first; Owner never offered, BR-1), one plain line per row and Compare roles; the seat line for the whole form
 // before anything is sent (over the limit nothing is sent); one call per row; a row the server refuses keeps its words.
-// The API takes no name (PF-4's invite: email and roles; the name comes at sign-up): asked on the PR, not collected here.
+// PF-4dn (AG-1-10): an optional Name per row goes with the invitation; accept uses it for the new staff member.
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Panel } from "@/components/ui/controls";
@@ -11,9 +11,9 @@ import { givable, moneyKeysAdded, moneyLine, roleLine, type Role } from "./contr
 import { CompareRoles, RolePicker } from "./roles";
 import { staffChange } from "./step-up";
 
-type Row = { n: number; email: string; roles: string[]; error: string | null };
+type Row = { n: number; name: string; email: string; roles: string[]; error: string | null; nameError: string | null };
 /** Case Officer ticked first (AG-1-69) when the inviter may give it; an Admin may not (SA-06: Admin lacks two of its keys). */
-const fresh = (n: number, offered: readonly string[]): Row => ({ n, email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null });
+const fresh = (n: number, offered: readonly string[]): Row => ({ n, name: "", email: "", roles: offered.includes("CASE_OFFICER") ? ["CASE_OFFICER"] : [], error: null, nameError: null });
 
 export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus }: { open: boolean; onOpenChange: (o: boolean) => void; roles: readonly Role[]; me: { roles: string[]; keys: string[] }; seats: { used: number; limit: number }; returnFocus: () => HTMLElement | null }) {
   const offered = givable(roles, me, true);
@@ -31,8 +31,12 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     setBusy(true);
     let sent = 0, unmailed = 0;
     for (const r of rows) {
-      try { const a = await staffChange<{ emailed?: boolean }>("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles }); sent++; if (a?.emailed === false) unmailed++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
-      catch (e) { set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." }); }
+      try { const a = await staffChange<{ emailed?: boolean }>("/platform/staff/invitations", { email: r.email.trim(), roles: r.roles, ...(r.name.trim() ? { displayName: r.name.trim() } : {}) }); sent++; if (a?.emailed === false) unmailed++; setRows((rs) => rs.filter((x) => x.n !== r.n)); }
+      catch (e) {
+        // PF-4dn review m1: a refused name shows on the Name field, every other refusal on the row's Email field.
+        if (e instanceof StaffApiError && /^DISPLAY_NAME_/.test(String((e.problem as { code?: unknown }).code ?? ""))) set(r.n, { nameError: e.message });
+        else set(r.n, { error: e instanceof StaffApiError ? e.message : "Could not send this invitation. Please try again." });
+      }
     }
     setBusy(false);
     await qc.invalidateQueries({ queryKey: ["pf", "staff"] });
@@ -40,7 +44,7 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
     if (sent === rows.length) onOpenChange(false);
   };
   return (
-    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !rows.some((r) => r.email.trim()) || window.confirm("Discard the people you typed?")} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !rows.some((r) => r.email.trim() || r.name.trim()) || window.confirm("Discard the people you typed?")} title="Invite people" description="Each person gets their own invitation email. It works for 72 hours."
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button busy={busy} disabled={over > 0} onClick={() => void send()} data-send-invites>Send {rows.length === 1 ? "invitation" : `${rows.length} invitations`}</Button></>}>
       <div className="flex flex-col gap-4">
         <p className="text-sm" data-invite-seats>{after} of {seats.limit} seats after these invites</p>
@@ -52,6 +56,10 @@ export function InvitePanel({ open, onOpenChange, roles, me, seats, returnFocus 
               <Field label={`Email, person ${i + 1}`} error={dup ? "This email is already on another row." : r.error}>
                 <Input type="email" value={r.email} autoComplete="off" onChange={(e) => set(r.n, { email: e.target.value, error: null })} />
               </Field>
+              {/* PF-4dn: after the email, the one required field, which keeps the panel's first focus (PF-6 DW8). */}
+              <div className="mt-3"><Field label={`Name, person ${i + 1} (optional)`} error={r.nameError}>
+                <Input value={r.name} autoComplete="off" onChange={(e) => set(r.n, { name: e.target.value, nameError: null })} data-invite-name />
+              </Field></div>
               <div className="mt-3"><RolePicker roles={roles} offered={offered} chosen={r.roles} legend="Roles" onChange={(x) => set(r.n, { roles: x, error: null })} /></div>
               <p className="mt-2 text-xs text-text-muted" data-role-line>{r.roles.length ? roleLine(r.roles) : "Choose at least one role."}</p>
               {money ? <p className="mt-1 text-xs font-medium text-text-warn" data-money-line>{moneyLine(r.email.trim() || "this person", money)}</p> : null}
