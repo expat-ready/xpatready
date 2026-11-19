@@ -141,3 +141,18 @@ Verdict: Approve
 - Not run by the reviewer: the five suites (the builder's runs on that head: FO-3st2 53/53, pf1 28/28, pf6a 52/52, fo3w 67/67, pf6 staff 90/90, all exit 0). No journey score this round (no app started); the last is 9.5/10.
 
 Verdict: Approve (`Reviewer: Approve 3cabaebe50408c0ddb809c3a26305f15e961d6c3`, posted on #2243)
+
+## Re-review (round 8, 19 Nov) of part 1's head bb11748157c62a845b03fe0e0f147104538c6cfd (#2243): the Licence form's focus after Save
+- **Why:** merge batch #2265 failed `check_pf6_staff_browser.ts` "PF-6 DW8 keyboard (review MJ-2): after Save the focus stays on Save" 3 of 3 tries; this PR was the only one in it touching My account. The row owner asked for the cause to be fixed and the test left as it is.
+- **The race is real.** A busy button is disabled (`components/ui/controls.tsx:36`). React 19 on `createRoot` schedules the `setBusy(false)` render after the `await` as its own task; the frame callback the form used could run first, focus a button still disabled (nothing happens) and leave the keyboard on the page for good. The builder's probe: main alone 2 of 12 saves lost at a 6× slowed CPU; main with this PR 6 of 12; with the fix 0 of 48 (×1, ×6, ×6, ×20).
+- **The fix closes it** (`platform/account/licence-form.tsx`, +11/−3; PF-6's file, changed on the row owner's written instruction): a layout effect on `busy` puts focus on Save in the commit that enables the button, before paint. Every path of `send` holds: success (the form keeps its key and stays mounted), conflict, other error, "nothing to save" (the button is never disabled), and the Licences panel's success (the form unmounts; the panel's own return of focus takes over, as before). It takes focus only when focus has fallen to the page.
+- **The test is unchanged** (`git diff origin/main...bb1174815 -- '*check_pf6_staff_browser.ts'` is empty). Reviewer's own run on that head: 90/90, exit 0.
+- Minors: a click on blank page during a save brings focus back to Save (deliberate); the notes' probe table does not say which form of the fix each row used. The same frame-callback pattern is in `sales/web-form-page.tsx`, `booking-public/type-page.tsx` and `components/rule-facts.tsx` (none in My account; not touched).
+
+Verdict: Approve (`Reviewer: Approve bb11748157c62a845b03fe0e0f147104538c6cfd`)
+
+## Re-review (round 9, 19 Nov) of part 1's head 950206e702fb4f6124d0f53bc2671b66791a76b7: main merged in after a conflict, git only
+- One conflict, the brief's foreseen one-line clash in `front-office/routes.tsx` (FO-4 part 2a's `/front-office/pipeline` and `/front-office/prospects/:id` beside `/account/availability`): both kept. The file is main's plus only this PR's import, route line and header words; no path duplicated or shadowed.
+- Every other file of the PR unchanged since bb1174815; 16 files, 785 in, 4 out. Main's FO-2 part 3b moved the public booking's arrival port from the fake to the real one; the suite's one public booking passed on it (builder: FO-3st2 53/53, PF-6 staff 90/90, PF-6a frame 52/52, PF-1 module routes 28/28, type check no new errors).
+
+Verdict: Approve (`Reviewer: Approve 950206e702fb4f6124d0f53bc2671b66791a76b7`); #2243 merged 19 Nov 20:29 IST.

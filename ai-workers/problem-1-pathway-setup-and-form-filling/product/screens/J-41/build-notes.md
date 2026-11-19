@@ -32,3 +32,7 @@
 ## Main merged in after #2252 (19 Nov 20:2x IST)
 * #2252 (FO-3a part 1c) is on main. `origin/main` merged in: one conflict, the same one-line clash in `front-office/routes.tsx` that part 1 (#2243) met with FO-4 part 2a's routes; resolved to the same file as part 1's head, so part 1's merge brings no second conflict.
 * The fake note above is corrected: main's FO-2 part 3b replaced the booking module's last fake (`arrival`) with the real adapter while this row waited. The walk was re-run on the merged code (result below).
+
+## Part 1 and FO-3a part 1c are on main (19 Nov 20:3x IST); main merged in
+* #2252 merged 20:25 IST, #2243 20:29 IST. `origin/main` merged in: two add/add clashes in records, both expected. `screens/fo-3st2/build-notes.md`: main's copy taken whole (it is this branch's copy plus part 1's later sections). `qa/built/FO-3st2.md`: this branch's line kept (the suite's count corrected from 42 to 53, the reviewer's Minor on part 1).
+* This PR's diff is now only the walk and the records: 12 files, under 800 changed lines.
