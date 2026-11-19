@@ -45,6 +45,7 @@ scopes:
       case-side:
         include:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/runtime.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/clients.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-*.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/assessments.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/team.ts"
