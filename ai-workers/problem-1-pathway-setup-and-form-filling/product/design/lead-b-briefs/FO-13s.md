@@ -22,5 +22,8 @@ Written 19 Nov 11:23 IST by Lead B (6). **R1.108 (the conflict check) is not in 
 
 **Order:** Part A, then Part B (B shows A's error). Then qa proves R1.110 (P-722).
 
-## Hold on FO-13i part 2's expiry rule (Lead B (7), 19 Nov 13:0x IST)
-QA-510's 422 (an identity document expired before the firm's today) is **Unconfirmed: no counsel**. Nobody has read SOR/2022-128 s. 24 for "expired", "valid" or "current". Lead 92 gets the section read from laws-lois, with the quote and date, **before FO-13i part 2 is built**. If the text sets a different test (for example a grace period or particular document types), the 422 follows the text. The BACKLOG row FO-13i2 carries `Source: P-579` until then.
+## FO-13i part 2's expiry rule: the firm's own rule (P-735; Lead B (7), 19 Nov 13:1x IST)
+Lead 92 read SOR/2022-128 on laws-lois (FullText, "Regulations are current to 2026-10-29", read 19 Nov 2026). Section 24(2)(a) asks the licensee to "confirm the following information in respect of the client, seeking corroboration of the information if possible": the full name, and the home and business contact details. **It names no identity document. The words valid, expired, unexpired and government-issued appear nowhere in ss. 1 to 48.**
+* **P-735:** FO-13i part 2 stays as shaped: a document whose expiry is before the firm's today answers 422 `fields.documentExpiry`. This is **the firm's own rule**.
+* **No screen, message, help text, test name or PR body says the Code requires it.** Never cite s. 24(2)(a) as the basis for the expiry check. Its Source is `P-579` and P-735 only.
+* Unconfirmed: no counsel.
