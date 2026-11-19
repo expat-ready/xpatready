@@ -28,7 +28,8 @@ import { PrismaClient } from "@prisma/client";
 import { chromium, type Page } from "playwright";
 import { platformAuditWorkspaceId } from "../../api/src/platform/audit/audit-event.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
-import { acknowledgeBy, zonedInstant, type FirmCalendar } from "../../api/src/platform/complaints/business-days.ts";
+import { acknowledgeBy } from "../../api/src/platform/complaints/business-days.ts";
+import { zonedInstant, type FirmCalendar } from "../../api/src/platform/calendar/working-days.ts";   // moved there by #2000 (CS-DL1)
 import { ACK_REMINDER_JOB, ackReminderKey } from "../../api/src/platform/complaints/complaints.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE, writeSetting } from "../../api/src/platform/settings.ts";
 import { dayTime, nowLocal } from "../../web/src/modules/platform/complaints/contract.ts";
