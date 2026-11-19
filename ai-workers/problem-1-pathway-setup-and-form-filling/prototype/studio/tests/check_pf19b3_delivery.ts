@@ -119,7 +119,8 @@ try {
   ok("DW3 fail: a Delivery with a bad signature, or from another topic → refused as for Bounce; the row stays SENT",
     bad === "refused: signature does not verify" && topic === "refused: not our topic" && (await row(s3.id)).state === "SENT" && (await events(s3.id, "DELIVERED")) === 0, { bad, topic });
   ok("DW3 pass: the same notice signed properly is applied", (await notices.receive(good3)) === "applied" && (await row(s3.id)).state === "DELIVERED");
-  const part2 = spawnSync(process.execPath, [...process.execArgv, join(STUDIO, "tests", "check_pf19b2_ses.ts")], { encoding: "utf8", timeout: 600_000, cwd: STUDIO, env: process.env });
+  // Its own tsx with absolute paths: the suite runner gives this file a relative --tsconfig, which a child started in another folder cannot find.
+  const part2 = spawnSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "tests", "check_pf19b2_ses.ts")], { encoding: "utf8", timeout: 600_000, cwd: STUDIO, env: process.env });
   const tally = /(\d+) passed, (\d+) failed/.exec(part2.stdout ?? "");
   ok("DW3 pass: every PF-19b part 2 test passes unchanged (tests/check_pf19b2_ses.ts)", part2.status === 0 && tally && Number(tally[1]) > 0 && tally[2] === "0", { status: part2.status, tally: tally?.[0], err: (part2.stderr ?? "").slice(-300) });
 
