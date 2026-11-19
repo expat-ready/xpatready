@@ -21,6 +21,7 @@ Demo scaffolding: the configured checkpoint, the Sample case and the finished st
 
 **Tables.** combination, programDef, sourceAttachment, auditEvent, combinationForm, packVersion, configRelease, sampleProfile, sampleFact, formEdition.
 **Tests.** `tests/check_b104_checkpoint.ts`, `tests/check_b104_stage_one.ts`, `tests/check_bk12_sample_case.ts`, `tests/check_c102_story_validated_match.ts`, `tests/check_forms_demo.ts`, `tests/check_csw1_firm_id.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.demo.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Offer a demo control on a product screen, or treat Sample as a release.
