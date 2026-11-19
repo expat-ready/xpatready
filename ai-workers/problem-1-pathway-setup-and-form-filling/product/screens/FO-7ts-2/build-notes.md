@@ -113,3 +113,7 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 * **n-g:** a REPEATABLE READ copy of the M3 check. The apply is refused at once (55P03) and the line save then commits. Without NOWAIT it would deadlock.
 * **N14:** the `busy.ts` line above is corrected.
 * **Seen by the breaker, not counted:** credit applied to two drafts in one transaction can deadlock with an editor saving the same two drafts in the opposite order. It happens the same way without this row, and no route touches two invoices yet. This is for the Apply-credit route row.
+
+## Before the PR: FO-7lk (#2175) merged (02:25 UTC 19 Nov)
+* `origin/main` is merged in (P-270). The stamp `20261118220000_fo7ts_ledgers` is already later than `main`'s newest, `20261118210000_fo7lk_trust_lock` (P-600).
+* Checks on the merge: `check_fo7ts_money_settings.ts` 107/0, `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0.
