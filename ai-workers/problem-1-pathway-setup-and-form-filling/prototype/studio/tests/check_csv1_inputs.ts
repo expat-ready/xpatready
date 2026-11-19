@@ -242,7 +242,7 @@ if (reached) {
   const items = ((await m3.prepare(c2.id, officer)).p?.items ?? []) as Item[];
   const online = items.find((i) => i.kind === "form" && i.channel === "ONLINE"), hand = items.find((i) => i.kind === "form" && i.signature === "HAND_SCANNED");
   const anyForm = online ?? hand ?? items.find((i) => i.kind === "form");
-  ok("DW4 setup (part 3): the filled case has a form signed by hand and scanned", !!hand, items.map((i) => `${i.form} ${i.channel} ${i.signature}`));
+  ok("DW4 setup (part 3): the filled case has an Online form and a form signed by hand and scanned", !!online && !!hand, items.map((i) => `${i.form} ${i.channel} ${i.signature}`));
   const writeRefused = async (file: string, why: string, field: string, send: () => Promise<{ status: number; body?: { errors?: { field?: string; message?: string }[]; detail?: string } }>) => {
     const before = rows(), r = await send(), after = rows();
     ok(`CS-V1 DW4 fail (${file}): ${why} answers 400 naming ${field}, "Nothing was stored.", nothing stored`, r.status === 400 && named(r.body, field) && stored(r.body) && before === after, { status: r.status, body: r.body, before, after });
