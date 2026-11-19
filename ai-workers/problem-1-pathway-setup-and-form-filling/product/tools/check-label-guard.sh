@@ -132,8 +132,8 @@ rm -f "$T/fx/proof" "$T/fx/proof.log"; guard "$c1" "$c2" "$label" "[]"
 ok "CI-PRE: a head with no Approve is never asked for a full run (the review comes first)" "$([ "$(removed)" = 1 ] && [ ! -e "$T/fx/proof.log" ] && echo 1)" "$out / $log"
 W="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/label-guard.yml"
 ge=$(python3 -I -c 'import sys,yaml; e=[s for s in yaml.safe_load(open(sys.argv[1]))["jobs"]["guard"]["steps"] if s.get("name") == "label guard"][0]["env"]
-print("ok" if "".join(str(e.get("LABELED")).split()) == "${{github.event.action=='"'"'labeled'"'"'&&github.event.label.name||'"'"''"'"'}}" and "vars.FULL_RUN_FROM" in str(e.get("FULL_FROM")) else e)' "$W" 2>&1)
-ok "CI-PRE: label-guard.yml tells the guard which label was just added (LABELED) and passes FULL_FROM" "$([ "$ge" = ok ] && echo 1)" "$ge"
+print("ok" if "".join(str(e.get("LABELED")).split()) == "${{github.event.action=='"'"'labeled'"'"'&&github.event.label.name||'"'"''"'"'}}" and "vars.FULL_RUN_FROM" in str(e.get("FULL_FROM")) and "vars.REVIEWERS" in str(e.get("REVIEWERS")) else e)' "$W" 2>&1)
+ok "CI-PRE: label-guard.yml tells the guard which label was just added (LABELED) and passes FULL_FROM and REVIEWERS (whose early Approve FULL_FROM counts)" "$([ "$ge" = ok ] && echo 1)" "$ge"
 grep -q 'pull_request_target' "$W" && grep -q 'synchronize' "$W" && grep -q 'tools/label-guard.sh' "$W"
 ok "the workflow runs main's label-guard.sh on every push (pull_request_target, synchronize)" "$([ $? = 0 ] && echo 1)" "$W"
 # F4 in the workflow: which events run the guard, and what AFTER it gets, read the way GitHub reads them. The job's if:

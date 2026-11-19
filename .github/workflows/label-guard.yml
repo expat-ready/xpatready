@@ -62,6 +62,9 @@ jobs:
           AFTER: ${{ github.event.after || github.event.pull_request.head.sha }}
           LABELED: ${{ github.event.action == 'labeled' && github.event.label.name || '' }}
           FULL_FROM: ${{ vars.FULL_RUN_FROM }}
+          # As the sweep below: FULL_FROM's exemption counts an Approve by the owner's account or a login in REVIEWERS, and
+          # since the org move the owner is the organisation, so without REVIEWERS nobody's Approve would count here.
+          REVIEWERS: ${{ vars.REVIEWERS }}
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/label-guard.sh
       - name: the guard could not finish, so the label comes off (fails closed)
         if: failure() || cancelled()
