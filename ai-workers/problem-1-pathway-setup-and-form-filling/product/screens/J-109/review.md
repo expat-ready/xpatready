@@ -118,3 +118,33 @@ Changed in 4 files, no code line: `j_109.ts` (comment only, +2/-1), `qa/built/J-
 * Nothing is open. No Blocker, Major or minor. No re-run was needed: no executable line changed.
 
 Verdict: Approve eb49e116b6a088b80c3eb41c6a2c2a90dd706da3
+
+## Re-review R5 (P-277, diff only): `eb49e116b..497af411d`
+* **No J-109 code or evidence changed.** Since R4 the J-109 changes are only `branch-notes.md` (1 line) and my R4 section, committed unchanged. `j_109.ts` and the screenshots are untouched.
+* **The merge keeps both sides.**
+  * `complaints.ts`, `routes.ts`, `idempotency.ts`, the drawer and the complaints feature are unchanged since R4.
+  * Against `origin/main`, the head still differs only in PF-21i's 8 files. `complaints.ts` is the same +38 lines as in R3.
+  * The PF-21i migration `20261118233000` is still later than main's newest, `20261118230000_csk1_case_client`.
+  * In `platform/MODULE.md`, a word-diff against main shows only two additions:
+    * PF-21i's `Idempotency-Key` note, with the former invariant's words folded in. No meaning is lost: one complaint per firm and key, a repeat answers 200 with nothing written, another body gives 422.
+    * `tests/check_pf21i_idempotent.ts` in the Tests line.
+
+    Main's lines are all kept.
+* **Main's changes since the main that 208c1eb59 carried (9d440b2f4), on the path J-109 walks:**
+  * Complaints, messages, jobs and the complaints web module: no change.
+  * **AUD-1b** changed the AuditPort adapter the service writes through (`audit/audit-event.ts`, `audit/context.ts`, `ports/audit.ts`). Each line now also gets `firm_id`, `actor_type` and a correlation id. A line naming another firm or another actor than the request's is refused, and the transaction rolls back.
+  * **Smaller changes:**
+    * `settings.ts`: `firmId` on the setting audit line;
+    * `firm-scope.ts`: one new job bypass for PF-15;
+    * identity and observability: request context.
+  * **Effect on J-109:** none of these changes the walk's behaviour. Every complaint act names its own request's actor, and the reminder job writes as `SYSTEM`.
+* **Rerun at the head.** Copy `j109r5` on :4438 (never :4400). The walk ran from a scratchpad copy, with its screenshots kept in the scratchpad, so the committed shots are untouched.
+  * **26 passed, 0 failed, twice on the same reused copy.**
+  * Underneath, under AUD-1b, every complaint audit line carries a `firm_id` and the right actor type:
+    * `complaint.record` ×4, `.acknowledge` ×4 and `.close` ×2 as `FIRM_STAFF`;
+    * `complaint.reminder` ×2 as `SYSTEM`.
+  * `msg_outbox` holds 2 reminder emails, both SERVICE and SENT, one per run. DW1 holds on the MessagePort path.
+  * I did not re-run the PF-21 suites; I'm relying on the coordinator's results.
+* Nothing is open. No Blocker, Major or minor.
+
+Verdict: Approve 497af411d3684d464eefe7f86d150ba94aac1dea
