@@ -1,5 +1,6 @@
 -- FO-7ts part 3 rollback (not a migration: Prisma reads only migration.sql). Run from the studio folder, in one
--- transaction, before any part 3 fact exists that must be kept (it refuses otherwise):
+-- transaction, before any part 3 fact exists that must be kept (it refuses otherwise; Taxable on an issued invoice is
+-- what issuing chose with no party treatment, so it may go):
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261119170000_fo7ts_part3/rollback.sql
 -- Restores money_trust_entry_write exactly as FO-7ts part 2 left it and money_invoice_write exactly as FO-7ts part 1
 -- left it (each read from its own migration's text, PF-12's reader settings set again), and drops the rest. Then
@@ -10,7 +11,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "picked_other_funds_by" IS NOT NULL OR "refund_method" IS NOT NULL) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: picks or trust refunds with their details are recorded; they cannot be rolled back silently';
   END IF;
-  IF EXISTS (SELECT 1 FROM "money_party_tax_treatment") OR EXISTS (SELECT 1 FROM "money_invoice" WHERE "tax_treatment" IS NOT NULL) THEN
+  IF EXISTS (SELECT 1 FROM "money_party_tax_treatment") OR EXISTS (SELECT 1 FROM "money_invoice" WHERE "tax_treatment" IS NOT NULL AND ("tax_treatment" <> 'TAXABLE' OR "issued_at" IS NULL)) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: tax treatments are recorded; they cannot be rolled back silently';
   END IF;
 END $$;

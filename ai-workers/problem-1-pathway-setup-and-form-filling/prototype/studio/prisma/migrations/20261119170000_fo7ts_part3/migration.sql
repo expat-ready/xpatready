@@ -16,7 +16,7 @@ DO $refunds$
 BEGIN
   PERFORM set_config('row_security', 'off', true);
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "kind" = 'REFUND_TO_CLIENT') THEN
-    RAISE EXCEPTION 'FO-7ts part 3: trust refunds are recorded without a method or date: record them by hand, then rerun' USING ERRCODE = 'check_violation';
+    RAISE EXCEPTION 'FO-7ts part 3: trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead' USING ERRCODE = 'check_violation';
   END IF;
 END
 $refunds$;
@@ -66,6 +66,15 @@ CREATE INDEX IF NOT EXISTS "money_invoice_firm_id_issued_at_id_idx" ON "money_in
 ALTER TABLE "money_party_tax_treatment" ADD CONSTRAINT "money_party_tax_treatment_firm_id_fkey" FOREIGN KEY ("firm_id") REFERENCES "money_payment_settings"("firm_id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 
+-- Invoices issued before this part: what issuing would have chosen (no party treatment exists yet), set while FO-7ts
+-- part 1's freeze does not yet name the column (break m2), so none is left null for good.
+DO $issued$
+BEGIN
+  PERFORM set_config('row_security', 'off', true);
+  UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
+END
+$issued$;
+
 -- ------------------------------------------------------------------------------------------- the rows' own checks
 -- A trust refund is offline (AG-6-23 rule 2): a method that is not a card, the date, a reference when there is one. Its
 -- payee is the entry's party unless a person, a company or a name is given; any other payee needs a reason (rule 3).
@@ -101,17 +110,23 @@ DECLARE d record; reversal boolean := false; last_seq integer; last_balance bigi
 BEGIN
   -- The party's lock first, before any invoice row is touched, so a "Trust first" deposit and withdrawal in one
   -- transaction never deadlock with another withdrawal on the same invoice (review round 2, Minor 2: 40P01).
-  -- FO-7ts part 3: a pick holds two party locks (its own, then money_issued_invoice's on the invoice's party), so both are
-  -- taken here first, the smaller id first: two picks crossing on one case (A pays B's invoice, B pays A's) never
-  -- deadlock (DW26). The invoice's party is read unlocked: an issued invoice's party never changes, a draft is refused.
-  IF NEW.kind = 'WITHDRAWAL_TO_INVOICE' AND NEW.invoice_id IS NOT NULL AND party IS NOT NULL THEN
-    SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i WHERE i.firm_id = NEW.firm_id AND i.id = NEW.invoice_id;
-    IF inv_party < party THEN
-      PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur);
-    END IF;
+  -- FO-7ts part 3: a pick, and a correction returning money from one, touch two parties' ledgers (the payer's, and the
+  -- invoice's party's: its credit and money_issued_invoice's lock), so both locks are taken here first, the smaller id
+  -- first: picks crossing on one case never deadlock (DW26), and the payee's credit is checked under both (break M1).
+  -- The invoice's party is read unlocked: an issued invoice's party never changes, and a draft is refused below.
+  IF party IS NOT NULL AND ((NEW.kind = 'WITHDRAWAL_TO_INVOICE' AND NEW.invoice_id IS NOT NULL) OR (NEW.kind = 'CORRECTION' AND NEW.corrects_entry_id IS NOT NULL)) THEN
+    SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i
+      WHERE i.firm_id = NEW.firm_id AND i.id = coalesce(NEW.invoice_id, (SELECT w.invoice_id FROM "money_trust_entry" w WHERE w.firm_id = NEW.firm_id AND w.id = NEW.corrects_entry_id));
+    IF inv_party = party THEN inv_party := NULL; END IF;
+  END IF;
+  IF inv_party < party THEN
+    PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur);
   END IF;
   IF party IS NOT NULL THEN
     PERFORM money_trust_lock(NEW.firm_id, party, NEW.currency);
+  END IF;
+  IF inv_party > party THEN
+    PERFORM money_trust_lock(NEW.firm_id, inv_party, inv_cur);
   END IF;
   IF NEW.kind = 'DEPOSIT' THEN
     PERFORM money_trust_on(NEW.firm_id, 'money_trust_entry');
@@ -120,6 +135,9 @@ BEGIN
   -- card (P-567 (3)); card refunds come with card payments (FO-7c). The other refund details are checks on the row.
   IF NEW.kind = 'REFUND_TO_CLIENT' AND NEW.refund_method::text IN ('CARD', 'CARD_TERMINAL') THEN
     RAISE EXCEPTION 'money_trust_entry: a refund from trust is recorded as an offline refund (e-Transfer, cheque, wire, bank transfer, cash or other), never by card (%): card refunds come with card payments', NEW.refund_method USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.kind = 'REFUND_TO_CLIENT' AND NEW.refunded_on > current_date + 1 THEN  -- break m4: a refund is recorded once made
+    RAISE EXCEPTION 'money_trust_entry: a refund is recorded on or after the day it is made, never ahead (%)', NEW.refunded_on USING ERRCODE = 'check_violation';
   END IF;
   -- FO-7ts part 2 (AG-6-60 rules 3, 5, 9; P-634): a move to a case is a pair on this party, read under its lock. The −
   -- half (no case) is an outflow from the pre-case balance: at most what the party holds with no case in this currency,
@@ -207,7 +225,7 @@ BEGIN
     open_amount := money_issued_invoice(NEW.firm_id, NEW.invoice_id, NEW.currency, 'money_trust_entry');
   END IF;
   IF NEW.kind = 'CORRECTION' AND NEW.corrects_entry_id IS NOT NULL THEN  -- another kind naming one: money_trust_entry_corrects_check
-    SELECT e.person_id, e.company_id, e.currency, e.kind, e.amount_minor, p.method INTO d FROM "money_trust_entry" e
+    SELECT e.person_id, e.company_id, e.currency, e.kind, e.amount_minor, p.method, e.case_id INTO d FROM "money_trust_entry" e
       LEFT JOIN "money_payment" p ON p.firm_id = e.firm_id AND p.id = e.payment_id WHERE e.firm_id = NEW.firm_id AND e.id = NEW.corrects_entry_id;
     IF NOT FOUND THEN PERFORM money_missing('money_trust_entry', 'entry', NEW.corrects_entry_id); END IF;
     IF (d.person_id, d.company_id, d.currency) IS DISTINCT FROM (NEW.person_id, NEW.company_id, NEW.currency) THEN
@@ -215,6 +233,10 @@ BEGIN
     END IF;
     IF d.kind NOT IN ('WITHDRAWAL_TO_INVOICE', 'DEPOSIT') THEN
       RAISE EXCEPTION 'money_trust_entry: a correction names a withdrawal (to return money from it) or a deposit (to correct it), never a % (P-603: money leaves trust only to an issued invoice or back to the client)', d.kind USING ERRCODE = 'check_violation';
+    END IF;
+    -- FO-7ts part 3 (break M2): and on its case, so a correction never moves money between cases (the per-case limit).
+    IF d.case_id IS DISTINCT FROM NEW.case_id THEN
+      RAISE EXCEPTION 'money_trust_entry: a correction is on the case of the entry it corrects' USING ERRCODE = 'check_violation';
     END IF;
     -- FO-7a2 (AG-6-75 rules 2, 4): a correction of a deposit with a reversal kind is recorded even below zero, and the
     -- shortfall is shown (money_trust_shortfall). "Returned" is a bounced cheque or wire: an e-Transfer, card, card
@@ -247,6 +269,11 @@ BEGIN
     -- longer pays the invoice, as the credit-note and write-off checks count it.
     applied := greatest(applied - (SELECT coalesce(sum(c.overpaid_minor), 0) FROM "money_credit_note" c
       WHERE c.firm_id = NEW.firm_id AND c.invoice_id = NEW.invoice_id AND c.overpaid_choice = 'OVERPAID_REFUND'), 0);
+    -- FO-7ts part 3 (break M3): a pick pays at most what is still due (after operating payments and applied credit too),
+    -- so one client's trust money never becomes another's credit; read under the invoice row.
+    IF picked AND -NEW.amount_minor > greatest(money_invoice_due(NEW.firm_id, NEW.invoice_id), 0) THEN
+      RAISE EXCEPTION 'money_trust_entry: a pick pays at most what is still due on the invoice (% due)', greatest(money_invoice_due(NEW.firm_id, NEW.invoice_id), 0) USING ERRCODE = 'check_violation';
+    END IF;
     IF applied - NEW.amount_minor > open_amount THEN
       RAISE EXCEPTION 'money_trust_entry: % from trust would pay more than is open on the invoice (% open after credit notes and write-off, % already paid from trust)', -NEW.amount_minor, open_amount, applied USING ERRCODE = 'check_violation';
     END IF;

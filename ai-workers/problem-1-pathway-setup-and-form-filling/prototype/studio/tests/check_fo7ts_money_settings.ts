@@ -186,7 +186,7 @@ try {
   const reqQ = (f: string, o: { id?: string; sent?: boolean; version?: string | null; pid?: string } = {}) =>
     `insert into money_trust_request (id, firm_id, person_id, amount_minor, currency, purpose, created_by, sent_at, sent_by, retainer_version_id, updated_at) values ('${o.id ?? randomUUID()}', '${f}', '${o.pid ?? P1}', 100000, 'CAD', 'Deposit for the work permit', 'user-R', ${o.sent ? "now(), 'user-R'" : "null, null"}, ${o.version ? `'${o.version}'` : "null"}, now()) returning coalesce(number, '-')`;
   const entryQ = (f: string, kind: string, amount: number, x: { pay?: string; inv?: string; reason?: string } = {}) =>
-    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, reason, ${kind === "REFUND_TO_CLIENT" ? "refund_method, refunded_on, " : ""}created_by) values ('${f}', '${P1}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, ${kind === "REFUND_TO_CLIENT" ? "'E_TRANSFER', '2026-11-20', " : ""}'user-R') returning balance_after_minor`;
+    `insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, reason, ${kind === "REFUND_TO_CLIENT" ? "refund_method, refunded_on, " : ""}created_by) values ('${f}', '${P1}', '${kind}', ${amount}, 'CAD', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, ${kind === "REFUND_TO_CLIENT" ? "'E_TRANSFER', '2026-11-17', " : ""}'user-R') returning balance_after_minor`;
   const depositQ = (f: string, amount: number, method = "E_TRANSFER") => { const p = randomUUID();
     return `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${f}', '${method}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', true); ${entryQ(f, "DEPOSIT", amount, { pay: p })}`; };
   const firmU = firm(T, "firm-ts-u"); sql(T, settingsQ(firmU));                                       // UNANSWERED
@@ -283,7 +283,7 @@ try {
   // cols: part 3's columns as SQL literals ("null" clears a default); a trust refund defaults to an e-Transfer on a date.
   type E = { pay?: string; inv?: string; corrects?: string; ck?: string; reason?: string; kase?: string | null; from?: string; id?: string; cur?: string; cols?: Record<string, string> };
   const te = (pid: string, kind: string, amount: number, x: E = {}) => {
-    const c = Object.entries({ ...(kind === "REFUND_TO_CLIENT" ? { refund_method: "'E_TRANSFER'", refunded_on: "'2026-11-20'" } : {}), ...x.cols });
+    const c = Object.entries({ ...(kind === "REFUND_TO_CLIENT" ? { refund_method: "'E_TRANSFER'", refunded_on: "'2026-11-17'" } : {}), ...x.cols });
     return `insert into money_trust_entry (id, firm_id, person_id, kind, amount_minor, currency, payment_id, invoice_id, corrects_entry_id, correction_kind, reason, case_id, moved_from_entry_id, ${c.map(([k]) => `${k}, `).join("")}created_by) values ('${x.id ?? randomUUID()}', '${F}', '${pid}', '${kind}', ${amount}, '${x.cur ?? "CAD"}', ${x.pay ? `'${x.pay}'` : "null"}, ${x.inv ? `'${x.inv}'` : "null"}, ${x.corrects ? `'${x.corrects}'` : "null"}, ${x.ck ? `'${x.ck}'` : "null"}, ${x.reason ? `'${x.reason}'` : "null"}, ${x.kase ? `'${x.kase}'` : "null"}, ${x.from ? `'${x.from}'` : "null"}, ${c.map(([, v]) => `${v}, `).join("")}'user-R') returning id`; };
   const dep = (pid: string, amount: number, o: { method?: string; kase?: string; cleared?: boolean } = {}) => { const p = randomUUID();
     return last(T, `insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) values ('${p}', '${F}', '${o.method ?? "E_TRANSFER"}', ${amount}, 'CAD', 'TRUST', now(), '${key()}', 'user-R', ${o.cleared ?? true}); ${te(pid, "DEPOSIT", amount, { pay: p, kase: o.kase })}`); };
@@ -574,9 +574,9 @@ try {
   {
     const P = randomUUID(); dep(P, 50000);
     const back = (x: Record<string, string>) => sql(T, te(P, "REFUND_TO_CLIENT", -1000, { reason: "Returned unused money", cols: x }));
-    const id = back({ refund_method: "'CHEQUE'", refunded_on: "'2026-11-21'", refund_reference: "'88213'" });
+    const id = back({ refund_method: "'CHEQUE'", refunded_on: "'2026-11-16'", refund_reference: "'88213'" });
     ok("FO-7ts DW15 pass (AG-6-23 rule 2): a trust refund with method, date and reference is stored",
-      sql(T, `select refund_method || ':' || refunded_on || ':' || refund_reference || ':' || num_nonnulls(payee_person_id, payee_company_id, payee_name, payee_reason) from money_trust_entry where id = '${id}'`) === "CHEQUE:2026-11-21:88213:0");
+      sql(T, `select refund_method || ':' || refunded_on || ':' || refund_reference || ':' || num_nonnulls(payee_person_id, payee_company_id, payee_name, payee_reason) from money_trust_entry where id = '${id}'`) === "CHEQUE:2026-11-16:88213:0");
     ok("FO-7ts DW15 fail (Build Lead C's ruling): a trust refund by CARD or CARD_TERMINAL is refused in words",
       refused(T, te(P, "REFUND_TO_CLIENT", -1000, { reason: "x", cols: { refund_method: "'CARD'" } }), /never by card \(CARD\): card refunds come with card payments/, "23514")
       && refused(T, te(P, "REFUND_TO_CLIENT", -1000, { reason: "x", cols: { refund_method: "'CARD_TERMINAL'" } }), /never by card \(CARD_TERMINAL\)/, "23514"));
@@ -657,6 +657,33 @@ try {
       refused(T, te(A3, "WITHDRAWAL_TO_INVOICE", -30000, { inv: IB3, kase: K4, cols: pick() }), /a pick takes only what the payer holds on that case: Only CAD 100\.00 is available on it/, "23514"));
     ok("FO-7ts DW31 pass: a pick of 100.00 on K4 is accepted; A's K5 money is untouched", !!sql(T, te(A3, "WITHDRAWAL_TO_INVOICE", -10000, { inv: IB3, kase: K4, cols: pick() }))
       && sql(T, `select sum(amount_minor) filter (where case_id = '${K4}') || ':' || sum(amount_minor) filter (where case_id = '${K5}') from money_trust_entry where person_id = '${A3}'`) === "0:50000");
+  }
+  // ---------------------------------------------------------- the breaker's round 1 on 738531142 (M1-M3, m2-m4)
+  {
+    const A = randomUUID(), B = randomUUID(), C = randomUUID(), K = randomUUID(), J = randomUUID();
+    dep(A, 30000, { kase: K }); const IB = inv(B, 10000, { kase: K }), pk = sql(T, te(A, "WITHDRAWAL_TO_INVOICE", -10000, { inv: IB, kase: K, cols: pick() })), pay = paid(IB, 5000);
+    const [t1, t2] = [0, 1].map(() => new pg.Client({ connectionString: urlOf(T) }));
+    for (const c of [t1, t2]) { await c.connect(); conns.push(c); }
+    await t1.query("begin"); await t1.query(ce(B, "KEPT", 5000, { pay, kase: K }));
+    const r2 = t2.query(te(A, "CORRECTION", 10000, { corrects: pk, kase: K, reason: "Returned to trust" })).then(() => "ok", (e: { code?: string; message?: string }) => `${e.code}:${e.message}`);
+    for (let i = 0; i < 400 && (await t1.query("select wait_event_type w from pg_stat_activity where pid = $1", [(t2 as unknown as { processID: number }).processID])).rows[0]?.w !== "Lock"; i++) await new Promise((r) => setTimeout(r, 5));
+    await t1.query("commit"); const out = await r2;
+    for (const c of [t1, t2]) { await c.end(); conns.splice(conns.indexOf(c), 1); }
+    ok("FO-7ts break M1 fail → pass: B's credit kept on its invoice and A's correction of a pick on it, at once (READ COMMITTED) — the correction waits on B's lock, then is refused; the kept credit stays backed",
+      /^23514:.*held as credit, so the invoice must stay paid over/.test(out) && credit(B, K) === "5000" && sql(T, `select money_invoice_due('${F}', '${IB}')`) === "-5000", out);
+    dep(C, 50000, { kase: J }); const IC = inv(C, 30000, { kase: J }), wd = sql(T, te(C, "WITHDRAWAL_TO_INVOICE", -30000, { inv: IC, kase: J }));
+    ok("FO-7ts break M2 fail → pass: a correction returning money from a withdrawal is refused on another case (no way round the per-case limit); on the withdrawal's own case it is accepted",
+      refused(T, te(C, "CORRECTION", 30000, { corrects: wd, kase: K, reason: "Returned to trust" }), /a correction is on the case of the entry it corrects/, "23514")
+      && !!sql(T, te(C, "CORRECTION", 30000, { corrects: wd, kase: J, reason: "Returned to trust" })));
+    const IB2 = inv(B, 10000, { kase: K }); paid(IB2, 6000);
+    ok("FO-7ts break M3 fail → pass: B's 100.00 invoice with 60.00 paid into operating — a pick of 40.01 is refused (a pick pays at most what is due), 40.00 is accepted",
+      refused(T, te(A, "WITHDRAWAL_TO_INVOICE", -4001, { inv: IB2, kase: K, cols: pick() }), /a pick pays at most what is still due on the invoice \(4000 due\)/, "23514")
+      && !!sql(T, te(A, "WITHDRAWAL_TO_INVOICE", -4000, { inv: IB2, kase: K, cols: pick() })) && sql(T, `select money_invoice_due('${F}', '${IB2}')`) === "0");
+    ok("FO-7ts break m2 pass: an invoice issued before part 3 reads Taxable (what issuing would have chosen), not null for good",
+      sql(T, `select tax_treatment from money_invoice where id = '${taxed.id}'`) === "TAXABLE");
+    ok("FO-7ts break m4 fail: a trust refund dated ahead of today is refused; today is accepted",
+      refused(T, te(A, "REFUND_TO_CLIENT", -100, { reason: "x", kase: K, cols: { refunded_on: "current_date + 30" } }), /never ahead/, "23514")
+      && !!sql(T, te(A, "REFUND_TO_CLIENT", -100, { reason: "Returned unused money", kase: K, cols: { refunded_on: "current_date" } })));
   }
   // ---------------------------------------------------------------------------- DW26: the lock is the paying party's
   {
