@@ -24,7 +24,7 @@ import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
 import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
-import { firmScope } from "../../firm-scope.ts";
+import { firmScope, touchEachFirm } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 
@@ -239,8 +239,12 @@ export class Messages implements MessagePort<Tx> {
         FROM "msg_outbox" WHERE "firm_id" IS NOT NULL AND "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
           AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
+    // PF-12b: on its named use (job:messages.outbox_sweep) the read crossed firms: each firm read gets its platform.bypass
+    // line, in its own transaction, before any of its rows is queued; a firm whose line cannot be written gets nothing
+    // queued, the other firms go ahead, and the sweep then fails (P-607; break m6).
+    const { failed, error } = await touchEachFirm(this.d.db, rows.map((r) => r.firmId));
     let n = 0;
-    for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     const due = await this.d.db.msgOutbox.findMany({
       where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
@@ -251,6 +255,8 @@ export class Messages implements MessagePort<Tx> {
     // The hour is in the key (as the firm rows'), so a try that failed before it was counted is queued again next hour
     // instead of waiting on a key already used (break R2, review m-r2).
     for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: `${platformJobKey(r.id, triesOf(r.stateReason))}:sweep:${hour}`, platform: true })).queued) n++;
+    // PF-12b: thrown after the platform account rows (no firm, so no line to wait for): a firm whose line failed holds only its own rows.
+    if (error) throw error;
     return n;
   }
 
