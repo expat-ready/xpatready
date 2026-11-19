@@ -1,5 +1,5 @@
 // FO-4 part 1 (concept r2 §2, m10): the sales area's own frame: the app's one Frame (BK-3) named "Sales", a menu
-// (Leads now; Pipeline in part 2, Settings in part 3) whose Leads item carries the "n unassigned" badge, and who is
+// (Leads and, from part 2a, Pipeline; Settings in part 3) whose Leads item carries the "n unassigned" badge, and who is
 // signed in. A page here renders inside it only once a firm staff member is signed in; until then it shows the sign-in.
 import * as React from "react";
 import { NavLink } from "react-router-dom";
@@ -30,6 +30,7 @@ function Menu({ me }: { me: Me }) {
         {/* Orange is kept for "needs you" (P-473): unassigned leads wait for someone to take them. */}
         {unassigned ? <span data-unassigned-badge className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-text-warn">{unassigned} unassigned</span> : null}
       </NavLink>
+      <NavLink to="/front-office/pipeline" className={item}>Pipeline</NavLink>
     </nav>
   );
 }
@@ -53,7 +54,13 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
       <Place crumbs={crumbs} back={back ?? null} />
       {!token || (me.isError && !who) ? <SignIn failed={token ? refused : null} />
         : !who ? <Loading label="Checking who is signed in" />
-          : <MeCtx.Provider value={who}>{children}</MeCtx.Provider>}
+          : (
+            <MeCtx.Provider value={who}>
+              {/* The menu column is hidden below 768 px: the same two places as links, so a phone reaches Pipeline. */}
+              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink></nav>
+              {children}
+            </MeCtx.Provider>
+          )}
     </Frame>
   );
 }

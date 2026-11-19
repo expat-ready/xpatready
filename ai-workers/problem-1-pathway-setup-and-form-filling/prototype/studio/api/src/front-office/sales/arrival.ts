@@ -15,8 +15,8 @@ export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaig
 
 export type ArrivalIn = {
   firmId: string;
-  door: "WEB_FORM" | "MANUAL";
-  intakeKey: string;   // form:<web form id>:<submission id> or manual:<request id> (checked)
+  door: "WEB_FORM" | "MANUAL" | "BOOKING";
+  intakeKey: string;   // form:<web form id>:<submission id>, manual:<request id> or booking:<booking id> (checked)
   webFormId?: string;
   person: { givenNames: string | null; familyName: string | null; email: string | null; phone: { phone: string; readable: boolean } | null };
   source: string;
@@ -24,7 +24,10 @@ export type ArrivalIn = {
   interestedInServiceId?: string | null;
   message?: string | null;
   attribution?: Attribution | null;
-  consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string } | null;   // the form's own wording; none unticked
+  consent?: { wordingId: string; channel: Channel; purpose: Purpose; locale: string; givenAt?: Date } | null;   // the form's own wording; none unticked
+  /** FO-2 part 3b (AG-2-84 rule 8): a booking by a person who has an open prospect makes no person and no lead; the
+   *  receipt is ON_OPEN_PROSPECT and names this person, and any consent is recorded for them. BOOKING door only. */
+  onOpenProspectPersonId?: string;
   ipHash?: string | null;
   existingPersonId?: string;   // Add a lead for a person already on file (the known-person check): no new person
   ownerStaffId?: string | null;   // the adder (AG-2-4 rule 8); none for a form lead, except a one-user firm's one user (X-4)
@@ -51,6 +54,26 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   if (made.count === 0 && a.door === "MANUAL" && receipt.payloadHash !== a.payloadHash) return conflict("This request was already used with other details. Start a new Add.", "REQUEST_REUSED");
   if (made.count === 0) return { leadId: receipt.leadId, personId: receipt.personId, created: false };
 
+  /** The consent's source follows the door: a booking's tick is BOOKING_FORM, never WEB_FORM (FO-2 part 3b). */
+  const recordConsent = async (personId: string) => {
+    if (!a.consent) return;
+    await ports.consent.record(tx, {
+      firmId, subject: { kind: "FO_PERSON", id: personId }, channel: a.consent.channel, purpose: a.consent.purpose, wordingId: a.consent.wordingId,
+      source: a.door === "BOOKING" ? "BOOKING_FORM" : a.door === "MANUAL" ? "STAFF_RECORDED" : "WEB_FORM", sourceRef: `fo_arrival_receipt:${receipt.id}`, locale: a.consent.locale,
+      ...(a.ipHash ? { ipHash: a.ipHash } : {}), ...(a.consent.givenAt ? { givenAt: a.consent.givenAt } : {}),
+      jurisdiction: "CA", recordedKind: "SELF_SERVICE", recordedBy: a.actor,
+    });
+  };
+  if (a.onOpenProspectPersonId) {
+    if (a.door !== "BOOKING") throw new Error("arrive: only a booking arrives on an open prospect");
+    const personId = (await tx.foPerson.findFirst({ where: firmScope(firmId, { id: a.onOpenProspectPersonId }), select: { id: true } }))?.id ?? notFound("person");
+    await recordConsent(personId);
+    await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "ON_OPEN_PROSPECT", completedAt: new Date(), personId } });
+    // The booking goes on the person's record (AG-2-84 rule 8): one audit line, ids only.
+    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent } });
+    return { leadId: null, personId, created: true };
+  }
+
   let personId: string, match: string | null = null;
   if (a.existingPersonId) {
     personId = (await tx.foPerson.findFirst({ where: firmScope(firmId, { id: a.existingPersonId }), select: { id: true } }))?.id ?? notFound("person");
@@ -72,17 +95,11 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   });
   if (a.attribution) await tx.foLeadAttribution.create({ data: { firmId, leadId: lead.id, ...a.attribution } });
   if (a.message) await tx.foNote.create({ data: { firmId, personId, leadId: lead.id, visibility: "INTERNAL", text: a.message, byActor: a.actor } });
-  if (a.consent) {
-    await ports.consent.record(tx, {
-      firmId, subject: { kind: "FO_PERSON", id: personId }, channel: a.consent.channel, purpose: a.consent.purpose, wordingId: a.consent.wordingId,
-      source: "WEB_FORM", sourceRef: `fo_arrival_receipt:${receipt.id}`, locale: a.consent.locale, ...(a.ipHash ? { ipHash: a.ipHash } : {}),
-      jurisdiction: "CA", recordedKind: "SELF_SERVICE", recordedBy: a.actor,
-    });
-  }
+  await recordConsent(personId);
   await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
   await written(tx, ports.audit, {
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
-    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
+    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
     detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });

@@ -173,7 +173,7 @@ export class Corporate {
     const money = await boardTotals(this.db, ctx.firmId, t, vis.seesAll ? null : ctx.staffId);   // FO-2 part 3: totals per currency, never summed across (R1.31)
     return {
       type: t, totals: money.open, stages: stages.map((s) => ({
-        key: s.key, label: s.label, kind: s.kind, totals: money.byStage.get(s.id) ?? [],
+        id: s.id, key: s.key, label: s.label, kind: s.kind, totals: money.byStage.get(s.id) ?? [],
         prospects: rows.filter((p) => p.stageId === s.id).map((p) => ({ id: p.id, number: p.number, type: p.type, name: p.subjectCompany?.operatingName ?? nameOf(p.subjectPerson!), ownerStaffId: p.ownerStaffId })),
       })),
     };
