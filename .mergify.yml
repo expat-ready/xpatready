@@ -7,9 +7,9 @@
 # cancelled whenever one ahead failed, 43% of its time on 31 Oct), batches of up to 6, and a PR joins only once its own
 # check is green, so a batch fails only on how PRs combine.
 # Founder 1 Nov night (reverses P-210's limit of one): the repository is public, so batches run free on GitHub's
-# machines, not the one Mac; up to 8 batches are checked at once, each assuming the ones ahead of it pass.
+# machines, not the one Mac; up to 6 batches are checked at once, each assuming the ones ahead of it pass.
 merge_queue:
-  max_parallel_checks: 8   # 19 Nov (Lead 94, P-738): 3 batches x 2 PRs left 19 approved PRs waiting while machines were free (job wait 0.1 min)
+  max_parallel_checks: 6   # P-728 (2), held by P-730 until scopes (#2207, on main) and the batch-failure alert; Lead 94 19 Nov: 19 PRs waited, job wait 0.1 min
   # P-715 (Lead 84; founder P-717, 19 Nov ~07:3x IST, the one exception to the P-716 freeze): batches that share no
   # scope test and merge at the same time, and one failure no longer resets the others. Undo: mode: serial (one line).
   # Design and evidence: product/design/mergify-parallel-scopes-2026-11-19.md (40% of 118 batches failed in 72 h).
