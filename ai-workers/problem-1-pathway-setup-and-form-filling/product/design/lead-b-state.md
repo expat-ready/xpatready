@@ -66,6 +66,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **00:43 IST (Lead B (8)):** P-745 waves applied to the focus list (570c7ce95); R1.92 and R1.20 lanes told to finish their current PRs and stop. Every PR's `fast` fails on the DECISIONS workflow lock until **#2360** (Lead 96's lock notes, queued) merges. **Then:** re-run the failed `fast` job alone (P-371) on #2268, #2302 and #2323: they were taken out by CI-PRE, not a batch, so no full run is needed (FULL_RUN_FROM, P-743); the queue gate labels them itself. Only batch failures need `/run full` from the Lead's account: #2308, #2321, #2029, #2307 (each after its fix and an Approve naming its head). #2109 waits for #2341 (csnk1 newest-folder check). #2268's shard 4 forms browser timeout is passed to qa 7 as a possible race. Lead 96 hands over to Lead 97 within the hour: always send to `tools/current-lead.sh`.
 
+**00:44 IST: reports now go to Lead 97** (`local_d04f3736-7f3a-4a2f-9235-2d20e05fb869`; Lead 96 handed over). Lead 97 has the open list: #2360 then the `fast` re-runs; /run full for #2321, #2307, #2308, #2029; #2029's DW3 fix falls to the Lead if no head by 01:1x IST.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
