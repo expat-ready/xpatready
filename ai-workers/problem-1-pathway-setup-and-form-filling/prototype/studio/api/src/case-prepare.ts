@@ -862,9 +862,9 @@ export class CasePrepare {
       // Break M1: the audit line is written in the same transaction: a tick never comes off without its record (who,
       // when, why). The same row Audit.log writes.
       const who = c.participants.find((p) => p.subjectId === item.subjectId);
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "unentered", entity: "item", entityKey: item.id, combinationId: null,
-        summary: [`${actor.name} took the tick "Entered in the portal" off "${sec!.title}" of ${item.itemKey} for the ${ROLE[who?.role ?? ""] ?? "person"} on case ${short(c.id)}; it counts as still to tick. Reason: ${b.reason}`].map((t) => Array.from(t).slice(0, 600).join(""))[0], // by character, never half an emoji
-        detail: { section: key, reason: b.reason, ticked_by: row.enteredBy, ticked_at: row.enteredAt.toISOString() } } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, "unentered", "item", item.id,
+        [`${actor.name} took the tick "Entered in the portal" off "${sec!.title}" of ${item.itemKey} for the ${ROLE[who?.role ?? ""] ?? "person"} on case ${short(c.id)}; it counts as still to tick. Reason: ${b.reason}`].map((t) => Array.from(t).slice(0, 600).join(""))[0], // by character, never half an emoji
+        { section: key, reason: b.reason, ticked_by: row.enteredBy, ticked_at: row.enteredAt.toISOString() });
       return row;
     });
     return { section: key, entered: null };

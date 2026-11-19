@@ -13,7 +13,6 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 * Held parts are listed in STATE and nobody builds them (P-251, P-265, P-284); the founder lifted the P-235 to P-248 holds (P-316); Express Entry's police and medical block is the one hard stop besides Validate (P-172, P-315).
 * Questions as a PR comment headed "Question for the tech lead"; every brief says "report to the current Lead (`tools/current-lead.sh`)" (P-293 (2), P-373, P-409). Builders never edit `STATE.md`, `RULES.md`, `DECISIONS.md`, `BACKLOG.md`; qa alone edits `qa/CAPABILITIES.md` and `qa/BUGS.md` (P-314).
 * qa: one row per lane, in parallel; packs on GitHub's machines; gate A by screens (P-434). Live AI off and US$0 in every lane; never press a priced button (P-175).
-* **Agent lines for qa (founder 19 Nov, "Let a session edit"; kept here because the qa skill is at its 10 KB limit):** **Module cards (P-712):** never hand-edit a card's frozen `Tests.`, `Tables.` or `Entry points.` line; add your row's items in `<card without .md>.rows/<ROW>.md` next to the card (one file per row, at most 6 lines starting `Tests:`, `Tables:` or `Entry points:`); a hand-edit of a frozen line in a PR under review is a finding. **Finish by capability (P-719):** work one Release 1 item's whole chain (parts, J-row, qa proof); about 8 items in flight; start a new item only when one is Proven; prove in item order, an in-flight item's last part first after Blockers.
 
 
 ## Full rows moved word for word from RULES.md by Lead 80, 16:4x IST 18 Nov (RULES.md under 25 KB, P-611)
