@@ -62,6 +62,11 @@ for (const [label, bytes, name] of DAMAGED) {
   const before = scanned(), u = await scan(bytes, name), after = scanned();
   ok(`QA-520 fail: the signed-scan door refuses ${label} (400) in PF-F4's words, nothing stored (no row, no file, no audit line)`, u.status === 400 && pf4(detail(u)) && JSON.stringify(before) === JSON.stringify(after), { status: u.status, detail: detail(u), before, after });
 }
+{
+  const before = scanned(), u = await scan(fixture("bomb.png"), "signed.png"), after = scanned();
+  ok("QA-520 fail: the signed-scan door refuses an image with too many pixels (413) in PF-F4's words, not as \"larger than 20 MB\", nothing stored",
+    u.status === 413 && /^This image is too large to open safely/.test(detail(u)) && !/larger than/.test(detail(u)) && JSON.stringify(before) === JSON.stringify(after), { status: u.status, detail: detail(u), before, after });
+}
 for (const [kind, bytes, name, media] of GOOD) {
   // A scan marks "scan received": the steps restart only when a fact changed since the copy printed (B132, as
   // check_c81_signing_api.ts B130), so change one, have it confirmed, and print and sign a new copy for the next scan.
@@ -86,6 +91,13 @@ for (const [label, bytes, name] of DAMAGED) {
   const before = receipts(), u = await send(bytes, name), after = receipts();
   ok(`QA-520 fail-today: the fee-receipt door refuses ${label} (400) in PF-F4's words, on the field "file", nothing stored (no row, no file, no audit line)`,
     u.status === 400 && pf4(detail(u)) && (u.body as { errors?: { field: string }[] } | null)?.errors?.[0]?.field === "file" && JSON.stringify(before) === JSON.stringify(after), { status: u.status, detail: detail(u), before, after });
+}
+// Review M1 (QA-520): an image over PF-F4's pixel limit is refused (413) in PF-F4's words, on the field "file", never
+// reworded by main.ts's upload-limit filter as "larger than 20 MB" (it is a few hundred bytes).
+{
+  const before = receipts(), u = await send(fixture("bomb.png"), "approved.png"), after = receipts();
+  ok("QA-520 fail: the fee-receipt door refuses an image with too many pixels (413) in PF-F4's words, not as \"larger than 20 MB\", on the field \"file\", nothing stored",
+    u.status === 413 && /^This image is too large to open safely/.test(detail(u)) && !/larger than/.test(detail(u)) && (u.body as { errors?: { field: string }[] } | null)?.errors?.[0]?.field === "file" && JSON.stringify(before) === JSON.stringify(after), { status: u.status, detail: detail(u), before, after });
 }
 for (const [kind, bytes, name, media] of GOOD) {
   const before = receipts(), u = await send(bytes, name), after = receipts();

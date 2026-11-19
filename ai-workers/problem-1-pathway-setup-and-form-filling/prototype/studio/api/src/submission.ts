@@ -49,6 +49,13 @@ const refuse = (field: string, detail: string, status = HttpStatus.BAD_REQUEST):
   const conflict = status === HttpStatus.CONFLICT; // review m6: a 409 is a conflict, never a validation problem
   throw new HttpException({ type: `https://expatready.local/problems/${conflict ? "conflict" : "validation"}`, title: conflict ? "Not now" : "Some details need fixing", status, detail, errors: [{ field, message: detail }] }, status);
 };
+/** QA-520 (review M1, m1): the file check's refusal on the field "file". `message` keeps PF-F4's words, so main.ts's 413
+ *  filter knows a too-many-pixels refusal from the upload limit and never rewords it as "larger than 20 MB"; a 503 (the
+ *  PDF reader could not be run) is no mistake in the person's input, so it is not a validation problem. */
+const fileRefused = (detail: string, status: number): never => {
+  const unavailable = status === HttpStatus.SERVICE_UNAVAILABLE;
+  throw new HttpException({ type: `https://expatready.local/problems/${unavailable ? "unavailable" : "validation"}`, title: unavailable ? "Try again" : "Some details need fixing", status, detail, message: detail, errors: unavailable ? [] : [{ field: "file", message: detail }] }, status);
+};
 const stale = (): never => refuse("version", "This application changed since you read it. Reload, then record the submission again.", HttpStatus.CONFLICT);
 const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => { const r = schema.safeParse(input ?? {}); if (!r.success) throw new HttpException(problemFromZod(r.error), HttpStatus.BAD_REQUEST); return r.data; };
 /** The application number as stored (slice 1's rule), or why it is refused: blank, or the wrong shape. */
@@ -240,7 +247,7 @@ export class Submission {
     if (bytes.length > MAX_DOCUMENT_BYTES) refuse("file", `The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
     // QA-520 (R1.67): PF-F4's one check (case-checklist.ts checkedCaseFile, as the Documents doors since CS-D1t): the type
     // from the bytes, then that a PDF opens whole. Its refusal (PF-F4's words and status) stays on the field "file".
-    const checked = await checkedCaseFile(x[0]).catch((e: unknown) => { if (e instanceof HttpException) refuse("file", String(e.getResponse()), e.getStatus()); throw e; });
+    const checked = await checkedCaseFile(x[0]).catch((e: unknown) => { if (e instanceof HttpException) fileRefused(String(e.getResponse()), e.getStatus()); throw e; });
     const id = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
     const rel = join("cases", c.id, "fee-receipts", `${id}.${checked.extension}`), abs = join(RECEIPTS(), rel);
     try {
