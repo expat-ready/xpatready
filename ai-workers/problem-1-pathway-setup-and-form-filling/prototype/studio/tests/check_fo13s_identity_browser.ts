@@ -154,10 +154,23 @@ try {
   await panel(o).getByRole("button", { name: "Record a check" }).click(); await drawer(o).waitFor(); await o.keyboard.press("Escape");
   ok("FO-13s keyboard: Escape closes an untouched panel without asking", (await drawer(o).count()) === 0);
 
+  // ------------------------------------------------- break MJ-2 (a half-typed date), MJ-1 (a long unbroken note)
+  await panel(o).getByRole("button", { name: "Record a check" }).click(); await drawer(o).waitFor();
+  await drawer(o).getByLabel(/^Document type/).selectOption("PASSPORT"); await drawer(o).getByLabel(/^Issuing country/).fill("CA"); await drawer(o).getByLabel(/^Last 4/).fill("q7r2");
+  await drawer(o).getByLabel(/^Expiry date/).focus(); await o.keyboard.type("0315");   // month and day only
+  await drawer(o).getByLabel("Name", { exact: true }).check();
+  await save(o);
+  await drawer(o).getByText("Enter the whole date (day, month and year), or clear it.", { exact: true }).waitFor({ timeout: 10_000 });
+  ok("FO-13s break MJ-2 fail: a half-typed expiry is refused on its field, never saved as no expiry", rows() === 3 && (await drawer(o).getByLabel(/^Expiry date/).getAttribute("aria-invalid")) === "true", rows());
+  await drawer(o).getByLabel(/^Expiry date/).fill(TODAY);
+  await drawer(o).getByLabel(/^Note/).fill("Seen".padEnd(470, "x"));
+  await save(o); await drawer(o).waitFor({ state: "detached", timeout: 15_000 });
+  ok("FO-13s break MJ-2 pass: the whole date saves", rows() === 4);
+
   // ----------------------------------------------------------------------------------------- BR-8 (other keys)
   const bf = await pageAs(tok.BF); await openLead(bf);
   ok("FO-13s BR-8 fail: Billing and finance (no record, no document:show) sees the list but no Record and no Open copy, with the reason",
-    (await panel(bf).locator("[data-check]").count()) === 3 && (await panel(bf).getByRole("button", { name: "Record a check" }).count()) === 0 && (await panel(bf).getByRole("button", { name: "Open copy" }).count()) === 0 && (await panel(bf).locator("[data-why-no-copy]").count()) === 1);
+    (await panel(bf).locator("[data-check]").count()) === 4 && (await panel(bf).getByRole("button", { name: "Record a check" }).count()) === 0 && (await panel(bf).getByRole("button", { name: "Open copy" }).count()) === 0 && (await panel(bf).locator("[data-why-no-copy]").count()) === 1);
   const ro = await pageAs(tok.RO); await openLead(ro);
   ok("FO-13s BR-8: Read-only (document:show, no record) may open the copy but not record", (await panel(ro).getByRole("button", { name: "Open copy" }).count()) === 1 && (await panel(ro).getByRole("button", { name: "Record a check" }).count()) === 0);
 
@@ -165,14 +178,14 @@ try {
   const eng = await fetch(`${BASE}/api/front-office/leads/${LID}/engage`, { method: "POST", headers: { authorization: `Bearer ${tok.O}` } });
   const prospect = await eng.json() as { id: string };
   await o.goto(`${BASE}/front-office/prospects/${prospect.id}`); await panel(o).locator("[data-check]").first().waitFor({ timeout: 30_000 });
-  ok("FO-13s M1: the prospect page shows the same panel with the person's three checks", eng.status === 201 && (await panel(o).locator("[data-check]").count()) === 3, eng.status);
+  ok("FO-13s M1: the prospect page shows the same panel with the person's four checks", eng.status === 201 && (await panel(o).locator("[data-check]").count()) === 4, eng.status);
   await axe(o, "the prospect page");
 
   // ----------------------------------------------------------------------------------------- widths
   for (const w of [375, 1024, 1440]) {
     const p = await pageAs(tok.O, w); await openLead(p);
     const wide = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    ok(`FO-13s ${w} px: no sideways scroll on the lead page with the panel`, wide <= 1, wide);
+    ok(`FO-13s ${w} px: no sideways scroll on the lead page with the panel (a 470-character unbroken note included, break MJ-1)`, wide <= 1, wide);
     await shot(p, `lead-${w}`);
     await panel(p).getByRole("button", { name: "Record a check" }).click(); await drawer(p).waitFor(); await shot(p, `panel-${w}`);
     await p.context().close();

@@ -20,6 +20,8 @@ const path = (personId: string) => `/front-office/people/${encodeURIComponent(pe
 const RECORD_REASON = "Recording a check needs a role that works leads: ask your firm's Owner or Admin.";
 /** A stored calendar date (YYYY-MM-DD) in words, formatted in UTC so it never moves a day (challenge m4). */
 const EXPIRY = new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" });
+const DISCARD = "Discard the details you typed?";
+const PARTIAL_DATE = "Enter the whole date (day, month and year), or clear it.";
 const COPY_REASON = "Opening a copy needs a role that may open documents.";
 
 /** The multipart Save, with the session's bearer token and staffApi's refusal handling (a 401 ends the session here). */
@@ -60,7 +62,7 @@ function CheckRow({ c, mayCopy }: { c: IdentityCheck; mayCopy: boolean }) {
   return (
     <li data-check={c.id} className="rounded-lg border border-border p-3 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="font-medium">{methodLabel(c.method)}{c.methodDetail ? <span className="font-normal text-text-muted"> · {c.methodDetail}</span> : null}</p>
+        <p className="min-w-0 font-medium [overflow-wrap:anywhere]">{methodLabel(c.method)}{c.methodDetail ? <span className="font-normal text-text-muted"> · {c.methodDetail}</span> : null}</p>
         <p className="text-xs text-text-muted">{arrivedLabel(c.checkedAt)} by {c.checkedBy.name}</p>
       </div>
       <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[7rem_1fr]">
@@ -83,7 +85,7 @@ const blank = () => ({ method: "IN_PERSON", methodDetail: "", documentType: "", 
 function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; onOpenChange: (o: boolean) => void; personId: string; name: string }) {
   const qc = useQueryClient(), toast = useToast(), lock = useLock();
   const [f, setF] = React.useState(blank), [file, setFile] = React.useState<File | null>(null), [errors, setErrors] = React.useState<Errors>({}), [general, setGeneral] = React.useState<string | null>(null);
-  const requestId = React.useRef<string>(crypto.randomUUID()), body = React.useRef<HTMLFormElement>(null), fileInput = React.useRef<HTMLInputElement>(null);
+  const requestId = React.useRef<string>(crypto.randomUUID()), body = React.useRef<HTMLFormElement>(null), fileInput = React.useRef<HTMLInputElement>(null), expiryInput = React.useRef<HTMLInputElement>(null);
   const dirty = JSON.stringify(f) !== JSON.stringify(blank()) || file !== null;
   React.useEffect(() => { if (open) { setF(blank()); setFile(null); setErrors({}); setGeneral(null); requestId.current = crypto.randomUUID(); } }, [open]);
   const set = (k: keyof ReturnType<typeof blank>, v: string | string[]) => { setF((x) => ({ ...x, [k]: v })); setErrors((e) => { const { [k]: _gone, ...rest } = e; return rest; }); };
@@ -115,14 +117,16 @@ function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; on
   });
   const submit = (ev?: React.FormEvent) => {
     ev?.preventDefault();
+    // A half-typed date reads as empty: refused here, never saved as "no expiry" (break MJ-2).
+    if (expiryInput.current?.validity.badInput) { setErrors({ documentExpiry: PARTIAL_DATE }); focusFirstError(); return; }
     if (file && file.size > COPY_MAX_BYTES) { setErrors({ copy: COPY_TOO_LARGE }); focusFirstError(); return; }
     if (lock.take()) save.mutate();
   };
   const toggle = (code: string, on: boolean) => set("details", on ? [...f.details, code] : f.details.filter((d) => d !== code));
   return (
     <Panel open={open} onOpenChange={(o) => { if (!save.isPending) onOpenChange(o); }} title="Record an identity check" description={name || undefined}
-      confirmClose={() => !dirty || window.confirm("Discard this identity check? Nothing is saved.")}
-      footer={<><Button variant="ghost" disabled={save.isPending} onClick={() => onOpenChange(false)}>Cancel</Button><Button busy={save.isPending} type="submit" form="fo-identity-form">Save check</Button></>}>
+      confirmClose={() => !dirty || window.confirm(DISCARD)}
+      footer={<><Button variant="ghost" disabled={save.isPending} onClick={() => { if (!dirty || window.confirm(DISCARD)) onOpenChange(false); }}>Cancel</Button><Button busy={save.isPending} type="submit" form="fo-identity-form">Save check</Button></>}>
       <form id="fo-identity-form" ref={body} onSubmit={submit} noValidate className="flex flex-col gap-4">
         {general ? <Notice tone="danger" title={general} /> : null}
         {Object.keys(errors).length ? (
@@ -150,7 +154,7 @@ function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; on
             </Field>
           </div>
           <Field label="Expiry date (optional)" error={errors.documentExpiry}>
-            <Input type="date" value={f.documentExpiry} onChange={(e) => set("documentExpiry", e.target.value)} disabled={save.isPending} />
+            <Input ref={expiryInput} type="date" value={f.documentExpiry} onChange={(e) => set("documentExpiry", e.target.value)} disabled={save.isPending} />
           </Field>
           <Field label="Copy (optional)" hint="PDF, JPEG or PNG, at most 10 MB." error={errors.copy}>
             <Input ref={fileInput} type="file" accept="application/pdf,image/jpeg,image/png" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setErrors((x) => { const { copy: _c, ...rest } = x; return rest; }); }} disabled={save.isPending} />
