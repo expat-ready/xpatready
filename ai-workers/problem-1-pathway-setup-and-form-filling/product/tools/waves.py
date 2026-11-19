@@ -10,6 +10,9 @@ qa/CAPABILITIES.md (Works = Proven). Stdlib only, US$0, no network except `wip`,
   waves.py allow R1.x ...   exit 0 only when every item may start a lane: wave 0 (already Proven: fixes, P-214), the
                             active wave, the next one, a wave below the active one (finishing its last 3 or fewer
                             items), or a note "allow: <reason>"; else one "OUTSIDE WAVE" line
+  waves.py none-ok          stdin: a lane brief whose Item line says "none"; exit 0 when the row it is for (after
+                            "/next <area>" or "Row") has a tooling, qa, records or Lead area in BACKLOG*.md, or it
+                            names no row; else exit 1 with the reason (brief-check.sh --brief; focus-check.py's rule)
   waves.py active           print the active wave and the waves open for lane starts
   waves.py wip [--prs F] [--lanes F]   building (an open non-draft PR or a lane naming the item) against cap 8 and
                             Built-not-Proven (status "Built...") against cap 12; one ACT line per breach and per item
@@ -27,6 +30,7 @@ TSV = os.environ.get("WAVES_TSV") or os.path.join(PH, "design", "waves.tsv")
 MD = os.environ.get("WAVES_MD") or os.path.join(PH, "design", "waves.md")
 CAPS = os.environ.get("WAVES_CAPS") or os.path.join(PH, "qa", "CAPABILITIES.md")
 FOCUS = os.environ.get("WAVES_FOCUS") or os.path.join(PH, "focus-list.md")
+BACKLOG_DIR = os.environ.get("FOCUS_BACKLOG_DIR") or PH
 APP_VIEW = os.environ.get("WAVES_APP_VIEW") or os.path.join(PH, "state", "app-view-latest.txt")
 CAP_BUILDING, CAP_BUILT = 8, 12
 OPEN_AFTER = 3   # a wave stays active while it has more than 3 unproven items
@@ -34,6 +38,8 @@ START = "<!-- waves.py gen: start (generated from design/waves.tsv and qa/CAPABI
 END = "<!-- waves.py gen: end -->"
 ITEM = re.compile(r"(?<![A-Za-z0-9.])R1\.[0-9]+(?![0-9])")
 ROW = re.compile(r"(?<![A-Za-z0-9/-])(?:[A-Z]{1,4}-[0-9A-Za-z]+|B[0-9]+[a-z]?)(?![A-Za-z0-9])")
+OWN = re.compile(r"(?:/next [a-z]+|(?<![A-Za-z])[Rr]ow) (" + ROW.pattern + ")")
+EXEMPT_AREA = re.compile(r"^\s*(tooling|qa|records|tech lead|lead)\s*([(;,:./]|$)", re.I)   # as focus-check.py
 NAMES = {0: "Proven before the waves (fixes only)", 1: "Finish", 2: "Next", 3: "Rest of Partial", 4: "Not built"}
 num = lambda i: int(i[3:])
 
@@ -207,6 +213,23 @@ def main(argv):
     cmd = argv[0] if argv else ""
     if cmd == "wip":
         return wip(argv[1:])
+    if cmd == "none-ok":
+        import glob
+        own = OWN.search(sys.stdin.read().replace("\r", ""))
+        if not own:
+            return 0
+        area = {}
+        for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))):
+            for l in open(f, encoding="utf-8").read().split("\n"):
+                c = l.split("|")
+                if len(c) > 3 and ROW.fullmatch(c[1].strip()):
+                    area.setdefault(c[1].strip(), c[2].strip())
+        r = own.group(1)
+        if r in area and EXEMPT_AREA.match(area[r]):
+            return 0
+        print(f"row {r} is " + (f"a build row (area: {area[r][:40]})" if r in area else "not a BACKLOG row")
+              + ", so its brief names its R1 item (Item: R1.x), not none (B204)")
+        return 1
     rows, st = read_tsv(), read_caps()
     if cmd == "gen":
         block = gen_block(rows, st)
