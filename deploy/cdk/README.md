@@ -32,12 +32,15 @@ CI: job `deploy-synth` in `.github/workflows/skeleton.yml` runs the same steps o
 `deploy/`, with no AWS credentials.
 
 ## Tests
-* `test/region.test.ts`: the region guard (C1-3). Fails on any stack outside `ca-central-1`, any stack with no region
-  pinned, and any resource, replication target, log destination or output naming another region; the one exception
-  is a `ca-west-1` backup copy in an AWS Backup plan (PF-8r).
+* `test/region.test.ts`: the region guard (C1-3). It runs `cdk.json`'s app as `cdk synth` does and checks that
+  assembly, the one PF-8c deploys. It fails on any stack outside `ca-central-1`, any stack with no region pinned, any
+  resource, log destination or output naming another region (the one exception: a `ca-west-1` copy in an AWS Backup
+  plan, PF-8r), and refuses outright what can leave the region without naming it: S3 replication, multi-region access
+  points, nested stacks and stack sets (a row that needs one extends the guard first).
 * `test/estate.test.ts`: the database (private, encrypted, deletion-protected, 35-day backups, TLS only, terse errors),
   the buckets (public access blocked, versioned, KMS, plain HTTP refused), and availability (production Multi-AZ,
-  staging single-AZ). Each rule passes on the real stacks and fails on a copy with exactly that property broken.
+  staging single-AZ, two zones). Each rule passes on the real stacks and fails on a copy with exactly that property
+  broken. The engine version is read from `compose.test.yml`, so a PostgreSQL bump on main turns this red.
 
 ## Next rows
 PF-8b the service, secrets and DNS · PF-8c deploy from CI by OpenID Connect · PF-8r backups copy to `ca-west-1` and

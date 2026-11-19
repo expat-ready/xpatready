@@ -64,6 +64,11 @@ export class EstateStack extends Stack {
       allowAllOutbound: false,
     });
 
+    // The generated master password, encrypted with the data key and kept like the database: losing it with a
+    // retained database would lock the data out.
+    const masterSecret = new rds.DatabaseSecret(this, 'DatabaseSecret', { username: 'studio', encryptionKey: this.dataKey });
+    masterSecret.applyRemovalPolicy(RemovalPolicy.RETAIN);
+
     this.database = new rds.DatabaseInstance(this, 'Database', {
       engine,
       vpc: this.vpc,
@@ -76,7 +81,7 @@ export class EstateStack extends Stack {
       allocatedStorage: config.databaseStorageGib,
       storageEncrypted: true,
       storageEncryptionKey: this.dataKey,
-      credentials: rds.Credentials.fromGeneratedSecret('studio', { encryptionKey: this.dataKey }),
+      credentials: rds.Credentials.fromSecret(masterSecret),
       databaseName: 'studio',
       // 35 days of automated backups; RDS restores to any point in time inside that window.
       backupRetention: Duration.days(BACKUP_DAYS),

@@ -12,8 +12,8 @@
 # Mergify's batch PRs (mergify/*, drafts) do not run it: each PR proved its image; it is not a required check.
 # A ready head's run is never cancelled (P-371 (2)): a newer push waits. US$0 (public repository), no model spend,
 # no key: the database has no password and live AI is off.
-# PF-8a: job deploy-synth (below) checks the CDK estate in deploy/ when a PR changes it; a PR that changes only deploy/
-# builds no image (step "changes" skips it), and a push touching only deploy/ is not a reason to rebuild the image.
+# PF-8a: job deploy-synth (below) checks the CDK estate in deploy/ when a PR changes it; a PR that touches none of the
+# image's paths (deploy/ and records) builds no image (step "changes" skips it), nor does a push touching only deploy/.
 name: skeleton
 on:
   pull_request:
@@ -68,30 +68,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          # PF-8a: a PR whose whole change is under deploy/ (the CDK estate) puts nothing into the image: job deploy-synth
-          # checks it. Judged against the base as the event fired; main's newer files only make the list longer (a full run).
-          if [ -n "$BASE" ] && pr=$(git fetch -q --no-tags --depth=1 origin "$BASE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BASE" "$AFTER") \
-             && [ -n "$pr" ] && ! printf '%s\n' "$pr" | grep -qv '^deploy/'; then
-            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Skeleton not run: this PR changes only deploy/ (job deploy-synth checks it)." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
-          # Only a later push to an open PR is judged by its own commits; opened, reopened, ready and by hand always run.
-          if [ "$ACTION" != synchronize ] || [ -z "$BEFORE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run ($ACTION)"; exit 0; fi
           # The trigger's own path list, read from this file: one list, never a second copy to keep in step.
           # The block runs to the next key at indent 4 or less; every line in it must be `      - "glob"`: anything else
           # (a comment at any indent, a blank line, another quote style) stops the step, never a shorter list.
           globs=$(awk '/^    paths:/{p=1;next} p&&/^ {0,4}[^ #]/{exit} p{ if ($0 ~ /^      - "[^"]+"$/) { sub(/^      - "/,""); sub(/"$/,""); print } else { print "BAD [" $0 "]" } }' .github/workflows/skeleton.yml)
           [ -n "$globs" ] || { echo "::error::no path list read from skeleton.yml"; exit 1; }
           if printf '%s\n' "$globs" | grep -q '^BAD '; then echo "::error::the paths block must hold only lines of the form - \"glob\": $(printf '%s\n' "$globs" | grep '^BAD ' | head -1)"; exit 1; fi
-          # deploy/ is in the trigger for job deploy-synth only; it never goes into the image.
+          # deploy/ is in the trigger for job deploy-synth only (PF-8a); it never goes into the image.
           globs=$(printf '%s\n' "$globs" | grep -v '^deploy/')
+          # first_hit <files>: the first file an image glob matches. bash's * crosses /, so each glob matches a superset of
+          # GitHub's; GitHub's **/ may also be no folder at all (p5/**/*.ts matches p5/transforms.ts), so each glob is also
+          # tried with every **/ removed.
+          first_hit() { local f g; while IFS= read -r f; do [ -n "$f" ] || continue
+            while IFS= read -r g; do [[ "$f" == $g || "$f" == ${g//\*\*\//} ]] && { printf '%s' "$f"; return; }; done <<< "$globs"
+          done <<< "$1"; }
+          # PF-8a: a PR whose whole change touches no image path (deploy/ only, with its records) builds no image: GitHub
+          # started this workflow for job deploy-synth. Judged against the base as the event fired; main's newer files
+          # only make the list longer (a full run). An unreadable change goes on to the checks below.
+          if [ -n "$BASE" ] && pr=$(git fetch -q --no-tags --depth=1 origin "$BASE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BASE" "$AFTER") \
+             && [ -n "$pr" ] && [ -z "$(first_hit "$pr")" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Skeleton not run: this PR changes none of the image's paths (job deploy-synth checks deploy/)." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          # Only a later push to an open PR is judged by its own commits; opened, reopened, ready and by hand always run.
+          if [ "$ACTION" != synchronize ] || [ -z "$BEFORE" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run ($ACTION)"; exit 0; fi
           # A push that cannot be read (a rewritten branch) runs in full.
           if ! files=$(git fetch -q --no-tags --depth=1 origin "$BEFORE" "$AFTER" 2>/dev/null && git diff --no-renames --name-only "$BEFORE" "$AFTER"); then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run: $BEFORE..$AFTER could not be read"; exit 0; fi
-          hit=""
-          while IFS= read -r f; do [ -n "$f" ] || continue
-            # bash's * crosses /, so each glob matches a superset of GitHub's; GitHub's **/ may also be no folder at all
-            # (p5/**/*.ts matches p5/transforms.ts), so each glob is also tried with every **/ removed.
-            while IFS= read -r g; do [[ "$f" == $g || "$f" == ${g//\*\*\//} ]] && { hit="$f"; break 2; }; done <<< "$globs"
-          done <<< "$files"
+          hit=$(first_hit "$files")
           if [ -n "$hit" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; echo "full run: this push changed $hit"; exit 0; fi
           # The skip stands only on a proven earlier head: this workflow's pull_request run at BEFORE concluded success
           # (a skip there was itself proven the same way). Red, cancelled, replaced, skipped (draft) or unreadable: full run.

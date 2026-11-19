@@ -16,6 +16,14 @@ export const HOME_REGION = 'ca-central-1';
 /** The only other region allowed, and only for PF-8r's backup copy (AWS Backup plans). */
 export const BACKUP_COPY = { region: 'ca-west-1', resourceTypes: ['AWS::Backup::BackupPlan'] };
 // Every AWS region name has this shape: us-east-1, ca-west-1, ap-southeast-2, us-gov-west-1, eu-central-2 ...
+/** Resources the guard refuses outright: they copy data, or deploy templates, where a region name need not appear.
+ *  S3 replication names its destination by an ARN with no region; PF-8r copies through AWS Backup instead. Nested
+ *  stacks and stack sets carry templates this guard does not read; a row that needs them extends the guard first. */
+export const REFUSED_TYPES: Record<string, string> = {
+  'AWS::S3::MultiRegionAccessPoint': 'a multi-region access point',
+  'AWS::CloudFormation::Stack': 'a nested stack (its template is not checked)',
+  'AWS::CloudFormation::StackSet': 'a stack set (it deploys to other regions)',
+};
 const REGION_NAME = /\b(?:us-gov|us-iso[a-z]?|[a-z]{2})-(?:north|south|east|west|central|northeast|northwest|southeast|southwest)-\d\b/g;
 
 function regionsIn(value: unknown, found: Set<string> = new Set()): Set<string> {
@@ -34,6 +42,11 @@ export function regionProblems(assembly: cx_api.CloudAssembly): string[] {
     if (region !== HOME_REGION) problems.push(`stack ${stack.stackName} is in ${region}, not ${HOME_REGION}`);
     const template = stack.template as CfnTemplate;
     for (const [id, r] of Object.entries(template.Resources ?? {})) {
+      const refused = REFUSED_TYPES[r.Type];
+      if (refused) problems.push(`${stack.stackName}/${id} (${r.Type}) is ${refused}`);
+      if (r.Type === 'AWS::S3::Bucket' && r.Properties?.ReplicationConfiguration) {
+        problems.push(`${stack.stackName}/${id} (${r.Type}) replicates to another bucket (use AWS Backup, PF-8r)`);
+      }
       for (const other of regionsIn(r.Properties)) {
         if (other === HOME_REGION) continue;
         if (other === BACKUP_COPY.region && BACKUP_COPY.resourceTypes.includes(r.Type)) continue;

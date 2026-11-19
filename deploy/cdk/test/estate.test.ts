@@ -1,6 +1,8 @@
 // PF-8a: the estate's data rules, each with a pass (the real stacks) and a fail (one property broken in a copy).
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { App } from 'aws-cdk-lib';
 import { buildEstate } from '../lib/estate-app.ts';
 import { availabilityProblems, bucketProblems, databaseProblems, type CfnTemplate } from './checks.ts';
@@ -8,6 +10,9 @@ import { availabilityProblems, bucketProblems, databaseProblems, type CfnTemplat
 const assembly = buildEstate(new App()).synth();
 const template = (name: 'staging' | 'production') => assembly.getStackByName(`estate-${name}`).template as CfnTemplate;
 const environments = ['staging', 'production'] as const;
+// The PostgreSQL version main runs (the row: "the version main runs in compose.test.yml"), read, never copied.
+const COMPOSE = join(import.meta.dirname, '../../../ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml');
+const mainPostgres = /image:\s*postgres:(\d+\.\d+)/.exec(readFileSync(COMPOSE, 'utf8'))?.[1];
 
 /** A deep copy of a template with one change made to the first resource of a type. */
 function broken(t: CfnTemplate, type: string, change: (props: Record<string, unknown>, all: CfnTemplate) => void): CfnTemplate {
@@ -27,7 +32,8 @@ describe('database (SA-2-21, SA-11-32, NFR5-04)', () => {
   for (const env of environments) {
     test(`pass: ${env} database is private, encrypted, deletion-protected, 35-day backups, TLS only, terse errors`, () => {
       assert.deepEqual(databaseProblems(template(env)), []);
-      assert.equal(first(template(env), 'AWS::RDS::DBInstance').EngineVersion, '18.3');
+      assert.ok(mainPostgres, 'no postgres image in compose.test.yml');
+      assert.equal(first(template(env), 'AWS::RDS::DBInstance').EngineVersion, mainPostgres);
     });
   }
   const db = 'AWS::RDS::DBInstance';
@@ -83,10 +89,14 @@ describe('availability (P-562)', () => {
     one(availabilityProblems('production', broken(template('production'), 'AWS::RDS::DBInstance', (p) => { p.MultiAZ = false; })), /expected true/));
   test('fail: staging Multi-AZ (paying for a standby) is refused', () =>
     one(availabilityProblems('staging', template('production')), /expected false/));
-  test('the network spans two availability zones in both environments', () => {
-    for (const env of environments) {
-      const zones = new Set(Object.values(template(env).Resources).filter((r) => r.Type === 'AWS::EC2::Subnet').map((r) => r.Properties!.AvailabilityZone));
-      assert.deepEqual([...zones].sort(), ['ca-central-1a', 'ca-central-1b']);
-    }
+  const zonesOf = (t: CfnTemplate) =>
+    [...new Set(Object.values(t.Resources).filter((r) => r.Type === 'AWS::EC2::Subnet').map((r) => r.Properties!.AvailabilityZone))].sort();
+  test('pass: the network spans two availability zones in both environments', () => {
+    for (const env of environments) assert.deepEqual(zonesOf(template(env)), ['ca-central-1a', 'ca-central-1b']);
+  });
+  test('fail: a network in one zone is caught', () => {
+    const copy = structuredClone(template('production'));
+    for (const r of Object.values(copy.Resources)) if (r.Type === 'AWS::EC2::Subnet') r.Properties!.AvailabilityZone = 'ca-central-1a';
+    assert.notDeepEqual(zonesOf(copy), ['ca-central-1a', 'ca-central-1b']);
   });
 });
