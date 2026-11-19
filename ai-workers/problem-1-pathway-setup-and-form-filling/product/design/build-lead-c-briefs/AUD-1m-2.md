@@ -6,7 +6,7 @@ Written 19 Nov 11:5x IST by Build Lead C (2). **Approved for building after the 
 
 **Ready when:** #2214 is on `main`. Part 2a branches from `main` after that. Part 2b branches from part 2a's head (overlap rule: build and get the Approve on the branch; open the PR only when 2a merges, then merge `main` once and take a diff-only Approve).
 
-**Why two parts:** P-610 (under 800 changed lines with tests). The list is CW1's `LEFT` map on #2214's head (counted 19 Nov at ee835cc53): 30 writes in 22 files. 20 files are the case side's; 2 are the platform's (see "The two platform files").
+**Why two parts:** P-610 (under 800 changed lines with tests). The list is CW1's `LEFT` map on #2214's head (counted 19 Nov at ee835cc53): 30 writes in 22 files. 20 files are the case side's; 2 are the platform's, which part 2b also moves (PF-0a, see below).
 
 ## Part 2a: cases, documents and people (11 writes, 10 files)
 | File (under `api/src/`) | Writes |
@@ -38,7 +38,7 @@ Written 19 Nov 11:5x IST by Build Lead C (2). **Approved for building after the 
 | `review-rounds.ts` | 2 |
 | `review-stamp.ts` | 1 |
 
-**PR title:** `runtime: AUD-1m part 2b — form, library and review audit writes through AuditPort; J-8 joined and walked`
+**PR title:** `runtime: AUD-1m part 2b — form, library, review and platform audit writes through AuditPort (absorbs PF-0a); J-8 joined and walked`
 
 ## How each write moves (both parts)
 * Each direct `tx.auditEvent.create(...)` / `this.db.auditEvent.create(...)` becomes one `AuditPort.record` call (or `Audit.log` with `tx`, where the caller already has `Audit`), keeping the caller's transaction when it has one.
@@ -48,15 +48,15 @@ Written 19 Nov 11:5x IST by Build Lead C (2). **Approved for building after the 
 * Update CW1's `LEFT` map in the same PR: 2a removes its 10 files; 2b removes its 10. CW1 keeps its pass and fail lines.
 * No schema and no migration. If one is needed, ask first (P-600 slot).
 
-## The two platform files
-**Lead 90's answer (19 Nov 11:50 IST): way 1, provided Lead B agrees** (Lead 90 asked Lead B (7) and relays the answer). With Lead B's yes, part 2b moves the 3 writes and names Lead B's OK in its PR body; without it, way 2.
-`platform/identity/audit.ts` (2 writes: `auditStaff`, `auditInvitation`) and `platform/settings.ts` (1 write) are the platform's, not the case side's. The BACKLOG row's check says "`git grep auditEvent.create` under `api/src` finds only the adapter". Two ways, for Lead 90 to decide with Lead B:
-1. **Recommended:** part 2b also moves these 3 writes (one line each, `AREA_ENTITY` already covers `platform_staff` and `platform_invitation`), with Lead B's OK on the touch list in the PR body. Then CW1's final `LEFT` is empty and the row's check holds as written.
-2. They stay, named in CW1's final `LEFT` with a reason, and a Lead B row moves them later. Then R1.8's check is met only when that row merges.
-Until the answer comes, build 2b without them and leave CW1 naming them.
+## The two platform files: part 2b also does PF-0a (decided)
+**Lead 90 with Lead B (7), 19 Nov 12:0x IST:** part 2b moves the platform's 3 direct audit writes, `platform/identity/audit.ts` (2: `auditStaff`, `auditInvitation`) and `platform/settings.ts` (1), onto `AuditPort.record(tx, …)` in the same transactions, with no behaviour change (`AREA_ENTITY` already covers `platform_staff` and `platform_invitation`). **This absorbs BACKLOG row PF-0a** (marked on `lead/2026-11-07-lead31`): there is no separate PF lane, and PF-0a is done when part 2b merges. Write "Completes: PF-0a" in 2b's PR body too.
+* **PF-0a's Done when, added to 2b's:** for each of the 3 writes, one pass and one fail through a spy on the port (the write lands through the port; with a stand-in direct write the spy sees nothing); a failing audit write rolls the change back (fail-closed); every existing suite passes unchanged. Put these in `tests/check_pf0a_audit_port.ts`, or fold them into `check_aud1m_case_writes.ts` and say which in the PR body.
+* **Order with Lead B's work:** 2b merges `main` in after #1961 lands. Whichever of 2b and PF-19b part 3 merges second keeps both sides in `settings.ts` (no side's lines dropped in the merge).
+* CW1's final `LEFT` map is empty after 2b, so the row's check ("`git grep auditEvent.create` under `api/src` finds only the adapter") holds as written.
+* 2b's size goes up by about 3 lines plus the spy tests; if it would pass 800 changed lines (P-610), move the platform files and their tests into a part 2c rather than asking for an exception.
 
 ## J-8 inside part 2b (P-728)
-R1.8's capability line (`product/qa/CAPABILITIES.md` line 145 on `main`): "Every create, change and delete on PF/FO tables writes who, when, before and after; UPDATE or DELETE on the audit table refused by the database even for the app's role (fail case); a line with another firm's id refused". qa lists the parts left as AUD-1b (merged #2124), AUD-1m parts 1, 2a, 2b, and PF-0a. **PF-0a is Lead B's;** if it is not on `main` when 2b is ready, J-8 names it as not yet joined and Lead 90 decides whether R1.8 waits for it.
+R1.8's capability line (`product/qa/CAPABILITIES.md` line 145 on `main`): "Every create, change and delete on PF/FO tables writes who, when, before and after; UPDATE or DELETE on the audit table refused by the database even for the app's role (fail case); a line with another firm's id refused". qa lists the parts left as AUD-1b (merged #2124), AUD-1m parts 1, 2a, 2b, and PF-0a; PF-0a is now inside part 2b, so 2b's PR completes R1.8.
 
 Add `tests/journeys/j_8.ts` on an isolated copy (`tools/isolated.sh`, own database and port, never :4400), as `tests/journeys/j_6.ts` does:
 * **Swaps shown real (DW lines; each also fails against its stand-in, the "NR" lines):**
@@ -76,7 +76,7 @@ Add `tests/journeys/j_8.ts` on an isolated copy (`tools/isolated.sh`, own databa
 * Every case suite passes unchanged, and AUD-1a's and AUD-1b's suites (`check_aud1a_insert_only.ts`, `check_aud1b_adapter.ts`) and `check_case_feed.ts` pass unchanged.
 * The firm's case feed shows the same lines as before on the demo (compare one Sample case before and after).
 * `node studio/tools/check-port-contracts.mjs` exits 0; module cards: card lines or `Card unchanged: <reason>` for each module touched; full `ci` is green.
-* 2b only: `tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_8.ts` exits 0 on its own isolated copy, every DW and W line passes and every DW line fails against its stand-in; axe-core clean on each screen walked; 1024 and 1440 px with no sideways scroll. The PR body says "Completes: R1.8" only if PF-0a is on `main`; otherwise "Completes: R1.8 (pending PF-0a)".
+* 2b only: `tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_8.ts` exits 0 on its own isolated copy, every DW and W line passes and every DW line fails against its stand-in; axe-core clean on each screen walked; 1024 and 1440 px with no sideways scroll. The PR body says "Completes: R1.8" and "Completes: PF-0a".
 
 **Duplicate check:** `git grep -lE "j_8\.ts|J-8\b" origin/main -- prototype/studio/tests` → 0 files (checked 19 Nov 11:5x IST).
 
@@ -85,6 +85,7 @@ Add `tests/journeys/j_8.ts` on an isolated copy (`tools/isolated.sh`, own databa
 **Standard rules:**
 * One part, one PR. Get "Reviewer: Approve <head>" on the branch first, then open the PR as non-draft (P-683).
 * A dequeued PR merges `main` again within 30 minutes and takes a diff-only Approve (P-721).
+* P-731: a PR is labelled only after one full run passes on its head; after a failed batch, list every failing suite of that run before asking for a relabel.
 * Never push to an open PR unless it is a fix. Push after every step (P-557).
 * Live AI off, US$0, never a priced button (P-175). Sample facts only.
 * Questions go on the branch or the PR as "Question for the tech lead: …"; Build Lead C answers within 30 minutes.
