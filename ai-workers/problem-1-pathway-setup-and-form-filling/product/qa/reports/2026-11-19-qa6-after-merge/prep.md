@@ -13,3 +13,4 @@ qa 6 (fresh Mac qa lane after the account switch), branch `claude/qa-6-after-mer
 ## Notes
 * Merge-queue batches have failed since ~03:34Z (ci runs 44452375664 … 44459511901, all failure); not qa's to fix, but no item can merge until the queue is green.
 * No ci run found with main 4aa912c92's tree (2c345b32e) in the last 400 ci runs; the next proof uses the merge batch of the item's own PR.
+* Merge batch ci 44459511901 (failure). #2169's code fails two checks. (1) Shard 4, job 135344310367: `check_bk2_fold_outs`, `runtime/case-decision.tsx:179` has aria-expanded and no FoldArrow. (2) Shard 8, job 135344310440: `check_forms_qa53`, `GET /api/runtime/cases/:id/decisions` returns 401 for officer and client. Shard 5, job 135344310400 (not #2169's): `check_pf19b_mail` TypeError on `wordingId`. Sent to Lead 90 at ~12:1x IST.
