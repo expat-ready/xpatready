@@ -341,3 +341,27 @@ Diff-only re-review (P-277) of `15e7fe389..c7ad059f7`: bd9ba5ab4 merges origin/m
 The minors m1-m5 stand as recorded.
 
 **Verdict: Approve** for `c7ad059f79da2e4373517a00c2e931bac1685cb3`. No Blocker or Major is open.
+
+## Review round 10 (956beae7a, clean merge)
+
+This is a diff-only re-review (P-277) of `956beae7a996654cb26b6361cde0c28352adf293`. It is one merge commit with parents `c7ad059f7` (round 9, approved) and `origin/main` `c600f2150`.
+
+### Checked
+* **The PR's own files are unchanged.** `git diff c7ad059f7 956beae7a -- $(git diff --name-only origin/main...c7ad059f7)` is empty (0 bytes). The merge changed none of the PR's 19 files.
+* **Scope:** `git diff origin/main...956beae7a --stat` lists the same 19 files (+513/-108), the same list as at c7ad059f7. `git diff origin/main 956beae7a --stat` also shows those 19 files and nothing else, so nothing of main leaked in or was reverted.
+* **Migration:** `20261119000000_csdl1_firm_calendar/migration.sql` is unchanged (sha256 `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`). It is still later than main's newest, `20261118210000_fo7lk_trust_lock`, and the stamp is used by only this one folder. The three repeated stamps on main are the old ones and are not this PR's.
+* **Module cards:** `platform/MODULE.md` is 40 lines and `MODULE.cases.md` is 36 lines. `module-cards.py tree` reports `PASS module cards: 15 cards, tree checked`.
+* **Collisions:** main changed 29 files between merge base `9d440b2f4` and `c600f2150`: FO-7lk (the trust-lock migration and rollback, `client-money/MODULE.md`, `check_fo7lk_lock_order.ts`), J-6 (`journeys/j_6.ts`, screenshots), QA-510's test, a one-line `PLATFORM_IDENTITY` default in `start.sh`, and records. None of them touches CS-DL1's files or `platform_firm_calendar`, and none uses `localDate`, `zonedInstant`, `FirmCalendar` or `businessClose`. Results of `git grep -n "complaints/business-days" -- '*.ts'`:
+  * On main, the hits are `leads.ts` and `open-minutes.ts`. At the head, both are CS-DL1 files that now import from `platform/calendar/working-days.ts`.
+  * On main, `check_pf21_complaints.ts` and `check_pf21v_views.ts` import `acknowledgeBy`, `BusinessDayTally` and `businessDaysBetween`. The head's `business-days.ts` still exports all three (the last two are re-exported from `calendar/`).
+  * The head adds only CS-DL1's own test and a comment.
+  * No new main file imports a moved name from the old path.
+* **Suite at 956beae7a:** `tests/check_csdl1_deadlines.ts` passes 37/37 against the shared database.
+
+### Could not check
+* The builder's typecheck and its database and browser suites at this head were still running. CI for this head.
+* The journey was not re-run, because the merge does not change the screen. Round 3's 9.5/10 stands.
+
+The minors m1-m5 stand as recorded.
+
+**Verdict: Approve** for `956beae7a996654cb26b6361cde0c28352adf293`. No Blocker or Major is open.
