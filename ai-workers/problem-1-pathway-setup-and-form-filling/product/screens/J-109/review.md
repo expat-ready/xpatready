@@ -103,3 +103,18 @@ Verdict: Approve 62b4bcd95aeb8c69e519e37444905b8230103993
 * Nothing else is open from R1/R2. No Blocker or Major.
 
 Verdict: Approve 9f36c65027eb8e5b35e869a7a8a25cfcc6e58850
+
+## Re-review R4 (P-277, diff only): `9f36c6502..eb49e116b`
+Changed in 4 files, no code line: `j_109.ts` (comment only, +2/-1), `qa/built/J-109.md` (one sentence), the new `branch-notes.md`, and my R3 section, committed unchanged.
+* **m6 fixed.** `j_109.ts:11-12` and the qa line now say the reminder's mail goes through the app's MessagePort (`MESSAGES_MAIL`, #2157, not this row) and that on a local copy it lands in the demo inbox. That is accurate:
+  * `channels.ts:20` uses `localEmail` unless the environment is non-local with SES set;
+  * `channels/email/local.ts:1-3` marks the row SENT, and `GET /api/demo/platform-inbox` lists it;
+  * R3 found exactly that row (SERVICE, EMAIL, SENT).
+* **`branch-notes.md` matches the record.**
+  * The Approve sha and the merge story are right.
+  * The suite results are as reported; I re-ran only `j_109`, 26/0, in R3.
+  * The DW fake-fail check matches R1, where I verified it by reading the code.
+  * The break M1 is routed as a question with a bug-row recommendation against PF-21v/w, as R2 asked.
+* Nothing is open. No Blocker, Major or minor. No re-run was needed: no executable line changed.
+
+Verdict: Approve eb49e116b6a088b80c3eb41c6a2c2a90dd706da3
