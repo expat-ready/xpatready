@@ -15,7 +15,8 @@ HB = {"workflow": "pipeline-heartbeat.yml", "every_min": 30, "timeout_min": 5, "
       "queue_no_progress_min": 60, "queue_wait_p95_min": 60, "batch_wait_p95_min": 15, "stalled_lane_min": 90,
       "stalled_lane_max_age_h": 24, "lane_branch_excluded_prefixes": ["mergify/", "dependabot/", "lead/"],
       "nightly_workflow": "nightly.yml", "nightly_by_ist": "04:00", "approved_label": "review: approved",
-      "batch_branch_prefix": "mergify/merge-queue/", "escalate_after_min": 120, "queued_label": "queued"}
+      "batch_branch_prefix": "mergify/merge-queue/", "escalate_after_min": 120, "queued_label": "queued",
+      "parked_label": "parked", "parked_max_days": 7}
 NOW = datetime(2026, 11, 20, 6, 30, tzinfo=timezone.utc)  # 12:00 IST
 LAB = "review: approved"
 
@@ -122,6 +123,36 @@ class Heartbeat(unittest.TestCase):
         self.assertEqual(ids(r), ["stalled-lane"])
         self.assertEqual(r["alarm_state"].keys(), {"stalled-lane #4", "stalled-lane #5"})
         self.assertEqual(r["counts"]["queued"], 1)
+
+    # parked (founder, 19 Nov 07:5x IST): a valid "Parked:" note keeps a PR out of stalled-lane; else parked-expired.
+    def parked(self, note, n=4, updated=300):
+        p = pr(n, updated=updated, ci=updated, labels=["parked"])
+        p["parked_comments"] = [{"body": "Looks good", "created_at": ago(500)}] + (
+            [{"body": note, "created_at": ago(60)}] if note else [])
+        f = base(); f["open_prs"].append(p)
+        return self.run_(f)
+
+    def test_a_validly_parked_pr_is_no_stalled_lane_and_is_listed(self):
+        r = self.parked("Parked: Wave 2 row (P-707)\nOwner: the tech lead\nResume: 2026-11-25")
+        self.assertNotIn("stalled-lane", ids(r)); self.assertNotIn("parked-expired", ids(r))
+        line = [x["why"] for x in r["report"] if x["id"] == "parked"]
+        self.assertTrue(line and "#4 (resume 25 Nov, the tech lead)" in line[0], r["report"])
+
+    def test_parked_expired_or_without_a_valid_note_is_flagged(self):
+        for note, why in (("Parked: Wave 2\nOwner: the tech lead\nResume: 2026-11-19", "parked, expired"),
+                          (None, "no \"Parked:\" comment"),
+                          ("Parked: Wave 2\nResume: 2026-11-25", "lacks Owner:"),
+                          ("Parked: Wave 2\nOwner: the tech lead\nResume: 2026-11-30", "over 7 days"),
+                          ("Parked: Wave 2\nOwner: the tech lead\nResume: 2026-02-31", "not a date")):
+            r = self.parked(note)
+            a = [x for x in r["alarms"] if x["id"] == "parked-expired"]
+            self.assertTrue(a and "#4" in a[0]["why"] and why in a[0]["why"], (note, r["alarms"]))
+            self.assertEqual(a[0]["keys"], ["parked-expired #4"])
+            self.assertNotIn("stalled-lane", ids(r), note)   # one alarm per parked PR, not two
+
+    def test_the_parked_label_alone_without_the_note_never_hides_a_pr(self):
+        r = self.parked(None, updated=20)   # even an active PR: the label needs its note
+        self.assertIn("parked-expired", ids(r))
 
     def test_approved_but_unmergeable_prs_never_fire_queue_alarms(self):
         f = base(); f["main_merges"] = [ago(300)]; f["open_prs"] = f["open_prs"][1:2]   # nothing queued, quiet night
