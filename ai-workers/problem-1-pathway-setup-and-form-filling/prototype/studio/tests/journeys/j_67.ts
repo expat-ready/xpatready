@@ -104,7 +104,7 @@ const standIn = (name: string, takes: (f: File) => string | null): Door => ({ na
 const skips = await judge1(standIn("a door that skips the check", () => "application/octet-stream"));
 ok("J-67 DW1 stand-in: a door that skips the check lets the GIF named passport.png through, so the same judge fails", !skips.ok && skips.gif === 201, skips);
 const old = await judge1(standIn("a door with the old check", (f) => mediaOf(f.bytes)));
-ok("J-67 DW1 stand-in: the old check (mediaOf) takes the damaged PNG and keeps the wrong name, so the same judge fails", !old.ok && old.cut === 201 && old.jpg[1] === "image/png|passport.png", old);
+ok("J-67 DW1 stand-in: the old check (mediaOf) takes the damaged PNG and keeps the wrong name, so the same judge fails", !old.ok && old.cut === 201 && old.jpg[1] === "image/jpeg|passport.png", old);
 
 /** DW2's judge: what is stored for the person is the same before and after the uploads. */
 const judge2 = async (d: Door, files: File[]) => { const before = stored(); const answers = []; for (const f of files) answers.push(await d.send(f)); const after = stored(); return { ok: same(before, after), before, after, answers }; };
@@ -121,7 +121,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL: BASE, colorScheme: "light", reducedMotion: "reduce" });
   await ctx.addInitScript((a) => { try { localStorage.setItem("xr-actor", a); } catch { /* private window */ } }, c.officer);
   const page = await ctx.newPage();
-  const shot = (name: string) => page.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage: true });
+  const shot = (name: string, width = 1440) => page.locator("[data-documents-panel]").screenshot({ path: join(SHOTS, `${name}-${width}.png`) });   // the panel only: the case page is 12,000 px tall
   const open = async () => { await page.goto(`/cases/${c.id}`); await page.locator("[data-documents-panel]").waitFor({ timeout: 30_000 }); await page.locator(`[data-line="${first.id}"]`).waitFor({ timeout: 30_000 }); };
   const row = page.locator(`[data-line="${first.id}"]`), error = row.locator("[data-line-error]");
   const choose = (f: File) => row.locator("[data-upload-input]").setInputFiles({ name: f.name, mimeType: "application/octet-stream", buffer: Buffer.from(f.bytes) });
@@ -173,7 +173,7 @@ try {
   await line2.filter({ hasText: "IMG_0001.JPG" }).waitFor({ timeout: 30_000 });
   const wide = await page.evaluate(() => { const p = document.querySelector("[data-documents-panel]")!; return p.scrollWidth > p.clientWidth + 1 || p.getBoundingClientRect().right > window.innerWidth + 1; });
   ok("J-67 W7: at 1024 px the Documents panel fits the page (nothing cut off sideways)", !wide);
-  await page.screenshot({ path: join(SHOTS, "W7-client-file-on-line-1024.png"), fullPage: true });
+  await shot("W7-client-file-on-line", 1024);
 } finally {
   await browser.close();
 }
