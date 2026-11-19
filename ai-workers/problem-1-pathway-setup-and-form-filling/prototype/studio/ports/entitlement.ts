@@ -16,8 +16,9 @@ import { z } from "zod";
 export const EntitlementMetric = z.enum(["seats", "active_individual_cases", "active_corporate_cases", "storage_mb"]);
 export type EntitlementMetric = z.infer<typeof EntitlementMetric>;
 
-/** Allowed, or refused with the metric and its limit (and the usage the check read). */
-export type EntitlementResult = { allowed: true } | { allowed: false; metric: EntitlementMetric; limit: number; used: number };
+/** Allowed, or refused with the metric and its limit (and the usage the check read). PF-15c: `noLivePlan` when the
+ *  firm has no live subscription (its limit is 0 because there is no plan, not because the plan says 0). */
+export type EntitlementResult = { allowed: true } | { allowed: false; metric: EntitlementMetric; limit: number; used: number; noLivePlan?: true };
 
 export interface EntitlementPort {
   /** May the firm add one more of `metric`? `used`: the caller's count of it now (read in the caller's transaction). */
