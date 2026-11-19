@@ -413,8 +413,7 @@ export class BookingService {
   async attendanceDue(ctx: StaffContext) {
     const now = this.ports.clock.now();
     const due = new Date(now.getTime() - 30 * MIN);
-    const seen = await this.seenWhere(ctx, Prisma.sql`b.status::text IN ('SCHEDULED', 'RESCHEDULED') AND b.ends_at <= ${due}`);
-    const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { status: { in: ACTIVE }, endsAt: { lte: due }, ...seen }), orderBy: { endsAt: "asc" } });
+    const rows = await this.readSeen(ctx, Prisma.sql`b.status::text IN ('SCHEDULED', 'RESCHEDULED') AND b.ends_at <= ${due}`, { status: { in: ACTIVE }, endsAt: { lte: due } }, "endsAt");
     return rows.map((r) => this.view(r));
   }
 
@@ -425,9 +424,22 @@ export class BookingService {
     if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
     const staffId = all ? q.staff?.toLowerCase() : ctx.staffId;
-    const seen = all ? await this.seenWhere(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}${staffId ? Prisma.sql` AND b.staff_id = ${staffId}::uuid` : Prisma.empty}`) : {};
-    const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}), ...seen }), orderBy: { startsAt: "asc" } });
+    const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) };
+    const rows = all ? await this.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}${staffId ? Prisma.sql` AND b.staff_id = ${staffId}::uuid` : Prisma.empty}`, where, "startsAt")
+      : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, where), orderBy: { startsAt: "asc" } });
     return rows.map((r) => this.view(r));
+  }
+
+  /** The most ids one booking read names (FO-3vr break F1: PostgreSQL takes at most 32,767 parameters in one query). */
+  seenChunk = 10_000;
+  /** The rows of `where` the person may see (`seenWhere`), in `by` order then id: one read, or one per `seenChunk` ids
+   *  when the visible set is larger, merged in the same order. */
+  async readSeen(ctx: StaffContext, narrow: Prisma.Sql, where: Prisma.FoBookingWhereInput, by: "startsAt" | "endsAt"): Promise<BookingRow[]> {
+    const seen = await this.seenWhere(ctx, narrow), orderBy: Prisma.FoBookingOrderByWithRelationInput[] = [by === "startsAt" ? { startsAt: "asc" } : { endsAt: "asc" }, { id: "asc" }];
+    if (!seen.id) return this.db.foBooking.findMany({ where: firmScope(ctx.firmId, where), orderBy });
+    const ids = seen.id.in, out: BookingRow[] = [];
+    for (let i = 0; i === 0 || i < ids.length; i += this.seenChunk) out.push(...await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, id: { in: ids.slice(i, i + this.seenChunk) } }), orderBy }));
+    return ids.length > this.seenChunk ? out.sort((a, b) => a[by].getTime() - b[by].getTime() || a.id.localeCompare(b.id)) : out;
   }
 
   /** FO-3vr (AG-4-67 rules 1-3, rule 10 "the record rule in the query"): the bookings of the firm a person may see, as a

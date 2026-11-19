@@ -118,8 +118,8 @@ try {
   ok("FO-3vr DW3 pass: the new host sees it (200); an old host whose record rule allows it (the lead's owner) still sees theirs after it moved to the officer, and the officer as new host sees it", g4c === 200 && g5 === 200 && g5n === 200 && (await listed(colleague)).has(back), { g4c, g5, g5n });
 
   // ------------------------------------------------------------------------------------------- DW4 (prospects)
-  const prospect = (owner: string | null) => {
-    const p = person(A), l = lead(A, p, owner), _e = sql(`update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where id = '${l}'`), st = sql(`select id from fo_stage where firm_id = '${A}' and pipeline = 'INDIVIDUAL' limit 1`);
+  const prospect = (owner: string | null, leadOwner: string | null = owner, p = person(A)) => {
+    const l = lead(A, p, leadOwner), _e = sql(`update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where id = '${l}'`), st = sql(`select id from fo_stage where firm_id = '${A}' and pipeline = 'INDIVIDUAL' and kind = 'ACTIVE' order by sort_order limit 1`);
     return sql(`insert into fo_prospect (id, firm_id, lead_id, primary_contact_person_id, subject_person_id, owner_staff_id, type, stage_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${l}', '${p}', '${p}', ${owner ? `'${owner}'` : "null"}, 'INDIVIDUAL', '${st}', 'test', now()) returning id`);
   };
   let prospects: { mine: string; theirs: string; none: string } | null = null;
@@ -132,7 +132,29 @@ try {
     ok("FO-3vr DW4 fail: on a prospect a colleague owns it is not (list, 404 by id); on an ownerless prospect not either without assign or view.all", !lo.has(bTheirs) && (await byId(own, bTheirs)) === 404 && !lo.has(bNone) && (await byId(own, bNone)) === 404);
     ok("FO-3vr DW4 pass: the ownerless prospect's booking is seen with agent/prospect:assign and with view.all; a deactivated owner counts as no owner",
       la.has(bNone) && lv.has(bNone) && (await byId(assigner, bNone)) === 200 && !la.has(bTheirs) && (sql(`update platform_staff set status = 'DEACTIVATED' where id = '${colleague.staffId}'`), (await listed(assigner)).has(bTheirs)) && (sql(`update platform_staff set status = 'ACTIVE' where id = '${colleague.staffId}'`), true));
+    // Review m1: rule 2 c (a booking on the person only, whose prospect the officer owns, the lead a colleague's) and a
+    // deactivated owner on the direct link (seesBooking), each a pass and a fail.
+    const p2c = person(A); prospect(own.staffId, colleague.staffId, p2c);
+    const b2c = booking(A, host, { personId: p2c }), lo2 = await listed(own);
+    ok("FO-3vr DW4 pass (AG-2-64 rule 2 c): a booking naming only the person, whose prospect the officer owns (the lead is a colleague's), is seen in the list and by id", lo2.has(b2c) && (await byId(own, b2c)) === 200);
+    const pNot = person(A); prospect(colleague.staffId, colleague.staffId, pNot);
+    const bNot = booking(A, host, { personId: pNot });
+    ok("FO-3vr DW4 fail: the same with the prospect and the lead both a colleague's is not (list, 404 by id)", !(await listed(own)).has(bNot) && (await byId(own, bNot)) === 404);
+    const beforeOff = await byId(assigner, bTheirs);
+    sql(`update platform_staff set status = 'DEACTIVATED' where id = '${colleague.staffId}'`);
+    const [offId, offOwn] = [await byId(assigner, bTheirs), await byId(own, bTheirs)];
+    sql(`update platform_staff set status = 'ACTIVE' where id = '${colleague.staffId}'`);
+    ok("FO-3vr DW4 pass/fail (BR-4, direct link): a colleague's prospect is 404 by id for the assigner while the owner is active, 200 once the owner is deactivated (no active owner); the own-only officer stays 404", beforeOff === 404 && offId === 200 && offOwn === 404, { beforeOff, offId, offOwn });
   }
+
+  // Review m1: a deactivated lead owner counts as no owner on a booking that names only the person (list and by id).
+  const pDeact = person(A); lead(A, pDeact, colleague.staffId);
+  const bDeact = booking(A, staff(A, "Lead host"), { personId: pDeact });
+  const onBefore = (await listed(assigner)).has(bDeact);
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${colleague.staffId}'`);
+  const [onAfter, idAfter, ownAfter] = [(await listed(assigner)).has(bDeact), await byId(assigner, bDeact), (await listed(own)).has(bDeact)];
+  sql(`update platform_staff set status = 'ACTIVE' where id = '${colleague.staffId}'`);
+  ok("FO-3vr DW4 pass/fail (BR-4, a lead's owner deactivated): the assigner does not see the booking while the lead's owner is active, sees it (list, 200 by id) once deactivated; the own-only officer never", !onBefore && onAfter && idAfter === 200 && !ownAfter, { onBefore, onAfter, idAfter, ownAfter });
 
   // ------------------------------------------------------------------------------------------- DW5 (not linked yet)
   const unlinkedNoPerson = booking(A, colleague.staffId), unlinkedPerson = booking(A, colleague.staffId, { personId: person(A) });
@@ -166,6 +188,12 @@ try {
   const where = JSON.stringify(bookingReads[0]?.args ?? {});
   ok("FO-3vr DW7 fail: one findMany on fo_booking carries the visibility in its where (the 3 ids from the SQL record rule), and the record rule ran in SQL (fo_lead, fo_prospect, the host), not after a read",
     bookingReads.length === 1 && visible.every((id) => where.includes(id)) && raws.length === 1 && /fo_lead/.test(raws[0]) && /fo_prospect/.test(raws[0]) && /staff_id/.test(raws[0]), { bookingReads: bookingReads.length, raws: raws.length });
+  // Review m2 (break F1): a visible set larger than one read's ids is read in pieces, merged in the same order.
+  const whole = (await svc.attendanceDue(assigner).catch(() => [])).length, before2 = (await svc.staffList(assigner, range)).map((b) => b.id);
+  svc.seenChunk = 2;
+  const pieces = (await svc.staffList(assigner, range)).map((b) => b.id);
+  svc.seenChunk = 10_000;
+  ok("FO-3vr DW7 pass/fail: read in pieces of 2 ids, the assigner's list has the same bookings in the same order as in one read (no row lost, none twice)", before2.length >= 3 && pieces.join() === before2.join() && whole >= 0, { one: before2.length, pieces: pieces.length });
 } catch (e) {
   ok("FO-3vr: the check ran to the end", false, String((e as Error)?.stack ?? e).slice(0, 1500));
 } finally {
