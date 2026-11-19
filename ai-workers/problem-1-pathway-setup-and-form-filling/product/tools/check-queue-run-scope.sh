@@ -4,7 +4,7 @@
 # skipped in a merge-queue run (kind's queue output, or a merge_group event), while every code step a pull request runs,
 # and the batch-only code steps (suites, packs, regression, types, gate B), still run in the batch. It evaluates each
 # job's and step's `if:` (a small GitHub-expression reader) under six scenarios: code and notes changes, each as a
-# pull request, a Mergify batch PR (mergify/merge-queue/*) and a merge_group event. A self-test first proves three
+# pull request, a Mergify batch PR (mergify/merge-queue/*) and a merge_group event. A self-test first proves five
 # breakages fail. Reads the file only, US$0, under a second.
 #   bash product/tools/check-queue-run-scope.sh [path to ci.yml]
 set -u
@@ -99,7 +99,7 @@ def evaluate(expr, ctx):
     if i != len(toks): raise ValueError(f"trailing tokens in {expr!r}")
     return r
 
-def truthy(v): return bool(v) and v != "false"
+def truthy(v): return bool(v)   # as GitHub: false, null, 0 and "" are falsy; any other string (even "false") is truthy
 
 def scenario(kind, mode):
     queue = mode == "batch"
@@ -167,11 +167,12 @@ def check(text):
     return bad
 
 src = open(sys.argv[1]).read()
-# Self-test: three breakages must each fail (a checker that passes everything proves nothing).
+# Self-test: five breakages must each fail (a checker that passes everything proves nothing).
 FAST = "        if: env.QUEUE != 'true' && github.event_name != 'merge_group'\n"
 muts = [("records step loses its queue guard", lambda s: s.replace(FAST, "", 1)),
         ("records step guarded only by the branch, not merge_group", lambda s: s.replace(FAST, "        if: env.QUEUE != 'true'\n", 1)),
         ("type check skipped in a batch", lambda s: s.replace("        run: node \"$P/tools/typecheck.mjs\"", "        if: needs.kind.outputs.queue != 'true'\n        run: node \"$P/tools/typecheck.mjs\"", 1)),
+        ("records step guarded by a bare string output (\"false\" is truthy on GitHub)", lambda s: s.replace(FAST, "        if: ${{ !needs.kind.outputs.queue }}\n", 1)),
         ("records rule moved into an ungated code step", lambda s: s.replace("          node \"$P/tools/graph.mjs\" --check", "          bash \"$P/tools/check-docs.sh\"\n          node \"$P/tools/graph.mjs\" --check", 1))]
 ok = True
 print("self-test:")
