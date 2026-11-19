@@ -115,7 +115,9 @@ export const SUBJECT_KINDS: Readonly<Record<KeepClass, readonly KeepSubject["kin
 /** A real date between 1900 and 9999 (a far-future date would overflow the period's end into "no date": break m1). */
 const RealDate = z.date().refine((d) => !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 9999, "a real date between 1900 and 9999");
 /** `subject`: every case and person the record belongs to (a trust entry of a case and its client names both: break M3);
- *  `recordDates`: the record's own dates a date-range hold may name (an invoice's date, a file's opened and closed dates),
+ *  `recordDates`: the record's own dates a date-range hold may name (an invoice's date; for a whole file, the date of every dated
+ *  record it removes: LegalHoldPort's DATE subject is a point, so a file's opened and closed dates alone miss a hold
+ *  inside its life),
  *  never only the date its keep period starts from (break M1). */
 export const KeepCheckInput = z.strictObject({
   firmId: FirmId, class: KeepClass, startedAt: RealDate,
@@ -142,7 +144,7 @@ export class KeepCheckRefused extends Error {
   constructor(readonly code: "UNKNOWN_CLASS" | "NO_HOLD_CHECK" | "INVALID_INPUT", message: string) { super(message); this.name = "KeepCheckRefused"; }
 }
 
-/** The subset of LegalHoldPort check() calls (ports/legal-hold.ts; imported by shape, so this file stays zod-only). */
+/** The subset of LegalHoldPort check() calls (ports/legal-hold.ts; the shape it is called with). */
 export type HoldSubjectOut = { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "PERSON"; id: string } | { kind: "CATEGORY"; category: (typeof LEGAL_HOLD_CATEGORY)[number] } | { kind: "DATE"; at: Date };
 export type HoldsForCheck<Tx> = { isHeld(tx: Tx, firmId: string, subjects: ReadonlyArray<HoldSubjectOut>): Promise<{ held: false } | { held: true; holds: KeepHold[] }> };
 

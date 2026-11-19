@@ -59,6 +59,8 @@ ok("AUD-5 fail: a bare string subject (part 1's placeholder shape) is refused at
   await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", recordDates: [NOW], startedAt: ago(9), subject: "inv-1" })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
 ok("AUD-5 fail (break M1): a check that names no record date is refused at run time, never matched on the start date alone",
   await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", startedAt: ago(9), subject: { kind: "RECORD", id: "inv-1" } })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
+ok("AUD-5 fail (review A): a closed client file named by its client only (no case) is refused, never checked on the person alone",
+  await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "closed_client_file", startedAt: ago(9), recordDates: [ago(9)], subject: { kind: "PERSON", id: uuid() } })); }, (e) => e instanceof KeepCheckRefused && e.code === "NO_HOLD_CHECK"));
 // DW9 fail: an adapter that decides the floor and the reminder before the hold (BR-7's order broken).
 const floorFirst = (): KeepCheckHarness => {
   const h = fakeHarness()();
@@ -91,6 +93,7 @@ const row = (c: string) => subjectsFor({ firmId: uuid(), class: c, startedAt: ag
 const d5 = decide(row("our_billing"), ago(5), null, NOW), d7 = decide(row("our_billing"), ago(7), null, NOW);
 ok("AUD-5 DW6 pass: a billing record whose fiscal year ended 7 years ago → OK", d7.verdict === "OK", d7);
 ok("AUD-5 DW6 fail: one whose fiscal year ended 5 years ago → FLOOR, refused until the end of year 6, in words", d5.verdict === "FLOOR" && d5.until.toISOString().startsWith("2027-11-19") && /cannot be deleted before then/.test(d5.words), d5);
+ok("AUD-5 DW6 pass (review A): the billing floor's words keep \"Unconfirmed: no counsel\" (SA4-D18 is not confirmed)", d5.verdict === "FLOOR" && d5.words.endsWith("(Unconfirmed: no counsel)"), d5);
 ok("AUD-5 DW8 pass: with no firm setting a closed file → OK, however recently closed", decide(row("closed_client_file"), ago(0), null, NOW).verdict === "OK");
 ok("AUD-5 DW8 fail: an activity-log line → FLOOR at any setting (1 or 50 years), until 7 years after it was written",
   [1, 50, null].every((y) => { const r = decide(row("activity_log"), ago(6), y, NOW); return r.verdict === "FLOOR" && r.until.getTime() === addYears(ago(6), 7).getTime(); }));
