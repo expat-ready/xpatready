@@ -1,0 +1,30 @@
+{
+  "item": "R1.67",
+  "name": "67 File-type check",
+  "pr": 2253,
+  "sha": "415e80ab874bb2aa4821f8c900d76e556dda4d23",
+  "run_id": "44562269789",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44562269789",
+  "at": "2026-11-19T16:09:22.607Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_67.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44562269789/artifacts/14551471892",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.67-415e80ab874bb2aa4821f8c900d76e556dda4d23.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
