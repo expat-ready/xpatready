@@ -7,7 +7,7 @@
 // Rules Prisma cannot say are platform_support_ triggers and checks in the migration 20261118073000_pf18b_support: messages
 // are insert-only (no update, delete or truncate); a ticket is never deleted and only its status changes; the raiser and a
 // staff author are staff of the ticket's own firm; a message's file keys lie in its own ticket's folder only.
-// PF-18bk (migration 20261119010000_pf18bk_support_keys): the real foreign keys, all RESTRICT. A ticket's firm_id →
+// PF-18bk (migration 20261119170000_pf18bk_support_keys): the real foreign keys, all RESTRICT. A ticket's firm_id →
 // platform_firm; its (firm_id, raised_by) → platform_staff(firm_id, id), so the raiser is staff of the ticket's own firm;
 // a message's firm_id → platform_firm. author_id is text ('support' or a staff uuid) and takes no key: the trigger proves
 // a FIRM_STAFF author. The triggers stay as PF-18b made them (the raiser check too: PF-18b's suite names its message).
