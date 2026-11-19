@@ -9,7 +9,9 @@
 #      the comment reaches $GITHUB_OUTPUT beyond the validated values;
 #   3. the second step (run as written, GitHub answered by a stand-in gh writing its calls to a log): it dispatches
 #      nightly.yml on main with exactly the parsed inputs, re-runs only a finished failed ci run's failed jobs, replies
-#      with the run or the reason, and never echoes the comment. US$0, no network.
+#      with the run or the reason, and never echoes the comment. CI-PRE (P-731): "/run full" dispatches ci.yml on main
+#      with this PR's number and head only, never for a fork or an outsider, and a red run of the same head re-runs
+#      only its failed parts, named in the reply. US$0, no network.
 #   bash product/tools/check-comment-run.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -72,7 +74,7 @@ ok "write-token.py: no finding on comment-run.yml" "$([ -z "$wt" ] && echo 1 || 
 # --- 2. the parser and gate. parse <assoc> <is_pr> <body> → $W/out (GITHUB_OUTPUT)
 parse() { : > "$W/out"; ( cd "$W" && ASSOC="$1" IS_PR="$2" BODY="$3" GITHUB_OUTPUT="$W/out" bash --noprofile --norc -eo pipefail "$W/parse.sh" ) >/dev/null 2>&1; }
 val() { sed -n "s/^$1=//p" "$W/out"; }
-clean() { ! grep -qv -E '^(action=(nightly|rerun|refuse|ignore)|caps=C[0-9.]+( C[0-9.]+)*|data=(six|checkpoint)|reason=[^=]*)$' "$W/out"; }
+clean() { ! grep -qv -E '^(action=(nightly|rerun|full|refuse|ignore)|caps=C[0-9.]+( C[0-9.]+)*|data=(six|checkpoint)|reason=[^=]*)$' "$W/out"; }
 want() {  # want <name> <action> [caps] [data]
   local a c d; a=$(val action); c=$(val caps); d=$(val data)
   local good=1; [ "$a" = "$2" ] || good=0; [ -z "${3+x}" ] || [ "$c" = "$3" ] || good=0; [ -z "${4+x}" ] || [ "$d" = "$4" ] || good=0
@@ -87,6 +89,12 @@ parse OWNER yes "/rerun failed   ";                                   want "pass
 parse OWNER yes "/run nightly C1.1 C1.2 C1.3 C1.4 C1.5 C1.6 C1.7 C1.8"; want "pass: 8 capabilities" nightly "C1.1 C1.2 C1.3 C1.4 C1.5 C1.6 C1.7 C1.8" six
 for a in NONE CONTRIBUTOR FIRST_TIME_CONTRIBUTOR FIRST_TIMER MANNEQUIN "" owner "OWNER " "OWNER${NL}MEMBER"; do
   parse "$a" yes "/run nightly C7.3"; want "fail: an outsider ($(printf '%q' "$a")) is ignored, no reply" ignore
+  parse "$a" yes "/run full"; want "fail: an outsider's ($(printf '%q' "$a")) /run full is ignored: no run, no reply (CI-PRE)" ignore
+done
+parse MEMBER yes "/run full${CR}${NL}after the fix"; want "pass: a member's /run full (CI-PRE; text below ignored)" full
+parse OWNER "" "/run full"; want "fail: /run full on an issue, not a pull request, is ignored" ignore
+for b in "/run full now" "/run  full" "/run Full" "/run full 123" "/run full 0123456789abcdef0123456789abcdef01234567" "/run full; id" '/run full $(touch pwned)' "/runfull"; do
+  parse OWNER yes "$b"; want "fail: refused $(printf '%q' "$b") (/run full takes nothing: the PR and its head come from GitHub)" refuse
 done
 parse OWNER "" "/run nightly C7.3";  want "fail: a comment on an issue, not a pull request, is ignored" ignore
 parse OWNER no "/rerun failed";      want "fail: is_pr other than yes is ignored" ignore
@@ -116,8 +124,10 @@ jqf() { local f=""; while [ $# -gt 0 ]; do [ "$1" = --jq ] && f="$2"; shift; don
 case "$*" in
   *"/comments"*) for x in "$@"; do case "$x" in body=*) printf '%s\n' "${x#body=}" >> "$GH_REPLIES";; esac; done;;
   *"/dispatches"*) exit "${FAKE_DISPATCH_RC:-0}";;
+  *"/jobs"*) jqf "$@" <<< "${FAKE_JOBS:-{\"jobs\":[]}}";;
+  *"ci.yml/runs"*"created="*) jqf "$@" <<< "${FAKE_NEW:-{\"workflow_runs\":[]}}";;
   *"nightly.yml/runs"*) jqf "$@" <<< "${FAKE_NIGHTLY:-{\"workflow_runs\":[]}}";;
-  *"/pulls/"*) jqf "$@" <<< "${FAKE_PULL:-{\"head\":{\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"ref\":\"claude/x\",\"repo\":{\"full_name\":\"o/r\"}}}}";;
+  *"/pulls/"*) [ -n "${FAKE_PULL:-}" ] || FAKE_PULL='{"head":{"sha":"0123456789abcdef0123456789abcdef01234567","ref":"claude/x","repo":{"full_name":"o/r"}},"state":"open"}'; jqf "$@" <<< "$FAKE_PULL";;
   *"ci.yml/runs"*) jqf "$@" <<< "${FAKE_RUNS:-{\"workflow_runs\":[]}}";;
   *"rerun-failed-jobs"*) exit "${FAKE_RERUN_RC:-0}";;
 esac
@@ -177,6 +187,43 @@ rc=$(FAKE_RUNS='{"workflow_runs":[{"id":"12;3","status":"completed","conclusion"
 ok "rerun: a run id that is not a number stops it" "$([ "$rc" != 0 ] && [ "$(calls rerun-failed-jobs)" = 0 ] && echo 1 || echo 0)" "rc $rc"
 rc=$(FAKE_RERUN_RC=1 FAKE_RUNS="$(runs "$(runj 123 completed '"failure"')")" act rerun)
 ok "rerun: GitHub refuses → says so, step fails" "$([ "$rc" != 0 ] && grep -q 'could not re-run' "$W/replies" && echo 1 || echo 0)" "rc $rc"
+
+# --- CI-PRE (P-731): /run full
+fr() { printf '{"id":%s,"status":"%s","conclusion":%s,"html_url":"https://github.com/o/r/actions/runs/%s","display_title":"%s"}' "$1" "$2" "$3" "$1" "${4:-full-run PR #7 $H}"; }
+DISPATCH="api -X POST repos/o/r/actions/workflows/ci.yml/dispatches -f ref=main -f inputs[pr]=7 -f inputs[head]=$H"
+rc=$(FAKE_NEW="$(runs "$(fr 300 queued null "full-run PR #8 $H")" "$(fr 301 queued null)")" act full)
+ok "full: no run for this head yet → dispatches ci.yml on main with this PR's number and head, nothing else" "$([ "$rc" = 0 ] && grep -qxF "$DISPATCH" "$W/log" && [ "$(calls dispatches)" = 1 ] && echo 1 || echo 0)" "rc $rc; $(tr '\n' '|' < "$W/log")"
+ok "full: replies once with its own run (not another PR's), and says the label needs it green" "$([ "$(wc -l < "$W/replies")" = 1 ] && grep -q 'runs/301' "$W/replies" && ! grep -q 'runs/300' "$W/replies" && grep -q 'needs it green' "$W/replies" && echo 1 || echo 0)" "$(cat "$W/replies")"
+rc=$(FAKE_RUNS="$(runs "$(fr 300 completed '"success"' "full-run PR #8 $H")" "$(fr 299 completed '"success"' "full-run PR #7 $F")")" act full)
+ok "full: another PR's run, or one of an older head, is not this head's: a new run starts" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 1 ] && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(FAKE_PULL='{"head":{"sha":"'$H'","ref":"feat","repo":{"full_name":"someone/fork"}},"state":"open"}' act full)
+ok "full: a fork's PR is refused: its code never runs in a run of main" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && grep -q 'not a fork' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(FAKE_PULL='{"head":{"sha":"'$H'","ref":"x","repo":null},"state":"open"}' act full)
+ok "full: a PR whose head repository is gone is refused" "$([ "$(calls dispatches)" = 0 ] && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(FAKE_PULL='{"head":{"sha":"'$H'","ref":"x","repo":{"full_name":"o/r"}},"state":"closed"}' act full)
+ok "full: a closed PR is refused" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && grep -q 'not open' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(FAKE_PULL='{"head":{"sha":"$(touch pwned)","ref":"x","repo":{"full_name":"o/r"}},"state":"open"}' act full)
+ok "full: a head that is not a commit id stops it before any dispatch" "$([ "$rc" != 0 ] && [ "$(calls dispatches)" = 0 ] && echo 1 || echo 0)" "rc $rc"
+for st in queued in_progress; do
+  rc=$(FAKE_RUNS="$(runs "$(fr 310 $st null)")" act full)
+  ok "full: a run for this head is already $st → no second run, the reply links it" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && [ "$(calls rerun)" = 0 ] && grep -q 'runs/310' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+done
+rc=$(FAKE_RUNS="$(runs "$(fr 311 completed '"success"')")" act full)
+ok "full: already green on this head → nothing started" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && [ "$(calls rerun)" = 0 ] && grep -q 'already green' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+JOBS='{"jobs":[{"name":"kind","conclusion":"success"},{"name":"shard (3)","conclusion":"failure"},{"name":"packs (C7.3 <img src=x> @someone `id`)","conclusion":"timed_out"},{"name":"ci","conclusion":"failure"},{"name":"types","conclusion":"skipped"}]}'
+rc=$(FAKE_JOBS="$JOBS" FAKE_RUNS="$(runs "$(fr 312 completed '"failure"')")" act full)
+ok "full: red on this head → only its failed parts re-run (never a second full run, never a cancel)" "$([ "$rc" = 0 ] && grep -qxF 'api -X POST repos/o/r/actions/runs/312/rerun-failed-jobs' "$W/log" && [ "$(calls dispatches)" = 0 ] && ! grep -qE 'runs/[0-9]+/(cancel|rerun)( |$)' "$W/log" && echo 1 || echo 0)" "rc $rc; $(tr '\n' '|' < "$W/log")"
+ok "full: ... and the reply names the failed parts (the summary job aside), as plain marks only" "$(grep -qF 'Failing: shard (3); packs (C7.3 img srcx someone id).' "$W/replies" && ! grep -qE '<img|@someone|`id`' "$W/replies" && echo 1 || echo 0)" "$(cat "$W/replies")"
+rc=$(FAKE_RERUN_RC=1 FAKE_JOBS="$JOBS" FAKE_RUNS="$(runs "$(fr 312 completed '"failure"')")" act full)
+ok "full: GitHub refuses the re-run → says so, step fails" "$([ "$rc" != 0 ] && grep -q 'could not be re-run' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(FAKE_RUNS='{"workflow_runs":[{"id":"31;2","status":"completed","conclusion":"failure","html_url":"u","display_title":"full-run PR #7 '$H'"}]}' act full)
+ok "full: a run id that is not a number stops it" "$([ "$rc" != 0 ] && [ "$(calls rerun-failed-jobs)" = 0 ] && [ "$(calls dispatches)" = 0 ] && echo 1 || echo 0)" "rc $rc"
+rc=$(FAKE_DISPATCH_RC=1 act full)
+ok "full: GitHub refuses the dispatch → says so, step fails" "$([ "$rc" != 0 ] && grep -q 'could not start the full run' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+rc=$(act full)
+ok "full: no run found yet after the dispatch → replies with ci's page and the run's name" "$([ "$rc" = 0 ] && grep -q 'workflows/ci.yml' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+parse NONE yes "/run full"
+ok "full, end to end: an outsider's /run full gives action ignore, which skips the second step (no run, no reply)" "$([ "$(val action)" = ignore ] && echo 1 || echo 0)" "$(cat "$W/out")"
 
 # End to end: a member's injection attempt goes through both steps; nothing runs, nothing is echoed, only a refusal.
 body='/run nightly C7.3 $(touch pwned) `touch pwned2` <img src=x> @someone'
