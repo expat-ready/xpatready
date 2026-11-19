@@ -44,12 +44,12 @@ for pr in $nums; do
   if [ "$who" != "$BOT" ]; then echo "#$pr: kept ('$LABEL' put on by $who)"; continue; fi
   # B194: queue-gate.yml labels with GITHUB_TOKEN too. Main's queue-gate.sh judges the PR as it is now (the owner's or a
   # known reviewer's Approve on the head, ci green, no Lead-read path): when it says eligible, the label is kept.
-  if [ "$e" = 0 ]; then   # its reason is printed when it says no, so a removal is explained in the run's log
+  if [ "$e" = 0 ]; then   # when it says no, its reason goes into the run's log and the removal's PR comment
     if gate=$(PR=$pr bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" eligible 2>&1); then echo "#$pr: kept ('$LABEL' put on by $BOT; queue-gate.sh: eligible)"; continue; fi
-    how="$how; queue-gate.sh: $(tail -1 <<< "$gate" | cut -c1-200)"
+    gate=$(tail -1 <<< "$gate" | cut -c1-200); how="$how; queue-gate.sh: ${gate:-no reason given}"
   fi
   api -X DELETE "$API/repos/$REPO/issues/$pr/labels/$enc" >/dev/null || { echo "#$pr: '$LABEL' ($how), but it could not be removed"; rc=2; continue; }
-  body="**Label sweep (B134):** \`$LABEL\` removed: $how. \`$BOT\` is a workflow's GITHUB_TOKEN, not a person: a pull request's own workflow can set the label, and such a label starts no label-guard run. Only a person labels a reviewed head (P-277, P-189).
+  body="**Label sweep (B134):** \`$LABEL\` removed: $how. \`$BOT\` is a workflow's GITHUB_TOKEN, not a person: a pull request's own workflow can set the label, and such a label starts no label-guard run. A person labels a reviewed head (P-277, P-189), or queue-gate.yml one it judges eligible (B194).
 
 To label again: a person adds \`$LABEL\` once a PR comment line \"Reviewer: Approve\" names the head's SHA (label guard)."
   api -X POST "$API/repos/$REPO/issues/$pr/comments" -d "$(jq -n --arg b "$body" '{body: $b}')" >/dev/null || echo "#$pr: label removed, but the comment failed"
