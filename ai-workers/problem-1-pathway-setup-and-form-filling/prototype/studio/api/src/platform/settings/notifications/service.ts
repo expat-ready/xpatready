@@ -19,13 +19,15 @@ export type GroupView = { group: NotificationGroup; number: number; label: strin
 export type PrefsView = { version: string; groups: GroupView[]; security: { label: string; email: true; switchable: false } };
 export const NOT_YOURS = "This group cannot reach you, so it has no switches.";
 export const STALE = "Your notification settings were changed elsewhere since you opened them.";
-const MAX_ISSUES = 20;
-const refused = (detail: string, issues: string[]): never => { throw new HttpException({ type: "https://expatready.local/problems/notification-settings-refused", title: "Notification settings not saved", status: 400, detail, issues: issues.slice(0, MAX_ISSUES) }, HttpStatus.BAD_REQUEST); };
+const MAX_ISSUES = 20;   // and each line at most 200 characters (review r2 m2: zod lists every unknown key in one line)
+const refused = (detail: string, issues: string[]): never => { throw new HttpException({ type: "https://expatready.local/problems/notification-settings-refused", title: "Notification settings not saved", status: 400, detail, issues: issues.slice(0, MAX_ISSUES).map((i) => i.slice(0, 200)) }, HttpStatus.BAD_REQUEST); };
 const Item = z.strictObject({ group: NotificationGroup, inApp: z.boolean(), email: z.boolean() });
 /** The array's length is checked first (at most the eight groups), its items only then (break M1). */
 export const SavePrefs = z.strictObject({ version: z.string().max(64), groups: z.array(z.unknown()).min(1).max(8).pipe(z.array(Item)) });
-/** JSON.parse makes `__proto__` an own key, which zod's strict objects let through (break m2): refused like any unknown field. */
-const protoKey = (v: unknown): boolean => typeof v === "object" && v !== null && (Object.prototype.hasOwnProperty.call(v, "__proto__") || (Array.isArray(v) ? v.slice(0, 8).some(protoKey) : Object.values(v).some((x) => typeof x === "object" && protoKey(x))));
+/** JSON.parse makes `__proto__` an own key, which zod's strict objects let through (break m2): refused like any unknown field. Only the body and its
+ *  first eight `groups` items are looked at, the only objects the schema accepts; anything deeper is already an unknown key (review r2 M1: no recursion). */
+const own = (v: unknown) => typeof v === "object" && v !== null && Object.prototype.hasOwnProperty.call(v, "__proto__");
+const protoKey = (body: unknown): boolean => own(body) || (typeof body === "object" && body !== null && Array.isArray((body as { groups?: unknown }).groups) && ((body as { groups: unknown[] }).groups).slice(0, 8).some(own));
 /** The person's saved rows, oldest group first. */
 const savedRows = (db: DbOrTx, firmId: string, staffId: string) => db.platformNotificationPreference.findMany({ where: firmScope(firmId, { staffId }), select: { group: true, inApp: true, email: true }, orderBy: { group: "asc" } });
 /** A view's version: a hash of what the person saved (the same switches give the same version, so only a real change elsewhere is a conflict). */

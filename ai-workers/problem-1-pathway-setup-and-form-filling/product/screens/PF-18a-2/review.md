@@ -1,14 +1,35 @@
 # Review: PF-18a part 2, personal notification settings + NotificationPrefsPort (reviewer, 19 Nov 2026)
 
-Commit `4130eb109c8350cdffc4a7006811ce46605a3d98`, branch `claude/runtime-pf18a-notif-prefs`, draft PR #2304. API and schema row with no screen, so it is judged against the brief `design/lead-b-briefs/PF-18a.md` (part 2, DW5, DW7), AG-16-10, AG-16-11, AG-16 §3.3 (lines 555-577) and STANDARDS. DW6 (`hostZone()`) is not in this commit: it waits for #2284, as the lane was told, so it is not a finding here. A re-review needs it.
+Branch `claude/runtime-pf18a-notif-prefs`, draft PR #2304. API and schema row with no screen, so it is judged against the brief `design/lead-b-briefs/PF-18a.md` (part 2, DW5, DW7), AG-16-10, AG-16-11, AG-16 §3.3 (lines 555-577) and STANDARDS. DW6 (`hostZone()`) waits for #2284 as instructed, so it is not a finding; a re-review needs it.
 
-**Verdict: Block** (Ship after fixes). One Major, six Minors. Journey score **8.5/10**, a pass (`journey-test-reviewer-2026-11-19.md`).
+**Verdict (round 2, `644017db54c1e9330e5ba1ee3b057410c05f200a`): Block.** The round 2 fix for breaker m2 brings in one new Major (a 500), and there is one new Minor. Every round 1 finding is fixed and verified. Journey score **8.5/10** is unchanged (`journey-test-reviewer-2026-11-19.md`); the J9 stale tab now gets 409.
 
-## What I ran
-* `tests/check_pf18a_notifications.ts` on the commit: **59 passed, 0 failed** (21 s). Its neighbours also pass on this tree: `check_pf18a_offices.ts` 87/0, `check_pf12_walls.ts` 100/0, `check_prisma_schema.ts` 8/0. `tsc -p api` is clean. The `any` count is 416, under the baseline of 433.
-* An isolated copy on runtime port **:4433** (`tools/isolated.sh`, `PLATFORM_IDENTITY=local`), signed in as Sample staff. I walked GET and PUT and read the database afterwards. Never :4400.
-* 18 mutations of the product code in a scratch worktree, plus 2 probes: 15 caught, 3 survived (below).
-* `module-cards.py pr` with this diff and the current PR body: **FAIL** (Minor 7).
+## Round 2: diff only (`git diff 4130eb109..644017db5`, P-277)
+Ran: `check_pf18a_notifications.ts` **65 passed, 0 failed**; a scratch worktree with 11 mutations (10 one at a time, then the two M1 guards together); an isolated copy on **:4433** (never :4400); `module-cards.py pr` with the live PR body: **PASS**.
+
+| Finding | Fix | Verified by |
+|---|---|---|
+| R1 Major 1, stamp test time bomb | `all.at(-1) === NEW` dropped (test:62) | a later folder `20261120000000_zz_later_row` gives 65/0 (it was 58/1) |
+| R1 m2, lock untested | the parallel saves use opposite orders, and the second one is 409 | lock removed: FAIL 5/5; version check moved out of the lock: FAIL 5/5 |
+| R1 m3, own-only read | the Owner's GET checked after the officer saves | the staff filter dropped from `savedRows`: FAIL |
+| R1 m4, ended grants | an Admin with an ended grant gets no Firm and connections | `endedAt: null` dropped: FAIL |
+| R1 m5 / break m1, stale tab | `version` (hash of the saved rows); 409 with `current` | no check: FAIL; hash ignores values: FAIL; live: stale PUT gives 409 |
+| R1 m6, group 7 email-off items | port rule list (`ports/notification-prefs.ts:11-13`) and `MODULE.rows` | read |
+| R1 m7, PR body | Done-when list, `Duplicate check:`, `Card unchanged:` for features | `module-cards.py pr` PASS |
+| break M1, uncapped problems | max 8 checked before the items (`pipe`), issues capped at 20 | each guard alone survives (they back each other up); both removed: FAIL (6,001 issues); live 7 MB body: 413 in 28 ms |
+| break m2, `__proto__` | `protoKey` refuses it | check off: FAIL (409); **but see R2-1** |
+| break m3, SECURITY on IN_APP | `decide` gives false | mutation back to true: 5 FAIL (suite + contract) |
+
+### Open findings
+1. **Major (Must): a nested body makes the route answer 500.** `S/api/src/platform/settings/notifications/service.ts:28` `protoKey` recurses into every nested object with no depth limit. Before this fix, `strictObject` refused the unknown key with a 400 without walking inside it.
+   * Failing case (live, :4433): PUT `{"version":"x","groups":[{"group":"MENTIONS","inApp":true,"email":true}],"z":` + `{"a":` × 5 000 + `1` + `}` × 5 000 + `}` (30 KB) returns **500**. The log shows `RangeError` at `protoKey (service.ts:28)` and an Errors metric of 1.
+   * Depths of 100 000 and 400 000, and a 100 000-deep array inside a group item, also return 500.
+   * Any of the six roles can do this. It breaks the file's own rule ("an unknown field refuses the whole save (400)") and the repo's "never a 500" bar (guard, break M1). Each request writes an error-level line with a stack.
+   * Fix: check for an own `__proto__` key only on the body and on each of at most 8 `groups` items. Those are the only objects the schema accepts; anything deeper is already an unknown key. Add the 5 000-deep case to the test.
+2. **Minor (Should): one problem line is still unbounded.** zod's "Unrecognized keys" issue lists every extra key.
+   * Failing case: a 3.5 MB body with 300 000 extra top-level keys returns a 400 that is **3.8 MB**, in 574 ms. With 8 at once, another person's GET took **3.3 s**. The same 8 bodies sent to a route that 404s cost 1.2 s, so this route adds about 2 s on top of JSON parsing.
+   * Same class as break M1, though far smaller (reply 1.1× the request, against 8× before).
+   * Fix: cut each issue string (for example `.slice(0, 200)`) in `refused` (service.ts:23), next to `MAX_ISSUES`.
 
 ## Brief and requirement fit (DW5, DW7)
 | Case | Result | Evidence |
@@ -20,7 +41,7 @@ Commit `4130eb109c8350cdffc4a7006811ce46605a3d98`, branch `claude/runtime-pf18a-
 | Eight groups are PF-18np's enum, never a second list | Met | `checkRules` + the database CHECK compared to `NotificationGroup.options` (test l.65) |
 | `agent/notification:manage-preferences`, all six roles, own only | Met | test l.112 (six 200s); body `staffId` gives 400; firm B's save leaves firm A alone |
 | DW7: one contract, run by the real adapter and the fake; `check-port-contracts.mjs` | Met | both 6/6; two broken adapters fail it |
-| DW7: migration in a parallel world (demo-shaped copy, `migrate diff` clean) | Met, but see **Major 1** | test l.70-87 |
+| DW7: migration in a parallel world (demo-shaped copy, `migrate diff` clean) | Met (R1 Major 1 fixed) | test l.70-87 |
 
 The builder's choices, judged:
 * Switches per group: right (AG-16-10 "switches for the eight groups").
@@ -33,46 +54,36 @@ The builder's choices, judged:
 
 ## Standards ([M] lines that apply)
 * §3.4 "every link checked twice": **met**. The service checks reach; the database has CHECK, the (firm, staff) key, the primary key, a trigger that keeps a row's person, firm and group, a column grant and RLS. Each is tested.
-* §3.10, §7 "a rule's test fails when the rule is removed": **partly**. 15 of 18 mutations caught; three rules have no failing test (Minors 2-4).
-* §4 optimistic concurrency: **not met, and I accept it as a Minor** (Minor 5).
+* §3.10, §7 "a rule's test fails when the rule is removed": **met in round 2** (every round 2 rule mutation is caught; the two M1 guards are caught together).
+* §4 optimistic concurrency: **met in round 2** (`version`, 409 with `current`).
 * §4 ports and adapters, contract first (zod in `ports/`, imports zod only): **met**.
 * §5 migrations preserve records, rollback recorded: **met**. Additive only, rollback in the header, demo copy unchanged (test l.79).
 * §5 indexed reads, no N+1: **met**. One query for the rows, one for the role keys.
-* §6 RFC 9457 problems with field messages; server authorisation, deny by default: **met** (same shape as offices and settings).
-* §7 module card: **not met yet**. The `platform` fragment is fine; `api/src/features` changed without a card line (Minor 7).
-* §10 consequential choices recorded: partly. The concurrency choice is not recorded.
+* §6 RFC 9457 problems, server authorisation, deny by default: met, **except R2-1** (a 500 on a nested body).
+* §7 module card: **met** (`Card unchanged:` for features; `MODULE.rows/PF-18a.md`).
+* §10 consequential choices recorded: met.
 
-## Issues, ranked
-1. **Major (Must): the DW7 stamp test will fail once any later migration lands.** `tests/check_pf18a_notifications.ts:60` asserts `all.at(-1) === NEW`.
-   * Failing case: add any later folder (I used `20261120000000_zz_later_row/migration.sql` = `select 1;`). The run gives **58 passed, 1 failed** ("the migration has its own stamp…").
-   * Suites are picked up automatically (`select-suites.mjs`, merge-queue shards, nightly). So the next row with a migration turns main's batches red with no fault of its own.
-   * Fix: drop `&& all.at(-1) === NEW`, as part 1 does at `check_pf18a_offices.ts:70`. "Later than the newest on main when it merges" is a merge-time check, not a check that must hold forever.
-2. **Minor (Should): the per-person lock has no failing test.** Removing `pg_advisory_xact_lock` (`service.ts:39`) survives, because both parallel saves list the groups in the same order (`test:152`).
-   * Failing case: with the lock removed and `s2` reversed to `MY_DEADLINES, NEEDS_YOU`, the breaker check fails 5/5 and 3/5 (deadlocks give 500). With the lock kept and `s2` reversed, it passes.
-   * Fix: reverse `s2`.
-3. **Minor (Should): own-only on read is not proven.** Dropping `staffId` from the read filter (`service.ts:23`) survives: every later GET checks only the group names.
-   * Failing case: the officer saved `MENTIONS t/f`. With the filter dropped, the Owner's GET can show the officer's switch.
-   * Fix: after two people save different values for one group, assert each GET shows its own.
-4. **Minor (Should): ended role grants are not proven.** Dropping `endedAt: null` (`prefs.ts:15`) survives.
-   * Failing case: an Admin whose ADMIN grant has ended still gets `FIRM_AND_CONNECTIONS` from `allows`.
-   * Fix: end a grant and assert false.
-5. **Minor (Should): a stale save from a second tab overwrites with no 409** (STANDARDS §4 [M]).
-   * Failing case (J-break): tab 1 reads; tab 2 sets MENTIONS off; tab 1 PUTs all its groups and gets 200, and MENTIONS is back on.
-   * There is one writer and saves are per group, so I accept it. Record the choice and the alternative in the PR (§10), or add a `version` the way offices does.
-6. **Minor (Should): group 7's email-off items are not visible to the port's callers.** `ports/notification-prefs.ts:5-10` does not say that `allows(…, "PAYMENTS", "EMAIL")` answers only the group switch.
-   * A sender of "payment received" that trusts `allows` would send an email, against AG-16-10 test 7.
-   * Fix: one line in the port's rule list, and in `MODULE.rows/PF-18a.md`, naming `emailNeverItems` as the sender's (PF-18n) rule.
-7. **Minor (Must before the label): the PR body.**
-   * `module-cards.py pr` fails: `api/src/features/MODULE.md` is not updated, and there is no `Card unchanged: <reason>` line.
-   * The brief's cases list ("list the cases in the PR body first") and the final `Duplicate check:` line are still missing. The PR is a draft.
+## Round 1 (`4130eb109`), all fixed in round 2
+Ran then: the suite (59/0), `check_pf18a_offices.ts` 87/0, `check_pf12_walls.ts` 100/0, `check_prisma_schema.ts` 8/0, `tsc -p api` clean, `any` count under its baseline. Journeys on :4433. Mutations: 18, of which 15 caught.
+
+Findings:
+1. **Major:** `all.at(-1) === NEW` (test:60) would turn main red at the next migration.
+2. **Minors:**
+   * m2: the lock had no failing test.
+   * m3: own-only read was not proven.
+   * m4: ended grants were not proven.
+   * m5: a stale tab overwrote with no 409 (STANDARDS §4).
+   * m6: the group 7 email-off rule was not on the port.
+   * m7: PR body (module-cards FAIL, cases list and duplicate check missing).
 
 ## Not applicable or not checked
 * BIC-01–20 (EXPERIENCE §6) and D8, D9, D12-D14: no screen in this row (PF-18s builds it).
 * D17 and D20: simulated only.
 * `graph.mjs` (G1 0, G2 0, G3 161, G4 0, G5 0, G6 17) does not index the empty-path `@Get()`/`@Put()` on `api/platform/me/notifications` (nor part 1's offices GET/POST). That is a tool gap, so no finding.
 * CI itself was not run: the PR is a draft.
+* The builder committed this file and the journey report into the PR at `644017db5`. This round 2 edit is left uncommitted.
 
 ## D scores (0-3, this row's scope)
-D1 3 (DW5 and DW7 met; DW6 deferred by instruction) · D2 3 (database and service checks, race-safe) · D3 3 (one enum, one data file) · D4 N/A · D5 2 (double click gives 1 row; stale tab, Minor 5) · D6 2 (§3.3 cited with the date read; no audit, rightly) · D7 N/A (no AI) · D8-D9 N/A · D10 2 (plain detail lines; zod text in `issues`) · D11 2 (`saved` and defaults shown) · D12-D14 N/A · D15 3 (GET 10-17 ms, PUT 26-44 ms) · D16 2 (3 survivors, Minors 2-4; Major 1) · D17 simulated only · D18 3 (the source block in the data) · D19 N/A (PF-18n and PF-18s close the loop) · D20 simulated only.
+D1 3 (DW5 and DW7 met; DW6 deferred by instruction) · D2 3 (database and service checks, race-safe) · D3 3 (one enum, one data file) · D4 N/A · D5 2 (round 2: stale tab now 409; a nested body gives 500, R2-1) · D6 2 (§3.3 cited with the date read; no audit, rightly) · D7 N/A (no AI) · D8-D9 N/A · D10 2 (plain detail lines; zod text in `issues`) · D11 2 (`saved` and defaults shown) · D12-D14 N/A · D15 3 (GET 10-17 ms, PUT 26-44 ms) · D16 3 (round 2: every rule mutation caught; R2-1 adds one case) · D17 simulated only · D18 3 (the source block in the data) · D19 N/A (PF-18n and PF-18s close the loop) · D20 simulated only.
 
-Reviewer: Request changes. Fix Major 1 (and Minor 7 before the label). Minors 2-6 should land in the same PR.
+Reviewer: Request changes. Fix R2-1 (Major). R2-2 should land with it.
