@@ -66,13 +66,14 @@ export const keepPeriodPortContract = defineContract("KeepPeriodPort", (make: ()
  *  place a hold, and the adapter's "now". **Every make() call gives two fresh firms** with no hold and no setting. */
 export type KeepCheckHarness = KeepPeriodHarness & {
   tx<T>(fn: (tx: unknown) => Promise<T>): Promise<T>;
-  placeHold(firmId: string, scope: { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "DATE_RANGE"; from: Date; to: Date }, reason: string): Promise<void>;
+  placeHold(firmId: string, scope: { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "CATEGORY"; category: "case_documents" } | { kind: "DATE_RANGE"; from: Date; to: Date }, reason: string): Promise<void>;
   now: Date;
 };
 
 const uuid = () => globalThis.crypto.randomUUID();
 const ago = (h: KeepCheckHarness, years: number) => addYears(h.now, -years);
-const ask = (h: KeepCheckHarness, input: KeepCheckInput) => h.tx((t) => h.port.check(t, input));
+/** A check whose record's own date is its start date unless the case names others. */
+const ask = (h: KeepCheckHarness, input: Omit<KeepCheckInput, "recordDates"> & { recordDates?: Date[] }) => h.tx((t) => h.port.check(t, { recordDates: [input.startedAt], ...input }));
 /** A subject each class accepts (SUBJECT_KINDS). */
 const subjectOf = (c: KeepClass, caseId: string): KeepCheckInput["subject"] => (c === "closed_client_file" || c === "client_financial" ? { kind: "CASE", id: caseId } : { kind: "RECORD", id: `rec-${caseId.slice(0, 8)}` });
 const CHECKABLE = KEEP_PERIODS.filter((r) => r.kind !== "REFERENCE").map((r) => r.class);
@@ -110,6 +111,32 @@ export const keepPeriodCheckContract = defineContract("KeepPeriodPort.check", (m
       const a = await ask(h, { firmId: h.firmA, class: "closed_client_file", startedAt: ago(h, 20), subject: { kind: "CASE", id: c } });
       const b = await ask(h, { firmId: h.firmB, class: "closed_client_file", startedAt: ago(h, 20), subject: { kind: "CASE", id: c } });
       expect(is(a, "OK") && b.verdict === "HELD" && b.reasons.length === 2, "A OK, B HELD", { a, b });
+    },
+  },
+  {
+    name: "break M1: a date-range hold is matched on the record's own date, not only the date its period starts from",
+    async run() {
+      const h = await make();
+      await h.placeHold(h.firmA, { kind: "DATE_RANGE", from: new Date("2019-01-01T00:00:00Z"), to: new Date("2019-06-30T00:00:00Z") }, "Sample: first half of 2019");
+      const fy = new Date("2019-12-31T00:00:00Z");
+      const inside = await ask(h, { firmId: h.firmA, class: "our_billing", startedAt: fy, recordDates: [new Date("2019-03-15T00:00:00Z")], subject: { kind: "RECORD", id: "inv-2019-03" } });
+      const outside = await ask(h, { firmId: h.firmA, class: "our_billing", startedAt: fy, recordDates: [new Date("2019-09-01T00:00:00Z")], subject: { kind: "RECORD", id: "inv-2019-09" } });
+      expect(inside.verdict === "HELD" && outside.verdict !== "HELD", "the March invoice HELD, the September one not", { inside, outside });
+      await expectRefused(() => ask(h, { firmId: h.firmA, class: "our_billing", startedAt: fy, recordDates: [], subject: { kind: "RECORD", id: "x" } }), "no record date", (e) => e instanceof KeepCheckRefused);
+    },
+  },
+  {
+    name: "break M2, M3: a whole client file is held by any case-side category hold; a record of a case and a client is held by either",
+    async run() {
+      const h = await make(), c = uuid(), p = uuid(), other = uuid();
+      await h.placeHold(h.firmA, { kind: "CATEGORY", category: "case_documents" }, "Sample: documents kept for an inquiry");
+      const file = await ask(h, { firmId: h.firmA, class: "closed_client_file", startedAt: ago(h, 9), subject: { kind: "CASE", id: c } });
+      expect(file.verdict === "HELD", "a 9-year-old file HELD by a case_documents hold", file);
+      const g = await make();
+      await g.placeHold(g.firmA, { kind: "CASE", id: c }, "Sample: case dispute");
+      const both = await ask(g, { firmId: g.firmA, class: "client_financial", startedAt: ago(g, 8), subject: [{ kind: "PERSON", id: p }, { kind: "CASE", id: c }] });
+      const personOnly = await ask(g, { firmId: g.firmA, class: "client_financial", startedAt: ago(g, 8), subject: { kind: "PERSON", id: other } });
+      expect(both.verdict === "HELD" && personOnly.verdict === "OK", "case and client named: HELD; another client alone: OK", { both, personOnly });
     },
   },
   {

@@ -7,6 +7,7 @@
 // 2021-001 s. 7.2, read at source 16 Nov 2026 by Build Lead C). Legal points: Unconfirmed: no counsel.
 // This folder imports only zod and its own files (case-side contract v0.1 §1 rule 3).
 import { z } from "zod";
+import { LEGAL_HOLD_CATEGORY } from "./legal-hold.ts";
 
 /** The firm's own number, not a number in code (SA-11-33: "Keep closed client files for ___ years"). */
 export const FIRM_SETTING = "FIRM_SETTING" as const;
@@ -111,7 +112,16 @@ export const SUBJECT_KINDS: Readonly<Record<KeepClass, readonly KeepSubject["kin
 
 /** The input. The firm is the caller's session firm (or the job's firm scope), never one taken from a request: a door
  *  passes `s.firmId`, and KeepPeriods.checkFor takes the session and refuses a body that names a firm. */
-export const KeepCheckInput = z.strictObject({ firmId: FirmId, class: KeepClass, startedAt: z.date().refine((d) => !Number.isNaN(d.getTime()), "a real date"), subject: KeepSubject });
+/** A real date between 1900 and 9999 (a far-future date would overflow the period's end into "no date": break m1). */
+const RealDate = z.date().refine((d) => !Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 9999, "a real date between 1900 and 9999");
+/** `subject`: every case and person the record belongs to (a trust entry of a case and its client names both: break M3);
+ *  `recordDates`: the record's own dates a date-range hold may name (an invoice's date, a file's opened and closed dates),
+ *  never only the date its keep period starts from (break M1). */
+export const KeepCheckInput = z.strictObject({
+  firmId: FirmId, class: KeepClass, startedAt: RealDate,
+  subject: z.union([KeepSubject, z.array(KeepSubject).min(1).max(50)]),
+  recordDates: z.array(RealDate).min(1, "name the record's own date (a date-range hold is matched on it)").max(50),
+});
 /** The type also takes a bare string subject (part 1's placeholder shape, still used by part 1's contract case for an
  *  unwired port) so older callers compile; check() refuses it at run time (INVALID_INPUT), never maps it. */
 export type KeepCheckInput = Omit<z.input<typeof KeepCheckInput>, "subject"> & { subject: KeepSubject | string };
@@ -133,27 +143,30 @@ export class KeepCheckRefused extends Error {
 }
 
 /** The subset of LegalHoldPort check() calls (ports/legal-hold.ts; imported by shape, so this file stays zod-only). */
-export type HoldSubjectOut = { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "PERSON"; id: string } | { kind: "CATEGORY"; category: "case_files" } | { kind: "DATE"; at: Date };
+export type HoldSubjectOut = { kind: "FIRM" } | { kind: "CASE"; id: string } | { kind: "PERSON"; id: string } | { kind: "CATEGORY"; category: (typeof LEGAL_HOLD_CATEGORY)[number] } | { kind: "DATE"; at: Date };
 export type HoldsForCheck<Tx> = { isHeld(tx: Tx, firmId: string, subjects: ReadonlyArray<HoldSubjectOut>): Promise<{ held: false } | { held: true; holds: KeepHold[] }> };
 
-/** Parses the input and maps it to hold subjects: every record is its firm's (FIRM) and has a date (DATE, the date its
- *  period starts from); a case adds CASE (a client file also its case_files category), a person adds PERSON. */
+/** Parses the input and maps it to hold subjects: every record is its firm's (FIRM) and has dates (DATE: each of its own
+ *  dates and the date its period starts from); each case adds CASE, each person PERSON; a whole client file is every
+ *  case-side category (documents, answers, notes, tasks, files: break M2). A RECORD id never stands for a case or person:
+ *  a record that belongs to one names it as CASE or PERSON. */
 export function subjectsFor(raw: unknown): { input: z.output<typeof KeepCheckInput>; row: KeepPeriodRow; subjects: HoldSubjectOut[] } {
   if (raw && typeof raw === "object" && "class" in raw && !KeepClass.safeParse((raw as { class: unknown }).class).success) throw new KeepCheckRefused("UNKNOWN_CLASS", "This record type is not in the keep-period table, so it cannot be deleted.");
   const p = KeepCheckInput.safeParse(raw);
   if (!p.success) throw new KeepCheckRefused("INVALID_INPUT", `The delete check needs the firm, the record type, its start date and what is deleted (${p.error.issues[0]?.message ?? "invalid"}).`);
   const input = p.data, row = KEEP_PERIODS.find((r) => r.class === input.class)!;
-  if (row.kind === "REFERENCE" || !SUBJECT_KINDS[input.class].includes(input.subject.kind)) throw new KeepCheckRefused("NO_HOLD_CHECK", "This record type has no hold check yet, so it cannot be deleted.");
-  const subjects: HoldSubjectOut[] = [{ kind: "FIRM" }, { kind: "DATE", at: input.startedAt }];
-  if (input.subject.kind === "CASE") subjects.push({ kind: "CASE", id: input.subject.id });
-  if (input.subject.kind === "PERSON") subjects.push({ kind: "PERSON", id: input.subject.id });
-  if (input.class === "closed_client_file") subjects.push({ kind: "CATEGORY", category: "case_files" });
+  const named = Array.isArray(input.subject) ? input.subject : [input.subject];
+  if (row.kind === "REFERENCE" || !named.every((x) => SUBJECT_KINDS[input.class].includes(x.kind))) throw new KeepCheckRefused("NO_HOLD_CHECK", "This record type has no hold check yet, so it cannot be deleted.");
+  if (input.class === "closed_client_file" && !named.some((x) => x.kind === "CASE")) throw new KeepCheckRefused("NO_HOLD_CHECK", "This record type has no hold check yet, so it cannot be deleted.");
+  const subjects: HoldSubjectOut[] = [{ kind: "FIRM" }, ...[input.startedAt, ...input.recordDates].map((at) => ({ kind: "DATE" as const, at }))];
+  for (const x of named) if (x.kind === "CASE" || x.kind === "PERSON") subjects.push({ kind: x.kind, id: x.id });
+  if (input.class === "closed_client_file") for (const category of LEGAL_HOLD_CATEGORY) subjects.push({ kind: "CATEGORY", category });
   return { input, row, subjects };
 }
 
 /** `years` whole calendar years after `from` (UTC; 29 Feb rolls to 1 Mar). */
 export const addYears = (from: Date, years: number) => { const d = new Date(from.getTime()); d.setUTCFullYear(d.getUTCFullYear() + years); return d; };
-const day = (d: Date) => d.toISOString().slice(0, 10);
+const day = (d: Date) => `${d.toISOString().slice(0, 10)} (UTC)`;
 
 /** BR-7's order after the hold: the floor, then the firm's reminder. One rule for every adapter (as answer() is for holds). */
 export function decide(row: KeepPeriodRow, startedAt: Date, firmYears: number | null, now: Date): KeepCheckResult {
@@ -181,7 +194,10 @@ export function verdictOf(held: { held: false } | { held: true; holds: KeepHold[
  *  writes the returned reason on its delete's audit line. Any other verdict needs no reason (HELD and FLOOR refuse). */
 export function warnReason(result: KeepCheckResult, raw: unknown): string | null {
   if (result.verdict !== "WARN") return null;
-  const reason = typeof raw === "string" ? raw.trim() : "";
+  const reason = typeof raw === "string" ? raw.trim().normalize("NFC") : "";
+  // A control character (but line breaks and tabs), a direction override or broken text cannot be stored: refused in
+  // words, never an audit write that fails (break m3).
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(reason)) throw new KeepCheckRefused("INVALID_INPUT", "The reason has characters that cannot be saved: write it as ordinary text.");
   if (!/[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, ""))) throw new KeepCheckRefused("INVALID_INPUT", "Give a reason to delete this before your firm's keep period ends.");
   if ([...reason].length > 500) throw new KeepCheckRefused("INVALID_INPUT", "Keep the reason to 500 characters.");
   return reason;

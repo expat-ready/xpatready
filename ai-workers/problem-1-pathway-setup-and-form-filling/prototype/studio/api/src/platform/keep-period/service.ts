@@ -90,8 +90,10 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
   /** AUD-5 part 2: HELD | FLOOR | WARN | OK in BR-7's order, all inside the deleter's own open transaction `tx`: the hold
    *  first (isHeld takes the shared hold lock through tx, kept until the deleter commits), then the floor, then the firm's
    *  reminder, read through the same tx after the lock (so a setting saved mid-request is read as of that statement, never
-   *  from a second transaction). The College's number is never read here (REFERENCE rows are refused by subjectsFor). */
+   *  from a second transaction). The reminder is never a lock: a setting saved after the check does not undo it (break m2;
+   *  SA-11-33 "a reminder, not a lock"). The College's number is never read here (REFERENCE rows are refused by subjectsFor). */
   async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) { throw new KeepCheckNotBuilt(); }
+    if ((tx as unknown) === this.db || typeof (tx as { $connect?: unknown }).$connect === "function") throw new KeepCheckRefused("INVALID_INPUT", "The delete check runs inside the deleter's own transaction, never on the root client.");   // break m4
     const { input: q, row, subjects } = subjectsFor(input);
     const held = await this.holds.isHeld(tx, q.firmId, subjects);
     const firm = held.held || row.kind !== "REMINDER" ? null : await readSetting<number | null>(tx, q.firmId, CLOSED_CLIENT_FILES.key);

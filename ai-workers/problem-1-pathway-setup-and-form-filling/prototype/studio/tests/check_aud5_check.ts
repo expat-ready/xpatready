@@ -53,10 +53,10 @@ ok("AUD-5 DW6-DW11 pass: check()'s contract passes on the fake with fakeLegalHol
 const part1 = await runContract(keepPeriodPortContract, "fakeKeepPeriods", () => { const h = fakeHarness()(); return h; }, null);
 ok("AUD-5 pass: part 1's contract still passes on a fake with holds wired, but for its check-refuses case (that case is for an unwired port)", part1.failed.length === 1 && /no hold check wired/.test(part1.failed[0]), part1.failed);
 ok("AUD-5 fail: a port with no LegalHoldPort wired refuses check() (no silent OK)",
-  await refusedWith(() => fakeKeepPeriods().check(null, { firmId: uuid(), class: "our_billing", startedAt: ago(9), subject: { kind: "RECORD", id: "x" } }), (e) => e instanceof KeepCheckNotBuilt));
+  await refusedWith(() => fakeKeepPeriods().check(null, { firmId: uuid(), class: "our_billing", recordDates: [NOW], startedAt: ago(9), subject: { kind: "RECORD", id: "x" } }), (e) => e instanceof KeepCheckNotBuilt));
 
 ok("AUD-5 fail: a bare string subject (part 1's placeholder shape) is refused at run time on a wired port, never mapped",
-  await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", startedAt: ago(9), subject: "inv-1" })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
+  await refusedWith(() => { const h = fakeHarness()(); return h.tx((t) => h.port.check(t, { firmId: h.firmA, class: "our_billing", recordDates: [NOW], startedAt: ago(9), subject: "inv-1" })); }, (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT"));
 // DW9 fail: an adapter that decides the floor and the reminder before the hold (BR-7's order broken).
 const floorFirst = (): KeepCheckHarness => {
   const h = fakeHarness()();
@@ -81,7 +81,7 @@ const rAnyFirm = await runContract(keepPeriodCheckContract, "anyFirm", fakeHarne
 ok("AUD-5 DW11 fail: an adapter that counts another firm's hold fails the other-firm case", rAnyFirm.failed.includes(CASES[2]), rAnyFirm.failed);
 
 // The rule itself, firm-free: DW6 and DW8's numbers.
-const row = (c: string) => subjectsFor({ firmId: uuid(), class: c, startedAt: ago(1), subject: { kind: c === "closed_client_file" ? "CASE" : "RECORD", id: c === "closed_client_file" ? uuid() : "r" } }).row;
+const row = (c: string) => subjectsFor({ firmId: uuid(), class: c, startedAt: ago(1), recordDates: [ago(1)], subject: { kind: c === "closed_client_file" ? "CASE" : "RECORD", id: c === "closed_client_file" ? uuid() : "r" } }).row;
 const d5 = decide(row("our_billing"), ago(5), null, NOW), d7 = decide(row("our_billing"), ago(7), null, NOW);
 ok("AUD-5 DW6 pass: a billing record whose fiscal year ended 7 years ago → OK", d7.verdict === "OK", d7);
 ok("AUD-5 DW6 fail: one whose fiscal year ended 5 years ago → FLOOR, refused until the end of year 6, in words", d5.verdict === "FLOOR" && d5.until.toISOString().startsWith("2027-11-19") && /cannot be deleted before then/.test(d5.words), d5);
@@ -127,7 +127,7 @@ try {
   const real = await runContract(keepPeriodCheckContract, "KeepPeriods", realHarness, ok);
   ok("AUD-5 DW6-DW11 pass: check()'s contract passes on the real adapter (setting read through the deleter's Prisma transaction)", real.failed.length === 0 && real.passed.length === CASES.length, real);
   ok("AUD-5 fail: the real adapter with no LegalHoldPort wired refuses check() (no silent OK until PF-21b part 2 wires it)",
-    await refusedWith(() => db.$transaction((t) => new KeepPeriods(db).check(t as never, { firmId: FIRM_A, class: "our_billing", startedAt: ago(9), subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckNotBuilt));
+    await refusedWith(() => db.$transaction((t) => new KeepPeriods(db).check(t as never, { firmId: FIRM_A, class: "our_billing", recordDates: [NOW], startedAt: ago(9), subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckNotBuilt));
 
   // DW7: a test-only deleter of a closed client file (no caller outside this test): HELD and FLOOR refuse; WARN goes ahead
   // only with a reason, written on the delete's one audit line (BR-8); a refused delete deletes nothing and writes nothing.
@@ -137,7 +137,7 @@ try {
   const staffA = { staffId: "5b1f3a8e-0000-4000-8000-0000000000c2", firmId: FIRM_A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" as const };
   const deleteFile = (caseId: string, reason?: unknown, ask?: Record<string, unknown>) => db.$transaction(async (tx) => {
     const f = store.get(caseId)!;
-    const r: KeepCheckResult = await port.checkFor(tx as never, staffA as never, ask ?? { class: "closed_client_file", startedAt: f.closedAt, subject: { kind: "CASE", id: caseId } });
+    const r: KeepCheckResult = await port.checkFor(tx as never, staffA as never, ask ?? { class: "closed_client_file", recordDates: [NOW], startedAt: f.closedAt, subject: { kind: "CASE", id: caseId } });
     if (r.verdict === "HELD" || r.verdict === "FLOOR") throw new KeepCheckRefused("INVALID_INPUT", r.words);
     const why = warnReason(r, reason);
     store.delete(caseId);
@@ -159,24 +159,34 @@ try {
   // Breaker tries.
   const c1 = uuid(); store.set(c1, { firmId: FIRM_A, closedAt: ago(2) });
   ok("break: a check that names a firm (taken from the request) is refused, whatever firm it names; nothing deleted",
-    await refusedWith(() => deleteFile(c1, "x", { class: "closed_client_file", startedAt: ago(2), subject: { kind: "CASE", id: c1 }, firmId: FIRM_B }), (e) => e instanceof KeepCheckRefused && /never names one/.test((e as Error).message)) && store.has(c1));
+    await refusedWith(() => deleteFile(c1, "x", { class: "closed_client_file", recordDates: [NOW], startedAt: ago(2), subject: { kind: "CASE", id: c1 }, firmId: FIRM_B }), (e) => e instanceof KeepCheckRefused && /never names one/.test((e as Error).message)) && store.has(c1));
   await holds.place({ firmId: FIRM_B, scope: { kind: "CASE", id: c1 }, reason: "Sample: firm B's hold", by: BY });
-  const crossed = await db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "closed_client_file", startedAt: ago(2), subject: { kind: "CASE", id: c1 } }));
+  const crossed = await db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "closed_client_file", recordDates: [NOW], startedAt: ago(2), subject: { kind: "CASE", id: c1 } }));
   ok("break: a held item of another firm on the same id does not hold firm A's session (WARN, its own reminder)", crossed.verdict === "WARN", crossed);
   ok("break: a class name that is not in the table is refused in words",
-    await refusedWith(() => db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "trust_ledger", startedAt: ago(9), subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckRefused && e.code === "UNKNOWN_CLASS"));
+    await refusedWith(() => db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "trust_ledger", recordDates: [NOW], startedAt: ago(9), subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckRefused && e.code === "UNKNOWN_CLASS"));
   const mid = await db.$transaction(async (t) => {
-    const before = await port.check(t as never, { firmId: FIRM_A, class: "closed_client_file", startedAt: ago(7), subject: { kind: "CASE", id: c1 } });
+    const before = await port.check(t as never, { firmId: FIRM_A, class: "closed_client_file", recordDates: [NOW], startedAt: ago(7), subject: { kind: "CASE", id: c1 } });
     await set(FIRM_A, 10);   // the Owner saves 10 years while the deleter's transaction is open
-    const after = await port.check(t as never, { firmId: FIRM_A, class: "closed_client_file", startedAt: ago(7), subject: { kind: "CASE", id: c1 } });
+    const after = await port.check(t as never, { firmId: FIRM_A, class: "closed_client_file", recordDates: [NOW], startedAt: ago(7), subject: { kind: "CASE", id: c1 } });
     return { before, after };
   });
   ok("break: the setting changed mid-request is read through the deleter's own transaction at each check (6 → OK, 10 → WARN), never from a second transaction", mid.before.verdict === "OK" && mid.after.verdict === "WARN", mid);
   ok("break: a WARN delete with a reason of spaces only is refused (warnReason)", await refusedWith(() => warnReason({ verdict: "WARN", until: NOW, words: "" }, " \n "), (e) => e instanceof KeepCheckRefused));
 
+  const far = await Promise.all([new Date(8.64e15), new Date("1850-01-01T00:00:00Z"), new Date(Number.NaN)].map((d) => refusedWith(() => db.$transaction((t) => port.checkFor(t as never, staffA as never, { class: "activity_log", startedAt: d, recordDates: [NOW], subject: { kind: "RECORD", id: "x" } })), (e) => e instanceof KeepCheckRefused && e.code === "INVALID_INPUT")));
+  ok("break m1: a start date past year 9999 (which overflowed to OK), before 1900 or not a date is refused, never OK", far.every(Boolean), far);
+  const badReasons = await Promise.all(["a\u0000b", "a\ud800", "x\u202egnp.exe", "bell\u0007"].map((r) => refusedWith(() => warnReason({ verdict: "WARN", until: NOW, words: "" }, r), (e) => e instanceof KeepCheckRefused && /ordinary text/.test((e as Error).message))));
+  ok("break m3: a WARN reason with a NUL, a lone surrogate, a direction override or a control character is refused in words (never a failed audit write)", badReasons.every(Boolean), badReasons);
+  ok("break m3 pass: a reason on two lines in another script is kept (NFC)", warnReason({ verdict: "WARN", until: NOW, words: "" }, " Der Mandant bat um Löschung.\n客户要求删除。 ") === "Der Mandant bat um Löschung.\n客户要求删除。");
+  ok("break m4: the real check() on the root client (not the deleter's transaction) is refused",
+    await refusedWith(() => port.checkFor(db as never, staffA as never, { class: "closed_client_file", startedAt: ago(2), recordDates: [ago(2)], subject: { kind: "CASE", id: c1 } }), (e) => e instanceof KeepCheckRefused && /own transaction/.test((e as Error).message)));
+  const words = decide(row("activity_log"), ago(3), null, NOW);
+  ok("break m5: the date in the words says it is UTC", words.verdict === "FLOOR" && /\(UTC\)/.test(words.words), words);
+
   const srcSvc = readFileSync(join(STUDIO, "api", "src", "platform", "keep-period", "service.ts"), "utf8");
   const body = srcSvc.slice(srcSvc.indexOf("async check("), srcSvc.indexOf("async checkFor("));
-  ok("AUD-5 pass: the real check() opens no transaction of its own and never names the College's number", !/\$transaction|this\.db/.test(body) && !/COLLEGE/.test(body), body);
+  ok("AUD-5 pass: the real check() opens no transaction of its own and never names the College's number", !/\$transaction|this\.db\./.test(body) && !/COLLEGE/.test(body), body);
   let contracts = 0; try { execFileSync(process.execPath, [join(STUDIO, "tools", "check-port-contracts.mjs")], { stdio: "pipe" }); } catch (e) { contracts = (e as { status?: number }).status ?? 1; }
   ok("AUD-5 pass: node studio/tools/check-port-contracts.mjs exits 0", contracts === 0, contracts);
 } finally {
