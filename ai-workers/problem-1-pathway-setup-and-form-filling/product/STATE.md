@@ -2,7 +2,7 @@
 
 current_lead: local_019a74ed-6dba-4a9c-9188-04a3e34bda5a Lead 87 · 19 Nov 09:1x IST (series 2; took over from Lead 86 (series 2, local_bb67266d) at ~430k, P-446)
 
-updated: 2026-11-19 11:2x IST: Lead 87; P-721 to P-727 today (proof sprint, per-item proof, drain to ~13:30, two-journey factory, Fable Lead on the new account, two tracks, bulk invite); the full line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-724**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 10:5x IST: Lead 87; P-721 to P-727 today (proof sprint, per-item proof, drain to ~13:30, two-journey factory, Fable Lead on the new account, two tracks, bulk invite); the full line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 11 of 101 · rules: **`RULES.md`** (as of **P-724**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -27,7 +27,7 @@ Lead 85 → Lead 86 hand-over block word for word in `history/STATE-2026-11-19-0
 | S10-A168 | 10 Nov to 18 Nov asks | pointer rows word for word in `history/STATE-2026-11-19-0755-lead86s2-asks-pointer-rows-S10-A168.md` |
 | A169-A193 | 18-19 Nov asks (A182 open; A181 founder's clean-up) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1120-lead87s2-asks-A169-A193-rows.md` |
 | A197 | 19 Nov 10:3x IST (spoken, relayed from a talk with his co-founder): (a) the POC we build Release 1 on had improvements wanted: can we take those features and go live, at what stage; (b) in 2-3 days can those capabilities be proven, any smarter way; (c) is qa proving per item needed, or merge everything first and verify at the end, with verification on GitHub's machines | (a) answered: no go-live in 2-3 days (R1.1 not built, staging after Proven 30 P-718, P-551 accounts, counsel); which POC improvement list is meant: asked; (b) estimate 3-5 Proven tonight, ~10-15 by day 3 if the queue flows (estimate); (c) → P-722 |
-| A198 | 19 Nov 10:5x IST: Stripe test-mode account for J-19 (R1.19 billing walk): founder "Yes, today" | test secret key saved by the founder in the Mac login Keychain, service `xpatready-stripe-test-secret` (checked 11:3x: exists, sk_test_ kind; value never read out); after #1959 merges, start.sh reads it from the Keychain into STRIPE_SECRET_KEY (row owed); webhook secret later the same way |
+| A198 | 19 Nov 10:5x IST: Stripe test-mode account for J-19 (R1.19 billing walk): founder "Yes, today" | test secret key saved by the founder in the Mac login Keychain, service `xpatready-stripe-test-secret` (checked 10:5x: exists, sk_test_ kind; value never read out); after #1959 merges, start.sh reads it from the Keychain into STRIPE_SECRET_KEY (row owed); webhook secret later the same way |
 | A196 | 19 Nov 10:1x IST: usage: "i have another account and we will resume from new account, work everything that way, don't worry about usage" | recorded: no throttling; at the limit the founder switches account, the next Lead resumes from this page (P-557) |
 | A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
 
