@@ -6,7 +6,7 @@ Case side, audit and client money. Brief paths are under product/design/build-le
 1. R1.80 IRCC forms per applicant: #2235 (evidence) queued. Proof is automatic at its merge; qa walks it (IRCC forms). No lane.
 
 ## One part left
-2. R1.77 decide, withdraw, close, reopen: #2169 (39d3310a3, Approved, relabelled and queued 12:4x IST) → J-77 (`J-77.md`, branch claude/j77-journey c81ed249d). Clash: none. Line, after #2169 merges: "Read J-77.md; merge origin/main into claude/j77-journey; diff-only Approve; open the PR as non-draft."
+2. R1.77 decide, withdraw, close, reopen: #2169 MERGED 15:20 IST → J-77 (`J-77.md`, branch claude/j77-journey c81ed249d). Clash: none. Line, after #2169 merges: "Read J-77.md; merge origin/main into claude/j77-journey; diff-only Approve; open the PR as non-draft."
 3. R1.74 deadlines: #2000 (head bd19821aa, migration renamed to 20261119071700; Approve and the Lead's P-423 read pending) → CS-DL1b with J-74 (`CS-DL1b.md`). Clash: one add-only line in ports/notifications.ts, shared with CS-NT1. Line, after #2000 merges: "Build CS-DL1b with J-74 inside, from CS-DL1b.md, branched from main."
 4. R1.67 file-type check: **CS-D1t with J-67** (`CS-D1t.md`; shaping in `CS-D1-shaping.md`): the two case upload doors call PF-F4's checkFile; ~300 lines, no schema, no trigger. Accepted by Lead 91 as a no-trigger lane (founder start pending). Clash: none in flight. Line: "Build CS-D1t with J-67 inside, from CS-D1t.md, branched from main."
 
