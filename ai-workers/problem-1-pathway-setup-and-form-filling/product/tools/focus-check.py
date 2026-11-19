@@ -4,12 +4,17 @@ list the Lead keeps, product/focus-list.md (the items nearest to done). Reads th
 passes; exit 1 with one line "OFF THE FOCUS LIST: ..." naming what is not listed, the reason and the list's path.
 Run by lane-preflight.sh --hook on every session start (no hook or settings change, P-387). Test: check-focus-list.sh.
 
-What counts (the choices are stated in the PR that added this file):
+What counts (the choices, with the evidence for them, are stated in the PR that added this file):
 * R1 item: "R1.<n>". Row: an id that is a row of BACKLOG*.md (first cell) or of the list, or an id with a digit in a
   build family (J, PF, FO, CS, AUD, AS, BK, B<n>). Decisions (P-n), file names (J-48.md) and PR numbers are not rows.
-* Not a builder brief, so it passes untouched: one that names no R1 item and no such row; a /qa, /lead or strategy
-  desk start; one whose own row (after "/next <area>", else after "Row", else the first row named) has a BACKLOG
-  area starting tooling, qa, records, lead or tech lead. Rows of those areas named in passing are never refused.
+  A row whose BACKLOG area is tooling, qa, records, Lead or tech lead is not a build row and is never refused.
+* What the brief is for (each must be on the list): the row after "/next <area>" or "Row"; the first R1 item or build
+  row it names; and any that directly follows build, start, implement, resume, finish or "open the". Other rows named
+  further on (clash notes, waits-on, duplicate-check lines) are context: every real brief for a listed item names
+  some, so refusing them would refuse the focus items themselves.
+* Not a builder brief, so it passes untouched: one that names no R1 item and no build row; one whose "/next" or "Row"
+  row has a tooling, qa, records or Lead area; /qa or /lead as a command (at the start of a line or a sentence, or after "Run"), or a line
+  starting "qa <mode>", "Records only" or "You are ... Lead" (a qa, records or Lead start); the strategy desk.
 * A builder brief with no readable list is refused: the lock fails closed.
 The list: table lines "| R1.<n>[, R1.<n>] | row ids a brief may name | owning Lead | ... |"; "-" for no row.
   python3 -I product/tools/focus-check.py < brief.txt     FOCUS_LIST, FOCUS_BACKLOG_DIR: other files (tests)
@@ -25,7 +30,12 @@ ITEM = re.compile(r"(?<![A-Za-z0-9.])R1\.[0-9]+(?![0-9])")
 ROW = re.compile(r"(?<![A-Za-z0-9/-])(?:[A-Z]{1,4}-[0-9A-Za-z]+|B[0-9]+[a-z]?)(?![A-Za-z0-9])")
 FAMILY = re.compile(r"^(?:(?:J|PF|FO|CS|AUD|AS|BK)-[A-Za-z]*[0-9][0-9A-Za-z]*|B[0-9]+[a-z]?)$")
 FILE = re.compile(r"\S*\.(?:md|ts|tsx|js|mjs|sh|py|json|prisma|yml|yaml|sql|html|txt|tsv|csv)\b")
-EXEMPT_AREA = re.compile(r"^\W*(tooling|qa|records|lead|tech lead)\b", re.I)
+EXEMPT_AREA = re.compile(r"^\s*(tooling|qa|records|tech lead|lead)\s*([(;,:./]|$)", re.I)
+NOT_BUILDER = re.compile(r"(?:^[\s>*`-]*|[.:;]\s+|[Rr]un\s+`?)/(?:qa|lead)(?![A-Za-z0-9-])|^[\s>*`-]*(?:(?:[Rr]un\s+)?qa (?:after-merge|milestone|capability|explore|with-me)\b"
+                         r"|[Rr]ecords only\b|[Yy]ou are (?:the |a |now )?(?:[A-Za-z]+ )?(?:tech )?[Ll]ead\b)|strategy[- ]desk", re.M)
+ANY = "(?:" + ITEM.pattern + "|" + ROW.pattern + ")"
+OWN = re.compile(r"(?:/next [a-z]+|(?<![A-Za-z])[Rr]ow) (" + ROW.pattern + ")")
+VERB = re.compile(r"(?<![A-Za-z])(?:[Bb]uild|[Ss]tart|[Ii]mplement|[Rr]esume|[Ff]inish|[Oo]pen the)\s+(?:the\s+)?(" + ANY + ")")
 
 
 def read_list():
@@ -33,7 +43,7 @@ def read_list():
     try:
         lines = open(LIST, encoding="utf-8").read().split("\n")
     except OSError:
-        return None, None
+        return items, rows
     for l in lines:
         c = [x.strip() for x in l.split("|")]
         if len(c) < 4 or not ITEM.match(c[1]):
@@ -56,34 +66,33 @@ def read_backlog():
 def main():
     items, rows = read_list()
     if "--list" in sys.argv[1:]:
-        if items is None:
+        if not items:
             print(f"no focus list at {SHOWN}"); return 1
         print("items: " + " ".join(sorted(items, key=lambda i: int(i[3:])))); print("rows: " + " ".join(sorted(rows))); return 0
     brief = sys.stdin.read().replace("\r", "")
-    if re.search(r"(?:^|\s)/(?:qa|lead)\b|strategy[- ]desk", brief):
+    if NOT_BUILDER.search(brief):
         return 0
     text = FILE.sub(" ", brief)
     area = read_backlog()
-    listed_rows = rows or set()
-    named = [r for r in dict.fromkeys(ROW.findall(text)) if not r.startswith("P-") and (r in area or r in listed_rows or FAMILY.match(r))]
-    exempt = lambda r: r in area and r not in listed_rows and EXEMPT_AREA.match(area[r])
-    own = re.search(r"/next [a-z]+ (" + ROW.pattern + ")", text) or re.search(r"(?<![A-Za-z])[Rr]ow (" + ROW.pattern + ")", text)
-    own = own.group(1) if own and own.group(1) in named else (named[0] if named else None)
-    if own and exempt(own):
+    exempt = lambda r: r in area and r not in rows and bool(EXEMPT_AREA.match(area[r]))
+    known = lambda x: bool(ITEM.fullmatch(x)) or (not x.startswith("P-") and (x in area or x in rows or bool(FAMILY.match(x))))
+    own = OWN.search(text)
+    if own and exempt(own.group(1)):
         return 0
-    named_items = list(dict.fromkeys(ITEM.findall(text)))
-    build_rows = [r for r in named if not exempt(r)]
-    if not named_items and not build_rows:
+    named = [x for x in re.findall(ANY, text) if known(x) and not exempt(x)]   # R1 items and build rows, in the brief's order
+    if not named:
         return 0
+    subject = ([own.group(1)] if own and known(own.group(1)) else []) + named[:1] + [x for x in VERB.findall(text) if known(x) and not exempt(x)]
+    subject = list(dict.fromkeys(subject))
     why = "P-733 (1): builder lanes work the items nearest to done first, and P-734 holds that until the evening of 22 Nov"
-    if items is None or not items:
+    if not items:
         print(f"OFF THE FOCUS LIST: no focus list could be read at {SHOWN}, so no builder brief can start ({why}). The Lead restores the list.")
         return 1
-    off = [i for i in named_items if i not in items] + [r for r in build_rows if r not in listed_rows]
+    off = [x for x in subject if x not in items and x not in rows]
     if not off:
         return 0
-    print(f"OFF THE FOCUS LIST: this brief names {', '.join(off)}, not on the focus list ({why}). "
-          f"Brief a listed item, or the Lead adds the item or row to {SHOWN} first.")
+    print(f"OFF THE FOCUS LIST: this brief is for {', '.join(off)}, not on the focus list ({why}). "
+          f"Brief a listed item, or the Lead adds the item and its rows to {SHOWN} first.")
     return 1
 
 

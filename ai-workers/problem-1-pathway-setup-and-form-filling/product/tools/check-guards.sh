@@ -112,13 +112,18 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 25 parkpage|product/tools/pipeline-heartbeat.py|s/^                if len(cs) < 100:/                if True:/|check-pipeline-heartbeat.sh
 25 trusted|product/tools/pipeline-heartbeat.py|s/ if c.get("author_association") in TRUSTED\]/]/|check-pipeline-heartbeat.sh
 25 istdate|product/tools/pipeline-heartbeat.py|s/    posted = t(c\["created_at"\]).astimezone(IST).date()/    posted = t(c["created_at"]).date()/|check-pipeline-heartbeat.sh
-26 item|product/tools/focus-check.py|s/ for i in named_items if i not in items\]/ for i in named_items if False]/|check-focus-list.sh
-26 row|product/tools/focus-check.py|s/ for r in build_rows if r not in listed_rows\]/ for r in build_rows if False]/|check-focus-list.sh
-26 closed|product/tools/focus-check.py|s/^    if items is None or not items:/    if False:/|check-focus-list.sh
+26 off|product/tools/focus-check.py|s/ for x in subject if x not in items and x not in rows\]/ for x in subject if False]/|check-focus-list.sh
+26 first|product/tools/focus-check.py|s/ + named\[:1\] + / + /|check-focus-list.sh
+26 verb|product/tools/focus-check.py|s/ + \[x for x in VERB.findall(text) if known(x) and not exempt(x)\]$//|check-focus-list.sh
+26 own|product/tools/focus-check.py|s/(\[own.group(1)\] if own and known(own.group(1)) else \[\])/[]/|check-focus-list.sh
+26 exempt|product/tools/focus-check.py|s/^    exempt = lambda r: .*/    exempt = lambda r: r in area/|check-focus-list.sh
+26 notbuilder|product/tools/focus-check.py|s/(?!\[A-Za-z0-9-\])//|check-focus-list.sh
+26 closed|product/tools/focus-check.py|s/^    if not items:/    if False:/|check-focus-list.sh
 26 hook|product/tools/lane-preflight.sh|s/python3 -I "\$DIR\/focus-check.py")/cat >\/dev\/null)/|check-focus-list.sh
 27|product/tools/check-docs.sh|/WORKFLOW LOCK: \$id changes the workflow/d|check-workflow-lock.sh
 27 broken|product/tools/check-docs.sh|s/ \&\& printf [^;]*broken[^;]* \&\& continue$/ \&\& continue/|check-workflow-lock.sh
 27 fix|product/tools/check-docs.sh|s/grep -qiE .\\bfix(es.ed.ing)?\\b. \&\& printf/true \&\& printf/|check-workflow-lock.sh
+27 tooling|product/tools/check-docs.sh|s/^        \[ -n "\$areas" \] .. continue$/        continue/|check-workflow-lock.sh
 27 closed|product/tools/check-docs.sh|/EXEMPT list in tools\/decision-impact.sh could not be read/d|check-workflow-lock.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"

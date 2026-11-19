@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ENF-733 (b), guard 27 (founder 19 Nov, P-734 (1), (2)): check-docs.sh refuses a DECISIONS row newer than P-734, dated
-# 19 to 22 Nov, that changes the workflow (a row in decision-impact.sh's EXEMPT), unless its text carries the word fix
+# 19 to 22 Nov, that changes the workflow (a row in decision-impact.sh's EXEMPT, or one only tooling, qa, records or Lead backlog rows carry), unless its text carries the word fix
 # and "Broken: <what is broken>". Throwaway copies, US$0.
 #   bash product/tools/check-workflow-lock.sh
 set -u
@@ -26,6 +26,17 @@ decs '| P-735 | 23 Nov | **Lanes pick their own next item (founder).** |'; run
 ok "a workflow row dated 23 Nov passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 decs '| P-737 | 20 Nov | **The booking page shows the time zone (founder).** A product row, not in EXEMPT. |'; run
 ok "a capability row (not in decision-impact.sh's EXEMPT) dated 20 Nov passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+# A workflow row outside EXEMPT that decision-impact.sh passes on a tooling backlog row (as P-618 on B192) is still a workflow row.
+mkdir -p "$P/qa"; echo '| C1.1 | a capability | P-740 |' > "$P/qa/CAPABILITIES.md"
+bl() { { echo '| Row | Area | What |'; printf '%s\n' "$@"; } > "$P/BACKLOG.md"; }
+decs '| P-738 | 20 Nov | **Labels need a second click (founder).** Enforced by B300. |'
+bl '| B300 | tooling (P-738; Lead) | a label step |'; run
+ok "a row carried only by a tooling backlog row is refused" "$([ $r = 1 ] && lock P-738 && echo 1)" "exit $r: $out"
+bl '| B300 | tooling (P-738; Lead) | a label step |' '| B301 | screens (booking) | the page a person sees, P-738 |'; run
+ok "the same row also carried by a build row passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+decs '| P-740 | 20 Nov | **A capability decision.** Tooling in B300. |'; bl '| B300 | tooling (P-740; Lead) | its tooling |'; run
+ok "a row a capability row carries passes, whatever tooling row names it" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+rm -f "$P/BACKLOG.md"
 decs '| ~~P-735~~ | 20 Nov | ~~**Lanes pick their own next item.**~~ Withdrawn. |'; run
 ok "a struck-through row is not checked" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 decs; run

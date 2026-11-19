@@ -25,6 +25,7 @@ cat > "$T/BACKLOG.md" <<'B'
 | QA-9 | qa (after-merge) | a qa row |
 | REC-1 | records (the Lead) | a records row |
 | X-9 | runtime (case side) | a build row that is not on the list |
+| B25 | Lead form: the sales lead form | a build row whose area starts with the word Lead |
 | PF-19b | runtime (platform: sending) | one sending path |
 B
 M="Model: Opus 5.5, effort: medium."
@@ -34,16 +35,28 @@ ok "a brief for a listed item and its row passes" "$([ $r = 0 ] && [ -z "$out" ]
 fc "$M R1.31 with R1.30: build FO-4 part 2a from main."
 ok "two items on one list line both pass" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 fc "$M Start R1.76 notes from main; one PR."
-ok "a brief for an off-list R1 item is refused, naming it" "$([ $r = 1 ] && echo "$out" | grep -q '^OFF THE FOCUS LIST: this brief names R1.76,' && echo 1)" "exit $r: $out"
+ok "a brief for an off-list R1 item is refused, naming it" "$([ $r = 1 ] && echo "$out" | grep -q '^OFF THE FOCUS LIST: this brief is for R1.76,' && echo 1)" "exit $r: $out"
 ok "the refusal gives the reason (P-733, P-734) and the list's path" "$(echo "$out" | grep 'P-733 (1)' | grep 'P-734' | grep -q "$T/focus-list.md" && echo 1)" "$out"
-fc "$M R1.37 is nearly done; also start R1.760 from main."
-ok "R1.760 is not R1.76 or R1.7: refused by its full number" "$([ $r = 1 ] && echo "$out" | grep -q 'names R1.760,' && echo 1)" "exit $r: $out"
+fc "$M Start R1.760 from main; R1.37 is nearly done."
+ok "R1.760 is not R1.76 or R1.7: refused by its full number" "$([ $r = 1 ] && echo "$out" | grep -q 'is for R1.760,' && echo 1)" "exit $r: $out"
 fc "$M Build CS-NT1 part 1 from CS-NT1-1.md, branched from main."
-ok "an off-list build row with no R1 item in the brief is refused (family id)" "$([ $r = 1 ] && echo "$out" | grep -q 'names CS-NT1,' && echo 1)" "exit $r: $out"
+ok "an off-list build row with no R1 item in the brief is refused (family id)" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
 fc "$M /next runtime X-9. Done when: check-x.sh exits 0."
-ok "an off-list backlog row of a build area is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'names X-9,' && echo 1)" "exit $r: $out"
-fc "$M Build J-37 (R1.37); it shares the mail swap with CS-NT1."
-ok "a listed item's brief that also names an off-list row is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'names CS-NT1,' && echo 1)" "exit $r: $out"
+ok "an off-list backlog row of a build area is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'is for X-9,' && echo 1)" "exit $r: $out"
+fc "$M Build J-37 (R1.37). Clash: the mail swap is shared with CS-NT1 and X-9; Duplicate check: BK-13 no."
+ok "a listed item's brief may name other rows as context (clash, duplicate check)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+fc "$M R1.76 notes, part 1, from main; J-37 is its neighbour."
+ok "what the brief names first is what it is for: an off-list item first is refused" "$([ $r = 1 ] && echo "$out" | grep -q 'is for R1.76,' && echo 1)" "exit $r: $out"
+fc "$M After J-37 merges, build CS-NT1 part 1 from main."
+ok "a row after build is what the brief is for, wherever it stands" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
+fc "$M J-37 is merged. /next runtime X-9. Done when: check-x.sh exits 0."
+ok "the row after /next is what the brief is for, whatever is named first" "$([ $r = 1 ] && echo "$out" | grep -q 'is for X-9,' && echo 1)" "exit $r: $out"
+fc "$M Per REC-1's gate and ENF-733, build CS-NT1 part 1 (R1.76) from main."
+ok "a tooling or records row named first does not exempt a builder brief" "$([ $r = 1 ] && echo "$out" | grep -q 'is for CS-NT1,' && echo 1)" "exit $r: $out"
+fc "$M Build CS-NT1 part 1."$'\n'"/lead-watch reads it; report back to /lead, /qa walks it."
+ok "/lead-watch, or /lead and /qa inside a sentence, do not exempt a builder brief" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+fc "$M /next screens B25 and also CS-NT1 for R1.76."
+ok "an area that only starts with the word Lead (\"Lead form\") is a build area" "$([ $r = 1 ] && echo "$out" | grep -q 'is for B25,' && echo 1)" "exit $r: $out"
 fc "$M On claude/intelligent-mayer-ymi4sl: open the PF-19b part 3 PR (lead-b-briefs/PF-19b3.md), then J-48 per J-48.md; QA-495 after #2181; P-733 and SHA-256 are not rows."
 ok "file names, PR numbers, decision ids and other hyphenated words are not rows" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 fc "$M Run /next runtime ENF-733. R1.6 took 10 PRs; R1.76 has 4 parts; CS-NT1 waits."
@@ -54,6 +67,12 @@ fc "$M /qa capability R1.76: test CS-NT1 like a person."
 ok "a qa brief passes untouched" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 fc "$M /lead: take over as Lead 92; R1.76 and CS-NT1 are in the hand-over."
 ok "a Lead brief passes untouched" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+fc "You are Lead B. $M Shape CS-NT1 and X-9 for later; keep your list for R1.76 current."
+ok "a Lead's own start (You are Lead B) passes untouched" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+fc "Records only: fold R1.76 and CS-NT1 into CAPABILITIES; no code. $M"
+ok "a records-only brief with no row of its own passes untouched" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+fc "Run qa after-merge for #2235, then capability R1.76 (CS-NT1). $M"
+ok "a qa start written without the slash passes untouched" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 fc "$M You are a standby. Wait for the Lead's message."
 ok "a brief naming no R1 item and no row is not checked" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 fc "$M Build J-37 (R1.37) from main." "$T/none.md"
@@ -64,7 +83,7 @@ ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit
 G4=$'\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'
 hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
 hook start_session "Row CS-NT1. $M R1.76 notes, part 1."
-ok "hook: a start for an off-list item is denied with the reason and the list's path" "$(echo "$out" | jq -e --arg f "$T/focus-list.md" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("R1.76") and test("P-733") and contains($f))' >/dev/null 2>&1 && echo 1)" "$out"
+ok "hook: a start for an off-list item is denied with the reason and the list's path" "$(echo "$out" | jq -e --arg f "$T/focus-list.md" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("CS-NT1") and test("P-733") and contains($f))' >/dev/null 2>&1 && echo 1)" "$out"
 hook mcp__ccr__create_session "Row CS-NT1. $M R1.76 notes, part 1."
 ok "hook: a cloud create_session for an off-list item is denied too" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1)" "$out"
 hook start_session "Row J-37. $M R1.37 booking page."
@@ -94,5 +113,5 @@ Build AUD-1m part 2a, then 2b with J-8 inside, from AUD-1m-2.md, back to back in
 LINES
 ok "the real list passes Lead B's and Build Lead C's $n lane lines of 19 Nov" "$([ $n = 13 ] && [ -z "$badl" ] && echo 1)" "$badl"
 real "$M Build CS-NT1 part 1 for R1.76 notes from CS-NT1-1.md."
-ok "the real list refuses R1.76 notes (four parts left), naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'R1.76' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
+ok "the real list refuses CS-NT1 (R1.76 notes, four parts left), naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'CS-NT1' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
 finish
