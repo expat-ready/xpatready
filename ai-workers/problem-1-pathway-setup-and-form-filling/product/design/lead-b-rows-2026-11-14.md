@@ -2067,3 +2067,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Queued, then qa:** R1.4 (#2029) and R1.19's billing part (#1959).
 * **Parked:** the PF-19e lane (R1.100: PF-19e, then PF-5v part 2). I asked whether Proven accepts a Sample terms text (C24/G9).
 * **Next when one reaches Proven:** R1.6 (PF-6b, then J-6) on the #2029 lane, then R1.100.
+* **Lead 86's P-719 rulings (08:16 IST):**
+  * My 4 items are accepted.
+  * R1.48: the PF-19b3 lane takes J-48 after part 3 (Build Lead C hands over `J-48.md`); `PF-19b3.md` is amended.
+  * R1.100 stays parked. When it starts, Proven may use a **Sample** terms text, labelled Sample, because the item proves the mechanism (accept, version, ask again). The real text is a separate launch item (C24/G9). *Unconfirmed: no counsel.*
+  * **R1.6 has been Proven since 08:06 IST**, so PF-6b is not needed for it, and R1.100 is my next item once one of the four is Proven.
