@@ -20,7 +20,7 @@ Not verified here: the recorded walk (`walk.mjs`): this cloud container has no f
 3. #2196, FO-2 part 3b, the real ArrivalPort: on main a booking's person lives only in the in-memory stand-in, so there is no lead and the lead page cannot show a booking's messages (W5).
 The branch is built on those three heads; the PR opens when all three are on main, so its diff is this row only.
 
-## Where the walk departs from the brief (each declared to the reviewer, each accepted)
+## Where the walk departs from the brief (each declared to the reviewer; all accepted as declared except the last, accepted only if the row owner records the waiver: question 4)
 * W3 and W4 are walked through the API, not the browser (the case's screen is C6.16's, walked by its own suite).
 * DW3's signed notice runs in process with the run's own certificate ("Not verified on the running copy": it fetches Amazon's certificate). The copy's door answers 400 to any notice here, so that line proves nothing about a good signature.
 * W2's invitation is a message to a staff member: no staff read or screen lists those, so its state is read from the database.
@@ -32,3 +32,6 @@ The branch is built on those three heads; the PR opens when all three are on mai
 2. R1.48 says "each message shows" its state. Messages to staff (invitations, the two-step reset notice, host emails) show on no screen. Recommendation: a small later row, or narrow R1.48's words to messages to clients and leads.
 3. The Messages box is on the lead page only; the case page mount is the case side's row (Build Lead C), so a case party's state is read through the API here.
 4. BACKLOG names a breaker for this row; this lane's rule gave none for a test-only diff. Recommendation: the row owner records the waiver, or asks for the two uncovered tries as a follow-up.
+
+## Round 2 (diff-only, the last round): Reviewer: Approve b15ecb8b4e27f160d8f2a9a543024c8a05a443a2
+All seven fixes real, 37/37 exit 0 twice on the reviewer's own copy. One Minor left open in the test, listed on the PR and not fixed here (two review rounds are the limit; a third is the tech lead's call): on a kept copy, if this run's host email were written but stayed QUEUED, the W1 host line and the ending line could still pass on an earlier run's host email (`j_48.ts` lines 128-131). It cannot happen on a fresh copy, which is how CI runs it. Fix when next touched: require the inbox's newest host email to be this run's outbox row. The reviewer's second Minor was this file's heading above, now reworded.
