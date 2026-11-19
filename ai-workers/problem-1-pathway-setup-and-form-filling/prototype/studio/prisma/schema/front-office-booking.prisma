@@ -124,6 +124,9 @@ model FoAvailabilitySet {
   @@unique([firmId, id])
   /// The target of the windows' and the types' (firm_id, staff_id, set_id) keys: a set is always the same person's.
   @@unique([firmId, staffId, id])
+  /// Part 1c: a person's set names differ, ignoring case and repeated spaces: the unique index
+  /// fo_availability_set_firm_id_staff_id_name_norm_key on (firm_id, staff_id, lower(…name…)) is in the migration only
+  /// (an expression index has no Prisma form).
   /// Partial: WHERE is_default (at most one default per person).
   @@unique([firmId, staffId, isDefault], map: "fo_availability_set_one_default")
   @@map("fo_availability_set")
