@@ -19,7 +19,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { asBypass, firmScope } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirm, touchFirms } from "../firm-scope.ts";
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
@@ -141,6 +141,7 @@ export class FirmSignUp {
     if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
     const known = await this.knownAccount(email);
     if (known) {
+      await touchFirms(this.db, [known]);   // PF-12b: the lookup read that firm's staff; its line before the email (P-607)
       await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
       return;
     }
@@ -183,13 +184,15 @@ export class FirmSignUp {
       this.wrongCodes.set(pending.id, (this.wrongCodes.get(pending.id) ?? 0) + 1);
       throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
     }
-    if (await this.knownAccount(pending.email)) throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY);
+    const existing = await this.knownAccount(pending.email);
+    if (existing) { await touchFirms(this.db, [existing]); throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY); }   // PF-12b: that firm's line, then the refusal
     const plan = await this.db.platformPlan.findFirst({ where: { code: pending.planCode, active: true } });
     if (!plan) throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown.");   // break m7
     const made = await this.db.$transaction(async (tx) => {
       const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "VERIFIED" } });
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
+      await touchFirm(tx, firm.id);   // PF-12b: the new firm's platform.bypass line, in the transaction that creates it
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
