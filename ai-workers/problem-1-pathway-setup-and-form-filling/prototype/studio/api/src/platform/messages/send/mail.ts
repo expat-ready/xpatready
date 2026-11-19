@@ -20,8 +20,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FilesPort } from "../../../../../ports/files.ts";
 import { normaliseAddress } from "../../../../../ports/consent.ts";
-import type { z } from "zod";
-import { MailMessage, type FirmMail, type MailPort } from "../../../../../ports/mail.ts";
+import { MailMessage, type MailPort } from "../../../../../ports/mail.ts";
 import { MessageRefused, MessageSend, PlatformAccountSend, type MessagePort, type SendResult } from "../../../../../ports/messages.ts";
 import { asBypass, firmScope } from "../../firm-scope.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
@@ -30,7 +29,6 @@ import { MailSuppressed } from "./system-mail.ts";
 
 /** Messages' own system sender (PF-19e), not part of MessagePort. */
 type SystemSender = { sendSystem(tx: Prisma.TransactionClient, input: MessageSend): ReturnType<MessagePort<Prisma.TransactionClient>["send"]> };
-type Written = SendResult & { held: boolean };
 
 /** The key a mailed attachment is stored under (never under msg/, which MessagePort keeps for rendered messages). */
 /** Each attachment has its own folder (its place in the email), so two names that clean alike never collide; a name the
@@ -45,9 +43,10 @@ export class MessagesMail implements MailPort {
 
   /** `held`: written and QUEUED, but the firm's daily cap holds it until the next day (PF-19r: the caller says so). */
   async send(message: MailMessage): Promise<{ messageId: string; held: boolean }> {
-    const m = MailMessage.parse(message);
-    if (!("firmId" in m)) return { messageId: await this.sendPlatform(m), held: false };
-    const sent = await this.write(m, (put) => this.d.db.$transaction(put));
+    // PF-12: a platform account email's row has no firm, so its own transaction runs as the system role
+    // (BYPASS_USES "platform.account.mail"); a firm's runs as the caller.
+    const platform = (message as { platformAccount?: unknown }).platformAccount === true;
+    const sent = await this.write(message, (put) => (platform ? asBypass("platform.account.mail", () => this.d.db.$transaction(put)) : this.d.db.$transaction(put)));
     await sent.dispatch();
     return { messageId: sent.messageId, held: sent.held };
   }
@@ -63,32 +62,29 @@ export class MessagesMail implements MailPort {
   /** PF-19r: the same email written inside the caller's own transaction (a refusal rolls the caller's change back, and a
    *  rolled-back change sends nothing); the caller runs `dispatch` after its commit. For a caller that holds a row lock
    *  the outbox also takes (the firm's row, on a firm's first message), so its email never waits on its own lock and never
-   *  takes a second connection (PF-19e review M1). A firm's email only. */
+   *  takes a second connection (PF-19e review M1).
+   *  PF-19p: a platform account email in the caller's transaction needs that caller on a bypass use (sign-up's). */
   async sendIn(tx: Prisma.TransactionClient, message: MailMessage): Promise<{ messageId: string; held: boolean; dispatch: () => Promise<void> }> {
+    return this.write(message, (put) => put(tx));
+  }
+
+  private async write(message: MailMessage, inTx: (put: (tx: Prisma.TransactionClient) => Promise<SendResult & { held: boolean }>) => Promise<SendResult & { held: boolean }>) {
     const m = MailMessage.parse(message);
-    if (!("firmId" in m)) throw new MessageRefused("not sent: in a caller's transaction, only a firm's email");
-    return this.write(m, (put) => put(tx));
-  }
-
-  /** PF-19p: a platform account email (no firm, From "ExpatReady"), its own transaction as the system role. */
-  private async sendPlatform(m: z.output<typeof MailMessage>): Promise<string> {
-    try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
-    const checked = PlatformAccountSend.safeParse({
-      platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: m.to,
-      content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? randomUUID()}`,
-    });
-    if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-    // PF-12: the row has no firm, so it is written as the system role (BYPASS_USES "platform.account.mail").
-    const r = await asBypass("platform.account.mail", () => this.d.db.$transaction((tx) => this.d.messages.send(tx, checked.data)));
-    await this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
-    return r.outboxId;
-  }
-
-  private async write(m: z.output<typeof FirmMail>, inTx: (put: (tx: Prisma.TransactionClient) => Promise<Written>) => Promise<Written>) {
     // MessagePort's gate judges a service or marketing message by its person's consent: the caller names the person.
     if (m.class !== "TRANSACTIONAL" && !m.person) throw new MessageRefused(`a ${m.class.toLowerCase()} email names its person (MailMessage.person)`);
     const mailId = randomUUID();
     try { normaliseAddress("EMAIL", m.to); } catch { throw new MessageRefused("not sent: the address is not a valid email address"); }
+    if (!("firmId" in m)) {   // PF-19p: a platform account email
+      const checked = PlatformAccountSend.safeParse({
+        platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: m.to,
+        content: { subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) }, idempotencyKey: `mail:${m.idempotencyKey ?? mailId}`,
+      });
+      if (!checked.success) throw new MessageRefused(`not sent: ${checked.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+      // No daily cap on platform rows (no firm), so never held; dispatched with no firm after the commit.
+      const r = await inTx(async (tx) => ({ ...(await this.d.messages.send(tx, checked.data)), held: false }));
+      const dispatch = () => this.d.messages.dispatch(null, [r.outboxId]).catch((e: unknown) => this.d.log?.(`messages: dispatch of ${r.outboxId} failed (${e instanceof Error ? e.name : "error"}); the sweep sends it`));
+      return { messageId: r.outboxId, held: false, dispatch };
+    }
     const { firmId } = firmScope(m.firmId);
     const input = {
       firmId, ...(m.person ? { person: m.person } : {}), channel: "EMAIL" as const, class: m.class, address: m.to,
