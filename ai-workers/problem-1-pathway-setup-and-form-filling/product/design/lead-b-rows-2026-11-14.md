@@ -2072,3 +2072,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * R1.48: the PF-19b3 lane takes J-48 after part 3 (Build Lead C hands over `J-48.md`); `PF-19b3.md` is amended.
   * R1.100 stays parked. When it starts, Proven may use a **Sample** terms text, labelled Sample, because the item proves the mechanism (accept, version, ask again). The real text is a separate launch item (C24/G9). *Unconfirmed: no counsel.*
   * **R1.6 has been Proven since 08:06 IST**, so PF-6b is not needed for it, and R1.100 is my next item once one of the four is Proven.
+* **Build Lead C asked about PF-11c (for its R1.105):** it will not land within a day.
+  * PF-11 (the full data download) is not built, and PF-11c's closure requires that export.
+  * PF-11c is 2 PRs with a breaker. With PF-11 that is 3 parts after #1959.
+  * ETA is 2-3 days once a lane frees. I suggested Lead 86 rank R1.105 against R1.100 for my first free lane.
