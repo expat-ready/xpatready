@@ -467,6 +467,9 @@ try {
   ok("PF-4 fail (m4): a value the stored pattern refuses is refused by the code too (Mars/Olympus fits the pattern but no zone: code refuses)", !(await zone("Mars/Olympus")));
   await writeSetting(db, { firmId: FIRM_A, key: "platform.language", value: "fr", by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
   await writeSetting(db, { firmId: FIRM_B, key: "platform.currency", value: "USD", by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
+  // AUD-1m part 2c (Lead B on #2289): one value over 200 characters, so the trail check below proves the joined pieces: the
+  // reset writes firm A's business hours back to the Mon-Fri default (about 230 characters of JSON, kept as toJson pieces).
+  await writeSetting(db, { firmId: FIRM_A, key: "platform.business_hours", value: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => ({ day, opens: "08:00", closes: "18:00" })), by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
   const platformLines = () => Number(sql(DB, `select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
   const linesBefore = platformLines();
   // The demo reset's own rule, played here on the scratch database: the demo workspace's lines go (Demo.wipe), then the
@@ -484,6 +487,8 @@ try {
   const untrailed = sql(DB, `select coalesce(string_agg(s.key, ','), '') from platform_firm_setting s where not exists (select 1 from audit_event a where a.entity = 'platform_firm_setting' and a.entity_key = s.firm_id || ':' || s.key
     and coalesce(a.detail->'to', (select string_agg(p, '' order by n) from jsonb_array_elements_text(a.detail->'toJson') with ordinality as t(p, n))::jsonb) = s.value and a.at = (select max(b.at) from audit_event b where b.entity = 'platform_firm_setting' and b.entity_key = a.entity_key))`);
   ok("PF-4 fail (B-6): after the reset no setting value is without its trail (each value's newest audit line names it)", untrailed === "", untrailed);
+  ok("PF-4 pass (B-6, AUD-1m part 2c): that check covers a value over 200 characters: firm A's business hours' newest line keeps it as toJson pieces (more than one)",
+    Number(sql(DB, `select jsonb_array_length(detail->'toJson') from audit_event where entity = 'platform_firm_setting' and entity_key = '${FIRM_A}:platform.business_hours' order by at desc limit 1`)) > 1);
   ok("PF-4 fail (B-6): a second reset changes nothing and writes no line", (await resetSampleFirmSettings(db)).changed.length === 0 && platformLines() === linesBefore + reset.changed.length);
 
   // ---------------------------------------------------------------------------- the seed line (P-571 (2))

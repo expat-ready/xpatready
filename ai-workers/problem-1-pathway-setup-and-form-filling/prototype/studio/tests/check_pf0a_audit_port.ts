@@ -23,6 +23,7 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { fakeAlerts } from "../ports/alert.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -43,7 +44,7 @@ const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.
 const { auditStaff, auditInvitation, actorWord, platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const { useAlerts } = await import("../api/src/platform/observability/alerts.ts");
-const { writeSetting, readSetting, joinPieces, SettingRefused, BUSINESS_HOURS, CURRENCY, LANGUAGE } = await import("../api/src/platform/settings.ts");
+const { writeSetting, readSetting, registerSetting, joinPieces, SettingRefused, BUSINESS_HOURS, CURRENCY, LANGUAGE } = await import("../api/src/platform/settings.ts");
 const { requestScope } = await import("../api/src/platform/observability/log.ts");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
@@ -146,6 +147,14 @@ try {
     Array.isArray(toPieces) && toPieces.length > 1 && toPieces.every((x) => x.length <= 200) && !("to" in bh) && roundTrip(bh)
     && JSON.stringify(joinPieces(bh, "from")) === JSON.stringify(await (async () => BUSINESS_HOURS.default)()) && Array.isArray(fromPieces), bh);
   ok("PF-0a PS4 fail (A1): a stand-in that drops a piece is caught by the same round-trip judge", !(() => { try { return roundTrip({ ...bh, toJson: toPieces!.slice(0, -1) }); } catch { return false; } })());
+  ok(`PF-0a PS4 pass (A1, Lead 94's condition): the hours value (${JSON.stringify(WEEK).length} characters) comes back byte for byte`, JSON.stringify(joinPieces(bh, "to")) === JSON.stringify(WEEK) && toPieces!.join("") === JSON.stringify(WEEK));
+  const { AuditEntry } = await import("../ports/audit.ts");
+  const entryWith = (toJson: string[]) => ({ firmId: R.firmId, actor: "seed:pf0a", action: "platform.setting.change", entity: "platform_firm_setting", entityKey: "k", summary: "s", detail: { toJson } });
+  registerSetting({ key: "check.pf0a_long", ownerModule: "check", description: "check only", schema: z.string().max(20_000), default: "", changePermission: "agent/settings:edit" });
+  const tooLong = await writeSetting(db, { firmId: R.firmId, key: "check.pf0a_long", value: "y".repeat(10_001), by: "seed:pf0a", workspaceId: ws }).then(() => false, (e) => e instanceof SettingRefused);
+  ok("PF-0a PS4 fail (A1, Lead 94's condition): a piece over 200 characters or more than 50 pieces is refused by the strict port, and a value needing more than 50 pieces is refused before any write (nothing stored)",
+    !AuditEntry.safeParse(entryWith(["x".repeat(201)])).success && !AuditEntry.safeParse(entryWith(Array.from({ length: 51 }, () => "x"))).success && AuditEntry.safeParse(entryWith(toPieces!)).success
+    && tooLong && (await readSetting(db, R.firmId, "check.pf0a_long")) === "");
   const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-Atc", q], { encoding: "utf8" }).trim();
   ok("PF-0a PS4 pass (A1): the database joins the pieces back to the stored value (check_pf4_identity's trail query)",
     sql(`select count(*) from platform_firm_setting s join audit_event a on a.entity_key = s.firm_id || ':' || s.key where s.key = '${BUSINESS_HOURS.key}' and a.detail ? 'toJson' and (select string_agg(p, '' order by n) from jsonb_array_elements_text(a.detail->'toJson') with ordinality as t(p, n))::jsonb = s.value`) === "1");
