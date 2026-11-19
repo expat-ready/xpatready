@@ -21,15 +21,13 @@ export const CATCH_UP_USE = "cases.prospect-won.catch-up";
 /** Sample: how often the outbox is read (ms). */
 export const pollMs = () => Math.max(200, Number(process.env.PROSPECT_WON_POLL_MS) || 10_000);
 
-@Injectable()
 export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, OnApplicationShutdown {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running: Promise<void> | null = null;
   private linkQueued = false;
   /** The last run's result (a test reads it). */
   last: WonCatchUp | null = null;
-  constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace,
-    @Inject(FO_PERSON_PORT) private readonly foPerson: FoPersonPort<Prisma.TransactionClient>, @Optional() @Inject(PlatformJobs) private readonly jobs?: PlatformJobs) {}
+  constructor(private readonly db: Db, private readonly ws: Workspace, private readonly foPerson: FoPersonPort<Prisma.TransactionClient>, private readonly jobs?: PlatformJobs) {}
 
   async onModuleInit() {
     await this.jobs?.handle(LINK_JOB, async (job) => {
@@ -57,3 +55,7 @@ export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, On
     } catch (e) { console.warn(`FO-8: the won-prospect poll did not run: ${String(e).slice(0, 200)}`); }
   }
 }
+// Decorators as calls (this folder is outside api/tsconfig.json's decorator files, as web-address/routes.ts).
+Injectable()(ProspectWonPoll);
+[Db, Workspace, FO_PERSON_PORT, PlatformJobs].forEach((token, i) => Inject(token)(ProspectWonPoll, undefined, i));
+Optional()(ProspectWonPoll, undefined, 3);
