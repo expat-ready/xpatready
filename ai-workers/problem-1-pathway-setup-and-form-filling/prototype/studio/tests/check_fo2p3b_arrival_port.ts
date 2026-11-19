@@ -243,6 +243,7 @@ try {
   ok("FO-2p3b DW7 fail: a firm's own wording is never replaced (no row added; the page shows the firm's newest)", madeA === false && words(A) === wordsA && newestA?.wordingId !== undefined && sql(`select text from msg_consent_wording where id = '${newestA.wordingId}'`) !== SAMPLE_BOOKING_WORDING, { madeA, newestA });
   const C = (await db.platformFirm.create({ data: { key: "fo2p3b-unseeded", operatingName: "Sample Firm C", countryCode: "CA", status: "ACTIVE", contactEmail: "office@firm-c.example" } })).id;
   const firstC = await real.bookingConsentWording(db, C), secondC = await real.bookingConsentWording(db, C);
+  ok("FO-2p3b DW7 pass: the Sample wording asks for marketing email and is published with its audit line", /email me news/.test(SAMPLE_BOOKING_WORDING) && count("audit_event", `action = 'consent.wording.published' and entity_key = '${firstC?.wordingId}'`) === 1);
   ok("FO-2p3b DW7 pass: a firm with no wording is offered the Sample one on the public page, made once", firstC?.text === SAMPLE_BOOKING_WORDING && secondC?.wordingId === firstC?.wordingId && words(C) === 1, { firstC, words: words(C) });
 } catch (e) {
   fail++;

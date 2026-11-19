@@ -95,8 +95,8 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     let w = await read();
     if (!w) {
       // A firm with no wording yet (seeded before part 3b, or never) gets the Sample one, once (Lead B's ruling on #2196).
-      if ("$transaction" in db) await db.$transaction((tx) => ensureBookingWording(tx, id));
-      else await ensureBookingWording(db, id);
+      if ("$transaction" in db) await db.$transaction((tx) => ensureBookingWording(tx, id, undefined, this.ports.consent));
+      else await ensureBookingWording(db, id, undefined, this.ports.consent);
       w = await read();
     }
     return w ? { wordingId: w.id, text: w.text } : null;

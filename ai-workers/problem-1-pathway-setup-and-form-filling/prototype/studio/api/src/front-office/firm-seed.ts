@@ -11,8 +11,10 @@
 import type { FoPipeline, FoReasonKind, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { sha256Hex } from "../../../ports/consent.ts";
+import type { ConsentPort } from "../../../ports/consent.ts";
 import { EVENT } from "../../../ports/events.ts";
+import { auditEvent } from "../platform/audit/audit-event.ts";
+import { ConsentStore } from "../platform/messages/consent/consent-store.ts";
 import { ensureMessagesFirm } from "../platform/messages/consent/messages-firm.ts";
 import { firmScope } from "../platform/firm-scope.ts";
 
@@ -125,18 +127,19 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
   return { firmId: id, seeded: true, stages: stages.count, reasons: reasons.count, webForms, services: services.count };
 }
 
-/** The booking tick's Sample wording (FO-2 part 3b, Lead B's ruling on #2196): the sentence the fake ArrivalPort offered,
- *  as version 1 of the firm's EMAIL marketing wording, only when the firm has no EMAIL marketing wording at all, so the
- *  firm's own wording is never replaced. Under publishWording's own lock, so a publisher and this never take one number.
- *  Returns whether it made the row. */
-export const SAMPLE_BOOKING_WORDING = "I agree that the firm may use these details to arrange and hold my consultation (Sample wording).";
-export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR): Promise<boolean> {
+/** The booking tick's Sample wording (FO-2 part 3b, Lead B's ruling on #2196): version 1 of the firm's EMAIL marketing
+ *  wording, only when the firm has no EMAIL marketing wording at all, so the firm's own wording is never replaced. The
+ *  sentence asks for marketing email in AG-4-19 rule 3's own form ("Yes, … may email me news and updates"), since a tick
+ *  on it is recorded as marketing consent (AG-2-84 rule 10: express only). Published through ConsentPort, so it has the
+ *  usual `consent.wording.published` audit line; checked again under publishWording's own lock. Returns whether it made it. */
+export const SAMPLE_BOOKING_WORDING = "Yes, the firm may email me news and updates. I can stop at any time. (Sample wording)";
+export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR, consent: ConsentPort<Prisma.TransactionClient> = new ConsentStore(auditEvent)): Promise<boolean> {
   const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
   if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
   await ensureMessagesFirm(tx, id);
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_consent_wording:${id}:EMAIL:MARKETING:en-CA`}))`;
   if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
-  await tx.msgConsentWording.create({ data: { ...where, locale: "en-CA", version: 1, text: SAMPLE_BOOKING_WORDING, textHash: await sha256Hex(SAMPLE_BOOKING_WORDING), publishedBy: actor } });
+  await consent.publishWording(tx, { firmId: id, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: SAMPLE_BOOKING_WORDING, by: actor });
   return true;
 }
 
