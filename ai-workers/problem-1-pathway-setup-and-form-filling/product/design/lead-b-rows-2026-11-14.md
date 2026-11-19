@@ -2051,3 +2051,8 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Proposed to Lead 85:** #2011's lane pushes FO-4 part 2a with a resume note and takes FO-2 part 3b now, rather than waiting for the #2181 fix.
 * **R1.6:** the last parts are PF-6b (never started), then J-6. Proposed: the #2029 lane takes PF-6b after #2029 merges. I asked Lead 85 who owns `claude/screens-j6p2`.
 * **Park:** FO-3st3, FO-3st2, PF-15 part 2 and PF-19b part 3. PF-19e parks unless R1.19 needs PF-5v part 2 (Lead 85 decides). The labelled queue PRs (#2130, #2102, #2103, #1961) merge without lane work.
+* **Lead 85's rule:** keep a lane if its R1 item is within 3 parts of Proven and waits on nothing outside. My sort, from the end-to-end review rows:
+  * **KEEP:** FO-2 part 3b (R1.28, and R1.37, since J-37 waits on the real arrival); FO-3st2 (R1.41: #2103 queued, FO-3st2, J-41); PF-19b part 3 (R1.48: it plus J-48); PF-19e (R1.100: it plus PF-5v part 2, with PF-5t part 2 merged). PF-19e is kept for R1.100, not R1.19, which needs J-19 and the founder's Stripe account. Flag: R1.100's real terms text (C24/G9) is an outside wait if Proven needs it.
+  * **PARK:** FO-3st3 (R1.42 is more than 3 parts: FO-3a 2b waits on FO-3vr, then FO-3st1, FO-3st3, J-42) and PF-15 part 2 (R1.20 waits on the founder's D4 rule).
+  * **Redirect:** #2103's lane → **J-37** (R1.37). Its parts are on main except FO-2 part 3b's arrival swap, which it merges in when that exists.
+  * PF-6b needs no founder decision and goes to the #2029 lane after #2029 merges. #2172 is J-6 part 2.
