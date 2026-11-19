@@ -9,7 +9,7 @@
 // This folder imports only zod and its own files (case-side contract v0.1 §1 rule 3).
 import { z } from "zod";
 import { systemClock, type ClockPort } from "./clock.ts";
-import type { HoldMatch, HoldSubject, LegalHoldPort } from "./legal-hold.ts";
+import { HoldSubject, LEGAL_HOLD_CATEGORY, type HoldMatch, type LegalHoldPort } from "./legal-hold.ts";
 
 /** The firm's own number, not a number in code (SA-11-33: "Keep closed client files for ___ years"). */
 export const FIRM_SETTING = "FIRM_SETTING" as const;
@@ -97,6 +97,9 @@ export const KeepCheckInput = z.strictObject({
   class: KeepClass,
   startedAt: z.date().refine((d) => Number.isFinite(d.getTime()), "a real date"),
   subject: z.string().trim().min(1, "name the record deleted").max(200),
+  /** More hold subjects the caller knows the record touches: the case's people (PERSON), the dates the case was open
+   *  (DATE), a category. Added to the class's own subjects; never fewer (break F2). */
+  also: z.array(HoldSubject).max(50).optional(),
 });
 export type KeepCheckInput = z.input<typeof KeepCheckInput>;
 export type KeepCheckResult =
@@ -117,7 +120,7 @@ export class KeepCheckNotBuilt extends Error {
 /** A check that cannot be answered: a bad input, a REFERENCE class (never deleted on), or a class with no hold check. A
  *  deleter that gets it deletes nothing. */
 export class KeepCheckRefused extends Error {
-  constructor(readonly code: "BAD_INPUT" | "NOT_A_RECORD_CLASS" | "NO_HOLD_CHECK", message: string) { super(message); this.name = "KeepCheckRefused"; }
+  constructor(readonly code: "BAD_INPUT" | "NOT_A_RECORD_CLASS" | "NO_HOLD_CHECK" | "FIRM_SCOPE" | "SETTING_UNREADABLE", message: string) { super(message); this.name = "KeepCheckRefused"; }
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,7 +129,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *  class missing here has no hold check yet and is refused in words, never passed as OK; a case class named by anything
  *  but a case id is refused too. */
 export const HOLD_SUBJECTS: Partial<Record<KeepClass, (subject: string, startedAt: Date) => HoldSubject[] | null>> = {
-  closed_client_file: (s, at) => (UUID.test(s) ? [{ kind: "CASE", id: s }, { kind: "DATE", at }] : null),
+  // A closed client file is the whole case file: its CASE, its DATE and every case-side category (break F1: a CATEGORY
+  // hold on case_files or case_documents must hold it).
+  closed_client_file: (s, at) => (UUID.test(s) ? [{ kind: "CASE", id: s }, { kind: "DATE", at }, ...LEGAL_HOLD_CATEGORY.map((category) => ({ kind: "CATEGORY" as const, category }))] : null),
   client_financial: (s, at) => (UUID.test(s) ? [{ kind: "CASE", id: s }, { kind: "DATE", at }] : null),
   our_billing: (_s, at) => [{ kind: "DATE", at }],
   breach_record: (_s, at) => [{ kind: "DATE", at }],
@@ -136,7 +141,7 @@ export const HOLD_SUBJECTS: Partial<Record<KeepClass, (subject: string, startedA
 
 /** The hold subjects of one ask, or the refusal in words. */
 export function holdSubjectsOf(cls: string, subject: string, startedAt: Date): HoldSubject[] {
-  const map = HOLD_SUBJECTS[cls as KeepClass];
+  const map = Object.hasOwn(HOLD_SUBJECTS, cls) ? HOLD_SUBJECTS[cls as KeepClass] : undefined;   // own keys only (break F11)
   if (!map) throw new KeepCheckRefused("NO_HOLD_CHECK", `This record type has no hold check yet (${cls}): it cannot be deleted until it has one.`);
   const subjects = map(subject, startedAt);
   if (!subjects) throw new KeepCheckRefused("BAD_INPUT", `A ${cls.replace(/_/g, " ")} is named by its case id (a uuid), not "${subject.slice(0, 40)}".`);
@@ -174,10 +179,18 @@ export async function keepCheck<Tx>(deps: KeepCheckDeps<Tx>, tx: Tx, input: Keep
   if (!q.success) throw new KeepCheckRefused("BAD_INPUT", q.error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; "));
   const row = KEEP_PERIODS.find((r) => r.class === q.data.class)!;
   if (row.kind === "REFERENCE") throw new KeepCheckRefused("NOT_A_RECORD_CLASS", `${row.class} is a reference, not a class of record: nothing is deleted on it`);
-  const held = await deps.holds.isHeld(tx, q.data.firmId, holdSubjectsOf(row.class, q.data.subject, q.data.startedAt));
+  const now = deps.clock.now(), start = q.data.startedAt;
+  // A start the calendar cannot carry forward, or one in the future, is not a record's real start (break F6).
+  if (!Number.isFinite(addYears(start, 50).getTime()) || start.getUTCFullYear() < 1900) throw new KeepCheckRefused("BAD_INPUT", "startedAt: not a real date for a record");
+  if (start.getTime() > now.getTime() + 24 * 3600 * 1000) throw new KeepCheckRefused("BAD_INPUT", "startedAt: a record's period cannot start in the future");
+  const subjects = [...holdSubjectsOf(row.class, q.data.subject, start), ...(q.data.also ?? [])];
+  const held = await deps.holds.isHeld(tx, q.data.firmId, subjects);
   if (held.held) { const reasons = held.holds.map((h) => h.reason); return { verdict: "HELD", reason: reasons.join("; "), reasons, holds: held.holds }; }
-  const firmYears = row.years === FIRM_SETTING ? await deps.firmYears(q.data.firmId) : null;
-  return decideKeep(row, firmYears, q.data.startedAt, deps.clock.now());
+  let firmYears: number | null = null;
+  if (row.years === FIRM_SETTING) {
+    try { firmYears = await deps.firmYears(q.data.firmId); } catch (e) { throw new KeepCheckRefused("SETTING_UNREADABLE", `The firm's keep period could not be read, so nothing may be deleted on it: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300)); }
+  }
+  return decideKeep(row, firmYears, start, now);
 }
 
 /** The port. `Tx` is the caller's transaction (part 2's check runs inside it). */

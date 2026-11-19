@@ -38,6 +38,7 @@ const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.
 const { KeepPeriods, CLOSED_CLIENT_FILES } = await import("../api/src/platform/keep-period/service.ts");
 const { writeSetting } = await import("../api/src/platform/settings.ts");
 const { platformAuditWorkspaceId } = await import("../api/src/platform/identity/audit.ts");
+const { withFirm, wallUnscopedQueries } = await import("../api/src/platform/firm-scope.ts");
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 
 try {
@@ -141,6 +142,31 @@ try {
   ok("AUD-5 DW11 fail: a hold of another firm (B) on the same subject id → not HELD for firm A", forA.verdict === "OK", forA);
   ok("AUD-5 DW11 pass: the same hold → HELD for its own firm (B)", forB.verdict === "HELD" && forB.reason === "Firm B's hold", forB);
 
+  // --------------------------------------------- the breaker's findings (F1 category, F2 person and dates, F6 dates)
+  const catCase = uuid();
+  const catHold = await holds.place({ firmId: FIRM_A, scope: { kind: "CATEGORY", category: "case_files" }, reason: "All case files held", by: "seed:aud5b" });
+  const cat = await check({ firmId: FIRM_A, class: "closed_client_file", startedAt: yearsAgo(10), subject: catCase });
+  await holds.release({ holdId: catHold.holdId, by: "seed:aud5b", reason: "check done" });
+  const catAfter = await check({ firmId: FIRM_A, class: "closed_client_file", startedAt: yearsAgo(10), subject: catCase });
+  ok("AUD-5 break F1 fail: a CATEGORY hold on case_files holds a closed client file (HELD, never OK or WARN); released, it no longer does",
+    cat.verdict === "HELD" && cat.reasons.includes("All case files held") && catAfter.verdict !== "HELD", { cat, catAfter });
+  const person = uuid(), personCase = uuid();
+  await holds.place({ firmId: FIRM_A, scope: { kind: "PERSON", id: person }, reason: "Client's records held", by: "seed:aud5b" });
+  const noAlso = await check({ firmId: FIRM_A, class: "client_financial", startedAt: yearsAgo(10), subject: personCase });
+  const withAlso = await check({ firmId: FIRM_A, class: "client_financial", startedAt: yearsAgo(10), subject: personCase, also: [{ kind: "PERSON", id: person }] });
+  ok("AUD-5 break F2 pass: the caller adds the case's people (also: PERSON) and a person hold holds the record; without them it cannot be seen",
+    noAlso.verdict === "OK" && withAlso.verdict === "HELD" && withAlso.reason === "Client's records held", { noAlso, withAlso });
+  const openedIn = new Date("2022-03-01T00:00:00.000Z"), rangeCase = uuid();
+  await holds.place({ firmId: FIRM_A, scope: { kind: "DATE_RANGE", from: new Date("2022-01-01T00:00:00Z"), to: new Date("2022-12-31T00:00:00Z") }, reason: "2022 matters held", by: "seed:aud5b" });
+  const range = await check({ firmId: FIRM_A, class: "closed_client_file", startedAt: new Date("2024-05-01T00:00:00Z"), subject: rangeCase, also: [{ kind: "DATE", at: openedIn }] });
+  ok("AUD-5 break F2 pass: a case open during a held date range (also: DATE) is HELD though it closed after the range", range.verdict === "HELD" && range.reasons.includes("2022 matters held"), range);
+  ok("AUD-5 break F6 fail: a start in the future, or one the calendar cannot carry forward, is refused (BAD_INPUT), never OK",
+    await throwsLike(() => check({ firmId: FIRM_A, class: "our_billing", startedAt: addYears(NOW, 2), subject: "invoice-future" }), refused("BAD_INPUT"))
+    && await throwsLike(() => check({ firmId: FIRM_A, class: "our_billing", startedAt: new Date(8.64e15 - 1000), subject: "invoice-far" }), refused("BAD_INPUT"))
+    && await throwsLike(() => check({ firmId: FIRM_A, class: "our_billing", startedAt: new Date("1066-10-14T00:00:00Z"), subject: "invoice-old" }), refused("BAD_INPUT")));
+  ok("AUD-5 break F11 fail: a prototype name is no class (holdSubjectsOf reads own keys only)",
+    await throwsLike(() => holdSubjectsOf("toString", "x", NOW), refused("NO_HOLD_CHECK")) && await throwsLike(() => holdSubjectsOf("constructor", "x", NOW), refused("NO_HOLD_CHECK")));
+
   // ------------------------------------------------------------------------- refusals (no silent OK, ever)
   const base = { firmId: FIRM_A, startedAt: yearsAgo(1), subject: uuid() };
   ok("fail: the College's REFERENCE row is not a class of record (NOT_A_RECORD_CLASS)", await throwsLike(() => check({ ...base, class: "college_client_file" }), refused("NOT_A_RECORD_CLASS")));
@@ -153,8 +179,9 @@ try {
     && await throwsLike(() => check({ ...base, class: "client_financial", subject: "trust-1" }), refused("BAD_INPUT")));
   ok("fail: a record type with no hold-subject mapping is refused in words (\"no hold check yet\"), never passed as OK",
     await throwsLike(() => holdSubjectsOf("chat_messages", "x", NOW), (e) => refused("NO_HOLD_CHECK")(e) && /has no hold check yet/.test((e as Error).message)));
-  ok("pass: every class of record has a hold-subject mapping; the case classes ask about the CASE and the DATE",
-    classes.every((c) => holdSubjectsOf(c, held, NOW).length > 0) && JSON.stringify(holdSubjectsOf("closed_client_file", held, NOW).map((s) => s.kind)) === '["CASE","DATE"]');
+  const fileKinds = holdSubjectsOf("closed_client_file", held, NOW).map((s) => s.kind);
+  ok("pass: every class of record has a hold-subject mapping; a closed file asks about its CASE, its DATE and every case-side category",
+    classes.every((c) => holdSubjectsOf(c, held, NOW).length > 0) && fileKinds[0] === "CASE" && fileKinds[1] === "DATE" && fileKinds.filter((k) => k === "CATEGORY").length === 5, fileKinds);
   ok("fail: with no legal-hold store wired (the API today), check() refuses (KeepCheckNotBuilt): nothing is deleted without asking it",
     await throwsLike(() => new KeepPeriods(db as never).check(null as never, { ...base, class: "our_billing" }), (e) => e instanceof KeepCheckNotBuilt)
     && await throwsLike(() => fakeKeepPeriods().check(null, { ...base, class: "our_billing" }), (e) => e instanceof KeepCheckNotBuilt));
@@ -172,6 +199,12 @@ try {
   const rule = src.slice(src.indexOf("export function addYears"), src.indexOf("/** The port."));
   ok("pass: check()'s rule never names the College number, and the clock port decides time (P-607: no new Date() in the rule)", rule.length > 500 && !/COLLEGE/.test(rule) && !/new Date\(\)/.test(rule));
 
+  // ---------------------------------------------------- break F3/F4: the firm asked is the firm the caller runs as
+  const inB = await throwsLike(() => withFirm(FIRM_B, () => check({ firmId: FIRM_A, class: "our_billing", startedAt: yearsAgo(7), subject: "invoice-x" })), refused("FIRM_SCOPE"));
+  const inA = await withFirm(FIRM_A, () => check({ firmId: FIRM_A, class: "our_billing", startedAt: yearsAgo(7), subject: "invoice-x" }));
+  ok("AUD-5 break F3/F4 fail: run in firm B's scope, a check asking for firm A is refused (FIRM_SCOPE): a firm id taken from the request cannot steer it",
+    inB && inA.verdict === "OK", { inB, inA });
+
   // -------------------------------------------------------------------------- the check contract, fake and real
   clearYears();
   const fakeHolds = fakeLegalHolds(), fakeClock = new FakeClock(NOW), fake = fakeKeepPeriods({}, { holds: fakeHolds, clock: fakeClock });
@@ -185,6 +218,10 @@ try {
   ok("pass: check()'s contract passes for the fake and the real adapter (7 cases each)", rFake.failed.length === 0 && rReal.failed.length === 0 && rFake.passed.length === 7 && rReal.passed.length === 7);
   const broken = await runContract(keepPeriodCheckContract, "broken", () => ({ ...fakeHarness(), port: { ...fake, check: async () => ({ verdict: "OK" as const }) } }), null);
   ok("fail: an adapter whose check() always says OK breaks the contract", broken.failed.length >= 5, broken);
+  // Last, as it changes the process (break F3): under the API's walled database a check with no firm scope is refused.
+  wallUnscopedQueries();
+  ok("AUD-5 break F3 fail: with the database walled (the API) and no firm scope (a job that forgot it), check() is refused (FIRM_SCOPE), never a false OK",
+    await throwsLike(() => check({ firmId: FIRM_A, class: "closed_client_file", startedAt: yearsAgo(3), subject: uuid() }), refused("FIRM_SCOPE")));
 } finally {
   await db.$disconnect();
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* left for prune-test-dbs.sh */ }

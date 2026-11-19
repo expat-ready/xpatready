@@ -9,8 +9,9 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
+import { currentBypass, currentFirm, unscopedMode } from "../firm-scope.ts";
 import {
-  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, NO_COUNSEL, keepCheck,
+  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, KeepCheckRefused, NO_COUNSEL, keepCheck,
   type FirmKeepPeriod, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
 } from "../../../../ports/keep-period.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
@@ -76,6 +77,18 @@ function closedFilesView(y: number | null, s: StaffContext) {
   };
 }
 
+/** The firm asked must be the one the caller runs as (break F3, F4): its session's (PF-4's guard) or its job's firm
+ *  scope. Under the API's walled database another firm's scope, or none, would read the firm's number as "not set" and
+ *  holds as none, so the answer could be a false OK: it is refused in words instead. A named asBypass use and a plain
+ *  script or test process (unwalled) are let through. */
+function inOwnFirm(firmId: unknown) {
+  if (currentBypass()) return;
+  const scoped = currentFirm();
+  if (scoped === undefined && unscopedMode() === "direct") return;
+  if (scoped === undefined) throw new KeepCheckRefused("FIRM_SCOPE", "check() runs in the deleter's own firm scope (its session or its job); this call has none, so nothing may be deleted on it.");
+  if (typeof firmId !== "string" || scoped.toLowerCase() !== firmId.toLowerCase()) throw new KeepCheckRefused("FIRM_SCOPE", "check() asks only for the firm the caller runs as; this firm is not the session's or the job's, so nothing may be deleted on it.");
+}
+
 @Injectable()
 export class KeepPeriods implements KeepPeriodPort<Tx> {
   constructor(
@@ -91,7 +104,7 @@ export class KeepPeriods implements KeepPeriodPort<Tx> {
 
   /** Every deleter's one question (BR-7): a hold first, inside the caller's transaction, then the floor, then the firm's
    *  reminder. The caller passes its session or job firm, never a request's. */
-  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) throw new KeepCheckNotBuilt(); return keepCheck({ holds: this.holds, clock: this.clock ?? systemClock, firmYears: async (f) => (await this.forFirm(f)).closedClientFilesYears }, tx, input); }
+  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) throw new KeepCheckNotBuilt(); inOwnFirm(input?.firmId); return keepCheck({ holds: this.holds, clock: this.clock ?? systemClock, firmYears: async (f) => (await this.forFirm(f)).closedClientFilesYears }, tx, input); }
 
   /** GET /api/platform/keep-periods: the table in plain words and the firm's own number (read-only for most staff). */
   async read(s: StaffContext) {
