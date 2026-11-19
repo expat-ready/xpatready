@@ -322,3 +322,22 @@ This is a diff-only re-review (P-277) of `git diff 6f3471227 15e7fe389`. It has 
 The round 3 minors m1-m4 stand as recorded.
 
 **Verdict: Approve** for `15e7fe3896cbf71a225d9c764b93459c2e4dc2b7`. There is no open Blocker or Major. The label still waits on green CI and the builder's browser check passing at this head.
+
+## Review round 9 (c7ad059f7: merge + rename)
+
+Diff-only re-review (P-277) of `15e7fe389..c7ad059f7`: bd9ba5ab4 merges origin/main 9d440b2f4 (Build Lead C's step 1), and c7ad059f7 renames the migration folder to Lead 84's slot.
+
+* **`complaints.ts`, against main:** the only change is CS-DL1's own. The settings import drops `BUSINESS_HOURS` and `CLOSED_DAYS`. `BusinessDayTally`, `businessDaysBetween`, `readFirmCalendar` and `FirmCalendar` now come from `../calendar/working-days.ts`, `acknowledgeBy` stays in `./business-days.ts`, and `calendar()` calls `readFirmCalendar`. PF-19r's work is intact: the `mailIn` and `MessageRefused` imports, the tiered `runAckReminder`, and `after.push(await mailIn(...))`. Since 15e7fe389 the diff holds only main's PF-19r change.
+* **Imports:** the api typecheck reports `PASS no new type errors (15 known, 0 fixed)`, and web has 0 errors. No import is unused or missing.
+* **`platform/MODULE.md`:** it is 40 lines and keeps main's `check_pf19r_senders.ts` plus CS-DL1's `check_csdl1_deadlines.ts`. Against main, it shows only CS-DL1's Purpose, wall and invariant lines. `module-cards.py tree` reports `PASS module cards: 15 cards, tree checked`.
+* **Migration:** `20261119000000_csdl1_firm_calendar/migration.sql` has sha256 `01d439bdc6cabf11131534a8af5a0b3cc8d1e9eabf88feaca625001c8e3e55e4`, the same as the old folder at 15e7fe389 (git sees a 100% rename). The new stamp is later than main's newest, `20261118200100_fo7ts_card_terminal_trust`, and no other folder uses it. `git grep 20261118194500` at c7ad059f7 finds nothing. The three repeated stamps already on main (20261025090000, 20261031140000, 20261102010000) predate this PR and are not its concern.
+* **Scope:** `git diff origin/main...c7ad059f7` lists 19 files (513+/108-), all CS-DL1's own, and `git diff origin/main c7ad059f7` lists the same 19. Nothing of main leaked in or was reverted. For example, main's FO-2 changes to `leads.ts` are kept, and against main only CS-DL1's one-line `FirmCalendar` import differs.
+* **Suite at c7ad059f7:** `tests/check_csdl1_deadlines.ts` passes 37/37 against the shared database.
+
+### Could not check
+* The builder's other suites at bd9ba5ab4 and their re-runs at c7ad059f7 (PF-12, C6.17 migration, FO-7ts, DW7-DW9). I take them from the builder's report and did not run them. CI for this head.
+* The journey was not re-run: these two commits do not change the screen. Round 3's 9.5/10 stands.
+
+The minors m1-m5 stand as recorded.
+
+**Verdict: Approve** for `c7ad059f79da2e4373517a00c2e931bac1685cb3`. No Blocker or Major is open.
