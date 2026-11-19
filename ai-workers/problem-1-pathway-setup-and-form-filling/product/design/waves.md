@@ -112,7 +112,7 @@ Now: 52 Partial, 37 Not built, 12 Works; active wave 1; lane starts open for wav
 | J9 | R1.57 (Not built), R1.60 (Not built), R1.96 (Not built), R1.111 (Not built) |
 | J10 | R1.34 (Not built), R1.86 (Not built), R1.87 (Not built), R1.88 (Not built), R1.97 (Not built) |
 
-\* R1.38: allow: P-745 (3), finishes its four nearly done PRs
+\* R1.38: allow: P-745 (3), finishes its four nearly done PRs; the Lead removes this note when they have merged
 
 <!-- waves.py gen: end -->
 

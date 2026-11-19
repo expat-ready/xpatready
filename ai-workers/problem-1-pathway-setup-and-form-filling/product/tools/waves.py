@@ -8,7 +8,8 @@ qa/CAPABILITIES.md (Works = Proven). Stdlib only, US$0, no network except `wip`,
   waves.py ids              exit 1 unless waves.tsv holds every R1 id of CAPABILITIES.md exactly once and no other
   waves.py check            exit 1 when the block differs from gen in anything but statuses (check-waves.sh, guards)
   waves.py allow R1.x ...   exit 0 only when every item may start a lane: wave 0 (already Proven: fixes, P-214), the
-                            active wave or the next one, or a note "allow: <reason>"; else one "OUTSIDE WAVE" line
+                            active wave, the next one, a wave below the active one (finishing its last 3 or fewer
+                            items), or a note "allow: <reason>"; else one "OUTSIDE WAVE" line
   waves.py active           print the active wave and the waves open for lane starts
   waves.py wip [--prs F] [--lanes F]   building (an open non-draft PR or a lane naming the item) against cap 8 and
                             Built-not-Proven (status "Built...") against cap 12; one ACT line per breach and per item
@@ -71,19 +72,22 @@ def read_caps():
             col = c.index("Status")
         elif col and len(c) > col and ITEM.fullmatch(c[1]):
             st[c[1]] = c[col]
+        elif not l.lstrip().startswith("|"):
+            col = None   # the R1 table ended; a later table's columns are its own
     if not st:
         die(f"waves: no R1 rows with a Status column in {CAPS}")
     return st
 
 
-proven = lambda s: s == "Works"
+proven = lambda s: (s.split() or [""])[0] == "Works"
 
 
 def open_waves(rows, st):
     """(active wave or None, the set of waves open for lane starts)."""
     left = {w: sum(1 for i, ww, _, _ in rows if ww == w and not proven(st.get(i, ""))) for w in (1, 2, 3, 4)}
     active = next((w for w in (1, 2, 3, 4) if left[w] > OPEN_AFTER), None)
-    return active, ({0} | ({active, active + 1} & {1, 2, 3, 4}) if active else {0, 1, 2, 3, 4})
+    # every wave up to the next one: a wave below the active one is finishing (its last 3 or fewer items), never closed
+    return active, ({0} | (set(range(1, active + 2)) & {1, 2, 3, 4}) if active else {0, 1, 2, 3, 4})
 
 
 def gen_block(rows, st):
@@ -121,7 +125,7 @@ def split_md():
 
 
 def norm(block):   # statuses and the "Now:" line move with every qa verdict; membership must not drift
-    return [re.sub(r"(R1\.[0-9]+) \([^)]*\)", r"\1", l) for l in block.split("\n") if not l.startswith("Now:")]
+    return [re.sub(r"(R1\.[0-9]+) \(.*?\)(?=(?: \*)?(?:, R1\.| \|))", r"\1", l) for l in block.split("\n") if not l.startswith("Now:")]
 
 
 def names_in(text, rowmap):
@@ -148,7 +152,7 @@ def focus_rows():
 def pr_items(p, rowmap):
     got = names_in(p.get("title") or "", rowmap)
     for l in (p.get("body") or "").replace("\r", "").split("\n"):
-        if re.match(r"^[\s>*-]*(Item|Completes):", l):
+        if re.match(r"^[\s>*-]*(item|completes):", l, re.I):
             got |= set(ITEM.findall(l))
     return got
 
@@ -159,7 +163,8 @@ def wip(args):
     note = {i: n for i, _, _, n in rows}
     active, ok = open_waves(rows, st)
     rowmap = focus_rows()
-    prf = args[args.index("--prs") + 1] if "--prs" in args else None
+    val = lambda k: args[args.index(k) + 1] if k in args[:-1] else die(f"waves: {k} needs a file") if k in args else None
+    prf = val("--prs")
     try:
         raw = open(prf, encoding="utf-8").read() if prf else subprocess.run(
             ["gh", "pr", "list", "--state", "open", "--limit", "200", "--json", "number,title,body,isDraft,headRefName"],
@@ -167,7 +172,7 @@ def wip(args):
         prs = json.loads(raw)
     except (OSError, ValueError, subprocess.SubprocessError) as e:
         print(f"ACT   wip: open PRs unreadable ({e}): building not counted"); return 1
-    lanef = args[args.index("--lanes") + 1] if "--lanes" in args else APP_VIEW
+    lanef = val("--lanes") or APP_VIEW
     try:
         lanes = [l.split(" · ")[0] for l in open(lanef, encoding="utf-8").read().split("\n") if re.match(r"^(FLAG|ok) ", l)]
     except OSError:
