@@ -44,7 +44,7 @@ export class CaseDeadlines {
 
   /** The handlers, and the sweep's schedule when `sweep` (the app; a suite runs `sweep()` itself). */
   async register(o: { sweep: boolean }) {
-    await this.p.jobs.handle(REMINDER_JOB, (job) => this.runReminder(job));
+    await this.p.jobs.handle(REMINDER_JOB, async (job) => { await this.runReminder(job); });
     await this.p.jobs.handle(SWEEP_JOB, () => this.sweep());
     if (o.sweep) await this.p.jobs.recurring(SWEEP_JOB, SWEEP_CRON, "UTC");
   }
