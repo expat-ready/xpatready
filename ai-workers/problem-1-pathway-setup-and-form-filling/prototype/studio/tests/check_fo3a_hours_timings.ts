@@ -21,7 +21,7 @@ const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (exists
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo3a1b_${process.pid}`, OLD = `xr_studio_fo3a1b_old_${process.pid}`;
 const urlOf = (d: string) => `postgresql://xr_studio@127.0.0.1:54329/${d}`, URL = urlOf(DB);
-const TZ = "America/Toronto", THIS = "20261118220000_fo3a_hour_sets";
+const TZ = "America/Toronto", THIS = "20261119031000_fo3a_hour_sets";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
