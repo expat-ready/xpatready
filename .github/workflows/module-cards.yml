@@ -26,6 +26,7 @@ jobs:
       - name: this PR changes a module's card when it changes the module
         env:
           BODY: ${{ github.event.pull_request.body }}
+          BASE: HEAD^1   # P-712: the frozen Tests./Tables./Entry points. lines are compared with the base
         run: |
           # The checkout is GitHub's test merge: its first parent is the base, so this is what the PR brings.
           git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed"
