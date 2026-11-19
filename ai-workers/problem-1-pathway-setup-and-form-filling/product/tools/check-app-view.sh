@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # B197 (founder A110, 16 Nov; P-326, P-339, P-565): the app view is read every check, enforced. app-view.js flags each kind
 # of session from a hand-made sessions JSON; app-view-save.sh keeps only app-view.js's text; app-view-check.sh (run by
-# lead-watch.sh) gives one ACT per flag and "not read in N min" past 35 min; lead-check-guard.sh's Stop mode refuses a
+# lead-watch.sh) gives one ACT per flag (and per "list may be cut" warning, B204) and "not read in N min" past 35 min; lead-check-guard.sh's Stop mode refuses a
 # stale check turn and passes a fresh one, another turn or another copy. Clock and lane are faked. US$0, no network.
 #   bash product/tools/check-app-view.sh
 set -u
@@ -22,6 +22,16 @@ ok "app-view.js: one line per session and a header" "$(grep -q '^app view 7 sess
 for k in "Lane asks.*-> need_input" "Lane stuck.*-> blocked" "Lane broke.*-> failed" "Lane idle.*idle 114 min with work left" "Lane full · mac.*context 46%"; do
   ok "app-view.js flags: $k" "$(grep -qE "^FLAG  $k" <<< "$view" && echo 1)" "$view"; done
 ok "app-view.js leaves a done lane idle 200 min and a fresh review_ready lane unflagged" "$(grep -q '^ok    Lane quiet' <<< "$view" && grep -q '^ok    Lane fine' <<< "$view" && echo 1)" "$view"
+# B204 (4): it asks for 200 sessions and warns when the answer may be cut (as many as the limit, or a next-page marker).
+grep -q "const LIMIT = 200;" "$TOOLS/app-view.js" && grep -q "&limit=' + LIMIT + '&" "$TOOLS/app-view.js" && ! grep -q 'limit=50' "$TOOLS/app-view.js"
+ok "app-view.js asks the API for limit=200 sessions (was 50)" "$([ $? = 0 ] && echo 1)"
+lv() { node -e 'const v=require(process.argv[1]); console.log(v.lines(JSON.parse(process.argv[2]), 0, process.argv[3]))' "$TOOLS/app-view.js" "$1" "${2:-}"; }
+full=$(jq -c '{data: [range(200) as $i | .data[0] | .title = "L\($i)"]}' "$T/sessions.json"); o=$(lv "$full")
+ok "200 sessions at the limit of 200: WARNING list may be cut (200 of 200), second line" "$(sed -n 2p <<< "$o" | grep -qx 'WARNING: list may be cut (200 of 200)' && echo 1)" "$(head -2 <<< "$o")"
+o=$(lv "$(jq -c '. + {has_more: true}' "$T/sessions.json")"); ok "has_more true with 7 sessions: WARNING (7 of 200)" "$(grep -qx 'WARNING: list may be cut (7 of 200)' <<< "$o" && echo 1)" "$o"
+o=$(lv "$(jq -c '. + {next_cursor: "abc"}' "$T/sessions.json")"); ok "a next_cursor: WARNING" "$(grep -q '^WARNING: list may be cut' <<< "$o" && echo 1)" "$o"
+o=$(lv "$(jq -c '. + {has_more: false, next_cursor: null}' "$T/sessions.json")"); ok "7 sessions, has_more false, next_cursor null: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$o"
+o=$(lv "$(cat "$T/sessions.json")" 7); ok "7 sessions at a limit of 7: WARNING (7 of 7)" "$(grep -qx 'WARNING: list may be cut (7 of 7)' <<< "$o" && echo 1)" "$o"
 u=$(node -e 'console.log(require(process.argv[1]).lines({error:"x"},0))' "$TOOLS/app-view.js"); ok "app-view.js: no sessions array is UNREADABLE" "$(grep -q '^UNREADABLE' <<< "$u" && echo 1)" "$u"
 o=$(echo "hello" | NOW=$NOW bash "$TOOLS/app-view-save.sh" 2>&1); r=$?
 ok "app-view-save.sh refuses text that is not app-view.js's" "$([ $r = 2 ] && [ ! -e "$APP_VIEW_FILE" ] && echo 1)" "rc=$r $o"
@@ -32,6 +42,8 @@ ok "app-view-save.sh writes the IST time and the lines" "$(head -1 "$APP_VIEW_FI
 o=$(check $((NOW + 10 * 60))); ok "a 10-min-old view: one ACT per flagged session (5)" "$(grep -q '^rc=5' <<< "$o" && grep -q '^ACT   app view: Lane asks' <<< "$o" && grep -q '^ACT   app view: Lane full' <<< "$o" && echo 1)" "$o"
 o=$(check $((NOW + 35 * 60)) --stale-only); ok "35 min is still fresh" "$(grep -q '^rc=0' <<< "$o" && echo 1)" "$o"
 o=$(check $((NOW + 36 * 60))); ok "a 36-min-old view: ACT app view not read in 36 min" "$(grep -q '^rc=1' <<< "$o" && grep -q '^ACT   app view not read in 36 min' <<< "$o" && echo 1)" "$o"
+printf '%s\n' "$(lv "$(jq -c '. + {has_more: true}' "$T/sessions.json")")" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
+nf=$(grep -c '^FLAG' "$APP_VIEW_FILE"); o=$(check $NOW); ok "a saved WARNING line is one more ACT (each flag + 1)" "$(grep -q "^rc=$((nf + 1))$" <<< "$o" && grep -q '^ACT   app view: WARNING: list may be cut (7 of 200): raise LIMIT' <<< "$o" && echo 1)" "$o"
 echo "UNREADABLE app view: HTTP 401 (signed out? ask the founder to sign in to claude.ai)" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
 o=$(check $NOW); ok "a saved UNREADABLE line is an ACT, never a silent pass" "$(grep -q '^rc=1' <<< "$o" && grep -q 'ACT   app view: UNREADABLE' <<< "$o" && echo 1)" "$o"
 printf '%s\n' "$view" | NOW=$NOW bash "$TOOLS/app-view-save.sh" >/dev/null
