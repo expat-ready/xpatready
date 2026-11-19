@@ -181,6 +181,21 @@ try {
   ok("FO-8 DW2 fail (breaker R2-M2): a click while the client is being updated waits for it and opens nothing (409 OFFER_CHANGED); the client is the person with no case; the next click opens the case with the person as principal",
     during.status === 409 && during.body?.code === "OFFER_CHANGED" && sql(`select display_kind || '|' || display_name from case_client where id = '${birchClient}'`) === "PERSON|Bia Sample" && after.status === 201 && count("runtime_case", `client_id = '${birchClient}'`) === 1
     && sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${after.body?.id}' and p.role = 'principal'`) === "Bia Sample", [during.status, during.body, after.status, after.body?.detail]);
+  // Review N2: the firm's opening lock itself, on the direct route (the offer route is refused before it gets there).
+  const cia = await lead("Cia", R, { interestedIn: service }), cedar = await corp.engage(R, cia.id, { companyName: `Cedar ${tag} Ltd` }) as { id: string };
+  await pros.convert(R, cedar.id, {});
+  const cedarClient = (await onProspectWon(db, event(cedar.id), deps))!.clientId;
+  await pros.undoConvert(R, cedar.id, { reason: "It is the person" }); await corp.changeType(R, cedar.id, { type: "INDIVIDUAL" }); await pros.convert(R, cedar.id, {});
+  let tChanged = 0, tDirect = 0;
+  const changing = onProspectWon(db, event(cedar.id), { ...deps, audit: slowAudit as never }).then(() => { tChanged = Date.now(); });
+  await new Promise((r) => setTimeout(r, 400));
+  const directDuring = await call(BASE, "POST", "/api/runtime/cases", { actor: "user-O", body: { combinationId: VV, clientId: cedarClient, clientActor: "user-P", principal: { displayName: "Cia Sample" }, representative: "user-R", caseOfficers: ["user-O"] } }).then((r) => { tDirect = Date.now(); return r; });
+  await changing;
+  ok("FO-8 DW2 fail (review N2, breaker R2-M2): a case opened by the direct route while the client is being updated waits for the update's commit (the firm's opening lock), so no case is ever opened on a client that then changes under it",
+    directDuring.status === 201 && tDirect >= tChanged && sql(`select display_kind from case_client where id = '${cedarClient}'`) === "PERSON" && count("audit_event", `entity_key = '${cedar.id}' and action = 'client.subject_changed'`) === 1, [directDuring.status, tDirect - tChanged]);
+  const acc = await wonPerson("e\u0301".repeat(70), R, { interestedIn: service, email: `acc-${tag}@example.com` }), accCase = await openCase((await onProspectWon(db, event(acc.id), deps))!.clientId);
+  const accName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${accCase.body?.id}' and p.role = 'principal'`);
+  ok("FO-8 DW1 pass (breaker R2-m2): a cut name never ends on a letter that lost its accent", accCase.status === 201 && accName.length <= 120 && /\u0301 Sample$|\u0301$/.test(accName.normalize("NFD")), [accCase.status, accCase.body?.detail, accName.length]);
   const emo = await wonPerson(`A${"\u{1F600}".repeat(70)}`, R, { interestedIn: service, email: `emo-${tag}@example.com` }), emoClient = (await onProspectWon(db, event(emo.id), deps))!.clientId;
   const emoCase = await openCase(emoClient);
   const emoName = sql(`select label from answer_subject s join case_participant p on p.subject_id = s.id where p.case_id = '${emoCase.body?.id}' and p.role = 'principal'`);

@@ -162,7 +162,7 @@ export const OFFER_REFUSED = {
   NO_OFFER: "This client did not come from a won prospect, so there is no \"Open a case?\" offer for it. Open a case for the client instead.",
   USED: "A case was already opened from this offer. Open another case for the client instead.",
   WITHDRAWN: "The Convert to client was undone, so there is no case to open from it. Convert the prospect again first.",
-  CHANGED: "This prospect was won again as another type and its client is being updated. Open the client again in a moment; nothing was opened.",
+  CHANGED: "This prospect was won again as another type and its client has not been updated yet (it is when the won prospects are next taken in). Nothing was opened.",
 } as const;
 
 /** What the opening needs from the API (runtime.ts gives its own): the session's client lookup, the case opening with
