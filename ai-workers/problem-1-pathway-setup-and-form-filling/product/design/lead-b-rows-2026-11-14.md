@@ -2076,3 +2076,4 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * PF-11 (the full data download) is not built, and PF-11c's closure requires that export.
   * PF-11c is 2 PRs with a breaker. With PF-11 that is 3 parts after #1959.
   * ETA is 2-3 days once a lane frees. I suggested Lead 86 rank R1.105 against R1.100 for my first free lane.
+* **Lead 86 typed both lanes:** #2103's lane pushes J-37 with a resume note and stops; #2011's lane owns J-37 after part 3b, starting from that branch. **Ranking for my first freed lane: R1.100, then R1.105.** R1.105 (PF-11, then PF-11c a and b) is out of flight until then.
