@@ -305,3 +305,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     * **Acrobat access was denied** (user_denied); not retried. Told Lead 87 that qa may close QA-165 on the BK-20 evidence, or the founder approves the prompt for a fresh run.
   * **P-728:** a J-test merges in the same PR as the item's last part. Added to CS-DL1b.md (J-74) and CS-K1-2.md (J-72). J-77 stays separate.
   * #2169 failed in batch #2221 (`check_bk2_fold_outs.ts` at case-decision.tsx:179); fix sent to its lane.
+* 11:31 IST 19 Nov: **R1.80 / QA-165 Adobe run done.** The founder approved the Acrobat grant. Validate passed on the first press ('Validation completed successfully…'), Acrobat 26.002.22031; barcode page 6 of 6; certification intact after save. Upload door: 75/75 read back, 5/5 barcodes, 186/186 agree, current. Evidence in `build-lead-c-evidence/c7-2-adobe-validate-result-2026-11-19.json`; screenshots in the private notes.
