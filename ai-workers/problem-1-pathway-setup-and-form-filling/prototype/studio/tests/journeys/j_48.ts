@@ -9,7 +9,7 @@
 //   W4 an adult's address hard-bounces (the provider's test event for a Sample bounce address); the next send is refused
 //      and the sender reads why;
 //   W5 where staff read the state: the lead page's Messages box (browser, axe, 1024 and 1440 px) and the staff read for
-//      a case party (API); ends at J-49's first step, the unsubscribe headers of W1's email.
+//      a case party (API); ends at J-49's first step, the one-click unsubscribe headers of W1's host email.
 //   DW1 MailPort is MessagePort · DW2 the email adapter by setting (recorded SES answers, nothing leaves the machine) ·
 //   DW3 a verified hard bounce stops sends (in process: a running copy fetches Amazon's certificate, so the signed notice
 //   is given to the same handler with the run's own certificate; "Not verified on the running copy") · DW4 the sender
@@ -112,7 +112,7 @@ for (const [id, seats] of plans) sql(`update platform_plan set seats_limit = ${N
 const invited: [string, string][] = [];   // [token, invitation id], revoked at the end: repeatable on a kept copy
 try {
   // ---------------------------------------------------------------------------------------------- W1 a visitor books
-  const visitor = `j48.visitor.${run}@example.com`, v = await pageAs(null);
+  const visitor = `j48.visitor.${run}@example.com`, v = await pageAs(null), hostHad = outboxTo(O.email).length;   // a kept copy holds earlier runs' host emails
   await v.goto(`${BASE}/book/sample-firm`); await v.locator("[data-type-card]").first().waitFor({ timeout: 30_000 });
   await axeOf(v, "W1 the firm's booking page"); await noSideways(v, "W1 the firm's booking page");
   await v.getByRole("link", { name: "Choose Free consultation" }).click(); await v.getByRole("heading", { name: "Choose a time" }).waitFor();
@@ -125,10 +125,10 @@ try {
   await v.getByRole("button", { name: "Book this time" }).click();
   await v.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 });
   await shot(v, "W1-booked-1440"); await axeOf(v, "W1 You are booked");
-  const vMail = await inbox(visitor), hMailBefore = outboxTo(O.email).length, hMail = await inbox(O.email);
+  const vMail = await inbox(visitor), hMail = await inbox(O.email, Math.min(hostHad + 1, 50));   // the inbox lists the newest first
   ok("J-48 W1 pass: the visitor books on the firm's public page and finds the confirmation in the demo inbox, from the firm's name, with the one layout",
     vMail.length === 1 && fromFirm(vMail[0], A) && oneLayout(vMail[0], A), vMail.map((m) => [m.from, m.reply_to, m.subject]));
-  ok("J-48 W1 pass: the host finds the booking email too, from the firm's name, with the one layout", hMailBefore >= 1 && fromFirm(hMail[0], A) && oneLayout(hMail[0], A), hMail.map((m) => [m.from, m.subject]));
+  ok("J-48 W1 pass: the host finds the booking email too, from the firm's name, with the one layout", outboxTo(O.email).length === hostHad + 1 && fromFirm(hMail[0], A) && oneLayout(hMail[0], A), hMail.map((m) => [m.from, m.subject]));
 
   // ---------------------------------------------------------------------------------------------- W2 an Owner invites
   const invitee = `j48-invitee-${run}@sample-firm.example.com`, owner = await pageAs(tok.R);
@@ -149,7 +149,7 @@ try {
     execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "tests", "runtime", "setup_visitor_visa.ts"), String(PORT), DBNAME], { stdio: ["ignore", "ignore", "inherit"], timeout: 600_000 });
     vv = await openable();
   }
-  if (!vv) { console.error("STOP  Visitor visa could not be released on this copy"); process.exit(2); }
+  if (!vv) throw new Error("STOP  Visitor visa could not be released on this copy");   // thrown, so the finally still gives back what the walk borrowed
   const yearsAgo = (y: number) => { const d = new Date(); d.setUTCFullYear(d.getUTCFullYear() - y); return d.toISOString().slice(0, 10); };
   const newCase = async (tag: string) => {
     const c = await api(null, "POST", "/runtime/cases", { combinationId: vv.combination_id, reference: `J48-${tag}-${run}`, clientActor: "user-P", principal: { displayName: "Sample Client A" } }, "user-O");
@@ -158,7 +158,7 @@ try {
     for (const [s, d] of [[P, yearsAgo(40)], [adult, yearsAgo(38)]]) await api(null, "PUT", `/runtime/cases/${id}/answers/${s}/person.date_of_birth`, { value: d, expectedId: null }, "user-O");
     return { id, adult };
   };
-  const sendTo = (k: { id: string; adult: string }, address: string) => api(null, "POST", `/runtime/cases/${k.id}/people/${k.adult}/link`, { address }, "user-P");
+  const sendTo = (k: { id: string; adult: string }, address: string) => api(null, "POST", `/runtime/cases/${k.id}/people/${k.adult}/link`, { address }, "user-O");   // case staff (the Case officer)
   const k1 = await newCase("w3"), partner = `j48.partner.${run}@example.com`;
   const sent3 = await sendTo(k1, partner), pMail = await inbox(partner), r3 = outboxTo(partner);
   ok("J-48 W3 pass: \"Send to ...\" an adult on a case: the link email goes through the outbox (one row, the case party's) and arrives from the firm's name with the one layout",
@@ -181,9 +181,9 @@ try {
   // The booking's arrival (FO-2 part 3b, the real ArrivalPort) made the visitor a person with a lead; on the in-memory stand-in there is neither.
   const leadId = sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where l.firm_id = '${A.id}' and lower(p.email) = '${visitor}' order by l.created_at desc limit 1`);
   await owner.setViewportSize({ width: 1440, height: 900 }); await owner.goto(`${BASE}/front-office/leads/${leadId}`);
-  const box = owner.locator("[data-messages-panel]"); await box.locator("[data-message]").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
+  const box = owner.locator("[data-messages-panel]"); await box.locator("[data-message]").first().waitFor({ timeout: 30_000 });
   const words = await box.locator("[data-state-word]").allInnerTexts(), boxText = (await box.count()) ? await box.innerText() : "";
-  await box.scrollIntoViewIfNeeded().catch(() => undefined); await shot(owner, "W5-lead-messages-1440");
+  await box.scrollIntoViewIfNeeded(); await shot(owner, "W5-lead-messages-1440");
   ok("J-48 W5 pass: the booking created a lead, and its page's Messages box shows the visitor's email as Delivered, in words, from the firm's name, the address masked",
     !!leadId && words.length >= 1 && words.every((w) => w === "Delivered") && boxText.includes(`from ${A.name}`) && boxText.includes("j…@example.com") && !boxText.includes(visitor), { leadId, words, boxText: boxText.slice(0, 300) });
   await axeOf(owner, "W5 the lead page with its Messages box"); await noSideways(owner, "W5 the lead page");
@@ -195,16 +195,18 @@ try {
   ok("J-48 W5 fail: another firm's Owner reads none of it (404)", other.status === 404, other.status);
   // W2's invitation is to a staff member: no staff read or screen lists a staff member's messages yet, so its state is read from the database (a question on the PR).
   ok("J-48 W5 (database only): the invitation's state is DELIVERED with one Delivered event", outboxTo(invitee)[0]?.state === "DELIVERED" && sql(`select count(*) from msg_event where outbox_id = '${outboxTo(invitee)[0]?.id}' and kind = 'DELIVERED'`) === "1");
-  // The walk ends at J-49's first step: the one-click unsubscribe headers. W1's email is transactional, so it carries none (CASL: only marketing does).
-  ok("J-48 ends at J-49's first step: W1's transactional email carries no List-Unsubscribe header (J-49 starts from a marketing email's)", vMail[0]?.class === "TRANSACTIONAL" && !Object.keys(vMail[0]?.headers ?? {}).some((h) => /list-unsubscribe/i.test(h)), [vMail[0]?.class, vMail[0]?.headers]);
+  // The walk ends at J-49's first step: the one-click unsubscribe headers. Service and marketing email carry them, transactional email does not
+  // (unsubscribe.ts). W1's host email is SERVICE and has them; the visitor's confirmation is sent as TRANSACTIONAL and has none (a question on the PR).
+  const unsub = (m: Mail | undefined) => /^<https?:\/\/[^>]+\/api\/public\/unsubscribe\/[A-Za-z0-9_-]+>$/.test(m?.headers?.["List-Unsubscribe"] ?? "") && m?.headers?.["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click";
+  ok("J-48 ends at J-49's first step: W1's host email (SERVICE) carries the one-click unsubscribe headers; the visitor's confirmation (TRANSACTIONAL) carries none", hMail[0]?.class === "SERVICE" && unsub(hMail[0]) && vMail[0]?.class === "TRANSACTIONAL" && Object.keys(vMail[0]?.headers ?? {}).length === 0, [hMail[0]?.class, hMail[0]?.headers, vMail[0]?.class, vMail[0]?.headers]);
 
   // ---------------------------------------------------------------------------------------------- DW4 the sender name is the firm's
   const bInvitee = `j48-invitee-${run}@sample-solo.example.com`, bInv = await api(tok.S, "POST", "/platform/staff/invitations", { email: bInvitee, roles: ["CASE_OFFICER"] });
   if (bInv.body?.id) invited.push([tok.S, bInv.body.id]);
   const bMail = await inbox(bInvitee), aAll = [vMail[0], hMail[0], iMail[0], pMail[0]];
   const dw4 = (mails: (Mail | undefined)[], f: { name: string; contact: string }, not: { name: string }) => mails.every((m) => !!m && m.from.startsWith(`${f.name} <`) && !m.from.includes(not.name) && !m.html.includes(`Sent by ${not.name}`));
-  ok("J-48 DW4 pass: each of firm A's four emails (booking, host, invitation, case link) has From name = the firm's operating name, and Reply-To = its contact address on the firm's own mail; firm B's has firm B's",
-    dw4(aAll, A, B) && fromFirm(vMail[0], A) && fromFirm(pMail[0], A) && dw4([bMail[0]], B, A), [aAll.map((m) => m?.from), bMail[0]?.from]);
+  ok("J-48 DW4 pass: each of firm A's four emails (booking, host, invitation, case link) has the firm's operating name as its From name and its contact address as Reply-To; firm B's invitation has firm B's name and address",
+    dw4(aAll, A, B) && dw4([bMail[0]], B, A) && aAll.every((m) => fromFirm(m, A)) && fromFirm(bMail[0], B), [aAll.map((m) => [m?.from, m?.reply_to]), [bMail[0]?.from, bMail[0]?.reply_to]]);
   ok("J-48 DW4 fail: firm A's email never carries firm B's name (the same judge with the firms swapped is false)", !dw4(aAll, B, A));
 
   // ---------------------------------------------------------------------------------------------- DW1 MailPort is MessagePort
@@ -259,16 +261,17 @@ try {
   const h1 = await sendBy(viaSes, A.id, hard), hardNotice = signed(h1.row, A.id, hard, "Permanent");
   await notices.receive(hardNotice); await notices.receive(hardNotice);   // SNS may deliver twice
   /** The DW3 judge: the row is BOUNCED, the address suppressed once, and the next email to it (transactional too) is SUPPRESSED and never reaches SES. */
-  const dw3 = async (first: { outboxId: string }, firmId: string, address: string) => { const n = seen.length, next = await sendBy(viaSes, firmId, address); return (await db.msgOutbox.findUniqueOrThrow({ where: { id: first.outboxId } })).state === "BOUNCED" && supp(firmId, address) === "1" && next.state === "SUPPRESSED" && seen.length === n; };
+  const dw3 = async (first: { outboxId: string }, firmId: string, address: string) => { const n = seen.length, next = await sendBy(viaSes, firmId, address); const state = (await db.msgOutbox.findUniqueOrThrow({ where: { id: first.outboxId } })).state; return { state, next: next.row.state, reached: seen.length - n, stopped: state === "BOUNCED" && supp(firmId, address) === "1" && next.state === "SUPPRESSED" && seen.length === n }; };
   ok("J-48 DW3 pass (in process; Not verified on the running copy, which fetches Amazon's certificate): a verified SNS Permanent bounce marks the row BOUNCED and suppresses the address once (the notice twice changes nothing); the next email to it, transactional included, is SUPPRESSED and not sent",
-    (await dw3(h1, A.id, hard)) && (await db.msgEvent.count({ where: { outboxId: h1.outboxId, kind: "BOUNCED" } })) === 1);
+    (await dw3(h1, A.id, hard)).stopped && (await db.msgEvent.count({ where: { outboxId: h1.outboxId, kind: "BOUNCED" } })) === 1);
   const s1 = await sendBy(viaSes, A.id, soft); await notices.receive(signed(s1.row, A.id, soft, "Transient"));
-  ok("J-48 DW3 NR [fails on the stand-in]: with no hard bounce (a soft one) the address is not suppressed and the next email goes out", !(await dw3(s1, A.id, soft)) && supp(A.id, soft) === "0");
+  const nr3 = await dw3(s1, A.id, soft);
+  ok("J-48 DW3 NR [fails on the stand-in]: with no hard bounce (a soft one) the judge fails for that reason alone: the row stays SENT, the address is not suppressed and the next email reaches SES", !nr3.stopped && nr3.state === "SENT" && supp(A.id, soft) === "0" && nr3.next === "SENT" && nr3.reached === 1, nr3);
   const f1 = await sendBy(viaSes, A.id, forged), otherKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey;
   const refusedHere = await notices.receive(signed(f1.row, A.id, forged, "Permanent", otherKey)).then(() => false, (e) => e instanceof NoticeRefused);
   const door = await fetch(`${BASE}/api/public/messages/ses-notices`, { method: "POST", headers: { "content-type": "text/plain; charset=UTF-8" }, body: JSON.stringify(signed(f1.row, A.id, forged, "Permanent", otherKey)) });
   const wrongFirm = await notices.receive(signed(f1.row, B.id, forged, "Permanent")).then(() => "taken", () => "refused");
-  ok("J-48 DW3 fail: an unverified notice is refused (the running copy's own door answers 400) and a verified one naming another firm changes nothing: nothing stored, the row still SENT",
+  ok("J-48 DW3 fail: a notice signed by another key is refused by the handler, and a verified one naming another firm changes nothing: nothing stored, the row still SENT. The running copy's own door also answers 400 to it (Not verified there: it answers 400 to any notice here, since it cannot fetch Amazon's certificate)",
     refusedHere && door.status === 400 && supp(A.id, forged) === "0" && supp(B.id, forged) === "0" && (await db.msgOutbox.findUniqueOrThrow({ where: { id: f1.outboxId } })).state === "SENT", { door: door.status, wrongFirm });
 
   // ---------------------------------------------------------------------------------------------- DW5 the trial cap
@@ -280,15 +283,17 @@ try {
   const dw5 = async (f: { id: string }, tag: string) => {
     counter(f.id, 49); const before = alerts.raised.filter((a) => a.kind === "send_cap_reached" && a.detail.firmId === f.id).length;
     const r50 = await sendBy(viaSes, f.id, `j48.${tag}50.${run}@example.com`), r51 = await sendBy(viaSes, f.id, `j48.${tag}51.${run}@example.com`), r52 = await sendBy(viaSes, f.id, `j48.${tag}52.${run}@example.com`);
-    return { r51: [r51.row.state, r51.row.stateReason], held: r50.row.state === "SENT" && r51.row.state === "QUEUED" && r51.row.stateReason === HELD_DAILY_LIMIT && r52.row.stateReason === HELD_DAILY_LIMIT && alerts.raised.filter((a) => a.kind === "send_cap_reached" && a.detail.firmId === f.id).length === before + 1 };
+    return { r50: r50.row.state, r51: [r51.row.state, r51.row.stateReason], r52: r52.row.state, held: r50.row.state === "SENT" && r51.row.state === "QUEUED" && r51.row.stateReason === HELD_DAILY_LIMIT && r52.row.stateReason === HELD_DAILY_LIMIT && alerts.raised.filter((a) => a.kind === "send_cap_reached" && a.detail.firmId === f.id).length === before + 1 };
   };
+  const bWas = sql(`select status from platform_firm where id = '${B.id}'`);
   sql(`update platform_firm set status = 'TRIAL' where id = '${B.id}'`);
   try {
     const t5 = await dw5(B, "trial");
     ok("J-48 DW5 pass: the 51st email of a trial firm's day is held with \"daily limit\" and one alert (the 52nd adds none)", t5.held, t5);
-    ok("J-48 DW5 NR [fails on the stand-in]: a firm that is not on trial sends its 51st", !(await dw5(A, "active")).held);
+    const nr5 = await dw5(A, "active");
+    ok("J-48 DW5 NR [fails on the stand-in]: a firm that is not on trial sends its 50th, 51st and 52nd (the judge fails because nothing is held)", !nr5.held && nr5.r50 === "SENT" && nr5.r51[0] === "SENT" && nr5.r52 === "SENT", nr5);
   } finally {
-    sql(`update platform_firm set status = 'ACTIVE' where id = '${B.id}'`); for (const [id, n] of was) counter(id, Number(n));
+    sql(`update platform_firm set status = '${bWas}' where id = '${B.id}'`); for (const [id, n] of was) counter(id, Number(n));
     sql(`update msg_outbox set state = 'FAILED', state_reason = 'J-48: test rows put away' where state = 'QUEUED' and state_reason = '${HELD_DAILY_LIMIT}' and address like 'j48.%.${run}@example.com'`);
   }
   ok("J-48: no script error on any page walked", errors.length === 0, errors);
