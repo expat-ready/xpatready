@@ -16,6 +16,7 @@ import { EVENT, IdentityCheckedPayload } from "../../../../../ports/events.ts";
 import { FileKeyTaken, sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
+import { readSetting, TIME_ZONE } from "../../../platform/settings.ts";
 import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { sees, visibilityOf } from "../../sales/common.ts";
 
@@ -56,6 +57,10 @@ const bad = (field: string, detail: string): never => problem(400, "Check the de
 const notFound = (what = "person"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 const oneOf = <T extends string>(v: unknown, list: readonly T[], field: string, what: string): T =>
   typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : bad(field, `${what} is one of ${list.join(", ")}.`);
+/** The firm's today as YYYY-MM-DD, in the firm's own zone, on the injected clock. */
+const dayIn = (zone: string, atMs: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(atMs));
+/** FO-13i part 2 (QA-510): the firm's own rule (P-735, P-579), not a Code duty. Unconfirmed: no counsel. */
+export const EXPIRED_DOCUMENT = "This document has expired. Check a current one.";
 const text = (v: unknown) => (v === undefined || v === null || (typeof v === "string" && !v.trim()) ? null : v);
 
 /** The copy's kind by its first bytes (never by its name or the browser's type). */
@@ -142,6 +147,9 @@ export class IdentityChecks {
     const p = await this.person(ctx, personId), b = body ?? {};
     const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per Save.");
     const c = parse(b);
+    // FO-13i part 2 (QA-510, P-735): an expiry before the firm's today is refused (422), nothing stored; today still records.
+    if (c.documentExpiry && c.documentExpiry.toISOString().slice(0, 10) < dayIn(await readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), this.clock.now()))
+      problem(422, "Check the details", EXPIRED_DOCUMENT, { code: "INVALID", fields: { documentExpiry: EXPIRED_DOCUMENT } });
     const sha = copy ? await sha256Hex(copy.bytes) : null;
     const replay = async () => {
       const had = await this.db.foIdentityCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
