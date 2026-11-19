@@ -43,6 +43,13 @@ const LIKE_CASE_NUMBER = /^\s*c\s*-\s*\d+\s*-\s*\d+\s*$/i;
 export type CaseListRow = { id: string; case_number: string; reference: string | null; combination: string; status: string; created_at: Date | string;
   client: string; client_name: string | null; filings: number; people?: { label: string; role: string }[] };
 
+/** CS-K1: GET /api/runtime/clients?query=&page= (clients.ts). The search text is cleaned there (control and invisible
+ *  characters dropped, LIKE's wildcards taken literally); a page is a whole number from 1. */
+export const ClientListQuery = z.object({
+  query: z.string({ message: "Search by a name or a client code." }).max(400, "Keep the search to 200 characters.").optional(),
+  page: z.string({ message: "A page is a whole number from 1." }).regex(/^\d{1,5}$/, "A page is a whole number from 1.").optional(),
+});
+
 export const NewCase = z.object({
   combinationId: z.string({ message: "Choose a released combination." }).uuid("Choose a released combination."),
   /** The firm's own reference, optional since A24-1 (CS-7): every case gets a case number at opening. Given, it keeps
@@ -60,6 +67,10 @@ export const NewCase = z.object({
    *  not representatives (in a solo firm, its one person). */
   caseOfficers: z.array(z.string().trim().regex(/^user-[A-Za-z0-9]{1,8}$/, "Choose case officers from your firm."), { message: "Choose case officers from your firm." }).min(1, "Choose at least one case officer.").max(5, "A case has at most 5 case officers.").optional(),
   idempotencyKey: idemKey.optional(),
+  /** CS-K1 (contract §5): an existing client of the opener's firm, reused (FO-8 and CS-98b pass it). Left out: a new client
+   *  is made, named after the principal. Any id that is not a client of the firm (another firm's, or no id at all) is 404
+   *  "No such client.", the same answer, so nothing is learned of another firm. */
+  clientId: z.string({ message: "Name the client by its id." }).trim().max(64, "No such client.").optional(),
   /** C6.17 (BR-3, SA-1B-212): opening at a later stage of a route, each earlier stage ticked "Done before we started"
    *  (or not recorded), with its key details (optional; typed by their field, a wrong type is a 400 on the field). */
   earlier: z.array(z.object({
