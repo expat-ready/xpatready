@@ -280,3 +280,10 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 10:27 IST 19 Nov: **P-721 proof sprint (founder, via Lead 87):** five items only until 4 are Proven; mine is R1.77 (#2169 in batch #2221 → J-77). Paused: R1.59 (no FO-7ts part 3; #2204 still merges after #2219), R1.8 (AUD-1m 2a and 2b wait; #2214 still merges), R1.74 (CS-DL1b waits; #2000 still merges).
   * Money lane told to stop after its current step.
   * J-77 is on `claude/j77-journey` at c81ed249d (+312 lines, j_77.ts only, on #2169's head); no Approve seen yet.
+* 10:42 IST 19 Nov (Lead 87, binding; RULES.md as of P-724):
+  * P-721: protect the merge path. A dequeued PR re-merges main within 30 minutes; a failed batch is split at once.
+  * P-722: proof per item, never at the end; qa never blocks merging.
+  * P-723: drain to about 13:30 IST. Lanes only get approved PRs merged; nothing new starts.
+  * P-724: after the drain, journeys in dependency order, two in parallel, at most about 6 items in flight per journey; a new item starts only when one is Proven. Mine is likely journey A (client case, enquiry to decision); Lead 87 sends the item list by about 13:00.
+  * Passed word for word to my five active lanes: #2000, #2214, #2197, #2204, #2169.
+  * Asked Lead 87 whether J-77's PR may open during the drain (recommended yes, as R1.77's proof).
