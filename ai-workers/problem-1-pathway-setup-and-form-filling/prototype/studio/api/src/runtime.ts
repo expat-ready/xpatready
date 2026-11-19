@@ -20,7 +20,7 @@ import { actorOf, Audit, CaseRead, Db, fail, need, RUNTIME_ACTORS, Workspace, ty
 import { sameValue } from "./document-values.ts";
 import { refuseIfCaseRecorded } from "./submission-record.ts"; // C8.2: a recorded case keeps its people
 import { firmByKey, firmOfActor, STAND_IN } from "./firms.ts";
-import { clientCode, clientLineOf, clientOfFirm, linkClient, newClient } from "./clients.ts";
+import { clientCode, clientLineOf, clientOfFirm, newClient } from "./clients.ts";
 import { FO_PERSON_PORT, type FoPersonPort } from "../../ports/fo-person.ts";
 import { currentFirm, withFirm } from "./platform/firm-scope.ts";
 import { openCaseFromOffer } from "./case-clients/prospect-won.ts"; // FO-8
@@ -337,9 +337,9 @@ export class Runtime {
         // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
         // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
         // opening rolls it back with everything else.
-        const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
-        // CS-K1 part 2: the new client's front-office party, in this transaction (a rollback removes both).
-        if (made) await linkClient(tx, this.foPerson, made, by.includes(":") ? by : `staff:${by}`);
+        // CS-K1 part 2: born with its front-office party, in this transaction (a rollback removes both). A simulated opener
+        // names no staff member, so the front office's line is the opening's own door (review m1, breaker F5).
+        const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id }, this.foPerson, by.startsWith("staff:") ? by : "system:runtime.case-opening");
         const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
         madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });

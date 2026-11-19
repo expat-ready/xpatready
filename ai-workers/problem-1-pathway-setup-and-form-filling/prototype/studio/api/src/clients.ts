@@ -11,7 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 import { ClientListQuery, INVISIBLE } from "../../contracts/runtime.ts";
-import type { FoPersonPort } from "../../ports/fo-person.ts";
+import { hasWord, type FoPersonPort } from "../../ports/fo-person.ts";
 
 type Tx = Prisma.TransactionClient;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,25 +24,39 @@ export type ClientLine = { id: string; number: string; display_name: string; dis
 const line = (c: { id: string; clientNumber: number; displayName: string; displayKind: string }): ClientLine =>
   ({ id: c.id, number: clientCode(c.clientNumber), display_name: c.displayName, display_kind: c.displayKind as ClientLine["display_kind"] });
 
-/** A new client of a firm, inside the caller's transaction: the firm's next number (a rolled-back caller gives it back),
- *  COMPANY when the combination's Pathway is CORPORATE, else PERSON. The name is the principal's display name. Born
- *  pending (the link check, CS-K1 part 2): the caller links it in the same transaction (linkClient), which clears it. */
-export async function newClient(tx: Tx, a: { workspaceId: string; firmKey: string; combinationId: string; displayName: string; createdBy: string }) {
-  const [{ n, kind }] = await tx.$queryRaw<{ n: number; kind: string }[]>`
-    select case_client_next_number(${a.workspaceId}::uuid, ${a.firmKey}) as n, case_client_kind_of(${a.combinationId}::uuid) as kind`;
-  return tx.caseClient.create({ data: { workspaceId: a.workspaceId, firmKey: a.firmKey, clientNumber: Number(n), displayName: a.displayName.trim().slice(0, 200), displayKind: kind, createdBy: a.createdBy, foLinkPending: true } });
+// The front office's text rule (ports/fo-person.ts) refuses control, format and filler characters a case name may hold
+// (breaker F1: a Persian name's U+200C, a soft hyphen, an emoji's joiner): its copy of the name drops them, and a name
+// with no letter or digit left ("!!") is named by the client code.
+const NOT_KEPT = /[\p{Cc}\p{Cf}\u034f\u115f\u1160\u3164\uffa0]/gu;
+const partyName = (name: string, number: number) => { const v = name.normalize("NFC").replace(NOT_KEPT, "").replace(/\s+/gu, " ").trim(); return hasWord(v) ? [...v].slice(0, 200).join("") : `Client ${clientCode(number)}`; };
+
+/** CS-K1 part 2: the front office's party for a client of `firmId`, through the port in the caller's transaction: a
+ *  PERSON client a new fo_person, a COMPANY client a new fo_company (never a contact person). */
+async function partyFor(tx: Tx, foPerson: FoPersonPort<Tx>, c: { firmId: string; displayName: string; displayKind: string; clientNumber: number }, actor: string) {
+  const base = { firmId: c.firmId, actor }, name = partyName(c.displayName, c.clientNumber);
+  return c.displayKind === "COMPANY" ? { foCompanyId: (await foPerson.ensureCompanyForClient(tx, { ...base, name })).foCompanyId }
+    : { foPersonId: (await foPerson.ensureForClient(tx, { ...base, displayName: name })).foPersonId };
 }
 
-type Linkable = { id: string; firmId: string | null; displayName: string; displayKind: string; foPersonId: string | null; foCompanyId: string | null };
+/** A new client of a firm, inside the caller's transaction: the firm's next number (a rolled-back caller gives it back),
+ *  COMPANY when the combination's Pathway is CORPORATE, else PERSON. The name is the principal's display name. CS-K1
+ *  part 2: born linked to its front-office party (the firm is the key's platform firm, CS-W1's lookup; none yet: none). */
+export async function newClient(tx: Tx, a: { workspaceId: string; firmKey: string; combinationId: string; displayName: string; createdBy: string }, foPerson: FoPersonPort<Tx>, actor: string) {
+  const [{ n, kind, firm }] = await tx.$queryRaw<{ n: number; kind: string; firm: string | null }[]>`
+    select case_client_next_number(${a.workspaceId}::uuid, ${a.firmKey}) as n, case_client_kind_of(${a.combinationId}::uuid) as kind, case_lookup.case_firm_id_of_key(${a.firmKey})::text as firm`;
+  const displayName = a.displayName.trim().slice(0, 200), clientNumber = Number(n);
+  const ids = firm ? await partyFor(tx, foPerson, { firmId: firm, displayName, displayKind: kind, clientNumber }, actor) : {};
+  return tx.caseClient.create({ data: { workspaceId: a.workspaceId, firmKey: a.firmKey, clientNumber, displayName, displayKind: kind, createdBy: a.createdBy, ...ids } });
+}
+
+type Linkable = { id: string; firmId: string | null; displayName: string; displayKind: string; clientNumber: number; foPersonId: string | null; foCompanyId: string | null };
 /** CS-K1 part 2 (P-607): links a client to the front office's party through the port, in the caller's transaction: a
  *  PERSON client to a new fo_person, a COMPANY client to a new fo_company (never a contact person). The firm is the
  *  client's own firm_id (CS-W1), never one from a request; a client with no platform firm yet is left as it is. The link
  *  is written only while both ids are empty (a second caller writes nothing and its port call rolls back with it). */
 export async function linkClient(tx: Tx, foPerson: FoPersonPort<Tx>, c: Linkable, actor: string): Promise<boolean> {
   if (!c.firmId || c.foPersonId || c.foCompanyId) return false;
-  const base = { firmId: c.firmId, actor };
-  const data = c.displayKind === "COMPANY" ? { foCompanyId: (await foPerson.ensureCompanyForClient(tx, { ...base, name: c.displayName })).foCompanyId }
-    : { foPersonId: (await foPerson.ensureForClient(tx, { ...base, displayName: c.displayName })).foPersonId };
+  const data = await partyFor(tx, foPerson, { ...c, firmId: c.firmId }, actor);
   const n = await tx.caseClient.updateMany({ where: { id: c.id, firmId: c.firmId, foPersonId: null, foCompanyId: null }, data: { ...data, foLinkPending: false } });
   if (!n.count) throw new Error(`linkClient: client ${c.id} was linked meanwhile`);   // rolls the port's new party back with the caller
   return true;

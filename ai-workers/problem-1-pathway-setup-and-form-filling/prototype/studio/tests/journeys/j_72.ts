@@ -81,7 +81,7 @@ const won = (prospectId: string) => sql(`select count(*) from module_event where
 const clientsOf = (prospectId: string) => sql(`select count(*) from case_client where prospect_id = '${prospectId}'`);
 /** W2/W6: the client appears by itself; the list is read until it does, at most three poll intervals (and a margin for the copy's start). */
 const appears = async (name: string) => {
-  const until = Date.now() + 3 * POLL + 2_000;
+  const until = Date.now() + 3 * POLL;   // ruling 2: at most three intervals
   for (;;) {
     const r = await api(TA, "GET", `/runtime/clients?query=${encodeURIComponent(name)}`);
     const c = (r.body?.clients ?? []).find((x: { display_name: string }) => x.display_name === name);
@@ -130,7 +130,7 @@ try {
   const cardLink = page.locator(`[data-card="${ana.number}"]`).getByRole("link");
   await cardLink.waitFor(); await axe("W1 the Pipeline board"); await sizes("W1 the Pipeline board"); await page.setViewportSize({ width: 1440, height: 900 });
   await press(page, cardLink as never);
-  await page.getByRole("button", { name: "Convert to client" }).waitFor(); await axe("W1 the prospect's screen");
+  await page.getByRole("button", { name: "Convert to client" }).waitFor(); await axe("W1 the prospect's screen"); await sizes("W1 the prospect's screen"); await page.setViewportSize({ width: 1440, height: 900 });
   await press(page, page.getByRole("button", { name: "Convert to client" }));
   await press(page, page.getByRole("button", { name: "Yes, convert to client" }));
   await page.getByRole("button", { name: "Undo convert" }).waitFor(); await shot("w1-converted");
@@ -145,15 +145,17 @@ try {
   await casePage(anaCase.body.id, ana.name, "W4");
 
   // ------------------------------------------------------------------------------------ W5-W8: a Signed offline win
-  const ben = await prospect("Ben"), rep = R;   // the version names its representative by id; FO-8 must read that one
+  // Review M2: the signed version names user-T by id, while the retainer row and the firm's default name user-R: only a
+  // read of the version's merge value gives user-T.
+  const ben = await prospect("Ben"), rep = R, T = staff("user-T");
   const [RET, VER, TPL] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()], hex = "ab".repeat(32);
   sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample J-72 ${run})', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex}', '{client.name}', 'seed:J-72', 'seed:J-72', now())`);
-  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${ben.id}', 'PERSON', '${ben.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Sample","representative.staff_id":"${rep.id}","signer.person_id":"${ben.personId}"}', 'retainers/${RET}/v1.docx', '${hex}', 'staff:${rep.id}')`);
+  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${ben.id}', 'PERSON', '${ben.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Sample","representative.staff_id":"${T.id}","signer.person_id":"${ben.personId}"}', 'retainers/${RET}/v1.docx', '${hex}', 'staff:${rep.id}')`);
   sql(`update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'`);
   const signOffline = (retainerId: string) => { const f = new FormData(); f.set("reason", "Signed at the office (Sample)"); f.set("expectedVersion", "1"); f.set("file", new Blob(["%PDF-1.4\n%%EOF\n"], { type: "application/pdf" }), "signed.pdf");
     return fetch(`${BASE}/api/front-office/retainers/${retainerId}/signed-offline`, { method: "POST", headers: { authorization: `Bearer ${TA}` }, body: f }).then((r) => r.status); };
   const off = await signOffline(RET);
-  ok("J-72 W5 pass: Signed offline (FO-5's route, the staff session; no retainer screen on main) wins the prospect and raises one prospect.won naming the retainer (FO-2w)", off === 200 && sql(`select won_via from fo_prospect where id = '${ben.id}'`) === "SIGNED_OFFLINE"
+  ok("J-72 W5 pass (API step: no retainer screen on main): Signed offline (FO-5's route, the staff session; no retainer screen on main) wins the prospect and raises one prospect.won naming the retainer (FO-2w)", off === 200 && sql(`select won_via from fo_prospect where id = '${ben.id}'`) === "SIGNED_OFFLINE"
     && sql(`select count(*) from module_event where type = 'prospect.won' and subject_id = '${ben.id}' and payload->>'retainer_id' = '${RET}' and payload->>'won_via' = 'SIGNED_OFFLINE'`) === "1", off);
   const benClient = await appears(ben.name);
   ok("J-72 W6 pass: its client appears by itself too, linked to the prospect's fo_person", !!benClient && sql(`select fo_person_id from case_client where id = '${benClient.id}'`) === ben.personId, benClient);
@@ -161,7 +163,8 @@ try {
   ok("J-72 W7 pass (API step: the offer has no screen yet): open-case opens one case for the Signed offline client", benCase.status === 201 && sql(`select client_id from runtime_case where id = '${benCase.body?.id}'`) === benClient!.id, [benCase.status, benCase.body?.detail]);
   const benRep = await casePage(benCase.body.id, ben.name, "W8");
   ok("J-72 W8 pass: the case's representative of record is the one the signed version names by id (merge value representative.staff_id), FO-8's first real run of that branch",
-    benRep === sql(`select actor_id from platform_staff where id = (select (merge_values->>'representative.staff_id')::uuid from fo_retainer_version where retainer_id = '${RET}' and end_reason = 'SIGNED_OFFLINE')`), benRep);
+    benRep === "user-T" && benRep === sql(`select actor_id from platform_staff where id = (select (merge_values->>'representative.staff_id')::uuid from fo_retainer_version where retainer_id = '${RET}' and end_reason = 'SIGNED_OFFLINE')`)
+    && sql(`select representative_staff_id from fo_retainer where id = '${RET}'`) === R.id, benRep);
 
   // ------------------------------------------------------------------------------------------------ the DW lines
   const deps = { workspaceId: sql(`select workspace_id from case_client where id = '${anaClient!.id}'`), foPerson: foPersonPort, audit: auditEvent };
@@ -180,7 +183,7 @@ try {
   sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${ret2}', '${A}', 'RETAINER', '${ana.id}', 'PERSON', '${ana.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${ver2}', '${A}', '${ret2}', 1, '{"client.name":"Sample","representative.staff_id":"${rep.id}"}', 'retainers/${ret2}/v1.docx', '${hex}', 'staff:${rep.id}')`);
   sql(`update fo_retainer_version set sent_at = now() where id = '${ver2}'; update fo_retainer set status = 'SENT' where id = '${ret2}'`);
   const offAfter = await signOffline(ret2);
-  ok("J-72 DW-d pass: a Signed offline win after a Convert of the same prospect raises nothing new (one prospect.won, one client, one case)", won(ana.id) === "1" && clientsOf(ana.id) === "1" && sql(`select count(*) from runtime_case where client_id = '${anaClient!.id}'`) === "1", [offAfter, won(ana.id)]);
+  ok("J-72 DW-d pass: a Signed offline win after a Convert of the same prospect raises nothing new (one prospect.won, one client, one case)", offAfter === 200 && won(ana.id) === "1" && clientsOf(ana.id) === "1" && sql(`select count(*) from runtime_case where client_id = '${anaClient!.id}'`) === "1", [offAfter, won(ana.id)]);
   const cyd = await prospect("Cyd"), w0 = won(cyd.id); await api(TA, "POST", `/front-office/prospects/${cyd.id}/convert`, {});
   ok("J-72 DW-d fail (stand-in): a fresh prospect's Convert raises exactly one", w0 === "0" && won(cyd.id) === "1", [w0, won(cyd.id)]);
   ok("J-72: no error on any page walked", errs.length === 0, errs);

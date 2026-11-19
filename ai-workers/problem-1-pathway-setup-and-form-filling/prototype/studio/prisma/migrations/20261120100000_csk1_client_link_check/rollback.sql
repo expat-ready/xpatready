@@ -1,7 +1,8 @@
 -- CS-K1 part 2 rollback (not a migration: Prisma reads only migration.sql). Run in one transaction:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261120100000_csk1_client_link_check/rollback.sql
 -- The links stay in fo_person_id / fo_company_id (part 1's columns); only the flag, the check and the function go.
-DROP FUNCTION case_client_validate_link_check();
+DROP TRIGGER case_client_pending_guard ON "case_client";
+DROP FUNCTION case_client_pending_guard(), case_client_validate_link_check();
 ALTER TABLE "case_client" DROP CONSTRAINT "case_client_front_office_link_check";
 CREATE OR REPLACE FUNCTION case_client_for_case() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
   SET search_path = pg_catalog, public, pg_temp AS $fn$

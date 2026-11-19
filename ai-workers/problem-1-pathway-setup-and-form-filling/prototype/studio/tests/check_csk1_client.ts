@@ -115,8 +115,8 @@ try {
     nameOf(u(103)).split("|")[2] === "PERSON" && nameOf(u(101)).split("|")[2] === "PERSON" && sql(`select count(*) from case_client where display_kind = 'COMPANY'`) === "1");
 
   // DW6: the database's rules on a client row (each insert rolled back)
-  const client = (o: { key?: string; person?: string; company?: string; prospect?: string; name?: string; n: number }) => `insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, fo_link_pending, fo_person_id, fo_company_id, prospect_id, created_by)
-    values (gen_random_uuid(), '${W}', '${o.key ?? "sample-firm"}', ${o.n}, ${o.name ?? "'Sample Client X'"}, '${o.company && !o.person ? "COMPANY" : "PERSON"}', ${!o.person && !o.company}, ${o.person ? `'${o.person}'` : "null"}, ${o.company ? `'${o.company}'` : "null"}, ${o.prospect ? `'${o.prospect}'` : "null"}, 'user-O')`;
+  const client = (o: { key?: string; person?: string; company?: string; prospect?: string; name?: string; n: number }) => `insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, fo_person_id, fo_company_id, prospect_id, created_by)
+    values (gen_random_uuid(), '${W}', '${o.key ?? "sample-firm"}', ${o.n}, ${o.name ?? "'Sample Client X'"}, '${o.company && !o.person ? "COMPANY" : "PERSON"}', ${o.person ? `'${o.person}'` : o.company ? "null" : "gen_random_uuid()"}, ${o.company ? `'${o.company}'` : "null"}, ${o.prospect ? `'${o.prospect}'` : "null"}, 'user-O')`;
   const rolled = (q: string) => err(`begin; ${q}; rollback;`);
   ok("CS-K1 DW6 pass: one front-office id (a person, or a company) is kept", rolled(client({ n: 9001, person: u(501) })) === "" && rolled(client({ n: 9002, company: u(502) })) === "");
   ok("CS-K1 DW6 fail: both front-office ids set → refused by the database", /case_client_one_front_office_check/.test(rolled(client({ n: 9003, person: u(501), company: u(502) }))));
@@ -151,7 +151,7 @@ try {
   ok("CS-K1 DW8a fail: a case pointed at another firm's client is refused by the foreign key",
     /runtime_case_client_id_(workspace_id_firm_key|firm_id)_fkey/.test(rolled(`update runtime_case set client_id = '${soloClient}' where id = '${u(101)}'`)));
   ok("CS-K1 DW8a fail: a forced mismatch, the client's firm_id set to the other firm, is refused by the foreign key",
-    /runtime_case_client_id_firm_id_fkey/.test(rolled(`update case_client set firm_id = '${F2}', fo_link_pending = true where id = '${firmClient}'`)));
+    /runtime_case_client_id_firm_id_fkey/.test(rolled(`update case_client set firm_id = '${F2}', fo_person_id = gen_random_uuid() where id = '${firmClient}'`)));
   ok("CS-K1 DW8a fail: a client row whose firm_id is not its key's platform firm is refused (case_client_firm_from_key, by CS-W1's lookup)",
     /case_client_firm_from_key: the firm id given is not the platform firm of key "sample-firm"/.test(rolled(client({ n: 9009 }).replace("prospect_id, created_by)", "prospect_id, created_by, firm_id)").replace("'user-O')", `'user-O', '${F2}')`))));
   // The key with no platform firm: CS-W1's backfill later fills the case; its client follows (case_client_follow_firm).
@@ -175,6 +175,10 @@ try {
   const bare = (kind: string, ids: string, key = "sample-firm") => `insert into case_client (id, workspace_id, firm_key, client_number, display_name, display_kind, fo_person_id, fo_company_id, created_by) values (gen_random_uuid(), '${W}', '${key}', 9100, 'Sample Bare', '${kind}', ${ids}, 'user-O')`;
   ok("CS-K1 DW13 fail: once in place, the check refuses a PERSON client of a platform firm with no fo_person_id (none, or a company's only), and a COMPANY client with no fo_company_id",
     [bare("PERSON", "null, null"), bare("PERSON", `null, '${u(502)}'`), bare("COMPANY", `'${u(501)}', null`)].every((q) => /case_client_front_office_link_check/.test(rolled(q))));
+  ok("CS-K1 DW13 fail (review M1, breaker F3): a direct write cannot mark a client as waiting: an unlinked client inserted with fo_link_pending, and a linked one unlinked while setting it, are refused (only the database's two triggers set it)",
+    /case_client_pending_guard/.test(rolled(bare("PERSON", "null, null").replace("display_kind, fo_person_id", "display_kind, fo_link_pending, fo_person_id").replace("'PERSON', null, null", "'PERSON', true, null, null")))
+    && /case_client_pending_guard/.test(rolled(`${bare("PERSON", `'${u(501)}', null`)}; update case_client set fo_person_id = null, fo_link_pending = true where client_number = 9100 and firm_key = 'sample-firm'`))
+    && /case_client_front_office_link_check/.test(rolled(`${bare("PERSON", `'${u(501)}', null`)}; update case_client set fo_person_id = null where client_number = 9100 and firm_key = 'sample-firm'`)));
   ok("CS-K1 DW13 pass: a client linked by its kind is kept, and so is one of a key with no platform firm yet (no front office to link to)",
     rolled(bare("PERSON", `'${u(501)}', null`)) === "" && rolled(bare("COMPANY", `null, '${u(502)}'`)) === "" && rolled(bare("PERSON", "null, null", "no-firm-yet")) === "");
   ok("CS-K1 DW13 pass: a case written straight to the table gets a pending client, and the client CS-W1's backfill moved into a firm is pending (the job links both); the check stays not validated while one waits",
@@ -368,8 +372,15 @@ try {
   // DW12: a COMPANY client gets an fo_company and no fo_person
   const corpId = corp.body?.client_record?.id as string;
   ok("CS-K1 DW12 pass: the CORPORATE opening's COMPANY client names an fo_company of its own firm and no fo_person", link(corpId).startsWith(`COMPANY|-|${FA}|${FA}|false|`), link(corpId));
-  ok("CS-K1 DW12 fail: no COMPANY client of the copy names an fo_person, and no PERSON client an fo_company",
-    copySql(`select count(*) from case_client where (display_kind = 'COMPANY' and fo_person_id is not null) or (display_kind = 'PERSON' and fo_company_id is not null)`) === "0");
+  ok("CS-K1 DW12 fail: no COMPANY client of the copy names an fo_person, and no PERSON client an fo_company; the database refuses turning the COMPANY client's link into a person's (review m6)",
+    copySql(`select count(*) from case_client where (display_kind = 'COMPANY' and fo_person_id is not null) or (display_kind = 'PERSON' and fo_company_id is not null)`) === "0"
+    && /case_client_front_office_link_check/.test(err(`update case_client set fo_company_id = null, fo_person_id = gen_random_uuid() where id = '${corpId}'`, COPY)));
+  // Breaker F1: a name the front office's text rule refuses (a Persian name's U+200C, a soft hyphen, "!!") still opens, linked
+  const oddNames = await Promise.all(["\u0639\u0644\u06cc\u200c\u0631\u0636\u0627 Sample", "Sam\u00adple Hyphen", "!!"].map((nm) => open("user-O", {}, nm)));
+  ok("CS-K1 DW9 pass (breaker F1): names with a joiner, a soft hyphen, or no letter at all (\"!!\") open (201) and are linked; the front office's copy drops the marks, and \"!!\" is named by its client code",
+    oddNames.every((r) => r.status === 201) && oddNames.every((r) => link(r.body?.client_record?.id).startsWith(`PERSON|${FA}|`))
+    && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[2].body?.client_record?.id}'`) === `Client ${oddNames[2].body?.client_record?.number}`
+    && copySql(`select p.given_names from fo_person p join case_client k on k.fo_person_id = p.id where k.id = '${oddNames[0].body?.client_record?.id}'`) === "\u0639\u0644\u06cc\u0631\u0636\u0627 Sample", oddNames.map((r) => [r.status, r.body?.detail]));
   // DW11: firm A's client never gets firm B's party
   const bCase = await call(BASE, "POST", "/api/runtime/cases", { actor: "user-S", body: { combinationId: VV, clientActor: "user-P", principal: { displayName: "Sample Solo Client" } } });
   ok("CS-K1 DW11 pass: firm B's opening links its client to an fo_person of firm B", bCase.status === 201 && link(bCase.body?.client_record?.id).startsWith(`PERSON|${FB}|-|${FB}|`), [bCase.status, bCase.body?.detail, link(bCase.body?.client_record?.id ?? "")]);

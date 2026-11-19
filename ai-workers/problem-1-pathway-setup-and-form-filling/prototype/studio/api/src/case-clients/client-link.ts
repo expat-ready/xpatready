@@ -1,6 +1,7 @@
 // CS-K1 part 2 (brief design/build-lead-c-briefs/CS-K1-2.md; P-607; contract v0.1 §1 rule 4): the one-time job that links
 // every existing client to its front-office party (clients.ts linkClient, through FoPersonPort). One JobPort job per firm
-// (key `cases.client_link:<firm id>`, so it queues once ever), run as that firm (PF-12). Each client in its own transaction,
+// (key `cases.client_link:<firm id>:<its oldest waiting client>`: queued again only while a client waits), run as that
+// firm (PF-12). Each client in its own transaction,
 // under its row lock, so an opening or FO-8 writing the same client meanwhile wins and the job writes nothing for it; a
 // client already linked is left alone (FO-8's clients are born linked). A re-run changes nothing. Last, the link check is
 // validated once no client of any firm is missing its link (case_client_validate_link_check, migration
@@ -11,13 +12,13 @@ import { linkClient } from "../clients.ts";
 
 export const LINK_JOB = "cases.client_link";
 export const LINK_ACTOR = "system:cases.client_link";
-export const linkJobKey = (firmId: string) => `${LINK_JOB}:${firmId.toLowerCase()}`;
+export const linkJobKey = (firmId: string, oldestWaiting: string) => `${LINK_JOB}:${firmId.toLowerCase()}:${oldestWaiting}`;
 export type LinkRun = { linked: number; failed: { clientId: string; error: string }[]; validated: boolean };
 
 /** Links every client of one firm that names no front-office party, then tries the validation. */
 export async function linkFirmClients(db: PrismaClient, foPerson: FoPersonPort<Prisma.TransactionClient>, firmId: string): Promise<LinkRun> {
   const out: LinkRun = { linked: 0, failed: [], validated: false };
-  const todo = await db.caseClient.findMany({ where: { firmId, foPersonId: null, foCompanyId: null }, orderBy: { clientNumber: "asc" }, select: { id: true } });
+  const todo = await db.caseClient.findMany({ where: { firmId, foPersonId: null, foCompanyId: null }, orderBy: { clientNumber: "asc" }, select: { id: true } });   // pending ones included
   for (const { id } of todo) {
     try {
       await db.$transaction(async (tx) => {

@@ -70,7 +70,7 @@ export function currentBypass(): string | undefined { return scope.getStore()?.b
 
 // Each helper awaits fn inside its scope: a Prisma query is lazy (it runs on its first then), so one handed back
 // unawaited would otherwise run in the caller's scope.
-/** Runs fn as one firm's code (a job's firm; a test). */
+/** Runs fn as one firm's code (a job's firm; a test; the case opening's own platform firm, CS-K1 part 2). */
 export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T> {
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
