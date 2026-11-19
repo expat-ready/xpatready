@@ -204,3 +204,28 @@ Reviewer: Approve 43abda2758e9cb02ba6bf74a8475addaafbcb3cc
 **Verdict: Approve.** No open Blocker or Major.
 
 Reviewer: Approve 7f2b05bce1ef5b243bde3ee0a1e5cc8cbf03c606
+
+## Re-review 10: sixth merge of origin/main (`1ff5223`; parents 268b086, 4aa912c92; local, not pushed; diff only, P-277)
+Read: `git diff 1ff5223^2 1ff5223` and `git diff 268b086 1ff5223` for `firm-scope.ts`, `entitlements/storage.ts`, `platform/MODULE.md` and `check_pf12b_bypass_audit.ts`.
+
+- **BYPASS_USES.** Main's only new entry is `job:platform.entitlements.storage_daily` (merge base 9d440b2f4 against 4aa912c92). It is kept, with `audit: "per-firm"`. Main's diff under `api/src` adds no other entry.
+- **Call sites** (`git grep -n 'asBypass(\|asJob(' -- api/src`, 268b086 against 1ff5223, line numbers ignored). Main adds one call site, `entitlements/storage.ts:89` (`daily()`), and no other. It is reached through `platform-jobs.ts:68` → `asJob("platform.entitlements.storage_daily")`, which opens the same use first.
+- **Point 2, same-use re-entry (`firm-scope.ts:162`): safe.** It runs after the named-list and route checks (`:154-157`), not before, so the route check is never skipped. The inner call is checked against the same entry and the same `store.route` as the outer call; inside a job that means `outside: true`, and the entry has `routes: []`, so a request is still refused. It runs `fn` in the scope it is already in, the same use and the same route, with no firm. Nothing widens: no new role, no new route, and no other use's name. A different use is still refused at `:163`; break M1's check (`check_pf12b:108`) still passes. `withFirm` drops `bypass` (`:79`), so `measure()` runs as each firm, not on the bypass. When the use is re-entered, the operations line is not written a second time; the outer call already wrote it. That is correct.
+- **Point 3, `daily()`.** Each listed firm gets its line in a transaction of its own (`touchEachFirm`), inside the bypass and before that firm is measured. A firm whose line fails is left out of `firms` and added to `failed`. This is the outbox sweep's pattern.
+- **Point 4, lazy recorder: correct, and needed.** I made a mutation in a scratch worktree that restored the eager `= auditEvent`. Loading `check_pf12b` then failed with `ReferenceError: Cannot access 'auditEvent' before initialization`, so the cycle is real. With `recorder()`, both load orders work: firm-scope first (the suite) and audit-event first (a probe script). The ESM live binding is read only when a line is written. `onBypassAudit(null)` restores the default. The cycle's other edge reads `firmScope` only at call time (`pgboss-jobs.ts:46`, inside a refine; `firmScope` is also a hoisted function declaration), so it carries no load-time risk.
+- **Tests bite** (mutations in the scratch worktree, since removed):
+  - Without `:162`, the suite stops at `check_pf12b:125` with BypassRefused (red).
+  - Without `touchEachFirm` in `daily()`, the suite goes red: 27/3 (storage_daily DW1, DW2 and DW7).
+- **Re-run by me on 1ff5223** (Postgres :54329, no API server, never :4400):
+  - `check_pf12b_bypass_audit` 30/0.
+  - `check_pf15_limits` 69/0.
+  - `tsc -p api/tsconfig.json`: no error in the touched files. The 17 errors it does report are in untouched files (`p2/runner.ts`, `check_c18`, `check_c69`, `check_cost_check`, `check_vv`, `check_x2b`).
+  - Not re-run: pf12_walls, pf5, case_feed, pf19b_sending, pf25 and aud5. I rely on the builder's results for those, and on CI.
+- **MODULE.md (P-712).** Against main the card has only two changes. The pf12b test is added to main's Tests line, and the blank line before **Do not.** is removed. Main's AUD-1b invariant and PF-15 section are kept as main wrote them. The card is 40 lines (main's is 41), and `module-cards.py tree` passes (15 cards). No migration is added (`git diff 4aa912c92 1ff5223 -- '*/prisma/migrations/*'` is empty).
+- **Journey.** Not re-run: this is a diff-only re-review of a row with no screen, and the merge changes a job path, which the suite covers. The score stands at 8.5/10 (`journey-test-reviewer-2026-11-16.md`).
+
+**m1 (Minor, not blocking).** When `daily()` cannot write a firm's line, it skips that firm and counts it as failed, but the job still completes. `register()` throws the counts away, so pg-boss does not retry until the next day. The outbox sweep instead throws once the other firms have gone ahead (`messages.ts:164`, break m6), and the card says "or a failed job". The audit rule itself holds: no firm is measured without its line, and AuditPort's `writeAuditWithAlarm` raises `audit_write_failed`. Suggested fix, in this PR or a follow-up: throw the first `touchEachFirm` error after the loop, as the outbox sweep does. This keeps main's choice to keep going when one firm's measure fails.
+
+**Verdict: Approve.** No open Blocker or Major.
+
+Reviewer: Approve 1ff522380486af07c62e6e9ad93b5b8f42877066
