@@ -109,3 +109,22 @@ Own worktree at 6145111e (removed afterwards). Not run here: the copy-based suit
   * The round-2 minor (the case lookup sits outside the alarm) and m6/m7 stay for the PR body.
 
 **Verdict: Approve** (no open Blocker or Major) for 6145111e7a6bac6fae19c8436a03f9a7f2f661ef.
+
+## Round 4 (diff-only `6145111e..90ec40ac`, head 90ec40ac7d3cdab4d1b57da51396582155c92002)
+Own worktree at 90ec40ac (removed afterwards). Not run here: the copy-based suites (CS-K1, AUD-1a, C7.5, CS-W1, PF-4). The builder reports them green.
+* **The PR diff is only part 1.** `origin/main` has moved past the merged commit (now 4aa912c9), so I diffed against the merged main itself, 00378b40 (`d82d6273^2`): 16 files, +665/−24.
+  * Code: excluding `.md` files and `check_aud1m_case_writes.ts`, the diff is **byte-identical** to round 3's approved `b3b0b2a0..6145111e` once index lines are dropped (part 1, the c75 line, `.gitignore`).
+  * Records: additions only (AUD-1b review +183, AUD-1m build notes +76, this file), plus MODULE.core.md's two lines as approved.
+* **90ec40ac is correct.** CW3's bare rows are now a parameterised `INSERT INTO runtime_case`, still in the replica-role transaction.
+  * The insert gives an explicit `client_id`. CS-K1's `case_client_for_case` trigger is ENABLE ALWAYS, so it fires even in replica mode, and it keeps a client it is given.
+  * The test reads only the ids and the workspace.
+* **Main's merge, as it touches part 1:**
+  * **New Audit.log caller** (runtime.ts:354, CS-K1): `"added"`, `"case client"`, keyed by the client id. The actor is `actor.id` (a CaseActor word). The entity is on `CASE_ENTITIES` (case-feed.ts:24, which is why check_case_feed is 42/42). The words are "… opened case <8> for a new client". `caseOf` reads `3185450e` from that shape (checked). The line is written after the case's transaction commits (after :351), so `caseIdOf` finds the case.
+  * **Other new writes:** clients.ts writes no audit line itself. PF-15's new writes are platform `AuditEntry` writes (firmId, `system:platform.entitlements`, `platform_storage_over`), so the case path never takes them.
+  * **No row-level security:** no migration at 00378b40 enables it, or adds a policy, on `runtime_case` or `audit_event`. CS-K1 adds `case_client` and a NOT NULL `client_id` with triggers only. So `caseIdOf`'s read through the walled `Db` is unchanged.
+  * **CW1 holds:** per-file `auditEvent.create` counts under `api/src` are identical at 6145111e and 90ec40ac (30 in 22).
+* **Re-run in my worktree:** check_aud1m 17/17, check_case_feed 42/42. Removing the lookup turns CW3 pass red, and accepting twin cases turns CW3 fail red.
+* **The module-cards red is not this PR's:** it is main's own `platform/MODULE.md` (41 lines), which this PR does not touch.
+* **Still for the PR body:** m6 (as "Question for the tech lead"), m7, the round-2 minor (the lookup sits outside the alarm), c10f8ead's Question 1, and the part-2 note on the bare `system` direct writes.
+
+**Verdict: Approve** (no open Blocker or Major) for 90ec40ac7d3cdab4d1b57da51396582155c92002.
