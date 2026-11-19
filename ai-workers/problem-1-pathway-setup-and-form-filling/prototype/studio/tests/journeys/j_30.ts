@@ -223,13 +223,24 @@ ok("J-30 W6 DW11 pass: Undo convert needs a reason, then returns the prospect to
 // Once a retainer is signed, Undo is no longer offered, and the API refuses it.
 await owner.getByRole("button", { name: "Convert to client" }).click(); await owner.getByRole("button", { name: "Yes, convert to client" }).click();
 await owner.getByRole("button", { name: "Undo convert" }).waitFor();
-const TPL = randomUUID(), RET = randomUUID(), VER = randomUUID(), hex = "ab".repeat(32);
-sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample J-30)', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex}', '{client.name}', 'seed:J-30-test', 'seed:J-30-test', now())`);
-sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${anaId}', 'PERSON', '${ana.personId}', '${R.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Ana Sample"}', 'retainers/${RET}/v1.docx', '${hex}', 'staff:${R.id}')`);
-sql(`update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'; update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RET}'; update fo_retainer set status = 'SIGNED' where id = '${RET}'`);
+/** A Sample retainer sent for a prospect (rows as check_fo2p3_prospects.ts writes them); `signed` also signs it. */
+const retainer = (prospectId: string, personId: string, signed: boolean) => {
+  const TPL = randomUUID(), RET = randomUUID(), VER = randomUUID(), hex = "ab".repeat(32);
+  sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample J-30 ${RET.slice(0, 8)})', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex}', '{client.name}', 'seed:J-30-test', 'seed:J-30-test', now())`);
+  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${prospectId}', 'PERSON', '${personId}', '${R.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Sample"}', 'retainers/${RET}/v1.docx', '${hex}', 'staff:${R.id}')`);
+  sql(`update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'${signed ? `; update fo_retainer set status = 'CLIENT_SIGNED' where id = '${RET}'; update fo_retainer set status = 'SIGNED' where id = '${RET}'` : ""}`);
+  return RET;
+};
+retainer(anaId, ana.personId, true);
 await owner.reload(); await owner.locator("[data-no-actions]").waitFor();
 const undo = await api(tok.R, "POST", `/prospects/${anaId}/undo-convert`, { reason: "Sample" });
 ok("J-30 W6 DW11 fail: with a signed retainer Undo convert is not offered on the screen, and the API answers 409", await owner.getByRole("button", { name: "Undo convert" }).count() === 0 && undo.status === 409, [undo.status, undo.body?.code]);
+// Won by a signature (R1.31): "Signed offline" on a sent retainer (FO-5's route) wins the prospect; no person moved it.
+const paper = new FormData(); paper.set("reason", "Signed at the office (Sample)"); paper.set("expectedVersion", "1"); paper.set("file", new Blob(["%PDF-1.4\n%%EOF\n"], { type: "application/pdf" }), "signed.pdf");
+const off = await fetch(`${BASE}/api/front-office/retainers/${retainer(cyd1.id, cyd.personId, false)}/signed-offline`, { method: "POST", headers: { authorization: `Bearer ${tok.R}` }, body: paper });
+const cydNow = sql(`select s.kind || '|' || coalesce(p.won_via::text, '') || '|' || (select m.cause from fo_stage_move m where m.prospect_id = p.id order by m.seq desc limit 1) from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${cyd1.id}'`).split("|");
+await owner.goto(`${BASE}/front-office/prospects/${cyd1.id}`); await owner.locator("[data-stage-now]", { hasText: "Won – client" }).waitFor();
+ok("J-30 W6 pass (R1.31): Signed offline wins the prospect (Won, not by Convert, not a person's move); its screen says \"A signed retainer\" and offers no Undo convert", off.status === 200 && cydNow[0] === "WON" && cydNow[1] !== "CONVERTED" && cydNow[2] !== "PERSON" && await owner.getByText("A signed retainer", { exact: true }).isVisible() && await owner.getByRole("button", { name: "Undo convert" }).count() === 0, [off.status, cydNow]);
 await owner.goto(`${BASE}/front-office/pipeline`); await inStage("RETAINER_SIGNED", anaRow[0]).waitFor();
 ok("J-30 W6 end: the walk ends at the won prospect in the board's Won column, with no \"Move to…\" on it (the case side's first step starts from here)", await inStage("RETAINER_SIGNED", anaRow[0]).getByRole("button").count() === 0);
 await shot(owner, "board-won-1440");
