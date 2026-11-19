@@ -8,11 +8,11 @@
 //   W3: the public page shows no slots that day (the Tuesday cannot be chosen) and slots only inside the hours (the
 //       Monday offers 10:00-11:30 only; the Wednesday, untouched, still starts at 09:00);
 //   W4: ends at row 37's first step, the slot list: the booker picks the Monday's 10:00 and reaches "Your details".
-// Swaps (DW): none. Step 0's grep (`git grep 'fake[A-Z]…(' api/src`, 19 Nov): the booking module's one fake in a running
-// path is `arrival` (runtime-ports.ts; FO-2's row swaps it). Hours, time off and busy times are read from the database;
-// the slots read asks `arrival` only for the consent sentence "Your details" shows, which no judge here reads, and this
-// walk makes no booking. Fails on the fake (P-606): with no fake behind any judge, the stand-in replaced is "no hours
-// or day off set": every W3 judge is run before the host changes anything and must fail there (the NR lines).
+// Swaps (DW): none. Step 0's grep (`git grep 'fake[A-Z]…(' api/src`, 19 Nov, on main with FO-2 part 3b): no fake is left
+// in the booking module's running path (`arrival` is the real PrismaArrival since FO-2 part 3b; mail is the app's
+// MailPort). Hours, time off and busy times are read from the database, and this walk makes no booking. Fails on the
+// fake (P-606): with no fake behind any judge, the stand-in replaced is "no hours or day off set": every W3 judge is
+// run before the host changes anything and must fail there (the NR lines).
 // Dates: the Monday at least a week ahead and its Tuesday and Wednesday, America/Toronto (the Sample firm's zone).
 // Sample rows only; US$0, no model call. Screenshots: product/screens/J-41/screenshots/.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):

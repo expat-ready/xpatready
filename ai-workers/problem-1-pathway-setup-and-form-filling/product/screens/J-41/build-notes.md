@@ -10,7 +10,7 @@
 * `J-41 W3`: the public page shows no slots that day and slots only inside the hours (the Tuesday cannot be chosen; the Monday offers 10:00 to 11:30 only; the Wednesday, untouched, still 09:00 to 16:30; the slots route says the same).
 * `J-41 W4`: ends at row 37's first step, the slot list (the booker picks 10:00 and reaches "Your details").
 * `J-41 NR` (fails on the stand-in, P-606): before any change, W3's two judges are false.
-* `J-41 DW`: none. Step 0's grep: the booking module's one fake in a running path is `arrival` (`runtime-ports.ts`; FO-2's row swaps it). Hours, time off and busy times come from the database; the slots read asks `arrival` only for the consent sentence "Your details" shows, which no judge reads, and the walk makes no booking.
+* `J-41 DW`: none. Step 0's grep, re-run on main after FO-2 part 3b (19 Nov evening): no fake is left in the booking module's running path (`arrival` is the real `PrismaArrival`; mail is the app's MailPort). Hours, time off and busy times come from the database, and the walk makes no booking.
 
 ## Found while building
 * The Monday a week ahead can be a month's last day (30 Nov, with the Tuesday on 1 Dec): the walk moves the public calendar forward and back by its own buttons.
@@ -28,3 +28,7 @@
 
 ## The chain for R1.41 (Lead B on #2243, 19 Nov 13:1x IST)
 #2243 (the screen) → #2252 (FO-3a part 1c: one name per set of hours; a deactivated colleague is not a target; breaker M4 and m11) → this PR (J-41 and the records). J-41 runs on the fixed API: its host makes no second set and no colleague is deactivated, so no step changes.
+
+## Main merged in after #2252 (19 Nov 20:2x IST)
+* #2252 (FO-3a part 1c) is on main. `origin/main` merged in: one conflict, the same one-line clash in `front-office/routes.tsx` that part 1 (#2243) met with FO-4 part 2a's routes; resolved to the same file as part 1's head, so part 1's merge brings no second conflict.
+* The fake note above is corrected: main's FO-2 part 3b replaced the booking module's last fake (`arrival`) with the real adapter while this row waited. The walk was re-run on the merged code (result below).
