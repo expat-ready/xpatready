@@ -66,3 +66,44 @@ BIC-11 Met (one filled action). BIC-13 Met for the 422 (J5: at the field, says t
 * The builder's later commits (`b00312229`, `040c81aee`, `0895b303d`), which appear to address M1, M2, m1 and m2. They need their own review at their own sha.
 
 Verdict: Changes requested — Majors 1-3 above (Minors 1-6 do not block)
+
+## Round 2: acc82fef943615a75cbe6d48b13b8b2a8891e036 (diff only, P-277; 19 Nov 2026, about 21:25 IST)
+Read: the four own commits `b00312229`, `040c81aee`, `0895b303d`, `acc82fef9` (`git log --no-merges 7de1529c0..acc82fef9`). The main merge `709c38146` is not reviewed.
+Everything ran on a scratch extract of exactly `acc82fef9`. My copy `rev_pf21j` was on :4482 and stopped after each run; :4400 was never used; US$0.
+
+**Re-runs on acc82fef9**
+* API suites: pf21j **22/0**, pf21w **83/0**, pf21 **108/0**, pf21v **55/0**, pf21i **30/0**.
+* Browser suites: pf21s **117/117** and `j_109.ts` **26/0**, both on :4482. That is on `acc82fef9` itself, not only on `0895b303d`.
+* My J1-J5 walks ran twice: **21/21** both times.
+* Checks: `graph.mjs --check` exit 0; `count-any.mjs` exit 0 (416, under the 433 baseline); web `tsc --noEmit` 0 errors; the api `tsc` shows no error in complaints.
+
+**Round-1 findings**
+* **Major 1, fixed** (`contract.ts:12` matches `complaints.ts:198`).
+  * My J3 walk at 400, 1024 and 1440 px: the demoted handler now gets the read-only line, with no next step and no action (`j3-demoted-handler-1024.png`). axe is clean and there is no sideways scroll.
+  * H6 imports the web `canAct`. Putting back the old `canAct` fails H6.
+* **Major 2, fixed** (`complaints.ts:467-469`). The handler tier now uses `mayHandle`: active staff, a grant not ended, the record key. Otherwise the Owners and Admins get the reminder, and its sentence now covers "can no longer handle complaints".
+  * H5 has a pass and a fail case. Putting back the old `findFirst` fails H5.
+  * pf21's deactivated-handler fallbacks (break m10, R2-m1) still pass.
+* **Major 3, fixed.** H4 now checks the ended grant two ways: the demoted person is not in `GET /handlers`, and making them handler again gives 422 with the sentence. Dropping `endedAt: null` now fails 3 cases (H4 twice, H5 once).
+* **Minor 1, fixed.** The 403 detail names the rule: "…the permission to record complaints, as its handler or with the permission to read every complaint."
+* **Minor 2, fixed.** Fixed in the `READ_ONLY` sentence, both picker hints, and `routes.ts:4` and `:18`.
+* **Minor 3, fixed.** pf21v's suspended person is a Case Manager. Dropping `status` from `mayHandle` fails DW5's "suspended and deactivated are absent".
+* **Minors 4, 5 and 6: I agree they stay open.**
+  * Minor 4 (keys read before the transaction) is older than this row and applies to every route: a follow-up.
+  * Minor 5 is the brief's split, for the tech lead.
+  * Minor 6 is a nit.
+* **`0895b303d`** only changes `j_109.ts`'s import, to where #2000 moved `zonedInstant` and `FirmCalendar`. No assertion changed, and it gives 26/0.
+
+**New in round 2:** nothing that blocks.
+* One observation from before this row, not a finding against it: an overdue complaint shows the "Needs you" notice (`record-page.tsx:78`) to every reader. That includes a reader who may not act, such as an Admin with the read key alone or the demoted handler, even though the read-only line sits right under it. Wording it for readers would be a small follow-up for the PF-21s owner (P-26: not this row's scope).
+
+**Journey score, round 2: 9.5/10, a pass.** Every criterion scores 1 except "Next step obvious" at ½ (the "Needs you" wording above). Round 1's ½ scores rise to 1:
+* plain words: the 403, the hints and the read-only sentence;
+* feedback and state: the read-only line;
+* error recovery: the J3 dead end is gone.
+
+**Round-2 BIC:** BIC-18 now Met (read-only says why, `j3-demoted-handler-1024.png`); BIC-13 Met.
+**Round-2 D scores that changed:** D1 5 · D4 5 · D9 4 · D10 5 · D11 5 · D16 5 · D19 5.
+**Not checked:** a real screen reader, a visible browser pane, an intended user's unaided walk (D17, D20), and CI on the PR.
+
+Verdict: Approve acc82fef943615a75cbe6d48b13b8b2a8891e036
