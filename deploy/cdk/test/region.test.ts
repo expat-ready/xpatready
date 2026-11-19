@@ -28,8 +28,12 @@ const outdir = mkdtempSync(join(tmpdir(), 'estate-synth-'));
 after(() => rmSync(outdir, { recursive: true, force: true }));
 
 test('C1-3 region guard, pass: the deployable assembly (cdk.json\'s app, as cdk synth runs it) lives only in ca-central-1', () => {
-  const command = (JSON.parse(readFileSync(join(ROOT, 'cdk.json'), 'utf8')) as { app: string }).app.split(' ');
-  execFileSync(command[0]!, command.slice(1), { cwd: ROOT, env: { ...process.env, CDK_OUTDIR: outdir }, stdio: 'pipe' });
+  const cdkJson = JSON.parse(readFileSync(join(ROOT, 'cdk.json'), 'utf8')) as { app: string; context?: object };
+  const command = cdkJson.app.split(' ');
+  // The CLI hands the app cdk.json's context (feature flags) this way; the guard checks the same assembly.
+  execFileSync(command[0]!, command.slice(1), {
+    cwd: ROOT, env: { ...process.env, CDK_OUTDIR: outdir, CDK_CONTEXT_JSON: JSON.stringify(cdkJson.context ?? {}) }, stdio: 'pipe',
+  });
   const assembly = new cx_api.CloudAssembly(outdir);
   assert.deepEqual(assembly.stacksRecursively.map((s) => [s.stackName, s.environment.region]).sort(),
     [['estate-production', 'ca-central-1'], ['estate-staging', 'ca-central-1']]);

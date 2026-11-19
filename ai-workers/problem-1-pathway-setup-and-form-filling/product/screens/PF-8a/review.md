@@ -66,3 +66,44 @@ The region guard does not hold the row's claim ("fails on any resource, replicat
 **Not checked:** a real GitHub Actions run of the edited workflow (no PR run visible to me); RDS availability of 18.3 / `db.t4g.micro` in ca-central-1 (would need AWS; `aws-cdk-lib` 2.277.0 lists `VER_18_3`).
 
 **Verdict: Block** at 36f5e8cd2cc95a9b05eccb1e466441a12f29f679. Fix Major 1 (a, b, c, each with a fail case). The Minors are should-fix; item 3 goes to the Lead as a question.
+
+## Re-review (diff only: `git diff 36f5e8cd2 d019bdcda`)
+Reviewed **d019bdcdaac2c51f6caa10dae9147f2c31322d23**. Checks in `deploy/cdk`, all exit 0:
+* `npm ci --ignore-scripts`; `npm run typecheck`.
+* Clean-env `npx cdk synth --quiet`.
+* `npm test`: 31 pass, 0 fail.
+* `npm audit --omit=dev --audit-level=high`: no high.
+
+The installed tree is gate entry 8's: aws-cdk-lib 2.275.0, aws-cdk 2.1147.0, constructs 10.8.1. Under strace, neither the CLI synth nor `npm test` (which now runs the app command) opened any network connection.
+
+**Major 1 is closed.** I retried my probes in a fresh scratch copy (not committed):
+* (a) A us-east-1 stack added in `bin/app.ts` now fails the pass case, 30/31.
+* (b) S3 replication to `arn:aws:s3:::client-docs-copy-virginia` is refused, both as L1 `CfnBucket` and as L2 `replicationRules`.
+* (c) A `NestedStack` that holds a us-east-1 log destination is refused as a nested stack.
+
+Mutations I added:
+* Removing the replication refusal turns its fail case red.
+* Bumping `compose.test.yml` to `postgres:18.4` turns the database pass cases red.
+
+Minors 6–8 are closed:
+* The master secret is now `DeletionPolicy`/`UpdateReplacePolicy: Retain` and still uses the customer key (checked in `cdk.out`).
+* The engine version is read from compose.
+* The two-zone rule has a fail case.
+* The versions are gate entry 8's (Minor 5).
+
+The bucket and database template claims are unchanged.
+
+**New Major (regression in the existing skeleton job): `skeleton.yml:96`, `hit=$(first_hit "$files")`, exits the step under `bash -e` when the push touches no image path.**
+* Cause: `first_hit` returns the status of its last loop. When nothing matches, that is 1 (the inner `[[ … ]] && {…}`), and a failing command substitution in a plain assignment trips errexit. The old inline loop at top level did not trip it. The PR-level use at line 89 is inside an `if`, so it is safe.
+* How I proved it: I ran the real `changes` step from both commits with `git`/`gh` stubbed. Case: synchronize on an app PR whose new push changes only `qa/built/X.md`.
+  * 36f5e8cd2 prints "Skeleton not run … proven green at b1" with `run=false`, exit 0.
+  * d019bdcda exits 1 with no output and no `run=` line, so the skeleton job goes red.
+  * The same harness shows these paths are fine: an opened app PR (full run), an app push (full run), and a deploy+records PR (skip; Minor 2 is closed).
+* Effect: B190's proven-green skip is broken for every app PR that later gets a records-only push. Worse, that red run then forces full runs afterwards.
+* Fix (one line): end `first_hit` with `return 0` (e.g. `done <<< "$1"; return 0; }`) or write `hit=$(first_hit "$files") || true`. Then rerun the stub harness or a real PR run.
+
+**Minor (new):** the guard's pass case runs `cdk.json`'s `app` split on spaces, without `CDK_CONTEXT_JSON`. So context the CLI passes from `cdk.json` (for example the feature flags planned for PF-8b) is not in the checked assembly. It is the same today (the context holds only telemetry and partitions). Revisit when flags are set.
+
+Still open for the Lead (agreed in the PR, not this row's to fix): Mergify gating of `deploy-synth` (Minor 3), feature flags (Minor 4), P-631 scope (Minor 9), and `select-suites.mjs` treating `deploy/cdk/package*.json` as shared.
+
+**Verdict: Block** at d019bdcdaac2c51f6caa10dae9147f2c31322d23. Fix the `first_hit` exit status at `skeleton.yml:96` (one line); everything else is approved.

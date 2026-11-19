@@ -81,7 +81,7 @@ jobs:
           # tried with every **/ removed.
           first_hit() { local f g; while IFS= read -r f; do [ -n "$f" ] || continue
             while IFS= read -r g; do [[ "$f" == $g || "$f" == ${g//\*\*\//} ]] && { printf '%s' "$f"; return; }; done <<< "$globs"
-          done <<< "$1"; }
+          done <<< "$1"; return 0; }   # no match is an empty answer, never a failure: steps run under bash -e
           # PF-8a: a PR whose whole change touches no image path (deploy/ only, with its records) builds no image: GitHub
           # started this workflow for job deploy-synth. Judged against the base as the event fired; main's newer files
           # only make the list longer (a full run). An unreadable change goes on to the checks below.
