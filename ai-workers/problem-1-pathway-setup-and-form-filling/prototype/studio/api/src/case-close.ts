@@ -13,7 +13,7 @@ import { HttpException, Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { CaseClosedPayload, CaseReopenedPayload, EVENT } from "../../ports/events.ts";
-import { Db } from "./core.ts";
+import { Audit, Db } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
 // CS-V1 part 2: the checks and their words live in the schemas now (contracts/runtime.ts).
 import { CaseDecisionBody, CaseReasonBody, CaseWithdrawBody, DECISION_OUTCOMES, NOTE_MAX, REASON_MAX, type CaseDecisionsView } from "../../contracts/runtime.ts";
@@ -84,7 +84,7 @@ export class CaseClose {
   }
 
   private async audit(tx: Tx, ctx: StaffContext, c: { id: string; workspaceId: string; caseNumber: string }, action: string, summary: string, detail: Record<string, unknown>) {
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: `staff:${ctx.staffId}`, action, entity: "case", entityKey: c.id, summary: `${c.caseNumber}: ${summary}`.slice(0, 600), detail: { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue } });
+    await new Audit(tx as never).log(c.workspaceId, `staff:${ctx.staffId}`, action, "case", c.id, `${c.caseNumber}: ${summary}`.slice(0, 600), { ...detail, firmId: ctx.firmId } as Prisma.InputJsonValue);
   }
 
   private async closedEvent(tx: Tx, firmId: string, p: CaseClosedPayload) {

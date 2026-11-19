@@ -2459,5 +2459,15 @@ class StuckNow(unittest.TestCase):
         self.assertFalse([x for x in c2["trust"]["diffs"] if x["name"].startswith("stuck_")], c2["trust"]["diffs"])
 
 
+class MainChecks(unittest.TestCase):
+    """CI-PRE (P-731): a PR's full run is a workflow_dispatch run of ci.yml on main's head; its checks are not main's."""
+    def test_a_full_runs_checks_are_left_out_of_mains(self):
+        runs = [{"name": "ci", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/55/job/1"},     # a PR's red full run
+                {"name": "nightly", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/66/job/2"},  # main's own run
+                {"name": "mergify", "conclusion": "success", "details_url": None}]                                             # not an Actions run
+        self.assertEqual([c["name"] for c in cd.main_checks(runs, {"55"})], ["nightly", "mergify"])   # 3 - 1 full-run check
+        self.assertEqual(len(cd.main_checks(runs, set())), 3)                                         # no full run: all 3 kept
+
+
 if __name__ == "__main__":
     unittest.main()
