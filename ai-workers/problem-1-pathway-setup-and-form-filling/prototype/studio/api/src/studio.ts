@@ -16,7 +16,7 @@ import { FORM_LINE_WORDS, formLineProblem, isFormLine, releaseLineProblems } fro
 import { identityKeyOf, insertProposals } from "./proposals.ts";
 import { nameKey, namedDocumentType, waitingDocumentType } from "./document-type-names.ts";
 import { checkCondition, diff, ordinal, validate, isDemoSnapshot, sampleContentProblems, withdrawnFieldLines, withoutWithdrawnKeys } from "../../engine/validate.ts";
-import { ACTORS, Audit, Db, fail, isDemoWorkspace, need, revise, RUNTIME_ACTORS, strip, Workspace, WORKSPACE_KEY, type Actor } from "./core.ts";
+import { ACTORS, actorWordOf, Audit, Db, fail, isDemoWorkspace, need, revise, RUNTIME_ACTORS, strip, Workspace, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { itemsOf, mergeItems, publishLibraryChanges, unapprovedWhy, unapprovedOf } from "./library-changes.ts";
 import { recordAction, snapshotLines } from "./form-uses.ts";
 import { acceptsOf } from "../../engine/channels.ts";
@@ -1281,4 +1281,4 @@ async function movedOut(db: Parameters<typeof buildSnapshot>[0], workspaceId: st
 
 /** QA-74: the simulated people's names for stored ids (one id, or several joined by commas), never "user-A" on screen. */
 const PEOPLE: readonly { id: string; name: string }[] = [...ACTORS, ...RUNTIME_ACTORS];
-export const peopleNames = (ids: string | null) => (ids ?? "").split(",").filter(Boolean).map((id) => PEOPLE.find((p) => p.id === id.trim())?.name ?? id).join(", ");
+export const peopleNames = (ids: string | null) => (ids ?? "").split(",").filter(Boolean).map((id) => PEOPLE.find((p) => p.id === id.trim())?.name ?? actorWordOf(id)).join(", ");
