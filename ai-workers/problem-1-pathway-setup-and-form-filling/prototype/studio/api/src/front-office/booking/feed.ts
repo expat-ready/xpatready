@@ -4,8 +4,8 @@
 // person, the type, the host, what the booking hangs on, FO-3sa's recorded "outside hours", the attendance, whether a
 // consult record exists, and, per viewer, `canAnswerAttendance`, `canEdit` and `attendanceDue`.
 // Routes: `BookingFeedController` below (GET feed, GET feed/:id), registered before FO-3sr's `/:id`.
-// Visibility is FO-3vr's filter, called, never written again: `view=team` reads `BookingService.seenWhere` (the record
-// rule in SQL), `view=mine` the person's own as host (no key, AG-4-67 rule 2), and one booking `staffBooking` (its host,
+// Visibility is FO-3vr's filter, called, never written again: `view=team` reads `BookingService.readSeen` (the record
+// rule in SQL, `seenWhere`), `view=mine` the person's own as host (no key, AG-4-67 rule 2), and one booking `staffBooking` (its host,
 // or the list key and the record rule; else the one not-found).
 import { Controller, Get, HttpException, Inject, Injectable, Param, Query, Req } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -39,8 +39,9 @@ export class BookingFeed {
     const q = p.data;
     if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > MAX_DAYS * DAY) throw problem(400, "booking-refused", "Bookings not listed", `Ask for at most ${MAX_DAYS} days, from before to.`);
     if (q.view === "team" && !ctx.keys.includes(LIST)) throw problem(403, "forbidden", "Not allowed", `This needs the permission ${LIST}.`, { code: "MISSING_PERMISSION" });
-    const seen = q.view === "team" ? await this.b.seenWhere(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`) : { staffId: ctx.staffId };
-    const rows = await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...seen }), orderBy: [{ startsAt: "asc" }, { id: "asc" }] });
+    const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from } };
+    const rows = q.view === "team" ? await this.b.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`, where, "startsAt")
+      : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, staffId: ctx.staffId }), orderBy: [{ startsAt: "asc" }, { id: "asc" }] });
     return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId), items: await this.items(ctx, rows) };
   }
 
