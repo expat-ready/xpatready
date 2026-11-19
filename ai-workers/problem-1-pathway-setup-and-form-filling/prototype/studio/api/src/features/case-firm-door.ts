@@ -8,7 +8,8 @@
 //     CS-W1's lookup (firmIdOfActor); a simulated client → the firm of the case in the path (case_firm_of_case), else of
 //     their cases (case_firm_of_client; cases in more than one firm → 409, Build Lead C's ruling 1). A firm id is never
 //     taken from a value the caller typed: x-actor names a person, and the firm comes from that person's membership.
-//   * /api/link/*: the Bearer session's case (case_firm_of_link_session), else the body token's (case_firm_of_link).
+//   * /api/link/*: open, code/send and code by the body token's case (case_firm_of_link), as those handlers act on it;
+//     every other link route by the Bearer session's case (case_firm_of_link_session).
 //   * Routes that declare permission keys get their firm from PF-4's guard and are left alone; /api/demo/* is part 3's.
 //   * No firm found → the route answers as it does today in its area (a case 404, a link 404 or 401), except a list: a
 //     case list with no firm is refused (403), never an empty 200 once the walls are on.
@@ -40,6 +41,8 @@ export class TwoFirms extends Error {}
 const RUNTIME = /^\/api\/runtime(\/|$)/i, LINK = /^\/api\/link(\/|$)/i;
 const CASE_IN_PATH = /^\/api\/runtime\/cases\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/i;
 const CASE_LIST = /^\/api\/runtime\/cases\/?$/i;
+/** The link's own doors, which act on the body's token only (person-link.ts linkByToken), never on a session. */
+const TOKEN_DOORS = /^\/api\/link\/(open|code\/send|code)\/?$/i;
 const BEARER = /^Bearer ([A-Za-z0-9_-]{43})$/, TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const sha = (x: string) => createHash("sha256").update(x).digest("hex");
 const first = (h: string | string[] | undefined) => (Array.isArray(h) ? h[0] : h);
@@ -50,10 +53,14 @@ const actorNamed = (h: string | undefined): Actor | undefined => [...ACTORS, ...
 export async function doorFirm(req: DoorReq, look: DoorLookups): Promise<string | null | undefined> {
   const path = pathOf(req);
   if (LINK.test(path)) {
+    // The token doors read only the body's token, as their handlers do (breaker m1: a stray session header must not pick
+    // the firm of a route that acts on the token); every other link route reads only the session.
+    if (TOKEN_DOORS.test(path)) {
+      const token = (req.body as { token?: unknown } | undefined)?.token;
+      return typeof token === "string" && TOKEN.test(token) ? look.ofLink(sha(token)) : null;
+    }
     const bearer = BEARER.exec(first(req.headers.authorization) ?? "");
-    if (bearer) return look.ofLinkSession(sha(bearer[1]));
-    const token = (req.body as { token?: unknown } | undefined)?.token;
-    return typeof token === "string" && TOKEN.test(token) ? look.ofLink(sha(token)) : null;
+    return bearer ? look.ofLinkSession(sha(bearer[1])) : null;
   }
   if (!RUNTIME.test(path)) return undefined;
   const actor = actorNamed(first(req.headers["x-actor"]));
@@ -77,7 +84,7 @@ export async function passDoor(req: DoorReq, look: DoorLookups): Promise<void> {
     if (firm === undefined) return;
     if (!firm) {
       if (CASE_LIST.test(pathOf(req)) && String(req.method ?? "GET").toUpperCase() !== "POST")
-        throw new HttpException({ type: "https://expatready.local/problems/no-firm", title: "No firm", status: 403, code: "NO_FIRM", detail: "A case list needs a firm, and this person works in none." }, HttpStatus.FORBIDDEN);
+        throw new HttpException({ type: "https://expatready.local/problems/no-firm", title: "No firm", status: 403, code: "NO_FIRM", detail: "A case list needs a firm, and none was found for this person." }, HttpStatus.FORBIDDEN);
       return;   // the route answers as today in its area (no case is reached)
     }
     const already = currentFirm();   // the tag an earlier step set (inRequest opened this scope from it)

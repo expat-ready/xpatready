@@ -135,8 +135,11 @@ async function decisions() {
 
   const sess = req("GET", "/api/link/me", { authorization: `Bearer ${"s".repeat(43)}` }, { token: "x".repeat(43) });
   const tok = req("POST", "/api/link/code/send", {}, { token: "t".repeat(43) }), badTok = req("POST", "/api/link/code/send", {}, { token: "short" });
-  ok("CS-W3 DW2 pass (door): a link session is tagged from its session (before any body token); a link token from its own hash",
+  const tokWithStray = req("POST", "/api/link/open", { authorization: `Bearer ${"z".repeat(43)}` }, { token: "t".repeat(43) });
+  ok("CS-W3 DW2 pass (door): a session route is tagged from its session only (a body token is never read there); a token door from the token's own hash",
     (await status(sess)) === 0 && tag(sess) === A && !calls.includes(`link:${sha("x".repeat(43)).slice(0, 6)}`) && (await status(tok)) === 0 && tag(tok) === A);
+  ok("CS-W3 DW2 fail (door, breaker m1): on open, code/send and code a stray or unknown session header never picks the firm; the body token does",
+    (await status(tokWithStray)) === 0 && tag(tokWithStray) === A && !calls.includes(`session:${sha("z".repeat(43)).slice(0, 6)}`));
   ok("CS-W3 DW2 fail (door): a malformed token is never looked up and leaves the request untagged (the route's own 404 or 401 as today)",
     (await status(badTok)) === 0 && tag(badTok) === undefined && !calls.some((c) => c === `link:${sha("short").slice(0, 6)}`));
 
