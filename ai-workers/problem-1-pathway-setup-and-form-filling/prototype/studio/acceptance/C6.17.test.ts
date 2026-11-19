@@ -9,6 +9,7 @@
 // Runs on a FRESH isolated copy (the checkpoint loads its own configuration):
 //   zsh studio/tools/isolated.sh accept 4440 start && tsx studio/acceptance/C6.17.test.ts 4440 xr_studio_accept
 import { AUTHOR, CLIENT, OFFICER, PORT, call, firms, generateCopy, main, ok, prepare, run, sql } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 import { sampleRelease } from "./lib/sample-release.ts";
 
 type Stage = { id: string; key: string; name: string; state: string; words: string; version: number; combination_id: string; key_details: { field: string; value: string | null }[]; deadline: { due: string | null; why: string; sample: boolean } | null; cannot_start_why: string | null };
@@ -30,7 +31,7 @@ const allLines = (c: Checklist) => (c.people ?? []).flatMap((x) => [...x.lines, 
 const sourced = (l: Line) => (/^Sample\b/.test(l.quote ?? "") && /\bfrom (IMM|Guide) \d{4}\b/.test(l.quote ?? "")) || (/\bp\. \d+/.test(l.quote ?? "") && /\b\d{4}-\d{2}-\d{2}\b/.test(l.quote ?? ""));
 /** C6.4's upload, as a person's browser sends it (multipart, one file). A Sample PDF; never a real document. */
 const upload = async (lineId: string, name: string) => {
-  const fd = new FormData(); fd.append("file", new Blob([new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${name}\n`)]), name);
+  const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(textPdf([`Sample synthetic document ${name}`]))]), name);
   const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": OFFICER }, body: fd }).catch(() => null);
   return { status: res?.status ?? 0, body: await res?.json().catch(() => null) };
 };

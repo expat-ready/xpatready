@@ -71,7 +71,15 @@ const words = (r: Reply) => { const b = r.body as { detail?: string; message?: s
 class Stop extends Error {}
 const must = <T = unknown>(r: Reply, what: string): T => { if (r.status >= 300) throw new Stop(`${what}: ${words(r)}`); return r.body as T; };
 /** A synthetic one-page PDF standing in for a scan, its own words saying what it is (Sample, never real). */
-const specimen = (text: string) => Buffer.from(`%PDF-1.4\n% ${text}\n%%EOF\n`, "latin1");
+// CS-D1t (R1.67): a PDF that opens (one blank page, its words in a comment), as the case upload doors now check.
+const specimen = (text: string) => {
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"];
+  let out = `%PDF-1.4\n% ${text.replace(/[\r\n]/g, " ")}\n`; const offs: number[] = [];
+  objs.forEach((o, i) => { offs.push(Buffer.byteLength(out, "latin1")); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = Buffer.byteLength(out, "latin1");
+  out += `xref\n0 4\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+};
 
 /** The open bugs and rules a stage of this story waits on, named in its words (never faked around). */
 export const HELD = {
