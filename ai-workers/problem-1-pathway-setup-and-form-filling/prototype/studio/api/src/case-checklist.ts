@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { HttpException } from "@nestjs/common";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { ChangeProviders, cleanName, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, MEDIA, mediaOf, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
+import { ChangeProviders, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, NOT_APPLICABLE_FROM, NotApplicable, REQUEST_FROM, SeenVersion, STATE_WORDS, UPLOAD_FROM, WAIVE_FROM, Waive, type LineState, type StoredDocument } from "../../contracts/documents.ts";
 import { candidatesOf, caseChecklist, chosenProviders, mayProvide, roleWords, type PersonLine } from "../../engine/runtime/case-checklist.ts";
 import { fmtDate, onFileFrom } from "../../engine/runtime/stages.ts";
 import { readSpec } from "./routes-data.ts";
@@ -24,9 +24,10 @@ import { checkValue, knownOf } from "../../engine/runtime/case.ts";
 import { actorOf, Audit, CaseRead, Db, fail, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
+import { checkFile, KINDS, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
 
 type H = string | undefined;
-type Upload = { fieldname?: string; originalname?: string; buffer?: Buffer; size?: number };
+type Upload = { fieldname?: string; originalname?: string; mimetype?: string; buffer?: Buffer; size?: number };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const short = (id: string) => id.slice(0, 8);
 /** A checklist line as the API answers it: the derived line with its stored id, state and documents (M3-CONTRACT C6.4). */
@@ -45,6 +46,23 @@ export function utf8Name(name: string | undefined): string {
   if (![...raw].every((ch) => ch.charCodeAt(0) < 256)) return raw;
   const back = Buffer.from(raw, "latin1").toString("utf8");
   return back.includes("\uFFFD") ? raw : back;
+}
+/** CS-D1t (R1.67): the kinds the case side's two upload doors take today, in one list (widening it is its own row). */
+export const CASE_FILE_KINDS: readonly FileKind[] = ["pdf", "jpeg", "png"];
+const REFUSAL_STATUS: Record<RefusalReason, HttpStatus> = { TOO_LARGE: HttpStatus.PAYLOAD_TOO_LARGE, TOO_MANY_PIXELS: HttpStatus.PAYLOAD_TOO_LARGE,
+  NOT_ALLOWED_TYPE: HttpStatus.UNSUPPORTED_MEDIA_TYPE, ZIP: HttpStatus.UNSUPPORTED_MEDIA_TYPE, MACROS: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+  EMPTY: HttpStatus.BAD_REQUEST, DAMAGED: HttpStatus.BAD_REQUEST };
+/** CS-D1t (R1.67): the one check both case upload doors make, PF-F4's `checkFile`, before anything is written. The type
+ *  comes from the file's own bytes; a refusal is in PF-F4's words (they end "Nothing was stored.") with the status its
+ *  reason calls for. Answers the stored name (corrected when it disagreed with the bytes), the type, the file's
+ *  extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line. The doors keep their
+ *  own 20 MB limit (C6.4 break m5, also the multipart limit), which is under PF-F4's 25 MB for documents. */
+export function checkedCaseFile(f: Upload): Checked & { extension: string; flagWords: string } {
+  const bytes = f.buffer!;
+  if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
+  const r = checkFile({ bytes, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
+  if (!r.ok) return fail(r.message, REFUSAL_STATUS[r.reason]);
+  return { ...r, extension: KINDS[r.kind].extension, flagWords: r.flags.includes(SCRIPTS_FLAG) ? `; ${SCRIPTS_FLAG}` : "" };
 }
 const parse = <T,>(schema: { safeParse: (x: unknown) => { success: true; data: T } | { success: false; error: Parameters<typeof problemFromZod>[0] } }, body: unknown): T => {
   const r = schema.safeParse(body ?? {});
@@ -258,17 +276,13 @@ export class CaseChecklists {
     if (seen !== undefined && seen !== row.version) fail(`${shown.label} for ${person.label} changed after you opened it (it is ${STATE_WORDS[row.state as LineState]} now): read the checklist again to see its state now, then try again. Nothing was stored.`, HttpStatus.CONFLICT);
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!;
-    if (!bytes.length) fail("The file is empty. Nothing was stored.");
-    if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-    const media = mediaOf(bytes);
-    if (!media) fail("Send a PDF, JPEG or PNG file (judged by the file itself, not its name). Nothing was stored.", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    const bytes = f[0].buffer!, checked = checkedCaseFile(f[0]);
     if (!UPLOAD_FROM.includes(row.state as LineState)) fail(`${shown.label} for ${person.label} is ${STATE_WORDS[row.state as LineState]}: request it again before uploading. Nothing was stored.`, HttpStatus.CONFLICT);
     // C6.15 (SA-1B-19 rule 1): on a line with a substitute set, the file is one member of it ("member": its document type
     // key); left out, it is the line's own type when that is a member. Any member of the set the line uses counts.
     const member = memberOf(shown, (body as { member?: unknown } | null)?.member);
     const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("people", row.subjectId, "documents", `${docId}.${MEDIA[media!]}`), abs = join(DOCS(), rel);
+    const rel = join("people", row.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
     try {
       // Inside the clean-up (Devin review): a write that fails half way (a full disk) leaves no partial file.
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
@@ -283,12 +297,12 @@ export class CaseChecklists {
         if (n.count !== 1) fail("Someone changed this line after you opened it: read the checklist again to see its state now, then try again. Nothing was stored.", HttpStatus.CONFLICT);
         const now = new Date();
         await tx.caseDocument.updateMany({ where: { subjectId: row.subjectId, documentType: member.key, current: true }, data: { current: false, supersededAt: now } });
-        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: row.subjectId, documentType: member.key, checklistLineId: id, fileName: cleanName(utf8Name(f[0].originalname)),
-          mediaType: media!, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
+        await tx.caseDocument.create({ data: { id: docId, workspaceId: c.workspaceId, subjectId: row.subjectId, documentType: member.key, checklistLineId: id, fileName: checked.name,
+          mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id, uploadedAt: now } });
       });
     } catch (e) { rmSync(abs, { force: true }); throw e; } // a refused upload leaves no file behind
     await this.recount(actor, c, row.subjectId, member.key, id);
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${shown.set && member.key !== shown.document.key ? `${member.name} (in the set for ${shown.label})` : shown.label} for the ${person.role} on case ${short(c.id)} (${MEDIA[media!].toUpperCase()}, ${bytes.length} bytes)`);
+    await this.audit.log(c.workspaceId, actor.id, "uploaded", "case document", docId, `${actor.name} uploaded ${shown.set && member.key !== shown.document.key ? `${member.name} (in the set for ${shown.label})` : shown.label} for the ${person.role} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes${checked.flagWords})`);
     const line = await this.moved(c, id);
     return { ...line, document: line?.documents.find((x) => x.id === docId) ?? null };
   }

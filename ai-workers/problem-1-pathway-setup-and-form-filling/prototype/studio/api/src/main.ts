@@ -186,7 +186,10 @@ class ProblemErrors implements ExceptionFilter {
     if (e instanceof HttpException) {
       const body = e.getResponse() as any, status = e.getStatus();
       // Upload limits fire before the intake sees the files (break m9): say which limit, in plain words.
-      if (status === 413 || /^(File too large|Too many files)$/.test(String(body?.message ?? ""))) {
+      // CS-D1t (R1.67): a 413 a door worded through PF-F4's check (an image over its limit; it names the allowed types and
+      // ends "Nothing was stored.") is sent in those words, below, not reworded as an upload limit.
+      const fromFileCheck = status === 413 && /Allowed here: .+\. Nothing was stored\.$/.test(String(body?.message ?? ""));
+      if (!fromFileCheck && (status === 413 || /^(File too large|Too many files)$/.test(String(body?.message ?? "")))) {
         const many = /files/i.test(String(body?.message));
         // QA-126: a validated copy (C-9) takes one PDF of up to 20 MB, so it is worded with its own limits, not the intake's.
         // C6.4 (break m5): a checklist line takes one PDF, JPEG or PNG of up to 20 MB, worded with its own limits.

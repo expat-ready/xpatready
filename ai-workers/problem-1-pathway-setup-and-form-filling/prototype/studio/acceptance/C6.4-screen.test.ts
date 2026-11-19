@@ -85,7 +85,7 @@ await main("C6.4", "Documents panel on the case page (screen, 1440 px)", async (
     await page.locator(`[data-line="${third.id}"] [data-upload-input]`).setInputFiles({ name: "not-really.pdf", mimeType: "application/pdf", buffer: Buffer.from("Sample: plain text, not a PDF") });
     const err34 = page.locator(`[data-line="${third.id}"] [data-line-error]`);
     await err34.waitFor({ timeout: 15_000 });
-    ok("C6.4-34 fail: a text file named .pdf shows the API's words on that line, and its state stays as it was", /PDF, JPEG or PNG/.test((await err34.textContent()) ?? "") && (await lineState(third.id)) === "not_requested", await err34.textContent());
+    ok("C6.4-34 fail: a text file named .pdf shows the API's words on that line, and its state stays as it was", /PDF, JPEG (or|and) PNG/.test((await err34.textContent()) ?? "") && (await lineState(third.id)) === "not_requested", await err34.textContent());
 
     // 35. Not applicable with a reason; with no reason, the error under the field and nothing changes.
     await menuOf(third.id); await page.locator("[data-action=not-applicable]").click();

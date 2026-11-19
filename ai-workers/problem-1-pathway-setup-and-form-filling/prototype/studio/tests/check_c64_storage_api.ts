@@ -37,7 +37,8 @@ await main("C6.4 storage", "request, upload, Not applicable, kept lines; QA-149"
     return { status: res.status, body: await res.json().catch(() => null) };
   };
   const pdf = (n: string) => new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${n}\n`);
-  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+  // CS-D1t: a PNG with its header (IHDR, 1 x 1), as PF-F4's check reads an image's size; the signature alone is refused as damaged.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
 
   // QA-149: the deciding question stays on the case once answered.
   ok("QA-149 fail (before): unanswered, the child's \"travelling alone\" is asked (it decides the letter line)", await asked("agent", OFFICER));
