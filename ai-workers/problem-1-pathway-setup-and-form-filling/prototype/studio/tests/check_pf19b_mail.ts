@@ -55,6 +55,9 @@ try {
   await db.foConsultationType.create({ data: { firmId: A.id, slug: "free", name: "Free consultation", modes: ["VIDEO", "PHONE"], hostStaffIds: [A1.id], minutes: 30 } });
 
   const clock = new FakeClock(at("2026-10-26 08:00")), jobs = fakeJobs(clock), alerts = fakeAlerts(), files = new LocalFiles(join(WORK, "files"));
+  // The booking tick's wording: the real ArrivalPort (FO-2 part 3b) reads the firm's published EMAIL marketing wording; a
+  // firm with none offers no tick (the fake always offered one).
+  await db.$transaction((tx) => new ConsentStore(auditEvent, clock).publishWording(tx as never, { firmId: A.id, channel: "EMAIL", purpose: "MARKETING", locale: "en-CA", text: "I agree that the firm may send me news by email (Sample wording).", by: "seed:pf19b-mail-check" }));
   const messages = new Messages({ db, consent: new ConsentStore(auditEvent, clock), files, jobs, alerts: () => alerts, channels: channelsOf([["EMAIL", localEmail]]), clock });
   await messages.register();
   const logs: string[] = [];
