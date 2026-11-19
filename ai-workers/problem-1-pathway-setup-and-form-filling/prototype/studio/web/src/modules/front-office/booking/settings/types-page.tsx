@@ -33,7 +33,7 @@ function TypesBody() {
         <div><h1 id="types-title" className="text-xl font-semibold">{W.title}</h1><p className="text-sm text-text-muted">{W.sub}</p></div>
         {edit ? <Button ref={addButton} data-new-type onClick={(e) => { opener.current = e.currentTarget; open("new"); }}>{W.add}</Button> : null}
       </div>
-      {!list.data ? <div role="status" aria-label="Loading booking types" data-loading className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
+      {!list.data ? <div role="status" aria-label="Loading booking types" data-loading data-types-loading className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
         : !list.data.length ? <p className="rounded-xl border border-dashed border-border p-6 text-sm text-text-muted" data-types-empty>{W.empty}</p>
           : <Table head={["Name", "Length", "Hosts", "On booking page"]} label="Booking types">
             {list.data.map((t) => <tr key={t.id} data-type-row={t.slug}>

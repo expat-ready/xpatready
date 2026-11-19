@@ -2,6 +2,7 @@
 // one booking type in the drawer: Definition · Hosts · Advanced · Share · Preview, and Save, Duplicate, Retire (or
 // Switch on) and Delete. A save sends the version it read; another tab's save answers 409 and the input stays. A
 // refused field shows the server's words at that field. Read-only (`:list` only): the same sections as text, no button.
+// Read-only shows the link and embed code as text (no Copy buttons, no Preview: concept §4 "no buttons").
 // Timing overrides under Advanced come with part 2 (FO-3a 1b-ii's timings routes are not on main yet).
 import * as React from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -79,8 +80,8 @@ export function TypePanel({ me, typeId, staff, onClose, onOpen, returnFocus }: {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={d.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} />Allow reschedule</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={d.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} />Allow cancellation</label>
           </div></>}
-        {t ? <Share t={t} firmKey={me.firmKey} /> : null}
-        {t ? <PreviewSection t={t} /> : null}
+        {t ? <Share t={t} firmKey={me.firmKey} copy={edit} /> : null}
+        {t && edit ? <PreviewSection t={t} /> : null}
       </div>}
       <Dialog open={ask !== null} onOpenChange={(o) => !o && setAsk(null)} title={ask === "retire" ? "Retire" : "Delete"}
         footer={<><Button variant="ghost" onClick={() => setAsk(null)}>Keep</Button>
@@ -118,13 +119,13 @@ function HostSetPickers({ t, staff }: { t: TypeDetail; staff: Staff[] | null }) 
   })}{err ? <p role="alert" className="text-xs text-text-danger">{err}</p> : null}</>;
 }
 
-function Share({ t, firmKey }: { t: BookingType; firmKey: string }) {
+function Share({ t, firmKey, copy: canCopy }: { t: BookingType; firmKey: string; copy: boolean }) {
   const link = shareLink(window.location.origin, firmKey, t.slug), code = embedCode(link, firmKey);
   const [copied, setCopied] = React.useState<string | null>(null);
   const copy = async (what: string, text: string) => { try { await navigator.clipboard.writeText(text); setCopied(what); } catch { setCopied("Copy is blocked here: select the text."); } };
   return <div className={sec}><h3 className="text-sm font-semibold">Share</h3>
     <p className="break-all text-sm" data-share-link>{link}</p>
-    <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => void copy("Link copied.", link)}>Copy link</Button><Button variant="outline" size="sm" onClick={() => void copy("Embed code copied.", code)}>Copy embed code</Button></div>
+    {canCopy ? <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => void copy("Link copied.", link)}>Copy link</Button><Button variant="outline" size="sm" onClick={() => void copy("Embed code copied.", code)}>Copy embed code</Button></div> : null}
     <pre className="overflow-x-auto rounded-lg bg-surface p-2 text-xs" tabIndex={0} aria-label="Embed code">{code}</pre>
     {copied ? <p role="status" className="text-xs text-text-muted">{copied}</p> : null}</div>;
 }
