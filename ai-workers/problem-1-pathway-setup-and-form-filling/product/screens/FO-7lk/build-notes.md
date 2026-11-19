@@ -32,3 +32,7 @@ Brief: `product/design/build-lead-c-briefs/FO-7lk.md` (on `claude/build-lead-c-6
 ## After #2106's round 1 (1ed3d3af)
 * #2106 re-stamped its two steps to `20261118200000` and `20261118200100`, so FO-7lk is re-stamped after them, to `20261118210000_fo7lk_trust_lock` (P-600). It will be re-stamped again on top of `main` when its PR opens.
 * Merged 1ed3d3af. Results: `check_fo7lk_lock_order.ts` 16/0, `check_fo7ts_money_settings.ts` 47/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0, `check_pf12_walls.ts` 100/0.
+
+## Before the PR: #2106 merged (22:26 UTC 18 Nov)
+* Merged `origin/main` (P-270). The stamp `20261118210000_fo7lk_trust_lock` is already later than `main`'s newest, `20261118200100_fo7ts_card_terminal_trust`, so no re-stamp was needed (P-600).
+* Round 3 (diff-only on c5d1bccd): Reviewer Approve, nothing open. Round 2: Breaker pass on 19d39511d.

@@ -45,6 +45,7 @@ const { fakeJobs } = await import("../ports/jobs.ts");
 const { fakeMail } = await import("../ports/mail.ts");
 const { fakeStaff } = await import("../ports/staff.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
+const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");   // PF-19r: the complaints feature mails through it (in memory here)
 
 /** A job runner that records nothing but its handler (the reminder's runs are PF-21's suite's). */
 const recorder = (): JobPort => {
@@ -60,7 +61,7 @@ const apps: { close(): Promise<void> }[] = [];
 const local = new LocalIdentity("pf21v-check-signing-key-0123456789abcdef", () => Date.now());
 async function makeApp() {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: PlatformJobs, useValue: recorder() }, ...feature.providers];
+    { provide: MESSAGES_MAIL, useValue: fakeMail() }, { provide: PlatformJobs, useValue: recorder() }, ...feature.providers];
   @Module({ controllers: feature.controllers as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   await app.listen(0, "127.0.0.1"); apps.push(app);
@@ -82,7 +83,7 @@ try {
   const firmA = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-firm" } })).id;
   const firmB = (await db.platformFirm.findFirstOrThrow({ where: { key: "sample-solo" } })).id;
   const W = await platformAuditWorkspaceId(db as never);
-  const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "check:pf21v", workspaceId: W });
+  const set = (firmId: string, key: string, value: unknown) => writeSetting(db, { firmId, key, value, by: "system:check-pf21v", workspaceId: W });
   const ROLES = ["OWNER", "ADMIN", "CASE_MANAGER", "CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const;
   type Role = (typeof ROLES)[number];
   const person = async (firmId: string, name: string, role: Role | null, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED" = "ACTIVE") => {

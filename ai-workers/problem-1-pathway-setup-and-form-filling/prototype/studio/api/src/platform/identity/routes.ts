@@ -22,6 +22,10 @@ export class PlatformIdentityController {
   @Post("staff/invitations") @PermissionKeys("agent/staff:manage")
   invite(@Req() r: R, @Body() b: B) { return this.id.invite(staffOf(r), b ?? {}); }
 
+  /** PF-4c part 1 (AG-1-69): one form of 1-20 rows, one invitation per row; flagged rows or too few seats send nothing. */
+  @Post("staff/invitations/batch") @PermissionKeys("agent/staff:manage")
+  inviteBatch(@Req() r: R, @Body() b: B) { return this.id.inviteBatch(staffOf(r), b ?? {}); }
+
   @Get("staff/invitations") @PermissionKeys("agent/staff:manage")
   invitations(@Req() r: R) { return this.id.invitations(staffOf(r)); }
 

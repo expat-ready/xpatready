@@ -111,3 +111,33 @@ No Blocker, Major or Minor. Round 1's Minor and the breaker's B-1 are closed, an
 **Verdict: Approve** (no open Blocker or Major). Only the Nit above is open, and it is optional.
 
 Reviewer: Approve 19d39511d
+
+---
+
+# Round 3 (diff-only, 19d39511d → c5d1bccd)
+
+# FO-7lk review, round 3 (diff-only, P-277): one lock order for "Move back to trust"
+
+Reviewed: branch `claude/trusting-fermat-ejsqdh`, from my Approve head **19d39511d** to the new head **c5d1bccd39d42e252d4c1c5282eb26803e81b6a7**. I read only the change since round 2. Reviewer: Opus, did not build it. Database-only row (no screen).
+
+## Scope confirmed
+* `git diff --stat 19d39511d c5d1bccd`: 5 files, +124/−8. Commits: ae7cc15f1 (#2106's F3 head), 5ca28ade0 (merge of it), 845582733 (the Nit), c5d1bccd3 (round-2 reports).
+* **#2106's ae7cc15f arrived unchanged.** `git diff ae7cc15f c5d1bccd -- …/20261118200000_fo7ts_money_settings/migration.sql …/check_fo7ts_money_settings.ts` is empty (0 bytes). ae7cc15f touches only those two files (+22/−6), the same as in this diff.
+* **Round-2 Nit: done** in `tests/check_fo7lk_lock_order.ts` (+3/−2, test:218-223). The poll loop now keeps the last `wait_event_type` in `waited` (`?? ""` when there is no row). The B-1 assertion is now `waited === "Lock" && held === 0 && /names a trust application to this invoice/`, and `waited` is in the failure detail. Nothing else in the test changed.
+* **Records:** the round-2 review (ending `Reviewer: Approve 19d39511d`) is appended to `screens/FO-7lk/review.md` (+46), and the breaker's round 2 (ending `Breaker: pass 19d39511d`) is appended to `break-report.md` (+53). Both are append-only below a `---` rule, and the round-1 text is untouched.
+* Nothing else is in the diff. FO-7lk's migration, rollback, MODULE.md and build notes are unchanged since 19d39511d.
+
+## What I ran
+Detached worktree at c5d1bccd, with node_modules symlinked to the main checkout's. PostgreSQL at 127.0.0.1:54329.
+* `check_fo7lk_lock_order.ts` passes **16/0**. The B-1 line passes. #1991's text gives 0 deadlocks in 40 runs. The planted order gives 20/20 (B then A).
+* **Control:** I put 9f30e673's FO-7lk `migration.sql` text into `20261118210000_fo7lk_trust_lock/` and ran the check again. It gives **15/1**. Only the B-1 check fails, with `{"waited":"Lock","held":1,"out":"23514 money_credit_note: a refund or move-back choice names a trust application to this invoice"}`. The new `waited` guard is satisfied there, and the check fails on `held`. So the check still tells the two texts apart, and it now proves the wait was reached.
+* Afterwards I restored the file and removed the worktree. No `xr_studio_fo7lk_*` databases are left, and the main checkout is clean.
+
+## Findings
+None. No Blocker, Major, Minor or Nit is open. The round-2 Nit is closed.
+
+**Journey test: not scored.** As in rounds 1 and 2, there is no screen and no user journey (database-only by the brief), so the journey-test criteria have nothing to score.
+
+**Verdict: Approve** (no open Blocker or Major).
+
+Reviewer: Approve c5d1bccd39d42e252d4c1c5282eb26803e81b6a7
