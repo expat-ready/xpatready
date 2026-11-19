@@ -7,8 +7,9 @@ import type { Me } from "../../front-office/sales/contract.ts";   // relative: t
 
 export const KEY = { record: "agent/complaint:record", read: "agent/complaint:read" } as const;
 export const has = (me: Me, key: string) => me.keys.includes(key);
-/** BR-2: the handler, or someone holding both keys, may act on an open complaint (the server still decides). */
-export const canAct = (me: Me, c: { handlerStaffId: string }) => c.handlerStaffId === me.staffId || (has(me, KEY.record) && has(me, KEY.read));
+/** BR-2 as PF-21j has it: the record key, as the handler or with the read key too, acts on an open complaint (the server
+ *  still decides: api/src/platform/complaints/complaints.ts canAct). */
+export const canAct = (me: Me, c: { handlerStaffId: string }) => has(me, KEY.record) && (c.handlerStaffId === me.staffId || has(me, KEY.read));
 
 const when = z.string().nullable();
 export const Complaint = z.object({
@@ -38,7 +39,7 @@ export const EVENT: Record<string, string> = {
 export const word = (list: Record<string, string>, code: string | null) => (code === null ? "" : list[code] ?? code);
 
 export const NOT_FOUND = "We can't find this complaint. It may not exist, or it may not be one you can see.";
-export const READ_ONLY = "You can see this complaint but not change it: only its handler, an Owner or an Admin can.";
+export const READ_ONLY = "You can see this complaint but not change it: only an Owner, an Admin, or a handler who may record complaints can.";
 /** §5 Refused: the panel's title; the server's own words follow it. */
 export const FORBIDDEN = "You can't change this complaint. Ask an Owner or Admin.";
 export const CLOSED_REFUSED = "This complaint is closed. It was closed while you were working; add it as a note instead.";
