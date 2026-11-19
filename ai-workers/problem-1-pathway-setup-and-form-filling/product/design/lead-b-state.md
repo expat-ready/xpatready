@@ -12,6 +12,26 @@
 
 **Lead B (6) live (14:29 IST):** the current Lead is **Lead 58** (`local_5bec64f9…`); the feeding Lead is Lead 57 (`local_bef741db…`). The founder started cloud lanes for FO-4 (brief 9ebb5da30), PF-19b (9446bd33a), PF-21w, PF-21s stage 1 and FO-3sc; Lead 57 holds a PF-Lc card (cec0fc01c). Rulings given today on PR comments: #1813 FO-2, #1815 PF-5, #1816 PF-4b. Rows rev 16.17-16.20 are waiting for Lead 58 to copy. Owed: PF-6 and PF-5s briefs when PF-4b lands; FO-7mv when FO-7a #1758 merges. GitHub REST is shared by all sessions (ran out 14:2x); the scan loop posts through GraphQL when it must.
 
+**Lead B (7) took over (19 Nov 11:43 IST)** from Lead B (6) (old account, gone at the switch), on the new account; Opus 5.5 medium; worktree `elegant-sinoussi-bab4cf`, branch `lead-b-front-office`. Started by and reports to **Lead 90** (`local_3eea0506-288c-4b7e-8c3e-5343fafb6212`). Start read: `lead-b-handover-2026-11-19.md`, this file, rows rev 17.30-17.48, the J2 and J4 lane plans.
+
+State read from GitHub at 11:44 IST (main is `4aa912c92`, unchanged since 09:01 IST; batch #2228 = #2199 #2200 #2209 #2219 #2195 #2103 still testing, #2229/#2230 stacked). Every PR below is red **only** on `module-cards` (main's 41-line platform card), which #2195 fixes:
+
+| Item | PR / branch | Head | Labels | Lane last push (IST) | Next |
+|---|---|---|---|---|---|
+| card fix | #2195 | 99c533875 | approved, queued (in #2228) | 09:06 | merges first; unblocks module-cards everywhere |
+| R1.4 | #2029 | 5500148d3 | approved, queued | 10:00 | merges by itself |
+| R1.19 | #1959 | 02a64c6e9 (Approve on head) | none (held) | 11:04 | after #2029: merge main, ruling 7000777630, diff-only Approve, Lead's P-423 read + label |
+| R1.28 + R1.37 | #2196 | 869779fa4 (Approve on head, wording seed in) | approved, queued | 11:21 | merges; then J-37 |
+| R1.109 | #2012 | 2973a8f9b | approved, queued | 09:43 | merges; then J-109 opens |
+| R1.109 J-test | `claude/vibrant-meitner-3t1yfe` | fcbc102ff (Approve 497af411d in notes) | no PR | 10:53 | after #2012: merge main, diff-only re-review, open PR |
+| R1.48 | `claude/intelligent-mayer-ymi4sl` (PF-19b part 3) | 6ed8a220e (approved on 5890bcc2f; on hold, P-723) | no PR | 10:48 | from ~13:30: merge main, re-review, open PR; then J-48 |
+| R1.41 base (FO-3a) | #2103 | c72bca8cd | approved, queued (in #2228) | 09:06 | merges by itself |
+| R1.30 base (FO-3a 2) | #2102 | 0029eb548 (Approve on head) | **none: needs the Lead's P-423 read and label** (queue gate 03:40Z) | 09:03 | Lead 90 labels |
+| PF-19p | #1961 | c27308ea1 | approved, queued | 09:50 | merges by itself |
+| R1.76 base (FO-2 part 4) | #2181 | 58e66e288 | approved, queued | 09:20 | merges by itself |
+
+No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s exclusion list). Watches (background, this session): merges, new heads, Approves and labels on the PRs above plus #2169, and PRs opened on the two branches (every 4 min); the question scan (every 5 min). Lesson: `mktemp` fails in this sandbox; write temp files in the session scratchpad.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
