@@ -63,3 +63,17 @@ FO-3st2 holds. No PR opened, no label. State at hold: branch head is the records
 * #2103 is on main (5efe207ed). `origin/main` (8cefcc6c6) merged into `claude/screens-fo3st2` cleanly (ee63f13bb); the row's own files are unchanged since the Approve on 36dc2484c.
 * **The split (P-610), two PRs back to back in one lane.** The branch's 1,008 lines are 688 of code and test, 321 of records. **Part 1 (this branch, `claude/confident-allen-xqw8w2`, from `origin/main`):** the whole screen as approved, its suite, its screenshots, these notes and `qa/built/FO-3st2.md`, byte for byte from `claude/screens-fo3st2`. **Part 2 (`claude/screens-fo3st2`, after part 1 is on main):** J-41's walk `tests/journeys/j_41.ts` with the review, break report and journey-score records; its body says `Completes: R1.41`.
 * **Not the brief's split point, said openly:** `FO-3st2.md` names a split inside the screen (sets and week editor first; time off and the colleague picker second) "if it would pass" 800. The code and test are 688 lines, under the limit as one piece; only the records carry it over. Cutting the approved page and suite in two would put a never-reviewed half screen on main and need two fresh reviews and a breaker run for no change in what a person gets. Question for the tech lead on the PR, with this recommendation.
+
+## Merge batch #2265 failed on PF-6's Licence page; the cause and the fix (19 Nov 17:1x IST; Lead B on #2243)
+* **What failed:** `check_pf6_staff_browser.ts` "PF-6 DW8 keyboard (review MJ-2): after Save the focus stays on Save", 3 of 3 tries in the batch.
+* **Cause, shown by a probe** (12 saves on `/account/licence`, the browser's CPU slowed; where the keyboard is when the toast shows and 0.6 s later): the Licence form put focus back on Save from a timed callback (`requestAnimationFrame`). When that callback ran before the page had enabled the button again, it focused a disabled button, which does nothing, and the keyboard stayed on the page for good. A race already on main, met more often with this PR's menu entry in the frame:
+
+| Code | CPU ×1 | CPU ×6 | CPU ×20 |
+|---|---|---|---|
+| main (497837f30) | 0 of 12 lost | 2 of 12 lost, none came back | |
+| main + this PR, before the fix | 1 of 12 late (came back) | 6 of 12 lost, none came back | |
+| main + this PR, with the fix | 0 of 12 | 0 of 24 | 0 of 12 |
+
+* **Fix** (`web/src/modules/platform/account/licence-form.tsx`, outside this row's touch list, on the row owner's instruction): focus goes back to Save in the same update that enables the button, before the page is painted (a layout effect on `busy`). The test is unchanged.
+* **Runs with the fix, each on a fresh copy:** `check_pf6_staff_browser.ts` 90/90 eight times (six on the first form of the fix, two on the final one); `check_fo3st2_availability_browser.ts` 53/53; `check_pf6a_frame_browser.ts` 52/52; type check: no new errors. Without the fix, with this PR: 6 passes and 1 failure in 7 runs on this machine.
+* **Not proven:** that the menu entry is what raised the rate in CI (3 of 3 there; the samples here are small). The same race is on main without this PR.
