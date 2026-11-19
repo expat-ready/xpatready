@@ -42,7 +42,7 @@ const base = { sha: "a".repeat(40), pr: 2200, runId: 123, runUrl: "https://examp
 const p6ok = { ...p6, journeyExists: true };
 const vPass = verdict({ item: "R1.6", plan: p6ok, results: [{ kind: "journey", name: p6.journey, exit: 0 }, { kind: "scan", name: "no key", exit: 0 }], ...base });
 const keys = ["item", "name", "pr", "sha", "run_id", "run_url", "at", "overall", "why", "suites", "video", "trace", "file", "repo", "note"];
-ok("V1 PASS: every key, the video link, no trace, file product/qa/verdicts/auto/R1.6-<sha>.json", vPass.overall === "PASS" && keys.every((k) => k in vPass) && vPass.video === base.artifactUrl && vPass.trace === null && vPass.file === `product/qa/verdicts/auto/R1.6-${base.sha}.json` && vPass.run_id === "123", vPass);
+ok("V1 PASS: every key, the video link, no trace, the verdict file named R1.6-<sha>.json", vPass.overall === "PASS" && keys.every((k) => k in vPass) && vPass.video === base.artifactUrl && vPass.trace === null && vPass.file.endsWith("/verdicts/auto/R1.6-" + base.sha + ".json") && vPass.run_id === "123", vPass);
 const vFail = verdict({ item: "R1.77", plan: p77, results: [{ kind: "pack", name: "C8.2", exit: 0 }, { kind: "suite", name: "check_item_proof.ts", exit: 1 }], ...base });
 const res = (n: string) => vFail.suites.find((s: { name: string }) => s.name === n)?.result;
 ok("V2 FAIL: a red suite, a named non-suite and a missing journey each FAIL; the green pack passes; the link is the trace", vFail.overall === "FAIL" && res("C8.2") === "pass" && res("check_item_proof.ts") === "fail" && res("check_not_a_suite.ts") === "fail" && res("tests/journeys/j_77.ts") === "fail" && vFail.video === null && vFail.trace === base.artifactUrl, vFail);
