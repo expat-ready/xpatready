@@ -16,7 +16,7 @@ import { normaliseAddress, type Channel, type ConsentPort } from "../../../../..
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
 import { DAILY_CAP, HELD_DAILY_LIMIT, MessageRefused, MessageRepeated, MessageSend, fillFields, gateReason, render, type MessagePort, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
-import { firmScope } from "../../firm-scope.ts";
+import { firmScope, touchEachFirm } from "../../firm-scope.ts";
 import { readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 
@@ -155,8 +155,13 @@ export class Messages implements MessagePort<Tx> {
         FROM "msg_outbox" WHERE "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
           AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
+    // PF-12b: on its named use (job:messages.outbox_sweep) the read crossed firms: each firm read gets its platform.bypass
+    // line, in its own transaction, before any of its rows is queued; a firm whose line cannot be written gets nothing
+    // queued, the other firms go ahead, and the sweep then fails (P-607; break m6).
+    const { failed, error } = await touchEachFirm(this.d.db, rows.map((r) => r.firmId));
     let n = 0;
-    for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    if (error) throw error;
     return n;
   }
 
