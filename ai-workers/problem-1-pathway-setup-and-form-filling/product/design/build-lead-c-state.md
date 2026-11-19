@@ -251,3 +251,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * #2000, #2124, #2167 and #2175 merge as they are.
 * 07:17 IST 19 Nov (Lead 85 agreed): park messages sent to the CS-K1 part 1 lane and the CS-W1 lane (after CS-W3 part 0). Idle cloud lanes may not wake. Watching #2000; when it merges I tell Lead 85, who gives the CS-DL1b line.
 * 07:32 IST 19 Nov: current Lead is now Lead 86 (local_bb67266d).
+* 07:33 IST 19 Nov: status to Lead 86. **AUD-5 part 2 was built twice:** #2194 (1c9e952b9, code only) and #2197 (be65d001d, with the breaker report); both Approved. Recommended labelling #2197 and leaving #2194 open as superseded. PF-19r merged (#2157); J-48 waits on Lead B's PF-19b part 3. CS-V1 PR 2 lane is idle with no push seen.
