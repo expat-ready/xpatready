@@ -11,6 +11,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Notice, Panel, Pill } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
+import { MessagesPanel } from "@/modules/platform/messages/messages-panel";
 import { can, KEY, Lead, Prospect, READ_ONLY_REASON, words } from "./contract";
 import { Loading } from "./loading";
 import { useLock, useReturnFocus } from "./prospect-actions";
@@ -130,6 +131,7 @@ function LeadBody({ id }: { id: string }) {
               {attribution.map(([k, v]) => <Row key={k} label={ATTRIBUTION[k]}>{String(v)}</Row>)}
             </dl>
           </section>
+          <MessagesPanel subject={{ kind: "LEAD", id: l.id }} />
         </div>
         <aside aria-label="Owner and actions" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4">
           <div>
