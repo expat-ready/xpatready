@@ -86,4 +86,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # queue-gate.sh eligible counts an Approve by the repository owner's account or a login in REVIEWERS. Since the
+          # org move (18 Nov) the owner is the organisation, so without REVIEWERS no Approve counted here and the sweep
+          # took off every label queue-gate.yml had put on (#2197, #2199, 19 Nov). Same value as queue-gate.yml's.
+          REVIEWERS: ${{ vars.REVIEWERS }}
         run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/label-sweep.sh

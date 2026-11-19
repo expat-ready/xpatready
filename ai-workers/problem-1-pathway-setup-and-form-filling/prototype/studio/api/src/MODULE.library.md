@@ -20,6 +20,7 @@ The shared library: fields, sections, document types, and the one guarded change
 
 **Tables.** libraryChange, canonicalField, documentType, logicalSection, documentRequirement, sectionQuestion, auditEvent, combination, changeSet, formFieldMap, answerList.
 **Tests.** `tests/check_gcore_b2_door.ts`, `tests/check_c79_must_verify.ts`, `tests/check_s6_p149.ts`, `tests/check_sh2_where_used.ts`, `tests/check_c119_library_items.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.library.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Write a library row outside a LibraryChange, or let the proposer approve.
