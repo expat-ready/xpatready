@@ -31,11 +31,12 @@ function directWrites(tree: Record<string, string>): Record<string, number> {
   for (const [f, text] of Object.entries(tree)) { const n = text.split("auditEvent.create").length - 1; if (n && f !== ADAPTER) out[f] = n; }
   return out;
 }
-/** What parts 1, 2a and 2b leave: the platform's 3 (PF-0a, part 2c: AuditEntry refuses writeSetting's untyped actors and
- *  nested detail today). Part 1 removed core.ts's own; part 2a the case, document and person writes; part 2b the form,
- *  library, review and lifecycle writes (each now Audit.log through AuditPort, in the caller's transaction). */
+/** What parts 1, 2a and 2b leave: platform/settings.ts's one (PF-0a part 2c, Lead 94's ruling on #2289: writeSetting's
+ *  untyped actors and nested detail are typed there). Part 1 removed core.ts's own; part 2a the case, document and person
+ *  writes; part 2b the form, library, review and lifecycle writes (Audit.log through AuditPort, in the caller's
+ *  transaction) and identity/audit.ts's two (AuditPort.record; tests/check_pf0a_audit_port.ts). */
 const LEFT: Record<string, number> = {
-  "platform/identity/audit.ts": 2, "platform/settings.ts": 1,
+  "platform/settings.ts": 1,
 };
 const same = (a: Record<string, number>, b: Record<string, number>) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 const tree = Object.fromEntries(files(API).map((f) => [relative(API, f), readFileSync(f, "utf8")]));
