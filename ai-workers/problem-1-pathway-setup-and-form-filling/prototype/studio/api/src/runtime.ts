@@ -258,12 +258,13 @@ export class Runtime {
     const b = parse(OpenCaseFromOffer, body);   // CS-V1: read through its schema before anything else
     const actorOrNone = (id: string | null) => { try { return id ? actorOf(id) : null; } catch { return null; } };
     return openCaseFromOffer<Actor>({ db: this.db, workspaceId: await this.ws.id(), actorOf: actorOrNone, audit: auditEvent, problem,
-      createCase: (actor, b, inTx) => this.createCase(actor, b, inTx),
+      createCase: (actor, b, inTx) => this.createCase(actor, b, inTx, `staff:${ctx.staffId}`),   // J-72: a signed-in request's lines name its staff member
       clientTypeOf: async (tx, combinationId) => ((await groupOfCombination(tx, combinationId)) === "corporate" ? "CORPORATE" : "INDIVIDUAL") }, ctx, clientId, b);
   }
 
   /** `inTx` (FO-8): a step run last inside the opening's transaction; a refusal there leaves nothing written. */
-  async createCase(actor: Actor, body: unknown, inTx?: (tx: Prisma.TransactionClient, opened: { id: string; caseNumber: string; combinationId: string }) => Promise<void>) {
+  /** `by` (J-72): the audit actor word of a signed-in request (`staff:<id>`), which AUD-1m requires; else the simulated actor. */
+  async createCase(actor: Actor, body: unknown, inTx?: (tx: Prisma.TransactionClient, opened: { id: string; caseNumber: string; combinationId: string }) => Promise<void>, by: string = actor.id) {
     need(actor, "case");
     const b = parse(NewCase, body);
     const workspaceId = await this.ws.id();
@@ -338,7 +339,7 @@ export class Runtime {
         // opening rolls it back with everything else.
         const made = b.clientId !== undefined ? null : await newClient(tx, { workspaceId, firmKey: firm!.key, combinationId: b.combinationId, displayName: b.principal.displayName, createdBy: actor.id });
         // CS-K1 part 2: the new client's front-office party, in this transaction (a rollback removes both).
-        if (made) await linkClient(tx, this.foPerson, made, `staff:${actor.id}`);
+        if (made) await linkClient(tx, this.foPerson, made, by.includes(":") ? by : `staff:${by}`);
         const clientId = made?.id ?? (await clientOfFirm(tx, { workspaceId, firmKey: firm!.key, id: b.clientId }))?.id ?? fail("No such client.", HttpStatus.NOT_FOUND);
         madeClient = made ? { id: made.id, code: clientCode(made.clientNumber) } : null;
         const party = await tx.party.create({ data: { workspaceId, profile: { create: { workspaceId, displayName: b.principal.displayName } } } });
@@ -374,10 +375,10 @@ export class Runtime {
       // Break m1: with no reference given, the clash can only be the case number (the firm's counter behind its cases).
       fail(b.reference ? "A case with this reference already exists; give the new case its own reference." : "The case could not be given its case number, so nothing was created. Ask the Lead.", HttpStatus.CONFLICT);
     }
-    await this.audit.log(workspaceId, actor.id, "opened", "case", id!, `${actor.name} opened case ${short(id!)} on "${combination!.label}" released version ${release!.version} (${release!.sha256.slice(0, 12)}); representative of record ${nameIn(firm!, representative)}, case officers ${officers.map((o) => nameIn(firm!, o)).join(", ")}${stagesWritten.stages > 1 ? `; a stage of a route (${stagesWritten.stages} stages, ${stagesWritten.doneBefore} done before we started)` : ""}`, undefined, b.combinationId);
+    await this.audit.log(workspaceId, by, "opened", "case", id!, `${actor.name} opened case ${short(id!)} on "${combination!.label}" released version ${release!.version} (${release!.sha256.slice(0, 12)}); representative of record ${nameIn(firm!, representative)}, case officers ${officers.map((o) => nameIn(firm!, o)).join(", ")}${stagesWritten.stages > 1 ? `; a stage of a route (${stagesWritten.stages} stages, ${stagesWritten.doneBefore} done before we started)` : ""}`, undefined, b.combinationId);
     // CS-K1 (Lead 61, comment 6900282370 on #1867): a directly opened case's new client writes an audit line, no client.created.
     const mc = madeClient as { id: string; code: string } | null;   // set inside the transaction (TS cannot see it)
-    if (mc) await this.audit.log(workspaceId, actor.id, "added", "case client", mc.id, `${actor.name} opened case ${short(id!)} for a new client, ${mc.code}`);
+    if (mc) await this.audit.log(workspaceId, by, "added", "case client", mc.id, `${actor.name} opened case ${short(id!)} for a new client, ${mc.code}`);
     return { ...(await this.get(actor, id!)), created: true };
   }
 

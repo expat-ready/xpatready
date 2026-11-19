@@ -110,13 +110,15 @@ const press = async (p: Page, target: ReturnType<Page["getByRole"]>, max = 120) 
 /** W4/W8: the case page shows the client, the principal applicant, the representative of record and the pinned release. */
 const casePage = async (caseId: string, who: string, tag: string) => {
   const repActor = sql(`select user_id from case_team_member where case_id = '${caseId}' and role = 'LEAD_REPRESENTATIVE' and ended_at is null`);
-  const release = sql(`select r.version from pack_work_pin p join config_release r on r.id = p.config_release_id where p.case_id = '${caseId}'`);
+  const release = sql(`select coalesce(v.version, r.version) from pack_work_pin p join config_release r on r.id = p.config_release_id left join pack_version v on v.id = r.pack_version_id where p.case_id = '${caseId}'`);   // releaseLabel
   const users = (await api(null, "GET", "/runtime/firm", undefined, "user-O")).body?.users ?? [];
   const repName = users.find((u: { id: string }) => u.id === repActor)?.name as string;
   await page.goto(`${BASE}/cases/${caseId}`); await page.getByText(`Client: ${who}`).first().waitFor({ timeout: 60_000 });
+  await page.getByRole("table").getByText("Principal applicant").first().waitFor({ timeout: 30_000 });
   const text = await page.locator("main").innerText();
   ok(`J-72 ${tag} pass: the case page shows the client, ${who} as principal applicant, the representative of record (${repName}) and the pinned release (Release ${release})`,
-    text.includes(`Client: ${who}`) && new RegExp(`${who}\\s+Principal applicant`).test(text) && !!repName && text.includes(repName) && text.includes(`Release ${release}`), [repActor, repName, release]);
+    text.includes(`Client: ${who}`) && new RegExp(`${who}\\s+Principal applicant`).test(text) && !!repName && text.includes(repName) && text.includes(`Release ${release}`),
+    [repActor, repName, release, text.slice(text.indexOf("People and filings"), text.indexOf("People and filings") + 300)]);
   await shot(`${tag}-case`); await axe(`${tag} the case page`); await sizes(`${tag} the case page`);
   return repActor;
 };
@@ -159,7 +161,7 @@ try {
   ok("J-72 W7 pass (API step: the offer has no screen yet): open-case opens one case for the Signed offline client", benCase.status === 201 && sql(`select client_id from runtime_case where id = '${benCase.body?.id}'`) === benClient!.id, [benCase.status, benCase.body?.detail]);
   const benRep = await casePage(benCase.body.id, ben.name, "W8");
   ok("J-72 W8 pass: the case's representative of record is the one the signed version names by id (merge value representative.staff_id), FO-8's first real run of that branch",
-    benRep === sql(`select actor_id from platform_staff where id = (select merge_values->>'representative.staff_id' from fo_retainer_version where retainer_id = '${RET}' and end_reason = 'SIGNED_OFFLINE')`), benRep);
+    benRep === sql(`select actor_id from platform_staff where id = (select (merge_values->>'representative.staff_id')::uuid from fo_retainer_version where retainer_id = '${RET}' and end_reason = 'SIGNED_OFFLINE')`), benRep);
 
   // ------------------------------------------------------------------------------------------------ the DW lines
   const deps = { workspaceId: sql(`select workspace_id from case_client where id = '${anaClient!.id}'`), foPerson: foPersonPort, audit: auditEvent };
@@ -175,7 +177,8 @@ try {
   ok("J-72 DW-c pass: a second open-case answers 409 OFFER_USED and opens no second case", second.status === 409 && second.body?.code === "OFFER_USED" && sql(`select count(*) from runtime_case where client_id = '${anaClient!.id}'`) === "1", [second.status, second.body?.code]);
   ok("J-72 DW-c fail (stand-in): the first open-case answered 201", anaCase.status === 201);
   const ret2 = crypto.randomUUID(), ver2 = crypto.randomUUID();
-  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${ret2}', '${A}', 'RETAINER', '${ana.id}', 'PERSON', '${ana.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by, sent_at) values ('${ver2}', '${A}', '${ret2}', 1, '{"client.name":"Sample","representative.staff_id":"${rep.id}"}', 'retainers/${ret2}/v1.docx', '${hex}', 'staff:${rep.id}', now()); update fo_retainer set status = 'SENT' where id = '${ret2}'`);
+  sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${ret2}', '${A}', 'RETAINER', '${ana.id}', 'PERSON', '${ana.personId}', '${rep.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${rep.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${ver2}', '${A}', '${ret2}', 1, '{"client.name":"Sample","representative.staff_id":"${rep.id}"}', 'retainers/${ret2}/v1.docx', '${hex}', 'staff:${rep.id}')`);
+  sql(`update fo_retainer_version set sent_at = now() where id = '${ver2}'; update fo_retainer set status = 'SENT' where id = '${ret2}'`);
   const offAfter = await signOffline(ret2);
   ok("J-72 DW-d pass: a Signed offline win after a Convert of the same prospect raises nothing new (one prospect.won, one client, one case)", won(ana.id) === "1" && clientsOf(ana.id) === "1" && sql(`select count(*) from runtime_case where client_id = '${anaClient!.id}'`) === "1", [offAfter, won(ana.id)]);
   const cyd = await prospect("Cyd"), w0 = won(cyd.id); await api(TA, "POST", `/front-office/prospects/${cyd.id}/convert`, {});
