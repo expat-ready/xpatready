@@ -240,3 +240,8 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 07:00 IST 19 Nov: status sent to Lead 85. #2167 head moved to 8ad51426d (Approve matches; may need a relabel). New lanes: 'AUD-5 part 2 · R1.105 file retention check' (running) and 'CS-V1 PR 2 · R1.10 input checks'.
 * 07:02 IST 19 Nov (Lead 85): report received; Lead 85 checks the labels on #2000, #2124, #2167 and #2169 at its first check (07:17-07:27 IST).
 * 07:03 IST 19 Nov (Lead 85): #2000, #2124 and #2167 are labelled and queued at the heads given; #2175 is labelled. #2169 is dequeued; Lead 85 relabels it after #2173 lands.
+* 07:15 IST 19 Nov: **P-716 (founder, 07:2x IST):** pipeline work is frozen until Proven reaches 30; lanes work only on the last part of a nearly-proven R1 item. Sort sent to Lead 85:
+  * Finishes: #2169 (R1.77).
+  * My last part only: AUD-5 part 2 (R1.105; PF-11c and PF-5 are Lead B's).
+  * Does not finish: #2000 (CS-DL1b is the last part, after it), #2124 and AUD-1m part 1 (R1.8), #2167 (R1.72), the money lane (R1.59), CS-V1 PR 2 (R1.10), CS-W3 part 0, PF-19r (J-48 and J-49 finish).
+  * Proposed: let the four approved queued PRs merge; park the rest with resume notes.
