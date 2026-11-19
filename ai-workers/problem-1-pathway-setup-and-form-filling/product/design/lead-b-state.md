@@ -68,6 +68,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **00:44 IST: reports now go to Lead 97** (`local_d04f3736-7f3a-4a2f-9235-2d20e05fb869`; Lead 96 handed over). Lead 97 has the open list: #2360 then the `fast` re-runs; /run full for #2321, #2307, #2308, #2029; #2029's DW3 fix falls to the Lead if no head by 01:1x IST.
 
+**01:19 IST (Lead B (8), to Lead 97):** #2360 merged 00:45 (workflow lock cleared); failed jobs re-run (Lead 97 owns re-runs from now on). **#2302 J-41** labelled and queued. **#2315 PF-21j** requeued 00:5x on the founder's approval; it also fixes **main's walk j_109** (main's `tests/journeys/j_109.ts` imports `zonedInstant` from complaints/business-days.ts, which no longer exports it since #2000). After #2315 merges: re-run walk j_109 alone on #2302 and #2323 and report to Lead 97; never send #2323's lane. **#2029 PF-12b**: the J-109 lane pushed the DW3 fix, 865df8f2e; waits for the reviewer's Approve naming that head, then Lead 97's /run full. **#2307**: head 82442b58f, waits for its Approve. **#2304 PF-18a part 2** left the queue 01:15 on check_csnk1's newest-migration line (and the old lock): **#2341** now blocks #2304, #2109, #1961, #2158; told Lead 97 to land it first; #2304 then needs only a requeue. #2268's shard 4 forms timeout is **QA-519** (qa 7; Minor, forms lane; not #2268's).
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
