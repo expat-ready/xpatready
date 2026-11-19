@@ -32,9 +32,13 @@ want PASS "card unchanged as a list item"                       "$S/api/src/runt
 want PASS "card unchanged in bold, CRLF"                        "$S/api/src/runtime.ts" "$(printf '**Card unchanged:** a test only\r\n')"
 fi
 # The tree: a copy of the rules and cards, then broken on purpose.
+# CS-D1t (the first real row fragment): the files the branch's own fragments name (tests live outside api/src and
+# web/src) go into the copy too, or "as on this branch" fails on a good fragment.
+fragment_paths() { git ls-files -co --exclude-standard "$S/api/src" "$S/web/src" | grep -E '/MODULE[^/]*\.rows/[^/]+$' | while read -r f; do
+  grep -oE '`[^`]+`' "$f" | tr -d '`' | while read -r p; do for at in "$(dirname "$(dirname "$f")")/$p" "$S/$p" "$p"; do [ -f "$at" ] && echo "$at"; done; done; done; }
 mk() {   # one copy of the rules, cards and sources, then a fresh duplicate per fixture (fast)
   [ -n "${R0:-}" ] && [ ! -d "$T/r0" ] && cp -R "$R0" "$T/r0"   # a mutant run reuses its parent's copy
-  [ -d "$T/r0" ] || { rm -rf "$T/r0"; mkdir -p "$T/r0"; ( cd "$ROOTD" && git ls-files -co --exclude-standard .claude/rules/modules "$S/api/src" "$S/web/src" | grep -E '(^\.claude/rules/modules/|/MODULE[^/]*\.md$|/MODULE[^/]*\.rows/[^/]+$|\.tsx?$)' | while read -r f; do mkdir -p "$T/r0/$(dirname "$f")"; cp -P "$f" "$T/r0/$f"; done ); git -C "$T/r0" init -q; git -C "$T/r0" add -A; }
+  [ -d "$T/r0" ] || { rm -rf "$T/r0"; mkdir -p "$T/r0"; ( cd "$ROOTD" && { git ls-files -co --exclude-standard .claude/rules/modules "$S/api/src" "$S/web/src"; fragment_paths; } | grep -E '(^\.claude/rules/modules/|/MODULE[^/]*\.md$|/MODULE[^/]*\.rows/[^/]+$|\.tsx?$)' | while read -r f; do mkdir -p "$T/r0/$(dirname "$f")"; cp -P "$f" "$T/r0/$f"; done ); git -C "$T/r0" init -q; git -C "$T/r0" add -A; }
   rm -rf "$T/r"; cp -R "$T/r0" "$T/r"; }
 tree() { n=$((n+1)); ( cd "$T/r" && ROOT="$T/r" run tree ); r=$?; got=$(case $r in 0) echo PASS;; 99) echo CRASH;; *) echo FAIL;; esac)
   if [ "$got" = "$1" ]; then echo "PASS  tree: $2 → $1"; else echo "FAIL  tree: $2: wanted $1, got $got"; sed 's/^/      /' "$T/log"; bad=1; fi; }
