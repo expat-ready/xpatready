@@ -1,6 +1,6 @@
 {
  "_about": "The approved engineering set-up (CK-1, founder asks A151 and A154, 17 Nov 2026). Owned by the tech lead: a change to the set-up is approved first, then this file gets a new version and a change_log row in the same PR as the change. tools/conformance-check.py compares origin/main with it (lists compare as sets: extra lines allowed, a missing one fails) and prints enforced: yes | no. The ruleset item is read only by the heartbeat workflow (the agents' deny list blocks ruleset reads in sessions); 'required': false tolerates no ruleset until the tech lead sets it true after the move (18 Nov).",
- "version": "1.3.0",
+ "version": "1.4.0",
  "date": "2026-11-19",
  "owner": "the tech lead",
  "change_log": [
@@ -27,6 +27,12 @@
    "date": "2026-11-19",
    "change": "Heartbeat: a PR labelled parked with a valid \"Parked:\" comment (a reason, Owner: a role, Resume: a date at most 7 days after the note) is left out of stalled-lane and its 2 h escalation and listed in the report; a parked PR with no valid note, or past its date, is the alarm parked-expired.",
    "approval": "the founder, 19 Nov 07:1x-07:2x IST (\"it is a normal practice. Yes, do it\"), relayed by the tech lead (Lead 85) as a fix to the heartbeat check under P-716 (1)"
+  },
+  {
+   "version": "1.4.0",
+   "date": "2026-11-19",
+   "change": "Mergify parallel mode (P-715): batches with no shared scope test and merge at the same time; scopes per fenced module, plus migrations (capacity 1) and pipeline (capacity 1); a fourth queue pipeline, after product, for PRs whose every file is pipeline work (P-717 (a)); batch_size 6 to 2 and batch_max_failure_resolution_attempts 2; mode, capacities and barrier files pinned here and checked by check_mergify. A new or changed blocking check starts report-only for 24 h or 10 PR runs (P-717 (b)).",
+   "approval": "the founder, P-717 (19 Nov ~07:3x IST: pipeline work takes effect through its own lane; P-715 the one exception to P-716), relayed by the tech lead (Lead 85)"
   }
  ],
  "settings": {
@@ -162,10 +168,14 @@
  "mergify": {
   "path": ".mergify.yml",
   "max_parallel_checks": 3,
-  "queue_order": ["verdicts", "product", "records"],
+  "mode": "parallel",
+  "capacities_required": {"money": 1, "migrations": 1, "pipeline": 1},
+  "barrier_files_required": ["**/package.json", "**/package-lock.json", ".nvmrc", "tsconfig.base.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"],
+  "queue_order": ["verdicts", "product", "pipeline", "records"],
   "queues": {
    "verdicts": {
-    "batch_size": 6,
+    "batch_size": 2,
+    "batch_max_failure_resolution_attempts": 2,
     "queue_conditions_required": [
      "base = main",
      "-draft",
@@ -179,13 +189,15 @@
     "merge_method": "merge"
    },
    "product": {
-    "batch_size": 6,
+    "batch_size": 2,
+    "batch_max_failure_resolution_attempts": 2,
     "queue_conditions_required": [
      "base = main",
      "-draft",
      "label = review: approved",
      "check-success = ci",
      "-label=records",
+     "files ~= ^(?!(\\.github/|\\.githooks/|\\.mergify\\.yml$|\\.claude/|AGENTS\\.md$|CLAUDE\\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))",
      {
       "or": [
        "check-success = xfa-engine",
@@ -197,8 +209,29 @@
     "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
    },
+   "pipeline": {
+    "batch_size": 2,
+    "batch_max_failure_resolution_attempts": 2,
+    "queue_conditions_required": [
+     "base = main",
+     "-draft",
+     "label = review: approved",
+     "check-success = ci",
+     "-label=records",
+     "-files ~= ^(?!(\\.github/|\\.githooks/|\\.mergify\\.yml$|\\.claude/|AGENTS\\.md$|CLAUDE\\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))",
+     {
+      "or": [
+       "check-success = xfa-engine",
+       "-files ~= ^(packages/xfa-engine/|tsconfig\\.base\\.json$|\\.nvmrc$|\\.github/workflows/xfa-engine\\.yml$)"
+      ]
+     }
+    ],
+    "merge_conditions_required": ["check-success = ci"],
+    "merge_method": "merge"
+   },
    "records": {
-    "batch_size": 6,
+    "batch_size": 2,
+    "batch_max_failure_resolution_attempts": 2,
     "queue_conditions_required": ["base = main", "-draft", "label = review: approved", "check-success = ci", "label = records"],
     "merge_conditions_required": ["check-success = ci"],
     "merge_method": "merge"
