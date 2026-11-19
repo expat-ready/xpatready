@@ -406,3 +406,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     * R1.65: CS-D1-1 not started.
     * CS-C1r: its #2307 trigger is reported but it waits for its wave.
   * The "Open a case?" screen row is in Lead 96's next records PR.
+* 00:44 IST 20 Nov: **Current Lead is now Lead 97 (local_d04f3736)**, per Lead 96. Triggers and questions go there. Re-sent to Lead 97 the open ask: start a fresh Opus lane for QA-520 (brief `build-lead-c-briefs/QA-520.md`).
