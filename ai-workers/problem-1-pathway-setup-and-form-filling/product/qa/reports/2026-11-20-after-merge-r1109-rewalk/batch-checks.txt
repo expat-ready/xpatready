@@ -1,0 +1,18 @@
+# Run identities, read from the GitHub API by qa 7 on 20 Nov 02:04 IST
+run 44608469689 workflow=walks event=workflow_dispatch head_sha=6f6efac88d66d09a554c1a305caf882eb1dfba2f branch=main conclusion=success
+run 44608482750 workflow=walks event=workflow_dispatch head_sha=6f6efac88d66d09a554c1a305caf882eb1dfba2f branch=main conclusion=success
+run 44601627608 workflow=ci event=pull_request head_sha=eabe462db6250affd06f6c6bd9141d3e0f9c5735 branch=mergify/merge-queue/73ef6025ef conclusion=success
+run 44608189537 workflow=item-proof · 6f6efac88d66d09a554c1a305caf882eb1dfba2f event=push head_sha=6f6efac88d66d09a554c1a305caf882eb1dfba2f branch=main conclusion=success
+(44608189537 is item-proof on 6f6efac88: detect only, prove and report skipped, as #2315 has no Completes line.)
+
+Tree (git, qa 7): batch #2371 head eabe462db's studio tree 9a14d742b differs from main 6f6efac88's 8bc206112 only by tests/journeys/j_41.ts (+156). Main later moved to b2f0c23b1 (#2341: tests/check_csnk1_name_key.ts only); no complaints file changed.
+
+Walk jobs (GitHub API):
+  run 44608469689 job 135858386087 plan success 6f6efac88
+  run 44608469689 job 135859331686 walk j_0_throws (self-test, fails on purpose) success 6f6efac88
+  run 44608469689 job 135859331786 walk j_0_fails (self-test, fails on purpose) success 6f6efac88
+  run 44608469689 job 135859331855 walk j_109 success 6f6efac88
+  run 44608482750 job 135858432573 plan success 6f6efac88
+  run 44608482750 job 135858755998 walk j_0_fails (self-test, fails on purpose) success 6f6efac88
+  run 44608482750 job 135858756047 walk j_0_throws (self-test, fails on purpose) success 6f6efac88
+  run 44608482750 job 135858756145 walk j_109 success 6f6efac88
