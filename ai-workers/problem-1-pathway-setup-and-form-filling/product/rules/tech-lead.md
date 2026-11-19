@@ -170,3 +170,4 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-668 | Engineering System v1 cards adopted as recommended: list in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
 | P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 | P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
+| P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
