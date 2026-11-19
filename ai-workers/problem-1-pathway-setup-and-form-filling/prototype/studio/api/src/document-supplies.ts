@@ -187,7 +187,7 @@ export async function withdrawApprovedSupplies(tx: Prisma.TransactionClient, act
   const note = `${c.decisionNote ? `Approved: ${c.decisionNote.replace(/\.$/, "")}. ` : ""}Withdrawn by ${actor.name}: ${why}`.slice(0, 300);
   const done = await tx.libraryChange.updateMany({ where: { id: c.id, status: "APPROVED" }, data: { status: "WITHDRAWN", decisionNote: note } });
   if (!done.count) throw problem(409, "Already decided", "Someone released or withdrew this at the same moment. Refresh to see it.");
-  await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "withdrawn", entity: "document type", entityKey: c.key, summary: `${actor.name} withdrew the approved change "${c.label ?? c.key}"; its facts went back to what they were. Why: ${why}`.slice(0, 600), detail: { change: c.id } } });
+  await new Audit(tx as never).log(c.workspaceId, actor.id, "withdrawn", "document type", c.key, `${actor.name} withdrew the approved change "${c.label ?? c.key}"; its facts went back to what they were. Why: ${why}`.slice(0, 600), { change: c.id });
 }
 
 /** B83 (breaker M2, review N3): a new field withdrawn comes out of every open change of a document's facts that names it.
@@ -220,7 +220,7 @@ export async function dropFactFromChanges(tx: Prisma.TransactionClient, actor: {
       : { label: `${document} · ${n ? `supplies ${n} fact${n === 1 ? "" : "s"}` : "supplies no fact"}, for every combination`.slice(0, 300), matches, decisionNote: `${earlier}${said}`.slice(0, 300), ...(wasApproved ? { status: "WAITING", decidedBy: null, decidedAt: null } : {}) } });
     const proposer = ACTORS.find((a) => a.id === c.proposedBy)?.name ?? "Another person";
     // QA-263: the activity line reaches every firm's staff, so it never carries the typed reason (the note above keeps it).
-    await tx.auditEvent.create({ data: { workspaceId, actor: actor.id, action: "withdrawn", entity: "document type", entityKey: c.key, summary: `The new field "${fieldName}" it named was withdrawn by ${actor.name} (the reason is on the change). It was taken out of ${proposer}'s change "${c.label ?? c.key}", which ${nothingLeft ? "has nothing left to do and ended" : wasApproved ? "waits for a second person again" : "still waits"}.`.slice(0, 600) } });
+    await new Audit(tx as never).log(workspaceId, actor.id, "withdrawn", "document type", c.key, `The new field "${fieldName}" it named was withdrawn by ${actor.name} (the reason is on the change). It was taken out of ${proposer}'s change "${c.label ?? c.key}", which ${nothingLeft ? "has nothing left to do and ended" : wasApproved ? "waits for a second person again" : "still waits"}.`.slice(0, 600));
     names.push(document);
   }
   return names;

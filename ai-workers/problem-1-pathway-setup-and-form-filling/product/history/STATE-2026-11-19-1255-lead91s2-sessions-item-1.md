@@ -1,0 +1,3 @@
+# STATE item 1 (sessions), word for word (moved by Lead 91, 19 Nov 12:44 IST; the 1255 in this file name is a slip, not a time)
+
+1. **Sessions (all local, started 11:4x-11:5x in the founder's typed turn):** Lead B (7) local_4c8f15c0 (Opus medium; worktree from lead-b-front-office, pushes there) · Build Lead C (2) local_563954a1 (Opus medium; pushes to claude/build-lead-c-647b40) · qa 6 local_e90212fe (R1.80, R1.77, R1.74, R1.8) · qa 7 local_b8461b25 (R1.4, R1.109, R1.28+R1.37, R1.19, R1.41, R1.48) · standbys Lead 91 local_d2a979e6, Lead 92 local_9e102072. Old account, may still push: AUTO-PROOF (#2233 draft), ALERT (#2234 draft), qa 4, qa 5, Enforcement checks 2 (#2207), money lane (paused), the item lanes in the two hand-over files.

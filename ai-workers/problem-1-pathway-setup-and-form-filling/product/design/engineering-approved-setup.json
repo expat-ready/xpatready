@@ -167,7 +167,7 @@
  },
  "mergify": {
   "path": ".mergify.yml",
-  "max_parallel_checks": 3,
+  "max_parallel_checks": 6,
   "mode": "parallel",
   "capacities_required": {"money": 1, "migrations": 1, "pipeline": 1},
   "barrier_files_required": ["**/package.json", "**/package-lock.json", ".nvmrc", "tsconfig.base.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/tsconfig.json", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/base.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/links.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/extension.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/schema/audit.prisma", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/prisma/migrations/migration_lock.toml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/main.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/core.ts", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/studio.ts"],
