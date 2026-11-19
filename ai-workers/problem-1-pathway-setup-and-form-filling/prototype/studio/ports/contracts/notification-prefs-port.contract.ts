@@ -27,10 +27,10 @@ export const notificationPrefsPortContract = defineContract("NotificationPrefsPo
   { name: "in-app off leaves email as it was", async run() {
     const h = await make(), s = await h.person(h.firmA, OWNER); await h.set(h.firmA, s, "NEEDS_YOU", { inApp: false, email: true });
     const got = await both(h.port, h.firmA, s, "NEEDS_YOU"); expect(got[0] === false && got[1] === true, "in-app off, email on", got); } },
-  { name: "a security email is allowed whatever the switches", async run() {
+  { name: "a security email is allowed whatever the switches (security in-app, which §3.3 does not define, is not)", async run() {
     const h = await make(), s = await h.person(h.firmA, READER);
     for (const g of NotificationGroup.options) if (h.rules.some((r) => r.group === g && r.whoSeesIt.kind === "everyone")) await h.set(h.firmA, s, g, { inApp: false, email: false });
-    expect(await h.port.allows(h.firmA, s, "SECURITY", "EMAIL"), "security email on"); } },
+    expect(await h.port.allows(h.firmA, s, "SECURITY", "EMAIL"), "security email on"); expect(!(await h.port.allows(h.firmA, s, "SECURITY", "IN_APP")), "security in-app off"); } },
   { name: "a group that cannot reach the person (§3.3: Team watch, Payments, Firm and connections for a Read only person) → false on both channels, even with a switch stored for it", async run() {
     const h = await make(), s = await h.person(h.firmA, READER);
     for (const g of ["TEAM_WATCH", "PAYMENTS", "FIRM_AND_CONNECTIONS"] as const) {

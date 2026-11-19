@@ -53,11 +53,13 @@ const call = async (method: string, token?: string, body?: unknown): Promise<Res
   const text = await r.text(); let b: any = text; try { b = JSON.parse(text); } catch { /* text */ }
   return { status: r.status, body: b };
 };
+/** A save made from the person's current view (STANDARDS §4: the version it was made from). */
+const save = async (token: string, groups: unknown[]) => call("PUT", token, { version: (await call("GET", token)).body.version, groups });
 const shown = (r: Res) => (r.body?.groups ?? []).map((g: any) => g.group).join(",");
 try {
   // ------------------------------------------------------------------------------------------------ DW7: the migration
   const before = all.filter((d) => d < NEW);
-  ok(`PF-18a DW7: the migration has its own stamp, later than every migration before it (P-600 (4), rows rev 16.7; newest before it: ${before.at(-1)})`, all.includes(NEW) && (before.at(-1) ?? "") < NEW && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && all.at(-1) === NEW, all.slice(-3));
+  ok(`PF-18a DW7: the migration has its own stamp, later than every migration before it (P-600 (4), rows rev 16.7; newest before it: ${before.at(-1)})`, all.includes(NEW) && (before.at(-1) ?? "") < NEW && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));   // review M1: never 'the newest', or the next row's migration turns this red
   const migText = readFileSync(join(MIG, NEW, "migration.sql"), "utf8");
   const fns = [...migText.replace(/--.*$/gm, "").matchAll(/CREATE (?:OR REPLACE )?FUNCTION\s+"?([a-z_0-9]+)/gi)].map((m) => m[1]);
   ok("PF-18a DW7: every function the migration creates carries the area prefix platform_notification_pref_ (rows rev 15.2)", fns.length === 1 && fns.every((f) => /^platform_notification_pref_/.test(f)), fns);
@@ -126,15 +128,31 @@ try {
   ok("PF-18a DW5 pass: security emails are shown on and not switchable", views.reader.body.security?.email === true && views.reader.body.security.switchable === false && /new sign-in, password change/.test(views.reader.body.security.label), views.reader.body.security);
   ok("PF-18a DW5 fail: no token → 401", (await call("GET")).status === 401 && (await call("PUT", undefined, { groups: [{ group: "MENTIONS", inApp: true, email: false }] })).status === 401);
 
-  const off = await call("PUT", officer.token, { groups: [{ group: "MENTIONS", inApp: true, email: false }] });
+  const off = await save(officer.token, [{ group: "MENTIONS", inApp: true, email: false }]);
   ok("PF-18a DW5 pass: a person turns email off for Mentions; the answer shows it saved, in-app still on", off.status === 200 && off.body.groups.find((g: any) => g.group === "MENTIONS")?.email === false && off.body.groups.find((g: any) => g.group === "MENTIONS").inApp === true && off.body.groups.find((g: any) => g.group === "MENTIONS").saved === true, off.body);
   ok("PF-18a DW5 pass: then allows(…, MENTIONS, EMAIL) is false and IN_APP still true; another group keeps its email", !(await prefs.allows(firmA, officer.id, "MENTIONS", "EMAIL")) && await prefs.allows(firmA, officer.id, "MENTIONS", "IN_APP") && await prefs.allows(firmA, officer.id, "NEEDS_YOU", "EMAIL"));
   ok("PF-18a DW5 fail: one person's switch never moves another's (the Owner's Mentions email stays on)", await prefs.allows(firmA, owner.id, "MENTIONS", "EMAIL"));
-  const allOff = await call("PUT", reader.token, { groups: GROUPS.slice(0, 5).map((g) => ({ group: g.group, inApp: false, email: false })) });
-  ok("PF-18a DW5 pass: a security email is allowed whatever the switches (every switch of the Read only person off)", allOff.status === 200 && await prefs.allows(firmA, reader.id, "SECURITY", "EMAIL") && !(await prefs.allows(firmA, reader.id, "NEEDS_YOU", "EMAIL")) && !(await prefs.allows(firmA, reader.id, "NEEDS_YOU", "IN_APP")));
+  const ownView = (await call("GET", owner.token)).body.groups.find((g: any) => g.group === "MENTIONS");
+  ok("PF-18a DW5 fail (review m3): a person's GET shows their own switches only, never another person's saved ones", ownView?.email === true && ownView.saved === false, ownView);
+  const tabA = (await call("GET", manager.token)).body, tabB = await save(manager.token, [{ group: "MENTIONS", inApp: true, email: false }]);
+  const stale = await call("PUT", manager.token, { version: tabA.version, groups: tabA.groups.map((g: any) => ({ group: g.group, inApp: g.inApp, email: g.email })) });
+  ok("PF-18a DW5 fail (break m1, review m5; STANDARDS §4): a save from a stale view (a second tab) → 409 with the current view; the newer save stays", tabB.status === 200 && stale.status === 409 && stale.body.current?.groups.find((g: any) => g.group === "MENTIONS")?.email === false && !(await prefs.allows(firmA, manager.id, "MENTIONS", "EMAIL")), [tabB.status, stale.status]);
+  ok("PF-18a DW5 fail: a save with no version → 400", (await call("PUT", manager.token, { groups: [{ group: "MENTIONS", inApp: true, email: true }] })).status === 400);
+  const ended = await person(firmA, ["ADMIN"]);
+  const hadFirm = await prefs.allows(firmA, ended.id, "FIRM_AND_CONNECTIONS", "IN_APP");
+  await db.platformRoleGrant.updateMany({ where: { staffId: ended.id }, data: { endedAt: new Date(), endedBy: "seed:pf18an" } });
+  ok("PF-18a DW5 fail (review m4): an ended role grant gives no group (an Admin whose grant ended gets no Firm and connections)", hadFirm && !(await prefs.allows(firmA, ended.id, "FIRM_AND_CONNECTIONS", "IN_APP")) && await prefs.allows(firmA, ended.id, "SECURITY", "EMAIL"));
+  const big = Array.from({ length: 1_500 }, () => ({ group: "NOPE", inApp: "x", email: "y", z: 1 })), t0 = Date.now();
+  const huge = await call("PUT", officer.token, { version: "x", groups: big });
+  ok("PF-18a fail (break M1): a body of 1,500 bad groups (under the test app's 100 kB limit; the app allows 5 MB) → 400 at once, with at most 20 problems listed (the size is checked before the items)", huge.status === 400 && huge.body.issues.length <= 20 && JSON.stringify(huge.body).length < 5_000 && Date.now() - t0 < 5_000, [huge.status, huge.body?.issues?.length, Date.now() - t0]);
+  const proto = await Promise.all([JSON.stringify({ version: "x", groups: [{ group: "MENTIONS", inApp: true, email: true }] }).replace("{", '{"__proto__":{"a":1},'), JSON.stringify({ version: "x", groups: [{ group: "MENTIONS", inApp: true, email: true }] }).replace('{"group"', '{"__proto__":{"a":1},"group"')]
+    .map(async (body) => (await fetch(`${BASE}/api/platform/me/notifications`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body })).status));
+  ok("PF-18a fail (break m2): a __proto__ field, in the body or in a group, is refused like any unknown field (400)", proto.every((st) => st === 400), proto);
+  const allOff = await save(reader.token, GROUPS.slice(0, 5).map((g) => ({ group: g.group, inApp: false, email: false })));
+  ok("PF-18a DW5 pass: a security email is allowed whatever the switches (every switch of the Read only person off); security in-app, undefined by §3.3, is not (break m3)", allOff.status === 200 && await prefs.allows(firmA, reader.id, "SECURITY", "EMAIL") && !(await prefs.allows(firmA, reader.id, "SECURITY", "IN_APP")) && !(await prefs.allows(firmA, reader.id, "NEEDS_YOU", "EMAIL")) && !(await prefs.allows(firmA, reader.id, "NEEDS_YOU", "IN_APP")));
   const countRows = () => sql(EMPTY, `select count(*) from platform_notification_preference where staff_id = '${officer.id}'`);
   const rowsBefore = countRows();
-  const notMine = await call("PUT", officer.token, { groups: [{ group: "MENTIONS", inApp: false, email: false }, { group: "TEAM_WATCH", inApp: true, email: true }] });
+  const notMine = await save(officer.token, [{ group: "MENTIONS", inApp: false, email: false }, { group: "TEAM_WATCH", inApp: true, email: true }]);
   ok("PF-18a DW5 fail: a person cannot set a group that cannot reach them (a Case Officer's Team watch) → 400, nothing written, not even the other group", notMine.status === 400 && notMine.body.detail === NOT_YOURS && countRows() === rowsBefore && await prefs.allows(firmA, officer.id, "MENTIONS", "IN_APP"), notMine.body);
   sql(EMPTY, `insert into platform_notification_preference (staff_id, firm_id, "group", in_app, email, updated_at) values ('${reader.id}', '${firmA}', 'TEAM_WATCH', true, true, now())`);
   ok("PF-18a DW5 fail (AG-16-10 test 6): a person without agent/case:assign gets nothing from Team watch, even with a row stored for it; the holder does", !(await prefs.allows(firmA, reader.id, "TEAM_WATCH", "IN_APP")) && !(await prefs.allows(firmA, reader.id, "TEAM_WATCH", "EMAIL")) && await prefs.allows(firmA, manager.id, "TEAM_WATCH", "EMAIL") && !shown(await call("GET", reader.token)).includes("TEAM_WATCH"));
@@ -144,19 +162,23 @@ try {
   const badRes = await Promise.all(bad.map((b) => call("PUT", officer.token, b)));
   ok("PF-18a DW5 fail: a security switch, an unknown group (a digest), no group, a non-boolean, a group twice, an unknown field or another person's id → 400, nothing written", badRes.every((r) => r.status === 400) && countRows() === rowsBefore, badRes.map((r) => r.status));
   // Own only: firm B's Owner saves; firm A's rows and allows() are untouched; asked as firm B, firm A's person gets nothing.
-  await call("PUT", ownerB.token, { groups: [{ group: "MENTIONS", inApp: false, email: false }] });
+  await save(ownerB.token, [{ group: "MENTIONS", inApp: false, email: false }]);
   ok("PF-18a DW5 fail (own only): firm B's save writes only its own person's row; asked as firm B, firm A's person is allowed nothing", sql(EMPTY, `select count(*) from platform_notification_preference where firm_id = '${firmB}'`) === "1" && await prefs.allows(firmA, owner.id, "MENTIONS", "IN_APP") && !(await prefs.allows(firmB, owner.id, "NEEDS_YOU", "IN_APP")));
   await db.platformStaff.update({ where: { id: admin.id }, data: { status: "DEACTIVATED" } });
   ok("PF-18a DW5 fail: a deactivated person is allowed nothing (security email included)", !(await prefs.allows(firmA, admin.id, "NEEDS_YOU", "IN_APP")) && !(await prefs.allows(firmA, admin.id, "SECURITY", "EMAIL")));
-  // The breaker's two parallel PUTs: they queue on the person; the end state is one of the two whole saves, never a mix.
-  const s1 = { groups: [{ group: "NEEDS_YOU", inApp: true, email: false }, { group: "MY_DEADLINES", inApp: true, email: false }] }, s2 = { groups: [{ group: "NEEDS_YOU", inApp: false, email: true }, { group: "MY_DEADLINES", inApp: false, email: true }] };
+  // The breaker's two parallel PUTs from one view: they queue on the person (the lock); the first wins whole, the second is 409 (its view is stale), never a
+  // mix, a deadlock or a 500. The two list the groups in opposite orders (review m2: without the lock this fails).
+  const g1 = [{ group: "NEEDS_YOU", inApp: true, email: false }, { group: "MY_DEADLINES", inApp: true, email: false }], g2 = [{ group: "MY_DEADLINES", inApp: false, email: true }, { group: "NEEDS_YOU", inApp: false, email: true }];
   let mixed = 0;
   for (let i = 0; i < 5; i++) {
-    const rs = await Promise.all([call("PUT", owner.token, s1), call("PUT", owner.token, s2)]);
+    await save(owner.token, [{ group: "NEEDS_YOU", inApp: true, email: true }, { group: "MY_DEADLINES", inApp: true, email: true }]);   // a third state: both saves change it
+    const v = (await call("GET", owner.token)).body.version;
+    const rs = await Promise.all([call("PUT", owner.token, { version: v, groups: g1 }), call("PUT", owner.token, { version: v, groups: g2 })]);
     const st = sql(EMPTY, `select string_agg("group" || '=' || (case when in_app then 't' else 'f' end) || '/' || (case when email then 't' else 'f' end), ',' order by "group") from platform_notification_preference where staff_id = '${owner.id}' and "group" in ('NEEDS_YOU', 'MY_DEADLINES')`);
-    if (!rs.every((r) => r.status === 200) || !["MY_DEADLINES=t/f,NEEDS_YOU=t/f", "MY_DEADLINES=f/t,NEEDS_YOU=f/t"].includes(st)) mixed++;
+    const won = rs.find((r) => r.status === 200), winner = won ? (won.body.groups.find((g: any) => g.group === "NEEDS_YOU").inApp ? "MY_DEADLINES=t/f,NEEDS_YOU=t/f" : "MY_DEADLINES=f/t,NEEDS_YOU=f/t") : "";
+    if (rs.map((r) => r.status).sort().join() !== "200,409" || st !== winner) mixed++;
   }
-  ok("PF-18a DW5 pass (breaker): two saves at once, five times, each end as one whole save (both 200, never half of each)", mixed === 0, mixed);
+  ok("PF-18a DW5 pass (breaker, review m2): two saves at once from one view, five times: one 200 whole, one 409, never half of each", mixed === 0, mixed);
   let outside = ""; try { await withFirm(firmB, () => prefs.allows(firmA, owner.id, "NEEDS_YOU", "IN_APP")); } catch (e) { outside = String((e as Error).message); }
   ok("PF-18a fail: the adapter asked for firm A under firm B's scope refuses (never a silent no that drops notices); in firm A's own scope it answers", /not readable here/.test(outside) && (await withFirm(firmA, () => prefs.allows(firmA, owner.id, "MENTIONS", "IN_APP"))) === true, outside);
   ok("PF-18a fail: an unknown group or channel is a programming error (throws), not a quiet false", await prefs.allows(firmA, owner.id, "DIGEST" as never, "EMAIL").then(() => false, () => true) && await prefs.allows(firmA, owner.id, "MENTIONS", "SMS" as never).then(() => false, () => true));

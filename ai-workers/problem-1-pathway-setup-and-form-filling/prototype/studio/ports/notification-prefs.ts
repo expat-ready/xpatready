@@ -6,7 +6,11 @@
 //   * a group that cannot reach the person (its "who sees it" rule, §3.3) → false on both channels: they see nothing of it;
 //   * a group the person never switched → its §3.3 default (data: samples/notification-groups.json, read by the platform);
 //   * one switch never moves the other: email off leaves in-app as it was;
-//   * a security email (new sign-in, password change) → true whatever any switch (§3.3: always on, no switch);
+//   * a security email (new sign-in, password change) → true on EMAIL whatever any switch (§3.3: always on, no switch); SECURITY on IN_APP
+//     is not defined by §3.3 → false (break m3);
+//   * the answer is the group's switch only: within Payments (group 7) the items §3.3 marks in-app only (payment received, invoice sent,
+//     refund, dunning escalation) never send an email whatever `allows(…, "PAYMENTS", "EMAIL")` says. That item rule is the sender's (PF-18n;
+//     samples/notification-groups.json `emailNeverItems`);
 //   * a person who is not this firm's active staff member → false (nothing is sent to someone outside the firm).
 // This folder imports only zod and its own files.
 import { z } from "zod";
@@ -14,7 +18,7 @@ import { NotificationGroup } from "./notifications.ts";
 export { NotificationGroup };
 export const NotificationChannel = z.enum(["IN_APP", "EMAIL"]);
 export type NotificationChannel = z.infer<typeof NotificationChannel>;
-/** Not a group: security emails are always on (AG-16 §3.3). `allows(…, SECURITY, "EMAIL")` is always true for a firm's person. */
+/** Not a group: security emails are always on (AG-16 §3.3). `allows(…, SECURITY, "EMAIL")` is always true for a firm's active person; on IN_APP false. */
 export const SECURITY = "SECURITY" as const;
 export type PrefGroup = NotificationGroup | typeof SECURITY;
 /** Who a group can reach (§3.3 "Who sees it"): everyone, holders of one permission key, or people holding one of these roles. */
@@ -45,7 +49,7 @@ export function checkRules(rules: readonly GroupRule[]): readonly GroupRule[] {
 /** The decision itself, shared by every adapter: the person (null: not this firm's active staff), the rule, their stored switches (null: never set). */
 export function decide(rules: readonly GroupRule[], person: Holder | null, group: PrefGroup, channel: NotificationChannel, stored: Switches | null): boolean {
   if (person === null) return false;
-  if (group === SECURITY) return true;
+  if (group === SECURITY) return channel === "EMAIL";
   const rule = rules.find((r) => r.group === group);
   if (!rule || !reaches(rule.whoSeesIt, person)) return false;
   const s = stored ?? rule.defaults;
