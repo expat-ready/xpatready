@@ -1,7 +1,7 @@
 // PF-21j (QA-517, Major; J-109 breaker M1; map row 109; brief product/design/lead-b-briefs/PF-21j.md, Lead B 19 Nov):
 // only a person who may record complaints (agent/complaint:record) can handle one. Before, canAct trusted the handler
 // whatever their keys and handlers() offered every active staff member, so a Read-only person made handler could
-// acknowledge and close. Named cases H1-H5 (H5: the reminder, break M2), each with a passing and a failing case; each failing case fails on the code
+// acknowledge and close. Named cases H1-H6 (H5: the reminder, break M2; H6: the screen's rule, break M1), each with a passing and a failing case; each failing case fails on the code
 // before PF-21j (the two checks it adds: the handler list and handler setting; the record key on acting).
 // One scratch database (every migration, PF-3's Sample seed) and a Nest app built from the feature's own classes behind
 // PF-4's guard (as PF-21w's suite does), the audit port real, the job runner a recorder. Keys are read from a person's
@@ -39,6 +39,7 @@ const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
 const { PlatformJobs } = await import("../api/src/platform/jobs/platform-jobs.ts");
 const feature = (await import("../api/src/features/platform-complaints.ts")).default;
 const { ComplaintsService } = await import("../api/src/platform/complaints/complaints.ts");
+const { canAct: screenCanAct, KEY: SCREEN_KEY } = await import("../web/src/modules/platform/complaints/contract.ts");
 const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
 const { fakeMail } = await import("../ports/mail.ts");
 
@@ -144,6 +145,17 @@ try {
   await db.platformRoleGrant.create({ data: { firmId: firm, staffId: lost.id, role: "READ_ONLY", grantedBy: "seed:pf21j" } });
   const unkeyed = await sentTo(lostOnes);
   ok("PF-21j H5 fail: a handler made Read-only is not the one reminded; the firm's Owners and Admins are", unkeyed.run === "sent" && unkeyed.sentTo === "owners_admins", unkeyed);
+
+  // ----------------------------------------------------------------------------------------------------------- H6
+  // Break M1: the complaint page decides what to offer with the same rule as the server (web contract.ts canAct), so a
+  // handler who lost the record key sees the read-only line, not "Needs you" and the actions.
+  const me = (staffId: string, keys: string[]) => ({ staffId, keys }) as unknown as Parameters<typeof screenCanAct>[0];
+  const theComplaint = { handlerStaffId: demoted.id };
+  ok("PF-21j H6 pass: the screen offers actions to a handler holding the record key, and to someone with both keys",
+    screenCanAct(me(demoted.id, [SCREEN_KEY.record]), theComplaint) && screenCanAct(me(owner.id, [SCREEN_KEY.record, SCREEN_KEY.read]), theComplaint));
+  ok("PF-21j H6 fail: the screen offers no action to a handler without the record key (a Read-only person, or the read key alone)",
+    !screenCanAct(me(demoted.id, []), theComplaint) && !screenCanAct(me(demoted.id, [SCREEN_KEY.read]), theComplaint));
+  ok("PF-21j H6 fail: nor to someone with the record key alone who is not the handler", !screenCanAct(me(manager.id, [SCREEN_KEY.record]), theComplaint));
 } finally {
   await app?.close().catch(() => undefined);
   await db.$disconnect();
