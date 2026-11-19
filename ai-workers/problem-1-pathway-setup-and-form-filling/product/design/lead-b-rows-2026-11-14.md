@@ -2029,3 +2029,5 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
 * **Relabelled by Lead 84:** #2130 be291544f, #2029 268b0867d (sent), #1959 c2d231333, #2012 208c1eb59 (a2b89df34's prisma change is only the doc comment naming the stamp) and #2103 c1607c3a6.
 * **Correction (Lead 84):** #2103's c1607c3a6 also carries the held fix: `BookingTypesService.get` returns each host's set, read under firmScope. The head's Approve covers it.
 * Waiting: #2102 and #1961.
+* **Stamp clash, my error:** `20261118230000` (given to #1961) was already held by #2167 CS-K1 part 1. My check covered only PRs titled "migration". **#1961 now takes `20261119003000_pf19p_platform_account_mail`** (comment 6995770907), checked against every open PR's migration folders. Lesson: check stamps across **all** open PRs' files, never by title.
+* Not mine to rule: #2000 and #2158 both hold `20261119000000`; reported to Lead 84. #2102 is relabelled at 55da436f3.
