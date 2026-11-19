@@ -117,3 +117,8 @@ The breaker's report is in the session scratchpad; it will be copied here with t
 ## Before the PR: FO-7lk (#2175) merged (02:25 UTC 19 Nov)
 * `origin/main` is merged in (P-270). The stamp `20261118220000_fo7ts_ledgers` is already later than `main`'s newest, `20261118210000_fo7lk_trust_lock` (P-600).
 * Checks on the merge: `check_fo7ts_money_settings.ts` 107/0, `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0.
+
+## queue-fresh re-merge (P-721), 19 Nov ~07:2x UTC
+* `queue-fresh` failed on 7ea0132d because `main` merged #2103, which has a migration, after `ci` started. Merged `origin/main` once.
+* `main` now has two migrations stamped after this row: `20261118230000_csk1_case_client` and `20261119031000_fo3a_hour_sets`. The tech lead asked for no re-stamp (Lead 91, P-423 read: this row's `money_trust_entry_write` is the last text applied). Neither migration mentions money, invoices or trust.
+* Checks on the merge: `check_fo7ts_money_settings.ts` 107/0, `check_fo7lk_lock_order.ts` 16/0, `check_fo7a2_ledger_rules.ts` 35/0, `check_fo7a_money_schema.ts` 122/0, `check_fo7mv_move_list.ts` 45/0, `check_prisma_schema.ts` 8/0.
