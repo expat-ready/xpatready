@@ -11,7 +11,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DB, PORT, call, sendFile, fillEverything, firms, generateCopy, inDays, itemsOf, needVisitorVisa, openCase, prepare, readyToFile, sql, yearsAgo, type Prepare } from "../../acceptance/lib/m3.ts";
+import { DB, PORT, answer, call, confirmAll, sendFile, fillEverything, firms, generateCopy, inDays, itemsOf, needVisitorVisa, openCase, prepare, readyToFile, sql, yearsAgo, type Prepare } from "../../acceptance/lib/m3.ts";
 import { textPdf } from "../../acceptance/lib/fixtures.ts";
 import { recorder } from "../runtime/api.ts";
 
@@ -63,7 +63,9 @@ for (const [label, bytes, name] of DAMAGED) {
   ok(`QA-520 fail: the signed-scan door refuses ${label} (400) in PF-F4's words, nothing stored (no row, no file, no audit line)`, u.status === 400 && pf4(detail(u)) && JSON.stringify(before) === JSON.stringify(after), { status: u.status, detail: detail(u), before, after });
 }
 for (const [kind, bytes, name, media] of GOOD) {
-  if (kind !== "PDF") copy = await printAndSign();   // a scan marks "scan received": print again for the next one (the steps restart)
+  // A scan marks "scan received": the steps restart only when a fact changed since the copy printed (B132, as
+  // check_c81_signing_api.ts B130), so change one, have it confirmed, and print and sign a new copy for the next scan.
+  if (kind !== "PDF") { await answer(c.id, P, "person.family_name", `SAMPLEQ${kind}`, officer); await confirmAll(c.id, P); copy = await printAndSign(); }
   const before = scanned(), u = await scan(bytes, name), after = scanned();
   ok(`QA-520 pass: a whole ${kind} is still stored at the signed-scan door (201): one more row, file and audit line, its type from its bytes`,
     u.status === 201 && Number(after.rows) === Number(before.rows) + 1 && after.files === before.files + 1 && Number(after.audit) === Number(before.audit) + 1
@@ -91,4 +93,4 @@ for (const [kind, bytes, name, media] of GOOD) {
     u.status === 200 && Number(after.rows) === Number(before.rows) + 1 && after.files === before.files + 1 && Number(after.audit) === Number(before.audit) + 1
       && sql(`select media_type from fee_receipt_file where case_id='${c.id}' order by uploaded_at desc limit 1`) === media, { status: u.status, detail: detail(u), before, after });
 }
-summary();
+process.exitCode = summary() ? 1 : 0; // a FAIL fails the run (qa's copy ended with summary() alone, exit 0)
