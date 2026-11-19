@@ -34,7 +34,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime F
   * `front-office/duplicates/phone.ts` normalises with `libphonenumber-js`.
 * **What is left (rev 17.21 ruling):**
   * a **staff edit** of a person's phone **refuses an impossible number**: 422 with `fields: { phone: "This is not a phone number we can read. Add the country code, for example +1 416 555 0100." }`;
-  * a valid number **keeps its country** (stored as E.164 beside what was typed) and clears "Fix number".
+  * a valid number **keeps its country** (stored as E.164 in `phone`, replacing what was typed; a number that would lose a digit or an extension is refused. Corrected 16:12 IST on #2268: no `phone_typed` column, since nothing reads the typed text back) and clears "Fix number".
 * **The route:** `PATCH /api/front-office/people/:personId` with `{ phone }` only in this part (key `agent/prospect:edit`, own or all as FO-2v). It is audited with ids only, never the number (PF-23).
 * **The screen:** the lead page's Phone row gets an edit control. Fix number opens it.
 * **The J-test (J-33) in this PR:**
