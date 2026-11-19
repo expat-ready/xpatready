@@ -18,7 +18,7 @@ import { caseName, MINOR } from "../../contracts/runtime.ts";
 import { KeepPrivate, LINK_RULES, LINK_WORDS, LinkCode, LinkToken, SendLink, TakeBack, type LinkOpened, type LinkSession, type PeoplePrivacy, type PersonLinkState, type PersonPrivacy } from "../../contracts/person-link.ts";
 import { caseView, OWN_LINK } from "../../engine/runtime/case.ts";
 import { adultCheck, codeCheck, deadWords, ownerOf, linkState, maskAddress, normalAddress, normalCode, officerWords, overLimit, principalLinkWords, progressOf, resendKind, sendRefusal, serverTries, wrongWords, type LinkRow } from "../../engine/runtime/privacy.ts";
-import { actorOf, CaseRead, Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS, Workspace, type Actor } from "./core.ts";
 import { Runtime, type Reached, type Writer } from "./runtime.ts";
 
 type H = string | undefined;
@@ -42,7 +42,7 @@ const problem = (status: number, title: string, detail: string, extra: Record<st
 const fieldError = (field: string, message: string): never => problem(400, "Some details need fixing", message, { errors: [{ field, message }] });
 /** An audit line in the same transaction as the change it records (B145 lesson). */
 const audit = (tx: Tx, workspaceId: string, actor: string, action: string, entityKey: string, summary: string) =>
-  tx.auditEvent.create({ data: { workspaceId, actor, action, entity: "person link", entityKey, summary: summary.slice(0, 600) } });
+  new Audit(tx as never).log(workspaceId, actor, action, "person link", entityKey, summary.slice(0, 600));
 
 /** A transaction that waits at most 5 s for a row lock; a wait that runs out, or two writes at the same moment, is a 409
  *  in words, never a bare 500 (B145 lesson). */
