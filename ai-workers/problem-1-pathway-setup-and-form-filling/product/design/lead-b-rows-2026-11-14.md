@@ -2041,3 +2041,7 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * Not assigned: #2102's lane (FO-3a 2b waits on FO-3vr); PF-19r part 2 (Build Lead C's).
   * P-712: no hand edits to shared module-card lines in new work.
 * Flag to Lead 84: FO-2 part 4 has four open PRs on the same sales files (#2181 queued, #2185, #2187, #2188).
+
+## Rev 17.39 (19 Nov 06:45 IST)
+* **FO-2 part 3b** (`lead-b-briefs/FO-2p3b.md`), shaped on Lead 84's QA-511 ruling (#2189): the real `ArrivalPort` adapter over `sales/arrival.ts`'s `arrive()` (door BOOKING; no consent → no consent row), bound in `booking/runtime-ports.ts` in place of `fakeArrival()`, with a contract test on the fake and the adapter. No schema change, about 350 lines. R1.28 stays Partial until it merges.
+* Noted from Lead 84: #2185, #2187 and #2188 are Mergify's batch PRs, not duplicates. FO-4 part 2a is on #2011's lane and FO-3st3 on #2103's lane.
