@@ -85,9 +85,9 @@ try {
   for (const db of [BARE, FULL]) { spawnSync(bin("dropdb"), [...PG, "--if-exists", "--force", db], { stdio: "ignore" }); execFileSync(bin("createdb"), [...PG, db]); }
   for (const d of all.filter((d) => d < NEW)) psql(BARE, ["-f", join(MIG, d, "migration.sql")]);
   for (const d of all) psql(FULL, ["-f", join(MIG, d, "migration.sql")]);
-  // Its own stamp; never "the newest", or the next row's migration turns this red (#2304's
-  // batch, 19 Nov; P-600 (4), as check_pf18a_offices.ts). BARE above stops before NEW whatever comes after it.
-  ok("setup: this row's migration has its own stamp (no other migration shares it)", all.includes(NEW) && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-2));
+  // Lead 96, 19 Nov: was "the newest on the branch", which failed as soon as any later migration landed (P-600 gives
+  // every later row a later stamp); the folder only has to exist, and FULL above applies every folder in order.
+  ok("setup: this row's migration is on the branch", all.includes(NEW), all.slice(-2));
   for (const db of [BARE, FULL]) sql(db, `insert into workspace (id, key, label) values (gen_random_uuid(), 'csnk1', 'CS-NK1 check (Sample)')`);
   const full = new pg.Client({ connectionString: urlOf(FULL) }), bare = new pg.Client({ connectionString: urlOf(BARE) });
   await full.connect(); await bare.connect();
