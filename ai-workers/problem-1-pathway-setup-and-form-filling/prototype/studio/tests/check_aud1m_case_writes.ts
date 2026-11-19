@@ -92,9 +92,11 @@ try {
   const COMBO = "0b0b0b0b-0000-4000-8000-00000000c0b0";
   let cases = 0;
   // A bare case row (the check needs only its id and workspace): the scratch database's own superuser inserts it with
-  // foreign keys off for that one transaction (no combination or release behind it).
+  // foreign keys and triggers off for that one transaction (no combination, release or client behind it).
+  const CLIENT = "0c0c0c0c-0000-4000-8000-00000000c11e";
   const newCase = (id: string, workspaceId = ws) => db.$transaction([db.$executeRawUnsafe("SET LOCAL session_replication_role = replica"),
-    db.case.create({ data: { id, workspaceId, combinationId: COMBO, caseNumber: `C-2026-${String(++cases).padStart(5, "0")}`, clientActorId: "user-P", createdBy: "user-O" } as never })]);
+    db.$executeRawUnsafe(`INSERT INTO runtime_case (id, workspace_id, combination_id, case_number, client_actor_id, created_by, client_id) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'user-P', 'user-O', $5::uuid)`,
+      id, workspaceId, COMBO, `C-2026-${String(++cases).padStart(5, "0")}`, CLIENT)]);
   await newCase(CASE); await newCase(TWIN_A); await newCase(TWIN_B); await newCase(ELSEWHERE, ws2);
   await audit.log(ws, "user-O", "opened", "case", CASE, `Case officer opened case ${CASE.slice(0, 8)}`);
   await audit.log(ws, "user-O", "answered", "case fact", "person.name", `Case officer answered person.name on case ${CASE.slice(0, 8)} (Agent view)`);
