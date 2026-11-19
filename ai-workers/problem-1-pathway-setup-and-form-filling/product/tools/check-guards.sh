@@ -33,6 +33,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 9 guardq|../../.github/workflows/label-guard.yml|/review: approved.) .. (github.event.action/s/ .. github.event.label.name == .queued.)"/)"/|check-label-guard.sh
 9 batch|../../.github/workflows/label-guard.yml|s/types: \[synchronize, labeled, opened\]/types: [synchronize, labeled]/|check-label-sweep.sh
 9 ci|../../.github/workflows/label-guard.yml|/    workflows: \[ci\]/d|check-label-sweep.sh
+9 reviewers|../../.github/workflows/label-guard.yml|/          REVIEWERS: \${{ vars.REVIEWERS }}/d|check-label-sweep.sh
 9 dispatch|../../.github/workflows/label-guard.yml|s/ github.event_name == .workflow_dispatch. ..//|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11|product/tools/push-guard.sh|s/^\( *\)\[ "\$h" = "\$want" \] \(..\)/\1true \2/|check-push-guard-fixtures.sh
@@ -68,7 +69,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 ci|product/tools/queue-gate.sh|s/^  ci; \[ "\$ci_state" = success \]/  ci; true/|check-queue-gate.sh
 15 fresh|product/tools/queue-gate.sh|s/^  \[ -n "\$hit" \]/  false/|check-queue-gate.sh
 15 queued|product/tools/queue-gate.sh|s/^  has queued .. /  false \&\& /|check-queue-gate.sh
-15 sweep|product/tools/label-sweep.sh|s/^  if \[ "\$e" = 0 \] .. PR=/  if false \&\& PR=/|check-label-sweep.sh
+15 sweep|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 0 \]; then echo/    if false; then echo/|check-label-sweep.sh
 15 queue|../../.mergify.yml|/check-success = queue-fresh/d|check-queue-gate.sh
 15 pending|product/tools/queue-gate.sh|s/^  has "\$LABEL" .. \[ "\${LABELLING:-}" = 1 \]/  true/|check-queue-gate.sh
 15 order|product/tools/queue-gate.sh|s/^  LABELLING=1 fresh .. return 2; did_fresh=1/  did_fresh=0/|check-queue-gate.sh
@@ -91,7 +92,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full reclabel|product/tools/queue-gate.sh|s/^records() { has records \&\& /records() { /|check-queue-gate.sh
 15 full recfiles|product/tools/queue-gate.sh|s/^records() { has records \&\& .*/records() { has records; }/|check-queue-gate.sh
 15 full unread|product/tools/queue-gate.sh|s/ \[ "\${full_state:-}" = unread \] \&\& exit 3; exit 1;;/ exit 1;;/|check-queue-gate.sh
-15 full sweep3|product/tools/label-sweep.sh|s/^  if \[ "\$g" = 3 \]; then/  if false; then/|check-label-sweep.sh
+15 full sweep3|product/tools/label-sweep.sh|s/^    if \[ "\$g" = 3 \]; then/    if false; then/|check-label-sweep.sh
 15 full fromwho|product/tools/queue-gate.sh|s/\('\[.\[\] . \)select(.user.login as \$l . \$who . index(\$l)) . \(select(.author_association == "OWNER"\)/\1\2/|check-queue-gate.sh
 15 full nottested|../../.github/workflows/ci.yml|s/, FULL_PR: "\${{ inputs.pr }}", GATE_B_NOT_TESTED: "[^"]*" }/, FULL_PR: "${{ inputs.pr }}" }/|check-queue-gate.sh
 15 batch only|product/tools/queue-gate.sh|s/(map(select(. != "ci")) . if length > 0 then . else empty end) \/\/ ./map(select(. != "ci"))/|check-queue-gate.sh
@@ -148,7 +149,14 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 25 new|product/tools/pipeline-heartbeat.py|s/            if not o:/            if False:/|check-pipeline-heartbeat.sh
 25 escalate|product/tools/pipeline-heartbeat.py|s/            elif not esc and mins(first, now) > hb\["escalate_after_min"\]:/            elif False:/|check-pipeline-heartbeat.sh
 25 carry|product/tools/pipeline-heartbeat.py|s/    state = dict(p.get("alarm_state") or {})/    state = {}/|check-pipeline-heartbeat.sh
-25 pages|product/tools/pipeline-heartbeat.py|s/        if old or not page\["pageInfo"\]\["hasNextPage"\]:/        if True:/|check-pipeline-heartbeat.sh'
+25 pages|product/tools/pipeline-heartbeat.py|s/        if old or not page\["pageInfo"\]\["hasNextPage"\]:/        if True:/|check-pipeline-heartbeat.sh
+25 parked|product/tools/pipeline-heartbeat.py|s/        if p\["number"\] in away:   # parked: listed below, never a stalled lane/        if False:/|check-pipeline-heartbeat.sh
+25 expired|product/tools/pipeline-heartbeat.py|s/^    if expired:/    if False:/|check-pipeline-heartbeat.sh
+25 resume|product/tools/pipeline-heartbeat.py|s/^    if now.astimezone(IST).date() > day:/    if False:/|check-pipeline-heartbeat.sh
+25 parkread|product/tools/pipeline-heartbeat.py|s/        if hb.get("parked_label", "parked") in p\["labels"\]:/        if False:/|check-pipeline-heartbeat.sh
+25 parkpage|product/tools/pipeline-heartbeat.py|s/^                if len(cs) < 100:/                if True:/|check-pipeline-heartbeat.sh
+25 trusted|product/tools/pipeline-heartbeat.py|s/ if c.get("author_association") in TRUSTED\]/]/|check-pipeline-heartbeat.sh
+25 istdate|product/tools/pipeline-heartbeat.py|s/    posted = t(c\["created_at"\]).astimezone(IST).date()/    posted = t(c["created_at"]).date()/|check-pipeline-heartbeat.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
