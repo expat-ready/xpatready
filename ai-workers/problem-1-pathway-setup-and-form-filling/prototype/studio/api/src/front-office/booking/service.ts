@@ -450,7 +450,7 @@ export class BookingService {
    *  prospect of theirs the viewer owns (AG-2-64 rule 2 c); not linked yet (no person, or a person with neither), the
    *  unassigned-lead rule (rule 3). `narrow` is the caller's own window, so the rule is worked out in SQL over those rows
    *  only and never after a read or a page cap. */
-  async seenWhere(ctx: StaffContext, narrow: Prisma.Sql): Promise<{ id?: { in: string[] } }> {
+  private async seenWhere(ctx: StaffContext, narrow: Prisma.Sql): Promise<{ id?: { in: string[] } }> {
     const vis = await visibilityOf(this.db, ctx);
     if (vis.seesAll) return {};
     const me = ctx.staffId, su = vis.seesUnassigned;
@@ -839,6 +839,7 @@ export class BookingService {
 
   private selfServiceOpen(b: BookingRow, type: TypeRow) { return this.ports.clock.now().getTime() < b.startsAt.getTime() - type.selfServiceLimitMinutes * MIN; }
 
+  /** Also the feed's one-booking read (FO-3a part 2b). */
   async staffBooking(ctx: StaffContext, bookingId: string) {
     if (!UUID.test(bookingId)) return notInFirm("booking");
     const b = await this.db.foBooking.findFirst({ where: firmScope(ctx.firmId, { id: bookingId }) });
