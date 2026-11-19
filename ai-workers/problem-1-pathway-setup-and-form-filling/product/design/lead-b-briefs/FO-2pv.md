@@ -26,7 +26,7 @@ Written 19 Nov 20:56 IST by Lead B (7). **Model: Opus 5.5, effort: medium.**
 Also: J-31 sets the values through the screen and passes; qa's `check_r131_gate_a_value.ts` passes; keyboard only, axe-core, and 375, 1024 and 1440 px.
 
 ## Touch list
-`api/src/front-office/sales/prospects.ts` (or a new `sales/prospect-edit.ts`) and its route line, the prospect page's Value row under `web/src/modules/front-office/sales/`, `tests/check_fo2pv_prospect_value.ts`, `tests/journeys/j_31.ts` (its totals step), and `MODULE.rows/FO-2pv.md`. No migration (the columns exist). Under 800 lines.
+a **new** `api/src/front-office/sales/prospect-edit.ts` and its route line (not `prospects.ts`: FO-2w edits that file in parallel), the prospect page's Value row under `web/src/modules/front-office/sales/`, `tests/check_fo2pv_prospect_value.ts`, `tests/journeys/j_31.ts` (its totals step), and `MODULE.rows/FO-2pv.md`. No migration (the columns exist). Under 800 lines.
 
 ## Lane
 R1.30+R1.31's lane (FO-4 part 2a), one PR, through Proven (P-719). qa 9 re-proves R1.31.
