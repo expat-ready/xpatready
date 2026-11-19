@@ -39,7 +39,6 @@ import { openingStages } from "../../engine/runtime/stages.ts";
 import { routeOf, routesOf, writeOpeningStages } from "./routes-data.ts";
 import { groupOfCombination, PgCaseCount } from "./case-count.ts"; // CS-C1b
 import type { EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
-import type { Prisma } from "@prisma/client";
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
