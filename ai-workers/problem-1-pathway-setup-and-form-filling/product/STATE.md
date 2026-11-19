@@ -2,7 +2,7 @@
 
 current_lead: local_98ab55d2-14dd-45cb-90d8-3bd03b26ec61 Lead 95 · 19 Nov 20:25 IST (series 2; new account, P-725; took over from Lead 94 (series 2, local_8d88d9c8) at 475k, P-446)
 
-updated: 2026-11-19 20:55 IST: Lead 95 check 1 (20:5x): #2306 queued (main red until it lands; hand merge refused by the classifier, asked the founder); #2029, #2101, #2249 labelled; #2304 migration read OK; #1961 must re-stamp after 20261119081500 (PR comment); #2296 Changes needed (qa check too loose); disk 5 GB; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 12 of 101 · rules: **`RULES.md`** (as of **P-740**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-19 20:55 IST: Lead 95 check 1 (20:5x): #2306 queued (main red until it lands; hand merge refused by the classifier, asked the founder); #2029, #2101, #2249 labelled; #2304 migration read OK; #1961 must re-stamp after 20261119081500; #2296 Changes needed; disk 5 GB; earlier updated line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1124-lead87s2-updated-line.md` · milestone: Release 1 proven 12 of 101 · rules: **`RULES.md`** (as of **P-740**) · this branch: `lead/2026-11-07-lead31`
 
 
 
