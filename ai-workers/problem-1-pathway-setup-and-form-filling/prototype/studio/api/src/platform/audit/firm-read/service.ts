@@ -6,11 +6,11 @@
 // query, 50 lines a page, at most 100,000 lines an export, two exports reading the database at once.
 import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream, type ReadStream } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { Db } from "../../../core.ts";
 import { firmScope } from "../../firm-scope.ts";
@@ -21,6 +21,7 @@ import { csvRow } from "../csv.ts";
 import { ALL_PREFIXES, AREA_PREFIXES, AREAS, AuditActionNames, caseEntities, configEntities, prefixPattern, type AreaCode } from "./action-names.ts";
 import { CSV_HEADER, csvCells, renderLine, type People, type Row } from "./render.ts";
 
+export const EXPORT_DIR = "aud4-export-";
 export const PAGE = 50, EXPORT_MAX = 100_000, EXPORT_BATCH = 500, EXPORTS_AT_ONCE = 2, EXPORTS_WAITING = 8;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A moment as ISO 8601 with a zone, at most milliseconds (so the range checked is the range queried), or a date (UTC midnight). */
@@ -91,8 +92,17 @@ function decode(c: unknown): { at: string; id: string } | undefined {
 type Client = Pick<Prisma.TransactionClient, "$queryRaw">;
 
 @Injectable()
-export class FirmAuditLog {
+export class FirmAuditLog implements OnModuleInit {
   constructor(@Inject(Db) private readonly db: Db) {}
+
+  /** An export file left by a process that stopped mid-answer holds personal data: removed at start-up once over an hour old. */
+  async onModuleInit() {
+    for (const name of await readdir(tmpdir()).catch(() => [] as string[])) {
+      if (!name.startsWith(EXPORT_DIR)) continue;
+      const dir = join(tmpdir(), name), at = await stat(dir).then((x) => x.mtimeMs, () => Date.now());
+      if (Date.now() - at > 60 * 60_000) await rm(dir, { recursive: true, force: true });
+    }
+  }
 
   /** The where clause: the firm always first, then the range and the filters. */
   private async where(firmId: string, f: Filter): Promise<Prisma.Sql> {
@@ -157,11 +167,14 @@ export class FirmAuditLog {
    *  REPEATABLE READ snapshot: (1) count (over EXPORT_MAX: 413, no line); (2) write and commit one `audit.exported` line
    *  in its own short transaction (a failure: no file, P-607 (3)); (3) write the lines from the snapshot, which cannot see
    *  that line or anything later, to a private temporary file. Then the snapshot closes and the file is handed to the
-   *  route, which streams it and removes it. */
-  async exportCsv(actor: StaffContext, q: Q): Promise<{ rows: number; name: string; file: ReadStream; done: () => Promise<void> }> {
+   *  route, which streams it and removes it. A reader who leaves while waiting for a place stops it before anything is
+   *  written. */
+  async exportCsv(actor: StaffContext, q: Q, gone: () => boolean = () => false): Promise<{ rows: number; name: string; file: ReadStream; done: () => Promise<void> }> {
     const firmId = firmScope(actor.firmId).firmId, f = parseFilter(q);
     const release = await this.slot();
-    const dir = await mkdtemp(join(tmpdir(), "aud4-export-")), path = join(dir, "export.csv"), done = () => rm(dir, { recursive: true, force: true });
+    // A reader who left while waiting for a place gets nothing made and no line written.
+    if (gone()) { release(); problem(499, "Export cancelled", "The reader left before the export started. Nothing was exported.", { code: "EXPORT_CANCELLED" }); }
+    const dir = await mkdtemp(join(tmpdir(), EXPORT_DIR)), path = join(dir, "export.csv"), done = () => rm(dir, { recursive: true, force: true });
     try {
       const where = await this.where(firmId, f), people = await this.people(firmId), iso = (d: Date) => d.toISOString();
       const rows = await this.db.$transaction(async (tx) => {

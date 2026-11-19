@@ -20,7 +20,9 @@ export class FirmAuditController {
   @Get("audit/export") @PermissionKeys(AUDIT_READ)
   async export(@Req() r: R, @Query() q: Record<string, unknown>, @Res() res: Response) {
     let made: Awaited<ReturnType<FirmAuditLog["exportCsv"]>>;
-    try { made = await this.log.exportCsv(staffOf(r), q); } catch (e) {
+    let left = false; res.on("close", () => { if (!res.writableEnded) left = true; });
+    try { made = await this.log.exportCsv(staffOf(r), q, () => left); } catch (e) {
+      if (left) return;   // nobody to answer
       // The app's error filter rewords every 413 as an upload limit (main.ts); this export's own refusals keep their words.
       if (e instanceof HttpException && (e.getStatus() === 413 || e.getStatus() === 503)) return void res.status(e.getStatus()).type("application/problem+json").json(e.getResponse());
       throw e;

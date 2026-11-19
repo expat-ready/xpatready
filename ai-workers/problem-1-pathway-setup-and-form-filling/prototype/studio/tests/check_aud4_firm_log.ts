@@ -9,8 +9,9 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeMail } from "../ports/mail.ts";
 
@@ -19,6 +20,8 @@ const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_aud4_scratch_${process.pid}`;
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
+const psqlAsync = (q: string) => new Promise<void>((ok2, no) => execFile(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-c", q], (e) => (e ? no(e) : ok2())));
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-X", "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 let pass = 0, fail = 0;
@@ -166,15 +169,21 @@ try {
 
   // ------------------------------------------------------------------------- DW6: the export
   const XR = "from=2025-01-01&to=2026-01-01&action=check.bulk", before = Number(sql("select count(*) from audit_event where action = 'audit.exported'"));
-  const res = await fetch(`${base}/api/platform/audit/export?${XR}`, { headers: { authorization: `Bearer ${tR}` } });
-  const reader = res.body!.getReader(), dec = new TextDecoder(); let csv = "";
-  const first = await reader.read(); csv += dec.decode(first.value, { stream: true });
+  // The export's line commits after the count and before the file is written: once it is there, the file is being
+  // written from the snapshot. Then a firm action runs (measured) and lines land at the oldest end of the range, which
+  // the newest-first batches read last: under the snapshot none of them is in the file (READ COMMITTED would show them).
+  const exporting = fetch(`${base}/api/platform/audit/export?${XR}`, { headers: { authorization: `Bearer ${tR}` } });
+  let answered = false; void exporting.then(() => { answered = true; }, () => { answered = true; });
+  const exportedNow = () => Number(sql("select count(*) from audit_event where action = 'audit.exported'"));
+  for (let i = 0; i < 2000 && exportedNow() === before && !answered; i++) await pause(2);
   const exported = sql("select entity || '|' || (detail->>'rows') || '|' || actor from audit_event where action = 'audit.exported'").split("\n").filter(Boolean);
-  // While the export streams (the reader is paused): a firm action writes its line without waiting, and a new line lands in range.
-  const t0 = Date.now(); const out = await fetch(`${base}/api/platform/session/sign-out`, { method: "POST", headers: { authorization: `Bearer ${tR}` } }); const waited = Date.now() - t0;
-  const sofar = csv.length;
-  const late = line({ firm: A, actor: "system:aud4", action: "check.bulk", entity: "platform_check", key: "late", summary: "Written during the export.", at: "2025-06-01T00:00:00Z" });
-  for (;;) { const c = await reader.read(); if (c.done) break; csv += dec.decode(c.value, { stream: true }); }
+  const t0 = Date.now(); const out = await fetch(`${base}/api/platform/session/sign-out`, { method: "POST", headers: { authorization: `Bearer ${tR}` } }), waited = Date.now() - t0, outBeforeAnswer = !answered;
+  let lateBefore = 0;
+  for (let i = 0; i < 400 && !answered; i++) {
+    await psqlAsync(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id) values (gen_random_uuid(), '${WS}', '2025-01-01T00:00:00.5Z', 'system:aud4', 'check.bulk', 'platform_check', 'late-${i}', 'Written during the export.', '${A}')`);
+    if (!answered) lateBefore++;
+  }
+  const res = await exporting, csv = await res.text();
   const rows = readCsv(csv.replace(/^\uFEFF/, ""));
   clock.t += 1000; const tR2 = await signIn("user-R", KEY_A);   // the sign-out above ended tR's session
   ok("AUD-4 DW6 pass: the export commits exactly one audit.exported line (plat_audit_export, the row count, the exporter) before its data, and the file holds that count",
@@ -182,8 +191,9 @@ try {
   const exLine = ((await call(base, `/api/platform/audit?from=2026-01-01&to=2027-01-01&action=audit.exported`, tR2)).body.lines as any[])[0];
   ok("AUD-4 DW6 fail (review M2): the export's own line shows no false change: its range is kept as rangeFrom/rangeTo, not a from/to pair",
     exLine?.changes?.length === 0 && exLine.advanced.detail.rangeFrom === "2025-01-01T00:00:00.000Z" && exLine.advanced.detail.from === undefined && exLine.actionWords === "Exported the activity log", exLine);
-  ok(`AUD-4 DW6 pass: a firm action started while the export streams completes without waiting for it (sign-out in ${waited} ms, the file then ${Math.round(sofar / 1024)} KB of ${Math.round(csv.length / 1024)} KB)`, out.status === 200 && waited < 2000 && sofar < csv.length / 2, [out.status, waited, sofar, csv.length]);
-  ok("AUD-4 DW6 fail: a line written during the export is not in the file (the snapshot)", !csv.includes("Written during the export.") && !!late, rows.length);
+  ok(`AUD-4 DW6 pass: a firm action started while the export writes its file completes without waiting for it (sign-out in ${waited} ms${outBeforeAnswer ? ", before the export answered" : ""}; no lock is taken until AUD-1c, so this guards the future)`, out.status === 200 && waited < 5000, [out.status, waited, outBeforeAnswer]);
+  ok(`AUD-4 DW6 fail: ${lateBefore} lines committed while the file was being written are not in it, and the file has exactly X-Export-Rows rows (the snapshot)`,
+    lateBefore >= 1 && !csv.includes("Written during the export.") && rows.length - 1 === Number(res.headers.get("x-export-rows")), { lateBefore, rows: rows.length });
   sql(`create function aud4_force() returns trigger language plpgsql as $$ begin raise exception 'aud4 forced audit failure'; end $$;
        create trigger aud4_force before insert on audit_event for each row when (new.entity = 'plat_audit_export') execute function aud4_force();`);
   const forcedR = await fetch(`${base}/api/platform/audit/export?${R1}`, { headers: { authorization: `Bearer ${tT}` } }); const forcedBody = await forcedR.text();
@@ -251,8 +261,18 @@ try {
   await Promise.all(readers.map((rd) => rd?.cancel()));
   await new Promise((r) => setTimeout(r, 300));
   const after = await call(base, `/api/platform/audit?${R1}`, tR2);
-  const { readdirSync: rd } = await import("node:fs"); const { tmpdir } = await import("node:os");
+  const rd = readdirSync;
   ok("AUD-4 DW6 fail (break m6): readers that leave mid-file end cleanly: the next read works and no export file is left behind", after.status === 200 && !rd(tmpdir()).some((f) => f.startsWith("aud4-export-")), rd(tmpdir()).filter((f) => f.startsWith("aud4-export-")));
+  const { FirmAuditLog, EXPORT_DIR } = await import("../api/src/platform/audit/firm-read/service.ts");
+  const svc = nest.get(FirmAuditLog), n0 = Number(sql("select count(*) from audit_event where action = 'audit.exported'"));
+  const ctxR = { staffId: R.id, firmId: A } as Parameters<typeof svc.exportCsv>[0];
+  const cancelled = await svc.exportCsv(ctxR, { from: "2026-01-01", to: "2027-01-01" }, () => true).then(() => 0, (e: any) => e?.getStatus?.());
+  ok("AUD-4 DW6 fail (re-review n2): an export whose reader left before it started writes no line and makes no file", cancelled === 499 && Number(sql("select count(*) from audit_event where action = 'audit.exported'")) === n0, cancelled);
+  const { mkdtempSync, utimesSync, existsSync: ex } = await import("node:fs");
+  const stale = mkdtempSync(join(tmpdir(), EXPORT_DIR)), fresh = mkdtempSync(join(tmpdir(), EXPORT_DIR)), old = new Date(Date.now() - 2 * 3600_000);
+  utimesSync(stale, old, old); await svc.onModuleInit();
+  ok("AUD-4 DW6 fail (re-review n1): an export file left by a stopped process is removed at start-up once over an hour old; a fresh one is kept", !ex(stale) && ex(fresh), [ex(stale), ex(fresh)]);
+  rmSync(fresh, { recursive: true, force: true });
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${(e as Error).stack ?? e}`);
 } finally {
