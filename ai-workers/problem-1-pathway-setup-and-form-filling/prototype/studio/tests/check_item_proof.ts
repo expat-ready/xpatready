@@ -85,11 +85,11 @@ ok("R2 record.ts records every context's video through videoSize", /recordVideo:
 
 // W: the workflow's shape.
 const wf = readFileSync(join(ROOT, ".github", "workflows", "item-proof.yml"), "utf8");
-ok("W1 it starts when a PR to main closes (merged only) and by hand with a PR number", /pull_request_target:\s*\n\s*types: \[closed\]\s*\n\s*branches: \[main\]/.test(wf) && /github\.event\.pull_request\.merged == true/.test(wf) && /workflow_dispatch:/.test(wf));
-ok("W2 the prove job checks out only main's merge commit, read-only, no credentials kept", /ref: "\$\{\{ needs\.detect\.outputs\.sha \}\}", fetch-depth: 0, persist-credentials: false/.test(wf) && /prove:[\s\S]*?permissions: \{ contents: read \}/.test(wf) && !/head\.sha|head\.ref/.test(wf));
+ok("W1 it starts on a push to main (a PR's merge commit, found through the API) and by hand from main with a PR number", /\bpush:\s*\n\s*branches: \[main\]/.test(wf) && /commits\/\$SHA\/pulls/.test(wf) && /merge_commit_sha===process\.argv\[1\]/.test(wf) && /workflow_dispatch:/.test(wf) && /if: \$\{\{ github\.ref == 'refs\/heads\/main' \}\}/.test(wf) && !/pull_request_target/.test(wf.replace(/^#.*$/gm, "")));
+ok("W2 every checkout is the commit that started the run (no computed ref: CodeQL); prove is read-only, no credentials kept", !/^\s*with:.*\bref:/m.test(wf) && (wf.match(/persist-credentials: false/g) ?? []).length === 3 && /prove:[\s\S]*?permissions: \{ contents: read \}/.test(wf) && !/head\.sha|head\.ref/.test(wf));
 ok("W3 packs by works-set --run, suites by run-suites --only, the journey by walk.mjs, the scan before the upload", /works-set\.mjs" --run/.test(wf) && /run-suites\.sh" --demo --only/.test(wf) && /walk\.mjs/.test(wf) && wf.indexOf("item-proof.mjs\" scan") < wf.indexOf("upload-artifact"));
 ok("W4 the recording is kept 90 days, named proof-<item>-<sha>", /name: proof-\$\{\{ matrix\.item \}\}-\$\{\{ needs\.detect\.outputs\.sha \}\}\s*\n\s*path: [^\n]+\n\s*retention-days: 90/.test(wf));
-ok("W5 verdicts go to the branch auto-verdicts, never main; one comment; CAPABILITIES.md never written", /BRANCH: auto-verdicts/.test(wf) && !/push[^\n]*\bmain\b/.test(wf) && (wf.match(/issues\/\$PR\/comments/g) ?? []).length === 1 && !/CAPABILITIES\.md"?\s*$/m.test(wf.replace(/^#.*$/gm, "")));
+ok("W5 verdicts go to the branch auto-verdicts, never main; one comment; CAPABILITIES.md never written", /BRANCH: auto-verdicts/.test(wf) && !/git[^\n]*\bpush\b[^\n]*\bmain\b/.test(wf.replace(/^#.*$/gm, "")) && (wf.match(/issues\/\$PR\/comments/g) ?? []).length === 1 && !/CAPABILITIES\.md"?\s*$/m.test(wf.replace(/^#.*$/gm, "")));
 ok("W6 no secret is read; the PR body reaches the shell only through env", !/secrets\./.test(wf) && !/run:[^\n]*github\.event\.pull_request\.body/.test(wf));
 const prr = readFileSync(join(ROOT, ".github", "workflows", "pr-rules.yml"), "utf8");
 ok("W7 pr-rules checks the Completes line with item-proof.mjs detect", /item-proof\.mjs detect/.test(prr));

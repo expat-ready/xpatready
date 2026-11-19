@@ -1,9 +1,9 @@
 # Automatic proof at an item's last merge (P-728 (3), P-729 (1), founder 19 Nov). Measured bottleneck: after an item's
 # last part merged, proof waited 3-5 h for a separate J-test PR and a qa session. Now a PR whose body has a line
 # "Completes: R1.77" (several: "Completes: R1.77, R1.78"; pr-rules.yml checks the line can be read) starts this run when
-# it merges to main, on GitHub's runners (public repository: US$0; live AI off, no model call, no secret):
+# its merge commit is pushed to main, on GitHub's runners (public repository: US$0; live AI off, no model call, no secret):
 #   * detect: the items, from the merged PR's body (studio/tools/item-proof.mjs detect); none → nothing runs.
-#   * prove (one machine an item, fail-fast off), on main's merge commit: the item's pack, read from its row in
+#   * prove (one machine an item, fail-fast off), on the merge commit (by hand: main's head when started): the item's pack, read from its row in
 #     qa/CAPABILITIES.md (item-proof.mjs plan): each C id's acceptance packs through works-set.mjs --run (holds in
 #     qa/REGRESSION-HELD.md kept, scoring data from qa/REGRESSION-DATA.md, a red pack retried once, as the merge queue),
 #     each studio/tests suite its "Done when" names through run-suites.sh --only, then its journey
@@ -18,23 +18,24 @@
 #     verdict and walks the journey once (gate A, P-339, P-348c).
 # Start by hand (the Lead; cloud lanes cannot dispatch, P-439): Actions › item-proof › Run workflow, pr = a merged PR's
 # number. Test: studio/tests/check_item_proof.ts (detection, verdict shape, page, scan, and this file's shape).
-# Safety: pull_request_target runs main's copy of this file and checks out only the PR's merge commit, which is on main
-# (merged, reviewed code), never the PR's head; the PR body reaches the shell only through env and a file; no cache.
+# Safety: it runs on a push to main (each merge is its own push, the queue merges with a merge commit) and on a hand
+# start from main, and every job checks out only the commit that started it (github.sha: main's code, plain checkout,
+# never a computed ref: CodeQL cache poisoning, #2133); the PR is found from that commit through the API, and its body
+# reaches the shell only through a file; no cache.
 name: item-proof
-run-name: "${{ github.event.pull_request.number && format('item-proof · #{0}', github.event.pull_request.number) || format('item-proof · #{0} (by hand)', inputs.pr) }}"
+run-name: "${{ inputs.pr && format('item-proof · #{0} (by hand, on main''s head)', inputs.pr) || format('item-proof · {0}', github.sha) }}"
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
       pr:
-        description: "A merged PR's number: prove the items on its Completes: line again"
+        description: "A merged PR's number: prove the items on its Completes: line again, on main's head (start it from main)"
         required: true
 permissions: { contents: read }
 jobs:
   detect:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: { contents: read, pull-requests: read }
@@ -44,23 +45,27 @@ jobs:
       pr: ${{ steps.d.outputs.pr }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: main, persist-credentials: false }
+        with: { persist-credentials: false }
       - id: d
-        name: the items on the merged PR's Completes line, and main's merge commit
+        name: the merged PR (the one whose merge commit this push is; by hand, the PR named) and its Completes line
         env:
           GH_TOKEN: ${{ github.token }}
-          BODY: ${{ github.event.pull_request.body }}
-          SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          WANT: ${{ inputs.pr }}
           T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
         run: |
-          [[ "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "pr: not a PR number: $PR"; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR" > pr.json
-            node -e 'const p=require("./pr.json"); if(!p.merged_at||p.base.ref!=="main"){console.error("PR not merged into main");process.exit(1)} require("fs").writeFileSync("body.md",p.body??""); console.log(p.merge_commit_sha)' > sha.txt
-            SHA=$(cat sha.txt)
-          else printf '%s' "$BODY" > body.md; fi
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "no merge commit sha"; exit 1; }
+          SHA="$GITHUB_SHA"; api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          if [ -n "$WANT" ]; then
+            [[ "$WANT" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "pr: not a PR number: $WANT"; exit 1; }
+            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/pulls/$WANT" > pr.json
+            node -e 'const p=require("./pr.json"); if(!p.merged_at||p.base.ref!=="main"){console.error("PR not merged into main");process.exit(1)}'
+          else
+            # A push that is not a PR's merge commit (a direct push, a batch's fast-forward) proves nothing.
+            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$api/commits/$SHA/pulls" > prs.json
+            node -e 'const ps=require("./prs.json").filter(p=>p.merged_at&&p.merge_commit_sha===process.argv[1]&&p.base.ref==="main"); require("fs").writeFileSync("pr.json",JSON.stringify(ps[0]??{}))' "$SHA"
+          fi
+          node -e 'const p=require("./pr.json"); require("fs").writeFileSync("body.md",p.body??""); console.log(p.number??"")' > pr.txt
+          PR=$(cat pr.txt)
+          if [ -z "$PR" ]; then echo "items=[]" >> "$GITHUB_OUTPUT"; echo "main $SHA is no PR's merge commit: nothing to prove" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           d=$(node "$T/item-proof.mjs" detect --body-file body.md) || echo "::warning::a Completes: line could not be read; only the readable items are proved"
           items=$(node -e 'console.log(JSON.stringify(JSON.parse(process.argv[1]).items))' "$d")
           { echo "items=$items"; echo "sha=$SHA"; echo "pr=$PR"; } >> "$GITHUB_OUTPUT"
@@ -82,7 +87,7 @@ jobs:
       SHA: ${{ needs.detect.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: "${{ needs.detect.outputs.sha }}", fetch-depth: 0, persist-credentials: false }
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
       - name: set up like a cloud session (cloud-setup.sh, as nightly's packs job)
@@ -166,7 +171,7 @@ jobs:
       BRANCH: auto-verdicts
     steps:
       - uses: actions/checkout@v4
-        with: { ref: main, path: main, persist-credentials: false }
+        with: { path: main, persist-credentials: false }
       - uses: actions/download-artifact@v4
         with: { pattern: "proof-verdict-*", merge-multiple: true, path: verdicts }
       - name: commit the verdict files and the founder's page to auto-verdicts (never main)
