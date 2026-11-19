@@ -5,6 +5,7 @@
 name: pipeline-heartbeat
 on:
   schedule:
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "11,41 * * * *"   # every 30 min, off the top of the hour (GitHub delays :00 schedules most)
   workflow_dispatch:
 permissions:

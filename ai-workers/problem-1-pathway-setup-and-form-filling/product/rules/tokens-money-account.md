@@ -43,3 +43,12 @@ No change to the workflow, tools or these rules until **10 Nov 22:30 IST**, exce
 * P-303 enforced-by cell, word for word: hook: agent-model-guard.sh --hook (part: reviewer and breaker on Opus high); CI: pr-rules (agent files) (moved by Lead 69, 21:4x IST 16 Nov, RULES under 25 KB)
 
 * **Account facts every Lead reads (founder, 21:4x IST 16 Nov: "we have a unlimited machines on the GitHub, because we are public ... and I am also in the pro account"):** GitHub personal account on **Pro** (P-282, 2 Nov) = **40 concurrent Actions jobs** (Free would be 20; docs.github.com/en/actions/reference/limits, read 16 Nov); the repository is **public** (P-263), so Actions **minutes cost nothing**; it goes private at the gate before the first real firm's data, on own runners (P-589); nothing of the team's app in git (P-504, P-539). The limit that bites is **40 jobs at once, not minutes**: never propose buying Pro again. (Lead 69, 21:4x IST 16 Nov)
+
+
+## Account facts (Lead 80, 16:4x IST 18 Nov)
+
+Before 18 Nov, RULES.md said word for word: "**Account facts:** GitHub Pro, 40 Actions jobs at once, public repo (Actions minutes free): word for word in `rules/tokens-money-account.md`."
+
+Since 18 Nov 12:31 IST the repository is `expat-ready/xpatready` in the enterprise "Expat Ready" on GitHub Enterprise Cloud (paid, 1 licence). GitHub's limits page lists 500 concurrent standard hosted jobs for Enterprise; on 18 Nov only 1-6 ran at once (measured by Lead 80); Multi-cloud set (P-693); a GitHub Support ticket is with the founder. Public repository, Actions minutes free.
+
+| P-608 | Model and effort at every start: Opus 5.5 medium; high for reviewers, breakers, the fresh reader, risky rows; Fable 5.2 medium for specifying and challenges. | hook: lane-preflight.sh --hook (part; `rules/tokens-money-account.md`) | 15 Nov |  (moved word for word by Lead 80, 16:4x IST 18 Nov)

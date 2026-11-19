@@ -3,6 +3,7 @@
 // Encryption SDK in the deployed function; a fake in tests) → our words → MailPort. AdminCreateUser mail is never sent
 // (we create users with SUPPRESS). No code or body is ever logged.
 import type { MailPort } from "../../../../../ports/mail.ts";
+import { heldOf } from "../../messages/send/mail.ts";
 import { SYSTEM_REPLY_TO } from "./mail.ts";
 
 export type CustomEmailEvent = {
@@ -37,6 +38,7 @@ export async function handleCustomEmail(e: CustomEmailEvent, p: SenderPorts): Pr
   const needsCode = e.triggerSource !== "CustomEmailSender_AccountTakeOverNotification";
   if (needsCode && !e.request.code) return { sent: false, reason: "no code in the event" };
   const code = needsCode ? await p.decrypt(e.request.code!) : "";
-  await p.mail.send({ firmId, to: email, replyTo: SYSTEM_REPLY_TO, subject: words.subject, text: words.text(code), class: "TRANSACTIONAL", templateKey: `identity.${e.triggerSource.replace("CustomEmailSender_", "").toLowerCase()}` });
-  return { sent: true };
+  const r = await p.mail.send({ firmId, to: email, replyTo: SYSTEM_REPLY_TO, subject: words.subject, text: words.text(code), class: "TRANSACTIONAL", templateKey: `identity.${e.triggerSource.replace("CustomEmailSender_", "").toLowerCase()}` });
+  // PF-19r (break m5): written, but the firm's daily cap holds it until the next day: not reported as sent.
+  return heldOf(r) ? { sent: false, reason: "held by the firm's daily email limit" } : { sent: true };
 }
