@@ -1,0 +1,42 @@
+# Batch-failure alert (P-729 (2), founder 19 Nov). Three failed merge-queue batches that day stalled merges about an hour
+# each, partly because the failure was seen only at the tech lead's 30-minute check. When ci ends in failure on a Mergify
+# batch PR (branch mergify/merge-queue/*), each member PR of the batch gets one comment: the failing jobs and suites, each
+# suite's FAIL lines, and the most likely PR (tools/batch-fail-alert.py; test: test_batch_fail_alert.py via
+# check-batch-fail-alert.sh in check-guards.sh). The tech lead reads PR comments each check; the builder sees it at once.
+# Safe on a public repository: workflow_run runs main's copy of this file; the job checks out main only (the batch's code
+# never runs: its files are read as names through the API); the token holds actions: read (job logs) and
+# pull-requests: write (the comment), nothing else; no label is touched. One comment per failed run: the comment carries
+# a hidden marker with the run id, and a member that already has it is skipped (a re-delivered event posts nothing new).
+# Not a check Mergify reads; it never holds a merge.
+name: batch-fail-alert
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+permissions: {}
+jobs:
+  alert:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, actions: read, pull-requests: write }
+    concurrency:
+      # One run id at a time, never cancelled: the marker check and the post of one run never race.
+      group: batch-fail-alert-${{ github.event.workflow_run.id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: comment on each member PR (tools/batch-fail-alert.py; select-suites.mjs reads main's files only)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/batch-fail-alert.py --run "$RUN_ID"
