@@ -16,6 +16,7 @@ import { LocalFiles } from "../api/src/front-office/files.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
 import { Retainers } from "../api/src/front-office/retainers/service.ts";
 import type { Tx } from "../api/src/front-office/sales/common.ts";
+import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { Prospects, winProspect } from "../api/src/front-office/sales/prospects.ts";
 import type { SalesPorts } from "../api/src/front-office/sales/public.ts";
@@ -71,7 +72,7 @@ try {
   // An audit port that fails on one action: the forced failure after the stage move (the line is written after it).
   const failingOn = (action: string): AuditPort<Tx> => ({ record: async (tx, e) => { if (e.action === action) throw new Error(`forced failure on ${action}`); return auditEvent.record(tx, e); } } as AuditPort<Tx>);
   const salesPorts = (audit: AuditPort<Tx> = auditEvent): SalesPorts => ({ audit, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" });
-  const leads = new Leads(db, salesPorts()), pros = new Prospects(db, salesPorts());
+  const leads = new Leads(db, salesPorts()), pros = new Prospects(db, salesPorts()), corp = new Corporate(db, salesPorts());
   const store = new LocalFiles(join(WORK, "files")), clock = { now: () => Date.now() };
   const svc = new Retainers(db, store, clock);
 
@@ -84,9 +85,9 @@ try {
     const p = await pros.engage(R, l.id);
     return { id: p.id, personId: l.person.id };
   };
-  const retainer = (p: { id: string; personId: string }) => {
+  const retainer = (p: { id: string; personId: string }, companyId: string | null = null) => {
     const RET = randomUUID();
-    sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${p.id}', 'PERSON', '${p.personId}', '${R.staffId}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.staffId}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${randomUUID()}', '${A}', '${RET}', 1, '{"client.name":"Sample"}', 'retainers/${RET}/v1.docx', '${hex(++n + 10)}', 'staff:${R.staffId}')`);
+    sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, company_id, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${p.id}', '${companyId ? "COMPANY" : "PERSON"}', ${companyId ? `'${companyId}'` : "null"}, '${p.personId}', '${R.staffId}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.staffId}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${randomUUID()}', '${A}', '${RET}', 1, '{"client.name":"Sample"}', 'retainers/${RET}/v1.docx', '${hex(++n + 10)}', 'staff:${R.staffId}')`);
     return RET;
   };
   const signOffline = (s: Retainers, id: string) => s.signedOffline(R, id, { expectedVersion: "1", reason: "Signed at the office" }, pdf());
@@ -149,6 +150,19 @@ try {
       && pl5.data.subject.subject === "PERSON" && count("fo_stage_move", `prospect_id = '${p5.id}' and cause = 'CONVERT'`) === 1 && stageOf(p5.id) === "WON:CONVERTED", pl5);
   const twice = await refusal(() => pros.convert(R, p5.id, {}));
   ok("FO-2w W4 fail: a second Convert → 409, still one prospect.won", twice?.status === 409 && won(p5.id) === 1);
+
+  // ------------------------------------------------------------- W4c: a Corporate paper win carries the company subject
+  const gil = (await leads.add(R, { requestId: randomUUID(), givenNames: "Gil", familyName: "Sample", email: `gil${++n}@example.com`, source: "Phone call" })) as { id: string; person: { id: string } };
+  const pc = await corp.engage(R, gil.id, { companyName: "Cedar Works Ltd" }) as { id: string; company?: { id: string } | null };
+  const rc = retainer({ id: pc.id, personId: gil.person.id }, pc.company!.id);
+  const offC = await signOffline(svc, rc);
+  const evC = await db.moduleEvent.findFirst({ where: { subjectId: pc.id, type: EVENT.PROSPECT_WON } });
+  const plC = evC ? ProspectWonPayload.safeParse(evC.payload) : null;
+  const subjC = plC?.success ? plC.data.subject as { subject: string; company?: { id: string }; contacts?: { personId: string; primaryContact: boolean }[] } : null;
+  ok("FO-2w W4c pass: a Corporate prospect signed on paper raises one prospect.won, type CORPORATE, the COMPANY subject with its company and its primary contact",
+    offC.prospectWon === true && won(pc.id) === 1 && plC?.success === true && plC.data.type === "CORPORATE" && subjC?.subject === "COMPANY" && subjC.company?.id === pc.company?.id
+      && subjC.contacts?.some((c) => c.personId === gil.person.id && c.primaryContact) === true, plC);
+  ok("FO-2w W4c fail: Convert afterwards on the Corporate prospect → 409, still one prospect.won", (await refusal(() => pros.convert(R, pc.id, {})))?.status === 409 && won(pc.id) === 1);
 
   // ------------------------------------------------------------- W5: the suite catches a Signed offline without the helper
   const src = readFileSync(SERVICE, "utf8");
