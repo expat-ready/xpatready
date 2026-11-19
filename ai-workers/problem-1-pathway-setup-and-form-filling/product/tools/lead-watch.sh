@@ -57,6 +57,9 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2b. Proof first (ENF-746b, P-746 (3)): open qa proof PRs ("qa:" ... Works) not in the queue, each with its reason;
+# one ACT each past 60 min. requeue-watch.yml requeues the ones main's pipeline dropped by itself every 15 min.
+pf=$(echo "$prs" | bash "$TOOLS/requeue-watch.sh" proof 2>&1); echo "$pf"; seen "$pf"; act=$((act + $(grep -c '^ACT' <<<"$pf")))
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)

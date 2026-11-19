@@ -1,0 +1,36 @@
+# ENF-746b (P-746 (4), founder 20 Nov: "make it live and enforced"): approved PRs that Mergify dropped only because
+# main's pipeline was broken are requeued without a Lead (product/tools/requeue-watch.sh: same head as the Approve, the
+# failure shared with main or a known pipeline lock, once per head, at most 3 a day). Main's copy only (schedule and
+# dispatch run on the default branch), so no PR's code meets the write token. Never cancelled (P-371). US$0.
+name: requeue-watch
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # every 15 min, off the top of the hour (GitHub delays :00 schedules most)
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write          # post the queue comment
+  pull-requests: write
+  checks: read           # main's and the batch's check runs
+  actions: read          # the failed job's log, for the pipeline-lock list
+concurrency:
+  group: requeue-watch
+  cancel-in-progress: false
+jobs:
+  requeue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: requeue approved PRs dropped by main's pipeline
+        env:
+          # REQUEUE_TOKEN (optional secret): if Mergify ignores commands from github-actions[bot], a token of a person or
+          # an app with write access makes "@mergifyio queue" count. Unset: the workflow's own token.
+          GH_TOKEN: ${{ secrets.REQUEUE_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REVIEWERS: ${{ vars.REVIEWERS }}                              # who may approve, as ci.yml and label-guard.yml
+          POSTER: ${{ vars.REQUEUE_LOGIN || 'github-actions[bot]' }}   # the account REQUEUE_TOKEN belongs to, if set
+        run: bash ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/requeue-watch.sh
