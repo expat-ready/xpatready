@@ -116,7 +116,7 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime <
   * `W5`: Engage makes a prospect;
   * `W6`: ends at row 37's first step: book a consultation for the prospect.
 
-### J-28: consent recorded per purpose (map row 28), split out of J-27 (Lead B (7), 19 Nov 12:4x IST, P-733)
+### J-28: consent recorded per purpose (map row 28), split out of J-27 (Lead B (7), 19 Nov 12:3x IST, P-733)
 * **Why split:** J-37's steps assert no consent, and R1.28's purposes include the web form, so J-37 is not R1.28's J-test. J-27 waits on FO-4 part 2a, part 2b, part 3, FO-2 part 5 and FO-4b. Everything R1.28 needs is on `main` once #2196 (the real `ArrivalPort`, QA-511) merges: qa already walked a ticked web form at 400 px writing one consent with wording, source and time (CAPABILITIES R1.28, 19 Nov). J-27 keeps its W1 and W3-W6 and points to J-28 for W2.
 * **Waits on:** #2196 (FO-2 part 3b) on `main`.
 * **Swaps:** none (`arrival` is real after #2196).
