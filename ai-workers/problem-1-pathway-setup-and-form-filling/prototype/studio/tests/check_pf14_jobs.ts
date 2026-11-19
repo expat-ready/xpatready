@@ -246,13 +246,17 @@ try {
     // A job written past the port (by hand) with a firm id that is not one: it must never reach a handler.
     await jobs.boss.send("pf14.notes", { key: "notes:forged", firmId: "not-a-firm", payload: {} }, { id: jobIdOf("notes:forged") });
     await jobs.boss.send("pf14.notes", { key: "notes:nofirm", firmId: null, payload: {} }, { id: jobIdOf("notes:nofirm") });
-    await tickUntil(async () => read.has("notes:a") && read.has("notes:b") && (await state("pf14.nosy", "nosy:a")) === "failed" && (await state("pf14.notes", "notes:forged")) === "failed" && (await state("pf14.notes", "notes:nofirm")) === "failed", 250, 200);
+    // PF-19p (Lead B rev 16.66): a platform envelope written by hand on a queue not in PLATFORM_JOB_QUEUES.
+    await jobs.boss.send("pf14.notes", { key: "notes:platform", firmId: null, platform: true, payload: {} }, { id: jobIdOf("notes:platform") });
+    await tickUntil(async () => read.has("notes:a") && read.has("notes:b") && (await state("pf14.nosy", "nosy:a")) === "failed" && (await state("pf14.notes", "notes:forged")) === "failed" && (await state("pf14.notes", "notes:nofirm")) === "failed" && (await state("pf14.notes", "notes:platform")) === "failed", 250, 200);
     ok("PF-14 pass: each firm's job reads only its own firm's rows", JSON.stringify(read.get("notes:a")) === '["a-1","a-2"]' && JSON.stringify(read.get("notes:b")) === '["b-1"]', Object.fromEntries(read));
     ok("PF-14 pass: the handler runs inside its firm (currentJobFirm() is the job's firm)", seen("pf14.notes").every((r) => r.current === r.firmId && r.firmId !== null), seen("pf14.notes"));
     const dead = await jobs.deadLetters();
     ok("PF-14 fail: firm A's job asking for firm B's rows is refused by firmScope, reads nothing and ends on the dead-letter list", !read.has("nosy:a") && dead.some((d) => d.key === "nosy:a" && /names another firm/.test(d.error)), dead.filter((d) => d.key.startsWith("nosy")));
     ok("PF-14 fail: a job whose firm id is not a firm never reaches its handler and ends on the dead-letter list", !seen("pf14.notes").some((r) => r.key === "notes:forged") && dead.some((d) => d.key === "?" && /firmId/.test(d.error)), dead.map((d) => [d.key, d.error]));
     ok("PF-14 fail: a job without a firm that is not a recurring run never reaches its handler either", !seen("pf14.notes").some((r) => r.key === "notes:nofirm") && dead.some((d) => d.key === "notes:nofirm" && /without a firm/.test(d.error)), dead.map((d) => [d.key, d.error]));
+    ok("PF-19p fail: a platform job (no firm) on a queue not in PLATFORM_JOB_QUEUES, written past the port, never reaches its handler and ends on the dead-letter list",
+      !seen("pf14.notes").some((r) => r.key === "notes:platform") && dead.some((d) => d.key === "notes:platform" && /PLATFORM_JOB_QUEUES/.test(d.error)), dead.map((d) => [d.key, d.error]));
     ok("PF-14: outside a job there is no job firm", currentJobFirm() === undefined);
   }
 

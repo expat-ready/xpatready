@@ -16,7 +16,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Body, Controller, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Patch, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
-import { cleanName, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, MEDIA, mediaOf } from "../../contracts/documents.ts";
+import { MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB } from "../../contracts/documents.ts";
 import { z } from "zod";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { CorrectNumber, RecordSubmission } from "../../contracts/submission-record.ts";
@@ -29,7 +29,7 @@ import { formCoverage } from "../../engine/runtime/forms.ts";
 import { currentValues } from "../../engine/runtime/submission-record.ts";
 import { actorOf, Audit, CaseRead, Db, fail, STUDIO, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { liveParticipants } from "./stage-scope.ts"; // C6.17
-import { CaseActorGuard, utf8Name } from "./case-checklist.ts";
+import { CaseActorGuard, checkedCaseFile } from "./case-checklist.ts";
 import { Runtime } from "./runtime.ts";
 import { CasePrepare, storedVersion } from "./case-prepare.ts";
 import type { FiledForm } from "./submission-record.ts";
@@ -48,6 +48,13 @@ const short = (id: string) => id.slice(0, 8);
 const refuse = (field: string, detail: string, status = HttpStatus.BAD_REQUEST): never => {
   const conflict = status === HttpStatus.CONFLICT; // review m6: a 409 is a conflict, never a validation problem
   throw new HttpException({ type: `https://expatready.local/problems/${conflict ? "conflict" : "validation"}`, title: conflict ? "Not now" : "Some details need fixing", status, detail, errors: [{ field, message: detail }] }, status);
+};
+/** QA-520 (review M1, m1): the file check's refusal on the field "file". `message` keeps PF-F4's words, so main.ts's 413
+ *  filter knows a too-many-pixels refusal from the upload limit and never rewords it as "larger than 20 MB"; a 503 (the
+ *  PDF reader could not be run) is no mistake in the person's input, so it is not a validation problem. */
+const fileRefused = (detail: string, status: number): never => {
+  const unavailable = status === HttpStatus.SERVICE_UNAVAILABLE;
+  throw new HttpException({ type: `https://expatready.local/problems/${unavailable ? "unavailable" : "validation"}`, title: unavailable ? "Try again" : "Some details need fixing", status, detail, message: detail, errors: unavailable ? [] : [{ field: "file", message: detail }] }, status);
 };
 const stale = (): never => refuse("version", "This application changed since you read it. Reload, then record the submission again.", HttpStatus.CONFLICT);
 const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => { const r = schema.safeParse(input ?? {}); if (!r.success) throw new HttpException(problemFromZod(r.error), HttpStatus.BAD_REQUEST); return r.data; };
@@ -238,16 +245,17 @@ export class Submission {
     const bytes = x[0].buffer!;
     if (!bytes.length) refuse("file", "The file is empty. Nothing was stored.");
     if (bytes.length > MAX_DOCUMENT_BYTES) refuse("file", `The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-    const media = mediaOf(bytes);
-    if (!media) refuse("file", "Send IRCC's \"Transaction Approved\" page as a PDF, JPEG or PNG (judged by the file itself, not its name). Nothing was stored.", HttpStatus.UNPROCESSABLE_ENTITY);
+    // QA-520 (R1.67): PF-F4's one check (case-checklist.ts checkedCaseFile, as the Documents doors since CS-D1t): the type
+    // from the bytes, then that a PDF opens whole. Its refusal (PF-F4's words and status) stays on the field "file".
+    const checked = await checkedCaseFile(x[0]).catch((e: unknown) => { if (e instanceof HttpException) fileRefused(String(e.getResponse()), e.getStatus()); throw e; });
     const id = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("cases", c.id, "fee-receipts", `${id}.${MEDIA[media!]}`), abs = join(RECEIPTS(), rel);
+    const rel = join("cases", c.id, "fee-receipts", `${id}.${checked.extension}`), abs = join(RECEIPTS(), rel);
     try {
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
-      await this.db.feeReceiptFile.create({ data: { id, workspaceId: c.workspaceId, caseId: c.id, filingId: f!.id, fileName: cleanName(utf8Name(x[0].originalname)), mediaType: media!, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id } });
+      await this.db.feeReceiptFile.create({ data: { id, workspaceId: c.workspaceId, caseId: c.id, filingId: f!.id, fileName: checked.name, mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id } });
     } catch (e) { rmSync(abs, { force: true }); throw e; } // a refused upload leaves no file behind
     // No receipt number or file name in the summary (AG-7-95 safety, as the record's own line).
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "fee receipt", id, `${actor.name} uploaded the fee receipt (IRCC's Transaction Approved page) of a recorded filing on case ${short(c.id)} (${MEDIA[media!].toUpperCase()}, ${bytes.length} bytes)`, { filing: f!.id });
+    await this.audit.log(c.workspaceId, actor.id, "uploaded", "fee receipt", id, `${actor.name} uploaded the fee receipt (IRCC's Transaction Approved page) of a recorded filing on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes${checked.flagWords})`, { filing: f!.id });
     const after = await this.prepare.view(actor, c.id);
     return { filing: after.filings.find((y) => y.id === f!.id), version: after.version };
   }
