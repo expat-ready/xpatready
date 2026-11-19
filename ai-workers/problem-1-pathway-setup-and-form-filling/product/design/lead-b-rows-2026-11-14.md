@@ -2121,3 +2121,6 @@ The lane's recommendation is accepted. Take's 409 (AG-2-86 rule 3) reads the lea
   * Ruling (7000698257): `seedFirmFrontOffice` creates the firm's Sample booking consent wording once when the firm has none, and never overwrites the firm's own. Then re-run on main + #2196 + #1961 and get a diff-only Approve.
   * #1961 is cleared (7000698553).
 * 11:07 IST: **#1959 is held until #2029 merges.** #1959 adds 2 bypass uses without the `audit` field that #2029 makes required. Ruling 7000777630: both take `per-firm` (the webhook calls touchFirm for its matched firm; the sweep calls it per event's firm), and both go into check_pf12b's list. Lesson: check an audit-rule PR against every open PR that adds a bypass use, not only against main.
+
+## Rev 17.48 (19 Nov 11:22 IST)
+* **P-728:** a J-test merges in the same PR as the item's last part (J-109 and J-37 stay separate). **The J4 lane plan** is `lead-b-briefs/J4-lane-plan-2026-11-19.md`: R1.28; R1.30+R1.31; R1.108+R1.110; R1.33; then R1.26+R1.27 and R1.29 in series. Briefs owed: FO-13s and the FO-9a phone part.

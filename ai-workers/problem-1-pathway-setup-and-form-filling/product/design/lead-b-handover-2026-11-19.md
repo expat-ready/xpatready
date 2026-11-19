@@ -35,3 +35,9 @@ For the next Lead B session. Read `lead-b-state.md` and the last revs (17.30-17.
 * The BACKLOG row PF-4c1b is added by Lead 87 on lead31. The Stripe test-mode account is asked of the founder: only J-19's live walk waits on it, not J2's other items. Keys go only into the demo copy's environment.
 * 11:02 IST: batch #2221 failed because of #2196 (Sample consent wording seed ruled, comment 7000698257). #1961 is cleared.
 * 11:07 IST: **#1959 is held until #2029 merges.** #1959 adds 2 bypass uses without the `audit` field that #2029 makes required. Ruling 7000777630: both take `per-firm` (the webhook calls touchFirm for its matched firm; the sweep calls it per event's firm), and both go into check_pf12b's list. Lesson: check an audit-rule PR against every open PR that adds a bypass use, not only against main.
+
+## The two tracks from 13:30 (P-726, P-728)
+* **J2 (platform):** `lead-b-briefs/J2-lane-plan-2026-11-19.md` (approved).
+* **J4 (front office):** `lead-b-briefs/J4-lane-plan-2026-11-19.md`. The lanes are R1.28 (#2011's), R1.30+R1.31 (#2102's), R1.108+R1.110 (#2103's) and R1.33 (#2181's), then R1.26+R1.27 and R1.29 in series on the same lanes.
+* **Briefs owed by me before 13:30:** FO-13s (with QA-510) and the FO-9a phone-part amendment.
+* **P-728:** each new item's J-test goes in the same PR as its last part.
