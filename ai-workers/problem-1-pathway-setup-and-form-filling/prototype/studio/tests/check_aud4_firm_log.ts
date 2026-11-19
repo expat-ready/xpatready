@@ -48,8 +48,8 @@ const { PlatformSession } = await import("../api/src/platform/identity/session/s
 const { PlatformSessionController } = await import("../api/src/platform/identity/session/routes.ts");
 const { requestMiddleware } = await import("../api/src/platform/observability/hook.ts");
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
-const { FirmAuditController } = await import("../api/src/platform/audit/firm-read/routes.ts");
-const { FirmAuditLog, PAGE } = await import("../api/src/platform/audit/firm-read/service.ts");
+const auditFeature = (await import("../api/src/features/audit-firm-read.ts")).default;   // the row's own registration
+const { PAGE } = await import("../api/src/platform/audit/firm-read/service.ts");
 const { changesOf } = await import("../api/src/platform/audit/firm-read/render.ts");
 const { csvCell, csvRow } = await import("../api/src/platform/audit/csv.ts");
 
@@ -72,8 +72,8 @@ function readCsv(s: string): string[][] {
 let app: { close(): Promise<void> } | null = null;
 try {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: fakeMail() }, PlatformSession, FirmAuditLog, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }];
-  @Module({ controllers: [PlatformIdentityController, PlatformSessionController, FirmAuditController] as never[], providers: providers as never[] }) class TestApp {}
+    { provide: IDENTITY_ADMIN_PORT, useValue: new LocalIdentityAdmin(() => clock.now()) }, { provide: MAIL_PORT, useValue: fakeMail() }, PlatformSession, ...auditFeature.providers, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }];
+  @Module({ controllers: [PlatformIdentityController, PlatformSessionController, ...auditFeature.controllers] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false });
   nest.use(requestMiddleware());
   await nest.listen(0, "127.0.0.1"); app = nest;
