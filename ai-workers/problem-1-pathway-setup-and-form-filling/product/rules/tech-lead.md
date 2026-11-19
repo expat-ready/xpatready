@@ -120,3 +120,14 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-712 | Module cards: the shared Tables/Tests lines are generated or one file per row; no PR hand-edits a shared card line; skills say so. | prose (tooling PR owed) | 19 Nov |
 | P-713 | Build in parallel through warm lanes (P-341) on disjoint touch lists; parallel building does not slow proving. | prose | 19 Nov |
 | P-714 | Account switch plan: forecast each check; 94% tell the founder; 96% lanes push and stop, RESUME pushed; 97% the founder switches. | prose | 19 Nov |
+
+## Morning of 19 Nov, continued (Lead 86, 08:1x IST; register rows moved word for word)
+
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| IDX-9 | Night of 18-19 Nov rows (P-703 to P-710) stand as recorded; word for word in `rules/tech-lead.md` › Night of 18-19 Nov. | prose | 19 Nov |
+| IDX-10 | Morning of 19 Nov rows stand as recorded: P-712 (cards never hand-edited), P-713 (parallel via warm lanes), P-714 (account switch: 94% tell, 96% stop, 97% switch), P-715 (Mergify parallel lanes per module); word for word in `rules/tech-lead.md` › Morning of 19 Nov. | prose | 19 Nov |
+| P-716 | Pipeline freeze until Release 1 Proven reaches 30; only red-main or broken-queue fixes; P-712 first. | prose | 19 Nov |
+| P-717 | Records, rules and pipeline work take effect at once in their own lane, never blocking product merges; a new blocking check runs report-only 24 h first; P-715 resumes as the exception. | prose | 19 Nov |
+| P-718 | Merge queue first (P-712, P-715); staging (PF-8a/8b/8c) shaped now, started at Proven 30; cost to the founder before the first deploy. | prose | 19 Nov |
+| P-719 | Finish by capability: a lane owns one Release 1 item's whole chain (parts, J-row, qa proof); about 8 items in flight, parallel, disjoint touch lists; next = fewest parts left, nothing waiting outside; a new item starts when one is Proven. | prose | 19 Nov |

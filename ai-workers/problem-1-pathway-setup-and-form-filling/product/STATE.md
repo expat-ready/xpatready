@@ -2,7 +2,7 @@
 
 current_lead: local_bb67266d-be45-4ab8-9ba8-b4f3b4596ebe Lead 86 · 19 Nov 07:32 IST (series 2; took over from Lead 85 (series 2, local_26804e40) at ~260k, P-446)
 
-updated: 2026-11-19 08:1x IST: **R1.6 Proven 08:06 (qa; walks runs 44444740569 and 44444754316 success on main c600f2150, checked by Lead 86): Release 1 proven 12 of 101; reader gaps (a) no live licence-class route key, (b) keyless route stops start-up vs "403" line: rows owed after the freeze**; earlier 08:0x check line (labels #2197/#2199, #2198 replaced after #2173, conflicts, money lane) word for word in the same history file; earlier 07:3x-07:5x lines (Lead 86 take-over, P-718, A186-A191) word for word in the same history file; earlier lines (Lead 82 to Lead 85) word for word in `history/STATE-2026-11-19-0750-lead86s2-updated-line-earlier.md`
+updated: 2026-11-19 08:1x IST: **A192 → P-719 finish by capability (founder 08:1x, "Adopt it now"); RULES as of P-719**; **R1.6 Proven 08:06 (qa; walks runs 44444740569 and 44444754316 success on main c600f2150, checked by Lead 86): Release 1 proven 12 of 101; reader gaps (a) no live licence-class route key, (b) keyless route stops start-up vs "403" line: rows owed after the freeze**; earlier 08:0x check line (labels #2197/#2199, #2198 replaced after #2173, conflicts, money lane) word for word in the same history file; earlier 07:3x-07:5x lines (Lead 86 take-over, P-718, A186-A191) word for word in the same history file; earlier lines (Lead 82 to Lead 85) word for word in `history/STATE-2026-11-19-0750-lead86s2-updated-line-earlier.md`
 
 
 
