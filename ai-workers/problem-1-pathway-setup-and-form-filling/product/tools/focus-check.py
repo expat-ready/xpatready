@@ -10,7 +10,8 @@ What counts (the choices, with the evidence for them, are stated in the PR that 
   A row whose BACKLOG area is tooling, qa, records, Lead or tech lead is not a build row and is never refused.
 * What the brief is for (each must be on the list): the row after "/next <area>" or "Row", else the first R1 item or
   build row it names; and any that directly follows build, start, implement, resume, finish, "open the", then,
-  "merges,", or is the brief file after Read, per or from (J-77.md, CS-NT1-1.md). Other rows named
+  "merges,", or is the brief file after Read, per or from (J-77.md, CS-NT1-1.md). A brief that names nothing
+  outside file names is for the rows of every brief file it cites. Other rows named
   further on (clash notes, waits-on, duplicate-check lines) are context: every real brief for a listed item names
   some, so refusing them would refuse the focus items themselves.
 * Not a builder brief, so it passes untouched: one that names no R1 item and no build row; one whose "/next" or "Row"
@@ -37,7 +38,8 @@ NOT_BUILDER = re.compile(r"(?:^[\s>*`-]*|[Rr]un\s+`?)/(?:qa|lead)(?![A-Za-z0-9-]
 ANY = "(?:" + ITEM.pattern + "|" + ROW.pattern + ")"
 OWN = re.compile(r"(?:/next [a-z]+|(?<![A-Za-z])[Rr]ow) (" + ROW.pattern + ")")
 VERB = re.compile(r"(?:(?<![A-Za-z])(?:[Bb]uild|[Ss]tart|[Ii]mplement|[Rr]esume|[Ff]inish|[Oo]pen the|[Tt]hen|merges,))\s+(?:the\s+)?(" + ANY + ")")
-BRIEF_FILE = re.compile(r"(?<![A-Za-z])([Rr]ead|per|from)\s+(?:[A-Za-z0-9_.-]+/)*([A-Z]{1,4}-[0-9A-Za-z-]+|B[0-9]+[a-z]?)\.md\b")
+BRIEF_FILE = re.compile(r"(?<![A-Za-z])([Rr]ead|per|from)\s+[`*]*(?:[A-Za-z0-9_.-]+/)*([A-Z]{1,4}-[0-9A-Za-z-]+|B[0-9]+[a-z]?)\.md\b")
+MD_FILE = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,4}-[0-9A-Za-z-]+|B[0-9]+[a-z]?)\.md\b")
 
 
 def read_list():
@@ -76,20 +78,31 @@ def main():
         return 0
     area = read_backlog()
 
-    def file_row(m):   # "Read J-77.md", "per briefs/PF-19b3.md", "from CS-NT1-1.md": the brief file names its row
-        stem = m.group(2); cands = [stem, re.sub(r"-[0-9]+$", "", stem), re.sub(r"[0-9]$", "", stem)]
+    def row_of(stem):   # J-77.md is J-77, CS-NT1-1.md is CS-NT1, PF-19b3.md is PF-19b3 or PF-19b
+        cands = [stem, re.sub(r"-[0-9]+$", "", stem), re.sub(r"[0-9]$", "", stem)]
         hit = next((c for c in cands if c in rows), None) or next((c for c in cands if c in area), None) \
             or (cands[1] if FAMILY.match(cands[1]) else None)
+        return hit
+
+    def file_row(m):   # "Read J-77.md", "per briefs/PF-19b3.md", "from CS-NT1-1.md": the brief file names its row
+        hit = row_of(m.group(2))
         return f"{m.group(1)} then {hit} " if hit else " "   # "then": VERB reads it as what the brief is for
-    text = FILE.sub(" ", BRIEF_FILE.sub(file_row, brief))
+    text = BRIEF_FILE.sub(file_row, brief)
+    more = re.compile(r"(then \S+ [`*]*\s*(?:and|,)\s+)[`*]*(?:[A-Za-z0-9_.-]+/)*([A-Z]{1,4}-[0-9A-Za-z-]+|B[0-9]+[a-z]?)\.md\b")
+    while more.search(text):   # "Read J-77.md and CS-NT1-1.md": the files joined to a brief file are brief files too
+        text = more.sub(lambda m: m.group(1) + (f"then {row_of(m.group(2))} " if row_of(m.group(2)) else " "), text, count=1)
+    text = FILE.sub(" ", text)
     exempt = lambda r: r in area and r not in rows and bool(EXEMPT_AREA.match(area[r]))
     known = lambda x: bool(ITEM.fullmatch(x)) or (not x.startswith("P-") and (x in area or x in rows or bool(FAMILY.match(x))))
     own = OWN.search(text)
     if own and exempt(own.group(1)):
         return 0
     named = [x for x in re.findall(ANY, text) if known(x) and not exempt(x)]   # R1 items and build rows, in the brief's order
-    if not named:
-        return 0
+    if not named:   # nothing named outside file names: the brief files it cites say what it is for
+        named = [r for r in dict.fromkeys(filter(None, map(row_of, MD_FILE.findall(brief)))) if not exempt(r)]
+        if not named:
+            return 0
+        text = "then " + " then ".join(named)
     subject = ([own.group(1)] if own and known(own.group(1)) else named[:1]) + [x for x in VERB.findall(text) if known(x) and not exempt(x)]
     subject = list(dict.fromkeys(subject))
     why = "P-733 (1): builder lanes work the items nearest to done first, and P-734 holds that until the evening of 22 Nov"

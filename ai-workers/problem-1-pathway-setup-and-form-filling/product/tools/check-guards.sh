@@ -117,6 +117,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 26 verb|product/tools/focus-check.py|s/ + \[x for x in VERB.findall(text) if known(x) and not exempt(x)\]$//|check-focus-list.sh
 26 then|product/tools/focus-check.py|s/.\[Tt\]hen.merges,//|check-focus-list.sh
 26 file|product/tools/focus-check.py|s/BRIEF_FILE.sub(file_row, brief)/brief/|check-focus-list.sh
+26 cited|product/tools/focus-check.py|s/^        named = \[r for r in dict.fromkeys(filter(None, map(row_of, MD_FILE.findall(brief)))) if not exempt(r)\]/        named = []/|check-focus-list.sh
 26 own|product/tools/focus-check.py|s/(\[own.group(1)\] if own and known(own.group(1)) else named\[:1\])/named[:1]/|check-focus-list.sh
 26 exempt|product/tools/focus-check.py|s/^    exempt = lambda r: .*/    exempt = lambda r: r in area/|check-focus-list.sh
 26 notbuilder|product/tools/focus-check.py|s/(?!\[A-Za-z0-9-\])//|check-focus-list.sh
