@@ -175,6 +175,8 @@ const moves = (id: string) => sql(`select count(*) from fo_stage_move where pros
 // A real mouse path: press on the card, move, bring the target column into view (a person drags to the board's edge and
 // the browser scrolls it; here the board is scrolled), move onto it, release. Playwright's own dragTo scrolls before the
 // drag starts and then picks up whatever card is under the pointer, so it is not used.
+// The prospect's timeline (FO-2 part 4, on main since #2181): how many stage-move lines it shows.
+const timelineMoves = async (id: string) => { const b = (await api(tok.R, "GET", `/prospects/${id}/timeline`)).body; return ((Array.isArray(b) ? b : b?.lines ?? []) as { type: string }[]).filter((l) => l.type === "prospect.stage_moved").length; };
 const dragTo = async (pg: Page, num: string, to: string, grab = "") => {
   const card = pg.locator(`[data-card="${num}"]`), target = pg.locator(to);
   await card.scrollIntoViewIfNeeded(); const c = (await (grab ? card.locator(grab).first() : card).boundingBox())!;
@@ -185,10 +187,10 @@ const dragTo = async (pg: Page, num: string, to: string, grab = "") => {
 await owner.goto(`${BASE}/front-office/pipeline`); await inStage("QUALIFIED", cyd1.number).waitFor();
 for (const [w, to] of [[1440, "CONSULT"], [1024, "QUALIFIED"], [400, "CONSULT"]] as const) {
   await owner.setViewportSize({ width: w, height: 900 });
-  const before = [moves(cyd1.id), audits(cyd1.id)].map(Number);
+  const before = [moves(cyd1.id), audits(cyd1.id)].map(Number), shown = await timelineMoves(cyd1.id);
   await dragTo(owner, cyd1.number, `[data-stage="${to}"]`);
-  ok(`J-30 W3d pass: at ${w} px a card dragged to ${to} lands there; the stage, one PERSON move and one audit line read back; no sideways page scroll`, await inStage(to, cyd1.number).waitFor({ timeout: 10_000 }).then(() => true, () => false) && stageOf(cyd1.id) === to
-    && Number(moves(cyd1.id)) === before[0] + 1 && Number(audits(cyd1.id)) === before[1] + 1 && sql(`select cause from fo_stage_move where prospect_id = '${cyd1.id}' order by seq desc limit 1`) === "PERSON" && await noSideways(owner), [stageOf(cyd1.id), moves(cyd1.id), audits(cyd1.id)]);
+  ok(`J-30 W3d pass: at ${w} px a card dragged to ${to} lands there; the stage, one PERSON move, one audit line and one new timeline line read back; no sideways page scroll`, await inStage(to, cyd1.number).waitFor({ timeout: 10_000 }).then(() => true, () => false) && stageOf(cyd1.id) === to
+    && Number(moves(cyd1.id)) === before[0] + 1 && Number(audits(cyd1.id)) === before[1] + 1 && await timelineMoves(cyd1.id) === shown + 1 && sql(`select cause from fo_stage_move where prospect_id = '${cyd1.id}' order by seq desc limit 1`) === "PERSON" && await noSideways(owner), [stageOf(cyd1.id), moves(cyd1.id), audits(cyd1.id)]);
 }
 await owner.setViewportSize({ width: 1440, height: 900 });
 await shot(owner, "board-drag-hint-1440");
