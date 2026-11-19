@@ -39,6 +39,8 @@ export const AuditEntry = z.strictObject({
   /** One plain sentence a person reads in the trail (at most 600 characters). */
   summary: z.string().trim().min(1).max(600),
   detail: AuditDetail.default({}),
+  /** AUD-1b (case-side contract §2.5): the case the line is about, when there is one (a uuid); kept on the line. */
+  caseId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a case id (uuid)").optional(),
 });
 export type AuditEntry = z.input<typeof AuditEntry>;
 
