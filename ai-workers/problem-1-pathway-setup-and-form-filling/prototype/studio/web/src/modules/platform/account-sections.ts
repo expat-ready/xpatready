@@ -4,7 +4,10 @@ export type AccountSection = { label: string; path: string; /** The permission k
 
 export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Profile", path: "/account", key: null },
+  { label: "Licence", path: "/account/licence", key: null },   // PF-6 part 2b: everyone's own
   { label: "Team", path: "/platform/team", key: "agent/staff:manage" },   // PF-6 part 2a
+  { label: "Licences", path: "/platform/licences", key: "agent/firm-credential:manage" },   // PF-6 part 2b
+  { label: "Security", path: "/platform/security", key: "agent/security-policy:manage" },   // PF-6 part 2b
   { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
 ];
 
