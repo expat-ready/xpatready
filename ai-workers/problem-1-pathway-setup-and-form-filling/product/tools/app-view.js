@@ -48,7 +48,8 @@
   }
   function more(json) {   // the API's own "there is another page" markers, whichever it uses
     if (!json || Array.isArray(json)) return false;
-    return json.has_more === true || ['next_page', 'next_cursor', 'next', 'next_page_token'].some((k) => json[k] != null && json[k] !== '');
+    return json.has_more === true || json.has_more === 'true'
+      || ['next_page', 'next_cursor', 'next', 'next_page_token'].some((k) => json[k] != null && json[k] !== '' && json[k] !== false);
   }
   function lines(json, now, limit) {
     limit = Number(limit) || LIMIT;
@@ -64,6 +65,7 @@
   const url = '/v1/code/sessions?statuses=active&statuses=paused&statuses=failed&limit=' + LIMIT + '&include_pinned_beyond_page=true&omit_bound_device=true';
   return fetch(url, { credentials: 'include', headers: { 'anthropic-version': '2023-06-01' } })
     .then((r) => (r.ok ? r.json().then((j) => lines(j, Date.now()))
-      : `UNREADABLE app view: HTTP ${r.status} (signed out? ask the founder to sign in to claude.ai)`))
+      : `UNREADABLE app view: HTTP ${r.status} ` + ([401, 403].includes(r.status) ? '(signed out? ask the founder to sign in to claude.ai)'
+        : `(the API refused the request; a 400 may mean limit=${LIMIT} is over its maximum: lower LIMIT in tools/app-view.js)`)))
     .catch((e) => `UNREADABLE app view: ${clean(e && e.message)} (open claude.ai/code in the built-in browser, signed in)`);
 })();
