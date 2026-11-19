@@ -1,4 +1,51 @@
-Reviewer: Changes requested 73adf83e5c19d82d86517ccf037ac5ce86909856
+Reviewer: Approve fce13845d0cea57092eb0cc1fa4277fa738c1777
+
+# Round 3: diff-only re-review of 73adf83e5..fce13845d
+
+**Scope.** I read only this part's files: the `20261119170000_fo7ts_part3` migration and its rollback, `check_fo7ts_money_settings.ts`, the three fixture helpers, `challenge.md`, and the lock-order notes in `design/briefs/FO-7t.md` and `FO-7m.md`. The merge of `origin/main` (4ecee277e) is out of scope. Main's newest migration, `20261119144500`, is still earlier than this part's stamp.
+
+**What I ran at fce13845d:**
+* `check_fo7ts_money_settings` passed 154, failed 0.
+* fo7a2 35/0, fo7a 122/0, fo7mv 45/0, fo7lk 16/0, prisma 8/0, and pf12_walls 100/0 (run with `--tsconfig api/tsconfig.json`).
+* The rollback catalog fingerprint, now covering five functions, is identical before part 3 and after part 3 plus its rollback.
+* I re-ran my scratch scripts:
+  * `deadlock.mjs`: 0 of 100 races deadlocked;
+  * `bounce.mjs`: the pick on K is still refused;
+  * `moveline2.mjs`: results below.
+* All `rv_fo7ts3_*` scratch databases are dropped. No test was weakened: the only deleted `ok(` lines are rewordings that now name the extra function, and the fixture dates moved to `current_date` because of the new lower bound on refund dates.
+
+## Round 2, now closed
+* **R2-1 (Major): closed by Lead 96's ruling 4.**
+  * `money_move_line_write` (`migration.sql:506-617`) differs from FO-7lk's text only in reading the invoice's party and taking the two locks smaller id first. I diffed it.
+  * The lock is taken only for a TRUST_APPLIED line whose source has an invoice, and only withdrawals have one. So an entry that the checks then refuse still takes no extra lock (FO-7lk's B-1 is kept).
+  * My round-2 reproduction (B < A < D) now ends with both sides committing, where it ended in 40P01 before. The builder's race of 100 gives 0 deadlocks.
+  * `rollback.sql` restores the function from FO-7lk, and its guard now matches code tokens.
+* **Nits R2-1 and R2-2: closed.** The `money_credit_note_write` comment is rewritten, and the guard matches `FOR p IN SELECT DISTINCT` instead of comment text.
+* **The breaker's round-2 fixes**, checked:
+  * **R2-M1:** the moved-to-case correction is capped at what was moved there, less earlier corrections of pre-case deposits booked there (`migration.sql:255-265`). It is tested with a pass and a fail.
+  * **R2-m2:** the other party's lock is taken only for a pick, or for a correction of the party's own withdrawal in the same currency (`migration.sql:119-125`). It is tested: the correction is refused without waiting on the lock.
+  * **Refund date:** a refund is never dated before the party's first trust entry, minus one day, read under the party's lock (`migration.sql:146-150`). It is tested.
+
+## New (does not block)
+**Minor R3-1: the "sorted by party" rule for the move route is not enough on its own. Reproduced.**
+* The function comment (`migration.sql:534-537`) offers "insert lines sorted by party … or take every line's locks first". `FO-7t.md`'s note offers the same "or".
+* Sorting lines by the payer still deadlocks when a pick line's invoice party falls between two payers.
+* **Reproduction** (`rv/moveline2.mjs f,1,5`), with payers A < D and invoice party B where A < D < B:
+  1. The batch's first line (A's pick on X) takes A's lock, then B's, then X's row.
+  2. D's pick on X takes D's lock, then waits on B.
+  3. The batch's second line (D's own withdrawal) waits on D.
+  4. Result: **40P01**.
+* **Fix:** in `FO-7t.md`'s note and the function comment, make the route lock every party a batch touches before its first line, in one sorted pass. That covers each line's payer and each pick line's invoice party. Drop "sorted by party" as a stand-alone choice, or say it is safe only when the batch holds no pick line. This is guidance for FO-7t part 3's route and its 100-race test, not a defect in this PR's database code.
+
+## P-610
+* Lead 96 granted the exception for about 886 lines, which agrees with my round-2 view.
+* About 155 of those lines are the three FO-7lk function bodies copied in full for `CREATE OR REPLACE`; their changed lines number about 20.
+
+**Verdict: Approve** for `fce13845d0cea57092eb0cc1fa4277fa738c1777`. No Blocker or Major is open. Minor R3-1 can be fixed in this PR's brief note, or carried to FO-7t part 3's brief before that route is built.
+
+---
+
+Round 2 line (superseded): Reviewer: Changes requested 73adf83e5c19d82d86517ccf037ac5ce86909856
 
 # Round 2: diff-only re-review (P-277) of e70a2c44e..73adf83e5
 

@@ -695,8 +695,9 @@ try {
     { // break round 2 on 73adf83e5: R2-M1 (the moved-to-case exception is capped), R2-m2 (no lock for a write that must fail), a refund dated before any trust money
       const G = randomUUID(), M = randomUUID(), Kg = randomUUID(); dep(G, 100000, { kase: M }); const chq = dep(G, 50000, { method: "CHEQUE", cleared: false }); sql(T, pairQ(G, 100, Kg));
       const bounce = (amount: number, kase: string | null) => te(G, "CORRECTION", -amount, { corrects: chq, ck: "RETURNED", reason: "Cheque bounced", kase });
-      ok("FO-7ts break R2-M1 fail → pass: a 500.00 cheque with 1.00 of it moved to case K — its bounce on K is refused beyond 1.00; 1.00 on K and 499.00 before a case are accepted, leaving nothing to move or pick",
-        refused(T, bounce(50000, Kg), /takes from a case at most what was moved there \(CAD 1\.00\)/, "23514") && !!sql(T, bounce(100, Kg)) && !!sql(T, bounce(49900, null))
+      ok("FO-7ts break R2-M1, R3-m2 fail → pass: a 500.00 cheque with 1.00 of it moved to case K — its bounce on K is refused while 499.00 is held before a case; 499.00 before a case, then 1.00 on K, are accepted; beyond 1.00 on K is refused; nothing is left to move or pick",
+        refused(T, bounce(100, Kg), /takes from before a case first \(CAD 499\.00 held there\)/, "23514") && !!sql(T, bounce(49900, null))
+        && refused(T, bounce(101, Kg), /at most the deposit|at most what was moved there/) && !!sql(T, bounce(100, Kg))
         && refused(T, bounce(1, Kg), /at most what was moved there \(CAD 0\.00\)|at most the deposit/) && refused(T, pairQ(G, 100, randomUUID()), /Only CAD 0\.00 is available/));
       const g = new pg.Client({ connectionString: urlOf(T) }), e = new pg.Client({ connectionString: urlOf(T) }); await g.connect(); await e.connect(); conns.push(g, e);
       const p0 = randomUUID(); await g.query("begin"); await g.query(`insert into money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by) values ('${p0}', '${F}', 'E_TRANSFER', 100, 'CAD', 'TRUST', now(), '${key()}', 'user-R'); ${te(B, "DEPOSIT", 100, { pay: p0, kase: K })}`);

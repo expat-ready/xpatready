@@ -1,3 +1,59 @@
+Breaker: pass fce13845d0cea57092eb0cc1fa4277fa738c1777
+
+# FO-7ts part 3: break report, round 3 (head fce13845d, main merged, #2204 on main)
+
+**What I tested:** a fresh scratch database with every migration at this head, plus a part-2 reference database and a rollback database; all three are dropped. Races ran on real connections at READ COMMITTED (RC) and REPEATABLE READ (RR). `check_fo7ts_money_settings.ts`: 154 passed, 0 failed. Nothing was fixed or committed. No Blocker or Major is left. The two Minors below are for the move route (FO-7t part 3) and for the Lead.
+
+## Round-2 fixes: all hold
+
+* **R2-M1:**
+  * The round-2 reproduction (1.00 moved to K, a −500.00 bounce put on K) is refused, with the cap named in words ("at most … CAD 1.00").
+  * A split works: 1.00 on K plus 499.00 before a case are both stored. Every pool ends at 0, and nothing is left before a case to move to J.
+  * Two corrections of 0.60 each against 1.00 moved: the second is refused with "0.40" available, and 0.40 is then accepted. A second cheque bounced on K after that is refused (0.00).
+  * The same two corrections run as a race, 15 runs each: at RC one is refused (23514); at RR one fails on the duplicate key (23505). K never went below what was moved there.
+* **R2-m2:** an unrelated party's correction naming A's pick no longer waits on B's lock (16 ms, refused).
+* **Refund dates:** a refund dated before the party's first trust entry is refused; one dated today is accepted.
+* **Credit note and undo:**
+  * A "Move back to trust" credit note against a pick: no 40P01 in the forced order (RC 23514, RR 40001), and 40 of 40 natural races with none.
+  * A three-line undo racing a credit note and a pick, 25 runs each at RC and RR: no 40P01 (only 23514 or 40001).
+* **Unchanged from earlier rounds:**
+  * M1 (kept credit against a correction) is refused at RC and fails to serialise at RR.
+  * Crossing picks, 20 runs each: all accepted, no deadlock.
+  * Four payers on one invoice never paid more than was due.
+  * Deposits, a credit note and a write-off racing a pick never credited an invoice past its total.
+* **Rollback:** run from the wrong folder it is refused. From the studio folder the catalog (all five functions included) is identical to part 2, and part 3 then applies again. An invoice issued before part 3 becomes TAXABLE at migration.
+
+## The move-line race (forced order: the pick starts between the batch's lines)
+
+* **Single line**, a pick's line (payer A, invoice of B) against another pick on B's invoice, both id orders, pick started before and after the line:
+  * RC: all accepted.
+  * RR: one side fails to serialise (40001).
+  * No 40P01 in any case.
+* **Two lines, inserted unsorted** (B's line, then C's, with C < B) against C's pick on B's invoice: **40P01** at RC and at RR. This is the case that was documented as expected.
+* **Two lines, sorted by the line's party** (C's line, then B's): no 40P01 (RC accepted, RR 40001).
+* **Not confirmed: "only the unsorted case still deadlocks"** (see R3-m1).
+
+## New findings (Minor only)
+
+**R3-m1 (Minor): sorting a batch's lines by their own party is not enough; a sorted batch still deadlocks (40P01 at RC and RR).**
+* A pick's line also locks the invoice's party, so one line holds two parties.
+* Reproduce with P1 < P2 < Q:
+  * Line 1 is P1's pick on Q's invoice, sorted first. It locks P1 and Q, then takes the row of Q's invoice.
+  * Line 2 is P2's own withdrawal.
+  * Meanwhile P2 picks on Q's invoice: it locks P2, then waits on Q.
+  * Line 2 then waits on P2, and the two deadlock.
+* The comments in `money_move_line_write` and the header both offer "sorted by party (the smaller id first)". Only their other option holds: take every line's locks (each payer and each invoice's party), sorted, before the first line.
+* Suggested fix: drop the "sorted by party" wording and assign "lock all parties first" to FO-7t part 3, with this case as its test.
+
+**R3-m2 (Minor): the cap counts money moved to K from any deposit made before a case, so a real bounce booked on K can free money that was moved to K.**
+* Reproduce. W holds 1,000.00 on M. W has cash of 500.00 before a case, all moved to K, and a cheque of 500.00 before a case that was never moved.
+  * The cheque bounces, and its −500.00 is booked on K. This is accepted although the pre-case pool covers it.
+  * W now shows K = 0 and 500.00 before a case. W moves that 500.00 to J and picks it for B's invoice on J (accepted).
+* No money is created: the party balance stays right, and the shift is limited to what was moved to K. But the cash staff moved to case K ends up paying another client's invoice on J.
+* Suggested fix: book on a moved-to case only the part the pre-case pool cannot cover (`-NEW.amount_minor - pre-case held`, floored at 0), within the cap. Or have the route offer pre-case first.
+
+---
+
 Breaker: fail 73adf83e5c19d82d86517ccf037ac5ce86909856
 
 # FO-7ts part 3: break report, round 2 (head 73adf83e5)

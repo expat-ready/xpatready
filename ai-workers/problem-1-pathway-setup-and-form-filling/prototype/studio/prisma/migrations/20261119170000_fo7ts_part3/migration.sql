@@ -255,6 +255,13 @@ BEGIN
     -- On such a case, at most what was moved there less the pre-case deposits' corrections already booked there (break
     -- R2-M1): the rest stays before a case (a deposit may be corrected in more than one row).
     IF d.case_id IS NULL AND NEW.case_id IS NOT NULL THEN
+      -- and only once nothing is left before a case (break R3-m2): the pre-case money is taken first, so a correction on
+      -- a case never frees money moved there while pre-case money could have covered it.
+      SELECT coalesce(sum(e.amount_minor), 0) INTO on_case FROM "money_trust_entry" e WHERE e.firm_id = NEW.firm_id AND e.currency = NEW.currency AND e.case_id IS NULL
+        AND ((NEW.person_id IS NOT NULL AND e.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND e.company_id = NEW.company_id));
+      IF on_case > 0 THEN
+        RAISE EXCEPTION 'money_trust_entry: a correction of a deposit made before a case takes from before a case first (% % held there); record that part before a case', NEW.currency, to_char(on_case / 100.0, 'FM999,999,990.00') USING ERRCODE = 'check_violation';
+      END IF;
       SELECT coalesce(sum(m.amount_minor), 0) INTO on_case FROM "money_trust_entry" m WHERE m.firm_id = NEW.firm_id AND m.currency = NEW.currency AND m.case_id = NEW.case_id
         AND ((NEW.person_id IS NOT NULL AND m.person_id = NEW.person_id) OR (NEW.person_id IS NULL AND m.company_id = NEW.company_id))
         AND ((m.kind::text = 'MOVE_TO_CASE' AND m.moved_from_entry_id IS NOT NULL)
@@ -405,7 +412,7 @@ END $$;
 -- invoice row) and money_move_line_write (a line: the payer's lock, then the invoice row of a pick's other party) took
 -- them the other way, and each deadlocked against a pick (40P01; review Major 1 and R2-1, break m1 and R2-m1). All three
 -- are FO-7lk's text, changed only to take the parties smaller id first. A batch of several lines can still deadlock: the
--- move route (FO-7m) must insert lines sorted by party (see money_move_line_write).
+-- move route (FO-7t part 3) must take all its lines' locks, sorted, before the first line (see money_move_line_write).
 CREATE OR REPLACE FUNCTION money_credit_note_write() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE open_amount bigint; trust bigint; w record; freed bigint := 0; whole bigint; inv_party uuid; inv_cur "MoneyCurrency";
 BEGIN
@@ -533,8 +540,9 @@ BEGIN
   party := coalesce(s.person_id, s.company_id);
   -- FO-7ts part 3 (Lead 96's ruling): a pick's line is on the payer, its invoice on another party, whose invoice row it
   -- touches below; both party locks are taken first, smaller id first, as a pick takes them. Within one line that holds.
-  -- A batch of several lines locks line by line, so it can still deadlock against a pick: the move route (FO-7m) must
-  -- insert a batch's lines sorted by party (the smaller id first), or take every line's locks before the first line.
+  -- A batch of several lines locks line by line, so it can still deadlock against a pick, even with its lines sorted by
+  -- party (a pick line also locks its invoice's party; break R3-m1): the move route (FO-7t part 3) must take every lock
+  -- its lines need (each line's party and each pick line's invoice party), sorted, before the first line.
   IF NEW.kind = 'TRUST_APPLIED' AND s.invoice_id IS NOT NULL THEN
     SELECT coalesce(i.person_id, i.company_id), i.currency INTO inv_party, inv_cur FROM "money_invoice" i WHERE i.firm_id = NEW.firm_id AND i.id = s.invoice_id;
     IF inv_party = party THEN inv_party := NULL; END IF;
