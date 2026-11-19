@@ -108,6 +108,9 @@ model PlatformFirm {
   // back-relation slot: firms (PF-5)
   termsAcceptances PlatformTermsAcceptance[]
 
+  // back-relation slot: entitlements (PF-15)
+  storageOver PlatformStorageOver? // platform-entitlements.prisma
+
   // back-relation slot: offices (PF-18a)
   offices PlatformOffice[] // platform-offices.prisma
 
@@ -164,6 +167,9 @@ model PlatformPlan {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   subscriptions PlatformSubscription[]
+
+  // back-relation slot: entitlements (PF-15)
+  limits PlatformPlanLimit[] // platform-entitlements.prisma
 
   @@map("platform_plan")
 }
