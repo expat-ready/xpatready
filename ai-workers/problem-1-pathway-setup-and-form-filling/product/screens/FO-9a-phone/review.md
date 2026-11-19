@@ -78,3 +78,16 @@ Reviewer agent, 19 Nov. I read only `git diff b6b6b3d4 5cbdee05` (`duplicates/ph
 **Not checked:** `tsc -p web` is clean. `tsc -p api` reports 15 errors, all in `tests/check_x2b_bulk_apply.ts`, which this diff does not touch, so they are not this item's. Lint, a screen reader and other browsers were not checked, as before.
 
 **Verdict: Block** for commit `5cbdee053dc48e2d1c1788cfd7db1f300e4c3f90`. Fix: **R1** (`tests/check_fo9a_phone_edit.ts:155-157` and `:141`). M1, M2, m1, m3 and m4 are closed; with R1 fixed and the check green twice in a row, this is an Approve.
+
+## Check on 97b02043 (R1 only)
+Reviewer agent, 19 Nov. I read `git diff 5cbdee05 97b02043`. The only code change is in `tests/check_fo9a_phone_edit.ts`; no product code changed.
+* E6's spellings are now saved one after another, so the "same number again" line checks a known last value.
+* E4 replaces UUIDs with `<id>` before looking for a number.
+* The check passed **6 of 6 runs, 36/36 each**.
+* Both lines still fail when their rule is removed, tested in a scratch copy:
+  * dropping the "same number writes nothing" return fails E6 (F4);
+  * putting the number in the audit detail fails E4.
+
+R1 is closed. No Blocker or Major remains open. As stated before, m2, m6 and the third copy of the visibility rule are left for the tech lead.
+
+**Verdict: Approve** for commit `97b020430e19edb5b224e41d40e821daead8f7ba`.
