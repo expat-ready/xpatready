@@ -11,6 +11,7 @@ import { arrivalKey, ArrivalPerson, ArrivalResult, BookingArrival, type ArrivalP
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, ProspectMovePayload } from "../../../../ports/events.ts";
 import type { z } from "zod";
+import { seedFirmFrontOffice } from "../firm-seed.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { arrive } from "./arrival.ts";
 import type { Tx } from "./common.ts";
@@ -38,6 +39,7 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     };
     const seen = await repeat();
     if (seen) return seen;   // idempotent by key: the same ids, nothing written
+    await this.setup(tx, firmId);
     // The same lock arrive() takes for this email, so a booking and a form post by one person are serialised here too.
     await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_sales_match:${firmId}:${a.person.email}`}, 0))`;
     // AG-2-84 rule 8: the people of the firm with this email who have an open prospect (stage kind ACTIVE, AG-2-26 rule 12).
@@ -90,6 +92,16 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     if (!f) return null;
     const c: z.input<typeof ArrivalPerson> = { givenNames: f.givenNames ?? "", familyName: f.familyName ?? "", email: f.email ?? "", ...(f.phone && f.phoneReadable ? { phone: f.phone } : {}) };
     return c as z.output<typeof ArrivalPerson>;
+  }
+
+  /** FO-1a's seed, once, when the firm has no sales setup row yet (as FO-1p's port does): a booking firm whose front
+   *  office was never seeded (the demo reset seeds none before FO-2 part 5) gets it in the booking's transaction. A
+   *  firm FO-1a seeds none for (DELETED, ABANDONED) fails the booking, never half an arrival. */
+  private async setup(tx: Tx, firmId: string): Promise<void> {
+    const has = async () => !!(await tx.foSalesSetup.findFirst({ where: firmScope(firmId), select: { firmId: true } }));
+    if (await has()) return;
+    await seedFirmFrontOffice(tx, firmId);
+    if (!(await has())) throw new Error("bookingArrived: this firm has no front office");
   }
 
   /** The person's open prospects (ACTIVE), as a repeat reads them: the only one, or none when several. */
