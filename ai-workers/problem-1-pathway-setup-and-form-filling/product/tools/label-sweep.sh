@@ -44,7 +44,10 @@ for pr in $nums; do
   if [ "$who" != "$BOT" ]; then echo "#$pr: kept ('$LABEL' put on by $who)"; continue; fi
   # B194: queue-gate.yml labels with GITHUB_TOKEN too. Main's queue-gate.sh judges the PR as it is now (the owner's or a
   # known reviewer's Approve on the head, ci green, no Lead-read path): when it says eligible, the label is kept.
-  if [ "$e" = 0 ] && PR=$pr bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" eligible >/dev/null 2>&1; then echo "#$pr: kept ('$LABEL' put on by $BOT; queue-gate.sh: eligible)"; continue; fi
+  g=1; [ "$e" = 0 ] && { PR=$pr bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" eligible >/dev/null 2>&1; g=$?; }
+  if [ "$g" = 0 ]; then echo "#$pr: kept ('$LABEL' put on by $BOT; queue-gate.sh: eligible)"; continue; fi
+  # CI-PRE: only the full runs could not be read (exit 3): as for unreadable events above, a GitHub hiccup must not empty the queue.
+  if [ "$g" = 3 ]; then echo "#$pr: queue-gate.sh could not judge it, label kept; the next sweep tries again"; rc=2; continue; fi
   api -X DELETE "$API/repos/$REPO/issues/$pr/labels/$enc" >/dev/null || { echo "#$pr: '$LABEL' ($how), but it could not be removed"; rc=2; continue; }
   body="**Label sweep (B134):** \`$LABEL\` removed: $how. \`$BOT\` is a workflow's GITHUB_TOKEN, not a person: a pull request's own workflow can set the label, and such a label starts no label-guard run. Only a person labels a reviewed head (P-277, P-189).
 

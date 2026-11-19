@@ -65,16 +65,20 @@ ci() {  # the check "ci" on $head → ci_state (success|pending|failure), run_id
 
 # --- CI-PRE (P-731): the full run and the failed batch
 FULL_WF=".github/workflows/ci.yml"; TEAM='.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR"'
-san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_#:/\n-'; }   # a job's name may hold a matrix value worked out from a PR's files: plain marks only
-records() { [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
-failing() {  # a run's id → its failed jobs' names, one a line (the summary job "ci" aside); nothing when unreadable
+# A job's name may hold a matrix value worked out from a PR's files: letters, digits and a few plain marks only, so no
+# markup, mention, link or "#n" reference reaches a comment (sanl: a comment line, which keeps its colons).
+san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_:\n-'; }
+# Records-only: main's one definition on the PR's file names AND the label "records" that records-label.yml sets from a
+# full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
+records() { has records && [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
+failing() {  # a run's id → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable
   api "$API/repos/$REPO/actions/runs/$1/jobs?filter=latest&per_page=100" 2>/dev/null \
-    | jq -r '.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "ci" and . != "retry-comment")' 2>/dev/null | san | cut -c1-120 | grep .; true; }
+    | jq -r '[.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "retry-comment")] | (map(select(. != "ci")) | if length > 0 then . else empty end) // . | .[]' 2>/dev/null | san | cut -c1-120 | grep .; true; }
 comments() { [ -n "${cs:-}" ] || cs=$(pages "repos/$REPO/issues/$PR/comments"); }
 full() {  # $@ commits → full_state (success|failure|pending|none), full_why
   local p=1 one all='[]' c t id st co url sha first=""; full_state=none; full_why="no full run on ${1:0:9} yet: comment \`/run full\` on the PR (every suite a merge batch runs; P-731)"
   while [ "$p" -le 3 ]; do   # the 300 newest runs started by hand or by "/run full"
-    one=$(api "$API/repos/$REPO/actions/workflows/ci.yml/runs?event=workflow_dispatch&per_page=100&page=$p") || { full_why="the full runs cannot be read"; return; }
+    one=$(api "$API/repos/$REPO/actions/workflows/ci.yml/runs?event=workflow_dispatch&per_page=100&page=$p") || { full_state=unread; full_why="the full runs cannot be read"; return; }
     all=$(jq -c --argjson a "$all" --arg r "$REPO" --arg wf "$FULL_WF" '$a + [.workflow_runs[]? | select(.event == "workflow_dispatch" and ((.path // "") | split("@")[0]) == $wf
       and .head_branch == "main" and .head_repository.full_name == $r) | {id, status, conclusion, html_url, head_sha, title: (.display_title // "")}]' <<< "$one") || { full_why="the full runs cannot be read"; return; }
     [ "$(jq '.workflow_runs | length' <<< "$one")" -lt 100 ] && break; p=$((p + 1))
@@ -95,18 +99,25 @@ fullproof() {  # $@ the commits a full run may be on → 0, or 1 with $why
   records && return 0
   if [[ "${FULL_FROM:-}" =~ ^20[0-9][0-9]-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z$ ]]; then   # approved before CI-PRE landed
     local at; comments || { why="its comments cannot be read"; return 1; }
-    at=$(jq -r --arg re "$(printf '%s\n' "$@" | paste -sd '|' -)" '[.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+    at=$(jq -r --arg re "$(printf '%s\n' "$@" | paste -sd '|' -)" --argjson who "$(printf '%s\n' "$OWNER" ${REVIEWERS:-} | jq -Rn '[inputs | select(length > 0)]')" '[.[] | select(.user.login as $l | $who | index($l)) | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
       | select((.body // "") | gsub("[*_`]"; "") | test("(^|\n)\\s*reviewer:\\s*approve[sd]?\\s+(" + $re + ")\\b"; "i")) | .created_at] | max // empty' <<< "$cs")
     [ -n "$at" ] && [[ "$at" < "$FULL_FROM" ]] && return 0
   fi
   full "$@"; [ "$full_state" = success ] && return 0; why=$full_why; return 1; }
 covered() {  # 0 when no failed merge batch held this PR, or a comment line covers the newest one's failed parts; else 1 with $why
-  local prs sha c rid="" names lines n miss=""
-  prs=$(api "$API/repos/$REPO/pulls?state=all&sort=created&direction=desc&per_page=100") || { why="the merge batches cannot be read"; return 1; }
-  # Mergify's batch PRs naming this PR, newest first: "#n" in the title (merge-queue-causes.py members()), else the
-  # body's "pull_requests:" numbers (flaky.mjs targets()). The newest that ended decides: failed, or passed (merged).
+  local prs='[]' one p=1 sha c rid="" names lines n miss=""
+  # Every PR opened after this one, newest first (a batch that held it is one of them); 30 pages at most, else refused.
+  while :; do
+    [ "$p" -le 30 ] || { why="more than 3000 pull requests were opened after this one: its merge batches cannot all be read (ask the tech lead)"; return 1; }
+    one=$(api "$API/repos/$REPO/pulls?state=all&sort=created&direction=desc&per_page=100&page=$p") && jq -e 'type == "array"' <<< "$one" >/dev/null || { why="the merge batches cannot be read"; return 1; }
+    prs=$(jq -c --argjson a "$prs" '$a + .' <<< "$one")
+    [ "$(jq --argjson n "$PR" 'length < 100 or any(.[]; .number <= $n)' <<< "$one")" = true ] && break; p=$((p + 1))
+  done
+  # Mergify's batch PRs naming this PR, newest first: "#n" in the title (merge-queue-causes.py members()) and the body's
+  # "pull_requests:" numbers together (flaky.mjs targets(); the title can leave members out, gate-b.mjs). The newest
+  # that ended decides: failed, or passed (merged).
   for sha in $(jq -r --arg r "$REPO" --argjson n "$PR" '[.[] | select(.user.login == "mergify[bot]" and ((.head.ref // "") | startswith("mergify/merge-queue/")) and .head.repo.full_name == $r)
-      | select(([(.title // "") | scan("#([0-9]+)") | .[0] | tonumber]) as $t | (if ($t | length) > 0 then $t else [(.body // "") | scan("(?m)^\\s*-\\s*number:\\s*([0-9]+)\\s*$") | .[0] | tonumber] end) | index($n))
+      | select(([(.title // "") | scan("#([0-9]+)") | .[0] | tonumber] + [(.body // "") | scan("(?m)^\\s*-\\s*number:\\s*([0-9]+)\\s*$") | .[0] | tonumber]) | index($n))
       | .head.sha | select(test("^[0-9a-f]{40}$"))][0:10][]' <<< "$prs"); do
     c=$(api "$API/repos/$REPO/commits/$sha/check-runs?check_name=ci&per_page=100") || { why="a merge batch's ci cannot be read"; return 1; }
     c=$(jq -r '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last // empty | [.status, (.conclusion // ""), (.details_url // "")] | @tsv' <<< "$c")
@@ -114,10 +125,11 @@ covered() {  # 0 when no failed merge batch held this PR, or a comment line cove
   done
   [ -n "$rid" ] || return 0
   comments || { why="its comments cannot be read"; return 1; }
-  names=$(failing "$rid")
-  lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | san | grep -E "^ *Batch failures covered: *$rid *:"; true)
+  names=$(failing "$rid"); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
+  lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
   [ -n "$lines" ] || { why="it was in the failed merge batch run $rid (failed: $(paste -sd ';' - <<< "${names:-not readable}" | sed 's/;/; /g')) and no PR comment line \"Batch failures covered: $rid: <every failed part>\" by someone with write access names them (P-731 (4))"; return 1; }
-  while IFS= read -r n; do [ -z "$n" ] || grep -qF -- "$n" <<< "$lines" || miss="$miss${miss:+; }$n"; done <<< "$names"
+  # A whole name: "kindly" does not name the part "kind", nor "shard (30)" the part "shard (3)".
+  while IFS= read -r n; do [ -z "$n" ] || grep -qE -- "(^|[^A-Za-z0-9_-])$(sed 's/[().]/\\&/g' <<< "$n")([^A-Za-z0-9_-]|\$)" <<< "$lines" || miss="$miss${miss:+; }$n"; done <<< "$names"
   [ -z "$miss" ] || { why="the line \"Batch failures covered: $rid:\" does not name every failed part of that merge batch run: missing $miss (P-731 (4))"; return 1; }
   return 0; }
 
@@ -190,8 +202,8 @@ _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return 0; fi
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }
-  labels="$labels"$'\n'"$LABEL"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci and a green full run; no Lead-read path)"
-  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci and the full run (P-731) are green on it, and no path keeps the Lead's read (P-423)." '{body: $b}')" >/dev/null || true; }
+  labels="$labels"$'\n'"$LABEL"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci and a green full run or its exemption; no Lead-read path)"
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, the full run (P-731) is green on it or the PR is exempt (records only, or approved before FULL_RUN_FROM), and no path keeps the Lead's read (P-423)." '{body: $b}')" >/dev/null || true; }
 
 both() {  # label, then fresh unless label already decided it; any error → 2 (review m6)
   local rc=0; did_fresh=0; label || rc=$?; [ "$did_fresh" = 1 ] || fresh || rc=$?; return $rc; }
@@ -219,7 +231,8 @@ case "${1:-}" in
     # shellcheck disable=SC2086
     fullproof $HEADS || { echo "$why"; exit 1; }
     if [ "${RELABEL:-}" = 1 ]; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
-  eligible) load || exit 2; judge && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; exit 1;;
+  # 3, not 1, when only the full runs could not be read: label-sweep.sh then keeps the label and tries again.
+  eligible) load || exit 2; judge && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
   event) event; exit $?;;
   *) echo "usage: queue-gate.sh label|fresh|eligible|proof|event"; exit 2;;
 esac

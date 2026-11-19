@@ -19,7 +19,7 @@ serve() { [ -f "$FX/$1" ] && cat "$FX/$1" || { echo '{"message":"Not Found"}'; e
 case "$m $p" in
   "GET pulls/"*/files*) n=${p#pulls/}; n=${n%%/*}; [ "${pg:-1}" = 1 ] && serve "files-$n.json" || echo '[]';;
   "GET pulls/"*) serve "pr-${p#pulls/}.json";;
-  "GET pulls?"*) [ -f "$FX/pulls.json" ] && cat "$FX/pulls.json" || echo '[]';;
+  "GET pulls?"*) if [ -f "$FX/pulls-p${pg:-1}.json" ]; then cat "$FX/pulls-p${pg:-1}.json"; elif [ "${pg:-1}" = 1 ] && [ -f "$FX/pulls.json" ]; then cat "$FX/pulls.json"; else echo '[]'; fi;;
   "GET actions/workflows/ci.yml/runs?event=workflow_dispatch"*) [ -n "${FAIL_FULL:-}" ] && { echo '{"message":"Server Error"}'; exit 22; }
     [ "${pg:-1}" = 1 ] && [ -f "$FX/fullruns.json" ] && cat "$FX/fullruns.json" || echo '{"workflow_runs":[]}';;
   "GET actions/runs/"*/jobs*) r=${p#actions/runs/}; serve "jobs-${r%%/*}.json";;
@@ -159,16 +159,23 @@ nofull; full 48 8 $HEAD1 completed success; run label 7
 ok "full run: another PR's run on the same commit is not this PR's: refused" "$(nolabel && echo 1)" "$out / $log"
 nofull; full 48 7 $HEAD1 completed success; FAIL_FULL=1 run label 7
 ok "full run: the runs cannot be read: refused (fails closed)" "$(nolabel && grep -q 'cannot be read' <<< "$out" && echo 1)" "$out / $log"
-nofull; files 7 "$REC/STATE.md" "$REC/qa/BUGS.md"; run label 7
-ok "full run: a records-only PR is exempt (records-only.sh, main's one definition): labelled with no full run" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
-files 7 "$REC/STATE.md" "$S/api/src/form.ts"; run label 7
-ok "full run: records and code together are not exempt: refused" "$(nolabel && echo 1)" "$out / $log"
-files 7 "$S/api/src/form.ts"
+nofull; files 7 "$REC/STATE.md" "$REC/qa/BUGS.md"; prj 7 $HEAD1 false records; run label 7
+ok "full run: a records-only PR (main's records-only.sh on its files, and the records label) is exempt: labelled with no full run" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+prj 7 $HEAD1; run label 7
+ok "full run: records-looking files without the records label (set from a full checkout: a .md a suite reads is code) are not exempt: refused" "$(nolabel && echo 1)" "$out / $log"
+prj 7 $HEAD1 false records; files 7 "$REC/STATE.md" "$S/api/src/form.ts"; run label 7
+ok "full run: the records label on a PR that also changes code (a label anyone can set) is not exempt: refused" "$(nolabel && echo 1)" "$out / $log"
+prj 7 $HEAD1; files 7 "$S/api/src/form.ts"; nofull; FAIL_FULL=1 run eligible 7
+ok "full run: the runs cannot be read: eligible exits 3 (label-sweep.sh keeps the label and tries again)" "$([ $r = 3 ] && echo 1)" "exit $r: $out"
 jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", created_at: "2026-11-19T05:00:00Z", body: ("**Reviewer: Approve** `" + $h + "`")}]' > "$T/fx/comments-7.json"
 FROM=2026-11-19T06:00:00Z run label 7
 ok "FULL_FROM: a head approved before CI-PRE landed keeps the earlier rule: labelled with no full run" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
 FROM=2026-11-19T04:00:00Z run label 7
 ok "FULL_FROM: a head approved after it needs the run: refused" "$(nolabel && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "helper"}, author_association: "COLLABORATOR", created_at: "2026-11-19T05:00:00Z", body: ("Reviewer: Approve " + $h)}]' > "$T/fx/comments-7.json"
+FROM=2026-11-19T06:00:00Z run label 7
+ok "FULL_FROM: an early Approve line by a collaborator who is not a known reviewer exempts nothing: refused" "$(nolabel && echo 1)" "$out / $log"
+jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", created_at: "2026-11-19T05:00:00Z", body: ("**Reviewer: Approve** `" + $h + "`")}]' > "$T/fx/comments-7.json"
 FROM="2026-11-19 09:00" run label 7
 ok "FULL_FROM: a value that is not a UTC time exempts nothing: refused" "$(nolabel && echo 1)" "$out / $log"
 run label 7
@@ -203,6 +210,17 @@ cov "Batch failures covered: 901: shard (3), regression (C1.1 C1.2, 2)"; run lab
 ok "failed batch: a line for another run does not count: refused" "$(nolabel && echo 1)" "$out / $log"
 cov "Batch failures covered: 900: shard (30), regression (C1.1 C1.2, 2)"; run label 7
 ok "failed batch: shard (30) does not name shard (3): refused" "$(nolabel && echo 1)" "$out / $log"
+cov "Batch failures covered: 900: shard (3) and regression (C1.1 C1.2, 2)x"; run label 7
+ok "failed batch: a part's name inside a longer word does not name it: refused" "$(nolabel && echo 1)" "$out / $log"
+jobs 900 "kind:failure" "ci:failure"; cov "Batch failures covered: 900: kindly fixed"; run label 7
+ok "failed batch: \"kindly\" does not name the part kind: refused" "$(nolabel && grep -q 'missing kind' <<< "$out" && echo 1)" "$out / $log"
+jobs 900 "ci:failure" "fast:success"; cov "Batch failures covered: 900:"; run label 7
+ok "failed batch: only the summary job failed (a notes batch): it is the part to name, an empty line is refused" "$(nolabel && grep -q 'missing ci' <<< "$out" && echo 1)" "$out / $log"
+cov "Batch failures covered: 900: ci"; run label 7
+ok "failed batch: ... and naming it is allowed" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+rm -f "$T/fx/jobs-900.json"; run label 7
+ok "failed batch: its failed parts cannot be read: refused, never passed by an empty list" "$(nolabel && grep -q 'cannot be read' <<< "$out" && echo 1)" "$out / $log"
+jobs 900 "shard (3):failure" "regression (C1.1 C1.2, 2):failure" "ci:failure" "fast:success"
 cov "nothing yet"; run eligible 7
 ok "failed batch: eligible (the sweep) does not ask for the line: a batch's other PRs keep their label" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 HEADS=$HEAD1 RELABEL=1 run proof 7
@@ -220,7 +238,14 @@ PL='[]'; batch 900 $BSHA "merge queue: embarking" "mergify[bot]" "pull_requests:
   - number: 7
 "; run label 7
 ok "failed batch: members from the body's pull_requests: block when the title names none: refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
-rm -f "$T/fx/pulls.json"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; nofull; full 41 7 $HEAD1 completed success; full 42 9 $HEAD1 completed success
+PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #5 together on main" "mergify[bot]" "pull_requests:
+  - number: 7
+"; run label 7
+ok "failed batch: a member the title leaves out is found in the body (title and body together): refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
+PL='[]'; batch 900 $BSHA "merge queue: checking #6 + #7 together on main"; mv "$T/fx/pulls.json" "$T/fx/pulls-p2.json"
+seq 1000 1099 | jq -c '{number: ., title: "x", body: "", user: {login: "someone"}, head: {sha: "5555555555555555555555555555555555555555", ref: "claude/y", repo: {full_name: "o/r"}}}' | jq -s . > "$T/fx/pulls-p1.json"; run label 7
+ok "failed batch: a batch older than the 100 newest PRs is still found (every PR opened after this one is read): refused" "$(nolabel && grep -q 'run 900' <<< "$out" && echo 1)" "$out / $log"
+rm -f "$T/fx/pulls.json" "$T/fx/pulls-p1.json" "$T/fx/pulls-p2.json"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; nofull; full 41 7 $HEAD1 completed success; full 42 9 $HEAD1 completed success
 
 # --- fresh: the status queue-fresh
 cmt 7 o OWNER "Reviewer: Approve $HEAD1"
@@ -300,6 +325,10 @@ if "vars.FULL_RUN_FROM" not in str(env(g["jobs"]["sweep"], "label-sweep.sh").get
 if g["jobs"]["sweep"]["steps"][0].get("with", {}).get("fetch-depth") != 0: bad.append("the sweep checkout lacks main history (fetch-depth: 0): no full run would count")
 if q["jobs"]["gate"]["steps"][0].get("with", {}).get("fetch-depth") != 0: bad.append("the gate checkout lacks main history")
 on=c[True]; ins=(on.get("workflow_dispatch") or {}).get("inputs") or {}
+import re
+txt=open(sys.argv[3]).read()
+if len(re.findall(r"GATE_B_NOT_TESTED: \"\$\{\{ github.event_name == .workflow_dispatch. && .warn. \|\| .. \}\}\"", txt)) != 3: bad.append("ci.yml: gate B must warn, not fail, on NOT TESTED in a full run (kind, fast, packs), as in a batch")
+if re.search(r"^ *cache: npm *$", txt, re.M): bad.append("ci.yml: a full run (a run of main) must not save to the cache of main")
 if set(ins) != {"pr", "head"}: bad.append("ci.yml workflow_dispatch inputs are not pr and head: %s" % list(ins))
 if "format('"'"'full-run PR #{0} {1}'"'"', inputs.pr, inputs.head)" not in str(c.get("run-name")): bad.append("ci.yml does not name a full run by its inputs")
 print("; ".join(bad) or "ok")' "$W" "${W%/*}/label-guard.yml" "${W%/*}/ci.yml" 2>&1)

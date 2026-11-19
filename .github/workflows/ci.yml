@@ -188,7 +188,7 @@ jobs:
         if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
         # CI-PRE, a full run: one PR, so the set by diff as a pull request had it before P-651 (QUEUE empty, no ONCE), with
         # the PR's title and body read from GitHub (a dispatch carries none); a superset of what its batch runs by diff.
-        env: { KIND: code, QUEUE: "${{ steps.k.outputs.queue }}", GATE_B_ONCE: "${{ steps.k.outputs.queue == 'true' && '1' || '' }}", GITHUB_TOKEN: "${{ github.token }}", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", FULL_PR: "${{ inputs.pr }}" }
+        env: { KIND: code, QUEUE: "${{ steps.k.outputs.queue }}", GATE_B_ONCE: "${{ steps.k.outputs.queue == 'true' && '1' || '' }}", GITHUB_TOKEN: "${{ github.token }}", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", FULL_PR: "${{ inputs.pr }}", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq .title) || exit 1
@@ -269,7 +269,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; the database check-test-dbs.sh and a batch's gate B packs need)
         run: bash "$P/tools/cloud-setup.sh"
@@ -318,7 +318,9 @@ jobs:
         # held ones too (GATE_B_ONCE; P-488), and its packs by diff run in job "packs".
         if: env.KIND == 'code'
         # CI-PRE, a full run: the rows this PR names run with their steps, as on its head before P-651 (QUEUE empty).
-        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1", GATE_B_ONCE: "1", FULL_PR: "${{ inputs.pr }}" }
+        # GATE_B_NOT_TESTED=warn there: gate-b.mjs reads a workflow_dispatch as the nightly's re-test, where NOT TESTED is
+        # exit 3; in a batch it is a warning, and a full run must not be red where its batch is green.
+        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1", GATE_B_ONCE: "1", FULL_PR: "${{ inputs.pr }}", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq .title) || exit 1
@@ -364,7 +366,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser suites need)
         run: bash "$P/tools/cloud-setup.sh"
@@ -439,14 +441,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser packs need)
         run: bash "$P/tools/cloud-setup.sh"
       - name: Playwright's own Chromium
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: packs by diff ${{ matrix.group.caps }} (${{ matrix.group.packs }} packs, gate B's 3 slots; live AI off, US$0)
-        env: { CAPS: "${{ matrix.group.caps }}", GATE_B_DATA_OF: "${{ matrix.group.data }}", GATE_B_SKIP_PACKS: "${{ matrix.group.skip }}", GATE_B_NO_DIFF: "1", GATE_B_JOBS: "3", KIND: code, QUEUE: "", PR_TITLE: "", PR_BODY: "" }
+        env: { CAPS: "${{ matrix.group.caps }}", GATE_B_DATA_OF: "${{ matrix.group.data }}", GATE_B_SKIP_PACKS: "${{ matrix.group.skip }}", GATE_B_NO_DIFF: "1", GATE_B_JOBS: "3", KIND: code, QUEUE: "", PR_TITLE: "", PR_BODY: "", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
           r=0; node "$S/tools/gate-b.mjs" --title "$CAPS" --kind code || r=$?
           case "$r" in 0) exit 0;; 1|2) ;; *) exit "$r";; esac
@@ -473,7 +475,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: packages and the Prisma client (cloud-setup.sh, as the parts)
         run: bash "$P/tools/cloud-setup.sh"
@@ -535,7 +537,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser packs need)
         run: bash "$P/tools/cloud-setup.sh"

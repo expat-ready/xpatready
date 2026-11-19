@@ -33,7 +33,7 @@ ev() {  # ev <event> <label> <login> <type> → one issue event, as GitHub gives
   jq -n --arg e "$1" --arg l "$2" --arg a "$3" --arg t "$4" '{event: $e, label: {name: $l}, actor: {login: $a, type: $t}, created_at: "2026-11-07T06:31:45Z"}'; }
 evs() { jq -s . ; }   # stdin: events → an array
 pr() { jq -n --argjson n "$1" '{number: $n, pull_request: {url: "x"}}'; }
-printf '#!/usr/bin/env bash\n[ "${ELIGIBLE:-}" = "$PR" ]\n' > "$T/bin/gate"; chmod +x "$T/bin/gate"   # queue-gate.sh eligible, stood in
+printf '#!/usr/bin/env bash\n[ -z "${GATE_RC:-}" ] || exit "$GATE_RC"\n[ "${ELIGIBLE:-}" = "$PR" ]\n' > "$T/bin/gate"; chmod +x "$T/bin/gate"   # queue-gate.sh eligible, stood in
 sweep() {  # run the sweep on the fixtures in $T/fx → $out, $log, $r
   : > "$T/fx/log"; out=$(PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test QUEUE_GATE="$T/bin/gate" bash "$S" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 reset() { rm -f "$T/fx"/*.json; }
@@ -48,6 +48,10 @@ ok "B134: review: approved put on by github-actions[bot] comes off, with a comme
 # 1b. B194: the same bot label, when main's queue-gate.sh says the PR is eligible now (queue-gate.yml put it on): kept.
 ELIGIBLE=7 sweep
 ok "B194: a github-actions[bot] label on a PR queue-gate.sh judges eligible is kept" "$([ $r = 0 ] && [ -z "$log" ] && grep -q '#7: kept.*eligible' <<< "$out" && echo 1)" "exit $r: $out / $log"
+GATE_RC=3 sweep
+ok "CI-PRE: queue-gate.sh could not read the full runs (exit 3): the bot's label is kept, the run is red, the next sweep tries again" "$([ $r = 2 ] && [ -z "$log" ] && grep -q '#7: queue-gate.sh could not judge it, label kept' <<< "$out" && echo 1)" "exit $r: $out / $log"
+GATE_RC=2 sweep
+ok "CI-PRE: any other failure of queue-gate.sh (exit 2) still takes the bot's label off" "$(grep -qx 'DELETE 7' <<< "$log" && echo 1)" "exit $r: $out / $log"
 # 2. A person's label (the tech lead, or a builder through the claude app: the actor is the person) is kept.
 reset; { pr 8; } | evs > "$T/fx/issues.json"
 { ev labeled records github-actions[bot] Bot; ev labeled "review: approved" the-owner User; ev labeled queued "mergify[bot]" Bot; } | evs > "$T/fx/events-8-p1.json"

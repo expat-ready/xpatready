@@ -74,7 +74,7 @@ while [ -z "$why" ] && [ "$merges" -le 50 ]; do
   seen="$seen $c"
   if by=$(approved "$c"); then
     relabel=0; [ "${LABELED:-}" = "$LABEL" ] && relabel=1
-    unproved=$(PR=$PR HEADS="$seen" RELABEL=$relabel bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" proof 2>&1); p=$?
+    unproved=$(PR=$PR HEADS="$seen" RELABEL=$relabel bash "${QUEUE_GATE:-$(dirname "$0")/queue-gate.sh}" proof 2>/dev/null); p=$?
     [ "$p" = 1 ] && break
     [ "$p" = 0 ] || { echo "label-guard: the full-run check could not finish: $unproved"; exit 2; }
     [ "$merges" = 0 ] && echo "kept: ${c:0:9} has a reviewer Approve ($by)" \
@@ -90,7 +90,7 @@ enc=$(jq -rn --arg l "$LABEL" '$l|@uri')
 api -X DELETE "$API/repos/$REPO/issues/$PR/labels/$enc" >/dev/null || { echo "label-guard: could not remove the label"; exit 2; }
 [ -z "$unproved" ] || { why=$unproved; body="**Label guard (CI-PRE, P-731):** \`$LABEL\` removed from the head \`${AFTER:0:9}\`: $why.
 
-To label again: the label needs one green full run on the head (comment \`/run full\`; the queue gate labels a reviewed head by itself when it ends green), and after a failed merge batch a comment line naming every failed part of that run."; }
+To label again: the label needs one green full run on the head (comment \`/run full\`; when it ends green the queue gate labels a reviewed head by itself, or a person does where P-423 keeps the Lead's read), and after a failed merge batch a comment line naming every failed part of that run."; }
 [ -n "$unproved" ] || body="**Label guard:** \`$LABEL\` removed. The head \`${AFTER:0:9}\`${BEFORE:+ (was \`${BEFORE:0:9}\`)} is not covered by a reviewer Approve: walking back from it, $why, before any commit with an Approve. Only pure merges of main that touch none of this PR's files may follow an approved commit (P-318 (1)).
 
 To label again: the reviewer re-reviews the diff since its last approved commit (P-293), the PR gets a comment line \"Reviewer: Approve\" followed by the new head's SHA, then the label goes back on (founder, 6 Nov ~03:00 IST: \"a label never outlives a review\")."

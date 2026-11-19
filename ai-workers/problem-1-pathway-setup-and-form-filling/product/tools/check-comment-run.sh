@@ -122,7 +122,8 @@ mkdir -p "$W/bin"; cat > "$W/bin/gh" <<'GH'
 printf '%s\n' "$*" >> "$GH_LOG"
 jqf() { local f=""; while [ $# -gt 0 ]; do [ "$1" = --jq ] && f="$2"; shift; done; jq -r "$f"; }   # gh's --jq, run by jq
 case "$*" in
-  *"/comments"*) for x in "$@"; do case "$x" in body=*) printf '%s\n' "${x#body=}" >> "$GH_REPLIES";; esac; done;;
+  *"/comments"*) case "$*" in *"-X POST"*) ;; *) [ -n "${FAKE_COMMENTS:-}" ] || FAKE_COMMENTS='[{"user":{"login":"o"},"author_association":"OWNER","body":"**Reviewer: Approve** `0123456789abcdef0123456789abcdef01234567`\n\nfine"}]'; jqf "$@" <<< "$FAKE_COMMENTS"; exit 0;; esac
+    for x in "$@"; do case "$x" in body=*) printf '%s\n' "${x#body=}" >> "$GH_REPLIES";; esac; done;;
   *"/dispatches"*) exit "${FAKE_DISPATCH_RC:-0}";;
   *"/jobs"*) jqf "$@" <<< "${FAKE_JOBS:-{\"jobs\":[]}}";;
   *"ci.yml/runs"*"created="*) jqf "$@" <<< "${FAKE_NEW:-{\"workflow_runs\":[]}}";;
@@ -136,7 +137,7 @@ GH
 chmod +x "$W/bin/gh"; printf '#!/bin/sh\nexit 0\n' > "$W/bin/sleep"; chmod +x "$W/bin/sleep"
 act() { : > "$W/log"; : > "$W/replies"
   ( cd "$W" && PATH="$W/bin:$PATH" GH_LOG="$W/log" GH_REPLIES="$W/replies" GH_TOKEN=x REPO=o/r PR=7 GITHUB_SERVER_URL=https://github.com \
-      COMMENT_ID="${FAKE_COMMENT_ID:-555}" THIS_RUN=https://github.com/o/r/actions/runs/1 ACTION="$1" CAPS="${2:-}" DATA="${3:-}" REASON="${4:-}" bash --noprofile --norc -eo pipefail "$W/act.sh" ) >/dev/null 2>&1; echo $?; }
+      COMMENT_ID="${FAKE_COMMENT_ID:-555}" REVIEWERS="${FAKE_REVIEWERS:-}" THIS_RUN=https://github.com/o/r/actions/runs/1 ACTION="$1" CAPS="${2:-}" DATA="${3:-}" REASON="${4:-}" bash --noprofile --norc -eo pipefail "$W/act.sh" ) >/dev/null 2>&1; echo $?; }
 calls() { grep -c "$1" "$W/log"; }
 
 nr() { printf '{"html_url":"https://github.com/o/r/actions/runs/%s","display_title":"%s"}' "$1" "$2"; }
@@ -204,6 +205,14 @@ rc=$(FAKE_PULL='{"head":{"sha":"'$H'","ref":"x","repo":{"full_name":"o/r"}},"sta
 ok "full: a closed PR is refused" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && grep -q 'not open' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
 rc=$(FAKE_PULL='{"head":{"sha":"$(touch pwned)","ref":"x","repo":{"full_name":"o/r"}},"state":"open"}' act full)
 ok "full: a head that is not a commit id stops it before any dispatch" "$([ "$rc" != 0 ] && [ "$(calls dispatches)" = 0 ] && echo 1 || echo 0)" "rc $rc"
+ap() { printf '[{"user":{"login":"%s"},"author_association":"%s","body":"%s"}]' "$1" "$2" "$3"; }
+for c in "$(ap o OWNER "looks good")" "$(ap o OWNER "Reviewer: Approve $F")" "$(ap o OWNER "Reviewer: Approve ${H:0:9}")" "$(ap o OWNER "> Reviewer: Approve $H")" "$(ap helper COLLABORATOR "Reviewer: Approve $H")" "$(ap o NONE "Reviewer: Approve $H")" "[]"; do
+  rc=$(FAKE_COMMENTS="$c" act full)
+  ok "full: refused on a head with no \"Reviewer: Approve <head>\" by the owner's account or a known reviewer (${c:0:70}): no run" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && [ "$(calls rerun)" = 0 ] && grep -q 'only on a reviewed head' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+done
+rc=$(FAKE_REVIEWERS="other helper" FAKE_COMMENTS="$(ap helper COLLABORATOR "Reviewer: Approve $H")" act full)
+ok "full: a known reviewer's (REVIEWERS) Approve of the head lets the run start" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 1 ] && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
+ok "full: the PR's comments are only counted, never echoed" "$(! grep -qi 'approve 0123' "$W/replies" && echo 1 || echo 0)" "$(cat "$W/replies")"
 for st in queued in_progress; do
   rc=$(FAKE_RUNS="$(runs "$(fr 310 $st null)")" act full)
   ok "full: a run for this head is already $st → no second run, the reply links it" "$([ "$rc" = 0 ] && [ "$(calls dispatches)" = 0 ] && [ "$(calls rerun)" = 0 ] && grep -q 'runs/310' "$W/replies" && echo 1 || echo 0)" "rc $rc; $(cat "$W/replies")"
