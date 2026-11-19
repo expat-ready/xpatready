@@ -25,4 +25,3 @@ PASS  J-109 W5 pass: it ends at the closed complaint in the list, under Closed, 
 PASS  J-109 W5: its handler, the Case Manager, sees it closed in their list too
 PASS  J-109: no page error in any browser step
 walk j_109: 26 PASS, 0 FAIL; 3 video, 3 trace, 50 step screenshots → /home/runner/work/_temp/walk
-[36;1mnode -e 'const v=require(process.argv[1]); console.log(`### ${v.journey} at ${v.sha.slice(0,9)}: exit ${v.exit}, ${v.pass} PASS, ${v.fail} FAIL, ${v.held} HELD\n${v.video.length} video, ${v.traces.length} trace, ${v.steps} step screenshots, ${v.journeyShots} journey screenshots (artifact walk-${process.env.NAME}-${v.sha})\n${v.failed.map((l)=>"* "+l).join("\n")}`)' "$f" >> "$GITHUB_STEP_SUMMARY"[0m

@@ -21,5 +21,5 @@
 ## Walks on main 3c9731cd7 (dispatched by the Lead 14:24Z; main = batch tree + PF-19r part 2 only, no complaints files)
 - Pack run 44543315644, job 135627929501 (walk j_109): 26 passed, 0 failed.
 - Independent re-run 44543321849, job 135627584968 (walk j_109): 26 passed, 0 failed.
-- Step list of the pack run: walk-steps-pack.txt.
+- Step list of the pack run: walk-j109-pack-steps.txt.
 - account-sections.ts on main: no Complaints entry (QA-506 still Open, Minor).
