@@ -6,16 +6,17 @@
 //   W1: the public page lists slots;  W2: booker A books one;  W3: booker B, on the same slot in a second browser, is
 //   refused ("This time was just booked.") and offered the next slots, and only one booking exists;  W4: A's
 //   confirmation arrives in the demo inbox;  W5: ends at row 42's first step: A's manage link opens A's booking.
-//   W4b (J-9 W4, moved from PF-23w, #1800): HELD until FO-2 part 3b swaps booking's `arrival` from fakeArrival to FO-2's
-//   ArrivalPort (runtime-ports.ts): on a running copy a reminder due after a restart finds no booker (the fake keeps
-//   people in memory) and sends nothing. Once the swap is on this branch, W4b restarts the API and waits for the
-//   reminder in the demo inbox (the clock seam is named in the PR then).
+//   W4b (J-9 W4, moved from PF-23w, #1800): restart the API; A's reminder still runs at its due time and arrives in the
+//   demo inbox. It needs FO-2 part 3b's real ArrivalPort (#2196, bound in booking/runtime-ports.ts): on fakeArrival the
+//   restarted API keeps no booker in memory and sends nothing. Clock seam: after the restart the walk sets the queued
+//   reminder's start_after to now in pg-boss's job table on the copy (the only change made outside the app).
 // Fails on the fake (P-606): the inbox read is the real outbox (msg_outbox SENT by the local provider), never fakeMail.
 // The firm, its host, hours and free-consultation type are written straight to the copy's database (Sample rows: no
 // screen makes a firm or a type yet in this walk's path). US$0, no model call.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j37 4437 start --ttl 30 && trap 'zsh studio/tools/isolated.sh j37 4437 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_37.ts j37 4437
 import "reflect-metadata";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -27,9 +28,8 @@ const [NAME, PORT] = [process.argv[2] ?? "j37", Number(process.argv[3] ?? 4437)]
 const STUDIO = join(import.meta.dirname, "..", ".."), BASE = `http://localhost:${PORT}`, TZ = "America/Toronto";
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-37", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/xr_studio_${NAME}`, options: "-c TimeZone=UTC" }) });
-let pass = 0, fail = 0, held = 0;
+let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
-const hold = (name: string, why: string) => { held++; console.log(`HELD  ${name} — ${why}`); };
 const run = Date.now().toString(36);
 const headed = process.env.HEADED === "1";
 const browser = await chromium.launch({ headless: !headed, slowMo: headed ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -92,9 +92,26 @@ try {
   await new Promise((r) => setTimeout(r, 8_000));   // two job hops' time for a wrong mail to arrive (review m4)
   ok("J-37 W4 fail side: the refused booker got no booking mail", (await inbox(loseMail)).length === 0);
 
-  // -------------------------------------------------------------------- W4b: the reminder after a restart (held)
-  hold("J-37 W4b (J-9 W4): restart the API; A's reminder still runs at its due time and arrives in the demo inbox",
-    "waits on FO-2 part 3b: booking's arrival is fakeArrival on the running app (runtime-ports.ts), so a reminder after a restart finds no booker");
+  // -------------------------------------------------------------- W4b (J-9 W4): the reminder after an API restart
+  // The booking's reminders are pg-boss jobs keyed `booking:<id>:<seq>:reminder-…` (booking/service.ts afterCommit);
+  // only those due after now are queued, so the 24 h one is absent for a slot within a day, the 1 h one is there.
+  const booking = await db.foBooking.findFirstOrThrow({ where: { firmId: firm.id, status: "SCHEDULED" }, select: { id: true } });
+  const reminders = () => db.$queryRawUnsafe<{ id: string; key: string; state: string }[]>(`select id::text, data->>'key' as key, state from platform_jobs.job where name = 'booking.reminder' and data->>'key' like $1 order by start_after`, `booking:${booking.id}:%`);
+  const queued = await reminders();
+  execFileSync("zsh", [join(STUDIO, "tools", "isolated.sh"), NAME, String(PORT), "restart"], { stdio: ["ignore", "ignore", "inherit"] });
+  let ready = 0;
+  for (let i = 0; i < 90 && ready !== 200; i++) { try { ready = (await fetch(`${BASE}/api/health/ready`)).status; } catch { /* starting */ } if (ready !== 200) await new Promise((r) => setTimeout(r, 1_000)); }
+  const after = await reminders();
+  // The clock seam (named in the PR): the walk cannot wait until an hour before the slot, so on this copy only, after
+  // the restart, the earliest queued reminder's start_after is set to now in pg-boss's own table. Everything after is
+  // the running app: pg-boss hands it to the restarted worker, runReminder reads the booker through the ArrivalPort
+  // (FO-2 part 3b's real adapter: the person is in the database, not in a fake's memory) and sends through MailPort.
+  const due = after.find((r) => r.state === "created");
+  if (due) await db.$executeRawUnsafe(`update platform_jobs.job set start_after = now() where id = $1::uuid`, due.id);
+  let reminded: Awaited<ReturnType<typeof inbox>> = [];
+  for (let i = 0; i < 40 && !reminded.length; i++) { reminded = (await inbox(winMail)).filter((m) => m.subject.startsWith("Reminder: your Free consultation")); if (!reminded.length) await new Promise((r) => setTimeout(r, 3_000)); }
+  ok("J-37 W4b (J-9 W4): after an API restart (ready 200) the booking's reminder is still queued, runs when due (clock seam: start_after set to now on the copy) and arrives in the demo inbox; on fakeArrival it finds no booker and nothing arrives",
+    queued.length >= 1 && ready === 200 && !!due && reminded.length === 1, { queued, after, ready, subjects: (await inbox(winMail)).map((m) => m.subject) });
 
   // ------------------------------------------------------------------------- W5: row 42's first step, the manage link
   const link = body.match(/\/book\/[a-z0-9-]+\/manage#[A-Za-z0-9._~-]+/)?.[0];
@@ -108,5 +125,5 @@ try {
 } finally {
   await browser.close(); await db.$disconnect();
 }
-console.log(`\n${pass} passed, ${fail} failed, ${held} held`);
+console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
