@@ -16,7 +16,7 @@ Reviewer (Opus, did not build it), 17 Nov 2026. Commit `1d40c5fc3b0b13e3b3df67f3
 Mutation reasoning: removing the length check, the control check, the `?? fallback`, the resend carry or the DB check each makes a named assertion fail (codes and stored values are asserted, not only the status).
 
 ## Migration
-* `20261117140000_pf4dn_invitation_display_name` is later than every migration on `origin/main`; the newest there is `20261117030000_fo9a_duplicate_match`.
+* `20261119173000_pf4dn_invitation_display_name` (re-stamped 19 Nov from `20261117140000`, P-600 (d)) is later than every migration on `origin/main`; the newest there at re-stamp is `20261119144500_csnk1_field_name_key`.
 * It adds one nullable `TEXT` column. Existing rows are NULL and pass the check, so no data is lost. The Prisma field is `String? @map("display_name")`.
 * The check is `NULL OR (= btrim AND char_length 1-120 AND !~ [[:cntrl:]])`. Every value the API stores passes it: I probed emoji ×120, Devanagari, combining marks, and NBSP or ideographic-space padding, which the API trims away. Length counts code points on both sides.
 * The check is **looser** than the API: the database accepts U+200B, U+2028 and NBSP padding, and the API refuses all three (finding 3).
@@ -82,3 +82,19 @@ No Blocker, Major or Minor open. The journey score stays 10/10 because the scree
 Verdict: Approve 1bfea50519bdf4a5a932e3b3423a27c111096454
 
 1. None open. One note: the screen's own trim still sends a separator-only Name as no name, as before; this is expected and not a defect.
+
+## Re-review at 8803e7718, 19 Nov (merge of origin/main)
+Diff-only. I read `git diff 33f0aa577 8803e7718` limited to PF-4dn's files, and `git diff 21cc0c640 8803e7718` (main → merge). I ran an isolated copy `pf4dnrv` on :4595 (never :4400), stopped it afterwards (database and files removed), and stopped the database cluster I had started for it.
+
+* **Nothing of PF-4dn was lost.** For identity/service.ts, identity/session/service.ts, platform.prisma, the migration, invite-panel.tsx, the test and the review records, the changed lines of main → merge are identical to merge-base → 33f0aa577.
+* **Main's changes merged sensibly.** Main changed identity/service.ts (PF-15 seat check through PgEntitlements; PF-19r `emailInvitation` now returns `{ emailed, emailHeld? }`), session/service.ts (outbox mail for the two-step reset) and platform.prisma (back-relation slots). None of these overlap PF-4dn's hunks. `invite()` and `resend()` keep `displayName` / `old.displayName` and spread main's new mail result. The panel still reads `emailed === false`, which main keeps. tsc for api and web shows no error in PF-4dn's files.
+* **MODULE.md resolution is correct.** Main's frozen card is taken whole (0 lines differ from main). PF-4dn's two card items (the `displayName` on `POST staff/invitations`, and the test) are in `api/src/platform/MODULE.rows/PF-4dn.md`. `web/src/MODULE.rows/PF-4dn.md` names invite-panel.tsx. Both follow the format of the other rows files (P-712).
+* **Re-run:** `check_pf4dn_invite_name` passed **15/15** on a fresh copy built from 8803e7718. Both `20261117140000_pf4dn_…` and main's newest `20261119081500_fo3a_set_name_unique` are applied, and no migration failed.
+* **Finding 1 (Major): the migration stamp breaks P-600 (d).** `20261117140000_pf4dn_invitation_display_name` now sorts before 14 of main's migrations (newest `20261119081500`). P-600 (d) says the later PR re-stamps and re-runs CI when an earlier one merges. Technically it is harmless: no later migration touches `platform_invitation`. I dropped the column and its `_prisma_migrations` row on the copy, and `prisma migrate deploy` applied it again after the newer ones ("All migrations have been successfully applied", column back). But this is a written rule with a two-minute fix, and no automated check catches it. Fix: `git mv` the folder to a stamp after `20261119081500` (and after main's newest at push time), update the stamp quoted in this file's line 19, and re-run CI.
+* **Finding 2 (Minor): the kept `pf-6-staff/screenshots/invite-people-1440.png` is stale against the merged app.** It shows the Name field, but its left navigation has only Profile and Team. Main's version (PF-6 part 2b) shows Profile, Licence, Team, Licences and Security, and those pages are in the merged code. Fix: retake the screenshot from 8803e7718 or later, so it shows both the Name field and main's navigation.
+* **Journey score:** this stays at 10/10 (journey report, 17 Nov). invite-panel.tsx is byte-identical to the approved head, and the scripted screen checks pass again.
+
+Verdict: Block 8803e771841276028feb71d05681d6eec3611475
+
+1. Major: re-stamp the migration later than main's newest (P-600 (d)) and re-run CI.
+2. Minor: retake `pf-6-staff/screenshots/invite-people-1440.png` from the merged head (it is missing main's Licence, Licences and Security navigation).
