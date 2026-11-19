@@ -120,4 +120,14 @@ Round 4 result (1995b5edf): Approve.
 - **Suite re-run by the reviewer** on a fresh copy at :4581 at c7481a33a (started, then stopped): **53/53**. The builder's pf1, pf6a, fo3w and pf6 staff results in build-notes are taken as recorded.
 - The open Minors (n1-n3, m3, m5, m6, m7) are unchanged. Nothing new found.
 
+Round 5 result (c7481a33a): Approve.
+
+## Re-review (round 6) of 36dc2484c: base moved again, clean merge, diff only
+- **This row's code is unchanged.** `git diff c7481a33a..36dc2484c` over `web/src` and the test is empty, and none of this row's files changed. The three-dot stat against the base branch (now at c72bca8cd) still lists only this row's files and its one-line `account-sections.ts` add.
+- **Nothing in the merge reaches what this screen calls.** The availability routes and service, slots, the staff booking read, `frame.tsx`, `session.ts`, the terms gate and the identity guard are all unchanged. Two files the screen's path touches did change, neither in a way that matters here:
+  - `firm-scope.ts` gains one `BYPASS_USES` entry, for a background job (`job:platform.entitlements.storage_daily`), with no request routes.
+  - `platform.prisma` gains two back-relation slots for PF-15 entitlements. The staff and role-grant models the test writes are untouched.
+- **Suite re-run by the reviewer** on a fresh copy at :4581 at 36dc2484c (started, then stopped): **53/53**. The builder's other suite results in build-notes are taken as recorded.
+- The open Minors (n1-n3, m3, m5, m6, m7) are unchanged. Nothing new found.
+
 Verdict: Approve
