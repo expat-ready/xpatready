@@ -48,6 +48,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **18:06 IST:** merged since 16:00: #2207 (Mergify parallel mode), #2240 (card tool), #2196 (FO-2 part 3b, ArrivalPort; R1.28 and R1.37), #2251 (FO-4 part 2a-i). Triggers fired: J-37 and J-28 (lanes at the founder's next typed turn), FO-4 part 2a-ii. #2268 (FO-9a phone, R1.33) labelled; owner rulings in 7006779547; follow-ups FO-9a-c and FO-9a-p shaped. #2243's DW8 focus failure (batch #2265) fixed at d19af6038 and bb1174815, relabelled. Batch #2267 failed on #2255's case-clients scope (Build Lead C's). Waiting in the queue: #2029, #2252, #2262, #2268, #2243, #1961.
 
+**18:07 IST (Lead 94):** lanes placed on warm cloud lanes: J-37 on the J-38 lane (R1.40), J-28 on the J-77 lane, FO-4 part 2a-ii (P-736) on the FO-4 2a lane. Each starts from origin/main, opens one PR, and the bot labels it. **Owed by me:** ask qa 7 to walk R1.30/R1.31 when FO-4 part 2a-ii merges, R1.37 when J-37 merges and R1.28 when J-28 merges.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.
