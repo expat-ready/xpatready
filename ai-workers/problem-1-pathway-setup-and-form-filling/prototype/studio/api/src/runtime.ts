@@ -10,7 +10,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
+import { caseName, type CaseListRow, CaseListQuery, ConfirmSection, QuestionnaireQuery, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, optionsOf, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
@@ -563,6 +563,13 @@ export class Runtime {
     return { answers: [...a.filter((x) => !firmGives.has(`${x.subjectId}|${x.field}`)), ...fromFirm], rows: r, groups };
   }
 
+  /** GET /runtime/cases/:id/questionnaire (CS-V1 part 3): ?mode= once, one of its words; pqr, the Agent view, or the
+   *  client's questionnaire (sqr, client or none), as before. */
+  async questionnaire(actor: Actor, caseId: string, queryIn: unknown) {
+    const { mode } = parse(QuestionnaireQuery, queryIn ?? {});
+    return mode === "pqr" ? this.pqr(actor, caseId) : this.view(actor, caseId, mode === "agent" ? "agent" : "sqr");
+  }
+
   async view(actor: Actor, caseId: string, mode: Mode) {
     const c = await this.reach(actor, caseId, "read");
     if (mode === "agent" && !isOfficer(actor)) fail("The Agent view is for the case officer.", HttpStatus.FORBIDDEN);
@@ -1025,10 +1032,11 @@ export class Runtime {
    *  in one query each for the whole page, never one per row. A case not yet prepared holds none (0).
    *  A24-2 (P-492, design §6): `q=<words>` keeps the cases whose case number, own reference, a person's name or an IRCC
    *  application number contains them (any letter case), inside the same firm filter; the cursor pages the kept cases. */
-  async list(actor: Actor, q: { take?: string; after?: string; client?: string; q?: unknown }) {
+  async list(actor: Actor, queryIn: unknown) {
     need(actor, "case");
+    const q = parse(CaseListQuery, queryIn ?? {}); // CS-V1 part 3: only take, after, client and q, each once
     const workspaceId = await this.ws.id();
-    const take = Math.min(Math.max(Number(q.take ?? 50) || 50, 1), 100);
+    const take = Math.min(Math.max(Math.trunc(Number(q.take ?? 50)) || 50, 1), 100); // review m2: take=1.5 is 1, never a 500
     // Break m5: one login or none; a list or an empty value is refused, never read as "every client".
     if (q.client !== undefined && (typeof q.client !== "string" || !q.client)) fieldError("client", "Name one client login.");
     const client = q.client ?? null;
@@ -1068,7 +1076,7 @@ const searchWhere = (w: string) => {
 @Controller("api/runtime")
 export class RuntimeController {
   constructor(@Inject(Runtime) private readonly r: Runtime) {}
-  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: { take?: string; after?: string; client?: string; q?: unknown }) { return this.r.list(actorOf(a), q); }
+  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: unknown) { return this.r.list(actorOf(a), q); }
   @Get("next-case-number") nextCaseNumber(@Headers("x-actor") a: H) { return this.r.nextCaseNumber(actorOf(a)); }
   @Post("cases") create(@Headers("x-actor") a: H, @Body() b: unknown) { return this.r.createCase(actorOf(a), b); }
   /** FO-8: a staff session (PF-4's guard and the key decide, never x-actor), as features/clients.ts's reads. */
@@ -1078,7 +1086,7 @@ export class RuntimeController {
   @Get("cases/:id") get(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.get(actorOf(a), id); }
   @Post("cases/:id/people") addPerson(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.r.addPerson(actorOf(a), id, b); }
   @Patch("cases/:id/people/:subject") updatePerson(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Body() b: unknown) { return this.r.updatePerson(actorOf(a), id, s, b); }
-  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query("mode") m?: string) { return m === "pqr" ? this.r.pqr(actorOf(a), id) : this.r.view(actorOf(a), id, m === "agent" ? "agent" : "sqr"); }
+  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.r.questionnaire(actorOf(a), id, q); }
   @Post("cases/:id/review") review(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.review(actorOf(a), id); }
   @Put("cases/:id/answers/:subject/:field") answer(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Param("field") f: string, @Body() b: unknown) { return this.r.putAnswer(actorOf(a), id, s, f, b); }
   /** B128: a relative's answer, its key (`<person>/parent_1`) written as two path parts. */
