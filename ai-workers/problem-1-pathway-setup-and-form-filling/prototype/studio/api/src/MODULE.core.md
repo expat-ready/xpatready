@@ -25,7 +25,8 @@ The API's start-up, shared providers and the configuration service. Read this be
 - `ConfigReadGuard` leaves `/api/platform/*`, `/api/front-office/*` and `/api/runtime/*` routes that declare `@PermissionKeys` (exact case) to PF-4's guard; any other Bearer is 403 link-only (Lead 58, #1818).
 
 **Tables.** combination, programDef, canonicalField, configRelease, reviewSubmission, sectionQuestion, documentRequirement, predicate, auditEvent, combinationForm, formFieldMap.
-**Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`, `tests/check_csw1_firm_id.ts`, `tests/check_aud1m_case_writes.ts`.
+**Tests.** `tests/check_features_registry.ts`, `tests/check_pf0p_ports.ts`, `tests/check_f8_empty_release.ts`, `tests/check_bk4a.ts`, `tests/check_csw1_firm_id.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.core.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Add a provider to `main.ts`'s `@Module` list for a new feature.
