@@ -137,7 +137,8 @@ try {
   // ------------------------------------------------------------------------------------- E4: audited with ids only
   const lines = sql(`select summary || ' ' || detail::text || ' ' || actor from audit_event where entity = 'fo_person' and entity_key = '${lena.person.id}' and action = '${PHONE_EDIT_ACTION}'`).split("\n").filter(Boolean);
   ok("FO-9a phone E4 pass: each saved edit is one audit line on fo_person, naming the person and the staff member", lines.length === audits(lena.person.id) && lines.length === 2 && lines.every((l) => l.includes(lena.person.id) && (l.includes(`staff:${R.staffId}`) || l.includes(`staff:${T.staffId}`))), lines);
-  const all = sql(`select string_agg(summary || ' ' || detail::text, ' ') from audit_event where action = '${PHONE_EDIT_ACTION}'`);
+  // Ids are uuids, which may hold "555" by chance (re-review R1): they are removed before looking for a number.
+  const all = sql(`select string_agg(summary || ' ' || detail::text, ' ') from audit_event where action = '${PHONE_EDIT_ACTION}'`).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
   ok("FO-9a phone E4 fail: no audit line holds a number, typed or stored (no 4165550, no +44, no 7946)", !/4165550|\+44|7946|555/.test(all), all.slice(0, 300));
 
   // ------------------------------------------------------------------------------------- E6: the breaker's findings on b6b6b3d4 (F1-F4, F7)
@@ -152,7 +153,8 @@ try {
   ok("FO-9a phone E6 fail (review M1): a local-only number with no area code (555 0100, 4165550) → 422, never saved as +15550100",
     sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "555 0100" }))) && sentence(await refusal(() => people.editPhone(R, ivy.person.id, { phone: "4165550" }))) && person(ivy.person.id) === "12|false|-");
   const spellings: [string, string][] = [["011 44 20 7946 0000", "+442079460000"], ["+44 (0) 20 7946 0958", "+442079460958"], ["1 416 555 0108", "+14165550108"], ["\uff14\uff11\uff16 555 0109", "+14165550109"]];
-  const read6 = await Promise.all(spellings.map(async ([t]) => (await people.editPhone(R, ivy.person.id, { phone: t })).phone));
+  const read6: string[] = [];   // one after another: the last save is the last spelling (re-review R1: Promise.all raced on the row lock)
+  for (const [t] of spellings) read6.push((await people.editPhone(R, ivy.person.id, { phone: t })).phone);
   ok("FO-9a phone E6 pass: an international prefix (011), a trunk (0), a leading 1 and full-width digits are read without loss", read6.every((x, i) => x === spellings[i][1]), read6);
   const n6 = audits(ivy.person.id), same = await people.editPhone(R, ivy.person.id, { phone: "416 555 0109" });
   ok("FO-9a phone E6 fail (breaker F4): the same number saved again writes nothing (no second audit line)", same.phone === "+14165550109" && audits(ivy.person.id) === n6, { n6, after: audits(ivy.person.id) });

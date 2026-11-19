@@ -54,3 +54,27 @@ D1 4: every brief line is met except M1 · D2 3: M1 and M2 (a broken number is s
 * Not checked: a real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); CI lint (the local eslint config did not load); Safari and Firefox.
 
 **Verdict: Block** for commit `b6b6b3d484506b76a133408524956317b463597b`. Fix before approval: **M1** and **M2** (`api/src/front-office/people/edit.ts:47` with `api/src/front-office/duplicates/phone.ts:11`: accept only a full E.164 of 7 to 15 digits that is itself possible, with failing tests for "555 0100", "+49 23456789012345" and "+43 2345"). The Minors m1–m6 should be fixed, or listed with a follow-up row.
+
+## Re-review (diff only) on 5cbdee05
+Reviewer agent, 19 Nov. I read only `git diff b6b6b3d4 5cbdee05` (`duplicates/phone.ts`, `people/edit.ts`, `lead-page.tsx`, `check_fo9a_phone_edit.ts`). I ran the check six times, j_33 once on :4434 (16/16; screenshots restored with `git checkout`), a short UI pass, and the mutation spot-check again in a scratch copy.
+
+**Closed:**
+* **M1.** `phoneE164Exact` re-parses the E.164 with no default region. "555 0100" and "4165550" now give 422 with the sentence, and nothing is saved. I saw it on screen and the database row stayed `12|false|-`. Removing the re-parse line fails E6 (M1).
+* **M2.** The E.164 must be 7–15 digits: "+49 23456789012345" and "+43 2345" give 422, not a 500 or a key-less save. Removing the shape test fails 4 E6 lines.
+* **Breaker F3 and F7.** The typed digits must equal the number, and an extension is refused. Every refusal is now the one sentence. Common spellings still read: +1 (416) 555-0101, 1-416-555-0101, 416.555.0101, +44 (0) 20 7946 0958, 011 44 …, +39 06 …, +33, +91, +61, +52, +86, Arabic-Indic and full-width digits. "0044 …" is still refused (as before; the sentence covers it). Removing the exact-digits rule fails E6. The extension test is now covered by the exact-digits rule as well, so removing it alone changes nothing.
+* **m1.** Focus returns to Edit after Save, Cancel or Escape, including Escape pressed from the Save button. When Fix number opened the field, focus also returns to Edit, because the pill is gone after a save. That is acceptable.
+* **m3.** The prospect-owner and deactivated-owner paths now each have a pass and a fail. Both mutants are caught (the prospect one by the check stopping on an uncaught 404).
+* **m4.** A double click sends one PATCH, writes one audit line and shows one toast (UI pass). The same number saved again writes nothing.
+
+**Left for the tech lead, as stated:** m2 (no version), m6 (graph cannot see helper calls), and the third copy of the visibility rule. These are not blocking.
+
+**New finding:**
+**R1 (Major, Must). `check_fo9a_phone_edit.ts` is flaky: it failed in 5 of my 6 runs at this commit (one of the official runs, 36/36, passed), so CI will usually be red.**
+* `tests/check_fo9a_phone_edit.ts:155` saves four spellings on the same person with `Promise.all`. Which one lands last depends on lock order. Line 157 then saves "416 555 0109" and expects no new audit line, which holds only when the full-width "…0109" happened to land last. It failed 4 of 5 times, each with `{"n6":4,"after":5}`.
+* `:141` (E4) checks every phone audit line's summary and detail against `/4165550|\+44|7946|555/`. The detail holds random UUIDs (firm, staff, person), and a UUID with "555" or "7946" in it fails the line with no number present. That happened once in 5 runs. The line is older than this diff, but the extra persons raise the odds.
+* The product code is right. Only the check is unreliable.
+* **Fix:** run the spellings one after another (`for … of`), or check "the same number again" on its own person. For E4, remove UUIDs before matching (e.g. `all.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/gi, "")`), or match only phone-shaped text.
+
+**Not checked:** `tsc -p web` is clean. `tsc -p api` reports 15 errors, all in `tests/check_x2b_bulk_apply.ts`, which this diff does not touch, so they are not this item's. Lint, a screen reader and other browsers were not checked, as before.
+
+**Verdict: Block** for commit `5cbdee053dc48e2d1c1788cfd7db1f300e4c3f90`. Fix: **R1** (`tests/check_fo9a_phone_edit.ts:155-157` and `:141`). M1, M2, m1, m3 and m4 are closed; with R1 fixed and the check green twice in a row, this is an Approve.
