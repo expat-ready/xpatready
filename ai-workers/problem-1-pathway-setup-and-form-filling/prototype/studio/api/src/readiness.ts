@@ -116,7 +116,7 @@ export class FilingReadinessRoutes {
       if (newest?.revision !== c.pins[0].revision) fail("This case moved to another release while you reviewed the filing: nothing was recorded. Reload and review it again.", HttpStatus.CONFLICT);
       const made = await tx.filingReview.create({ data: { workspaceId: f.workspaceId, filingId: f.id, reviewedBy: actor.id, kind, licenceNumber: licence!.number, note, factsHash: rd!.facts_hash } });
       await this.rounds.oneStep(tx, c, actor, { filing: f.id, reviewId: made.id, kind, frames: one.frames, checks: one.checks });
-      await tx.auditEvent.create({ data: { workspaceId: f.workspaceId, actor: actor.id, action: kind, entity: "filing", entityKey: f.id, summary: `${actor.name} ${kind === "self_reviewed" ? "self-reviewed" : "reviewed"} a filing on case ${c.id.slice(0, 8)} (licence ${licence!.number})`.slice(0, 600), detail: { case: c.id, note } } });
+      await new Audit(tx as never).log(f.workspaceId, actor.id, kind, "filing", f.id, `${actor.name} ${kind === "self_reviewed" ? "self-reviewed" : "reviewed"} a filing on case ${c.id.slice(0, 8)} (licence ${licence!.number})`.slice(0, 600), { case: c.id, note });
       return made;
     }, { timeout: 20_000, maxWait: 10_000 }));
     const name = firm ? userIn(firm, actor.id)?.name ?? actor.name : actor.name;

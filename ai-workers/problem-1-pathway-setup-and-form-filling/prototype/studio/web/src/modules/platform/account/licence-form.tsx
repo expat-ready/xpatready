@@ -37,6 +37,16 @@ export function LicenceForm({ start, save, onCancel, onDirty, saveLabel = "Save 
   const [number, setNumber] = React.useState(start?.licenceNumber ?? "");
   const [error, setError] = React.useState<string | null>(null), [note, setNote] = React.useState<string | null>(null), [busy, setBusy] = React.useState(false);
   const saveButton = React.useRef<HTMLButtonElement>(null);
+  // The busy button is disabled while saving, which drops focus to the page; it goes back to Save (review MJ-2) in the
+  // commit that enables the button again, before the page is painted (a layout effect), so the keyboard is never seen
+  // on the page. (The timed callback this replaces could run before that commit, focus a button still disabled and
+  // leave the keyboard on the page for good: FO-3st2 part 1, merge batch #2265.)
+  const backToSave = React.useRef(false);
+  React.useLayoutEffect(() => {
+    if (busy || !backToSave.current) return;
+    backToSave.current = false;
+    if (document.activeElement === document.body) saveButton.current?.focus();
+  }, [busy]);
   const now: Fields = { representativeType: type, licensingBody: body, licenceNumber: number };
   const dirty = JSON.stringify(now) !== JSON.stringify(fieldsOf(base));
   React.useEffect(() => { onDirty?.(dirty); }, [dirty]);   // eslint-disable-line react-hooks/exhaustive-deps -- reports changes only
@@ -52,9 +62,7 @@ export function LicenceForm({ start, save, onCancel, onDirty, saveLabel = "Save 
       if (x instanceof LicenceConflict) { const f = fieldsOf(x.now); setBase(x.now); setType(f.representativeType); setBody(f.licensingBody); setNumber(f.licenceNumber); }
       setError(x instanceof StaffApiError || x instanceof LicenceConflict ? x.message : "Could not save. Please try again.");
     } finally {
-      setBusy(false);
-      // The busy button is disabled while saving, which drops focus to the page; it goes back to Save (review MJ-2).
-      requestAnimationFrame(() => { if (document.activeElement === document.body) saveButton.current?.focus(); });
+      backToSave.current = true; setBusy(false);
     }
   };
   const label = (n: string) => bodyLabel(ALL.find((b) => b.name === n)!);

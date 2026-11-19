@@ -66,11 +66,21 @@ export const EVENT = {
   PROSPECT_LOST: "prospect.lost",
   /** A Convert to client was undone while the client was empty (FO-2 part 3; AG-2-47 rule 18). */
   PROSPECT_UNCONVERTED: "prospect.unconverted",
+  /** A call was logged on a lead or a prospect (FO-2 part 4; AG-2-37a): the audit action (no outbox row yet). */
+  CALL_LOGGED: "call.logged",
+  /** A note was added on a lead or a prospect (FO-2 part 4): the audit action (no outbox row). */
+  NOTE_ADDED: "note.added",
 
   /** A case closed: withdrawn, or closed by staff with a reason (case side, CS-C1a; contract v0.1 §4). */
   CASE_CLOSED: "case.closed",
   /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
   CASE_REOPENED: "case.reopened",
+  /** The case side made a client from a won prospect (FO-8; P-560; case-side contract v0.1 §4). Written last in the
+   *  transaction that makes the client; module_event.subject_id is the client id. */
+  CLIENT_CREATED: "client.created",
+  /** A case was opened (P-560; contract v0.1 §4). FO-8 writes it on the "Open a case?" offer path, in the opening's own
+   *  transaction; a direct opening does not write it yet. module_event.subject_id is the case id. */
+  CASE_OPENED: "case.opened",
 
   /** Two front-office persons or companies were merged (front office, FO-9b; AG-2-16; contract v0.1 §3.3, §7). Written
    *  last in the merge's transaction, the caller's when the case side merges a client. */
@@ -185,6 +195,15 @@ export const ProspectMovePayload = z.strictObject({
 });
 export type ProspectMovePayload = z.infer<typeof ProspectMovePayload>;
 
+/** One line of a "what happened" timeline (FO-2 part 4; review D10: every reader of what happened uses this one shape,
+ *  never its own). `kind` says where the line was read from: an audit line, an outbox event with no audit line of its
+ *  own, a logged call or a note. `type` is the audit action, the event type, `call` or `note`; `refId` the row's id. */
+export const TimelineLine = z.strictObject({
+  at: z.string().datetime({ offset: true }), kind: z.enum(["AUDIT", "EVENT", "CALL", "NOTE"]), type: z.string().min(1),
+  actor: z.string().nullable(), actorName: z.string().nullable(), summary: z.string(), refId: Uuid.nullable(),
+});
+export type TimelineLine = z.infer<typeof TimelineLine>;
+
 /** The subject part of `prospect.won` (contracts §7 §2.6, AG-2-77 rule 2): a person, or a company with its name and its
  *  live contacts with their roles, linked and never copied (rule 7). The case side makes a person or a company client
  *  from it (FO-8). The rest of the payload (§2.6: won_via, owner, answers…) is the writer's (FO-2 part 3, FO-6). */
@@ -232,6 +251,17 @@ export const CaseReopenedPayload = z.strictObject({
   reopenedAt: z.iso.datetime({ offset: true }),
 });
 export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;
+
+// FO-8 (P-560; case-side contract v0.1 §4, front-office contracts §2.6): what the case side writes back, ids and codes only
+// (never a name: a consumer reads the client or the case). The firm is also the outbox row's firm_id.
+/** `client.created`: the won prospect and the client made from it (client_number is the client code, CL-00001). */
+export const ClientCreatedPayload = z.strictObject({ firm_id: Uuid, prospect_id: Uuid, client_id: Uuid, client_number: z.string().regex(/^CL-\d{5,}$/) });
+export type ClientCreatedPayload = z.infer<typeof ClientCreatedPayload>;
+/** `case.opened`: the case opened from a won prospect's offer (client_type is the Pathway's, as `case.closed` carries it). */
+export const CaseOpenedPayload = z.strictObject({
+  firm_id: Uuid, prospect_id: Uuid.nullable(), client_id: Uuid, case_id: Uuid, case_number: z.string().min(1), client_type: z.enum(["INDIVIDUAL", "CORPORATE"]).nullable(),
+});
+export type CaseOpenedPayload = z.infer<typeof CaseOpenedPayload>;
 
 // FO-9b part 0: the person merge events, ids only (never a name, email or phone; a consumer reads the records). The firm
 // is the outbox row's firm_id and module_event.subject_id is the survivor's id. `mergeRef` is PersonMergePort's merge_ref.
