@@ -2,6 +2,7 @@
 paths:
   - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{runtime,clients,case-*,assessments,team,person-link,employer-*,earlier-facts,findings,readiness,readiness-inputs,document-review-*,filing,filing-*,fill-case,submission,submission-record,sign-steps,review-rounds,review-runs,review-run-shapes,review-stamp,review-items,release-*,stage-scope,routes-data}.ts"
   - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-clients/*.ts"
+  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/case-deadlines/*.ts"
 ---
 # Module card: api-cases (P-615)
 The runtime: a client's case on a released combination, from answers to a recorded submission. Read this before editing these files; update it in the same PR when an entry point, invariant, table or test below changes (or say `Card unchanged: <reason>` in the PR body).
@@ -20,7 +21,7 @@ The runtime: a client's case on a released combination, from answers to a record
 - The only hard stop on Ready to file is a barcode form failing its own Validate; the rest are warnings passed with a reason (P-237).
 - A never-waivable line cannot be marked Not applicable (P-172); a line of an ended stage is history (P-444).
 - A case reads only its current stage's pins and rows (B139).
-- A stage deadline is the calendar date its rule gives, never moved by hours or closed days; the view adds its weekday, "(weekend)" / "(closed day)" and Missed (before today in the firm's zone, clock port), from `platform/calendar/` (CS-DL1 part 1; AG-7-94, AG-7-96 r2).
+- A stage deadline is the calendar date its rule gives, never moved by hours or closed days; the view adds its weekday, "(weekend)" / "(closed day)" and Missed (before today in the firm's zone, clock port), from `platform/calendar/` (CS-DL1 part 1; AG-7-94, AG-7-96 r2). Only a cited route reminds (`case-deadlines/`, part 2): keyed jobs `deadline:<case>:<stage>:<offset>:<date>:<run time>:r<reopens>` counted back over open days, cancelled by `case.closed` and armed again by `case.reopened` (read from the outbox by the sweep); a job whose key today's state and calendar no longer give, whose day has passed or whose firm is not the case's tells nobody (AG-13-14, -15).
 - A case is OPEN or CLOSED; a decision needs a recorded submission, `case_decision` is insert-only, close and reopen need a reason and write `case.closed`/`case.reopened` in the same transaction (CS-C1a; AG-7-33, -34, -13, -50).
 - An opening checks the plan limit in its own transaction: a per-firm advisory lock, the active count by group, then `EntitlementPort.check`, all before the case number is taken; a refusal is 409 `PLAN_LIMIT_REACHED` and writes nothing (CS-C1b; SA-3-4, -39, -47; P-588 (3)). Active: OPEN and not every active filing decided since the last reopen; the group is the Pathway's client type (CORPORATE, else individual).
 - `case_party_index` (area file `case-search.prisma`, CS-S1 part 1) holds one row per participant, kept only by database triggers on the answer, profile and participant tables. No answer-write site writes it. A relative is never indexed, and neither is an employer without a name. A row's id is stable per person. Its firm comes from the case (contract v0.1 §3.1; AG-7-88).
