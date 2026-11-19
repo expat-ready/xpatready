@@ -298,3 +298,10 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
   * R1.80: under P-533 the Lead runs Adobe Validate on the Mac and the founder spot-checks; I offered to run it by computer use if handed it.
   * Asked Lead B for the ETAs of FO-8 and the FO-2 note routes.
 * 10:49 IST 19 Nov (Lead 87): J7 plan approved. R1.77 and R1.74 in flight; R1.72 only if FO-8 lands within a day; R1.76 case-side parts first, in series with R1.72 on runtime.ts; R1.102 queued until PF-30a. **R1.80's QA-165 Adobe run is mine** (computer use from this Mac, P-533; Lead 87 gets the founder's time for the Acrobat grant). CS-K1 part 2 brief written (`CS-K1-2.md`).
+* 11:23 IST 19 Nov:
+  * **P-726:** Lead 87 approved the J7 plan.
+  * **R1.80:** the run is mine. Built main 4aa912c92 in a scratch copy on :4461 (`/private/tmp/claude-501/r180`). The finished story loaded; the Paper IMM 5257 copy (30154787, ca33c678…) was downloaded.
+    * The upload door re-sent the 13 Nov BK-20 validated file and reports current, 75/75 read-back, 5/5 barcodes, 186/186 agree.
+    * **Acrobat access was denied** (user_denied); not retried. Told Lead 87 that qa may close QA-165 on the BK-20 evidence, or the founder approves the prompt for a fresh run.
+  * **P-728:** a J-test merges in the same PR as the item's last part. Added to CS-DL1b.md (J-74) and CS-K1-2.md (J-72). J-77 stays separate.
+  * #2169 failed in batch #2221 (`check_bk2_fold_outs.ts` at case-decision.tsx:179); fix sent to its lane.

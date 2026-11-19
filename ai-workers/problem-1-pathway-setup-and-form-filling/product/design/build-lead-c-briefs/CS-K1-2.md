@@ -67,3 +67,5 @@ No screen. P-712: no hand edits to shared module-card lines; fold any card line 
 * Questions go on the PR as "Question for the tech lead: …"; Build Lead C answers within 30 minutes.
 * If a site is blocked on the cloud network, write "Not verified: <site> blocked on the cloud network" and go on.
 * Repository: `expat-ready/xpatready`.
+
+**P-728 (founder, 19 Nov 11:2x IST):** J-72, R1.72's join and walk, merges in the **same PR** as this part, as `tests/journeys/j_72.ts`. It replaces the "Then: J-72" line above. The 800-line limit still stands; ask first if it would pass it.

@@ -21,3 +21,9 @@ You are a builder for the Expat Ready Pathway Configurator. Run `/next runtime C
 **PR rule (P-683, founder, 17 Nov):** get the reviewer's "Reviewer: Approve <head>" on the branch first, then open the PR as non-draft (`draft: false`). Never push to an open PR unless it is a fix. This replaces any older "draft until approved" line on this page.
 
 **Audit actors (Lead 80, 18 Nov, after #2003 AUD-1a):** the audit trail refuses an actor word with no type. A test or seed that writes an audit line uses `staff:<id>`, `person:<id>`, `system:<door>`, `seed:<row>` or one of the listed simulated people (`user-A/B/C/O/R/T/S` staff, `user-P/Q` clients), never a bare word like `test`. Once #2003 is on `main`, merge `main` before the first push.
+
+**P-728 (founder, 19 Nov 11:2x IST):** J-74, R1.74's join and walk, merges in the **same PR** as this part. This is the exception to one row per PR; the 800-line limit still stands. Add `tests/journeys/j_74.ts`:
+* DW lines for each swap shown real, each failing on its stand-in.
+* W lines: open a case with a government deadline, see the reminder and the working-day date with holidays, move the stage, see the deadline follow.
+* Run on an isolated copy.
+* If the part plus the walk would pass 800 lines, ask first in a PR comment.
