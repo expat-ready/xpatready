@@ -26,3 +26,4 @@ QA-514, QA-515 used (#2283). Next free: **QA-516** (scan BUGS.md and BUGS-CLOSED
 
 ## Watchers
 This session's background watchers die with it; a new session starts its own (loop in this session: poll `/pulls/<n>` merged_at every 5 min).
+* **19:52 IST:** J-77 #2263 merged 19:50 IST (14:20:37Z). R1.77's proof is due: Lead 94 asked to dispatch walks.yml `j_77` on main twice; then read both walk logs, check QA-502, fresh reader.
