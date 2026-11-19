@@ -3,7 +3,7 @@
 Written 19 Nov 11:23 IST by Lead B (6). **R1.108 (the conflict check) is not in this chain.** FO-13c waits on FO-9a's match service and the case side's CS-S1b (`PartySearchPort`), so it is out of flight. R1.110 is the item here.
 
 ## Part A: FO-13i part 2, an expired document is refused (QA-510) (`runtime: FO-13i part 2 — an expired document is refused (QA-510)`)
-* **The bug (QA-510, Major):** `POST /api/front-office/people/:id/identity-checks` with `documentExpiry` before today (the firm's clock) answers 201 and stores the check. The Code expects a valid, current document (SOR/2022-128 s. 24(2)(a)). *Unconfirmed: no counsel.*
+* **The bug (QA-510, Major):** `POST /api/front-office/people/:id/identity-checks` with `documentExpiry` before today (the firm's clock) answers 201 and stores the check. Refusing it is **the firm's own rule (P-735)**: the Code names no identity document and never says "expired" (see "FO-13i part 2's expiry rule" below). *Unconfirmed: no counsel.*
 * **The fix:** an expiry **before the firm's today** (the firm's zone, the injected clock) → **422** with `fields: { documentExpiry: "This document has expired. Check a current one." }` (PF-28's rule, not the 400 the bug suggests), and nothing is stored. Today or later still records. No expiry is accepted where the document type has none (FO-13i's rule, unchanged).
 * **Done when:** `tests/qa/check_qa510_expired_id_document.ts` passes, after being changed to expect **422**. A pass case covers today's date, and a fail case shows that removing the check makes the suite fail. FO-13i's suite passes.
 * **Touch list:** the identity-check service and schema file under `api/src/front-office/` (named in the PR), and the qa test. No migration. About 80 lines.
