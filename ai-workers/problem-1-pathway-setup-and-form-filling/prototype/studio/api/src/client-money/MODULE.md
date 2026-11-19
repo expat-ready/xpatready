@@ -17,6 +17,7 @@ The firm's client money: invoices, payments, refunds, receipts, the trust ledger
 - Trust-paid money returns to trust or the client, never stays in operating: a credit note on a trust-paid, unmoved part needs its `RETURN` first, and trust paid counts as settled for credit notes and write-offs (FO-7a2; AG-6-48 rule 4, P-634).
 - One lock order: every trust write takes the party lock before the invoice row, through `money_trust_lock(firm, party, currency)`, the only place its key is written (FO-7lk; `tests/check_fo7lk_lock_order.ts`).
 - A move to a case is a pair that nets to zero; credit is per holder and never below zero (FO-7ts part 2: `MOVE_TO_CASE`, `money_credit_entry`).
+- A pick of another payer's money is same-case only, by a person, with a reason, never more than the payer holds on that case; a pick takes both parties' locks, smaller id first (FO-7ts part 3).
 - Every table is behind PF-12's walls; every trigger function runs as `xr_wall_reader` (PF-12).
 
 **Tables.** moneyPaymentSettings, moneyPaymentAccount, moneyNumberSeries, moneyInvoice, moneyInvoiceLine, moneyCreditNote, moneyPayment, moneyRefund, moneyReceipt, moneyTrustRequest, moneyTrustEntry, moneyWriteOff, moneyMoveBatch, moneyMoveLine.
