@@ -7,7 +7,7 @@
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { FilingChannel, LibraryChange, Prisma, ProgramDef } from "@prisma/client";
 import { LEVEL_OF, LEVEL_WORD, PATHWAY_TYPE_LABEL, type LifecycleAction, type PathwayType, type RowAction, type Use, type UsesView } from "../../contracts/structure.ts";
-import { ACTORS, Audit, Db, need, Workspace, type Actor } from "./core.ts";
+import { ACTORS, actorWordOf, Audit, Db, need, Workspace, type Actor } from "./core.ts";
 import { actionVerb, changeView } from "./library-changes.ts";
 import { applyFills } from "./who-fills.ts";
 import { applyBackground, KIND as BACKGROUND_KIND } from "./section-background.ts";
@@ -219,7 +219,7 @@ export class Lifecycle {
   private async history(workspaceId: string, key: string, node = true) {
     // A rename also writes one line per combination below it (for its draft authors): the name's own lines only.
     const rows = await this.db.auditEvent.findMany({ where: { workspaceId, entityKey: key, ...(node ? { combinationId: null } : {}) }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } });
-    return rows.map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (r.actor === "system" ? "The studio" : r.actor), what: r.summary }));
+    return rows.map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (actorWordOf(r.actor) === "system" ? "The studio" : r.actor), what: r.summary }));
   }
 
   private async usesOf(kind: LifecycleKind | ItemKind, key: string, actorId?: string) { if (isItem(kind)) return itemUses(this.db, await this.ws.id(), kind, key, undefined, actorId); return kind === "structure_node" ? this.nodeUses(key) : kind === "library_form" ? formUses(this.db, await this.ws.id(), key) : this.combinationUses(key); }

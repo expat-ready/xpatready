@@ -30,7 +30,7 @@
 # Type check (P-291, the outsider audit of 29 Oct): job "types", tsc --noEmit for api and web (tools/typecheck.mjs; fails
 #   only on an error not in typecheck-known.txt), on its own machine beside the parts for records and code, so it adds
 #   machine minutes (about 2 a run) but no wall time: the parts take 20+ minutes, the type check about 1.5.
-#   SHARDS=<1..9>        the number of parallel parts (default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
+#   SHARDS=<1..24>       the number of parallel parts (default 18 since 19 Nov, repository variable SHARDS set to 18; before: default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
 #                        and the repository variable SHARDS is 6 since 9 Nov, which overrides this default until it
 #                        is deleted or set to 8; I1 measured before changing it: see its PR);
 #   PR_SUITES=direct     idle since P-651 (2) (a builder's PR runs no suite; it was select-suites.mjs --direct); it
@@ -157,7 +157,7 @@ jobs:
           kind=$(bash "$P/tools/change-kind.sh" "$RANGE") || { echo "change-kind.sh failed"; exit 1; }
           # A batch only when Mergify opened it (gate B break M2): a builder's branch named mergify/* stays a pull request.
           queue=false; [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]] && queue=true
-          n="${SHARDS_VAR:-8}"; [[ "$n" =~ ^[1-9]$ ]] || n=8
+          n="${SHARDS_VAR:-18}"; [[ "$n" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || n=18   # 19 Nov (Lead 94, A214): 8 parts ran 43-60 min, no machine wait; 18 parts reach the floor set by the longest suite (check_b78, ~20 min)
           # P-651 (2): the parts run only on a batch of code; the fast checks are job "fast" (records and code).
           shards="[]"
           suites=$queue; if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then suites=true; fi   # CI-PRE: a full run runs what a batch runs
@@ -172,7 +172,7 @@ jobs:
       - id: q
         name: flaky suites to quarantine (B122; passed only on retry in 2 runs in 7 days; tools/flaky.mjs)
         # Worked out once here, so every part deals and skips the same suites. A failure of the API never fails the
-        # check: no automatic quarantine this run, said in the summary. It reads all 9 parts' records (SHARDS may have
+        # check: no automatic quarantine this run, said in the summary. It reads all 24 parts' records (SHARDS may have
         # been higher in the last 14 days; review round 2, minor 2).
         if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
         timeout-minutes: 3
@@ -488,6 +488,9 @@ jobs:
       - name: the type check's own check (check-typecheck.sh; a tsconfig that checks nothing never passes)
         run: bash "$P/tools/check-typecheck.sh"
       - name: type check, api and web (typecheck.mjs; only errors not in typecheck-known.txt fail)
+        # 19 Nov (P-214): tsc for api died at node's default ~4 GB heap in merge batches #2245 and #2246 (six PRs each,
+        # "JavaScript heap out of memory", 0 files checked), failing `ci` for every member. tsc inherits this env.
+        env: { NODE_OPTIONS: "--max-old-space-size=8192" }
         run: node "$P/tools/typecheck.mjs" | tee -a "$GITHUB_STEP_SUMMARY"; exit ${PIPESTATUS[0]}
   regression-plan:
     # P-320 (b): a merge-queue batch re-runs every Works capability's acceptance pack (qa/CAPABILITIES.md at the base).

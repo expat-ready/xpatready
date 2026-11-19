@@ -1,14 +1,17 @@
 // FO-4 part 1 (concept r2 §4 screen 2, pattern Catalogue; BR-4, BR-5, BR-10; AG-2-13c, AG-2-86): Leads. Chips
 // Unassigned leads · Mine · All open (Closed comes with Close and Reopen, part 2), a search over the rows shown, and a
 // table; Take it on a lead nobody active owns. The chip is kept in the address (?view=), so Back returns to it.
+// FO-4 part 2a (R1.30; AG-2-23 rule 1): filters by owner (under All open, for people who see colleagues' names) and by
+// the day the lead arrived (the firm's zone, both days included), kept in the address like the sources.
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { FoldArrow } from "@/components/fold-out";
-import { Button, Input, Pill, Table } from "@/components/ui/controls";
+import { Button, Field, Input, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { can, KEY, LeadRows, LeadSources, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
 import { Loading } from "./loading";
+import { useOwners } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -20,9 +23,9 @@ const EMPTY: Record<View, string> = {
   mine: "You have no open leads. Take one from Unassigned leads, or ask to be assigned one.",
   all: "No open leads.",
 };
-export function useLeads(view: View, sources: string[] = [], enabled = true) {
-  const q = sources.map((x) => `&source=${encodeURIComponent(x)}`).join("");
-  return useQuery({ enabled, queryKey: ["fo", "leads", view, ...(sources.length ? [sources] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
+export function useLeads(view: View, sources: string[] = [], enabled = true, more = "") {
+  const q = sources.map((x) => `&source=${encodeURIComponent(x)}`).join("") + more;
+  return useQuery({ enabled, queryKey: ["fo", "leads", view, ...(sources.length || more ? [sources, more] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
 }
 const useSources = () => useQuery({ queryKey: ["fo", "lead-sources"], queryFn: async () => LeadSources.parse(await staffApi("/front-office/leads/sources")).sources });
 /** FO-4sf (AG-2-23 rule 1): one Source control for an open-ended list. A button opens a checkbox list with type-to-find;
@@ -100,10 +103,19 @@ function LeadsBody() {
   // never turns a filtered address into every lead (Devin on #1962).
   const sources = known.isPending ? [] : known.isError ? askedSources : askedSources.filter((x) => choices.includes(x));
   const blocked = known.isError && askedSources.length > 0;
-  const go = (next: View, src: string[]) => { const p = new URLSearchParams(); if (next !== chips[0].view) p.set("view", next); for (const x of src) p.append("source", x); setParams(p, { replace: true }); };
+  const owners = useOwners();
+  const day = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(params.get(k) ?? "") ? params.get(k)! : "");
+  // The owner filter is All open's (Mine and Unassigned leads already say whose); it is dropped with any other chip.
+  const narrow = { owner: view === "all" && owners.choices.some((o) => o.staffId === params.get("owner")) ? params.get("owner")! : "", from: day("from"), to: day("to") };
+  const go = (next: View, src: string[], n: typeof narrow = narrow) => {
+    const p = new URLSearchParams(); if (next !== chips[0].view) p.set("view", next); for (const x of src) p.append("source", x);
+    if (n.owner && next === "all") p.set("owner", n.owner); if (n.from) p.set("from", n.from); if (n.to) p.set("to", n.to);
+    setParams(p, { replace: true });
+  };
+  const more = (["owner", "from", "to"] as const).filter((k) => narrow[k]).map((k) => `&${k}=${encodeURIComponent(narrow[k])}`).join("");
   const toggle = (c: string) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : choices.filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  const rows = useLeads(view, sources, !known.isPending && !blocked);
+  const rows = useLeads(view, sources, !known.isPending && !blocked, more);
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
@@ -134,11 +146,17 @@ function LeadsBody() {
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
       </div>
+      <div className="flex flex-wrap items-end gap-3" data-lead-filters>
+        {view === "all" && !owners.oneUser && owners.choices.length ? <Field label="Owner"><Select value={narrow.owner} onChange={(e) => go(view, sources, { ...narrow, owner: e.target.value })}><option value="">Everyone</option>{owners.choices.map((o) => <option key={o.staffId} value={o.staffId}>{o.displayName}</option>)}</Select></Field> : null}
+        <Field label="Arrived from"><Input type="date" value={narrow.from} max={narrow.to || undefined} onChange={(e) => go(view, sources, { ...narrow, from: e.target.value })} /></Field>
+        <Field label="Arrived to"><Input type="date" value={narrow.to} min={narrow.from || undefined} onChange={(e) => go(view, sources, { ...narrow, to: e.target.value })} /></Field>
+        {more ? <Button variant="link" size="sm" data-clear-filters onClick={() => go(view, sources, { owner: "", from: "", to: "" })}>Clear owner and dates</Button> : null}
+      </div>
       {blocked ? <p data-source-blocked className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">The leads from {sources.map(words).join(" or ")} are not shown because the sources could not be loaded. Use Try again beside Source, or choose All sources.</p>
         : rows.isPending || known.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
           : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map(words).join(" or ")} here. Choose All sources to see every lead.</p>
-          : !rows.data.length ? <p data-empty className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{empty}</p>
+          : !rows.data.length ? <p data-empty role={more ? "status" : undefined} className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{more ? "No leads match the owner and dates chosen." : empty}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”{sources.length ? ` among ${sources.map(words).join(" or ")}` : ""}.</p>
               : (
                 <Table label={`Leads: ${CHIPS.find((c) => c.view === view)!.label}`} head={["Lead", "Interested in", "Source", "Owner", view === "unassigned" ? "Waited" : "Arrived", ""]}>
