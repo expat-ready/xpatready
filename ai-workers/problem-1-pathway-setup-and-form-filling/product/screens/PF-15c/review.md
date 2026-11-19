@@ -57,3 +57,15 @@ D1 Met except M1 (SA-3-5 upgrade path) · D2 Met (refusal writes nothing; 3 of 8
 * The full merge-queue run ("every case-opening suite is green"). The PR is a draft and its suites run only in the queue. The open risk is a suite opening more than 25 individual or 5 corporate cases on `sample-solo` (30 corporate on `sample-firm`) in one copy. The PR names this risk and says how it will be handled.
 * The walled `xr_app` role through createCase: copies run as the owner role. The adapter's walled read by key is covered by `check_pf15_limits.ts` (PF-15 review M1 fix).
 * A real screen reader. D17 and D20 stay with the founder.
+
+## Re-review at 784c0a206 after main's FO-8 (19 Nov 2026, IST evening)
+Range `778ad0585..784c0a206`, mostly main's merge (b5ecdc9c4, main at 37d1b196d) and the fix commit 784c0a206. **Verdict at head 784c0a206eee76e6c174e5482d01a0de6ebe0d72: Approve.** No Blocker or Major is open.
+* **The limit check survived the merge.** `git diff 37d1b196d 784c0a206` holds only PF-15c's own lines: the `CaseLimits` type, the throwing default, `this.entitlements(tx)` after the `case-open:<firm>` lock, `upgradePath` and both sentences (`runtime.ts:323-331`). runtime.ts keeps one `import type { Prisma }` (line 12; the TS2300 is gone). tsc on api shows no error in runtime.ts, prospect-won.ts, limits.ts or the ports.
+* **FO-8's opening has no nested-transaction risk.** `openCaseFromOffer` (`case-clients/prospect-won.ts:183-206`) reads on `db` outside any transaction and then calls `Runtime.createCase` once. Its `inTx` step runs last, inside createCase's single transaction (`runtime.ts:360`) and after the limit check, so a refusal (409, over the limit or no live plan) happens before FO-8 writes anything. `PgEntitlements` is built on that same `tx`. No second transaction or connection is opened.
+* **No lock-timeout risk either.** The limit read is one call to the definer function with no lock of its own. createCase takes only `case-open:<firm>`. The FO-8 subscriber (`makeClient`) takes `prospect-won:<id>` and then `case-open:<firm>`, but never calls createCase, so there is no lock cycle. The 15 s timeout and 10 s maxWait are unchanged. The breaker's 400 parallel openings ran with no 5xx.
+* **No other in-process suite opens cases unbound.** Searched at this head:
+  * NestFactory and createTestingModule apps importing runtime.ts: check_csc1_count binds the fake; check_csk1_client and check_fo8_prospect_won bind `PgEntitlements` after `seedSampleFirms`. check_csc1s_view only reads and closes cases (GET `/api/runtime/cases/:id/...`) and opens none.
+  * `new Runtime(`: only DW4.
+  * createCase callers in api/src and tools: the controller, `sample-case.ts:64` (main app, bound) and FO-8's door (`runtime.ts:262`, the same Runtime).
+* **Re-run here on :4593, fresh copies:** check_fo8_prospect_won **43/43**, check_pf15c_case_limits **11/11**. The coordinator also reports csc1_count 40/40 and csk1_client 51/51 at this head.
+* **Earlier points unchanged:** m1, m2 and m3 do not block. Breaker F1 and F2 stay with the Lead's question (the definer function's idea of "live"), outside this item.
