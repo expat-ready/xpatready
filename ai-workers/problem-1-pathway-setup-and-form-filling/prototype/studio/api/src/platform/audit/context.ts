@@ -36,7 +36,10 @@ export function auditContext(): AuditContext | undefined {
   return ctx;
 }
 
-/** An actor word's own type (the audit_event insert trigger's mapping, AUD-1a, for the words AuditPort accepts). */
+/** An actor word's own type (the audit_event insert trigger's mapping, AUD-1a, for the words AuditPort accepts, and
+ *  AUD-1m: a case line's person:<id> and the simulated people, FIRM_STAFF or CLIENT as the trigger maps them). */
 export function actorTypeOfWord(actor: string): AuditActorType {
+  if (actor.startsWith("person:") || actor === "user-P" || actor === "user-Q") return "CLIENT";
+  if (/^user-[ABCORTS]$/.test(actor)) return "FIRM_STAFF";
   return actor.startsWith("staff:") ? "FIRM_STAFF" : actor.startsWith("system:") ? "SYSTEM" : "SEED";
 }
