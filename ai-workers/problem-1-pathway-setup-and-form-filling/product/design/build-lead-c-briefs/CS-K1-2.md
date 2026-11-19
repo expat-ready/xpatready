@@ -74,3 +74,8 @@ No screen. P-712: no hand edits to shared module-card lines; fold any card line 
 * **Live delivery of `prospect.won`** is in this part. Add one `BYPASS_USES` line for FO-8's catch-up running outside a request (the Lead reads it: it touches firm scope) and an app-start provider that runs the catch-up, as PF-25's `WebAddressCatchUp` does. J-72's walk then sees a won prospect's client appear with no hand-run command.
 * **The module card's `Tests:` line** for FO-8 (dropped from #2255 because of the card-tool fault) goes back in this PR once #2240 is on `main`.
 * FO-8 serves Convert only until Lead B's row makes paper-signed wins raise `prospect.won`. J-72 walks a Convert.
+
+**Update 19 Nov 21:0x IST (Build Lead C (3)), Lead B's FO-2w joins R1.72's chain:** today only Convert raises `prospect.won`. A Signed offline win moves the prospect to WON but raises only `retainer.signed_offline`, so no case opens from it, against R1.72's "a won prospect hands over into a case". Lead B's **FO-2w** (one shared win helper, `prospect.won` once per prospect in the win's transaction) is part of R1.72 before its proof.
+* J-72 walks **both** wins: a Convert win and a Signed offline win, each handing over into one case with its applicants, representative and pinned release.
+* If FO-2w is not on `main` when this PR is otherwise ready, build and get the Approve on the branch, say so in a PR comment, and open the PR after FO-2w merges (merge `main` once, then a diff-only Approve).
+* FO-5rp (retainer read port) and FO-2u (undo convert refused once a case exists) are **not** in R1.72's chain. They are follow-ups after its proof. Keep FO-8's "Port owed:" line.
