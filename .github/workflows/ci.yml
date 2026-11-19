@@ -56,8 +56,21 @@
 #       label comes off when the change stops being records only. Mergify's "records" queue
 #       (B119) selects PRs by that label and the product queue skips it, so records never join a product batch (Lead 21, 6 Nov:
 #       one route, the queue; no direct merge).
+# Full run before the label (CI-PRE, P-731, founder 19 Nov): workflow_dispatch with a PR's number and head runs, on that
+#   head merged with main's head, every suite a merge batch runs (the parts, the packs by diff as a PR ran them before
+#   P-651, the protected set, gate B's named packs). Started by the PR comment "/run full" (comment-run.yml), always
+#   on ref main, so the jobs are main's copy of this file, never the PR's; the PR's code runs in them with read-only
+#   tokens, as in a batch. queue-gate.sh reads the run by its name ("full-run PR #<n> <head>", built from the inputs
+#   that also choose what is tested) and accepts `review: approved` only when it is green. Only this repository's own
+#   branches (comment-run.yml refuses a fork): the run sits on main's side of the Actions cache.
 name: ci
+# Quoted: " #" would start a YAML comment. Empty on a pull request: GitHub then names the run as before.
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('full-run PR #{0} {1}', inputs.pr, inputs.head) || '' }}"
 on:
+  workflow_dispatch:
+    inputs:
+      pr: { description: "pull request number", required: true, type: string }
+      head: { description: "that pull request's head, 40 hex characters", required: true, type: string }
   pull_request:
     # P-214, 4 Nov: a draft ran nothing; P-371 (1): a draft runs the guard. No "labeled": a label must never start a
     # second run whose "ci" check goes back to in progress just as Mergify queues the PR (review, 6 Nov).
@@ -65,7 +78,7 @@ on:
 concurrency:
   # One group per PR and mode: a draft's guard runs replace each other; a full check is never cancelled (P-371 (2)).
   # Re-run failed jobs only on a PR's newest run: an older run re-entering the group replaces a newer one still waiting.
-  group: "ci-${{ github.event.pull_request.number }}-${{ (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) && 'full' || 'draft' }}"
+  group: "ci-${{ github.event.pull_request.number || format('full-{0}', inputs.head) }}-${{ (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) && 'full' || 'draft' }}"
   cancel-in-progress: "${{ !(!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
 jobs:
   guard:
@@ -98,6 +111,7 @@ jobs:
       shards: ${{ steps.m.outputs.mode == 'same' && '[]' || steps.m.outputs.shards || steps.k.outputs.shards }}
       n: ${{ steps.m.outputs.n || steps.k.outputs.n }}
       queue: ${{ steps.k.outputs.queue }}
+      suites: ${{ steps.k.outputs.suites }}   # the full set runs: a merge-queue batch, or a full run (CI-PRE)
       mode: ${{ steps.m.outputs.mode }}
       verdict: ${{ steps.m.outputs.verdict }}
       green: ${{ steps.m.outputs.green }}
@@ -115,8 +129,21 @@ jobs:
         with: { fetch-depth: 0, filter: "blob:none" }
       - id: b
         name: the test merge on today's main (D6, tools/pr-base.sh; a batch keeps GitHub's merge)
-        env: { HEAD_REF: "${{ github.event.pull_request.head.ref }}", PR_AUTHOR: "${{ github.event.pull_request.user.login }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}" }
+        env: { HEAD_REF: "${{ github.event.pull_request.head.ref }}", PR_AUTHOR: "${{ github.event.pull_request.user.login }}", HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", FULL_PR: "${{ inputs.pr }}", GH_TOKEN: "${{ github.token }}", REVIEWERS: "${{ vars.REVIEWERS }}" }
         run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # CI-PRE: before any of the PR's code is here (this is still main's tree): the inputs are a number and a
+            # commit id, and that commit is that PR's head now, in this repository, so the run's name tells the truth.
+            [[ "$FULL_PR" =~ ^[1-9][0-9]{0,6}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::full run: pr and head must be a number and a 40-hex commit id"; exit 1; }
+            now=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq '"\(.head.sha) \(.head.repo.full_name // "")"') || exit 1
+            [ "$now" = "$HEAD_SHA $GITHUB_REPOSITORY" ] || { echo "::error::full run: that commit is not the head of this repository's PR #$FULL_PR now"; exit 1; }
+            # Only a reviewed head runs in a run of main, however the run was started (comment-run.yml asks the same;
+            # a dispatch by hand passes it by): "Reviewer: Approve <this head>" by the owner's account or a known reviewer.
+            export WHO="${GITHUB_REPOSITORY%%/*} $REVIEWERS"
+            ok=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$FULL_PR/comments?per_page=100" --jq '[.[] | select(.user.login as $l | (env.WHO | split(" ")) | index($l)) | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+              | select((.body // "") | gsub("[*_`]"; "") | test("(^|\n)\\s*reviewer:\\s*approve[sd]?\\s+" + env.HEAD_SHA + "\\b"; "i"))] | length') || exit 1
+            grep -qx '[1-9][0-9]*' <<< "$ok" || { echo "::error::full run: no \"Reviewer: Approve <this head>\" line by the owner's account or a known reviewer on PR #$FULL_PR"; exit 1; }
+          fi
           # A batch only when Mergify opened it (gate B break M2): a builder's branch named mergify/* stays a pull request.
           if [[ "$HEAD_REF" == mergify/* && "$PR_AUTHOR" == "mergify[bot]" ]]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA"); fi || exit 1
@@ -133,12 +160,13 @@ jobs:
           n="${SHARDS_VAR:-18}"; [[ "$n" =~ ^([1-9]|1[0-9]|2[0-4])$ ]] || n=18   # 19 Nov (Lead 94, A214): 8 parts ran 43-60 min, no machine wait; 18 parts reach the floor set by the longest suite (check_b78, ~20 min)
           # P-651 (2): the parts run only on a batch of code; the fast checks are job "fast" (records and code).
           shards="[]"
-          if [ "$kind" = code ] && [ "$queue" = true ]; then shards="[$(seq -s, 1 "$n")]"; fi
-          { echo "kind=$kind"; echo "shards=$shards"; echo "n=$n"; echo "queue=$queue"; } >> "$GITHUB_OUTPUT"
+          suites=$queue; if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then suites=true; fi   # CI-PRE: a full run runs what a batch runs
+          if [ "$kind" = code ] && [ "$suites" = true ]; then shards="[$(seq -s, 1 "$n")]"; fi
+          { echo "kind=$kind"; echo "shards=$shards"; echo "n=$n"; echo "queue=$queue"; echo "suites=$suites"; } >> "$GITHUB_OUTPUT"
           case "$kind" in
             notes) why="Notes only: check-docs.sh and decision-impact.sh (and the push guard); no suites, no app build.";;
             records) why="Records, no code: the fast checks on one machine; no suites.";;
-            *) [ "$queue" = true ] && why="Code, merge-queue batch: every suite but the quarantined ones on $n parts, the packs by diff and the protected set." || why="Code, pull request: the fast checks and the type check only (P-651 (2): the suites and packs run once, in the merge queue).";;
+            *) [ "$suites" = true ] && why="Code, $([ "$queue" = true ] && echo "merge-queue batch" || echo "full run before the label (CI-PRE)"): every suite but the quarantined ones on $n parts, the packs by diff and the protected set." || why="Code, pull request: the fast checks and the type check only (P-651 (2): the suites and packs run once, in the merge queue).";;
           esac
           echo "**$kind** · $why" | tee -a "$GITHUB_STEP_SUMMARY"
       - id: q
@@ -146,7 +174,7 @@ jobs:
         # Worked out once here, so every part deals and skips the same suites. A failure of the API never fails the
         # check: no automatic quarantine this run, said in the summary. It reads all 24 parts' records (SHARDS may have
         # been higher in the last 14 days; review round 2, minor 2).
-        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
         timeout-minutes: 3
         continue-on-error: true
         env: { GITHUB_TOKEN: "${{ github.token }}" }
@@ -156,16 +184,23 @@ jobs:
           echo "autoq=$q" >> "$GITHUB_OUTPUT"
           [ -z "$q" ] || { echo "**Quarantined automatically (B122):**"; sed 's/^/- /' flaky.err; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
-        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
         with: { node-version-file: .nvmrc }
       - id: d
         name: packs this batch touches (D2 on the batch, P-651 (2); gate-b.mjs --diff-groups 5; run by job "packs")
         # For each member merge: a pack it changes or adds (its row if built) and every Works row whose pack reads a
         # changed file, minus the rows its own PR names (job "fast" runs them, with their steps) and the Works rows only
         # read (job "regression" runs them); in at most 5 groups (GATE_B_ONCE). Reads files and the batch PRs' bodies.
-        if: steps.k.outputs.kind == 'code' && steps.k.outputs.queue == 'true'
-        env: { KIND: code, QUEUE: "true", GATE_B_ONCE: "1", GITHUB_TOKEN: "${{ github.token }}", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}" }
+        if: steps.k.outputs.kind == 'code' && steps.k.outputs.suites == 'true'
+        # CI-PRE, a full run: one PR, so the set by diff as a pull request had it before P-651 (QUEUE empty, no ONCE), with
+        # the PR's title and body read from GitHub (a dispatch carries none); a superset of what its batch runs by diff.
+        env: { KIND: code, QUEUE: "${{ steps.k.outputs.queue }}", GATE_B_ONCE: "${{ steps.k.outputs.queue == 'true' && '1' || '' }}", GITHUB_TOKEN: "${{ github.token }}", PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", FULL_PR: "${{ inputs.pr }}", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq .title) || exit 1
+            PR_BODY=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq '.body // ""') || exit 1
+            export PR_TITLE PR_BODY
+          fi
           g=$(node "$S/tools/gate-b.mjs" --diff-groups 5) || exit 1
           [[ "$g" == \[* ]] || { echo "gate-b.mjs --diff-groups printed no JSON: $g"; exit 1; }
           echo "dpacks=$g" >> "$GITHUB_OUTPUT"; echo "by diff: $g"
@@ -211,18 +246,19 @@ jobs:
     needs: kind
     if: ${{ needs.kind.outputs.kind != 'notes' && needs.kind.outputs.mode != 'same' }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ needs.kind.outputs.queue == 'true' && 90 || 45 }} # a batch's gate B runs packs (as job "packs"); a PR's runs none; cloud-setup.sh's apt wait can take ~7 min (types: 30)
+    timeout-minutes: ${{ needs.kind.outputs.suites == 'true' && 90 || 45 }} # a batch's gate B runs packs (as job "packs"); a PR's runs none; cloud-setup.sh's apt wait can take ~7 min (types: 30)
     permissions: { contents: read, pull-requests: read }
     env:
       P: ai-workers/problem-1-pathway-setup-and-form-filling/product
       S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
       KIND: ${{ needs.kind.outputs.kind }}
       QUEUE: ${{ needs.kind.outputs.queue }}
+      SUITES: ${{ needs.kind.outputs.suites }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: the test merge on main (D6, tools/pr-base.sh; kind's main in its own attempt, today's main on a re-run)
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
@@ -239,7 +275,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; the database check-test-dbs.sh and a batch's gate B packs need)
         run: bash "$P/tools/cloud-setup.sh"
@@ -276,7 +312,7 @@ jobs:
           node "$S/tools/check-port-contracts.mjs"
           echo "PF-0c DW4: the port-contract guard took $(( ($(date +%s%N) - start) / 1000000 )) ms (limit 10000)" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Playwright's own Chromium (a batch's gate B runs packs)
-        if: env.KIND == 'code' && env.QUEUE == 'true'
+        if: env.KIND == 'code' && env.SUITES == 'true'
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: gate B, the claimed capabilities' open bugs and acceptance packs (studio/tools/gate-b.mjs)
         # P-214, founder 4 Nov: a code PR's "Claims Works: C<n.n>" capabilities have no open Major or worse in qa/BUGS.md
@@ -287,11 +323,19 @@ jobs:
         # P-651 (2): on a PR only its part 1 (the bug check, --no-packs); on a batch every row its PRs name runs, the
         # held ones too (GATE_B_ONCE; P-488), and its packs by diff run in job "packs".
         if: env.KIND == 'code'
-        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1", GATE_B_ONCE: "1" }
+        # CI-PRE, a full run: the rows this PR names run with their steps, as on its head before P-651 (QUEUE empty).
+        # GATE_B_NOT_TESTED=warn there: gate-b.mjs reads a workflow_dispatch as the nightly's re-test, where NOT TESTED is
+        # exit 3; in a batch it is a warning, and a full run must not be red where its batch is green.
+        env: { PR_TITLE: "${{ github.event.pull_request.title }}", PR_BODY: "${{ github.event.pull_request.body }}", GITHUB_TOKEN: "${{ github.token }}", GATE_B_NO_DIFF: "1", GATE_B_ONCE: "1", FULL_PR: "${{ inputs.pr }}", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
-          if [ "$QUEUE" = true ]; then node "$S/tools/gate-b.mjs"; else node "$S/tools/gate-b.mjs" --no-packs; fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq .title) || exit 1
+            PR_BODY=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$FULL_PR" --jq '.body // ""') || exit 1
+            export PR_TITLE PR_BODY
+          fi
+          if [ "$SUITES" = true ]; then node "$S/tools/gate-b.mjs"; else node "$S/tools/gate-b.mjs" --no-packs; fi
       - name: no personal data in logs (PF-23; the server logs a batch's gate B packs wrote; a few seconds)
-        if: ${{ !cancelled() && env.KIND == 'code' && env.QUEUE == 'true' }}
+        if: ${{ !cancelled() && env.KIND == 'code' && env.SUITES == 'true' }}
         run: |
           cd "$S"
           ./node_modules/.bin/tsx api/src/platform/observability/scan-logs.ts --self-test
@@ -319,14 +363,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: the batch's base at run time (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge)
+      - name: the batch's base at run time (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge); a full run rebuilds the test merge (CI-PRE)
+        env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
         run: |
-          range=$(bash "$P/tools/pr-base.sh" queue) || exit 1
+          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
+          else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser suites need)
         run: bash "$P/tools/cloud-setup.sh"
@@ -394,21 +440,21 @@ jobs:
       - name: the batch's base (D6, tools/pr-base.sh queue; a batch keeps GitHub's merge); a PR's test merge stays pinned to kind's main
         # Devin on #1337: "Re-run failed jobs" keeps kind's plan, so this job keeps kind's base too; "Re-run all jobs"
         # re-plans on today's main.
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser packs need)
         run: bash "$P/tools/cloud-setup.sh"
       - name: Playwright's own Chromium
         run: cd "$S" && ./node_modules/.bin/playwright install chromium
       - name: packs by diff ${{ matrix.group.caps }} (${{ matrix.group.packs }} packs, gate B's 3 slots; live AI off, US$0)
-        env: { CAPS: "${{ matrix.group.caps }}", GATE_B_DATA_OF: "${{ matrix.group.data }}", GATE_B_SKIP_PACKS: "${{ matrix.group.skip }}", GATE_B_NO_DIFF: "1", GATE_B_JOBS: "3", KIND: code, QUEUE: "", PR_TITLE: "", PR_BODY: "" }
+        env: { CAPS: "${{ matrix.group.caps }}", GATE_B_DATA_OF: "${{ matrix.group.data }}", GATE_B_SKIP_PACKS: "${{ matrix.group.skip }}", GATE_B_NO_DIFF: "1", GATE_B_JOBS: "3", KIND: code, QUEUE: "", PR_TITLE: "", PR_BODY: "", GATE_B_NOT_TESTED: "${{ github.event_name == 'workflow_dispatch' && 'warn' || '' }}" }
         run: |
           r=0; node "$S/tools/gate-b.mjs" --title "$CAPS" --kind code || r=$?
           case "$r" in 0) exit 0;; 1|2) ;; *) exit "$r";; esac
@@ -427,7 +473,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: the test merge on main (D6, tools/pr-base.sh; as the parts)
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", QUEUE: "${{ needs.kind.outputs.queue }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", QUEUE: "${{ needs.kind.outputs.queue }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
@@ -435,7 +481,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: packages and the Prisma client (cloud-setup.sh, as the parts)
         run: bash "$P/tools/cloud-setup.sh"
@@ -452,7 +498,7 @@ jobs:
     # onto at most 5 machines that each run gate B's 3 job slots (was one machine per pack: 40+ jobs a batch, beyond the
     # 20 machines GitHub gives at once, so batches waited for machines).
     needs: kind
-    if: ${{ needs.kind.outputs.queue == 'true' && needs.kind.outputs.kind == 'code' }}
+    if: ${{ needs.kind.outputs.suites == 'true' && needs.kind.outputs.kind == 'code' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: { contents: read }
@@ -463,9 +509,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0, filter: "blob:none" }
-      - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD)
+      - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD); a full run rebuilds the test merge (CI-PRE)
+        env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
-          range=$(bash "$P/tools/pr-base.sh" queue) || exit 1
+          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
@@ -476,7 +523,7 @@ jobs:
           g=$(node "$S/tools/works-set.mjs" --list --milestone all --groups 5) || exit 1
           echo "groups=$g" >> "$GITHUB_OUTPUT"
   regression:
-    needs: regression-plan
+    needs: [kind, regression-plan]
     if: ${{ needs.regression-plan.outputs.groups != '' && needs.regression-plan.outputs.groups != '[]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -491,14 +538,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD)
+      - name: the batch's base at run time (D6, tools/pr-base.sh queue; git merge-base origin/main HEAD); a full run rebuilds the test merge (CI-PRE)
+        env: { HEAD_SHA: "${{ inputs.head }}", KBASE: "${{ needs.kind.outputs.base }}", QUEUE: "${{ needs.kind.outputs.queue }}" }
         run: |
-          range=$(bash "$P/tools/pr-base.sh" queue) || exit 1
+          if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue); else range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE"); fi || exit 1
           echo "RANGE=$range" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # CI-PRE: a full run (a run of main) saves nothing to main's cache
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser packs need)
         run: bash "$P/tools/cloud-setup.sh"
@@ -537,7 +585,7 @@ jobs:
         with: { fetch-depth: 0, filter: "blob:none" }
       - name: the test merge on main, then the push guard (D6; the notes checks below read the rebuilt tree)
         if: env.MODE != 'same' && (env.KIND == 'notes')
-        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", QUEUE: "${{ needs.kind.outputs.queue }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha || inputs.head }}", QUEUE: "${{ needs.kind.outputs.queue }}", KBASE: "${{ needs.kind.outputs.base }}", KATTEMPT: "${{ needs.kind.outputs.battempt }}" }
         run: |
           if [ "$QUEUE" = true ]; then range=$(bash "$P/tools/pr-base.sh" queue)
           else pin=""; [ "$KATTEMPT" = "$GITHUB_RUN_ATTEMPT" ] && pin="$KBASE"; range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" $pin); fi || exit 1
@@ -565,7 +613,7 @@ jobs:
         run: |
           r="${{ needs.shard.result }}"; planned='${{ needs.kind.outputs.shards }}'
           echo "parts: $r · planned: $planned"
-          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then
+          if [ "${{ needs.kind.outputs.suites }}" = true ] && [ "$KIND" = code ]; then
             [ "$r" = success ]
           else
             [ "$r" = skipped ]
@@ -576,7 +624,7 @@ jobs:
         run: |
           r="${{ needs.packs.result }}"; groups='${{ needs.kind.outputs.dpacks }}'
           echo "packs by diff: $r · groups: $groups"
-          if [ "${{ needs.kind.outputs.queue }}" = true ] && [ "$KIND" = code ]; then
+          if [ "${{ needs.kind.outputs.suites }}" = true ] && [ "$KIND" = code ]; then
             if [ "$r" != success ]; then
               [ "$r" = skipped ]
               [ "$groups" = '[]' ]
@@ -585,7 +633,7 @@ jobs:
             [ "$r" = skipped ]
           fi
       - name: the protected regression set's result (merge-queue batches of code, P-320 (b))
-        if: env.MODE != 'same' && (needs.kind.outputs.queue == 'true' && env.KIND == 'code')
+        if: env.MODE != 'same' && (needs.kind.outputs.suites == 'true' && env.KIND == 'code')
         run: |
           echo "plan: ${{ needs.regression-plan.result }} · packs: ${{ needs.regression.result }} · groups: ${{ needs.regression-plan.outputs.groups }}"
           [ "${{ needs.regression-plan.result }}" = success ] || exit 1

@@ -1,0 +1,2 @@
+# Lead 95, 19 Nov 20:40 IST: STATE line "Lead 95 rulings", word for word (moved for room, P-336)
+**Lead 95 rulings 20:33 IST:** R1.38 lane (FO-3st1) blocked on FO-3a part 2b and FO-3vr (neither built): it takes the chain FO-3vr → FO-3a 2b → FO-3st1 p1 → J-38 (1-2 days later). R1.59 lane: P-423 read of the FO-7ts-3 pick-guard plan done (its pick-guard-plan file, only on branch claude/sharp-archimedes-rcq3gs), accepted with its three proposals incl. a per-case pick limit; final migration read owed before the label. R1.30 (built at #2279) goes to qa 9 with R1.31.
