@@ -289,7 +289,7 @@ export class CaseDocuments {
     if (!CASE_KINDS[b.documentType]) fail(this.typesOf(c).some((t) => t.key === b.documentType) ? `${this.typeName(c, b.documentType)} has its own line on the person's checklist: upload it there. Nothing was stored.` : `"${b.documentType}" is not a document that can be added without a checklist line. Nothing was stored.`, HttpStatus.UNPROCESSABLE_ENTITY);
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!, checked = checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
+    const bytes = f[0].buffer!, checked = await checkedCaseFile(f[0]);   // CS-D1t (R1.67): PF-F4's one check, before anything is written
     const docId = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
     const rel = join("people", who.subjectId, "documents", `${docId}.${checked.extension}`), abs = join(DOCS(), rel);
     const now = new Date();

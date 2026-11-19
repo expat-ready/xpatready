@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { AUTHOR, CLIENT, CLIENT_B, FAMILY, OFFICER, PORT, DB, answer, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
 
 type Doc = { id: string; current: boolean; sha256: string; size_bytes: number; media_type: string };
@@ -36,7 +37,7 @@ await main("C6.4 storage", "request, upload, Not applicable, kept lines; QA-149"
     const res = await fetch(`http://127.0.0.1:${PORT}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: { "x-actor": actor }, body: fd });
     return { status: res.status, body: await res.json().catch(() => null) };
   };
-  const pdf = (n: string) => new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${n}\n`);
+  const pdf = (n: string) => new Uint8Array(textPdf([`Sample synthetic document ${n}`]));   // CS-D1t: a PDF that opens
   // CS-D1t: a PNG with its header (IHDR, 1 x 1), as PF-F4's check reads an image's size; the signature alone is refused as damaged.
   const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1]);
 

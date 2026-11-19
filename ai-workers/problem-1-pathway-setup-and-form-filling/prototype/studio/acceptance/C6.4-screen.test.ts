@@ -8,6 +8,7 @@
 //   tsx studio/acceptance/C6.4-screen.test.ts 4440 xr_studio_accept
 import type { Page } from "playwright";
 import { FAMILY, call, main, needVisitorVisa, ok, openCase, yearsAgo } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 import { walker } from "./lib/browser.ts";
 
 type Line = { id: string; label: string; state: string; state_words: string; required: boolean; version: number; kept: boolean; who_words: string; reason: string; missing: { key: string; question: string; answered: boolean; on: "case" | "person"; subject: string | null }[]; lineage: string };
@@ -78,7 +79,7 @@ await main("C6.4", "Documents panel on the case page (screen, 1440 px)", async (
     const before = await shown(page);
     const holder = (await list()).people.find((p) => p.lines.some((l) => l.id === first.id))!;
     const count = (s: Awaited<ReturnType<typeof shown>>) => Number((s.find((x) => x.subject === holder.subject)?.received ?? "0").split(" ")[0]);
-    await page.locator(`[data-line="${first.id}"] [data-upload-input]`).setInputFiles({ name: "sample-document.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% Sample synthetic document (C6.4-34)\n") });
+    await page.locator(`[data-line="${first.id}"] [data-upload-input]`).setInputFiles({ name: "sample-document.pdf", mimeType: "application/pdf", buffer: textPdf(["Sample synthetic document (C6.4-34)"]) });
     await waitState(first.id, "received");
     ok("C6.4-34 pass: uploading a PDF through the line gives Received, and \"n of m received\" goes up by one", (await list()).people.flatMap((p) => p.lines).find((l) => l.id === first.id)?.state === "received" && count(await shown(page)) === count(before) + 1, { before: count(before), after: count(await shown(page)) });
     const third = (await list()).people.flatMap((p) => p.lines).find((l) => l.state === "not_requested")!;

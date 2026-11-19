@@ -10,6 +10,7 @@
 // document type, the person's role and the case by its short id, never a file's contents (RT-17).
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,10 +22,10 @@ import { fmtDate, onFileFrom } from "../../engine/runtime/stages.ts";
 import { readSpec } from "./routes-data.ts";
 import { lineKeys, pickMember, setMet, setStatus, type SetStatus } from "../../engine/document-sets.ts";
 import { checkValue, knownOf } from "../../engine/runtime/case.ts";
-import { actorOf, Audit, CaseRead, Db, fail, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, fail, PY, STUDIO, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { privateWords, Runtime, type Reached } from "./runtime.ts";
 import { caseName, releaseLabel } from "../../contracts/runtime.ts";
-import { checkFile, KINDS, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
+import { checkFile, KINDS, NOTHING_STORED, SCRIPTS_FLAG, type Checked, type FileKind, type RefusalReason } from "./platform/files/file-type.ts";
 
 type H = string | undefined;
 type Upload = { fieldname?: string; originalname?: string; mimetype?: string; buffer?: Buffer; size?: number };
@@ -52,15 +53,45 @@ export const CASE_FILE_KINDS: readonly FileKind[] = ["pdf", "jpeg", "png"];
 const REFUSAL_STATUS: Record<RefusalReason, HttpStatus> = { TOO_LARGE: HttpStatus.PAYLOAD_TOO_LARGE, TOO_MANY_PIXELS: HttpStatus.PAYLOAD_TOO_LARGE,
   NOT_ALLOWED_TYPE: HttpStatus.UNSUPPORTED_MEDIA_TYPE, ZIP: HttpStatus.UNSUPPORTED_MEDIA_TYPE, MACROS: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
   EMPTY: HttpStatus.BAD_REQUEST, DAMAGED: HttpStatus.BAD_REQUEST };
-/** CS-D1t (R1.67): the one check both case upload doors make, PF-F4's `checkFile`, before anything is written. The type
- *  comes from the file's own bytes; a refusal is in PF-F4's words (they end "Nothing was stored.") with the status its
- *  reason calls for. Answers the stored name (corrected when it disagreed with the bytes), the type, the file's
- *  extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line. The doors keep their
- *  own 20 MB limit (C6.4 break m5), which is under PF-F4's 25 MB for documents: the multipart limit on each route
- *  refuses a larger file before this runs. */
-export function checkedCaseFile(f: Upload): Checked & { extension: string; flagWords: string } {
+/** CS-D1t (R1.67): does the PDF open? PF-F4's check reads no PDF structure (that needs a parser), so the reader the app
+ *  already has (pypdf, as the form library's upload check) reads the cross-reference table and the page tree, in its
+ *  own process, from the bytes on its input (nothing is on disk yet). "damaged": it does not open, or the read did not
+ *  end in 20 s. "unchecked": the reader could not be run at all, which is not the file's fault. */
+const PDF_READ_MS = 20_000;
+export function pdfOpens(bytes: Uint8Array, py: string = PY): Promise<"opens" | "damaged" | "unchecked"> {
+  return new Promise((resolve) => {
+    let out = "", done = false;
+    const end = (r: "opens" | "damaged" | "unchecked") => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    const child = spawn(py, ["-I", join(STUDIO, "tools", "check_pdf_opens.py")], { stdio: ["pipe", "pipe", "ignore"] });
+    const timer = setTimeout(() => { child.kill("SIGKILL"); end("damaged"); }, PDF_READ_MS);
+    child.on("error", () => end("unchecked"));
+    child.stdin.on("error", () => { /* the reader ended before it read everything: its exit says what happened */ });
+    child.stdout.on("data", (d: Buffer) => { if (out.length < 4096) out += d.toString("utf8"); });
+    child.on("close", () => {
+      try { end((JSON.parse(out.trim().split("\n").pop() ?? "") as { ok?: boolean }).ok === true ? "opens" : "damaged"); }
+      catch { end("unchecked"); }   // no answer line: the reader itself failed (not installed, killed for memory)
+    });
+    child.stdin.end(bytes);
+  });
+}
+
+/** CS-D1t (R1.67): the one check both case upload doors make, before anything is written: PF-F4's `checkFile` (the type
+ *  from the file's own bytes), then, for a PDF, that it opens. A refusal is in PF-F4's words (they end "Nothing was
+ *  stored.") with the status its reason calls for. Answers the stored name (corrected when it disagreed with the bytes),
+ *  the type, the file's extension on disk and, for a PDF with active content, PF-F4's flag in words for the audit line.
+ *  The doors keep their own 20 MB limit (C6.4 break m5), which is under PF-F4's 25 MB for documents: the multipart limit
+ *  on each route refuses a larger file before this runs. */
+export async function checkedCaseFile(f: Upload, opens: typeof pdfOpens = pdfOpens): Promise<Checked & { extension: string; flagWords: string }> {
   const r = checkFile({ bytes: f.buffer!, name: utf8Name(f.originalname), mediaType: f.mimetype }, CASE_FILE_KINDS);
   if (!r.ok) return fail(r.message, REFUSAL_STATUS[r.reason]);
+  if (r.kind === "pdf") {
+    const read = await opens(f.buffer!);
+    const allowed = CASE_FILE_KINDS.map((k) => KINDS[k].words), list = `${allowed.slice(0, -1).join(", ")} and ${allowed[allowed.length - 1]}`;
+    // PF-F4's DAMAGED words for a file its own check cannot judge.
+    if (read === "damaged") fail(`This file could not be read: it may be damaged. Allowed here: ${list}. ${NOTHING_STORED}`, REFUSAL_STATUS.DAMAGED);
+    // Never stored unchecked: the person is told to try again, and the refusal is not blamed on their file.
+    if (read === "unchecked") fail(`This PDF could not be checked just now. Try again in a moment. ${NOTHING_STORED}`, HttpStatus.SERVICE_UNAVAILABLE);
+  }
   return { ...r, extension: KINDS[r.kind].extension, flagWords: r.flags.includes(SCRIPTS_FLAG) ? `; ${SCRIPTS_FLAG}` : "" };
 }
 const parse = <T,>(schema: { safeParse: (x: unknown) => { success: true; data: T } | { success: false; error: Parameters<typeof problemFromZod>[0] } }, body: unknown): T => {
@@ -275,7 +306,7 @@ export class CaseChecklists {
     if (seen !== undefined && seen !== row.version) fail(`${shown.label} for ${person.label} changed after you opened it (it is ${STATE_WORDS[row.state as LineState]} now): read the checklist again to see its state now, then try again. Nothing was stored.`, HttpStatus.CONFLICT);
     const f = (files ?? []).filter((x) => x.buffer);
     if (f.length !== 1 || f[0].fieldname !== "file") fail(`Send one file, in the field "file". Nothing was stored.`);
-    const bytes = f[0].buffer!, checked = checkedCaseFile(f[0]);
+    const bytes = f[0].buffer!, checked = await checkedCaseFile(f[0]);
     if (!UPLOAD_FROM.includes(row.state as LineState)) fail(`${shown.label} for ${person.label} is ${STATE_WORDS[row.state as LineState]}: request it again before uploading. Nothing was stored.`, HttpStatus.CONFLICT);
     // C6.15 (SA-1B-19 rule 1): on a line with a substitute set, the file is one member of it ("member": its document type
     // key); left out, it is the line's own type when that is a member. Any member of the set the line uses counts.

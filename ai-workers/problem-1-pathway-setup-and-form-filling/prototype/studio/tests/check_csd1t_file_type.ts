@@ -2,14 +2,17 @@
 // and the person's document with no line (POST /runtime/cases/:id/documents), judge a file by PF-F4's one check
 // (api/src/platform/files/file-type.ts `checkFile`, through `checkedCaseFile` in api/src/case-checklist.ts). Each
 // refusal reason goes through each door: the status its reason calls for, PF-F4's words ending "Nothing was stored.",
-// and nothing written (no row, no file, no audit line). Each has a passing case beside it. On the Visitor visa of
-// acceptance pack 4, as check_c64_storage_api.ts. Synthetic files only (Sample); no model call (US$0).
+// and nothing written (no row, no file, no audit line). Each has a passing case beside it. A PDF must also open (the
+// reader tools/check_pdf_opens.py, through `pdfOpens`): one cut short is refused as damaged, and when the reader cannot
+// be run the file is not stored unchecked (503). On the Visitor visa of acceptance pack 4, as check_c64_storage_api.ts.
+// Synthetic files only (Sample); no model call (US$0).
 //   zsh studio/tools/isolated.sh runtime_csd1t 4447 start && tsx studio/tests/check_csd1t_file_type.ts 4447 xr_studio_runtime_csd1t
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FAMILY, OFFICER, CLIENT, PORT, DB, answer, call, main, ok, openCase, sql } from "../acceptance/lib/m3.ts";
-import { CASE_FILE_KINDS } from "../api/src/case-checklist.ts";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
+import { CASE_FILE_KINDS, checkedCaseFile, pdfOpens } from "../api/src/case-checklist.ts";
 import { MAX_BYTES, NOTHING_STORED, SCRIPTS_FLAG } from "../api/src/platform/files/file-type.ts";
 
 type Bytes = Uint8Array<ArrayBuffer>;
@@ -25,8 +28,9 @@ if (!hasLetter()) for (const f of ["tests/runtime/setup_visitor_visa.ts", "accep
   catch { /* the setups exit 1 on their own known gaps (pack 4 S2w, S7, S7a); what this check needs is asked below */ }
 
 // The files (Sample, synthetic). PDF, JPEG and PNG that pass; then one file per refusal reason.
-const PDF = text("%PDF-1.4\n% Sample synthetic document (CS-D1t)\n%%EOF\n"), JPG = fixture("sample.jpg"), PNG = fixture("sample.png");
-const SCRIPTED = text("%PDF-1.4\n1 0 obj << /S /JavaScript /JS (app.alert\\(1\\)) >> endobj\n% Sample synthetic document (CS-D1t)\n%%EOF\n");
+const PDF: Bytes = new Uint8Array(textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample synthetic document (CS-D1t)"])), JPG = fixture("sample.jpg"), PNG = fixture("sample.png");
+// A PDF that opens, with the names PF-F4 flags after its end marker (a byte scan finds them; a reader ignores them).
+const SCRIPTED: Bytes = new Uint8Array(Buffer.concat([PDF, Buffer.from("\n% /OpenAction << /S /JavaScript /JS (Sample) >>\n", "latin1")]));
 const MB = 1024 * 1024;
 const REFUSED: { reason: string; name: string; bytes: Bytes; status: number; words: RegExp }[] = [
   { reason: "NOT_ALLOWED_TYPE", name: "passport.png", bytes: text("GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;"), status: 415, words: /^This type of file is not accepted\./ },
@@ -35,6 +39,8 @@ const REFUSED: { reason: string; name: string; bytes: Bytes; status: number; wor
   { reason: "MACROS", name: "letter.pdf", bytes: fixture("macro.docm"), status: 415, words: /^Files with macros/ },
   { reason: "EMPTY", name: "passport.pdf", bytes: new Uint8Array(), status: 400, words: /^This file is empty\./ },
   { reason: "DAMAGED", name: "passport.png", bytes: PNG.slice(0, 12), status: 400, words: /^This image could not be read: it may be damaged\./ },
+  { reason: "DAMAGED (a PDF cut short: it does not open)", name: "passport.pdf", bytes: PDF.slice(0, Math.floor(PDF.length * 0.6)), status: 400, words: /^This file could not be read: it may be damaged\./ },
+  { reason: "DAMAGED (a PDF header with nothing behind it)", name: "passport.pdf", bytes: text("%PDF-1.4\n% Sample\n%%EOF\n"), status: 400, words: /^This file could not be read: it may be damaged\./ },
   { reason: "TOO_LARGE", name: "scan.jpg", bytes: padded(JPG, MAX_BYTES.image + 1), status: 413, words: /^This file is 10 MB; the limit for images is 10 MB\./ },
   { reason: "TOO_MANY_PIXELS", name: "photo.png", bytes: fixture("bomb.png"), status: 413, words: /^This image is too large to open safely/ },
 ];
@@ -42,6 +48,14 @@ const REFUSED: { reason: string; name: string; bytes: Bytes; status: number; wor
 await main("CS-D1t", "the case upload doors use the one file-type check (R1.67)", async () => {
   ok("setup: the Visitor visa with pack 4's document lines is released on this copy", hasLetter());
   ok("CS-D1t: the case side's kinds are PDF, JPEG and PNG, in one list", CASE_FILE_KINDS.join() === "pdf,jpeg,png", CASE_FILE_KINDS);
+  // The reader itself: a PDF that opens, one cut short, and a reader that cannot be run (never taken for "opens").
+  ok("CS-D1t pass: the reader says a well-formed PDF opens", (await pdfOpens(PDF)) === "opens");
+  ok("CS-D1t fail: the reader says a PDF cut short is damaged", (await pdfOpens(PDF.slice(0, PDF.length - 20))) === "damaged");
+  ok("CS-D1t fail: a reader that cannot be run answers \"unchecked\", never \"opens\"", (await pdfOpens(PDF, "/nonexistent/python")) === "unchecked");
+  const unchecked = await checkedCaseFile({ buffer: Buffer.from(PDF), originalname: "passport.pdf" }, async () => "unchecked" as const).then(() => null, (e: { getStatus?: () => number; message?: string }) => ({ status: e.getStatus?.(), words: String(e.message) }));
+  ok("CS-D1t fail: with the reader down a PDF is not stored unchecked: refused (503) in words that do not blame the file", unchecked?.status === 503 && /could not be checked just now.*Nothing was stored\.$/.test(unchecked.words), unchecked);
+  const image = await checkedCaseFile({ buffer: Buffer.from(JPG), originalname: "scan.jpg" }, async () => "unchecked" as const).then((r) => r.kind, () => null);
+  ok("CS-D1t pass: an image never asks the PDF reader", image === "jpeg", image);
   const c = await openCase(sql("select id from combination where combination_key='vv.single'")!, FAMILY);
   const A = c.subjects["Sample Client A"];
   await answer(c.id, c.caseSubject, "case.application_date", new Date().toISOString().slice(0, 10), OFFICER);

@@ -8,13 +8,12 @@
 //   DW2: a refusal stores nothing (no row, no file, no audit line) through each door; the same judge fails after a
 //        stored upload;
 //   W1..W7: the case officer on the case's Documents panel: a real PDF on a person's line is stored; a GIF named
-//        passport.png, an empty file, a damaged image and a 30 MB PDF are each refused in words on that line with
-//        nothing stored; the case's client uploads a JPEG on their line and the walk ends at the next capability's first
-//        step, the line showing the stored file.
-// Two lines differ from the brief, both said in the PR: (1) the brief's "truncated PDF refused as damaged" is walked with
-// a damaged image: `checkFile` reads no PDF structure (its header: that check needs a parser and stays with CS-D1) and no
-// door calls one today, so a truncated PDF is still stored; (2) the client's upload goes through the API: the Documents
-// panel is staff only and no client screen uploads yet.
+//        passport.png, an empty file, a truncated PDF, a damaged image and a 30 MB PDF are each refused in words on that
+//        line with nothing stored; the case's client uploads a JPEG on their line and the walk ends at the next
+//        capability's first step, the line showing the stored file.
+// The truncated PDF is refused by the doors' own read (`pdfOpens`, the reader tools/check_pdf_opens.py): `checkFile`
+// reads no PDF structure. One line differs from the brief, said in the PR: the client's upload goes through the API,
+// as the Documents panel is staff only and no client screen uploads yet.
 // Sample people and synthetic files only; US$0, no model call.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j67 4467 start --ttl 40 && trap 'zsh studio/tools/isolated.sh j67 4467 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_67.ts j67 4467
@@ -23,6 +22,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
+import { textPdf } from "../../acceptance/lib/fixtures.ts";
 import { mediaOf } from "../../contracts/documents.ts";
 import { NOTHING_STORED } from "../../api/src/platform/files/file-type.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
@@ -41,9 +41,10 @@ type Ans = { status: number; detail: string; id?: string };
 const fixture = (n: string): Bytes => new Uint8Array(readFileSync(join(STUDIO, "tests", "fixtures", "file-types", n)));
 const text = (s: string): Bytes => new TextEncoder().encode(s);
 const padded = (head: Bytes, size: number): Bytes => { const b = new Uint8Array(size); b.set(head); return b; };
-const PDF = text("%PDF-1.4\n% Sample synthetic document (J-67)\n%%EOF\n"), JPG = fixture("sample.jpg"), PNG = fixture("sample.png");
+const PDF: Bytes = new Uint8Array(textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample synthetic document (J-67)"])), JPG = fixture("sample.jpg"), PNG = fixture("sample.png");
 const GIF: File = { name: "passport.png", bytes: text("GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;") };
 const EMPTY: File = { name: "passport.pdf", bytes: new Uint8Array() };
+const TRUNCATED: File = { name: "passport.pdf", bytes: PDF.slice(0, Math.floor(PDF.length * 0.6)) };
 const CUT_OFF: File = { name: "passport.png", bytes: PNG.slice(0, 12) };
 const WRONG_NAME: File = { name: "passport.png", bytes: JPG };
 const BIG: File = { name: "bank-statements.pdf", bytes: padded(PDF, 30 * 1024 * 1024) };
@@ -102,8 +103,8 @@ ok("J-67 DW1 stand-in: the old check (mediaOf) takes the damaged PNG and keeps t
 /** DW2's judge: what is stored for the person is the same before and after the uploads. */
 const judge2 = async (d: Door, files: File[]) => { const before = stored(); const answers = []; for (const f of files) answers.push(await d.send(f)); const after = stored(); return { ok: same(before, after), before, after, answers }; };
 for (const d of DOORS) {
-  const j = await judge2(d, [GIF, EMPTY, CUT_OFF]);
-  ok(`J-67 DW2: ${d.name}: three refusals, each ending "${NOTHING_STORED}", leave no row, no file and no audit line`, j.ok && j.answers.every((a) => a.status >= 400 && a.detail.endsWith(NOTHING_STORED)), j);
+  const j = await judge2(d, [GIF, EMPTY, CUT_OFF, TRUNCATED]);
+  ok(`J-67 DW2: ${d.name}: four refusals, each ending "${NOTHING_STORED}", leave no row, no file and no audit line`, j.ok && j.answers.every((a) => a.status >= 400 && a.detail.endsWith(NOTHING_STORED)), j);
   const kept2 = await judge2(d, [{ name: "passport.pdf", bytes: PDF }]);
   ok(`J-67 DW2 stand-in: ${d.name}: after a stored upload the same judge fails (one more row, file and audit line)`, !kept2.ok && kept2.after.rows === kept2.before.rows + 1 && kept2.after.files === kept2.before.files + 1 && kept2.after.audit === kept2.before.audit + 1, kept2);
 }
@@ -145,6 +146,8 @@ try {
   await shot("W2-gif-refused");
   r = await refusedOnScreen(EMPTY, /This file is empty\./);
   ok("J-67 W3: an empty file is refused in words, nothing stored", r.ok, r);
+  r = await refusedOnScreen(TRUNCATED, /This file could not be read: it may be damaged\./);
+  ok("J-67 W4: a truncated PDF (it does not open) is refused as damaged, nothing stored", r.ok, r);
   r = await refusedOnScreen(CUT_OFF, /This image could not be read: it may be damaged\./);
   ok("J-67 W4: a damaged image (a PNG cut off after its signature) is refused as damaged, nothing stored", r.ok, r);
   await shot("W4-damaged-refused");
