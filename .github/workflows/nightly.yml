@@ -29,6 +29,7 @@ name: nightly
 run-name: "${{ inputs.request && format('nightly · {0}', inputs.request) || 'nightly' }}"
 on:
   schedule:
+    # re-registered 19 Nov after the org move (GitHub dropped scheduled runs from 18 Nov 10:00 UTC)
     - cron: "23 20 * * *"
   workflow_dispatch:
     inputs:
