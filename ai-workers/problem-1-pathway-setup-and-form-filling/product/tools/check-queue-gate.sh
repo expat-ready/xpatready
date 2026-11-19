@@ -147,6 +147,8 @@ printf '{"workflow_run": {"pull_requests": [{"number": 9}]}}' > "$T/fx/ev.json";
 ok "event workflow_run: the PR of a finished ci is labelled and judged" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && grep -q '^STATUS' <<< "$log" && echo 1)" "exit $r: $out / $log"
 printf '{"workflow_run": {"pull_requests": [{"number": 404}]}}' > "$T/fx/ev.json"; ev workflow_run
 ok "event: a PR that cannot be read makes the run red (exit 2, review m6)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
+printf '[{"number": 9, "pull_request": {}}]' > "$T/fx/issues.json"; ev workflow_dispatch
+ok "event workflow_dispatch: a run by hand judges the labelled PRs like a schedule (Lead 84, 19 Nov)" "$([ $r = 0 ] && grep -q '^STATUS' <<< "$log" && ! grep -q 'not handled' <<< "$out" && echo 1)" "exit $r: $out / $log"
 rm -f "$T/fx/issues.json"; ev push
 ok "event push: the labelled PRs cannot be listed: red (exit 2, round 2 m5)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 # --- review m1: a long file list is read whole (pipefail and SIGPIPE once made it "no app code")
@@ -163,4 +165,6 @@ ok "fresh: the ci run cannot be read: pending, no re-run" "$(grep -qx "STATUS $H
 R=$(git -C "$TOOLS" rev-parse --show-toplevel); M="$R/.mergify.yml"; W="$R/.github/workflows/queue-gate.yml"
 ok ".mergify.yml: the product queue needs queue-fresh for a PR touching prototype/" "$(awk '/- name: product/,/- name: records/' "$M" | grep -q 'check-success = queue-fresh' && awk '/- name: product/,/- name: records/' "$M" | grep -qF -- '-files ~= /prototype/' && echo 1)" "no queue-fresh condition in the product queue"
 ok "queue-gate.yml runs main's copy of queue-gate.sh on comments, ci runs, labels and pushes to main" "$([ -f "$W" ] && grep -q 'ref: main' "$W" && grep -q 'queue-gate.sh event' "$W" && grep -q 'issue_comment' "$W" && grep -q 'workflow_run' "$W" && ! grep -qE 'refs/pull|head\.sha' "$W" && grep -q '"OWNER","MEMBER","COLLABORATOR"' "$W" && grep -q 'types: \[labeled, unlabeled\]' "$W" && echo 1)" "$W (an outsider's comment must start no write-token run, review m2)"
+wd=$(python3 -I -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); on=d[True]; print("ok" if "workflow_dispatch" in on and "workflow_dispatch" in d["jobs"]["gate"]["if"] else "no")' "$W" 2>&1)
+ok "queue-gate.yml can be run by hand (workflow_dispatch) and its gate job runs then (Lead 84, 19 Nov: schedules can be dropped)" "$([ "$wd" = ok ] && echo 1)" "$wd"
 finish

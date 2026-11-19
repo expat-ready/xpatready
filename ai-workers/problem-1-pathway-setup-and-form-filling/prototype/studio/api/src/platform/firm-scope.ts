@@ -103,6 +103,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
+  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true },
   "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true },
