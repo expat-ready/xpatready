@@ -42,8 +42,8 @@ async function eligible(tx: Tx, firmId: string, among: string[]): Promise<string
   return rows.map((r) => r.id);
 }
 
-/** AG-2-13a: the most specific active rule for the lead's door and service (service first, then door), locked so parallel
- *  arrivals take turns one after another; its owner, or the next person after the rule's cursor (AG-2-13d). */
+/** AG-2-13a: the most specific active rule for the lead's door and service (service first, then door): its owner, or the
+ *  next person after the rule's cursor (AG-2-13d). */
 export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId: string | null): Promise<Placement> {
   if (door === "MANUAL") return NO_RULE;
   const [rule] = await tx.$queryRaw<{ id: string; strategy: Strategy; owner: string | null; among: string[]; last: string | null }[]>`
@@ -52,13 +52,20 @@ export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId
     where firm_id = ${firmId}::uuid and active
       and (door is null or door = ${door}::"FoDoor") and (service_id is null or service_id = ${serviceId}::uuid)
     order by (service_id is not null) desc, (door is not null) desc
-    limit 1 for update`;
+    limit 1`;
   if (!rule) return NO_RULE;
   if (rule.strategy === "OWNER") {
     // The named person must still be able to work leads (break M2): active, with the sales key; else Unassigned.
     const [able] = await eligible(tx, firmId, [rule.owner!]);
     return { ownerStaffId: able ?? null, ruleId: rule.id, strategy: "OWNER", fallback: able ? null : "OWNER_INACTIVE" };
   }
+  // Only round robin writes its rule, so only it locks the row (review m2): parallel arrivals take turns one after another,
+  // reading the cursor afresh under the lock. A rule switched off or replaced meanwhile is read again as it now stands.
+  const [locked] = await tx.$queryRaw<{ last: string | null; among: string[]; strategy: Strategy; active: boolean }[]>`
+    select last_staff_id::text as last, eligible_staff_ids::text[] as among, strategy::text as strategy, active
+    from fo_assignment_rule where firm_id = ${firmId}::uuid and id = ${rule.id}::uuid for update`;
+  if (!locked?.active || locked.strategy !== "ROUND_ROBIN") return placeNewLead(tx, firmId, door, serviceId);
+  rule.last = locked.last; rule.among = locked.among;
   const set = await eligible(tx, firmId, rule.among);
   if (!set.length) return { ownerStaffId: null, ruleId: rule.id, strategy: "ROUND_ROBIN", fallback: "NO_ELIGIBLE" };
   const next = set.find((id) => rule.last !== null && id > rule.last) ?? set[0];

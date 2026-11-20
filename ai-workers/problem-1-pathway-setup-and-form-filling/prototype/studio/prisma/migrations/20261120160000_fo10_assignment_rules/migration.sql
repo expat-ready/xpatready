@@ -58,3 +58,7 @@ ALTER TABLE "fo_assignment_rule" ADD CONSTRAINT "fo_assignment_rule_by_check" CH
 -- A named owner is staff of the same firm (FO-1a's trigger function), and a rule never moves firm.
 CREATE TRIGGER "fo_assignment_rule_owner_in_firm" BEFORE INSERT OR UPDATE OF "owner_staff_id", "firm_id" ON "fo_assignment_rule" FOR EACH ROW EXECUTE FUNCTION fo_sales_owner_in_firm();
 CREATE TRIGGER "fo_assignment_rule_firm_fixed" BEFORE UPDATE OF "firm_id" ON "fo_assignment_rule" FOR EACH ROW EXECUTE FUNCTION fo_sales_firm_fixed();
+-- PF-12's walls: the database refuses another firm's rule even to a query that forgets its firm filter.
+ALTER TABLE "fo_assignment_rule" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY "pf12_firm" ON "fo_assignment_rule" USING ("firm_id" = platform_session_firm()) WITH CHECK ("firm_id" = platform_session_firm());
+CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_assignment_rule" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
