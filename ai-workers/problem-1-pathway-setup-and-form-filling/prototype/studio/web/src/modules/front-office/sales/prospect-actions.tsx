@@ -19,7 +19,8 @@ export function useOwners() {
   const name = (id: string | null) => id === null ? "Nobody" : a?.assignees.find((x) => x.staffId === id)?.displayName ?? (id === me.staffId ? me.displayName : "A colleague");
   // Until the answer is in (or when it fails) no owner is shown: a one-user firm never sees an owner flash by (break m8).
   // `settled`: the answer is in, or failed (R1.32: Leads waits for it, so its chips never change under the person).
-  return { oneUser: a?.oneUser ?? true, choices: a?.assignees ?? [], name, settled: !q.isPending };
+  // A failed answer is not a one-user firm (break 9): the owner lines and buttons stay, the picker says it has nobody.
+  return { oneUser: a?.oneUser ?? !q.isError, choices: a?.assignees ?? [], name, settled: !q.isPending };
 }
 /** One request at a time (review M1): a second click before the first answer is dropped, also before React has drawn
  *  the button as busy. `take()` is true for the click that may send; `free()` when the answer is in. */

@@ -9,6 +9,8 @@
 //   AS4  Take it by screens is recorded the same way ("<name> took it", with the time);
 //   AS5  DW18: in a one-user firm, Unassigned leads, the owner column, Take it, Assign, the owner line and the history
 //        are not shown;
+//   AS4b a deactivated new owner keeps their name in the history, for every reader;
+//   AS7  with "everyone sees all" off, assigning a lead away ends on Leads with a word, not on "Lead not found";
 //   AS6  keyboard only, axe clean with the panel open, no sideways scroll at 375, 1024 and 1440 px.
 // Sample rows only; US$0, no model call. Usage, from prototype/:
 //   zsh studio/tools/isolated.sh screens_as 4532 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4as_assign_browser.ts 4532 xr_studio_screens_as
@@ -20,7 +22,9 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
+import { platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
+import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -31,9 +35,11 @@ const { sql: rawSql } = client(PORT, DBNAME);
 const sql = (q: string) => rawSql(q).split("\n")[0].trim();
 const run = Date.now().toString(36);
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
-await seedSampleFirms(db); await seedSampleFirmsFrontOffice(db); await db.$disconnect();
+await seedSampleFirms(db); await seedSampleFirmsFrontOffice(db);
 const firm = (key: string) => sql(`select id from platform_firm where key = '${key}'`);
 const A = firm("sample-firm"), SOLO = firm("sample-solo");
+const sharing = async (on: boolean) => writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: on, by: "seed:FO-4as-test", workspaceId: await platformAuditWorkspaceId(db as never), reason: "FO-4as" });
+await sharing(true);   // AS7 turns it off at the end; a rerun on the same copy starts from "everyone sees all"
 const staffOf = (actor: string) => { const [id, email, name] = sql(`select id || '|' || email || '|' || display_name from platform_staff where actor_id = '${actor}'`).split("|"); return { id, email, name }; };
 const R = staffOf("user-R"), T = staffOf("user-T"), O = staffOf("user-O"), S = staffOf("user-S");   // Owner, Case Manager, Case Officer (firm A); solo Owner
 // A deactivated colleague, made for this run: never offered (AG-2-13c rule 2).
@@ -126,6 +132,17 @@ try {
   await o.locator("[data-owner-history] li", { hasText: "took it" }).waitFor({ timeout: 10_000 });
   ok("FO-4as AS4 (AG-2-86, rule 4): Take it by screens makes the Case Officer the owner, and the history reads \"<name> took it\" with the time", ownerOf(a4.id) === O.id && (await history(o)).includes(`${O.name} took it`), await history(o));
 
+  // ---------------------------------------------------------------- AS4b: a deactivated assignee keeps their name
+  const tmpName = `Sample Temp ${run}`;
+  const tmp = sql(`insert into platform_staff (id, firm_id, email, display_name, actor_id, updated_at) values (gen_random_uuid(), '${A}', 'fo4as-tmp-${run}@sample-firm.example.com', '${tmpName}', 'fo4as-tmp-${run}', now()) returning id`);
+  sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${tmp}', 'CASE_OFFICER', 'seed:FO-4as-test')`);
+  const a4b = lead(A, `Tem${run}`);
+  const toTmp = await api(tok.T, "POST", `/leads/${a4b.id}/assign`, { staffId: tmp, expectedOwnerStaffId: null });
+  sql(`update platform_staff set status = 'DEACTIVATED' where id = '${tmp}'`);
+  await openLead(o, a4b);
+  await o.locator("[data-owner-history] li", { hasText: "assigned it to" }).waitFor({ timeout: 10_000 });
+  ok("FO-4as AS4b (rule 4, break 2): after the new owner leaves, even a Case Officer reads \"assigned it to (Inactive) <name>\", never \"A colleague\"", toTmp.status === 200 && (await history(o)).includes(`assigned it to (Inactive) ${tmpName}`) && !(await history(o)).includes("A colleague"), await history(o));
+
   // ---------------------------------------------------------------- AS5: one-user firm (DW18)
   const solo = await api(tok.S, "GET", "/leads/assignees");
   const s1 = lead(SOLO, `Sol${run}`);
@@ -138,8 +155,10 @@ try {
     solo.body?.oneUser === true && (await s.locator('[data-chip="unassigned"]').count()) === 0 && !heads.some((h) => h.trim() === "Owner") && (await s.getByRole("button", { name: /^Take it/ }).count()) === 0, { oneUser: solo.body?.oneUser, heads });
   await s.goto(`${BASE}/front-office/leads/${s1.id}`);
   await s.getByRole("heading", { level: 1, name: s1.name }).waitFor({ timeout: 30_000 }); await s.waitForTimeout(800);
+  ok("FO-4as AS5 (review M1): the one-user firm's menu shows no \"n unassigned\" badge, though an unowned lead exists", (await s.locator("[data-unassigned-badge]").count()) === 0 && sql(`select count(*) from fo_lead where firm_id = '${SOLO}' and owner_staff_id is null and state = 'OPEN'`) !== "0");
   ok("FO-4as AS5: on the lead, no owner line, Take it, Assign or owner history", (await s.locator("aside [data-owner]").count()) === 0 && (await s.getByRole("button", { name: /Take it|Assign|Reassign/ }).count()) === 0 && (await s.locator("[data-owner-history]").count()) === 0);
-  ok("FO-4as AS5 fail side: the firm of three (firm A) does show them (the hiding is the one-user rule, not a lost button)", (await t.locator("[data-owner-history]").count()) === 1 && (await t.locator("[data-assign-open]").count()) === 1);
+  lead(A, `Wait${run}`); await openLead(t, a1); await t.locator("[data-unassigned-badge]").waitFor({ timeout: 10_000 }); await t.locator("[data-owner-history]").waitFor({ timeout: 10_000 });
+  ok("FO-4as AS5 fail side: the firm of three (firm A) does show them, badge included (the hiding is the one-user rule, not a lost button)", (await t.locator("[data-owner-history]").count()) === 1 && (await t.locator("[data-assign-open]").count()) === 1 && (await t.locator("[data-unassigned-badge]").count()) === 1);
 
   // ---------------------------------------------------------------- AS6: keyboard, axe, widths
   await openLead(t, a1);
@@ -160,6 +179,15 @@ try {
     ok(`FO-4as AS6: no sideways page scroll with the Assign panel open at ${w} px`, !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
     await p.context().close();
   }
+  // ---------------------------------------------------------------- AS7: assigned away with sharing off (break 3b)
+  await sharing(false);
+  const a7 = lead(A, `Off${run}`);
+  await openLead(t, a7);
+  await assignTo(t, "Assign", O.name);
+  await t.getByRole("heading", { level: 1, name: "Leads" }).waitFor({ timeout: 15_000 });
+  ok("FO-4as AS7 (rule 1, every sharing mode): with sharing off, assigning away is done and the Case Manager is taken back to Leads and told, never left on \"Lead not found\"",
+    ownerOf(a7.id) === O.id && (await t.getByText("You no longer see it.").count()) >= 1 && (await t.getByText("Lead not found").count()) === 0);
+  await sharing(true);
   ok("FO-4as: no page error", errors.length === 0, errors);
-} finally { await browser.close(); }
+} finally { await browser.close(); await db.$disconnect(); }
 process.exit(summary() ? 1 : 0);

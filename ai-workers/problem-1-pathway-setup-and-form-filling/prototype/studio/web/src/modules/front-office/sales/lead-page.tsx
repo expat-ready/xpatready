@@ -88,7 +88,8 @@ function LeadBody({ id }: { id: string }) {
     onSettled: () => lock.free(),
   });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
-  if (lead.isPending) return <Loading label="Loading the lead" rows={2} />;
+  // The rail waits for who may own what (review m2), so its buttons never rearrange under the person.
+  if (lead.isPending || !owners.settled) return <Loading label="Loading the lead" rows={2} />;
   if (lead.isError) {
     const gone = lead.error instanceof StaffApiError && lead.error.status === 404;
     return (
@@ -152,7 +153,8 @@ function LeadBody({ id }: { id: string }) {
           {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => panel(true)}>Engage</Button> : null}
         </aside>
       </div>
-      {mayAssign ? <AssignPanel lead={l} open={assigning} onOpenChange={assignPanel} /> : null}
+      {/* Kept mounted while open, so a refusal (someone closed the lead meanwhile) is read in the panel (break 6). */}
+      {can(me, KEY.assign) && !owners.oneUser ? <AssignPanel lead={l} open={assigning} onOpenChange={assignPanel} /> : null}
       <Panel open={engaging} onOpenChange={panel} title="Engage" description={`${name}, ${l.number}`}
         footer={<><Button variant="ghost" onClick={() => panel(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => { if (lock.take()) engage.mutate(); }}>Engage as Individual</Button></>}>
         {engage.isError ? <Notice tone="danger" className="mb-3" title={engage.error instanceof StaffApiError ? engage.error.message : "Could not engage the lead. Please try again."} /> : null}
