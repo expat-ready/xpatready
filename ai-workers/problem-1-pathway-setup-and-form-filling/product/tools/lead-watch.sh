@@ -200,5 +200,12 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+# 13. The constraint (ENF-738, P-738; B206 part 4, P-751): the flow measured from tools each check (batch wall time and its
+# longest part, runs waiting for a machine from step 2c, failed batches with culprit PRs, approved to merged, merges per hour,
+# Proven today from the board), then the one current constraint with its measure and one action, as an ACT line. Last, so it
+# reads what the steps above saved.
+cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
+  --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
+
 
 exit "$act"
