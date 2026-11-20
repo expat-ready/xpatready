@@ -60,7 +60,9 @@ export class PlatformSession {
 
   /** Ends every session of a person now (one revocation row; the guard reads it on their next request). */
   private async endSessions(tx: Tx, actor: StaffContext, staffId: string, reason: string) {
-    // At least the person's latest sign-in (the stand-in may date one a few ms ahead of the clock: break B6).
+    // At least the person's latest sign-in (the stand-in may date one a few ms ahead of the clock: break B6), read under
+    // the person's row lock, so a sign-in in progress is seen and a later one waits for this change (J-5 re-review m2).
+    await tx.$queryRaw`select id from platform_staff where id = ${staffId}::uuid and firm_id = ${firmScope(actor.firmId).firmId}::uuid for update`;
     const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: staffId }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
     await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId, revokedAt: new Date(Math.max(this.clock.now(), last, staffId === actor.staffId ? actor.authTime * 1000 : 0)), reason } });
   }

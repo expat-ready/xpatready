@@ -10,13 +10,13 @@
 //       its lock and was dated after the deactivation, so reactivation brought its token back).
 // The race is real (parallel requests, no test hook), so each round is a chance, not a certainty; ROUNDS rounds make a
 // miss of the old fault rare (it failed 7 of 10 and 2 of 3 rounds). Sample rows only; US$0, no model call.
-//   zsh studio/tools/isolated.sh pf4r 4421 start --ttl 20 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh pf4r 4421 stop' EXIT && tsx studio/tests/check_pf4r_lockout_race.ts pf4r 4421
+//   zsh studio/tools/isolated.sh pf4r 4421 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf4r_lockout_race.ts xr_studio_pf4r 4421
 import { client, recorder } from "./runtime/api.ts";
 
-const [NAME, PORT] = [process.argv[2] ?? "pf4r", Number(process.argv[3] ?? 4421)];
+const [DBNAME, PORT] = [process.argv[2] ?? "xr_studio_pf4r", Number(process.argv[3] ?? 4421)];   // the copy's database (run-suites renames it for a lane)
 const BASE = `http://localhost:${PORT}`, ROUNDS = 6, LOOPS = 3, PER_LOOP = 12;   // a burst outlasts the Deactivate's wait (re-review n1: ~100-175 ms)
 const { ok, summary } = recorder();
-const { sql } = client(PORT, `xr_studio_${NAME}`);
+const { sql } = client(PORT, DBNAME);
 const run = Date.now().toString(36);
 type Ans = { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 

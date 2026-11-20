@@ -147,3 +147,45 @@ I did not re-run the race on main's code: the builder's 1/5 is taken from the PR
   leaves the plan lent: the same order as m3, fixed in `j_5.ts` but not here.
 
 Verdict: Approve aff1fd011a397ba221941836db8c5c56b132170e
+
+## Re-review 6a71adf5 (diff `aff1fd011..6a71adf5`, code and test only)
+**Run:** `check_pf4r_lockout_race.ts` on `pf4rv 4444`: **7/7**. Every round now splits around the change
+(tokens `[5,3,4,3,4,6]`, refused `[31,33,32,33,32,30]`). Under a colleague's stream of sign-ins, Deactivate and Reactivate
+each answer in 26-46 ms. Across the whole run, staff changes took 16-118 ms. I did not repeat pf4, pf4b or pf12, as you asked.
+
+**Is any deadlock left between a sign-in and a staff change? None.**
+* The sign-in takes the person `FOR UPDATE`, then its foreign-key inserts take `KEY SHARE` on the firm.
+* `NO KEY UPDATE` (both `inFirm` helpers and the invitation accept) does not conflict with `KEY SHARE`, so a sign-in
+  never waits on a staff change's firm lock. The two meet only on the person's row: the deactivate's update, or the
+  `KEY SHARE` a role grant's foreign key takes on that row. Those waits run one way only, so there is no cycle.
+* Staff changes still queue among themselves, because `NO KEY UPDATE` conflicts with `NO KEY UPDATE`.
+
+**Did any guard rely on `FOR UPDATE` blocking foreign-key inserts? No.**
+* The seat checks run in invite (`service.ts:348`, inside `inFirm`), accept and reactivate. All three take
+  `NO KEY UPDATE`, so they still queue among themselves.
+* The only other staff inserts are signup (a new firm) and the seed (at start).
+* B2 now rests on the person's row, and that holds.
+
+**(c) under Read Committed: correct.** The deactivate's `UPDATE` waits for a sign-in holding the row. Once that sign-in
+commits, the next statement takes a fresh snapshot, so the `findFirst` sees the new `lastSignInAt`. A later sign-in's
+`SELECT … FOR UPDATE` waits for the deactivation, then reads the deactivated row and is refused (`:149`).
+
+**Terms accept still `FOR UPDATE` (`terms/service.ts:82`): one residual deadlock, Minor.**
+* Terms accept holds the firm `FOR UPDATE`, then `createMany` takes `KEY SHARE` on the person's row through the
+  `(firm_id, staff_id)` foreign key (migration `20261115180000_pf5_signup_terms:88`).
+* The same person's parallel sign-in holds that row `FOR UPDATE`, then waits for the firm `KEY SHARE`. That is a cycle.
+* It needs the same person accepting a new terms version during their own sign-in on another device. Postgres breaks it
+  with one 500.
+* It was already on main. aff1fd011's firm `KEY SHARE` closed it by accident; this head reopens it.
+* **Should:** change it to `FOR NO KEY UPDATE`, one line in the same class as B1.
+
+**`endSessions` (`session/service.ts:64`) reads `lastSignInAt` without the person's lock, Minor.**
+* Sign out everywhere and two-step reset no longer wait for an in-flight sign-in. At aff1fd011 they waited, through the
+  firm row.
+* A stand-in sign-in dated a few ms ahead of the clock can therefore outlive a concurrent Sign out everywhere.
+* Cognito sign-in times are in the past, so Cognito is not affected.
+* **Could:** take the person's row `FOR UPDATE` first, as (c) does.
+
+**n1 and n3:** fixed (`PER_LOOP` 12, the "race happened" line, seats given back first).
+
+Verdict: Approve 6a71adf57bec32998ffca60ada390187099bbb61
