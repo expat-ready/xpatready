@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (17:1x IST 20 Nov):** **#2029 (R1.4)** has a new head, 60d929278 (main merge 17:05 IST plus touchedEach in case-clients/live.ts), red only on module-cards (cases card not updated). Ruling 7038613945: add `MODULE.cases.rows/PF-12b.md` (card at its 40-line cap, P-712), then a real reviewer Approve on the new head. Lead 3 told.
+
 **Lead B (9) update (14:4x IST 20 Nov):** the current Lead is now **Lead 3 (series 3)** (`local_b0640d3f-6f07-406e-9cb9-714db24c29c4`), and it has my open items. J-37d: Lead 2 passed it to Lead 3 to start at the founder's next typed turn (a scheduled check can't start sessions); Opus 5.5 medium per P-605.
 
 **Lead B (9) update (14:3x IST 20 Nov):** j_37/j_38 red on main (walks 44701378950 at 7d79ed88f): DELIVERED vs SENT. The app is right (#2397 PF-19b3's Delivery event, QA-570). j_38 is already fixed on main (a6597ab64); j_37:152 and :170 still strict. Brief `lead-b-briefs/J-37d.md` sent to Lead 2 to start a lane.
