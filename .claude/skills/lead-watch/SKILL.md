@@ -1,6 +1,6 @@
 ---
 name: lead-watch
-description: The tech lead's 30-minute check for the Pathway Configurator - resources (weekly plan, context, disk, test databases), merges and the queue, every lane and session, questions, paid runs - judged against the plan with quality first and the fewest tokens. Use on every scheduled check, when the founder asks "all ok?", "are resources fine?", or how close a milestone is.
+description: The tech lead's 30-minute check for the Pathway Configurator - resources (weekly plan, context, disk, test databases), merges and the queue, every lane and session, questions, paid runs - judged against the plan with quality first and the fewest tokens. Use on every scheduled check, when the founder asks "all ok?", "are resources fine?", how close a milestone is, or for the full report ("full report", "/lead-watch full", "how are we doing").
 ---
 
 # Lead watch: is the plan on track, at full quality, for the fewest tokens?
@@ -17,6 +17,33 @@ The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **comple
 * **Prompts in a lane:** the founder approves the Lead answering a lane's question or permission prompt in claude.ai only when the action is inside that lane's brief and the rules (no spend over the cap, no settings or permission change, no delete, no label the rules forbid). Anything else, or a product preference, goes to the founder at once.
 * **Escalate at once:** any lane blocked on the founder gets one line to him with a recommendation; when the 10-message cap is reached, ask him to type "go".
 * **ETA board in every report:** 3–6 capabilities next to reach Works (qa-confirmed), each with an IST time and the one step it waits on, and whether the last estimate was on time or late by N minutes and why; built only from this check's own data.
+
+## Full report (when the founder says "full report", "/lead-watch full" or "how are we doing")
+Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-measure.py --since <00:00 IST as UTC>`, the app view with "Show more" expanded, open PRs, `mergify/` batches and runners (`gh.sh api .../actions/runners`). **Act first** (Unblock playbook), then reply **in chat only** (no file), every number from a tool. Proven = R1 rows at Works in `qa/CAPABILITIES.md` on `origin/main`, now, at 00:00 IST and 24 h ago (never the "four" line, which counts C rows). Codes carry their purpose: "R1.38 (staff Bookings calendar)".
+1. **Headline:** proven today N of 10 · total T of 101 · forecast in IST at the measured 24 h rate · on track yes/no.
+2. **🔴 Needs you / 🟡 Decide when you can**, each with "Recommend: ...".
+3. **Stage table** (Shaped-ready next wave "1+1 ahead" · Building, cap 8 · Approve · Merge queue · Machines · qa proof, cap 12) with columns items, oldest wait, done in last 3 h, healthy; then "The constraint today is ___ because ___" with numbers (the stage with the longest wait and the pile in front of it).
+4. **Five whys** on the gap to 10, each step with evidence (PR, run, count, time), ending "Fix · Owner · by HH:MM IST".
+5. **Waves:** active wave item by item (owner, PR, state), next wave readiness, WIP against caps 8 and 12.
+6. **Lanes** from the app view: item, last push (IST), waiting / failed / quiet / ok.
+7. **Manual unblocks** done this time (PR, time, rule) and any still possible without lowering quality.
+8. **Resources:** weekly %, burn per hour, IST times of 96% and 98%; your context and hand-over; disk; runners; standbys.
+9. **Risks and mitigations**, at most five, each with its cost and owner.
+10. **One recommendation**, and what the founder can do now.
+
+## Unblock playbook (each line points to its rule)
+1. Dequeued after a failed batch: the "Batch failures covered" line for every failed suite, then relabel (P-731).
+2. A PR stuck in the queue: a bare `@mergifyio requeue` comment.
+3. pr-rules ran before a DECISIONS row reached main: `tools/lead-pr.sh reopen <n>`.
+4. Check-only fixes holding the queue: merge them in the built-in browser at the first check (P-757, P-758); a shell refusal is never retried (P-504).
+5. Labels, Ready for review, reopen refused in the shell: do them in the built-in browser (P-752).
+6. claude.ai prompt box: click its ref, check the focus and that the text appears once, press Return, confirm the bubble.
+7. Cloud starts carry Model and effort (P-608), a Duplicate check and a Done when naming its test; on a classifier refusal leave a card.
+8. After every start, check the app view for duplicate sessions.
+9. Read the failed log before any re-run; failures outside the PR's code are covered, never forced.
+10. The Lead posts `/run full` for lanes (their comments are defused, P-751).
+11. Proactive: unowned active-wave items get lanes or cards every check; use the founder's resources (reset credit, P-758).
+12. Judge by proven, never by merges.
 
 ## Thresholds and what to do
 | Measure | Threshold | Do |
