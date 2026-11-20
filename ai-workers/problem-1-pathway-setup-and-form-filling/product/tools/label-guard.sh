@@ -9,9 +9,10 @@
 # comment says why. The walk starts from the PR's head as GitHub reads it now, never from the push's "before", so a
 # cancelled or failed earlier run cannot let an unreviewed commit through (#1136 review M2). Fails closed: comments or
 # reviews that cannot be read count as no Approve.
-# CI-PRE (P-731, founder 19 Nov, "enforced, not text"): a reviewed head also needs one green full run (comment-run.yml's
-# "/run full": main's ci.yml on the head merged with main) on the head or on a commit of the walk back to its approved
-# commit (a pure merge of main stays exempt, as above), and, when the label was just put on (LABELED), every failed part
+# CI-PRE (P-731, founder 19 Nov, "enforced, not text"; narrowed by P-743 to a PR a failed merge batch held): such a
+# reviewed head also needs one green full run (comment-run.yml's "/run full": main's ci.yml on the head merged with main)
+# on the head or on a commit of the walk back to its approved commit (a pure merge of main stays exempt, as above); a PR
+# no failed batch held needs none. And, when the label was just put on (LABELED), every failed part
 # of the newest failed merge batch that held the PR named in a "Batch failures covered:" comment line. Main's
 # queue-gate.sh proof judges both (records-only PRs exempt) and gives the reason the comment carries.
 # ENF-746a (P-746): for a records-only PR (the "records" label and main's records-only.sh), a merge of main that changes
@@ -104,7 +105,7 @@ enc=$(jq -rn --arg l "$LABEL" '$l|@uri')
 api -X DELETE "$API/repos/$REPO/issues/$PR/labels/$enc" >/dev/null || { echo "label-guard: could not remove the label"; exit 2; }
 [ -z "$unproved" ] || { why=$unproved; body="**Label guard (CI-PRE, P-731):** \`$LABEL\` removed from the head \`${AFTER:0:9}\`: $why.
 
-To label again: the label needs one green full run on the head (comment \`/run full\`; when it ends green the queue gate labels a reviewed head by itself, or a person does where P-423 keeps the Lead's read), and after a failed merge batch a comment line naming every failed part of that run."; }
+To label again: after a failed merge batch held this PR, the label needs one green full run on the head (comment \`/run full\`; when it ends green the queue gate labels a reviewed head by itself, or a person does where P-423 keeps the Lead's read) and a comment line naming every failed part of that batch run; a PR no failed batch held needs neither (P-743)."; }
 [ -n "$unproved" ] || body="**Label guard:** \`$LABEL\` removed. The head \`${AFTER:0:9}\`${BEFORE:+ (was \`${BEFORE:0:9}\`)} is not covered by a reviewer Approve: walking back from it, $why, before any commit with an Approve. Only pure merges of main that touch none of this PR's files may follow an approved commit (P-318 (1)).
 
 To label again: the reviewer re-reviews the diff since its last approved commit (P-293), the PR gets a comment line \"Reviewer: Approve\" followed by the new head's SHA, then the label goes back on (founder, 6 Nov ~03:00 IST: \"a label never outlives a review\")."

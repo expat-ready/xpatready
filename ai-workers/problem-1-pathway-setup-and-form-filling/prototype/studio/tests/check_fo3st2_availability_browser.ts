@@ -55,10 +55,15 @@ const [fTok, aTok, tTok] = [await signIn(F.email), await signIn(A.email), await 
 const slug = `fo3st2-${run}`;
 await db.foConsultationType.create({ data: { firmId: firm.id, slug, name: `Availability check ${run}`, modes: ["VIDEO"], hostStaffIds: [F.id], minutes: 30, windowDays: 120, meetingLink: "https://meet.example/sample-room" } });
 
-// The Monday at least a week ahead, and its Tuesday (Toronto).
+// The Monday at least a week ahead, and its Tuesday (Toronto). Calendar days, never instants (20 Nov fix): the dates
+// come from today's date in Toronto by whole-day steps on "YYYY-MM-DD", so the hour of the run cannot move them. Before,
+// TUE was "Monday at this time + 25 h": a run that started between 23:00 and 24:00 Toronto got Wednesday as its Tuesday
+// (CI run 44676831421 started 04:58 UTC = 23:58 Toronto; J-A2 read Wednesday's slots, J-A4 expected the wrong end).
 const today = new Date(), dayOf = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-let mon = new Date(today.getTime() + 7 * 86_400_000); while (new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday: "short" }).format(mon) !== "Mon") mon = new Date(mon.getTime() + 86_400_000);
-const MON = dayOf(mon), TUE = dayOf(new Date(mon.getTime() + 86_400_000 + 3_600_000)), WED = dayOf(new Date(mon.getTime() + 2 * 86_400_000 + 3_600_000));
+const plusDays = (day: string, n: number) => { const [y, m, d] = day.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();   // 0 = Sunday, 1 = Monday
+let MON = plusDays(dayOf(today), 7); while (weekdayOf(MON) !== 1) MON = plusDays(MON, 1);
+const TUE = plusDays(MON, 1), WED = plusDays(MON, 2);
 const at = (day: string, hhmm: string) => { const [y, m, d] = day.split("-").map(Number); return wallToUtc(y, m, d, Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)), TZ)!; };
 const local = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 async function slots(day: string, next: string): Promise<{ list: string[]; formStamp: string }> {
@@ -221,7 +226,7 @@ try {
   await pa.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add time off", null, { timeout: 5_000 }).catch(() => null);
   ok("FO-3st2 break M3: Cancel puts the keyboard back on \"Add time off\"", (await focused(pa)) === "Add time off", await focused(pa));
   // Break M2: a Remove the server refuses (the row was removed elsewhere) says so, and the list shows what is saved.
-  const extra = await call(aTok, "POST", `/front-office/staff/${F.id}/time-off`, { startsAt: at(WED, "00:00").toISOString(), endsAt: at(dayOf(new Date(at(WED, "12:00").getTime() + 86_400_000)), "00:00").toISOString() });
+  const extra = await call(aTok, "POST", `/front-office/staff/${F.id}/time-off`, { startsAt: at(WED, "00:00").toISOString(), endsAt: at(plusDays(WED, 1), "00:00").toISOString() });
   await pa.reload(); await pa.locator("[data-time-off-row]").nth(1).waitFor({ timeout: 10_000 });
   await call(aTok, "DELETE", `/front-office/staff/${F.id}/time-off/${extra.body.id}`);
   await pa.locator("[data-time-off-row]").nth(1).getByRole("button", { name: /Remove/ }).click();

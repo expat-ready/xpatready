@@ -725,7 +725,7 @@ SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, d
 SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
 RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
-BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
+BUNDLE_STEP = re.compile(r"^(rules files|graph, official PDFs)", re.I)   # job fast's tool-checks step: "rules files, …" until ENF-746c (20 Nov), then "graph, official PDFs, …" (check-docs.sh moved to its own PR-only step, counted by RULES_STEP)
 
 
 def cap_size(r):
