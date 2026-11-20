@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 04:28 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 04:37 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
