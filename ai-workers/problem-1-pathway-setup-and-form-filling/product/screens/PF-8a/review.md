@@ -52,3 +52,43 @@ A real deploy, `cdk diff` against an account, and CloudFormation-side validation
 **Verdict: Block.** To fix: Major 1 (S3 replication target escapes the guard; the test at `estate.test.ts:40` is rigged) and Major 2 (the guard sees only the `STAGES` stacks, not every stack in the app).
 
 Reviewer: Block 4e157f41deee8b7e07fc4b0d1376659c74434774
+
+## Re-review (diff-only) at 4b0da1e7b37f56c10813c709191df37845f48656
+Scope: only `git diff 4e157f41d..4b0da1e7b` (ad28c8f2d: review fixes; 4b0da1e7b: break fixes, `break-report.md`).
+
+**What I ran:**
+* `npm test`: 21 pass, 0 fail.
+* `npm run synth` (`node bin/app.ts`): exit 0, with the AWS key variables set and every proxy variable pointed at a dead port, so it made no network call (break 1 holds). Both templates name only `ca-central-1`. `cdk.out` deleted afterwards.
+* `check-skeleton-scope.sh`: all passed. The `Dockerfile.dockerignore` line excludes `deploy/cdk`.
+* I re-ran my first probes against the fixed guard, fed by `allStacks`, plus new ones.
+
+**Each fix, and whether its test can fail:**
+| Finding | Holds? | Fail test |
+|---|---|---|
+| M1: S3 replication target | Yes. A real `replicationRules` destination to `fromBucketArn("arn:aws:s3:::xr-documents-copy")` is caught. A destination inside the same stack passes. The rigged test is gone | `estate.test.ts` "real S3 replication…" (fail and pass) |
+| M2: every stack in the app | Yes. `allStacks` uses `findAll` plus `Stack.isStack`, so nested stacks are included. An extra `xr-edge@us-east-1` and a nested stack with a `us-west-2` parameter are both caught. The pass test pins exactly the two stacks | "a us-east-1 stack added…" |
+| m1: region forms, Parameters, Outputs and the rest | Yes. isof, isoe, eusc, an AZ suffix, `_id`, capitals and a flat `Fn::Join` are all caught. The real stacks give no false finding | two tests |
+| m2 / break 5: TLS deny | Mostly. It must now be `*`, `s3:*` and name the bucket. Residual: Minor R3 | narrowed action, principal or resource |
+| m3: PostgreSQL version from compose | Yes. The test reads `compose.test.yml`, and the file is in the paths | equality with the compose tag |
+| m4: database subnets | Yes. `dataRouteFindings` is in `checks.ts` and runs on both stacks, keyed on subnet group, associations and routes (not names), plus `MapPublicIpOnLaunch` | NAT route, public IP, no group |
+| m5: feature flags | Recorded in the README as PF-8c's decision. Accepted | n/a |
+| m6: test filename | Not found in the PR body or comments: Minor R5 | n/a |
+| break 1: no CLI and no STS lookup | Yes. `synth` is `node bin/app.ts`, and neither CI nor any script calls `cdk` | `package.json` and workflow asserts |
+| break 6: stricter workflow test | Yes for triggers, secrets, OIDC, top-level permissions, persisted credentials and install scripts. Residual: Minor R4 | regex asserts |
+| break 8: the stack's own KMS keys | Yes, for both the database and the buckets (`alias/aws/rds` and `alias/aws/s3` are caught) | two cases |
+| break 10: image excludes `deploy/cdk` | Yes (one line in the dockerignore) | covered by the existing skeleton scope check |
+
+**Nothing new broke.** The real stacks pass every check. The workflow is still pull_request only with contents read, and it still has no `merge_group`. The questions sent to the tech lead are the lead's to answer, not findings here: a CDK-only PR still matches skeleton.yml's `deploy/**` path and Mergify's `**/package.json` barrier. The new job itself stays non-blocking.
+
+**Residual Minors (none blocks):**
+* **R1.** Region-less S3 destinations other than replication still escape (probed: all three MISSED): Firehose `S3DestinationConfiguration.BucketARN`, CloudTrail `S3BucketName` and S3 `InventoryConfigurations[].Destination.BucketArn` pointing at a bucket outside the app. None exists today, and the row's named cases (stack region, replication target, log group) now hold. Fix, best in PF-8rc, which extends this guard: treat any literal `arn:aws:s3:::name` or `S3BucketName` that does not resolve to a scanned bucket as a finding.
+* **R2.** A nested `Fn::Join` (`["us-", {"Fn::Join":["",["east","-1"]]}]`) is missed, because `flatten` (`checks.ts:137-145`) joins only literal parts. Flatten the parts first, then join them.
+* **R3.** A TLS deny that covers only the bucket ARN, not `bucket/*`, still passes (probed), which leaves object requests over HTTP allowed. Require both resources (`checks.ts:224-226`).
+* **R4.** The workflow test checks only top-level `permissions:`. A job-level `contents: write` would pass it, though `check-write-token.sh` in `ci` remains the backstop.
+* **R5.** The README run block (`README.md:20`) still tells people to run `npx cdk synth`, which is the CLI path that break 1 removed because it calls STS. Show `npm run synth`. Also name the `estate.test.ts` versus `region.test.ts` filename change in the PR (m6).
+
+Journey score at this head: **10/10**. Error recovery and trust go up to 1, because the escapes I found are now caught and the README claims match the guard.
+
+**Verdict: Approve.** No Blocker or Major is open. Minors R1–R5 are optional or for PF-8rc.
+
+Reviewer: Approve 4b0da1e7b37f56c10813c709191df37845f48656
