@@ -44,6 +44,12 @@
 // never through main.ts, a suite or a script that runs every suite. A deleted file is seeded by the files whose text
 // still names it (its graph edges are gone with it). gate-b.mjs reads the packs, and the set-up scripts their run lines
 // name, from this list.
+// E3 (P-772, B203 step 4): SELECT_SUITES_GRAPH=<graph.json> (test-graph.py's coverage graph, #2370) narrows an app file
+// (api/src except main.ts, engine/, contracts/, ports/) the graph saw run: it picks the suites that ran it (plus those
+// that name it, the unmapped suites and the smoke set) instead of the path rules above; a file in the graph's boot set
+// picks every server suite. A file the graph never saw, a web/src file (browser code is outside Node's coverage) and
+// anything that would run everything keep the rules above. A graph that is unreadable, not schema 1, without suites, or
+// older than SELECT_GRAPH_MAX_DAYS (default 14) is ignored, said on stderr. The merge queue still runs every suite (P-651).
 // Reads files only: no server, no database, no model call (US$0). Checks: product/tools/check-select-suites.sh.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, normalize, relative } from "node:path";
@@ -478,7 +484,27 @@ if (process.argv.includes("--packs")) {   // D2: the acceptance and test files t
 }
 const why = new Map(), alls = [], browserWhy = [];
 const add = (n, r) => { if (!why.has(n)) why.set(n, []); if (!why.get(n).includes(r)) why.get(n).push(r); };
+// E3: the coverage graph (above). null when unset or ignored.
+const COV = (() => {
+  const gp = process.env.SELECT_SUITES_GRAPH; if (!gp) return null;
+  const no = (why) => { process.stderr.write(`select-suites: coverage graph ignored (${why}); path rules only\n`); return null; };
+  let g; try { g = JSON.parse(readFileSync(gp, "utf8")); } catch (e) { return no(`unreadable: ${String(e.message).slice(0, 80)}`); }
+  if (!g || g.schema !== 1 || !g.suites || !g.files || typeof g.suites !== "object") return no("not a schema 1 graph");
+  const t = Date.parse(g.generated), max = Number(process.env.SELECT_GRAPH_MAX_DAYS || 14);
+  if (!(t > 0)) return no("no generated time");
+  const age = (Date.now() - t) / 864e5; if (age > max) return no(`${Math.floor(age)} days old, over ${max}`);
+  return { g, boot: new Set(Object.keys(g.boot || {})), server: Object.keys(g.suites).filter((n) => g.suites[n].server), unmapped: g.unmapped || [] };
+})();
+const covApp = (f) => [`${S}/api/src/`, `${S}/engine/`, `${S}/contracts/`, `${S}/ports/`].some((d) => f.startsWith(d)) && f !== MAIN;
+let covUsed = false;
 for (const f of changed) {
+  if (COV && covApp(f) && (COV.g.files[f] || COV.boot.has(f))) {
+    const runs = COV.boot.has(f) ? COV.server : COV.g.files[f].suites || [];
+    for (const n of runs) if (suites.has(n)) add(n, COV.boot.has(f) ? `coverage graph: ${basename(f)} runs at every server start` : `coverage graph: runs ${basename(f)}`);
+    const name = basename(f), named = new RegExp(`(?<![A-Za-z0-9_.-])${esc(name)}(?![A-Za-z0-9_-])`);
+    for (const [n, t] of text) if (suites.get(n) !== f && named.test(t)) add(n, `names ${name}`);
+    covUsed = true; continue;
+  }
   const p = pick(f);
   if (DIRECT && (p.all || p.browser)) {
     // --direct: what would run everything runs only the suites that import this file (through test helpers) or name it.
@@ -507,6 +533,7 @@ for (const f of changed) {
 }
 if (alls.length) { console.log(`ALL\t${alls[0]}${alls.length > 1 ? ` (+${alls.length - 1} more)` : ""}`); process.exit(0); }
 if (browserWhy.length) for (const n of browser) add(n, `every browser suite: ${browserWhy[0]}${browserWhy.length > 1 ? ` (+${browserWhy.length - 1} more)` : ""}`);
+if (covUsed) for (const n of COV.unmapped) if (suites.has(n)) add(n, "coverage graph: unmapped (no data, always runs)");
 if (RUNTIME_GROUP.some((n) => why.has(n))) for (const n of RUNTIME_GROUP) if (!why.has(n) && suites.has(n)) add(n, "runtime R1 suites run together (one copy, in order)");
 for (const n of SMOKE) if (suites.has(n)) add(n, "smoke");
 for (const n of suites.keys()) if (why.has(n)) {
