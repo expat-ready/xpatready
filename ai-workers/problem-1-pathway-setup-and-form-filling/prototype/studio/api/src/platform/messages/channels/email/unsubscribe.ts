@@ -56,7 +56,7 @@ export class UnsubscribeTokens {
 
 /** The headers a marketing or service email carries (none on transactional mail: a code, a link, a receipt). */
 export function unsubscribeHeaders(r: Pick<Rendered, "firmId" | "outboxId" | "class">, tokens: UnsubscribeTokens, base: string): Record<string, string> {
-  if (r.class === "TRANSACTIONAL") return {};
+  if (r.class === "TRANSACTIONAL" || r.firmId === null) return {};   // PF-19p: a platform account message (no firm) is transactional
   return { "List-Unsubscribe": `<${base}${UNSUBSCRIBE_PATH}/${tokens.mint(r.firmId, r.outboxId)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
 }
 

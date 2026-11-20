@@ -10,6 +10,16 @@
 //   W4: the .ics (in both mails and behind "Add to calendar") is read as a calendar reads it and starts at that instant
 //       in UTC, for 30 minutes, one UID;
 //   W5: ends at row 42's first step: the reschedule link in the booker's mail opens the booker's own page for it.
+//   W7 (J-38r, QA-522): staff move the booking an hour later; both demo inboxes get a METHOD:REQUEST invite with the same
+//       UID, a higher SEQUENCE and the new time in UTC, and the mails name the new time in each one's zone;
+//   W8 (J-38r, QA-522): staff cancel it; both inboxes get a METHOD:CANCEL invite, STATUS:CANCELLED, the same UID and a
+//       higher SEQUENCE again. (W6 is #2326's staff time-zone step for R1.38.)
+// W7 and W8 go through the staff API (POST /api/front-office/bookings/:id/reschedule and /cancel), signed in by the
+// local sign-in stand-in, because no staff booking screen is on main yet. The demo inbox has no screen either (stand-in
+// SI-20): the host's W7 and W8 judgments read the host's inbox in the browser (its address opened in the page); the page
+// then shows each mail's subject and invite for the screenshot. The picture leaves headers and links out; the walk's
+// trace still holds the raw answer, with the unsubscribe link's token (Sample address, a copy dropped at stop), as W5's
+// trace holds the booker's link.
 // The day is the first one the page offers 10:00 Toronto on, at least 26 hours ahead, so the test never goes stale. In
 // Toronto's winter (EST, UTC-5) that is 15:00 UTC and 7:00 p.m. in Dubai, as the brief words it; in summer (EDT, UTC-4)
 // it is 14:00 UTC and 6:00 p.m. What is expected is worked out here with plain UTC sums (Dubai is UTC+4 all year), never
@@ -17,7 +27,7 @@
 // Setup a person cannot do through the product yet (the firm, its host, hours and consultation type) is written straight
 // to the copy's database (Sample rows). Sample values only; US$0, no model call.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
-//   zsh studio/tools/isolated.sh j38 4438 start --ttl 30 && trap 'zsh studio/tools/isolated.sh j38 4438 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_38.ts j38 4438
+//   zsh studio/tools/isolated.sh j38 4438 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j38 4438 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_38.ts j38 4438
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -77,6 +87,7 @@ await writeSetting(db, { firmId: firm.id, key: TIME_ZONE.key, value: FIRM_ZONE, 
 const hostEmail = `host-${run}@j38-firm.example`, bookerEmail = `booker-${run}@j38-client.example`;
 const host = await db.platformStaff.create({ data: { firmId: firm.id, email: hostEmail, displayName: "Sample host", status: "ACTIVE" } });
 await copyFirmHoursTo(db, firm.id, [host.id]);
+await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "OWNER", grantedBy: "seed:J-38-test" } });   // W7, W8: staff who may move and cancel
 await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30 } });
 console.log(`setup (not through the product: no firm, staff, hours or type screens in this walk): firm ${key} in ${FIRM_ZONE}, one host, type "free"`);
 
@@ -192,6 +203,72 @@ try {
   const when = state === "manage" ? await mine.locator("[data-when]").innerText() : "";
   await shot(mine, "W5-manage"); await axe(mine, "W5 the booker's own page");
   ok(`J-38 W5: the link opens the booker's own page for this booking (${slotName}) and it offers Reschedule: row 42's first step`, state === "manage" && when.includes(slotName) && (await mine.getByRole("button", { name: "Reschedule" }).count()) === 1, { state, when });
+
+  // ---------------------------------------------------------------------------------------------- W7, W8: staff move, then cancel
+  const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: key, email: hostEmail, secondStep: true }) });
+  const token = signIn.status < 300 ? ((await signIn.json()) as { token?: string }).token ?? "" : "";
+  ok("J-38 W7: a staff member of the firm signs in (local sign-in stand-in; the copy runs PLATFORM_IDENTITY=local)", token.length > 20, signIn.status);
+  const staff = async (path: string, body?: unknown) => {
+    const r = await fetch(`${BASE}/api/front-office/bookings/${row?.id}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+    return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null };
+  };
+  /** The host's inbox opened in the browser (the inbox's own JSON answer; it has no screen), read there (oldest first) and
+   *  shown as each mail's subject and invite for the screenshot. What the browser read is what is judged. */
+  const inboxInBrowser = async (name: string, title: string): Promise<Mail[]> => {
+    const p = await ctx.newPage();
+    await p.goto(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(hostEmail)}`);
+    const mails = await p.evaluate((t) => {
+      let list: { subject: string; body: string; attachments: { filename: string; content_type: string; text: string | null }[] }[] = [];
+      try { list = (JSON.parse(document.body.innerText) as { messages: typeof list }).messages.slice().reverse(); } catch { /* shown as none */ }
+      document.body.innerHTML = "";
+      const h = document.createElement("h1"); h.textContent = t; h.style.font = "600 20px sans-serif"; document.body.append(h);
+      for (const m of list) {
+        const s = document.createElement("h2"); s.textContent = m.subject; s.style.font = "600 15px sans-serif"; document.body.append(s);
+        const pre = document.createElement("pre"); pre.textContent = m.attachments.find((a) => a.filename.endsWith(".ics"))?.text ?? "(no invite)"; pre.style.font = "12px monospace"; document.body.append(pre);
+      }
+      return list.map((m) => ({ subject: m.subject, body: m.body, attachments: m.attachments.map((a) => ({ filename: a.filename, content_type: a.content_type, text: a.text })) }));
+    }, title);
+    await p.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage: true });
+    await p.close();
+    return mails;
+  };
+  const icsAt = (m?: Mail) => readInvite(m?.attachments.find((a) => /\.ics$/.test(a.filename))?.text ?? "");
+  const seqOf = (m?: Mail) => Number(/SEQUENCE:(\d+)/.exec(m?.attachments.find((a) => /\.ics$/.test(a.filename))?.text ?? "")?.[1] ?? -1);
+  const statusOf = (m?: Mail) => /\r?\nSTATUS:([A-Z]+)/.exec(m?.attachments.find((a) => /\.ics$/.test(a.filename))?.text ?? "")?.[1] ?? null;
+
+  // W7: staff move it an hour later (11:00 Toronto, a free time inside the host's hours).
+  const moved = at + 60 * MIN, movedDubai = new Date(moved).getUTCHours() + 4;
+  const mv = await staff("/reschedule", { startsAt: new Date(moved).toISOString() });
+  const after7 = await db.foBooking.findUnique({ where: { id: row!.id }, select: { startsAt: true, sequence: true, status: true } });
+  ok(`J-38 W7: staff move the booking to ${new Date(moved).toISOString()} (11:00 Toronto); underneath it is at the new time with a higher sequence`, mv.status === 200 && after7?.startsAt.getTime() === moved && (after7?.sequence ?? 0) > (row?.sequence ?? 0), { status: mv.status, after7 });
+  const [b7, h7] = [await inbox(bookerEmail, 2), await inbox(hostEmail, 2)];   // both moved mails are in before the cancel (a mail whose booking changed again before it ran is dropped)
+  const hb7 = await inboxInBrowser("W7-inbox-moved", "The host's demo inbox, read in the browser after the move");
+  const movedTime = { booker: `${new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", dateStyle: "full" }).format(moved)} at ${clock12(movedDubai, 0)} (${BOOKER_ZONE})`, host: `${new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", dateStyle: "full" }).format(moved)} at 11:00 a.m. (${FIRM_ZONE})` };
+  for (const [who, list] of [["booker", b7], ["host", hb7]] as const) {
+    const [first, second] = [list[0], list[1]], i = icsAt(second);
+    ok(`J-38 W7: the ${who}'s inbox gets the moved invite: METHOD:REQUEST, the same UID, a higher SEQUENCE, DTSTART at the new time in UTC`,
+      list.length === 2 && i.method === "REQUEST" && i.uid === uid && i.events === 1 && seqOf(second) > seqOf(first) && seqOf(first) >= 0 && i.start === moved && i.end === moved + 30 * MIN,
+      { mails: list.map((m) => m.subject), method: i.method, uid: i.uid === uid, seq: [seqOf(first), seqOf(second)], start: i.start && new Date(i.start).toISOString() });
+    ok(`J-38 W7: the ${who}'s moved mail names the new time in its own zone ("${movedTime[who]}")`, plain(`${second?.subject}\n${second?.body}`).includes(movedTime[who]), plain(second?.subject ?? "").slice(0, 160));
+  }
+  const sameMails = (a: Mail[], b: Mail[]) => a.length === b.length && a.every((m, i) => m.subject === b[i].subject && m.attachments.find((x) => x.filename.endsWith(".ics"))?.text === b[i].attachments.find((x) => x.filename.endsWith(".ics"))?.text);
+  ok("J-38 W7: the host's inbox read in the browser is the inbox's own answer (same subjects and invites as read by the API)", sameMails(hb7, h7), [hb7.map((m) => m.subject), h7.map((m) => m.subject)]);
+
+  // W8: staff cancel it.
+  const cx = await staff("/cancel");
+  const after8 = await db.foBooking.findUnique({ where: { id: row!.id }, select: { status: true, sequence: true } });
+  ok("J-38 W8: staff cancel the booking; underneath it is CANCELLED with a higher sequence again", cx.status === 200 && after8?.status === "CANCELLED" && (after8?.sequence ?? 0) > (after7?.sequence ?? 0), { status: cx.status, after8 });
+  const b8 = await inbox(bookerEmail, 3);
+  const h8 = await inbox(hostEmail, 3);
+  const hb8 = await inboxInBrowser("W8-inbox-cancelled", "The host's demo inbox, read in the browser after the cancel");
+  ok("J-38 W8: the host's inbox read in the browser is the inbox's own answer (same subjects and invites as read by the API)", sameMails(hb8, h8), [hb8.map((m) => m.subject), h8.map((m) => m.subject)]);
+  for (const [who, list] of [["booker", b8], ["host", hb8]] as const) {
+    const [prev, last] = [list[1], list[2]], i = icsAt(last);
+    ok(`J-38 W8: the ${who}'s inbox gets the cancel invite: METHOD:CANCEL, STATUS:CANCELLED, the same UID, a higher SEQUENCE than the move's`,
+      list.length === 3 && i.method === "CANCEL" && statusOf(last) === "CANCELLED" && i.uid === uid && i.events === 1 && seqOf(last) > seqOf(prev),
+      { mails: list.map((m) => m.subject), method: i.method, status: statusOf(last), uid: i.uid === uid, seq: [seqOf(prev), seqOf(last)] });
+  }
+  ok("J-38 W8: the booker's cancel mail carries no manage link (nothing left to change)", !!b8[2] && !/manage#|reschedule or cancel/i.test(b8[2].body), seen(b8[2]?.body ?? ""));
 } finally {
   await browser.close();
   await db.$disconnect();

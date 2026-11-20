@@ -76,4 +76,7 @@ export type Prospect = z.infer<typeof Prospect>;
 export const LostReasons = z.array(z.object({ id: z.string(), key: z.string(), label: z.string() }));
 export const Assignees = z.object({ oneUser: z.boolean(), assignees: z.array(z.object({ staffId: z.string(), displayName: z.string() })) });
 /** An amount in its own currency (R1.31: amounts of different currencies are listed side by side, never added). */
-export const money = (cents: number, currency: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "code", maximumFractionDigits: 0 }).format(cents / 100);
+/** Whole amounts without decimals; an amount with cents shows both places, exactly as stored, never rounded (FO-2pv). */
+export const money = (cents: number, currency: string) => { const d = cents % 100 === 0 ? 0 : 2; return new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "code", minimumFractionDigits: d, maximumFractionDigits: d }).format(cents / 100); };
+/** FO-2pv: what the Value panel offers (prospect-edit.ts `currencies`). */
+export const ValueCurrencies = z.object({ default: z.string(), currencies: z.array(z.string()) });
