@@ -7,7 +7,9 @@
 // checks each sender's port is bound to the app's MESSAGES_MAIL (MailPort over MessagePort), never fakeMail or LocalMail,
 // calling the factories with a stand-in to see the mail they return is the one given. Each check has a fail: the same
 // checker run on a changed copy of the code (a new unlisted sender, a stand-in bound in a feature, an unguarded demo copy,
-// MAIL_PORT on LocalMail) reports it. No database, no server, no model call, nothing leaves the machine (US$0).
+// MAIL_PORT on LocalMail, and nine send shapes a name-based scan misses: review M2) reports it. Known limit: the scan reads
+// text, not types; a file that holds a sender under no port name at all (an untyped object with a .send) is not seen
+// (the TypeScript compiler could follow types; not used, to keep this a 4-second check). No database, no server, no model call, nothing leaves the machine (US$0).
 //   tsx studio/tests/check_pf19r_every_sender.ts
 import "reflect-metadata";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -28,7 +30,7 @@ const KINDS = {
   rawTransport: /nodemailer|createTransport\(|sendMail\(|Send(?:Raw)?EmailCommand\b/,
   keptInMemory: /\.push\(\{\s*to:/,                                          // an email kept in an array instead of sent
 } as const;
-type Kind = keyof typeof KINDS;
+type Kind = keyof typeof KINDS | "anySend";
 
 /** MessagePort's own implementation: the send path every other sender goes through (not a sender of its own). */
 const MESSAGEPORT_ITSELF = ["platform/messages/send/", "platform/messages/channels/"];
@@ -38,16 +40,20 @@ const MESSAGEPORT_ITSELF = ["platform/messages/send/", "platform/messages/channe
  *  Partial while any entry is open). */
 type Entry = { counts: Partial<Record<Kind, number>>; route: string; open?: string };
 const SENDERS: Record<string, Entry> = {
-  "platform/identity/service.ts": { counts: { mailSend: 1 }, route: "staff invitation: MAIL_PORT, bound useExisting MESSAGES_MAIL (features/platform-staff-read.ts; PF-19r part 1)" },
+  "platform/identity/service.ts": { counts: { mailSend: 1, anySend: 1 }, route: "staff invitation: MAIL_PORT, bound useExisting MESSAGES_MAIL (features/platform-staff-read.ts; PF-19r part 1)" },
   "platform/identity/session/service.ts": { counts: { mailIn: 1 }, route: "two-step reset notice: MAIL_PORT (MESSAGES_MAIL) in the caller's transaction (PF-19r part 1)" },
-  "platform/identity/session/email-sender.ts": { counts: { mailSend: 1 }, route: "the identity provider's code emails: the MailPort its caller gives (no caller in api/src; PF-19r part 1 tests it over MessagesMail). Not verified: the deployed function's wiring" },
+  "platform/identity/session/email-sender.ts": { counts: { mailSend: 1, anySend: 1 }, route: "the identity provider's code emails: the MailPort its caller gives (no caller in api/src; PF-19r part 1 tests it over MessagesMail). Not verified: the deployed function's wiring" },
   "platform/complaints/complaints.ts": { counts: { mailIn: 1 }, route: "complaint reminder: COMPLAINT_PORTS.mail = MESSAGES_MAIL (features/platform-complaints.ts; PF-19r part 1)" },
-  "platform/support/support.ts": { counts: { mailSend: 1 }, route: "support ticket mail: MAIL_PORT (MESSAGES_MAIL) (features/platform-support.ts)" },
-  "platform/entitlements/storage.ts": { counts: { mailSend: 2 }, route: "storage-over emails: MAIL_PORT (MESSAGES_MAIL) (features/platform-entitlements.ts; PF-15 part 1a)" },
-  "platform/entitlements/limit-changes.ts": { counts: { mailSend: 1 }, route: "live-plan removal notice: the MailPort its caller gives (no caller in api/src: no route until PF-4s)" },
-  "front-office/booking/service.ts": { counts: { mailSend: 3 }, route: "booking mail: BOOKING_PORTS.mail = MESSAGES_MAIL (features/front-office-booking.ts; PF-19b)" },
-  "platform/firms/signup.ts": { counts: { mailSend: 1 }, route: "\"You already have an account\": SIGNUP_PORTS.mail = MESSAGES_MAIL (features/platform-firms.ts; PF-19r part 3)" },
-  "person-link.ts": { counts: { messagePort: 1, demoCopy: 3 }, route: "the case side's link and code emails: MESSAGE_PORT, each demo_message copy written only after MessagePort accepts (PF-19r part 2)" },
+  "platform/support/support.ts": { counts: { mailSend: 1, anySend: 1 }, route: "support ticket mail: MAIL_PORT (MESSAGES_MAIL) (features/platform-support.ts)" },
+  "platform/entitlements/storage.ts": { counts: { mailSend: 2, anySend: 2 }, route: "storage-over emails: MAIL_PORT (MESSAGES_MAIL) (features/platform-entitlements.ts; PF-15 part 1a)" },
+  "platform/entitlements/limit-changes.ts": { counts: { mailSend: 1, anySend: 1 }, route: "live-plan removal notice: the MailPort its caller gives (no caller in api/src: no route until PF-4s)" },
+  "front-office/booking/service.ts": { counts: { mailSend: 3, anySend: 3 }, route: "booking mail: BOOKING_PORTS.mail = MESSAGES_MAIL (features/front-office-booking.ts; PF-19b)" },
+  "platform/firms/signup.ts": { counts: { mailSend: 1, anySend: 1 }, route: "\"You already have an account\": SIGNUP_PORTS.mail = MESSAGES_MAIL, as a platform account email (PF-19p: no firm, so it never spends a firm's daily cap) (features/platform-firms.ts; PF-19r part 3)" },
+  "person-link.ts": { counts: { messagePort: 1, demoCopy: 3, anySend: 2 }, route: "the case side's link and code emails: MESSAGE_PORT, each demo_message copy written only after MessagePort accepts (PF-19r part 2); its 2nd .send( is the controller calling PersonLinks.send (the link door, no mail)" },
+  // Files that hold a port or a stand-in and send nothing themselves (a .send( appearing here fails until classified).
+  "front-office/booking/runtime-ports.ts": { counts: {}, route: "builds BOOKING_PORTS from the MailPort it is given (MESSAGES_MAIL)" },
+  "platform/firms/runtime-ports.ts": { counts: {}, route: "builds SIGNUP_PORTS from the MailPort it is given (MESSAGES_MAIL); none: the door is shut" },
+  "platform/identity/session/mail.ts": { counts: {}, route: "MAIL_PORT's token and LocalMail, the tests' stand-in (S1 fails on `new LocalMail(` in app code)" },
   "platform/firms/signup-identity.ts": { counts: { keptInMemory: 1 }, route: "sign-up verification code: the local identity stand-in keeps it in memory (Cognito sends its own in production)", open: "QA-481, PF-5v part 2 (Lead B): the verification email as a platform account message (PF-19p) through MessagePort" },
 };
 
@@ -58,15 +64,24 @@ const CALLER_GIVES: Record<string, RegExp> = {
   "platform/entitlements/limit-changes.ts": /\bnew PlanLimitChanges\(|\bsendNotices\(/,
 };
 
+/** A file that holds a mail or message port, a mail stand-in, a raw transport or the demo inbox, by any name: it must be in
+ *  the table even when it sends nothing, and every `.send(`/`.sendIn(` in it is counted whatever its receiver is called
+ *  (review M2: `this.email.send`, `m.send` on a MailPort parameter, `port.send(tx, …)`, a call split over lines). */
+const PORT_HOLDER = /\b(?:MailPort|MailMessage|MessagePort|MessageSend|MAIL_PORT|MESSAGE_PORT|MESSAGES_MAIL|MessagesMail|mailIn|LocalMail|fakeMail)\b|nodemailer|@aws-sdk\/client-ses|\bSES(?:v2)?Client\b|\bdemoMessage\b|\.mail\b(?!["'`])/;
+const ANY_SEND = /\.\s*send(?:In)?\s*\(/g, DESTRUCTURED_SEND = /\{[^}]*\bsend(?:In)?\b[^}]*\}\s*=/g;
 const codeLines = (text: string) => text.split("\n").map((l, i) => ({ n: i + 1, l })).filter(({ l }) => !/^\s*(\/\/|\*|\/\*)/.test(l));
 
 /** Every send call in the given files (path relative to api/src → text), and every problem with the table above. */
 function audit(files: Map<string, string>) {
-  const hits: { file: string; line: number; kind: Kind }[] = [], problems: string[] = [];
+  const hits: { file: string; line: number; kind: Kind }[] = [], problems: string[] = [], holders = new Map<string, number>();
   for (const [file, text] of files) {
     if (MESSAGEPORT_ITSELF.some((d) => file.startsWith(d))) continue;
     const lines = codeLines(text);
-    for (const { n, l } of lines) for (const k of Object.keys(KINDS) as Kind[]) if (KINDS[k].test(l)) hits.push({ file, line: n, kind: k });
+    for (const { n, l } of lines) for (const k of Object.keys(KINDS) as (keyof typeof KINDS)[]) if (KINDS[k].test(l)) hits.push({ file, line: n, kind: k });
+    if (lines.some(({ l }) => PORT_HOLDER.test(l))) {
+      const code = lines.map(({ l }) => l).join("\n");
+      holders.set(file, (code.match(ANY_SEND)?.length ?? 0) + (code.match(DESTRUCTURED_SEND)?.length ?? 0));
+    }
     // A stand-in mail in app code is a bypass wherever it sits (features or not).
     for (const { n, l } of lines) if (/\bfakeMail\(|\bnew LocalMail\(/.test(l)) problems.push(`${file}:${n}: a stand-in mail (fakeMail or LocalMail) in the app's code`);
     if (file.startsWith("features/")) for (const { n, l } of lines) if (/provide:\s*MAIL_PORT\b/.test(l) && !/useExisting:\s*MESSAGES_MAIL\b/.test(l)) problems.push(`${file}:${n}: MAIL_PORT bound to something other than MESSAGES_MAIL`);
@@ -74,25 +89,29 @@ function audit(files: Map<string, string>) {
   }
   const byFile = new Map<string, Partial<Record<Kind, number>>>();
   for (const h of hits) { const c = byFile.get(h.file) ?? {}; c[h.kind] = (c[h.kind] ?? 0) + 1; byFile.set(h.file, c); }
+  for (const [file, n] of holders) { const c = byFile.get(file) ?? {}; c.anySend = n; byFile.set(file, c); }
   for (const [file, counts] of byFile) {
     const e = SENDERS[file];
+    // A feature file binds ports (S2 checks those bindings); it may hold a port but never send itself.
+    if (!e && file.startsWith("features/") && Object.entries(counts).every(([k, v]) => k === "anySend" && v === 0)) continue;
     if (!e) { problems.push(`${file}: ${JSON.stringify(counts)} send call(s) not in the table: route it through MessagePort and classify it`); continue; }
     for (const k of new Set([...Object.keys(counts), ...Object.keys(e.counts)]) as Set<Kind>) if ((counts[k] ?? 0) !== (e.counts[k] ?? 0)) problems.push(`${file}: ${counts[k] ?? 0} ${k} call(s), the table says ${e.counts[k] ?? 0}: classify the change`);
   }
-  for (const file of Object.keys(SENDERS)) if (files.size > 0 && !byFile.has(file) && files.has(file)) problems.push(`${file}: in the table but no send call found (remove or fix the entry)`);
+  for (const file of Object.keys(SENDERS)) if (files.has(file) && !byFile.has(file)) problems.push(`${file}: in the table but holds no port and no send call (remove or fix the entry)`);
   // The case side's demo copy is written only after MessagePort accepted the send (`if (await this.mail(…))` just before).
   for (const h of hits.filter((x) => x.kind === "demoCopy")) {
     const all = files.get(h.file)!.split("\n"), before = all.slice(Math.max(0, h.line - 3), h.line).join("\n");
     if (!/if \(await this\.mail\(/.test(before)) problems.push(`${h.file}:${h.line}: a demo_message copy not guarded by MessagePort's answer`);
   }
-  return { hits, problems };
+  return { hits, problems, holders };
 }
 
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : p.endsWith(".ts") ? [p] : []; });
 const repo = new Map(walk(API).map((p) => [relative(API, p).split("\\").join("/"), readFileSync(p, "utf8")] as const));
 
 // ------------------------------------------------------------------------------------------------ S1 every send call
-const { hits, problems } = audit(repo);
+const { hits, problems, holders } = audit(repo);
+console.log(`Files that hold a mail or message port (each .send( counted, any receiver): ${[...holders].map(([f, n]) => `${f}=${n}`).join(", ")}`);
 console.log(`\nSend calls found in api/src (MessagePort's own files left out): ${hits.length}`);
 for (const [file, e] of Object.entries(SENDERS)) console.log(`  ${e.open ? "OPEN" : "ok  "}  ${file} ${JSON.stringify(e.counts)}: ${e.route}${e.open ? ` — open: ${e.open}` : ""}`);
 ok("S1 pass: every send call in api/src is classified, each through MessagePort (or a named open gap), no stand-in mail in the app's code", problems.length === 0, problems);
@@ -115,6 +134,24 @@ const raw = changed((m) => m.set("platform/raw.ts", `import { createTransport } 
 ok("S1 fail: a raw transport outside MessagePort's channels is reported", raw.some((p) => p.startsWith("platform/raw.ts")), raw);
 const caller = changed((m) => m.set("platform/cognito/lambda.ts", `export const h = (e) => handleCustomEmail(e, { mail: fakeMail() });\n`));
 ok("S1 fail: a caller of a caller-gives sender (the identity provider's) must be classified", caller.some((p) => /calls platform\/identity\/session\/email-sender\.ts/.test(p)), caller);
+
+// Review M2: the shapes a name-based scan missed. Each probe is a new file (or one more line in a listed file); every one
+// must be reported, because the file holds a port (or a raw transport) and its .send( calls are counted whatever they are named.
+const SHAPES: Record<string, string> = {
+  "this.email.send": `import type { MailPort } from "../../ports/mail.ts";\nexport class N { constructor(private email: MailPort) {}\n  go() { return this.email.send({}); } }\n`,
+  "a MailPort parameter m.send": `import type { MailPort } from "../../ports/mail.ts";\nexport const go = (m: MailPort) => m.send({});\n`,
+  "mailer.send": `import type { MailPort } from "../../ports/mail.ts";\nexport const go = (mailer: MailPort) => mailer.send({});\n`,
+  "MessagePort port.send(tx, …)": `import type { MessagePort } from "../../ports/messages.ts";\nexport const go = (port: MessagePort<unknown>, tx: unknown) => port.send(tx, {} as never);\n`,
+  "MessagesMail mm.sendIn": `import type { MessagesMail } from "./messages/send/mail.ts";\nexport const go = (mm: MessagesMail, tx: never) => mm.sendIn(tx, {} as never);\n`,
+  ".send( on the next line": `import type { MailPort } from "../../ports/mail.ts";\nexport const go = (x: MailPort) => x\n  .send({});\n`,
+  "a destructured send": `import type { MailPort } from "../../ports/mail.ts";\nexport const go = (x: MailPort) => { const { send } = x; return send({}); };\n`,
+  "SESv2Client.send(cmd)": `import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";\nexport const go = () => new SESv2Client({}).send(new SendEmailCommand({}));\n`,
+  "a port reached by property (this.ports.mail, then m.send)": `export class N { ports: any; go() { const m = this.ports.mail; return m.send({}); } }\n`,
+};
+const missed = Object.entries(SHAPES).filter(([, code]) => !changed((m) => m.set("platform/probe/shape.ts", code)).some((p) => p.startsWith("platform/probe/shape.ts"))).map(([k]) => k);
+ok(`S1 fail: each of ${Object.keys(SHAPES).length} send shapes a name-based scan misses (this.email.send, a MailPort parameter, port.send(tx), mm.sendIn, a call over two lines, a destructured send, SESv2Client.send, a port by property) is reported in a new file`, missed.length === 0, missed);
+const inListed = changed((m) => m.set("platform/support/support.ts", `${m.get("platform/support/support.ts")}\nconst again = (email: { send(x: unknown): unknown }) => email.send({});\n`));
+ok("S1 fail: one more .send( under any name in a listed file (support.ts) is reported (anySend is exact)", inListed.some((p) => p.startsWith("platform/support/support.ts: 2 anySend")), inListed);
 
 // ------------------------------------------------------------------------------------------------ S2 the real bindings
 type Provider = { provide?: unknown; useExisting?: unknown; useFactory?: (...a: unknown[]) => unknown; inject?: unknown[]; useValue?: unknown };

@@ -285,17 +285,20 @@ try {
   const door = () => new FirmSignUp(db, { ...built, notReady: null, identity: new LocalSignUp(() => fclock.now()), billing: fakeBilling(), clock: fclock, appUrl: "http://localhost:4400" });
   const form = async (d: InstanceType<typeof FirmSignUp>, email: string) => { const p = await d.plans(); await fclock.advance({ seconds: 30 }); return { email, password: "a long enough password 1", firmName: "Known Firm", countryCode: "CA", acceptedTerms: p.terms.map((t) => t.id), formStamp: p.formStamp }; };
   const ownerEmail = (await db.platformStaff.findFirstOrThrow({ where: { firmId: firmA.id, actorId: "user-O" } })).email;
+  const firmCount = async () => (await db.msgSendCounter.aggregate({ where: { firmId: firmA.id }, _sum: { sent: true } }))._sum.sent ?? 0;
+  const before7 = await firmCount();
   const d7 = door(), a7 = await d7.signUp(await form(d7, ownerEmail.toUpperCase()), "10.7.0.1"); await d7.settled(); await run();
   const r7 = await rowsTo(ownerEmail), m7 = (await inbox.list(ownerEmail, undefined)).messages.find((m: { subject: string }) => m.subject === "You already have an ExpatReady account");
-  ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort: one outbox row for that firm (TRANSACTIONAL, SENT) with the one layout and the firm's sender",
-    signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === firmA.id && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
-    && !!m7 && m7.html.includes(`font-weight:bold">${firmA.operatingName}</div>`) && m7.html.includes(`Sent by ${firmA.operatingName}.`) && m7.body.includes("/sign-in"), { a7, r7, m7 });
-  await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: ownerEmail.toLowerCase(), reason: "COMPLAINT", createdBy: "seed:pf19r" } });
+  ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort as a platform account email (review M1): one outbox row with no firm (PLATFORM_ACCOUNT, TRANSACTIONAL, SENT), the one layout from ExpatReady, and the firm's daily count unchanged",
+    signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === null && r7[0].audience === "PLATFORM_ACCOUNT" && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
+    && !!m7 && m7.html.includes(`font-weight:bold">ExpatReady</div>`) && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/sign-in") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
+  // Fail: the same email as the firm's (main's shape with firmId, which this PR's first commit sent) spends the firm's cap.
+  await appMail.send({ firmId: firmA.id, to: "dw7.firm.shape@example.com", replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: "x", class: "TRANSACTIONAL" }); await run();
+  ok("DW7 fail: the firm-shaped send (firmId) is counted against the firm's daily cap (the check above is not blind)", (await firmCount()) === before7 + 1, { before7, after: await firmCount() });
   await fclock.advance({ hours: 2 });   // past the 3-an-hour limit per address
-  const a7s = await d7.signUp(await form(d7, ownerEmail), "10.7.0.2"); await d7.settled(); await run();
-  const r7s = await rowsTo(ownerEmail);
-  ok("DW7 fail: the same sign-up to a suppressed address → the gate holds it (SUPPRESSED, nothing sent), the answer still says nothing about the account",
-    a7s.message === ACCEPTED && r7s.length === 2 && r7s[1].state === "SUPPRESSED", r7s);
+  const a7s = await d7.signUp(await form(d7, "Nobody.Known@example.com"), "10.7.0.2"); await d7.settled(); await run();
+  ok("DW7 fail: an email with no account gets no \"already\" email (only the verification), and the same answer",
+    a7s.message === ACCEPTED && (await rowsTo("nobody.known@example.com")).length === 0, await rowsTo("nobody.known@example.com"));
   const shut = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
   ok("DW7 fail: sign-up's ports with no MailPort keep the door shut with a reason (never a stand-in that sends nothing)", /email sending is not set up/.test(shut.notReady ?? ""), shut.notReady);
 } catch (e) {

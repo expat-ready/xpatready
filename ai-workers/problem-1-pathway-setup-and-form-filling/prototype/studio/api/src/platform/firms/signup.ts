@@ -141,7 +141,9 @@ export class FirmSignUp {
     if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
     const known = await this.knownAccount(email);
     if (known) {
-      await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
+      // PF-19r part 3 (review M1): a platform account email (PF-19p), never the firm's: an anonymous request must not spend
+      // the firm's daily cap, write as the firm or put its Reply-To on it. MessagePort gives it the one layout ("ExpatReady").
+      await this.ports.mail.send({ platformAccount: true, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
       return;
     }
     const token = randomBytes(32).toString("base64url");
