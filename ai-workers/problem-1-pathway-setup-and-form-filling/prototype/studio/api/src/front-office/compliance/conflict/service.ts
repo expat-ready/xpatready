@@ -168,7 +168,8 @@ export class ConflictChecks {
         await tx.foConflictCheck.create({ data: { id, firmId: ctx.firmId, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, prospectId: prospect.id,
           searchedName: t.name, searchedEmail: t.email, searchedPhone: t.phone, matches: s.matches as Prisma.InputJsonValue, hiddenCount: s.hidden, result: o.result, disclosureText: o.disclosureText, checkedBy: ctx.staffId, checkedAt: now } });
         await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"} stored${s.notStored ? `, ${s.notStored} more found and not stored` : ""}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
-          { checkId: id, prospectId: prospect.id, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, result: o.result, hiddenMatches: s.hidden > 0, confirmed: false, clientAlready: prospect.wonVia !== null });
+          { checkId: id, prospectId: prospect.id, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, result: o.result, hiddenMatches: s.hidden > 0, confirmed: false, clientAlready: prospect.wonVia !== null },
+          { before: null, after: { prospectId: prospect.id, partyKind: party.kind, result: o.result, disclosureText: o.disclosureText, hiddenCount: s.hidden, checkedBy: ctx.staffId } });
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
@@ -205,7 +206,8 @@ export class ConflictChecks {
       const n = await tx.foConflictCheck.updateMany({ where: firmScope(ctx.firmId, { id: c.id, confirmedBy: null }), data: { confirmedBy: ctx.staffId, confirmedAt: now, ...(c.result === null ? { result: o.result, disclosureText: o.disclosureText } : {}) } });
       if (n.count !== 1) problem(409, "Not possible now", "This check is already confirmed.", { code: "ALREADY_CONFIRMED" });
       await this.written(tx, ctx, "conflict.confirmed", c.id, `Conflict check confirmed (${c.result ?? o.result})`,
-        { checkId: c.id, prospectId: c.prospectId!, partyKind: c.partyKind, personId: c.personId, companyId: c.companyId, result: c.result ?? o.result, hiddenMatches: true, confirmed: true, clientAlready: won !== null });
+        { checkId: c.id, prospectId: c.prospectId!, partyKind: c.partyKind, personId: c.personId, companyId: c.companyId, result: c.result ?? o.result, hiddenMatches: true, confirmed: true, clientAlready: won !== null },
+        { before: { result: c.result, confirmedBy: null }, after: { result: c.result ?? o.result, confirmedBy: ctx.staffId } });
     });
     return { ...this.view(await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: c.id }) }), ctx, true), matchesNow: seen.matches };
   }
@@ -229,9 +231,11 @@ export class ConflictChecks {
   }
 
   /** One audit line (ids and the result, never a searched value), then `conflict.checked` last (contracts §0.5). */
-  private async written(tx: Tx, ctx: StaffContext, action: string, id: string, summary: string, payload: ConflictCheckedPayload) {
+  private async written(tx: Tx, ctx: StaffContext, action: string, id: string, summary: string, payload: ConflictCheckedPayload, change: { before: Record<string, string | number | null> | null; after: Record<string, string | number | null> }) {
     const p = ConflictCheckedPayload.parse(payload);
-    await this.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_conflict_check", entityKey: id, summary, detail: { checkId: p.checkId, prospectId: p.prospectId, result: p.result, hiddenMatches: p.hiddenMatches, clientAlready: p.clientAlready } });
+    // R1.8 (QA-594): the row's values before and after the change (a record: nothing before; a confirmation: the result
+    // and confirmer before and after); searched terms stay out, as in detail and the event.
+    await this.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_conflict_check", entityKey: id, summary, detail: { checkId: p.checkId, prospectId: p.prospectId, result: p.result, hiddenMatches: p.hiddenMatches, clientAlready: p.clientAlready }, before: change.before, after: change.after });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CONFLICT_CHECKED, subjectId: id, payload: p } });
   }
 }
