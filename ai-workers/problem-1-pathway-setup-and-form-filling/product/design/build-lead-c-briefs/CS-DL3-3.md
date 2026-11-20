@@ -41,3 +41,5 @@ Body says "Completes: R1.74", and adds "Fixes: QA-471 (part: seen on screen)".
 * Push after every step.
 * Run suites only on an isolated copy (`tools/isolated.sh`).
 * Report to the current Lead (`tools/current-lead.sh`) and to Build Lead C (branch `claude/build-lead-c-647b40`, state file `product/design/build-lead-c-state.md`).
+
+**Addendum, 21 Nov 03:4x IST (Lead B's ruling, via Lead 8):** PF-18h (#2621) drops its own J-74 step, so **this PR owns the J-74 reminder walk**. #2621 exposes `data-needs-you-item` hooks on each "Needs you" item. J-74's new steps find the reminder through those hooks (never by CSS class or position), and read the item's visible text for the case, the step and the due date. The cancelled-step check counts the `data-needs-you-item` elements for that step. Expected timing: #2621 labelled about 06:30 IST and merged about 07:15 IST. Build on its branch until then.
