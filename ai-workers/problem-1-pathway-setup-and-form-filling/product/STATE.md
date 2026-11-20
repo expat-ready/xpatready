@@ -38,6 +38,7 @@ Earlier block (Lead 99 → 100) word for word in `ai-workers/problem-1-pathway-s
 Engineering set-up tracker (A160): section word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1122-lead87s2-setup-tracker-section.md`.
 
 ## Start here (next Lead)
+⏭️ **12:3x IST check (Lead 1): when batch #2441 (#2435 + #2438) merges: read #2406's 10:18 full run (j_33 W3 red on its head = flake for FO-9a's owner if green there), post `/run full` on #2305 and #2339 (R1.88 cannot post slash commands), then relabel each with an independent diff-only Approve and its "Batch failures covered" line (P-731). B206: #2434 and #2431 dirty, lane told to merge main and re-Approve; #2431 kept over #2285; Lead reads #2428/#2434/#2431 on green. #2326 dirty, follows #2322.**
 🟧 **P-754 hold (#2435): `check_fo3st2_availability_browser.ts` is out of PR and batch runs; the fix lane (cloud, "Fix · FO-3st2 staff-hours test fails by date") must remove it in its PR by 21 Nov: never label that PR with the hold still in it.**
 🟩 **P-752 standing: when the shell refuses a label, Ready for review or reopen, do it at once in the built-in browser on github.com as the founder (after the P-423 read; never in place of a reviewer's Approve on code); records-only and reopens via `tools/lead-pr.sh`.**
 📅 **21 Nov: Claude Code GitHub Action evaluation (A200; cost and STANDARDS §1 gate, nothing installed) and run P-702** (evaluation of the adopted changes, plan #181), result to the founder the same day.
