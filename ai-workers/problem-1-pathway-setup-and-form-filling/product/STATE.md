@@ -2,7 +2,7 @@
 
 current_lead: local_59a9ad7a-2010-4e9f-bdb0-6800116c75cd Lead 100 · 20 Nov 08:48 IST (series 2, the last; took over from Lead 99 (series 2, local_2e11a30f) at ~330k, P-446); next Leads are series 3 from Lead 1 (P-749)
 
-updated: 2026-11-20 08:48 IST: Lead 99 handed over to Lead 100 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-20 10:59 IST: Lead 99 handed over to Lead 100 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
 
 
 
