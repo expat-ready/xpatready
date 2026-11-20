@@ -11,6 +11,7 @@ import { LeadPage } from "./sales/lead-page";
 import { LeadsPage } from "./sales/leads-page";
 import { PipelinePage } from "./sales/pipeline-page";
 import { ProspectPage } from "./sales/prospect-page";
+import { WebFormSettingsPage } from "./sales/web-form-settings-page";
 import { WebFormPage } from "./sales/web-form-page";
 
 export const routes: ModuleRoute[] = [
@@ -19,6 +20,7 @@ export const routes: ModuleRoute[] = [
   { path: "/front-office/leads/:id", element: <LeadPage /> },
   { path: "/front-office/pipeline", element: <PipelinePage /> },
   { path: "/front-office/prospects/:id", element: <ProspectPage /> },
+  { path: "/front-office/settings/web-form", element: <WebFormSettingsPage /> },   // FO-4w: Settings › Web form (Owner, Admin)
   { path: "/account/availability", element: <AvailabilityPage /> },   // FO-3st2: My account → Availability
   { path: "/book/:firmKey", element: <BookingListPage /> },
   { path: "/book/:firmKey/manage", element: <BookingManagePage /> },
