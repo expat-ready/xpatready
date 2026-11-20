@@ -82,6 +82,8 @@ No open technical questions on PF/FO PRs at 11:46 IST (scan with Lead B (6)'s ex
 
 **08:51 IST: reports go to Lead 100** (`local_59a9ad7a-2010-4e9f-bdb0-6800116c75cd`, from 08:50 IST; the last of series 2, then series 3 starts from Lead 1). Check `tools/current-lead.sh`, not session titles: Lead 100's first reply called itself a standby before it read the take-over. Since 08:1x: **#2296** merged 08:38 (R1.31; with qa 11's R1.30), **#2029** merged with main by the new PF lane (task_84d12f49) at 63771158a, checked by me (both PF-19p uses audit "none", tests in), waiting for its Approve. **#2322** approved on 0a132e096, refused by pr-rules at 856 lines: **P-748** size exception granted by Lead 99; pr-size.sh reads main's DECISIONS, so it passes after records PR **#2413** merges (Lead 100 re-runs pr-rules and labels); then #2326. **R1.33's re-prove** needs a new qa lane (qa 7 archived). xr-mac was offline 07:14-08:3x IST.
 
+**10:50 IST: Lead B (8)'s final hand-over is written** (`lead-b-handover-2026-11-19.md`, section "Lead B (8) final hand-over"), at about 45% context at the current Lead's ask (Lead 100, P-565 (2)). Lead B (9) starts there. Open: #2322 (own test database for its new suite), #2326 after it, #2305 (fo3st2 shard 8: which side), #2029 (waiting for its Approve). R1.33's re-prove needs a new qa lane.
+
 ## START HERE: hand-over Lead B (5) → Lead B (6), written 15 Nov 13:24 IST before the account switch (Lead 55's ask)
 
 **Lead B (5):** session titled "Lead B (5) · 15 Nov 10:02 IST" (transcript `af59e652…`), worktree `lead-b-front-office-238861`, branch `lead-b-front-office`.

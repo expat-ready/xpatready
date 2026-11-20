@@ -158,3 +158,27 @@ CS-C1r (reopen skips the case limit) is Build Lead C's. Main's V2 red was fixed 
 
 ### Watch ($TMPDIR; dies with the session)
 `watch.py` (GraphQL every 240 s; exits on a new head, merge, finished CI, a newly added "dequeued", a new question or a reviewer Approve naming the head; queue-label churn ignored). PRs: 2397, 2029, 2038, 2001, 2313, 2322, 2326. Only one watcher at a time (shared state file).
+
+## Lead B (8) final hand-over (20 Nov 10:50 IST, at about 45% context, P-565 (2)): Lead B (9) starts here
+Read the 06:29 section above first (method, lessons, the temporary-index push); this one updates its items. **Current Lead: Lead 100** (`local_59a9ad7a-2010-4e9f-bdb0-6800116c75cd`, from 08:50 IST; the last of series 2; then series 3 restarts at Lead 1). Always ask `tools/current-lead.sh` (Lead 100 once called itself a standby before it read the take-over). Lead 100 starts Lead B (9) at the founder's next typed turn.
+
+### Open items (as of 10:50 IST)
+| PR | Item | State | Next |
+|---|---|---|---|
+| **#2322** FO-3st1 part 1 | R1.38 (3 of 4) | head 43f422d9a (pure main merge, so pr-rules finds **P-748**, its size exception); full run 44676827988 failed shard (8): its new `check_fo3st1_calendar_browser.ts` assumes the demo database ("DatabaseDoesNotExist") | R1.38 lane told (10:0x) to make the suite build its own test database, Approve, post the head; then Lead 100's /run full and label |
+| **#2326** J-38 W6 | R1.38 (4 of 4) | conflicts with main | after #2322: merge main and keep #2376's W7/W8 next to W6 in j_38.ts |
+| **#2305** FO-13i part 2 | R1.110 (Wave 2) | approved on 6ba78f320; left the queue 09:47 alone on main: shard (8) `check_fo3st2_availability_browser.ts` J-A2/J-A4 failed twice (staff hours, not identity code) | R1.110 lane told to run it on head and on main: fix it if it's its own; post both outputs if main fails too (then Lead 100 routes it to the staff-hours side) |
+| **#2029** PF-12b part 1 | R1.4 (Wave 1) | new PF lane (cloud task_84d12f49, brief `PF-12b1m.md`) merged main at 63771158a; I checked: both PF-19p uses `audit: "none: …"`, pass/fail tests, combined sweep | waiting for its reviewer's Approve; then Lead 100's full run and cover line |
+| #2038 FO-6 part 1 | R1.54 | parked (P-745) | — |
+| #2001 PF-24w | R1.15 | conflicts; low priority (AWS account) | — |
+
+### Since 06:29
+Merged: #2397 PF-19b part 3 (R1.48), #2313 (R1.38 2 of 4), **#2405 FO-9b** (R1.33's last part), **#2376 J-38r** (R1.40 W7/W8), #2296 (R1.31), #2413 (records with P-748). **Proofs:** qa 11 (cloud) holds R1.40's re-prove and R1.30/R1.31; **R1.33's re-prove needs a new qa lane** (qa 7 archived; Lead 100 holds it for the founder's next turn). **Held:** J-48 (R1.48) and all Wave 2 starts until Wave 1 has ≤ 8 building with R1.30, R1.31, R1.40, R1.67 proved; FO-5rp and FO-2u until after R1.72's proof (Build Lead C). **Queued rows:** PF-21jt (QA-525), after Wave 1's open items. **Outages today:** the Mac's disk full about 06:4x-08:08 IST (founder cleaned 10 GB); the xr-mac runner offline 07:14-08:3x IST.
+
+### New lessons
+* A size exception is a DECISIONS row from the Lead (P-748 style), and `pr-size.sh` reads DECISIONS from the PR's merge with main: it passes only after the records PR lands **and** the PR gets a fresh run (a pure main merge; the Lead's close/reopen was blocked by the safety check).
+* A new browser suite must create its own test database; the CI runner has no demo database.
+* zsh: `"$b:a…"` is a path modifier; write `"${b}:…"`.
+
+### Watch
+`watch.py` in this session's TMPDIR dies with it. Rebuild it as described above, for PRs 2305, 2322, 2326, 2029. Report each Approve that names a head to the current Lead, with the head.
