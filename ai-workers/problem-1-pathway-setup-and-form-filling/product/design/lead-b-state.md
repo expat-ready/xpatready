@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (17:4x IST 20 Nov):** #2029's lane pushed ae0db80a0, 535ed62c8 and d54f8bacf (a main merge), still without the cases rows file; module-cards red (job 136279922697). Lead 3 sent the instruction in the lane's prompt box (bubble confirmed 17:4x): rows file, push, Approve on the exact head, breaker, label.
+
 **Lead B (9) update (17:2x IST 20 Nov):** #2029: **Lead 3's overnight runtime lane is the only writer** (it pushed 9d60f8a74); other lanes stop (comment 7038750128). 9d60f8a74 is still red on module-cards (it changed only platform/MODULE.md); the cases rows file `MODULE.cases.rows/PF-12b.md` is still owed, then an Approve on the new head. Lead 3 told; Lead 3 does the Approve check and the label.
 
 **Lead B (9) update (17:1x IST 20 Nov):** **#2029 (R1.4)** has a new head, 60d929278 (main merge 17:05 IST plus touchedEach in case-clients/live.ts), red only on module-cards (cases card not updated). Ruling 7038613945: add `MODULE.cases.rows/PF-12b.md` (card at its 40-line cap, P-712), then a real reviewer Approve on the new head. Lead 3 agreed. 17:2x IST: Lead 3 started a cloud builder "Build · R1.4 finish #2029 PF-12b". **Only the lane that pushed 60d929278 writes #2029**; the new builder may open only a J-4 walk PR if R1.4's Done when needs one. Send the Approve head to Lead 3.
