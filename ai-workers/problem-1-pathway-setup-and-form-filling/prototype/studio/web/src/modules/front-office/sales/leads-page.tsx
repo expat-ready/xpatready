@@ -31,13 +31,14 @@ export function useLeads(view: View, sources: string[] = [], enabled = true, mor
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
-  const chips = CHIPS.filter((c) => c.view !== "unassigned" || seesUnassigned(me));
+  // R1.32 (X-4, BR-10): a one-user firm sees no Unassigned leads, owner column, owner filter or Take it.
+  const owners = useOwners(), solo = owners.settled && owners.oneUser;
+  const chips = CHIPS.filter((c) => c.view !== "unassigned" || (seesUnassigned(me) && !solo));
   const asked = params.get("view") as View | null;
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
   // The chip and the sources live in the address (?view=, ?source= once per source), so a reload or Back keeps both
   // (FO-4sf). Only sources the person has are kept: one typed into the address that they have not is dropped.
   const { known, choices, sources, blocked, ready } = useAddressSources(params);
-  const owners = useOwners();
   const day = (k: string) => dayParam(params, k);
   // The date fields show what is in the address as typed (review round 3: a year typed digit by digit passes through
   // 0002, 0020, 0202 before 2026); only a real day in 1900-2999 is sent or compared.
@@ -54,17 +55,18 @@ function LeadsBody() {
   const [q, setQ] = React.useState("");
   // QA-572: a from day after the to day is said at the field and never sent; no list stands under it (break M1).
   const badRange = rangeError(narrow.from, narrow.to);
-  const rows = useLeads(view, sources, ready && !badRange, more);
+  const rows = useLeads(view, sources, ready && !badRange && owners.settled, more);   // the chip is known first (re-review M1)
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   // FO-4 Add a lead (R1.27, QA-606; AG-2-4 rule 10): shown only to people who may create a lead.
   const [adding, setAdding] = React.useState(false), [addKey, setAddKey] = React.useState(0), addButton = React.useRef<HTMLButtonElement>(null);
   const panel = (o: boolean) => { if (o) setAddKey((k) => k + 1); setAdding(o); if (!o) setTimeout(() => addButton.current?.focus(), 60); };
-  const canTake = can(me, KEY.edit);
+  const canTake = can(me, KEY.edit) && !owners.oneUser;
   const needle = q.trim().toLowerCase();
   const shown = (rows.data ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle) || l.number.toLowerCase().includes(needle));
   // A lead with no active owner: none, or a deactivated one, shown "(Inactive) Name" (BR-4).
   const unowned = (l: LeadRow) => l.ownerStaffId === null || (l.owner ?? "").startsWith("(Inactive) ");
+  if (!owners.settled) return <Loading label="Loading leads" />;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header>
@@ -73,7 +75,7 @@ function LeadsBody() {
           {can(me, KEY.create) ? <Button ref={addButton} data-add-lead-open onClick={() => panel(true)}>Add a lead</Button> : null}
         </div>
         <p className="mt-1 text-sm text-text-muted">People who showed interest. Take one to work it, or Engage it when it is a real opportunity.</p>
-        {!canTake ? <p data-why-no-take className="mt-1 text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+        {!can(me, KEY.edit) ? <p data-why-no-take className="mt-1 text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="group" aria-label="Which leads" className="flex flex-wrap gap-2">
@@ -105,7 +107,7 @@ function LeadsBody() {
           : !rows.data.length ? <p data-empty role={more ? "status" : undefined} className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{more ? "No leads match the owner and dates chosen." : empty}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”{sources.length ? ` among ${sources.map(words).join(" or ")}` : ""}.</p>
               : (
-                <Table label={`Leads: ${CHIPS.find((c) => c.view === view)!.label}`} head={["Lead", "Interested in", "Source", "Owner", view === "unassigned" ? "Waited" : "Arrived", ""]}>
+                <Table label={`Leads: ${CHIPS.find((c) => c.view === view)!.label}`} head={["Lead", "Interested in", "Source", ...(owners.oneUser ? [] : ["Owner"]), view === "unassigned" ? "Waited" : "Arrived", ""]}>
                   {shown.map((l) => (
                     <tr key={l.id} data-lead-row={l.number}>
                       <td>
@@ -118,7 +120,7 @@ function LeadsBody() {
                       </td>
                       <td>{l.interestedIn ?? <span className="text-text-muted">Not given</span>}</td>
                       <td>{words(l.source)}</td>
-                      <td data-owner>{l.owner ?? <span className="text-text-muted">Nobody</span>}</td>
+                      {owners.oneUser ? null : <td data-owner>{l.owner ?? <span className="text-text-muted">Nobody</span>}</td>}
                       <td title={view === "unassigned" ? "Time since the enquiry arrived." : undefined}>{view === "unassigned" ? waitedLabel(l.arrivedAt) : arrivedLabel(l.arrivedAt)}</td>
                       <td className="text-right">
                         {canTake && unowned(l) ? <Button size="sm" variant="outline" busy={take.isPending && take.variables?.id === l.id} aria-label={`Take it: ${l.name}, ${l.number}`} onClick={() => take.mutate(l)}>Take it</Button> : null}
