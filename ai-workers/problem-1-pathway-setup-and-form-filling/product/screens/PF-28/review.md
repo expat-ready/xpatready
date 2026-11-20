@@ -144,3 +144,21 @@ Reviewer: Opus 5.5, effort high, 20 Nov. I read the diff of `input.ts`, `check_p
 Re-scored on the diff: 8.5/10, no 0. Task completed goes from ½ to 1, and plain words from ½ to 1. Accessibility, speed and visual quality stay at ½ (N/A for the API, or not timed). That passes the bar of 8.
 
 Verdict: Approve aeeb5f0728543d22ee7898fda9a14ad333f4b36d
+
+---
+
+## Round 3: diff only (P-277), `git diff c4ee7508 4f73b7e0905d206db4e7be5a6528365d70855356`
+
+**Change:** one line in `api/src/platform/MODULE.rows/PF-28.md`.
+- `platform/http/input.ts` becomes `api/src/platform/http/input.ts`.
+- `tests/pf28-allow-list.json` becomes "the allow-list `check_pf28_inputs.ts` reads".
+
+The facts on the card are unchanged: the 422 status, the 256 KB Sample limit, the four prefixes, the `/api/hooks` exclusion, and the shrink-only invariant.
+
+**No code changed.** `git diff aeeb5f07 4f73b7e09 --name-only` lists only this card row and the three PF-28 records.
+
+**Check:** `check-module-cards.sh` passes locally (exit 0). Round 2's checks still hold, because the code is the same.
+
+Round 2's Minors (r2-m1 to r2-m4) and the PR-body items for before the label (m6–m9, DW8) are unchanged.
+
+Verdict: Approve 4f73b7e0905d206db4e7be5a6528365d70855356
