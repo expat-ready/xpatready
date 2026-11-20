@@ -145,7 +145,7 @@ export class ConflictChecks {
 
   /** Runs and records one check (201): the search again, server-side, and the result in the same insert. Idempotent by
    *  `requestId` (the check's id): a replay by the same person for the same prospect returns the saved check. */
-  async record(ctx: StaffContext, body: Record<string, unknown>, retried = false) {
+  async record(ctx: StaffContext, body: Record<string, unknown>) {
     const b = body ?? {};
     const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per check.");
     const { prospect, party } = await this.engagement(ctx, b.prospectId);
@@ -172,7 +172,11 @@ export class ConflictChecks {
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
-      if ((e as { code?: unknown })?.code === "P2002") return retried ? problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" }) : this.record(ctx, b, true);   // a concurrent replay won the id: answer as a replay, once (m-2)
+      if ((e as { code?: unknown })?.code === "P2002") {   // a concurrent replay won the id: answer as that replay, else refused (m-2; no recursion)
+        const won = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
+        if (won && won.checkedBy === ctx.staffId && won.prospectId === prospect.id && won.result === o.result && won.disclosureText === o.disclosureText) return { ...this.view(won, ctx, false), scope: s.scope };
+        return reused();
+      }
       throw e;
     }
     const c = await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id }) });

@@ -466,7 +466,8 @@ export class Retainers {
     const open = () => conflict("This prospect already has an open retainer. Open it instead.", "RETAINER_OPEN");
     if (r.kind === "RETAINER" && r.status === "EXPIRED" && await this.db.foRetainer.findFirst({ where: { firmId: ctx.firmId, prospectId: p.id, kind: "RETAINER", id: { not: r.id }, status: { notIn: ["WITHDRAWN", "EXPIRED"] } }, select: { id: true } })) open();   // review r2-m2, before rendering
     const cur = await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, include: { fees: { orderBy: { position: "asc" } } } });
-    const t = body.templateId !== undefined ? await this.templateFor(ctx.firmId, uuidOf(body.templateId, "templateId"), r.kind) : await this.currentTemplateFile(ctx.firmId, r);
+    const chosen = body.templateId !== undefined ? await this.templateFor(ctx.firmId, uuidOf(body.templateId, "templateId"), r.kind) : null;
+    const t = chosen ?? await this.currentTemplateFile(ctx.firmId, r);
     let repId = r.representativeStaffId;
     if (body.representativeStaffId !== undefined) {
       repId = uuidOf(body.representativeStaffId, "representativeStaffId") ?? unprocessable("Choose the representative.", { representativeStaffId: "Choose the representative." });
@@ -474,7 +475,7 @@ export class Retainers {
     }
     const s = this.signerFor(p, body.signerPersonId !== undefined ? uuidOf(body.signerPersonId, "signerPersonId") : r.signerPersonId);
     const fees = body.fees !== undefined ? feesOf(body.fees) : cur.fees.map((f) => ({ label: f.label, amountMinor: f.amountMinor, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }));
-    const prints = "placeholders" in t ? t.placeholders.includes("conflict.disclosure")
+    const prints = chosen ? chosen.placeholders.includes("conflict.disclosure")
       : (await this.placeholdersMadeFrom(ctx.firmId, r, await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } }))).includes("conflict.disclosure");
     const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, prints);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
