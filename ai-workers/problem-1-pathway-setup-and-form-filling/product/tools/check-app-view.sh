@@ -33,6 +33,14 @@ o=$(lv "$(jq -c '. + {next_cursor: "abc"}' "$T/sessions.json")"); ok "a next_cur
 o=$(lv "$(jq -c '. + {has_more: false, next_cursor: null}' "$T/sessions.json")"); ok "7 sessions, has_more false, next_cursor null: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$o"
 o=$(lv "$(jq -c '. + {next_page: false, has_more: "true"}' "$T/sessions.json")"); ok "has_more \"true\" (a string) warns; next_page false alone would not" "$(grep -q '^WARNING' <<< "$o" && echo 1)" "$o"
 o=$(lv "$(jq -c '. + {next_page: false}' "$T/sessions.json")"); ok "next_page false: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$o"
+# ENF-761 part 2: the API caps the list at 50 and answers a resume_token; neither was a "more" marker before.
+o=$(lv "$(jq -c '. + {resume_token: "rt"}' "$T/sessions.json")"); ok "a resume_token with 7 sessions: WARNING (7 of 200)" "$(sed -n 2p <<< "$o" | grep -qx 'WARNING: list may be cut (7 of 200)' && echo 1)" "$o"
+o=$(lv "$(jq -c '. + {resume_token: null}' "$T/sessions.json")"); ok "resume_token null with 7 sessions: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$o"
+o=$(lv "$(jq -c '. + {resume_token: ""}' "$T/sessions.json")"); ok "resume_token empty with 7 sessions: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$o"
+fifty=$(jq -c '{data: [range(50) as $i | .data[0] | .title = "L\($i)"]}' "$T/sessions.json")
+o=$(lv "$fifty"); ok "exactly 50 sessions (the API's cap): WARNING list may be cut (50 of 50): archive ended sessions, second line" "$(sed -n 2p <<< "$o" | grep -qx 'WARNING: list may be cut (50 of 50): archive ended sessions' && [ "$(grep -c '^WARNING' <<< "$o")" = 1 ] && echo 1)" "$(head -2 <<< "$o")"
+o=$(lv "$(jq -c '. + {resume_token: "rt"}' <<< "$fifty")"); ok "50 sessions plus a resume_token: the one 50-of-50 WARNING" "$(sed -n 2p <<< "$o" | grep -qx 'WARNING: list may be cut (50 of 50): archive ended sessions' && [ "$(grep -c '^WARNING' <<< "$o")" = 1 ] && echo 1)" "$(head -3 <<< "$o")"
+o=$(lv "$(jq -c '{data: .data[1:]}' <<< "$fifty")"); ok "49 sessions, no marker: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$(head -2 <<< "$o")"
 o=$(lv "$(cat "$T/sessions.json")" 7); ok "7 sessions at a limit of 7: WARNING (7 of 7)" "$(grep -qx 'WARNING: list may be cut (7 of 7)' <<< "$o" && echo 1)" "$o"
 u=$(node -e 'console.log(require(process.argv[1]).lines({error:"x"},0))' "$TOOLS/app-view.js"); ok "app-view.js: no sessions array is UNREADABLE" "$(grep -q '^UNREADABLE' <<< "$u" && echo 1)" "$u"
 o=$(echo "hello" | NOW=$NOW bash "$TOOLS/app-view-save.sh" 2>&1); r=$?

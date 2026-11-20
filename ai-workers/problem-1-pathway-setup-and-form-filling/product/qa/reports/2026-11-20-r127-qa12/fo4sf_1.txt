@@ -1,0 +1,37 @@
+PASS  FO-4sf setup: the Sample firm and its front office are seeded — []
+PASS  FO-4sf DW1 pass: source=Phone call returns only those leads, the one that arrived by booking included (the source, not the door) — [200,["7b134210-a1be-4b3b-a822-d0e877272167","f98302cc-de06-4a8f-a125-7a9702d630b8","e3de0d0c-b04b-48fd-9309-194c2eb3f3c5"]]
+PASS  FO-4sf DW1 pass: two values return both; a source holding a comma is one value, never split — [["7b134210-a1be-4b3b-a822-d0e877272167","f98302cc-de06-4a8f-a125-7a9702d630b8","680e68fc-334c-49af-bcd2-739e2058a2ca","e3de0d0c-b04b-48fd-9309-194c2eb3f3c5"],["4e5149e2-ef8f-4218-80b9-2bbef14f47cb"]]
+PASS  FO-4sf DW1 pass: no value (or an empty one) → every source, as before — [7,7]
+PASS  FO-4sf DW1 pass: the choices are the stored sources, A to Z — ["Event, Toronto","Phone call","Referral","WEBSITE"]
+PASS  FO-4sf DW1 fail: an unknown value (here a door, MANUAL) → 400 naming the allowed ones, and no rows — {"type":"https://expatready.local/problems/unknown-source","title":"Check the filter","status":400,"detail":"Unknown source: MANUAL. Choose from: Event, Toronto, Phone call, Referral, WEBSITE.","message":"Unknown source: MANUAL. Choose from: Event, Toronto, Ph
+PASS  FO-4sf DW1 fail: a value in the wrong case is unknown too (400), never a silent match — 400
+PASS  FO-4sf DW2 pass: an own-only Case Officer filtering by Phone call sees only their own leads of that source — ["7b134210-a1be-4b3b-a822-d0e877272167","f98302cc-de06-4a8f-a125-7a9702d630b8"]
+PASS  FO-4sf DW2 fail: no filter widens it: the sources the Case Manager shares still show none of their leads — ["7b134210-a1be-4b3b-a822-d0e877272167","f98302cc-de06-4a8f-a125-7a9702d630b8","7aaa7a59-88f0-4a20-8f9f-ae75d2244864"]
+PASS  FO-4sf DW2 fail: another person's source is never named: not in the choices, and asking for it is the same 400 as any unknown value — [["Phone call","WEBSITE"],400]
+PASS  FO-4sf DW2 pass: the setting off narrows the Case Manager too: only their own Phone call lead — ["e3de0d0c-b04b-48fd-9309-194c2eb3f3c5"]
+PASS  FO-4sf DW2 pass: Mine with a source is the person's own leads of that source
+PASS  FO-4sf DW3 pass (scale): with 34 sources at 1024 px the Source filter is one control and the table starts in the first screen — 360.5
+PASS  FO-4sf Leads with the Source filter (1024 px): axe finds no WCAG A/AA violation
+PASS  FO-4sf DW3 pass: the list holds the stored sources in plain words, none ticked, and scrolls inside itself — 34
+PASS  FO-4sf Source list open (1024 px): axe finds no WCAG A/AA violation
+PASS  FO-4sf DW3 fail: Find with no match says so, and nothing is chosen
+PASS  FO-4sf DW3 pass (keyboard only): Tab, Enter, type "phone", Tab, Space filters to Phone call, the booked lead included; Escape closes and returns to the button — {"reached":true,"inFind":true,"onBox":"Phone call","rows":["L-00007","L-00006","L-00002"]}
+PASS  FO-4sf DW3 pass: the choice survives a reload (?source= in the address, shown as a chip and on the button) — "http://localhost:4476/front-office/leads?view=all&source=Phone+call"
+PASS  FO-4sf Leads filtered by Phone call (1024 px): axe finds no WCAG A/AA violation
+PASS  FO-4sf DW3 pass: no sideways page scroll at 1440 px
+PASS  FO-4sf DW3 pass: no sideways page scroll at 375 px
+PASS  FO-4sf DW3 pass: the open list fits the 375 px screen
+PASS  FO-4sf Source list open (375 px): axe finds no WCAG A/AA violation
+PASS  FO-4sf DW3 pass (200 % zoom): at 720 px the open Source panel stays inside the screen and the page has no sideways scroll — {"left":384,"right":704,"sw":720,"w":720}
+PASS  FO-4sf Source list open (720 px, 200 % zoom): axe finds no WCAG A/AA violation
+PASS  FO-4sf DW3 fail: focus leaving the Source control closes the panel
+PASS  FO-4sf DW3 pass: the chip's × (keyboard) removes that source, clears the address and leaves focus on the Source button — "http://localhost:4476/front-office/leads?view=all"
+PASS  FO-4sf DW3 pass: All sources clears every chosen source and the address — "http://localhost:4476/front-office/leads?view=all"
+PASS  FO-4sf DW3 fail: when the sources cannot be loaded, the asked source stays (chip and message), no unfiltered list is fetched or shown, and Try again is offered — {"unfiltered":0}
+PASS  FO-4sf DW3 pass: Try again loads the sources and the filtered list follows
+PASS  FO-4sf DW3 fail: an unknown ?source= in the address is ignored: no chip, every source listed, no error
+PASS  FO-4sf DW3 fail: a source with none of the person's own leads (Mine) says so in plain words and offers All sources
+PASS  FO-4sf: no page error in the browser — []
+
+34/34 passed
+exit 0
