@@ -432,3 +432,11 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 13:51 IST 20 Nov: **#2406 merged 13:49 IST (617acff07): R1.72 is built.** qa scores it from J-72 (asked Lead 1). #2339's full run 44696461896 passed on 5169ddca2 and the Approve names that head; it waits only on Lead 1's label. AUD-4s part 2 stays parked.
 * 13:57 IST 20 Nov: **Current Lead is Lead 2 (series 3) (local_daadc134)**. #2339 is relabelled and queued (Lead 1). qa 13 scores R1.72 from J-72.
 * 14:3x IST 20 Nov: **#2339 AUD-4 merged 14:30 IST (d7b6a29ab).** R1.88's current PR is done; AUD-4s part 2 stays parked (P-745). Reported to Lead 2. No merge watches left.
+* 15:0x IST 20 Nov: Lead 2 (series 3) gave me two items.
+  * **R1.8:** parts 1, 2a, 2b and 2c are all merged (#2214, #2289, #2338, #2423), and #2423 carried J-8 with "Completes: R1.8". `walk j_8` is green on main (run 44701378950, 13:51 IST). **The one next step is qa's proof from J-8**, by a qa lane (qa 10, case side). No build lane is needed. The red j_37 and j_38 are the booking journeys (R1.37/R1.38, Lead B): the outbox state reads DELIVERED where the walks expect SENT. That does not block R1.8.
+  * **R1.59:** the missing part is QA-482 (tax rounded per line). New brief `build-lead-c-briefs/FO-7b-1a.md`:
+    * draft invoice lines with `taxForLine` (half to even, integers);
+    * mixed currencies refused with a 400;
+    * J-59 walked.
+    * No schema; it runs beside #2368.
+    * Part 1b keeps invoices issued, PDF, receipts and payments.
