@@ -98,3 +98,44 @@ I read only the diff `8a243502f..8f298699c` (P-277): 11 files. The code changes 
 No Blocker or Major is open. The Lead's P-423 read of `ports/client-money.ts` still comes before the label.
 
 Verdict: Approve 8f298699cb7f80954e9b72c4a7c0732b9437e101
+
+## Re-review of merge d2254dd6b
+
+Diff-only re-review (P-277) of the merge of origin/main into this PR (P-270: the stale j_37 walk check, fixed on main by #2486). Head d2254dd6b0aae00b0f3bb08ac8b1afddbf0ac66c has two parents: 5a620de44 (the last approved head) and 3912aa7e6 (origin/main).
+
+**1. Pure merge: yes.**
+* `git show --remerge-diff d2254dd6b` is empty. Git's own merge result is the commit, so nothing was resolved and nothing was edited by hand.
+* `git diff origin/main d2254dd6b --name-only` lists 14 files, all this row's:
+  * under `api/src/client-money/` (MODULE.md, MODULE.rows/FO-7b-1a.md, and drafts.ts, routes.ts and tax-round.ts in `invoices/`)
+  * `features/client-money-invoices.ts` and `features/MODULE.rows/FO-7b-1a.md`
+  * `ports/client-money.ts`, `tests/check_fo7b_invoices.ts` and `tests/journeys/j_59.ts`
+  * `product/qa/built/R1.59.md` and `product/screens/FO-7b-1a/*`
+* `git diff 5a620de44 d2254dd6b` over all of the row's paths is empty. The row's files are byte-identical to the approved head.
+
+**2. Main's incoming changes do not reach this row's code.**
+* `platform/firm-scope.ts` (PF-12b part 1) adds four things, all on the bypass path:
+  * an `audit` field (and an optional `inside` field) on each `BYPASS_USES` entry
+  * the one-use-at-a-time nesting rule in `asBypass`, with `mayRunInside`
+  * `touchFirm` / `touchEachFirm` / `touchFirms` / `touchingAudit`
+  * `BypassNotRecorded`
+* `firmScope(firmId, where?)` and `inFirm` are not in the diff hunks, so they are unchanged. The request-firm, enter-firm and walled-Db code is not touched either.
+* This row never calls `asBypass` or `touchFirm`. What it uses still works the same way:
+  * drafts.ts uses `firmScope(ctx.firmId, …)` and `this.audit.record(tx, …)`
+  * the feature passes `Db` and the plain `auditEvent` adapter
+  * routes.ts sits behind PF-4's staff guard
+* The guard's `platform.identity.authenticate` use keeps its routes and gains only `audit: "none: …"`. One bypass use at a time does not affect the guard's single call.
+* `seed-sample-firms.ts` adds `touchFirm(tx, firm.id)` in the seed's transaction. Outside a bypass use, touchFirm does nothing.
+* `identity/demo-reset.ts` now runs each firm's settings reset in one transaction, with `touchFirm` first. Neither file touches money_invoice or its lines.
+
+**3. Runs (from `prototype/`, exit codes taken with `; echo $?`):**
+* `tsx … studio/tests/check_fo7b_invoices.ts`: exit **0**, 43 passed, 0 failed.
+* J-59 on its own fresh copy:
+  * `zsh studio/tools/isolated.sh j59rv 4468 start --ttl 30 PLATFORM_IDENTITY=local`: exit 0
+  * `tsx … studio/tests/journeys/j_59.ts j59rv 4468`: exit **0**, 15/15 passed
+  * `isolated.sh j59rv 4468 stop`: exit 0 (database and files removed)
+* `node product/tools/typecheck.mjs`: exit **0**, "no new type errors (15 known, 0 fixed)". It needed `NODE_OPTIONS=--max-old-space-size=6144` because the api project ran out of the default heap in this sandbox; the first try exited 2 on the out-of-memory error, not on a type error. The 15 known errors are in older suites, none in this row or in api/src.
+* Not run: the full `ci`. Port 4400 was not used.
+
+No Blocker or Major is open. The journey score of the earlier review stands, because the row's code is unchanged.
+
+Verdict: Approve d2254dd6b0aae00b0f3bb08ac8b1afddbf0ac66c
