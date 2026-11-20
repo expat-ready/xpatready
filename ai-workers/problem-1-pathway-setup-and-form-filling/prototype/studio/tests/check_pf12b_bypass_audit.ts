@@ -32,6 +32,12 @@ import { WebAddressCatchUp } from "../api/src/platform/web-address/routes.ts";
 import { StorageWatch, STORAGE_DAILY_QUEUE } from "../api/src/platform/entitlements/storage.ts";
 import { LIMIT_CHANGE_KEY, PlanLimitChanges } from "../api/src/platform/entitlements/limit-changes.ts";
 import { fakeStaff } from "../ports/staff.ts";
+import { fakeAlerts } from "../ports/alert.ts";
+import { localEmail } from "../api/src/platform/messages/channels/email/local.ts";
+import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
+import { channelsOf } from "../api/src/platform/messages/send/channels.ts";
+import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
+import { JsonLog, useLog } from "../api/src/platform/observability/log.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -49,6 +55,14 @@ const plain = (e: unknown) => e instanceof BypassNotRecorded && e.getStatus() ==
 /** DW3's reader: the entries whose audit field is missing or says nothing (also run on a broken copy of the list). */
 export function unaudited(list: Readonly<Record<string, object>>): string[] {
   return Object.entries(list as Record<string, { audit?: unknown }>).filter(([, e]) => !(e.audit === "per-firm" || (typeof e.audit === "string" && /^none: .{40,}$/.test(e.audit)))).map(([k]) => k);
+}
+
+/** Brief PF-12b1m's run check: a use whose class does not match what running it wrote ("per-firm" with no line, or
+ *  "none: …" with a line) is named. `wrote` is the use's platform.bypass lines from one run. */
+export function misclassed(use: string, entry: { audit?: unknown }, wrote: number): string | null {
+  if (entry.audit === "per-firm") return wrote > 0 ? null : `${use}: "per-firm" but running it wrote no platform.bypass line (no touchFirm)`;
+  if (typeof entry.audit === "string" && entry.audit.startsWith("none: ")) return wrote === 0 ? null : `${use}: "none" but running it wrote ${wrote} platform.bypass line(s)`;
+  return `${use}: no audit`;
 }
 
 // ---------------------------------------------------------------------------------------------------------- DW3 first
@@ -226,6 +240,58 @@ try {
   const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
   ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2, limit change 2 + its notices 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+
+  // ------------------------------------------------------------------------- brief PF-12b1m: PF-19p's two new uses
+  // Both are classed "none: …" by the row owner (Lead B): they read and write only PLATFORM_ACCOUNT rows (no firm). Run
+  // after DW7 so its count stays the uses × firms of the other uses. Through the walled pool (xr_app), as the API runs.
+  const NEW_USES = ["job:messages.send", "platform.account.mail"] as const;
+  ok("PF-12b1m pass: job:messages.send and platform.account.mail each name audit \"none: …\" (the row owner's words), and the check reads them as audited",
+    NEW_USES.every((u) => BYPASS_USES[u]?.audit.startsWith("none: ") && /PLATFORM_ACCOUNT/.test(BYPASS_USES[u].audit) && /PF-19p/.test(BYPASS_USES[u].audit)) && !NEW_USES.some((u) => unaudited(BYPASS_USES).includes(u)),
+    NEW_USES.map((u) => BYPASS_USES[u]?.audit));
+  const stripped = Object.fromEntries(NEW_USES.map((u) => { const { audit: _gone, ...rest } = BYPASS_USES[u]; return [u, rest]; }));
+  ok("PF-12b1m fail: the same two entries with no `audit` are both named by the check", JSON.stringify(unaudited({ ...BYPASS_USES, ...stripped }).filter((u) => (NEW_USES as readonly string[]).includes(u)).sort()) === JSON.stringify([...NEW_USES].sort()), unaudited({ ...BYPASS_USES, ...stripped }));
+  const pfiles = fakeFiles(), pjobs = fakeJobs(clock);
+  const pm = new Messages({ db, consent: new ConsentStore(auditEvent, clock), files: pfiles, jobs: pjobs, alerts: () => fakeAlerts(), channels: channelsOf([["EMAIL", localEmail]]), clock } as unknown as MessagesDeps);
+  await pm.register();
+  const pmail = new MessagesMail({ db, messages: pm, files: pfiles } as never);
+  /** Every firm's rows a message use could reach (its outbox and events, and the firm-scoped audit trail), as one hash. */
+  const firmRows = () => sql(`select md5(coalesce((select string_agg(id::text || state::text || coalesce(state_reason, '') || updated_at::text, ',' order by id) from msg_outbox where firm_id is not null), '') || '|' || coalesce((select string_agg(id::text, ',' order by id) from msg_event where firm_id is not null), '') || '|' || (select count(*) from audit_event))`);
+  const lines0 = total(), firm0 = firmRows(), platformTo = "new.owner@pf12b1m.example.com";
+  const sentP = await inRequest({ method: "POST", path: "/api/public/signup/verify" }, () => pmail.send({ platformAccount: true, to: platformTo, replyTo: "ignored@example.com", subject: "Confirm your email", text: "Your code is 654321.", class: "TRANSACTIONAL", idempotencyKey: "signup:pf12b1m-1" } as never));
+  const rowP = await owner.msgOutbox.findUniqueOrThrow({ where: { id: sentP.messageId } });
+  const mailWrote = total() - lines0, mailFirm = firmRows();
+  ok("PF-12b1m pass (platform.account.mail): a sign-up verification email writes its PLATFORM_ACCOUNT row (no firm), no platform.bypass line, and touches no firm's row",
+    rowP.audience === "PLATFORM_ACCOUNT" && rowP.firmId === null && rowP.state === "QUEUED" && mailWrote === 0 && lines("platform.account.mail") === "" && mailFirm === firm0 && misclassed("platform.account.mail", BYPASS_USES["platform.account.mail"], mailWrote) === null,
+    { audience: rowP.audience, firmId: rowP.firmId, mailWrote, same: mailFirm === firm0 });
+  const sendJob = pjobs.jobs.find((j) => (j.payload as { outboxId?: string }).outboxId === sentP.messageId);
+  const delivered = await asJob("messages.send", () => pm.deliver(null, sentP.messageId));
+  const sendWrote = total() - lines0 - mailWrote;
+  ok("PF-12b1m pass (job:messages.send): the platform job (no firm) sends that PLATFORM_ACCOUNT row, writes no platform.bypass line, and touches no firm's row",
+    sendJob?.name === "messages.send" && sendJob.firmId === null && delivered === "sent" && (await owner.msgOutbox.findUniqueOrThrow({ where: { id: sentP.messageId } })).state === "SENT"
+      && sendWrote === 0 && lines("job:messages.send") === "" && firmRows() === firm0 && misclassed("job:messages.send", BYPASS_USES["job:messages.send"], sendWrote) === null,
+    { job: sendJob, delivered, sendWrote, same: firmRows() === firm0 });
+  ok("PF-12b1m fail: a stand-in that says \"per-firm\" on either use (which calls no touchFirm) is named by the run check, and so is one with no audit",
+    NEW_USES.every((u) => misclassed(u, { ...BYPASS_USES[u], audit: "per-firm" }, 0) !== null) && misclassed("job:messages.send", stripped["job:messages.send"], 0) !== null
+      && misclassed("platform.demo.inbox", BYPASS_USES["platform.demo.inbox"], 2) === null && misclassed("x", { audit: "none: a stand-in that writes a line all the same, which the check must catch" }, 1) !== null);
+
+  // The sweep, both behaviours together: firm B's line fails, firm A's row and one PLATFORM_ACCOUNT row are due.
+  await clock.advance({ hours: 1 });   // a new hour: no job key from an earlier sweep is reused
+  const ago = new Date(clock.now().getTime() - 3_600_000).toISOString();
+  for (const f of [A, B]) sql(`insert into msg_firm (firm_id) values ('${f}') on conflict do nothing; insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, created_at, updated_at) values (gen_random_uuid(), '${f}', 'EMAIL', 'sweep@pf12b1m.example.com', repeat('c', 64), 'TRANSACTIONAL', 'QUEUED', '${ago}', '${ago}')`);
+  const platId = sql(`insert into msg_outbox (id, firm_id, audience, channel, address, rendered_hash, class, state, idempotency_key, created_at, updated_at) values (gen_random_uuid(), null, 'PLATFORM_ACCOUNT', 'EMAIL', 'due@pf12b1m.example.com', repeat('b', 64), 'TRANSACTIONAL', 'QUEUED', 'signup:pf12b1m-due', '${new Date(clock.now().getTime() - 3_600_000).toISOString()}', '${new Date(clock.now().getTime() - 3_600_000).toISOString()}') returning id`).split("\n")[0];
+  const logged: Record<string, unknown>[] = [], wasLog = useLog(new JsonLog((l) => { try { logged.push(JSON.parse(l) as Record<string, unknown>); } catch { /* not JSON */ } }));
+  const sweepRec = fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }), wasSw = onBypassAudit(sweepRec);
+  const sjBefore = pjobs.jobs.length;
+  const swErr = await errOf(() => asJob("messages.outbox_sweep", () => pm.sweep()));
+  onBypassAudit(wasSw); useLog(wasLog);
+  const swJobs = pjobs.jobs.slice(sjBefore);
+  const firmJobs = swJobs.filter((j) => j.firmId !== null).map((j) => j.firmId), platJobs = swJobs.filter((j) => j.firmId === null);
+  ok("PF-12b1m sweep: firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error",
+    swErr instanceof BypassNotRecorded && JSON.stringify(firmJobs) === JSON.stringify([A])
+      && platJobs.length === 1 && (platJobs[0].payload as { outboxId?: string; platform?: boolean }).outboxId === platId && (platJobs[0].payload as { platform?: boolean }).platform === true && platJobs[0].name === "messages.send"
+      && sweepRec.entries.map((e) => e.firmId).join(",") === A
+      && logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId === B.toLowerCase()) && !logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId !== B.toLowerCase()),
+    { swErr: String(swErr), firmJobs, platJobs, lines: sweepRec.entries.map((e) => e.firmId), logged: logged.filter((l) => String(l.event).startsWith("messages_sweep")) });
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => {});
   for (const p of pools) await p.end().catch(() => {});

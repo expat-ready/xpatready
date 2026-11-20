@@ -27,6 +27,7 @@ import type { z } from "zod";
 import { firmScope, touchEachFirm } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
+import { logPort } from "../../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -243,6 +244,7 @@ export class Messages implements MessagePort<Tx> {
     // line, in its own transaction, before any of its rows is queued; a firm whose line cannot be written gets nothing
     // queued, the other firms go ahead, and the sweep then fails (P-607; break m6).
     const { failed, error } = await touchEachFirm(this.d.db, rows.map((r) => r.firmId));
+    for (const f of failed) logPort.warn("messages_sweep_firm_skipped", { firmId: f, reason: "bypass_not_recorded" });   // brief PF-12b1m: skipped and logged
     let n = 0;
     for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     const due = await this.d.db.msgOutbox.findMany({
