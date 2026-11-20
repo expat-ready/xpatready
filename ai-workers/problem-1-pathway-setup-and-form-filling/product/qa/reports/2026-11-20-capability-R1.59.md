@@ -3,7 +3,7 @@
 **Item:** R1.59 "Money arithmetic". **Done when:** "Integer cents with currency; tax rounded per line by one stated rule; mixed currencies refused; a pass and a fail test per rule". This was in the original qa brief ("R1.59 once #2502 is on main"). #2502 merged at 16:59Z and closes QA-482.
 **Parts (P-606):** MVP-CHECKLIST row 59 lists "FO-7a; FO-7b (tax rounded per line …)". FO-7a (#1758) and FO-7b part 1a (#2502) have both merged. Part 1a is the tax rounding; issuing, PDF and payments are part 1b, which row 59 does not list. So the row is scored.
 
-**Verdict: Works** once j_59 is green a second time on GitHub's runners on main's head (P-339). The first green run is item-proof 44778921658; the Lead was asked on #2502 for walks.yml j_59. **The fresh Opus reader gives Works, ~80%.** qa agrees.
+**Verdict: Works** (updated 23:5x IST). j_59 is green on GitHub's runners on main's head ff6997410, whose app code is 414820671's (no `prototype/` or `.github/` change between them), from the Lead's walks.yml dispatches: runs **44792638809** and **44792679430**, 15/15 each, plus 44792887054 green. Before those, item-proof 44778921658 passed on 414820671 (P-339). **The fresh Opus reader gives Works, ~80%.** qa agrees.
 
 ## Clause by clause (main 414820671)
 | Clause | Met? | Evidence |
@@ -19,7 +19,7 @@
 | Run | Where | Result |
 |---|---|---|
 | item-proof **44778921658**, job `prove (R1.59)` (136436451957) | GitHub, main 414820671 | j_59 **PASS**, secret scan pass, overall PASS |
-| walks.yml j_59, twice | GitHub, main's head | asked of the Lead on #2502 |
+| walks.yml j_59: **44792638809** (job 136484314478), **44792679430** (job 136484510872); also 44792887054 | GitHub, main ff6997410 (the Lead's dispatches) | **15/15** each; the self-test journeys j_0_fails and j_0_throws behaved as expected |
 | `tests/journeys/j_59.ts` on fresh isolated copies (q59r1 :4475, q59r2 :4476) | here, main 414820671 | **15/15, twice** (`2026-11-20-capability-R1.59/j59-run{1,2}.txt`) |
 | `check_fo7b_invoices.ts` | here | **43/43, twice** |
 | `check_fo7a_money_schema.ts` | here | **122/122, twice** |
@@ -35,7 +35,8 @@
 - `MVP-CHECKLIST.md:117` still says "FO-7b … missing". Recommended: name "FO-7b part 1a" in the parts cell.
 
 ## Questions for the Lead
-1. Please dispatch walks.yml `j_59` twice on main's head (#2502 comment). Then qa adds the run ids and confirms Works.
+1. Done: the Lead dispatched walks.yml j_59, and the runs are green.
+2. `MVP-CHECKLIST.md:117`: please update the parts and status cell (FO-7b part 1a; Works).
 
 ## Could not test
 - A screen: there is none in part 1a.
