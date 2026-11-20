@@ -47,3 +47,30 @@ A person signing up through a form (PF-5s is not built; the email's `/sign-up/ve
 
 Verdict: Block
 * M1: send the "already have an account" email as a platform account email, not a firm message (`signup.ts:144`), with a test that fails when it counts against a firm.
+
+## Round 2 (P-277, diff only): `ee4adb074..15c507056e39630c74682cf4133a026aa247903b`
+I read only that diff, plus the PR body's "Review round 1" section. Code changes are in `signup.ts`, `signup-identity.ts` (a comment only), `j_100.ts` and two checks. The commit also carries my round-1 files byte for byte and new screenshots.
+
+**Result: M1 fixed. No new Blocker or Major.**
+
+**Runs** (copy `rv100b` on :4437, PLATFORM_IDENTITY=local, stopped after each run; I restored the screenshots the journey overwrites):
+* `j_100.ts` 22/22, exit 0, twice. `check_pf5_signup_billing.ts` 54/54. `check_pf5v_signup_mail.ts` 13/13.
+* GitHub at this head: `pr-rules` and `module-cards` pass. The one red `module-cards` run is the earlier one, started before the body edit.
+* Round 1's break script again: 2 "already" emails, now `audience PLATFORM_ACCOUNT`, From "ExpatReady <no-reply@expatready.com>". The firm has no outbox row and no `msg_send_counter` row, so the firm's daily limit is untouched.
+* Mutation: `firmId: known` put back at `signup.ts:146`. J-100's new W3 line fails (21/22, exit 1), and the new line in `check_pf5_signup_billing.ts` fails (53/54). Reverted; the tree is clean.
+
+**Round-1 findings:**
+* **M1 fixed** (`signup.ts:144-146`): a platform account email with no firm, the link changed to `/account`, and a reason comment. It now runs on `platform.account.mail`, which names this route. Both new test lines can fail (mutation above).
+* **m1 kept, with the reason** (`signup-identity.ts:39-41`): the order mirrors Cognito's SignUp, and a dead link answers "not valid any more" so the person signs up again. Accepted as recorded.
+* **m2 fixed:** the comment now matches what the key does.
+* **m3 mostly fixed:** `j_100.ts:103-106` now asserts the Owner, the document label, the version and a time on each row, by kind. Residual: the W5 "before" judge (`j_100.ts:111`) checks that the random `v2` is not in the database yet, which still cannot fail. Its real fail-first is W4's "not asked" step, which the label now names. Nit, no action needed.
+* **m4 fixed:** the DW3 fail line (`check_pf5v_signup_mail.ts:64`) now fails if the defaults stop using their own fakeMail or reuse the given port. The source regex is still the guard for the feature's inject. That is acceptable: J-100's W2 catches a lost inject on a running copy (shown in round 1).
+* **m5 fixed:** Done when, `Card unchanged:` with a reason, and the suite results are in the body.
+* **m6 fixed** (folded into M1).
+* **m7 fixed:** the header and the default port are now 4436 (runtime range).
+
+**Overlap with #1959:** unchanged from round 1. Whoever merges second must keep `inject: [MESSAGES_MAIL]`; J-100 W2 catches a loss.
+
+Journey score unchanged at 8.5/10. Error recovery is still ½ for m1, which is kept by design.
+
+Verdict: Approve
