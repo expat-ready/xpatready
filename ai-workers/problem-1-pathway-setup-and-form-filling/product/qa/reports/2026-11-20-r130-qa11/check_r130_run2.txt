@@ -13,6 +13,9 @@ PASS  R1.30 1440px List pass: Engaged from/to shows only the prospect engaged 20
 PASS  R1.30 1440px List pass: Stage = Consult (none there) shows none of the Engaged prospects and says so in words — {"P-00001":0,"P-00002":0,"P-00003":0}
 PASS  R1.30 1440px List pass: no sideways page scroll with filters set
 PASS  R1.30 1440px List with filters: axe finds no WCAG A/AA violation — []
+PASS  R1.30 1440px Board pass: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves the card to Qualified; underneath exactly one PERSON move into Qualified — [true,true,"QUALIFIED|1"]
+PASS  R1.30 1440px Board pass: no sideways page scroll after the move
+PASS  R1.30 1440px List pass: Stage = Qualified shows the prospect just moved there and none of the Engaged ones — {"P-00004":1,"P-00001":0,"P-00002":0,"P-00003":0}
 PASS  R1.30 1024px Leads pass: Source → Referral shows only the Referral lead, a chip names it, the address keeps it — [{"L-00001":1,"L-00002":0,"L-00003":0},"http://localhost:4473/front-office/leads?view=all&source=Referral"]
 PASS  R1.30 1024px Leads pass: focus is back on the Source button after Escape
 PASS  R1.30 1024px Leads pass: a reload keeps the Source filter
@@ -26,6 +29,9 @@ PASS  R1.30 1024px List pass: Engaged from/to shows only the prospect engaged 20
 PASS  R1.30 1024px List pass: Stage = Consult (none there) shows none of the Engaged prospects and says so in words — {"P-00001":0,"P-00002":0,"P-00003":0}
 PASS  R1.30 1024px List pass: no sideways page scroll with filters set
 PASS  R1.30 1024px List with filters: axe finds no WCAG A/AA violation — []
+PASS  R1.30 1024px Board pass: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves the card to Qualified; underneath exactly one PERSON move into Qualified — [true,true,"QUALIFIED|1"]
+PASS  R1.30 1024px Board pass: no sideways page scroll after the move
+PASS  R1.30 1024px List pass: Stage = Qualified shows the prospect just moved there and none of the Engaged ones — {"P-00005":1,"P-00001":0,"P-00002":0,"P-00003":0}
 PASS  R1.30 400px Leads pass: Source → Referral shows only the Referral lead, a chip names it, the address keeps it — [{"L-00001":1,"L-00002":0,"L-00003":0},"http://localhost:4473/front-office/leads?view=all&source=Referral"]
 PASS  R1.30 400px Leads pass: focus is back on the Source button after Escape
 PASS  R1.30 400px Leads pass: a reload keeps the Source filter
@@ -39,13 +45,16 @@ PASS  R1.30 400px List pass: Engaged from/to shows only the prospect engaged 20 
 PASS  R1.30 400px List pass: Stage = Consult (none there) shows none of the Engaged prospects and says so in words — {"P-00001":0,"P-00002":0,"P-00003":0}
 PASS  R1.30 400px List pass: no sideways page scroll with filters set
 PASS  R1.30 400px List with filters: axe finds no WCAG A/AA violation — []
-PASS  R1.30 Leads fail-safe: a source typed into the address that the firm does not have is dropped, the whole list shows, no error page — [{"L-00001":1,"L-00002":1,"L-00003":1},"http://localhost:4473/front-office/leads?view=all&source=no-such-source-mwoe6rq0"]
+PASS  R1.30 400px Board pass: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves the card to Qualified; underneath exactly one PERSON move into Qualified — [true,true,"QUALIFIED|1"]
+PASS  R1.30 400px Board pass: no sideways page scroll after the move
+PASS  R1.30 400px List pass: Stage = Qualified shows the prospect just moved there and none of the Engaged ones — {"P-00006":1,"P-00001":0,"P-00002":0,"P-00003":0}
+PASS  R1.30 Leads fail-safe: a source typed into the address that the firm does not have is dropped, the whole list shows, no error page — [{"L-00001":1,"L-00002":1,"L-00003":1},"http://localhost:4473/front-office/leads?view=all&source=no-such-source-mwoeewpg"]
 NOTE  from after to: API 400 {"type":"https://expatready.local/problems/invalid","title":"Check the details","status":400,"detail":"from: on or before to.","message":"from: on or before to.","code":"INVALID","fields":{"from":"fro; the List: alert "from: on or before to. Try again"
 PASS  R1.30 List: Engaged from after Engaged to typed into the address ends in plain words a person can act on (no endless loading, no raw error) — ["alert","from: on or before to. Try again",400]
 NOTE  List: typed Engaged from 2026-11-19 after Engaged to 2026-10-31: field keeps "2026-11-19", field invalid true, after 1 s: "from: on or before to. Try again"
 FAIL  R1.30 List: a Engaged from typed after Engaged to is refused at the field in plain words (not a page alert naming "from:") — ["2026-11-19",true,"from: on or before to. Try again"]
 NOTE  Leads: typed Arrived from 2026-11-19 after Arrived to 2026-10-31: field keeps "2026-11-19", field invalid true, after 1 s: "from: on or before to. Try again"
 FAIL  R1.30 Leads: a Arrived from typed after Arrived to is refused at the field in plain words (not a page alert naming "from:") — ["2026-11-19",true,"from: on or before to. Try again"]
-PASS  R1.30 → R1.31 first step: from a filtered List row the prospect opens and its Value panel (Amount) opens — "http://localhost:4473/front-office/prospects/f4262c80-e534-447b-971f-c18c4308d509"
-44/46 passed
+PASS  R1.30 → R1.31 first step: from a filtered List row the prospect opens and its Value panel (Amount) opens — "http://localhost:4473/front-office/prospects/8647ddb8-9a4d-41b6-949c-c085adba254e"
+53/55 passed
 EXIT=1

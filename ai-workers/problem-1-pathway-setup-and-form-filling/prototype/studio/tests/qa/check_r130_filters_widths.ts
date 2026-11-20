@@ -57,6 +57,8 @@ const engage = async (leadId: string) => {
 };
 // Engaged leads leave All open, so the prospects come from three more leads of the same shape.
 const pRae = await engage(lead("Pia", R.id, "Referral", 1).id), pOli = await engage(lead("Pol", O.id, "Phone call", 2).id), pOld = await engage(lead("Pod", R.id, "Phone call", 20).id);
+// One more prospect per width, moved on the board by keyboard only (J-30 does this at 1440 only).
+const pKey: Record<number, { id: string; number: string }> = { 1440: await engage(lead("Kay", R.id, "Phone call", 3).id), 1024: await engage(lead("Kim", R.id, "Phone call", 3).id), 400: await engage(lead("Kit", R.id, "Phone call", 3).id) };
 sql(`update fo_prospect set created_at = now() - interval '20 days' where id = '${pOld.id}'`);
 ok("R1.30 setup: three prospects, one engaged 20 days ago", sql(`select count(*) from fo_prospect where id in ('${pRae.id}','${pOli.id}','${pOld.id}')`) === "3"
   && sql(`select (created_at < now() - interval '19 days') from fo_prospect where id = '${pOld.id}'`) === "t");
@@ -130,6 +132,29 @@ for (const w of [1440, 1024, 400]) {
   ok(`R1.30 ${w}px List pass: no sideways page scroll with filters set`, await noSideways(p));
   await p.screenshot({ path: join(SHOTS, `r130-list-filters-${w}.png`), fullPage: true });
   await axeOf(p, `${w}px List with filters`);
+
+  // ---------------------------------------------------------------------------- Board: keyboard "Move to…"; then Stage
+  const k = pKey[w];
+  await p.goto(`${BASE}/front-office/pipeline`);
+  await p.locator(`[data-stage="ENGAGED"] [data-card="${k.number}"]`).waitFor();
+  await p.locator(`[data-card="${k.number}"]`).getByRole("button", { name: /Move to…/ }).focus(); await p.keyboard.press("Enter");
+  await p.getByRole("menu").waitFor();
+  await p.waitForFunction(() => !!document.activeElement?.closest('[role="menu"]'), null, { timeout: 10_000 });
+  const focusedText = () => p.evaluate(() => document.activeElement?.textContent ?? "");
+  for (let i = 0; i < 8 && await focusedText() !== "Qualified"; i++) { await p.keyboard.press("ArrowDown"); await p.waitForTimeout(80); }
+  const onQualified = await p.waitForFunction(() => document.activeElement?.textContent === "Qualified", null, { timeout: 5_000 }).then(() => true, () => false);
+  await p.keyboard.press("Enter");
+  const landed = await p.locator(`[data-stage="QUALIFIED"] [data-card="${k.number}"]`).waitFor({ timeout: 10_000 }).then(() => true, () => false);
+  const row = sql(`select s.key || '|' || (select count(*) from fo_stage_move m where m.prospect_id = p.id and m.cause = 'PERSON' and m.to_stage_id = p.stage_id and m.from_stage_id is not null) from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${k.id}'`);
+  ok(`R1.30 ${w}px Board pass: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves the card to Qualified; underneath exactly one PERSON move into Qualified`, onQualified && landed && row === "QUALIFIED|1", [onQualified, landed, row]);
+  ok(`R1.30 ${w}px Board pass: no sideways page scroll after the move`, await noSideways(p));
+  await p.goto(`${BASE}/front-office/pipeline?view=list`);
+  await p.locator(`[data-prospect-row="${pOld.number}"]`).waitFor();
+  await p.getByLabel("Stage").selectOption("QUALIFIED");
+  await p.locator(`[data-prospect-row="${pOld.number}"]`).waitFor({ state: "detached" });
+  await p.locator(`[data-prospect-row="${k.number}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined); await settle(p);
+  const lQ = await shown(p, "data-prospect-row", [k.number, pRae.number, pOli.number, pOld.number]);
+  ok(`R1.30 ${w}px List pass: Stage = Qualified shows the prospect just moved there and none of the Engaged ones`, lQ[k.number] === 1 && lQ[pRae.number] === 0 && lQ[pOli.number] === 0 && lQ[pOld.number] === 0 && p.url().includes("stage=QUALIFIED"), lQ);
   await p.context().close();
 }
 
