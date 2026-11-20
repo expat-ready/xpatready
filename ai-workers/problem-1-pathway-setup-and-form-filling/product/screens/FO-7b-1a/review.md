@@ -57,3 +57,44 @@ None.
 **To fix before approval:** Major 1 (fixed in 36f7b3b58, to be re-reviewed) and Major 2. Minors 1-3 and 5 are recommended in the same PR or as questions for the tech lead.
 
 Verdict: Changes requested
+
+## Re-review of 8f298699c
+I read only the diff `8a243502f..8f298699c` (P-277): 11 files. The code changes are in `drafts.ts`, `routes.ts` (comment only), `ports/client-money.ts`, the card and its fragment, and the two tests. The rest are records: `qa/built/R1.59.md`, the break report, and my review files.
+
+**Major 1, fixed.**
+* `drafts.ts` now runs `select money_text_ok(description, 500)` inside the line's transaction, before the write. A refused description gets 400 at `description`.
+* The new check case sends 7 strings (zero-width only, two C1 controls, a bidi override, a bidi isolate, combining marks only, the Hangul filler). Each gets 400 at the field, and no row is written.
+
+**Major 2, fixed.** The fragment no longer backticks `ports/client-money.ts`. `check-module-cards.sh` now exits **0** (44 fixtures, "tree: as on this branch" passes), and `module-cards.py tree` exits 0.
+
+**Minor 1, fixed for writes.**
+* In `addLine`, the invoice row is locked first, then a caller who is not the draft's `created_by` needs `agent/invoice:edit`, read through `holdsKey` from the person's live role grants.
+* Tested both ways: a Case Officer on the Owner's draft gets 403 `MISSING_PERMISSION` and no row; a Case Officer on their own draft gets 201; the Owner (who holds `:edit`) on the officer's draft gets 201.
+* Another firm's draft still answers 404 before the key check, so nothing leaks.
+* A Case Officer reading every draft with `:show` is raised in the PR as a question for the tech lead. That is acceptable, because no person-visibility helper exists yet.
+
+**Minor 2, fixed.** `read` runs `view` in one REPEATABLE READ transaction, so the lines and the total come from the same snapshot.
+
+**Minor 3, fixed.**
+* `InvoiceDrafts` takes an injectable tax rule (default `taxForLine`). The app's factory in `features/client-money-invoices.ts` passes two arguments, so it gets the default.
+* R2's planted half-up instance now runs through the service as firm A, on the app's walled database, stores 0.07, and the case rejects that stored row. That is a real mutation run.
+* The R7 fail and the J-59 W3 fail are now stand-ins taken from the route: one 1.00 line comes back at 0.13, which is not 0.12. That is enough for "tax on the subtotal".
+* The J-59 W1 fail now counts drafts.
+
+**Minor 4, fixed.** The length is counted in code points: 300 emoji are stored, and so is mixed-script text.
+
+**Minor 5, fixed.** The card's Purpose now names `invoices/`, and the Invariants list has the QA-482 line.
+
+**Minor 6, not changed.** This is a graph-tool limit, and I accept that.
+
+**New issues:** none. The 403 comes before the issued and currency checks, and no write happens before any refusal. `holdsKey` is the existing catalogue helper.
+
+**Test results at 8f298699c:**
+* `check_fo7b_invoices.ts` exit **0**, 43 passed, 0 failed (the new cases are the R2 planted service, R7, the text fail and pass, and the keys fail and pass).
+* `j_59.ts j59v 4469` on a fresh isolated copy: exit **0**, 15/15. The copy was stopped afterwards.
+* `typecheck.mjs` exit 0 (no new errors). `check-port-contracts.mjs` exit 0. `check-module-cards.sh` exit 0. `module-cards.py tree` exit 0.
+* Not run: the full `ci`, `check_fo7a2_ledger_rules` and `check_case_feed`.
+
+No Blocker or Major is open. The Lead's P-423 read of `ports/client-money.ts` still comes before the label.
+
+Verdict: Approve 8f298699cb7f80954e9b72c4a7c0732b9437e101
