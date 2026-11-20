@@ -1,0 +1,30 @@
+{
+  "item": "R1.30",
+  "name": "30 Lead lists, filters and board",
+  "pr": 2454,
+  "sha": "36a2328b04b894d5ceeabdaaf1a6d6eb583e070b",
+  "run_id": "44731122187",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44731122187",
+  "at": "2026-11-20T11:57:27.488Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_30.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44731122187/artifacts/14627080437",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.30-36a2328b04b894d5ceeabdaaf1a6d6eb583e070b.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
