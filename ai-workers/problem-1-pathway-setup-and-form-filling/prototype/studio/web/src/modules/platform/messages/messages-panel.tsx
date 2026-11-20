@@ -44,9 +44,10 @@ export function MessagesPanel({ subject }: { subject: Subject }) {
   const firstNew = useRef<HTMLLIElement>(null), loadedBefore = useRef<number | null>(null), moveFocus = useRef(false);
   const older = () => { loadedBefore.current = messages.length; moveFocus.current = true; void q.fetchNextPage(); };
   useEffect(() => {
-    if (!moveFocus.current || loadedBefore.current === null || messages.length <= loadedBefore.current) return;
-    moveFocus.current = false; firstNew.current?.focus();
-  }, [messages.length]);
+    if (!moveFocus.current || q.isFetchingNextPage) return;
+    moveFocus.current = false;   // the load ended: a failed one moves nothing, now or at a later reload (review Minor)
+    if (loadedBefore.current !== null && messages.length > loadedBefore.current) firstNew.current?.focus();
+  }, [messages.length, q.isFetchingNextPage]);
   return (
     <section aria-labelledby="pf-messages" data-messages-panel className="rounded-xl border border-border bg-surface-raised p-4">
       <h2 id="pf-messages" className="text-sm font-semibold">Messages</h2>
