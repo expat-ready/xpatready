@@ -138,7 +138,7 @@ def measure(f, rw, board, now):
     else:
         day = [x for x in mg if (iso(x.get("merged_at")) or now) >= now - timedelta(hours=24)]
         am = [w for w in (mins(x.get("approved_at"), x.get("merged_at")) for x in day) if w is not None and w >= 0]
-        m["merge"] = {"median_min": round(statistics.median(am)) if am else None, "n": len(am)}
+        m["merge"] = {"median_min": round(statistics.median(am)) if am else None, "n": len(am), "merged_24h": len(day)}
         h3 = [x for x in mg if (iso(x.get("merged_at")) or now - timedelta(days=9)) >= now - timedelta(hours=3)]
         m["rate"] = {"per_hour": round(len(h3) / 3, 1), "n": len(h3)}
     t = ((board or {}).get("first") or {}).get("today") if isinstance(board, dict) else None
@@ -188,7 +188,7 @@ def pick(m):
         mc = m["machines"] = {"error": "runs wait with no age"}
     if not err(b) and b.get("n") and b.get("median_min") is None:
         b = m["batch"] = {"error": "batches with no wall time"}
-    if not err(mg) and not err(rt) and rt.get("n") and mg.get("median_min") is None:
+    if not err(mg) and mg.get("merged_24h") and mg.get("median_min") is None:
         mg = m["merge"] = {"error": "merges with no approval time (label not found)"}
     if not err(mc) and (mc.get("oldest_min") or 0) > BAR["wait_min"]:
         return (f"constraint: machines — {mc['fresh']} run(s) waiting, oldest {mc['oldest_min']} min (bar {BAR['wait_min']}): "
@@ -239,10 +239,11 @@ def main(argv):
     except Exception as e:   # noqa: BLE001 — the section says it could not run, and still gives its ACT
         print(f"constraint (P-738) could not be measured: {str(e)[:120]}\nACT   constraint: not measured — the section failed; read the flow by hand (P-738 (3))")
         return 0
+    out = lines(m, now)   # pick() inside marks missing medians as not measured: save after it
     if a["--save"]:
         with open(a["--save"], "w") as fh:
             json.dump(m, fh)
-    print("\n".join(lines(m, now)))
+    print("\n".join(out))
     return 0
 
 

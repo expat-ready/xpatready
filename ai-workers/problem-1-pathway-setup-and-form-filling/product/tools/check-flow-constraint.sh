@@ -60,9 +60,12 @@ echo '{"freshness": {"generated_at": "2026-11-20T04:00:00Z"}, "first": {"today":
 ok "board 120 min old: stale, not this check's measure" "$(grep -q '^  proven    not measured (the board is 120 min old' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
 facts "$T/f10.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged[0].approved_at = null | .merged[1].approved_at = null'; BD="$T/b2.json" run "$T/f10.json"
 ok "merges with no approval time found: approved to merged is not measured, never under its bar" "$(grep -q '^  merge     not measured (merges with no approval time' <<< "$out" && grep -q '^ACT   constraint: not measured — merge' <<< "$act" && echo 1)" "$out"
+ok "--save keeps the same verdict as the lines (saved after pick)" "$(jq -e '.merge.error' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
+facts "$T/f14.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged = [{number: 15, approved_at: null, merged_at: "2026-11-20T01:00:00Z"}]'; BD="$T/b2.json" run "$T/f14.json"
+ok "a merge 5 h ago with no approval time, none in 3 h: still not measured (the 24 h count)" "$(grep -q '^  merge     not measured' <<< "$out" && echo 1)" "$out"
 echo '{"fresh": 3, "oldest_fresh_min": null, "stale": []}' > "$T/rw3.json"; RW="$T/rw3.json" BD="$T/b2.json" run "$T/f9.json"
 ok "runs waiting with no age: machines not measured" "$(grep -q '^ACT   constraint: not measured — machines' <<< "$act" && echo 1)" "$act"
-touch -d '2026-11-19 00:00' "$T/rw.json"; BD="$T/b2.json" run "$T/f9.json"; touch "$T/rw.json"
+touch -t 202611190000 "$T/rw.json"; BD="$T/b2.json" run "$T/f9.json"; touch "$T/rw.json"
 ok "runs-waiting.json left from an earlier check (over 45 min old): machines not measured" "$(grep -q '^  machines  not measured (runs-waiting.json is ' <<< "$out" && echo 1)" "$out"
 # part 4 review M2: a member re-queued in a later batch (Mergify splits a failed batch) is not a culprit
 facts "$T/f11.json" '.pulls["11"] = {title: "a", state: "open", merged_at: null} | .pulls["905"] = {title: "merge queue: checking #11 on main", body: "", state: "open", login: "mergify[bot]", ref: "mergify/merge-queue/x"}'; run "$T/f11.json"
