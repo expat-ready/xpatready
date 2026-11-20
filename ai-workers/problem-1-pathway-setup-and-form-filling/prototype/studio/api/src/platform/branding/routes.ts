@@ -2,13 +2,35 @@
 // does the rest; the firm is the session's. Part 1b: the images (one multipart `file`; the upload layer stops one byte
 // past the largest limit and the service names each kind's own) and the public reads under /api/public (open doors:
 // the firm by its key through the named bypass use `platform.branding.public`, firm-scope.ts).
-import { Body, Controller, Delete, Get, Inject, Param, Put, Query, Req, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpException, Inject, Injectable, Param, Put, Query, Req, Res, UploadedFile, UseInterceptors, type CallHandler, type ExecutionContext, type NestInterceptor } from "@nestjs/common";
+import { catchError, throwError } from "rxjs";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { Db, OpenRead } from "../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { BrandingService } from "./branding.ts";
-import { BrandingImages, IMAGE_UPLOAD_CAP } from "./images.ts";
+import { isImageKind } from "./image-setting.ts";
+import { BrandingImages, IMAGE_UPLOAD_CAP, tooLarge } from "./images.ts";
+
+/** The upload layer's own refusals (a file past its cap, a second file or field) in the kind's words: a 413 naming its
+ *  limit, or "Send one file" (review M1 on #2633: the app's shared words name no limit). */
+@Injectable()
+class BrandingUploadWords implements NestInterceptor {
+  intercept(ctx: ExecutionContext, next: CallHandler) {
+    const kind = (ctx.switchToHttp().getRequest() as { params?: { kind?: string } }).params?.kind;
+    return next.handle().pipe(catchError((e: unknown) => {
+      const msg = e instanceof HttpException ? String((e.getResponse() as { message?: unknown })?.message ?? e.message) : "";
+      if (e instanceof HttpException && isImageKind(kind)) {
+        if (e.getStatus() === 413 && /File too large/i.test(msg)) { try { tooLarge(kind); } catch (w) { return throwError(() => w); } }
+        if (/Too many (files|parts|fields)|Unexpected field/i.test(msg)) {
+          const detail = 'Send one PNG or JPEG file, in the field "file". Allowed here: PNG and JPEG. Nothing was stored.';
+          return throwError(() => new HttpException({ type: "https://expatready.local/problems/one-file", title: "Not saved", status: 400, detail, message: detail, code: "ONE_FILE" }, 400));
+        }
+      }
+      return throwError(() => e);
+    }));
+  }
+}
 
 type R = { platform?: StaffContext };
 type F = { buffer: Buffer } | undefined;
@@ -21,7 +43,7 @@ export class BrandingController {
   async read(@Req() r: R) { const s = staffOf(r); return { ...(await this.b.read(s)), images: await this.images.links(s) }; }
   @Put() @PermissionKeys("agent/settings:edit")
   save(@Req() r: R, @Body() b: unknown) { return this.b.save(staffOf(r), b); }
-  @Put(":kind") @PermissionKeys("agent/settings:edit") @UseInterceptors(FileInterceptor("file", { limits: { fileSize: IMAGE_UPLOAD_CAP, files: 1, fields: 2, parts: 3 } }))
+  @Put(":kind") @PermissionKeys("agent/settings:edit") @UseInterceptors(BrandingUploadWords, FileInterceptor("file", { limits: { fileSize: IMAGE_UPLOAD_CAP, files: 1, fields: 2, parts: 3 } }))
   upload(@Req() r: R, @Param("kind") kind: string, @UploadedFile() f: F) { return this.images.upload(staffOf(r), kind, f ? { bytes: new Uint8Array(f.buffer) } : undefined); }
   @Delete(":kind") @PermissionKeys("agent/settings:edit")
   clear(@Req() r: R, @Param("kind") kind: string) { return this.images.clear(staffOf(r), kind); }

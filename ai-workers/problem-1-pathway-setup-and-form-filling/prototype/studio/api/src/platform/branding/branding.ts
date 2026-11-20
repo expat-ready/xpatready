@@ -81,7 +81,9 @@ export type EmailBrand = { name: string; colour: string; footer: string | null; 
 export async function emailBrandOf(db: DbOrTx, firmId: string, operatingName: string, logo?: { base: string; firmKey: string }): Promise<EmailBrand> {
   const b = await readBranding(db, firmId, ["senderName", "colour", "footer"]);
   const img = logo ? await readImage(db, firmId, "logo") : null;
-  const size = img ? { logoHeight: 48, logoWidth: Math.max(1, Math.min(300, Math.round((48 * img.width) / img.height))) } : {};
+  // 48 px high; a very wide logo is capped at 300 px wide and keeps its shape (review m4 on #2633).
+  const w48 = img ? Math.round((48 * img.width) / img.height) : 0;
+  const size = img ? (w48 > 300 ? { logoWidth: 300, logoHeight: Math.max(1, Math.round((300 * img.height) / img.width)) } : { logoWidth: Math.max(1, w48), logoHeight: 48 }) : {};
   return { name: b.senderName ?? operatingName, colour: b.colour ?? NEUTRAL_COLOUR, footer: b.footer, logoUrl: img && logo ? imageLink(logo.base, logo.firmKey, "logo", img) : null, ...size };
 }
 

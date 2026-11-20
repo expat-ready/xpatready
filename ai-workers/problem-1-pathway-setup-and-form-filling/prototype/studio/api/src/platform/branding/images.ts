@@ -7,6 +7,7 @@
 // old link answers 404 cleanly, never another firm's or another image's bytes. The public reads find an ACTIVE or TRIAL
 // firm by its key through the named PF-12 bypass use `platform.branding.public` (its one read), then run as that firm;
 // they answer no firm id.
+import { HttpException } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import { sha256Hex, type FilesPort } from "../../../../ports/files.ts";
 import { asBypass, enterFirm } from "../firm-scope.ts";
@@ -14,13 +15,21 @@ import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 import { writeSetting } from "../settings.ts";
 import { NEUTRAL_COLOUR, readBranding } from "./branding.ts";
-import { IMAGE_KINDS, IMAGE_LIMITS, IMAGE_SETTING, imageKey, imageLink, imageVersion, isImageKind, readImage } from "./image-setting.ts";
-import { walkImage } from "./image-walk.ts";
+import { IMAGE_KINDS, IMAGE_LIMITS, IMAGE_SETTING, imageKey, imageLink, imageVersion, isImageKind, readImage, type ImageKind } from "./image-setting.ts";
+import { TOO_WIDE, walkImage } from "./image-walk.ts";
 
 /** The upload layer stops 1 KB past the largest limit (multer refuses a file that reaches its cap); the service names
  *  each kind's own limit up to there. */
 export const IMAGE_UPLOAD_CAP = IMAGE_LIMITS.logo.bytes + 1024;
 const FIRM_KEY = /^[a-z0-9][a-z0-9-]{0,62}$/;
+/** 413 naming the kind's limit, worded as PF-F4's check words a file refusal (it ends "Allowed here: … Nothing was
+ *  stored."), so the app's error filter sends it as written (main.ts ProblemErrors, CS-D1t) instead of its shared words
+ *  (review M1 on #2633). The upload layer's own limits are worded the same way (routes.ts BrandingUploadWords). */
+export const tooLargeWords = (kind: ImageKind) => `The ${kind} can be at most ${IMAGE_LIMITS[kind].words}. Allowed here: PNG and JPEG. Nothing was stored.`;
+export function tooLarge(kind: ImageKind): never {
+  const detail = tooLargeWords(kind);
+  throw new HttpException({ type: "https://expatready.local/problems/too-large", title: "Too large", status: 413, detail, message: detail, code: "TOO_LARGE", limit: IMAGE_LIMITS[kind].words }, 413);
+}
 const notFound = (): never => problem(404, "Not found", "There is nothing here.", { code: "NOT_FOUND" });
 
 export class BrandingImages {
@@ -32,9 +41,10 @@ export class BrandingImages {
     if (!isImageKind(kindIn)) return notFound();
     const kind = kindIn, limit = IMAGE_LIMITS[kind];
     if (!file || !file.bytes.length) return problem(400, "Not saved", "Choose a PNG or JPEG file.", { code: "NO_FILE" });
-    if (file.bytes.length > limit.bytes) return problem(413, "Too large", `The ${kind} can be at most ${limit.words}. Nothing was stored.`, { code: "TOO_LARGE", limit: limit.words });
+    if (file.bytes.length > limit.bytes) return tooLarge(kind);
     const w = walkImage(file.bytes);
-    if (!w.ok) return problem(415, "Not taken", "Use a PNG or JPEG file.", { code: "NOT_PNG_OR_JPEG" });
+    // Review m3: a refusal for its size in pixels says so; anything else is "Use a PNG or JPEG file."
+    if (!w.ok) return problem(415, "Not taken", w.why.includes("megapixels") ? w.why : w.why === TOO_WIDE ? "The image is wider or taller than 65,535 pixels. Use a smaller PNG or JPEG file." : "Use a PNG or JPEG file.", { code: "NOT_PNG_OR_JPEG" });
     const img = { sha256: await sha256Hex(w.bytes), mediaType: w.mediaType, width: w.width, height: w.height };
     const key = imageKey(kind, img);
     // The bytes first (a key names its bytes, so a second upload of the same image stores nothing new); a failed setting

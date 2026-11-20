@@ -118,6 +118,23 @@ try {
   ok("PF-13 DW2b fail: a truncated JPEG, an arithmetic-coded JPEG (SOF9) and a PNG with a broken chunk → 415", truncated.status === 415 && arithmetic.status === 415 && crcOut.status === 415 && sofAt > 0, [truncated.status, arithmetic.status, crcOut.status]);
   ok("PF-13 DW2b pass (the walk alone): the clean fixtures come back unchanged", (() => { const p = walkImage(PNG), j = walkImage(JPG); return p.ok && j.ok && Buffer.from(p.bytes).equals(Buffer.from(PNG)) && Buffer.from(j.bytes).equals(Buffer.from(JPG)); })());
 
+  // Review M2, m1, m2: a second frame header or IHDR (a hidden size), an IHDR of another length, an APP0 that is not JFIF.
+  const sofSeg = JPG.subarray(sofAt, sofAt + 2 + ((JPG[sofAt + 2] << 8) | JPG[sofAt + 3]));
+  const bigSof = sofSeg.slice(); bigSof[5] = 0xea; bigSof[6] = 0x60; bigSof[7] = 0xea; bigSof[8] = 0x60;   // 60000 × 60000
+  const twoSof = cat(JPG.subarray(0, sofAt + sofSeg.length), bigSof, JPG.subarray(sofAt + sofSeg.length));
+  const ihdr = PNG.subarray(8, 33), bigIhdrData = ihdr.slice(8, 21); new DataView(bigIhdrData.buffer).setUint32(0, 60000); new DataView(bigIhdrData.buffer).setUint32(4, 60000);
+  const twoIhdr = cat(PNG.subarray(0, 33), pngChunk("IHDR", bigIhdrData), PNG.subarray(33));
+  const longIhdr = cat(PNG.subarray(0, 8), pngChunk("IHDR", cat(ihdr.slice(8, 21), new Uint8Array([0]))), PNG.subarray(33));
+  const rs = await Promise.all([up(owner, "logo", twoSof, "a.jpg", "image/jpeg"), up(owner, "logo", twoIhdr), up(owner, "logo", longIhdr)]);
+  ok("PF-13 DW2b fail (review M2): a second JPEG frame header, a second PNG IHDR and an IHDR of 14 bytes → 415 (no hidden size)", rs.every((r) => r.status === 415), rs.map((r) => r.status));
+  const avi = await up(owner, "logo", jpgWith([jpegSeg(0xe0, enc("AVI1secret 45.50N 73.56W"))]), "a.jpg", "image/jpeg");
+  ok("PF-13 DW2b pass (review m1): an APP0 that is not JFIF is dropped", avi.status === 200 && !has((await pub(pathOf(avi.body.link))).bytes, "secret"), avi.body);
+  const sized = (w: number, h: number) => { const d = ihdr.slice(8, 21); new DataView(d.buffer).setUint32(0, w); new DataView(d.buffer).setUint32(4, h); return cat(PNG.subarray(0, 8), pngChunk("IHDR", d), PNG.subarray(33)); };
+  const tooWide = await up(owner, "logo", sized(70000, 1));
+  ok("PF-13 DW2b fail (review m2): a PNG 70,000 pixels wide → 415 in plain words (before anything is stored)", tooWide.status === 415 && tooWide.body.detail === "The image is wider or taller than 65,535 pixels. Use a smaller PNG or JPEG file.", tooWide.body);
+  const bomb = await up(owner, "logo", fx("bomb.png"));
+  ok("PF-13 DW2b fail (review m3): a pixel bomb's 415 says why (megapixels), not only the type", bomb.status === 415 && /megapixels/.test(bomb.body.detail), bomb.body);
+
   // ------------------------------------------------------------------------------------------------ DW3 limits
   const big = await up(owner, "logo", pngOfSize(2 * MB + 1)), atLimit = await up(owner, "logo", pngOfSize(2 * MB));
   ok("PF-13 DW3 fail: a 2 MB + 1 byte logo → 413 naming 2 MB", big.status === 413 && big.body.detail.includes("2 MB"), big.body);
@@ -125,7 +142,14 @@ try {
   const fav = await up(owner, "favicon", pngOfSize(256 * 1024 + 1)), favOk = await up(owner, "favicon", pngOfSize(256 * 1024));
   ok("PF-13 DW3 fail/pass: a 256 KB + 1 byte favicon → 413 naming 256 KB; 256 KB saves", fav.status === 413 && fav.body.detail.includes("256 KB") && favOk.status === 200, [fav.body, favOk.status]);
   const huge = await up(owner, "logo", pngOfSize(3 * MB));
-  ok("PF-13 DW3 fail: a 3 MB file is stopped by the upload layer (413), nothing stored", huge.status === 413, huge.status);
+  ok("PF-13 DW3 fail: a 3 MB file is stopped by the upload layer and still named: 413 \"The logo can be at most 2 MB\" (review M1)", huge.status === 413 && huge.body.detail?.startsWith("The logo can be at most 2 MB."), huge.body);
+  // Review M1: the app's error filter (main.ts ProblemErrors) keeps a 413's own words only when they end as PF-F4's do;
+  // this is that filter's test (CS-D1t), applied to every branding 413.
+  const FILTER_KEEPS = /Allowed here: .+\. Nothing was stored\.$/;
+  ok("PF-13 DW3 pass: every branding 413 (service and upload layer) is worded so the app's filter sends it as written: it names the kind's limit", [big, fav, huge].every((r) => FILTER_KEEPS.test(r.body.detail) && r.body.message === r.body.detail && r.body.code === "TOO_LARGE"), [big.body, fav.body, huge.body]);
+  const two = new FormData(); two.append("file", new Blob([PNG], { type: "image/png" }), "a.png"); two.append("file", new Blob([PNG], { type: "image/png" }), "b.png");
+  const twoR = await fetch(`${base}/api/platform/branding/logo`, { method: "PUT", headers: { authorization: `Bearer ${owner}` }, body: two }), twoB = await twoR.json();
+  ok("PF-13 DW3 fail: two files in one upload → 400 \"Send one PNG or JPEG file\", nothing stored", twoR.status === 400 && twoB.detail.startsWith("Send one PNG or JPEG file") && FILTER_KEEPS.test(twoB.detail), twoB);
 
   // ------------------------------------------------------------------------------------------------ DW9 the banner
   const bigBanner = await up(owner, "banner", pngOfSize(2 * MB + 1));
@@ -158,6 +182,10 @@ try {
   const logoNow = (await (await fetch(`${base}/api/platform/branding`, { headers: { authorization: `Bearer ${owner}` } })).json()).images.logo;
   ok("PF-13 DW5 pass: an email through MessagePort carries the logo's stable link with width and height attributes (Outlook)",
     wide.status === 200 && m1.html.includes(`src="${logoNow.link}"`) && /<img[^>]*\swidth="64"/.test(m1.html) && /<img[^>]*\sheight="48"/.test(m1.html) && logoNow.width === 32 && logoNow.height === 24, [logoNow, m1.html.slice(0, 800)]);
+  await up(owner, "logo", sized(2000, 100));
+  const wideMail = await mail(A.id);
+  ok("PF-13 DW5 pass (review m4): a 2000 × 100 logo is drawn 300 × 15 in the email (capped width, shape kept)", /<img[^>]*\swidth="300"/.test(wideMail.html) && /<img[^>]*\sheight="15"/.test(wideMail.html), (wideMail.html.match(/<img[^>]*>/) ?? [""])[0]);
+  await up(owner, "logo", PNG);
   const g1 = await pub(pathOf(logoNow.link));
   ok("PF-13 DW5 pass: that link answers 200 with the stored image (it never expires: no time in it, unlike FilesPort's 5-minute links)", g1.status === 200 && Buffer.from(g1.bytes).equals(Buffer.from(PNG)), g1.status);
   const second = await up(owner, "logo", JPG, "new.jpg", "image/jpeg"), m2 = await mail(A.id);

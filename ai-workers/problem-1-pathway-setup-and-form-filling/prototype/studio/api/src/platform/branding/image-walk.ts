@@ -8,6 +8,9 @@
 import { crc32 } from "node:zlib";
 import { detect } from "../files/file-type.ts";
 
+/** The largest side a brand image may have (a stored size, and JPEG's own limit). */
+export const MAX_SIDE = 65535;
+export const TOO_WIDE = "the image is wider or taller than 65,535 pixels";
 export type Walked = { ok: true; kind: "png" | "jpeg"; mediaType: "image/png" | "image/jpeg"; bytes: Uint8Array; dropped: string[]; width: number; height: number } | { ok: false; why: string };
 const no = (why: string): Walked => ({ ok: false, why });
 
@@ -25,6 +28,7 @@ function walkPng(b: Uint8Array): Walked {
     const whole = b.subarray(p, p + 12 + len);
     if (crc32(b.subarray(p + 4, p + 8 + len)) >>> 0 !== dv.getUint32(p + 8 + len)) return no(`the PNG chunk ${type} is damaged (CRC)`);
     if (first && type !== "IHDR") return no("a PNG must start with IHDR");
+    if (type === "IHDR" && (!first || len !== 13)) return no("a PNG has one IHDR chunk of 13 bytes");   // review M2: a second header could hide its size
     first = false;
     if (type === "IDAT") seenIdat = true;
     if (PNG_KEEP.has(type)) out.push(whole); else dropped.push(type);
@@ -35,6 +39,7 @@ function walkPng(b: Uint8Array): Walked {
   if (p < b.length) dropped.push(`${b.length - p} bytes after IEND`);
   const width = dv.getUint32(16), height = dv.getUint32(20);
   if (!width || !height) return no("the PNG has no size");
+  if (width > MAX_SIDE || height > MAX_SIDE) return no(TOO_WIDE);
   return { ok: true, kind: "png", mediaType: "image/png", bytes: concat(out), dropped, width, height };
 }
 
@@ -67,8 +72,11 @@ function walkJpeg(b: Uint8Array): Walked {
       if (q + 1 >= b.length) return no("the JPEG's scan data has no end");
       out.push(b.subarray(p, q)); p = q; continue;
     }
-    if (isSof(m)) { if (len < 8) return no("the JPEG frame is too short"); sof = true; height = (b[p + 5] << 8) | b[p + 6]; width = (b[p + 7] << 8) | b[p + 8]; }
-    if (JPEG_KEEP.has(m)) out.push(seg);
+    if (isSof(m)) { if (sof) return no("the JPEG has more than one frame header"); if (len < 8) return no("the JPEG frame is too short"); sof = true; height = (b[p + 5] << 8) | b[p + 6]; width = (b[p + 7] << 8) | b[p + 8]; }
+    // APP0 and APP14 only as the brief names them (JFIF, Adobe); any other APP0/APP14 is dropped (review m1).
+    const id = (t: string) => Buffer.from(b.subarray(p + 4, p + 4 + t.length)).toString("latin1") === t;
+    if ((m === 0xe0 && !id("JFIF\0")) || (m === 0xee && !id("Adobe"))) dropped.push(`APP${m - 0xe0}`);
+    else if (JPEG_KEEP.has(m)) out.push(seg);
     else if (isDrop(m)) dropped.push(m === 0xfe ? "COM" : `APP${m - 0xe0}`);
     else return no(`the JPEG has a marker this door does not take (0x${m.toString(16)})`);
     p += 2 + len;
