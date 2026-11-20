@@ -144,7 +144,9 @@ def read_wait(src, openp, now, paths):
         if any(head.startswith(m.lower()) for c in comments for m in LEAD_READ.findall(c.get("body") or "")):
             continue
         files = src.get("files_%d" % n, "repos/%s/pulls/%d/files" % (REPO, n))
-        hit = [f["filename"] for f in files if not f["filename"].endswith(".md") and any(r.search(f["filename"]) for r in paths)]
+        # Every changed path, .md included, and a rename's old path: as queue-gate.sh matches them (review round 2 M1, m2).
+        names = [x for f in files for x in (f["filename"], f.get("previous_filename")) if x]
+        hit = [x for x in names if any(r.search(x) for r in paths)]
         if not hit:
             continue
         age = int((now - ts(first_ok["created_at"])).total_seconds() // 60)   # the first Approve on the head: the true wait
