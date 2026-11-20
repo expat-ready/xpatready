@@ -1,0 +1,97 @@
+# J-5 part 1 review (R1.5: staff sign-in with two-step, lock-out on leaving), PR #2627
+
+Reviewer: a fresh session that did not build it (screen-review + journey-test, reviewer role). Commit reviewed:
+`032102334e97855232f3a41cf32cfa3657b3861f` on `claude/nifty-fermat-feao23`. Read: `shape.md`, `j_5.ts`, `j_6.ts`, `walk.mjs`,
+concept `pf-6-staff` r2 (`origin/lead-b-front-office`), BACKLOG J-5 / PF-4b / PF-4bc, qa/CAPABILITIES R1.5,
+`api/src/platform/identity/service.ts`, `web/src/modules/platform/{session,frame}.ts(x)`. Live AI off, US$0.
+Journey test report: `journey-test-reviewer-2026-11-20.md` (score **8/10**, pass).
+
+## Runs (isolated copies, never :4400)
+* The header line as given: `j5r 4415`, fresh copy: **27/27, exit 0** (10 s).
+* Kept copy `j5rv 4447`, run twice in a row: **27/27 and 27/27**; seats and the walk person cleaned up both times.
+* Visible browser: `HEADED=1 xvfb-run`, `j5rh 4449`: **27/27, exit 0** (22 s, slowMo 250).
+* A first kept-copy try on 4416 died mid-run: another session started `isolated.sh j5b 4416` on the same port. That was
+  the environment, not the PR, but it showed m3 below (the real failure was hidden behind the `finally`'s error).
+* My own walk (scratch script, copy `j5rw 4448`): keyboard sign-in, 1024 and 400 px, double-click Accept, a reused
+  link, wrong role by URL, reload after deactivation, the dead token on other routes, "Sign in again here".
+* The header line parses with `walk.mjs`'s pattern (`j5 4405 --ttl 30 PLATFORM_IDENTITY=local`); 44NN = journey number,
+  like the other journeys.
+
+## 1. Does j_5.ts prove what it claims?
+* **W1-W4 (L5):** real screens all the way: sign-in card → Team → Invite → demo inbox link → Accept in a second browser →
+  Signed in elsewhere → Person panel Sign out everywhere / Deactivate / Reactivate → refused sign-in in words → the walk ends
+  on the Person panel's roles. Each step waits on a screen element with a timeout that throws. Met.
+* **DW1 (L4):** not vacuous. `before` = 200 and `exp` in the future rule out expiry. The 401 must carry `STAFF_NOT_ACTIVE`
+  and "deactivated". Without the status check (`service.ts:117`) the revocation answers `SESSION_REVOKED`, so DW1 fails.
+  Without both, the answer is 200 and DW1 fails. The revocation query (`j_5.ts:166`) matches only the deactivation row:
+  "another-device" rows are 1 ms before the sign-in, and the sign-out-everywhere row is older than the W2 re-sign-in.
+  The audit line's actor, before and after are read, and the count rises by exactly 1. Met.
+* **DW2 (L1, stand-in):** the pair does isolate the second-step rule. The person is ACTIVE again (W4), and the status
+  check comes before the second-step check (`service.ts:162-163`). The email is the same and only `secondStep` changes.
+  The with-step token resolves to this person on `/me`. Removing `service.ts:163` makes DW2's pass half fail, and
+  loosening it to "truthy" is caught by the text `"true"`. What it does not do: it is a pass/fail pair on the stand-in's
+  door, not a swap from fake to real (P-606). The real second step (Cognito) is part 2/3. The screen always sends `true`
+  (`session.ts:96`), so L1 is not exercised on screen. Row L1 of the shape says so. See m2 for the label and the shape text.
+
+## 2. Is the shape honest about L2/L3?
+Yes. The concept r2 §2 puts password, second step and passkey on the identity provider's managed pages. PF-4bc says the
+live proof (C21) is "not a merge gate". The J-5 row says "Cognito proof needs the founder's AWS". `shape.md:51-53` keeps
+R1.5 Partial with no `Completes:`. Row L1 also says honestly that on Cognito the second step rests on the
+`PLATFORM_POOL_MFA_REQUIRED` setting (`cognito.ts:43,49`), and part 3 checks the pool against AWS's pages.
+
+## 3. Repeatability and conventions
+New email per run; seats lent and given back; the walk person deactivated in `finally`; two runs on one kept copy pass.
+Same shape as `j_6.ts` (recorder, `client().sql`, axe tags, `finally` clean-up, the page-error line). Waits throw on
+timeout, with the one exception in m4.
+
+## 4. What the walk reveals in the app: the builder's question
+After **Sign out everywhere** or **Deactivate**, the person's tab shows a blank "Sign in to your firm" card with no
+reason (screenshots `W2-signed-out-everywhere-1440.png`, `W3-deactivated-next-click-1440.png`; same after a reload).
+`session.ts:82` keeps only the 401's code, and `frame.tsx:98` gives words only to `SIGNED_IN_ELSEWHERE`. The server's
+"This session was ended" / "This staff account has been deactivated" never reach the screen.
+**Judgement: a Minor to raise, not a Major for R1.5.** The R1.5 line (L4, "signed out of every device at the next
+request") is met and proven by DW1. The concept specifies words only for Signed in elsewhere (§4). The gap is against
+EXPERIENCE §2.7 [M] "Reasons everywhere" on PF-6 part 1's frame, which is on main and outside this PR's touch list
+("app code only if the walk stops"). It needs its own screens item.
+
+## Issues (no Blocker, no Major)
+* **m1 (Should, raise as a screens follow-up):** the blank card after the session ends, as in §4: `session.ts:82`,
+  `frame.tsx:98`. In this PR: `shape.md:26` ("shows the sign-in card in words") and `:28` read as if the screen gives the
+  reason. Say "the sign-in card, with no reason yet (follow-up)". A comment at `j_5.ts:141`/`:168` naming the follow-up
+  would help, so the step can be tightened when the fix lands.
+* **m2 (Should):** `shape.md:34-35` says DW2 also checks a token whose `amr` lacks `otp`, with an `amr: ["pwd","otp"]`
+  partner. `j_5.ts` does not do this; it hands that check to `check_pf4_identity.ts:141-144` (`j_5.ts:17`). Make the shape
+  match, or run that check from j_5 as `j_6.ts` runs PF-6b's. The label "DW2 fail (the fake)" (`j_5.ts:199`) names the
+  positive control, not a fake. Call it "DW2 control".
+* **m3 (Should):** `j_5.ts:203-205`: the `finally` signs the Owner in before it gives the seats back. If that fetch
+  throws, the seats are not given back and the first failure is hidden: on the dead copy the trace pointed at `:203`.
+  Give the seats back first and guard the sign-in. Also, the seats are lent at `:57` and the browser starts at `:59`,
+  both before `try`: a failed launch leaves the plan inflated on a kept copy.
+* **m4 (Could):** `j_5.ts:75` `nextClick` swallows a failed click and falls back to `goto`. If the My account link goes
+  missing, the step still passes. Let it throw.
+* **m5 (Could):** `j_5.ts:139` checks `>= 1` but its label says "one revocation row". This is a fresh person, so use `=== 1`.
+* **m6 (Could):** `j_5.ts:123` (claimed at `:5` and `shape.md:25`: "their name in the header") counts `[data-staff-name]`
+  but does not read the name. Compare it with the staff row's `display_name`.
+* **m7 (raise, on main, not this PR):** a Case Officer opening Team sees "Your roles do not include the permission this
+  needs (agent/staff:manage)" (`api/src/platform/identity/guard.ts:112`). That is a permission key on the main path,
+  against EXPERIENCE §5 [M].
+
+## D1-D20 (this PR is a test; scores are for the walked screens and the proof)
+D1 2/2 the walk follows concept §1 and the J-5 row · D2 2 one invitation, one staff row after a double-click Accept, audit
++1 · D3 n/a · D4 n/a · D5 2 reload, double click, reused link, sign in again, reactivate · D6 n/a · D7 n/a (no AI) · D8 2
+breadcrumb kept · D9 1.5 next step unclear after session end (m1) · D10 1.5 m7's key · D11 1.5 m1 · D12 2 team look ·
+D13 2 axe 0 at 1440/1024/400, no sideways scroll, keyboard sign-in, focus moves to the card · D14 2 · D15 2 walk 10 s ·
+D16 2 DW1/DW2 fail when their rule is removed (by reading) · D17 simulated only · D18 n/a · D19 1.5 R1.5 Partial (L2/L3,
+honest) · D20 simulated only.
+
+## BIC (EXPERIENCE §6; staff platform screens, mostly n/a)
+BIC-11 Met (one primary per card/panel) · BIC-13 Partly (refused sign-in in words on the card; a session end has no
+reason, m1) · BIC-18 Partly (same) · BIC-19 Met (1440, 1024) · BIC-20 Met (keyboard sign-in, axe 0, 400/1024 no scroll;
+200 % zoom not checked) · BIC-01..10, 12, 14..17 N/A (no case data on these screens).
+
+## Could not check
+A real screen reader; 200 % zoom; Cognito (L2, L3: part 3); an intended user's unaided walk (D17/D20 stay with the
+founder); `walk.mjs` and the recording check (no ffmpeg in this container, known). `graph.mjs` does not index
+`tests/journeys/` (j_6 is missing from it too), so it gives no J-5 line.
+
+Verdict: Approve 032102334e97855232f3a41cf32cfa3657b3861f
