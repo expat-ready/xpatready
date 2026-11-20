@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 03:10 IST):** **PF-18h concept approved** by Lead 8 (7051265937; Q1 (a) caseNumber in linksOf, Q2 scaffolding, Q3 route after #2608 else the fallback). The lane accepted the J-74 ruling (r3 aa1f7c799). I told it to build (comment 7051280673, plus a cloud message): the page and test first, the route and store after #2596 is on main (merge main, never #2596's branch). #2596 is still queued.
+
 **Lead B (9) update (21 Nov 03:08 IST):** #2596 (PF-18n1) is labelled and queued (02:51 IST). **#2621 (PF-18h)** has its concept r2 at 08d705338 and has waited for the Lead's approval since 02:18 IST. It covers the deadline Needs you item (BR-1/2, DW1-3). Ruling 7051238493: PF-18h drops its J-74 step, and Lead C's follow-up owns the J-74 reminder walk (data-needs-you-item hooks). It builds after the approval and #2596 on main. My ETA to Lead 8: merged ~07:15 IST if approved by ~03:30.
 
 **Lead B (9) update (21 Nov 02:45 IST):** **PF-18n1 = #2596** (claude/loving-fermat-eyd2nq, head f93802d25, reviewer Approve). My conformance read is comment 7050797806. Owed: Lead 8's P-423 migration read and the label. The duplicate PF-18n1 lane stood down. **PF-18h = #2621** (claude/dreamy-faraday-j1htfh, concept first, task_11019c84). Watcher: 2596, 2621.
