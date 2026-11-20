@@ -25,6 +25,13 @@ out=$(ctx 285k "$T/n.md"); ok "no start read on STATE: P-446's ~90k assumed and 
 out=$(LEAD_CONTEXT=300k LEAD_START_READ=150k $U context --state "$T/s.md"); ok "LEAD_START_READ wins over STATE (150k: 150k beyond)" "$(grep -q 'start read 150k (LEAD_START_READ)' <<<"$out" && grep -q 'tell the first standby' <<<"$out" && echo 1)" "$out"
 out=$(ctx 300k "$T/none.md"); ok "STATE unreadable: the start read is assumed, the context still judged" "$(grep -q 'assumed' <<<"$out" && grep -q 'hand over' <<<"$out" && echo 1)" "$out"
 
+out=$(LEAD_CONTEXT=300k LEAD_START_READ=abc $U context --state "$T/s.md"); ok "a set but unreadable LEAD_START_READ: an ACT, not a quiet fall-back" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   LEAD_START_READ unreadable' <<<"$out" && echo 1)" "$out"
+out=$(LEAD_CONTEXT=300k LEAD_START_READ=500k $U context --state "$T/s.md"); ok "a start read over the context (a typo): an ACT, never a silent switch-off" "$([ "$(acts "$out")" = 1 ] && grep -q 'is under its start read 500k' <<<"$out" && echo 1)" "$out"
+out=$(ctx "300 tokens"); ok "'300 tokens' is 0.3k, not 300k (no false hand-over)" "$(! grep -q 'hand over to the first standby now' <<<"$out" && echo 1)" "$out"
+out=$(ctx 4999); ok "a bare 4999 is tokens (5k), no jump at 5000" "$(grep -q 'context 5k' <<<"$out" && echo 1)" "$out"
+printf 'current_lead: local_aaa Lead 2; start read ~120000\n' > "$T/t.md"; out=$(ctx 300k "$T/t.md")
+ok "a start read written in tokens on STATE (~120000) reads as 120k" "$(grep -q 'start read 120k (STATE current_lead:)' <<<"$out" && echo 1)" "$out"
+
 # --- E13: the private sync at every check
 mk() { printf '#!/bin/bash\n%s\n' "$2" > "$T/$1"; chmod +x "$T/$1"; }
 mk ok.sh 'echo "private-sync: pushed abc1234 (443 files)"'; mk same.sh 'echo "private-sync: nothing new"'
@@ -37,6 +44,13 @@ out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/sec.sh"); ok "exit 3 (a note lo
 out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/bad.sh"); ok "any other failure: ACT with the exit code and the error" "$([ "$(acts "$out")" = 1 ] && grep -q '^ACT   private sync failed (exit 128): fatal: could not read from remote' <<<"$out" && echo 1)" "$out"
 out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/slow.sh" --timeout 1); ok "over the time bound: ACT, the check goes on" "$([ "$(acts "$out")" = 1 ] && grep -q 'did not finish in 1 s' <<<"$out" && echo 1)" "$out"
 out=$(env -u PRIVATE_SYNC $U sync --cmd "$T/nothing-here.sh"); ok "the command cannot start: ACT, no traceback" "$([ "$(acts "$out")" = 1 ] && ! grep -q Traceback <<<"$out" && echo 1)" "$out"
+mk r3.sh 'echo "rsync error: some files could not be transferred (code 3)" >&2; exit 3'
+out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/r3.sh"); ok "exit 3 without the refusal text (rsync's own 3) is a failure, not a secret" "$(grep -q '^ACT   private sync failed (exit 3)' <<<"$out" && echo 1)" "$out"
+mk kid.sh "bash -c 'sleep 3; touch $T/survived' & wait"
+out=$(env -u PRIVATE_SYNC $U sync --cmd "bash $T/kid.sh" --timeout 1); sleep 3
+ok "a timeout stops the whole group: a grandchild (git, rsync) does not keep running" "$(grep -q 'did not finish in 1 s (stopped' <<<"$out" && [ ! -e "$T/survived" ] && echo 1)" "$out; survived: $(ls "$T/survived" 2>/dev/null)"
+mk ask.sh 'read -r x || true; echo "GIT_TERMINAL_PROMPT=$GIT_TERMINAL_PROMPT stdin=${x:-empty}"'
+out=$(echo typed | env -u PRIVATE_SYNC $U sync --cmd "bash $T/ask.sh"); ok "no stdin and no git credential prompt for the sync" "$(grep -q 'GIT_TERMINAL_PROMPT=0 stdin=empty' <<<"$out" && echo 1)" "$out"
 out=$(PRIVATE_SYNC=0 $U sync --cmd "bash $T/bad.sh"); ok "PRIVATE_SYNC=0 skips it and says so" "$([ "$(acts "$out")" = 0 ] && grep -q 'skipped (PRIVATE_SYNC=0)' <<<"$out" && echo 1)" "$out"
 ok "the default command is this folder's private-sync.sh" "$(grep -q 'os.path.join(here, "private-sync.sh")' "$TOOLS/lead-upkeep.py" && echo 1)"
 

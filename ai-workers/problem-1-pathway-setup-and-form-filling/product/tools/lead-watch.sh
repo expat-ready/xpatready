@@ -148,7 +148,7 @@ case "$ts" in   # empty, "null" (the curl fallback's jq -r) or any unparsable va
      [ "$age" -ge 24 ] && ACT "backup ${age} h old: run tools/backup-refresh.sh (allowed_domains github.com)";;
 esac
 # 6b. Private home sync (E13, P-678: "the Lead runs the sync at each check"): the one write this check makes, to
-# github.com/expat-ready/private, bounded at 90 s; a refusal (a note holding a real secret), a failure or a timeout = ACT.
+# github.com/expat-ready/private, its process group killed at 90 s; a refusal (a note holding a real secret), a failure or a timeout = ACT.
 ps=$(python3 -I "$TOOLS/lead-upkeep.py" sync 2>&1); echo "$ps"; act=$((act + $(grep -c '^ACT' <<<"$ps"))); seen "$ps"
 
 # 7. Records reach main (Lead 53, 15 Nov, founder A76: P-606's skill lines sat off main for 5 days and no check said so).
