@@ -98,7 +98,7 @@ const offPost = await fetch(`${BASE}/api/public/forms/${hostedOff.split("/").pop
 ok("J-26 W1 fail: while the form is off the page says so and the public door, read and send, answers \"not available\"", await owner.getByText("This form is off").isVisible() && offProbe.status === 404 && /not available/i.test(await offProbe.text()) && offPost.status === 404, { read: offProbe.status, send: offPost.status });
 await owner.getByRole("button", { name: "Switch the form on" }).click();
 await owner.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
-ok("J-26 W1: the Owner switches the form on by screens (stored on; one audit line, before false, after true)", sql(`select enabled from fo_web_form where id = '${formId}'`) === "t" && sql(`select concat_ws('|', count(*), min(detail->>'before'), min(detail->>'after')) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`) === "1|false|true" && await owner.getByText("This form is off").count() === 0);
+ok("J-26 W1: the Owner switches the form on by screens (stored on; one audit line, before false, after true)", sql(`select enabled from fo_web_form where id = '${formId}'`) === "t" && sql(`select concat_ws('|', count(*), min(detail->>'enabled_before'), min(detail->>'enabled_after')) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`) === "1|false|true" && await owner.getByText("This form is off").count() === 0);
 await owner.getByLabel("Site 1", { exact: true }).fill(`${SITE}/contact`);
 await owner.getByRole("button", { name: "Save sites" }).click();
 await owner.getByText("Enter only the site, without a page").first().waitFor({ timeout: 15_000 });

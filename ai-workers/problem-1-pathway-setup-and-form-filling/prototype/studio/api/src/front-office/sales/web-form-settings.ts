@@ -10,8 +10,8 @@
 //          The row and one audit line (entity fo_web_form) are written in one transaction.
 //   enabled (R1.26, QA-605; the tech lead's ruling 20 Nov: switching the form on is part of R1.26): switches one form on
 //          or off. The same version check (409 STALE), the same transaction; one audit line per change
-//          (fo.web_form.enabled_changed) with the state before and after in full (`before`, `after`: booleans, no
-//          personal data). The same state again changes nothing: no new version, no audit line. A form that is off
+//          (fo.web_form.enabled_changed) with the state before and after in full (the port's `before`, `after`:
+//          { enabled }, stored as enabled_before / enabled_after). The same state again changes nothing: no new version, no audit line. A form that is off
 //          refuses public sends as before (public.ts: "This form is not available"). A form with no consent wording
 //          cannot be switched on (the table's fo_web_form_consent_check): 422 on `enabled` in plain words, never a 500
 //          (review Major; a new firm's form starts off with no wording, firm-seed.ts).
@@ -140,7 +140,8 @@ export async function saveEnabled(db: PrismaClient, audit: AuditPort<Tx>, ctx: S
     await audit.record(tx, {
       firmId: ctx.firmId, actor: actorOf(ctx), action: "fo.web_form.enabled_changed", entity: "fo_web_form", entityKey: formId,
       summary: `Web form "${before.name}": switched ${enabled ? "on" : "off"} (was ${before.enabled ? "on" : "off"}).`,
-      detail: { before: before.enabled, after: after.enabled },
+      // R1.8 (QA-594): the form's state before and after, in full (stored as enabled_before / enabled_after).
+      before: { enabled: before.enabled }, after: { enabled: after.enabled },
     });
     return view(after, origin);
   });

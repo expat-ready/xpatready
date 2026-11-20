@@ -195,9 +195,17 @@ ok("QA-605 fail (review Major) on the screen: with no consent wording the switch
 await shot(o, "qa605-00-no-wording-1440");
 sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
 await o.reload(); await o.getByRole("button", { name: "Switch the form off" }).waitFor({ timeout: 15_000 });
+// Full run 44804722228 (CI): axe caught the switch mid-transition: the same button animated from the secondary look
+// (white fill, dark text) to primary (blue fill, white text), and halfway both are mid-tones. Every transition is held
+// at its midpoint here (100 s long, started 50 s in), so every machine sees what a slow one saw: a state change must
+// never show the switch in an unreadable colour.
+const slow = await o.addStyleTag({ content: "*, *::before, *::after { transition-duration: 100s !important; transition-delay: -50s !important; }" });
 await o.getByRole("button", { name: "Switch the form off" }).click();
 await o.getByText(/^Switched off\./).waitFor({ timeout: 15_000 });
-const offLine = sql(`select concat_ws('|', actor, detail->>'before', detail->>'after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
+await o.waitForTimeout(300);   // a few frames, so a transition (if any) has begun at its midpoint
+await axe("QA-605 settings, form off (any transition held at its midpoint)", o);
+await slow.evaluate((el) => el.remove());
+const offLine = sql(`select concat_ws('|', actor, detail->>'enabled_before', detail->>'enabled_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
 ok("QA-605: the Owner switches the form off by screens: stored off, the page says Off, one audit line by the Owner with before true and after false", enabledNow() === "f" && await o.getByText("This form is off").isVisible() && onoffAudits() === 1 && /^staff:.+\|true\|false$/.test(offLine), { enabled: enabledNow(), offLine });
 const offSend = await fetch(`${BASE}/api/public/forms/${token}`);
 const offPost = await fetch(`${BASE}/api/public/forms/${token}/submissions`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
@@ -207,7 +215,7 @@ await axe("QA-605 settings, form off", o); await shot(o, "qa605-01-off-1440");
 await o.getByRole("button", { name: "Add a site" }).click(); await o.getByLabel("Site 3", { exact: true }).fill("https://typed.example.org");
 await o.getByRole("button", { name: "Switch the form on" }).click();
 await o.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
-const onLine = sql(`select concat_ws('|', detail->>'before', detail->>'after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
+const onLine = sql(`select concat_ws('|', detail->>'enabled_before', detail->>'enabled_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
 ok("QA-605: the Owner switches the form on by screens: stored on, one more audit line with before false and after true; a site being typed is kept", enabledNow() === "t" && onoffAudits() === 2 && onLine === "false|true" && await o.getByText("This form is off").count() === 0 && await o.getByLabel("Site 3", { exact: true }).inputValue() === "https://typed.example.org", { onLine, audits: onoffAudits() });
 await o.getByRole("button", { name: /Remove site 3/ }).click();
 // Stale on the screen: someone else switches it off first; this screen's switch says so, Reload shows theirs.

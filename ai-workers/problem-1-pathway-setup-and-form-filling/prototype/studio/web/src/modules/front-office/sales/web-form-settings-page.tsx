@@ -127,7 +127,9 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
     <div className="flex flex-col gap-3" role="group" aria-labelledby={`onoff-${form.id}`}>
       <h3 id={`onoff-${form.id}`} className="text-sm font-semibold">On or off</h3>
       <p className="text-sm text-text-muted">{form.enabled ? "The form is on: visitors can send enquiries, on your site and on the hosted page. Switching it off stops new enquiries at once." : "Switch it on to take enquiries, on your site and on the hosted page. It takes effect at once."}</p>
-      <div><Button ref={button} type="button" size="sm" variant={form.enabled ? "secondary" : "default"} busy={busy} onClick={flip}>{form.enabled ? "Switch the form off" : "Switch the form on"}</Button></div>
+      {/* Keyed on the state: "Switch the form on" is a new button, never the old one animating from the secondary look to
+          primary through mid-tones an Owner cannot read (full run 44804722228, axe color-contrast). */}
+      <div><Button key={form.enabled ? "on" : "off"} ref={button} type="button" size="sm" variant={form.enabled ? "secondary" : "default"} busy={busy} onClick={flip}>{form.enabled ? "Switch the form off" : "Switch the form on"}</Button></div>
       {said ? <Notice tone={said.tone} action={said.stale ? <Button type="button" size="sm" variant="secondary" onClick={() => qc.invalidateQueries({ queryKey: ["fo", "web-forms"] })}>Reload</Button> : undefined}>{said.text}</Notice> : null}
     </div>
   );
