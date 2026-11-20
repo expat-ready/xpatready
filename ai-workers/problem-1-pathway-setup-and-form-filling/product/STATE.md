@@ -22,16 +22,8 @@ Earlier block (Lead 100 → 1) word for word in `ai-workers/problem-1-pathway-se
 |---|---|---|
 | S10-A168 | 10 Nov to 18 Nov asks | pointer rows word for word in `history/STATE-2026-11-19-0755-lead86s2-asks-pointer-rows-S10-A168.md` |
 | A169-A193 | 18-19 Nov asks (A182 open; A181 founder's clean-up) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1120-lead87s2-asks-A169-A193-rows.md` |
-| A202-A203 | 19 Nov 12:0x-12:1x IST: the Lead starts walks.yml runs for qa lanes (standing); P-732 chosen then held | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1228-lead90s2-asks-A202-A203-rows.md` |
-| A199-A201 | 19 Nov 11:5x IST: spot-check delegated (done), Action pilot (21 Nov), why not 10 a day (→ P-731) | row word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1211-lead90s2-asks-A199-A201-row.md` |
-| A205-A206 | 19 Nov ~12:35 IST: "take one decision ... and run" | → P-734 ; ENF-733 started; A206 12:42 IST "You have all my approvals of which you asked about. So you do yourself.": lanes and standby started; words in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1238-lead91s2-ask-A205-words.md` |
-| A208-A211 | 19 Nov 15:19-15:26 IST: label both; AWS open; PF-8a, FO-9a started | row word for word in `history/STATE-2026-11-19-1820-lead94s2-ask-A208-row.md` |
-| A222 | 20 Nov 11:5x IST: industry vs us (RC, what applies), scale 50-100 firms, 1-10 staff each | answered: engineering map artifact; → P-755 |
-| A221 | 20 Nov 10:5x IST: CI minutes public vs Enterprise, support reply, pipeline green, lanes in app view, over-engineering | answered 11:0x: public = Actions minutes free (Nov so far 135,824 Linux min, gross US$815, net US$0; private would bill past 50,000); GitHub ticket #5023043 answered (new-enterprise concurrency rises gradually, routed for full limit, ghost queued runs to be cleared), no action owed; red batches cause = FO-3st2 date-dependent suite, fix lane started; #2363 labelled |
-| A220 | 20 Nov 10:3x IST: make fixes live, agile Lead enforced in code, backlog one question at a time, resources and 10-hour forecast | → P-751; tooling lane started; questions in progress |
-| A219 | 20 Nov 08:5x IST: staging, dev and AWS after Wave 1/2, at 30-40 Proven ("let's first meet that 30") | ticked → P-750; plan to the founder at Proven 30 |
-| A217 | 20 Nov 00:5x IST: plan, monitoring, approvals, proof in 6/10 h, 2-3 standbys | answered 00:5x; requeues and relabels on unchanged approved heads pre-approved for the night (#2315 requeued); 01:0x: "work autonomously, whatever it takes", browser on GitHub as fallback (P-699); Lead 99, 100 started |
-| A216 | 19 Nov 20:4x IST: key numbers on today's pipeline | answered; row word for word in `history/STATE-2026-11-20-0120-lead97s2-A216-row.md` |
+| A223-A225 | 20 Nov 14:0x-14:3x IST: make the full report live; full report; "Show more" enforced?, 5/10-min check, red after approval, 8 builders + 4 qa | #2462 fixes pushed, label after #2464; full report given 14:20; answered 14:4x: 10-min check (P-761), archive to stay under 50, under-cap flag to add; Wave 2 starts asked |
+| A199-A222 | 19-20 Nov asks | rows word for word in `history/STATE-2026-11-20-1440-lead2s3-asks-A199-A222.md` |
 | A196-A215 | 19 Nov asks | rows word for word in `history/STATE-2026-11-20-0155-lead97s2-asks-A196-A215.md` |
 | A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
 
