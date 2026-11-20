@@ -18,6 +18,9 @@ export class ConflictChecksController {
   @Post("conflict-checks") @PermissionKeys("agent/conflict:check")
   record(@Req() r: R, @Body() b: B) { return this.svc.record(staffOf(r), b ?? {}); }
 
+  @Get("conflict-checks/:id/for-confirmation") @PermissionKeys("agent/conflict:check")
+  forConfirmer(@Req() r: R, @Param("id") id: string) { return this.svc.forConfirmer(staffOf(r), id); }
+
   @Post("conflict-checks/:id/confirm") @HttpCode(200) @PermissionKeys("agent/conflict:check")
   confirm(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.confirm(staffOf(r), id, b ?? {}); }
 

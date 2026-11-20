@@ -27,14 +27,15 @@ type Tx = Prisma.TransactionClient;
 type Clock = { now(): number };
 const RESULTS = ["NO_CONFLICT", "POTENTIAL_CONFLICT", "CONFLICT_CANNOT_ACT"] as const;
 type Result = (typeof RESULTS)[number];
-/** Rows asked of each match function (M-1: visible rows come first, so a hidden match must never fall past the limit). */
-const LIMIT = 501;
+/** Rows asked of each match function (M-1: visible rows come first, so a hidden match must never fall past the limit);
+ *  at most STORED visible matches are kept on a check, the strongest first (the table holds 500 and 256 KiB: R2-M3). */
+const LIMIT = 5001, STORED = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const NOT_SEARCHED = "Other parties on cases are not searched yet (the case side's party search is not connected).";
 export const HIDDEN_LINE = "Matches with records you cannot open: a manager who may see them confirms this check.";
 const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const notFound = (what = "prospect"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
-const tooMany = (): never => problem(422, "Too many matches", "More than 500 records match this client: the check cannot be complete. Ask the tech lead.", { code: "TOO_MANY_MATCHES" });
+const tooMany = (): never => problem(422, "Too many matches", "More than 5,000 records match this client: the check cannot be complete. Ask the tech lead.", { code: "TOO_MANY_MATCHES" });
 const forbidden = (detail: string): never => problem(403, "Not allowed", detail, { code: "FORBIDDEN" });
 /** Stored match, FO-13's shape (fo_compliance_matches_ok). */
 type StoredMatch = { source: "FRONT_OFFICE" | "CASE"; kind: string; recordId: string; displayName?: string; matchedOn: string[]; score?: number; caseId?: string; caseNumber?: string; clientId?: string; roleOnCase?: string };
@@ -51,15 +52,16 @@ export class ConflictChecks {
   private async engagement(ctx: StaffContext, prospectId: unknown) {
     if (typeof prospectId !== "string" || !UUID.test(prospectId)) return bad("prospectId", "prospectId: the prospect the check is for (a uuid).");
     const p = await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: prospectId.toLowerCase() }), select: { id: true, ownerStaffId: true, wonVia: true } });
-    if (!p || (!seesEveryMatch(ctx, await visibilityOf(this.db, ctx)) && p.ownerStaffId !== ctx.staffId)) return notFound();
+    if (!p || (!(await visibilityOf(this.db, ctx)).seesAll && p.ownerStaffId !== ctx.staffId)) return notFound();
     const party = await partyOf(this.db, ctx.firmId, p.id) ?? notFound("party on this prospect");
     return { prospect: p, party };
   }
 
   /** The search, read-only: the visible matches in FO-13's shape and how many the checker may not see. */
-  private async search(ctx: StaffContext, party: Party, t: Terms) {
+  private async search(ctx: StaffContext, party: Party, t: Terms, asConfirmer = false) {
     if (!t.name && !t.email && !t.phone) problem(422, "Check the details", "The client has no name, email or phone to search.", { code: "NOTHING_TO_SEARCH" });
-    const v0 = await visibilityOf(this.db, ctx), every = seesEveryMatch(ctx, v0), vis = every ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
+    // A confirmer (sees all, or the firm's Owner or Admin) searches seeing every front-office record (R2-M2: only to confirm).
+    const v0 = await visibilityOf(this.db, ctx), vis = asConfirmer && seesEveryMatch(ctx, v0) ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
     let hidden = 0;
     const email = normaliseEmail(t.email), phone = t.phone ? phoneE164Exact(t.phone) : null;
     if (party.kind === "PERSON") {
@@ -79,7 +81,7 @@ export class ConflictChecks {
         const [kind, rel] = mine.some((x) => x.stage.kind === "WON") ? ["PROSPECT", "client"] : mine.length ? ["PROSPECT", "prospect"] : contacts.has(r.id) ? ["COMPANY_CONTACT", "company contact"] : leads.has(r.id) ? ["LEAD", "lead"] : ["PERSON", "person"];
         const reasons: MatchReason[] = [...(r.by_email ? [{ key: "EMAIL" as const }] : []), ...(r.by_phone ? [{ key: "PHONE" as const }] : []), ...(r.sim >= NAME_THRESHOLD ? [{ key: "NAME" as const, similarity: Math.min(1, r.sim) }] : [])];
         const nm = clean([r.given_names, r.family_name].filter(Boolean).join(" "), 280) ?? "(no name)";
-        out.push({ source: "FRONT_OFFICE", kind, recordId: r.id, displayName: `${nm} · ${rel}`, matchedOn: reasons.map((x) => x.key), score: matchScore(reasons) / 100 });
+        out.push({ source: "FRONT_OFFICE", kind, recordId: r.id, displayName: `${[...nm].slice(0, 100).join("")} · ${rel}`, matchedOn: reasons.map((x) => x.key), score: matchScore(reasons) / 100 });
       }
     } else if (t.name) {
       const rows = (await this.db.$queryRaw<{ id: string; operating_name: string; sim: number }[]>`
@@ -88,14 +90,15 @@ export class ConflictChecks {
       const seer: Seer = { see: (o) => vis.seesAll || o === ctx.staffId, seesAll: vis.seesAll, actor: actorOf(ctx) };
       const seen = new Set((await this.db.foCompany.findMany({ where: firmScope(ctx.firmId, { id: { in: rows.map((r) => r.id) } }), select: { id: true, createdBy: true, prospects: { select: { ownerStaffId: true } } } })).filter((c) => seesCompany(seer, c)).map((c) => c.id));
       hidden += rows.filter((r) => !seen.has(r.id)).length;
-      for (const r of rows.filter((x) => seen.has(x.id))) out.push({ source: "FRONT_OFFICE", kind: "COMPANY", recordId: r.id, displayName: clean(r.operating_name, 300) ?? "(no name)", matchedOn: ["NAME"], score: Math.floor(Math.min(1, r.sim) * 10000) / 10000 });
+      for (const r of rows.filter((x) => seen.has(x.id))) out.push({ source: "FRONT_OFFICE", kind: "COMPANY", recordId: r.id, displayName: clean(r.operating_name, 120) ?? "(no name)", matchedOn: ["NAME"], score: Math.floor(Math.min(1, r.sim) * 10000) / 10000 });
     }
     if (this.parties) {
       const c = await this.parties.search({ firmId: ctx.firmId, staffId: ctx.staffId }, { name: t.name, email, phone });
       hidden += c.hidden_count;
-      for (const m of c.matches) out.push({ source: "CASE", ...m, displayName: clean(m.displayName, 300) ?? "(no name)", score: Math.floor(m.score * 10000) / 10000 });
+      for (const m of c.matches) out.push({ source: "CASE", ...m, displayName: clean(m.displayName, 120) ?? "(no name)", score: Math.floor(m.score * 10000) / 10000 });
     }
-    return { matches: out.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)), hidden, scope: this.parties ? null : NOT_SEARCHED };
+    const sorted = out.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return { matches: sorted.slice(0, STORED), notStored: Math.max(0, sorted.length - STORED), hidden, scope: this.parties ? null : NOT_SEARCHED };
   }
 
   /** What a check shows: the searched terms, the visible matches grouped by case for CASE ones, never the hidden ones. */
@@ -132,7 +135,7 @@ export class ConflictChecks {
   async preview(ctx: StaffContext, body: Record<string, unknown>) {
     const { party } = await this.engagement(ctx, body?.prospectId);
     const t = await termsOf(this.db, ctx.firmId, party), s = await this.search(ctx, party, t);
-    return { searched: t, matches: s.matches, hiddenCount: s.hidden, hiddenLine: s.hidden ? HIDDEN_LINE : null, scope: s.scope };
+    return { searched: t, matches: s.matches, notStored: s.notStored, hiddenCount: s.hidden, hiddenLine: s.hidden ? HIDDEN_LINE : null, scope: s.scope };
   }
 
   /** Runs and records one check (201): the search again, server-side, and the result in the same insert. Idempotent by
@@ -146,16 +149,17 @@ export class ConflictChecks {
     if (had) {
       // A replay is the same request (M-2): the same person, prospect, result and disclosure; anything else is refused.
       const o0 = this.outcome(b, false);
-      return had.checkedBy === ctx.staffId && had.prospectId === prospect.id && had.result === o0.result && had.disclosureText === o0.disclosureText ? { ...this.view(had, ctx, false), scope: this.parties ? null : NOT_SEARCHED } : reused();
+      const sameOutcome = (had.result === o0.result && had.disclosureText === o0.disclosureText) || (o0.result === null && had.hiddenCount > 0);   // R2-m2: confirmed since
+      return had.checkedBy === ctx.staffId && had.prospectId === prospect.id && sameOutcome ? { ...this.view(had, ctx, false), scope: this.parties ? null : NOT_SEARCHED } : reused();
     }
     const t = await termsOf(this.db, ctx.firmId, party), s = await this.search(ctx, party, t);
     const o = this.outcome(b, s.hidden === 0);
     // M1 (brief): with hidden matches the check is written with no result; the confirmer, who sees them, gives it.
     if (s.hidden && o.result !== null) problem(409, "Needs a confirmation", `${HIDDEN_LINE} Record the check without a result.`, { code: "NEEDS_CONFIRMATION" });
-    const now = new Date(this.clock.now());
     try {
       await this.db.$transaction(async (tx) => {
         await lockParty(tx, ctx.firmId, party);   // m-3: a win waiting on this party sees this check
+        const now = new Date(this.clock.now());   // R2-m1: the time it is written, after any wait for the lock
         await tx.foConflictCheck.create({ data: { id, firmId: ctx.firmId, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, prospectId: prospect.id,
           searchedName: t.name, searchedEmail: t.email, searchedPhone: t.phone, matches: s.matches as Prisma.InputJsonValue, hiddenCount: s.hidden, result: o.result, disclosureText: o.disclosureText, checkedBy: ctx.staffId, checkedAt: now } });
         await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
@@ -167,7 +171,7 @@ export class ConflictChecks {
       throw e;
     }
     const c = await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id }) });
-    return { ...this.view(c, ctx, false), scope: s.scope };
+    return { ...this.view(c, ctx, false), notStored: s.notStored, scope: s.scope };
   }
 
   /** Confirms a check with hidden matches: another active staff member who may see them (sees every record, or the
@@ -181,7 +185,7 @@ export class ConflictChecks {
     if (!seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
     // M3: the confirmer sees the matches: the same terms searched again with their visibility hide nothing.
     const party = { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party;
-    const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
+    const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, true);
     if (seen.hidden) forbidden("Some of this check's matches are hidden from you too (on cases you cannot open): a person who sees them confirms it.");
     const o = this.outcome(body ?? {}, c.result === null);
     if (c.result !== null && o.result !== null && o.result !== c.result) problem(409, "Not possible now", `This check already says ${c.result}; it never changes. Record a new check instead.`, { code: "RESULT_FIXED" });
@@ -195,11 +199,21 @@ export class ConflictChecks {
     return { ...this.view(await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: c.id }) }), ctx, true), matchesNow: seen.matches };
   }
 
+  /** A check waiting for its confirmation, for one who may confirm it (not its checker; sees all, or the firm's Owner or
+   *  Admin): the check and its terms searched again seeing every record, so the confirmer sees what they confirm (M3, R2-M2). */
+  async forConfirmer(ctx: StaffContext, id: string) {
+    if (typeof id !== "string" || !UUID.test(id)) return notFound("check");
+    const c = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) }) ?? notFound("check");
+    if (c.hiddenCount === 0 || c.confirmedBy || c.checkedBy === ctx.staffId || !seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) return notFound("check waiting for your confirmation");
+    const s = await this.search(ctx, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, true);
+    return { ...this.view(c, ctx, true), matchesNow: s.matches, hiddenNow: s.hidden };
+  }
+
   /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for). */
   async list(ctx: StaffContext, prospectId: string) {
     const { party } = await this.engagement(ctx, prospectId);
     const rows = await this.db.foConflictCheck.findMany({ where: firmScope(ctx.firmId, party.kind === "PERSON" ? { personId: party.id } : { companyId: party.id }), orderBy: [{ checkedAt: "desc" }, { id: "desc" }] });
-    const every = seesEveryMatch(ctx, await visibilityOf(this.db, ctx));
+    const every = (await visibilityOf(this.db, ctx)).seesAll;
     return { checks: rows.map((r) => this.view(r, ctx, every)), scope: this.parties ? null : NOT_SEARCHED };
   }
 

@@ -610,7 +610,13 @@ export class Retainers {
     const stored = await this.files.put(ctx.firmId, offlineKey, file!.bytes, "application/pdf");
     let prospectWon = false;
     const filed = copy ? r.currentVersion + 1 : r.currentVersion;
+    const filedValues = copy ? copy.values : (await this.db.foRetainerVersion.findFirstOrThrow({ where: { firmId: ctx.firmId, retainerId: r.id, n: k } })).mergeValues as Record<string, unknown>;
     await this.tx(async (tx) => {
+      if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (review r2, r3): the party's lock first, as Send takes it; the gate and the disclosure again
+        const party = await partyOf(tx, ctx.firmId, r.prospectId);
+        if (party) await lockParty(tx, ctx.firmId, party);
+        assertDisclosurePrinted(await clearance(tx, ctx.firmId, r.prospectId), filedValues);
+      }
       const now = new Date(this.clock.now());
       let ended: number | null = null, from = r.status;
       if (copy) {

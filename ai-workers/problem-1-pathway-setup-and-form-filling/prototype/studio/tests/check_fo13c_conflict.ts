@@ -170,19 +170,23 @@ try {
   const rC3 = await call("POST", `conflict-checks/${id3}/confirm`, R.token, { result: "NO_CONFLICT" }), bC3 = await call("POST", `conflict-checks/${id3}/confirm`, S.token, { result: "NO_CONFLICT" });
   ok("FO-13c DW6 fail: a check with hidden matches is written with no result; its checker confirming → 403; a Case Officer → 403; the Owner from whom the case party is hidden too → 403 (review M3); firm B → 404",
     c3.status === 201 && c3.body.result === null && c3.body.needsConfirmation === true && selfC.status === 403 && oC3.status === 403 && rC3.status === 403 && /hidden from you too/.test(rC3.body.detail) && bC3.status === 404, [c3.body, selfC.status, oC3.status, rC3.status, bC3.status]);
-  const adList = await call("GET", `prospects/${X3}/conflict-checks`, AD.token), adPv = await call("POST", "conflict-checks/preview", AD.token, { prospectId: X3 });
-  ok("FO-13c DW6 pass (review M3): the firm's Admin, who does not own the prospect, reads the check and searches its terms again seeing every match (both hidden ones named, none hidden)",
-    adList.status === 200 && adList.body.checks[0].id === id3 && adPv.status === 200 && adPv.body.hiddenCount === 0 && (JSON.stringify(adPv.body.matches).match(/Fenna Hidden Sample/g) ?? []).length === 2, [adList.status, adPv.body]);
+  const adFor = await call("GET", `conflict-checks/${id3}/for-confirmation`, AD.token), tFor = await call("GET", `conflict-checks/${id3}/for-confirmation`, T.token);
+  const adList = await call("GET", `prospects/${X3}/conflict-checks`, AD.token), adPv = await call("POST", "conflict-checks/preview", AD.token, { prospectId: X3 }), adRec = await check(X3, { result: "CONFLICT_CANNOT_ACT" }, AD.token);
+  ok("FO-13c DW6 pass (review M3): the firm's Admin reads the check waiting for confirmation with its terms searched again seeing every match (both hidden ones named, none hidden); its checker cannot (404)",
+    adFor.status === 200 && adFor.body.id === id3 && adFor.body.hiddenNow === 0 && (JSON.stringify(adFor.body.matchesNow).match(/Fenna Hidden Sample/g) ?? []).length === 2 && tFor.status === 404, [adFor.body, tFor.status]);
+  ok("FO-13c DW6 fail (break R2-M2): beyond confirming, the Admin has no reach into a prospect they cannot see: its list, preview and a new check → 404",
+    adList.status === 404 && adPv.status === 404 && adRec.status === 404, [adList.status, adPv.status, adRec.status]);
   const sx = await send(await (async () => (await svc.draft(ctxT, X3, { templateId: plain.id, fees: [{ label: "Fee", amountMinor: 100000, when: "ON_SIGNING" }] })).id)(), T.token);
   ok("FO-13c DW6 fail: Send while the check waits for its confirmation → 409 CONFLICT_CHECK_UNCONFIRMED", sx.status === 409 && sx.body.code === "CONFLICT_CHECK_UNCONFIRMED", sx);
   const adC = await call("POST", `conflict-checks/${id3}/confirm`, AD.token, { result: "NO_CONFLICT" }), again = await call("POST", `conflict-checks/${id3}/confirm`, AD.token, { result: "NO_CONFLICT" });
   ok("FO-13c DW6 pass: the firm's Admin, who sees every match, confirms once (result recorded with who and when); a second confirmation → 409",
     adC.status === 200 && adC.body.result === "NO_CONFLICT" && adC.body.confirmedBy === AD.id && !!adC.body.confirmedAt && again.status === 409, [adC, again.status]);
   // Review M2: a reader who did not run the check (the prospect handed to another) reads it with the matches counted, not named.
+  const rList = await call("GET", `prospects/${X2}/conflict-checks`, R.token);
   sql(`update fo_prospect set owner_staff_id = '${T.id}' where id = '${X2}'`);
-  const tList = await call("GET", `prospects/${X2}/conflict-checks`, T.token), rList = await call("GET", `prospects/${X2}/conflict-checks`, R.token);
-  ok("FO-13c DW2 fail (review M2): the prospect's new owner reads R's check with no match named, all counted as hidden; R (the checker) still reads the names",
-    tList.status === 200 && tList.body.checks.every((c: any) => c.matches.length === 0 && c.hiddenCount >= 2) && /client/.test(JSON.stringify(rList.body.checks[0].matches)), [tList.body, rList.status]);
+  const tList = await call("GET", `prospects/${X2}/conflict-checks`, T.token), rGone = await call("GET", `prospects/${X2}/conflict-checks`, R.token);
+  ok("FO-13c DW2 fail (review M2): the prospect's new owner reads R's check with no match named, all counted as hidden; R (the checker) read the names while it was theirs, and no longer sees the prospect (404)",
+    tList.status === 200 && tList.body.checks.every((c: any) => c.matches.length === 0 && c.hiddenCount >= 2) && /client/.test(JSON.stringify(rList.body.checks[0].matches)) && rGone.status === 404, [tList.body, rList.status, rGone.status]);
   sql(`update fo_prospect set owner_staff_id = '${R.id}' where id = '${X2}'`);
   ok("FO-13c DW6 fail (FO-13's triggers): changing a recorded result or what was searched → refused by the database; deleting a check → refused",
     refused(`update fo_conflict_check set result = 'CONFLICT_CANNOT_ACT' where id = '${c1.body.id}'`, /never changes/) && refused(`update fo_conflict_check set searched_email = 'x@y.zz' where id = '${c1.body.id}'`, /never changes/)
@@ -234,6 +238,10 @@ try {
   await svc.signedOffline(ctxR, r5d, { expectedVersion: "2", reason: "Signed at the office" }, pdf());
   ok("FO-13c DW4 pass (break B-1): Signed offline of version 2, which prints it, makes the client", won(X5d));
 
+  // Break R2-M1: the disclosure is printed, never a condition: a template using it as a section is refused at upload.
+  const asSection = await refusal(() => svc.uploadTemplate(ctxR, { name: "FO-13c section" }, { bytes: buildDocx(["Client {client.name}", "{^conflict.disclosure}No conflict.{/conflict.disclosure}", "{#fees}", "{label}: {amount}", "{/fees}"]), size: 1000 }));
+  ok("FO-13c DW4 fail (break R2-M1): a template with {^conflict.disclosure}…{/conflict.disclosure} is refused, naming it", !!asSection && /conflict\.disclosure-as-a-section/.test(JSON.stringify(asSection)), asSection);
+
   // ---------------------------------------------------------------------------------------------------------- DW5
   const P6 = person(R.id, "Jules"), X6 = prospectOf(P6), r6 = await draft(X6);
   await check(X6, { result: "NO_CONFLICT" });
@@ -267,9 +275,17 @@ try {
   ok("FO-13c DW2 fail (break M-1): behind 60 visible same-name matches, the hidden same-email match is still counted, so NO_CONFLICT waits for a confirmation",
     pv10.status === 200 && pv10.body.hiddenCount === 1 && pv10.body.matches.length === 60 && c10.status === 409 && c10.body.code === "NEEDS_CONFIRMATION", [pv10.body?.hiddenCount, pv10.body?.matches?.length, c10.status]);
 
+  // Break R2-M3: a client with very many matches can still be checked: the 200 strongest are stored, the rest counted.
+  const P11 = person(R.id, "Rory Crowd", { email: "rory.crowd@example.com" }), X11 = prospectOf(P11);
+  sql(`with p as (insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) select gen_random_uuid(), '${A}', 'Rory Crowd', 'Sample', 'rory.' || g || '@example.com', 'test', now() from generate_series(1, 210) g returning id)
+    insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) select gen_random_uuid(), '${A}', id, 'MANUAL', 'WEBSITE', '${R.id}', 'test', now() from p`);
+  const c11 = await check(X11, { result: "NO_CONFLICT" });
+  ok("FO-13c DW2 pass (break R2-M3): 210 matches → the check is recorded with the 200 strongest stored and notStored 10, never a 500 or a dead end",
+    c11.status === 201 && c11.body.matches.length === 200 && c11.body.notStored === 10, [c11.status, c11.body?.matches?.length, c11.body?.notStored]);
+
   // A Corporate prospect: the party is its company (FO-1a's two kinds of party).
   const CO1 = u(), CO2 = u(), PCc = person(R.id, "Lane Contact"), XC = u();
-  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${CO1}', '${A}', 'Maple Sample Bakery Ltd', 'maple sample bakery', 'test', now()), ('${CO2}', '${A}', 'Maple Sample Bakery Inc', 'maple sample bakery', 'test', now());
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${CO1}', '${A}', 'Maple Sample Bakery Ltd', 'maple sample bakery', 'test', now()), ('${CO2}', '${A}', 'Maple Sample Bakery Inc', 'maple sample bakery', 'staff:${R.id}', now());
     insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO1}', '${PCc}', 'PRIMARY', 'test');
     update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where person_id = '${PCc}';
     insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)

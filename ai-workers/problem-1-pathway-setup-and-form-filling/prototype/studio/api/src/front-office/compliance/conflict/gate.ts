@@ -7,6 +7,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { personNameKey } from "../../../../../ports/matching.ts";
 import { normaliseCompanyName } from "../../sales/corporate/match.ts";
+import { phoneE164Exact } from "../../duplicates/phone.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
 import { problem } from "../../../platform/identity/keys.ts";
 
@@ -59,7 +60,8 @@ export async function termsOf(db: Db, firmId: string, party: Party): Promise<Ter
  *  company key (m-6), the email exactly, the phone by its digits (a format change alone is not a change). */
 const same = (kind: Party["kind"], a: Terms, b: Terms) => {
   const key = (n: string | null) => (kind === "COMPANY" ? normaliseCompanyName(n ?? "") : personNameKey(n, ""));
-  return key(a.name) === key(b.name) && (a.email ?? null) === (b.email ?? null) && (a.phone ?? "").replace(/\D/g, "") === (b.phone ?? "").replace(/\D/g, "");
+  const tel = (p: string | null) => (p ? phoneE164Exact(p) ?? p.replace(/\D/g, "") : "");   // R2-m3: the number as the search reads it
+  return key(a.name) === key(b.name) && (a.email ?? null) === (b.email ?? null) && tel(a.phone) === tel(b.phone);
 };
 
 /** One check or win at a time per party (m-3): a check being saved is seen by the win that waits for it. */
