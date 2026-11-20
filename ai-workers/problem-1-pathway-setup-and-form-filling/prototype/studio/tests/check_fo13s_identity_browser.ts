@@ -149,8 +149,12 @@ try {
   for (let i = 0; i < 12; i++) { await o.keyboard.press("Tab"); if (await o.evaluate(() => document.activeElement?.textContent === "Save check")) break; }
   await o.keyboard.press("Enter");
   await drawer(o).waitFor({ state: "detached", timeout: 15_000 });
+  // Focus returns after useReturnFocus's 60 ms timer, which can be later than the drawer's detach: wait for it (up to 2 s).
+  const recordBtn = await panel(o).getByRole("button", { name: "Record a check" }).elementHandle();
+  const focusBack = await o.waitForFunction((e) => e === document.activeElement, recordBtn, { timeout: 2000 }).then(() => true, () => false);
+  const kb = { rows: rows(), focusBack, first: await panel(o).locator("[data-check]").first().innerText(), focus: await o.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)) };
   ok("FO-13s keyboard pass: a check typed and saved with the keyboard only (Tab to Save check, Enter) lists first, and focus returns to Record a check",
-    rows() === 3 && /Seen at the office/.test(await panel(o).locator("[data-check]").first().innerText()) && await panel(o).getByRole("button", { name: "Record a check" }).evaluate((e) => e === document.activeElement));
+    kb.rows === 3 && /Seen at the office/.test(kb.first) && kb.focusBack, kb);
   await panel(o).getByRole("button", { name: "Record a check" }).click(); await drawer(o).waitFor(); await o.keyboard.press("Escape");
   ok("FO-13s keyboard: Escape closes an untouched panel without asking", (await drawer(o).count()) === 0);
 

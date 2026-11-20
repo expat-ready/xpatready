@@ -7,7 +7,7 @@
 //   W3: it is listed (plain words, ···last 4, who checked) and Open copy saves the same bytes;
 //   W4: a retainer Send after the check answers no warning;
 //   W5: an expiry before the firm's today shows "This document has expired. Check a current one." on the field (FO-13i
-//       part 2's 422, the firm's own rule, P-735; Unconfirmed: no counsel), and nothing is stored.
+//       part 2's 422, the firm's own rule, P-735; Unconfirmed: no counsel), and nothing is stored; the server itself answers 422 on fields.documentExpiry (QA-510).
 // Scaffolding (P-33): no retainer screen is on main (FO-5s not built), so W1 and W4's Send goes through FO-5's real API
 // (template upload, draft, send) as the firm's Owner; everything else is by screens.
 // Run from prototype/ (US$0, no model call; HEADED=1 for a visible browser):
@@ -123,7 +123,11 @@ try {
   await drawer.getByLabel(/^Last 4/).fill("4K9Z");
   await drawer.getByLabel(/^Expiry date/).fill(LAST_YEAR);
   await drawer.getByLabel("Name", { exact: true }).check();
+  const refusal = o.waitForResponse((r) => r.request().method() === "POST" && /\/identity-checks$/.test(new URL(r.url()).pathname));
   await drawer.getByRole("button", { name: "Save check" }).click();
+  const refused = await refusal; const refusedBody = await refused.json().catch(() => null);
+  ok("J-110 W5: the server refuses the expired document as the basis (422 on fields.documentExpiry, FO-13i part 2, QA-510)",
+    refused.status() === 422 && JSON.stringify(refusedBody ?? {}).includes("documentExpiry"), { status: refused.status(), body: refusedBody });
   await drawer.locator("[data-error-summary]").waitFor({ timeout: 10_000 });
   ok("J-110 W5: an expiry before the firm's today shows the sentence on the field, the panel stays open and nothing is stored",
     (await drawer.getByText(EXPIRED, { exact: true }).count()) === 1 && (await drawer.getByLabel(/^Expiry date/).getAttribute("aria-invalid")) === "true" && (await rows()) === 1);
