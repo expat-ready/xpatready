@@ -7,7 +7,8 @@
 // 375 and 1440 px. R1.26 QA-605: the on/off switch: the Owner switches the form off and on by screens (one audit line
 // each, before and after in full; a switched-off form refuses public sends); a Read-only member is refused (403), a stale
 // version is 409 STALE on the API and on the screen, the same state again changes nothing, a malformed body is 422, a
-// form with no consent wording cannot be switched on (422 on its field, never a 500; review Major); while off the send
+// form with no consent wording is linked to the firm's current wording on switching on, and a firm with none is refused
+// (422 on its field, never a 500; QA-617); while off the send
 // door refuses too; focus stays on the switch (review m1).
 // Sample firms (PF-3, FO-1a seeds). US$0, live AI off.
 //   zsh studio/tools/isolated.sh screens_fo4w 4527 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4w_web_form_settings_browser.ts 4527 xr_studio_screens_fo4w
@@ -25,6 +26,7 @@ import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { ConsentStore } from "../api/src/platform/messages/consent/consent-store.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { embedSnippet } from "../web/src/modules/front-office/embed/snippet.ts";
+import { NO_WORDING, saveEnabled } from "../api/src/front-office/sales/web-form-settings.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4527), DBNAME = process.argv[3] ?? "xr_studio_screens_fo4w";
@@ -103,7 +105,12 @@ ok("FO-4w fail: a save naming an old version → 409 STALE in plain words, nothi
 
 // R1.26 QA-605: on/off by the API (who may, the version, the same state, the body).
 const enabledNow = () => sql(`select enabled from fo_web_form where id = '${formId}'`);
-const onoffAudits = () => Number(sql(`select count(*) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`));
+// Counted from a mark, so a block that adds lines (QA-617's link) can reset it and later counts stay as written.
+let mark = "-infinity";
+const onoffAudits = () => Number(sql(`select count(*) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' and at > '${mark}'`));
+const resetMark = () => { mark = sql(`select max(at)::text from audit_event`); };
+/** The firm's current consent wording: its newest published EMAIL marketing wording (as the booking page reads it). */
+const currentWording = () => sql(`select id from msg_consent_wording where firm_id = '${A}' and channel = 'EMAIL' and purpose = 'MARKETING' order by published_at desc, version desc limit 1`);
 const vNow = async () => (await api(tokens.owner, "GET", "/front-office/web-forms")).body?.forms.find((f: { id: string }) => f.id === formId)?.version as string;
 const readerPut = await api(tokens.reader, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
 const officerOff = await api(tokens.officer, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
@@ -117,11 +124,37 @@ const otherOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${other
 ok("QA-605 fail: \"yes\" for on/off or an extra field → 422; another firm's form → 404; nothing changed", badBody.status === 422 && !!badBody.body?.fields?.enabled && extra.status === 422 && otherOff.status === 404 && enabledNow() === "t" && onoffAudits() === 0, { bad: badBody.status, extra: extra.status, other: otherOff.status });
 const v1 = await vNow(), sameOn = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: v1 });
 ok("QA-605: switching on a form that is on changes nothing: same version, no audit line", sameOn.status === 200 && sameOn.body?.version === v1 && onoffAudits() === 0, sameOn.status);
-// A new firm's form: off, with no consent wording (firm-seed.ts). Switching it on is refused in plain words, never a 500.
+// QA-617: a new firm's form is off with no consent wording (firm-seed.ts). Switching it on links the firm's current
+// wording in the same save (never a database edit); the audit line shows the link before and after.
 sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
-const noWording = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: await vNow() });
-ok("QA-605 fail (review Major): a form with no consent wording cannot be switched on: 422 on its field in plain words, still off, no audit line", noWording.status === 422 && noWording.body?.code === "NO_CONSENT_WORDING" && /no consent wording/.test(String(noWording.body?.fields?.enabled)) && enabledNow() === "f" && onoffAudits() === 0, noWording.body);
-sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
+const linkOn = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: await vNow() });
+const linkLine = sql(`select concat_ws('|', detail->>'enabled_before', detail->>'enabled_after', coalesce(detail->>'consentWordingVersionId_before', 'null'), detail->>'consentWordingVersionId_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
+ok("QA-617: switching on a form with no consent wording links the firm's current wording (the newest EMAIL marketing one) in the same save: on, linked, one audit line with the link before (none) and after", linkOn.status === 200 && enabledNow() === "t" && sql(`select consent_wording_version_id from fo_web_form where id = '${formId}'`) === currentWording() && linkLine === `false|true|null|${currentWording()}` && onoffAudits() === 1, { status: linkOn.status, linkLine, current: currentWording() });
+const keepOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
+ok("QA-617: switching it off again keeps the linked wording (only on/off changes; the audit line names no wording change)", keepOff.status === 200 && sql(`select consent_wording_version_id from fo_web_form where id = '${formId}'`) === currentWording() && sql(`select detail ? 'consentWordingVersionId_after' from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`) === "f");
+sql(`update fo_web_form set enabled = true where id = '${formId}'`); resetMark();
+// QA-617 fail: a firm with no consent wording at all (a published wording can never be deleted, so a stand-in database
+// stands for that firm): the switch stays off, says why in plain words, writes nothing (422, never a 500).
+{
+  const writes: string[] = [];
+  const at = new Date("2026-11-20T00:00:00.000Z");
+  const tx = {
+    $executeRaw: async () => 1,
+    foWebForm: {
+      findFirst: async (q: { select: Record<string, boolean> }) => ("consentWordingVersionId" in q.select ? { consentWordingVersionId: null } : { id: formId, name: "Website enquiry form", enabled: false, allowedSites: [], publicToken: "t".repeat(32), updatedAt: at }),
+      updateMany: async () => { writes.push("fo_web_form"); return { count: 1 }; },
+      findFirstOrThrow: async () => { writes.push("read after"); return null; },
+    },
+    msgConsentWording: { findFirst: async () => null },
+  };
+  const standIn = { $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } as never;
+  const auditStandIn = { record: async () => { writes.push("audit"); } } as never;
+  const ctx = { staffId: "0c0c0c0c-0000-4000-8000-0000000000b1", firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
+  let refused: { status?: number; body?: Record<string, any> } = {};   // eslint-disable-line @typescript-eslint/no-explicit-any -- the answer read loosely in a check
+  try { await saveEnabled(standIn, auditStandIn, ctx, formId, { enabled: true, version: at.toISOString() }, BASE); }
+  catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => Record<string, unknown> }; refused = { status: x.getStatus?.(), body: x.getResponse?.() }; }
+  ok("QA-617 fail: a firm with no consent wording at all: the switch stays off, 422 NO_CONSENT_WORDING on its field in plain words, nothing written (no row change, no audit line)", refused.status === 422 && refused.body?.code === "NO_CONSENT_WORDING" && /no consent wording/.test(String(refused.body?.fields?.enabled)) && writes.length === 0, { refused, writes });
+}
 
 // The screen.
 const browser: Browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -187,13 +220,21 @@ await o.getByRole("button", { name: "Reload" }).click();
 await o.waitForFunction(() => (document.querySelectorAll<HTMLInputElement>('input[placeholder="https://www.example.com"]')[1]?.value ?? "") === "https://www.example.com", undefined, { timeout: 10_000 });
 ok("FO-4w: Reload shows the newest list and takes the \"someone else changed\" notice away", await o.getByLabel("Site 2", { exact: true }).inputValue() === "https://www.example.com" && await o.getByText("Someone else changed this form since you opened it").count() === 0);
 // R1.26 QA-605 on the screen: the Owner switches the form off, then on; one audit line each with before and after.
-// First, a form with no consent wording: the switch says why it stays off, on the screen, in plain words.
+// QA-617 on the screen: a form with no consent wording is switched on by the Owner; the firm's current wording is linked.
 sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
 await o.reload(); await o.getByRole("button", { name: "Switch the form on" }).click();
-await o.getByText("This form cannot be switched on yet: it has no consent wording").waitFor({ timeout: 15_000 });
-ok("QA-605 fail (review Major) on the screen: with no consent wording the switch says why the form stays off; nothing stored", enabledNow() === "f" && onoffAudits() === 0 && await o.getByText("Something went wrong").count() === 0);
+await o.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
+ok("QA-617 on the screen: the Owner switches on a form that had no consent wording; it is on and names the firm's current wording", enabledNow() === "t" && sql(`select consent_wording_version_id from fo_web_form where id = '${formId}'`) === currentWording() && onoffAudits() === 1);
+// QA-617 fail on the screen: when the server says the firm has no wording, the page shows its words on the switch and
+// the form stays off (the answer is the server's 422, taken from the stand-in above: no firm here lacks a wording).
+await o.route("**/api/front-office/web-forms/*/enabled", (r) => r.fulfill({ status: 422, contentType: "application/problem+json", body: JSON.stringify({ type: "about:blank", title: "Check the details", status: 422, detail: NO_WORDING, code: "NO_CONSENT_WORDING", fields: { enabled: NO_WORDING } }) }));
+sql(`update fo_web_form set enabled = false where id = '${formId}'`);
+await o.reload(); await o.getByRole("button", { name: "Switch the form on" }).click();
+await o.getByText("This form cannot be switched on yet: your firm has no consent wording").waitFor({ timeout: 15_000 });
+ok("QA-617 fail on the screen: with no firm wording the switch says why in plain words and the page still says Off", await o.getByText("This form is off").isVisible() && await o.getByText("Something went wrong").count() === 0);
 await shot(o, "qa605-00-no-wording-1440");
-sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
+await o.unroute("**/api/front-office/web-forms/*/enabled");
+sql(`update fo_web_form set enabled = true where id = '${formId}'`); resetMark();
 await o.reload(); await o.getByRole("button", { name: "Switch the form off" }).waitFor({ timeout: 15_000 });
 // Full run 44804722228 (CI): axe caught the switch mid-transition: the same button animated from the secondary look
 // (white fill, dark text) to primary (blue fill, white text), and halfway both are mid-tones. Every transition is held
