@@ -95,3 +95,55 @@ founder); `walk.mjs` and the recording check (no ffmpeg in this container, known
 `tests/journeys/` (j_6 is missing from it too), so it gives no J-5 line.
 
 Verdict: Approve 032102334e97855232f3a41cf32cfa3657b3861f
+
+## Re-review aff1fd011 (diff `032102334..aff1fd011` only; the review, journey-test and break-report files are records)
+**Runs, my own ports:** the race suite on its usage line (`pf4rv 4444`): **5/5**. Burst sizes were
+`tokensPerRound [5,18,18,17,18,18]`; the raced Deactivate took 101-174 ms, against 15-23 ms with no sign-ins running.
+`check_pf4_identity.ts` (copy `pf4`, 4443): **120/120**. `check_pf4b_session_reads.ts` (4443): **57/57**.
+`j_5.ts` on a kept copy `j5rx 4442`: **28/28 twice**.
+I did not re-run the race on main's code: the builder's 1/5 is taken from the PR.
+
+**Lock order: sound, and no deadlock path is left.**
+* All writers of `platform_staff` now take the firm row first. They are `service.ts:154,294,312` and
+  `session/service.ts:130`:
+  * sign-in, local and Cognito: firm `FOR KEY SHARE` (`service.ts:146`), then the person `FOR UPDATE`;
+  * identity `inFirm` (`service.ts:193`), session `inFirm` (`session/service.ts:47`), invitation accept (`:100`) and
+    terms accept (`terms/service.ts:82`): firm `FOR UPDATE`, then the person.
+* `KEY SHARE` conflicts with `FOR UPDATE`, so a sign-in and a staff change queue at the firm row before either touches
+  the person. Nothing takes the person and then the firm.
+* Inside the sign-in, the foreign-key inserts (revocation, audit) need only the `KEY SHARE` it already holds. It never
+  upgrades its firm lock. `auditEvent.record` takes no lock of its own.
+* `web-address` takes `FOR NO KEY UPDATE` on the firm (`web-address/service.ts:121,151`). That is compatible with
+  `KEY SHARE`, and it touches no staff row.
+* The Cognito path calls `recordSignIn` from the guard, on the `platform.identity.authenticate` bypass and outside any
+  transaction. It holds nothing before the firm, and RLS cannot hide the firm row from the `KEY SHARE` select.
+* **B2 is closed by this order.** Under READ COMMITTED a staff change waits for an in-flight sign-in to commit, then
+  reads its `lastSignInAt`. The revocation is therefore at or after that sign-in (`:293`; `endSessions` already did this,
+  `session/service.ts:65`). A sign-in that waited behind the change sees `DEACTIVATED` under its lock (`:149`) and is
+  refused (`:176`; Cognito `:125`).
+
+**Existing behaviour: nothing that PF-4 or PF-4b asserts changes, and both pass in full.**
+* `"inactive"` is reachable only in the race: both callers check status before `recordSignIn` (`:121`, `:172`).
+* Moving the revocation to `max(clock, lastSignInAt)` moves it only by the few ms the stand-in dates ahead.
+* Cognito sign-in times are whole seconds and in the past, so `max()` gives the clock for Cognito.
+
+**My Minors m1-m6:** all addressed in `j_5.ts` and `shape.md`.
+* m3: seats are lent after the browser starts and given back first; the clean-up sign-in has its own `try`.
+* m4: `nextClick` now throws.
+* m5: `=== 1`.
+* m6: the name shown is compared with the stored one.
+* The new DW1 line (`j_5.ts:193`, the old token stays dead after reactivation) is sound.
+
+**New Minors (no Blocker, no Major):**
+* **n1 (Should): the race suite's power.** While sign-ins overlap, Postgres lets more `KEY SHARE` lockers in ahead of
+  the waiting `FOR UPDATE`. The Deactivate therefore waited out most bursts: 18/18 tokens in 4 of 6 rounds and 17/18 in
+  one, so most rounds raced little or nothing. Only round 0 clearly cut the burst (5 issued, 13 refused).
+  `check_pf4r_lockout_race.ts:73` should also require at least one round where the burst was split (some issued, some
+  `STAFF_NOT_ACTIVE`). Otherwise a green run can come from rounds that never raced.
+* **n2 (note, no fix needed in this PR):** the same effect means a steady stream of sign-ins for one firm delays its staff
+  changes; I measured about 150 ms here. Only the local door, which is demo-only, can be sent that fast. Cognito
+  sign-ins reach `recordSignIn` once per real sign-in. Worth one line in the `recordSignIn` comment.
+* **n3 (Could):** the race suite's `finally` gives the seats back (`:79`) after awaited deactivations. A throw there
+  leaves the plan lent: the same order as m3, fixed in `j_5.ts` but not here.
+
+Verdict: Approve aff1fd011a397ba221941836db8c5c56b132170e
