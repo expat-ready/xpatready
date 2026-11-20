@@ -3,10 +3,10 @@
 # PostgreSQL, migrations, /api/health, the first page, /api/platform/me after sign-in, seeded fails) runs on the code
 # that lands on main. It evaluates the job's `if:` under six scenarios (a builder's draft PR, a ready PR, a Mergify
 # batch PR (mergify/merge-queue/*, a draft by design), another mergify/* draft, a dispatch, a draft whose branch only
-# contains the batch prefix) and reads the triggers: pull_request with the image's paths (Dockerfile, compose under
-# deploy/, the smoke script, this workflow), workflow_dispatch, and no push trigger (P-85). The expression reader is
-# check-queue-run-scope.sh's own (one reader, loaded from that file, never a second copy). A self-test first proves
-# that four breakages fail. Reads files only, US$0, under a second.
+# contains the batch prefix) and reads the triggers: pull_request (types opened, synchronize, ready_for_review) with
+# every path that goes into the image, the compose file, the smoke script and this workflow; workflow_dispatch; and
+# no push trigger (P-85). The expression reader is check-queue-run-scope.sh's own (one reader, loaded from that file, never a second copy). A self-test first proves
+# that six breakages fail. Reads files only, US$0, under a second.
 #   bash product/tools/check-skeleton-scope.sh [path to skeleton.yml]
 set -u
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -22,9 +22,15 @@ ns = {"re": re}
 exec(m.group(0), ns)
 evaluate = ns["evaluate"]
 
-S = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
-NEEDED_PATHS = [S + "Dockerfile", S + "deploy/**", S + "tools/skeleton-smoke.sh", S + "api/**", S + "web/**",
-                S + "prisma/**", ".github/workflows/skeleton.yml"]
+R = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/"
+S = R + "studio/"
+# Everything that goes into the image (the Dockerfile's COPY lines), the compose file, the smoke script and this workflow.
+NEEDED_PATHS = [S + p for p in ("api/**", "web/**", "engine/**", "contracts/**", "prisma/**", "samples/**", "package.json",
+                                "package-lock.json", "prisma.config.ts", "Dockerfile", "Dockerfile.dockerignore", "deploy/**",
+                                "tools/skeleton-smoke.sh")] + \
+               [R + "contracts/**", R + "p2/*.ts", R + "p5/**/*.ts", R + "env/node/**", ".github/workflows/skeleton.yml"]
+# A batch PR only ever arrives as "opened" (Mergify makes a new branch per batch); a builder's PR runs when made ready.
+NEEDED_TYPES = ["opened", "synchronize", "ready_for_review"]
 
 def ctx(event, draft=False, ref="claude/runtime-x"):
     pr = {"draft": draft, "head": {"ref": ref}, "number": 7} if event == "pull_request" else None
@@ -48,6 +54,10 @@ def problems(wf):
         paths = pr.get("paths") or []
         for p in NEEDED_PATHS:
             if p not in paths: out.append(f"trigger: pull_request paths lack {p}")
+        types = pr.get("types")
+        if types is not None:
+            for t in NEEDED_TYPES:
+                if t not in types: out.append(f"trigger: pull_request types lack {t}")
     if not isinstance(on, dict) or "workflow_dispatch" not in on: out.append("trigger: no workflow_dispatch")
     if isinstance(on, dict) and "push" in on: out.append("trigger: a push trigger (P-85: nothing on a plain push)")
     job = (wf.get("jobs") or {}).get("skeleton")
@@ -69,6 +79,8 @@ MUTANTS = [
     ("every draft runs", lambda w: mut_if(w, "true")),
     ("dispatch removed", lambda w: mut_on(w, lambda on: on.pop("workflow_dispatch", None))),
     ("deploy/** dropped from paths", lambda w: mut_on(w, lambda on: on["pull_request"]["paths"].remove(S + "deploy/**"))),
+    ("engine/** dropped from paths", lambda w: mut_on(w, lambda on: on["pull_request"]["paths"].remove(S + "engine/**"))),
+    ("types cut to synchronize (batches never arrive)", lambda w: mut_on(w, lambda on: on["pull_request"].__setitem__("types", ["synchronize"]))),
 ]
 bad = 0
 for label, f in MUTANTS:

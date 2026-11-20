@@ -3,7 +3,7 @@
 # the first page answer 200, the image runs as a non-root user and holds no secret; then a seeded fail (the database
 # stopped) must make the smoke script fail on health. The Canadian cloud deploy is PF-8.
 # When (B190, CI minutes): only a pull request whose change touches what goes into the image (the paths below), not
-# while it is a draft (P-371 (1): ready runs it), and by hand. A records-only PR matches no path, so no run starts.
+# while it is a draft (P-371 (1): ready runs it; a Mergify batch, a draft by design, runs: below), and by hand. A records-only PR matches no path, so no run starts.
 # GitHub judges `paths` on the PR's whole diff, so a later push to a code PR always starts a run; step "changes" then
 # reads what that one push changed (before..after) against the same list, read from this file, and skips the build in
 # words only when the push touched none of it (records only, say) AND this workflow's run at the earlier head
