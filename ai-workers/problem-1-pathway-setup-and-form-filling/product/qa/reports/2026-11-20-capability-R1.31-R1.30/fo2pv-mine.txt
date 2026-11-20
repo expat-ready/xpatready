@@ -1,0 +1,28 @@
+PASS  FO-2pv setup: both Sample firms and their front office are seeded
+PASS  FO-2pv DW1 pass: CAD 1200.50 stores 120050 and CAD, and the answer is the prospect as read
+PASS  FO-2pv DW1 pass (R1.31): a number (99.9) is taken as 9990 cents; the board's open totals then read CAD 1200.50 and USD 99.90 apart, never added
+PASS  FO-2pv DW1 fail: the same value sent again writes nothing more (one audit line, not two)
+PASS  FO-2pv DW1 pass: every listed currency is one the runtime knows, three capital letters, no repeats; 0 and 9999999.99 are amounts
+PASS  FO-2pv DW2 fail: a negative amount → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: a negative number → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: a number with three places (1.005) → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: three decimal places → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: an amount with a thousands comma → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: an exponent (1e3) → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: no value at all → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: an amount over 9,999,999.99 → 422 at fields.value with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: an unknown currency (XXQ) → 422 at fields.currency with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: a lower-case currency (cad) → 422 at fields.currency with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 fail: no currency → 422 at fields.currency with the brief's words; nothing changes and no audit line is written
+PASS  FO-2pv DW2 pass: the words are the brief's
+PASS  FO-2pv DW3 pass: null clears the value (the currency stays), and the board's CAD total is gone
+PASS  FO-2pv DW3 fail: an empty text is not null: it is refused at the field, and Ben's value stays
+PASS  FO-2pv DW4 fail: another firm's Owner gets 404 for firm A's prospect, as an unknown id does; nothing changes
+PASS  FO-2pv DW4 fail: with "everyone sees all" off, the Case Officer gets 404 for a colleague's prospect and nothing changes
+PASS  FO-2pv DW4 pass: the same person sets the value of their own prospect (EUR 300)
+PASS  FO-2pv DW4 pass: the PATCH route declares agent/prospect:edit and no other key (PF-4's guard refuses a person without it)
+PASS  FO-2pv pass: the panel is told the firm's default currency (CAD, then USD once the firm's setting says so; the other firm still CAD) and the fixed list
+PASS  FO-2pv DW5 pass: one audit line by the typed staff actor names the prospect and the currency (USD)
+PASS  FO-2pv DW5 fail: no audit line of a value edit holds an amount (no 99.9, 9990, 1200.50, 120050, 300 or 30000 anywhere in them)
+
+FO-2pv prospect value: 26 passed, 0 failed
