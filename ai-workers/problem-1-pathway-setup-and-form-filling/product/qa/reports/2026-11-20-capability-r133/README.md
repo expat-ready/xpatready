@@ -55,6 +55,10 @@ A fresh Opus reader read the code, the journey and these files, and ran nothing:
 
 ## Questions for the Lead
 * None blocking. QA-542 needs a decision: is pre-FO-9b phone data Sample (drop it), or does it get a one-off re-read?
+* P-747 is quoted only in `screens/FO-9b/review.md` and `qa/built/R1.33.md`; there is no row for it in `DECISIONS.md` or `RULES.md` on main d07a08fbc. QA-527's closure points to it, so the ruling needs a row.
+
+## Records hygiene (reviewer's Changes requested on f0262a690)
+The first capture of `door-probe-http.txt` (commit 007ef8c7a) held a local stand-in session token, cut off at 260 characters: the JWT header and most of its payload, with no signature. It came from the throwaway isolated copy :4471, which no longer exists. The token is now redacted in the file, and the check prints only the status and whether a token came back (`check_r133_phone_doors_http.ts:47`). The copy in history stays, because rewriting history is barred (AGENTS.md rule 1).
 
 ## Suggestions
 * Re-run the possible-match check after a staff phone edit (QA-540). *Needed for the proof*: no. *Capability*.

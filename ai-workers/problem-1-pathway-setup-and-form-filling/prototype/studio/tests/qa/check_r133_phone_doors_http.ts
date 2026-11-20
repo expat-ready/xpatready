@@ -44,7 +44,7 @@ try {
   const [staffId, staffEmail] = sql(`select id || '|' || email from platform_staff where actor_id = 'user-R'`).split("|");
   const s = await http("POST", "/platform/session/local", { firmKey: "sample-firm", email: staffEmail, secondStep: true });
   const auth = { authorization: `Bearer ${s.body?.token}` };
-  ok("R1.33 qa setup: firm A has a front office and its Owner is signed in", fo.failed.length === 0 && !!s.body?.token, s);
+  ok("R1.33 qa setup: firm A has a front office and its Owner is signed in", fo.failed.length === 0 && !!s.body?.token, { status: s.status, signedIn: !!s.body?.token });
 
   // ------------------------------------------------------------------------------------------ Add a lead
   const add = (given: string, phone: string, extra: Record<string, unknown> = {}) =>

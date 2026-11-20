@@ -1,5 +1,5 @@
-# main d8db83498, isolated copy :4471, 2026-11-20T03:16:24Z
-PASS  R1.33 qa setup: firm A has a front office and its Owner is signed in — {"status":200,"body":{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJleHBhdHJlYWR5LWxvY2FsLXN0YW5kaW4iLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzdWIiOiJlMmIzN2VjMi1jZmRiLTQ5M2QtYTE0OS0zYTg5NjU3MTdjNzkiLCJpYXQiOjE3OTUxNDQ1ODYuMDE4LCJleHAiOjE3OTUxNDgxODYuMDE4LCJh
+# branch d8db83498 (app code = main d07a08fbc), isolated copy :4471, 2026-11-20T03:16:24Z
+PASS  R1.33 qa setup: firm A has a front office and its Owner is signed in — {"status":200,"body":{"token":"<redacted by qa: a local stand-in session token, cut off at 260 characters and unsigned; the check no longer prints it>"
 PASS  R1.33 qa A1 (Add a lead): "+44 20 7946 0100" → 201, stored +442079460100, readable true — {"status":201,"got":"+442079460100|true|+442079460100"}
 PASS  R1.33 qa A2 (Add a lead): "416.555.0177" → 201, stored +14165550177, readable true — {"status":201,"got":"+14165550177|true|+14165550177"}
 PASS  R1.33 qa A3 (Add a lead): "+999 1234567" → 201, stored +999 1234567, readable false — {"status":201,"got":"+999 1234567|false|-"}

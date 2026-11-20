@@ -1,4 +1,4 @@
-# main d8db83498, isolated copy :4471
+# branch d8db83498 (app code = main d07a08fbc), isolated copy :4471
 ## WIDTH=1440
 PASS  R1.33 gate A setup: firm A's web form is on and its Owner is signed in
 PASS  R1.33 gate A G1: the lead page shows +442079460958 and no Fix number — "Back\nSales\n›\nLeads\n›\nLead\nGalemwoequk8 Gate\nLead\nOpen\nL-00013\nPerson\nEmail\ngalemwoequk8@qa133.example\nPhone\n+442079460958\nEdit\nEnquiry\nInterested in\nNot given\nSource\nWebsite form · Website enquiry form\nArrived\nNov 20, 2026, 3:16 a.m.\nMe
