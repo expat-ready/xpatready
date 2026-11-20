@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
 import { Loading } from "./loading";
 import { useOwners } from "./prospect-actions";
-import { dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
+import { DayInput, dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -38,6 +38,9 @@ function LeadsBody() {
   const { known, choices, sources, blocked, ready } = useAddressSources(params);
   const owners = useOwners();
   const day = (k: string) => dayParam(params, k);
+  // The date fields show what is in the address as typed (review round 3: a year typed digit by digit passes through
+  // 0002, 0020, 0202 before 2026); only a real day in 1900-2999 is sent or compared.
+  const typed = { from: params.get("from") ?? "", to: params.get("to") ?? "" };
   // The owner filter is All open's (Mine and Unassigned leads already say whose); it is dropped with any other chip.
   const narrow = { owner: view === "all" && owners.choices.some((o) => o.staffId === params.get("owner")) ? params.get("owner")! : "", from: day("from"), to: day("to") };
   const go = (next: View, src: string[], n: typeof narrow = narrow) => {
@@ -83,8 +86,8 @@ function LeadsBody() {
       </div>
       <div className="flex flex-wrap items-end gap-3" data-lead-filters>
         {view === "all" && !owners.oneUser && owners.choices.length ? <Field label="Owner"><Select value={narrow.owner} onChange={(e) => go(view, sources, { ...narrow, owner: e.target.value })}><option value="">Everyone</option>{owners.choices.map((o) => <option key={o.staffId} value={o.staffId}>{o.displayName}</option>)}</Select></Field> : null}
-        <Field label="Arrived from" error={badRange} calm><Input type="date" value={narrow.from} max={narrow.to || undefined} onChange={(e) => go(view, sources, { ...narrow, from: e.target.value })} /></Field>
-        <Field label="Arrived to"><Input type="date" value={narrow.to} min={narrow.from || undefined} onChange={(e) => go(view, sources, { ...narrow, to: e.target.value })} /></Field>
+        <Field label="Arrived from" error={badRange} calm><DayInput value={typed.from} max={narrow.to || undefined} onDay={(v) => go(view, sources, { ...narrow, to: typed.to, from: v })} /></Field>
+        <Field label="Arrived to"><DayInput value={typed.to} min={narrow.from || undefined} onDay={(v) => go(view, sources, { ...narrow, from: typed.from, to: v })} /></Field>
         {more ? <Button variant="link" size="sm" data-clear-filters onClick={() => go(view, sources, { owner: "", from: "", to: "" })}>Clear owner and dates</Button> : null}
       </div>
       {blocked ? <p data-source-blocked className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">The leads from {sources.map(words).join(" or ")} are not shown because the sources could not be loaded. Use Try again beside Source, or choose All sources.</p>

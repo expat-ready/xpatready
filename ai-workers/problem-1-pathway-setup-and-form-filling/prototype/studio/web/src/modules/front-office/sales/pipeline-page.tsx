@@ -15,13 +15,13 @@
 import * as React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
+import { Button, Field, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { Board, can, KEY, money, ProspectRows, words, type Money } from "./contract";
 import { Loading } from "./loading";
 import { MoveMenu, useMove, useOwners } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
-import { dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
+import { DayInput, dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
 const PAGE = 200;
@@ -126,7 +126,7 @@ function ListView() {
   const [params, setParams] = useSearchParams();
   const board = useBoard();   // the stages, for the Stage filter and "Move to…"
   const src = useAddressSources(params);
-  const f = { stage: params.get("stage") ?? "", owner: params.get("owner") ?? "", from: dayParam(params, "from"), to: dayParam(params, "to") };
+  const f = { stage: params.get("stage") ?? "", owner: params.get("owner") ?? "", from: dayParam(params, "from"), to: dayParam(params, "to") };   // sent and compared; the fields show the address as typed (review round 3)
   const set = (k: keyof typeof f, v: string) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const qs = (Object.keys(f) as (keyof typeof f)[]).filter((k) => f[k]).map((k) => `&${k}=${encodeURIComponent(f[k])}`).join("") + (src.sources.length ? `&${sourceQs(src.sources)}` : "");
   // QA-572: a from day after the to day is said at the field and never sent; no list stands under it (break M1).
@@ -139,8 +139,8 @@ function ListView() {
       <div className="flex flex-wrap items-end gap-3" data-filters>
         <Field label="Stage"><Select value={f.stage} onChange={(e) => set("stage", e.target.value)}><option value="">Every stage but Lost</option>{stages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</Select></Field>
         {!owners.oneUser && owners.choices.length ? <Field label="Owner"><Select value={f.owner} onChange={(e) => set("owner", e.target.value)}><option value="">Everyone</option>{owners.choices.map((o) => <option key={o.staffId} value={o.staffId}>{o.displayName}</option>)}</Select></Field> : null}
-        <Field label="Engaged from" error={badRange} calm><Input type="date" value={f.from} max={f.to || undefined} onChange={(e) => set("from", e.target.value)} /></Field>
-        <Field label="Engaged to"><Input type="date" value={f.to} min={f.from || undefined} onChange={(e) => set("to", e.target.value)} /></Field>
+        <Field label="Engaged from" error={badRange} calm><DayInput value={params.get("from") ?? ""} max={f.to || undefined} onDay={(v) => set("from", v)} /></Field>
+        <Field label="Engaged to"><DayInput value={params.get("to") ?? ""} min={f.from || undefined} onDay={(v) => set("to", v)} /></Field>
         <div className="flex min-h-9 items-center"><ProspectSources src={src} params={params} setParams={setParams} /></div>
         {qs ? <Button variant="link" size="sm" data-clear onClick={() => setParams(new URLSearchParams({ view: "list" }), { replace: true })}>Clear filters</Button> : null}
       </div>

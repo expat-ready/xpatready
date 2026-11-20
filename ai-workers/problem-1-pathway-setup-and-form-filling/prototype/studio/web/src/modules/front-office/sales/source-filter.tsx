@@ -94,3 +94,13 @@ export function dayParam(params: URLSearchParams, k: string): string {
  *  ignored a new source), only the words to change the dates. */
 export const rangeError = (from: string, to: string) => (from && to && from > to ? "The from date must be on or before the to date." : null);
 
+
+/** A date filter field (review round 3; EXPERIENCE §2.12, BIC-13). It holds what is typed itself and reports each
+ *  change: the address updates after the change event, and a field driven straight from the address was put back for
+ *  a moment, which reset the browser's typing of the year (0002 → 0020 → 0202 → 2026) and wiped the field. It
+ *  follows the address when that changes from elsewhere (Clear filters, Back). Field's id and aria props pass through. */
+export function DayInput({ value, onDay, ...rest }: { value: string; onDay: (v: string) => void } & Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "type">) {
+  const [draft, setDraft] = React.useState(value);
+  React.useEffect(() => setDraft(value), [value]);
+  return <Input {...rest} type="date" value={draft} onChange={(e) => { setDraft(e.target.value); onDay(e.target.value); }} />;
+}

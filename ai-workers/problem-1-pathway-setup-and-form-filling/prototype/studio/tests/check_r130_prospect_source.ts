@@ -173,6 +173,16 @@ await p.goto(`${BASE}/front-office/pipeline?view=list&from=${day(1)}&to=${day(5)
 await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
 ok("R1.30 DW5 fail (QA-572): a from after to typed into the address shows plain words to change the dates (no raw 'from:'), nothing sent",
   /from date must be on or before the to date/.test(await p.locator("[data-empty]").innerText()) && !/from:/.test(await p.locator("body").innerText()) && sentBad === 0, { sentBad });
+// Review round 3 (EXPERIENCE §2.12, BIC-13): a from day typed key by key reaches the address (the year passes 0002…0202).
+for (const [url, label] of [["/front-office/pipeline?view=list", "Engaged from"], ["/front-office/leads?view=all", "Arrived from"]] as const) {
+  await p.goto(`${BASE}${url}`); await p.getByLabel(label).waitFor({ timeout: 30_000 });
+  await p.waitForLoadState("networkidle").catch(() => undefined); await p.getByLabel(label).focus();   // focus starts on the month (a click lands mid-field)
+  const target = day(1), [y, m, d] = target.split("-");
+  for (const ch of `${m}${d}${y}`) { await p.keyboard.type(ch); await p.waitForTimeout(60); }
+  await p.waitForFunction((t) => location.search.includes(`from=${t}`), target, { timeout: 10_000 }).catch(() => undefined);
+  ok(`R1.30 DW5 pass (review round 3): ${label} typed key by key keeps what was typed and the address carries from=${target}`,
+    (await p.getByLabel(label).inputValue()) === target && p.url().includes(`from=${target}`), [await p.getByLabel(label).inputValue(), p.url()]);
+}
 ok("R1.30: no page error in the browser", errors.length === 0, errors);
 await browser.close(); await db.$disconnect();
 process.exit(summary() ? 1 : 0);
