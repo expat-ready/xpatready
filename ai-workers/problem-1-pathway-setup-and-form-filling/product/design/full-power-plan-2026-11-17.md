@@ -279,7 +279,7 @@ Status words: Open · Doing · Done · Unverified (no record found either way).
 | 234 | Feature flags per firm (SA-12) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | - | D: after first firms |
 | 235 | On-call and incident process | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | F; TL | Open | - | D: after first firms live |
 | 236 | Product analytics | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | L | Open | - | D: after first firms |
-| 237 | Guard review: each of the 28 guards with the incident it prevents, its catches and its false blocks; keep, tune or merge only with evidence, never drop blindly (founder 20 Nov) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL | Doing 20 Nov | read-only review | D: now |
+| 237 | Guard review: each of the 28 guards with the incident it prevents, its catches and its false blocks; keep, tune or merge only with evidence, never drop blindly (founder 20 Nov) | founder 20 Nov 12:0x IST: "Make a list of enforceable activity so that we don't miss it"; library/engineering-map.md | TL | Doing 20 Nov: review done (`design/guard-review-2026-11-20.md`: 31 guards, KEEP 12, TUNE 6, MERGE 4, ASK 9, none dropped); tunes wait for the founder | read-only review | D: now |
 
 ---
 
