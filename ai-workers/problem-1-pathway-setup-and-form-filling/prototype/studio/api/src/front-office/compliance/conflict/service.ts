@@ -21,7 +21,7 @@ import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../../duplicates/phone.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../../sales/corporate/match.ts";
 import { actorOf, visibilityOf } from "../../sales/common.ts";
-import { clean, lockParty, longTextOk, partyOf, termsOf, type Party, type Terms } from "./gate.ts";
+import { clean, clearance, lockParty, longTextOk, partyOf, termsOf, type Party, type Terms } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 type Clock = { now(): number };
@@ -222,12 +222,26 @@ export class ConflictChecks {
     return { ...this.view(c, ctx, true), matchesNow: s.matches, hiddenNow: s.hidden };
   }
 
-  /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for). */
+  /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for), with the
+   *  checker's and confirmer's names (FO-13s challenge M1: "recorded with who") and the gate's own verdict for this
+   *  prospect (`clearance`: its 409 caught and answered, anything else thrown), so the screen works out no rule. */
   async list(ctx: StaffContext, prospectId: string) {
-    const { party } = await this.engagement(ctx, prospectId);
+    const { prospect, party } = await this.engagement(ctx, prospectId);
     const rows = await this.db.foConflictCheck.findMany({ where: firmScope(ctx.firmId, party.kind === "PERSON" ? { personId: party.id } : { companyId: party.id }), orderBy: [{ checkedAt: "desc" }, { id: "desc" }] });
     const every = (await visibilityOf(this.db, ctx)).seesAll;
-    return { checks: rows.map((r) => this.view(r, ctx, every)), scope: this.parties ? null : NOT_SEARCHED };
+    const ids = [...new Set(rows.flatMap((r) => [r.checkedBy, r.confirmedBy]).filter((x): x is string => !!x))];
+    const names = new Map((await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: ids } }), select: { id: true, displayName: true } })).map((x) => [x.id, x.displayName]));
+    let verdict: { ok: true } | { ok: false; code: string; detail: string };
+    try { await clearance(this.db, ctx.firmId, prospect.id); verdict = { ok: true }; }
+    catch (e) {
+      if (!(e instanceof HttpException) || e.getStatus() !== 409) throw e;
+      const r = e.getResponse() as { code?: unknown; detail?: unknown };
+      verdict = { ok: false, code: String(r.code ?? "CONFLICT"), detail: String(r.detail ?? "") };
+    }
+    return {
+      checks: rows.map((r) => ({ ...this.view(r, ctx, every), checkedByName: names.get(r.checkedBy) ?? null, confirmedByName: r.confirmedBy ? names.get(r.confirmedBy) ?? null : null })),
+      scope: this.parties ? null : NOT_SEARCHED, clearance: verdict,
+    };
   }
 
   /** One audit line (ids and the result, never a searched value), then `conflict.checked` last (contracts §0.5). */

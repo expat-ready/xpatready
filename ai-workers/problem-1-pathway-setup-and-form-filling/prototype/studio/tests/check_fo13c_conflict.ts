@@ -132,7 +132,12 @@ try {
   const s1 = await send(r1);
   ok("FO-13c DW1 fail: Send without a check → 409 CONFLICT_CHECK_REQUIRED naming the reason and the Code; the retainer stays a draft",
     s1.status === 409 && s1.body.code === "CONFLICT_CHECK_REQUIRED" && /s\. 5, 15/.test(s1.body.detail) && sql(`select status from fo_retainer where id = '${r1}'`) === "DRAFT", s1);
+  const l1 = await call("GET", `prospects/${X1}/conflict-checks`, R.token);
   const c1 = await check(X1, { result: "NO_CONFLICT" }), s1b = await send(r1);
+  const l1b = await call("GET", `prospects/${X1}/conflict-checks`, R.token), rName = sql(`select display_name from platform_staff where id = '${R.id}'`);
+  ok("FO-13s API pass/fail (clearance, names): before any check the list's clearance is the gate's refusal (not ok, CONFLICT_CHECK_REQUIRED, its words); after a NO_CONFLICT check it is ok and the check names its checker",
+    l1.status === 200 && l1.body.clearance?.ok === false && l1.body.clearance.code === "CONFLICT_CHECK_REQUIRED" && /s\. 5, 15/.test(l1.body.clearance.detail)
+    && l1b.body.clearance?.ok === true && l1b.body.checks[0].checkedByName === rName && l1b.body.checks[0].confirmedByName === null, [l1.body?.clearance, l1b.body?.clearance, l1b.body?.checks?.[0]?.checkedByName]);
   ok("FO-13c DW1 pass: with a recorded NO_CONFLICT check (201, who and when stored) → Send proceeds",
     c1.status === 201 && c1.body.result === "NO_CONFLICT" && c1.body.checkedBy === R.id && !!c1.body.checkedAt && s1b.status === 200 && s1b.body.status === "SENT", [c1, s1b.status]);
   const cv0 = prospectOf(person(R.id, "Ellis")), cvRef = await refusal(() => pros.convert(ctxR, cv0, {}));
@@ -248,6 +253,8 @@ try {
   sql(`update fo_person set email = 'jules.new@example.com' where id = '${P6}'`);
   const s6 = await send(r6);
   ok("FO-13c DW5 fail: the person's email changed after the check → Send refused, a new check is needed (409 CONFLICT_CHECK_STALE)", s6.status === 409 && s6.body.code === "CONFLICT_CHECK_STALE" && /new check/.test(s6.body.detail), s6);
+  const l6 = await call("GET", `prospects/${X6}/conflict-checks`, R.token);
+  ok("FO-13s API fail (clearance): the list's clearance says the same stale refusal as Send, word for word", l6.body.clearance?.ok === false && l6.body.clearance.code === "CONFLICT_CHECK_STALE" && l6.body.clearance.detail === s6.body.detail, l6.body?.clearance);
   sql(`update fo_person set given_names = 'Jule' where id = '${P6}'`);
   const c6 = await check(X6, { result: "NO_CONFLICT" }), s6b = await send(r6);
   const P6b = person(R.id, "Kay"), X6b = prospectOf(P6b), r6b = await draft(X6b);
