@@ -11,6 +11,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { NOTIFICATION_GROUP, parseNotify, type NotificationItem, type NotificationKind, type NotificationPort, type NotificationRecipient } from "../../../../ports/notifications.ts";
 import type { NotificationPrefsPort } from "../../../../ports/notification-prefs.ts";
+import { systemClock } from "../../../../ports/clock.ts";
 import { currentFirm, firmScope } from "../firm-scope.ts";
 
 /** The injection token of NotificationPort's real adapter (api/src/features/platform-notifications.ts). */
@@ -20,7 +21,7 @@ type DbOrTx = PrismaClient | Prisma.TransactionClient;
 export class PrismaNotificationPort implements NotificationPort<Prisma.TransactionClient> {
   /** `prefsOver(tx)`: NotificationPrefsPort read through the caller's transaction (features/platform-notifications.ts passes
    *  PrismaNotificationPrefs, NOTIFICATION_PREFS' adapter; a test may pass a fake). */
-  constructor(private readonly prefsOver: (tx: Prisma.TransactionClient) => NotificationPrefsPort, private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly prefsOver: (tx: Prisma.TransactionClient) => NotificationPrefsPort, private readonly now: () => Date = () => systemClock.now()) {}
 
   async notify(tx: Prisma.TransactionClient, recipient: NotificationRecipient, kind: NotificationKind, item: NotificationItem): Promise<void> {
     const p = parseNotify(recipient, kind, item);   // a ZodError before anything is read or written
@@ -53,7 +54,7 @@ async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<str
 
 /** The signed-in person's own notifications (routes.ts). Every read and write names the firm and the person. */
 export class MyNotifications {
-  constructor(private readonly db: DbOrTx, private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly db: DbOrTx, private readonly now: () => Date = () => systemClock.now()) {}
   async list(firmId: string, staffId: string, q: { unread?: boolean; page?: number; size?: number }) {
     const size = Math.min(Math.max(Math.trunc(q.size ?? 20), 1), 100), page = Math.min(Math.max(Math.trunc(q.page ?? 1), 1), 1_000_000);   // clamped, breaker m5
     const where = firmScope(firmId, { staffId, ...(q.unread ? { readAt: null } : {}) });
@@ -66,21 +67,30 @@ export class MyNotifications {
   async unreadCount(firmId: string, staffId: string) {
     return { unread: await this.db.msgNotification.count({ where: firmScope(firmId, { staffId, readAt: null }) }) };
   }
-  /** Marks one of the person's rows read; false when it is not theirs (another person's or firm's, or no such row). */
-  async markRead(firmId: string, staffId: string, id: string): Promise<{ id: string; readAt: string } | null> {
+  /** Marks one of the person's rows read; null when it is not theirs (another person's or firm's, or no such row). `seen`
+   *  (the createdAt the person's list showed): a row a later reminder surfaced again after it stays unread (readAt null),
+   *  so a click on an old list never uses up a newer reminder (review m2, breaker m3: "duplicate beats a miss"). */
+  async markRead(firmId: string, staffId: string, id: string, seen?: Date): Promise<{ id: string; readAt: string | null } | null> {
     const mine = await this.db.msgNotification.findFirst({ where: firmScope(firmId, { id, staffId }), select: { id: true, readAt: true } });
     if (!mine) return null;
     if (mine.readAt) return { id, readAt: mine.readAt.toISOString() };
     const f = firmScope(firmId).firmId;
     // Never before its created_at (the table's check): a row a later reminder re-surfaced reads at that time at the earliest.
+    const upTo = seen ?? null;
     const [r] = await this.db.$queryRaw<{ read_at: Date }[]>`update msg_notification set read_at = greatest(${this.now()}::timestamptz, created_at)
-      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and id = ${id}::uuid and read_at is null returning read_at`;
-    return r ? { id, readAt: r.read_at.toISOString() } : this.markRead(firmId, staffId, id);   // read meanwhile: its first time stays
+      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and id = ${id}::uuid and read_at is null
+      and (${upTo}::timestamptz is null or created_at <= ${upTo}::timestamptz) returning read_at`;
+    if (r) return { id, readAt: r.read_at.toISOString() };
+    // Not updated: read meanwhile (its first time stays), or surfaced again after `seen` (it stays unread).
+    const now = await this.db.msgNotification.findFirst({ where: firmScope(firmId, { id, staffId }), select: { readAt: true } });
+    return now ? { id, readAt: now.readAt?.toISOString() ?? null } : null;
   }
-  async markAllRead(firmId: string, staffId: string) {
-    const f = firmScope(firmId).firmId;
+  /** Marks the person's unread rows read; with `seen` (the newest createdAt their list showed) only rows up to it. */
+  async markAllRead(firmId: string, staffId: string, seen?: Date) {
+    const f = firmScope(firmId).firmId, upTo = seen ?? null;
     const n = await this.db.$executeRaw`update msg_notification set read_at = greatest(${this.now()}::timestamptz, created_at)
-      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and read_at is null`;
+      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and read_at is null
+      and (${upTo}::timestamptz is null or created_at <= ${upTo}::timestamptz)`;
     return { marked: n };
   }
 }

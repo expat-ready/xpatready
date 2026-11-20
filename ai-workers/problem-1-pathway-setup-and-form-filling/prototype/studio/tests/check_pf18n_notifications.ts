@@ -226,45 +226,58 @@ try {
   // ---------------------------------------------------------------- DW4, DW5 the routes
   const token = (id: string) => local.issue(id, { authTimeMs: Date.now() - 60_000, secondStep: true });
   const call = async (method: string, path: string, who?: string) => {
-    const r = await fetch(`${base}/api/platform/me/notifications${path}`, { method, headers: who ? { authorization: `Bearer ${token(who)}` } : {} });
+    const r = await fetch(`${base}${path}`, { method, headers: who ? { authorization: `Bearer ${token(who)}` } : {} });
     const t = await r.text(); let b: any = t; try { b = JSON.parse(t); } catch { /* text */ }
     return { status: r.status, body: b };
   };
-  const mine = await call("GET", "/items", OFF);
+  const mine = await call("GET", "/api/platform/me/notifications/items", OFF);
   const deadline = mine.body.items?.find((i: { item: { id: string } }) => i.item.id === WORK);
   ok("PF-18n DW6 pass: GET …/items returns the reminder with the case's link (/cases/<case id>), ids only",
     mine.status === 200 && deadline?.kind === "case-stage-deadline" && deadline.group === "MY_DEADLINES" && deadline.item.kind === "case-stage" && deadline.link === `/cases/${CASE}` && deadline.readAt === null
     && Object.keys(deadline).sort().join() === "createdAt,group,id,item,kind,link,readAt", mine.body);
   ok("PF-18n DW4 pass: my list is newest first and holds only my rows (every row from msg_notification for me, none of the representative's)",
     mine.body.items.length === (await rowsOf(OFF)).length && mine.body.items.every((i: { createdAt: string }, n: number, a: { createdAt: string }[]) => n === 0 || a[n - 1]!.createdAt >= i.createdAt)
-    && (await call("GET", "/items", REP)).body.items.every((i: { id: string }) => !mine.body.items.some((m: { id: string }) => m.id === i.id)), mine.body);
-  const repRow = (await call("GET", "/items", REP)).body.items[0];
-  const steal = await call("POST", `/${repRow.id}/read`, OFF), fromB = await call("POST", `/${deadline.id}/read`, SOLO), listB = await call("GET", "/items", SOLO);
+    && (await call("GET", "/api/platform/me/notifications/items", REP)).body.items.every((i: { id: string }) => !mine.body.items.some((m: { id: string }) => m.id === i.id)), mine.body);
+  const repRow = (await call("GET", "/api/platform/me/notifications/items", REP)).body.items[0];
+  const steal = await call("POST", `/api/platform/me/notifications/${repRow.id}/read`, OFF), fromB = await call("POST", `/api/platform/me/notifications/${deadline.id}/read`, SOLO), listB = await call("GET", "/api/platform/me/notifications/items", SOLO);
   ok("PF-18n DW4 fail: another person's row cannot be marked read by me (404), firm B's person gets 404 for firm A's row and an empty list; the rows stay unread",
     steal.status === 404 && fromB.status === 404 && listB.status === 200 && listB.body.items.length === 0 && (await rowsOf(REP)).find((r) => r.id === repRow.id)?.read_at === null && (await rowsOf(OFF)).find((r) => r.id === deadline.id)?.read_at === null, { steal, fromB, listB: listB.body });
-  ok("PF-18n DW4 fail: no session is 401; a malformed id is 404", (await call("GET", "/items")).status === 401 && (await call("POST", "/not-a-uuid/read", OFF)).status === 404);
-  const count0 = (await call("GET", "/unread-count", OFF)).body.unread;
-  const one = await call("POST", `/${deadline.id}/read`, OFF), count1 = (await call("GET", "/unread-count", OFF)).body.unread;
-  const unreadOnly = await call("GET", "/items?unread=1", OFF);
+  ok("PF-18n DW4 fail: no session is 401; a malformed id is 404", (await call("GET", "/api/platform/me/notifications/items")).status === 401 && (await call("POST", "/api/platform/me/notifications/not-a-uuid/read", OFF)).status === 404);
+  const count0 = (await call("GET", "/api/platform/me/notifications/unread-count", OFF)).body.unread;
+  const one = await call("POST", `/api/platform/me/notifications/${deadline.id}/read`, OFF), count1 = (await call("GET", "/api/platform/me/notifications/unread-count", OFF)).body.unread;
+  const unreadOnly = await call("GET", "/api/platform/me/notifications/items?unread=1", OFF);
   ok("PF-18n DW5 pass: mark one read: its readAt is set and the unread count falls by one; ?unread=1 leaves it out",
     count0 >= 2 && one.status === 200 && typeof one.body.readAt === "string" && count1 === count0 - 1 && unreadOnly.body.items.every((i: { id: string; readAt: null }) => i.id !== deadline.id && i.readAt === null), { count0, one: one.body, count1 });
-  const all = await call("POST", "/read-all", OFF), count2 = (await call("GET", "/unread-count", OFF)).body.unread, repCount = (await call("GET", "/unread-count", REP)).body.unread;
+  const all = await call("POST", "/api/platform/me/notifications/read-all", OFF), count2 = (await call("GET", "/api/platform/me/notifications/unread-count", OFF)).body.unread, repCount = (await call("GET", "/api/platform/me/notifications/unread-count", REP)).body.unread;
   ok("PF-18n DW5 pass: mark all read: the unread count goes to 0 (and the representative's own count is untouched)", all.status === 200 && all.body.marked === count1 && count2 === 0 && repCount >= 1, { all: all.body, count2, repCount });
-  const again2 = await call("POST", "/read-all", OFF), reread = await call("POST", `/${deadline.id}/read`, OFF);
+  const again2 = await call("POST", "/api/platform/me/notifications/read-all", OFF), reread = await call("POST", `/api/platform/me/notifications/${deadline.id}/read`, OFF);
   ok("PF-18n DW5 fail: mark all again marks nothing (0) and reading a read row keeps its first readAt; the count never goes below 0",
-    again2.body.marked === 0 && reread.body.readAt === one.body.readAt && (await call("GET", "/unread-count", OFF)).body.unread === 0, { again2: again2.body, reread: reread.body });
-  const page1 = await call("GET", "/items?size=1", OFF), page2 = await call("GET", "/items?size=1&page=2", OFF);
+    again2.body.marked === 0 && reread.body.readAt === one.body.readAt && (await call("GET", "/api/platform/me/notifications/unread-count", OFF)).body.unread === 0, { again2: again2.body, reread: reread.body });
+  // Review m2 / breaker m3: a reminder surfaced again after the list was drawn is not used up by a click on that list.
+  const shown = deadline.createdAt;
+  await q("update msg_notification set read_at = null, created_at = created_at + interval '1 minute' where id = $1", [deadline.id]);   // the 2-day reminder re-surfaces it
+  const stale = await call("POST", `/api/platform/me/notifications/${deadline.id}/read?seen=${shown}`, OFF), staleAll = await call("POST", `/api/platform/me/notifications/read-all?seen=${shown}`, OFF);
+  const badSeen = await call("POST", `/api/platform/me/notifications/read-all?seen=yesterday`, OFF);
+  ok("PF-18n DW5 fail (review m2): with the createdAt its list showed, a click or mark-all on an old list leaves a re-surfaced reminder unread; a bad seen is 400",
+    stale.status === 200 && stale.body.readAt === null && staleAll.body.marked === 0 && (await rowsOf(OFF)).find((r) => r.id === deadline.id)?.read_at === null && badSeen.status === 400, { stale: stale.body, staleAll: staleAll.body, badSeen: badSeen.status });
+  const fresh = (await call("GET", "/api/platform/me/notifications/items?unread=1", OFF)).body.items.find((i: { id: string }) => i.id === deadline.id);
+  const now2 = await call("POST", `/api/platform/me/notifications/${deadline.id}/read?seen=${fresh?.createdAt}`, OFF);
+  ok("PF-18n DW5 pass (review m2): with the list's own newer createdAt the click marks it read", now2.status === 200 && typeof now2.body.readAt === "string", now2.body);
+  const page1 = await call("GET", "/api/platform/me/notifications/items?size=1", OFF), page2 = await call("GET", "/api/platform/me/notifications/items?size=1&page=2", OFF);
   ok("PF-18n DW4: the list is paged (size 1: page 1 names page 2, page 2 the next row)", page1.body.items.length === 1 && page1.body.nextPage === 2 && page2.body.items.length === 1 && page2.body.items[0].id !== page1.body.items[0].id, { page1: page1.body, page2: page2.body });
-  const far = await call("GET", "/items?page=9999999", OFF), big = await call("GET", "/items?size=100000", OFF), zero = await call("GET", "/items?size=0", OFF);
+  const far = await call("GET", "/api/platform/me/notifications/items?page=9999999", OFF), big = await call("GET", "/api/platform/me/notifications/items?size=100000", OFF), zero = await call("GET", "/api/platform/me/notifications/items?size=0", OFF);
   ok("PF-18n DW4 fail (breaker m5): paging values are clamped, never reset: page 9999999 is an empty page (not page 1), size 100000 is 100, size 0 is 1",
     far.status === 200 && far.body.items.length === 0 && far.body.page === 1_000_000 && big.body.size === 100 && zero.body.size === 1 && zero.body.items.length === 1, { far: far.body.page, big: big.body.size, zero: zero.body.size });
   // breaker m4: a row whose item is a case links only to the firm's own case (firm B's case id gives no link).
   const BCASE = randomUUID();
   psql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id) values ('${BCASE}', '${W}', '${CMB[1]}', 'user-P', 'user-S', 'C-2026-90002', 'sample-solo', '${FB}')`);
   await q("insert into msg_notification (id, firm_id, staff_id, kind, \"group\", item_kind, item_id) values (gen_random_uuid(), $1, $2, 'case-stage-deadline', 'MY_DEADLINES', 'case', $3), (gen_random_uuid(), $1, $2, 'case-stage-deadline', 'MY_DEADLINES', 'case', $4)", [FA, OFF, BCASE, CASE]);
-  const links = (await call("GET", "/items?size=100", OFF)).body.items.filter((i: { item: { kind: string } }) => i.item.kind === "case");
+  const links = (await call("GET", "/api/platform/me/notifications/items?size=100", OFF)).body.items.filter((i: { item: { kind: string } }) => i.item.kind === "case");
   ok("PF-18n DW4 fail (breaker m4): item kind case links to the firm's own case (/cases/<id>) and gives no link for another firm's case id",
     links.find((i: { item: { id: string } }) => i.item.id === CASE)?.link === `/cases/${CASE}` && links.find((i: { item: { id: string } }) => i.item.id === BCASE)?.link === null, links);
+} catch (e) {
+  fail++;   // review m7: a crash is a FAIL line with its error on stderr (the JSON logger holds the console)
+  process.stderr.write(`FAIL  PF-18n: the check crashed — ${e instanceof Error ? e.stack ?? e.message : String(e)}\n`);
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);
   await sql.end(); await db.$disconnect();
