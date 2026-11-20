@@ -2,7 +2,7 @@
 
 current_lead: local_871ed54c-0b10-4311-bff3-e43e3f70b2cb Lead 6 · 21 Nov 00:0x IST (series 3; took over from Lead 5 (series 3, local_08ac9385) at ~265k, P-446)
 
-updated: 2026-11-21 01:0x IST: Lead 6 (series 3) · milestone: Release 1 proven 27 of 101 · rules: **`RULES.md`** (as of **P-768**; P-769, P-770 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 01:0x IST: Lead 6 (series 3) · milestone: Release 1 proven 27 of 101 · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
 
 
 
