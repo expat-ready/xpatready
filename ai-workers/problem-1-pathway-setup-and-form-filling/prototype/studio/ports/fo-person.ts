@@ -114,7 +114,8 @@ export function keepPhone(typed: string, e164: (v: string) => string | null): { 
   const n = e164(typed);
   return n ? { phone: n, readable: true } : { phone: typed, readable: false };
 }
-/** The fake's normaliser (Sample, FO-2's common.ts rule): "+" and 7-15 digits, or a 10-digit North American number. */
+/** The fake's normaliser (Sample; FO-2's rule before FO-9b): "+" and 7-15 digits, or a 10-digit North American number.
+ *  The adapter and every arrival door use duplicates/phone.ts phoneE164Exact (FO-9b), which this does not copy. */
 export function sampleE164(v: string): string | null {
   const d = v.replace(/[\s().-]/g, "");
   return /^\+[1-9][0-9]{6,14}$/.test(d) ? d : /^1?[2-9][0-9]{9}$/.test(d) ? `+1${d.slice(-10)}` : null;
@@ -143,7 +144,7 @@ export type FakeFoPerson = FoPersonPort<unknown> & {
 /** An in-memory FoPersonPort with the adapter's rules, writing its audit lines through `audit` (fakeAudit for tests).
  *  Its phone rule is a Sample (`sampleE164`, FO-2's rule): it agrees with the adapter's libphonenumber normaliser on whole
  *  North American and "+" numbers, not on every typed form ("+1 555 0101", "1234567"). A caller's test that relies on a
- *  number's readability passes the adapter's normaliser as `e164` (api/src/front-office/duplicates/phone.ts phoneE164). */
+ *  number's readability passes the adapter's normaliser as `e164` (api/src/front-office/duplicates/phone.ts phoneE164Exact). */
 export function fakeFoPerson(opts: { audit: AuditPort<unknown> & { discard?(tx: unknown): void }; e164?: (v: string) => string | null }): FakeFoPerson {
   const persons = new Map<string, FakePerson>(), companies = new Map<string, FakeCompany>(), prospects = new Map<string, FakeProspect>(), setups = new Set<string>(), closed = new Set<string>();
   const undo: { tx: unknown; revert: () => void }[] = [];

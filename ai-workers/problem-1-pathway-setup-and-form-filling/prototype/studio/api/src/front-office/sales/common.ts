@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { phoneE164Exact } from "../duplicates/phone.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 
 export type Tx = Prisma.TransactionClient;
@@ -39,15 +40,14 @@ export function email(v: unknown, field = "email"): string | null {
   return e;
 }
 
-/** E.164 when readable (+country, or a 10-digit North American number: Sample rule, FD-68), else kept as typed and
- *  flagged unreadable, never dropped (AG-2-84 rule 5, "Fix number"). */
+/** A typed phone at an arrival door (FO-9b, P-747): E.164 and readable when FO-9a's exact normaliser reads it
+ *  (duplicates/phone.ts phoneE164Exact: libphonenumber-js, default region CA, nothing typed lost), else kept as typed
+ *  and flagged unreadable, never refused and never dropped (AG-2-84 rule 5, "Fix number"). */
 export function phone(v: unknown, field = "phone"): { phone: string; readable: boolean } | null {
   const t = text(v, { field, what: "Phone", max: 40 });
   if (t === null) return null;
-  const digits = t.replace(/[\s().-]/g, "");
-  if (/^\+[1-9][0-9]{6,14}$/.test(digits)) return { phone: digits, readable: true };
-  if (/^1?[2-9][0-9]{9}$/.test(digits)) return { phone: `+1${digits.slice(-10)}`, readable: true };
-  return { phone: t, readable: false };
+  const e = phoneE164Exact(t);
+  return e ? { phone: e, readable: true } : { phone: t, readable: false };
 }
 
 export const actorOf = (ctx: StaffContext) => `staff:${ctx.staffId}`;
