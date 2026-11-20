@@ -118,3 +118,51 @@ Partly (Should): BIC-04 malformed sites accepted (M1); BIC-13 summary generic (m
 2. The breaker's M1 (500 on 6+ sites), per `break-report.md`.
 
 Minors m1–m5 should be fixed or listed in the PR.
+
+## Re-review on e9dc1b3ef (round 2; diff `43f51b83c..e9dc1b3ef` only)
+
+### What I ran
+Fresh scratch worktree at `e9dc1b3efa43d5a801c0b2ca9028e283b5f95bc9`, on fresh copies `rev2_fo4w` :4446 and `rev2_j26` :4447 (never :4400). Both copies are now stopped. Live AI was off; US$0.
+- `check_fo4w_web_form_settings_browser`: **31/31**.
+- `j_26.ts`: **15/15**.
+- Probes:
+  - `siteEntry` on 13 inputs.
+  - A browser walk of my own m1 scenario.
+  - The wildcard entered on screen.
+  - The off notice.
+  - A 1024 px check.
+
+### Status of each finding
+- **M1: closed.**
+  - The `HOST` check (web-form-settings.ts:24, :64) refuses each of these: `https://*.example.com`, `https://www,example.com`, `https://x;sandbox`, `https://a'b.com`, `-bad.example.com`, `under_score.example.com` and a trailing dot.
+  - It still accepts `https://EXAMPLE.com:443/` (stored as `https://example.com`), IDN (punycode), IPv4, `[::1]`, `localhost` and `.co.uk`.
+  - On screen the wildcard is refused on its field and nothing is stored (`r2-01`).
+  - Fail test: check_fo4w "break m1". It fails if `HOST` is removed.
+- **Breaker M1: closed.**
+  - `listFor` keeps the audit lists within 200 characters, as whole sites marked "(+n more)".
+  - One site is capped at 200 characters, on the server and in `maxLength`.
+  - Tests: 20 long sites save (200), are cleared (200) with two audit lines, and a site over 200 characters gets 422 on its field.
+  - Removing `listFor` brings back the 500, so the test fails.
+- **m1: closed.**
+  - My walk: rows page, ftp, valid → Save → Remove Site 1. Now ftp keeps "Only http:// or https://" and the valid row has no error. Focus is on a site field, including after removing the last row.
+  - Test added (it removes the first row).
+- **m2: partly closed.** A username/password fail test was added. There is still no parallel-save test for the row lock. My probe in round 1 showed the lock holds. This stays a listed Minor.
+- **m3: closed.** An unchanged list returns the same version and writes no audit line, with a test.
+  - Nit: the comparison is order-sensitive, so a reordered list still writes one "0 added, 0 removed" line.
+- **m4: closed.**
+  - The off notice now reads "While it is off, visitors see … on your site and on the hosted page."
+  - The button is "Remove site".
+  - The summary is "Not saved: check sites 1 and 2."
+- **m5: partly closed.** The `snippet.ts` comment is fixed. The zod shape is still in the page, and there are still no build-notes and no 1024 px screenshot. These are listed as open Minors in the PR, which the skill allows.
+
+### New in this diff
+- **Nit:** check_fo4w uses `const focusedIsSite = true;` inside an `ok(...)`, which is a constant. The real guard is the `waitForFunction` before it, which throws on a timeout and fails the run. Delete the constant or record the wait's result.
+- No new Blocker, Major or Minor.
+
+### Journey score
+**9.5 / 10, pass.**
+- Correct data: ½ → 1. Only real hosts are stored, and 20 sites save.
+- Feedback and state stays ½. The false "Saved." and the misplaced messages are gone, but unsaved rows are still lost without a warning on reload or when leaving the page (round-1 break-it, Minor).
+- Every other criterion: 1.
+
+**Verdict: Approve** for e9dc1b3efa43d5a801c0b2ca9028e283b5f95bc9. No Blocker or Major is open. Open Minors m2 (race test), m5 (zod shape, build-notes, 1024 px screenshot) and two Nits (order-sensitive no-op, constant `focusedIsSite`) are listed in the PR as follow-ups.
