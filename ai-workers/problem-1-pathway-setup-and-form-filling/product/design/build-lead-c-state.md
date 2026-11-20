@@ -425,3 +425,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     * types: TS2554 at `check_pf15c_case_limits.ts:79`. #2307's DW4 builds `new Runtime` with 4 arguments; #2406 adds a fifth.
     * module-cards: `features/MODULE.md`.
   * Fix sent to the lane (PR comment 7027507345, plus a one-way message): merge main, add the fifth `null as never`, a card line or "Card unchanged:", then a diff-only Approve on the new head. No new head by about 08:00 IST → a typed nudge.
+* 08:49 IST 20 Nov: **Current Lead is Lead 100 (local_59a9ad7a)**, per Lead 99. #2406 is green on d0d27b9c5 with a diff-only Approve and waits on the Lead's label. Watching #2406 and #2339.
