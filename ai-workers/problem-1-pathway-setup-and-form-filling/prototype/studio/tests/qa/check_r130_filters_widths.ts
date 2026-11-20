@@ -178,7 +178,7 @@ const outcome = await Promise.race([
 const words = outcome === "empty" ? await p.locator("[data-empty]").innerText() : outcome === "alert" ? await p.getByRole("alert").first().innerText() : "";
 console.log(`NOTE  from after to: API ${apiRange.status} ${apiRangeBody.slice(0, 200)}; the List: ${outcome} "${words}"`);
 ok("R1.30 List: Engaged from after Engaged to typed into the address ends in plain words a person can act on (no endless loading, no raw error)",
-  (outcome === "empty" || outcome === "alert") && !/Bad Request|BAD_|undefined|\{"/.test(words), [outcome, words, apiRange.status]);
+  (outcome === "empty" || outcome === "alert") && !/Bad Request|BAD_|undefined|\{"|from:/.test(words), [outcome, words, apiRange.status]);   // QA-572: fails today ("from: on or before to.")
 await p.screenshot({ path: join(SHOTS, "r130-list-from-after-to.png"), fullPage: true });
 // The same range typed by a person into the date fields (min/max on a date field do not stop typing).
 for (const [where, from, to, url] of [["List", "Engaged from", "Engaged to", "/front-office/pipeline?view=list"], ["Leads", "Arrived from", "Arrived to", "/front-office/leads?view=all"]] as const) {
@@ -195,10 +195,25 @@ for (const [where, from, to, url] of [["List", "Engaged from", "Engaged to", "/f
   const alertText = end === "alert" ? await p.getByRole("alert").first().innerText() : end;
   const fieldInvalid = await p.getByLabel(from).evaluate((e) => (e as HTMLInputElement).validity.valid === false || e.getAttribute("aria-invalid") === "true");
   console.log(`NOTE  ${where}: typed ${from} ${day(1)} after ${to} ${day(20)}: field keeps "${fromVal}", field invalid ${fieldInvalid}, after ${secs} s: "${alertText}"`);
-  ok(`R1.30 ${where}: a ${from} typed after ${to} is refused at the field in plain words (not a page alert naming "from:")`,
-    !/^\s*from:|from: on or before to/i.test(alertText), [fromVal, fieldInvalid, alertText]);
+  // QA-572's expected: refused at the field (aria-invalid, a described message in plain words), the list kept, no page alert.
+  const fieldAria = await p.getByLabel(from).getAttribute("aria-invalid");
+  const describedBy = await p.getByLabel(from).evaluate((e) => (e.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent ?? "").join(" ").trim());
+  const listKept = end !== "still loading after 30 s" && end !== "alert";
+  ok(`R1.30 ${where}: a ${from} typed after ${to} is refused at the field in plain words, the list kept (QA-572: fails today)`,
+    fieldAria === "true" && /on or before|before|after|earlier|later/i.test(describedBy) && !/from:/.test(describedBy) && listKept, [fromVal, fieldInvalid, fieldAria, describedBy, alertText]);
   await p.screenshot({ path: join(SHOTS, `r130-${where.toLowerCase()}-typed-from-after-to.png`), fullPage: true });
 }
+
+// ---------------------------------------------------------------------------- QA-533: source on the prospects List / board
+// AG-2-23: "The board/list SHALL be filterable by rep, source, … stage, date range". Fails today (no Source control on the
+// List or the board; GET /prospects?source= is ignored) unless the tech lead rules that Leads' Source filter is enough.
+await p.goto(`${BASE}/front-office/pipeline?view=list`); await p.locator(`[data-prospect-row="${pOld.number}"]`).waitFor();
+const listSource = await p.getByLabel(/^Source/).count() + await p.locator("[data-source-toggle]").count();
+const apiAll = await (await fetch(`${BASE}/api/front-office/prospects?type=INDIVIDUAL`, { headers: { authorization: `Bearer ${tok}` } })).json() as unknown[];
+const apiSrc = await fetch(`${BASE}/api/front-office/prospects?type=INDIVIDUAL&source=Referral`, { headers: { authorization: `Bearer ${tok}` } });
+const apiSrcBody = apiSrc.ok ? await apiSrc.json() as unknown[] : [];
+ok("R1.30 List (QA-533): the prospects List offers a Source filter, and ?source=Referral narrows the API's answer (fails today)",
+  listSource > 0 && apiSrc.ok && apiSrcBody.length > 0 && apiSrcBody.length < apiAll.length, { listSource, all: apiAll.length, status: apiSrc.status, bySource: apiSrcBody.length });
 
 // ---------------------------------------------------------------------------- next capability's first step (R1.31)
 await p.goto(`${BASE}/front-office/pipeline?view=list`);

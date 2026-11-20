@@ -48,13 +48,14 @@ PASS  R1.30 400px List with filters: axe finds no WCAG A/AA violation — []
 PASS  R1.30 400px Board pass: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves the card to Qualified; underneath exactly one PERSON move into Qualified — [true,true,"QUALIFIED|1"]
 PASS  R1.30 400px Board pass: no sideways page scroll after the move
 PASS  R1.30 400px List pass: Stage = Qualified shows the prospect just moved there and none of the Engaged ones — {"P-00006":1,"P-00001":0,"P-00002":0,"P-00003":0}
-PASS  R1.30 Leads fail-safe: a source typed into the address that the firm does not have is dropped, the whole list shows, no error page — [{"L-00001":1,"L-00002":1,"L-00003":1},"http://localhost:4473/front-office/leads?view=all&source=no-such-source-mwoee9ma"]
+PASS  R1.30 Leads fail-safe: a source typed into the address that the firm does not have is dropped, the whole list shows, no error page — [{"L-00001":1,"L-00002":1,"L-00003":1},"http://localhost:4473/front-office/leads?view=all&source=no-such-source-mwoetom0"]
 NOTE  from after to: API 400 {"type":"https://expatready.local/problems/invalid","title":"Check the details","status":400,"detail":"from: on or before to.","message":"from: on or before to.","code":"INVALID","fields":{"from":"fro; the List: alert "from: on or before to. Try again"
-PASS  R1.30 List: Engaged from after Engaged to typed into the address ends in plain words a person can act on (no endless loading, no raw error) — ["alert","from: on or before to. Try again",400]
+FAIL  R1.30 List: Engaged from after Engaged to typed into the address ends in plain words a person can act on (no endless loading, no raw error) — ["alert","from: on or before to. Try again",400]
 NOTE  List: typed Engaged from 2026-11-19 after Engaged to 2026-10-31: field keeps "2026-11-19", field invalid true, after 1 s: "from: on or before to. Try again"
-FAIL  R1.30 List: a Engaged from typed after Engaged to is refused at the field in plain words (not a page alert naming "from:") — ["2026-11-19",true,"from: on or before to. Try again"]
+FAIL  R1.30 List: a Engaged from typed after Engaged to is refused at the field in plain words, the list kept (QA-572: fails today) — ["2026-11-19",true,null,"","from: on or before to. Try again"]
 NOTE  Leads: typed Arrived from 2026-11-19 after Arrived to 2026-10-31: field keeps "2026-11-19", field invalid true, after 1 s: "from: on or before to. Try again"
-FAIL  R1.30 Leads: a Arrived from typed after Arrived to is refused at the field in plain words (not a page alert naming "from:") — ["2026-11-19",true,"from: on or before to. Try again"]
-PASS  R1.30 → R1.31 first step: from a filtered List row the prospect opens and its Value panel (Amount) opens — "http://localhost:4473/front-office/prospects/6ec11c2b-e960-4488-b785-61bf68f5c10f"
-53/55 passed
+FAIL  R1.30 Leads: a Arrived from typed after Arrived to is refused at the field in plain words, the list kept (QA-572: fails today) — ["2026-11-19",true,null,"","from: on or before to. Try again"]
+FAIL  R1.30 List (QA-533): the prospects List offers a Source filter, and ?source=Referral narrows the API's answer (fails today) — {"listSource":0,"all":6,"status":200,"bySource":6}
+PASS  R1.30 → R1.31 first step: from a filtered List row the prospect opens and its Value panel (Amount) opens — "http://localhost:4473/front-office/prospects/adbb5e35-42e5-4580-8c1a-9ec816a16778"
+52/56 passed
 EXIT=1
