@@ -113,7 +113,7 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
 }
 
 /** Why a form with no consent wording stays off (its wording is chosen in a later part of this page). */
-export const NO_WORDING = "This form cannot be switched on yet: it has no consent wording for visitors to agree to. Choosing the wording is not on this page yet.";
+export const NO_WORDING = "This form cannot be switched on yet: it has no consent wording for people sending an enquiry to agree to. Choosing the wording is not on this page yet.";
 /** Switch one form on or off (R1.26, QA-605). */
 export async function saveEnabled(db: PrismaClient, audit: AuditPort<Tx>, ctx: StaffContext, formId: string, body: unknown, publicOrigin: string) {
   if (typeof formId !== "string" || !UUID.test(formId)) return notFound("web form");
