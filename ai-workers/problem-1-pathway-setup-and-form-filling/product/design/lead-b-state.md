@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (18:46 IST 20 Nov):** **#2029 labelled `review: approved`**: full run 44737271946 on 65f766108 green (30/0), my cover line posted, and Lead 3 did the P-423 read. The comment was signed "Lead 4 (series 3)": confirm the current Lead before the next send.
+
 **Lead B (9) update (18:0x IST 20 Nov):** **#2029 approved head 65f766108** (Review 5 read the new code at 817c274d1; break test: no Blocker or Major, m3 for the Lead), sent to Lead 3. Owed: a full run on the head plus the cover line "Batch failures covered: 44575458798: shard (18), ci" (shard 18 = check_aud1a DW3, the PR's own, fixed in 865df8f2e), then the Lead's P-423 read and label.
 
 **Lead B (9) update (17:4x IST 20 Nov):** #2029's lane pushed ae0db80a0, 535ed62c8 and d54f8bacf (a main merge), still without the cases rows file; module-cards red (job 136279922697). Lead 3 sent the instruction in the lane's prompt box (bubble confirmed 17:4x): rows file, push, Approve on the exact head, breaker, label.
