@@ -413,3 +413,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 02:56 IST 20 Nov: **#2377 QA-520 opened** (head 81cb4cc0f, +249/−25). Reviewer: Approve on the head; ci green. Row owner accepted its 5 departures (415 not 422, one web line, more textPdf swaps, fileRefused, widened check). Waits on Lead 98's P-423 read and label. Watch its merge → qa re-scores R1.67.
 * 03:02 IST 20 Nov: **#2377 read (P-423) and labelled by Lead 98** on 81cb4cc0f. If dequeued: name the failing suite to Lead 98 (P-731).
 * 03:4x IST 20 Nov: **#2377 QA-520 merged 03:40 IST (bf0179aa6)** → R1.67 proof due (qa re-scores from J-67). Reported to Lead 98. Still watching #2321, #2307, #2339.
+* 06:2x IST 20 Nov: **#2321 FO-2w merged 06:18 IST (abf2176ef)** → the CS-K1-2 lane may open its PR (merge main once, diff-only Approve; stamp later than main's newest). Reported to the Lead. Still watching #2307, #2339.
