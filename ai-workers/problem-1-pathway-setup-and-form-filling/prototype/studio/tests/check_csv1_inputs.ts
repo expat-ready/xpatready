@@ -252,6 +252,12 @@ if (reached) {
     await writeRefused("case-prepare.ts", why, field, () => m3.call("POST", `/runtime/items/${pdfItem?.id}/pdf-copy`, body, officer));
   const pdf = await m3.call("POST", `/runtime/items/${pdfItem?.id}/pdf-copy`, { idempotencyKey: `csv1-${Date.now()}` }, officer);
   ok(`CS-V1 DW4 pass (case-prepare.ts): a correct PDF copy still answers as before (${online ? "an Online item: queued, 202" : "no Online item: refused in words, 409/422"})`, online ? pdf.status === 202 : pdf.status === 409 || pdf.status === 422, { status: pdf.status, body: pdf.body });
+  // The 202 queues a background job (fill-case.ts run()) that, when it ends, writes its own audit line ("Copy <id8> of …
+  // generated" or "… failed"); left running, that line lands during the refusals below and moves rows()' first count
+  // (audit_event) with nothing the refused request stored (batch of 20 Nov: 556 -> 557). So wait until the job has
+  // written it: the queue runs one copy at a time, oldest first, so every earlier copy has settled too.
+  const copyId = String(pdf.body?.id ?? "");
+  if (pdf.status === 202) ok("DW4 setup (part 3): the queued PDF copy has finished and written its audit line before the next refusals are counted", /^[0-9a-f-]{36}$/.test(copyId) && await m3.until(async () => m3.sql(`select count(*) from audit_event where entity = 'form copy' and action in ('generated', 'failed') and summary like 'Copy ${copyId.slice(0, 8)} of %'`) === "1", 120_000), copyId);
   const stepItem = hand ?? anyForm;
   for (const [why, body, field] of [["an unknown field", { copy: null, extra: 1 }, "body"], ["a wrong type (copy: 5)", { copy: 5 }, "copy"], ["an oversized copy", { copy: big }, "copy"]] as const)
     await writeRefused("sign-steps.ts", `a signing step with ${why}`, field, () => m3.call("POST", `/runtime/items/${stepItem?.id}/sign-steps/print`, body, officer));
