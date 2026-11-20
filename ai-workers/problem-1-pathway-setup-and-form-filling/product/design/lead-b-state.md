@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (22:3x IST 20 Nov):** the current Lead is **Lead 5 (series 3)** (`local_08ac9385-2393-48cc-8cdd-9b770ded5e16`); I've reported to it. **#2326** is approved at 5b573ce07 and queued (22:32 IST); on merge R1.38 has 4/4 parts and goes to qa. Merged today: #2305 R1.110, #2029 R1.4, #2322 R1.38 3/4.
+
 **Lead B (9) update (22:2x IST 20 Nov):** **#2326**: Lead 4 made the main merge itself, bdeb1c3e8 (j_38.ts: main's DW1 delivered() and W7/W8 kept, W6 added; the host keeps CASE_OFFICER for W6 and OWNER for W7/W8). A fresh Opus diff-only review and walks.yml j_38 are running; Lead 4 labels on Approve and green.
 
 **Lead B (9) update (22:1x IST 20 Nov):** **#2322 (R1.38 3/4) merged** (main 08ab32548). #2326 conflicts with main only in j_38.ts. Brief `lead-b-briefs/J-38w6m.md` sent to Lead 4 (the R1.38 lane is gone).
