@@ -29,6 +29,10 @@ export type SettingDefinition<T> = {
   default: T;
   /** The permission key that may change it (SA-06 §10b); routes check it (PF-4). */
   changePermission: string;
+  /** PF-13: a value that may be personal (an address, a phone number, an email in a signature). Its audit line keeps the
+   *  key in `detail` (ids and facts only, AuditDetail) and the value in `before`/`after` (AuditValues, which may hold
+   *  personal data, R1.8), never in `detail`. */
+  personal?: boolean;
 };
 
 type Tx = Prisma.TransactionClient;
@@ -172,9 +176,13 @@ export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: 
     await auditEvent.record(tx, {
       firmId: scope.firmId, actor: await auditActorOf(tx, w.by), action: "platform.setting.change", entity: "platform_firm_setting",
       entityKey: `${scope.firmId}:${w.key}`, summary: `Firm ${firm.key}: setting ${w.key} ${changed ? "changed" : "saved unchanged"}${w.reason ? ` (${w.reason})` : ""}`.slice(0, 600),
-      detail: { firmKey: firm.key, key: w.key, ...asDetail("from", from), ...asDetail("to", value), ...(w.reason ? { reason: cut(w.reason) } : {}) } as AuditEntry["detail"],
-      // R1.8 (QA-594): the setting's before and after are its from and to above (asDetail, read by AUD-4 as "key: from → to").
-      before: null, after: null,
+      ...(def.personal
+        // PF-13: a personal value goes in before/after only (a string of at most 4,000 characters, or null).
+        ? { detail: { firmKey: firm.key, key: w.key, personal: true, ...(w.reason ? { reason: cut(w.reason) } : {}) } as AuditEntry["detail"],
+          before: { value: from as string | null }, after: { value: value as string | null } }
+        : { detail: { firmKey: firm.key, key: w.key, ...asDetail("from", from), ...asDetail("to", value), ...(w.reason ? { reason: cut(w.reason) } : {}) } as AuditEntry["detail"],
+          // R1.8 (QA-594): the setting's before and after are its from and to above (asDetail, read by AUD-4 as "key: from → to").
+          before: null, after: null }),
     });
     return { key: w.key, value: parsed.data, changed };
   };
