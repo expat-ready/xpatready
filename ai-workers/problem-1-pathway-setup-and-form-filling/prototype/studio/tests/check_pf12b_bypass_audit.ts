@@ -11,6 +11,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { FakeClock } from "../ports/clock.ts";
@@ -38,7 +39,7 @@ import { ConsentStore } from "../api/src/platform/messages/consent/consent-store
 import { channelsOf } from "../api/src/platform/messages/send/channels.ts";
 import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
 import { JsonLog, useLog } from "../api/src/platform/observability/log.ts";
-import { BACKOFF_MAX_MS, CATCH_UP_USE, touchedEach, type WonBackoff } from "../api/src/case-clients/live.ts";
+import { BACKOFF_MAX_MS, CATCH_UP_USE, ProspectWonPoll, touchedEach, type WonBackoff } from "../api/src/case-clients/live.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -336,6 +337,20 @@ try {
     day >= 20 && day <= 40 && waits.slice(0, 3).join(",") === "10000,20000,40000" && Math.max(...waits) <= BACKOFF_MAX_MS + 10_000 && backoff.get(`${A}:stuck`)!.wait === BACKOFF_MAX_MS, { day, waits: waits.slice(0, 12) });
   ok("PF-12b fail (break M1): while firm A's prospect waits, a poll writes no line for A and does not try it; firm B's healthy prospect is tried (and lined) on its runs, and leaves no backoff",
     await (async () => { const n = linesOf(A); const r = await run(); return linesOf(A) === n && r[0] === null && r[1] === B && !backoff.has(`${B}:fine`) && linesOf(B) > b0; })());
+  // Review m4 (20 Nov): the app's poller passes its own backoff, kept across ticks. A won event in firm A whose payload names
+  // firm B can never be taken (prospect-won.ts refuses it): two ticks in a row write one line to A's trail, not two.
+  const W = randomUUID(); sql(`insert into workspace (id, key, label) values ('${W}', 'pf12b-${process.pid}', 'PF-12b suite')`);
+  const keyB = sql(`select key from platform_firm where id = '${B}'`), pX = randomUUID();
+  const wonPayload = JSON.stringify({ firm_id: B, firm_key: keyB, prospect_id: pX, lead_id: randomUUID(), won_via: "CONVERTED", retainer_id: null, representative_staff_id: null, representative_actor_id: null, owner_staff_id: null, interested_in: null,
+    answers: { "person.given_names": "Ana", "person.family_name": "Sample", "person.email": null, "person.phone_number": null, "person.current_residence_country": null }, consent_ids: [], sealed_retainer_sha256: null, type: "INDIVIDUAL", fromStageKey: "new", retainerSigned: false, subject: { subject: "PERSON", personId: randomUUID() } });
+  sql(`insert into module_event (id, firm_id, type, subject_id, payload) values (gen_random_uuid(), '${A}', 'prospect.won', '${pX}', '${wonPayload}'::jsonb)`);
+  const foStub = { ensureForClient: async () => ({ foPersonId: randomUUID() }), ensureCompanyForClient: async () => ({ foCompanyId: randomUUID() }) };
+  const poll = new ProspectWonPoll(db as never, { id: async () => W } as never, foStub as never, undefined);
+  const pollA0 = linesOf(A);
+  await poll.tick(); const firstTick = linesOf(A) - pollA0, failedFirst = poll.last?.failed.some((f) => f.prospectId === pX);
+  await poll.tick(); await poll.tick();
+  ok("PF-12b pass/fail (review m4): the app's poller keeps its backoff across ticks: a prospect it can never take writes its firm's line on the first tick only, not on the next two",
+    firstTick === 1 && failedFirst === true && linesOf(A) - pollA0 === 1 && sql(`select count(*) from case_client where prospect_id = '${pX}'`) === "0", { firstTick, failedFirst, total: linesOf(A) - pollA0, last: poll.last });
   backoff.set(`${A}:mends`, { until: t - 1, wait: BACKOFF_MAX_MS });
   const mended = await asBypass(CATCH_UP_USE, () => touchedEach(db, backoff, tNow, 10_000)(A, work(A), "mends"));
   ok("PF-12b pass (break M1): a waiting prospect whose wait is over is tried (with its line) and, once it succeeds, leaves the backoff", mended === A && !backoff.has(`${A}:mends`));

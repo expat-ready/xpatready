@@ -151,14 +151,14 @@ let bypassLine: (use: string, route: string | undefined) => void = (use, route) 
 /** A test or the logger replaces where bypass lines go. Returns the one before. */
 export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
 
-/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
- *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
- *  per firm it touches (touchFirm). */
 /** The one nesting rule (PF-12b, merge of PF-19p): a use runs inside an outer use only when it touches no firm's rows
  *  ("none: …") and names that outer use in `inside`. Exported for the suite's per-firm stand-in (review m1, 20 Nov). */
 export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
   return entry.audit.startsWith("none: ") && (entry.inside ?? []).includes(outer);
 }
+/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
+ *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
+ *  per firm it touches (touchFirm). */
 export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
   const store = scope.getStore(), route = store?.route;
