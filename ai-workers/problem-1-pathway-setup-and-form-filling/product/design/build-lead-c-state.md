@@ -441,3 +441,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
     * No schema; it runs beside #2368.
     * Part 1b keeps invoices issued, PDF, receipts and payments.
 * 15:3x IST 20 Nov: qa 13's #2467 left R1.72 and R1.74 Partial. New briefs: **CS-K1s** (Clients list and client page with 'Open a case?', a new offer GET, J-72 W3/W7 on screen; QA-593) and **CS-DL3** (government steps with an IRCC due date and reminders, part 1 API and schema, part 2 the case page section with J-74; QA-591). CS-K1s and CS-DL3 part 1 run in parallel; part 2 waits for both. Sent to Lead 2. qa 13 proves R1.8. The FO-7b-1a start card waits for a typed founder turn.
+* 14:43 IST 20 Nov: **Current Lead is Lead 3 (local_b0640d3f)**. CS-K1s and CS-DL3 sent to Lead 3 to start. **FO-7b-1a lane started 14:5x IST (task_bc15fd13)**; watch for its PR `runtime: FO-7b part 1a`.
