@@ -189,3 +189,7 @@ commits, the next statement takes a fresh snapshot, so the `findFirst` sees the 
 **n1 and n3:** fixed (`PER_LOOP` 12, the "race happened" line, seats given back first).
 
 Verdict: Approve 6a71adf57bec32998ffca60ada390187099bbb61
+
+## Re-review e0d6d891 (diff `6a71adf5..e0d6d891 -- '*.ts'`)
+`endSessions` is called only inside session `inFirm` (signOut, signOutEverywhere, resetTwoStep). Its order is firm `NO KEY UPDATE`, then person `FOR UPDATE`. A sign-in takes person `FOR UPDATE`, then firm `KEY SHARE`, which `NO KEY UPDATE` never blocks, so only the staff change waits (on the person's row) and there is no cycle; nothing takes person then firm. Terms accept now takes `NO KEY UPDATE` and still queues with the other staff changes. Both Minors from 6a71adf5 are closed; the race suite's usage line is a test-only change. No runs: nothing here gives cause to doubt your results.
+Verdict: Approve e0d6d891b4d12c40dfc4e280e340b922a20e9e39
