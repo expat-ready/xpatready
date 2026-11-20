@@ -8,7 +8,7 @@ import { Frame, useWhere, type Crumb } from "@/components/frame";
 import { Button } from "@/components/ui/controls";
 import { SignInCard as SignIn } from "@/modules/platform/frame";
 import { cn } from "@/lib/utils";
-import { LeadRows, seesUnassigned, type Me } from "./contract";
+import { can, LeadRows, seesUnassigned, type Me } from "./contract";
 import { Loading } from "./loading";
 import { setStaffToken, staffApi, StaffApiError, useMe, useStaffToken } from "./session";
 const MeCtx = React.createContext<Me | null>(null);
@@ -31,6 +31,11 @@ function Menu({ me }: { me: Me }) {
         {unassigned ? <span data-unassigned-badge className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-text-warn">{unassigned} unassigned</span> : null}
       </NavLink>
       <NavLink to="/front-office/pipeline" className={item}>Pipeline</NavLink>
+      {/* FO-4w: Settings for the people who may change them (Owner, Admin); the page says so to anyone else. */}
+      {can(me, "agent/prospect:configure-form") ? <>
+        <p className="px-3 pb-2 pt-4 text-xs font-medium text-text-muted">Settings</p>
+        <NavLink to="/front-office/settings/web-form" className={item}>Web form</NavLink>
+      </> : null}
     </nav>
   );
 }
@@ -57,7 +62,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
           : (
             <MeCtx.Provider value={who}>
               {/* The menu column is hidden below 768 px: the same two places as links, so a phone reaches Pipeline. */}
-              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink></nav>
+              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}</nav>
               {children}
             </MeCtx.Provider>
           )}
