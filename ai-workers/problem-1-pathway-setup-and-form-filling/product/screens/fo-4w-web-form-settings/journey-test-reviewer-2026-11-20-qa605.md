@@ -47,3 +47,11 @@ I did not build this. All runs were on my own isolated copies: :4537 (pack), :45
 3. Make the STALE words for sites say "this form".
 
 **Could not test:** a real screen reader, and an intended user's unaided walk (D17 and D20 stay with the founder).
+
+## Re-run at 1a571ee7b (20 Nov)
+- **Suites:** pack 47/47 twice; j_26 17/17 twice. All on my own copies (:4537, :4538); my probe on :4539.
+- **J3 (new firm):** the press now shows "This form cannot be switched on yet: it has no consent wording for visitors to agree to…". The form stays off, nothing is written, and there is no 500.
+- **J7 (keyboard):** focus stays on the switch after Space.
+- **J4 (stale):** the sites STALE words now say "this form". The send while off is tested in both suites.
+- **Score: 9.5 / 10.** "Error recovery" and "accessibility and screen sizes" are now 1. "Task completed" stays ½ until the wording part exists. Pass.
+- **Remaining Minor (m4):** the switch is still offered on a form with no wording; it refuses only after the press.

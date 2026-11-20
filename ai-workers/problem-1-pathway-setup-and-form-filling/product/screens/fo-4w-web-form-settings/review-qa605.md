@@ -97,3 +97,45 @@ D1 4 (switch built; M1) · D2 5 (lock, version, one winner, no-op on same state)
 A real screen reader, and an intended user's unaided walk (D17 and D20 stay with the founder).
 
 Reviewer: Changes requested
+
+---
+
+## Re-review at `1a571ee7bc2d4998f55f1f7aa93bd3a3c4295032` (diff `c3a80a138..1a571ee7b`; c8d34e9 is screenshots only)
+
+I did not build this. I read only the fixes, then reran everything on my own copies (:4537, :4538, :4539). Never :4400, :4527 or :4426. US$0, AI off. The screenshots were restored with `git checkout` afterwards.
+
+**Runs**
+- `check_fo4w_web_form_settings_browser.ts`: **47/47 twice**.
+- `j_26.ts`: **17/17 twice**.
+- My probe again, on a fresh copy:
+  - New firm (no wording) presses "Switch the form on": the screen shows the plain reason, the form stays off, no 500.
+  - Admin 200; Case Manager and Read-only 403; send while off 404.
+  - Race, 5 rounds: one 200 and three 409s each, one audit line each.
+  - Keyboard at 1024 px: after Space, focus is on `BUTTON: Switch the form off`.
+  - 200 % zoom and 400 px: no sideways scroll; axe 0; no page errors.
+
+**Each finding**
+- **M1 → closed.**
+  - `web-form-settings.ts:132-135` checks the wording inside the row lock, after the version and same-state checks. With none, it returns 422 `NO_CONSENT_WORDING`, with the reason on `enabled`. `unprocessable` throws, so the transaction rolls back and no audit line is written.
+  - The screen shows the field text (`web-form-settings-page.tsx:120`; `qa605-00-no-wording-1440`).
+  - Tests: pack :123 (API: 422, still off, no line) and :161 (screen: the message, no "Something went wrong").
+  - Rule-removal check: without the guard the database refuses the update and returns 500, so :123 fails.
+  - j_26's header no longer claims the form starts as a new firm's.
+- **m1 → closed.** Focus returns in `finally` (`web-form-settings-page.tsx:123`). The pack's keyboard step now waits for focus on the switch (:223), and my probe confirms it.
+- **m2 → closed.** The sites STALE words now say "this form" (`web-form-settings.ts:100`). Probe: a sites save in tab B after tab A's switch reads "Someone else changed this form since you opened it". The pack expectations were updated to match.
+- **m3 → closed.** A POST to `…/submissions` while off returns 404 `FORM_NOT_AVAILABLE` (pack :203-204, j_26.ts:97-98).
+
+**New, Minor (Should; not blocking):**
+- **m4: the switch is still offered on a form that cannot go on yet.**
+  - **Where:** `web-form-settings-page.tsx:130`.
+  - **Problem:** EXPERIENCE [M] 8 says "prevent errors before messaging them". The refusal is honest and plain, and the wording screen is the later part (out of scope), so this is not blocking.
+  - **Fix:** when the wording part lands, return whether the form has a wording in `GET web-forms`, then explain beside the switch instead of after the press.
+
+**Scores changed**
+- D1 5 · D5 5 · D11 5 · D13 5 · D16 5.
+- D19 stays 3: a firm still needs its wording set underneath, by scope.
+- Journey: **9.5/10**. "Error recovery" and "accessibility and screen sizes" move from ½ to 1. "Task completed" stays ½ because a new firm cannot go on until the wording part exists.
+
+**Open:** no Blocker and no Major. One Minor (m4).
+
+Reviewer: Approve 1a571ee7bc2d4998f55f1f7aa93bd3a3c4295032
