@@ -26,6 +26,15 @@ export type ConflictList = z.infer<typeof ConflictList>;
 /** FO-13c's key: run and record a check (the list reads with agent/prospect:show). */
 export const CONFLICT_KEY = "agent/conflict:check";
 export const RESULTS: [(typeof RESULT_CODES)[number], string][] = [["NO_CONFLICT", "No conflict"], ["POTENTIAL_CONFLICT", "Potential conflict"], ["CONFLICT_CANNOT_ACT", "Conflict: the firm cannot act"]];
+/** What each result means for the steps that make a client (the chip's tooltip; BIC-14, review M3, challenge m10). */
+export const RESULT_TIP: Record<string, string> = {
+  NO_CONFLICT: "No conflict found: Convert and the retainer may go ahead while the client's name, email and phone stay the same.",
+  POTENTIAL_CONFLICT: "A possible conflict: the client must read the disclosure in the retainer and sign it before becoming a client.",
+  CONFLICT_CANNOT_ACT: "The firm cannot act for this client: Convert, Send and Signed offline are refused.",
+  WAITING: "Matches the checker could not open: a manager who may see them confirms the check before the client can be made.",
+};
+/** The result's refusal in plain words, the server's own sentence (FO-13c CHOOSE_RESULT): checked here before sending. */
+export const CHOOSE_RESULT = "Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.";
 export const resultLabel = (r: string | null) => (r === null ? "Waiting for a confirmation" : RESULTS.find(([k]) => k === r)?.[1] ?? r);
 /** The refusals a new conflict check fixes; the disclosure and consent refusals are fixed in the retainer (challenge M2). */
 export const FIXED_BY_A_CHECK = new Set(["CONFLICT_CHECK_REQUIRED", "CONFLICT_CHECK_UNCONFIRMED", "CONFLICT_CHECK_STALE", "CONFLICT_CANNOT_ACT"]);

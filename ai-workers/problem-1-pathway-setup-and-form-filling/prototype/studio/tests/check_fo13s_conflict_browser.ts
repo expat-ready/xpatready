@@ -90,7 +90,8 @@ try {
   await shot(r, "no-check-1440"); await axe(r, "the prospect page, no check");
   await r.getByRole("button", { name: "Convert to client" }).click();
   const conv = r.getByRole("dialog", { name: /Convert .* to a client\?/ });
-  ok("FO-13s2 m5 pass: the Convert dialog says the gate's reason before the click, with Go to the conflict check", await conv.locator('[data-convert-conflict="CONFLICT_CHECK_REQUIRED"]').isVisible() && await conv.locator("[data-go-conflict]").isVisible());
+  ok("FO-13s2 m5 pass: the Convert dialog says the gate's reason before the click, with Go to the conflict check, and no \"Work can start\"",
+    await conv.locator('[data-convert-conflict="CONFLICT_CHECK_REQUIRED"]').isVisible() && await conv.locator("[data-go-conflict]").isVisible() && !(await conv.innerText()).includes("Work can start"));
   await conv.locator("[data-go-conflict]").click();
   await r.waitForFunction(() => document.activeElement?.id === "fo-conflict");
   ok("FO-13s2 m5 pass: Go to the conflict check closes the dialog and takes focus to the section", !(await conv.isVisible()));
@@ -101,13 +102,19 @@ try {
   await shot(r, "run-check-1440"); await axe(r, "Run a conflict check");
   await drawer(r).getByRole("button", { name: "Save check" }).click();
   await drawer(r).locator("#fo-conflict-result-error").waitFor({ timeout: 10_000 });
-  ok("FO-13s2 fail: Save with no result shows the server's words on Result, nothing stored", checks(ana.id) === 0);
+  const noResult = await drawer(r).innerText();
+  ok("FO-13s2 fail (review M1): Save with no result says it in plain words on Result and in the summary (no code), focus on Result, nothing stored",
+    noResult.includes("Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.") && !/NO_CONFLICT|POTENTIAL_CONFLICT/.test(noResult) && await drawer(r).locator("[data-error-summary]").isVisible()
+    && await drawer(r).locator('fieldset[aria-invalid="true"]').evaluate((el) => el === document.activeElement) && checks(ana.id) === 0);
   await drawer(r).getByLabel("No conflict").check();
   await drawer(r).getByRole("button", { name: "Save check" }).click();
   await status(r).and(r.locator('[data-conflict-status="CLEARED"]')).waitFor({ timeout: 15_000 });
   ok("FO-13s2 BR-5 / M1 pass: after a No conflict check the status is Cleared with the checker's name, and the history names who checked",
     (await status(r).innerText()).includes(`Cleared: no conflict found · ${R.name}`) && (await panel(r).locator("[data-checked-by]").first().innerText()) === R.name && checks(ana.id) === 1);
   await shot(r, "cleared-1440");
+  await panel(r).locator("[data-result]").first().hover();
+  const tip = await r.locator("[data-result-tip]").first().innerText({ timeout: 5_000 }).catch(() => "");
+  ok("FO-13s2 BIC-14 pass (review M3): the result chip's tooltip says what it means for Convert and the retainer", /Convert and the retainer may go ahead/.test(tip), tip);
   await r.getByRole("button", { name: "Convert to client" }).click();
   ok("FO-13s2 m5 fail: with a clearing check the Convert dialog shows no conflict reason", (await conv.locator("[data-convert-conflict]").count()) === 0);
   await conv.getByRole("button", { name: "Yes, convert to client" }).click();
@@ -132,13 +139,32 @@ try {
   await r.keyboard.press("Escape");
 
   // ---------------------------------------------------- BR-5 stale: the email changed after the check
-  sql(`update fo_person set email = 'changed.${run}@example.com' where id = '${ana.personId}'`);
   const cyd = prospect("Cyd", R.id);
   await open(r, cyd.id); await runCheck(r); await drawer(r).getByLabel("No conflict").check(); await drawer(r).getByRole("button", { name: "Save check" }).click();
   await r.locator('[data-conflict-status="CLEARED"]').waitFor({ timeout: 15_000 });
   sql(`update fo_person set email = 'cyd.changed.${run}@example.com' where id = '${cyd.personId}'`);
   await r.reload(); await status(r).waitFor();
   ok("FO-13s2 BR-5 fail: the client's email changed after the check → the status is the stale refusal (a new check is needed)", (await status(r).getAttribute("data-conflict-status")) === "CONFLICT_CHECK_STALE" && /new check/.test(await status(r).innerText()));
+
+  // ---------------------------------------------------- review M2: every opening searches afresh (never the last answer)
+  const eve = prospect("Eve", R.id);
+  await open(r, eve.id); await runCheck(r);
+  const before = await drawer(r).locator("[data-match]").count();
+  await drawer(r).getByRole("button", { name: "Cancel" }).click(); await drawer(r).waitFor({ state: "hidden" });
+  person(`Late${run}`, eve.email, R.id);   // a lead with the client's email arrives meanwhile
+  await panel(r).getByRole("button", { name: "Run a check" }).click(); await drawer(r).locator("[data-searched]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 M2 pass/fail: reopened at once, the panel searches again and lists the new match (it had none before)", before === 0 && (await drawer(r).getByText(`Late${run} Sample`).count()) === 1, before);
+  await drawer(r).getByRole("button", { name: "Cancel" }).click();
+  // m6: a Corporate prospect is searched by its company's name only, and says so.
+  const coP = person(`Corp${run}`, `fo13s2.corp.${run}@example.com`, R.id), CO = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Maple ${run} Ltd', 'maple ${run}', 'staff:${R.id}', now()) returning id`);
+  sql(`update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where person_id = '${coP}'; insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO}', '${coP}', 'PRIMARY', 'test')`);
+  const coX = sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    select gen_random_uuid(), '${A}', l.id, 'CORPORATE', (select id from fo_stage where firm_id = '${A}' and pipeline = 'CORPORATE' and key = 'ENGAGED'), '${CO}', '${coP}', '${R.id}', 'test', now() from fo_lead l where l.person_id = '${coP}' returning id`);
+  sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${coX}'`);
+  await open(r, coX); await runCheck(r);
+  ok("FO-13s2 m6 pass: a Corporate prospect's check searches the company's name and says a company is searched by its name only",
+    (await drawer(r).locator("[data-searched]").innerText()).includes(`Maple ${run} Ltd`) && (await drawer(r).getByText("A company is searched by its name only.").count()) === 1);
+  await drawer(r).getByRole("button", { name: "Cancel" }).click();
 
   // ---------------------------------------------------- BR-3 hidden matches: a Case Manager records for confirmation
   await seesAll(false);
