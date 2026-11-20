@@ -117,7 +117,9 @@ try {
   // --------------------------------------------------------------------------------------- DW5: the audit line (PF-23)
   const audit = sql(`select actor || '|' || summary || '|' || detail::text from audit_event where entity_key = '${ben.id}' and action = '${VALUE_SET}'`);
   ok("FO-2pv DW5 pass: one audit line by the typed staff actor names the prospect and the currency (USD)", audit.startsWith(`staff:${R.staffId}|`) && audit.includes(ben.number) && audit.includes('"currency": "USD"'), audit);
-  ok("FO-2pv DW5 fail: no audit line of a value edit holds an amount (no 99.9, 9990, 1200.50, 120050, 300 or 30000 anywhere in them)", sql(`select count(*) from audit_event where action = '${VALUE_SET}' and (summary || detail::text) ~ '99\\.9|9990|1200|120050|30000|\\m300\\M'`) === "0" && lines(ana.id) === 2 && lines(mine.id) === 1);
+  // R1.8 (QA-594, P-687): the amounts are the line's before and after values (valueCents_before / _after), nowhere else.
+  ok("FO-2pv DW5 pass (R1.8): the value edit's line holds the amount after it, as valueCents_after", /"valueCents_after": \d+/.test(audit), audit);
+  ok("FO-2pv DW5 fail: no audit line of a value edit holds an amount in its words or ids (no 99.9, 9990, 1200.50, 120050, 300 or 30000 outside its before and after)", sql(`select count(*) from audit_event where action = '${VALUE_SET}' and (summary || (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text) ~ '99\\.9|9990|1200|120050|30000|\\m300\\M'`) === "0" && lines(ana.id) === 2 && lines(mine.id) === 1);
 } finally {
   await db.$disconnect();
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]); } catch { /* the next run's dropdb */ }
