@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Field, Input, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
+import { AddLeadPanel } from "./add-lead-panel";
 import { Loading } from "./loading";
 import { useOwners } from "./prospect-actions";
 import { DayInput, dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
@@ -56,6 +57,9 @@ function LeadsBody() {
   const rows = useLeads(view, sources, ready && !badRange, more);
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
+  // FO-4 Add a lead (R1.27, QA-606; AG-2-4 rule 10): shown only to people who may create a lead.
+  const [adding, setAdding] = React.useState(false), addButton = React.useRef<HTMLButtonElement>(null);
+  const panel = (o: boolean) => { setAdding(o); if (!o) setTimeout(() => addButton.current?.focus(), 60); };
   const canTake = can(me, KEY.edit);
   const needle = q.trim().toLowerCase();
   const shown = (rows.data ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle) || l.number.toLowerCase().includes(needle));
@@ -64,7 +68,10 @@ function LeadsBody() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold text-text">Leads</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold text-text">Leads</h1>
+          {can(me, KEY.create) ? <Button ref={addButton} data-add-lead-open onClick={() => panel(true)}>Add a lead</Button> : null}
+        </div>
         <p className="mt-1 text-sm text-text-muted">People who showed interest. Take one to work it, or Engage it when it is a real opportunity.</p>
         {!canTake ? <p data-why-no-take className="mt-1 text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
       </header>
@@ -120,6 +127,7 @@ function LeadsBody() {
                   ))}
                 </Table>
               )}
+      <AddLeadPanel open={adding} onOpenChange={panel} />
     </div>
   );
 }
