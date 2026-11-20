@@ -61,7 +61,8 @@ export class PeopleEdit {
       if (p.phone === phone && p.readable) return { personId: p.id, phone, fixNumber: false };
       const after = await tx.foPerson.update({ where: { id }, data: { phone, phoneReadable: true }, select: { id: true, phone: true, phoneReadable: true } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: PHONE_EDIT_ACTION, entity: "fo_person", entityKey: id,
-        summary: `Staff ${ctx.staffId} changed the phone number of person ${id}.`, detail: { foPersonId: id, staffId: ctx.staffId } });
+        summary: `Staff ${ctx.staffId} changed the phone number of person ${id}.`, detail: { foPersonId: id, staffId: ctx.staffId },
+        before: { phone: p.phone, phoneReadable: p.readable }, after: { phone: after.phone, phoneReadable: after.phoneReadable } });
       return { personId: after.id, phone: after.phone, fixNumber: !after.phoneReadable };
     });
   }

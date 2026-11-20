@@ -53,7 +53,10 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
-import { logPort } from "./observability/log.ts";
+import { logPort, requestScope } from "./observability/log.ts";
+import { auditEvent } from "./audit/audit-event.ts";
+import type { AuditPort } from "../../../ports/audit.ts";
+import type { PrismaClient } from "@prisma/client";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
@@ -70,7 +73,7 @@ export function currentBypass(): string | undefined { return scope.getStore()?.b
 
 // Each helper awaits fn inside its scope: a Prisma query is lazy (it runs on its first then), so one handed back
 // unawaited would otherwise run in the caller's scope.
-/** Runs fn as one firm's code (a job's firm; a test). */
+/** Runs fn as one firm's code (a job's firm; a test; the case opening's own platform firm, CS-K1 part 2). */
 export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T> {
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
@@ -90,26 +93,35 @@ export function enterFirm(firmId: string) {
  *  routes ("METHOD /path" patterns) it may run in. `outside: true` lets it run where there is no request (start-up, a
  *  job). `direct: true` lets a door's use run on a direct call with no scope at all (a suite or a tool calling the
  *  service with its own client; never inside a request or a job). Anything else is refused (BypassRefused) before any
- *  query runs. */
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean }>> = Object.freeze({
-  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i] },
-  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true },
-  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true },
-  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i], direct: true },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true },
-  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//] },
-  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true },
-  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true },
-  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true },
-  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true },
-  "platform.entitlements.limit-change": { why: "our team lowers a plan's limit for every firm on the plan, and each firm's Owners are told (PF-15 part 2, SA-3-43); PF-4s's system routes once on main, and the service on a direct call", routes: [/^(POST|PATCH) \/api\/system\/plans\//i], direct: true },
-  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true },
-  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true },
-  "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true },
-  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true },
-  "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true },
-  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true },
+ *  query runs.
+ *  PF-12b part 1 (QA-499; R1.4 "every use writes an audit line"; P-607, P-571 (1), AG-1-45): `audit` says how each use
+ *  is audited. "per-firm": the use calls touchFirm(tx, firmId) for each firm whose rows it reads or writes, in that
+ *  firm's transaction, and touchFirm writes one `platform.bypass` line to that firm's trail (fail-closed). "none: …":
+ *  why the use writes no line (it touches no firm's rows, or it is an own-firm door that PF-12b part 2 moves off the
+ *  bypass). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
+export type BypassAudit = "per-firm" | `none: ${string}`;
+/** `inside`: the only outer uses this use may run within (one bypass use at a time otherwise, break M1). Only a use that
+ *  touches no firm's rows ("none: …") may name one: it then crosses under its own name, and the outer use's lines stand. */
+export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] }>> = Object.freeze({
+  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2; FO-4b: the send's pre-flight reads its allowed sites)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i, /^OPTIONS \/api\/public\/forms\/[^/]+\/submissions$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
+  "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
+  "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
+  "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
+  "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "none: it deletes expired pending sign-ups only, our own register with no firm_id (platform_signup_pending, forced with no policy); it reads no firm table" },
+  "platform.entitlements.limit-change": { why: "our team lowers a plan's limit for every firm on the plan, and each firm's Owners are told (PF-15 part 2, SA-3-43); PF-4s's system routes once on main, and the service on a direct call", routes: [/^(POST|PATCH) \/api\/system\/plans\//i], direct: true, audit: "per-firm" },
+  "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
+  "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true, audit: "per-firm" },
+  "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "none: a platform job sends one PLATFORM_ACCOUNT message, a row with no firm; it reads and writes no firm's rows (PF-19p). A firm's send job runs as its firm, not on this use." },
+  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "none: a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row; no firm's rows (PF-19p).", inside: ["platform.firms.signup"] },
+  "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true, audit: "none: every re-encrypt job is queued with its firm and runs as that firm (withFirm, not this use); a job of this queue with no firm is refused before any read (reencrypt.ts)" },
+  "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
+  "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
 /** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
@@ -130,16 +142,23 @@ let saidDirect = false;
 /** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
-/** The audit line for a bypass use: one platform_bypass line through the one logger (PF-23: redacted, with the request's
- *  correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be in it. */
+/** The operations line for a bypass use (PF-23): one platform_bypass line through the one logger (redacted, with the
+ *  request's correlation id), naming the use and the method only. Never the path: a link's token or a typed value can be
+ *  in it. Since PF-12b it is the operations line only; the audit is touchFirm's platform.bypass line. */
 let bypassLine: (use: string, route: string | undefined) => void = (use, route) => {
   logPort.info("platform_bypass", { use, method: route ? route.slice(0, route.indexOf(" ")) : "none" });
 };
 /** A test or the logger replaces where bypass lines go. Returns the one before. */
 export function onBypassLine(f: (use: string, route: string | undefined) => void) { const was = bypassLine; bypassLine = f; return was; }
 
+/** The one nesting rule (PF-12b, merge of PF-19p): a use runs inside an outer use only when it touches no firm's rows
+ *  ("none: …") and names that outer use in `inside`. Exported for the suite's per-firm stand-in (review m1, 20 Nov). */
+export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
+  return entry.audit.startsWith("none: ") && (entry.inside ?? []).includes(outer);
+}
 /** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
- *  a route on that use's list; every use writes one audit line (platform.bypass). */
+ *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
+ *  per firm it touches (touchFirm). */
 export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
   const store = scope.getStore(), route = store?.route;
@@ -147,8 +166,93 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
   const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
+  // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
+  // outer use's lines only; it is refused before any query runs.
+  // A use inside its own scope (a job handler that names its use again under asJob, e.g. the storage measure) runs where
+  // it is: the same use, the same lines. Any other use inside it is refused.
+  if (store?.bypass === use) return await fn();
+  // The one named exception (merge of PF-19p): sign-up's emails open platform.account.mail inside platform.firms.signup.
+  // A use that touches no firm's rows may run inside an outer use it names; the outer use comes back after it.
+  const within = !!store?.bypass && mayRunInside(entry, store.bypass);
+  if (store?.bypass && !within) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
+}
+
+// ------------------------------------------------------------------------------------- PF-12b: the bypass audit line
+/** Where touchFirm records (the one trail, audit_event through AuditPort; P-571 (1)). A test replaces it. Read when a line
+ *  is written, never at load: audit-event.ts reaches this file again through audit/context.ts and jobs/pgboss-jobs.ts. */
+let bypassAudit: AuditPort<unknown> | null = null;
+const recorder = (): AuditPort<unknown> => bypassAudit ?? auditEvent;
+/** A test replaces the port bypass lines are recorded through. Returns the one before. */
+export function onBypassAudit(port: AuditPort<unknown> | null) { const was = recorder(); bypassAudit = port; return was; }
+
+/** A bypass use's audit line could not be written, so the use did not happen (P-607): its transaction rolls back. A
+ *  request answers 500 in plain words; a job fails and is retried by the job runner. */
+export class BypassNotRecorded extends HttpException {
+  constructor(readonly use: string, cause: unknown) {
+    super({ type: "https://expatready.local/problems/not-recorded", title: "Not done", status: 500, detail: "This could not be written to the firm's activity record, so nothing was done. Try again in a minute." }, HttpStatus.INTERNAL_SERVER_ERROR, { cause });
+    this.name = "BypassNotRecorded";
+  }
+}
+
+const touched = new WeakMap<object, Set<string>>();
+/** The correlation id kept in an audit line: ours (a uuid, or job:<id>) only. A caller's X-Request-Id can hold any text,
+ *  personal data too, and the trail keeps it for good (break M2, review M1): only a uuid, alone or after job:, is kept;
+ *  any other shape is kept as null. */
+const CORRELATION = /^(job:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;   // observability/jobs.ts makes job:<pg-boss uuid>
+/** PF-12b: inside a bypass use, the firm whose rows this transaction reads or writes. Writes one platform.bypass line to
+ *  that firm's trail inside `tx` (once per firm and transaction): the use, the method (never the path), the actor
+ *  (system:<use>; none of the per-firm uses runs in a staff session) and the correlation id. A failed write throws
+ *  BypassNotRecorded, so `tx` rolls back. Outside a bypass use it does nothing: nothing crossed a wall. */
+export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
+  const s = scope.getStore(), use = s?.bypass;
+  if (!use) return;
+  const id = firmScope(firmId).firmId;
+  // A client is not a transaction (break m3): its line would commit on its own. A Prisma transaction has no $disconnect.
+  if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchFirm: give the caller's transaction, not the client");
+  const seen = touched.get(tx) ?? new Set<string>();
+  touched.set(tx, seen);
+  if (seen.has(id)) return;
+  seen.add(id);   // before the await: touches of one firm at the same moment in one transaction write one line (break m4)
+  const method = s.route ? s.route.slice(0, s.route.indexOf(" ")) : "none";
+  const given = requestScope.getStore()?.correlationId, correlationId = given && CORRELATION.test(given) ? given : null;
+  try {
+    await recorder().record(tx, { firmId: id, actor: `system:${use}`, action: "platform.bypass", entity: "platform_firm", entityKey: id,
+      summary: `Our platform read or changed this firm's records across the firm walls (${use}).`, detail: { use, method, correlationId } });
+  } catch (e) { seen.delete(id); throw new BypassNotRecorded(use, e); }
+}
+/** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns
+ *  the firms whose line could not be written (their work must not go ahead) and the first such error; never throws. */
+export async function touchEachFirm(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<{ failed: Set<string>; error: BypassNotRecorded | null }> {
+  const ids = [...new Set([...firmIds].map((f) => firmScope(f).firmId))], failed = new Set<string>();
+  let error: BypassNotRecorded | null = null;
+  if (!currentBypass()) return { failed, error };
+  for (const f of ids) {
+    try { await db.$transaction(async (tx) => { await touchFirm(tx, f); }); }
+    catch (e) { failed.add(f); error ??= e instanceof BypassNotRecorded ? e : new BypassNotRecorded(currentBypass() ?? "unknown", e); }
+  }
+  return { failed, error };
+}
+/** An AuditPort that writes the firm's platform.bypass line first, in the same transaction, then the caller's own line
+ *  (the web-address catch-up, whose lines are written by firm-created.ts). The entries pass through unchanged: their
+ *  literal objects stay where check_case_feed's sweep reads them, at their source.
+ *  A case-side line (AUD-1m's CaseEntry: a workspace; since R1.8 it may name its firm, which it then touches) naming no firm to write the bypass line for: on a bypass
+ *  use it is refused (fail-closed, P-607); outside one it passes through, as touchFirm writes nothing there. */
+export function touchingAudit<Tx>(inner: AuditPort<Tx>): AuditPort<Tx> {
+  return { record: async (tx, entry) => {
+    // R1.8 (QA-595): a case line may now name its firm (optional); a line naming one touches it, one naming none is
+    // refused on a bypass use as before (fail-closed, P-607).
+    const firmId = "firmId" in entry ? entry.firmId : undefined;
+    if (firmId) await touchFirm(tx, firmId);
+    else if (currentBypass()) throw new FirmScopeError("touchingAudit: a case line names no firm, so a bypass use cannot record the firm it touches");
+    await inner.record(tx, entry);
+  } };
+}
+/** The same, all or nothing: throws the first failure (the use stops) once every firm has been tried. */
+export async function touchFirms(db: Pick<PrismaClient, "$transaction">, firmIds: Iterable<string>): Promise<void> {
+  const { error } = await touchEachFirm(db, firmIds);
+  if (error) throw error;
 }
 
 // ----------------------------------------------------------------------------------------------- the request's firm
