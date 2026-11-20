@@ -12,11 +12,11 @@
 
 **Lead B (6) live (14:29 IST):** the current Lead is **Lead 58** (`local_5bec64f9…`); the feeding Lead is Lead 57 (`local_bef741db…`). The founder started cloud lanes for FO-4 (brief 9ebb5da30), PF-19b (9446bd33a), PF-21w, PF-21s stage 1 and FO-3sc; Lead 57 holds a PF-Lc card (cec0fc01c). Rulings given today on PR comments: #1813 FO-2, #1815 PF-5, #1816 PF-4b. Rows rev 16.17-16.20 are waiting for Lead 58 to copy. Owed: PF-6 and PF-5s briefs when PF-4b lands; FO-7mv when FO-7a #1758 merges. GitHub REST is shared by all sessions (ran out 14:2x); the scan loop posts through GraphQL when it must.
 
-**Lead B (9) took over (20 Nov 12:25 IST 20 Nov)** from Lead B (8) (`local_9e88c863…`, ~45%, told to stop relaying), Opus 5.5 medium, worktree `build-lead-c-647b40` (lead-b-front-office not checked out: push with a temporary index). Started by Lead 100; reports to the current Lead **Lead 1 (series 3)** (`local_94786348-b0e8-4685-9713-f5aaa6303967`, told I am running). Start read: `lead-b-handover-2026-11-19.md` › "Lead B (8) final hand-over", RULES as of P-756, STATE.
+**Lead B (9) took over (20 Nov 12:25 IST 20 Nov)** from Lead B (8) (`local_9e88c863…`, ~45%, told to stop relaying), Opus 5.5 medium, worktree `build-lead-c-647b40` (lead-b-front-office not checked out: push with a temporary index). Started by Lead 100; reports to the current Lead **Lead 1 (series 3)** (`local_94786348-b0e8-4685-9713-f5aaa6303967`, told I am running). Start read: `lead-b-handover-2026-11-19.md` › "Lead B (8) final hand-over", RULES as of P-756, STATE. Lead B (8) confirmed stopped (watcher off). Watcher: `$TMPDIR/watch.py` of this session (GraphQL every 240 s, PRs 2322 2326 2305 2029 2435; exits on head/state/label/CI change, an Approve, or a question).
 
 | PR | Item | Head | State at take-over | Next |
 |---|---|---|---|---|
-| #2322 FO-3st1 p1 | R1.38 3/4 | f80b33324 | full run 44686838150 started 11:48 IST, pending; no labels | on green: "Batch failures covered" line, send head to Lead 1 to label; then #2326 |
+| #2322 FO-3st1 p1 | R1.38 3/4 | f80b33324 | full run 44686838150 started 11:48 IST, pending; no labels; lane pushed f80b33324 11:02 IST (calendar suite's own test DB), **no reviewer Approve on it yet** (Lead B (8), 12:3x) | on green: "Batch failures covered" line, send head to Lead 1 to label; then #2326 |
 | #2326 J-38 W6 | R1.38 4/4 | 6ef6fdaf0 | conflicts | after #2322: merge main, keep W7/W8 next to W6 in j_38.ts |
 | #2305 FO-13i p2 | R1.110 (W2) | 6ba78f320 | approved, dequeued; lane says shard (8) failure is main's time-of-day suite | after #2435 (P-754 hold) merges: fresh run, requeue |
 | #2435 | P-754 hold of check_fo3st2_availability_browser.ts | 8df8932f7 | approved, queued (pipeline) | merges; unblocks #2305 |
