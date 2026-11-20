@@ -77,7 +77,7 @@ function ConfirmBody({ id }: { id: string }) {
         <legend className="text-xs font-medium">Result</legend>
         {fixed ? <p className="text-sm" data-fixed-result>The checker recorded: {resultLabel(fixed)}. Confirming keeps it.</p>
           : RESULTS.map(([k, l]) => <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" name="fo-confirm-result" className="size-4" checked={result === k} onChange={() => { setResult(k); setErrors({}); }} />{l}</label>)}
-        {errors.result ? <p id="fo-confirm-result-error" role="alert" className="text-xs text-text-danger">{errors.result}</p> : null}
+        {errors.result ? <p id="fo-confirm-result-error" className="text-xs text-text-danger">{errors.result}</p> : null}
       </fieldset>
       {result === "POTENTIAL_CONFLICT" && !fixed ? (
         <Field label="Disclosure" hint="Printed in the retainer the client signs." error={errors.disclosureText}>
