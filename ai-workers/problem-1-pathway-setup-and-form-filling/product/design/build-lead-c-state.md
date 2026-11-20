@@ -414,3 +414,4 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 03:02 IST 20 Nov: **#2377 read (P-423) and labelled by Lead 98** on 81cb4cc0f. If dequeued: name the failing suite to Lead 98 (P-731).
 * 03:4x IST 20 Nov: **#2377 QA-520 merged 03:40 IST (bf0179aa6)** → R1.67 proof due (qa re-scores from J-67). Reported to Lead 98. Still watching #2321, #2307, #2339.
 * 06:2x IST 20 Nov: **#2321 FO-2w merged 06:18 IST (abf2176ef)** → the CS-K1-2 lane may open its PR (merge main once, diff-only Approve; stamp later than main's newest). Reported to the Lead. Still watching #2307, #2339.
+* 06:21 IST 20 Nov: Lead 98 **confirmed the CS-K1-2 migration slot 20261120100000_csk1_client_link_check** (main's newest is 20261119180000) and messaged the cloud lane to open its PR. No PR by ~07:30 IST → founder lane ask. Lead B (8) told FO-5rp and FO-2u are not in R1.72's chain.
