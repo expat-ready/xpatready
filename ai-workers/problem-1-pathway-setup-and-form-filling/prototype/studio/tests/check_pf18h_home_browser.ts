@@ -93,7 +93,8 @@ const dl = new CaseDeadlines({ db, jobs, notifications: port, clock });
 await dl.register({ sweep: false });
 await dl.arm(CASE);
 const job = (offset: number) => jobs.jobs.find((j) => j.name === MILESTONE_JOB && j.payload.milestoneId === STEP && j.payload.offset === offset && j.status === "waiting");
-const remind = async (offset: number) => { const j = job(offset)!; return withFirm(A, () => dl.runMilestoneReminder({ payload: j.payload, key: j.key, firmId: A })); };
+// The clock moves to the real time first, so a later reminder is later than the one the page shows (PF-18n keeps the newer time).
+const remind = async (offset: number) => { await clock.set(new Date(Math.max(Date.now(), clock.now().getTime() + 1))); const j = job(offset)!; return withFirm(A, () => dl.runMilestoneReminder({ payload: j.payload, key: j.key, firmId: A })); };
 const notifyAs = (staffId: string, kind: (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND], item: { kind: "case" | "case-milestone"; id: string }) =>
   withFirm(A, () => db.$transaction((tx) => port.notify(tx, { staffId }, kind, item)));
 const needs = (t: string) => api(t, "GET", "/platform/me/needs-you");
@@ -144,6 +145,8 @@ try {
   const focusedHeading = await p.evaluate(() => document.activeElement?.id);
   ok("PF-18h DW2: \"Hide until next reminder\" by keyboard marks it read; the list is empty (\"Nothing needs you right now.\") and focus moves to the section heading",
     rowsOf(OFF) === 0 && (await section(p).innerText()).includes("Nothing needs you right now.") && focusedHeading === "needs-you-h", focusedHeading);
+  const vEmpty = await axe(p);
+  ok("PF-18h DW5: the empty state has no WCAG 2.2 A/AA violation", vEmpty.length === 0, vEmpty.map((x) => x.id));
   await shot(p, "2-empty-1440");
   const told2 = await remind(2);
   await home(p);
@@ -155,6 +158,15 @@ try {
   const n2b = await needs(TO);
   ok("PF-18h DW2 fail: a second, different deadline does add a second item (total 2), so the one above is a real count, not a cap",
     n2b.body?.total === 2 && n2b.body?.items?.length === 2, n2b.text.slice(0, 200));
+
+  // ---------------------------------------------------------------------------------------------- break m3: a reminder that came back
+  await home(p);
+  const told0 = await remind(0);   // the on-the-day reminder lands while the page still shows the 2-day one
+  const mine = items(p).filter({ hasText: NUMBER });
+  await mine.locator("[data-needs-you-hide]").click();
+  await section(p).getByText("A newer reminder came in for this deadline, so it stays on your list.").waitFor({ timeout: 15_000 });
+  ok("PF-18h (break m3): Hide on a row whose deadline was reminded again after the page loaded keeps it, says so, and the store keeps it unread (PF-18n's seen)",
+    told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1, { told0, unread: rowsOf(OFF) });
 
   // ---------------------------------------------------------------------------------------------- BR-6
   await home(p);
@@ -177,6 +189,18 @@ try {
     await q.context().close();
   }
 
+  // ---------------------------------------------------------------------------------------------- review S1: BR-4's failure branch
+  let refused = 0;
+  await p.route("**/api/platform/me/notifications/*/read*", async (r) => { refused++; await r.fulfill({ status: 503, json: { title: "Service unavailable" } }); });
+  const openNow = items(p).first().locator("[data-needs-you-open]");
+  await openNow.click();
+  await section(p).getByText("We could not open this reminder.").waitFor({ timeout: 15_000 });
+  const vFail = await axe(p), focusBack = await openNow.evaluate((el) => el === document.activeElement);
+  ok("PF-18h BR-4 fail: when marking read fails, the page stays (no case opened), says \"We could not open this reminder.\" with \"Open the case anyway\", focus is back on the link, the item stays unread, axe clean",
+    refused === 1 && new URL(p.url()).pathname === "/home" && await section(p).getByRole("link", { name: "Open the case anyway" }).count() === 1 && focusBack && rowsOf(OFF) === 1 && vFail.length === 0, { refused, url: p.url(), focusBack, v: vFail.map((x) => x.id) });
+  await p.unroute("**/api/platform/me/notifications/*/read*");
+  await home(p);
+
   // ---------------------------------------------------------------------------------------------- DW3 (open by keyboard: DW5's Enter)
   const open = items(p).first().locator("[data-needs-you-open]");
   await reach(p, open); await p.keyboard.press("Enter");
@@ -188,7 +212,7 @@ try {
   await shot(p, "4-case-page-1440");
   const nr = await needs(TR);
   ok("PF-18h DW3 fail: the representative's item for the same deadline stays unread on their Home (each person reads their own)",
-    rowsOf(REP) === 1 && nr.body?.total === 1 && nr.body?.items?.[0]?.caseNumber === NUMBER, nr.text.slice(0, 200));
+    rowsOf(REP) === 1 && (nr.body?.items ?? []).some((i: { caseNumber: string | null }) => i.caseNumber === NUMBER), nr.text.slice(0, 200));   // a reused copy may hold earlier runs' items too
 
   // ---------------------------------------------------------------------------------------------- DW4
   const repRow = sql(`select id from msg_notification where staff_id = '${REP}' and item_id = '${STEP}'`);

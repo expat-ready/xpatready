@@ -7,7 +7,8 @@ import { z } from "zod";
 export const NEEDS_YOU_KINDS = ["case-stage-deadline", "case-milestone-deadline"] as const;
 export const NeedsYouItem = z.object({
   id: z.string(),
-  kind: z.enum(NEEDS_YOU_KINDS),
+  /** One of NEEDS_YOU_KINDS today; read loosely, so a deadline kind added to MY_DEADLINES later never blanks the list (break m1). */
+  kind: z.string(),
   /** The case's number (C-2026-00042); null when the case is gone or not this firm's (BR-6). */
   caseNumber: z.string().nullable(),
   /** The page it opens (`/cases/<id>`); null with the case number. */
@@ -21,9 +22,11 @@ export type NeedsYou = z.infer<typeof NeedsYou>;
 /** At most this many show (BR-5); the server sends no more. */
 export const SHOWN = 20;
 
-const WHAT: Record<NeedsYouItem["kind"], string> = { "case-stage-deadline": "A stage deadline", "case-milestone-deadline": "A government step" };
+const WHAT: Record<(typeof NEEDS_YOU_KINDS)[number], string> = { "case-stage-deadline": "A stage deadline", "case-milestone-deadline": "A government step" };
+/** What is due, from the kind; a kind this page does not know yet reads "A deadline" (break m1). */
+export const whatOf = (kind: string) => WHAT[kind as keyof typeof WHAT] ?? "A deadline";
 /** The row's words (BR-1): "A stage deadline on case C-2026-00042"; a row without its case says so (BR-6). */
-export const itemWords = (i: NeedsYouItem) => `${WHAT[i.kind]} on ${i.caseNumber ? `case ${i.caseNumber}` : "a case you can no longer open"}`;
+export const itemWords = (i: NeedsYouItem) => `${whatOf(i.kind)} on ${i.caseNumber ? `case ${i.caseNumber}` : "a case you can no longer open"}`;
 /** The count in words (BR-8): never colour alone. */
 export const countWords = (n: number) => (n === 1 ? "1 item needs you" : `${n} items need you`);
 /** "21 Nov 2026, 09:00" in the person's zone (BR-7). */
@@ -37,6 +40,8 @@ export const COPY = {
   loadFailed: "Could not load what needs you.",
   hide: "Hide until next reminder",
   hideFailed: "We could not hide this reminder.",
+  openFailed: "We could not open this reminder.",
+  cameBack: "A newer reminder came in for this deadline, so it stays on your list.",
   openAnyway: "Open the case anyway",
   more: (shown: number, total: number) => `Showing the newest ${shown} of ${total}. The rest are in your notifications.`,
 } as const;
