@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 01:13 IST):** **#2527 merged** (fo1b test fix on main). #2326 is clear: Lead 6 posts /run full on 5b573ce07, the cover line and the relabel (agreed; I post nothing). Watcher: 2326.
+
 **Lead B (9) update (21 Nov 00:04 IST):** the current Lead is **Lead 6 (series 3)** (`local_871ed54c-0b10-4311-bff3-e43e3f70b2cb`); I've reported to it. The #2326 plan stands: requeue after #2527 lands.
 
 **Lead B (9) update (23:3x IST 20 Nov, Lead 5):** main is red on check_fo1b because **#2322 (FO-3st1, my row) added a second RESTRICT key on the staff member**, and the test expected one. The test fix is in #2527 (R1.8, Build Lead C's), with Lead 5's type-error fix d412bfe80 under diff-only review. **Order: #2527 merges first, then /run full on #2326's 5b573ce07, then relabel with "Batch failures covered: 44780258803: shard (9), ci". Do not requeue #2326 before #2527 lands.** Watcher: 2326 and 2527.
