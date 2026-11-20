@@ -136,16 +136,20 @@ PY
 # Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
 # HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
 # STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
-# time: STATE.md uncommitted, or its last commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
+# time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
 # A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
 if [ -f "$PH/STATE.md" ] && grep -q '^updated:' "$PH/STATE.md"; then
   ul=$(grep -m1 '^updated:' "$PH/STATE.md")
   u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
   mine=1; c=""
+  # The time is judged against this branch's newest STATE commit not yet on the base, merges left out: CI's test merge,
+  # or a merge of main, is never taken for it (it is dated when it is made). None: the time came from the base (warn).
   if (cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
-    sha=$(cd "$PH" && git log -1 --format=%H -- STATE.md 2>/dev/null); c=$(cd "$PH" && git log -1 --format=%ct -- STATE.md 2>/dev/null)
     b="${STATE_TIME_BASE:-origin/main}"
-    [ -n "$sha" ] && (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null && git merge-base --is-ancestor "$sha" "$b") && mine=0
+    if (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
+      c=$(cd "$PH" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
+      [ -n "$c" ] || { mine=0; c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
+    else c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
   fi
   [ -n "$c" ] || c=$(date +%s)
   if [ -z "$u" ]; then msg="STATE TIME: STATE.md's first updated: line cannot be read: write 'updated: YYYY-MM-DD HH:MM IST' (or HH:Mx) from TZ=Asia/Kolkata date"

@@ -37,4 +37,16 @@ sed -i.bak "s/^updated: .* IST/updated: $(TZ=Asia/Kolkata date '+%d %b %H:%M') I
 ok "an 'updated:' line in neither form fails, saying how to write it" "$([ $r = 1 ] && echo "$out" | grep -q 'STATE TIME: .*cannot be read' && echo 1)" "exit $r: $out"
 sed -i.bak '/^updated:/d' "$S"; rm -f "$S.bak"; run
 ok "a STATE with no 'updated:' line is not judged here" "$( ! echo "$out" | grep -q 'STATE TIME' && [ $r = 0 ] && echo 1)" "exit $r: $out"
+# Fixed commit dates (E9 review): the x window, a base that exists, and CI's test merge of a PR and a main that both changed STATE.
+docs_copy "$T/e"; G="git -C $T/e"; S="$T/e/$PRODREL/STATE.md"; CD="$T/e/$PRODREL/tools/check-docs.sh"; $G branch -q base
+at() { put "$1"; GIT_COMMITTER_DATE="$2" GIT_AUTHOR_DATE="$2" $G commit -qam "$3"; }
+rb() { out=$(STATE_TIME_BASE="$1" bash "$CD" 2>/dev/null); r=$?; }
+at "2026-11-20 10:0x" "2026-11-20T10:39:00+05:30" x39; rb base
+ok "'10:0x' committed at 10:39 passes: the x window counts its ten minutes (30 min from 10:09)" "$([ $r = 0 ] && ! echo "$out" | grep -q 'STATE TIME' && echo 1)" "exit $r: $out"
+echo "a later line" >> "$S"; at "2026-11-20 10:0x" "2026-11-20T10:40:00+05:30" x40; rb base
+ok "... committed at 10:40 fails (31 min), with a base that exists and STATE changed after it" "$([ $r = 1 ] && echo "$out" | grep -q 'STATE TIME: .*10:0x IST.*31 min apart' && echo 1)" "exit $r: $out"
+$G checkout -qb pr base; at "2026-11-20 10:0x" "2026-11-20T10:05:00+05:30" pr
+$G checkout -qb main2 base; echo "a line main added" >> "$S"; GIT_COMMITTER_DATE="2026-11-20T10:30:00+05:30" $G commit -qam main
+$G checkout -q --detach main2; $G merge -q --no-edit pr >/dev/null; rb main2
+ok "CI's test merge (dated now) of a PR's STATE and main's STATE is judged by the PR's commit, not the merge" "$([ $r = 0 ] && ! echo "$out" | grep -q 'STATE TIME' && echo 1)" "exit $r: $out"
 finish

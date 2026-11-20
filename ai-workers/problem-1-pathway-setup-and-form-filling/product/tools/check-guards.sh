@@ -31,6 +31,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
 7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh
 7 tens|product/tools/check-docs.sh|s/\[0-9\]{2}:\[0-5\]\[0-9x\]) IST/[0-9]{2}:[0-5][0-9]) IST/|check-state-page.sh
+7 base|product/tools/check-docs.sh|s/{ mine=0; c=/{ mine=1; c=/|check-state-page.sh
+7 merges|product/tools/check-docs.sh|s/ git log -1 --no-merges --format=%ct "\$b..HEAD"/ git log -1 --format=%ct "$b..HEAD"/|check-state-page.sh
 8|product/tools/lead-check-guard.sh|s/^\[ -z "\$why" \] \&\& exit 0/exit 0/|check-lead-cron.sh
 9|product/tools/label-sweep.sh|s/^  if \[ "\$who" != "\$BOT" \]; then/  if true; then/|check-label-sweep.sh
 9 sched|../../.github/workflows/label-guard.yml|/cron: "\*\/10 \* \* \* \*"/d|check-label-sweep.sh
