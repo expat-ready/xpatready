@@ -2,7 +2,7 @@
 
 current_lead: local_59a9ad7a-2010-4e9f-bdb0-6800116c75cd Lead 100 · 20 Nov 08:48 IST (series 2, the last; took over from Lead 99 (series 2, local_2e11a30f) at ~330k, P-446); next Leads are series 3 from Lead 1 (P-749)
 
-updated: 2026-11-20 08:48 IST: Lead 99 handed over to Lead 100 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-20 10:59 IST: Lead 99 handed over to Lead 100 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -13,7 +13,7 @@ updated: 2026-11-20 08:48 IST: Lead 99 handed over to Lead 100 · milestone: Rel
 (1) **#2413 records PR (P-747..P-749)**: new head adds the two missing history pages (fast failed on a MISSING LINK); post "Reviewer: Approve <head>" after reading it (records only, P-385), label; once merged, re-run #2322's pr-rules (Size exception: P-748), then Approve-check and label #2322 (R1.38 3/4, outside waves, finishes).
 (2) **Queue:** #2406 (R1.72) queued; #2296 (R1.31) merged, walks j_31 dispatched on main; R1.31 Works needs qa (pairs with qa 11's R1.30). Full runs dispatched 08:4x for #2305 (R1.110) and #2338 (R1.8): on green, relabel with "Batch failures covered: <run>: fast, ci" (P-731).
 (3) **Lanes (cloud):** PF-12b1m on #2029 (R1.4; head 63771158a checked by Lead B as row owner; waits its reviewer's Approve, then Lead read + full run + label); qa 11 (R1.40, R1.30); qa 12 (R1.33); R1.74 lane on #2317; B204 told to merge main into #2363 (wave caps in code, founder-approved; Lead reads tools diff, labels, then #2365); R1.76 told to merge main on #2320 then stop; ENF-746c answered "draft PR, Lead decides".
-(4) **Founder asks open:** staging domain (asked 09:0x: buy now vs at Proven 30); reconnect Claude in Chrome (built-in browser used meanwhile); permanent fix owed: move queue-gate's job off the Mac runner `xr-mac` to GitHub-hosted (a fix under P-734), plus a 10 GB disk alarm.
+(4) **Founder asks open:** staging domain: answered 08:5x, staging/dev/AWS at Proven 30 (benchmark 30-40), P-750; reconnect Claude in Chrome (built-in browser used meanwhile); permanent fix owed: move queue-gate's job off the Mac runner `xr-mac` to GitHub-hosted (a fix under P-734), plus a 10 GB disk alarm.
 (5) **Close or keep (Lead's call, work saved on branches):** close #2026, #2032 (stale), #2234, #2210 (outside waves); #2372 (founder asked Ready 19 Nov: ask before closing); #2339 R1.88 only with /run full; #2361 is a fix (Lead read, label); #2368 R1.59 needs migration read + a size row.
 Earlier block (Lead 98 → 99 and the Lead 99 lines) word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-20-0850-lead99s2-handover-98-99-block.md`.
 
@@ -27,6 +27,9 @@ Earlier block (Lead 98 → 99 and the Lead 99 lines) word for word in `ai-worker
 | A199-A201 | 19 Nov 11:5x IST: spot-check delegated (done), Action pilot (21 Nov), why not 10 a day (→ P-731) | row word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1211-lead90s2-asks-A199-A201-row.md` |
 | A205-A206 | 19 Nov ~12:35 IST: "take one decision ... and run" | → P-734 ; ENF-733 started; A206 12:42 IST "You have all my approvals of which you asked about. So you do yourself.": lanes and standby started; words in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1238-lead91s2-ask-A205-words.md` |
 | A208-A211 | 19 Nov 15:19-15:26 IST: label both; AWS open; PF-8a, FO-9a started | row word for word in `history/STATE-2026-11-19-1820-lead94s2-ask-A208-row.md` |
+| A221 | 20 Nov 10:5x IST: CI minutes public vs Enterprise, support reply, pipeline green, lanes in app view, over-engineering | answered 11:0x: public = Actions minutes free (Nov so far 135,824 Linux min, gross US$815, net US$0; private would bill past 50,000); GitHub ticket #5023043 answered (new-enterprise concurrency rises gradually, routed for full limit, ghost queued runs to be cleared), no action owed; red batches cause = FO-3st2 date-dependent suite, fix lane started; #2363 labelled |
+| A220 | 20 Nov 10:3x IST: make fixes live, agile Lead enforced in code, backlog one question at a time, resources and 10-hour forecast | → P-751; tooling lane started; questions in progress |
+| A219 | 20 Nov 08:5x IST: staging, dev and AWS after Wave 1/2, at 30-40 Proven ("let's first meet that 30") | ticked → P-750; plan to the founder at Proven 30 |
 | A217 | 20 Nov 00:5x IST: plan, monitoring, approvals, proof in 6/10 h, 2-3 standbys | answered 00:5x; requeues and relabels on unchanged approved heads pre-approved for the night (#2315 requeued); 01:0x: "work autonomously, whatever it takes", browser on GitHub as fallback (P-699); Lead 99, 100 started |
 | A216 | 19 Nov 20:4x IST: key numbers on today's pipeline | answered; row word for word in `history/STATE-2026-11-20-0120-lead97s2-A216-row.md` |
 | A196-A215 | 19 Nov asks | rows word for word in `history/STATE-2026-11-20-0155-lead97s2-asks-A196-A215.md` |
@@ -35,6 +38,7 @@ Earlier block (Lead 98 → 99 and the Lead 99 lines) word for word in `ai-worker
 Engineering set-up tracker (A160): section word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1122-lead87s2-setup-tracker-section.md`.
 
 ## Start here (next Lead)
+🟩 **P-752 standing: when the shell refuses a label, Ready for review or reopen, do it at once in the built-in browser on github.com as the founder (after the P-423 read; never in place of a reviewer's Approve on code); records-only and reopens via `tools/lead-pr.sh`.**
 📅 **21 Nov: Claude Code GitHub Action evaluation (A200; cost and STANDARDS §1 gate, nothing installed) and run P-702** (evaluation of the adopted changes, plan #181), result to the founder the same day.
 🎯 **P-719 in flight (items, parts left, lanes as of 08:2x IST 19 Nov):** line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1152-lead90s2-p719-in-flight-line.md`; the current per-item state is in "Where we are" above and in Lead B (7)'s and Build Lead C (2)'s state files. Parked: R1.100, R1.72, R1.10, R1.3. Next to start when one is Proven: R1.100 (Lead B).
 🔁 **Account switch (A196, P-725): done 11:37 IST 19 Nov by Lead 90; at the next one the founder types `/lead` on the new account and that Lead resumes from this page;** the line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1204-lead90s2-account-switch-line.md`.

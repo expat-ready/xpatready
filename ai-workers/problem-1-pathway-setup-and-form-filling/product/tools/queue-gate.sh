@@ -17,25 +17,31 @@
 #            After 3 attempts it is success (the batch checks it). An unlabelled PR is "pending": the verdict is made
 #            when the label goes on (label() decides it before labelling; a person's label starts a run), so a label
 #            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run), or by hand (workflow_dispatch).
-#   full run — CI-PRE (P-731, founder 19 Nov, "enforced, not text"), asked only after a failed merge batch (P-733 (4),
-#            P-743: no full run on every PR; B206 part 2, P-751). After a failed merge batch (a mergify[bot] batch PR naming
-#            this PR whose ci ended failure; the newest that ended), the label goes on again only when (a) one full run is
-#            green on the head: a run of main's ci.yml by workflow_dispatch (the same one comment-run.yml's "/run full"
-#            starts), named "full-run PR #<n> <head>" by its own inputs, on a commit of main's first-parent chain (so its
-#            jobs were main's, not a PR's), ended success; a red or missing one refuses the label and names the failing
-#            parts; a records-only PR (records-only.sh, main's one definition) is exempt; and (b) a PR comment line by
-#            someone with write access, "Batch failures covered: <that run's id>: <part>, <part>", names every failed job
-#            of that run. A PR with no failed batch needs neither. The full run starts by itself (start): when Mergify
-#            puts "dequeued" on a PR held by a failed batch, and when a reviewer approves a new head of such a PR.
-#   proof  — for label-guard.sh: with RELABEL=1 (the label was just put on), exit 0 when the failed-batch rule holds
-#            (full run on one of HEADS, the head back to its approved commit, and the covered line); exit 1 and the reason
-#            if not. Without RELABEL nothing is asked (a push or Mergify's "queued").
-#   start  — the full run on the PR's head when a failed batch held it, the head is this repository's and approved, and
-#            no full run is green or running on it; a comment says so. Never a cancel (P-371).
+#   full run — CI-PRE (P-731), narrowed by P-743 (founder 19 Nov 23:5x IST: no full run on every PR, P-733 (4)): only a
+#            PR that a failed merge batch held (held(): the newest ended mergify[bot] batch PR naming it ended failure)
+#            needs one green full run on the head before the label; any other PR needs none (every batch runs every
+#            suite, P-651). The full run:
+#            a run of main's ci.yml by workflow_dispatch (comment-run.yml's "/run full"), named "full-run PR #<n> <head>"
+#            by its own inputs, on a commit of main's first-parent chain (so its jobs were main's, not a PR's), ended success. A red
+#            or missing one refuses the label and names the failing parts (the run's failed jobs) and the batch run that
+#            asked for it. A records-only PR
+#            (records-only.sh, main's one definition) is exempt. FULL_RUN_FROM is no longer read (B206 part 2).
+#            The full run starts by itself (start; B206 part 2, P-751): when Mergify puts "dequeued" on a PR a failed batch
+#            held (its `review: approved` comes off first, so a fix rejoins only through the label, which asks the full run
+#            and the covered line), and when a reviewer approves a new head of such a PR.
+#            After a failed merge batch (a mergify[bot] batch PR naming this PR whose ci ended failure; the newest one),
+#            the label goes on again only when a PR comment line by someone with write access,
+#            "Batch failures covered: <that run's id>: <part>, <part>", names every failed job of that run.
+#   proof  — for label-guard.sh: exit 0 when the full-run rule holds for one of HEADS (the head, back to its approved
+#            commit) and, with RELABEL=1 (the label was just put on) or on a PR carrying "dequeued", the batch rule too;
+#            exit 1 and the reason if not.
+#   start  — the full run on the PR's head when a failed batch held it, the head is this repository's, open, not a draft,
+#            based on main, its ci not red, approved, and no full run is on it yet; a comment says so. Never a cancel (P-371).
 #   eligible — exit 0 when `label` would label this PR now (the label aside); used by label-sweep.sh.
 #   event  — reads GITHUB_EVENT_NAME / GITHUB_EVENT_PATH and runs the above for the PR(s) concerned.
-# Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible, proof, start); REVIEWERS; HEADS, RELABEL (proof); LABELED_AT (eligible); API (default https://api.github.com);
-# MAIN_REF (default origin/main; a git copy holding main's history). Exit 0 judged; 1 refused (eligible); 2 error.
+# Env: GH_TOKEN, REPO (owner/name), PR (label, fresh, eligible, proof, start); REVIEWERS; QG_POLL (start: tries to see its run listed, default 10); HEADS, RELABEL (proof); LABELED_AT (eligible); API (default https://api.github.com);
+# MAIN_REF (default origin/main; a git copy holding main's history). Exit 0 judged; 1 refused (eligible); 2 error; 3 (eligible)
+# the full runs or the merge batches could not be read inside the full-run rule (label-sweep.sh keeps the label, tries again).
 # Test: check-queue-gate.sh.
 set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
@@ -52,7 +58,6 @@ OWNER="${REPO%%/*}"
 CODE='/prototype/'; DOCS='\.(md|txt|png|jpe?g|gif|webp|svg|pdf)$'; MIG='/prisma/migrations/'
 
 load() {  # PR → pr, head, files, labels
-  unset rid; cs=""
   pr=$(api "$API/repos/$REPO/pulls/$PR") || { echo "#$PR: cannot read the PR"; return 2; }
   head=$(echo "$pr" | jq -r .head.sha); labels=$(echo "$pr" | jq -r '[.labels[].name] | join("\n")')
   # A renamed file counts under both names (Devin on #1861): a later main change to the old path still overlaps.
@@ -106,10 +111,19 @@ full() {  # $@ commits → full_state (success|failure|pending|none), full_why
   full_state=failure; full_why="the full run on ${c:0:9} failed: $(failing "$id" | tick | paste -sd ';' - | sed 's/;/; /g; s/^$/its failed parts cannot be read/') ($url). Fix and push, then \`/run full\` on the new head; \`/run full\` on this head re-runs only the failed parts"; }
 fullproof() {  # $@ the commits a full run may be on → 0, or 1 with $why
   records && return 0
-  full "$@"; [ "$full_state" = success ] && return 0; why=$full_why; return 1; }
-batchrun() {  # → rid: the run id of the newest ended merge batch holding this PR when it failed, else empty; 1 with $why when unreadable
-  [ -n "${rid+x}" ] && return 0   # once a PR
-  local one p=1 sha c got=""; : > "$H.p"   # rid is set only once read: an unreadable read never caches "no failed batch"
+  # P-743: the full run is asked only of a PR a failed merge batch held. Unreadable batches: refused, and eligible exits
+  # 3 (label-sweep.sh keeps the label and tries again), as for unreadable full runs.
+  held || { full_state=unread; return 1; }
+  # No failed batch held it: no full run is asked (P-743), but one that exists on the head and ended red still refuses
+  # (review M1: a known-red head never joins a batch); none, pending or unreadable passes, as nothing is asked.
+  if [ "$held_state" != failed ]; then   # no failed batch held it (P-743)
+    full "$@"; [ "$full_state" = failure ] && { why=$full_why; return 1; }; full_state=""; return 0; fi
+  full "$@"; [ "$full_state" = success ] && return 0
+  why="$full_why (asked because the merge batch run $held_rid failed with this PR in it, P-743)"; return 1; }
+held() {  # the newest ended merge batch naming this PR → held_state (none|passed|failed), held_rid (its ci run when failed);
+  # read once per PR (covered() and fullproof() share it); 1 with $why when the batches cannot be read
+  [ "${held_pr:-}" = "$PR" ] && return 0
+  local one p=1 sha c; held_pr=""; held_state=none; held_rid=""; : > "$H.p"
   # Every PR opened after this one, newest first (a batch that held it is one of them); 30 pages at most, else refused.
   while :; do
     [ "$p" -le 30 ] || { why="more than 3000 pull requests were opened after this one: its merge batches cannot all be read (ask the tech lead)"; return 1; }
@@ -132,14 +146,15 @@ batchrun() {  # → rid: the run id of the newest ended merge batch holding this
     # LABELED_AT (the sweep: when the label now on the PR was put on): a batch that failed after it is not a relabel's
     # business (the batch's other PRs keep their label); one that failed before it is.
     if [ -n "${LABELED_AT:-}" ]; then case "$c" in failed*) [[ "$(cut -f2 <<< "$c")" < "$LABELED_AT" ]] || continue;; esac; fi
-    case "$c" in passed*) break;; failed*) got=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$c"); break;; esac
-  done; rid=$got; return 0; }
-needfull() {  # $@ commits → 0 when no failed batch held this PR or a full run is green on one of them (P-731); else 1 with $why
-  batchrun || return 1; [ -n "$rid" ] || return 0
-  fullproof "$@" || { why="it was in the failed merge batch run $rid, so the label needs a green full run (P-731): $why"; return 1; }; }
+    case "$c" in passed*) held_state=passed; break;; failed*) held_state=failed; held_rid=$(sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p' <<< "$c"); break;; esac
+  done
+  [ "$held_state" != failed ] || [ -n "$held_rid" ] || { why="a failed merge batch's run cannot be read"; return 1; }
+  held_pr=$PR; return 0; }
 covered() {  # 0 when no failed merge batch held this PR, or a comment line covers the newest one's failed parts; else 1 with $why
-  local names lines n miss=""
-  batchrun || return 1; [ -n "$rid" ] || return 0
+  local rid names lines n miss=""
+  held || return 1
+  [ "$held_state" = failed ] || return 0
+  rid=$held_rid
   comments || { why="its comments cannot be read"; return 1; }
   names=$(failing "$rid" all | sort -u); [ -n "$names" ] || { why="it was in the failed merge batch run $rid, whose failed parts cannot be read now"; return 1; }
   lines=$(jq -r ".[] | select($TEAM) | .body // \"\"" <<< "$cs" | tr -d '\r' | sanl | grep -E "^ *Batch failures covered: *$rid *:"; true)
@@ -151,7 +166,7 @@ covered() {  # 0 when no failed merge batch held this PR, or a comment line cove
 
 why=""
 approved() {  # the last "Reviewer:" verdict about $head by the owner's account or a known reviewer is an Approve naming it; else 1 with $why
-  local who; comments || { why="its comments cannot be read"; return 1; }
+  local who; cs=""; comments || { why="its comments cannot be read"; return 1; }
   who=$(printf '%s\n' "$OWNER" ${REVIEWERS:-} | jq -Rn '[inputs | select(length > 0)]')
   echo "$cs" | jq -r --argjson who "$who" '.[] | select((.user.login as $l | $who | index($l)) and (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")) | .body' \
     | tr -d '*_`' | grep -iE '^[[:space:]]*reviewer:' > "$H.v"; true
@@ -175,6 +190,7 @@ judge() {  # eligibility for the label; reason in $why
   bad=$(grep -iEf <(grep -v '^#' "$HERE/lead-read-paths.txt" | grep .) <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
   [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read (P-423): $bad"; return 1; }
   ci; [ "$ci_state" = success ] || { why="ci on ${head:0:9} is $ci_state"; return 1; }
+  fullproof "$head" || return 1   # CI-PRE (P-731, P-743): after a failed merge batch, one green full run on this exact head
   return 0; }
 
 status() {  # state description
@@ -209,13 +225,13 @@ fresh() {
 label() {
   load || return 2
   has "$LABEL" && { echo "#$PR: already labelled"; return 0; }
-  # CI-PRE: after a failed merge batch, a green full run on the head and its failed parts named (decided as the label goes on).
-  if ! { judge && needfull "$head" && covered && notred; }; then
+  # CI-PRE: a relabel after a failed merge batch needs its failed parts named (decided here, as the label goes on).
+  if ! { judge && covered; }; then
     echo "#$PR: not labelled: $why"
-    # B206 part 2: a reviewer's Approve on a new head of a PR a failed batch held starts its full run (no "/run full" by hand).
-    # Whatever else the label waits for (ci may still be running): start() checks the Approve and the head's full runs.
+    # B206 part 2: a reviewer's Approve on a head of a PR a failed batch held starts its full run (no "/run full" by hand),
+    # whatever else the label waits for; start() checks the PR, the Approve and the head's full runs itself.
     local w=$why src=0
-    if [ "${TRIGGER:-}" = approve ] && batchrun && [ -n "$rid" ]; then start || src=$?; fi; why=$w
+    if [ "${TRIGGER:-}" = approve ] && held && [ "$held_state" = failed ]; then start || src=$?; fi; why=$w
     # A full run that just ended says how it ended, whatever else the label waits for (CI-PRE (c)).
     if [ "${TRIGGER:-}" = full ]; then full "$head"; [ "$full_state" = success ] && why="$full_why; the label waits: $why" || why=$full_why; fi
     [[ "${TRIGGER:-}" =~ ^(approve|full)$ ]] && api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` not put on by itself: $why. A person labels it after the Lead's read where P-423 asks for one.
@@ -225,27 +241,24 @@ _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null
     return $src; fi
   LABELLING=1 fresh || return 2; did_fresh=1   # review M2: queue-fresh is decided before the label goes on
   api -X POST "$API/repos/$REPO/issues/$PR/labels" -d "$(jq -n --arg l "$LABEL" '{labels: [$l]}')" >/dev/null || { echo "#$PR: could not label"; return 2; }
-  labels="$labels"$'\n'"$LABEL"; echo "#$PR: labelled ($head has the reviewer's Approve and a green ci; no failed batch, or a green full run and the batch's failures named; no Lead-read path)"
-  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch holds it or the full run (P-731) is green on it with the batch's failed parts named, and no path keeps the Lead's read (P-423)." '{body: $b}')" >/dev/null || true; }
+  labels="$labels"$'\n'"$LABEL"; echo "#$PR: labelled ($head has the reviewer's Approve, a green ci, and a green full run when a failed merge batch held it (P-743); no Lead-read path)"
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B194):** \`$LABEL\` put on: \"Reviewer: Approve ${head:0:9}\" names the head, ci is green on it, no failed merge batch held it or the full run (P-731, P-743) is green on it (or the PR is records only), and no path keeps the Lead's read (P-423)." '{body: $b}')" >/dev/null || true; }
 
-notred() {  # a full run that just ended red on the head refuses the label, failed batch or not (it is evidence)
-  [ "${TRIGGER:-}" = full ] || return 0
-  [ "${full_state:-}" = success ] && return 0; full "$head"; [ "$full_state" != failure ] || { why=$full_why; return 1; }; }
-start() {  # the full run (comment-run.yml's "/run full": main's ci.yml by workflow_dispatch) on $head after the failed batch run $rid
+start() {  # the full run (comment-run.yml's "/run full": main's ci.yml by workflow_dispatch) on $head; held_rid is the failed batch run
   [ "$(echo "$pr" | jq -r '.head.repo.full_name // ""')" = "$REPO" ] || { echo "#$PR: a fork's head: no full run (comment-run.yml refuses one too)"; return 0; }
   [ "$(echo "$pr" | jq -r .state)" = open ] || { echo "#$PR: not open: no full run"; return 0; }
   [ "$(echo "$pr" | jq -r .draft)" = false ] && [ "$(echo "$pr" | jq -r .base.ref)" = main ] || { echo "#$PR: a draft, or not based on main: no full run"; return 0; }
-  ci; [ "$ci_state" = failure ] && { echo "#$PR: ci is red on ${head:0:9}: fix it first, no full run"; return 0; }   # ~7 job-hours on code whose fast checks fail
   [[ "$head" =~ ^[0-9a-f]{40}$ && "$PR" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "#$PR: no head to run"; return 0; }
-  approved || { [ "$why" = "its comments cannot be read" ] && { echo "#$PR: no full run: $why"; return 2; }; echo "#$PR: no full run: $why"; return 0; }   # ci.yml checks the same Approve again
+  ci; [ "$ci_state" = failure ] && { echo "#$PR: ci is red on ${head:0:9}: fix it first, no full run"; return 0; }   # ~7 job-hours on code whose fast checks fail
+  approved || { echo "#$PR: no full run: $why"; [ "$why" = "its comments cannot be read" ] && return 2; return 0; }   # ci.yml checks the same Approve again
   full "$head"; [ "$full_state" = unread ] && { echo "#$PR: no full run started: $full_why"; return 2; }   # said: the job goes red, never a silent no-start
   [ "$full_state" = none ] || { echo "#$PR: no full run started: $full_why"; return 0; }   # running, green, or red (fix and push)
   api -X POST "$API/repos/$REPO/actions/workflows/ci.yml/dispatches" -d "$(jq -n --arg p "$PR" --arg h "$head" '{ref: "main", inputs: {pr: $p, head: $h}}')" >/dev/null \
     || { echo "#$PR: the full run could not be started (GitHub refused the dispatch)"; return 2; }
   # Wait until GitHub lists it (as comment-run.yml), so a trigger right after this job sees it and does not dispatch again.
   local i=0; while [ "$i" -lt "${QG_POLL:-10}" ]; do sleep 3; full "$head"; [ "$full_state" = none ] || break; i=$((i + 1)); done
-  full_state=pending; echo "#$PR: full run started on ${head:0:9} (failed merge batch run $rid)"
-  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B206):** it was in the failed merge batch run $rid, so \`review: approved\` is off and the full run (every suite a batch runs, the same run \`/run full\` starts) started by itself on ${head:0:9}: \"full-run PR #$PR $head\" on [ci's page](https://github.com/$REPO/actions/workflows/ci.yml). \`review: approved\` goes on again when it is green and a comment line \"Batch failures covered: $rid: <every failed part>\" names the batch's failures (P-731). The queue gate posts the result when it ends.
+  full_state=pending; echo "#$PR: full run started on ${head:0:9} (failed merge batch run $held_rid)"
+  api -X POST "$API/repos/$REPO/issues/$PR/comments" -d "$(jq -n --arg b "**Queue gate (B206):** it was in the failed merge batch run $held_rid, so the full run (every suite a batch runs, the same run \`/run full\` starts) started by itself on ${head:0:9}: \"full-run PR #$PR $head\" on [ci's page](https://github.com/$REPO/actions/workflows/ci.yml). \`review: approved\` goes on when it is green and a comment line \"Batch failures covered: $held_rid: <every failed part>\" names the batch's failures (P-731). The queue gate posts the result when it ends.
 
 ---
 _Generated by [Claude Code](https://claude.ai/code)_" '{body: $b}')" >/dev/null || true; }
@@ -266,13 +279,13 @@ event() {
       for n in $(jq -r '.workflow_run.pull_requests[].number' "$e"); do PR=$n; both || rc=$?; done;;   # a fork PR has none: no queue-fresh (fails closed)
     pull_request_target) PR=$(jq -r .pull_request.number "$e")
       if [ "$(jq -r '.action + " " + (.label.name // "")' "$e")" = "labeled dequeued" ]; then   # B206 part 2: Mergify dequeued it
-        load || return 2; batchrun || { echo "#$PR: dequeued, but its merge batches cannot be read: $why"; return 2; }
-        [ -n "$rid" ] || { echo "#$PR: dequeued with no failed batch (a conflict or by hand): no full run"; return 0; }
-        # The label comes off (part 2 review M1): a fix pushed and approved would otherwise keep it and rejoin the queue with
-        # no full run and no covered line. The way back is the label, which asks both (needfull, covered).
+        load || return 2; held || { echo "#$PR: dequeued, but its merge batches cannot be read: $why"; return 2; }
+        [ "$held_state" = failed ] || { echo "#$PR: dequeued with no failed batch (a conflict or by hand): no full run"; return 0; }
+        # The label comes off (part 2 review M1): a fix pushed and approved would otherwise keep it and rejoin the queue
+        # without the covered line. The way back is the label, which asks the full run and the line.
         if has "$LABEL"; then
           api -X DELETE "$API/repos/$REPO/issues/$PR/labels/review%3A%20approved" >/dev/null || { echo "#$PR: could not take the label off"; return 2; }
-          labels=$(grep -vxF "$LABEL" <<< "$labels"); echo "#$PR: $LABEL taken off (failed merge batch run $rid)"
+          labels=$(grep -vxF "$LABEL" <<< "$labels"); echo "#$PR: $LABEL taken off (failed merge batch run $held_rid)"
         fi
         start || rc=$?; return $rc
       fi
@@ -284,15 +297,17 @@ event() {
 
 case "${1:-}" in
   label|fresh) "$1"; exit $?;;
-  start) load || exit 2; batchrun || { echo "$why"; exit 2; }; [ -n "$rid" ] || { echo "#$PR: no failed merge batch holds it: no full run"; exit 0; }; start; exit $?;;
+  start) load || exit 2; held || { echo "$why"; exit 2; }; [ "$held_state" = failed ] || { echo "#$PR: no failed merge batch holds it: no full run"; exit 0; }; start; exit $?;;
   proof) load || exit 2; [ -n "${HEADS:-}" ] || { echo "queue-gate: HEADS is not set"; exit 2; }
     # shellcheck disable=SC2086
-    # RELABEL (the label just put on) or a PR Mergify dequeued (part 2 review M1): the failed-batch rule.
-    if [ "${RELABEL:-}" = 1 ] || has dequeued; then needfull $HEADS && covered || { echo "$why"; exit 1; }; fi; exit 0;;
-  # 3, not 1, when only the full runs could not be read: label-sweep.sh then keeps the label and tries again.
+    fullproof $HEADS || { echo "$why"; exit 1; }
+    # RELABEL (the label just put on) or a PR Mergify dequeued (B206 part 2 review M1): the batch rule too.
+    if [ "${RELABEL:-}" = 1 ] || has dequeued; then covered || { echo "$why"; exit 1; }; fi; exit 0;;
+  # 3, not 1, when the full runs or (inside the full-run rule, P-743) the merge batches could not be read: label-sweep.sh
+  # then keeps the label and tries again. covered()'s own unreadable batches (records PRs) stay 1.
   # With LABELED_AT (label-sweep.sh: a label a workflow's token put on, which starts no label-guard run), the batch rule
   # is asked too, for a batch that failed before that label (breaker R2-M2: a side branch's workflow can label any PR).
-  eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || { needfull "$head" && covered; }; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
+  eligible) load || exit 2; judge && { [ -z "${LABELED_AT:-}" ] || covered; } && { echo "#$PR: eligible"; exit 0; }; echo "#$PR: not eligible: $why"; [ "${full_state:-}" = unread ] && exit 3; exit 1;;
   event) event; exit $?;;
   *) echo "usage: queue-gate.sh label|fresh|eligible|proof|start|event"; exit 2;;
 esac
