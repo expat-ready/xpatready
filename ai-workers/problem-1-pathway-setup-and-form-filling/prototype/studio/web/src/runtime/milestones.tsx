@@ -55,7 +55,7 @@ export function GovernmentSteps({ caseId }: { caseId: string }) {
     <section aria-labelledby="gov-steps-h" className="rounded-xl border border-border bg-surface-raised" data-gov-steps>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <h2 id="gov-steps-h" ref={heading} tabIndex={-1} className="text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary">Government steps</h2>
-        <p className="min-w-0 basis-full text-[13px] text-text-muted sm:basis-0 sm:flex-1">What IRCC asked for, with the due date on its letter. The firm is reminded 7 and 2 working days before, and on the day.</p>
+        <p className="min-w-0 basis-full text-[13px] text-text-muted sm:basis-0 sm:flex-1">What IRCC asked for, with the due date on its letter. Reminders are planned 7 and 2 working days before, and on the day.</p>
         {mayEdit ? <Button size="sm" variant="secondary" className="max-[520px]:w-full" onClick={open({ kind: "record" })} data-gov-record>Record a step…</Button> : null}
       </header>
       {!token ? <p className="px-4 py-3 text-sm text-text-muted" data-gov-no-session>Sign in as firm staff (under <a href="#case-decision-h" className="font-medium text-text-link underline">Decision and closing</a>) to see and record government steps.</p>
@@ -92,7 +92,7 @@ function StepRow({ m, mayEdit, open }: { m: MilestoneView; mayEdit: boolean; ope
         {m.note ? <p className="text-[13px] text-text-muted">“<bdi>{m.note}</bdi>”</p> : null}
         <p className="text-xs text-text-muted">Recorded by {m.recordedBy.name ?? "a staff member"} on {dayOf(m.recordedAt)}</p>
         {cancelled ? <p className="text-xs" data-gov-cancelled>Cancelled by {m.cancelled!.by.name ?? "a staff member"} on {dayOf(m.cancelled!.at)} · Reason: <bdi>{m.cancelled!.reason}</bdi></p>
-          : m.reminders.length ? <p className="text-xs text-text-muted" data-gov-reminders>Reminders: {m.reminders.map((r) => `${withWeekday(r.day)} (${offsetWords(r.offset)})`).join(", ")}</p>
+          : m.reminders.length ? <p className="text-xs text-text-muted" data-gov-reminders>Reminders planned: {m.reminders.map((r) => `${withWeekday(r.day)} (${offsetWords(r.offset)})`).join(", ")}</p>
             : m.dueOn ? <p className="text-xs text-text-muted" data-gov-reminders>No reminder still to come.</p> : null}
       </div>
       {mayEdit && !cancelled ? <Button size="sm" variant="ghost" className="max-[520px]:w-full" onClick={open({ kind: "cancel", m })} data-gov-cancel aria-label={`Cancel ${m.words}${m.dueOn ? `, due ${day(m.dueOn)}` : ""}`}>Cancel…</Button> : null}
@@ -147,7 +147,7 @@ function RecordDialog({ caseId, v, onClose }: { caseId: string; v: CaseMilestone
   };
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Record a government step" guard description="As IRCC's letter gives it. The due date is the one on the letter.">
-      <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form noValidate onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div ref={box} className="flex flex-col gap-3" data-gov-dialog="record">
           <Field label="Step" hint="Sample list of steps" error={err.milestoneKey ?? null}>
             <Select value={key} onChange={(e) => setKey(e.target.value)} data-gov-field="milestoneKey"><option value="">Choose…</option>{v.keys.map((k) => <option key={k.key} value={k.key}>{k.words}</option>)}</Select>
@@ -177,7 +177,7 @@ function CancelDialog({ caseId, m, onClose }: { caseId: string; m: MilestoneView
   };
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title={`Cancel: ${m.words}`} guard description={`${m.dueOn ? `Due ${day(m.dueOn)}. ` : ""}Its reminders stop. The line stays on the case, shown as cancelled; record the step again if the date was wrong.`}>
-      <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form noValidate onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div ref={box} className="flex flex-col gap-3" data-gov-dialog="cancel">
           <div>
             <Field label="Reason" error={err.reason ?? null}><Textarea value={reason} maxLength={MILESTONE_REASON_MAX} rows={3} onChange={(e) => setReason(e.target.value)} data-gov-field="reason" /></Field>
