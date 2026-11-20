@@ -1,6 +1,7 @@
 // PF-18np (rows rev 16.31, 16.41; brief lead-b-briefs/PF-18np.md): the shared notification port, interface and fake only.
 // A caller tells one person, inside its own transaction, that one item needs them: ids only, no free text, names or
-// numbers (AG-7-39 rule 10). One notification per person per item (AG-7-39 rule 2; "Duplicate beats a miss", AG16-60).
+// numbers (AG-7-39 rule 10). One notification per person, item and kind (AG-7-39 rule 2; "Duplicate beats a miss", AG16-60):
+// a repeat marks it unread again with the new time (PF-18n part 1, brief PF-18n1.md), never a second one.
 // The call promises no delivery: the real adapter (PF-18n) checks preferences, builds the link and stores the row.
 // Consumers only ADD lines to NOTIFICATION_KIND, NOTIFICATION_GROUP and NOTIFICATION_ITEM_KIND, never reorder or rename.
 // This folder imports only zod and its own files.
@@ -43,17 +44,17 @@ export type FakeNotifications = NotificationPort<unknown> & {
   sent(): NotificationRecord[];
   markRead(staffId: string, item: NotificationItem): void;
 };
-/** In memory. A second notify for the same person and unread item replaces its kind and time and adds no record. */
+/** In memory. A second notify for the same person, item and kind marks its record unread with the new time and adds none. */
 export function fakeNotifications(opts: { now?: () => Date } = {}): FakeNotifications {
   const records: NotificationRecord[] = [], now = opts.now ?? (() => new Date());
-  const open = (staffId: string, item: NotificationItem) => records.find((r) => !r.read && r.staffId === staffId && r.item.kind === item.kind && r.item.id === item.id);
+  const of = (staffId: string, item: NotificationItem) => records.filter((r) => r.staffId === staffId && r.item.kind === item.kind && r.item.id === item.id);
   return {
     async notify(_tx, recipient, kind, item) {
-      const p = parseNotify(recipient, kind, item), same = open(p.recipient.staffId, p.item);
-      if (same) Object.assign(same, { kind: p.kind, at: now() });
+      const p = parseNotify(recipient, kind, item), same = of(p.recipient.staffId, p.item).find((r) => r.kind === p.kind);
+      if (same) Object.assign(same, { read: false, at: now() });
       else records.push({ staffId: p.recipient.staffId, kind: p.kind, item: p.item, at: now(), read: false });
     },
     sent: () => records.map((r) => ({ ...r, item: { ...r.item } })),
-    markRead(staffId, item) { const r = open(staffId, item); if (r) r.read = true; },
+    markRead(staffId, item) { for (const r of of(staffId, item)) r.read = true; },
   };
 }
