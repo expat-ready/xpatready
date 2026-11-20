@@ -160,3 +160,56 @@ Eight of them delete the setting themselves, so even a runner that exports `loca
 **Journey score:** I did not walk it again, because the R1.15 behaviour is the same code as reviewed above. So **8.5 / 10 stands for the PF-24w walk**. DW7 is not met at this head (B1, B2).
 
 **Reviewer: Block 2f0a166efbae85a3afcd18c8ca95c1022354d0a0**. Fix B1 (ten suites, one line each) and B2 (`check_pf19r_case_links.ts:181,183`). Then re-run those eleven with `PLATFORM_ENVIRONMENT` unset, and paste the counts. Re-review reads only that diff.
+
+## Re-review round 2 (diff-only) at 11a2ac144b06f01616ed4ce8e439351f405b9e46
+Reviewer (Opus, P-303). I read only `git diff 2f0a166ef..11a2ac144`: one commit, 17 code and test files plus `break-report.md` and this file. I used `git show` and `git diff` only, made no checkout and ran no server. I ran in-process probes from scratch scripts outside the tree. Cost US$0.
+
+**A correction to my round 1.** I listed `demo.ts:39` under "Not findings". The breaker showed it is a real regression (break M1): the copy of `process.env` re-runs the loader after the secrets have been scrubbed. I missed it, and it is fixed below.
+
+### Each fix, and whether something fails without it
+
+| Finding | Holds? | Evidence |
+|---|---|---|
+| B1: the ten suites | yes | Each line comes straight after its delete loop and before the first import that throws: pf21w :31→:42 · pf21i :35→:46 · pf21j :32→:41 · pf21v :31→:49 · pf19r_senders :37→:62 · fo3a2 :38→:51 · pf18a :35→:248 · pf4b :43→:61. The two that never set it use `??=` before the import: pf19b2 :336→:337, and pf19r_every_sender :165, which comes before the feature-loop import at :167 and `platform-messages` at :171. The failing case is round 1's probe and my pf21j run (exit 1, ConfigRefused). |
+| B2: `check_pf19r_case_links` | yes | :181-185 now passes a complete `PROD` (the same 13 settings as pf4's `PROD`, every value made by the run). :187 adds `local`. Without the fix, the loader refuses the incomplete production configuration and the unset value; I reproduced both refusals in round 1. |
+| Break M1: Demo › Reset 500 | yes | See the probe below. |
+| Break m1: an exported value is overwritten | yes, safe | See the m1 section below. |
+
+**The probe for break M1** (scratch script; every required setting generated; `platformConfig()` loads and scrubs; then each call is made):
+
+| Environment | The old copy `{...process.env, SEED:on}` | `sampleSeedDecision(process.env, { forceOn: true })` |
+|---|---|---|
+| test | throws ConfigRefused | `run:true` (test) |
+| production | throws ConfigRefused | `run:false`, "refused: … never seeds" |
+| local with a secret-box key | throws ConfigRefused | `run:true` (local) |
+
+* Production still never seeds.
+* Without an argument, `sampleSeedDecision()` still says off, so `forceOn` only affects the one demo caller. `demo.ts:39` is now the only caller outside the seed module.
+
+**The failing cases for M1 are real:**
+* DW4 calls `forceOn` after `process.env` has been set to `production` with the seed on. If it re-read the environment, it would answer "refused" and fail; reverting to the old code also fails it.
+* The `demo.ts` scan has a positive control.
+* J-15 W1 now posts Demo › Reset on the test copy, after the scrub. At 2f0a166ef this was the breaker's 500. It still asserts zero re-reads.
+
+**Break m1: launchers keep an exported value.** `start.sh:18`, `isolated.sh:89` and `restart-api.sh:11` now use `"${PLATFORM_ENVIRONMENT:-local}"`, and an argument to `isolated.sh` still wins over both.
+* **Can this open anything?** No. An exported value can only be `test` or `production`, which require every secret and refuse the stand-in and the seed, or an invalid value, which is refused by name. Empty or unset falls back to `local`, as before. Compared with the old forced `local`, the change can only make a start stricter.
+* **Does CI or a tool export it?** `git grep PLATFORM_ENVIRONMENT` over `.github/`, `product/tools/` and `.githooks/` finds 0 code lines. Neither `run-suites.sh` nor any workflow sets it.
+* **Can a test leave a value behind for a launcher?** Tests that set a non-local value in-process (pf24w DW4 sets `production` at :77) delete it at :87, before J-15 W1's `iso()` call. pf24 and pf24w pass `test` to `isolated.sh` as an argument. Other tests set only `local`.
+
+**Runs on this tree.** These are the builder's 92-suite run logs in `studio/var/suites/`, written 21:41-21:45 against the commit at 21:41, all with the setting unset:
+* pf24w 28/0, including the three new break-M1 lines as PASS.
+* pf24 84/0 and pf4 120/120.
+* pf21w 83/0 · pf21i 30/0 · pf21j 19/0 · pf21v 55/0.
+* pf19r_senders 27/0 · fo3a2 26/0 · pf18a 72/0 · pf4b 57/0 · pf19b2 44/0 · pf19r_every_sender 21/0 · pf19r_case_links 21/0.
+
+**Minor (no fix needed to approve; list them in the PR or fix them in passing):**
+* **m1:** `check_pf24w_environment.ts` J-15 W1's reset accepts any status from 1 to 499. If the demo route ever answered 403 or 404 on a test copy, the case would pass without the seed decision running. Asserting 200 would make it exact.
+* **m2:** no check covers break m1 (an exported value wins). Only the argument path is covered (J-15 W1 "the copy ran as test").
+* **m3:** with `forceOn`, the `why` text still says `PLATFORM_SAMPLE_SEED=on (…)` even when the setting is off. The demo does not log it, so this is wording only.
+* **Note:** on an operator's shell that exports `test`, `start.sh` (which defaults `PLATFORM_IDENTITY=local`) is refused as it should be. But `start.sh` sends `restart-api.sh`'s output to `/dev/null`, so the refusal shows only as a missing "Product Studio" line. This fails closed, and only on a shell that exports the setting.
+
+No Blocker or Major is open. CI green for this head is still a separate condition before the label.
+
+**Journey score: 8.5 / 10 stands** (R1.15's walk is the same code; break M1's reset is now part of J-15 W1 and passes).
+
+**Reviewer: Approve 11a2ac144b06f01616ed4ce8e439351f405b9e46**
