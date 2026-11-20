@@ -20,6 +20,14 @@ echo $((NOW - 98 * 60)) > "$T/state/last-check"; before=$(cat "$T/state/last-che
 gap; ok "20 Nov's 98-min gap: ACT ... 98 min ago" "$([ $r = 1 ] && grep -q '98 min ago$' <<< "$out" && echo 1)" "exit $r: $out"
 ok "gap mode never writes the stamp (a standby must not hide the Lead's gap)" "$([ "$(cat "$T/state/last-check")" = "$before" ] && echo 1)" "$(cat "$T/state/last-check")"
 ok "gap mode makes no GitHub call" "$([ ! -s "$T/gh.log" ] && echo 1)" "$(cat "$T/gh.log" 2>/dev/null)"
+echo $((NOW - 10 * 60)) > "$T/state/last-check"
+gap; ok "gap at 10 min: one ok line, exit 0" "$([ $r = 0 ] && [ "$out" = 'ok    watchdog: last Lead check 10 min ago' ] && echo 1)" "exit $r: $out"
+echo $((NOW - 20 * 60)) > "$T/state/last-check"
+gap; ok "gap at 20 min: 'ACT watchdog: last Lead check 20 min ago', exit 1" "$([ $r = 1 ] && [ "$out" = 'ACT   watchdog: last Lead check 20 min ago' ] && echo 1)" "exit $r: $out"
+# The normal run's stall guard (step 0) is lowered from 40 to 15 min; only its first lines are read (real clock, fake gh).
+run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; out=$(PATH="$T/bin:$PATH" LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$TOOLS/lead-watch.sh" 2>/dev/null | head -2); }
+run 20; ok "normal run, previous check 20 min ago: the stall ACT (was silent under the 40-min guard)" "$(grep -q '^ACT   previous check ran 20 min ago' <<< "$out" && echo 1)" "$out"
+run 10; ok "normal run, previous check 10 min ago: no stall ACT" "$(! grep -q 'previous check ran' <<< "$out" && echo 1)" "$out"
 # lead-check-guard.sh: the standby's recurring prompt "run lead-watch gap" is allowed in the Lead's copy; additions are not.
 git init -q "$T/copy" && mkdir -p "$T/copy/$PRODREL/tools" && printf '#!/bin/bash\necho "$FAKE_LANE"\n' > "$T/copy/$PRODREL/tools/lane.sh"
 guard() { local o; o=$(jq -n --arg p "$2" --arg d "$T/copy" '{tool_name:"CronCreate", tool_input:{cron:"*/10 * * * *", prompt:$p, recurring:true}, cwd:$d}' | FAKE_LANE="$1" bash "$TOOLS/lead-check-guard.sh")
@@ -27,6 +35,7 @@ guard() { local o; o=$(jq -n --arg p "$2" --arg d "$T/copy" '{tool_name:"CronCre
 r=$(guard lead 'run lead-watch gap'); ok "guard: recurring 'run lead-watch gap' allowed in the Lead's copy" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard lead '  Run lead-watch gap.'); ok "guard: ... case, spacing and a full stop aside" "$([ "$r" = allow ] && echo 1)" "got $r"
 r=$(guard lead 'run lead-watch gap; and label #2401'); ok "guard: ... anything added is refused" "$([ "$r" = deny ] && echo 1)" "got $r"
+r=$(guard lead 'check the queue every 10 minutes'); ok "guard: another recurring prompt in the Lead's copy is still refused" "$([ "$r" = deny ] && echo 1)" "got $r"
 r=$(guard qa 'run lead-watch gap now'); ok "guard: ... in any copy, since it names lead-watch" "$([ "$r" = deny ] && echo 1)" "got $r"
 # skill lead: the hand-over order and the standby's watchdog.
 S="$(cd "$TOOLS/../../../.." && pwd)/.claude/skills/lead/SKILL.md"

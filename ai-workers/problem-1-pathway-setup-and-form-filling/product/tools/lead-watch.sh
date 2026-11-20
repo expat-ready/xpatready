@@ -26,11 +26,11 @@ SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
-# check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
-# founder at once. The standby's lead-heartbeat.sh reads the same stamp while this Lead is stuck.
+# check fired. Checks run every 10 min (P-761); a gap over STALL_MAX (15) min means a check was missed: tell the founder
+# at once (ENF-761 part 4 lowered it from 40). Standbys read the same stamp with "lead-watch.sh gap" (above).
 stamp="$STATE_DIR/last-check"; now=$(date +%s)
 if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
-  [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
+  [ "$gap" -gt "${STALL_MAX:-15}" ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
 

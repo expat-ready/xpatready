@@ -192,6 +192,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 30 stale|product/tools/runs-waiting.py|s/(stale if c and now - c >= timedelta(hours=FRESH_H) else fresh)/fresh/|check-runs-waiting.sh
 30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh
 761g gap|product/tools/lead-watch.sh|s/GAP_MAX:-15/GAP_MAX:-999/|check-lead-gap.sh
+761g stall|product/tools/lead-watch.sh|s/STALL_MAX:-15/STALL_MAX:-40/|check-lead-gap.sh
 761g guard|product/tools/lead-check-guard.sh|/norm "\$GAP")" \] .. exit 0$/d|check-lead-gap.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
