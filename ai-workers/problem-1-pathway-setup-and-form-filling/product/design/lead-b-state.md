@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 01:17 IST):** the current Lead is **Lead 7 (series 3)** (`local_a8acec34-7e10-40b5-a12a-bedeeaf46d97`); I've reported to it. #2326: Lead 6 posted /run full and the cover line; it needs a relabel on green.
+
 **Lead B (9) update (21 Nov 01:13 IST):** **#2527 merged** (fo1b test fix on main). #2326 is clear: Lead 6 posts /run full on 5b573ce07, the cover line and the relabel (agreed; I post nothing). Watcher: 2326.
 
 **Lead B (9) update (21 Nov 00:04 IST):** the current Lead is **Lead 6 (series 3)** (`local_871ed54c-0b10-4311-bff3-e43e3f70b2cb`); I've reported to it. The #2326 plan stands: requeue after #2527 lands.
