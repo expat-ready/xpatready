@@ -16,7 +16,7 @@
 
 | PR | Item | Head | State at take-over | Next |
 |---|---|---|---|---|
-| #2322 FO-3st1 p1 | R1.38 3/4 | f80b33324 | full run 44686838150 started 11:48 IST, pending; no labels; lane pushed f80b33324 11:02 IST (calendar suite's own test DB), **no reviewer Approve on it yet** (Lead B (8), 12:3x) | on green: "Batch failures covered" line, send head to Lead 1 to label; then #2326 |
+| #2322 FO-3st1 p1 | R1.38 3/4 | f80b33324 | full run 44686838150 started 11:48 IST, pending; no labels; lane pushed f80b33324 11:02 IST (calendar suite's own test DB), reviewer Approve on f80b33324 posted 11:01 IST (verified; Lead B (8)'s "no Approve" was wrong) | on green: "Batch failures covered" line, send head to Lead 1 to label; then #2326 |
 | #2326 J-38 W6 | R1.38 4/4 | 6ef6fdaf0 | conflicts | after #2322: merge main, keep W7/W8 next to W6 in j_38.ts |
 | #2305 FO-13i p2 | R1.110 (W2) | 6ba78f320 | approved, dequeued; lane says shard (8) failure is main's time-of-day suite | after #2435 (P-754 hold) merges: fresh run, requeue |
 | #2435 | P-754 hold of check_fo3st2_availability_browser.ts | 8df8932f7 | approved, queued (pipeline) | merges; unblocks #2305 |
