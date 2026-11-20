@@ -271,7 +271,7 @@ try {
       && sendWrote === 0 && lines("job:messages.send") === "" && firmRows() === firm0 && misclassed("job:messages.send", BYPASS_USES["job:messages.send"], sendWrote) === null,
     { job: sendJob, delivered, sendWrote, same: firmRows() === firm0 });
   ok("PF-12b1m fail: a stand-in that says \"per-firm\" on either use (which calls no touchFirm) is named by the run check, and so is one with no audit",
-    NEW_USES.every((u) => misclassed(u, { ...BYPASS_USES[u], audit: "per-firm" }, 0) !== null) && misclassed("job:messages.send", stripped["job:messages.send"], 0) !== null
+    NEW_USES.every((u) => misclassed(u, { ...BYPASS_USES[u], audit: "per-firm" }, 0) !== null) && misclassed("job:messages.send", stripped["job:messages.send"] as { audit?: unknown }, 0) !== null
       && misclassed("platform.demo.inbox", BYPASS_USES["platform.demo.inbox"], 2) === null && misclassed("x", { audit: "none: a stand-in that writes a line all the same, which the check must catch" }, 1) !== null);
 
   // The sweep, both behaviours together: firm B's line fails, firm A's row and one PLATFORM_ACCOUNT row are due.
