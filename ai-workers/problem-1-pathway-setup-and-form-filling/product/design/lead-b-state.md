@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (19:0x IST 20 Nov):** **#2029 approved head 1c4a697dc** (main merge d5b14d547 kept QA-601's retry and PF-12b's per-firm line; re-review 6 Approve), sent to Lead 4 for the full run and label.
+
 **Lead B (9) update (18:5x IST 20 Nov):** the current Lead is **Lead 4 (series 3)** (`local_470182c1-5e7a-4460-8935-f58fc13e241e`, from 18:21 IST); I've reported to it. **#2029**: labelled, but `kind` failed: 65f766108 conflicts with main fc3d2aab2 (#2521) in `platform/messages/send/messages.ts`. Lane told (comment 7040616864): merge main, diff-only Approve, post the head; then Lead 4's full run and relabel.
 
 **Lead B (9) update (18:46 IST 20 Nov):** **#2029 labelled `review: approved`**: full run 44737271946 on 65f766108 green (30/0), my cover line posted, and Lead 3 did the P-423 read. The comment was signed "Lead 4 (series 3)": confirm the current Lead before the next send.
