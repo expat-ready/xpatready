@@ -16,9 +16,12 @@ import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
 import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
+import { ConflictCheckPanel, ConvertConflictNote } from "../compliance/conflict/conflict-panel";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
+/** Focuses a section once the dialog has gone (the dialog gives focus back to its trigger as it closes; FO-13s m5). */
+const focusWhenClosed = (id: string) => { const t0 = Date.now(); const tick = () => { if (document.querySelector('[role="dialog"]') && Date.now() - t0 < 2000) { requestAnimationFrame(tick); return; } setTimeout(() => document.getElementById(id)?.focus(), 80); }; requestAnimationFrame(tick); };
 /** A currency as its code and its name ("CAD, Canadian Dollar"); the code alone when the browser has no name for it. */
 const NAMES = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["en-CA"], { type: "currency" }) : null;
 const currencyLabel = (c: string) => { const n = NAMES?.of(c); return n && n !== c ? `${c}, ${n}` : c; };
@@ -52,6 +55,7 @@ function ProspectBody({ id }: { id: string }) {
     },
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
+      if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id] });   // FO-13s: the gate's verdict read again
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
       // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
       if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
@@ -130,6 +134,7 @@ function ProspectBody({ id }: { id: string }) {
           {!mayMove && !mayConvert && !mayLose && !mayUndo ? <p data-no-actions className="text-xs text-text-muted">{p.stage.kind === "LOST" ? "A lost prospect does not move. To work with this person again, engage the lead again." : p.stage.kind === "WON" ? (p.wonVia === "CONVERTED" && !p.retainerSigned ? "Undoing a Convert needs a role that may convert prospects." : "This prospect is a client. A signed retainer cannot be undone here.") : "You can read this prospect. Changing it needs a role that works prospects: ask your firm's Owner or Admin."}</p> : null}
         </aside>
       </div>
+      <ConflictCheckPanel prospectId={p.id} corporate={p.type === "CORPORATE"} />
       {p.person ? <IdentityCheckPanel personId={p.person.id} name={p.person.name === "(no name)" ? "" : p.person.name} /> : null}
       <Panel open={open === "lost"} onOpenChange={(o) => start(o ? "lost" : null)} title="Mark lost" description={`${name}, ${p.number}. It leaves the board and is found in the List under Stage: Lost.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>Cancel</Button><Button busy={act.isPending} onClick={submit("lost")}>Mark lost</Button></>}>
@@ -160,6 +165,7 @@ function ProspectBody({ id }: { id: string }) {
       <Dialog open={open === "convert"} onOpenChange={(o) => start(o ? "convert" : null)} title={`Convert ${name} to a client?`} description={`${p.number} moves to Won. Only this prospect changes.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as prospect</Button><Button busy={act.isPending} onClick={submit("convert")}>Yes, convert to client</Button></>}>
         {general}
+        <ConvertConflictNote prospectId={p.id} onGo={() => { start(null); focusWhenClosed("fo-conflict"); }} />
         {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : <Notice tone="warn" title={NOT_SIGNED} />}
       </Dialog>
       <Dialog open={open === "undo"} onOpenChange={(o) => start(o ? "undo" : null)} title={`Undo the Convert of ${name}?`} description={`${p.number} goes back to the stage it was in. Possible only while the client has no case, invoice or signed retainer.`}
