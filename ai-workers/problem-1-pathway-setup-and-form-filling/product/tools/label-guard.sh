@@ -9,16 +9,16 @@
 # comment says why. The walk starts from the PR's head as GitHub reads it now, never from the push's "before", so a
 # cancelled or failed earlier run cannot let an unreviewed commit through (#1136 review M2). Fails closed: comments or
 # reviews that cannot be read count as no Approve.
-# CI-PRE (P-731, founder 19 Nov, "enforced, not text"): a reviewed head also needs one green full run (comment-run.yml's
-# "/run full": main's ci.yml on the head merged with main) on the head or on a commit of the walk back to its approved
-# commit (a pure merge of main stays exempt, as above), and, when the label was just put on (LABELED), every failed part
-# of the newest failed merge batch that held the PR named in a "Batch failures covered:" comment line. Main's
-# queue-gate.sh proof judges both (records-only PRs exempt) and gives the reason the comment carries.
+# CI-PRE (P-731, founder 19 Nov, "enforced, not text"; asked only after a failed merge batch, P-733 (4), B206 part 2): when
+# the label was just put on (LABELED) and the newest merge batch that held the PR failed, the head or a commit of the walk
+# back to its approved commit (a pure merge of main stays exempt, as above) needs one green full run (main's ci.yml on the
+# head merged with main), and every failed part of that batch named in a "Batch failures covered:" comment line. Main's
+# queue-gate.sh proof judges both (records-only PRs need no full run) and gives the reason the comment carries.
 # ENF-746a (P-746): for a records-only PR (the "records" label and main's records-only.sh), a merge of main that changes
 # records files the PR also changes still counts as pure, so qa's proof records keep their Approve across main's merges.
 # Env: GH_TOKEN, REPO (owner/name), PR, AFTER (the push's head, or the PR's head when the label was added; the PR's
 # current head wins), BEFORE (for the comment; empty when the label was added); LABELED (the label just added, if any);
-# FULL_FROM (queue-gate.sh); QUEUE_GATE (the test's stand-in);
+# REVIEWERS (queue-gate.sh); QUEUE_GATE (the test's stand-in);
 # API (default https://api.github.com); MAIN_REF (default origin/main). Runs in a git copy holding main and the PR's
 # commits. Exit 0 when nothing was wrong or the label came off; 2 when the label could not be read or removed.
 # Test: check-label-guard.sh.
