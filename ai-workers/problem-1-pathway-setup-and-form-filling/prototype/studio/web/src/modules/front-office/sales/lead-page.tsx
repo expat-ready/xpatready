@@ -14,7 +14,8 @@ import { useToast } from "@/lib/api";
 import { MessagesPanel } from "@/modules/platform/messages/messages-panel";
 import { can, KEY, Lead, Prospect, READ_ONLY_REASON, words } from "./contract";
 import { Loading } from "./loading";
-import { useLock, useReturnFocus } from "./prospect-actions";
+import { AssignPanel, OwnerHistory } from "./lead-owner";
+import { useLock, useOwners, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -77,6 +78,9 @@ function LeadBody({ id }: { id: string }) {
   const take = useTakeIt();
   const go = useNavigate(), toast = useToast(), qc = useQueryClient();
   const [engaging, setEngaging] = React.useState(false), lock = useLock(), focus = useReturnFocus();
+  // R1.32 (AG-2-13c, X-4): Assign or Reassign for people who may assign; a one-user firm sees no owner, Take it or Assign.
+  const owners = useOwners(), [assigning, setAssigning] = React.useState(false);
+  const assignPanel = (o: boolean) => { if (o) focus.mark(); else focus.back("[data-assign-open]"); setAssigning(o); };
   const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
@@ -98,7 +102,8 @@ function LeadBody({ id }: { id: string }) {
   const l = lead.data;
   const name = [l.person.givenNames, l.person.familyName].filter(Boolean).join(" ") || "(no name)";
   const ownerActive = l.ownerStaffId !== null && !(l.owner ?? "").startsWith("(Inactive) ");
-  const mayTake = can(me, KEY.edit) && l.state === "OPEN" && !ownerActive;
+  const mayTake = can(me, KEY.edit) && l.state === "OPEN" && !ownerActive && !owners.oneUser;
+  const mayAssign = can(me, KEY.assign) && l.state === "OPEN" && !owners.oneUser;
   const mayEngage = can(me, KEY.edit) && l.state !== "CLOSED";
   const attribution = Object.entries(l.attribution ?? {}).filter(([k, v]) => k in ATTRIBUTION && typeof v === "string");
   return (
@@ -133,18 +138,21 @@ function LeadBody({ id }: { id: string }) {
               {attribution.map(([k, v]) => <Row key={k} label={ATTRIBUTION[k]}>{String(v)}</Row>)}
             </dl>
           </section>
+          {owners.oneUser ? null : <OwnerHistory lead={l} />}
           <MessagesPanel subject={{ kind: "LEAD", id: l.id }} />
         </div>
         <aside aria-label="Owner and actions" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4">
-          <div>
+          {owners.oneUser ? null : <div>
             <p className="text-xs font-medium text-text-muted">Owner</p>
             <p data-owner className="mt-0.5 text-sm">{l.owner ?? "Nobody yet"}</p>
-          </div>
+          </div>}
           {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button>
-            : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+            : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive && !owners.oneUser ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+          {mayAssign ? <Button variant="outline" data-assign-open onClick={() => assignPanel(true)}>{ownerActive ? "Reassign" : "Assign"}</Button> : null}
           {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => panel(true)}>Engage</Button> : null}
         </aside>
       </div>
+      {mayAssign ? <AssignPanel lead={l} open={assigning} onOpenChange={assignPanel} /> : null}
       <Panel open={engaging} onOpenChange={panel} title="Engage" description={`${name}, ${l.number}`}
         footer={<><Button variant="ghost" onClick={() => panel(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => { if (lock.take()) engage.mutate(); }}>Engage as Individual</Button></>}>
         {engage.isError ? <Notice tone="danger" className="mb-3" title={engage.error instanceof StaffApiError ? engage.error.message : "Could not engage the lead. Please try again."} /> : null}
