@@ -15,6 +15,10 @@
 // Lead B rev 16.66: never sent inside the caller's request) on SEND_QUEUE; the runner retries a send that throws, each
 // try is counted on the row, the 5th failure ends it FAILED, and the sweep queues a row a crash or a failed job left
 // QUEUED once per try, after a growing wait. They have no msg_event (events key on a firm). Every platform query names firm_id IS NULL and audience PLATFORM_ACCOUNT.
+// QA-601 (R1.48 "Sent, Delivered, Bounced or Failed"): a firm row whose channel adapter throws (the provider refused it,
+// the network) counts the try on the row the same way ("send failed: try n of N", updated_at the try's time), the runner
+// and the sweep try it again after the same growing wait, and the FIRM_SEND_TRIES-th refusal ends it FAILED "send failed"
+// with one FAILED msg_event. Only the adapter's throw is counted: any other error rolls back as before, uncounted.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { AlertPort } from "../../../../../ports/alert.ts";
@@ -51,6 +55,10 @@ export const platformRetryAfterMs = (tries: number) => SWEEP_AFTER_MS * 2 ** Mat
 /** A platform row's job key for its next try (the first is the dispatch's; each later try its own, so the sweep queues
  *  each try once). */
 export const platformJobKey = (outboxId: string, tries: number) => `msg.send:platform:${outboxId}${tries ? `:try:${tries}` : ""}`;
+/** Sample (QA-601): sends of one firm row the provider refuses before it is FAILED "send failed" (as PLATFORM_SEND_TRIES). */
+export const FIRM_SEND_TRIES = PLATFORM_SEND_TRIES;
+/** The adapter's throw inside the worker's transaction, carried out of it so only a provider's refusal counts a try. */
+class ProviderRefused extends Error { constructor(readonly refusal: unknown) { super("provider refused"); } }
 const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d+$/.exec(reason ?? "")?.[1] ?? 0);
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
@@ -156,6 +164,32 @@ export class Messages implements MessagePort<Tx> {
   async deliver(firmIdIn: string | null, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
     if (firmIdIn === null) return this.deliverPlatform(outboxId);
     const { firmId } = firmScope(firmIdIn);
+    try { return await this.deliverFirm(firmId, outboxId); } catch (e) {
+      if (!(e instanceof ProviderRefused)) throw e;
+      return this.countRefusal(firmId, outboxId, e.refusal);
+    }
+  }
+
+  /** QA-601: counts one refused send of a QUEUED firm row; the last try ends it FAILED with one FAILED event, the others
+   *  throw on so the job runner retries (the sweep queues what is left after the wait). The row's reason is the guard: a
+   *  try another worker counted meanwhile is not counted twice. */
+  private async countRefusal(firmId: string, outboxId: string, cause: unknown): Promise<"failed"> {
+    const now = this.clock.now();
+    const out = await this.d.db.$transaction(async (tx) => {
+      const row = await tx.msgOutbox.findFirst({ where: firmScope(firmId, { id: outboxId, state: "QUEUED" as const }), select: { stateReason: true } });
+      if (!row) return null;
+      const tries = triesOf(row.stateReason) + 1, last = tries >= FIRM_SEND_TRIES;
+      const n = await tx.msgOutbox.updateMany({ where: firmScope(firmId, { id: outboxId, state: "QUEUED" as const, stateReason: row.stateReason }),
+        data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: now } : { stateReason: `send failed: try ${tries} of ${FIRM_SEND_TRIES}`, updatedAt: now } });
+      if (n.count && last) await tx.msgEvent.create({ data: { firmId, outboxId, kind: "FAILED", occurredAt: now, detail: { reason: "send failed", tries } } });
+      return { tries, last, counted: n.count > 0 };
+    });
+    if (out?.counted) this.d.log?.(`messages: firm ${firmId} outbox ${outboxId} send failed (${cause instanceof Error ? cause.name : "error"}), try ${out.tries} of ${FIRM_SEND_TRIES}${out.last ? ": FAILED" : ""}`);
+    if (out?.counted && out.last) return "failed";
+    throw cause;
+  }
+
+  private async deliverFirm(firmId: string, outboxId: string): Promise<"sent" | "skipped" | "held" | "failed" | "suppressed"> {
     let alertDay: string | null = null;
     const out = await this.d.db.$transaction(async (tx) => {
       const [row] = await tx.$queryRaw<{ state: string; channel: Channel; address: string; class: "TRANSACTIONAL" | "SERVICE" | "MARKETING"; subject_kind: "FO_PERSON" | "CASE_PARTY" | "STAFF" | null; subject_id: string | null; rendered_hash: string }[]>`
@@ -181,7 +215,7 @@ export class Messages implements MessagePort<Tx> {
       await tx.$executeRaw`INSERT INTO "msg_send_counter" ("firm_id", "day", "sent", "updated_at") VALUES (${firmId}::uuid, ${day}::date, 0, now()) ON CONFLICT DO NOTHING`;
       const [{ sent }] = await tx.$queryRaw<{ sent: number }[]>`SELECT "sent" FROM "msg_send_counter" WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date FOR UPDATE`;
       if (sent >= cap) { await tx.msgOutbox.update({ where, data: { stateReason: HELD_DAILY_LIMIT } }); alertDay = day; return "held" as const; }
-      const { providerId } = await adapter.deliver(tx, rendered);
+      const { providerId } = await adapter.deliver(tx, rendered).catch((e: unknown) => { throw new ProviderRefused(e); });
       await tx.$executeRaw`UPDATE "msg_send_counter" SET "sent" = "sent" + 1, "updated_at" = now() WHERE "firm_id" = ${firmId}::uuid AND "day" = ${day}::date`;
       await tx.msgOutbox.update({ where, data: { state: "SENT", stateReason: null, providerId, sentAt: now, consentId: decision.consentId ?? null } });
       await tx.msgEvent.create({ data: { firmId, outboxId, kind: "SENT", providerEventId: providerId, occurredAt: now, detail: { provider: adapter.provider } } });
@@ -241,6 +275,17 @@ export class Messages implements MessagePort<Tx> {
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
     let n = 0;
     for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    // QA-601: a firm row the provider refused (its tries counted on the row) is queued again once its wait is over
+    // (platformRetryAfterMs from the last try's updated_at), SWEEP_PER_FIRM per firm, the fewest tries first.
+    const retry = await this.d.db.$queryRaw<{ id: string; firmId: string; reason: string; updatedAt: Date }[]>`
+      SELECT "id"::text AS id, "firm_id"::text AS "firmId", "state_reason" AS reason, "updated_at" AS "updatedAt" FROM "msg_outbox"
+      WHERE "firm_id" IS NOT NULL AND "state" = 'QUEUED' AND "state_reason" LIKE 'send failed: try %' AND "updated_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
+      ORDER BY "updated_at", "id" LIMIT 2000`;
+    const perFirm = new Map<string, number>();
+    const firmDue = retry.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.reason)))
+      .sort((x, y) => triesOf(x.reason) - triesOf(y.reason) || x.updatedAt.getTime() - y.updatedAt.getTime())
+      .filter((r) => { const k = (perFirm.get(r.firmId) ?? 0) + 1; perFirm.set(r.firmId, k); return k <= SWEEP_PER_FIRM; });
+    for (const r of firmDue) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     const due = await this.d.db.msgOutbox.findMany({
       where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
