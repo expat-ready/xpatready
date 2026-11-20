@@ -53,6 +53,8 @@ const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm
 const { InvoiceDrafts } = await import("../api/src/client-money/invoices/drafts.ts");
 const { InvoiceDraftsController } = await import("../api/src/client-money/invoices/routes.ts");
 const feature = (await import("../api/src/features/client-money-invoices.ts")).default;
+const { withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
@@ -76,7 +78,7 @@ try {
   const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7b.${n}@example.org', 'seed:FO-7b-1a', now()) returning id`);
   const PA = person(A, "a"), PB = person(B, "b");
   const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
-  const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo");
+  const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo"), tO = await signIn("user-O", "sample-firm");
   const staffA = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
 
   const noSettings = await call(tA, "POST", "/front-office/money/invoices", { personId: PA });
@@ -106,7 +108,12 @@ try {
   const R2 = (tax: number) => tax === 6;
   const t2 = await taxOf(50, 130000);
   ok("FO-7b R2 pass: 0.50 at 13 % (exact 6.5 cents) → 0.06 stored (a half goes to even, down)", R2(t2.tax), t2);
-  ok("FO-7b R2 fail (planted): half up through Math.round gives 0.07, and the case catches it", !R2(halfUp(50, 130000)));
+  // The planted service: the same InvoiceDrafts with half up through Math.round in place of taxForLine, run as firm A on
+  // the app's walled database; the stored row is read back and the R2 case is asked of it.
+  const planted = new InvoiceDrafts(nest.get(Db), auditEvent, halfUp), ctxA = { staffId: staffA, firmId: A, firmKey: "sample-firm", roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" } as never;
+  const dP = await draft(); await withFirm(A, () => planted.addLine(ctxA, dP.body.id, fee(50, 130000)));
+  const plantedTax = Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${dP.body.id}'`));
+  ok("FO-7b R2 fail (planted): the service with half up (Math.round) stores 0.07, and the case catches it", plantedTax === 7 && !R2(plantedTax), plantedTax);
   const cases: [string, number, number, number][] = [
     ["R3 (a half goes to even, up): 1.50 at 13 % (exact 19.5)", 150, 130000, 20],
     ["R4 (HST 15 %): 0.30 at 15 % (exact 4.5)", 30, 150000, 4], ["R4 (HST 15 %): 0.10 at 15 % (exact 1.5)", 10, 150000, 2],
@@ -121,7 +128,8 @@ try {
   const d7 = await draft(); await line(d7.body.id, fee(50, 130000)); const r7 = await line(d7.body.id, fee(50, 130000));
   const R7 = (taxSum: number) => taxSum === 12;
   ok("FO-7b R7 pass: two lines of 0.50 at 13 % → tax 0.06 + 0.06 = 0.12, total 1.12", r7.status === 201 && stored(d7.body.id) === "1:FEE:50:130000:6:CAD,2:FEE:50:130000:6:CAD" && R7(r7.body.taxMinor) && r7.body.totalMinor === 112, r7.body);
-  ok("FO-7b R7 fail (planted): tax on the subtotal (1.00 × 13 % = 0.13) is caught", !R7(taxForLine(100, 130000)) && taxForLine(100, 130000) === 13);
+  const dS = await draft(), sub = await line(dS.body.id, fee(100, 130000));
+  ok("FO-7b R7 fail (planted): tax on the subtotal, as the route itself taxes one 1.00 line (0.13), is caught", sub.status === 201 && sub.body.taxMinor === 13 && !R7(sub.body.taxMinor), sub.body);
 
   // --------------------------------------------------------------------------------------- R8: large and exact
   const d8 = await draft(); const r8 = await line(d8.body.id, fee(2147483647, 150000));
@@ -187,6 +195,14 @@ try {
   ok("FO-7b walls fail (stand-in): firm B's own draft for its own client is 201, in firm B", bOwn.status === 201 && sql(`select firm_id from money_invoice where id = '${bOwn.body.id}'`) === B, bOwn.body);
   ok("FO-7b inputs: no session → 401; a malformed id → 404, never 500", (await call(undefined, "GET", `/front-office/money/invoices/${d1.body.id}`)).status === 401
     && (await call(tA, "GET", "/front-office/money/invoices/not-a-uuid")).status === 404 && (await line("not-a-uuid", fee(100, 0))).status === 404);
+
+  // ---------------------------------------------------- who may add a line (review 8a243502f, Minor 1; AG-06 C5)
+  n0 = linesNow(); const byO = await line(d1.body.id, fee(999999, 0), tO);
+  ok("FO-7b keys fail: a Case Officer (agent/invoice:create, no :edit) adding to the Owner's draft → 403 MISSING_PERMISSION, nothing written",
+    byO.status === 403 && byO.body.code === "MISSING_PERMISSION" && linesNow() === n0, byO.body);
+  const dO = await draft({ personId: PA }, tO), ownO = await line(dO.body.id, fee(1000, 130000), tO);
+  ok("FO-7b keys pass (stand-in): the Case Officer adds a line to the draft they started (201); the Owner (:edit) adds to it too",
+    dO.status === 201 && ownO.status === 201 && (await line(dO.body.id, fee(1000, 0))).status === 201, [dO.status, ownO.body]);
 
   // ------------------------------------------------------------------------------------ two lines added at once
   const dRace = await draft(); const both = await Promise.all([line(dRace.body.id, fee(50, 130000)), line(dRace.body.id, fee(150, 130000))]);

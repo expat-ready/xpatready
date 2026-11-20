@@ -62,8 +62,9 @@ try {
   const w1 = await draft();
   ok("J-59 W1 pass (API step: the invoice has no screen yet): a draft in CAD for the firm's client, no number, with one audit line by the staff member",
     w1.status === 201 && w1.body?.status === "DRAFT" && w1.body?.currency === "CAD" && w1.body?.number === null && sql(`select count(*) from audit_event where action = 'invoice.draft_created' and entity_key = '${w1.body?.id}' and actor like 'staff:%'`) === "1", w1.body);
+  const drafts = () => sql(`select count(*) from money_invoice where firm_id = '${A}'`), d0 = drafts();
   const w1b = await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "EUR" });
-  ok("J-59 W1 fail (stand-in): a draft in a currency the firm can't hold (EUR) → 400 at currency, nothing saved", w1b.status === 400 && w1b.body?.errors?.[0]?.field === "currency", w1b.body);
+  ok("J-59 W1 fail (stand-in): a draft in a currency the firm can't hold (EUR) → 400 at currency, nothing saved", w1b.status === 400 && w1b.body?.errors?.[0]?.field === "currency" && drafts() === d0, w1b.body);
 
   // ------------------------------------------------------------------------------------------- W2: AG-06's example
   const w2 = await add(w1.body.id, fee(85000));
@@ -76,7 +77,8 @@ try {
   // ------------------------------------------------------------------------------- W3: per line, half to even, summed
   const w3 = await draft(); await add(w3.body.id, fee(50)); const w3b = await add(w3.body.id, fee(50));
   ok("J-59 W3 pass (API step): two 0.50 lines at 13 % → 0.06 + 0.06 = 0.12 tax, total 1.12", lines(w3.body.id) === "FEE:50:130000:6:CAD,FEE:50:130000:6:CAD" && w3b.body?.taxMinor === 12 && w3b.body?.totalMinor === 112, w3b.body);
-  ok("J-59 W3 fail (planted): half up (Math.round(6.5) = 7 per line → 0.14) or tax on the subtotal (0.13) differs from the stored 0.12", Math.round(50 * 0.13) * 2 === 14 && Math.round(100 * 0.13) === 13 && w3b.body?.taxMinor === 12);
+  const w3s = await draft(), sub = await add(w3s.body.id, fee(100));
+  ok("J-59 W3 fail (stand-in): tax on the subtotal, as the route taxes one 1.00 line at 13 %, is 0.13, not the 0.12 of two lines taxed one by one", sub.status === 201 && sub.body?.taxMinor === 13 && w3b.body?.taxMinor !== sub.body?.taxMinor, sub.body);
 
   // ----------------------------------------------------------------------------------------- W4: a government fee
   const w4 = await draft(); await add(w4.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: 130000 }); const w4b = await add(w4.body.id, fee(100000));

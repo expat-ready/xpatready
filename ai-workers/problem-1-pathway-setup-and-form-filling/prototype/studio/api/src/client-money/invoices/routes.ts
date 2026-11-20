@@ -1,7 +1,8 @@
 // FO-7b part 1a routes (QA-482; R1.59): draft invoices, staff session only (PF-4's guard, default deny), under
 // /api/front-office/money/*, where the staff guard covers them (Lead B's FO-7b amendment 4: no /api/client-money/ prefix).
-// Building a draft (start it, add a line) is agent/invoice:create (SA-06 v3.15 §10b: "Bill this … make a draft with
-// agent/invoice:create"); reading it is agent/invoice:show. The firm is the session's, never the request's.
+// Starting a draft and adding to one's own draft are agent/invoice:create (SA-06 v3.15 §10b: "Bill this … make a draft
+// with agent/invoice:create"); adding to another person's draft also needs agent/invoice:edit (AG-06 C5, checked by the
+// service on the draft's creator); reading it is agent/invoice:show. The firm is the session's, never the request's.
 import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
 import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { InvoiceDrafts } from "./drafts.ts";

@@ -12,6 +12,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { DraftIn, InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { taxForLine } from "./tax-round.ts";
 
@@ -31,8 +32,12 @@ const badField = (field: string, message: string): never => {
 };
 const notFound = (what: string): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 
+/** Adding to a draft someone else started needs this key (AG-06 C5: "Edit a DRAFT invoice"); one's own draft, :create. */
+export const EDIT_KEY = "agent/invoice:edit";
+
 export class InvoiceDrafts {
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>) {}
+  /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine) {}
 
   /** POST /api/front-office/money/invoices. */
   async create(ctx: StaffContext, body: unknown): Promise<InvoiceView> {
@@ -58,12 +63,14 @@ export class InvoiceDrafts {
     const amountMinor = l.quantity * l.unitMinor;
     if (amountMinor > MINOR_MAX) badField("unitMinor", `The line's amount (quantity × unit amount) is more than one line can hold (${MONEY(MINOR_MAX)}). Nothing was saved.`);
     const ratePpm = l.kind === "GOVERNMENT_FEE" ? 0 : l.ratePpm;   // a government fee is never taxed (AG-6-4 rule 3)
-    const taxMinor = taxForLine(amountMinor, ratePpm);
+    const taxMinor = this.tax(amountMinor, ratePpm);
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
-      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean }[]>`select currency::text as currency, issued_at is not null as issued from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
+      if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
+        problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
       // The database's own text rule, asked first, so a description it would refuse is a 400 at the field, never a 500.
@@ -82,7 +89,8 @@ export class InvoiceDrafts {
   /** GET /api/front-office/money/invoices/:id. */
   async read(ctx: StaffContext, invoiceId: string): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
-    return this.view(this.db, ctx.firmId, invoiceId.toLowerCase());
+    // One snapshot: the lines and the total are read as of the same moment (a line added between them never shows).
+    return this.db.$transaction((tx) => this.view(tx, ctx.firmId, invoiceId.toLowerCase()), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 
   // ------------------------------------------------------------------------------------------------- helpers
@@ -96,7 +104,7 @@ export class InvoiceDrafts {
   }
 
   /** The invoice with its stored lines; the sums are of the stored figures, the total money_invoice_total's. */
-  private async view(tx: Tx | PrismaClient, firmId: string, id: string): Promise<InvoiceView> {
+  private async view(tx: Tx, firmId: string, id: string): Promise<InvoiceView> {
     const inv = await tx.moneyInvoice.findFirst({ where: firmScope(firmId, { id }), include: { lines: { orderBy: { position: "asc" } } } });
     if (!inv) return notFound("invoice");
     const [t] = await tx.$queryRaw<{ total: string }[]>`select money_invoice_total(${inv.firmId}::uuid, ${inv.id}::uuid)::text as total`;
