@@ -1,26 +1,14 @@
-// CS-DL3 part 1 (R1.74, QA-591; brief design/build-lead-c-briefs/CS-DL3.md; Doc 3 Agent Console line 3337 CaseMilestone,
-// line 3141 "drives the Minder ... as the deadline nears"; AG-7-96 r7): a case's government steps (an IRCC letter asking
-// for biometrics, a medical exam, documents, a passport, or a procedural fairness letter) with the letter's date and,
-// when it gives one, its due date as typed by staff. The app never computes a government deadline (P-170).
-// This file holds the plain parts (the keys, the reminder plan, the due date as shown, the stages read's list); the
-// routes' service, CaseMilestones, is in ../features/case-milestones.ts (decorators compile only there: api/tsconfig.json).
-//   * Record and cancel only (case_milestone is insert-only apart from cancelling; its triggers refuse anything else):
-//     a wrong due date is cancelled and recorded again, and both lines stay.
-//   * Each write is one transaction: the case row locked (the session's firm, else 404, never 403: BR-20), the line, one
-//     audit line (AuditPort, through Audit) and one outbox event (case.milestone_recorded / case.milestone_cancelled),
-//     ids only: never the note, the reference or the reason.
-//   * Reminders (reminders.ts): the stage plan's offsets (plan.ts) counted back over the firm's open days, as JobPort jobs
-//     keyed `case_milestone:<id>:<offset>:<due>:<run time>:r<reopens>`, armed by the sweep from the outbox. A milestone
-//     reminds whatever its route's basis is (ruling 3 of the brief: the date comes from the letter, not from a Sample rule).
-// Times only from the clock port (P-607). US$0, no model call.
+// CS-DL3 part 1 (R1.74, QA-591; Doc 3 line 3337 CaseMilestone, line 3141; AG-7-96 r7): the plain parts of a case's
+// government steps: the reminder plan (plan.ts's Sample offsets over the firm's open days, keys
+// `case_milestone:<id>:<offset>:<due>:<run time>:r<reopens>`), a due date as shown, and the stages read's list. The due
+// date is the one on IRCC's letter, typed by staff, never computed (P-170). The routes and their service are in
+// ../features/case-milestones.ts (decorators compile only in api/tsconfig.json's folders); the jobs in reminders.ts.
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { MILESTONE_KEYS, MILESTONE_WORDS, type MilestoneDeadline, type MilestoneDue, type MilestoneKey } from "../../../contracts/milestones.ts";
+import { MILESTONE_WORDS, type MilestoneDeadline, type MilestoneDue } from "../../../contracts/milestones.ts";
 import { countBack, dayMark, NO_SUCH_DATE, zonedInstant, type FirmCalendar } from "../platform/calendar/working-days.ts";
 import { REMINDER_OFFSETS, REMINDER_TIME, stillToCome, type Reminder } from "./plan.ts";
 
-export { MILESTONE_KEYS, MILESTONE_WORDS };
-/** The milestone reminder job's queue, and the prefix of every one of its keys (never `deadline:`, so a stage's close
- *  consumer and a milestone's never cancel each other's jobs by mistake). */
+/** The milestone reminder job's queue; its keys never start `deadline:` (the stage's). */
 export const MILESTONE_JOB = "case_deadlines.milestone_reminder";
 export const MILESTONE_KEY_PREFIX = "case_milestone:";
 
@@ -58,4 +46,3 @@ export async function openMilestoneDeadlines(db: PrismaClient | Tx, caseId: stri
   return rows.map((r) => ({ id: r.id, key: r.milestoneKey, words: wordsOf(r.milestoneKey), reference: r.reference, ...showDue(isoDay(r.dueOn!), cal, today) }));
 }
 
-export type { MilestoneKey };

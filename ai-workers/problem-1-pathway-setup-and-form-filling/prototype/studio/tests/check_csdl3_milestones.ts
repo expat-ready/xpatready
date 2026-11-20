@@ -1,12 +1,7 @@
-// CS-DL3 part 1 (R1.74, QA-591; brief design/build-lead-c-briefs/CS-DL3.md): a case's government steps with a due date
-// from IRCC's letter (case_milestone, api/src/case-deadlines/milestones.ts) and their reminders (reminders.ts), DW1-DW7,
-// each with a pass and a fail, plus the migration and the stages read. A scratch database (every migration, PF-3's Sample
-// firms), cases written as SQL fixtures (replica role, as check_csdl1_deadlines.ts): a done-before "study" stage holding a
-// date and a CURRENT "work" stage whose deadline is that date, on a CITED or a SAMPLE route (labelled test data). The
-// services run in this process: CaseMilestones (the routes' service), CaseDeadlines on fakeJobs and a FakeClock, a
-// counting fakeNotifications, CS-C1a's CaseClose for close and reopen. Every due date here is test data, never an
-// immigration value (P-170: the app never computes one). No server, no browser, no model call (US$0). Dropped at the end.
-//   tsx studio/tests/check_csdl3_milestones.ts
+// CS-DL3 part 1 (R1.74, QA-591): government steps (case_milestone) and their reminders, DW1-DW7 each with a pass and a
+// fail, the migration, review M1 and break m1-m3. A scratch database (every migration, Sample firms), SQL fixture cases on
+// a CITED or SAMPLE route (test data, no immigration value), the services in process on fakeJobs and a FakeClock. US$0.
+//   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_csdl3_milestones.ts
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -32,16 +27,13 @@ import { EVENT } from "../ports/events.ts";
 import { recorder } from "./runtime/api.ts";
 
 const { ok, summary } = recorder();
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261120170000_csdl3_case_milestone";
+const MIG = join(import.meta.dirname, "..", "prisma", "migrations"), NEW = "20261120170000_csdl3_case_milestone";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
-const PGA = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], SDB = `xr_studio_csdl3_${process.pid}`;
-const URL_ = `postgresql://xr_studio@127.0.0.1:54329/${SDB}`;
+const PGA = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"], SDB = `xr_studio_csdl3_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${SDB}`;
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 const refusedSql = (q: string, re: RegExp) => { try { sql(q); return false; } catch (e) { return re.test(String((e as { stderr?: string }).stderr ?? e)); } };
 /** An HttpException's status and body, or null when the call passed. */
-const answer = async (p: Promise<unknown>): Promise<{ status: number; body: Record<string, unknown> } | null> => {
-  try { await p; return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => unknown }; return x.getStatus ? { status: x.getStatus(), body: x.getResponse!() as Record<string, unknown> } : { status: 500, body: { error: String(e) } }; }
-};
+const answer = async (p: Promise<unknown>): Promise<{ status: number; body: Record<string, unknown> } | null> => { try { await p; return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => unknown }; return x.getStatus ? { status: x.getStatus(), body: x.getResponse!() as Record<string, unknown> } : { status: 500, body: { error: String(e) } }; } };
 
 execFileSync(join(BIN, "dropdb"), [...PGA, "--if-exists", SDB]); execFileSync(join(BIN, "createdb"), [...PGA, SDB]);
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [URL_, "-X", "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: "ignore" });
@@ -49,20 +41,16 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: URL_, op
 
 try {
   await seedSampleFirms(db);
-  const firm = async (key: string) => (await db.platformFirm.findUniqueOrThrow({ where: { key } })).id;
-  const FA = await firm("sample-firm"), FB = await firm("sample-solo");
-  const staff = async (actorId: string) => (await db.platformStaff.findUniqueOrThrow({ where: { actorId } })).id;
-  const [REP, OFF, SOLO] = [await staff("user-R"), await staff("user-O"), await staff("user-S")];
+  const firm = async (key: string) => (await db.platformFirm.findUniqueOrThrow({ where: { key } })).id, staff = async (actorId: string) => (await db.platformStaff.findUniqueOrThrow({ where: { actorId } })).id;
+  const [FA, FB, REP, OFF, SOLO] = [await firm("sample-firm"), await firm("sample-solo"), await staff("user-R"), await staff("user-O"), await staff("user-S")];
   const W = randomUUID(), CMB = [randomUUID(), randomUUID()];
   sql(`set session_replication_role = replica; insert into workspace (id, key, label) values ('${W}', 'csdl3-${process.pid}', 'CS-DL3 check');
     insert into route (id, workspace_id, key, label, basis, stages, created_by) values (gen_random_uuid(), '${W}', 'test-cited', 'Test route (labelled test data)', 'CITED', '[{"key":"study"},{"key":"work"}]', 'seed:csdl3'), (gen_random_uuid(), '${W}', 'test-sample', 'Test route, Sample', 'SAMPLE', '[{"key":"study"},{"key":"work"}]', 'seed:csdl3')`);
   const clock = new FakeClock("2027-02-20T12:00:00.000Z"), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
   const calls: { staffId: string; kind: string; item: { kind: string; id: string }; at: string }[] = [];
   const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: never, i: never) { calls.push({ staffId: r.staffId, kind: k, item: i, at: clock.now().toISOString() }); return inner.notify(tx, r, k, i); } };
-  const dl = new CaseDeadlines({ db, jobs, notifications: notifications as never, clock });
-  await dl.register({ sweep: false });
-  const ms = new CaseMilestones(db as never); ms.clock = clock;
-  const closer = new CaseClose(db as never);
+  const dl = new CaseDeadlines({ db, jobs, notifications: notifications as never, clock }), ms = new CaseMilestones(db as never), closer = new CaseClose(db as never);
+  await dl.register({ sweep: false }); ms.clock = clock;
   const ctx = (firmId: string, firmKey: string, staffId: string) => ({ staffId, firmId, firmKey, roles: ["OWNER"], keys: [], duties: [], authTime: 0, via: "local" }) as never;
   const A = ctx(FA, "sample-firm", REP), B = ctx(FB, "sample-solo", SOLO);
   let n = 0;
@@ -86,7 +74,6 @@ try {
   const at = (mid: string) => [...new Set(told(mid).map((c) => c.at.slice(0, 16)))];
   const biometrics = (due: string | null, extra: Record<string, unknown> = {}) => ({ milestoneKey: "biometrics", occurredOn: "2027-02-15", dueOn: due, reference: "B-TEST-0001", ...extra });
   const WEEK: FirmCalendar["hours"] = ["MON", "TUE", "WED", "THU", "FRI"].map((day) => ({ day, opens: "09:00", closes: "17:00" }));
-  /** The check DW1's fail side runs: every planned reminder day is an open day of the calendar. */
   const allOpen = (days: string[], cal: FirmCalendar) => days.every((d) => isOpenDay(d, cal));
 
   // ---------------------------------------------------------------- the migration (M), the kind and the keys
@@ -230,6 +217,18 @@ try {
   ok("CS-DL3 DW7 fail: the note, the letter's reference and the cancel reason appear in no audit line and no outbox event",
     [SECRET, REF, WHY].every((s) => sql(`select count(*) from audit_event where (summary || coalesce(detail::text, '')) like '%${s}%'`) === "0" && sql(`select count(*) from module_event where payload::text like '%${s}%'`) === "0")
       && sql(`select note from case_milestone where id = '${m7.id}'`) === SECRET);
+
+  // ---------------------------------------------------------------- review M1: idempotent creates (STANDARDS §4); break m1-m3: text
+  const c8 = newCase(), body8 = { ...biometrics("2027-03-08"), idempotencyKey: "retry-8" };
+  const [k1, k2] = await Promise.all([ms.record(A, c8, body8), ms.record(A, c8, body8).catch((e) => e)]);
+  const k3 = await ms.record(A, c8, body8), reused = await answer(ms.record(A, c8, { ...body8, dueOn: "2027-03-09" }));
+  ok("CS-DL3 M1 pass (review): the same key again returns the first line (replayed), never a second one, and one audit line",
+    k3.id === k1.id && k3.replayed === true && sql(`select count(*) from case_milestone where case_id = '${c8}'`) === "1" && sql(`select count(*) from audit_event where entity_key = '${c8}'`) === "1" && (k2.id === k1.id || (k2 as { getStatus?: () => number }).getStatus?.() === 409), [k1.id, k2, k3.id]);
+  ok("CS-DL3 M1 fail (review): the same key with another due date is 409 IDEMPOTENCY_KEY_REUSED and writes nothing", reused?.status === 409 && reused.body.code === "IDEMPOTENCY_KEY_REUSED" && sql(`select count(*) from case_milestone where case_id = '${c8}'`) === "1", reused);
+  const txt = await Promise.all([{ note: "a\ud800b" }, { reference: "B-\u202E1000" }].map((x) => answer(ms.record(A, c8, { ...biometrics("2027-03-08"), ...x }))));
+  const lone = await answer(ms.cancel(A, c8, k1.id, { reason: "\udc00" })), emoji = await ms.record(A, c8, { ...biometrics("2027-03-08"), note: "😀".repeat(1500) });
+  ok("CS-DL3 text fail (break m1, m3): a lone surrogate in a note or reason and a bidi override in a reference are 400 at the field", txt.every((x, i) => x?.status === 400 && Object.keys(x.body.fields as object).join() === ["note", "reference"][i]) && lone?.status === 400, [txt, lone]);
+  ok("CS-DL3 text pass (break m2): limits count characters: a 1500-emoji note is accepted", [...(emoji.note ?? "")].length === 1500);
 
   // ---------------------------------------------------------------- the case's deadlines read (the stages read's milestones)
   const { cal: calA, today } = { cal: toronto, today: "2027-02-20" };

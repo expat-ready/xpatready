@@ -1,10 +1,6 @@
-// CS-DL3 part 1 (R1.74, QA-591; brief design/build-lead-c-briefs/CS-DL3.md; Doc 3 Agent Console line 3337 CaseMilestone):
-// the contract of a case's government steps, in its own file so it never collides with contracts/runtime.ts.
-//   GET  /api/runtime/cases/:id/milestones              (agent/case:show)  → CaseMilestonesView
-//   POST /api/runtime/cases/:id/milestones              (agent/case:edit)  RecordMilestoneBody → MilestoneView (201)
-//   POST /api/runtime/cases/:id/milestones/:mid/cancel  (agent/case:edit)  CancelMilestoneBody → MilestoneView
-// There is no update route: a due date is never edited; a wrong one is cancelled and recorded again (AG-7-96 r7). The due
-// date is the one on IRCC's letter, typed by staff; the app never computes a government deadline (P-170).
+// CS-DL3 part 1 (R1.74, QA-591; Doc 3 line 3337 CaseMilestone): a case's government steps, apart from contracts/runtime.ts.
+// GET|POST /api/runtime/cases/:id/milestones, POST …/milestones/:mid/cancel. No update route (AG-7-96 r7); the due date
+// is IRCC's letter's, typed by staff, never computed (P-170).
 import { z } from "zod";
 
 /** Sample (pack-defined in the source, Doc 3 line 3337) until the configurator defines them per program. */
@@ -21,8 +17,12 @@ export const MILESTONE_WORDS: Record<MilestoneKey, string> = {
 };
 export const MILESTONE_REFERENCE_MAX = 100, MILESTONE_NOTE_MAX = 2000, MILESTONE_REASON_MAX = 500;
 
-/** Words a person reads: no NUL or other control character but tab and new line. */
-const BAD_TEXT = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+/** Words a person reads: no control character but tab and new line, no bidi override (break m3), no lone surrogate (m1). */
+const BAD = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/;
+const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const badText = (t: string) => BAD.test(t) || LONE.test(t);
+/** Characters, not UTF-16 units (break m2). */
+const len = (t: string) => [...t].length;
 /** Spaces and invisible characters only count as empty. */
 const blank = (t: string) => !t.replace(/[\s​-‍⁠﻿]/g, "");
 type Ctx = { addIssue: (i: { code: "custom"; message: string; path?: (string | number)[]; params?: Record<string, unknown> }) => void };
@@ -31,13 +31,19 @@ const realDate = (d: unknown): d is string =>
 const day = z.unknown().transform((d, ctx: Ctx) => { if (realDate(d)) return d; ctx.addIssue({ code: "custom", message: "A real date as YYYY-MM-DD." }); return z.NEVER; });
 const optText = (max: number) => z.unknown().transform((v, ctx: Ctx) => {
   if (v == null) return null;
-  if (typeof v === "string" && !BAD_TEXT.test(v) && v.trim().length <= max) return blank(v) ? null : v.trim();
+  if (typeof v === "string" && !badText(v) && len(v.trim()) <= max) return blank(v) ? null : v.trim();
   ctx.addIssue({ code: "custom", message: `Plain text, at most ${max} characters.` }); return z.NEVER;
 });
 const notHere = (what: string) => ({ error: (i: { code: string; keys?: string[] }) => i.code === "unrecognized_keys" ? `Not a field of ${what}: ${(i.keys ?? []).join(", ")}.` : `Give ${what} as an object.` });
 
 /** POST …/milestones. dueOn is optional (a letter may give none); when given it is never before occurredOn (400 at dueOn). */
 export const RecordMilestoneBody = z.strictObject({
+  /** STANDARDS §4: the same key again returns the first line (replayed), never a second one. */
+  idempotencyKey: z.unknown().transform((k, ctx: Ctx) => {
+    if (k == null) return null;
+    if (typeof k === "string" && /^[A-Za-z0-9._:-]{1,100}$/.test(k)) return k;
+    ctx.addIssue({ code: "custom", message: "1-100 letters, digits, . _ : -" }); return z.NEVER;
+  }).optional(),
   milestoneKey: z.unknown().transform((k, ctx: Ctx) => {
     if (typeof k === "string" && (MILESTONE_KEYS as readonly string[]).includes(k)) return k as MilestoneKey;
     ctx.addIssue({ code: "custom", message: `One of ${MILESTONE_KEYS.join(", ")} (Sample list).` }); return z.NEVER;
@@ -56,9 +62,9 @@ export type RecordMilestoneBody = z.infer<typeof RecordMilestoneBody>;
 export const CancelMilestoneBody = z.strictObject({
   reason: z.unknown().transform((v, ctx: Ctx) => {
     const r = typeof v === "string" ? v.trim() : "";
-    if (BAD_TEXT.test(r)) { ctx.addIssue({ code: "custom", message: "Plain text only." }); return z.NEVER; }
+    if (badText(r)) { ctx.addIssue({ code: "custom", message: "Plain text only." }); return z.NEVER; }
     if (blank(r)) { ctx.addIssue({ code: "custom", message: "Give a reason.", params: { code: "REASON_REQUIRED" } }); return z.NEVER; }
-    if (r.length > MILESTONE_REASON_MAX) { ctx.addIssue({ code: "custom", message: `At most ${MILESTONE_REASON_MAX} characters.` }); return z.NEVER; }
+    if (len(r) > MILESTONE_REASON_MAX) { ctx.addIssue({ code: "custom", message: `At most ${MILESTONE_REASON_MAX} characters.` }); return z.NEVER; }
     return r;
   }),
 }, notHere("a cancel"));
@@ -73,7 +79,9 @@ export type MilestoneView = {
   /** Open, with a due date: the deadline as shown, and the reminder days planned (Sample offsets, the firm's open days). */
   deadline: MilestoneDue | null;
   reminders: { offset: number; day: string }[];
+  /** true when an idempotency key replayed an earlier record. */
+  replayed?: true;
 };
-export type CaseMilestonesView = { caseId: string; milestones: MilestoneView[]; keys: { key: MilestoneKey; words: string }[]; sample: true; canRecord: boolean };
+export type CaseMilestonesView = { caseId: string; milestones: MilestoneView[]; keys: { key: MilestoneKey; words: string }[]; sample: true; /** The case is OPEN (a step can be recorded); the person's keys come from /platform/me. */ caseOpen: boolean };
 /** On the case's stages read (GET /runtime/cases/:id/stages), beside the stage deadline: every open step with a due date. */
 export type MilestoneDeadline = { id: string; key: string; words: string; reference: string | null } & MilestoneDue;

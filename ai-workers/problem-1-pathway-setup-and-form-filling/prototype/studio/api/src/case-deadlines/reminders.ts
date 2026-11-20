@@ -11,12 +11,9 @@
 //   * The two consumers, read from the outbox (module_event) by the sweep: `case.closed` cancels the case's waiting
 //     reminder jobs (prefix `deadline:`, so never a recorded-date reminder: AG-7-34 r3, AG16-60); `case.reopened` arms
 //     the ones still to come (AG-7-13 r5). A changed date arms a new set; the old jobs do nothing.
-// CS-DL3 part 1 (QA-591): a case's government steps (case_milestone, milestones.ts) remind too, by the same plan, as jobs
-// on their own queue (MILESTONE_JOB, keys `case_milestone:`): an open step with a due date on an OPEN case, whatever its
-// route's basis (the brief's ruling 3: the date comes from IRCC's letter, never from a Sample rule). Item kind
-// case-milestone, kind CASE_MILESTONE_DEADLINE. The sweep also reads `case.milestone_recorded` (arms) and
-// `case.milestone_cancelled` (cancels that step's waiting jobs); a close cancels the case's step jobs and a reopen arms
-// those still to come, as for the stage. The handler skips a cancelled step, a moved plan or another firm's job.
+// CS-DL3 part 1 (QA-591): government steps (milestones.ts) remind by the same plan on queue MILESTONE_JOB, whatever the
+// route's basis (ruling 3: the date is IRCC's). The sweep arms on `case.milestone_recorded` and cancels on
+// `case.milestone_cancelled`; close and reopen as for the stage; the handler skips a cancelled step or a moved plan.
 // No schema for the jobs: a job carries its state (its key and payload). Times only from the clock port (P-607). US$0, no model call.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -97,8 +94,7 @@ export class CaseDeadlines {
     return queued;
   }
 
-  /** The case's open government steps with a due date the calendar accepts (any route basis: ruling 3), with the round and
-   *  the firm's calendar. */
+  /** The case's open steps with a valid due date (any route basis: ruling 3), the round and the firm's calendar. */
   private async steps(c: NonNullable<CaseRow>, only?: string) {
     const rows = await this.p.db.caseMilestone.findMany({ where: { caseId: c.id, cancelledAt: null, dueOn: { not: null }, ...(only ? { id: only } : {}), ...(c.firmId ? { firmId: c.firmId } : {}) }, select: { id: true, dueOn: true } });
     const steps = rows.map((r) => ({ id: r.id, due: r.dueOn!.toISOString().slice(0, 10) })).filter((r) => { try { calendarDate(r.due); return true; } catch { return false; } });
@@ -123,8 +119,8 @@ export class CaseDeadlines {
   /** `case.milestone_recorded`: arms the case's reminders still to come (the new step's among them). */
   async onMilestoneRecorded(e: CaseMilestonePayload): Promise<string[]> { return this.arm(CaseMilestonePayload.parse(e).caseId); }
 
-  /** `case.milestone_cancelled`: cancels the step's waiting reminders, every round up to the case's current one (a job
-   *  planned on an earlier calendar has another key; its handler finds the step cancelled and tells nobody). */
+  /** `case.milestone_cancelled`: cancels the step's waiting reminders of every round (one planned on an earlier calendar
+   *  has another key, and its handler finds the step cancelled). */
   async onMilestoneCancelled(e: CaseMilestonePayload): Promise<number> {
     const p = CaseMilestonePayload.parse(e);
     const m = await this.p.db.caseMilestone.findFirst({ where: { id: p.milestoneId, caseId: p.caseId }, select: { id: true, dueOn: true, cancelledAt: true, case: { select: { firmKey: true } } } });
@@ -155,10 +151,11 @@ export class CaseDeadlines {
       catch (err) { logPort.error("case_deadlines_consume_failed", err, { type: e.type, seq: String(e.seq) }); }
       this.seen = e.seq;
     }
+    const since = new Date(this.p.clock.now().getTime() - 2 * 86_400_000).toISOString().slice(0, 10);   // the clock port's day (P-607)
     const open = await this.p.db.$queryRaw<{ id: string }[]>`select c.id::text from runtime_case c join case_stage s on s.case_id = c.id and s.state = 'CURRENT'
       join route r on r.workspace_id = s.workspace_id and r.key = s.route_key where c.status = 'OPEN' and c.firm_id is not null and r.basis = 'CITED'
       union select c.id::text from runtime_case c join case_milestone m on m.case_id = c.id
-      where c.status = 'OPEN' and c.firm_id is not null and m.cancelled_at is null and m.due_on is not null and m.due_on >= current_date - 2`;
+      where c.status = 'OPEN' and c.firm_id is not null and m.cancelled_at is null and m.due_on is not null and m.due_on >= ${since}::date`;
     for (const { id } of open) {
       try { await this.arm(id); } catch (err) { logPort.error("case_deadlines_arm_failed", err, { caseId: id }); }
     }
@@ -181,8 +178,7 @@ export class CaseDeadlines {
     return staff.length;
   }
 
-  /** A government step's reminder job (AG-13-14, AG-13-15). Returns how many people were told (0: stale, a cancelled step,
-   *  or another firm's case). */
+  /** A government step's reminder job (AG-13-14, -15): how many were told (0: stale, cancelled, another firm's). */
   async runMilestoneReminder(job: Pick<JobRun, "payload" | "firmId" | "key">): Promise<number> {
     const p = MilestoneReminderPayload.safeParse(job.payload);
     if (!p.success || !job.firmId || !UUID.test(job.firmId)) return 0;

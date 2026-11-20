@@ -1,10 +1,10 @@
-// CS-DL3 part 1 (R1.74, QA-591): a case's government steps (api/src/case-deadlines/milestones.ts). The routes sit beside
-// the other case routes behind PF-4's guard: each declares its permission keys, so a staff session's bearer token and keys
-// decide, never x-actor (as features/case-close.ts). No update route: a due date is never edited (AG-7-96 r7).
-// The service is here too (decorators compile only in the folders api/tsconfig.json includes); the plain parts are in
-// ../case-deadlines/milestones.ts.
+// CS-DL3 part 1 (R1.74, QA-591; brief build-lead-c-briefs/CS-DL3.md): a case's government steps, record and cancel only
+// (no update route: a due date is never edited, AG-7-96 r7), behind PF-4's guard with declared keys (as case-close.ts).
+// Each write is one transaction: the case row locked (another firm: 404, BR-20), the line, one audit line and one outbox
+// event, ids only (never the note, reference or reason). Plain parts: ../case-deadlines/milestones.ts.
 import { Body, Controller, Get, HttpCode, HttpException, Inject, Injectable, Param, Post, Req } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import type { CaseMilestone as Row, Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { CancelMilestoneBody, MILESTONE_KEYS, MILESTONE_WORDS, RecordMilestoneBody, type CaseMilestonesView, type MilestoneView } from "../../../contracts/milestones.ts";
 import { systemClock, type ClockPort } from "../../../ports/clock.ts";
@@ -29,7 +29,6 @@ function parsed<S extends z.ZodType>(schema: S, b: unknown): z.infer<S> {
   return problem(400, "Check the details", i.message, { code: "INVALID", fields: { [field]: i.message } });
 }
 
-type Row = { id: string; milestoneKey: string; occurredOn: Date; dueOn: Date | null; reference: string | null; note: string | null; recordedAt: Date; recordedBy: string; cancelledAt: Date | null; cancelledBy: string | null; cancelReason: string | null };
 type CaseHead = { id: string; workspaceId: string; caseNumber: string; firmKey: string; status: string; firmId: string };
 
 @Injectable()
@@ -64,21 +63,14 @@ export class CaseMilestones {
       const due = r.dueOn ? isoDay(r.dueOn) : null, open = !r.cancelledAt;
       let reminders: { offset: number; day: string }[] = [];
       try { reminders = open && due && c.status === "OPEN" ? milestoneRemindersOf(r.id, due, 0, cal).filter((x) => x.day >= today).map((x) => ({ offset: x.offset, day: x.day })) : []; } catch { reminders = []; }
-      return {
-        id: r.id, key: r.milestoneKey, words: wordsOf(r.milestoneKey), occurredOn: isoDay(r.occurredOn), dueOn: due, reference: r.reference, note: r.note,
-        recordedAt: r.recordedAt.toISOString(), recordedBy: who(r.recordedBy),
-        cancelled: r.cancelledAt ? { at: r.cancelledAt.toISOString(), by: who(r.cancelledBy ?? ""), reason: r.cancelReason ?? "" } : null,
-        deadline: open && due ? showDue(due, cal, today) : null, reminders,
-      };
+      return { id: r.id, key: r.milestoneKey, words: wordsOf(r.milestoneKey), occurredOn: isoDay(r.occurredOn), dueOn: due, reference: r.reference, note: r.note, recordedAt: r.recordedAt.toISOString(), recordedBy: who(r.recordedBy),
+        cancelled: r.cancelledAt ? { at: r.cancelledAt.toISOString(), by: who(r.cancelledBy ?? ""), reason: r.cancelReason ?? "" } : null, deadline: open && due ? showDue(due, cal, today) : null, reminders };
     });
   }
 
   private async run<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    try { return await this.db.$transaction(fn); }
-    catch (e) {
-      if (e instanceof HttpException) throw e;
-      const m = String((e as Error)?.message ?? e);
-      if (/P2034|could not serialize|deadlock/i.test(m)) conflict("This case changed at the same time. Open it again.", "CHANGED");
+    try { return await this.db.$transaction(fn); } catch (e) {
+      if (!(e instanceof HttpException) && /P2034|could not serialize|deadlock/i.test(String((e as Error)?.message ?? e))) conflict("This case changed at the same time. Open it again.", "CHANGED");
       throw e;
     }
   }
@@ -93,23 +85,31 @@ export class CaseMilestones {
   async list(ctx: StaffContext, caseId: string): Promise<CaseMilestonesView> {
     const c = await this.caseOf(this.db, ctx, caseId, false);
     const rows = await this.db.caseMilestone.findMany({ where: { caseId: c.id, firmId: c.firmId }, orderBy: [{ recordedAt: "asc" }, { id: "asc" }] });
-    return { caseId: c.id, milestones: await this.view(rows, c), keys: MILESTONE_KEYS.map((key) => ({ key, words: MILESTONE_WORDS[key] })), sample: true, canRecord: c.status === "OPEN" };
+    return { caseId: c.id, milestones: await this.view(rows, c), keys: MILESTONE_KEYS.map((key) => ({ key, words: MILESTONE_WORDS[key] })), sample: true, caseOpen: c.status === "OPEN" };
   }
 
   /** POST …/milestones: records a step on an open case. */
   async record(ctx: StaffContext, caseId: string, body: unknown): Promise<MilestoneView> {
-    const b = parsed(RecordMilestoneBody, body);
-    const { row, c } = await this.run(async (tx) => {
+    const b = parsed(RecordMilestoneBody, body), key = b.idempotencyKey ?? null;
+    const fingerprint = createHash("sha256").update(JSON.stringify([b.milestoneKey, b.occurredOn, b.dueOn ?? null, b.reference ?? null, b.note ?? null])).digest("hex");
+    const { row, c, replayed } = await this.run(async (tx) => {
       const c = await this.caseOf(tx, ctx, caseId, true);
+      if (key) {   // STANDARDS §4: a retry after a lost answer returns the first line
+        const again = await tx.caseMilestone.findUnique({ where: { caseId_idempotencyKey: { caseId: c.id, idempotencyKey: key } } });
+        if (again && again.idempotencyFingerprint !== fingerprint) conflict("This idempotency key was already used for a different step; nothing was recorded. Use a new key.", "IDEMPOTENCY_KEY_REUSED");
+        if (again) return { row: again, c, replayed: true };
+      }
       if (c.status !== "OPEN") conflict("This case is closed: reopen it to record a government step.", "CASE_CLOSED");
       const row = await tx.caseMilestone.create({ data: {
         firmId: c.firmId, caseId: c.id, milestoneKey: b.milestoneKey, occurredOn: new Date(`${b.occurredOn}T00:00:00Z`),
         dueOn: b.dueOn ? new Date(`${b.dueOn}T00:00:00Z`) : null, reference: b.reference ?? null, note: b.note ?? null, recordedBy: `staff:${ctx.staffId}`,
+        idempotencyKey: key, idempotencyFingerprint: key ? fingerprint : null,
       } });
       await this.record_(tx, ctx, c, "case.milestone_recorded", `government step recorded (${b.milestoneKey}${b.dueOn ? `, due ${b.dueOn}` : ""})`, row.id, b.milestoneKey, EVENT.CASE_MILESTONE_RECORDED);
-      return { row, c };
+      return { row, c, replayed: false };
     });
-    return (await this.view([row], c))[0];
+    const v = (await this.view([row], c))[0];
+    return replayed ? { ...v, replayed: true } : v;
   }
 
   /** POST …/milestones/:mid/cancel: cancels a step with a reason; the line stays, shown as cancelled. */

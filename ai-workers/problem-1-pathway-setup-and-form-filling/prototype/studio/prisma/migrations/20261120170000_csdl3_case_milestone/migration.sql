@@ -1,12 +1,10 @@
--- CS-DL3 part 1 (R1.74, QA-591; brief design/build-lead-c-briefs/CS-DL3.md; Doc 3 Agent Console line 3337 CaseMilestone,
--- line 3141, US-6 line 3398; AG-7-96 r7): a case's government steps (a biometrics instruction letter, a medical exam
--- request, ...) with the letter's date and, when the letter gives one, its due date as typed by staff (never computed,
--- P-170). Owner: the runtime lane (cases.prisma). Every function and trigger is named case_milestone_*. Prisma's DDL
--- first, then what Prisma cannot say:
+-- CS-DL3 part 1 (R1.74, QA-591; Doc 3 line 3337 CaseMilestone; AG-7-96 r7): a case's government steps with the letter's
+-- date and its due date as typed by staff (never computed, P-170). Owner: the runtime lane. Prisma's DDL first, then:
 --   * insert-only apart from cancelling (AG-7-96 r7: a recorded deadline never moves). The one UPDATE let through sets
 --     cancelled_at, cancelled_by and cancel_reason on a line not yet cancelled and changes nothing else; cancelled_at is
 --     the database's time. Any other UPDATE (a due date edited, a cancel undone or redone), a DELETE (unless the case row
 --     is already gone: the case's ON DELETE CASCADE, as the demo reset deletes cases) and TRUNCATE are refused.
+--   * STANDARDS §4 (idempotent creates, as case_decision): the request's key and its sha256, unique per case.
 --   * due_on is never before occurred_on; a cancel has all three fields and a non-empty reason, or none of them; Other
 --     needs a note; the key is a lower-case word (the list itself is code's, a Sample list: milestones.ts).
 --   * a new line names its case's own firm (platform_firm by runtime_case.firm_key, as case_decision), is not cancelled,
@@ -31,9 +29,14 @@ CREATE TABLE "case_milestone" (
     "cancelled_at" TIMESTAMPTZ,
     "cancelled_by" TEXT,
     "cancel_reason" TEXT,
+    "idempotency_key" TEXT,
+    "idempotency_fingerprint" VARCHAR(64),
 
     CONSTRAINT "case_milestone_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "case_milestone_case_id_idempotency_key_key" ON "case_milestone"("case_id", "idempotency_key");
 
 -- CreateIndex
 CREATE INDEX "case_milestone_firm_id_case_id_idx" ON "case_milestone"("firm_id", "case_id");
@@ -62,7 +65,8 @@ BEGIN
      AND NEW.id = OLD.id AND NEW.firm_id = OLD.firm_id AND NEW.case_id = OLD.case_id AND NEW.milestone_key = OLD.milestone_key
      AND NEW.occurred_on = OLD.occurred_on AND NEW.due_on IS NOT DISTINCT FROM OLD.due_on
      AND NEW.reference IS NOT DISTINCT FROM OLD.reference AND NEW.note IS NOT DISTINCT FROM OLD.note
-     AND NEW.recorded_by = OLD.recorded_by AND NEW.recorded_at = OLD.recorded_at THEN
+     AND NEW.recorded_by = OLD.recorded_by AND NEW.recorded_at = OLD.recorded_at
+     AND NEW.idempotency_key IS NOT DISTINCT FROM OLD.idempotency_key AND NEW.idempotency_fingerprint IS NOT DISTINCT FROM OLD.idempotency_fingerprint THEN
     NEW.cancelled_at := now();   -- the database's time, never the writer's
     RETURN NEW;
   END IF;
