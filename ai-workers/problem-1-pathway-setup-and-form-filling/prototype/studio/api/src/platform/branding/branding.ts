@@ -10,7 +10,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
-import { readSetting, registerSetting, SettingRefused, writeSetting } from "../settings.ts";
+import { firmScope } from "../firm-scope.ts";
+import { registerSetting, SettingRefused, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
 type DbOrTx = PrismaClient | Tx;
@@ -26,33 +27,49 @@ export function contrastOnWhite(hex: string): number {
   const l = 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
   return 1.05 / (l + 0.05);
 }
-/** The ratio as people read it, cut (never rounded up) to two decimals: 4.477 is "4.47", never "4.5". */
-export const ratioWords = (r: number) => `${(Math.floor(r * 100) / 100).toFixed(2).replace(/0$/, "")}:1`;
+/** The ratio as people read it, cut (never rounded up) to two decimals: 4.477 is "4.47", never "4.5"; 3.1 is "3.1", 1 is "1". */
+export const ratioWords = (r: number) => `${+(Math.floor(r * 100) / 100).toFixed(2)}:1`;
 
 const HEX = /^#[0-9a-f]{6}$/;
-// No control characters at all in one-line fields; a footer or signature keeps its line breaks only.
-const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]*$/;
-const LINES = /^[^\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]*$/;
+// No control characters, no invisible or direction-changing characters (zero-width U+200B-U+200F, bidi U+202A-U+202E and
+// U+2066-U+2069, BOM U+FEFF), and well-formed text (no lone surrogate): a footer or signature keeps its line breaks (\n)
+// only (review m2, m3).
+const BAD_ANY = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/;
+const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+const okText = (s: string, lines: boolean) => !LONE.test(s) && !BAD_ANY.test(s) && (lines || !s.includes("\n"));
+/** Characters as people count them (code points), the same in the service and the schema (review m1). */
+const chars = (s: string) => [...s].length;
 const colour = z.string().regex(HEX, "a colour as #rrggbb").refine((c) => contrastOnWhite(c) >= MIN_CONTRAST, "at least 4.5:1 contrast on white").nullable();
-const text = (max: number, re: RegExp) => z.string().min(1).max(max).regex(re, "no control characters").refine((s) => s.trim() === s && s.trim().length > 0, "no spaces at either end").nullable();
+const text = (max: number, lines: boolean) => z.string().refine((s) => chars(s) >= 1 && chars(s) <= max, `1 to ${max} characters`)
+  .refine((s) => okText(s, lines), lines ? "no control or invisible characters" : "one line, no control or invisible characters")
+  .refine((s) => s.trim() === s, "no spaces at either end").nullable();
 
-const def = <T>(key: string, description: string, schema: z.ZodType<T>) =>
-  registerSetting<T>({ key, ownerModule: "platform", changePermission: "agent/settings:edit", description, schema, default: null as T });
+const def = <T>(key: string, description: string, schema: z.ZodType<T>, personal = false) =>
+  registerSetting<T>({ key, ownerModule: "platform", changePermission: "agent/settings:edit", description, schema, default: null as T, ...(personal ? { personal: true } : {}) });
 export const BRAND_COLOUR = def("platform.branding.colour", "The firm's brand colour (#rrggbb, at least 4.5:1 on white; AG-1-6, AG-16-2). Unset: ExpatReady's neutral colour.", colour);
 export const ACCENT_COLOUR = def("platform.branding.accent_colour", "The firm's optional accent colour (#rrggbb, at least 4.5:1 on white; AG-1-6). Unset: none.", colour);
-export const SENDER_NAME = def("platform.branding.sender_name", "The name clients see as the sender of the firm's emails (AG-16-2), one line, at most 80 characters. Unset: the firm's operating name.", text(LIMITS.senderName, ONE_LINE));
-export const FOOTER = def("platform.branding.footer", "The footer of the firm's emails: address, phone and licence text (AG-16-2), plain text, at most 1,000 characters. Unset: none.", text(LIMITS.footer, LINES));
-export const EMAIL_SIGNATURE = def("platform.branding.email_signature", "The firm's default email signature (AG-16-2), plain text, at most 2,000 characters; stored here, applied by the templates (PF-19c). Unset: none.", text(LIMITS.emailSignature, LINES));
-export const TAGLINE = def("platform.branding.tagline", "The firm's tagline under its name on the client portal and the booking page (P-629), one line, at most 80 characters, shown as text. Never in emails or PDFs. Unset: none.", text(LIMITS.tagline, ONE_LINE));
+export const SENDER_NAME = def("platform.branding.sender_name", "The name clients see as the sender of the firm's emails (AG-16-2), one line, at most 80 characters. Unset: the firm's operating name.", text(LIMITS.senderName, false), true);
+export const FOOTER = def("platform.branding.footer", "The footer of the firm's emails: address, phone and licence text (AG-16-2), plain text, at most 1,000 characters. Unset: none.", text(LIMITS.footer, true), true);
+export const EMAIL_SIGNATURE = def("platform.branding.email_signature", "The firm's default email signature (AG-16-2), plain text, at most 2,000 characters; stored here, applied by the templates (PF-19c). Unset: none.", text(LIMITS.emailSignature, true), true);
+export const TAGLINE = def("platform.branding.tagline", "The firm's tagline under its name on the client portal and the booking page (P-629), one line, at most 80 characters, shown as text. Never in emails or PDFs. Unset: none.", text(LIMITS.tagline, false), true);
 
 const FIELDS = { colour: BRAND_COLOUR, accentColour: ACCENT_COLOUR, senderName: SENDER_NAME, footer: FOOTER, emailSignature: EMAIL_SIGNATURE, tagline: TAGLINE } as const;
 type Field = keyof typeof FIELDS;
 export type Branding = { [K in Field]: string | null };
 
-/** The firm's branding values (null where not set). */
-export async function readBranding(db: DbOrTx, firmId: string): Promise<Branding> {
-  const out = {} as Branding;
-  for (const [f, d] of Object.entries(FIELDS) as [Field, (typeof FIELDS)[Field]][]) out[f] = await readSetting<string | null>(db, firmId, d.key);
+/** The firm's branding values (null where not set), in one query. A stored value that no longer fits its schema reads
+ *  as not set (ExpatReady's neutral look), with one log line naming the key only: a cosmetic value never stops a firm's
+ *  email or rolls back the caller's work (review m6). */
+export async function readBranding(db: DbOrTx, firmId: string, only: readonly Field[] = Object.keys(FIELDS) as Field[]): Promise<Branding> {
+  const keys = only.map((f) => FIELDS[f].key);
+  const rows = await db.platformFirmSetting.findMany({ where: firmScope(firmId, { key: { in: keys } }), select: { key: true, value: true } });
+  const out = Object.fromEntries((Object.keys(FIELDS) as Field[]).map((f) => [f, null])) as Branding;
+  for (const f of only) {
+    const row = rows.find((r) => r.key === FIELDS[f].key);
+    if (!row) continue;
+    const p = (FIELDS[f].schema as z.ZodType<string | null>).safeParse(row.value);
+    if (p.success) out[f] = p.data; else console.warn(`branding: the stored ${FIELDS[f].key} no longer fits its rule; the neutral value is used`);
+  }
   return out;
 }
 
@@ -60,23 +77,28 @@ export async function readBranding(db: DbOrTx, firmId: string): Promise<Branding
  *  the tagline, banner or favicon (P-629). */
 export type EmailBrand = { name: string; colour: string; footer: string | null; logoUrl: string | null };
 export async function emailBrandOf(db: DbOrTx, firmId: string, operatingName: string): Promise<EmailBrand> {
-  const b = await readBranding(db, firmId);
+  const b = await readBranding(db, firmId, ["senderName", "colour", "footer"]);
   return { name: b.senderName ?? operatingName, colour: b.colour ?? NEUTRAL_COLOUR, footer: b.footer, logoUrl: null };
 }
 
 const Body = z.strictObject(Object.fromEntries(Object.keys(FIELDS).map((f) => [f, z.unknown().optional()])) as Record<Field, z.ZodOptional<z.ZodUnknown>>);
-/** The written words of a refused field, with the limit named. */
+const NAMES: Record<Field, string> = { colour: "Brand colour", accentColour: "Accent colour", senderName: "Sender name", footer: "Footer", emailSignature: "Email signature", tagline: "Tagline" };
+/** The value as stored: colours lower case, text trimmed with Windows line endings made plain (review m1). */
+const clean = (f: Field, v: string) => f === "colour" || f === "accentColour" ? v.toLowerCase() : v.replace(/\r\n?/g, "\n").trim();
+/** The written words of a refused field, the field and its limit named; null when it may be saved. */
 function refusal(f: Field, v: unknown): string | null {
   if (v === null) return null;
-  if (typeof v !== "string") return `${f}: text, or null to clear it.`;
+  if (typeof v !== "string") return `${NAMES[f]}: text, or null to clear it.`;
   if (f === "colour" || f === "accentColour") {
-    if (!/^#[0-9a-fA-F]{6}$/.test(v)) return `${f}: a colour as #rrggbb, for example #1f4e79.`;
-    const r = contrastOnWhite(v.toLowerCase());
-    return r < MIN_CONTRAST ? `Contrast ${ratioWords(r)} on white; at least ${MIN_CONTRAST}:1 is needed.` : null;
+    if (!/^#[0-9a-fA-F]{6}$/.test(v)) return `${NAMES[f]}: a colour as #rrggbb, for example #1f4e79.`;
+    const r = contrastOnWhite(v.toLowerCase()), words = `Contrast ${ratioWords(r)} on white; at least ${MIN_CONTRAST}:1 is needed.`;
+    return r >= MIN_CONTRAST ? null : f === "colour" ? words : `${NAMES[f]}: ${words}`;
   }
-  const max = LIMITS[f as keyof typeof LIMITS];
-  if ([...v.trim()].length > max) return `${f}: at most ${max.toLocaleString("en-CA")} characters.`;
-  if ((f === "senderName" || f === "tagline") && /[\r\n\u2028\u2029]/.test(v)) return `${f}: one line, no line breaks.`;
+  const t = clean(f, v), max = LIMITS[f as keyof typeof LIMITS], lines = f === "footer" || f === "emailSignature";
+  if (!t) return `${NAMES[f]}: write something, or null to clear it.`;
+  if (chars(t) > max) return `${NAMES[f]}: at most ${max.toLocaleString("en-CA")} characters.`;
+  if (!lines && t.includes("\n")) return `${NAMES[f]}: one line, no line breaks.`;
+  if (!okText(t, lines)) return `${NAMES[f]}: plain text only, without control or invisible characters.`;
   return null;
 }
 
@@ -93,10 +115,12 @@ export class BrandingService {
     const given = Object.entries(b.data).filter(([, v]) => v !== undefined) as [Field, unknown][];
     const issues = given.map(([f, v]) => refusal(f, v)).filter((x): x is string => !!x);
     if (issues.length) throw new SettingRefused(issues[0], issues);
-    const clean = (f: Field, v: unknown) => v === null ? null : f === "colour" || f === "accentColour" ? (v as string).toLowerCase() : (v as string).trim() || null;
-    await this.db.$transaction(async (tx) => {
+    const now = await readBranding(this.db, s.firmId);
+    const changes = given.map(([f, v]) => [f, v === null ? null : clean(f, v as string)] as const).filter(([f, v]) => now[f] !== v);
+    // Only a changed key is written and audited (review m5): a panel that sends every field adds no "unchanged" lines.
+    if (changes.length) await this.db.$transaction(async (tx) => {
       const workspaceId = await platformAuditWorkspaceId(tx);
-      for (const [f, v] of given) await writeSetting(tx, { firmId: s.firmId, key: FIELDS[f].key, value: clean(f, v), by: actorWord(s.staffId), workspaceId });
+      for (const [f, v] of changes) await writeSetting(tx, { firmId: s.firmId, key: FIELDS[f].key, value: v, by: actorWord(s.staffId), workspaceId });
     });
     return { ...(await this.read(s)), saved: true };
   }

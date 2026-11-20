@@ -136,6 +136,27 @@ try {
   await put(owner, { colour: null });
   ok("PF-13 DW5 pass: clearing the colour (null) returns the email to the neutral colour", (await mail(FIRM_A.id)).html.includes(`border-bottom:3px solid ${NEUTRAL_COLOUR}`));
 
+  // ------------------------------------------------------------------------------------------------ review M1 and m1-m6
+  const lineOf = (key: string) => JSON.parse(sql(`select detail from audit_event where entity_key = '${FIRM_A.id}:${key}' order by at desc limit 1`) || "null");
+  const SIG2 = "Kind regards,\nThe team, team@maple.example.com, +1 416 555 0100", rSig = await put(owner, { emailSignature: SIG2, senderName: "Support <security@maple.example.com>" });
+  const sigLine = lineOf("platform.branding.email_signature");
+  ok("M1 pass: a signature and a sender name holding an email address save (200, not 500)", rSig.status === 200 && rSig.body.emailSignature === SIG2, rSig.body);
+  ok("M1 pass: the audit line carries the value as before/after (R1.8's value_before/value_after, read by AUD-4), never as from/to, and marks it personal",
+    sigLine?.value_after === SIG2 && sigLine?.value_before === SIG && sigLine.key === "platform.branding.email_signature" && sigLine.personal === true && !("to" in sigLine) && !("toJson" in sigLine), sigLine);
+  ok("M1 fail: a colour (not personal) keeps the settings home's from/to shape", "to" in (lineOf("platform.branding.accent_colour") ?? {}));
+  const l5 = lines(), same = await put(owner, { emailSignature: SIG2, footer: FOOTER, tagline: "Immigration help, plainly", accentColour: "#1f4e79" });
+  ok("m5 fail: re-saving the same values writes no audit line", same.status === 200 && lines() === l5, [lines(), l5]);
+  const acc = await put(owner, { accentColour: "#eeeeee" }), white = await put(owner, { colour: "#ffffff" });
+  ok("m4 pass: a pale accent's refusal names the field; white reads \"1:1\"", acc.status === 400 && acc.body.detail.startsWith("Accent colour: Contrast 1.16:1") && white.body.detail === "Contrast 1:1 on white; at least 4.5:1 is needed.", [acc.body.detail, white.body.detail]);
+  const crlf = await put(owner, { footer: "12 King St\r\nToronto" }), emoji = await put(owner, { emailSignature: "\u{1F600}".repeat(600) });
+  ok("m1 pass: Windows line endings in the footer are kept as plain line breaks; 600 emoji (600 characters) save", crlf.status === 200 && crlf.body.footer === "12 King St\nToronto" && emoji.status === 200, [crlf.body, emoji.status]);
+  const weird = await Promise.all([{ senderName: "Maple \ud800" }, { senderName: "Expat\u202eReady" }, { tagline: "Expat\u200bReady" }, { senderName: "Tab\there" }, { footer: "x".repeat(1001) }].map((b) => put(owner, b)));
+  ok("m1-m3 fail: a lone surrogate, a bidi or zero-width character and a tab → 400 naming the field (no 500)", weird.every((r) => r.status === 400) && weird[0].body.detail.startsWith("Sender name:") && weird[4].body.detail === "Footer: at most 1,000 characters.", weird.map((r) => [r.status, r.body.detail]));
+  sql(`update platform_firm_setting set value = '"#eeeeee"'::jsonb where firm_id = '${FIRM_A.id}' and key = 'platform.branding.colour'`);
+  sql(`insert into platform_firm_setting (firm_id, key, value, changed_by) values ('${FIRM_A.id}', 'platform.branding.colour', '"#eeeeee"'::jsonb, 'test') on conflict (firm_id, key) do update set value = excluded.value`);
+  const fallback = await mail(FIRM_A.id).catch((e: Error) => ({ html: `THREW ${e.message}`, from: { name: "" } }));
+  ok("m6 pass: a stored colour that no longer fits its rule never stops the firm's email: it goes out in the neutral colour", fallback.html.includes(`border-bottom:3px solid ${NEUTRAL_COLOUR}`), fallback.html.slice(0, 200));
+
   // ------------------------------------------------------------------------------------------------ DW12 the Outlook rule
   const raw = await emailLayout({ name: "A \"<firm>\" & co", colour: "#767676", footer: "<script>x</script>", logoUrl: "https://example.com/logo.png?v=abc" }, { subject: "S <x>", text: "Body <i>one</i>" });
   ok("PF-13 DW12 pass: the layout is tables (role=presentation) with inline styles: no <style> block, no class, no <div> for structure outside the body",
