@@ -11,7 +11,7 @@
 ## Clause by clause (on main 1ee04f2b4)
 | Clause | Met? | Evidence |
 |---|---|---|
-| Sent, Delivered, Bounced shown in words, from the provider's test events | Met | Words in `web/src/modules/platform/messages/contract.ts:176-177`. The local adapter's test events (`channels/email/local.ts:243-247`) go through the SNS notice handler, which writes Delivered once (`bounces.ts:131-135`) and Bounced (`:140-143`). States only move forward (DW2). |
+| Sent, Delivered, Bounced shown in words, from the provider's test events | Met | Words in `web/src/modules/platform/messages/contract.ts:15-16`. The local adapter's test events (`channels/email/local.ts:26-31`) go through the SNS notice handler, which writes Delivered once (`bounces.ts:131-135`) and Bounced (`:140-143`). States only move forward (DW2). |
 | **Failed** shown, from the provider | **Not met: QA-601** | A firm send the provider refuses throws inside `deliver()`. The transaction rolls back (`send/messages.ts:184`), the row stays QUEUED, and the hourly sweep re-queues it for ever (`:243`). FAILED is written only for "content changed" or "no channel" (`:166-177`). No test shows Failed. |
 | A hard bounce stops sends to that address | Met | Suppression is checked at send (`messages.ts:102`) and again in the worker (`:174-175`). DW4: a Sample bounce address reads BOUNCED, and `msg_suppression` HARD_BOUNCE is written once. |
 | The from-name is the firm's | Met on the email as sent | Render uses `firm.operatingName` (`messages.ts:103`). Recorded SES traffic shows the From name (`check_pf19b2_ses.ts`). The panel reads the *current* name, not the stored one: QA-603 (Minor). |
