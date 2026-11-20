@@ -12,6 +12,7 @@ import { possibleMatch } from "../arrival.ts";
 import { actorOf, conflict, email, notFound, phone, sees, text, unprocessable, UUID, visibilityOf, type Tx } from "../common.ts";
 import { boardTotals } from "../board-totals.ts";
 import { SALES_PORTS, type SalesPorts } from "../public.ts";
+import { sourcesChecked } from "../source-filter.ts";
 import { companyMatches, normaliseCompanyName, seesCompany, type Seer } from "./match.ts";
 
 export const ROLES = ["PRIMARY", "SIGNATORY", "HR", "BILLING", "OTHER"] as const;
@@ -162,15 +163,19 @@ export class Corporate {
   }
 
   /** The board of one pipeline (AG-2-52 rules 1-2, AG-2-53): its live stages in order, each with the prospects of that
-   *  type the person sees. A Corporate prospect is never on the Individual board, and the reverse. */
-  async board(ctx: StaffContext, type: unknown) {
+   *  type the person sees. A Corporate prospect is never on the Individual board, and the reverse. `source` (R1.30,
+   *  QA-533; AG-2-23 rule 1) narrows the cards, the counts and the totals to prospects whose lead came from it, checked
+   *  as Leads and the List check it (an unknown one → 400). */
+  async board(ctx: StaffContext, type: unknown, source?: unknown) {
     const t = typeOf(type);
     const { vis } = await this.seer(ctx);
+    const sources = await sourcesChecked(this.db, ctx, vis, source);
+    const fromSources = sources.length ? { lead: { source: { in: sources } } } : {};
     const [stages, rows] = await Promise.all([
       this.db.foStage.findMany({ where: firmScope(ctx.firmId, { pipeline: t, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
-      this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { type: t, ...(vis.seesAll ? {} : { ownerStaffId: ctx.staffId }) }), include: { subjectPerson: true, subjectCompany: true }, orderBy: [{ number: "asc" }], take: 1000 }),
+      this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { type: t, ...(vis.seesAll ? {} : { ownerStaffId: ctx.staffId }), ...fromSources }), include: { subjectPerson: true, subjectCompany: true }, orderBy: [{ number: "asc" }], take: 1000 }),
     ]);
-    const money = await boardTotals(this.db, ctx.firmId, t, vis.seesAll ? null : ctx.staffId);   // FO-2 part 3: totals per currency, never summed across (R1.31)
+    const money = await boardTotals(this.db, ctx.firmId, t, vis.seesAll ? null : ctx.staffId, sources);   // FO-2 part 3: totals per currency, never summed across (R1.31)
     return {
       type: t, totals: money.open, stages: stages.map((s) => ({
         id: s.id, key: s.key, label: s.label, kind: s.kind, totals: money.byStage.get(s.id) ?? [],

@@ -1,0 +1,7 @@
+PASS  R1.27 pass: a lead with its door and source is saved
+PASS  R1.27 fail: a lead with no source given is refused by the database (not-null)
+PASS  R1.27 fail: a lead with source NULL is refused by the database (not-null)
+PASS  R1.27 fail: a lead with no door is refused by the database (not-null)
+PASS  R1.27 underneath: exactly one lead saved
+5 passed, 0 failed
+exit 0

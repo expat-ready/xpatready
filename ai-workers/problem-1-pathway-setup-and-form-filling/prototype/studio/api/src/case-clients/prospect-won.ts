@@ -114,8 +114,9 @@ export type WonCatchUp = { results: WonResult[]; failed: { prospectId: string; f
 /** Catch-up over the outbox: every prospect with a `prospect.won` and no client (or a client with no case that no longer matches who was won), whose Convert still stands and whose
  *  firm is still served, so a missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
 export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps,
-  /** CS-K1 part 2: how each prospect runs (the app's poller: as its own firm, withFirm); a suite or the tool runs it as is. */
-  each: <T>(firmId: string, fn: () => Promise<T>) => Promise<T> = (_f, fn) => fn()): Promise<WonCatchUp> {
+  /** CS-K1 part 2: how each prospect runs (the app's poller: as its own firm, withFirm); a suite or the tool runs it as is.
+   *  It may answer null: the prospect is not tried this run (the poller's backoff after a failure, PF-12b). */
+  each: <T>(firmId: string, fn: () => Promise<T>, prospectId: string) => Promise<T | null> = (_f, fn) => fn()): Promise<WonCatchUp> {
   const rows = await db.$queryRaw<{ firm_id: string; prospect_id: string; payload: unknown }[]>`
     select distinct on (e.firm_id, e.subject_id) e.firm_id::text as firm_id, e.subject_id as prospect_id, e.payload
       from module_event e join platform_firm f on f.id = e.firm_id
@@ -128,7 +129,7 @@ export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDep
      order by e.firm_id, e.subject_id, e.seq desc`;
   const out: WonCatchUp = { results: [], failed: [] };
   for (const r of rows) {
-    try { const made = await each(r.firm_id, () => onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps)); if (made) out.results.push(made); }
+    try { const made = await each(r.firm_id, () => onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps), r.prospect_id); if (made) out.results.push(made); }   // made null: not tried this run (PF-12b backoff)
     catch (e) { out.failed.push({ prospectId: r.prospect_id, firmId: r.firm_id, error: String(e).slice(0, 300) }); }
   }
   return out;

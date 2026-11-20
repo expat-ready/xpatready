@@ -54,6 +54,7 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/releases": "case", "/api/activity": "case",
   "/api/health": "open", // M1: is this copy well (database, disk, fill queue, commit); no case or person data
   "/api/public/forms/:token": "open", // FO-2: a firm's public enquiry form (contracts §0.6): its words and a fresh stamp only
+  "/api/public/embed/form.js": "open", // FO-4b: the embed script a firm's own site loads (one fixed file, no firm or person data)
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
