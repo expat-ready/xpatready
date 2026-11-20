@@ -1,8 +1,8 @@
 # Review: FO-4 Add a lead (R1.27, QA-606), PR #2612
 
-**Verdict: Approve** on `a0b33f63e1a26db5df4b706d7fb340f3e96356e3`, the third round. No Blocker or Major is open.
+**Verdict: Approve** on `3422e9f4cabac9090e68a8889d958dd22292cad8`, the fourth round (round 3 also approved `a0b33f63e`). No Blocker or Major is open.
 
-Reviewer: a fresh agent (`screen-review`) that did not build it. Rounds: `376411977` Block (two Majors) · `7e2823578` Block (one test gap) · `a0b33f63e` Approve. Copies: isolated `:4531`, `:4534` and my fresh `:4441` (stopped); never :4400. Live AI off, US$0.
+Reviewer: a fresh agent (`screen-review`) that did not build it. Rounds: `376411977` Block (two Majors) · `7e2823578` Block (one test gap) · `a0b33f63e` Approve · `3422e9f4c` Approve (diff only: the fresh-copy flake). Copies: isolated `:4531`, `:4534` and my fresh `:4441` (stopped); never :4400. Live AI off, US$0.
 
 **The bar:** concept r2 (`origin/lead-b-front-office:…/screens/fo-4-sales/concept.md` §3 BR-2, BR-10; §4 Leads and Panels), brief FO-4 part 2, AG-2-4 (from the trace tool), `STANDARDS.md`, `EXPERIENCE.md`, `QUALITY.md`.
 
@@ -36,22 +36,22 @@ Reviewer: a fresh agent (`screen-review`) that did not build it. Rounds: `376411
 - **S3:** the first note is saved but no screen shows it until the lead timeline (part 2b).
 - **S5:** J-27 switches the web form on by SQL (#2556 is the screen) and posts the embed call with `fetch`. Swap in the settings screen before `Completes: R1.27`; the PR does not claim it yet.
 
-**New Should, round 3: the check is flaky on freshly started copies in this environment.**
-- Of 4 runs of `check_fo4al_add_lead_browser.ts` on a copy started seconds earlier (my :4441), 2 crashed on a timeout and 2 ran clean (one fully confirmed at 27/27). The crashes: line 156, where `openPanel` found no "Add a lead" button within 30 s; and line 130, where no "Add as new" appeared and the API log shows the Save click sent no POST.
-- The same check went 3 for 3 at 27/27 on the warmed :4534, and the builder reports 27/27 twice on fresh copies.
-- I could not tie it to product code. In my own loops a person-like open, fill, Save and match went 15 for 15.
-- Recommended: make `openPanel` wait for the list and the `me` answer before clicking, and assert the field values after `fill`. If CI shows it, quarantine it per the run-suites rule with this evidence.
+**Round 3 Should (the check was flaky on fresh copies): fixed in `3422e9f4c`.**
+- The likely cause was in the panel itself: it cleared its fields in an effect after opening, and on a slow copy that clear could land after typing, so Save found empty fields and sent nothing.
+- Now Leads gives the panel a new `key` on each open, the request id is made in a `useState` initializer, and the clearing effect is gone. The check waits for the heading and the button, and checks the typed values before pressing.
+- On freshly started copies of mine (start, run at once, stop): 27/27 three times out of three, against 2 of 4 before.
+- Walked: Escape with the discard question accepted closes the panel and focus returns to "Add a lead"; reopening shows empty fields and no errors; three Adds sent three different request ids (one of them after Cancel and reopen without a reload).
 
 **Outside this screen (FO-2's API; recorded, not findings):** Use existing person on a person with an open lead leaves both leads OPEN with `previous_lead_id` empty (AG-2-4 rules 5 and 7), and the details typed alongside it are dropped without a word.
 
-## D1–D20 (independent reviewer, browser and code; round 3)
+## D1–D20 (independent reviewer, browser and code; round 4)
 | Dim | Score | Evidence |
 |---|---|---|
 | D1 | 3 | rules 1, 6, 8, 10 and BR-2 met; rule 4 partial (S1); the check runs at Save, which is still "before saving" |
 | D2 | 4 | one request id per panel; a double click or Enter twice makes one lead; two tabs on one new email make 1 person; Read-only POST gets 403; no `WEBSITE` (M2) |
 | D3 | 4 | reuses Panel, Field, `useSources`, `staffApi` and FO-2's route |
 | D4 | N/A | no dependent questions |
-| D5 | 4 | after a 502 the input is kept and the retry saves once; a reopened panel is fresh; asks before discarding; the fresh-copy flake is noted |
+| D5 | 4 | after a 502 the input is kept and the retry saves once; a reopened panel is fresh; asks before discarding; fresh-copy flake fixed (27/27 three times) |
 | D6 | 4 | audit line `lead.created`, "Lead L-… arrived by hand.", with the staff actor |
 | D7 | N/A | no AI |
 | D8 | 4 | path Sales › Leads; the panel says "You will own the lead." |
@@ -62,7 +62,7 @@ Reviewer: a fresh agent (`screen-review`) that did not build it. Rounds: `376411
 | D13 | 4 | axe finds 0 violations; keyboard path complete; focus rings visible; no sideways scroll at 375 to 1440 px; 200 % zoom works |
 | D14 | 4 | the sales module's look |
 | D15 | 5 | Leads 354-382 ms; panel opens in 77-104 ms; Save 245 ms |
-| D16 | 4 | a pass and a fail test per rule; the M2 test can now fail; flake noted |
+| D16 | 4 | a pass and a fail test per rule; the M2 test can now fail; the check reruns clean on fresh copies |
 | D17 | — | simulated only |
 | D18 | 3 | source shown on the lead; the match does not say what matched (S1) |
 | D19 | 3 | J-27 runs form, Leads, Add a lead, filter and lead page; the form switch is by SQL (S5) |

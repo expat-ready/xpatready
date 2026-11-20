@@ -70,3 +70,5 @@
 - the other five criteria are unchanged at 1.
 
 **Pass.** A fresh-copy flake in the check is noted as a Should.
+
+**Re-check 2 (head `3422e9f4c`):** the fresh-copy flake is fixed in the panel itself (27/27 on three freshly started copies). Score stays **9/10**; pass.
