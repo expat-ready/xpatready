@@ -6,7 +6,8 @@
 # An item's last PR says "Completes: R1.77" on a line of its own (several: "Completes: R1.77, R1.78"); at its merge
 # item-proof.yml runs the item's pack and journey and posts the verdict (P-728 (3)); an unreadable line fails here.
 # The product queue does not wait for this check yet (Lead 58, 15 Nov: gate in a later small PR after a day). Reads only, US$0.
-# Test: product/tools/check-g4-rules.sh.
+# Test: product/tools/check-g4-rules.sh. E5 (P-674 to P-677): cleanup-pr-check.sh proves a "Clean-up:" PR is a pure
+# move or deletion and runs the stale-path check on every PR (test: product/tools/check-cleanup-pr.sh).
 name: pr-rules
 on:
   pull_request:
@@ -27,11 +28,16 @@ jobs:
       BODY: "${{ github.event.pull_request.body }}"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
       - name: body has a testable Done when and a Duplicate check line
         run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
       - name: a "Completes:" line, if any, names R1 items only (P-728 (3); item-proof.yml proves them at the merge)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs detect
+      - name: a "Clean-up:" PR is a pure move or deletion; no live file names a moved path (E5, P-674 to P-677)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/cleanup-pr-check.sh" --base HEAD^1
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() }}"
         env:
