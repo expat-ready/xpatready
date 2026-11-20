@@ -189,6 +189,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 pr|product/tools/waves.py|s/               if i in wave and wave\[i\]\[0\] not in ok and not wave\[i\]\[1\].startswith(.allow:.)\]/               if False]/|check-waves.sh
 28 watch|product/tools/lead-watch.sh|/waves.py" wip --prs/d|check-waves.sh
 28 flag|../../.github/workflows/pr-rules.yml|/labels\[\]=outside-wave/d|check-waves.sh
+28 item|product/tools/brief-check.sh|s/^  if \[ -z "\$item" \]; then bad=/  if false; then bad=/|check-lane-preflight.sh
+28 wave|product/tools/brief-check.sh|s/waves.py" allow /waves.py" active /|check-lane-preflight.sh
+28 none|product/tools/brief-check.sh|s/waves.py" none-ok 2>\&1)/waves.py" active 2>\&1)/|check-lane-preflight.sh
 30 stale|product/tools/runs-waiting.py|s/(stale if c and now - c >= timedelta(hours=FRESH_H) else fresh)/fresh/|check-runs-waiting.sh
 30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py

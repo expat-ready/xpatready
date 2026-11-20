@@ -118,7 +118,7 @@ const libLines = form ? lines(`entity = 'form' and entity_key = ${lit(form)} and
 
 // ------------------------------------------------------------------------------------------------- DW1: one writer
 const files = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((x) => (x.isDirectory() ? files(join(d, x.name)) : x.name.endsWith(".ts") ? [join(d, x.name)] : []));
-const ADAPTER = "platform/audit/audit-event.ts", PLATFORM_LEFT = ["platform/settings.ts"]; // PF-0a part 2c (writeSetting)
+const ADAPTER = "platform/audit/audit-event.ts", PLATFORM_LEFT: string[] = []; // AUD-1m part 2c: only the adapter writes
 const directWriters = (tree: Record<string, string>) => Object.entries(tree).filter(([f, t]) => f !== ADAPTER && t.includes("auditEvent.create")).map(([f]) => f).sort();
 const tree = Object.fromEntries(files(API).map((f) => [relative(API, f), readFileSync(f, "utf8")]));
 const oneWriter = (t: Record<string, string>) => JSON.stringify(directWriters(t)) === JSON.stringify(PLATFORM_LEFT);
@@ -127,7 +127,7 @@ const oneWriter = (t: Record<string, string>) => JSON.stringify(directWriters(t)
 ok("J-8 DW1 pass: the case action (an answer), the document action (a supply) and the library action (a form role proposed) each wrote exactly one line; the approval its two (the decision and the role applied)",
   ans.status < 300 && nAnswer === 1 && answerLines.length === 1 && up === 201 && nDoc === 1 && nPropose === 1 && nApprove === 2 && libLines.length === 2,
   { ans: ans.status, nAnswer, up, nDoc, propose: proposed?.status, nPropose, approve: approved?.status, nApprove, lib: libLines.length });
-ok("J-8 DW1 pass: no case-side file writes audit_event directly: every case and configuration line goes through the adapter (only platform/settings.ts is left, PF-0a part 2c)", oneWriter(tree), directWriters(tree));
+ok("J-8 DW1 pass: no case-side file writes audit_event directly: every case and configuration line goes through the adapter (only the adapter writes)", oneWriter(tree), directWriters(tree));
 ok("J-8 DW1 NR: a stand-in direct write in a case file is caught by the same judge", !oneWriter({ ...tree, "case-close.ts": `${tree["case-close.ts"]}\nawait tx.auditEvent.create({ data })` }));
 
 // ------------------------------------------------------------------------------- DW2: typed actor and case id
