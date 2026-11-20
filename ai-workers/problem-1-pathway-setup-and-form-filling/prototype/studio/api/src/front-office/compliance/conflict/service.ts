@@ -219,7 +219,8 @@ export class ConflictChecks {
     const c = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) }) ?? notFound("check");
     if (c.hiddenCount === 0 || c.confirmedBy || c.checkedBy === ctx.staffId || !seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) return notFound("check waiting for your confirmation");
     const s = await this.search(ctx, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
-    return { ...this.view(c, ctx, true), matchesNow: s.matches, hiddenNow: s.hidden };
+    const checker = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: c.checkedBy }), select: { displayName: true } });
+    return { ...this.view(c, ctx, true), checkedByName: checker?.displayName ?? null, matchesNow: s.matches, hiddenNow: s.hidden };   // FO-13s part 2 PR B: who checked, by name (m7)
   }
 
   /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for), with the

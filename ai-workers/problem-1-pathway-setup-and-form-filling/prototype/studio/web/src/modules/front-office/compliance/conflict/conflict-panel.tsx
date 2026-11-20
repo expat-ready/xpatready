@@ -45,6 +45,19 @@ function Matches({ matches, label }: { matches: ConflictMatch[]; label: string }
   );
 }
 
+/** BR-8 (PR B): the link the checker sends to a manager who may see every record (the confirm page). */
+function WaitingLink({ id }: { id: string }) {
+  const toast = useToast(), href = `/front-office/conflict-checks/${encodeURIComponent(id)}`;
+  const copy = () => navigator.clipboard?.writeText(new URL(href, window.location.origin).toString()).then(() => toast.push({ tone: "ok", text: "Link copied." }), () => toast.push({ tone: "danger", text: "Could not copy: select the link instead." }));
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs" data-waiting-link>
+      <span className="text-text-muted">Send this link to a manager who may see every record:</span>
+      <a href={href} className="text-text-link [overflow-wrap:anywhere] hover:underline">{href}</a>
+      <Button size="sm" variant="outline" onClick={() => void copy()}>Copy link</Button>
+    </p>
+  );
+}
+
 function CheckRow({ c }: { c: ConflictCheck }) {
   const tone = c.result === "NO_CONFLICT" ? "ok" : c.result === "CONFLICT_CANNOT_ACT" ? "danger" : "warn";
   return (
@@ -56,6 +69,7 @@ function CheckRow({ c }: { c: ConflictCheck }) {
       <p className="mt-1 text-xs text-text-muted" data-counts>{c.matches.length} match{c.matches.length === 1 ? "" : "es"} named{c.hiddenCount ? `, ${c.hiddenCount} hidden` : ""}
         {c.confirmedAt ? ` · confirmed by ${c.confirmedByName ?? "a colleague"}, ${arrivedLabel(c.confirmedAt)}` : c.needsConfirmation ? " · waiting for a manager's confirmation" : ""}</p>
       {c.disclosureText ? <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]" data-disclosure>{c.disclosureText}</p> : null}
+      {c.needsConfirmation ? <WaitingLink id={c.id} /> : null}
       {c.matches.length || c.hiddenLine ? (
         <details className="mt-2"><summary className="cursor-pointer text-xs text-text-link">Matches</summary>
           <div className="mt-2 flex flex-col gap-2"><Matches matches={c.matches} label="Matches of this check" />{c.hiddenLine ? <p className="text-xs text-text-muted">{c.hiddenLine}</p> : null}</div>
