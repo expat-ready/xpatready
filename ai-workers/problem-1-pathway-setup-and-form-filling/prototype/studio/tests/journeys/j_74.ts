@@ -19,6 +19,10 @@
 //   W6 its reminders are listed on the case, and they are the very jobs the reminders arm (7, 2 and 0 open days before);
 //   W7 cancel it with a reason and record it again: both lines show, the first as cancelled, its jobs cancelled, the
 //   second's armed. Today is the server's real day here (the walk's own FakeClock and queue start at now).
+//   W6b, W7b (CS-DL3 part 3, the job part; brief build-lead-c-briefs/CS-DL3-3.md): the walk's clock reaches 7 working days
+//   before the step's due date and its reminder reaches the representative and the officer once each (NR: an hour
+//   before, nobody); after the cancel the clock reaches 2 working days before and the cancelled step tells nobody more,
+//   while the step recorded again does remind (the NR: the same run is not simply silent).
 // What stays a stand-in (said, not hidden): the reminders run in this process on the copy's own database with PF-0p's
 // fakeJobs on a FakeClock (PF-14's runner is the same JobPort) and fakeNotifications (PF-18n's real adapter is not on main;
 // the app arms nothing until it is bound, features/case-deadlines.ts). The route is marked CITED here: labelled test data,
@@ -66,8 +70,8 @@ try {
   ok("J-74 setup: the Sample firms and their staff are seeded; the representative signs in (local stand-in)", !!FA && !!FB && !!REP && !!OFF && !!R, signed.status);
   sql(`update route set basis = 'CITED' where key = '${routeKey}'`);   // labelled test data (see the header)
   const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), inner = fakeNotifications({ now: () => clock.now() });
-  const told: { staffId: string; stageId: string; at: string }[] = [];
-  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: Parameters<typeof inner.notify>[2], i: Parameters<typeof inner.notify>[3]) { told.push({ staffId: r.staffId, stageId: i.id, at: clock.now().toISOString().slice(0, 16) }); return inner.notify(tx, r, k, i); } };
+  const told: { staffId: string; stageId: string; at: string; item: string; kind: string }[] = [];
+  const notifications = { ...inner, async notify(tx: unknown, r: { staffId: string }, k: Parameters<typeof inner.notify>[2], i: Parameters<typeof inner.notify>[3]) { told.push({ staffId: r.staffId, stageId: i.id, at: clock.now().toISOString().slice(0, 16), item: i.kind, kind: k }); return inner.notify(tx, r, k, i); } };
   const dl = new CaseDeadlines({ db, jobs, notifications, clock });
   await dl.register({ sweep: false });
   const walk = async (to: string) => { while (clock.now() < new Date(to)) await clock.set(new Date(Math.min(clock.now().getTime() + 3_600_000, Date.parse(to)))); };
@@ -148,6 +152,8 @@ try {
     await reach(fld("record", "reference")); await p.keyboard.type("B-J74-0001");
     await reach(gov("record").locator("[data-gov-send]")); await p.keyboard.press("Enter"); await gov("record").waitFor({ state: "detached", timeout: 15_000 });
   };
+  const walk2 = async (to: number) => { while (clock2.now().getTime() < to) await clock2.set(new Date(Math.min(clock2.now().getTime() + 3_600_000, to))); };
+  const toldStep = (id: string) => told.filter((t) => t.item === "case-milestone" && t.stageId === id);
   const mjobs = (id: string, status?: string) => jobs2.jobs.filter((j) => j.name === MILESTONE_JOB && j.payload.milestoneId === id && (!status || j.status === status));
   await p.evaluate((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), R);
   await p.reload(); await steps.locator("[data-gov-empty]").waitFor({ timeout: 30_000 }); await settle();
@@ -163,6 +169,14 @@ try {
     listed.startsWith("Reminders planned:") && armed.length === 3 && armed.every((d) => listed.includes(words(d))) && mjobs(m1).map((j) => j.payload.offset).sort().join() === "0,2,7", { listed, armed });
   const va = (await new AxeBuilder({ page: p }).include("[data-gov-steps]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
   ok("J-74 W6 axe: Government steps has no WCAG 2.2 A/AA violation", va.length === 0, va.map((x) => x.id));
+  const runAt = (id: string, offset: number) => mjobs(id).find((j) => j.payload.offset === offset)!.runAt.getTime();
+  await walk2(runAt(m1, 7) - 3_600_000);
+  const before7 = toldStep(m1).length;
+  await walk2(runAt(m1, 7) + 60_000);
+  const at7 = toldStep(m1);
+  ok("J-74 W6b NR: an hour before the 7-working-day reminder, the step has told nobody", before7 === 0, before7);
+  ok(`J-74 W6b: at 7 working days before the due date (${armed[0]}, 09:00 in the firm's zone) the step's reminder reaches the representative and the officer once each, as a case-milestone deadline`,
+    at7.length === 2 && new Set(at7.map((t) => t.staffId)).size === 2 && at7.every((t) => [REP, OFF].includes(t.staffId) && t.kind === "case-milestone-deadline"), at7);
   await reach(line1.locator("[data-gov-cancel]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor();
   await reach(fld("cancel", "reason")); await p.keyboard.type("The due date was typed wrong (test walk)");
   await reach(gov("cancel").locator("[data-gov-cancel-send]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor({ state: "detached", timeout: 15_000 });
@@ -171,10 +185,15 @@ try {
   await record(due2); await steps.locator('[data-gov-state="open"]').waitFor();
   await dl2.sweep();
   const m2 = (await steps.locator('[data-gov-state="open"]').getAttribute("data-gov-step"))!, tc = await steps.locator('[data-gov-state="cancelled"]').innerText();
-  ok(`J-74 W7: cancelled with a reason and recorded again (due ${words(due2)}): both lines show, the first as Cancelled with its reason; its three jobs are cancelled and the new step's three armed`,
+  ok(`J-74 W7: cancelled with a reason and recorded again (due ${words(due2)}): both lines show, the first as Cancelled with its reason; its jobs still to come are cancelled (the 7-day one already ran in W6b) and the new step's three armed`,
     await steps.locator("[data-gov-step]").count() === 2 && tc.includes("Cancelled") && tc.includes("Reason: The due date was typed wrong (test walk)") && m2 !== m1
-      && mjobs(m1, "cancelled").length === 3 && mjobs(m1, "waiting").length === 0 && mjobs(m2, "waiting").length === 3
+      && mjobs(m1, "cancelled").length === 2 && mjobs(m1, "waiting").length === 0 && mjobs(m2, "waiting").length === 3
       && one(`select string_agg(due_on::text || ':' || (cancelled_at is not null)::text, ',' order by recorded_at) from case_milestone where case_id = '${caseId}'`) === `${due}:true,${due2}:false`, { tc, m1: mjobs(m1).map((j) => j.status), m2: mjobs(m2).map((j) => j.status) });
+  await walk2(runAt(m1, 2) + 60_000);
+  ok("J-74 W7b: at 2 working days before the cancelled step's due date nothing more reaches anyone for it (its two told stay the 7-day ones)",
+    toldStep(m1).length === 2, toldStep(m1));
+  ok("J-74 W7b NR: in the same walk the step recorded again (open) does remind its people, so the silence is the cancel's, not a stopped clock",
+    toldStep(m2).length >= 2 && toldStep(m2).every((t) => [REP, OFF].includes(t.staffId)), toldStep(m2).length);
   ok("J-74 walk: no page error on the way", errs.length === 0, errs);
   await b.close();
 } catch (e) {
