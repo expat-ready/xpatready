@@ -15,14 +15,14 @@
 // Fails on the fake (P-606): the inbox is read before the sign-up (must be empty), and each W4/W5 judge on the terms
 // list is also run before the step that makes it true.
 // Screenshots: product/screens/J-100/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh j100 4500 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j100 4500 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_100.ts j100 4500
+//   zsh studio/tools/isolated.sh j100 4436 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j100 4436 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_100.ts j100 4436
 import "reflect-metadata";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { client, recorder } from "../runtime/api.ts";
 
-const NAME = process.argv[2] ?? "j100", PORT = Number(process.argv[3] ?? 4500), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const NAME = process.argv[2] ?? "j100", PORT = Number(process.argv[3] ?? 4436), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "screens", "J-100", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const { ok, summary } = recorder();
 const { sql: rawSql } = client(PORT, DBNAME);
@@ -84,6 +84,7 @@ try {
   let already = false;
   for (let i = 0; i < 50 && !already; i++) { await wait(200); already = (await inbox(email)).some((m) => m.subject === "You already have an ExpatReady account"); }
   ok("R1.100 W3 (PF-5v part 2): signing up again with the Owner's address answers the same and the inbox gets 'You already have an ExpatReady account'; no second pending sign-up", again.status === 202 && already && sql(`select count(*) from platform_signup_pending where email = '${email}' and used_at is null`) === "0");
+  ok("R1.100 W3 (review M1 of #2456): that email is our platform account email, not the firm's: no outbox row of the firm, so the public form never spends the firm's daily cap", sql(`select count(*) from msg_outbox where address = '${email}' and firm_id is null`) === "2" && sql(`select count(*) from msg_outbox where firm_id = (select id from platform_firm where key = '${firmKey}')`) === "0");
 
   // ------------------------------------------------------------------------- W4: sign in, not asked again, shown
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
@@ -99,12 +100,15 @@ try {
   await p.locator('nav[aria-label="My account"] [data-account-section="/platform/terms"]').click();
   await p.locator("[data-acceptance]").first().waitFor({ timeout: 20_000 });
   const rows = await p.locator("[data-acceptance]").allInnerTexts();
-  ok("R1.100 W4: Settings → Terms shows the Owner's three acceptances, each with the version", rows.length === 3 && terms.every((t) => rows.some((r) => r.includes(t.version))), rows);
+  const who = email.split("@")[0];   // the Owner's display name (the sign-up's email before the @)
+  const shows = (r: string, label: string, version: string) => r.includes(who) && r.toLowerCase().includes(label) && r.includes(version) && /\d{1,2}:\d{2}/.test(r);
+  const LABEL: Record<string, string> = { TERMS_OF_SERVICE: "terms of service", PRIVACY_NOTICE: "privacy notice", DATA_PROCESSING: "data processing" };
+  ok("R1.100 W4: Settings → Terms shows the Owner's three acceptances: who (the Owner), which document and version, and when", rows.length === 3 && terms.every((t) => rows.some((r) => shows(r, LABEL[t.kind] ?? t.kind, t.version))), rows);
   await shot(p, "w4-settings-terms-1440");
 
   // --------------------------------------------------------------- W5: a new version asks again at the next sign-in
   const v2 = `sample-j100-${run}`;
-  ok("R1.100 W5 fail (P-606, before the new version): Settings → Terms has no acceptance of it", !rows.some((r) => r.includes(v2)));
+  ok("R1.100 W5 fail (P-606, before the new version): signing in does not ask (W4 above), and the database holds no version of that name yet", sql(`select count(*) from platform_terms_version where version = '${v2}'`) === "0");
   const tos2 = sql(`insert into platform_terms_version (id, kind, version, url, published_at) values (gen_random_uuid(), 'TERMS_OF_SERVICE', '${v2}', 'https://example.com/sample-terms/${run}', now() - interval '1 second') returning id`);
   await p.evaluate(() => sessionStorage.clear());   // the next sign-in: a new browser session (the old one simply ends)
   await signIn();
@@ -119,7 +123,7 @@ try {
   ok("R1.100 W5: the firm's calls answer 200 again", (await j("GET", "/api/platform/staff", undefined, tok)).status === 200);
   await p.goto(`${BASE}/platform/terms`); await p.locator("[data-acceptance]").first().waitFor({ timeout: 20_000 });
   const after = await p.locator("[data-acceptance]").allInnerTexts();
-  ok("R1.100 W5: Settings → Terms now shows the new version's acceptance too", after.length === 4 && after.some((r) => r.includes(v2)), after);
+  ok("R1.100 W5: Settings → Terms now shows the new version's acceptance too, with who and when", after.length === 4 && after.some((r) => shows(r, "terms of service", v2)), after);
   await shot(p, "w5-settings-terms-1440");
   ok("R1.100: no page error in the browser", errors.length === 0, errors);
   await ctx.close();

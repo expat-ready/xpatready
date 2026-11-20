@@ -61,7 +61,7 @@ ok("PF-5v DW2 fail: a password of spaces keeps \"not only spaces\"", JSON.string
   ok("PF-5v part 2 DW3 pass: runtimeSignUpPorts passes the given MailPort to the door and the stand-in", ports.mail === mail && mail.sent.length === 1);
   const other = fakeMail(), defaults = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
   await defaults.identity.register({ email: "q@maple.example.com", password: "correct horse battery staple 77", firmName: "Maple Law", link: () => "l" });
-  ok("PF-5v part 2 DW3 fail: another MailPort receives nothing from those ports", other.sent.length === 0 && defaults.mail !== other);
+  ok("PF-5v part 2 DW3 fail: with no MailPort given, the ports fall back to their own fakeMail, which is not the app's (so the feature must pass MESSAGES_MAIL, checked below)", other.sent.length === 0 && defaults.mail !== mail && (defaults.mail as ReturnType<typeof fakeMail>).sent.length === 1 && mail.sent.length === 1);
 }
 ok("PF-5v part 2 DW3 pass: the app's feature binds the sign-up ports to MESSAGES_MAIL (MailPort over MessagePort)", /inject:\s*\[MESSAGES_MAIL\]/.test(readFileSync(new URL("../api/src/features/platform-firms.ts", import.meta.url), "utf8")));
 

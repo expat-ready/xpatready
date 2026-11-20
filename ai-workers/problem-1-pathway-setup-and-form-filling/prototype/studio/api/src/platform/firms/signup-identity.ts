@@ -36,7 +36,9 @@ export class LocalSignUp implements SignUpIdentity {
     this.codes.set(subject, { hash: hash(code), until: this.now().getTime() + DAY });
     const mail = { to: input.email, subject: "Your ExpatReady verification code", text: `Someone asked to sign up "${input.firmName}" with this email address.\nYour verification code is ${code}.\nOr open this link to confirm: ${input.link(code)}\nThe code lasts 24 hours. If you did not ask for this, ignore this email: nothing is set up without the code.` };
     this.mails.push({ ...mail, sentAt: this.now() });
-    // One email per registration (its subject is the key), so a retried send never mails the code twice.
+    // Keyed by this registration (a new sign-up is a new registration and a new email). The email is sent before the
+    // door stores its pending sign-up, as Cognito's SignUp sends its own; if that store then fails, the link answers
+    // "not valid any more" and the person signs up again (review m1 of #2456; Cognito's adapter keeps the same order).
     if (this.mail) await this.mail.send({ platformAccount: true, ...mail, replyTo: "no-reply@expatready.com", class: "TRANSACTIONAL", templateKey: "platform.signup.verification", idempotencyKey: `signup:${subject}` });
     return { subject };
   }
