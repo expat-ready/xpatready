@@ -15,6 +15,7 @@ import { readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } from "./common.ts";
 import { wonSubjectOf } from "./corporate/service.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
+import { sourcesChecked } from "./source-filter.ts";
 import { clearForWin, lockPartyOf } from "../compliance/conflict/gate.ts";
 
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
@@ -179,9 +180,10 @@ export class Prospects {
   }
 
   /** The prospects the person sees (AG-2-26 rule 12, AG-2-44 rule 8): by type (Individual by default); open and won
-   *  ones, never Lost unless `stage` asks for the LOST stage (the Lost filter); `owner` and `from`/`to` (the day it was
-   *  engaged, in the firm's zone) narrow inside the visibility, never widen it. */
-  async list(ctx: StaffContext, q: { type?: unknown; stage?: unknown; owner?: unknown; from?: unknown; to?: unknown }) {
+   *  ones, never Lost unless `stage` asks for the LOST stage (the Lost filter); `owner`, `source` (the lead's, checked
+   *  as Leads checks it; R1.30, QA-533) and `from`/`to` (the day it was engaged, in the firm's zone) narrow inside the
+   *  visibility, never widen it. */
+  async list(ctx: StaffContext, q: { type?: unknown; stage?: unknown; owner?: unknown; source?: unknown; from?: unknown; to?: unknown }) {
     const t = q.type === undefined || q.type === "" ? "INDIVIDUAL" : (TYPES as readonly unknown[]).includes(String(q.type).toUpperCase()) ? (String(q.type).toUpperCase() as FoPipeline) : bad("type: INDIVIDUAL or CORPORATE.", "type");
     const stages = await this.db.foStage.findMany({ where: firmScope(ctx.firmId, { pipeline: t }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
     const stageKey = q.stage === undefined || q.stage === "" ? null : String(q.stage).toUpperCase();
@@ -189,10 +191,11 @@ export class Prospects {
     const owner = await ownerAsked(this.db, ctx.firmId, q.owner);
     const range = await dayRange(this.db, ctx.firmId, q.from, q.to);
     const { vis } = await this.seer(ctx);
+    const sources = await sourcesChecked(this.db, ctx, vis, q.source);
     const rows = await this.db.foProspect.findMany({
       where: firmScope(ctx.firmId, {
         AND: [{ type: t }, vis.seesAll ? {} : { ownerStaffId: ctx.staffId }, stage ? { stageId: stage.id } : { stage: { kind: { not: "LOST" as const } } },
-          owner ? { ownerStaffId: owner } : {}, range ? { createdAt: range } : {}],
+          owner ? { ownerStaffId: owner } : {}, sources.length ? { lead: { source: { in: sources } } } : {}, range ? { createdAt: range } : {}],
       }),
       include: { stage: true, subjectPerson: true, subjectCompany: true, lostReason: { select: { key: true, label: true } } }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 500,
     });
