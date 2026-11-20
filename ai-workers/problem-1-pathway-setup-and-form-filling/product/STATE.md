@@ -2,7 +2,7 @@
 
 current_lead: local_2e11a30f-219c-490a-a6ee-7009ea22ad44 Lead 99 · 20 Nov 06:56 IST (series 2; took over from Lead 98 (series 2, local_b18084c0) at ~300k, P-446)
 
-updated: 2026-11-20 06:56 IST: Lead 98 handed over to Lead 99 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-744**; P-745, P-746 in DECISIONS) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-20 08:22 IST: Lead 99 current; disk freed; xr-mac runner offline blocks the queue · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
 
 
 

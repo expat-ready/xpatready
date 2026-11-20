@@ -173,6 +173,14 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
 
 ## Moved 20 Nov (Lead 96, from RULES.md, word for word)
+
+Moved by Lead 99, 20 Nov, word for word:
+
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-740 | Release 1 stays 29 Nov (founder 19 Nov 20:0x); Proven per day reported each evening; slips said plainly. | prose | 19 Nov |
+| P-739 | Six merge batches at once (max_parallel_checks 6; P-730's hold lifted by the founder 19 Nov); back to 3 if failures cascade. | prose | 19 Nov |
+
 | P-744 | Test quality and impact map now (exception to P-734): c8 per-test coverage → capability → code → test graph, test impact analysis at the PR stage, Stryker mutation pilot; merge batch keeps every suite (B203). | prose (B203) | 20 Nov |
 | P-743 | No full run on every PR (CI-PRE back to P-733 (4)): `FULL_RUN_FROM=2026-11-22T14:30:00Z`; a PR that failed a batch still needs `/run full` and its failures named; code fix owed, then delete the variable. | CI: queue-gate.sh FULL_FROM (repository variable) | 20 Nov |
 | P-742 | Cut wasted test runs, no lower bar: qa proof data under `qa/reports/` is a record (#2355); affected-only tests via B203. | script: records-only.sh (#2355) | 19 Nov |
