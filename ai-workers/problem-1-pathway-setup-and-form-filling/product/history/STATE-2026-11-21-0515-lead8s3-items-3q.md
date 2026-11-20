@@ -2,3 +2,6 @@
 
 (3q) **05:0x IST:** **#2649 (R1.26 QA-617 fix) MERGED**; walks j_26 twice in the browser (44837061226, 44837165973); qa Q1 told (tag ZR126, delivered). #2478 hit queue-fresh: its migration 20261120200000 is now older than main's 20261121010000/020000 → lane restamps; Lead re-reads (rename only) and relabels. #2658 (J-38 W9) queued; its PR walks showed red at 23:1xZ: check before merge. #2637 labelled, not yet queued.
 (3r) **05:1x IST:** **P-775** (size exception: code+tests < 800 plus the PR's own screens records) recorded; records PR **#2660** (P-775, RULES as of P-774, STATE) labelled. #2621 PF-18h Approved at 65f56d5cc, body has 'Size exception: P-775' → after #2660 merges, re-run pr-rules, then label. Then CS-DL3 part 3 (R1.74) builds on it.
+(3r) 05:1x P-775 / #2660 / PF-18h size ruling: word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
+(3q) 05:0x check (R1.26 fix merged; walks; #2478 queue-fresh restamp): word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
+(3m)-(3p) 03:5x-04:4x check pointers: word for word in `product/history/STATE-2026-11-21-0415-lead8s3-item-3m.md`.

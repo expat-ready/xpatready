@@ -17,9 +17,7 @@ updated: 2026-11-21 05:17 IST: Lead 8 (series 3) current; checks every 10 min ·
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
 (3t) **05:1x IST:** qa scored **R1.26 Works** (#2661, j_26 18/18 twice) → approved + labelled. #2637 (R1.110 Works) main merged → re-approved + labelled. Both edit qa/CAPABILITIES.md: if one dequeues on a conflict after the other merges, ask its qa lane to merge main. On merge: 31 on main. R1.38: #2658 queued → walks j_38 twice → Q2 scores = 32.
 (3s) **05:1x IST:** j_26 walks GREEN (44837061226, 44837165973); qa Q1 re-scoring R1.26 (ZR126). #2637 blocked by a conflict with main → qa Q2 told (ZC2637, delivered); re-approve its new head. #2478 restamped to 20261121030000 (SQL same) → read + labelled. Queued: #2658 (J-38 W9), #2621 (PF-18h), #2660 (records P-775).
-(3r) 05:1x P-775 / #2660 / PF-18h size ruling: word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
-(3q) 05:0x check (R1.26 fix merged; walks; #2478 queue-fresh restamp): word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
-(3m)-(3p) 03:5x-04:4x check pointers: word for word in `product/history/STATE-2026-11-21-0415-lead8s3-item-3m.md`.
+(3m)-(3r) earlier check pointers: word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
 (3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
 (3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
 (3j) 03:2x check (R1.26, R1.100 merged; R1.110 Works; R1.38 QA-616): word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
