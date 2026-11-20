@@ -165,7 +165,7 @@ await p.locator(`[data-prospect-row="${num("tRef")}"]`).waitFor({ timeout: 15_00
 const fixed = await rowsShown("data-prospect-row");
 ok("R1.30 DW5 pass (QA-572): a from on or before to clears the message and the list follows the range and the source", (await from.getAttribute("aria-invalid")) !== "true" && fixed.has(num("tRef")) && !fixed.has(num("tPhone")), [...fixed]);
 // Break m1: a day in the address that is not a real YYYY-MM-DD day is dropped (as Leads does), never a raw error.
-for (const bad of ["abc", "2026-02-30", "2026-1-5"]) {
+for (const bad of ["abc", "2026-02-30", "2026-1-5", "3026-11-20"]) {
   await p.goto(`${BASE}/front-office/pipeline?view=list&from=${bad}&to=${day(0)}`); await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 30_000 }).catch(() => undefined);
   ok(`R1.30 DW5 fail (break m1): from=${bad} in the address is dropped: the list shows, no alert, no "from after to"`, (await p.locator(`[data-prospect-row="${num("tPhone")}"]`).count()) === 1 && (await p.getByRole("alert").count()) === 0 && (await p.getByText("The from date must be").count()) === 0 && sentBad === 0);
 }

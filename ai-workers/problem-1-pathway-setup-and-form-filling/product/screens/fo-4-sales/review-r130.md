@@ -1,8 +1,56 @@
 # R1.30 — Source filter on the prospects List and board (QA-533), from-after-to at the field (QA-572): review
 
-Reviewer agent, 20 Nov 2026 (IST date). PR #2454, branch `claude/keen-goodall-pgdoiq`, head `9e2e67c72ecc8f016e42e05edaaa6dfa4dd2c6ed`. I did not build this. Copy: isolated `rev_r130` on :4491 (`PLATFORM_IDENTITY=local`), never :4400; stopped after. Live AI off, US$0. The bar: row R1.30's Done-when, AG-2-23 ("The board/list SHALL be filterable by rep, source, … stage, date range"), QA-533 and QA-572 (`qa/BUGS.md:268-269`), `STANDARDS.md`, `EXPERIENCE.md`. No `concept.md` sits in `screens/fo-4-sales/`. Concept fit is judged against the row, the two bug rows and the earlier FO-4 review. Journey test: `journey-test-reviewer-2026-11-20-r130.md`, **8.5/10 (pass)**.
+Reviewer agent, 20 Nov 2026 (IST date). PR #2454, branch `claude/keen-goodall-pgdoiq`. I did not build this. Copy: isolated `rev_r130` on :4491 (`PLATFORM_IDENTITY=local`), never :4400; stopped after each round. Live AI off, US$0. The bar: row R1.30's Done-when, AG-2-23 ("The board/list SHALL be filterable by rep, source, … stage, date range"), QA-533 and QA-572 (`qa/BUGS.md:268-269`), `STANDARDS.md`, `EXPERIENCE.md`. No `concept.md` sits in `screens/fo-4-sales/`. Concept fit is judged against the row, the two bug rows and the earlier FO-4 review. Journey test: `journey-test-reviewer-2026-11-20-r130.md`, **8.5/10 (pass)**. It was scored on round 1 and still holds (see round 2).
 
-**Verdict: Approve** (on the skill's scale: Ship). There is no Blocker and no Major. The three Minors below can follow in a small PR or be written into QA-572's row.
+**Verdict for head `6925dffcbb4b557470950e7247bd92e60dddef0c`: Approve** (on the skill's scale: Ship). There is no Blocker and no Major.
+
+## Round 2: diff-only re-review, `9e2e67c72..6925dffcb`
+**What changed:**
+* Breaker M1: `useKept` is removed. While from > to, nothing is fetched and the list is replaced by "Change the dates to see …".
+* Breaker m1 and my round-1 Minor 1: `dayParam` (`web/.../sales/source-filter.tsx`) on Leads and the List.
+* Breaker m2: `ready` waits for the choices only when the address asks for a source.
+* My round-1 Minor 2: the `calm` Field keeps its status region mounted (`controls.tsx:60-61`).
+* `check_r130_prospect_source.ts` now uses sources unique to each run and adds lines for M1, m1 and m2.
+
+**My re-runs on 6925dffcb:**
+
+| Suite | Result |
+|---|---|
+| `check_r130_prospect_source.ts`, twice on the same fresh copy | **29/29**, **29/29** |
+| `check_r130_filters_widths.ts`, fresh copy | **56/56** |
+| `j_30.ts`, fresh copy | **55/55** |
+
+* The source and qa checks fail when run after `j_30` on the same database. j_30's 200+ prospects push the run's cards past the board's first 200 per stage, and the List skeleton races DW4's read. Each passes on a fresh copy. This is test data volume, not the product, and the same as round 1.
+* The suites rewrite the tracked `screens/fo-4-sales/screenshots/*.png`. I restored them with `git checkout`.
+
+**My walk on 6925dffcb** (`walk2.mjs`, `walk3.mjs`; shots in `/tmp/claude-0/-home-user-xpatready/43763f60-dbc7-5d0e-a87a-76b5194b4110/scratchpad/r130/v2/shots/`):
+* **Status region:** before any error, one empty status region is mounted and the from field carries no `aria-describedby`.
+* **From after to:** `aria-invalid=true`, described by "The from date must be on or before the to date." (role status). 0 rows, the plain-words empty state, no alert, axe clean, and no from > to request sent.
+* **Source chosen during a bad range:** still 0 rows and only the words, so M1 is fixed.
+* **Fixing the from day:** the message clears, the region stays mounted, and the list follows.
+* **Malformed days in the address** (`2026-13-45`, `abc`, `2026-02-30`): dropped on both Leads and the List; the list shows and there is no alert.
+* **Widths:** at 400 and 1024 px the bad-range state has no sideways scroll.
+* **Code:** `ready` only skips the wait when no source is asked, and in that case `sources` is `[]` anyway, so an unfiltered fetch can never stand in for a filtered address. A `calm` Field with a `hint` falls back to the old shape, but none of the three uses passes a hint.
+
+**Round-1 Minors:**
+
+| Round-1 Minor | Status |
+|---|---|
+| 1. Raw "from:" alert | Mostly fixed, one gap left (new Minor A) |
+| 2. Live region | Fixed |
+| 3. Labels lift on error | Not taken; to be recorded in the PR as a known Minor (accepted) |
+
+**Round-2 findings (all Should / Minor; none blocks):**
+* **A. A real day outside 1900–2999 still gives the raw page alert.**
+  * Steps: `?from=3026-11-20` or `0001-01-01` shows "from: a date as YYYY-MM-DD. Try again" in place of the list, on the List and on Leads. Filling the date field with 3026-11-20 does the same (shot `v2-list-typed-year-3026-1440.png`), so a year typo reaches it, not only the address.
+  * Cause: `dayParam` (`source-filter.tsx`, the `dayParam` function) accepts any real calendar day. The server refuses outside 1900–2999 (`api/src/front-office/sales/prospects.ts:37`).
+  * **Fix:** give `dayParam` the server's bounds, or map `StaffApiError` `fields.from` and `fields.to` onto the Field. Otherwise record it in QA-572's row.
+* **B. The PR body describes the old head.** It still says "the list kept" (the `r130-list-typed-from-after-to-fixed.png` caption and the "fast typist" paragraph) and "24/24". Showing no list goes against QA-572's written Expected ("Keep the list"). That is the right call, because a kept list ignored a new source, but under "never deviate silently" it must be written in the PR body and, for qa, in QA-572's row.
+  * Also update: `r130-list-typed-from-after-to-fixed.png` if it shows the kept list; list Minor 3, m3 and m4 as known Minors.
+  * qa note: `check_r130_filters_widths.ts:203` is still worded "the list kept" but passes on the empty state (`listKept` accepts `empty`). That is qa's file; its wording should follow the ruling.
+
+---
+*Round 1 (head 9e2e67c72) follows as written then. Its "list kept" and judgement-call (1) notes are superseded by round 2.*
 
 ## Re-runs on the exact commit (mine)
 | Suite | Result |

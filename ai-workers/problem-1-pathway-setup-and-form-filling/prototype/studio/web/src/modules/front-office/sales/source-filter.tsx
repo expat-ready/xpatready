@@ -82,10 +82,11 @@ export function useAddressSources(params: URLSearchParams) {
 }
 
 /** A day filter from the address: a real calendar day as YYYY-MM-DD, else "" (dropped, as Leads always did; break m1:
- *  "abc", "2026-02-30" or "2026-1-5" never reach the server or the from/to comparison). */
+ *  "abc", "2026-02-30" or "2026-1-5" or a year outside 1900-2999 never reach the server or the from/to comparison). */
 export function dayParam(params: URLSearchParams, k: string): string {
   const v = params.get(k) ?? "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v) ? v : "";
+  // The server's own bounds (years 1900 to 2999, prospects.ts dayOf), so a year typo never meets its raw refusal (review A).
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && v >= "1900-01-01" && v <= "2999-12-31" && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v) ? v : "";
 }
 
 /** QA-572 (EXPERIENCE :27, :43, BIC-13): a "from" day after the "to" day is said at the from field, in plain words, and
