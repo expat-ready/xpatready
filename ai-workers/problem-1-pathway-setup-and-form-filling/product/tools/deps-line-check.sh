@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Technology gate in CI (enforcement plan row E16; STANDARDS §1, P-553, P-587; pr-rules.yml). Reads the PR body on
 # stdin. A PR that adds a package to any package.json (dependencies, devDependencies, peerDependencies or
-# optionalDependencies; a name the file did not list at --base, every name of a new package.json, or an old name whose
-# version now points at another package: npm:, git, github:, a URL, file: or link:) must carry a line
+# optionalDependencies; a name the file did not list at --base, every name of a new package.json, or a changed version
+# that is no semver range or dist-tag, since npm:, git, owner/repo, a URL or a path names another package) must carry a line
 # "STANDARDS §1: <the gap, the options and why this one>". A version change or a removal needs no line.
 # Exit 0 clean, 1 when the line is missing or empty, 2 on bad use or a package.json that cannot be read (never a pass).
 # US$0, no network.
@@ -29,14 +29,19 @@ while IFS=$'\t' read -r st a b; do
   out=$(python3 -I -c '
 import json, sys
 S = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
-ALIAS = ("npm:", "git", "github:", "gitlab:", "bitbucket:", "http:", "https:", "file:", "link:")   # another package under an old name
+import re
+PLAIN = re.compile(r"^\s*(([\^~<>=v0-9.*xX| -]|\|\|)+|[A-Za-z][A-Za-z0-9._-]*)\s*$")   # a semver range or a dist-tag; anything else names another package
 def specs(t):
     d = json.loads(t.lstrip("\ufeff"))   # npm accepts a byte-order mark
     if not isinstance(d, dict): raise ValueError("not an object")
-    return {n: str(v) for s in S for n, v in (d.get(s) or {}).items()}
+    return {s: {n: str(v) for n, v in (d.get(s) or {}).items()} for s in S}
 old, new = specs(sys.argv[1]), specs(sys.argv[2])
-out = [n for n in new if n not in old]
-out += ["%s (now %s)" % (n, new[n]) for n in new if n in old and new[n] != old[n] and new[n].startswith(ALIAS)]
+seen = {n for s in S for n in old[s]}
+out = set()
+for s in S:   # each section on its own: a name listed twice is judged in both
+    for n, v in new[s].items():
+        if n not in seen: out.add(n)
+        elif v != old[s].get(n, v) and not PLAIN.match(v): out.add("%s (now %s)" % (n, v))
 print("\n".join(sorted(out)))
 ' "$old" "$new" 2>&1) || { echo "cannot read $f as JSON: $out" >&2; exit 2; }
   [ -n "$out" ] && added+=$(printf '%s\n' "$out" | sed "s#^#  ADDED: #; s#\$# ($f)#")$'\n'

@@ -34,6 +34,13 @@ fresh r11; pj app/package.json '{"name":"app","dependencies":{"react":"npm:preac
 ok "an old name pointed at another package (npm: alias) counts as added" "$([ "$(run "$B")" = 1 ] && grep -q 'ADDED: react (now npm:preact@10.0.0)' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 fresh r12; pj app/package.json '{"name":"app","dependencies":{"react":"github:someone/react"},"devDependencies":{"vitest":"3.0.0"}}'
 ok "... a github: spec too" "$(y "$(run "$B")" 1)" "$(cat "$T/out")"
+for v in 'preactjs/preact' './vendor/preact' '/opt/preact.tgz' 'NPM:preact@10'; do
+  fresh "r14$(printf '%s' "$v" | tr -c 'a-z' '_')"; pj app/package.json '{"name":"app","dependencies":{"react":"'"$v"'"},"devDependencies":{"vitest":"3.0.0"}}'
+  ok "... '$v' (another package to npm) counts too" "$(y "$(run "$B")" 1)" "$(cat "$T/out")"; done
+fresh r15; pj app/package.json '{"name":"app","dependencies":{"react":"^19.1 || 20.x"},"devDependencies":{"vitest":"latest"}}'
+ok "a changed semver range or a dist-tag needs no line" "$(y "$(run "$B")" 0)" "$(cat "$T/out")"
+fresh r16; pj app/package.json '{"name":"app","dependencies":{"react":"npm:preact@10"},"peerDependencies":{"react":"19.0.0"},"devDependencies":{"vitest":"3.0.0"}}'
+ok "a name listed in two sections is judged in each (the alias in dependencies is seen)" "$(y "$(run "$B")" 1)" "$(cat "$T/out")"
 fresh r13; printf '\357\273\277{"name":"app","dependencies":{"react":"19.0.0","left-pad":"1.3.0"},"devDependencies":{"vitest":"3.0.0"}}\n' > "$R/app/package.json"; git -C "$R" commit -qam bom
 ok "a package.json with a byte-order mark is read (npm accepts it)" "$([ "$(run "$B")" = 1 ] && grep -q 'ADDED: left-pad' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 fresh r4; pj app/package.json '{"name":"app","dependencies":{"react":"19.0.0"}}'
