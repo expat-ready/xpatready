@@ -86,10 +86,10 @@ export class AssignmentRules {
     if (typeof id !== "string" || !UUID.test(id)) return notFound("assignment rule");
     const firmId = firmScope(ctx.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      const r = await tx.foAssignmentRule.findFirst({ where: firmScope(firmId, { id: id.toLowerCase() }), select: { id: true, active: true } }) ?? notFound("assignment rule");
+      const r = await tx.foAssignmentRule.findFirst({ where: firmScope(firmId, { id: id.toLowerCase() }), select: { id: true, active: true, criteriaKey: true } }) ?? notFound("assignment rule");
       if (r.active) {
         await tx.foAssignmentRule.update({ where: { id: r.id }, data: { active: false, updatedBy: actorOf(ctx), updatedAt: new Date() } });
-        await this.ports.audit.record(tx, { firmId, actor: actorOf(ctx), action: "assignment_rule.off", entity: "fo_assignment_rule", entityKey: r.id, summary: "Assignment rule switched off.", detail: {}, before: { active: true }, after: { active: false } });
+        await this.ports.audit.record(tx, { firmId, actor: actorOf(ctx), action: "assignment_rule.off", entity: "fo_assignment_rule", entityKey: r.id, summary: r.criteriaKey === CATCH_ALL ? "How new leads are shared set to anyone takes it." : "Assignment rule switched off.", detail: {}, before: { active: true }, after: { active: false } });
       }
       return { id: r.id, active: false };
     });

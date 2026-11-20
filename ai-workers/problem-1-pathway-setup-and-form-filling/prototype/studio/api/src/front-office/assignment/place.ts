@@ -25,14 +25,24 @@ export const NO_RULE: Placement = { ownerStaffId: null, ruleId: null, strategy: 
  *  it: identity/service.ts), ordered by id (the round robin's fixed order), within `among` when given. The rows are
  *  share-locked, so a deactivation waits for the arrival that picked the person (break m3). */
 export async function eligible(tx: Tx, firmId: string, among: string[], lock = true): Promise<string[]> {
-  const rows = await tx.$queryRaw<{ id: string }[]>`
-    select s.id::text from platform_staff s
-    where s.firm_id = ${firmId}::uuid and s.status = 'ACTIVE'
-      and exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
-                  where g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${SALES_KEY})
-      and (cardinality(${among}::uuid[]) = 0 or s.id = any(${among}::uuid[]))
-    order by s.id`;
-  if (lock && rows.length) await tx.$queryRaw`select 1 from platform_staff where firm_id = ${firmId}::uuid and id = any(${rows.map((r) => r.id)}::uuid[]) for share`;
+  // One query, its filter and its lock together (review n1 on FO-10 part 2): a lock that waited on a deactivation sees the
+  // row as committed and drops the person, which an unlocked read followed by a lock by id would not.
+  const rows = lock
+    ? await tx.$queryRaw<{ id: string }[]>`
+      select s.id::text from platform_staff s
+      where s.firm_id = ${firmId}::uuid and s.status = 'ACTIVE'
+        and exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
+                    where g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${SALES_KEY})
+        and (cardinality(${among}::uuid[]) = 0 or s.id = any(${among}::uuid[]))
+      order by s.id
+      for share of s`
+    : await tx.$queryRaw<{ id: string }[]>`
+      select s.id::text from platform_staff s
+      where s.firm_id = ${firmId}::uuid and s.status = 'ACTIVE'
+        and exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
+                    where g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${SALES_KEY})
+        and (cardinality(${among}::uuid[]) = 0 or s.id = any(${among}::uuid[]))
+      order by s.id`;
   return rows.map((r) => r.id);
 }
 

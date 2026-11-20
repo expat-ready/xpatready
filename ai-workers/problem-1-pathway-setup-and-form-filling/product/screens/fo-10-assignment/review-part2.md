@@ -79,3 +79,50 @@ Not checked: no screen (D17/D20 stay with the founder); bookings through the rea
 Verdict: Block
 * Major: M1 (500 on saving the setting for a firm without its front-office setup; `rules.ts:64` via `rules.ts:111/114`).
 * Minors to fix with it, or record as follow-ups: m1-m5.
+
+---
+
+# Re-review, diff only (P-277): `git diff c817dc305 12f7387b2` at 12f7387b26b9d9dec0e4fc410e15f40e1eacfdeb
+
+Read: the fix diff (place.ts, rules.ts, arrival.ts, migration, suite) and the breaker's `break-report-part2.md` (for the fixes it names).
+
+## What I ran
+* `check_fo10p2_sharing.ts` **34/34**, `check_fo10_assignment.ts` **42/42**, `check_prisma_schema.ts` **8/8** (worktree at 12f7387).
+* Mutations, each reverted (worktree clean after):
+  * seed call removed from `save()` → the review-M1 test fails ("HttpException");
+  * Round robin list made optional again → the break-M1 test fails;
+  * host check back to status-only → the break-M2 test fails (Read-only host owned the lead);
+  * X-4 keeping `fact` → the review-m1 test fails (line said Unassigned);
+  * turn sanitiser removed → **still 34/34** (n2).
+* Live HTTP on a fresh isolated copy (main checkout detached at 12f7387, `tools/isolated.sh fo10p2rev 4434`, `PLATFORM_IDENTITY=local`, **no FO-1a seed**; stopped and put back on claude/gracious-curie-zolt7r):
+  * `fo_sales_setup` rows 0 → `PUT {"mode":"ROUND_ROBIN"}` 422 `rotationStaffIds` "Tick at least one person." → with O and T **200**, setup rows 1;
+  * GET's body sent back with `mode: ONE_PERSON`, `rotationStaffIds: []` → 200; unknown person → 422 under `onePersonStaffId`; `{"mode":"ANYONE","onePersonStaffId":null,"rotationStaffIds":[]}` → 200;
+  * audit summaries "How new leads are shared set to round robin." / "… always one person." 
+
+## Earlier findings
+* **M1 fixed.** `save()` seeds the firm's front office in its transaction (`rules.ts:62`), and a firm that cannot be seeded gets 409 NO_FRONT_OFFICE in words. Fixes part 1's POST too. Deadlock check: an arrival takes KEY SHARE on `fo_sales_setup` at its receipt insert, before the rule lock; `save()` takes the setup row FOR UPDATE (inside the seed) before the rule lock. Both take setup before rule, so no cycle (the breaker's 30-arrival mode-cycling run agrees).
+* **m1 fixed** (`arrival.ts:112`, test bites). **m2 fixed** (`rules.ts:112`, test). **m3 fixed** (checked in `setSharing` with its own field names; `save()` re-checks inside its transaction). **m4 fixed**: the migration UPDATE seeds `turns`/`turn_no` from `last_staff_id`, after the check constraint, which it satisfies. No test (suites migrate an empty DB); the SQL is a one-liner and correct. **m5 fixed**: the newcomer id now sits just after the trio's lowest, the "403" test is renamed, and a cross-firm booking-id test was added.
+* The breaker fixes I checked: M1 (a ticked list is required), M2 (host must pass `eligible()`), m5 (sanitiser) are as described.
+
+## New findings (no Blocker, no Major)
+* **n1 (Minor). Splitting `eligible()`'s lock reopens a narrow race that part 1 had closed.** `place.ts:27-36`: the ids are read without a lock, then locked by id with a second `for share` that does not re-check status. A deactivation already in flight when the arrival reads is waited for, but its result is ignored, so the deactivated person can still be picked. The old single `… for share of s` re-checked `status = 'ACTIVE'` after the wait.
+  * Reproduced on a scratch table: one session updates row 1 to DEACTIVATED and commits 2 s later, while another reads. The old form returns `2`; the new form returns `2,1`.
+  * Scenario: an Owner deactivates a person while a web-form lead arrives. The lead is given to that person, or the deactivated booking host becomes BOOKING_HOST.
+  * Impact is small: such a lead counts as unassigned (AG-2-13c rule 6; `leads.ts:59` keeps it visible).
+  * Fix: put `and status = 'ACTIVE'` (and the grant test) on the lock query and return its rows. Or keep one query with a conditional `for share of s` fragment (`Prisma.sql`/`Prisma.empty`). A `FOR SHARE` outside a transaction is harmless in PostgreSQL anyway.
+* **n2 (Minor, test).** The break-m5 test ("a turn that is no whole number counts as 0", suite :178) passes with the sanitiser removed. With `{R:'abc', T:5}`, `'abc' < 5` and `5 < 'abc'` are both false, so `reduce` keeps `set[0]`, which is R whenever R's id < T's id. Give the junk value to the higher id, or use a negative or huge number instead of a string.
+* **n3 (nit).** Every `save()` now holds the firm's `fo_sales_setup` row FOR UPDATE until commit (`firm-seed.ts:105`). Every arrival, note, call or person insert of that firm (FK KEY SHARE) waits behind a rule save. This is correct and short. Checking `seeded_at` before calling the seed would avoid the lock on already-set-up firms.
+* **n4 (nit).** ANYONE still writes "Assignment rule switched off." for the catch-all (`rules.ts` `off()`), unlike the new "How new leads are shared set to …" lines.
+* Left as recorded by the builder (accepted): breaker m6 (turn_no overflow), the empty-diff audit line, and the catch-all being editable through assignment-rules.
+
+## Journey score (re-scored on the fixed head)
+Rows changed from 7½:
+* Task completed: 1. A fresh firm saves.
+* Next step obvious: 1. Own field names, GET's shape accepted.
+* Plain words: 1. The m1 line is fixed.
+* Error recovery: 1. 409 in words for a firm that cannot open.
+* Consistency: ½, unchanged (n4; two routes edit one row).
+
+All other rows are as before. **9½/10, no 0: passes.**
+
+Verdict: Approve 12f7387b26b9d9dec0e4fc410e15f40e1eacfdeb

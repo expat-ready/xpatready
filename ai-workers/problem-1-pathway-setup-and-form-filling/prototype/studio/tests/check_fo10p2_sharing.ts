@@ -146,6 +146,7 @@ try {
   const viewer = addStaff("Viewer", "READ_ONLY");
   ok("FO-10p2 fail: Always one person naming someone who cannot work leads → refused at the field", (await refusal(() => rules.setSharing(R, { mode: "ONE_PERSON", onePersonStaffId: viewer })))?.status === 422);
   ok("FO-10p2 fail: an unknown mode, an unknown field, or a person with Anyone takes it → refused at the field", (await refusal(() => rules.setSharing(R, { mode: "LOAD_BALANCED" })))?.status === 422 && (await refusal(() => rules.setSharing(R, { mode: "ANYONE", weights: 1 })))?.status === 422 && (await refusal(() => rules.setSharing(R, { mode: "ANYONE", onePersonStaffId: O.staffId })))?.status === 422);
+  ok("FO-10p2 pass (review n4): choosing Anyone takes it says so on the setting's audit line", sql(`select summary from audit_event where entity = 'fo_assignment_rule' and action = 'assignment_rule.off' and entity_key = (select id::text from fo_assignment_rule where firm_id = '${A}' and criteria_key = 'ANY:ANY') order by at desc limit 1`) === "How new leads are shared set to anyone takes it.");
   ok("FO-10p2 pass: each change of the setting writes its audit line with before and after", sql(`select count(*) || '|' || count(*) filter (where exists (select 1 from jsonb_object_keys(detail) k where k like '%\\_after')) from audit_event where entity = 'fo_assignment_rule' and action like 'assignment\\_rule.%' and entity_key = (select id::text from fo_assignment_rule where firm_id = '${A}' and criteria_key = 'ANY:ANY')`) === "3|3");
 
   // ------------------------------------------------------------------------------- review and break findings
@@ -173,8 +174,11 @@ try {
   const crossed = await db.$transaction((tx) => adapter.bookingArrived(tx, { firmId: A, bookingId: bookingS, person: { givenNames: "Crossed", familyName: "Sample", email: "crossed@fo10p2.example.org" } }));
   ok("FO-10p2 fail (review m5): another firm's booking id never lends its host to this firm's lead", sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where person_id = '${crossed.personId}'`) === "none");
   const junk = await rules.save(R, { door: "WEB_FORM", strategy: "ROUND_ROBIN", eligibleStaffIds: [R.staffId, T.staffId] });
-  sql(`update fo_assignment_rule set turns = jsonb_build_object('${R.staffId}', 'abc', '${T.staffId}', 5), turn_no = 5 where id = '${junk.id}'`);
-  ok("FO-10p2 fail (break m5): a turn value that is no whole number counts as never given, never shutting the person out", (await take(1))[0] === R.staffId);
+  // The junk value sits on the higher id, so an unguarded comparison (string vs number: both false) would keep the lower
+  // id and this test would fail (review n2).
+  const [lo, hi] = [R.staffId, T.staffId].sort();
+  sql(`update fo_assignment_rule set turns = jsonb_build_object('${hi}', 'abc', '${lo}', 5), turn_no = 5 where id = '${junk.id}'`);
+  ok("FO-10p2 fail (break m5): a turn value that is no whole number counts as never given, never shutting the person out", (await take(1))[0] === hi);
   await rules.off(R, junk.id);
   const fresh = sql(`insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'fo10p2-new', 'New firm (Sample)', 'CA', 'ACTIVE', 'new@fo10p2.example.com', now()) returning id`);
   const freshOwner = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${fresh}', 'owner@fo10p2-new.example.com', 'Owner (Sample)', 'ACTIVE', now()) returning id`);
