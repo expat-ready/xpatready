@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 03:08 IST):** #2596 (PF-18n1) is labelled and queued (02:51 IST). **#2621 (PF-18h)** has its concept r2 at 08d705338 and has waited for the Lead's approval since 02:18 IST. It covers the deadline Needs you item (BR-1/2, DW1-3). Ruling 7051238493: PF-18h drops its J-74 step, and Lead C's follow-up owns the J-74 reminder walk (data-needs-you-item hooks). It builds after the approval and #2596 on main. My ETA to Lead 8: merged ~07:15 IST if approved by ~03:30.
+
 **Lead B (9) update (21 Nov 02:45 IST):** **PF-18n1 = #2596** (claude/loving-fermat-eyd2nq, head f93802d25, reviewer Approve). My conformance read is comment 7050797806. Owed: Lead 8's P-423 migration read and the label. The duplicate PF-18n1 lane stood down. **PF-18h = #2621** (claude/dreamy-faraday-j1htfh, concept first, task_11019c84). Watcher: 2596, 2621.
 
 **Lead B (9) update (21 Nov 02:44 IST):** #2568 (R1.110) also merged. Lead 8 dispatched j_38 and j_110 twice (runs 44818224820, 44818327469, main d3d014857). I sent the proof ask for R1.38 and R1.110 (and R1.40, which shares j_38) to the cloud lane **qa Q2 · R1.110, R1.40** [4c5045], one-way. I flagged to Lead 8: two PF-18n1 lanes [7dafca] [9cd4db] and two CS-DL3 part 2 lanes [eb4c43] [4bfdc0] exist; keep one writer each.
