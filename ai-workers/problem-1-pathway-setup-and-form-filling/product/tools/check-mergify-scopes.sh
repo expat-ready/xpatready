@@ -2,7 +2,8 @@
 # Mergify scopes (P-715, design/mergify-parallel-scopes-2026-11-19.md): .mergify.yml's file scopes and barrier files
 # stay true to the code. Each fenced module's scope holds its module card's own `paths:` (the cards are the one map of
 # the modules, P-615), every scope and barrier pattern matches a tracked file, and the product and pipeline queues use
-# one and the same "pipeline paths" pattern (P-717 (a)). Run by check-guards.sh. US$0, no network.
+# one and the same "pipeline paths" pattern (P-717 (a)). Run by check-guards.sh, and by ci.yml on every pull request and
+# batch (P-756 (2): job "fast", and job "ci" for notes; checked below). US$0, no network.
 #   bash product/tools/check-mergify-scopes.sh
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
@@ -56,6 +57,18 @@ else:
         n += 1
         if not any(p.match(f) for p in pinc): bad.append(f"pipeline scope: {f} is pipeline work by the queue pattern, not by the scope")
         if r.search(f) is not None: bad.append(f"pipeline pattern: {f} is in the pipeline scope, not pipeline work by the pattern")
+# P-756 (2): ci.yml runs this script on every pull request and batch, not behind a paths filter: in job "fast" (code and
+# records) with no condition of its own, and in job "ci" on the notes path, so the PR that adds a module folder fails itself.
+ci = yaml.safe_load(open(os.path.join(root, ".github/workflows/ci.yml")))
+on = ci.get("on", ci.get(True)) or {}; jobs = ci.get("jobs") or {}
+runs = lambda job, cond: [s for s in (jobs.get(job) or {}).get("steps") or [] if "check-mergify-scopes.sh" in (s.get("run") or "") and s.get("if") == cond]
+n += 1
+if not isinstance(on, dict) or "pull_request" not in on or (on.get("pull_request") or {}).get("paths") or (on.get("pull_request") or {}).get("paths-ignore"):
+    bad.append("ci.yml: no pull_request trigger without a paths filter, so this check cannot run on every PR")
+n += 1
+if not runs("fast", None): bad.append("ci.yml: job fast does not run check-mergify-scopes.sh with no condition of its own (P-756 (2))")
+n += 1
+if not runs("ci", "env.MODE != 'same' && (env.KIND == 'notes')"): bad.append("ci.yml: job ci does not run check-mergify-scopes.sh on the notes path (P-756 (2))")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)
