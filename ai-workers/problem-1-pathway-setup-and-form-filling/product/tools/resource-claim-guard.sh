@@ -11,22 +11,23 @@ judge() {
   python3 -I -c '
 import re, sys
 text = sys.stdin.read(); I = re.I
-RES = r"(machines?|runners?|compute|capacity|resources?|cpu|cores?|disk space|memory|actions minutes|job slots?)"
+# CI resources only (review 1: bare capacity, memory, resources and disk are product and code words in builder turns).
+RES = r"(machines?|runners?|job slots?|(ci|github|actions|build) (capacity|minutes|compute|machines?|runners?))"
 CLAIM = re.compile(
-  r"\b(not enough|too few|short of|shortage of|lack of|out of|no (free |spare )?)\s*(github |self-hosted |the )?" + RES +
+  r"\b(not enough|too few|short (of|on)|shortage of|lack of|out of|no (free |spare )?)\s*(github |self-hosted |the |free |spare )?" + RES +
   r"|\b" + RES + r"\b[^.\n]{0,30}\b(is|are|were|was)\b[^.\n]{0,15}\b(the )?(constraint|bottleneck|short|limited|exhausted|busy|full|saturated|scarce)\b"
   r"|\b(constraint|bottleneck)\b[^.\n]{0,40}\b(is|are|was)\b[^.\n]{0,40}\b" + RES +
-  r"|\bwait(ing|s|ed)? (for|on) (a |free |spare )?(machine|runner)s?\b|\b(machine|runner|capacity) (wait|queue|shortage|limit)s?\b", I)
-NEG = re.compile(r"\bnot\b|n(?:\x27|’)t\b|\bnever\b|\bno shortage\b|\bwithin \d|\bnot the constraint\b", I)
-# A measured number: a wait, a count of runs or jobs, a run id, GB free, a plan percentage, or the tool that measured it.
-EVID = re.compile(r"\b\d+(\.\d+)? ?(s|sec|secs|seconds|min|mins|minutes)\b|\b\d+ (runs?|jobs?) (waiting|queued|in queue)\b"
-  r"|\brun (id )?\d{8,}|\b\d{8,}\b|\b\d+(\.\d+)? ?GB\b|\b\d+ ?%|runs-waiting|get_usage|measured", I)
-hits = []
-for s in re.split(r"(?<=[.!?])\s+|\n+", text):
-    s = s.strip(" *-|>")
-    if s and CLAIM.search(s) and not NEG.search(re.sub(r"\bnot enough\b", "", s, flags=I)): hits.append(re.sub(r"\s+", " ", s)[:140])
-if hits and not EVID.search(text):
-    for h in hits: print("claim: " + h)
+  r"|\bwait(ing|s|ed)? (for|on) (a |free |spare )?(machine|runner)s?\b|\b(machine|runner) (wait|queue|shortage|limit)s?\b", I)
+# A denial of the claim itself, not any "not" in the sentence (review 1).
+NEG = re.compile(r"\b(is|are|was|were)(n\x27t|n’t| not)\b[^.\n]{0,25}\b(the )?(constraint|bottleneck|short|problem|limited|busy)\b"
+  r"|\bnot (the )?(constraint|bottleneck|problem)\b|\bno shortage\b|\bnever (short|the constraint)\b", I)
+# A measured number in the claim sentence or the one next to it (review 1: a number anywhere was too loose).
+EVID = re.compile(r"\b\d+(\.\d+)?(-\d+)? ?(s|sec|secs|seconds|min|mins|minutes)\b|\b\d+ (runs?|jobs?) (waiting|queued|in queue)\b"
+  r"|\brun (id )?\d{8,}|\bbatch \d{8,}|\b\d+(\.\d+)? ?GB\b|runs-waiting|get_usage|df -h", I)
+sents = [x.strip(" *-|>") for x in re.split(r"(?<=[.!?])\s+|\n+", text)]
+for i, s in enumerate(sents):
+    if s and CLAIM.search(s) and not NEG.search(s) and not EVID.search(" ".join(sents[max(0, i - 1):i + 2])):
+        print("claim: " + re.sub(r"\s+", " ", s)[:140])
 '; }
 [ "${1:-}" = --text ] && { judge; exit 0; }
 input=$(cat)
