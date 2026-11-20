@@ -189,7 +189,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 29 scope|product/tools/stop-check.sh|s/scope=1   # P-756/scope=   # P-756/|check-stop-check.sh
 29 owner|product/tools/stop-check.sh|s/if \[ -z "\$scope" \] .. \[ -z "\$pats" \] .. printf/if false \&\& printf/|check-stop-check.sh
 29 renames|product/tools/stop-check.sh|s/ --no-renames//|check-stop-check.sh
-29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh'
+29 crash|product/tools/stop-check.sh|/a crash blocks (fail closed)/d|check-stop-check.sh
+29 unknown|product/tools/stop-check.sh|s/^  esac; }$/    *) echo "^an-unknown-line-is-the-lead.s$";;\n  esac; }/|check-stop-check.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

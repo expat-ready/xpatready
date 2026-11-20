@@ -34,7 +34,7 @@ lane evidence/doc; echo 'See `domain/missing-page.md`.' >> "$P/domain/glossary.m
 ok "a lane whose changed file has a missing link is refused" \
   "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q 'MISSING LINK in .*domain/glossary.md: domain/missing-page.md' && echo 1)" "$out"
 ok "... and the Lead's records lines are not among its reasons" "$(jq -r .reason <<< "$out" | grep -q '^WORKFLOW LOCK' || echo 1)" "$out"
-lane runtime/rec; echo '| P-736 | 20 Nov | **A new review step (founder).** |' >> "$P/DECISIONS.md"; sed -i 's/P-735 P-734/P-736 P-735 P-734/' "$P/tools/decision-impact.sh"
+lane runtime/rec; echo '| P-736 | 20 Nov | **A new review step (founder).** |' >> "$P/DECISIONS.md"; printf '#!/bin/bash\nEXEMPT=" P-736 P-735 P-734 "   # workflow rows (test)\n' > "$P/tools/decision-impact.sh"
 git -C "$C" commit -qam rec; stop
 ok "a lane that adds a WORKFLOW LOCK row to DECISIONS itself is refused on that check-docs line" \
   "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q '^WORKFLOW LOCK: P-736' && echo 1)" "$out"
@@ -45,6 +45,12 @@ ok "a lane that renames a page the Lead's STATE links to is refused (it broke th
 lane screens/crash; cp "$P/tools/check-docs.sh" "$T/check-docs.keep"; printf '#!/bin/bash\necho "line 3: boom" >&2; exit 1\n' > "$P/tools/check-docs.sh"
 git -C "$C" update-index --assume-unchanged "$PRODREL/tools/check-docs.sh"; stop
 ok "a check-docs that fails with no problem line still blocks" "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q 'no problem line: line 3: boom' && echo 1)" "$out"
+git -C "$C" update-index --no-assume-unchanged "$PRODREL/tools/check-docs.sh"; cp "$T/check-docs.keep" "$P/tools/check-docs.sh"
+# A check-docs line the hook does not know (a new check) blocks even an app-only lane (fail closed).
+lane screens/new; echo 'export const a = 4;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app
+printf '#!/bin/bash\necho "NEW CHECK: something new is wrong"; exit 1\n' > "$P/tools/check-docs.sh"
+git -C "$C" update-index --assume-unchanged "$PRODREL/tools/check-docs.sh"; stop
+ok "a check-docs line of a kind the hook does not know blocks an app-only lane" "$([ "$blocked" = block ] && jq -r .reason <<< "$out" | grep -q '^NEW CHECK: something new' && echo 1)" "$out"
 git -C "$C" update-index --no-assume-unchanged "$PRODREL/tools/check-docs.sh"; cp "$T/check-docs.keep" "$P/tools/check-docs.sh"
 # 3. Nothing to compare with: every line still blocks (fail closed).
 lane screens/app2; echo 'export const a = 3;' > "$C/$APPREL/web/src/a.ts"; git -C "$C" commit -qam app

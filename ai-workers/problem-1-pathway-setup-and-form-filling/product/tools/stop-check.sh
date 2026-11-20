@@ -36,7 +36,8 @@ docs_files() {  # $1 a check-docs line -> the paths (extended regexes, from the 
     "RULES LAG:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/DECISIONS\.md$";;
     "RULES REGISTER:"*|"RULES TOO BIG"*) printf '%s\n' "^$PH/RULES\.md$";;
     "RULE MAP:"*) printf '%s\n' "^$PH/RULES\.md$" "^$PH/rules/";;
-    "STATE TOO BIG"*|"CURRENT LEAD:"*) printf '%s\n' "^$PH/STATE\.md$";;
+    "STATE TOO BIG"*) printf '%s\n' "^$PH/STATE\.md$";;
+    "CURRENT LEAD:"*) printf '%s\n' "^$PH/STATE\.md$" "^$PH/tools/current-lead\.sh$";;
     "TOO LONG ("*|"TOO BIG ("*) printf '^%s$\n' "$(printf '%s' "${1#*): }" | sed 's/[.[\*^$()+?{|]/\\&/g')";;
     "MISSING LINK in "*) f=${1#MISSING LINK in }; r=${f#*: }; f=${f%%: *}
       printf '^%s$\n' "$(printf '%s' "$f" | sed 's/[.[\*^$()+?{|]/\\&/g')"
