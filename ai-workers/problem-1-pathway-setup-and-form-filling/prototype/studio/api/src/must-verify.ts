@@ -124,7 +124,7 @@ export async function withdrawApprovedMustVerify(tx: Prisma.TransactionClient, a
   const note = `${c.decisionNote ? `Approved: ${c.decisionNote.replace(/\.$/, "")}. ` : ""}Withdrawn by ${actor.name}: ${why}`.slice(0, 300);
   const done = await tx.libraryChange.updateMany({ where: { id: c.id, status: "APPROVED" }, data: { status: "WITHDRAWN", decisionNote: note } });
   if (!done.count) throw problem(409, "Already decided", "Someone released or withdrew this at the same moment. Refresh to see it.");
-  await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "withdrawn", entity: "field", entityKey: c.key, summary: `${actor.name} withdrew the approved change "${c.label ?? c.key}"; the flag went back. Why: ${why}`.slice(0, 600), detail: { change: c.id } } });
+  await new Audit(tx as never).log(c.workspaceId, actor.id, "withdrawn", "field", c.key, `${actor.name} withdrew the approved change "${c.label ?? c.key}"; the flag went back. Why: ${why}`.slice(0, 600), { change: c.id });
 }
 
 /** At a release: an approved change whose field the release published with the flag is released. */
@@ -149,7 +149,7 @@ async function endMerged(tx: Prisma.TransactionClient, actorId: string, actorNam
   const note = `${c.decisionNote ? `Approved: ${c.decisionNote.replace(/\.$/, "")}. ` : ""}Ended: the field was merged into ${into}; the flag did not carry over (propose it there). ${why}`.slice(0, 300);
   const done = await tx.libraryChange.updateMany({ where: { id: c.id, status: "APPROVED" }, data: { status: "WITHDRAWN", decisionNote: note } });
   if (!done.count) throw problem(409, "Already decided", "Someone released or withdrew this at the same moment. Refresh to see it.");
-  await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actorId, action: "withdrawn", entity: "field", entityKey: c.key, summary: `${actorName}: the approved change "${c.label ?? c.key}" ended because the field was merged into ${into}; the flag did not carry over.`.slice(0, 600), detail: { change: c.id } } });
+  await new Audit(tx as never).log(c.workspaceId, actorId, "withdrawn", "field", c.key, `${actorName}: the approved change "${c.label ?? c.key}" ended because the field was merged into ${into}; the flag did not carry over.`.slice(0, 600), { change: c.id });
 }
 
 @Controller("api")
