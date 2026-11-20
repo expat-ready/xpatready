@@ -83,3 +83,21 @@ Independent reviewer, 19 Nov 2026 (screen-review skill, fresh context). I read t
 A real screen reader. An intended user's walk (D17, D20). The 410 path, which the breaker saw. The BR-7 retry with a copy attached (a Playwright limit; the server's own replay with a copy is covered by FO-13i).
 
 **Verdict: Approve 3315518afccf7c6d76d4d96235b415b2c3d0d381.** No open Blocker or Major. Shoulds (a)-(e) are fixed here or listed in a follow-up row.
+
+## Round 3: 1efbf26e7 (diff bf750ef65..1efbf26e7, P-277), 20 Nov 2026
+* **Verdict: Ship.** Nothing in the panel changed (`compliance/identity/` and `prospect-actions.tsx` untouched since bf750ef65). Journey score holds at **9.5/10** (`journey-test-reviewer-2026-11-19.md`, round 3).
+* **Merge 2b48e0ca2:** not conflict-free. `lead-page.tsx` had one conflicted hunk at the Phone row (`git show --cc`). It was resolved correctly: main's `PhoneRow` is kept and the panel mount sits under Person (`lead-page.tsx:126`). The prospect mount is unchanged (`prospect-page.tsx:133`). `MessagesPanel` comes after Enquiry (`:136`). Heading ids are unique (`fo-person`, `fo-identity`, `pf-messages`). axe is clean on the merged lead page. No sideways scroll at 375, 1024 or 1440 px with the 470-character note (my `lead-375`/`lead-1024` runs). The server's #2305 rule answers 422 with `fields.documentExpiry`. The panel's existing field mapping shows it under Expiry date and in the summary, in the same words. The client does no date check of its own, so no second rule can drift from the server's.
+* **f026e1568, J-110 W5:** the new assertion waits for the POST's own response and needs status 422 with `documentExpiry` in the body. If the server rule is removed, the server answers 201, so the assertion fails (reasoned from the code, not run as a mutation). The W5 claim no longer depends on a local patch.
+* **f026e1568, the focus wait: legitimate, and it hides no bug.** `useReturnFocus.back` focuses after a 60 ms timer (`sales/prospect-actions.tsx:35-40`). I ran a probe copy of the check (under ignored `studio/var/`, since deleted). At the drawer's detach, focus is on `BODY`. Once the wait ends, focus is on Record a check, and it stays there at +0, 100, 300, 800, 1500 and 3000 ms. The element handle is taken after detach, so a remounted button would make the wait time out and the check fail. The wait therefore cannot pass on a lost focus. The short window with focus on body comes from the shared hook and is used by every sales panel. It is not this PR's (Minor, no action here).
+* **1efbf26e7:** I viewed the screenshots. They show the merged page (Phone Edit, Messages) and the server's refusal on the field (`expired-1440`, J-110 `w5-expired-1440`).
+* **My runs at 1efbf26e7** (isolated copies :4446 and :4447, real routes; both stopped; the screenshots the runs rewrote were restored):
+  * `j_110.ts`: 11/11, exit 0.
+  * `check_fo13s_identity_browser.ts`: 28/28 twice, plus 28/28 in the probe run.
+  * `tsc` web: exit 0.
+  * Graph: G1 0, G2 0 (G3 unchanged, the known `path()` tool gap).
+  * any ratchet: 416, the same as base 568e240fd.
+  * GitHub at the head: `guard`, `module-cards` and `pr-rules` succeeded; CodeQL was still running.
+* **Open Shoulds (a) to (e) from round 2:** unchanged. None blocks. Fix them here or carry them in a follow-up row.
+* **Done when:** method, document type, country and expiry, with who and when (J-110 W3). An expired document is refused in words, by the server (W5, 422). The panel shows on the prospect page (BR-9 and M1 checks). Met.
+
+**Verdict: Approve 1efbf26e795aaca13f82ca53f9850e75e4afd65f.** No open Blocker or Major.

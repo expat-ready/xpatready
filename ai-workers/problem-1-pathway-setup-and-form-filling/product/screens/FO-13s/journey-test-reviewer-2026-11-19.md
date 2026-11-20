@@ -48,3 +48,12 @@ For each Save, `fo_identity_check` has exactly one row, and the values are as ty
 
 ## Not tested
 A real screen reader. An intended user's unaided walk (D17 and D20 stay with the founder). The 410 expired-link path (needs a 10-minute wait or a clock). A real 10 MB+ upload to the server (the client pre-check stops it).
+
+## Round 3 (1efbf26e7, 20 Nov 2026): re-run after the merge of main (#2305, the lead page's Messages panel and Phone edit)
+* **Journeys:** I re-ran 1 (record on the lead page) and 5 (expired document) through `j_110.ts` (11/11) and the browser check (28/28 twice) on isolated :4446/:4447.
+* **What held:**
+  * The server itself now refuses the expired expiry: 422 on `fields.documentExpiry`, shown on the field and in the summary, with nothing stored.
+  * The keyboard Save returns focus to Record a check, and focus stays there (probe at +0 to 3000 ms).
+  * The merged page shows Person, Identity check, Enquiry and Messages in that order at 375, 1024 and 1440 px, with no sideways scroll and axe clean.
+* **Seen, not scored:** in J-110 W5 at 1440 px, W2's "Identity check recorded." toast is still on screen while the refusal shows. This is the scripted walk's speed, and the toast belongs to a different Save.
+* **Score: unchanged at 9.5 / 10, no criterion at 0: pass.** Visual quality stays at ½: the file input alignment, round-2 Should (e).
