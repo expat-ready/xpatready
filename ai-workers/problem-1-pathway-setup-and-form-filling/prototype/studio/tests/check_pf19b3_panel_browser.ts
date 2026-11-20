@@ -138,9 +138,11 @@ try {
   await p.setViewportSize({ width: 1440, height: 900 });
   await p.goto(`${BASE}/front-office/leads/${lead51}`); await panel(p).locator("[data-message]").first().waitFor({ timeout: 30_000 });
   const firstPage = await panel(p).locator("[data-message]").count();
+  // A slow machine (6x CPU throttle): the focus must still land once the new rows are drawn (merge batch #2408's 1st try).
+  const cdp = await p.context().newCDPSession(p); await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
   await p.getByRole("button", { name: "Show older messages" }).focus(); await p.keyboard.press("Enter");
   await p.waitForFunction(() => document.querySelectorAll("[data-messages-panel] [data-message]").length === 51, null, { timeout: 15_000 }).catch(() => undefined);
-  await p.waitForTimeout(200);
+  await p.waitForTimeout(200); await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   const focused = await p.evaluate(() => { const a = document.activeElement; return a?.matches("[data-message]") ? [...document.querySelectorAll("[data-messages-panel] [data-message]")].indexOf(a) : -1; });
   ok("DW6 pass (review m1): 50 shown, then Show older messages by keyboard loads the 51st and focus moves to it (not the top of the page)",
     firstPage === 50 && (await panel(p).locator("[data-message]").count()) === 51 && focused === 50 && (await p.getByRole("button", { name: "Show older messages" }).count()) === 0, { firstPage, focused });

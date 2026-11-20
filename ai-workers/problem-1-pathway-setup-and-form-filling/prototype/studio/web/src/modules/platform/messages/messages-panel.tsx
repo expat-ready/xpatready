@@ -3,7 +3,7 @@
 // GET /api/platform/messages; the body is never shown (the server never returns it). Mounted on the front-office lead
 // page; the case page mounts it in its own row.
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button, Pill } from "@/components/ui/controls";
 import { staffApi, StaffApiError } from "../session";
 import { CHANNEL, CLASS, EVENT, MessagePage, purposeWords, reasonWords, STATE, whenWords, type Message } from "./contract";
@@ -39,8 +39,14 @@ export function MessagesPanel({ subject }: { subject: Subject }) {
   });
   const messages = q.data?.pages.flatMap((p) => p.messages) ?? [];
   // After "Show older messages", focus goes to the first newly loaded message (the button may be gone: break m1).
-  const firstNew = useRef<HTMLLIElement>(null), loadedBefore = useRef<number | null>(null);
-  const older = async () => { loadedBefore.current = messages.length; await q.fetchNextPage(); requestAnimationFrame(() => firstNew.current?.focus()); };
+  // It moves in an effect, once the new rows are on the page: a frame after the fetch can come before React has drawn
+  // them (merge batch #2408: the row was not there yet, so focus stayed behind).
+  const firstNew = useRef<HTMLLIElement>(null), loadedBefore = useRef<number | null>(null), moveFocus = useRef(false);
+  const older = () => { loadedBefore.current = messages.length; moveFocus.current = true; void q.fetchNextPage(); };
+  useEffect(() => {
+    if (!moveFocus.current || loadedBefore.current === null || messages.length <= loadedBefore.current) return;
+    moveFocus.current = false; firstNew.current?.focus();
+  }, [messages.length]);
   return (
     <section aria-labelledby="pf-messages" data-messages-panel className="rounded-xl border border-border bg-surface-raised p-4">
       <h2 id="pf-messages" className="text-sm font-semibold">Messages</h2>
@@ -52,7 +58,7 @@ export function MessagesPanel({ subject }: { subject: Subject }) {
           </div>)
         : messages.length === 0 ? <p className="mt-2 text-sm text-text-muted">No messages yet.</p>
         : <ul className="mt-1">{messages.map((m, i) => <Row key={m.id} m={m} focusRef={i === loadedBefore.current ? firstNew : undefined} />)}</ul>}
-      {q.hasNextPage ? <Button variant="secondary" className="mt-2" busy={q.isFetchingNextPage} onClick={() => void older()}>Show older messages</Button> : null}
+      {q.hasNextPage ? <Button variant="secondary" className="mt-2" busy={q.isFetchingNextPage} onClick={older}>Show older messages</Button> : null}
     </section>
   );
 }
