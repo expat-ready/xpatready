@@ -1,0 +1,30 @@
+{
+  "item": "R1.8",
+  "name": "8 Audit trail nobody can edit",
+  "pr": 2527,
+  "sha": "d67a5c77c0877a67032aafabc513b7ee6c69c542",
+  "run_id": "44804391860",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44804391860",
+  "at": "2026-11-20T19:45:27.020Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_8.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44804391860/artifacts/14663465339",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.8-d67a5c77c0877a67032aafabc513b7ee6c69c542.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
