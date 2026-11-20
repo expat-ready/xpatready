@@ -3,7 +3,7 @@
 qa 9 (front office and platform, cloud lane). Main under test: **54ba0cce3** (FO-2pv #2323 merged 23:51 UTC 19 Nov). Opus 5.5, high. Live AI off, US$0, no priced button.
 
 ## R1.31: **Works on condition**, so the row stays **Partial** until P-339's runs exist
-The fresh Opus reader (high effort, read only; ~85% confident) gives **Works**, once walks.yml `j_31` is green twice on main's head. Lead 97 was asked on #2296.
+The fresh Opus reader (high effort, read only; ~85% confident) gives **Works**, once the independent re-run is green. The pack run is the automatic item-proof **44641146727** on 54ba0cce3: PASS, journey j_31 (P-728 (3)). The independent re-run is walks.yml `j_31` on main, asked of Lead 98 on #2296.
 - **Totals per currency, never mixed: by screens.**
   - `tests/qa/check_r131_gate_a_value.ts` **6/6 twice.** It failed 1/6 on 19 Nov. A person types 5000 on the prospect's Value panel; 500000 USD is stored; the board's open totals read "USD 5,000" at 400, 1024 and 1440 px.
   - j_31 / J-30 **55/55 twice:** values set by screens (keyboard, decimals, the firm's default currency); CAD 6,200 · USD 3,000 side by side, never summed.
@@ -14,7 +14,7 @@ The fresh Opus reader (high effort, read only; ~85% confident) gives **Works**, 
 - **Closed:** QA-530 (fixed by FO-2pv, retested) and QA-531 (out of scope, P-741).
 - Reader's Minor note: no API test that a move *out of* Won is refused (only the screen path). Not a row.
 
-## R1.30: **Partial** (Works refused)
+## R1.30: **Partial** (Works refused). Its records go in their own PR (Lead 98: one records PR per item)
 The fresh Opus reader (~80% confident) gives Partial, on **QA-533** (Gap, Major).
 - The prospects List and board cannot be filtered by source.
 - `GET /prospects?source=` is silently ignored. AG-2-23 says "board/list".
