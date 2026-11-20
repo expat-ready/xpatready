@@ -66,6 +66,9 @@ export class InvoiceDrafts {
       if (!inv) return notFound("invoice");
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
+      // The database's own text rule, asked first, so a description it would refuse is a 400 at the field, never a 500.
+      const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${l.description}, 500) as ok`;
+      if (!text?.ok) badField("description", "The description needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
       const last = await tx.moneyInvoiceLine.aggregate({ where: firmScope(ctx.firmId, { invoiceId: id }), _max: { position: true } });
       const position = (last._max.position ?? 0) + 1;
       if (position > 500) problem(409, "Not possible now", "An invoice holds at most 500 lines. Nothing was saved.", { code: "TOO_MANY_LINES" });

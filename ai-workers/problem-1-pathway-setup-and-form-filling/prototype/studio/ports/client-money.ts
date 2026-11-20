@@ -27,11 +27,12 @@ export const DraftIn = z.strictObject({
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
-/** POST /api/front-office/money/invoices/:id/lines: one line. The rate is in parts per million (13 % is 130000), 0 when absent;
+/** POST /api/front-office/money/invoices/:id/lines: one line. The description's last word is the database's own text rule
+ *  (money_text_ok: some visible letter, number or punctuation; no bidi or C1 control), which the route asks before writing. The rate is in parts per million (13 % is 130000), 0 when absent;
  *  a government fee is never taxed. The currency, when sent, must be the invoice's. */
 export const LineIn = z.strictObject({
   kind: LineKind,
-  description: z.string().trim().min(1, "Describe the line.").max(500, "At most 500 characters.").regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters."),
+  description: z.string().trim().min(1, "Describe the line.").refine((t) => [...t].length <= 500, "At most 500 characters.").regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters."),
   quantity: whole("The quantity", 1, 100_000).default(1),
   unitMinor: whole("The unit amount (in cents)", 0, MINOR_MAX),
   ratePpm: whole("The tax rate (parts per million)", 0, 1_000_000).default(0),

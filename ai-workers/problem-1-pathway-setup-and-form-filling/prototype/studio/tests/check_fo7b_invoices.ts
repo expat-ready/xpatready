@@ -155,6 +155,15 @@ try {
   const badUnit = await Promise.all([-1, 0.5, "100"].map((unitMinor) => line(d12.body.id, fee(0, 0, { unitMinor }))));
   ok("FO-7b R12 fail: a unit amount of −1, 0.5 cents or text → 400 at unitMinor (never a float total), nothing written", badUnit.every((x) => x.status === 400 && x.body.errors?.[0]?.field === "unitMinor") && linesNow() === n0, badUnit.map((x) => x.body?.errors));
 
+  // ----------------------------------------------------------------- descriptions (break report 8a243502f, Major 1)
+  n0 = linesNow();
+  const odd = ["\u200b", "Fee \u0085 x", "Fee \u0080", "Fee \u202e gnp.exe", "Fee \u2066x\u2069", "\u0301\u0301", "\u3164"];
+  const oddAns = await Promise.all(odd.map((description) => line(d12.body.id, fee(100, 0, { description }))));
+  ok("FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler) → 400 at description, never 500, nothing written",
+    oddAns.every((x) => x.status === 400 && x.body.errors?.[0]?.field === "description") && linesNow() === n0, oddAns.map((x) => [x.status, x.body?.errors?.[0]?.field]));
+  const emoji = await line(d12.body.id, fee(100, 0, { description: "\u{1F4B8}".repeat(300) })), words = await line(d12.body.id, fee(100, 0, { description: "Frais de dossier — été, 申请费, رسوم" }));
+  ok("FO-7b text pass: 300 emoji (600 UTF-16 units, 300 characters) and mixed-script words are stored as sent", emoji.status === 201 && words.status === 201 && linesNow() === String(Number(n0) + 2), [emoji.body?.errors, words.body?.errors]);
+
   // ------------------------------------------------------------------------------------- R13: a client's tax
   const d13 = await draft(); const r13 = await line(d13.body.id, fee(85000, 130000, { taxMinor: 1, amountMinor: 5 }));
   ok("FO-7b R13 pass: a client-sent taxMinor (1) and amountMinor (5) are ignored: the stored line is 850.00 and 110.50", r13.status === 201 && stored(d13.body.id) === "1:FEE:85000:130000:11050:CAD", r13.body);
