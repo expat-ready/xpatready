@@ -60,6 +60,9 @@ act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "
 # 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
 # on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
 python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
+# 2c2. The nightly (E1, P-772, P-651): one ACT when the newest finished scheduled nightly is not green (20 Nov: cancelled,
+# 3 of 8 parts cut at 59 min; 19 Nov: failure; nothing said so), one when none started in 30 h. Read-only (P-371).
+nw=$(python3 -I "$TOOLS/nightly-watch.py" 2>&1); echo "$nw"; act=$((act + $(grep -c '^ACT' <<<"$nw"))); seen "$nw"
 # 2d. Proof and Lead-read waits (founder 20 Nov 23:1x IST, typed: "make them as a enforced rules and make them live"; STATE
 # hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
