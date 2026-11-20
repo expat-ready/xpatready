@@ -2,7 +2,7 @@
 
 **Item:** R1.16 "Automated testing". The tech lead (Lead 4, series 3) asked at 22:2x IST, after #2565 (5b637a119) made `skeleton` a merge condition for product batches. Earlier score: `2026-11-20-capability-R1.16.md` (Partial on 90535a94e, held only by "a red suite blocks it" for skeleton).
 
-**Verdict: the clause is met by configuration. Row stays Partial until skeleton is green on main's head 24662257b, twice (P-339).** Main's app code changed in 35 `prototype/` files since the two green dispatches on 90535a94e, and no skeleton run exists on a tree equal to main's `prototype/` tree. Dispatch asked in the PR comment. Reader: see below.
+**Verdict: the clause is met by configuration. Row stays Partial until skeleton is green on main's head 24662257b, twice (P-339).** Main's app code changed in 35 `prototype/` files since the two green dispatches on 90535a94e, and no skeleton run exists on a tree equal to main's `prototype/` tree. Dispatch asked in the PR comment. The fresh Opus reader gives **Partial, ~85%**, for the same reason, and found two holes qa had missed (QA-614 and Q4).
 
 ## "A red suite blocks it", against `.mergify.yml` on main
 | Queue | Can it carry image paths? | Condition | Holds a red skeleton? |
@@ -25,13 +25,17 @@
 
 So 11 clean batch runs since #2517 (the Lead's count, P-717 (b)), none red. **No red batch has been seen held yet**: the rule is proven by reading, not by a held batch.
 
-## Bugs: 0 new. QA-449 closed (both parts fixed: #2517, #2565)
-Moved to `BUGS-CLOSED.md`.
+## Bugs: 0 Blocker · 0 Critical · 0 Major · 1 Minor new (QA-614); QA-449 closed (both parts fixed: #2517, #2565)
+- **QA-449**: moved to `BUGS-CLOSED.md`.
+- **QA-614** (Gap · Minor, found by the reader and checked by qa): skeleton's path list and the guard regex miss parts of the image. `studio/Dockerfile:40-41` copies all of `prototype/` and `official-sources/`. The app reads `official-sources/` at run time (`api/src/core.ts:19`), but it is on neither list. A change to it alone gets no container proof. The risk is low, because ci's suites read the same files from the checkout.
+- Stale text: `skeleton.yml:12-16` still says "report-only".
 
 ## Questions for the Lead
 1. **Please dispatch `skeleton` twice on main 24662257b** (Actions › skeleton › Run workflow; cloud lanes get 403, P-439). When both are green, qa moves R1.16 to Works with the run ids.
 2. Minor, no row: a PR changing only `skeleton.yml` goes to the pipeline queue, where skeleton is not a merge condition (it still runs, report-only). A broken skeleton.yml could merge on ci alone, and the next product batch would then be held. Add `or: [check-success = skeleton, -files ~= ^\.github/workflows/skeleton\.yml$]` to the pipeline queue? Recommended: yes, it is one line and keeps the rule symmetrical.
 3. The regex is kept in step with `skeleton.yml`'s `paths` by hand (comment at `:199`). A check like qa's comparison in `check-skeleton-scope.sh` would catch a drift. *Later · Scaffolding.*
+
+4. **Merges outside Mergify skip skeleton.** The `main` ruleset requires only `ci` (`rules/branches/main`), and a merge outside a batch has happened before (#2533). So clause 1 holds only for merges that go through Mergify. Accept this (recommended: say so in WAY-OF-WORKING), or add skeleton to the ruleset. A ruleset check has no path guard, so a records PR would then need a skeleton status too.
 
 ## Could not test
 - A red batch actually held: none seen (only runs on main's head or a seeded red batch would show it; qa does not seed batches).
