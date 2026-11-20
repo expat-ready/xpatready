@@ -1,0 +1,12 @@
+PASS  J-110 setup: the Sample firm, a person with a lead owned by the Case Officer, and a retainer template
+PASS  J-110 W1 pass: before any check, the retainer Send answers SENT with the warning naming the person
+PASS  J-110 W1: the lead page says the same sentence in its Identity check section
+PASS  J-110 W2: the Case Officer saves the check by screens: one row for one Save
+PASS  J-110 W3 pass: it is listed with plain words, the last 4 only, the expiry and who checked
+PASS  J-110 W3 fail: the no-check sentence is gone
+PASS  J-110 W3: Open copy saves the same bytes that were uploaded
+PASS  J-110 W4 fail: after the check, the retainer Send answers SENT with no warning
+PASS  J-110 W5: the server refuses the expired document as the basis (422 on fields.documentExpiry, FO-13i part 2, QA-510)
+PASS  J-110 W5: an expiry before the firm's today shows the sentence on the field, the panel stays open and nothing is stored
+PASS  J-110: no page error in any browser step
+11 passed, 0 failed

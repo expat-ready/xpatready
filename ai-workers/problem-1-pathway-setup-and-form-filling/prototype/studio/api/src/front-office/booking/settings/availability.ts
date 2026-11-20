@@ -8,7 +8,7 @@
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import type { AuditPort } from "../../../../../ports/audit.ts";
+import type { AuditPort, AuditValues } from "../../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../../ports/clock.ts";
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
@@ -124,7 +124,7 @@ export class AvailabilityService {
       if (b.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
       const set = await tx.foAvailabilitySet.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, name: b.name, timeZone, isDefault: b.isDefault ?? false } });
       if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: set.firmId, staffId: target, setId: set.id, timeZone, ...w })) });
-      await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id, name_after: auditName(set.name), timeZone_after: timeZone, isDefault_after: set.isDefault, windows_after: auditWindows(windows) });
+      await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id }, { before: null, after: { name: auditName(set.name), timeZone, isDefault: set.isDefault, windows: auditWindows(windows) } });
       return setView(await this.readSet(tx, ctx.firmId, target, set.id));
     }));
   }
@@ -147,9 +147,9 @@ export class AvailabilityService {
         if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: before.firmId, staffId: target, setId: before.id, timeZone, ...w })) });
       } else if (timeZone !== before.timeZone) await tx.foAvailability.updateMany({ where: firmScope(ctx.firmId, { setId: before.id }), data: { timeZone } });
       const after = await this.readSet(tx, ctx.firmId, target, before.id);
-      await this.audit(tx, ctx, target, "availability.changed", "Availability changed.", {
-        setId: after.id, name_before: auditName(before.name), name_after: auditName(after.name), timeZone_before: before.timeZone, timeZone_after: after.timeZone,
-        isDefault_before: before.isDefault, isDefault_after: after.isDefault, windows_before: auditWindows(before.windows), windows_after: auditWindows(after.windows) });
+      await this.audit(tx, ctx, target, "availability.changed", "Availability changed.", { setId: after.id }, {
+        before: { name: auditName(before.name), timeZone: before.timeZone, isDefault: before.isDefault, windows: auditWindows(before.windows) },
+        after: { name: auditName(after.name), timeZone: after.timeZone, isDefault: after.isDefault, windows: auditWindows(after.windows) } });
       return setView(after);
     }));
   }
@@ -162,7 +162,8 @@ export class AvailabilityService {
       if (before.isDefault) throw problem(409, "conflict", "This set cannot be deleted", HOURS_WORDS.deleteDefault, { code: "DEFAULT_SET" });
       const fallbacks = await tx.foTypeHostSet.count({ where: firmScope(ctx.firmId, { setId: before.id }) });
       await tx.foAvailabilitySet.delete({ where: { id: before.id } });   // its windows and the types' choices go with it (CASCADE)
-      await this.audit(tx, ctx, target, "availability.set_deleted", "Availability changed: a set of hours was deleted.", { setId: before.id, name_before: auditName(before.name), windows_before: auditWindows(before.windows), typesBackOnDefault: fallbacks });
+      await this.audit(tx, ctx, target, "availability.set_deleted", "Availability changed: a set of hours was deleted.", { setId: before.id, typesBackOnDefault: fallbacks },
+        { before: { name: auditName(before.name), timeZone: before.timeZone, isDefault: before.isDefault, windows: auditWindows(before.windows) }, after: null });
       return { id: before.id, deleted: true, typesBackOnDefault: fallbacks };
     });
   }
@@ -182,7 +183,7 @@ export class AvailabilityService {
       if (setId) await tx.foTypeHostSet.upsert({ where: { firmId_typeId_staffId: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid } }, create: { firmId: firmScope(ctx.firmId).firmId, typeId: tid, staffId: sid, setId }, update: { setId } });
       else await tx.foTypeHostSet.deleteMany({ where: firmScope(ctx.firmId, { typeId: tid, staffId: sid }) });
       if ((before?.setId ?? null) !== setId)
-        await this.audit(tx, ctx, sid, "availability.type_set_changed", "Availability changed: a booking type's hours for a host.", { typeId: tid, setId_before: before?.setId ?? null, setId_after: setId });
+        await this.audit(tx, ctx, sid, "availability.type_set_changed", "Availability changed: a booking type's hours for a host.", { typeId: tid }, { before: { setId: before?.setId ?? null }, after: { setId } });
       return { typeId: tid, staffId: sid, setId, usesDefault: setId === null };
     });
   }
@@ -201,7 +202,7 @@ export class AvailabilityService {
     if (b.endsAt.getTime() - b.startsAt.getTime() > 366 * DAY) throw invalid({ endsAt: HOURS_WORDS.timeOffLength });
     return this.db.$transaction(async (tx) => {
       const row = await tx.foTimeOff.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, startsAt: b.startsAt, endsAt: b.endsAt, createdBy: `staff:${ctx.staffId}` } });
-      await this.audit(tx, ctx, target, "time_off.added", "Availability changed: time off added.", { timeOffId: row.id, startsAt_after: row.startsAt.toISOString(), endsAt_after: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.added", "Availability changed: time off added.", { timeOffId: row.id }, { before: null, after: { startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() } });
       return offView(row);
     });
   }
@@ -213,7 +214,7 @@ export class AvailabilityService {
       const row = await tx.foTimeOff.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase(), staffId: target }) });
       if (!row) return notInFirm("time off");
       await tx.foTimeOff.delete({ where: { id: row.id } });
-      await this.audit(tx, ctx, target, "time_off.removed", "Availability changed: time off removed.", { timeOffId: row.id, startsAt_before: row.startsAt.toISOString(), endsAt_before: row.endsAt.toISOString() });
+      await this.audit(tx, ctx, target, "time_off.removed", "Availability changed: time off removed.", { timeOffId: row.id }, { before: { startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() }, after: null });
       return { id: row.id, deleted: true };
     });
   }
@@ -266,7 +267,8 @@ export class AvailabilityService {
     return s ?? notInFirm("set of hours");
   }
 
-  private audit(tx: Tx, ctx: StaffContext, staffId: string, action: string, summary: string, detail: Record<string, string | number | boolean | null | string[]>) {
-    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_availability", entityKey: staffId, summary, detail: { targetStaffId: staffId, ...detail } });
+  /** R1.8 (QA-594): every line passes the row's values before and after (null for the side that does not exist). */
+  private audit(tx: Tx, ctx: StaffContext, staffId: string, action: string, summary: string, detail: Record<string, string | number | boolean | null | string[]>, v: { before: AuditValues | null; after: AuditValues | null }) {
+    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_availability", entityKey: staffId, summary, detail: { targetStaffId: staffId, ...detail }, before: v.before, after: v.after });
   }
 }
