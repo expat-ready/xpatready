@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 05:03 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 05:08 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,8 +15,9 @@ updated: 2026-11-21 05:03 IST: Lead 8 (series 3) current; checks every 10 min ·
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
 (3d) **02:18 IST:** wave 3 J0 lanes started (cloud, Opus high): R1.5 (task_337374e9), R1.13 (task_6d28c109), R1.14+R1.15 (task_de89f0f8). Allow notes moved to their own PR **#2623** (waves.tsv is not a record); fresh Opus reviewer subagent reviewing; Lead labels on its Approve + green. Records PR #2591 relabelled on d8c2a79e8 (P-773, P-774, STATE). Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93) once #2608 merges (same sign-up area, P-774 (c)). Owed at next check: app view in the browser with Show more; #2596 migration read + NotificationPort ruling; #2594 question; 13 tooling PR diff reads.
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
+(3s) **05:1x IST:** j_26 walks GREEN (44837061226, 44837165973); qa Q1 re-scoring R1.26 (ZR126). #2637 blocked by a conflict with main → qa Q2 told (ZC2637, delivered); re-approve its new head. #2478 restamped to 20261121030000 (SQL identical) → Lead read + labelled. Queued: #2658 (J-38 W9), #2621 (PF-18h), #2660 (records P-775).
 (3r) **05:1x IST:** **P-775** (size exception: code+tests < 800 plus the PR's own screens records) recorded; records PR **#2660** (P-775, RULES as of P-774, STATE) labelled. #2621 PF-18h Approved at 65f56d5cc, body has 'Size exception: P-775' → after #2660 merges, re-run pr-rules, then label. Then CS-DL3 part 3 (R1.74) builds on it.
-(3q) **05:0x IST:** **#2649 (R1.26 QA-617 fix) MERGED**; walks j_26 twice in the browser (44837061226, 44837165973); qa Q1 told (tag ZR126, delivered). #2478 hit queue-fresh: its migration 20261120200000 is now older than main's 20261121010000/020000 → lane restamps; Lead re-reads (rename only) and relabels. #2658 (J-38 W9) queued; its PR walks showed red at 23:1xZ: check before merge. #2637 labelled, not yet queued.
+(3q) 05:0x check (R1.26 fix merged; walks; #2478 queue-fresh restamp): word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
 (3m)-(3p) 03:5x-04:4x check pointers: word for word in `product/history/STATE-2026-11-21-0415-lead8s3-item-3m.md`.
 (3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
 (3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
