@@ -16,7 +16,8 @@
   /** AG-2-49 rule 3: a send sooner than 2 s after the draw reads as a bot, so a quick person is held until then, never lost. */
   var MIN_FILL_MS = 2100;
   var UTM = [["utm_source", "utmSource"], ["utm_medium", "utmMedium"], ["utm_campaign", "utmCampaign"], ["utm_term", "utmTerm"], ["utm_content", "utmContent"]];
-  var CLICK = [["gclid", "GCLID"], ["fbclid", "FBCLID"], ["msclkid", "MSCLKID"], ["ttclid", "TTCLID"]];
+  // The four named kinds first; any other platform's click id is kept with kind OTHER (AG-2-8a §12), never guessed.
+  var CLICK = [["gclid", "GCLID"], ["fbclid", "FBCLID"], ["msclkid", "MSCLKID"], ["ttclid", "TTCLID"], ["gbraid", "OTHER"], ["wbraid", "OTHER"], ["dclid", "OTHER"], ["li_fat_id", "OTHER"], ["twclid", "OTHER"]];
   var TRAP = "website";   // the honeypot (AG-2-49 rule 3): people never see or reach it
   var cut = function (s, n) { return Array.from(String(s)).slice(0, n).join(""); };
 
@@ -112,7 +113,8 @@
       lab.appendChild(tick); lab.appendChild(tickText);
       f.insertBefore(lab, trapBox);
     }
-    var trapBox = el("div", { "class": "trap", "aria-hidden": "true" });
+    // Hidden by the `hidden` attribute (the browser's own rule, which no page CSP can block), not by our styles alone (break M1).
+    var trapBox = el("div", { "class": "trap", "aria-hidden": "true", hidden: "" });
     var trap = el("input", { type: "text", name: TRAP, tabindex: "-1", autocomplete: "off" });
     trapBox.appendChild(trap); f.appendChild(trapBox);
     drawTick();
@@ -182,14 +184,26 @@
         var onField = {}, other = [];
         Object.keys(fields).forEach(function (k) { if (errs[k]) onField[k] = fields[k]; else other.push(fields[k]); });
         if (Object.keys(onField).length) { show(onField, null); return; }
-        // A refusal the page cannot read (too many sends, the network): plain words, and the answers stay.
-        show({}, typeof p.detail === "string" && p.status ? p.detail : "The form could not be sent. Please wait a minute and try again.");
+        if (typeof p.detail === "string" && p.status) { show({}, p.detail); return; }
+        // A refusal the page cannot read (no CORS header: the form switched off, too many sends, the network). Ask the
+        // form's read once: refused too → the form is not available (AG-2-5 rule 11, break m1); read → wait and retry.
+        // The read's new submissionId is not used: the visitor's send keeps its own, so a retry is still one lead.
+        return call(encodeURIComponent(formRef)).then(function () {
+          show({}, "The form could not be sent. Please wait a minute and try again.");
+        }, function (q) {
+          if (q && q.status === 429) show({}, "The form could not be sent. Please wait a minute and try again.");
+          else done("This form is not available.", "not-available");
+        });
       }).then(function () { busy = false; button.disabled = false; button.removeAttribute("aria-busy"); });
     });
 
-    var style = el("style", null, CSS);
+    // A constructed style sheet where the browser has one (a page CSP without 'unsafe-inline' does not block it, break
+    // M1); a <style> element otherwise. Either way nothing a person must not see depends on it (the honeypot is `hidden`).
     root.textContent = "";
-    root.appendChild(style); root.appendChild(box);
+    var sheet = null;
+    try { if ("adoptedStyleSheets" in root && typeof CSSStyleSheet === "function") { sheet = new CSSStyleSheet(); sheet.replaceSync(CSS); root.adoptedStyleSheets = [sheet]; } } catch (e) { sheet = null; }
+    if (!sheet) root.appendChild(el("style", null, CSS));
+    root.appendChild(box);
     host.setAttribute("data-expatready-state", "form");
   }
 

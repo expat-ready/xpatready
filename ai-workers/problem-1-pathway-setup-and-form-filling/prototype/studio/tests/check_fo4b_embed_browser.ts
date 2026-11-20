@@ -45,6 +45,8 @@ const hostServer: Server = createServer((req, res) => {
   const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
     + `<style>body{font-family:Georgia,serif;margin:0;padding:16px;color:#222}input{background:#fee}</style></head><body><main><h1>Sample firm's own site</h1>${body}<p id="after">The rest of the firm's page stays as it was.</p></main></body></html>`;
   res.setHeader("content-type", "text/html; charset=utf-8");
+  // A firm with a strict CSP (break M1): our origin allowed for script and connect, no inline style.
+  if (path === "/csp.html") { res.setHeader("content-security-policy", `default-src 'self'; script-src ${BASE}; connect-src ${BASE}; style-src 'self'`); return res.end(page("Contact us, strict (Sample)", `<h2>Contact us</h2>${embedSnippet(BASE, token)}`).replace(/<style>.*?<\/style>/, "")); }
   if (path === "/host.html") return res.end(page("Contact us (Sample)", `<h2 id="contact">Contact us</h2>${embedSnippet(BASE, token)}`));
   if (path === "/ref.html") return res.end(page("A blog post (Sample)", `<p><a id="go" href="/host.html${(req.url ?? "").includes("?") ? `?${(req.url ?? "").split("?")[1]}` : ""}">Contact the firm</a></p>`));
   res.statusCode = 404; res.end("not here");
@@ -177,6 +179,31 @@ const fast = await v2.evaluate(async ([base, tok, given]) => {
 }, [BASE, token, `Fast${run}`] as const);
 ok("FO-4b fail: a send under 2 s after the draw, from the allowed site, is thanked the same and nothing is saved", fast.status === 201 && fast.body.thankYouText === thanksText && leadsOf(`Fast${run}`) === 0, fast);
 
+// 5b. A strict CSP on the firm's page (break M1): the hidden field stays unseen and unreachable, a person's send is a lead.
+const { ctx: c6, p: v6 } = await context(1440);
+const cspBlocked: string[] = []; v6.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) cspBlocked.push(m.text().slice(0, 120)); });
+await v6.goto(`${SITE}/csp.html?gbraid=g-777`); await v6.getByLabel("First name").waitFor({ timeout: 30_000 });
+const trapSeen = await v6.locator("[data-expatready-form] input[name=website]").isVisible();
+ok("FO-4b fail (break M1): under a strict CSP the hidden field is not visible to a person", !trapSeen);
+ok("FO-4b (break M1): under a strict CSP the form keeps its own styles (no inline style for the CSP to block)", await v6.getByRole("button", { name: "Send my enquiry" }).evaluate((b) => getComputedStyle(b).borderRadius) === "8px" && cspBlocked.length === 0, cspBlocked);
+const strict = `Strict${run}`;
+await fill(v6, { given: strict, email: `strict-${run}@example.org` }); await v6.keyboard.press("Tab");
+await v6.waitForTimeout(2200); await v6.getByRole("button", { name: "Send my enquiry" }).click();
+await v6.locator('[data-form-state="thanks"]').waitFor({ timeout: 15_000 });
+ok("FO-4b (break M1): a person's send from the strict-CSP page makes one lead", leadsOf(strict) === 1);
+const strictAtt = sql(`select coalesce(a.click_id,'') || '|' || coalesce(a.click_id_kind::text,'') from fo_lead_attribution a join fo_lead l on l.id = a.lead_id join fo_person p on p.id = l.person_id where p.given_names = '${strict}'`);
+ok("FO-4b (break m3): a click id of another platform (gbraid) is kept with kind OTHER", strictAtt === "g-777|OTHER", strictAtt);
+await shot(v6, "fo4b-08-strict-csp-1440");
+// 5c. The form switched off after it was drawn (break m1): "This form is not available", nothing saved.
+await v6.goto(`${SITE}/host.html`); await v6.getByLabel("First name").waitFor({ timeout: 30_000 });
+sql(`update fo_web_form set enabled = false where public_token = '${token}' returning 1`);
+const offName = `Off${run}`;
+await fill(v6, { given: offName, email: `off-${run}@example.org` }); await v6.waitForTimeout(2200);
+await v6.getByRole("button", { name: "Send my enquiry" }).click();
+await v6.locator('[data-form-state="not-available"], [data-expatready-form] #xr-summary:not([hidden])').first().waitFor({ timeout: 15_000 });
+ok("FO-4b fail (break m1): a form switched off after it was drawn says \"This form is not available.\" and saves nothing", (await v6.locator('[data-form-state="not-available"]').count()) === 1 && (await v6.locator('[data-form-state="not-available"]').innerText()).trim() === "This form is not available." && leadsOf(offName) === 0);
+sql(`update fo_web_form set enabled = true where public_token = '${token}' returning 1`);
+
 // 6. The same page on a site not allowed: not drawn, the link stays, its send is refused.
 const { ctx: c3, p: v3 } = await context(1440);
 await v3.goto(`${OTHER}/host.html?utm_campaign=spring`);
@@ -209,7 +236,7 @@ ok("FO-4b fail: past the per-address limit the send is refused with \"Not sent\"
 await shot(v5, "fo4b-07-too-many-1440");
 
 ok("FO-4b: no page error in the browser", errors.length === 0, errors);
-for (const c of [c1, c2, c3, c4, c5]) await c.close();
+for (const c of [c1, c2, c3, c4, c5, c6]) await c.close();
 await browser.close();
 hostServer.close();
 await db.$disconnect();
