@@ -6,12 +6,18 @@
 // FO-2 part 3 (sales/prospects.ts): Engage (Individual), the prospects list and read (@OwnOrAll, swept by PF-6b), a
 // person's move and Mark lost (keys edit, lose), Convert and Undo convert (convert). FO-4 part 2a: the reasons Mark lost
 // offers (`prospects/lost-reasons`, read-only).
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
+// FO-4w (R1.26): the web-form settings the embed needs, Owner and Admin (`agent/prospect:configure-form`): `web-forms`
+// (read) and `web-forms/:id/allowed-sites` (replace the allowed sites; web-form-settings.ts).
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
+import type { PrismaClient } from "@prisma/client";
+import { Db } from "../../core.ts";
 import { OwnOrAll, PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { Activity } from "./calls.ts";
 import { Leads } from "./leads.ts";
 import { Prospects } from "./prospects.ts";
+import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { Timeline } from "./timeline.ts";
+import { readWebForms, saveAllowedSites } from "./web-form-settings.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
@@ -19,7 +25,15 @@ type B = Record<string, unknown>;
 @Controller("api/front-office")
 export class SalesController {
   constructor(@Inject(Leads) private readonly leads: Leads, @Inject(Prospects) private readonly prospects: Prospects,
-    @Inject(Activity) private readonly activity: Activity, @Inject(Timeline) private readonly timeline: Timeline) {}
+    @Inject(Activity) private readonly activity: Activity, @Inject(Timeline) private readonly timeline: Timeline,
+    @Inject(Db) private readonly db: PrismaClient, @Inject(SALES_PORTS) private readonly ports: SalesPorts) {}
+  private origin() { return this.ports.publicOrigin ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`; }
+
+  @Get("web-forms") @PermissionKeys("agent/prospect:configure-form")
+  webForms(@Req() r: R) { return readWebForms(this.db, staffOf(r), this.origin()); }
+
+  @Put("web-forms/:id/allowed-sites") @PermissionKeys("agent/prospect:configure-form")
+  allowedSites(@Req() r: R, @Param("id") id: string, @Body() b: B) { return saveAllowedSites(this.db, this.ports.audit, staffOf(r), id, b, this.origin()); }
 
   @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   list(@Req() r: R, @Query("view") view?: string, @Query("source") source?: string | string[], @Query("owner") owner?: string, @Query("from") from?: string, @Query("to") to?: string) { return this.leads.list(staffOf(r), view, source, { owner, from, to }); }
