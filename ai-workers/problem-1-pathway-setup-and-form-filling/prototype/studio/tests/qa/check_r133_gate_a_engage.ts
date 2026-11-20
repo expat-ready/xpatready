@@ -1,8 +1,10 @@
 // qa gate A for R1.33 (Phone numbers), 20 Nov, after FO-9b #2405 (P-317, P-348 (3)): by screens only, from R1.33's last
 // output to the next capability's first step. R1.33 ends with a lead whose phone is readable E.164 (a web-form "Fix
 // number" fixed by staff, or a trunk-0 spelling read at the door); the next capability is working that lead: Engage
-// (R1.30 / R1.31's first step, J-30 W2). The walk passes only if Engage takes the lead to a prospect whose page shows the
-// number in E.164, and the prospect's intake reads that same number underneath (the output is usable downstream).
+// (R1.30 / R1.31's first step, J-30 W2). The walk passes if Engage takes each such lead to one Engaged prospect, the
+// prospect's "From lead" link opens a lead page showing the number in E.164 with no Fix number, and underneath the
+// engaged person holds that number, readable (the prospect page itself shows no contact details, by design; Engage does
+// not read the phone, so this gate shows the number survives the step, not that the step uses it).
 //   G1 a visitor sends the web form with "+44 (0) 20 7946 0958"; the Owner opens the lead: E.164 shown, no Fix number;
 //   G2 Engage → Engage as Individual on that lead page: one prospect, Engaged; its "From lead" link back shows +442079460958
 //      (the prospect page carries no contact details by design; a person goes back to the lead to call);
