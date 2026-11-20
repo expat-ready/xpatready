@@ -42,7 +42,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 8. After every start, check the app view for duplicate sessions.
 9. Read the failed log before any re-run; failures outside the PR's code are covered, never forced.
 10. The Lead posts `/run full` for lanes (their comments are defused, P-751).
-11. Proactive: unowned active-wave items get lanes or cards every check; use the founder's resources (reset credit, P-758).
+11. Proactive: unowned active-wave items get lanes or cards every check; use the founder's resources: browser authority (P-758) and the reset credit he applies at 98% weekly (founder 20 Nov, STATE).
 12. Judge by proven, never by merges.
 
 ## Thresholds and what to do
