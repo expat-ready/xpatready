@@ -62,7 +62,7 @@ act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "
 # Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
 gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName > "$STATE_DIR/prs-body.json" 2>/dev/null
 wp=$(python3 -I "$TOOLS/waves.py" wip --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$wp"; act=$((act + $(grep -c '^ACT' <<<"$wp"))); seen "$wp"
-grep -q '^wip   ' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
+grep -qE '^(wip   |ACT   wip:)' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
