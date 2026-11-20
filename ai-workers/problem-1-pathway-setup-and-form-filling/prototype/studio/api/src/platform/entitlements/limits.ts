@@ -43,8 +43,10 @@ export class PgEntitlements implements EntitlementPort {
   async check(firm: string, metric: EntitlementMetric, used?: number): Promise<EntitlementResult> {
     if (used === undefined) throw new TypeError("PgEntitlements.check: `used` is the caller's own count (the port never reads a usage)");
     z.number().int().min(0).parse(used);
-    const { firmId, limit, storageHard } = await this.limitOf(firm, metric);
+    const { firmId, planCode, limit, storageHard } = await this.limitOf(firm, metric);
     if (limit === null) return { allowed: true };
+    // PF-15c: a hard metric with no live plan (or no firm by that key) is refused and says so; storage keeps its rule below.
+    if (planCode === null && metric !== "storage_mb") return { allowed: false, metric, limit: 0, used, noLivePlan: true };
     if (metric === "storage_mb") {
       if (!firmId) return { allowed: false, metric, limit, used };   // a firm this scope cannot read: fail closed (break m2)
       if (used <= limit || !storageHard) return { allowed: true };

@@ -1,0 +1,22 @@
+PASS  J-37 W1 the times: axe finds no WCAG A/AA violation — []
+PASS  J-37 W1: the public page lists the day's free times, among them Thursday 19 November, 12:20 America/Toronto time — {"offered":142,"aim":"Thursday 19 November, 12:20 America/Toronto time"}
+PASS  J-37 W3: booker B, in a second browser, has the same time open (Thursday 19 November, 12:20 America/Toronto time)
+PASS  J-37 W2 the confirmation: axe finds no WCAG A/AA violation — []
+PASS  J-37 W2: booker A books it: "You are booked" for Thursday 19 November, 12:20 America/Toronto time — "You are booked\n\nThursday 19 November, 12:20 America/Toronto time, with Sample J-37 firm\n\nFree consultation, 5 minutes, Video call\n\nYour join link will follow.\n\nWe have sent the details to booker-a-mwn"
+PASS  J-37 W3 the refusal: axe finds no WCAG A/AA violation — []
+PASS  J-37 W3: booker B is refused on the page: "This time was just booked." and "Please choose another time." — "This time was just booked.\n\nPlease choose another time.\n\nNext free times\nThursday 19 November, 12:35 America/Toronto time\nThursday 19 November, 12:40 America/Toronto time\nThursday 19 November, 12:45 A"
+PASS  J-37 W3: B is offered the next free times, none of them A's time — ["Thursday 19 November, 12:35 America/Toronto time","Thursday 19 November, 12:40 America/Toronto time","Thursday 19 November, 12:45 America/Toronto time","Thursday 19 November, 12:50 America/Toronto time"]
+PASS  J-37 W3: underneath, one booking at that time, A's; none for B — ["2026-11-19T17:20:00.000Z"]
+PASS  J-37 W4: A's confirmation arrives in the demo inbox, for that time — "Your Free consultation is booked | Hello Ana,\n\nYour Free consultation with Sample J-37 firm is booked: Thursday, November 19, 2026 at 12:20 p.m. (America/Toronto). Video call. Your join link will follow.\n\nTo reschedule or cancel: http://localhost:4437/boo
+PASS  J-37 DW1: A's confirmation is an outbox row SENT by the local adapter (the in-memory fake wrote none) — [{"state":"SENT","providerId":"local:ff5cbb0d-bdbc-447a-aabb-8823e30c654c","idempotencyKey":"mail:booking:bff7b089-fc67-411f-979a-e3406fad4c61:0:mail-person"}]
+PASS  J-37 DW2: A is a person in the database (FO-2's arrival; the fake kept people in memory only) — {"email":"booker-a-mwnqwohm@j37-client.example","givenNames":"Ana"}
+PASS  J-37 W4b: before the restart, A's 1 h reminder waits in the job table (the 24 h one is already past, so none) — [{"key":"booking:bff7b089-fc67-411f-979a-e3406fad4c61:0:reminder-1h","state":"created"}]
+PASS  J-37 W4b: the API restarted and is ready, before the reminder is due — {"ready":200,"msLeft":622090}
+PASS  J-37 W4b: no reminder before its due time — ["Your Free consultation is booked"]
+PASS  J-37 W4b / DW2: after the restart A's 1 h reminder arrives in the demo inbox at its due time (11:20), naming the time — {"got":[["Your Free consultation is booked","2026-11-19T16:09:32.348Z"],["Reminder: your Free consultation in one hour","2026-11-19T16:20:00.834Z"]],"due":"2026-11-19T16:20:00.000Z"}
+PASS  J-37 W4b: the reminder ran once (one outbox row) — 1
+PASS  J-37 W3: B got no mail at all (nothing was booked for B), the inbox answering 200 — {"status":200,"subjects":[]}
+PASS  J-37 W5: A's confirmation carries A's manage link, on this copy — "http://localhost:4437/book/j37-mwnqwohm/manage#<token>"
+PASS  J-37 W5 A's own page: axe finds no WCAG A/AA violation — []
+PASS  J-37 W5: the link opens A's own page for this booking (Thursday 19 November, 12:20 America/Toronto time), which offers Reschedule: row 42's first step — {"state":"manage","when":"Your booking: Thursday 19 November, 12:20 America/Toronto time, with Sample J-37 firm."}
+PASS  secret check: no key or secret value in /home/runner/work/_temp/walk

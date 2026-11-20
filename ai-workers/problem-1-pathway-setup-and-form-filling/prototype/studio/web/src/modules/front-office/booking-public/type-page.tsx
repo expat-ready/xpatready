@@ -22,7 +22,8 @@ const FIELD_WORDS: Record<string, string> = {
   givenNames: "Enter your given names.", familyName: "Enter your family name.", email: "Enter an email like name@example.com.",
   phone: "Enter a phone number with its country code, e.g. +1 416 555 0100.",
 };
-const phoneOk = (p: string) => /^\+[1-9][0-9]{6,14}$/.test(p.replace(/[\s.()-]/g, ""));
+/** FO-9b (P-747): any typed number is taken; the firm reads it, and one it cannot read is kept and flagged for staff. */
+const phoneOk = (p: string) => p.trim().length > 0;
 
 export function BookingTypePage() {
   const { firmKey = "", slug = "" } = useParams();

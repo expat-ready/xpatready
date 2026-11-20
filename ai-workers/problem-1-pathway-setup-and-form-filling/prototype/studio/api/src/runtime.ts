@@ -10,7 +10,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { caseName, type CaseListRow, ConfirmSection, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
+import { caseName, type CaseListRow, CaseListQuery, ConfirmSection, QuestionnaireQuery, fillsText, Reconfirm, notReadyForCases, releaseLabel, NewCase, OpenCaseFromOffer, type OpenableRelease, NewPerson, NewRow, NoneApply, PutAnswer, UpdatePerson, type CaseRole } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
 import { caseView, checkValue, isClientField, optionsOf, OWN_LINK, pqrView, sectionAnswers, shapeOf, type Answer, type CaseView, type GroupAnswer, type Mode, type Participant, type Row } from "../../engine/runtime/case.ts";
 import { ownerOf, privateFrom, progressOf } from "../../engine/runtime/privacy.ts"; // C6.16
@@ -38,7 +38,7 @@ import { pinChain } from "../../engine/runtime/release-update.ts";
 import { openingStages } from "../../engine/runtime/stages.ts";
 import { routeOf, routesOf, writeOpeningStages } from "./routes-data.ts";
 import { groupOfCombination, PgCaseCount } from "./case-count.ts"; // CS-C1b
-import { fakeEntitlements, type EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
+import type { EntitlementPort } from "../../ports/entitlement.ts"; // CS-C1b
 /** C6.17 (P-78): the channel of an answer written from a stage record (the officer entered it on "Done before we started"). */
 export const STAGE_RECORD = "stage_record";
 import { ASKED_RELATIONS, cellAsked, isListRelation, listWords, relativeKey, relativeOf, SUBJECT_OR_RELATIVE, type Relation } from "../../engine/runtime/relatives.ts";
@@ -104,6 +104,8 @@ function pinned<C extends { combinationId: string; pins: { combinationId: string
   const participants: C["participants"] = c.participants.filter((p) => p.role !== "case" || p.subjectId === stage!.applicationSubjectId);
   return { ...c, pins, participants, stage: stage!, allPins: c.pins };
 }
+/** PF-15c: the plan-limit port for one opening, made on its transaction so the limit is read under the opening's lock. */
+export type CaseLimits = (tx: Prisma.TransactionClient) => EntitlementPort;
 export type Reached = Awaited<ReturnType<Runtime["reach"]>>;
 /** C6.16 (challenge M2): who saves an answer, row or group answer: case staff and the case's client (simulated by
  *  x-actor), or an adult on their own link (/api/link/*, actor "person:<subject id>", channel own_link, only their own
@@ -142,10 +144,12 @@ export function pleaseCheckWords(documentName: string, changedSince: boolean): s
 export class Runtime {
   constructor(@Inject(Db) private readonly db: Db, @Inject(Workspace) private readonly ws: Workspace, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
 
-  /** CS-C1b (contract §6): the plan limits; the allow-all fake until PF-15's adapter is bound. */
-  private entitlements: EntitlementPort = fakeEntitlements();
-  /** Binds another EntitlementPort (PF-15's adapter; a test's limits). Returns the one before. */
-  useEntitlements(next: EntitlementPort): EntitlementPort { const was = this.entitlements; this.entitlements = next; return was; }
+  /** CS-C1b (contract §6): the plan limits. PF-15c: features/platform-entitlements.ts binds PgEntitlements, made on
+   *  each opening's transaction (`CaseLimits`); a suite binds its own port. Unbound, an opening fails loudly: never a
+   *  silent allow-all. */
+  private entitlements: CaseLimits = () => { throw new Error("Runtime: no EntitlementPort bound (features/platform-entitlements.ts binds PgEntitlements; a suite binds its own)"); };
+  /** Binds another EntitlementPort, or one made on each opening's transaction. Returns the one before. */
+  useEntitlements(next: EntitlementPort | CaseLimits): EntitlementPort | CaseLimits { const was = this.entitlements; this.entitlements = typeof next === "function" ? next : () => next; return was; }
 
   /** The case, if this person may reach it: the officer any case of the workspace, a client only their own (others are
    *  "not found", as the team's cross-tenant rule). Configuration people hold neither duty. The pin must still match
@@ -322,9 +326,10 @@ export class Runtime {
         if (b.idempotencyKey && await tx.case.findFirst({ where: { workspaceId, firmKey: firm!.key, idempotencyKey: b.idempotencyKey }, select: { id: true } })) return REPLAYED;
         const group = await groupOfCombination(tx, b.combinationId);
         const used = (await new PgCaseCount(tx, firm!.key).activeCounts(tx))[group];
-        const limit = await this.entitlements.check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
+        const limit = await this.entitlements(tx).check(firm!.key, group === "corporate" ? "active_corporate_cases" : "active_individual_cases", used);
         if (!limit.allowed) throw new HttpException({ type: "https://expatready.local/problems/plan-limit", title: "Plan limit reached", status: 409, code: "PLAN_LIMIT_REACHED", metric: limit.metric, limit: limit.limit, used: limit.used,
-          detail: `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn.` }, HttpStatus.CONFLICT);
+          upgradePath: "Change the plan in Settings, Billing, or close or withdraw a case first.",   // PF-15c (SA-3-5; break F3)
+          detail: limit.noLivePlan ? "Your firm has no live subscription, so no case can be opened. Nothing was created. Choose a plan in Settings, Billing." : `Your firm's plan allows ${limit.limit} active ${group} case${limit.limit === 1 ? "" : "s"} and ${limit.used} ${limit.used === 1 ? "is" : "are"} active, so this case was not opened. Nothing was created. A case stops counting once every filing has a decision or it is withdrawn; or choose a larger plan in Settings, Billing.` }, HttpStatus.CONFLICT);
         // CS-K1 (contract §5, P-588 (2)): the case's client, after the limit check and before the case row. Given, it is a
         // client of the opener's firm (else 404, nothing written); not given, a new one named after the principal. A refused
         // opening rolls it back with everything else.
@@ -564,6 +569,13 @@ export class Runtime {
     const fromFirm = f ? representativeAnswers(f, (await this.db.caseTeamMember.findMany({ where: { caseId: c.id } })).map((m): Member => ({ ...m, role: m.role as Member["role"] })), caseSubject, phoneParts) : [];
     const firmGives = new Set(fromFirm.map((x) => `${x.subjectId}|${x.field}`));
     return { answers: [...a.filter((x) => !firmGives.has(`${x.subjectId}|${x.field}`)), ...fromFirm], rows: r, groups };
+  }
+
+  /** GET /runtime/cases/:id/questionnaire (CS-V1 part 3): ?mode= once, one of its words; pqr, the Agent view, or the
+   *  Client questionnaire (sqr, client or none), as before. */
+  async questionnaire(actor: Actor, caseId: string, queryIn: unknown) {
+    const { mode } = parse(QuestionnaireQuery, queryIn ?? {});
+    return mode === "pqr" ? this.pqr(actor, caseId) : this.view(actor, caseId, mode === "agent" ? "agent" : "sqr");
   }
 
   async view(actor: Actor, caseId: string, mode: Mode) {
@@ -1028,10 +1040,11 @@ export class Runtime {
    *  in one query each for the whole page, never one per row. A case not yet prepared holds none (0).
    *  A24-2 (P-492, design §6): `q=<words>` keeps the cases whose case number, own reference, a person's name or an IRCC
    *  application number contains them (any letter case), inside the same firm filter; the cursor pages the kept cases. */
-  async list(actor: Actor, q: { take?: string; after?: string; client?: string; q?: unknown }) {
+  async list(actor: Actor, queryIn: unknown) {
     need(actor, "case");
+    const q = parse(CaseListQuery, queryIn ?? {}); // CS-V1 part 3: only take, after, client and q, each once
     const workspaceId = await this.ws.id();
-    const take = Math.min(Math.max(Number(q.take ?? 50) || 50, 1), 100);
+    const take = Math.min(Math.max(Math.trunc(Number(q.take ?? 50)) || 50, 1), 100); // review m2: take=1.5 is 1, never a 500
     // Break m5: one login or none; a list or an empty value is refused, never read as "every client".
     if (q.client !== undefined && (typeof q.client !== "string" || !q.client)) fieldError("client", "Name one client login.");
     const client = q.client ?? null;
@@ -1071,7 +1084,7 @@ const searchWhere = (w: string) => {
 @Controller("api/runtime")
 export class RuntimeController {
   constructor(@Inject(Runtime) private readonly r: Runtime) {}
-  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: { take?: string; after?: string; client?: string; q?: unknown }) { return this.r.list(actorOf(a), q); }
+  @Get("cases") list(@Headers("x-actor") a: H, @Query() q: unknown) { return this.r.list(actorOf(a), q); }
   @Get("next-case-number") nextCaseNumber(@Headers("x-actor") a: H) { return this.r.nextCaseNumber(actorOf(a)); }
   @Post("cases") create(@Headers("x-actor") a: H, @Body() b: unknown) { return this.r.createCase(actorOf(a), b); }
   /** FO-8: a staff session (PF-4's guard and the key decide, never x-actor), as features/clients.ts's reads. */
@@ -1081,7 +1094,7 @@ export class RuntimeController {
   @Get("cases/:id") get(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.get(actorOf(a), id); }
   @Post("cases/:id/people") addPerson(@Headers("x-actor") a: H, @Param("id") id: string, @Body() b: unknown) { return this.r.addPerson(actorOf(a), id, b); }
   @Patch("cases/:id/people/:subject") updatePerson(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Body() b: unknown) { return this.r.updatePerson(actorOf(a), id, s, b); }
-  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query("mode") m?: string) { return m === "pqr" ? this.r.pqr(actorOf(a), id) : this.r.view(actorOf(a), id, m === "agent" ? "agent" : "sqr"); }
+  @Get("cases/:id/questionnaire") view(@Headers("x-actor") a: H, @Param("id") id: string, @Query() q: unknown) { return this.r.questionnaire(actorOf(a), id, q); }
   @Post("cases/:id/review") review(@Headers("x-actor") a: H, @Param("id") id: string) { return this.r.review(actorOf(a), id); }
   @Put("cases/:id/answers/:subject/:field") answer(@Headers("x-actor") a: H, @Param("id") id: string, @Param("subject") s: string, @Param("field") f: string, @Body() b: unknown) { return this.r.putAnswer(actorOf(a), id, s, f, b); }
   /** B128: a relative's answer, its key (`<person>/parent_1`) written as two path parts. */
