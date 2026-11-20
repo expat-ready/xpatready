@@ -163,3 +163,45 @@ The attacks are in `prototype/studio/var/break_pf5p2_r3.ts` (git-ignored). It us
 * **r4 (X3): an outage pages once per receipt.** 200 receipts failing in one outage raised **200** `job_stuck` alerts at their 5th try. Each alert uses the receipt's id as `entityKey`, so `LogAlerts`' 5-minute repeat key (kind, firm, queue, entityKey; `observability/alerts.ts:34`) never merges them. That module's own rule is "one page per incident, not one per retry". `webhook.ts:95` should raise per queue (no `entityKey`) or once per sweep with a count.
 
 Breaker verdict: no Blocker or Major at d04803ca052d3054b8b8a358a13d403d4516ea92
+
+## Round 4: the per-firm bypass lines and the hold at `9dc6a19eda13c0a5927b12d8733ccc4696e6f2cc`
+
+Scope: what changed since round 3. That is the `platform.bypass` line on `platform.billing.stripe-webhook` and `job:platform.billing.webhook_sweep` (`firm-scope.ts:116-117`, `webhook.ts:80`), and `PaymentHoldGate` on case opening and the other signed-in routes. Both named suites pass (pf5 90/90, pf12b 56/56). The probes are in `/tmp/claude-0/brk1959/` (`probe.mts`, `probe3.mts` over HTTP on an isolated copy at :4581 with walls on and the `xr_app` role; `sweep.mts` runs `BillingEvents` on that copy's database). The copy was stopped in the same command. Stripe fake only, US$0.
+
+### What held
+* **The line comes before any change, and only to the firm read.**
+  * S1: a receipt whose subscription read keeps failing writes its line to the matched firm (6 tries, 6 lines) and to no other firm (0).
+  * S3: an event that names firm B's customer and firm A's subscription matches A's row by subscription id. The line goes to A only, and the receipt records A.
+  * S4: an event that matches no row writes no line anywhere, and its outcome is "no firm matched".
+* **Fail-closed (S2).** With the bypass recorder throwing, the sweep leaves the firm `ACTIVE/ACTIVE` and the receipt `retry 7` (no change). Once the recorder works again, the next sweep moves the firm to `PAYMENT_HOLD` and writes the line.
+* **Nesting (S6).** The sweep's use inside the webhook's use is refused (`BypassRefused`, "may not run inside").
+* **Over HTTP, with walls on.**
+  * An unsigned or wrongly signed body gets 400 and writes no receipt and no line.
+  * A signed event's line records `POST` and actor `system:platform.billing.stripe-webhook`.
+  * A non-uuid `X-Request-Id` ("hello Client A, passport 123") is not kept: the line carries the server's own uuid. A uuid is kept.
+  * An upper-case firm id in the event metadata is lower-cased and matched.
+* **Rows read on the bypass without a line.** None found. `webhook_receipt` is not a walled table (not in `pf12_firm_walls`), so the door's `createMany`/`updateMany`/`count`, the sweep's `findMany` and the set-aside update cross no wall. `refresh()` runs under `withFirm`, so its reads and writes are walled as that firm. `useCardAndResume` and `holdDraftInvoice` are calls to Stripe, not to the database. The sweep in the server goes through `PlatformJobs.handle` → `asJob` (`platform-jobs.ts:68`), so it runs on its named use.
+* **The hold (H1).**
+  * The Owner of the held `sample-firm` gets 402 `PAYMENT_HOLD` on all 127 routes that answer 401 without a token and accept a staff token. The only exceptions are billing, `me`, terms and session, as designed.
+  * `POST /api/runtime/clients/:id/open-case` gets 402 while held and 400 (it reaches the handler) when active. `runtime_case` stays unchanged.
+  * `//open-case` and `open%2Dcase` get 404.
+  * `/API/RUNTIME/…/OPEN-CASE` gets 403: `ConfigReadGuard` matches case routes in exact case only and refuses a bearer token there, so the route is refused, not bypassed.
+  * The gate's own firm read works under the walls (it does not fail open).
+* **Not a finding (scope).** 40 case routes answer 401 even with a staff token, and 374 configuration or case routes refuse a bearer token (403 link-only). These routes use the simulated `x-actor` identity, not a staff session, so the gate (signed-in routes) does not apply to them.
+
+### New Minor
+* **r5: one `platform.bypass` line per handling try.**
+  * Repro: S1 in `sweep.mts`. A receipt matches a firm's row, and then the handling fails after the match: the Stripe subscription read fails, or `useCardAndResume` fails, while `event()` works.
+  * Expected: the firm's trail shows that the platform crossed its wall for this event, without repeating itself.
+  * Actual: 6 failing sweeps wrote 6 identical lines. Over the 72-hour retry window (round 3) one stuck event writes about 860 lines to that firm's trail, plus one for each Stripe redelivery (`webhook.ts:80`, `:96`).
+  * The rule (one line per use and firm) is met, so this is noise, not a gap.
+* **r6: on a fake-billing server anyone can post a "signed" event, and each one writes a line.**
+  * The fake's signature is a public FNV hash of the fixed text `fake-whsec` (`ports/billing.ts:153`, `:179-181`).
+  * The fake is used wherever no Stripe key is set and `PLATFORM_ENVIRONMENT=local`: the Mac, the lanes, the demo and `deploy/compose.test.yml` (`runtime-ports.ts:43`).
+  * Repro: W1 in `probe.mts`. Sign 25 events naming `metadata.firm_id` of `sample-firm` in the fake's way.
+  * Actual: all 25 get 200. They write 25 `platform.bypass` lines to that firm's trail and 25 open receipts, which the sweep retries for 72 hours (with r4's alerts).
+  * No firm or subscription changed: the fake knows no subscriptions, so `refresh` throws after the line.
+  * Not reachable in test or production: those need the real key, and the real adapter checks Stripe's HMAC.
+  * Expected: a forged request writes nothing to a firm's trail.
+
+Round 4: no Blocker or Major at 9dc6a19ed
