@@ -77,3 +77,21 @@ A real screen reader; real Cognito and Stripe; the 2-hour stamp expiry (simulate
 **Blockers:** none. **Majors:** none.
 
 Verdict: Approve fd662e5ba8c9c96d2a4f85e21d9383108e007d50
+
+## Re-review (diff only: `git diff fd662e5ba..df097cb79`, 20 Nov 2026)
+I read the three code files, `challenge.md`, `break-report.md` and the list of changed screenshots. I did not re-walk or re-run anything. I rely on the builder's re-runs at e992a1991 (the same code as df097cb79): `check_pf5s1_signup_browser.ts` 48/48 and `j_100.ts` 27/27.
+* **S4, fixed:** `acceptedTerms` is now `values.agree ? ids : []` (`signup-page.tsx`, `post`). The door is now the second check of the tick. `again` posts the `v` that was sent (agree true), so Send it again is unaffected.
+* **S3, fixed:** "Prices unavailable" also shows when no plan has a monthly or yearly price (`pricing-page.tsx:38`).
+* **The tick's error clears on ticking:** fixed (the `onChange` drops `acceptedTerms` only when `b` is true).
+* **Breaker m1, fixed:** an `inFlight` ref is set before the first `await` in `send`, `again` and `confirm`, and cleared in `finally`. On Confirm, `done` stops any further submit, and a late failure returns from `catch` without replacing the done view (`finally` still runs).
+* **Breaker m2, fixed:** when Send it again meets `RELOAD` or an `acceptedTerms` refusal, the page re-reads the terms, clears the tick, returns to the form and shows the door's words on the tick. This matches `send`, and the key acceptance point is unchanged.
+* **Breaker m7, words fixed:** "filled in" appears only for a 6-digit code from the link.
+* **S1, S2 and m3–m6:** recorded in `challenge.md`, each with its owner. That meets "never silent".
+* **New Minors (not blocking):**
+  - When m2 sends the person back to the form, focus is not moved to the summary.
+  - Its words "The terms have changed since you signed up" are also shown for `RELOAD`, where the real cause is a page that is too old.
+  - A garbled `#code=` is still pre-filled as typed (`useState(link.current?.code ?? "")`). The submit check refuses it with "Type the 6 digits from the email.", so no harm comes of it.
+
+**Blockers:** none. **Majors:** none.
+
+Verdict: Approve df097cb7906ae78641abba50140fc47df0f1fe58
