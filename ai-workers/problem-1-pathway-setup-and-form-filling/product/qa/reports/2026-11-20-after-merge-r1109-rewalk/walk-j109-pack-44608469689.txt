@@ -1,0 +1,26 @@
+PASS  J-109 setup: the Sample firm's Owner and Case Manager, a Read-only person, and Fri 13 Nov a closed day
+PASS  J-109 W1: the Case Manager's drawer offers themselves as the handler
+PASS  J-109 W1 pass: a Case Manager records a complaint in the drawer; it opens on its record page, received 12 Nov, handled by them
+PASS  J-109 W1: the screen sent one record request, with an Idempotency-Key (PF-21i), and the row keeps it
+PASS  J-109 W1 fail: the same key with another complaint's words is refused (422), and nothing new is recorded
+PASS  J-109 DW1 pass: the acknowledgement reminder is a row in pg-boss's table (PlatformJobs), due at the acknowledge-by instant
+PASS  J-109 DW1: already past its date, the reminder is run by the app's pg-boss worker (completed, and its Reminder sent event is on the record; an in-memory runner runs nothing)
+PASS  J-109 DW2 pass: the service reads the system clock: received a minute ago by this machine's clock is recorded
+PASS  J-109 DW1 fail: a complaint not yet due waits in pg-boss and is not run; its acknowledgement cancels it there (it never runs)
+PASS  J-109 DW2 fail: received five minutes ahead of this machine's clock is refused as in the future
+PASS  J-109 W2 pass: the record page shows the acknowledge-by date: 2 business days after 12 Nov, skipping closed Fri 13 Nov (Tue 17 Nov, close of business)
+PASS  J-109 W2 fail: it is not the date without the closed day (Mon 16 Nov)
+PASS  J-109 W2: past its date it says Needs you with the business days late
+PASS  J-109 W3 pass: a Read-only person's list does not hold the complaint
+PASS  J-109 W3: a Read-only person is not offered Record a complaint
+PASS  J-109 W3: opened by its address, a Read-only person sees Not found, and nothing of it
+PASS  J-109 W3: the API answers them 404 for it
+PASS  J-109 W3 fail: the Owner does see it, under Overdue
+PASS  J-109 W4: the Owner's one filled button is Record the acknowledgement
+PASS  J-109 W4 pass: the Owner acknowledges it: the timeline's newest event is Acknowledged and it is no longer Needs you
+PASS  J-109 W4 fail: closing without an outcome is refused in the panel, and it stays open
+PASS  J-109 W4 pass: the Owner closes it with an outcome: Closed, outcome Resolved, no action buttons left but a note
+PASS  J-109 W5 fail: the closed complaint has left Open
+PASS  J-109 W5 pass: it ends at the closed complaint in the list, under Closed, with its Closed status
+PASS  J-109 W5: its handler, the Case Manager, sees it closed in their list too
+PASS  J-109: no page error in any browser step

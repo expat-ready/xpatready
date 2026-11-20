@@ -23,6 +23,7 @@ Program structure, combinations and their setup: rules, questions, sources, chec
 
 **Tables.** libraryChange, combination, canonicalField, programDef, factSource, govFormDef, draftingJob, proposalItem, formFieldMap, sourceEntry, logicalSection, derivedField, auditEvent.
 **Tests.** `tests/check_b102_worked_out.ts`, `tests/check_b52_own_yes_no.ts`, `tests/check_b78_section_names.ts`, `tests/check_b124_rests_on.ts`, `tests/check_sh3_resolver.ts`, `tests/check_as1m_eligibility_move.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.configuration.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Hard-code a program, combination or form number (P-319).

@@ -1,0 +1,21 @@
+Fresh reader (Opus 5.5, high; ran nothing, P-303), 19 Nov 2026 ~08:05 IST, main c600f2150. Verbatim:
+
+Reader verdict R1.6: WORKS
+
+1. Runs are on main's tree. CI run 44436500145 checked out 452f3d780, a merge of 8f790acf0 into 9d440b2f4. 9d440b2f4 is an ancestor of 8f790acf0, so the merge's tree is 8f790acf0's tree. The API gives tree 330bc607... for both 8f790acf0 and c600f2150. All 8 shards, types, fast and 5 regression jobs are green, with no FAIL or SKIP lines. The two walks.yml runs (44444740569 job 135294264936, 44444754316 job 135294355664) fetched c600f2150 itself, and each ended "63 PASS, 0 FAIL" (lines 441 / 437). That is two separate runs on GitHub's machines.
+2. Deny by default. check_pf4_identity.ts 119/119 (shard job 135268337947, line 1786): a route that declares no key stops the app from starting, and a declared key the person lacks gets 403 (check_pf4_identity.ts:112, :168). check_pf6b_permission_rules.ts 31/31 (line 1788).
+3. Own versus all. Walk lines: own by role and own by setting, with a control run that has no own rule. DW2 (the setting off, then on) at line 424 / 420. check_fo2v_lead_visibility.ts 14/14 (job 135268338023).
+4. Money apart. DW1, read back from the audit, at 421 / 417. A1-A4 MONEY at 432 / 428. check_pf6m_money_line 12/12 and check_pf6m2_invite_recheck 19/19. check_pf6_staff_browser 90/90 (job 135268337915).
+5. Licence apart. A1-A4 LICENCE at 434 / 430.
+6. Wrong role by URL, on screen and API. Line 378 / 380 (403 for ?view=unassigned) and W1 step 4 at 423 / 419 (/platform/team refused on screen, 403 by API).
+7. Gate A. The scripted walk ends on My account, row 5's first step (W1 step 6, line 427 / 423). qa also walked it by hand: the report's "PF-6 part 2b (R1.6)" section, PASS.
+8. Parts. All merged: PF-6b #1808, PF-6 part 1 #1912, part 2a #2044, part 2b #2127, PF-6m #1945, PF-6m2 #2045, FO-2v #1933, J-6 part 1 #1914, part 2 #2172. Both #2127 and #2172 are ancestors of c600f2150.
+9. Bugs. No open Major or Critical names R1.6. QA-480, QA-504 and QA-505 are open but Minor.
+
+Gaps (none blocks Works by the rules):
+(a) No live route declares a licence-class key. Licence is proven only on DW5's test route.
+(b) A route with no key stops the app at start-up; there is no 403 at run time as the acceptance line literally says. qa's tests/qa/check_r16_deny_sweep.ts is not run in CI.
+(c) qa's hands-on gate A walk was on 2ad701363, not c600f2150. Platform identity and sales code changed after it; only the scripted walk covers the head.
+(d) The "represent" duty hands out all 3 licence keys together. Whether licence keys "never come with another key" is open to reading (QA-480's kind of question).
+(e) Reset two-step and the two-step set-up link are not built and have no bug row. They are PF-6 scope, not part of R1.6's acceptance line.
+(f) R1.6's row on main still reads Partial and holds no run ids yet.

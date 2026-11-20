@@ -13,7 +13,7 @@ import { BillingSignatureError, type BillingEvent, type BillingPort, type Billin
 import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
-import { asBypass, firmScope, withFirm } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirms, withFirm } from "../firm-scope.ts";
 import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -75,6 +75,9 @@ export class BillingEvents {
     const row = /^(customer\.subscription|invoice|checkout\.session)\./.test(ev.type) ? await this.findSubscription(ev) : null;   // other events change nothing here (review m2)
     let outcome = "no firm matched";
     if (row) {
+      // PF-12b: the match read crossed the walls; the firm's trail gets its platform.bypass line before anything changes
+      // (a line that cannot be written stops here and leaves the receipt for the sweep).
+      await touchFirms(this.db, [row.firmId]);
       if (ev.type === "checkout.session.completed" && ev.setupIntentId && row.stripeSubscriptionId) await this.ports.billing.useCardAndResume(row.stripeSubscriptionId, ev.setupIntentId);
       const subId = ev.subscriptionId ?? row.stripeSubscriptionId;
       outcome = subId ? await this.refresh(row.id, row.firmId, subId) : "no subscription yet";

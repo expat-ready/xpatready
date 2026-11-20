@@ -76,6 +76,16 @@ export function reasonOf(v: unknown, required: boolean, what = "reason"): string
   if ([...t].length > 200) return problem(400, "Shorten the reason", `The ${what} is at most 200 characters.`, { code: "REASON_TOO_LONG" });
   return t;
 }
+/** PF-4dn (AG-1-10): the invitee's name, optional. Trimmed; 1-120 characters; no control, format or line-break character.
+ *  Empty or spaces only is no name (accept then uses the part of the email before the @). */
+export function displayNameOf(v: unknown): string | null {
+  if (v === undefined || v === null || (typeof v === "string" && !v.trim() && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v))) return null;   // a line or paragraph separator alone is refused, not "no name" (Devin)
+  if (typeof v !== "string") return problem(400, "Check the name", "The name is text.", { code: "DISPLAY_NAME_INVALID" });
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the name", "The name has a line break or an invisible character. Type it again on one line.", { code: "DISPLAY_NAME_INVALID" });
+  const t = v.trim();
+  if ([...t].length > 120) return problem(400, "Shorten the name", "The name is at most 120 characters.", { code: "DISPLAY_NAME_TOO_LONG" });
+  return t;
+}
 const textOf = (v: unknown, what: string) => {
   if (typeof v !== "string" || !v.trim() || [...v.trim()].length > 100 || /[\p{Cc}\p{Cf}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the licence record", `Give the ${what} (1 to 100 characters).`, { code: "CREDENTIAL_INVALID" });
   return v.trim();
@@ -135,7 +145,7 @@ export class PlatformIdentity implements OnModuleInit {
       // Always, even on a first recorded sign-in (review r2-m1): an older session that never made a call (Cognito device A
       // signed in before device B) is ended too.
       await tx.platformSessionRevocation.create({ data: { firmId, staffId, revokedAt: new Date(atMs - 1), reason: "another-device" } });
-      await auditStaff(tx, { firmId, firmKey, actor: actorWord(staffId), action: "platform.staff.sign_in", entityKey: staffId, summary: `a staff member signed in (${via}); ${hadSession ? "their older session was ended" : "first session"}`, detail: { staffId, via, at: at.toISOString() } });
+      await auditStaff(tx, { firmId, firmKey, actor: actorWord(staffId), action: "platform.staff.sign_in", entityKey: staffId, summary: `a staff member signed in (${via}); ${hadSession ? "their older session was ended" : "first session"}`, detail: { staffId, via, at: at.toISOString() }, before: { lastSignInAt: row.last?.toISOString() ?? null }, after: { lastSignInAt: at.toISOString() } });
       return atMs;
     });
   }
@@ -222,7 +232,7 @@ export class PlatformIdentity implements OnModuleInit {
     return owners.length === 1 && owners[0].staffId === targetId;
   }
   private async refuseOnlyOwner(actor: StaffContext, targetId: string, attempted: string): Promise<never> {
-    await this.db.$transaction(async (tx) => auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.only_owner_refused", entityKey: targetId, summary: `refused: ${attempted} the firm's only active Owner`, detail: { staffId: targetId, attempted } }));
+    await this.db.$transaction(async (tx) => auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.only_owner_refused", entityKey: targetId, summary: `refused: ${attempted} the firm's only active Owner`, detail: { staffId: targetId, attempted }, before: null, after: null }));
     return forbidden(ONLY_OWNER, "ONLY_OWNER");
   }
 
@@ -246,7 +256,7 @@ export class PlatformIdentity implements OnModuleInit {
       const now = new Date(this.clock.now());
       for (const g of t.grants.filter((g) => removed.includes(g.role))) await tx.platformRoleGrant.update({ where: { id: g.id }, data: { endedAt: now, endedBy: actorWord(actor.staffId), endReason: reason ?? "roles changed" } });
       for (const role of added) await tx.platformRoleGrant.create({ data: { firmId: actor.firmId, staffId: t.id, role, grantedBy: actorWord(actor.staffId), grantedAt: now } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason }, before: { roles: from }, after: { roles: to } });
       // PF-6b ruling 2 (b): a role that brings money keys writes its own line (the one shared helper, PF-6m).
       await writeMoneyKeysGranted(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), staffId: t.id, roles: added });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_ROLES_CHANGED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
@@ -271,7 +281,7 @@ export class PlatformIdentity implements OnModuleInit {
       const now = new Date(this.clock.now());
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId: t.id, revokedAt: now, reason: "deactivated" } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_DEACTIVATED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
       return { staffId: t.id, status: "DEACTIVATED" as const };
     });
@@ -288,7 +298,7 @@ export class PlatformIdentity implements OnModuleInit {
       if (t.grants.some((g) => g.role === "OWNER")) this.stepUp(actor, "reactivating an Owner");   // break M3
       await this.seatCheck(tx, actor.firmId);
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "ACTIVE", deactivationReason: null } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.reactivated", entityKey: t.id, summary: "a staff member was reactivated (they sign in again)", detail: { staffId: t.id, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.reactivated", entityKey: t.id, summary: "a staff member was reactivated (they sign in again)", detail: { staffId: t.id, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "ACTIVE", deactivationReason: null } });
       return { staffId: t.id, status: "ACTIVE" as const };
     });
   }
@@ -303,8 +313,12 @@ export class PlatformIdentity implements OnModuleInit {
       const before = await tx.platformStaffCredential.findFirst({ where: firmScope(actor.firmId, { staffId: t.id }) });
       const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => !before || before[k] !== data[k]);
       await tx.platformStaffCredential.upsert({ where: { firmId_staffId: { firmId: actor.firmId, staffId: t.id } }, create: { firmId: actor.firmId, staffId: t.id, ...data, updatedBy: actorWord(actor.staffId) }, update: { ...data, updatedBy: actorWord(actor.staffId) } });
-      // Field names only: the licence number itself is never written to an audit line (AG-1-31).
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own } });
+      // R1.8 (QA-594): the licence record's type and body before and after; the licence number itself is never written to
+      // an audit line (AG-1-31: licence numbers are never logged; BR-8): only whether it changed (a question for the tech
+      // lead on #2527, P-687 against AG-1-31).
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own },
+        before: before ? { representativeType: before.representativeType, licensingBody: before.licensingBody } : null,
+        after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
       return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
     });
   }
@@ -314,10 +328,10 @@ export class PlatformIdentity implements OnModuleInit {
 
   /** Inserts an invitation measured from the database's clock (72 hours from now()); the token is kept only as a hash and
    *  is not returned (contracts §7: no token returned by a route; PF-4b's MailPort sends the link). */
-  private async insertInvitation(tx: Tx, firmId: string, email: string, roles: PlatformRole[], by: string) {
+  private async insertInvitation(tx: Tx, firmId: string, email: string, roles: PlatformRole[], by: string, displayName: string | null = null) {
     const { token, hash } = PlatformIdentity.token();
-    const [row] = await tx.$queryRaw<{ id: string; expires_at: Date; created_at: Date }[]>`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at)
-      values (gen_random_uuid(), ${firmId}::uuid, ${email}, ${roles}::"PlatformRole"[], ${hash}, ${by}, now() + interval '72 hours') returning id, expires_at, created_at`;
+    const [row] = await tx.$queryRaw<{ id: string; expires_at: Date; created_at: Date }[]>`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at, display_name)
+      values (gen_random_uuid(), ${firmId}::uuid, ${email}, ${roles}::"PlatformRole"[], ${hash}, ${by}, now() + interval '72 hours', ${displayName}) returning id, expires_at, created_at`;
     return { ...row, token };
   }
 
@@ -348,13 +362,13 @@ export class PlatformIdentity implements OnModuleInit {
     if (open) problem(409, "Already invited", "This person already has a pending invitation: resend it instead.", { code: "ALREADY_INVITED" });
   }
 
-  async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown }) {
-    const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false);
+  async invite(actor: StaffContext, body: { email?: unknown; roles?: unknown; reason?: unknown; displayName?: unknown }) {
+    const email = emailOf(body.email), roles = rolesOf(body.roles), reason = reasonOf(body.reason, false), displayName = displayNameOf(body.displayName);
     const out = await this.inFirm(actor, async (tx) => {
       await this.rowCheck(tx, actor, email, roles, reason);
       await this.seatCheck(tx, actor.firmId);
-      const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId));
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason } });
+      const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId), displayName);
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason }, before: null, after: { email, displayName, roles, expiresAt: new Date(row.expires_at).toISOString() } });
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
@@ -385,7 +399,7 @@ export class PlatformIdentity implements OnModuleInit {
       const made = [];
       for (const r of clean) {
         const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${clean.length} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true } });
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${clean.length} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
       return { made, seats: seats! };
@@ -424,8 +438,8 @@ export class PlatformIdentity implements OnModuleInit {
       await this.roleRules(actor, null, old.roles, [], reason, tx);
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${old.id}::uuid`;
       await this.seatCheck(tx, actor.firmId);
-      const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId));
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles } });
+      const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId), old.displayName);   // PF-4dn: the name goes with the new link
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles }, before: null, after: { email: old.email, displayName: old.displayName, roles: old.roles, expiresAt: new Date(row.expires_at).toISOString(), replaces: old.id } });
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
@@ -436,7 +450,7 @@ export class PlatformIdentity implements OnModuleInit {
     return this.inFirm(actor, async (tx) => {
       const inv = await this.openInvitation(tx, actor.firmId, id);
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${inv.id}::uuid`;
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.revoked", entityKey: inv.id, summary: "an invitation was revoked (its seat is free)", detail: { invitationId: inv.id } });
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.revoked", entityKey: inv.id, summary: "an invitation was revoked (its seat is free)", detail: { invitationId: inv.id }, before: { status: "PENDING" }, after: { status: "REVOKED" } });
       return { id: inv.id, status: "REVOKED" as const };
     });
   }

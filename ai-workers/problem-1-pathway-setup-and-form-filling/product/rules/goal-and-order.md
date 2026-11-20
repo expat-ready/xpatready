@@ -114,3 +114,23 @@ Moved word for word from RULES.md by Lead 81, 22:1x IST 18 Nov (25 KB limit; P-6
 | P-700 | qa walks run on GitHub's machines with recordings (item #224); the Mac keeps 1-2 exploratory qa sessions; a reviewed recorded walk counts as gate A. | prose | 18 Nov |
 | P-701 | Release 1 invoices charge GST/HST only (no PST, RST or Quebec); Unconfirmed: no accountant or counsel. | prose | 18 Nov |
 | P-702 | 21 Nov: an independent Opus reviewer evaluates the adopted changes (plan #181), 14-17 Nov vs 19-21 Nov on measured numbers; keep, fix or drop each. | prose | 18 Nov |
+
+## Rows moved word for word from RULES.md by Lead 87, 10:4x IST 19 Nov (RULES.md under 25 KB, P-611)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-723 | Drain to ~13:30 IST 19 Nov: only merging approved PRs; then journey by journey (P-348). | prose | 19 Nov |
+| P-722 | Proof per item, never at the end; qa never blocks merging; proof goes automatic. | prose (qa skill) | 19 Nov |
+| P-721 | Protect the merge path: #2195 first; a dequeued PR re-merges main within 30 min; a failed batch is split at once. | prose | 19 Nov |
+| P-539 | Repository stays public; integration and strategy content only private; full row `rules/tech-lead.md`. | hook: push-guard.sh via .githooks/pre-push; CI: ci.yml push-guard steps (part; `rules/tokens-money-account.md`) | 13 Nov |
+| IDX-6 | One-time exceptions (P-617, P-652, P-654, P-672, P-684, P-711 size #2169 in DECISIONS) stand as recorded; the rows word for word in `rules/tech-lead.md` › One-time exceptions (moved 17 Nov by Lead 76). | prose | 17 Nov |
+| P-608 | Model and effort at every start: Opus 5.5 medium; high for reviewers, breakers, fresh reader, risky rows; Fable 5.2 medium for specifying. Full row: `rules/tokens-money-account.md`. | hook: lane-preflight.sh | 15 Nov |
+| P-597 | The strategy desk runs on Fable 5.2 at high effort, set after the start, with five rules. | prose | 14 Nov |
+| P-599 | Ready rows at least two per lane; first-time green; at most two review rounds; day-3 check 17 Nov (date per P-609). | prose | 14 Nov |
+| P-613 | Plan C: lanes may be added for nearly-done capabilities; a feeding Lead; non-urgent asks batched at 09:00 and 21:00 IST; qa per module group. | prose | 15 Nov |
+| P-614 | Target kept: all 101 by 29 Nov; no gate lowered; the 17 Nov check reports the forecast with the same measures. | prose | 15 Nov |
+| P-595 | Every Release 1 backlog row carries a Source:; a shaped row with no source should fail CI (no such step found 15 Nov). | prose | 14 Nov |
+| P-596 | Every board number carries its source, sha and time; full row `rules/tech-lead.md`. | script: cockpit-data.py, cockpit-reconcile.py; CI: cockpit-tests.yml | 14 Nov |
+
+## Moved 20 Nov (Lead 96, from RULES.md, word for word)
+| P-724 | Factory (detail: DECISIONS P-724): journeys A client case and B firm set-up in parallel on disjoint files; ≤6 items in flight per journey; start one only when one is Proven; automatic proof. | prose (WIP check owed) | 19 Nov |
+| P-719 | Finish by capability: a lane owns one R1 item's whole chain (parts, J-row, qa); ~8 in flight, parallel, disjoint files; fewest parts left first; next starts when one is Proven. | prose | 19 Nov |

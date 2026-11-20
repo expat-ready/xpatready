@@ -1,0 +1,4 @@
+PASS  QA-601 setup: the refusing provider was tried more than once — {"tries":9}
+FAIL  QA-601: a firm email the provider keeps refusing ends FAILED with a reason and one FAILED event (not QUEUED for ever) — {"state":"QUEUED","reason":"","events":"0","tries":9}
+
+1/2 passed

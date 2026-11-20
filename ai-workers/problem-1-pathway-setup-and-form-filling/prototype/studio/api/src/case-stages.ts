@@ -8,12 +8,18 @@ import { Body, Controller, Get, Headers, HttpCode, HttpException, HttpStatus, In
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { problemFromZod } from "../../contracts/programs.ts";
+import type { MilestoneDeadline } from "../../contracts/milestones.ts";
+import { openMilestoneDeadlines } from "./case-deadlines/milestones.ts";
 import { releaseLabel, StageKeyDetails, StartNext, type CaseStages, type CaseStageView, type StartNextPreview } from "../../contracts/runtime.ts";
 import { caseView, checkValue, knownOf, shapeOf, type Participant } from "../../engine/runtime/case.ts";
 import { caseChecklist } from "../../engine/runtime/case-checklist.ts";
 import { checkKeyDetails, deadlineOf, fmtDate, nextOf, STAGE_WORDS, type StageState, type StoredDetail } from "../../engine/runtime/stages.ts";
 import type { Snapshot } from "../../engine/snapshot.ts";
+import { systemClock, type ClockPort } from "../../ports/clock.ts";
 import { actorOf, Audit, CaseRead, Db, fail, type Actor } from "./core.ts";
+import { dayMark, localDate, NO_SUCH_DATE, readFirmCalendar, type FirmCalendar } from "./platform/calendar/working-days.ts";
+import { currentFirm } from "./platform/firm-scope.ts";
+import { BUSINESS_HOURS, CLOSED_DAYS, TIME_ZONE } from "./platform/settings.ts";
 import { Programs } from "./programs.ts";
 import { readSpec } from "./routes-data.ts";
 import { Runtime, STAGE_RECORD, type Reached } from "./runtime.ts";
@@ -51,8 +57,44 @@ async function writeSameEveryStage(tx: Tx, c: Reached, snap: Snapshot, defs: { f
   }
 }
 
+/** CS-DL1 part 1 (AG-7-94 r1-r3): a deadline as the case shows it: the calendar date the rule gives, never moved, with
+ *  its weekday, a mark when it falls on a weekend or a day the firm is closed, and Missed once it is before today in the
+ *  firm's zone (the contract's optional fields, always set here). */
+export type DeadlineShown = Required<NonNullable<CaseStageView["deadline"]>>;
+export function showDeadline(d: CaseStageView["deadline"], cal: FirmCalendar, today: string): DeadlineShown | null {
+  if (!d) return null;
+  const day = d.due ? (() => { try { return dayMark(d.due, cal); } catch (e) { if (e instanceof RangeError && e.message === NO_SUCH_DATE) return null; throw e; } })() : null;
+  // A date the calendar refuses (a stored value outside its years: breaker m1) shows as no date, never a 500 of the case.
+  if (!d.due || !day) return { ...d, weekday: null, mark: null, shown: null, missed: false };
+  const { weekday, mark } = day;
+  return { ...d, weekday, mark, shown: `${weekday} ${fmtDate(d.due)}${mark ? ` (${mark})` : ""}`, missed: d.due < today };
+}
+
+/** The firm's calendar (AG-7-99: one office → the firm's) for the platform firm the request runs as (PF-12's walls), and
+ *  today in its zone from the clock port (P-607). A request with no platform firm in scope (x-actor) reads no setting, so
+ *  the settings' defaults apply (Mon-Fri 09:00-17:00, no closed days, America/Toronto); the firm is never looked up
+ *  across the wall. */
+export async function deadlineDay(db: Db, clock: ClockPort, firmKey?: string): Promise<{ cal: FirmCalendar; today: string }> {
+  const cal = await (currentFirm() ? readFirmCalendar(db, currentFirm()!) : firmKey ? caseFirmCalendar(db, firmKey) : readFirmCalendar(db, NO_ID));
+  return { cal, today: localDate(cal.zone, clock.now()) };
+}
+/** Build Lead C's ruling on #2000 (Q1, after Build Lead A's): the case's own firm's calendar through the database's one
+ *  narrow lookup, platform_firm_calendar(firm key) (migration csdl1_firm_calendar: the three calendar settings and nothing
+ *  else). An unset setting reads its default; an unknown key gives the defaults, never another firm's calendar. Used by
+ *  the stage views only. CS-W3 part 1 replaces this: case requests carry their firm. */
+async function caseFirmCalendar(db: Db, firmKey: string): Promise<FirmCalendar> {
+  const [row] = await db.$queryRaw<{ time_zone: unknown; business_hours: unknown; closed_days: unknown }[]>`SELECT time_zone, business_hours, closed_days FROM platform_firm_calendar(${firmKey})`;
+  const read = <T>(def: { schema: { safeParse(v: unknown): { success: boolean; data?: unknown } }; default: T }, v: unknown): T => {
+    const p = v === null || v === undefined ? null : def.schema.safeParse(v);
+    return p?.success ? (p.data as T) : def.default;
+  };
+  return row ? { zone: read(TIME_ZONE, row.time_zone), hours: read(BUSINESS_HOURS, row.business_hours), closedDays: read(CLOSED_DAYS, row.closed_days) } : { zone: TIME_ZONE.default, hours: BUSINESS_HOURS.default, closedDays: CLOSED_DAYS.default };
+}
+
 @Injectable()
 export class CaseStagesService {
+  /** P-607: today comes from the clock port (a suite sets a FakeClock here). */
+  clock: ClockPort = systemClock;
   constructor(@Inject(Runtime) private readonly r: Runtime, @Inject(Db) private readonly db: Db, @Inject(Audit) private readonly audit: Audit, @Inject(Programs) private readonly programs: Programs) {}
 
   private reach(actor: Actor, caseId: string) { return this.r.reach(actor, UUID.test(caseId) ? caseId : NO_ID, "officer"); }
@@ -72,10 +114,11 @@ export class CaseStagesService {
     const labels = new Map((await this.db.combination.findMany({ where: { id: { in: c.stages.map((s) => s.combinationId) } }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
     const all = c.stages.map((s) => ({ stage_key: s.stageKey, staff_name: s.staffName, key_details: s.keyDetails as Record<string, StoredDetail>, defs: readSpec(s.spec).key_details }));
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
+    const { cal, today } = await deadlineDay(this.db, this.clock, c.firmKey);
     return Promise.all(c.stages.map(async (s): Promise<CaseStageView> => {
       const spec = readSpec(s.spec), stored = s.keyDetails as Record<string, StoredDetail>;
       const why = s.state === "NOT_STARTED" ? (await this.startability(s.combinationId)).why : null;
-      const deadline = s.state === "CURRENT" || s.state === "NOT_STARTED" ? deadlineOf(spec.deadline, all) : null;
+      const deadline = showDeadline(s.state === "CURRENT" || s.state === "NOT_STARTED" ? deadlineOf(spec.deadline, all) : null, cal, today);
       return { id: s.id, key: s.stageKey, name: s.staffName, client_name: s.clientName, combination_id: s.combinationId, combination: labels.get(s.combinationId) ?? s.staffName, ord: s.ord,
         state: s.state as StageState, words: why ? "Cannot start yet" : STAGE_WORDS[s.state as StageState], cannot_start_why: why, started_from: s.startedFrom as CaseStageView["started_from"],
         started_at: s.startedAt?.toISOString() ?? null, ended_at: s.endedAt?.toISOString() ?? null, version: s.version,
@@ -84,12 +127,15 @@ export class CaseStagesService {
     }));
   }
 
-  /** GET /runtime/cases/:id/stages: the case's stages, the current one and the next one (if any). */
-  async stages(actor: Actor, caseId: string): Promise<CaseStages> {
+  /** GET /runtime/cases/:id/stages: the case's stages, the current one and the next one (if any), and (CS-DL3 part 1)
+   *  the case's open government steps with a due date, beside the stage deadline. */
+  async stages(actor: Actor, caseId: string): Promise<CaseStages & { milestones: MilestoneDeadline[] }> {
     const c = await this.reach(actor, caseId);
     const route = c.stage.routeKey ? await this.db.route.findFirst({ where: { workspaceId: c.workspaceId, key: c.stage.routeKey }, select: { key: true, label: true, basis: true } }) : null;
     const { next } = nextOf(c.stages.map((s) => ({ ...s, stage_key: s.stageKey, state: s.state as StageState })));
-    return { case_id: c.id, route: route ?? (c.stage.routeKey ? { key: c.stage.routeKey, label: c.stage.routeKey, basis: "SAMPLE" } : null), stages: await this.views(c), current: c.stage.id, next: next?.id ?? null };
+    const { cal, today } = await deadlineDay(this.db, this.clock, c.firmKey);
+    return { case_id: c.id, route: route ?? (c.stage.routeKey ? { key: c.stage.routeKey, label: c.stage.routeKey, basis: "SAMPLE" } : null), stages: await this.views(c), current: c.stage.id, next: next?.id ?? null,
+      milestones: await openMilestoneDeadlines(this.db, c.id, cal, today) };
   }
 
   /** GET /runtime/cases/:id/stages/:stage: one stage's own record, read only (BR-6, m2): its key details, its filings with

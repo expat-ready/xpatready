@@ -7,7 +7,7 @@
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 import type { FilingChannel, LibraryChange, Prisma, ProgramDef } from "@prisma/client";
 import { LEVEL_OF, LEVEL_WORD, PATHWAY_TYPE_LABEL, type LifecycleAction, type PathwayType, type RowAction, type Use, type UsesView } from "../../contracts/structure.ts";
-import { ACTORS, Audit, Db, need, Workspace, type Actor } from "./core.ts";
+import { ACTORS, actorWordOf, Audit, Db, need, Workspace, type Actor } from "./core.ts";
 import { actionVerb, changeView } from "./library-changes.ts";
 import { applyFills } from "./who-fills.ts";
 import { applyBackground, KIND as BACKGROUND_KIND } from "./section-background.ts";
@@ -219,7 +219,7 @@ export class Lifecycle {
   private async history(workspaceId: string, key: string, node = true) {
     // A rename also writes one line per combination below it (for its draft authors): the name's own lines only.
     const rows = await this.db.auditEvent.findMany({ where: { workspaceId, entityKey: key, ...(node ? { combinationId: null } : {}) }, orderBy: { at: "desc" }, take: 10, select: { at: true, actor: true, summary: true } });
-    return rows.map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (r.actor === "system" ? "The studio" : r.actor), what: r.summary }));
+    return rows.map((r) => ({ at: r.at.toISOString(), by: nameOf(r.actor) ?? (actorWordOf(r.actor) === "system" ? "The studio" : r.actor), what: r.summary }));
   }
 
   private async usesOf(kind: LifecycleKind | ItemKind, key: string, actorId?: string) { if (isItem(kind)) return itemUses(this.db, await this.ws.id(), kind, key, undefined, actorId); return kind === "structure_node" ? this.nodeUses(key) : kind === "library_form" ? formUses(this.db, await this.ws.id(), key) : this.combinationUses(key); }
@@ -461,7 +461,7 @@ export class Lifecycle {
       const moved = await tx.govFormDef.updateMany({ where: { workspaceId: c.workspaceId, formKey: c.key, retiredAt: null, formRole: m.from ?? null }, data: { formRole: m.to ?? null } });
       if (!moved.count) throw problem(409, "Changed meanwhile", `${c.key}'s role is no longer what this change was proposed against (or the form was retired). It still waits: return it, and its proposer withdraws it and proposes again.`);
       await tx.libraryChange.update({ where: { id: c.id }, data: { status: "RELEASED", decisionNote: c.decisionNote ?? "Applied at approval; each combination's next release names it for the immigration expert." } });
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "approved", entity: "form", entityKey: c.key, summary: `${actor.name} approved ${c.label ?? c.key}: it applies now, and goes out with each combination's next release`.slice(0, 600), detail: { from: m.from ?? null, to: m.to ?? null, change: c.id } } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, "approved", "form", c.key, `${actor.name} approved ${c.label ?? c.key}: it applies now, and goes out with each combination's next release`.slice(0, 600), { from: m.from ?? null, to: m.to ?? null, change: c.id });
     });
   }
 
@@ -550,7 +550,7 @@ export async function withdrawLifecycle(db: Db, actor: Actor, c: LibraryChange, 
   if (why.length < 3 || why.length > 300) throw problem(400, "Say why", "Say why it is withdrawn (3 to 300 characters).");
   const done = await db.libraryChange.updateMany({ where: { id: c.id, status: { in: OPEN } }, data: { status: "WITHDRAWN", decidedBy: actor.id, decidedAt: new Date(), decisionNote: why } });
   if (!done.count) throw problem(409, "Cannot withdraw", `This change is ${c.status.toLowerCase()}: nothing to withdraw.`);
-  await db.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "withdrawn", entity: entityOf(c.kind), entityKey: c.key, summary: `${actor.name} withdrew "${actionVerb(c.action, c.kind)} ${c.label ?? c.key}": ${why}`.slice(0, 600) } });
+  await new Audit(db).log(c.workspaceId, actor.id, "withdrawn", entityOf(c.kind), c.key, `${actor.name} withdrew "${actionVerb(c.action, c.kind)} ${c.label ?? c.key}": ${why}`.slice(0, 600));
   return changeView((await db.libraryChange.findUnique({ where: { id: c.id } }))!);
 }
 
@@ -563,7 +563,7 @@ async function applyFormLifecycle(tx: Prisma.TransactionClient, c: LibraryChange
     if (Number(using[0]?.n ?? 0) > 0) {
       const note = "Not retired: a combination lists this form again. Remove it there, then ask again.";
       await tx.libraryChange.update({ where: { id: c.id }, data: { status: "RETURNED", decisionNote: note } });
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: "system", action: "returned", entity: "form", entityKey: c.key, summary: `The ${at} did not retire ${c.key}: ${note}` } }); // round 4 R4-3
+      await new Audit(tx as never).log(c.workspaceId, "system", "returned", "form", c.key, `The ${at} did not retire ${c.key}: ${note}`); // round 4 R4-3
       return false;
     }
   }

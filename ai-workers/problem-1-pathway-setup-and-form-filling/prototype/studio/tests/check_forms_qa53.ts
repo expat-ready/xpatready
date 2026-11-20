@@ -32,7 +32,7 @@ const sql = (q: string) => execFileSync("/opt/homebrew/opt/postgresql@18/bin/psq
 /** Every GET route in api/src (B120: its subfolders too): its full path, and whether the code marks it (on the route or
  *  on its controller). */
 function routes(dir = API) {
-  const out: { path: string; mark: "case" | "open" | null; file: string }[] = [];
+  const out: { path: string; mark: "case" | "open" | null; file: string; keys: boolean }[] = [];
   for (const f of tsFiles(dir)) {
     const lines = readFileSync(join(dir, f), "utf8").split("\n");
     let prefix = "", classMark: "case" | "open" | null = null, pending: "case" | "open" | null = null;
@@ -43,7 +43,7 @@ function routes(dir = API) {
       if (c) { prefix = c[1]; classMark = pending; pending = null; continue; }
       for (const g of l.matchAll(/(@CaseRead\(\)\s*|@OpenRead\([^)]*\)\s*)?@Get\("([^"]*)"\)/g)) {
         const mark = g[1] ? (g[1].startsWith("@CaseRead") ? "case" : "open") : classMark;
-        out.push({ path: `/${prefix}/${g[2]}`.replace(/\/+/g, "/").replace(/\/$/, ""), mark, file: f });
+        out.push({ path: `/${prefix}/${g[2]}`.replace(/\/+/g, "/").replace(/\/$/, ""), mark, file: f, keys: /@PermissionKeys\(/.test(l) });
       }
     }
   }
@@ -54,6 +54,7 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/releases": "case", "/api/activity": "case",
   "/api/health": "open", // M1: is this copy well (database, disk, fill queue, commit); no case or person data
   "/api/public/forms/:token": "open", // FO-2: a firm's public enquiry form (contracts §0.6): its words and a fresh stamp only
+  "/api/public/embed/form.js": "open", // FO-4b: the embed script a firm's own site loads (one fixed file, no firm or person data)
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
@@ -233,6 +234,12 @@ const OWN_GUARD_WRITES = ["/api/link/open", "/api/link/code/send", "/api/link/co
   }
   ok(`PF-4t: the platform guard's routes (${platformReads.length} reads, ${platformWrites.length} writes) answer nobody and x-actor alone 401 (a sign-in door: its exact status in DOORS), never data`,
     platformReads.length >= 2 && platformWrites.length >= 8 && wrongPlatform.length === 0, wrongPlatform);
+  // CS-C1s part 2 (#2169): a runtime read that declares permission keys is marked a case read, but ConfigReadGuard leaves
+  // it to PF-4's guard (a staff session only), so it is asked here like a platform route: x-actor never opens it.
+  const keyedRuntime = all.filter((x) => x.path.startsWith("/api/runtime/") && x.keys), wrongKeyed: string[] = [];
+  for (const r of keyedRuntime) for (const actor of [null, "user-Z", "user-A", "user-O", "user-P"]) { const a = await ask(fill(r.path), "GET", actor); if (platformWrong(a)) wrongKeyed.push(`${r.path} as ${actor ?? "nobody"}: ${a.status} ${JSON.stringify(a.body).slice(0, 80)}`); }
+  ok(`CS-C1s fail: each runtime read behind PF-4's guard (${keyedRuntime.length}) answers nobody, an unknown name and x-actor alone (author, officer, client) 401, never data`,
+    keyedRuntime.some((x) => x.path === "/api/runtime/cases/:id/decisions") && wrongKeyed.length === 0, wrongKeyed);
   ok("PF-4t fail: a seeded platform route answering 200 to x-actor alone, or 401 with data, is caught", platformWrong({ status: 200, body: { firmId: "x" } }) && platformWrong({ status: 401, body: { detail: "no", staffId: "x" } }) && platformWrong({ status: 200, body: { token: "t" } }, 403) && !platformWrong({ status: 401, body: { type: "t", title: "t", status: 401, detail: "d", code: "NOT_SIGNED_IN" } }));
   // PF-4f (PF-4t round 2 Minors m1, m2; Lead B rows rev 16.8).
   const doorsOf = (ws: { path: string; method: string; door: boolean }[]) => ws.filter((w) => w.door).map((w) => `${w.method} ${w.path}`).sort();

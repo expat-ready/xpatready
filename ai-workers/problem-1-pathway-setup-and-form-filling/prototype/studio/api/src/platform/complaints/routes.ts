@@ -1,19 +1,21 @@
 // PF-21w (PF-21's part 2; P-579, P-584 (8)): the complaints record's routes under /api/platform/complaints. Each declares
 // its access (PF-4's keys.ts; the platform guard refuses the rest, default deny); every rule stays in ComplaintsService
 // (complaints.ts, its "Who" lines): agent/complaint:record records; agent/complaint:read reads every one; record + read
-// act on any and change the handler; the handler reads and handles their own without either key; anyone else gets the
+// act on any and change the handler; the handler reads their own without either key and handles it while holding the
+// record key (PF-21j); anyone else gets the
 // same 404 as for another firm's complaint. Delete is refused for everyone (the service's 405: the same answer for any
 // id, so it says nothing about which ids exist). The controller only reads the request and calls the service.
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
-import { COMPLAINT_KEYS, ComplaintsService } from "./complaints.ts";
+import { IDEMPOTENCY_HEADER, readIdempotencyKey } from "../idempotency.ts";
+import { COMPLAINT_KEYS, ComplaintsService, REPEATED } from "./complaints.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
 type Q = Record<string, unknown>;
 
 const SEES = "the handler sees their own; agent/complaint:read sees all, checked by the service";
-const HANDLES = "the handler handles their own; record + read act on any, checked by the service";
+const HANDLES = "the handler holding agent/complaint:record handles their own; record + read act on any, checked by the service";
 
 /** A query value as one string: a repeated parameter (?view=a&view=b) is not one value, so the service refuses it. */
 const one = (v: unknown): string | undefined => (v === undefined ? undefined : typeof v === "string" ? v : "\u0000");
@@ -24,8 +26,15 @@ const size = (v: unknown): number | undefined => { const s = one(v); return s ==
 export class ComplaintsController {
   constructor(@Inject(ComplaintsService) private readonly svc: ComplaintsService) {}
 
+  /** PF-21i: one complaint per request: the Idempotency-Key header is required (400 without it); a repeat of the same
+   *  key and body answers the first complaint with 200 (201 when it is new). */
   @Post() @PermissionKeys(COMPLAINT_KEYS.record)
-  record(@Req() r: R, @Body() b: B) { return this.svc.record(staffOf(r), b ?? {}); }
+  async record(@Req() r: R, @Body() b: B, @Headers(IDEMPOTENCY_HEADER) k: unknown, @Res({ passthrough: true }) res: { status(code: number): unknown }) {
+    const key = readIdempotencyKey(k, "Send an Idempotency-Key header with each new complaint.");
+    const out = await this.svc.record(staffOf(r), b ?? {}, key);
+    if (out[REPEATED]) res.status(200);
+    return out;
+  }
 
   @Get() @AnyStaff(SEES)
   list(@Req() r: R, @Query() q: Q) { return this.svc.list(staffOf(r), one(q.view), { cursor: one(q.cursor), limit: size(q.limit) }); }

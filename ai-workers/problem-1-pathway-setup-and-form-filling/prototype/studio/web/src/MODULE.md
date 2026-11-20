@@ -24,6 +24,7 @@ The web app's shell: routes, the API client, module pages seam, shared words and
 
 **Tables.** none directly (web).
 **Tests.** `tests/check_pf1_module_routes.ts`, `tests/check_fo4_sales_browser.ts`, `tests/check_bk4a.ts`, `tests/check_forms_held_conditions_pure.ts`, `tests/check_bk3_frame.ts`, `tests/check_pf6a_frame_browser.ts`.
+**Row lists (P-712).** Never hand-edit this card's frozen `Tests.`, `Tables.` or `Entry points.` line: put your row's items in `MODULE.rows/<ROW>.md` next to it (one file per row; `module-cards.py` fails the PR otherwise).
 
 **Do not.**
 - Edit `styles/tokens.css` by hand.

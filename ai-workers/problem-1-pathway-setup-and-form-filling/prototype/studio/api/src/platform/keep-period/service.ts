@@ -5,13 +5,13 @@
 // allowed with a warning and a typed reason, both on the setting's audit line (Build Lead C's ruling). It is a reminder,
 // never a lock: nothing is deleted automatically in Release 1 (BR-7). The firm is always the session's (PF-4's guard),
 // never the request's. KeepPeriods is KeepPeriodPort's real adapter (CS-D6 reads forFirm; part 2 builds check()).
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { Db } from "../../core.ts";
 import {
-  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, NO_COUNSEL,
-  type FirmKeepPeriod, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
+  ACTIVITY_LOG_WORDS, COLLEGE_CITATION, COLLEGE_CLIENT_FILE_YEARS, COLLEGE_WARNING, COLLEGE_WORDS, ClosedClientFilesYears, FIRM_SETTING, KEEP_PERIODS, KeepCheckNotBuilt, KeepCheckRefused, NO_COUNSEL,
+  subjectsFor, verdictOf, type FirmKeepPeriod, type HoldsForCheck, type KeepCheckInput, type KeepCheckResult, type KeepPeriodPort,
 } from "../../../../ports/keep-period.ts";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
@@ -19,6 +19,11 @@ import { readSetting, registerSetting, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
 export const LEGAL_SETTINGS_KEY = "agent/legal-settings:manage";
+/** The LegalHoldPort KeepPeriods.check asks first (BR-7). PF-21b part 2 provides the real adapter under this token; until
+ *  then nothing is wired and check() refuses (KeepCheckNotBuilt), never a silent OK. */
+export const KEEP_CHECK_HOLDS = Symbol("KeepPeriods.holds");
+/** The clock check() reads "now" from (the floor's and the reminder's end); a test passes its own. */
+export const KEEP_CHECK_NOW = Symbol("KeepPeriods.now");
 
 export const CLOSED_CLIENT_FILES = registerSetting({
   key: "legal.closed_client_files_years", ownerModule: "platform", changePermission: LEGAL_SETTINGS_KEY,
@@ -71,15 +76,38 @@ function closedFilesView(y: number | null, s: StaffContext) {
 
 @Injectable()
 export class KeepPeriods implements KeepPeriodPort<Tx> {
-  constructor(@Inject(Db) private readonly db: PrismaClient) {}
+  constructor(
+    @Inject(Db) private readonly db: PrismaClient,
+    @Optional() @Inject(KEEP_CHECK_HOLDS) private readonly holds?: HoldsForCheck<Tx>,
+    @Optional() @Inject(KEEP_CHECK_NOW) private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async forFirm(firmId: string): Promise<FirmKeepPeriod> {
     const years = await readSetting<number | null>(this.db, firmId, CLOSED_CLIENT_FILES.key);
     return years === null ? { closedClientFilesYears: null, source: "not set" } : { closedClientFilesYears: years, source: "firm setting" };
   }
 
-  /** AUD-5 part 2 (after PF-21b). */
-  async check(_tx: Tx, _input: KeepCheckInput): Promise<KeepCheckResult> { throw new KeepCheckNotBuilt(); }
+  /** AUD-5 part 2: HELD | FLOOR | WARN | OK in BR-7's order, all inside the deleter's own open transaction `tx`: the hold
+   *  first (isHeld takes the shared hold lock through tx, kept until the deleter commits), then the floor, then the firm's
+   *  reminder, read through the same tx after the lock (so a setting saved mid-request is read as of that statement, never
+   *  from a second transaction). The reminder is never a lock: a setting saved after the check does not undo it (break m2;
+   *  SA-11-33 "a reminder, not a lock"). The College's number is never read here (REFERENCE rows are refused by subjectsFor). */
+  async check(tx: Tx, input: KeepCheckInput): Promise<KeepCheckResult> { if (!this.holds) { throw new KeepCheckNotBuilt(); }
+    if ((tx as unknown) === this.db || typeof (tx as { $connect?: unknown }).$connect === "function") throw new KeepCheckRefused("INVALID_INPUT", "The delete check runs inside the deleter's own transaction, never on the root client.");   // break m4
+    const { input: q, row, subjects } = subjectsFor(input);
+    const held = await this.holds.isHeld(tx, q.firmId, subjects);
+    const firm = held.held || row.kind !== "REMINDER" ? null : await readSetting<number | null>(tx, q.firmId, CLOSED_CLIENT_FILES.key);
+    return verdictOf(held, row, q.startedAt, firm, this.now());
+  }
+
+  /** The door a deleter calls: the firm is the session's, never the request's. `ask` is built by the deleter from the
+   *  STORED record (its class, the date its period starts, its own dates, its case and person), never a request body
+   *  passed through: a client choosing the class or the date could pick an OK (review m3). An ask that names a firm is
+   *  refused. */
+  async checkFor(tx: Tx, s: StaffContext, ask: unknown): Promise<KeepCheckResult> {
+    if (ask && typeof ask === "object" && "firmId" in ask) throw new KeepCheckRefused("INVALID_INPUT", "The firm is always your own; a delete check never names one.");
+    return this.check(tx, { ...(ask as object), firmId: s.firmId } as KeepCheckInput);
+  }
 
   /** GET /api/platform/keep-periods: the table in plain words and the firm's own number (read-only for most staff). */
   async read(s: StaffContext) {
