@@ -44,7 +44,9 @@ function Sites({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   const [busy, setBusy] = React.useState(false);
   const qc = useQueryClient();
   const inputs = React.useRef<(HTMLInputElement | null)[]>([]);
-  React.useEffect(() => { setRows(form.allowedSites.length ? form.allowedSites : [""]); }, [form.version]);   // a reload shows the newest list
+  // A newer version (a save here, or a Reload after someone else's) shows the newest list; a "someone else changed it"
+  // notice goes with the old list, a "Saved." stays.
+  React.useEffect(() => { setRows(form.allowedSites.length ? form.allowedSites : [""]); setErrors({}); setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErrors({}); setSaid(null);
