@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # E12 (P-446) and E13 (P-678): lead-upkeep.py context on made-up values and STATE lines, sync with stand-in commands,
-# and lead-watch.sh's wiring (steps 0b and 6b count their ACT lines). Guard 33 in check-guards.sh. No network, US$0.
+# and lead-watch.sh's wiring (steps 1c and 6b count their ACT lines). Guard 33 in check-guards.sh. No network, US$0.
 #   bash product/tools/check-lead-upkeep.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
@@ -42,6 +42,6 @@ ok "the default command is this folder's private-sync.sh" "$(grep -q 'os.path.jo
 
 # --- wiring in lead-watch.sh
 L="$TOOLS/lead-watch.sh"
-ok "lead-watch.sh step 0b reads the context against STATE and counts its ACT lines" "$(grep -q 'lead-upkeep.py" context --state "\$TOOLS/../STATE.md"' "$L" && grep -q 'echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))' "$L" && echo 1)" "no 0b wiring in $L"
+ok "lead-watch.sh step 1c reads the context against STATE and counts its ACT lines" "$(grep -q 'lead-upkeep.py" context --state "\$TOOLS/../STATE.md"' "$L" && grep -q 'echo "\$lc"; act=\$((act + \$(grep -c .^ACT. <<<"\$lc")))' "$L" && echo 1)" "no 1c wiring in $L"
 ok "lead-watch.sh step 6b runs the private sync and counts its ACT lines" "$(grep -q 'lead-upkeep.py" sync' "$L" && grep -q 'echo "\$ps"; act=\$((act + \$(grep -c .^ACT. <<<"\$ps")))' "$L" && echo 1)" "no 6b wiring in $L"
 finish

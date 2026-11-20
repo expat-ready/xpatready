@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Lead's own upkeep at every check: lead-watch.sh steps 0b (E12) and 6b (E13). Founder 21 Nov (P-772): every
+"""The Lead's own upkeep at every check: lead-watch.sh steps 1c (E12) and 6b (E13). Founder 21 Nov (P-772): every
 valuable rule in code.
 
   context --state STATE.md
@@ -39,7 +39,7 @@ def context(a):
     if start is None:
         try:
             line = next((l for l in open(a.state, encoding="utf-8") if l.startswith("current_lead:")), "")
-        except OSError:
+        except (OSError, ValueError):   # ValueError: not UTF-8
             line = ""
         m = re.search(r"start read\s*~?\s*(\d+(?:\.\d+)?\s*k)", line, re.I)
         start, src = (kilo(m.group(1)), "STATE current_lead:") if m else (DEFAULT_START_K, "assumed, P-446's ~90k; write 'start read ~NNNk' on current_lead:")
@@ -82,7 +82,10 @@ def main():
     c = s.add_parser("context"); c.add_argument("--state", required=True)
     y = s.add_parser("sync"); y.add_argument("--cmd", default="bash " + shlex.quote(os.path.join(here, "private-sync.sh"))); y.add_argument("--timeout", type=int, default=90)
     a = p.parse_args()
-    (context if a.cmd_name == "context" else sync)(a)
+    try:
+        (context if a.cmd_name == "context" else sync)(a)
+    except Exception as e:   # never a traceback with no ACT: lead-watch counts ACT lines only
+        print(f"ACT   lead-upkeep {a.cmd_name} crashed ({type(e).__name__}: {str(e)[:80]}): nothing was checked")
 
 
 if __name__ == "__main__":

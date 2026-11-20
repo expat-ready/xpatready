@@ -22,9 +22,6 @@ if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
-# 0b. The Lead's context (E12, P-446 (1)): hand over at the first check after 200k beyond the start read; at 150k the first
-# standby reads RULES+STATE. get_usage is the Lead's tool only, so the Lead passes it: LEAD_CONTEXT=<k> (no value = ACT).
-lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 
 # 1. Disk and test databases (P-308 disk rule: under 10 GB the Lead frees space, under 4 GB Mac suites pause).
 free=$(df -g / | awk 'NR==2 {print $4}')
@@ -38,6 +35,9 @@ echo "$idle" > "$prev"
 say "disk  ${free} GB free · test databases ${dbs:-?} · idle at two checks: ${both}"
 [ "$free" -lt 4 ] && ACT "disk under 4 GB: tell Mac builders to pause suite runs, then free space"
 [ "$free" -lt 10 ] && [ "$both" -gt 0 ] && ACT "disk under 10 GB: drop the ${both} test databases idle at two checks (lead-watch skill, step 3)"
+# 1c. The Lead's context (E12, P-446 (1)): hand over at the first check after 200k beyond the start read; at 150k the first
+# standby reads RULES+STATE. get_usage is the Lead's tool only, so the Lead passes it: LEAD_CONTEXT=<k> (no value = ACT).
+lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 
 # 2. Merges and the queue.
 since=$(date -u -v-"${SINCE}"M '+%Y-%m-%dT%H:%M:%SZ')
