@@ -10,13 +10,31 @@ export type RegionAllowance = { region: string; types: string[] };
 export const HOME = "ca-central-1";
 // An AWS region name anywhere in a string: us-east-1, ca-west-1, ap-southeast-2, us-gov-west-1, us-isof-south-1,
 // eu-isoe-west-1, eusc-de-east-1, ... (a partition-ish prefix, optional middle words, a compass word, a digit).
-const REGION_RE = /\b[a-z]{2,4}-(?:[a-z]{2,5}-)?(?:north|south|east|west|central|northeast|northwest|southeast|southwest)-\d\b/g;
+// Case-insensitive, and the digit may be followed by an AZ letter or an id (us-east-1a, us-east-1_AbC: break 4).
+const REGION_RE = /(?<![a-z0-9])[a-z]{2,4}-(?:[a-z]{2,5}-)?(?:north|south|east|west|central|northeast|northwest|southeast|southwest)-\d+(?![0-9])/gi;
 // Resources that send data to another place by design: each must point at a bucket in a scanned (home-region) stack.
 const CROSS_REGION_TYPES = ["AWS::S3::MultiRegionAccessPoint", "AWS::S3::MultiRegionAccessPointPolicy", "AWS::DynamoDB::GlobalTable", "AWS::RDS::GlobalCluster"];
 
 const resources = (t: Template, type: string) => Object.entries(t.Resources ?? {}).filter(([, r]) => r.Type === type);
 const json = (v: unknown) => JSON.stringify(v ?? null);
-const regionsIn = (v: unknown) => new Set(json(v).match(REGION_RE) ?? []);
+/** A template value with every Fn::Join of literal parts joined (a region split across parts, "us-" + "east-1", is seen
+ *  whole; break 4); non-literal parts (a Ref, a GetAtt) join as nothing. */
+const flatten = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v.map(flatten);
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>, j = o["Fn::Join"] as [string, unknown[]] | undefined;
+    if (Array.isArray(j) && Array.isArray(j[1])) return j[1].map((p) => (typeof p === "string" ? p : "")).join(typeof j[0] === "string" ? j[0] : "") + " " + json(j[1].map(flatten));
+    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, flatten(x)]));
+  }
+  return v;
+};
+const regionsIn = (v: unknown) => new Set((json(flatten(v)).match(REGION_RE) ?? []).map((r) => r.toLowerCase().replace(/^(.*-\d+).*$/, "$1")));
+/** True when a KMS key reference points at an AWS::KMS::Key defined in this template (not an alias such as aws/rds). */
+const ownKey = (t: Template, ref: unknown) => {
+  const r = ref as { "Fn::GetAtt"?: [string, string]; Ref?: string } | undefined;
+  const id = r?.["Fn::GetAtt"]?.[0] ?? r?.Ref;
+  return !!id && t.Resources?.[id]?.Type === "AWS::KMS::Key";
+};
 
 /** Every stack's region is the home region, and nothing in a template (resources, parameters, outputs, mappings) names
  *  another region, except an allowed region inside an allowed resource type. An S3 replication rule must target a
@@ -75,6 +93,7 @@ export function databaseFindings(t: Template, days = 35): string[] {
     if (p.PubliclyAccessible !== false) out.push(`${id}: PubliclyAccessible is ${json(p.PubliclyAccessible)}, not false`);
     if (p.StorageEncrypted !== true) out.push(`${id}: storage not encrypted`);
     if (!p.KmsKeyId) out.push(`${id}: no KMS key`);
+    else if (!ownKey(t, p.KmsKeyId)) out.push(`${id}: KMS key is not one this stack defines (${json(p.KmsKeyId)})`);
     if (p.DeletionProtection !== true) out.push(`${id}: deletion protection off`);
     if (p.BackupRetentionPeriod !== days) out.push(`${id}: backups kept ${json(p.BackupRetentionPeriod)} days, not ${days}`);
     const pg = p.DBParameterGroupName as { Ref?: string } | undefined;
@@ -95,9 +114,14 @@ export function bucketFindings(t: Template): string[] {
     for (const k of ["BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets"]) if (block[k] !== true) out.push(`${id}: ${k} is not true`);
     if ((p.VersioningConfiguration as { Status?: string } | undefined)?.Status !== "Enabled") out.push(`${id}: versioning not enabled`);
     if (!json(p.BucketEncryption).includes('"aws:kms"')) out.push(`${id}: not KMS-encrypted`);
+    else {
+      const rules = ((p.BucketEncryption as { ServerSideEncryptionConfiguration?: { ServerSideEncryptionByDefault?: { KMSMasterKeyID?: unknown } }[] })?.ServerSideEncryptionConfiguration) ?? [];
+      if (!rules.every((r) => ownKey(t, r.ServerSideEncryptionByDefault?.KMSMasterKeyID))) out.push(`${id}: KMS key is not one this stack defines`);
+    }
     const tlsOnly = policies.some((pp) => json(pp.Bucket).includes(`"${id}"`) && ((pp.PolicyDocument as { Statement?: Record<string, unknown>[] })?.Statement ?? [])
       .some((s) => s.Effect === "Deny" && json(s.Condition).includes('"aws:SecureTransport":"false"')
-        && (s.Principal === "*" || json(s.Principal) === '{"AWS":"*"}') && (s.Action === "s3:*" || json(s.Action) === '["s3:*"]')));
+        && (s.Principal === "*" || json(s.Principal) === '{"AWS":"*"}') && (s.Action === "s3:*" || json(s.Action) === '["s3:*"]')
+        && json(s.Resource).includes(`"${id}"`)));   // the deny covers this bucket (break 5: not an unrelated resource)
     if (!tlsOnly) out.push(`${id}: no policy refusing plain HTTP`);
   }
   return out;

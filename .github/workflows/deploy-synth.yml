@@ -43,7 +43,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: no high finding in the shipped tree (npm audit --omit=dev --audit-level=high)
         run: npm audit --omit=dev --audit-level=high
-      - name: cdk synth from a clean checkout, no AWS keys (both stacks)
-        run: npx --no-install cdk synth --quiet --no-notices
+      - name: synth both stacks from a clean checkout (the app alone, no CLI, so no STS account lookup; no AWS keys)
+        run: npm run synth
       - name: assertion tests (node --test; each check passes on the real stacks and fails on a broken one)
         run: npm test

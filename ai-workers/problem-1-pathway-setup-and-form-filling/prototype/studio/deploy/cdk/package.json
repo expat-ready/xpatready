@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=22.18" },
   "scripts": {
-    "synth": "cdk synth --quiet",
+    "synth": "node bin/app.ts",
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {

@@ -64,6 +64,16 @@ test("PF-8a region fail: newer region families (us-isof-south-1, eu-isoe-west-1,
   }
 });
 
+test("PF-8a region fail: an AZ name, an id after the region, capitals and a region split across Fn::Join are seen (break 4)", () => {
+  const cases: [unknown, string][] = [["us-east-1a", "us-east-1"], ["us-east-1_AbCdEf", "us-east-1"], ["US-WEST-2", "us-west-2"], [{ "Fn::Join": ["", ["arn:aws:sns:us-", "east-1", ":1:t"]] }, "us-east-1"], [{ "Fn::Join": ["-", ["eu", "west", "1"]] }, "eu-west-1"]];
+  for (const [value, region] of cases) {
+    const t = clone(real[0].template);
+    t.Resources!.X = { Type: "AWS::SSM::Parameter", Properties: { Value: value } };
+    assert.ok(regionFindings([{ ...real[0], template: t }]).some((l) => l.endsWith(`names region ${region}`)), JSON.stringify(value));
+  }
+  assert.deepEqual(regionFindings(real), []); // and the home region in those forms is still fine (no false finding)
+});
+
 test("PF-8a region: an allowance admits a region only inside its resource types (PF-8rc's ca-west-1 backup copy)", () => {
   const t = clone(real[0].template);
   t.Resources!.Copy = { Type: "AWS::Backup::BackupPlan", Properties: { Rule: { CopyActions: [{ DestinationBackupVaultArn: "arn:aws:backup:ca-west-1:1:backup-vault:x" }] } } };
@@ -97,6 +107,9 @@ test("PF-8a database fail: each broken property is named", () => {
   pg.Parameters = { "rds.force_ssl": "0" };
   const f = databaseFindings(t).join("\n");
   for (const w of ["PubliclyAccessible", "not encrypted", "no KMS key", "deletion protection off", "kept 7 days", "force_ssl", "terse"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  const aliased = clone(real[1].template);
+  firstOf(aliased, "AWS::RDS::DBInstance").Properties!.KmsKeyId = "alias/aws/rds"; // an AWS-managed key (break 8)
+  assert.ok(databaseFindings(aliased).some((l) => l.includes("not one this stack defines")));
   assert.deepEqual(databaseFindings({ Resources: {} }), ["no database instance"]);
 });
 
@@ -126,12 +139,25 @@ test("PF-8a database subnets fail: a NAT route on a database subnet's table, or 
   assert.deepEqual(dataRouteFindings({ Resources: {} }), ["no database subnet group"]);
 });
 
-test("PF-8a buckets fail: a TLS deny narrowed to one action or one principal does not count (review m2)", () => {
-  for (const narrow of [{ Action: "s3:GetObject" }, { Principal: { AWS: "arn:aws:iam::1:root" } }]) {
+test("PF-8a buckets fail: a TLS deny narrowed to one action, one principal or an unrelated resource does not count (review m2, break 5)", () => {
+  for (const narrow of [{ Action: "s3:GetObject" }, { Principal: { AWS: "arn:aws:iam::1:root" } }, { Resource: ["arn:aws:s3:::someone-else/*"] }]) {
     const t = clone(real[0].template);
     for (const r of Object.values(t.Resources ?? {})) if (r.Type === "AWS::S3::BucketPolicy") for (const st of (r.Properties!.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement) Object.assign(st, narrow);
     assert.equal(bucketFindings(t).filter((l) => l.includes("plain HTTP")).length, 3, JSON.stringify(narrow));
   }
+});
+
+test("PF-8a buckets fail: a bucket encrypted with a key the stack does not define is caught (break 8)", () => {
+  const t = clone(real[0].template);
+  const enc = firstOf(t, "AWS::S3::Bucket").Properties!.BucketEncryption as { ServerSideEncryptionConfiguration: { ServerSideEncryptionByDefault: Record<string, unknown> }[] };
+  enc.ServerSideEncryptionConfiguration[0].ServerSideEncryptionByDefault.KMSMasterKeyID = "alias/aws/s3";
+  assert.equal(bucketFindings(t).filter((l) => l.includes("not one this stack defines")).length, 1);
+});
+
+test("PF-8a synth never runs the CDK CLI in CI or by npm (the CLI looks up the account through STS when keys exist: break 1)", () => {
+  const pkg = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8")) as { scripts: Record<string, string> };
+  assert.equal(pkg.scripts.synth, "node bin/app.ts");
+  assert.ok(Object.values(pkg.scripts).every((v) => !/\bcdk\b/.test(v)), JSON.stringify(pkg.scripts));
 });
 
 test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only, never in a merge-queue batch (P-772 (a))", () => {
@@ -139,6 +165,14 @@ test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only,
   const wf = raw.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n"); // the header comment names merge_group in words
   const paths = [...wf.matchAll(/^ {6}- "([^"]+)"$/gm)].map((m) => m[1]);
   assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml", ".github/workflows/deploy-synth.yml"]);
-  assert.doesNotMatch(wf, /merge_group|schedule:|push:/);
-  assert.doesNotMatch(wf, /AWS_ACCESS_KEY_ID: \$\{\{|secrets\./); // no AWS key or repository secret reaches the job
+  // the only trigger is pull_request (break 6: pull_request_target, workflow_dispatch, workflow_run, push, merge_group, schedule)
+  const on = /^on:\n((?: {2}.*\n)+)/m.exec(wf)?.[1] ?? "";
+  assert.deepEqual([...on.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]), ["pull_request"]);
+  assert.doesNotMatch(wf, /merge_group|pull_request_target|workflow_run|workflow_dispatch|schedule:|push:/);
+  assert.doesNotMatch(wf, /secrets\s*[.[]|toJSON\(\s*secrets|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|id-token/i); // no secret, key or OIDC token
+  assert.match(wf, /^permissions:\n {2}contents: read\n(?! )/m); // read-only, nothing else
+  assert.match(wf, /persist-credentials: false/);
+  assert.doesNotMatch(wf, /persist-credentials: true/);
+  assert.match(wf, /npm ci --ignore-scripts/); // no install script runs
+  assert.doesNotMatch(wf, /\bcdk synth\b|npx[^\n]*\bcdk\b/); // no CLI (break 1)
 });
