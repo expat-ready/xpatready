@@ -211,4 +211,11 @@ kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json"
 # entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
 fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
 
+# 13b. Ready rows per lane (E11, P-599 (1): at least two ready rows per lane at all times): the board's own count
+# (data.json › backlog.by_lane) for the four /next lanes; one ACT per lane under two, an unread count is an ACT too.
+lr=$(python3 -I "$TOOLS/owed-watch.py" lanes --board "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" 2>&1); echo "$lr"; act=$((act + $(grep -c '^ACT' <<<"$lr"))); seen "$lr"
+# 13c. Starts owed (E19, founder 21 Nov, P-772): STATE sentences saying a start is owed at the founder's next typed turn
+# (a cron or message turn cannot start sessions). One ACT listing them: raise them in his next turn and the push notification.
+so=$(python3 -I "$TOOLS/owed-watch.py" starts --state "$TOOLS/../STATE.md" 2>&1); echo "$so"; act=$((act + $(grep -c '^ACT' <<<"$so"))); seen "$so"
+
 exit "$act"
