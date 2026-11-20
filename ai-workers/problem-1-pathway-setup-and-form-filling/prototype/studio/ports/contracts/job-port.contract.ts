@@ -2,10 +2,12 @@
 // Every case is a sentence of the port file: a key never queues twice under one job name, even after its job ran or was
 // cancelled; a key is per job name; cancel cancels every waiting job of a key, whatever its name, and answers whether
 // one was waiting; a job scheduled later does not run now; a handler sees its job's payload, key and firm, attempt 1
-// first; a bad job name, cron or zone is refused before anything is queued. (A recurring schedule's runs are not a
+// first; a bad job name, cron or zone is refused before anything is queued. PF-19p (Lead B rev 16.66): a platform job
+// (`platform: true`, no firm) runs on a PLATFORM_JOB_QUEUES queue with no firm and is retried as a firm's job is; one on
+// any other queue, or one with both a firm and `platform`, is refused. (A recurring schedule's runs are not a
 // contract case: they need a clock both a fake and the wall-clock provider can move; check_pf14_jobs.ts compares them.)
 import { defineContract, expect, expectRefused } from "./contract.ts";
-import type { JobPort, JobRun } from "../jobs.ts";
+import { PLATFORM_JOB_QUEUES, type JobPort, type JobRun } from "../jobs.ts";
 import { stableJson } from "../render.ts";
 
 /** What a job adapter's test hands the contract. */
@@ -21,6 +23,10 @@ export type JobHarness = {
 };
 
 const FIRM = "0c0c0c0c-0000-4000-8000-00000000000a";
+/** The platform queue is one name for every adapter, and two adapters on one database may each run its jobs, so its
+ *  handler records every run here and each harness reads the runs of its own keys. */
+const platformRuns: JobRun[] = [];
+const platformHandled = new WeakSet<JobPort>();
 
 export const jobPortContract = defineContract("JobPort", (make: () => Promise<JobHarness> | JobHarness) => {
   const worker = async (h: JobHarness, name: string) => {
@@ -120,6 +126,26 @@ export const jobPortContract = defineContract("JobPort", (make: () => Promise<Jo
       async run() {
         const h = await make();
         expect(await h.jobs.cancel(`never:${h.ns}:queued`) === false, "nothing to cancel");
+      },
+    },
+    {
+      name: "PF-19p: a platform job runs on a listed queue with no firm and is retried as a firm's job is; an unlisted queue, or a firm too, is refused",
+      async run() {
+        const h = await make(), queue = PLATFORM_JOB_QUEUES[0], firmQueue = `contract.${h.ns}.pfirm`, firmRuns: JobRun[] = [];
+        const failFirst = (seen: JobRun[], j: JobRun) => { seen.push(j); if (j.attempt === 1) throw new Error("contract: the first try fails"); };
+        if (!platformHandled.has(h.jobs)) { platformHandled.add(h.jobs); await h.jobs.handle(queue, async (j) => { if (String(j.payload.fail) === "yes") failFirst(platformRuns, j); else platformRuns.push(j); }); }
+        await h.jobs.handle(firmQueue, async (j) => failFirst(firmRuns, j));
+        const key = `platform:${h.ns}:${Date.now()}`, keyFail = `${key}:fail`, mine = (k: string) => platformRuns.filter((r) => r.key === k);
+        const q = await h.jobs.enqueue(queue, { outboxId: "o-1", platform: true }, { key, platform: true });
+        await h.jobs.enqueue(queue, { fail: "yes" }, { key: keyFail, platform: true });
+        await h.jobs.enqueue(firmQueue, {}, { key: `pfirm:${h.ns}:${Date.now()}`, firmId: FIRM });
+        await h.settle(() => mine(key).length >= 1 && mine(keyFail).length >= 2 && firmRuns.length >= 2);
+        const run = mine(key)[0];
+        expect(q.queued === true && mine(key).length === 1 && run?.firmId === null && run.payload.outboxId === "o-1" && run.name === queue, "the platform job ran once, with no firm and its payload", mine(key));
+        expect(mine(keyFail).map((r) => r.attempt).join() === firmRuns.map((r) => r.attempt).join(), "a failing platform job is retried exactly as a failing firm job", { platform: mine(keyFail).map((r) => r.attempt), firm: firmRuns.map((r) => r.attempt) });
+        await expectRefused(() => h.jobs.enqueue(`contract.${h.ns}.notlisted`, {}, { key: `${key}:x`, platform: true }), "a platform job on a queue not in PLATFORM_JOB_QUEUES");
+        await expectRefused(() => h.jobs.enqueue(queue, {}, { key: `${key}:y`, platform: true, firmId: FIRM } as never), "a job naming both a firm and platform");
+        await expectRefused(() => h.jobs.enqueue(queue, {}, { key: `${key}:z` } as never), "a job naming neither a firm nor platform");
       },
     },
     {

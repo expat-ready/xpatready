@@ -80,6 +80,11 @@ export const NewCase = z.object({
   }, { message: "Each earlier stage is an object." }), { message: "Earlier stages are a list." }).max(10, "A route has at most 10 earlier stages.").optional(),
 });
 
+/** FO-8: the body of "Open a case?" (POST clients/:id/open-case). The opening's own fields, each optional where the offer
+ *  pre-fills it (the combination, the principal, the representative); the client is the route's and the key is not taken,
+ *  so neither is a field here. Strict: an unknown field is refused by name, never dropped. */
+export const OpenCaseFromOffer = NewCase.omit({ clientId: true, idempotencyKey: true }).partial({ combinationId: true, principal: true }).strict();
+
 /** C6.11 (BR-20, SI-9): the firm admin changes the representative of record, with a reason kept in the history; a new
  *  representative asks for a new IMM 5476 (BR-12). */
 const teamUser = z.string({ message: "Choose a person of your firm." }).trim().regex(/^user-[A-Za-z0-9]{1,8}$/, "Choose a person of your firm.");
@@ -573,3 +578,34 @@ export type CaseDecisionsView = z.infer<typeof CaseDecisionsView>;
 export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
 export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
 export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));
+
+// ------------------------------------------------------------------ CS-V1 part 3: the last five case-side inputs
+// The same rule as part 2: a field that is not part of the request, a wrong type (a value given twice is a list) and an
+// over-long value answer 400 naming the field; every request the screens and helpers send is still accepted, and the
+// checks a route already made keep their words (they stay in the route, after this).
+/** A refused write: the standard 400 naming each field, and nothing was stored (the parse comes before any read or write). */
+export const nothingStored = (e: z.ZodError) => {
+  const errors = e.issues.map((i) => ({ field: i.path.join(".") || "body", message: i.message }));
+  return { type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: 400, detail: `${errors.map((x) => x.message).join(" ")} Nothing was stored.`, errors };
+};
+/** POST /runtime/items/:id/pdf-copy (case-prepare.ts): the copy's idempotency key, checked as Generate checks it. */
+export const PdfCopyBody = z.strictObject({ idempotencyKey: idemKey.nullish() }, notHere("a PDF copy"));
+/** The printed copy a signing step or a signed scan names (B130): a generated copy's id; empty or null names none. */
+const namedCopyId = z.union([z.string().max(100, "copy is the printed copy's id, at most 100 characters."), z.null()], { error: "Give copy once, as the printed copy's id (text), or leave it out." }).optional();
+/** POST /runtime/items/:id/sign-steps/:key (sign-steps.ts). */
+export const SignStepBody = z.strictObject({ copy: namedCopyId }, notHere("a signing step"));
+/** POST /runtime/items/:id/signed-scan (sign-steps.ts): the upload's text fields (the file itself is "file", judged by its bytes). */
+export const SignedScanFields = z.strictObject({ copy: namedCopyId }, notHere("a signed scan (send the file as \"file\" and, if you like, the printed copy's id as \"copy\")"));
+/** GET /runtime/cases (runtime.ts Runtime.list): each filter once, as text. take keeps its default (50) and its limits
+ *  (1 to 100; a value that is not a number is 50, as before); after is the `next` of the page read; client and q keep
+ *  the route's own checks ("Name one client login."; q at most 80 characters once trimmed). */
+export const CaseListQuery = z.strictObject({
+  take: z.string({ error: "Give take once, as a number from 1 to 100." }).max(10, "Give take as a number from 1 to 100.").optional(),
+  after: z.string({ error: "Give after once: the next value of the page you read." }).regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Give after as the next value of the page you read.").optional(),
+  client: z.string({ error: "Name one client login." }).max(200, "Name one client login (at most 200 characters).").optional(),
+  q: z.string({ error: "Search with one text." }).max(1000, "Search with at most 80 characters.").refine((v) => v.trim().length <= 80, "Search with at most 80 characters.").optional(),
+}, onlyFilters("take, after, client, q"));
+/** GET /runtime/cases/:id/questionnaire (runtime.ts): agent is the Agent view, pqr the people's questions, sqr (or
+ *  client, or none) the Client questionnaire, as the route reads them. */
+export const QUESTIONNAIRE_MODES = ["agent", "pqr", "sqr", "client"] as const;
+export const QuestionnaireQuery = z.strictObject({ mode: z.enum(QUESTIONNAIRE_MODES, { error: "mode is agent, pqr, sqr or client (or leave it out for the Client questionnaire)." }).optional() }, onlyFilters("mode"));

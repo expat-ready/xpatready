@@ -3,6 +3,8 @@ export type Plan = { item: string; found: boolean; why?: string; name: string; s
 export type Result = { kind: string; name: string; exit: number; untested?: string; note?: string; fail?: number };
 export type Row = { kind: string; name: string; result: "pass" | "fail" | "not run" | "not tested"; exit: number | null; note?: string };
 export type Verdict = { item: string; name: string; pr: number | null; sha: string; run_id: string; run_url: string; at: string; overall: "PASS" | "FAIL"; why: string[]; suites: Row[]; video: string | null; trace: string | null; file: string; repo: string; note: string };
+export const SHARED_JOURNEY: Record<string, number>;
+export function journeyOf(item: string): string;
 export function detect(body: string): { items: string[]; bad: string[] };
 export function plan(item: string, md: string, studio?: string): Plan;
 export function verdict(a: { item: string; plan: Plan; results: Result[]; sha: string; pr?: number | string; runId?: number | string; runUrl?: string; artifactUrl?: string | null; repo?: string; at?: string }): Verdict;
