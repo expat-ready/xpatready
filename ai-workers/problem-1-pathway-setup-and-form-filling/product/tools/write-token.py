@@ -34,7 +34,8 @@ except ImportError:
 
 # (workflow file, job): the write jobs of PR-controlled workflows that were reviewed. retry-comment: base commit's
 # flaky.mjs only, artifacts read as data (B122 F5, #1145).
-ALLOW = {("ci.yml", "retry-comment")}
+# pr-rules outside-wave (B204, P-745): base commit's waves.py only, the PR's title and body read as data through env:.
+ALLOW = {("ci.yml", "retry-comment"), ("pr-rules.yml", "outside-wave")}
 TRUSTED = {"pull_request_target", "workflow_run", "issue_comment", "pull_request_review", "pull_request_review_comment"}
 BASE_REF = "${{ github.event.pull_request.base.sha }}"
 PR_CODE_REF = re.compile(r"head\.sha|head\.ref|head_sha|head_branch|refs/pull/|merge_commit_sha|github\.head_ref|pull/\d|\bpr/")
