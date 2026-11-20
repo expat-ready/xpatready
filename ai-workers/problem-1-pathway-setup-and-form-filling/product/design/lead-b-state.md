@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (14:00 IST 20 Nov):** **#2305 (R1.110) merged**; Lead 2 told (R1.110 to qa). Open: #2322 (waits on the lane's NOT_FOLD_OUTS fix), #2326 (after #2322), #2029 (waits on Approve).
+
 **Lead B (9) update (13:2x IST 20 Nov):** the current Lead is now **Lead 2 (series 3)** (`local_daadc134-add4-42a5-9987-ad02c4f16613`; Lead 1 handed over), and it has my open items. **#2305** was requeued 13:15 IST and Mergify is checking it.
 
 **Lead B (9) update (13:3x IST 20 Nov), from Lead 1:** #2322's full run 44686838150 **failed on its own code**: shard (2) `check_bk2_fold_outs.ts`, "More" menu button `detail-panel.tsx:58` (aria-expanded, no FoldArrow). My ruling (P-294, PR comment 7033519396): list it in NOT_FOLD_OUTS (a menu, not a fold-out), and the "(change)" zone button too if it's flagged; then diff-only re-Approve, new head, the Lead's new full run. #2435 (FO-3st2 hold) and #2438 merged 13:2x; **#2305** relabelled with its cover line and back in the queue. #2326 is dirty: merge main after #2322.
