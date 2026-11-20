@@ -48,8 +48,9 @@ a caller's protocol, not the server log: listed as a question, left as they are.
    message is "Sample Zelda Quixote W012345678 zelda@example.test" is thrown into the site with a capturing logger;
    no captured line holds the name, any word of it, the number or the email; the line holds the event and the ids.
 3. `J-13` — `tests/journeys/j_13.ts` on an isolated copy (never :4400), reading the copy's `api.log`:
-   W1 a staff request with `X-Request-Id: j13-<n>` that carries a seeded name, email and passport number in its body is
-   answered and logged as one JSON line with that correlation id; W2 every line of `api.log` parses as JSON and none
+   W1 a booker's requests to a firm's public booking door (as built: the door needs no sign-in, so it is a person's own
+   request; one refused with the passport number in an unknown field, one booked) are answered and each logged as one
+   JSON line with the booker's `X-Request-Id`; W2 every line of `api.log` parses as JSON and none
    holds a seeded value (fail case: the walk's own leak probe line, written to a scratch copy of the log, is flagged);
    W3 `/api/health/live` and `/api/health/ready` are 200 (`job_queue.ok: true`); W4 a pg-boss job older than
    `STUCK_JOB_MS` (Sample, 30 min) written to the copy's job table raises one `Alerts` metric line with
@@ -59,3 +60,14 @@ a caller's protocol, not the server log: listed as a question, left as they are.
 
 Size: ~35 one-line edits + ~250 test lines; under 800. Reviewer only (no money, schema, permissions or screen, P-303).
 US$0, live AI off.
+
+## As built (21 Nov IST)
+* 31 sites moved (the list above; `demo.ts` 42 and `firms.ts` 54 use `dbRuleOf` for the rule name in place of the old
+  `whyNot` text, now removed), plus the booking door's two `this.warn` lines (`front-office/booking/service.ts` 637,
+  694: the error's class in place of its message; no open PR touches the file).
+* DW2 as built: every moved site is checked to hand logPort the caught error or ids only (never a text); the seeded
+  person is thrown at the logger, at `plainRunText` and at the booking door's two warn sites (real code, no server).
+  The other sites sit deep in AI and job runs that need a database and a launcher; they are covered by the site check
+  and the logger's contract, not each run end to end. Said in the PR.
+* Found while walking: Stripe's SDK 23.1.0 writes one plugin hint straight to stderr when `CLAUDECODE` is set (agent
+  sessions only), past the logger. No personal value; J-13 names that exact line as its one exception.
