@@ -5,7 +5,9 @@
 //   W1: a visitor sends the firm's web form with phone "12" → the lead shows Fix number on the Leads list and its page;
 //   W2: staff press Fix number and enter "12" → the field's sentence, and nothing is saved;
 //   W3: staff enter "+1 416 555 0100" → saved (E.164), the pill goes away, and the list no longer flags it;
-//   W4: firm B's person, asked by firm A's staff → 404 (the route), and nothing of B's changes.
+//   W4: firm B's person, asked by firm A's staff → 404 (the route), and nothing of B's changes;
+//   W5 (FO-9b, QA-528): the same person arrives twice, "+44 (0)20 7946 0958" by the web form and "0044 20 7946 0958" by
+//       the booking screen; both are +442079460958 and the booking's lead shows the possible match on screen.
 // Sample rows only (the web form switched on by SQL, as an Owner would in settings); US$0, no model call. Repeatable on a
 // kept copy (each run's names carry a run stamp).
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -18,6 +20,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
+import { copyFirmHoursTo } from "../../api/src/front-office/booking-seed.ts";
 import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { UNREADABLE_PHONE } from "../../api/src/front-office/people/edit.ts";
 import { auditEvent } from "../../api/src/platform/audit/audit-event.ts";
@@ -137,6 +140,44 @@ try {
     bLead.status === 201 && cross.status === 404 && sql(`select phone || '|' || phone_readable from fo_person where id = '${bPerson}'`) === "12|false", { b: bLead.status, cross });
   const own = await api(tok.S, "PATCH", `/front-office/people/${bPerson}`, { phone: "+1 416 555 0101" });
   ok("J-33 W4: firm B's Owner can fix their own person (the 404 is the firm wall, not a broken route)", own.status === 200 && own.body?.phone === "+14165550101", own);
+  // ------------------------------------------------------------- W5 (FO-9b, QA-528): two spellings arrive and match
+  // One person, two doors: the web form with "+44 (0)20 7946 0958" (a trunk 0), then the public booking screen with
+  // "0044 20 7946 0958" (00 dialling) under another email. Every door reads the phone with the one exact normaliser, so
+  // both are +442079460958 and the booking's lead names the first person as a possible match on screen.
+  const wynn = `Wynn${run}`;
+  const v2 = await pageAs(null);
+  await v2.goto(`${BASE}/front-office/web-form/${token}`);
+  await v2.getByLabel("First name", { exact: true }).waitFor({ timeout: 30_000 });
+  await v2.getByLabel("First name", { exact: true }).fill(wynn);
+  await v2.getByLabel("Last name (optional)").fill("Webform");
+  await v2.getByLabel("Email", { exact: true }).fill(`wynn.web.${run}@j33.example`);
+  await v2.getByLabel("Phone (optional)").fill("+44 (0)20 7946 0958");
+  const c2 = v2.getByRole("checkbox"); if (await c2.count()) await c2.first().check();
+  await v2.waitForTimeout(2_500);
+  await v2.getByRole("button", { name: "Send my enquiry" }).click();
+  await v2.locator('[data-form-state="thanks"]').waitFor({ timeout: 20_000 });
+  const slug = `j33-${run}`;
+  await copyFirmHoursTo(db, A, [R.id]);
+  await db.foConsultationType.create({ data: { firmId: A, slug, name: "Free consultation (J-33)", modes: ["VIDEO", "PHONE"], hostStaffIds: [R.id], minutes: 30 } });
+  const v3 = await pageAs(null);
+  await v3.goto(`${BASE}/book/sample-firm/${slug}`);
+  await v3.getByRole("heading", { name: "Choose a time" }).waitFor({ timeout: 30_000 });
+  for (let i = 0; i < 3 && !(await v3.locator("[data-day-times] li").count()); i++) { await v3.getByRole("button", { name: "Next month" }).click(); await v3.waitForTimeout(800); }
+  await v3.locator("[data-day-times] li button").first().click();
+  await v3.getByLabel("Given names").fill(wynn); await v3.getByLabel("Family name").fill("Booker"); await v3.getByLabel("Email", { exact: true }).fill(`wynn.book.${run}@j33.example`);
+  await v3.getByLabel("Phone call").check(); await v3.getByLabel("Phone", { exact: true }).fill("0044 20 7946 0958");
+  await v3.getByRole("button", { name: "Book this time" }).click();
+  await v3.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 });
+  await shot(v3, "W5-booked-with-0044-1440");
+  const pair = sql(`select string_agg(coalesce(phone_e164, '-'), ',' order by created_at) from fo_person where given_names = '${wynn}'`);
+  ok("J-33 W5: the web form's \"+44 (0)20 7946 0958\" and the booking's \"0044 20 7946 0958\" are both stored +442079460958 (never +4402…)", pair === "+442079460958,+442079460958", pair);
+  const [bookLead, webPerson] = [sql(`select l.id from fo_lead l join fo_person p on p.id = l.person_id where p.email = 'wynn.book.${run}@j33.example'`), sql(`select id from fo_person where email = 'wynn.web.${run}@j33.example'`)];
+  ok("J-33 W5: underneath, the booking's lead is flagged a possible match of the web-form person", !!bookLead && sql(`select coalesce(possible_match_person_id::text, '-') from fo_lead where id = '${bookLead}'`) === webPerson);
+  await owner.goto(`${BASE}/front-office/leads/${bookLead}`);
+  await owner.getByRole("heading", { level: 1, name: new RegExp(wynn) }).waitFor({ timeout: 20_000 });
+  const matchLine = (await owner.locator("main").innerText());
+  await shot(owner, "W5-possible-match-on-screen-1440");
+  ok("J-33 W5: on screen, the booking's lead says \"Possible match: <the web-form person>\" and shows the number in E.164", matchLine.includes(`Possible match: ${wynn} Webform`) && matchLine.includes("+442079460958"), matchLine.slice(0, 400));
   ok("J-33: no page error in the walk", errors.length === 0, errors);
 } finally {
   await browser.close();

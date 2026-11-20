@@ -12,8 +12,8 @@ import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../sales/corporate/match.ts";
-import { actorOf, phone as fo2Phone, unprocessable, visibilityOf } from "../sales/common.ts";
-import { phoneE164 } from "./phone.ts";
+import { actorOf, unprocessable, visibilityOf } from "../sales/common.ts";
+import { phoneE164Exact } from "./phone.ts";
 
 export const HIDDEN_LINE = "Possible match with a record you cannot open — ask a manager";
 type PersonRow = { id: string; given_names: string | null; family_name: string | null; by_email: boolean; by_phone: boolean; sim: number; seen: boolean };
@@ -28,10 +28,10 @@ export class Duplicates {
     const b = DuplicateCheckIn.safeParse(body ?? {});
     if (!b.success) return unprocessable("Check the details: names, email, phone and company name are text.", Object.fromEntries(b.error.issues.map((i) => [String(i.path[0] ?? "body"), i.message])));
     const email = normaliseEmail(b.data.email), name = personNameKey(b.data.givenNames, b.data.familyName);
-    // The typed number by libphonenumber-js, and by FO-2's own rule (how a stored number got its key), so a number typed
-    // the same way at both ends always meets (review m2: "+44 (0) 20 …" is stored by FO-2's rule as +4402…).
-    const fo2 = (() => { try { const p = fo2Phone(b.data.phone); return p?.readable ? p.phone : null; } catch { return null; } })();
-    const phones = [...new Set([phoneE164(b.data.phone), fo2].filter((x): x is string => !!x))];
+    // The typed number by the one exact normaliser every arrival door stores with (FO-9b, P-747), so two spellings of
+    // one number meet ("+44 (0) 20 …" and "0044 20 …" are both +4420…); a number it cannot read matches nothing.
+    const exact = typeof b.data.phone === "string" ? phoneE164Exact(b.data.phone) : null;
+    const phones = exact ? [exact] : [];
     const company = b.data.companyName?.trim() ? normaliseCompanyName(b.data.companyName) : "";
     if (!email && !phones.length && !name && !company) return unprocessable("Give a name, an email, a phone number or a company name to check.", { body: "Nothing to check." });
 
