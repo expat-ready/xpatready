@@ -85,3 +85,17 @@ Read: `git diff 3118d3827 9b6088e59 -- …/prototype` (sales-frame.tsx, lead-own
 Copy note: my own copy stopped twice during the walk with nothing logged (outside interference; no product error in its log). Every result above comes from a clean restart in which the copy stayed up (HTTP 200 after the run).
 
 **Verdict: Block** at `9b6088e59d829bbf261a5590a6b02c520a6bfb69`. To fix: **M1** (the badge after opening Leads with no `?view`, with an AS5 step) and **N1** (the lead page stuck on Loading and looping when `assignees` fails, with a check).
+
+---
+
+## Re-check, diff only (P-277): 9b6088e → `e63311a878913cf153e968295c7ab0b1484e5ef2`
+Read: `git diff 9b6088e59 e63311a87 -- …/prototype` (sales-frame.tsx shared `assigneesQuery` with `retry: false, retryOnMount: false`; the badge counts only when `on`; Leads fetches its list only once owners are settled; AS5 no-`?view` step; AS8). Ran on my own copy of e63311a (:4441, `xr_studio_rvas3`, web rebuilt, stopped after): check_fo4as **27/27**, plus my earlier repro scripts.
+
+* **M1 fixed.** The one-user Owner opened `/front-office/leads` with no `?view`, with `assignees` answering at once and after a 1.5 s delay. Result: badge 0, 0 `view=unassigned` requests, chips "Mine · All open", badge still 0 on Pipeline. Firm A still shows the badge (AS5 fail side).
+* **N1 fixed.** With `assignees` answering 500, the lead page drew in 363 ms with 1 `assignees` request (it never left Loading before, after 119 requests). AS8 covers this.
+* Everything else still holds: m2 (rail waits), m4 ("No owner changes yet."), m6 (describedby, axe clean with the error), and breaker 4 (no choice kept after a refusal; Escape returns focus).
+* New Minor (Should), not blocking: after a failed `assignees` read the panel says "No other active person in your firm.", which is wrong for a firm of three. A failure stays until reload (`retryOnMount: false`). Fix: when the read failed, say "Could not load your colleagues." with Try again (`lead-owner.tsx`, the empty-choices line). Fix it or list it with the PR's follow-ups (m5, clicks).
+
+No Blocker or Major is open.
+
+**Verdict: Approve** at `e63311a878913cf153e968295c7ab0b1484e5ef2`.
