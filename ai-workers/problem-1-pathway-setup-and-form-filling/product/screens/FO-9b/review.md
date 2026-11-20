@@ -44,3 +44,23 @@ N/A: a front-office arrival and normaliser item, not a case-side screen (§6 sco
 A real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); GitHub's `walks` run of J-33 (the PR is not open); stored rows on the shared demo database (:4400 is off limits), so I cannot count how many old-rule rows exist.
 
 **Verdict: Block** for `4bdf017a991d0fadd2b43235462b336a6c8e0465`. To fix: **M1** (`duplicates/phone.ts:24,27`, with failing tests). m1-m3 should go in the same PR.
+
+## Re-review (diff only) on 95eb6452
+Diff read: `git diff 4bdf017a…95eb6452`. It changes `duplicates/phone.ts`, `ports/arrival.ts`, `ports/fo-person.ts`, `tests/check_fo9b_phone_doors.ts`, and commits this review and the journey report as written. Everything below ran on 95eb6452, port 4434 only:
+* `check_fo9b_phone_doors` 26/26
+* `check_fo9a_phone_edit` 36/36
+* `check_fo9a_duplicates` 53/53
+* `check_fo2p3b_arrival_port` 53/53
+* `j_33.ts rev9b 4434` 19/19 (re-shot PNGs restored)
+* my 22-input probe of `phoneE164Exact`
+
+| Finding | Status | Evidence |
+|---|---|---|
+| **M1** (impossible +1 numbers readable) | **Closed** | `duplicates/phone.ts:31` refuses a +1 national number outside `^[2-9][0-9]{2}[2-9][0-9]{6}$`. The probe now reads nothing for "000-000-0000", "0000000000", "123 456 7890", "00 0 123 4567", "+1 000 123 4567", "(000) 123-4567" and "00 1 000 000 0000". These still read: "416-555-0101", "1 (416) 555-0101", "+44 (0) 20 7946 0958", "0033 6 12 34 56 78", "+91 98765 43210". The rule has a failing test (P0 NANP_BAD), plus a door case (D2: "000-000-0000" → `000-000-0000\|false\|-`). Removing line 31 fails both. The edit route now refuses these numbers too, as P-747 wants; FO-9a's suite is still 36/36 |
+| **m1** (`keepPhone(readable=false)` untested) | Closed | The new D5 case puts an open prospect on file with no phone; the booking then gives "555 0101". Result: stored `555 0101\|false\|-`, no refusal. With `readable: true` the update would break `fo_person_phone_check`, the transaction would throw and `heldR` would be non-null, so the test guards the branch |
+| **m2** (backfill question on the PR) | Open (Minor) | Goes in the PR body when the PR opens, as the brief asks. It does not block |
+| **m3** (fakes drift) | Closed | `ports/fo-person.ts:117-118,147` now name `phoneE164Exact` and say the Sample rule is FO-2's old one. The fake `addPerson` in `ports/arrival.ts:161-165` keeps an unreadable phone out of the contact, as `bookingArrived` does |
+
+No new issues in the diff. The NANP rule only acts on country code 1, so every non-+1 number reads as before. The journey score stays at 8.5/10: "Correct data" rises to 1 now that M1 is fixed, which would make 9.5, but I did not re-walk the browser journeys, so I leave the score as walked.
+
+**Verdict: Approve** for `95eb64522df1f575f0af86e3be091de920aab13c` (no open Blocker or Major; m2 to go on the PR).
