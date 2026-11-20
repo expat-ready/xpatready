@@ -2,7 +2,9 @@
 
 **Item:** R1.8 "Audit trail nobody can edit". **Done when:** "Every create, change and delete on PF/FO tables writes who, when, before and after; UPDATE or DELETE on the audit table refused by the database even for the app's role (fail case); a line with another firm's id refused". The last part, #2527 (QA-594, QA-595, J-8 DW6 and DW7), merged as d67a5c77c. Every part has merged, so the row is scored (P-606). The tech lead (Lead 6, series 3) dispatched the walks at 01:2x IST.
 
-**Verdict: Partial, held only by QA-596 (a ruling for the Lead).** The fresh Opus reader gives Partial, 70%, and qa agrees.
+**Verdict: Works (P-339), 21 Nov, after the tech lead's QA-596 ruling** (Lead 7, #2593 comment 7049414063, as qa recommended: rows created inside an audited change are covered by the parent line; delivery state is system state; tokens are never logged; `platform_limit_change` is a record of its own). QA-596 is closed. Works rests on walks 44804815642 and 44804820326 on main's head, with no new run.
+
+**First verdict (kept for the record): Partial, held only by QA-596 (a ruling for the Lead).** The fresh Opus reader gives Partial, 70%, and qa agrees.
 - Every run is green on main's head, and the clauses hold in the code.
 - What remains is the meaning of "every create, change and delete". Some rows written inside an audited change get no line of their own, and system delivery state has no line either (QA-596, widened).
 - If the Lead rules that the parent line covers them (qa's recommendation), R1.8 is **Works on these same runs**, with no new run.
