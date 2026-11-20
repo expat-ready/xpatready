@@ -204,7 +204,7 @@ await o.getByRole("button", { name: "Switch the form off" }).click();
 await o.getByText(/^Switched off\./).waitFor({ timeout: 15_000 });
 await o.waitForTimeout(300);   // a few frames, so a transition (if any) has begun at its midpoint
 await axe("QA-605 settings, form off (any transition held at its midpoint)", o);
-await slow.evaluate((el) => el.remove());
+await slow.evaluate((el) => (el as Element).remove());
 const offLine = sql(`select concat_ws('|', actor, detail->>'enabled_before', detail->>'enabled_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
 ok("QA-605: the Owner switches the form off by screens: stored off, the page says Off, one audit line by the Owner with before true and after false", enabledNow() === "f" && await o.getByText("This form is off").isVisible() && onoffAudits() === 1 && /^staff:.+\|true\|false$/.test(offLine), { enabled: enabledNow(), offLine });
 const offSend = await fetch(`${BASE}/api/public/forms/${token}`);
