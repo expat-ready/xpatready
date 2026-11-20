@@ -26,6 +26,7 @@ import { fakeAlerts } from "../ports/alert.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import type { MessageSend } from "../ports/messages.ts";
+import { liftsAddressOptOut } from "../ports/consent.ts";
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 400)}` : ""}`); };
@@ -51,17 +52,18 @@ try {
 
   type P = { kind: "FO_PERSON"; id: string };
   const person = (): P => ({ kind: "FO_PERSON", id: uuid() });
-  const send = async (firmId: string, p: P | undefined, address: string, cls: MessageSend["class"]) => {
+  const send = async (firmId: string, p: P | undefined, address: string, cls: MessageSend["class"], o: { hold?: boolean } = {}) => {
     const r = await db.$transaction((t) => messages.send(t, { firmId, ...(p ? { person: p } : {}), channel: "EMAIL", class: cls, address, content: { subject: "Spring seminar (Sample)", text: "Join us in April." }, idempotencyKey: uuid() }));
-    await messages.dispatch(firmId, [r.outboxId]); await jobs.runDue();
+    if (!o.hold) { await messages.dispatch(firmId, [r.outboxId]); await jobs.runDue(); }
     return { outboxId: r.outboxId, row: await db.msgOutbox.findUniqueOrThrow({ where: { id: r.outboxId } }) };
   };
   /** Email marketing consent for a person, from a door: a public page (WEB_FORM, BOOKING_FORM, self-service, with the
    *  firm's wording) or staff (STAFF_RECORDED, by a staff member). */
-  const give = (firmId: string, p: P, source: "WEB_FORM" | "BOOKING_FORM" | "STAFF_RECORDED") => db.$transaction(async (tx) => {
-    const w = await consent.publishWording(tx, { firmId, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: `Sample: email news yes ${uuid().slice(0, 4)}`, by: "seed:qa518" });
-    await consent.record(tx, { firmId, subject: p, channel: "EMAIL", purpose: "MARKETING", wordingId: w.id, source, locale: "en",
-      recordedKind: source === "STAFF_RECORDED" ? "USER" : "SELF_SERVICE", recordedBy: source === "STAFF_RECORDED" ? "staff:qa518" : "system:web-form" });
+  const give = (firmId: string, p: P, source: "WEB_FORM" | "BOOKING_FORM" | "STAFF_RECORDED", o: { channel?: "EMAIL" | "WHATSAPP"; givenAt?: Date; typedByStaff?: boolean } = {}) => db.$transaction(async (tx) => {
+    const channel = o.channel ?? "EMAIL", staff = source === "STAFF_RECORDED" || o.typedByStaff;
+    const w = await consent.publishWording(tx, { firmId, channel, purpose: "MARKETING", locale: "en", text: `Sample: ${channel.toLowerCase()} news yes ${uuid().slice(0, 4)}`, by: "seed:qa518" });
+    await consent.record(tx, { firmId, subject: p, channel, purpose: "MARKETING", wordingId: w.id, source, locale: "en", ...(o.givenAt ? { givenAt: o.givenAt } : {}),
+      recordedKind: staff ? "USER" : "SELF_SERVICE", recordedBy: staff ? "staff:qa518" : "system:web-form" });
   });
   const allowed = async (firmId: string, p: P, address: string) => consent.allows(db, { firmId, subject: p, channel: "EMAIL", address, class: "MARKETING" });
 
@@ -82,10 +84,10 @@ try {
   await tick();
 
   const after2 = await send(firmA, p2, X, "MARKETING");
-  ok("Q1 pass: after the unsubscribe, marketing to the second person record at the same address is SUPPRESSED (WITHDRAWN: MARKETING), not sent",
-    after2.row.state === "SUPPRESSED" && after2.row.stateReason === "WITHDRAWN: MARKETING" && after2.row.sentAt === null, after2.row);
+  ok("Q1 pass: after the unsubscribe, marketing to the second person record at the same address is SUPPRESSED (ADDRESS_UNSUBSCRIBED: MARKETING, its own reason: that person never withdrew), not sent",
+    after2.row.state === "SUPPRESSED" && after2.row.stateReason === "ADDRESS_UNSUBSCRIBED: MARKETING" && after2.row.sentAt === null, after2.row);
   const a2 = await allowed(firmA, p2, X.toUpperCase());
-  ok("Q1 pass: ConsentPort.allows says so for any spelling of the address (WITHDRAWN)", !a2.allowed && a2.reason === "WITHDRAWN", a2);
+  ok("Q1 pass: ConsentPort.allows says so for any spelling of the address (ADDRESS_UNSUBSCRIBED)", !a2.allowed && a2.reason === "ADDRESS_UNSUBSCRIBED", a2);
   ok("Q1 pass: the second person's own consent row is not changed (the address rule decides, nothing is rewritten)",
     (await db.msgConsent.count({ where: { firmId: firmA, subjectId: p2.id, withdrawnAt: null } })) === 1);
 
@@ -122,6 +124,34 @@ try {
   await tick();
   const again5 = await send(firmA, p5, X, "MARKETING");
   ok("Q6 fail: a later unsubscribe from the address ends the lift for everyone at it, the booking's person too (SUPPRESSED)", again5.row.state === "SUPPRESSED", again5.row);
+
+  // Review m6 and m3: the ruling's other exclusions, the worker's re-check, WhatsApp, and an unsubscribe from service mail.
+  const Z = box("more"), q1 = person(), q2 = person(), q3 = person(), q4 = person();
+  for (const q of [q1, q2]) await give(firmA, q, "WEB_FORM");
+  await give(firmA, q2, "WEB_FORM", { channel: "WHATSAPP" });
+  await tick();
+  const svcMail = await send(firmA, q1, Z, "SERVICE");
+  const held = await send(firmA, q2, Z, "MARKETING", { hold: true });   // written (QUEUED) before the unsubscribe, delivered after
+  // No clock step until it is delivered: a step runs the fake job runner's sweep, which would send it early.
+  const svcPage = await unsub.confirm(tokens.mint(firmA, svcMail.outboxId));
+  await messages.dispatch(firmA, [held.outboxId]); await jobs.runDue();
+  const heldRow = await db.msgOutbox.findUniqueOrThrow({ where: { id: held.outboxId } });
+  ok("Q7 pass: a marketing email queued before the unsubscribe (from a service email) and delivered after it is stopped by the worker's re-check",
+    typeof svcPage === "string" && held.row.state === "QUEUED" && heldRow.state === "SUPPRESSED" && heldRow.stateReason === "ADDRESS_UNSUBSCRIBED: MARKETING", [held.row.state, heldRow.state, heldRow.stateReason]);
+  const wa = await consent.allows(db, { firmId: firmA, subject: q2, channel: "WHATSAPP", address: "+15145550123", class: "MARKETING" });
+  ok("Q7 fail: the same person's WhatsApp marketing consent is untouched (the unsubscribe is email marketing only)", wa.allowed, wa);
+  await give(firmA, q3, "WEB_FORM", { givenAt: new Date(clock.now().getTime() - 10 * 60_000) });   // a public consent dated before the unsubscribe
+  await give(firmA, q4, "WEB_FORM", { typedByStaff: true });                                        // a staff member typing a web-form source
+  await tick();
+  const old3 = await send(firmA, q3, Z, "MARKETING"), typed4 = await send(firmA, q4, Z, "MARKETING");
+  ok("Q8 fail: a web-form consent dated before the unsubscribe lifts nothing (SUPPRESSED)", old3.row.state === "SUPPRESSED", old3.row);
+  ok("Q8 fail: a consent a staff member recorded with a web-form source lifts nothing (only a self-service row does; review m3)", typed4.row.state === "SUPPRESSED", typed4.row);
+  const at = new Date("2026-11-20T10:00:00Z"), later = new Date("2026-11-20T11:00:00Z");
+  const row = { givenAt: later, basis: "EXPRESS", source: "WEB_FORM", wordingId: uuid(), copiedFromId: null, recordedKind: "SELF_SERVICE" };
+  ok("Q9 pass: liftsAddressOptOut accepts a fresh self-service web-form or booking consent with wording", liftsAddressOptOut(at, row) && liftsAddressOptOut(at, { ...row, source: "BOOKING_FORM" }));
+  ok("Q9 fail: it refuses an import, a copy, a staff row, a portal or API row, no wording, and the same instant",
+    ![{ basis: "IMPORT_DECLARED", source: "IMPORT_DECLARED" }, { copiedFromId: uuid(), recordedKind: "SYSTEM" }, { source: "STAFF_RECORDED", recordedKind: "USER" }, { source: "PORTAL" }, { source: "API" }, { wordingId: null }, { givenAt: at }]
+      .some((c) => liftsAddressOptOut(at, { ...row, ...c })));
 } finally {
   await db.$disconnect();
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); } catch { /* left for the sweep */ }
