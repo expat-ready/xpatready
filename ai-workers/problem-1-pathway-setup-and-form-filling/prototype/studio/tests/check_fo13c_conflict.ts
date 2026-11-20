@@ -303,6 +303,16 @@ try {
   ok("FO-13c company pass/fail: a Corporate prospect's check is on its company (a similar company found, not itself); Convert refused before it, allowed after",
     vC0?.code === "CONFLICT_CHECK_REQUIRED" && cC.status === 201 && cC.body.partyKind === "COMPANY" && cC.body.companyId === CO1 && cC.body.matches.some((m: any) => m.kind === "COMPANY" && m.recordId === CO2) && cC.body.matches.every((m: any) => m.recordId !== CO1) && won(XC), [vC0, cC.body]);
 
+  // Break R4-B1: a company contact (a person with no lead) matching a Case Manager's prospect is hidden from them, and
+  // the Admin sees it and confirms, so the client can be made.
+  const RC = u(); sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values ('${RC}', '${A}', 'Rae', 'Contact', 'rae.shared@example.com', 'test', now());
+    insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO2}', '${RC}', 'PRIMARY', 'test')`);
+  const X13 = prospectOf(person(T.id, "Rae Prospect", { email: "rae.shared@example.com" }), T.id), c13 = await check(X13, {}, T.token);
+  const f13 = await call("GET", `conflict-checks/${c13.body.id}/for-confirmation`, AD.token), k13 = await call("POST", `conflict-checks/${c13.body.id}/confirm`, AD.token, { result: "NO_CONFLICT" });
+  ok("FO-13c DW6 pass/fail (break R4-B1): a lead-less company contact is hidden from the Case Manager (hiddenCount 1), seen by the Admin (named, nothing hidden) who confirms, and the gate clears",
+    c13.body.hiddenCount === 1 && f13.body.hiddenNow === 0 && /Rae Contact · company contact/.test(JSON.stringify(f13.body.matchesNow)) && k13.status === 200
+    && sql(`select result from fo_conflict_check where id = '${c13.body.id}'`) === "NO_CONFLICT", [c13.body?.hiddenCount, f13.body, k13.status]);
+
   // ---------------------------------------------------------------------------------------------------------- DW7
   const ev0 = Number(sql(`select count(*) from module_event where type = '${EVENT.CONFLICT_CHECKED}'`));
   const c7 = await check(cv0, { result: "POTENTIAL_CONFLICT", disclosureText: "A conflict found after signing (Sample)." });
@@ -315,9 +325,9 @@ try {
 
   // ---------------------------------------------------------------------------------------------------------- also
   const events = sql(`select string_agg(payload::text, ' ') from module_event where type = '${EVENT.CONFLICT_CHECKED}'`);
-  const audits = Number(sql(`select count(*) from audit_event where entity = 'fo_conflict_check'`)), checks = Number(sql(`select count(*) from fo_conflict_check`));
+  const audits = Number(sql(`select count(*) from audit_event where entity = 'fo_conflict_check'`)), checks = Number(sql(`select count(*) from fo_conflict_check`)) + Number(sql(`select count(*) from fo_conflict_check where confirmed_by is not null`));
   ok("FO-13c also: every check and confirmation is one audit line and one conflict.checked event; no payload holds a searched name, email or phone",
-    audits === checks + 1 && Number(sql(`select count(*) from module_event where type = '${EVENT.CONFLICT_CHECKED}'`)) === checks + 1 && !/@|Sample|\+1416/.test(events), { audits, checks });
+    audits === checks && Number(sql(`select count(*) from module_event where type = '${EVENT.CONFLICT_CHECKED}'`)) === checks && !/@|Sample|\+1416/.test(events), { audits, checks });
   const bare = new ConflictChecks(db, { now: () => Date.now() }), scope = await withFirm(A, () => bare.preview(ctxR, { prospectId: X1 }));
   ok("FO-13c also: without the case side's port (CS-S1b not on main) the answer says other parties on cases are not searched", scope.scope === NOT_SEARCHED && scope.matches.every((m: { source: string }) => m.source === "FRONT_OFFICE"), scope.scope);
 } catch (e) {

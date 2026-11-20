@@ -63,7 +63,7 @@ export class ConflictChecks {
     // One who sees all, or the firm's Owner or Admin (contract v0.1 §3.1's "firm admin"), searches seeing every front-office
     // record: on a prospect they may reach (engagement) or a check they confirm, never beyond (R2-M2). A firm whose only
     // Owner runs the check is never left with a match nobody can confirm (break R3-M1).
-    const v0 = await visibilityOf(this.db, ctx), vis = seesEveryMatch(ctx, v0) ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
+    const v0 = await visibilityOf(this.db, ctx), every = seesEveryMatch(ctx, v0), vis = every ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
     let hidden = 0;
     const email = normaliseEmail(t.email), phone = t.phone ? phoneE164Exact(t.phone) : null;
     if (party.kind === "PERSON") {
@@ -73,8 +73,11 @@ export class ConflictChecks {
           from fo_sales_person_matches(${ctx.firmId}::uuid, ${email}::text, ${phone ? [phone] : []}::text[], ${name}::text, ${ctx.staffId}::uuid,
                                        ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, ${LIMIT}::int)`).filter((r) => r.id !== party.id && (r.by_email || r.by_phone || r.sim >= NAME_THRESHOLD));
       if (rows.length >= LIMIT - 1) tooMany();
-      hidden += rows.filter((r) => !r.seen).length;
-      const seen = rows.filter((r) => r.seen), ids = seen.map((r) => r.id);
+      // FO-9a's function sees a person through a lead only; one who sees every record sees a lead-less person too (a
+      // company contact: break R4-B1), else such a match could never be confirmed.
+      const isSeen = (r: PersonRow) => every || r.seen;
+      hidden += rows.filter((r) => !isSeen(r)).length;
+      const seen = rows.filter(isSeen), ids = seen.map((r) => r.id);
       const pros = await this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { OR: [{ subjectPersonId: { in: ids } }, { primaryContactPersonId: { in: ids } }] }), select: { subjectPersonId: true, primaryContactPersonId: true, stage: { select: { kind: true } } } });
       const contacts = new Set((await this.db.foCompanyContact.findMany({ where: firmScope(ctx.firmId, { personId: { in: ids } }), select: { personId: true } })).map((c) => c.personId));
       const leads = new Set((await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: { in: ids } }), select: { personId: true } })).map((l) => l.personId));
@@ -190,7 +193,7 @@ export class ConflictChecks {
     // M3: the confirmer sees the matches: the same terms searched again with their visibility hide nothing.
     const party = { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party;
     const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
-    if (seen.hidden) forbidden("Some of this check's matches are hidden from you too (on cases you cannot open): a person who sees them confirms it.");
+    if (seen.hidden) forbidden("Some of this check's matches are hidden from you too: a person who sees them confirms it.");
     const o = this.outcome(body ?? {}, c.result === null);
     if (c.result !== null && o.result !== null && o.result !== c.result) problem(409, "Not possible now", `This check already says ${c.result}; it never changes. Record a new check instead.`, { code: "RESULT_FIXED" });
     const now = new Date(this.clock.now()), won = c.prospectId ? (await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: c.prospectId }), select: { wonVia: true } }))?.wonVia ?? null : null;
