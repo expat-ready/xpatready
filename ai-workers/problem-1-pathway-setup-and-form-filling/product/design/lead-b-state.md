@@ -23,7 +23,7 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
-**Lead B (9) update (17:1x IST 20 Nov):** **#2029 (R1.4)** has a new head, 60d929278 (main merge 17:05 IST plus touchedEach in case-clients/live.ts), red only on module-cards (cases card not updated). Ruling 7038613945: add `MODULE.cases.rows/PF-12b.md` (card at its 40-line cap, P-712), then a real reviewer Approve on the new head. Lead 3 told.
+**Lead B (9) update (17:1x IST 20 Nov):** **#2029 (R1.4)** has a new head, 60d929278 (main merge 17:05 IST plus touchedEach in case-clients/live.ts), red only on module-cards (cases card not updated). Ruling 7038613945: add `MODULE.cases.rows/PF-12b.md` (card at its 40-line cap, P-712), then a real reviewer Approve on the new head. Lead 3 agreed. 17:2x IST: Lead 3 started a cloud builder "Build · R1.4 finish #2029 PF-12b". **Only the lane that pushed 60d929278 writes #2029**; the new builder may open only a J-4 walk PR if R1.4's Done when needs one. Send the Approve head to Lead 3.
 
 **Lead B (9) update (14:4x IST 20 Nov):** the current Lead is now **Lead 3 (series 3)** (`local_b0640d3f-6f07-406e-9cb9-714db24c29c4`), and it has my open items. J-37d: Lead 2 passed it to Lead 3 to start at the founder's next typed turn (a scheduled check can't start sessions); Opus 5.5 medium per P-605.
 
