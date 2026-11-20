@@ -324,6 +324,11 @@ try {
   billing.subs.set("sub_t1", snap("sub_t1", { customerId: cust1 }));
   await send(done1);
   ok("PF-5 part 2 pass (A46's weak point): the trial's Checkout completing → Stripe's trial end stored, the firm in TRIAL, no card", subOf(firmId) === `TRIAL ${TRIAL_END.toISOString().slice(0, 16)} ${TRIAL_END.toISOString().slice(0, 10)}` && firmOf(firmId) === "TRIAL" && !billing.subs.get("sub_t1")!.hasCard, subOf(firmId));
+  // PF-12b (merge of main, 21 Nov): the webhook's match read crosses the walls, so the matched firm's trail gets its
+  // platform.bypass line; the refused (unsigned, changed) events above touched no firm and wrote none.
+  const bypassLines = (f: string) => sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id = '${f}' and detail->>'use' = 'platform.billing.stripe-webhook'`);
+  ok("PF-12b pass (PF-5 part 2): a handled Stripe event writes one platform.bypass line to the matched firm's trail", bypassLines(firmId) === "1", bypassLines(firmId));
+  ok("PF-12b fail (PF-5 part 2): a refused event writes no platform.bypass line anywhere", sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'use' = 'platform.billing.stripe-webhook' and firm_id <> '${firmId}'`) === "0");
   const synced = sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`), dup = await hooks.receive(Buffer.from(done1), billing.sign(done1)); await hooks.settled();
   ok("PF-5 part 2 fail: the same event twice → answered, handled once", dup.duplicate === true && sql(`select count(*) from audit_event where action = 'platform.subscription.synced'`) === synced && sql(`select count(*) from webhook_receipt where handled_at is not null`) === "1");
 
