@@ -236,6 +236,7 @@ const { ConfigReadGuard, Db, Workspace, Audit } = await import("../api/src/core.
 const { Programs } = await import("../api/src/programs.ts");
 const { Runtime, RuntimeController } = await import("../api/src/runtime.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { PgEntitlements } = await import("../api/src/platform/entitlements/limits.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
@@ -262,6 +263,7 @@ const BASE = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: numb
 try {
   const runtime = nest.get(Runtime), db = nest.get(Db);
   await seedSampleFirms(db);
+  runtime.useEntitlements((tx) => new PgEntitlements(tx));   // PF-15c: the real limits on the Sample plans, bound explicitly (no platform-entitlements feature here)
   const FA = copySql(`select id from platform_firm where key = 'sample-firm'`)!;
   const tag = `${process.pid}-${Date.now().toString(36)}`;
   const s = await db.platformStaff.create({ data: { firmId: FA, actorId: `csk1-mgr-${tag}`, email: `csk1-mgr-${tag}@sample.invalid`, displayName: "Sample Case Manager" } });
