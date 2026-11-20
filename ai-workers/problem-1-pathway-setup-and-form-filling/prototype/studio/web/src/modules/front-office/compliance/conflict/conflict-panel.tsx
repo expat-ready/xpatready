@@ -8,6 +8,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Notice, Panel, Pill, Textarea } from "@/components/ui/controls";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/lib/api";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
 import { can } from "../../sales/contract";
@@ -15,11 +16,11 @@ import { useLock, useReturnFocus } from "../../sales/prospect-actions";
 import { useStaff } from "../../sales/sales-frame";
 import { Loading } from "../../sales/loading";
 import { arrivedLabel } from "../../sales/time";
-import { COMPANY_TERMS, CONFLICT_KEY, conflictKey, ConflictList, conflictPath, FIXED_BY_A_CHECK, MATCHED_ON, POTENTIAL_STATUS, Preview, RESULTS, resultLabel, RUN_REASON, type ConflictCheck, type ConflictMatch } from "./contract";
+import { COMPANY_TERMS, CONFLICT_KEY, conflictKey, ConflictList, conflictPath, CHOOSE_RESULT, FIXED_BY_A_CHECK, MATCHED_ON, POTENTIAL_STATUS, Preview, RESULT_TIP, RESULTS, resultLabel, RUN_REASON, type ConflictCheck, type ConflictMatch } from "./contract";
 
 /** The prospect's checks and the gate's verdict (one query, shared with the Convert dialog). */
-export function useConflictList(prospectId: string) {
-  return useQuery({ queryKey: conflictKey(prospectId), retry: false, queryFn: async () => ConflictList.parse(await staffApi(conflictPath(prospectId))) });
+export function useConflictList(prospectId: string, fresh = false) {
+  return useQuery({ queryKey: conflictKey(prospectId), retry: false, ...(fresh ? { refetchOnMount: "always" as const } : {}), queryFn: async () => ConflictList.parse(await staffApi(conflictPath(prospectId))) });
 }
 
 /** The status line (BR-5): the gate's refusal word for word, else worded by the latest check. */
@@ -50,15 +51,18 @@ function CheckRow({ c }: { c: ConflictCheck }) {
   return (
     <li data-conflict-check={c.id} className="rounded-lg border border-border p-3 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <Pill tone={tone}><span data-result>{resultLabel(c.result)}</span></Pill>
+        <Tooltip><TooltipTrigger asChild>
+          <span tabIndex={0} className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"><Pill tone={tone}><span data-result>{resultLabel(c.result)}</span></Pill></span>
+        </TooltipTrigger><TooltipContent data-result-tip>{RESULT_TIP[c.result ?? "WAITING"]}</TooltipContent></Tooltip>
         <p className="text-xs text-text-muted">{arrivedLabel(c.checkedAt)} by <span data-checked-by>{c.checkedByName ?? "a colleague"}</span></p>
       </div>
       <p className="mt-1 text-xs text-text-muted" data-counts>{c.matches.length} match{c.matches.length === 1 ? "" : "es"} named{c.hiddenCount ? `, ${c.hiddenCount} hidden` : ""}
         {c.confirmedAt ? ` · confirmed by ${c.confirmedByName ?? "a colleague"}, ${arrivedLabel(c.confirmedAt)}` : c.needsConfirmation ? " · waiting for a manager's confirmation" : ""}</p>
       {c.disclosureText ? <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]" data-disclosure>{c.disclosureText}</p> : null}
-      {c.matches.length || c.hiddenLine ? (
+      {c.matches.length || c.hiddenCount ? (
         <details className="mt-2"><summary className="cursor-pointer text-xs text-text-link">Matches</summary>
-          <div className="mt-2 flex flex-col gap-2"><Matches matches={c.matches} label="Matches of this check" />{c.hiddenLine ? <p className="text-xs text-text-muted">{c.hiddenLine}</p> : null}</div>
+          <div className="mt-2 flex flex-col gap-2"><Matches matches={c.matches} label="Matches of this check" />
+            {c.hiddenCount ? <p className="text-xs text-text-muted">{c.needsConfirmation && c.hiddenLine ? c.hiddenLine : `${c.hiddenCount} match${c.hiddenCount === 1 ? "" : "es"} with records you may not open.`}</p> : null}</div>
         </details>
       ) : null}
     </li>
@@ -68,9 +72,11 @@ function CheckRow({ c }: { c: ConflictCheck }) {
 function RunPanel({ open, onOpenChange, prospectId, corporate }: { open: boolean; onOpenChange: (o: boolean) => void; prospectId: string; corporate: boolean }) {
   const qc = useQueryClient(), toast = useToast(), lock = useLock();
   const [result, setResult] = React.useState(""), [disclosure, setDisclosure] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [general, setGeneral] = React.useState<string | null>(null);
-  const requestId = React.useRef<string>(crypto.randomUUID());
-  React.useEffect(() => { if (open) { setResult(""); setDisclosure(""); setErrors({}); setGeneral(null); requestId.current = crypto.randomUUID(); } }, [open]);   // one requestId per opening (BR-6)
-  const preview = useQuery({ queryKey: [...conflictKey(prospectId), "preview"], enabled: open, retry: false, gcTime: 0,
+  const requestId = React.useRef<string>(crypto.randomUUID()), [opening, setOpening] = React.useState(0), body = React.useRef<HTMLFormElement>(null);
+  React.useEffect(() => { if (open) { setResult(""); setDisclosure(""); setErrors({}); setGeneral(null); requestId.current = crypto.randomUUID(); setOpening((x) => x + 1); } }, [open]);   // one requestId and one fresh search per opening (BR-6; review M2)
+  const [focusTick, setFocusTick] = React.useState(0);   // after a refusal has rendered, the first field in error takes focus (BIC-13)
+  React.useEffect(() => { if (focusTick) body.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); }, [focusTick]);
+  const preview = useQuery({ queryKey: [...conflictKey(prospectId), "preview", opening], enabled: open && opening > 0, retry: false, gcTime: 0, staleTime: 0,
     queryFn: async () => Preview.parse(await staffApi("/front-office/conflict-checks/preview", { method: "POST", json: { prospectId } })) });
   const hidden = (preview.data?.hiddenCount ?? 0) > 0;
   const save = useMutation({
@@ -78,23 +84,32 @@ function RunPanel({ open, onOpenChange, prospectId, corporate }: { open: boolean
     onSuccess: () => { toast.push({ tone: "ok", text: "Conflict check recorded." }); void qc.invalidateQueries({ queryKey: conflictKey(prospectId) }); onOpenChange(false); },
     onError: (e) => {
       if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Save again to retry the same check."); return; }
-      if (e.problem.code === "REQUEST_REUSED") requestId.current = crypto.randomUUID();
+      if (e.problem.code === "REQUEST_REUSED") { requestId.current = crypto.randomUUID(); void qc.invalidateQueries({ queryKey: conflictKey(prospectId) }); }   // the first Save may have landed (breaker m2)
       // The search changed since the panel opened (break m2): search again and say the server's words.
       if (e.problem.code === "NEEDS_CONFIRMATION" || e.problem.fields?.result) void preview.refetch();
       const fields = e.problem.fields ?? {};
       setErrors(fields); setGeneral(Object.keys(fields).length ? null : e.message);
+      if (Object.keys(fields).length) setFocusTick((x) => x + 1);
     },
     onSettled: () => lock.free(),
   });
-  const submit = (ev?: React.FormEvent) => { ev?.preventDefault(); if (lock.take()) save.mutate(); };
+  const searching = preview.isFetching || !preview.data;
+  const submit = (ev?: React.FormEvent) => {
+    ev?.preventDefault();
+    if (searching) return;
+    if (!hidden && !result) { setErrors({ result: CHOOSE_RESULT }); setFocusTick((x) => x + 1); return; }   // stopped on screen first (EXPERIENCE §2.8; review M1)
+    if (lock.take()) save.mutate();
+  };
+  const dirty = !!result || !!disclosure.trim();
   const s = preview.data?.searched;
   return (
-    <Panel open={open} onOpenChange={(o) => { if (!save.isPending) onOpenChange(o); }} title="Run a conflict check" description="Searches past and current clients, prospects, leads and company contacts for this client."
-      footer={<><Button variant="ghost" disabled={save.isPending} onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button busy={save.isPending} disabled={!preview.data} type="submit" form="fo-conflict-form" data-save-check>{hidden ? "Record for confirmation" : "Save check"}</Button></>}>
-      <form id="fo-conflict-form" onSubmit={submit} noValidate className="flex flex-col gap-4">
+    <Panel open={open} onOpenChange={(o) => { if (!save.isPending) onOpenChange(o); }} confirmClose={() => !dirty || window.confirm("Discard the result you chose?")} title="Run a conflict check" description="Searches past and current clients, prospects, leads and company contacts for this client."
+      footer={<><Button variant="ghost" disabled={save.isPending} onClick={() => { if (!dirty || window.confirm("Discard the result you chose?")) onOpenChange(false); }}>Cancel</Button>
+        <Button busy={save.isPending} disabled={searching} type="submit" form="fo-conflict-form" data-save-check>{hidden ? "Record for confirmation" : "Save check"}</Button></>}>
+      <form id="fo-conflict-form" ref={body} onSubmit={submit} noValidate className="flex flex-col gap-4">
         {general ? <Notice tone="danger" title={general} /> : null}
-        {preview.isPending ? <Loading label="Searching" rows={2} />
+        {Object.keys(errors).length ? <div data-error-summary><Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{k === "disclosureText" ? "Disclosure" : "Result"}: {v}</li>)}</ul></Notice></div> : null}
+        {preview.isFetching || preview.isPending ? <Loading label="Searching" rows={2} />
           : preview.isError ? <Notice tone="danger" title={preview.error instanceof StaffApiError ? preview.error.message : "Could not search."} action={<Button size="sm" variant="outline" onClick={() => void preview.refetch()}>Try again</Button>} />
           : (<>
             <section aria-labelledby="fo-conflict-searched" className="text-sm">
@@ -106,7 +121,7 @@ function RunPanel({ open, onOpenChange, prospectId, corporate }: { open: boolean
             {preview.data.notStored ? <p className="text-xs text-text-muted" data-not-stored>{preview.data.notStored} more matches were found; the 200 strongest are kept.</p> : null}
             {preview.data.hiddenLine ? <div data-hidden-line><Notice tone="warn" title={`${preview.data.hiddenCount} hidden: ${preview.data.hiddenLine}`} /></div> : null}
             {preview.data.scope ? <p className="text-xs text-text-muted" data-scope>{preview.data.scope}</p> : null}
-            <fieldset disabled={hidden || save.isPending} aria-describedby={errors.result ? "fo-conflict-result-error" : undefined} className="flex flex-col gap-2">
+            <fieldset disabled={hidden || save.isPending} aria-describedby={errors.result ? "fo-conflict-result-error" : undefined} aria-invalid={errors.result ? true : undefined} tabIndex={errors.result ? -1 : undefined} className="flex flex-col gap-2 outline-none">
               <legend className="text-xs font-medium">Result</legend>
               {RESULTS.map(([k, l]) => <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" name="fo-conflict-result" className="size-4" checked={result === k} onChange={() => { setResult(k); setErrors({}); }} />{l}</label>)}
               {hidden ? <p className="text-xs text-text-muted">A manager who may see the hidden matches gives the result.</p> : null}
@@ -130,7 +145,7 @@ export function ConflictCheckPanel({ prospectId, corporate }: { prospectId: stri
   const mayRun = can(me, CONFLICT_KEY);
   const panel = (o: boolean) => { if (o) focus.mark(); else focus.back(); setOpen(o); };
   return (
-    <section id="fo-conflict" aria-labelledby="fo-conflict-title" data-conflict-panel tabIndex={-1} className="rounded-xl border border-border bg-surface-raised p-4 outline-none">
+    <TooltipProvider delayDuration={250}><section id="fo-conflict" aria-labelledby="fo-conflict-title" data-conflict-panel tabIndex={-1} className="rounded-xl border border-border bg-surface-raised p-4 outline-none">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="fo-conflict-title" className="text-sm font-semibold">Conflict check</h2>
         {mayRun ? <Button size="sm" variant="outline" data-run-check onClick={() => panel(true)}>Run a check</Button> : null}
@@ -146,14 +161,14 @@ export function ConflictCheckPanel({ prospectId, corporate }: { prospectId: stri
           </div>
         )}
       {mayRun ? <RunPanel open={open} onOpenChange={panel} prospectId={prospectId} corporate={corporate} /> : null}
-    </section>
+    </section></TooltipProvider>
   );
 }
 
 /** In the Convert dialog (BR-5; EXPERIENCE §2.8, challenge m5): the gate's reason before the click, and "Go to the conflict
  *  check" only for a refusal a new check fixes (never for the disclosure or consent refusals, whose fix is the retainer). */
 export function ConvertConflictNote({ prospectId, onGo }: { prospectId: string; onGo: () => void }) {
-  const list = useConflictList(prospectId);
+  const list = useConflictList(prospectId, true);   // read again as the dialog opens (breaker m1: another session may have changed the client)
   const c = list.data?.clearance;
   if (!c || c.ok) return null;
   return (

@@ -16,7 +16,8 @@ import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
 import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
-import { ConflictCheckPanel, ConvertConflictNote } from "../compliance/conflict/conflict-panel";
+import { ConflictCheckPanel, ConvertConflictNote, useConflictList } from "../compliance/conflict/conflict-panel";
+import { FIXED_BY_A_CHECK } from "../compliance/conflict/contract";
 /** AG-2-47 rule 16's words, shown before Convert while no retainer is signed (the same text the server answers with). */
 const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";
 type Act = "lost" | "convert" | "undo" | "value";
@@ -30,6 +31,7 @@ function ProspectBody({ id }: { id: string }) {
   const me = useStaff(), owners = useOwners(), move = useMove(), toast = useToast(), qc = useQueryClient();
   const key = ["fo", "prospects", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(id)}`)) });
+  const conflictRefused = useConflictList(id).data?.clearance.ok === false;   // FO-13s: "Work can start" never shows under a conflict refusal (challenge m5)
   const board = useQuery({ queryKey: ["fo", "prospects", "board"], queryFn: async () => Board.parse(await staffApi("/front-office/pipelines/INDIVIDUAL/board")) });
   const [open, setOpen] = React.useState<Act | null>(null);
   const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
@@ -56,6 +58,7 @@ function ProspectBody({ id }: { id: string }) {
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
       if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id] });   // FO-13s: the gate's verdict read again
+      if (e instanceof StaffApiError && FIXED_BY_A_CHECK.has(e.problem.code ?? "")) { setError(null); return; }   // the dialog's conflict note says it once, with its link (review minor)
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
       // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
       if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
@@ -166,7 +169,7 @@ function ProspectBody({ id }: { id: string }) {
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as prospect</Button><Button busy={act.isPending} onClick={submit("convert")}>Yes, convert to client</Button></>}>
         {general}
         <ConvertConflictNote prospectId={p.id} onGo={() => { start(null); focusWhenClosed("fo-conflict"); }} />
-        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : <Notice tone="warn" title={NOT_SIGNED} />}
+        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : conflictRefused ? null : <Notice tone="warn" title={NOT_SIGNED} />}
       </Dialog>
       <Dialog open={open === "undo"} onOpenChange={(o) => start(o ? "undo" : null)} title={`Undo the Convert of ${name}?`} description={`${p.number} goes back to the stage it was in. Possible only while the client has no case, invoice or signed retainer.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as client</Button><Button busy={act.isPending} onClick={submit("undo")}>Yes, undo convert</Button></>}>

@@ -221,6 +221,10 @@ try {
   ok("FO-13c DW4 fail: POTENTIAL_CONFLICT without disclosure text → 400 on disclosureText; a disclosure with another result → 400",
     noText.status === 400 && !!noText.body.fields?.disclosureText && textOther.status === 400, [noText.body, textOther.status]);
   const TEXT = "We acted for your employer in 2025. Sample disclosure.";
+  const LONG = "Sample disclosure 😀 ".repeat(450), XL = prospectOf(person(R.id, "Long Text")), cl = await check(XL, { result: "POTENTIAL_CONFLICT", disclosureText: LONG });
+  const auditAfter = sql(`select coalesce(length(detail->>'disclosureText_after'), 0) || ':' || coalesce(length(detail::text), 0) from audit_event where entity_key = '${cl.body?.id}'`);
+  ok("FO-13s break M1 pass/fail: a 9,000-character disclosure (the table takes 10,000) is stored whole (201), and the audit line keeps at most 4,000 of it, never a 500",
+    cl.status === 201 && sql(`select length(disclosure_text) from fo_conflict_check where id = '${cl.body?.id}'`) === String([...LONG.trim()].length) && Number(auditAfter.split(":")[0]) <= 4000, [cl.status, auditAfter]);
   await check(X5, { result: "POTENTIAL_CONFLICT", disclosureText: TEXT });
   const X5b = prospectOf(person(R.id, "Indigo Two")), X5c = prospectOf(person(R.id, "Indigo Three")), r5old = await draft(X5b, disc.id);
   await check(X5b, { result: "POTENTIAL_CONFLICT", disclosureText: TEXT }); await check(X5c, { result: "POTENTIAL_CONFLICT", disclosureText: TEXT });
