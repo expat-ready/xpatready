@@ -5,3 +5,5 @@
 🔁 **Account switch (A196, P-725): done 11:37 IST 19 Nov by Lead 90; at the next one the founder types `/lead` on the new account and that Lead resumes from this page;** the line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1204-lead90s2-account-switch-line.md`.
 
 🧊 **P-716 freeze to Proven 30, P-717 own lane, P-718 queue first, P-719 finish by capability** (RULES IDX-9, P-719); the 07:xx Start-here line word for word in `history/STATE-2026-11-19-0820-lead86s2-start-here-P716-P717-line.md`.
+
+🏭 **Binding (RULES as of P-734): P-721 to P-731, P-733 and P-734 (unchanged to 22 Nov evening) (focus on the nearest-to-done items, automatic proof, full run only after a failed batch);** the 10:4x binding line and the 11:3x triggers line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1229-lead90s2-start-here-binding-and-triggers-lines.md`; current triggers are in the hand-over block above.
