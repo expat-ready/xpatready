@@ -57,3 +57,32 @@ BIC-01–10, 12, 13, 15–17: **N/A** (a read-only list: no questions, inputs, d
 A real screen reader; an intended user's unaided walk (D17, D20); a reload while the section loads; CI on this head (I read no GitHub checks). Retrofit mapping: N/A, new (concept §2).
 
 **Verdict: Block.** To fix: issue 1 (the read-only mount's 404, and tests with axe for its states) and issue 2 (assert "when" against `checked_at`). The Shoulds can be fixed here or listed in a follow-up row.
+
+## Round 2: aedc8e6be (diff c4f56a357..aedc8e6be)
+* **Verdict: Approve.** Both Majors and S1–S3 are fixed. I verified each fix by running it and by removing it to watch its test go red. No Blocker or Major is open.
+* **My runs at aedc8e6be (fresh copies :4446, :4447, :4448, all stopped; screenshots restored):**
+  * `check_fo13s_identity_browser.ts` 36/36, exit 0. Its four part-2 cases pass, each with axe.
+  * `j_110.ts` 14/14, exit 0.
+  * `tsc --noEmit` on web, exit 0.
+* **Mutations (STANDARDS §7 [M]), each reverted:**
+  * `hidden` forced false: the suite fails (TimeoutError waiting for `[data-identity-hidden]`).
+  * `enabled: maySee` removed: "no identity request is sent" goes red (1 request), 35/36.
+  * The panel shows a fixed wrong time: W6 goes red ("Jan 1, 2031, 3:07 a.m." ≠ expected), 13/14.
+
+| Round 1 issue | Status at aedc8e6be |
+|---|---|
+| M1: a 404 on the read-only mount showed a false error; client-mount states untested | **Closed.** `identity-panel.tsx` `hidden`: a muted `data-identity-hidden` line, with no Notice and no Try again. A 404 on the lead or prospect page keeps the old error, which is right there. Suite part 2 tests the list, read-only, everyone-sees-all off as a non-owner, and no key, each with axe. The company client is covered by the database constraint (round 1 probe); a dedicated test is not needed |
+| M2: "when" not asserted (QA-611) | **Closed.** W6 compares `[data-checked]` text with the stored `checked_at` formatted as `arrivedLabel` formats it (en-CA medium/short, browser zone), and the attribute with `checked_at` itself. It fails on a wrong time (mutation above) |
+| S1: J-110 header | Closed. Convert and the database lookup are named as scaffolding |
+| S2: empty line for case-opened clients | Closed. "A check is recorded on a lead or prospect page; this person's checks are listed here once recorded." This holds for every person client |
+| S3: request sent without the key | Closed. `ID_KEY.show`; the query is `enabled` only with it, and the line shows at once. Tested (0 requests) |
+| Minor: heading size | Accepted as is. It is the panel's own section heading, the same as on the lead and prospect pages. Not a Should |
+
+* **Notes, not findings:**
+  * HIDDEN_REASON simplifies the visibility rule. It leaves out signers and company contacts, but it is accurate for the starter roles.
+  * The S3 case edits the global `platform_role_permission` on the suite's own copy and restores it in `finally`. That is fine on an isolated database.
+  * QA-613 (times in the browser's zone) remains open, separately.
+* **Journey score:** rises to **9.5/10**. Feedback and state go to 1 (the not-visible state is plain), error recovery goes to 1 (no dead Try again), and next step obvious stays ½ (no link from the client to the lead or prospect page; out of scope).
+* **Not checked in round 2:** CI on this head; a real screen reader; an intended user's walk (D17, D20).
+
+**Verdict: Approve aedc8e6be9476ee500d3951deb239e6eb7058483.**
