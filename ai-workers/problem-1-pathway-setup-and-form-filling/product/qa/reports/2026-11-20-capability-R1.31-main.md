@@ -2,7 +2,7 @@
 
 **Item:** R1.31 "Only a signature, Signed offline or Convert moves a prospect to Won (any other move refused); totals per currency, never mixed." P-741: the e-signature door and a Signed-offline screen belong to FO-5s/FO-6; R1.31 proves the stage rule (Convert by screens, Signed offline by API).
 
-**Verdict:** see "Runs on GitHub" and "Fresh reader" below; the row in `qa/CAPABILITIES.md` carries the result.
+**Verdict: Works** (P-339). Two green walks.yml `j_31` runs on main's head 568e240fd, and a fresh Opus reader who gives Works.
 
 ## What qa 9 left open
 qa 9 (20 Nov ~06:xx IST, main 54ba0cce3) scored Partial, held only for P-339's runs. The pack run was item-proof 44641146727 on 54ba0cce3. The independent walks.yml `j_31` run on main was asked on #2296.
@@ -21,7 +21,19 @@ qa 9 (20 Nov ~06:xx IST, main 54ba0cce3) scored Partial, held only for P-339's r
 No open Blocker, Critical or Major names R1.31 in `qa/BUGS.md`. QA-533 (Major) is R1.30's.
 
 ## Runs on GitHub (P-339)
-Pending: walks.yml `j_31` on main's head, twice (the pack run and the independent re-run), dispatched by the Lead (P-439).
+Dispatched by Lead 3 (series 3) on main **568e240fd**. Its front-office code is the same as 1ee04f2b4.
+| Run | Job | Result | Artifact |
+|---|---|---|---|
+| [44712124997](https://github.com/expat-ready/xpatready/actions/runs/44712124997) (pack run) | 136206500042 `walk j_31` | 55 PASS, 0 FAIL, exit 0; 8 videos, 3 traces | 14617439332 |
+| [44712138351](https://github.com/expat-ready/xpatready/actions/runs/44712138351) (independent re-run) | 136206503602 `walk j_31` | 55 PASS, 0 FAIL, exit 0 | 14618315711 |
+
+The R1.31 lines in the run log:
+- "W6 DW11 pass (R1.31): Yes moves it to Won by Convert (cause CONVERT)…"
+- "W6 pass (R1.31): Signed offline wins the prospect … [200,[WON, SIGNED_OFFLINE, SIGNED_OFFLINE]]"
+- "W3d fail: a Won card cannot be dragged"
+- "W6 end: the walk ends at the won prospect in the board's Won column"
+
+Both runs logged one step screenshot timeout ("record: no screenshot for step 44/52"). That is recording only; no assertion failed.
 
 ## Fresh reader (Opus 5.5 high, ran nothing)
 **Works, ~80%, held only by the GitHub runs.** Nothing in the behaviour holds it back.
