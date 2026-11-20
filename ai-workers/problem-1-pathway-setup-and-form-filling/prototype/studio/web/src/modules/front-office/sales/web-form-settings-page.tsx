@@ -62,7 +62,10 @@ function Sites({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
       const mapped: Record<string, string> = {};
       for (const [k, v] of Object.entries(p?.problem.fields ?? {})) { const m = /^sites\.(\d+)$/.exec(k); if (m && sent[Number(m[1])] !== undefined) mapped[String(sent[Number(m[1])])] = v; }
       setErrors(mapped);
-      setSaid({ tone: "danger", text: p?.message ?? "Not saved. Please try again.", stale: p?.problem.code === "STALE" });
+      // Several refused rows: the summary names them (review m4); one: the server's own words.
+      const rowsOff = Object.keys(mapped).map((k) => Number(k) + 1).sort((a, b) => a - b);
+      const names = rowsOff.length > 1 ? `Not saved: check sites ${rowsOff.slice(0, -1).join(", ")} and ${rowsOff[rowsOff.length - 1]}.` : null;
+      setSaid({ tone: "danger", text: names ?? p?.message ?? "Not saved. Please try again.", stale: p?.problem.code === "STALE" });
       const first = Object.keys(mapped)[0];
       if (first !== undefined) requestAnimationFrame(() => inputs.current[Number(first)]?.focus());
     } finally { setBusy(false); }
@@ -74,10 +77,15 @@ function Sites({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
       {rows.map((v, i) => (
         <div key={i} className="flex items-end gap-2">
           <Field label={`Site ${i + 1}`} error={errors[String(i)] ?? null} className="min-w-0 flex-1">
-            <Input ref={(el) => { inputs.current[i] = el; }} value={v} inputMode="url" autoComplete="url" maxLength={255} placeholder="https://www.example.com"
+            <Input ref={(el) => { inputs.current[i] = el; }} value={v} inputMode="url" autoComplete="url" maxLength={200} placeholder="https://www.example.com"
               onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? e.target.value : x)))} />
           </Field>
-          <Button type="button" variant="ghost" size="sm" aria-label={`Remove site ${i + 1}${v ? ` (${v})` : ""}`} onClick={() => setRows((r) => (r.length === 1 ? [""] : r.filter((_, j) => j !== i)))}>Remove</Button>
+          <Button type="button" variant="ghost" size="sm" aria-label={`Remove site ${i + 1}${v ? ` (${v})` : ""}`} onClick={() => {
+            // The row's message goes with it; the rows below keep theirs as they move up (break m2). Focus stays on a field (m3).
+            setErrors((e) => Object.fromEntries(Object.entries(e).flatMap(([k, m]) => { const n = Number(k); return n === i ? [] : [[String(n > i ? n - 1 : n), m]]; })));
+            setRows((r) => (r.length === 1 ? [""] : r.filter((_, j) => j !== i)));
+            requestAnimationFrame(() => inputs.current[Math.max(0, Math.min(i, rows.length - 2))]?.focus());
+          }}>Remove site</Button>
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
@@ -98,7 +106,7 @@ function OneForm({ form, origin, onSaved }: { form: FormT; origin: string; onSav
         <h2 id={`form-${form.id}`} className="text-base font-semibold [overflow-wrap:anywhere]">{form.name}</h2>
         <Pill tone={form.enabled ? "ok" : "neutral"}>{form.enabled ? "On" : "Off"}</Pill>
       </div>
-      {!form.enabled ? <Notice tone="warn" title="This form is off">Visitors see "This form is not available" until it is switched on.</Notice> : null}
+      {!form.enabled ? <Notice tone="warn" title="This form is off">While it is off, visitors see "This form is not available", on your site and on the hosted page.</Notice> : null}
       <Sites form={form} onSaved={onSaved} />
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold">Put the form on your site</h3>

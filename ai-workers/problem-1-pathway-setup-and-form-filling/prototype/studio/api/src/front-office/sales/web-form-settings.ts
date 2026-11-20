@@ -17,6 +17,23 @@ import { actorOf, conflict, notFound, unprocessable, UUID, type Tx } from "./com
 import { siteOf } from "./public.ts";
 
 export const MAX_SITES = 20;
+/** One site's length, so it always fits an audit value (ports/audit.ts: at most 200 characters; break M1). */
+export const MAX_SITE_LENGTH = 200;
+/** A host as a browser names a site: a domain of letters, digits and hyphens in dot-separated labels (an international
+ *  name arrives as punycode from URL), or an IPv4 or bracketed IPv6 address. Never a wildcard, quote or ";" (break m1). */
+const HOST = /^(?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?|\[[0-9a-f:.]+\])$/;
+/** A list of sites for one audit value: whole sites only, cut to fit 200 characters and marked "(+n more)". */
+function listFor(sites: string[]): string | null {
+  if (!sites.length) return null;
+  let out = "";
+  for (let i = 0; i < sites.length; i++) {
+    const rest = sites.length - i - 1, mark = rest ? ` (+${rest} more)` : "";
+    const next = out ? `${out} ${sites[i]}` : sites[i];
+    if (`${next}${mark}`.length > MAX_SITE_LENGTH) return `${out || "…"} (+${sites.length - i} more)`;
+    out = next;
+  }
+  return out;
+}
 
 export type WebFormSettings = {
   id: string; name: string; enabled: boolean; allowedSites: string[]; publicToken: string; hostedUrl: string; version: string;
@@ -39,11 +56,12 @@ export function readWebForms(db: PrismaClient, ctx: StaffContext, publicOrigin: 
 export function siteEntry(raw: unknown): { site: string } | { refused: string } {
   if (typeof raw !== "string" || !raw.trim()) return { refused: "Enter a site, for example https://www.example.com." };
   const t = raw.trim();
-  if (t.length > 255) return { refused: "This site is too long." };
+  if (t.length > MAX_SITE_LENGTH) return { refused: `This site is too long: at most ${MAX_SITE_LENGTH} characters.` };
   let u: URL;
   try { u = new URL(t); } catch { return { refused: "Enter the site with https://, for example https://www.example.com." }; }
   if (!/^https?:$/.test(u.protocol)) return { refused: "Only http:// or https:// sites can show the form." };
   if (u.username || u.password) return { refused: "Leave out any user name or password." };
+  if (!HOST.test(u.hostname)) return { refused: "Enter a real site address, for example https://www.example.com (no * or other symbols)." };
   if ((u.pathname !== "/" && u.pathname !== "") || u.search || u.hash) return { refused: "Enter only the site, without a page: for example https://www.example.com, not https://www.example.com/contact." };
   const site = siteOf(t);
   return site ? { site } : { refused: "Enter the site with https://, for example https://www.example.com." };
@@ -73,13 +91,15 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
     const before = await tx.foWebForm.findFirst({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
     if (!before) return notFound("web form");
     if (before.updatedAt.toISOString() !== b.version) return conflict("Someone else changed this form's sites since you opened it. Reload to see their change, then make yours again.", "STALE");
+    // The same list again changes nothing: no new version, no audit line (review m3).
+    if (sites.length === before.allowedSites.length && sites.every((s, i) => s === before.allowedSites[i])) return view(before, origin);
     await tx.foWebForm.updateMany({ where: firmScope(ctx.firmId, { id: formId }), data: { allowedSites: sites, updatedBy: actorOf(ctx) } });
     const after = await tx.foWebForm.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
     const added = sites.filter((s) => !before.allowedSites.includes(s)), removed = before.allowedSites.filter((s) => !sites.includes(s));
     await audit.record(tx, {
       firmId: ctx.firmId, actor: actorOf(ctx), action: "fo.web_form.sites_changed", entity: "fo_web_form", entityKey: formId,
       summary: `Web form "${before.name}": allowed sites changed (${sites.length} now; ${added.length} added, ${removed.length} removed).`,
-      detail: { count: sites.length, added: added.join(" ") || null, removed: removed.join(" ") || null },
+      detail: { count: sites.length, addedCount: added.length, removedCount: removed.length, added: listFor(added), removed: listFor(removed) },
     });
     return view(after, origin);
   });
