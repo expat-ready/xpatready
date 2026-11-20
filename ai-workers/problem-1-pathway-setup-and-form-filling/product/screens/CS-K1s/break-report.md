@@ -63,3 +63,37 @@
 ## Not findings (out of this row)
 - FO-8 never makes a client for a prospect whose name holds an emoji ZWJ, U+202E or a zero-width character. The poll logs "3 won prospect(s) not taken in" on every pass. This is a pre-existing FO-8 behaviour, so it is noted for the area owner, not for this row.
 - `/clients/%2e%2e` is turned into `/` by the browser.
+
+## Re-check on 43d6ad78 (20 Nov 2026)
+
+**Commit tested:** `43d6ad78df1d4687a04a65e3b2c7ac3a6dc8b342` (`git rev-parse HEAD`). I read only `git diff 47debd8c..43d6ad78` (`api/src/clients.ts`, `web/src/runtime/clients.tsx`, the suite, and the one-line `check_bk4a.ts` from `3d4787466`).
+**Copy:** web rebuilt with `npx vite build web`, then a fresh isolated copy `csk1s_break` on :4445 with the same flags. The bundle carries `viewer_actor_id`. The copy is stopped again. No code edits, US$0.
+
+### Verdict: **Approve** on `43d6ad78`
+M1 is fixed on every path I reproduced. No Blocker or Major remains. Two Minors are left, listed below.
+
+### M1: fixed
+| Re-run | Result |
+|---|---|
+| Fresh browser, `sample-solo` / `user-S`, "Open the case" | Lands on C-2026-00001 and shows the case. The person becomes `user-S`, and the notice says "Now: Solo representative (simulated)…". 1 case (`shots2/r1-solo-fresh.png`) |
+| Same fresh browser, case link on the client page | Shows the case, as `user-S` |
+| `sample-firm` sign-in (`user-R`) with the picker on Solo representative, "Open the case" | Lands on the case as `user-R`; the notice says "Now: Representative (simulated)". 1 case |
+| Same setup, case link by click, by keyboard Enter, and by Ctrl-click into a new tab | Each one shows the case, as `user-R` |
+| 5 synchronous clicks (regression check) | 1 POST, 1 case, lands on it |
+
+### What changed: break-it pass
+- **Staff with a null `actor_id`** (CASE_MANAGER, signed in by e-mail): the client read gives `viewer_actor_id: null`. "Open the case" answers `NO_CASE_USER`, the button turns off, the alert takes focus, and no case is made. Held.
+- **Staff with a made-up actor id** (`brk-co-…`, CASE_OFFICER): Enter on the button gives `NO_CASE_USER`, the button turns off, and focus moves to the alert (m1 and m6 fixed). The person is not switched (the `isFirmStaff` guard). Held.
+- **A firm A staff row carrying a client's simulated id** (`user-P`, which the DB accepts): `actAs` switches nothing (`isFirmStaff`). Another firm's staff id (`user-S`) or `user-O` is refused by the DB's `platform_staff_actor_id_key`. Held.
+- **m1 fixed:** with `OFFER_USED` from another tab, the button turns off and focus moves to the alert (`data-offer-refusal="OFFER_USED"`).
+- **m3 fixed:** `?q=<450 x>` is cut to 200 characters in both the box and the address. It then shows "No client matches…" with Clear search, instead of an error with no exit.
+- **m4 fixed:** for `?q=␇␁Mixed`, the box and the address both hold `Mixed`, and the line reads "1 of 1 client shown for "Mixed"". A search of control characters only clears the search.
+- **m2 partly fixed:** add 5 clients while the list of 55 is on screen, then press "Show more". The count now reads truthfully "55 of 60". But the 5 new clients (newest first, so they belong on page 1) are still not shown, and "Show more" goes away, so only a reload reaches them. Minor (r2).
+- **The person switch is not confined to one tab:** `actAs` writes to the shared `localStorage` person, so other tabs of the same browser also change person. This is how BK-4a works ("one current person"), and the switch is announced, so it is not a finding.
+
+### Minors still open on 43d6ad78
+- **r1. A staff member with no simulated case person still lands on "No such case".** This covers an `actor_id` that is null or not a simulated firm person.
+  - Steps: such a staff member (here CASE_MANAGER, or the `brk-co-…` CASE_OFFICER), with the browser's person on another firm's (Solo representative), clicks a case link on the client page.
+  - Result: "This case could not be opened · No such case" (`shots2/r3-null-link.png`, `r4-link.png`), from `clients.tsx` `actAs`, which does nothing when there is no firm-staff id.
+  - Why Minor: such staff cannot open cases (`NO_CASE_USER`), and the case pages only know simulated people. With the default person (Case officer of the same firm) the link works.
+- **r2. Clients made while the list is open stay unreachable without a reload** (the remainder of m2, above). **m5** (the long-name breadcrumb at 200 % zoom) is left as is, as stated.
