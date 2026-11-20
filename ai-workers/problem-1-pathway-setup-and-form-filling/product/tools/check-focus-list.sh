@@ -107,14 +107,17 @@ fc "$M Run /next runtime ENF-733." "$T/none.md"
 ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # The hook, fed the JSON Claude Code sends on start_session and create_session (lane-preflight.sh --hook).
 G4=$'\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'
-hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
-hook start_session "Row CS-NT1. $M R1.76 notes, part 1."
+# B204: each hook brief carries its Item line; a throwaway waves list puts R1.37 and R1.76 in the active wave, so the focus list is what is tested here.
+printf '| # | Map row | Status |\n|---|---|---|\n| R1.37 | x | Partial |\n| R1.76 | x | Partial |\n| R1.1 | x | Partial |\n| R1.2 | x | Partial |\n' > "$T/caps.md"
+printf 'R1.37\t1\tJ5\nR1.76\t1\tJ7\nR1.1\t1\tJ0\nR1.2\t1\tJ0\n' > "$T/waves.tsv"; export WAVES_TSV="$T/waves.tsv" WAVES_CAPS="$T/caps.md"
+hook() { out=$(jq -n --arg n "$1" --arg p "$2$G4"$'\nItem: '"$3" '{tool_name:$n, tool_input:{target:"cloud", prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" FOCUS_BACKLOG_DIR="$T" bash "$TOOLS/lane-preflight.sh" --hook 2>&1); r=$?; }
+hook start_session "Row CS-NT1. $M R1.76 notes, part 1." R1.76
 ok "hook: a start for an off-list item is denied with the reason and the list's path" "$(echo "$out" | jq -e --arg f "$T/focus-list.md" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("CS-NT1") and test("P-733") and contains($f))' >/dev/null 2>&1 && echo 1)" "$out"
-hook mcp__ccr__create_session "Row CS-NT1. $M R1.76 notes, part 1."
+hook mcp__ccr__create_session "Row CS-NT1. $M R1.76 notes, part 1." R1.76
 ok "hook: a cloud create_session for an off-list item is denied too" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1 && echo 1)" "$out"
-hook start_session "Row J-37. $M R1.37 booking page."
+hook start_session "Row J-37. $M R1.37 booking page." R1.37
 ok "hook: a start for a listed item passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
-hook start_session "Row ENF-733. $M Tooling; R1.76 is mentioned."
+hook start_session "Row ENF-733. $M Tooling; R1.76 is mentioned." "none (tooling)"
 ok "hook: a tooling start passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "exit $r: $out"
 # The real list (the mutation copy carries it too): readable, and the two Leads' own lane lines of 19 Nov pass.
 REAL="$TOOLS/../focus-list.md"

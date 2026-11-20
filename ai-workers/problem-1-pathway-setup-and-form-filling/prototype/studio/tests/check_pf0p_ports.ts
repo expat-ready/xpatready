@@ -11,7 +11,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { ZodError } from "zod";
 import { AuditEventAdapter, auditEvent, PLATFORM_AUDIT_WORKSPACE } from "../api/src/platform/audit/audit-event.ts";
-import { AuditEntry, AuditFailure, fakeAudit } from "../ports/audit.ts";
+import { AuditEntry, AuditFailure, fakeAudit, flattenValues } from "../ports/audit.ts";
 import { FAKE_NOW, FakeClock, systemClock } from "../ports/clock.ts";
 import { FileKeyTaken, fakeFiles } from "../ports/files.ts";
 import { cronMatches, fakeJobs, parseCron, type JobRun } from "../ports/jobs.ts";
@@ -238,7 +238,7 @@ await runContract(jobPortContract, "fakeJobs", fakeJobsHarness, ok);
 await runContract(filesPortContract, "fakeFiles", () => fakeFiles(), ok);
 await runContract(clockPortContract, "FakeClock", () => new FakeClock(), ok);
 await runContract(clockPortContract, "systemClock", () => systemClock, ok);
-await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)) }; }, ok);
+await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)).map((e) => ({ ...e, values: flattenValues(e.before, e.after) })) }; }, ok);
 await runContract(documentRenderPortContract, "fakeRender", () => ({ render: fakeRender({ templates: ["retainer.standard"] }), template: "retainer.standard", data: { client: { id: "p-1" }, fee: 1500 }, reordered: { fee: 1500, client: { id: "p-1" } }, other: { client: { id: "p-1" }, fee: 1600 }, text: (b: Uint8Array) => new TextDecoder().decode(b) }), ok);
 {
   // DW3: a JobPort fake that ignores the key (it queues each enqueue under a fresh one), so a keyed job runs twice.
@@ -351,7 +351,7 @@ try {
   } finally { for (const d of [...fresh, TPL]) execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", d]); }
 
   // PF-0c: the interim adapter runs AuditPort's shared contract (lines read back from audit_event by detail.firmId).
-  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId })) }), ok);
+  await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { workspaceId: (await db.workspace.findUnique({ where: { key: PLATFORM_AUDIT_WORKSPACE } }))?.id ?? "00000000-0000-4000-8000-000000000000", entityKey: { startsWith: prefix }, detail: { path: ["firmId"], equals: firm } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId, values: Object.fromEntries(Object.entries((e.detail ?? {}) as Record<string, unknown>).filter(([k]) => /_(before|after)$/.test(k))) })) }), ok);
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
