@@ -78,6 +78,11 @@ console.log("== PF-24w DW4: identityConfig and sample-seed.ts read no variable t
   const after = identityConfig(), seedAfter = sampleSeedDecision();
   ok("PF-24w DW4 pass: identityConfig() and sampleSeedDecision() answer from the loaded configuration (local, no sign-in, no seed)", before.environment === "local" && before.identity === "none" && !seedBefore.run, { before, seedBefore });
   ok("PF-24w DW4 fail: values set only in process.env after the load change nothing (identity, environment, two-step rule, seed)", JSON.stringify(after) === JSON.stringify(before) && !seedAfter.run, { after, seedAfter });
+  const forced = sampleSeedDecision(process.env, { forceOn: true });
+  ok("PF-24w DW4 pass (break M1): forceOn answers from the loaded configuration (local: the demo reset seeds), with no re-load", forced.run && /local/.test(forced.why), forced);
+  const demoSrc = readFileSync(join(STUDIO, "api", "src", "demo.ts"), "utf8");
+  const copies = (src: string) => [...src.matchAll(/sampleSeedDecision\(\s*\{\s*\.\.\.process\.env/g)].length;
+  ok("PF-24w DW4 fail (break M1): demo.ts never hands sampleSeedDecision a copy of process.env (a copy re-runs the loader on scrubbed settings)", copies(demoSrc) === 0 && copies('sampleSeedDecision({ ...process.env, X: "on" })') === 1);
   ok("PF-24w DW4 pass: given an env of its own, identityConfig reads it through the loader", identityConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_IDENTITY: "local" }).identity === "local");
   for (const k of ["PLATFORM_IDENTITY", "PLATFORM_SAMPLE_SEED", "PLATFORM_ENVIRONMENT", "PLATFORM_POOL_MFA_REQUIRED"]) delete process.env[k];
 }
@@ -155,9 +160,13 @@ if (/api[\\\\/]src[\\\\/]main\\.ts$/.test(process.argv[1] ?? "")) {
     ok("PF-24w J-15 W1 fail: no secret setting (DATABASE_URL aside) reaches a child process's environment at start (the loader scrubs them first)", toChild.length === 0, toChild);
     const paths = ["/api/health/ready", "/api/health/live", "/api/session", "/api/platform/me", "/api/platform/staff", "/api/public/plans", "/api/no-such-route", "/", "/api/health", "/api/platform/session/local"];
     const answered = (await Promise.all(paths.map((p) => get(TP, p).then((r) => r.status, () => 0)))).filter((s) => s > 0).length;
+    // Break M1 (#2635): the demo reset asks sampleSeedDecision after the loader has scrubbed process.env of its secrets;
+    // a copy of process.env re-ran the loader there and the reset answered 500 in test. It must use the loaded one.
+    const reset = await fetch(`http://127.0.0.1:${TP}/api/demo/reset`, { method: "POST", headers: { "x-actor": "user-A", "content-type": "application/json", connection: "close" }, body: JSON.stringify({ confirm: "RESET" }), signal: AbortSignal.timeout(180_000) }).then(async (r) => ({ status: r.status, body: (await r.text()).slice(0, 300) }), (e: Error) => ({ status: 0, body: e.message }));
+    ok("PF-24w J-15 W1 pass (break M1): on the test copy, after the secrets are scrubbed, Demo › Reset answers (not 500, no ConfigRefused)", reset.status > 0 && reset.status < 500 && !/ConfigRefused|cannot start/.test(reset.body), reset);
     const later = read();
     const readAgain = COUNTED.filter((k) => later.n[k] !== atStart.n[k]).map((k) => `${k} +${later.n[k] - atStart.n[k]} ${later.stack[k]?.slice(-1)[0]?.slice(0, 300)}`);
-    ok("PF-24w J-15 W1 fail: over ten later requests no setting is read again (zero reads: the configuration is kept, never re-read)", answered === 10 && readAgain.length === 0, { answered, readAgain });
+    ok("PF-24w J-15 W1 fail: over ten later requests and a demo reset no setting is read again (zero reads: the configuration is kept, never re-read)", answered === 10 && readAgain.length === 0, { answered, readAgain });
   } finally { try { iso(T, TP, "stop"); } catch { /* the copy stops itself by its ttl */ } rmSync(dir, { recursive: true, force: true }); }
   const log = join(STUDIO, "var", "isolated-logs", `${T}-api.log`);
   const text = existsSync(log) ? readFileSync(log, "utf8") : "";

@@ -15,10 +15,12 @@ export type SeedDecision = { run: boolean; why: string };
  *  the settings (PF-24w), so an unknown PLATFORM_SAMPLE_SEED stops the start-up with its name. */
 const configOf = (env: NodeJS.ProcessEnv): PlatformConfig => (env === process.env ? platformConfig() : loadPlatformConfig(env));
 
-/** Whether this configuration seeds the Sample firms at start-up. */
-export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env): SeedDecision {
+/** Whether this configuration seeds the Sample firms at start-up. `forceOn` (the demo reset, demo.ts) asks as if
+ *  PLATFORM_SAMPLE_SEED were on, from this process's loaded configuration: never a copy of process.env, which the loader
+ *  has scrubbed of secrets by then (break M1, #2635: a copy re-ran the loader and refused the reset with a 500). */
+export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env, opts: { forceOn?: boolean } = {}): SeedDecision {
   const { environment, sampleSeed } = configOf(env);
-  if (!sampleSeed) return { run: false, why: "PLATFORM_SAMPLE_SEED is off (the default)" };
+  if (!sampleSeed && !opts.forceOn) return { run: false, why: "PLATFORM_SAMPLE_SEED is off (the default)" };
   if (environment === "production") return { run: false, why: "refused: PLATFORM_ENVIRONMENT=production never seeds Sample firms" };
   return { run: true, why: `PLATFORM_SAMPLE_SEED=on (${environment})` };
 }

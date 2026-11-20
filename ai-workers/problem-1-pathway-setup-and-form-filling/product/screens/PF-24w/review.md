@@ -106,3 +106,57 @@ I read only `git diff ff64a4d5e..3f461d3b6`, which touches 3 files and 11 lines.
 No Blocker or Major is open.
 
 **Verdict: Approve** cc8f6d05e4c4a93607cb3ecc25bebce2e2b6446e (code as reviewed at 3f461d3b600dfc708b6442b7bf015a5c3d317866).
+
+## Re-review (diff-only, supersede #2635) at 2f0a166efbae85a3afcd18c8ca95c1022354d0a0
+Reviewer (Opus, P-303), diff only. PR #2635 re-lands #2001 (9 commits cherry-picked with `-x` onto `origin/main` d3d014857). I checked two things: (1) how the conflicts were resolved, and (2) code that landed on `main` after #2001 last merged it and now runs into the fail-closed setting. I did not re-review the PF-24w parts approved above. I ran no server and never used :4400. I read from the shared tree using `git show` and `git diff` only. My one suite run used a scratch database named by its process id, which I dropped afterwards. Cost US$0.
+
+### 1. Conflict resolution: clean
+I compared `git diff 39c1203cd 42372844d` (#2001's net change; 39c1203cd is the last `main` that #2001 merged, and it is an ancestor of today's `origin/main`) with `git diff origin/main 2f0a166ef`, ignoring index lines and hunk headers. Everything outside the five files is byte-identical, which includes `settings.ts`, `port.ts`, all of the test edits, compose, `restart-api.sh` and the runbook.
+
+| File | Result |
+|---|---|
+| `studio/start.sh` | Main's `PLATFORM_SAMPLE_SEED` and `PLATFORM_IDENTITY` defaults are kept. `export PLATFORM_ENVIRONMENT=local` comes after them (start.sh:18). Nothing was dropped. |
+| `studio/tools/isolated.sh` | Line 88 has `PLATFORM_ENVIRONMENT=local` before `"$@"`, so a caller's argument still wins, and keeps main's `PLATFORM_SAMPLE_SEED="${…:-on}"`. Both comments are kept. |
+| `identity/sample-seed.ts` | The hunks match #2001 exactly. Main's AUD-5 `seedSampleSettings` / `seedFirmsAndValues` are intact. |
+| `seed-sample-firms.ts` | Main's PF-5t comment block is kept. Only the `Run:` line changed (m3). |
+| `platform/MODULE.md` + `MODULE.rows/PF-24w.md` | Main's frozen `Tables.` and `Tests.` lines are unchanged. The invariant line is added (39 lines, under the 40 limit). The fragment is `Tests: tests/check_pf24w_environment.ts`. `module-cards.py tree`: PASS (15 cards). |
+
+### 2. New code on `main` that now fails closed: found, ten suites plus one
+After #2001 last merged `main` (0c5dfede5, 18 Nov 07:18), PF-19r part 1 (e33308330, 18 Nov 17:45) made `features/platform-complaints.ts`, `platform-firms.ts`, `platform-staff-read.ts` and `front-office-booking.ts` import `features/platform-messages.ts`. That file calls `platformConfig()` when it loads (`platform-messages.ts:27`). PF-19r part 2 (0948eaf08) also made `person-link.ts` import it. On `main`, an unset setting fell back to `local`. Under PF-24w the import throws `ConfigRefused`.
+
+I probed every `api/src` module that a test or tool imports (220 of them), with the setting unset. Five modules throw on import: `front-office-booking`, `platform-complaints`, `platform-firms`, `platform-messages` and `platform-staff-read`. No other module throws. The spawn points on `main` are unchanged since #2001's sweep: start.sh, isolated.sh, restart-api.sh, new-machine.sh→restart-api.sh, container-entry, and the pf0bp, pf12, pf24, pf24w and qa_s2 tests. No `.github` or `product/tools` line sets or needs the setting.
+
+**B1 (Blocker): ten existing suites crash on import (DW7: "existing suites stay green").**
+Eight of them delete the setting themselves, so even a runner that exports `local` cannot save them. The other two never set it, and neither `run-suites.sh` nor any workflow does.
+
+| Suite | Deletes the setting at | Throwing import at |
+|---|---|---|
+| `tests/check_pf21w_routes.ts` | :30 | :41 platform-complaints |
+| `tests/check_pf21i_idempotent.ts` | :34 | :45 platform-complaints |
+| `tests/check_pf21j_handler_key.ts` | :31 | :40 platform-complaints |
+| `tests/check_pf21v_views.ts` | :30 | :48 platform-complaints |
+| `tests/check_pf19r_senders.ts` | :36 | :61 platform-messages |
+| `tests/check_fo3a2_feed.ts` | :37 | :50 front-office-booking |
+| `tests/check_pf18a_notifications.ts` | :32 | :238 front-office-booking |
+| `tests/check_pf4b_session_reads.ts` | :42 | :60 platform-staff-read (unchanged since #2001; the import under it is new) |
+| `tests/check_pf19b2_ses.ts` | never set | :336 platform-staff-read, :337 platform-messages |
+| `tests/check_pf19r_every_sender.ts` | never set | :170 platform-messages |
+
+* **Failing scenario (run):** `PLATFORM_ENVIRONMENT=local tsx tests/check_pf21j_handler_key.ts` exits 1 with `ConfigRefused { environment: 'unset', missing: ['PLATFORM_ENVIRONMENT'] }` before its first check. I did not run the other nine. Each of them deletes the setting (or never sets it) before importing one of the five modules that the probe showed throwing.
+* All ten are in the builder's own `run-suites.sh --only …` list, which is running on this tree now. When I looked, that run had not reached them yet.
+* **Fix (test-only):** in each of the eight, add `process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)` straight after the delete loop, as `check_fo3sr_routes.ts:45` already does. In the two that never set it, add `process.env.PLATFORM_ENVIRONMENT ??= "local";` before the import (as in pf23w). Then add all ten to the PR's spawn-point table.
+
+**B2 (Blocker): `tests/check_pf19r_case_links.ts` (new on main, 18 Nov 21:30) crashes at its P-710 block.**
+* **:181** calls `seedSampleOnStart({ DATABASE_URL, PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" })`. Under PF-24w this goes through the loader, so an incomplete production configuration throws `ConfigRefused` (Missing required settings: PLATFORM_COGNITO_USER_POOL_ID, …) where `main` returned null.
+* **:183** passes no `PLATFORM_ENVIRONMENT`, so it throws "unset".
+* I reproduced both by calling `sampleSeedDecision` with those exact objects. The throw is uncaught, so the suite ends `STOP` with exit 2 after its DW checks have run.
+* **Fix:** the same change PF-24w made in `check_pf4_identity.ts:497-503`. Give :181 a complete production configuration (copy pf4's `PROD`) and add `PLATFORM_ENVIRONMENT: "local"` at :183.
+
+**Not findings:**
+* `demo.ts:39` spreads `process.env`, and it only runs inside the app, where a launcher sets the setting. It was present before #2001's review.
+* `check_pf5v_signup_mail.ts:66` only reads the feature file as text.
+* `journeys/j_109.ts:10` mentions it in a comment.
+
+**Journey score:** I did not walk it again, because the R1.15 behaviour is the same code as reviewed above. So **8.5 / 10 stands for the PF-24w walk**. DW7 is not met at this head (B1, B2).
+
+**Reviewer: Block 2f0a166efbae85a3afcd18c8ca95c1022354d0a0**. Fix B1 (ten suites, one line each) and B2 (`check_pf19r_case_links.ts:181,183`). Then re-run those eleven with `PLATFORM_ENVIRONMENT` unset, and paste the counts. Re-review reads only that diff.
