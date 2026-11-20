@@ -110,21 +110,24 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   const button = React.useRef<HTMLButtonElement>(null);
   // Focus goes back to the switch once React has drawn the result (review m1, M2): an effect, never a timer, so the
   // keyed new button exists and is enabled. A timer could run first, on the old disabled button, on a slow machine.
-  const refocus = React.useRef(false);
-  React.useEffect(() => { if (!busy && refocus.current) { refocus.current = false; button.current?.focus(); } }, [busy, form.enabled]);
+  // It waits for the version the press produced (the saved one, or the same one after a refusal): the query cache hands
+  // the new state over a tick later than `busy`, and focusing the old button then would be lost when it is replaced.
+  const refocus = React.useRef<string | null>(null);
+  React.useEffect(() => { if (!busy && refocus.current === form.version) { refocus.current = null; button.current?.focus(); } }, [busy, form.version]);
   React.useEffect(() => { setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
   const flip = async () => {
     setBusy(true); setSaid(null);
+    let landed = form.version;
     try {
       const saved = Form.parse(await staffApi(`/front-office/web-forms/${encodeURIComponent(form.id)}/enabled`, { method: "PUT", json: { enabled: !form.enabled, version: form.version } }));
-      onSaved(saved);
+      landed = saved.version; onSaved(saved);
       setSaid({ tone: "ok", text: saved.enabled ? "Switched on. Visitors can send enquiries through this form." : "Switched off. Visitors now see \"This form is not available\"." });
     } catch (x) {
       const p = x instanceof StaffApiError ? x : null;
       setSaid({ tone: "danger", text: p?.problem.fields?.enabled ?? p?.message ?? "Not changed. Please try again.", stale: p?.problem.code === "STALE" });
     } finally {
       // The button is disabled while busy, which drops focus: the effect above puts it back (review m1, M2).
-      refocus.current = true; setBusy(false);
+      refocus.current = landed; setBusy(false);
     }
   };
   return (

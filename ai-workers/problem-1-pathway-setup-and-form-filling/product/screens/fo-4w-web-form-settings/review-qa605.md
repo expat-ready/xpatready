@@ -178,3 +178,19 @@ Reviewer: Approve 1a571ee7bc2d4998f55f1f7aa93bd3a3c4295032
 **Open:** M2 (Major). Earlier m4 stays Minor.
 
 Reviewer: Changes requested
+
+---
+
+## Re-review at `f295b3db950b2635381279ae37ffdd1b0186341c` (diff `8fb9274c7..f295b3db9`)
+
+**M2 → closed.**
+- **The fix:** `finally` now only sets `refocus.current = true` and `setBusy(false)`. An effect on `[busy, form.enabled]` focuses `button.current` after React's commit (`web-form-settings-page.tsx:113-114`, `:127`). It runs once the new keyed button is mounted and enabled. The stale path is covered because `busy` changes there too.
+- **The test:** the pack's keyboard step now makes five Enter presses with Chrome's CPU throttled 8x via CDP. After each press it records `activeElement` (pack :231-241). A lost focus makes the next label wait fail, so the test can no longer pass silently.
+- **My runs (own copies; screenshots restored with `git checkout`):**
+  - Pack on :4537: **48/48**. `kept` was on the new switch all five times.
+  - My focus probe on :4538: CPU 1x, 2x, 4x, 8x, 8x and 12x, six switches each (keyboard and mouse alternating), plus the stale path. Focus was on the new switch **42 of 42** times. At 8fb9274 it was lost 3 or 4 times in 6 at 8x.
+- **Note, not a finding:** TanStack Query 5.101 sends `setQueryData` to subscribers on a `setTimeout(0)`. In principle `busy = false` could commit before the new state, which would spend `refocus` on the old button. It never happened in 48 throttled presses up to 12x, and the pack would catch it. If it ever shows, clear `refocus` only when the button's label matches `form.enabled`.
+
+**Open:** no Blocker and no Major. m4 (the switch offered before a wording exists) stays Minor.
+
+Reviewer: Approve f295b3db950b2635381279ae37ffdd1b0186341c
