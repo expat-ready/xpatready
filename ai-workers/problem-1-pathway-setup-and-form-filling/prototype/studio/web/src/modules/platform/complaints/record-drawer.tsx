@@ -90,7 +90,7 @@ export function RecordDrawer({ open, onOpenChange, linked, zone, returnFocus }: 
         <Field label="How it came" error={fe("channel")} hint={Sample}><Select value={f.channel} onChange={set("channel")} required><option value="">Choose</option>{Object.entries(CHANNEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
         <Field label="About" error={fe("category")} hint={Sample}><Select value={f.category} onChange={set("category")} required><option value="">Choose</option>{Object.entries(CATEGORY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
         <Field label="What it is about" error={fe("summary")}><Textarea value={f.summary} onChange={set("summary")} rows={5} maxLength={4000} required /></Field>
-        <Field label="Handler" error={fe("handlerStaffId") ?? (handlers.isError ? "Could not load the staff list." : null)} hint="An active staff member of your firm. They are reminded if it is not acknowledged within 2 business days (Sample).">
+        <Field label="Handler" error={fe("handlerStaffId") ?? (handlers.isError ? "Could not load the staff list." : null)} hint="An active staff member of your firm who may record complaints. They are reminded if it is not acknowledged within 2 business days (Sample).">
           <Select value={f.handlerStaffId} onChange={set("handlerStaffId")}>
             {(handlers.data ?? [{ id: me.staffId, displayName: me.displayName }]).map((h) => <option key={h.id} value={h.id}>{h.displayName}{h.id === me.staffId ? " (you)" : ""}</option>)}
           </Select>

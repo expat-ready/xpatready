@@ -5,6 +5,8 @@
 // and a fail each. A scratch database (every migration, PF-3's Sample firms) and a small Nest app built from PF-4's own
 // session classes, the guard and PF-23's request middleware, plus one probe route that records through the adapter in a
 // transaction across awaits. No browser, no model call (US$0). The scratch database is dropped at the end.
+// R1.8: DW8 (QA-594) a line's before and after in full through the adapter; DW9 (QA-595) a case line's firm is its case's,
+// and a case line for another firm is refused.
 //   tsx --tsconfig studio/api/tsconfig.json studio/tests/check_aud1b_adapter.ts
 import "reflect-metadata";
 import { Body, Controller, HttpCode, Inject, Module, Post, Req } from "@nestjs/common";
@@ -15,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeAlerts } from "../ports/alert.ts";
-import { fakeAudit } from "../ports/audit.ts";
+import { fakeAudit, flattenValues } from "../ports/audit.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { auditPortContract } from "../ports/contracts/audit-port.contract.ts";
@@ -230,14 +232,55 @@ try {
 
   // ------------------------------------------------------------------------- DW7: the port's contract, caseId included
   const CASE = "0c0c0c0c-0000-4000-8000-0000000000c3";
-  await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)) }; }, ok);
+  await runContract(auditPortContract, "fakeAudit", () => { const a = fakeAudit(); return { audit: a, commit: (fn) => a.transaction(fn), rollback: (fn) => a.transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined), lines: async (firm, prefix) => a.entries.filter((e) => e.firmId.toLowerCase() === firm && e.entityKey.startsWith(prefix)).map((e) => ({ ...e, values: flattenValues(e.before, e.after) })) }; }, ok);
   await runContract(auditPortContract, "AuditEventAdapter", () => ({ audit: new AuditEventAdapter(), commit: (fn) => db.$transaction((tx) => fn(tx)), rollback: (fn) => db.$transaction(async (tx) => { await fn(tx); throw new Error("roll back"); }).catch(() => undefined),
-    lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { firmId: firm, entityKey: { startsWith: prefix } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId })) }), ok);
+    lines: async (firm, prefix) => (await db.auditEvent.findMany({ where: { firmId: firm, entityKey: { startsWith: prefix } }, orderBy: [{ at: "asc" }, { entityKey: "asc" }] })).map((e) => ({ actor: e.actor, action: e.action, entity: e.entity, entityKey: e.entityKey ?? "", summary: e.summary, caseId: e.caseId, values: Object.fromEntries(Object.entries((e.detail ?? {}) as Record<string, unknown>).filter(([k]) => /_(before|after)$/.test(k))) })) }), ok);
   await db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "platform.check.case", entity: "platform_staff", entityKey: "aud1b-dw7", summary: "AUD-1b case line.", caseId: CASE }));
   ok("AUD-1b DW7 pass: the adapter keeps the entry's caseId in case_id and the firm in both firm_id and detail.firmId",
     sql(`select case_id || '|' || firm_id || '|' || (detail->>'firmId') from audit_event where entity_key = 'aud1b-dw7'`) === `${CASE}|${FIRM_A}|${FIRM_A}`);
   ok("AUD-1b DW7 fail: a caseId that is not a uuid is refused and writes nothing",
     await rejects(() => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "platform.check.case", entity: "platform_staff", entityKey: "aud1b-dw7-bad", summary: "AUD-1b case line.", caseId: "case-1" }))) && sql("select count(*) from audit_event where entity_key = 'aud1b-dw7-bad'") === "0");
+
+  // ------------------------------------------------------------------------- DW8 (R1.8, QA-594): before and after in full
+  const pf = (key: string, o: Record<string, unknown>) => db.$transaction((tx) => auditEvent.record(tx, { firmId: FIRM_A, actor: "system:aud1b-check", action: "fo.person.phone_edited", entity: "fo_person", entityKey: key, summary: "Phone changed.", detail: { foPersonId: key }, ...o }));
+  await pf("aud1b-dw8", { before: { phone: "+1 416 555 0100", ownerStaffId: R.id }, after: { phone: "+1 416 555 0199", ownerStaffId: R.id } });
+  await pf("aud1b-dw8-new", { before: null, after: { name: "Client A", email: "client.a@example.com" } });
+  const d8 = JSON.parse(sql("select detail::text from audit_event where entity_key = 'aud1b-dw8'") || "{}"), d8n = JSON.parse(sql("select detail::text from audit_event where entity_key = 'aud1b-dw8-new'") || "{}");
+  ok("AUD-1b DW8 pass (QA-594, P-687): a change's before and after land on the line in full, personal values included, as <field>_before / <field>_after; an unchanged field is left out; a create has lone _after values",
+    d8.phone_before === "+1 416 555 0100" && d8.phone_after === "+1 416 555 0199" && !("ownerStaffId_before" in d8) && d8.foPersonId === "aud1b-dw8" && d8.firmId === FIRM_A
+    && d8n.name_after === "Client A" && d8n.email_after === "client.a@example.com" && !("name_before" in d8n), { d8, d8n });
+  const secret = await rejects(() => pf("aud1b-dw8-secret", { before: null, after: { passwordHash: "x" } }));
+  const inDetail = await rejects(() => pf("aud1b-dw8-detail", { detail: { phone_after: "+1 416 555 0199" } }));
+  ok("AUD-1b DW8 fail: a secret in after (a password hash) and a <field>_after in detail are refused; nothing written",
+    secret && inDetail && sql("select count(*) from audit_event where entity_key in ('aud1b-dw8-secret', 'aud1b-dw8-detail')") === "0");
+
+  // ------------------------------------------------------------------------- DW9 (R1.8, QA-595): a case line carries its firm
+  // Two cases on the scratch copy, written as the owner with triggers off (only the firm columns matter here): one with
+  // firm A's id, one with firm A's key and no id yet (the lookup gives its firm).
+  const WS9 = sql("insert into workspace (id, key, label) values (gen_random_uuid(), 'aud1b-dw9', 'AUD-1b DW9') returning id");
+  const CASE_A = "0c0c0c0c-0000-4000-8000-0000000009a1", CASE_K = "0c0c0c0c-0000-4000-8000-0000000009a2", CASE_NONE = "0c0c0c0c-0000-4000-8000-0000000009ff";
+  sql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, client_id, firm_key, firm_id) values
+       ('${CASE_A}', '${WS9}', gen_random_uuid(), 'user-P', 'aud1b', 'C-2026-90001', gen_random_uuid(), '${R.firm.key}', '${FIRM_A}'),
+       ('${CASE_K}', '${WS9}', gen_random_uuid(), 'user-P', 'aud1b', 'C-2026-90002', gen_random_uuid(), '${R.firm.key}', null);`);
+  const caseLine = (key: string, o: Record<string, unknown> = {}) => db.$transaction((tx) => auditEvent.record(tx, { workspaceId: WS9, actor: "system:aud1b-check", action: "answered", entity: "case", entityKey: key, summary: "AUD-1b DW9 case line.", ...o }));
+  const inFirm = <T>(firm: string, fn: () => Promise<T>) => requestScope.run({ correlationId: `aud1b-dw9-${firm.slice(0, 4)}`, firmId: () => firm }, fn);
+  const firmOfLine = (key: string) => sql(`select coalesce(firm_id::text, '-') from audit_event where entity_key = '${key}'`);
+  await caseLine("aud1b-dw9-a", { caseId: CASE_A });
+  await caseLine("aud1b-dw9-k", { caseId: CASE_K });
+  await inFirm(FIRM_A, () => caseLine("aud1b-dw9-own", { caseId: CASE_A, firmId: FIRM_A.toUpperCase() }));
+  await caseLine("aud1b-dw9-config");
+  await inFirm(FIRM_B, () => caseLine("aud1b-dw9-config-b"));
+  ok("AUD-1b DW9 pass (QA-595): a case line carries its case's firm, outside any request (firm_id, else the firm key's platform firm) and in its own firm's request naming its own firm; a configuration line has the request's firm, else none",
+    firmOfLine("aud1b-dw9-a") === FIRM_A && firmOfLine("aud1b-dw9-k") === FIRM_A && firmOfLine("aud1b-dw9-own") === FIRM_A && firmOfLine("aud1b-dw9-config") === "-" && firmOfLine("aud1b-dw9-config-b") === FIRM_B,
+    ["a", "k", "own", "config", "config-b"].map((k) => firmOfLine(`aud1b-dw9-${k}`)));
+  const f9 = failed().length;
+  const crossScope = await inFirm(FIRM_B, () => rejects(() => caseLine("aud1b-dw9-cross", { caseId: CASE_A }), (e) => e instanceof AuditRefused && /belongs to firm/.test((e as Error).message)));
+  const crossNamed = await rejects(() => caseLine("aud1b-dw9-named", { caseId: CASE_A, firmId: FIRM_B }), (e) => e instanceof AuditRefused);
+  const crossConfig = await inFirm(FIRM_A, () => rejects(() => caseLine("aud1b-dw9-named-config", { firmId: FIRM_B }), (e) => e instanceof AuditRefused));
+  const noCase = await rejects(() => caseLine("aud1b-dw9-nocase", { caseId: CASE_NONE }), (e) => e instanceof AuditRefused && /does not exist/.test((e as Error).message));
+  ok("AUD-1b DW9 fail (QA-595): a case line refused when firm B's request writes about firm A's case, when it names firm B for firm A's case, when a configuration line names another firm than its request's, and when its case does not exist; nothing written, one alert each, never spent on the other firm",
+    crossScope && crossNamed && crossConfig && noCase && sql("select count(*) from audit_event where entity_key in ('aud1b-dw9-cross', 'aud1b-dw9-named', 'aud1b-dw9-named-config', 'aud1b-dw9-nocase')") === "0"
+    && failed().length === f9 + 4 && failed().slice(f9)[0].detail.firmId === FIRM_B, { crossScope, crossNamed, crossConfig, noCase, alerts: failed().slice(f9).map((a) => a.detail) });
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${(e as Error).stack ?? e}`);
 } finally {

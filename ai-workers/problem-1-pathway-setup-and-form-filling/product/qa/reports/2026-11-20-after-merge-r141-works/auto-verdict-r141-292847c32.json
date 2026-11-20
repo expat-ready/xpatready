@@ -1,0 +1,30 @@
+{
+  "item": "R1.41",
+  "name": "41 Staff hours and time off",
+  "pr": 2302,
+  "sha": "292847c320c35ecd74a4f7f5712579681be96db8",
+  "run_id": "44603961304",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44603961304",
+  "at": "2026-11-19T20:01:42.914Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_41.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44603961304/artifacts/14570256875",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.41-292847c320c35ecd74a4f7f5712579681be96db8.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}

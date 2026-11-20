@@ -7,14 +7,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Body, Controller, forwardRef, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, forwardRef, Get, Headers, HttpCode, HttpException, HttpStatus, Inject, Injectable, Param, Post, UploadedFiles, UseGuards, UseInterceptors } from "@nestjs/common";
 import { AnyFilesInterceptor } from "@nestjs/platform-express";
-import { cleanName, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB, MEDIA, mediaOf } from "../../contracts/documents.ts";
+import { z } from "zod";
+import { nothingStored, SignedScanFields, SignStepBody } from "../../contracts/runtime.ts"; // CS-V1 part 3
+import { MAX_DOCUMENT_BYTES, MAX_DOCUMENT_MB } from "../../contracts/documents.ts";
 import { isPenStep, isSignStep, minorFromAnswers, PEN_STEP_WORDS, PEN_STEPS, penRefusal, SIGN_STEP_WORDS, SIGN_STEPS, signersOf, stepRefusal, type PenStepKey, type SignStepKey, type StepsDone } from "../../engine/runtime/signing.ts";
 import { channelOf, type FormLine } from "../../engine/runtime/prepare.ts";
 import { changedFacts, changedGroups, formCoverage, groupFacts, readiness, type FormFact, type GroupFact } from "../../engine/runtime/forms.ts";
 import { caseView } from "../../engine/runtime/case.ts";
-import { CaseActorGuard, utf8Name } from "./case-checklist.ts";
+import { CaseActorGuard, checkedCaseFile } from "./case-checklist.ts";
 import { actorOf, Audit, CaseRead, Db, fail, VAR, WORKSPACE_KEY, type Actor } from "./core.ts";
 import { Runtime } from "./runtime.ts";
 import { CasePrepare } from "./case-prepare.ts"; // C7.6: Ready to file is read now (case-prepare.ts imports signStepsOf: forwardRef below)
@@ -33,6 +35,12 @@ const lockCase = (q: Db, caseId: string) => q.$queryRaw`SELECT id FROM runtime_c
 const namedCopy = (body: unknown): string | undefined => {
   const v = (body ?? {}) as { copy?: unknown };
   return v.copy === undefined || v.copy === null || v.copy === "" ? undefined : String(v.copy);
+};
+/** CS-V1 part 3: a body read through its schema; a refusal is the standard 400 naming the field, and nothing was stored. */
+const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
+  const r = schema.safeParse(input);
+  if (!r.success) throw new HttpException(nothingStored(r.error), HttpStatus.BAD_REQUEST);
+  return r.data;
 };
 /** The words of any recorded step (hand-signed and scanned, or signed in pen on Paper, B132). */
 const stepWords = (k: SignStepKey | PenStepKey) => (isSignStep(k) ? SIGN_STEP_WORDS[k] : PEN_STEP_WORDS[k as PenStepKey]);
@@ -84,6 +92,7 @@ export class SignSteps {
 
   /** POST /runtime/items/:id/sign-steps/:key: one step, in order; "print" names the generated copy printed. */
   async step(actor: Actor, itemId: string, keyIn: string, body: unknown) {
+    parse(SignStepBody, body ?? {}); // CS-V1 part 3: only copy, once, as text; the checks below keep their words
     if (!isSignStep(keyIn) && !isPenStep(keyIn)) fail(`No such step: a form signed by hand and scanned takes ${SIGN_STEPS.map((k) => SIGN_STEP_WORDS[k]).join(", ")}; a form signed in pen on Paper takes ${PEN_STEPS.map((k) => PEN_STEP_WORDS[k]).join(", ")}.`, HttpStatus.NOT_FOUND);
     const { c, item, handScanned, pen, blank } = await this.item(actor, itemId);
     // C7.8 (B141 M5): a blank added form has no printing steps: its one upload is the completed (signed) copy. Its one step
@@ -214,6 +223,7 @@ export class SignSteps {
   /** POST /runtime/items/:id/signed-scan: the signed scan (one PDF, JPEG or PNG, judged by its bytes), stored with its
    *  checksum, never changed in place; it marks "Signed scan received". */
   async scan(actor: Actor, itemId: string, files: Upload[] | undefined, body?: unknown) {
+    parse(SignedScanFields, body ?? {}); // CS-V1 part 3: the upload's text fields (only copy), before the file is read or stored
     const { c, item, handScanned, blank } = await this.item(actor, itemId);
     await refuseIfRecorded(this.db, [item.filingId], `the signing of ${item.itemKey}`); // B129: before the file is stored
     if (!handScanned && !blank) fail(`${item.itemKey} is not signed by hand and scanned on this application, so it takes no signed scan. Nothing was stored.`, HttpStatus.CONFLICT);
@@ -222,22 +232,22 @@ export class SignSteps {
     const bytes = f[0].buffer!;
     if (!bytes.length) fail("The file is empty. Nothing was stored.");
     if (bytes.length > MAX_DOCUMENT_BYTES) fail(`The file is larger than ${MAX_DOCUMENT_MB} MB. Nothing was stored.`, HttpStatus.PAYLOAD_TOO_LARGE);
-    const media = mediaOf(bytes);
-    if (!media) fail("Send the signed scan as a PDF, JPEG or PNG (judged by the file itself, not its name). Nothing was stored.", HttpStatus.UNPROCESSABLE_ENTITY);
+    // QA-520 (R1.67): PF-F4's one check (as the Documents doors since CS-D1t): the type from the bytes, then that a PDF opens.
+    const checked = await checkedCaseFile(f[0]);
     const done = (await signStepsOf(this.db, c.id)).get(item.id) ?? {};
     const refusal = blank ? null : stepRefusal("scan_received", done, item.itemKey, { viaUpload: true });
     if (refusal) fail(`${refusal} Nothing was stored.`, HttpStatus.CONFLICT);
     const id = randomUUID(), sha256 = createHash("sha256").update(bytes).digest("hex");
-    const rel = join("cases", c.id, "signed-scans", `${id}.${MEDIA[media!]}`), abs = join(SCANS(), rel);
+    const rel = join("cases", c.id, "signed-scans", `${id}.${checked.extension}`), abs = join(SCANS(), rel);
     try {
       mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, bytes);
       await this.db.$transaction(async (tx) => {
         await lockCase(tx as unknown as Db, c.id); // review M2: before the insert (whose share lock on the case row deadlocked a second upload)
-        await tx.signedScan.create({ data: { id, workspaceId: c.workspaceId, caseId: c.id, itemId: item.id, fileName: cleanName(utf8Name(f[0].originalname)), mediaType: media!, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id } });
+        await tx.signedScan.create({ data: { id, workspaceId: c.workspaceId, caseId: c.id, itemId: item.id, fileName: checked.name, mediaType: checked.mediaType, sizeBytes: bytes.length, sha256, path: rel, uploadedBy: actor.id } });
         if (!blank) await this.save(c, item, "scan_received", actor, null, tx as unknown as Db, namedCopy(body)); // B130: the printed copy it scans
       });
     } catch (e) { rmSync(abs, { force: true }); throw e; } // a refused upload leaves no file behind
-    await this.audit.log(c.workspaceId, actor.id, "uploaded", "signed scan", id, `${actor.name} uploaded the ${blank ? "completed copy" : "signed scan"} of ${item.itemKey} on case ${short(c.id)} (${MEDIA[media!].toUpperCase()}, ${bytes.length} bytes)`);
+    await this.audit.log(c.workspaceId, actor.id, "uploaded", "signed scan", id, `${actor.name} uploaded the ${blank ? "completed copy" : "signed scan"} of ${item.itemKey} on case ${short(c.id)} (${checked.extension.toUpperCase()}, ${bytes.length} bytes${checked.flagWords})`);
     return this.read(actor, itemId);
   }
 }

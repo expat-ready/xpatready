@@ -14,6 +14,8 @@ on:
       - ".github/workflows/nightly.yml"
       - ".github/workflows/guards.yml"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.tsv"   # B204 guard 28 (check-waves.sh)
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/waves.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/isolated.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/test-copies.sh"
 permissions:
