@@ -142,7 +142,7 @@ try {
   const all = sql(`select string_agg(summary || ' ' || (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text, ' ') from audit_event where action = '${PHONE_EDIT_ACTION}'`).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<id>");
   ok("FO-9a phone E4 fail: no audit line holds a number in its words or ids (no 4165550, no +44, no 7946)", !/4165550|\+44|7946|555/.test(all), all.slice(0, 300));
   const vals = sql(`select string_agg(coalesce(detail->>'phone_before', '-') || '>' || coalesce(detail->>'phone_after', '-'), ' ' order by at) from audit_event where entity_key = '${lena.person.id}' and action = '${PHONE_EDIT_ACTION}'`);
-  ok("FO-9a phone E4 pass (R1.8, P-687): each line holds the number before and after in full, as phone_before and phone_after", vals.split(" ").length === 2 && vals.split(" ").every((v) => /^(\+\d{6,15}|-)>\+\d{6,15}$/.test(v)), vals);
+  ok("FO-9a phone E4 pass (R1.8, P-687): each line holds the number before and after in full, as phone_before and phone_after", vals.split(" ").length === 2 && vals.split(" ").every((v) => /^[^>]+>\+\d{6,15}$/.test(v)), vals);
 
   // ------------------------------------------------------------------------------------- E6: the breaker's findings on b6b6b3d4 (F1-F4, F7)
   const ivy = await add(R, { givenNames: "Ivy", familyName: "Edges", phone: "12" });

@@ -313,10 +313,12 @@ export class PlatformIdentity implements OnModuleInit {
       const before = await tx.platformStaffCredential.findFirst({ where: firmScope(actor.firmId, { staffId: t.id }) });
       const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => !before || before[k] !== data[k]);
       await tx.platformStaffCredential.upsert({ where: { firmId_staffId: { firmId: actor.firmId, staffId: t.id } }, create: { firmId: actor.firmId, staffId: t.id, ...data, updatedBy: actorWord(actor.staffId) }, update: { ...data, updatedBy: actorWord(actor.staffId) } });
-      // R1.8 (QA-594, P-687): the licence record's values in full, before and after (the firm's log shows them to holders of
-      // the audit permission).
+      // R1.8 (QA-594): the licence record's type and body before and after; the licence number itself is never written to
+      // an audit line (AG-1-31: licence numbers are never logged; BR-8): only whether it changed (a question for the tech
+      // lead on #2527, P-687 against AG-1-31).
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own },
-        before: before ? { representativeType: before.representativeType, licensingBody: before.licensingBody, licenceNumber: before.licenceNumber } : null, after: data });
+        before: before ? { representativeType: before.representativeType, licensingBody: before.licensingBody } : null,
+        after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
       return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
     });
   }
