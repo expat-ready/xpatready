@@ -8,7 +8,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpendLedger } from "../p2/ledger.ts";
-import { ledgerDirFrom, PROTOTYPE } from "../p2/policy.ts";
+import { ledgerDirFrom, PROTOTYPE, ROOT } from "../p2/policy.ts";
+import { findRoot, MARKER } from "../../../../packages/repo-paths/index.ts";
 import { unionOfLedgers } from "../p2/tools/seed-shared-ledger.ts";
 
 const results: [string, boolean][] = [];
@@ -55,6 +56,14 @@ t("C11.8 QA-90 pass: unset, the main copy and a lane copy both find the main cop
   ledgerDirFrom(undefined, main) === join(main, ".tools", "p2-ledger") && ledgerDirFrom("", lane) === join(main, ".tools", "p2-ledger"));
 t("C11.8 QA-90 fail: unset, a copy with no .tools in its main copy keeps the project's own p2/ledger (CI, cloud)", ledgerDirFrom(undefined, bare) === join(PROTOTYPE, "p2", "ledger"));
 t("C11.8 QA-90 pass: an absolute P2_LEDGER_DIR is the ledger", ledgerDirFrom("/Users/x/.tools/p2-ledger") === "/Users/x/.tools/p2-ledger");
+// Clean-up stage 2a: the root comes from the AGENTS.md finder, not from counting folder levels, so the ledger is the same
+// one wherever the spend guard sits (here, or moved deeper by a later stage) and from the main copy or a lane copy.
+writeFileSync(join(main, MARKER), "# root\n"); writeFileSync(join(lane, MARKER), "# root\n");
+const deepMain = join(main, "apps", "studio", "x", "y"), deepLane = join(lane, "packages", "ai-spend", "src"); mkdirSync(deepMain, { recursive: true }); mkdirSync(deepLane, { recursive: true });
+t("stage 2a pass: from any depth in the main copy or a lane copy, the finder's root gives the main copy's .tools/p2-ledger",
+  findRoot(deepMain, {}) === main && findRoot(deepLane, {}) === lane && ledgerDirFrom(undefined, findRoot(deepMain, {})) === join(main, ".tools", "p2-ledger")
+  && ledgerDirFrom(undefined, findRoot(deepLane, {})) === join(main, ".tools", "p2-ledger"));
+t("stage 2a pass: the spend guard's ROOT is the finder's root for this checkout (the folder that holds AGENTS.md)", ROOT === findRoot(PROTOTYPE, {}) && join(ROOT, "ai-workers", "problem-1-pathway-setup-and-form-filling", "prototype") === PROTOTYPE);
 const refused = (v: string) => { try { ledgerDirFrom(v); return false; } catch (e) { return /absolute/.test((e as Error).message); } };
 t("C11.8 QA-90 fail: a relative or dotted P2_LEDGER_DIR is refused", refused("p2-ledger") && refused("/Users/x/../y") && refused("./ledger"));
 
