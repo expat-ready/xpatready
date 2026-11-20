@@ -58,10 +58,12 @@ export class ConflictChecks {
   }
 
   /** The search, read-only: the visible matches in FO-13's shape and how many the checker may not see. */
-  private async search(ctx: StaffContext, party: Party, t: Terms, asConfirmer = false) {
+  private async search(ctx: StaffContext, party: Party, t: Terms) {
     if (!t.name && !t.email && !t.phone) problem(422, "Check the details", "The client has no name, email or phone to search.", { code: "NOTHING_TO_SEARCH" });
-    // A confirmer (sees all, or the firm's Owner or Admin) searches seeing every front-office record (R2-M2: only to confirm).
-    const v0 = await visibilityOf(this.db, ctx), vis = asConfirmer && seesEveryMatch(ctx, v0) ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
+    // One who sees all, or the firm's Owner or Admin (contract v0.1 §3.1's "firm admin"), searches seeing every front-office
+    // record: on a prospect they may reach (engagement) or a check they confirm, never beyond (R2-M2). A firm whose only
+    // Owner runs the check is never left with a match nobody can confirm (break R3-M1).
+    const v0 = await visibilityOf(this.db, ctx), vis = seesEveryMatch(ctx, v0) ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
     let hidden = 0;
     const email = normaliseEmail(t.email), phone = t.phone ? phoneE164Exact(t.phone) : null;
     if (party.kind === "PERSON") {
@@ -162,7 +164,7 @@ export class ConflictChecks {
         const now = new Date(this.clock.now());   // R2-m1: the time it is written, after any wait for the lock
         await tx.foConflictCheck.create({ data: { id, firmId: ctx.firmId, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, prospectId: prospect.id,
           searchedName: t.name, searchedEmail: t.email, searchedPhone: t.phone, matches: s.matches as Prisma.InputJsonValue, hiddenCount: s.hidden, result: o.result, disclosureText: o.disclosureText, checkedBy: ctx.staffId, checkedAt: now } });
-        await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
+        await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"} stored${s.notStored ? `, ${s.notStored} more found and not stored` : ""}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
           { checkId: id, prospectId: prospect.id, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, result: o.result, hiddenMatches: s.hidden > 0, confirmed: false, clientAlready: prospect.wonVia !== null });
       });
     } catch (e) {
@@ -179,13 +181,15 @@ export class ConflictChecks {
   async confirm(ctx: StaffContext, id: string, body: Record<string, unknown>) {
     if (typeof id !== "string" || !UUID.test(id)) return notFound("check");
     const c = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) }) ?? notFound("check");
+    const eligible = seesEveryMatch(ctx, await visibilityOf(this.db, ctx));
+    if (!eligible && c.checkedBy !== ctx.staffId) notFound("check waiting for your confirmation");   // break R3-m5: its state is not told
     if (c.hiddenCount === 0) problem(409, "Not possible now", "This check has no hidden matches: there is nothing to confirm.", { code: "NOTHING_TO_CONFIRM" });
     if (c.confirmedBy) problem(409, "Not possible now", "This check is already confirmed.", { code: "ALREADY_CONFIRMED" });
     if (c.checkedBy === ctx.staffId) forbidden("Another staff member who may see the hidden matches confirms a check, never its checker.");
-    if (!seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
+    if (!eligible) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
     // M3: the confirmer sees the matches: the same terms searched again with their visibility hide nothing.
     const party = { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party;
-    const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, true);
+    const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
     if (seen.hidden) forbidden("Some of this check's matches are hidden from you too (on cases you cannot open): a person who sees them confirms it.");
     const o = this.outcome(body ?? {}, c.result === null);
     if (c.result !== null && o.result !== null && o.result !== c.result) problem(409, "Not possible now", `This check already says ${c.result}; it never changes. Record a new check instead.`, { code: "RESULT_FIXED" });
@@ -205,7 +209,7 @@ export class ConflictChecks {
     if (typeof id !== "string" || !UUID.test(id)) return notFound("check");
     const c = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) }) ?? notFound("check");
     if (c.hiddenCount === 0 || c.confirmedBy || c.checkedBy === ctx.staffId || !seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) return notFound("check waiting for your confirmation");
-    const s = await this.search(ctx, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, true);
+    const s = await this.search(ctx, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
     return { ...this.view(c, ctx, true), matchesNow: s.matches, hiddenNow: s.hidden };
   }
 

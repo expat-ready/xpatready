@@ -64,6 +64,12 @@ const same = (kind: Party["kind"], a: Terms, b: Terms) => {
   return key(a.name) === key(b.name) && (a.email ?? null) === (b.email ?? null) && tel(a.phone) === tel(b.phone);
 };
 
+/** The party lock by prospect id (Convert takes it before the prospect's row; none for a prospect without a party). */
+export async function lockPartyOf(tx: Prisma.TransactionClient, firmId: string, prospectId: string) {
+  const party = await partyOf(tx, firmId, prospectId);
+  if (party) await lockParty(tx, firmId, party);
+}
+
 /** One check or win at a time per party (m-3): a check being saved is seen by the win that waits for it. */
 export async function lockParty(tx: Prisma.TransactionClient, firmId: string, party: Party) {
   await tx.$queryRaw`select 1 as ok from (select pg_advisory_xact_lock(hashtextextended(${`fo-conflict:${firmId}:${party.id}`}, 0))) l`;

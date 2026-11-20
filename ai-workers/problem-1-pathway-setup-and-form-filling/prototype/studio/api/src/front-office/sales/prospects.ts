@@ -15,7 +15,7 @@ import { readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } from "./common.ts";
 import { wonSubjectOf } from "./corporate/service.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
-import { clearForWin } from "../compliance/conflict/gate.ts";
+import { clearForWin, lockPartyOf } from "../compliance/conflict/gate.ts";
 
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 /** A retainer counts as signed once the client signed it, on screen or on paper (AG-2-47 rules 17-18). */
@@ -303,6 +303,7 @@ export class Prospects {
     const pid = this.idOf(id);
     const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
+      await lockPartyOf(tx, ctx.firmId, pid);   // FO-13c (review r4): the party's lock before the prospect's row, as Send and Signed offline take them
       const { p } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind === "WON") return conflict("This prospect is already a client.", "ALREADY_WON");
       if (p.kind === "LOST") return conflict("A lost prospect cannot be converted. Start a new prospect.", "TERMINAL");

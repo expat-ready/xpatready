@@ -168,8 +168,8 @@ try {
   const c3 = await check(X3, {}, T.token), id3 = c3.body.id;
   const selfC = await call("POST", `conflict-checks/${id3}/confirm`, T.token, { result: "NO_CONFLICT" }), oC3 = await call("POST", `conflict-checks/${id3}/confirm`, O.token, { result: "NO_CONFLICT" });
   const rC3 = await call("POST", `conflict-checks/${id3}/confirm`, R.token, { result: "NO_CONFLICT" }), bC3 = await call("POST", `conflict-checks/${id3}/confirm`, S.token, { result: "NO_CONFLICT" });
-  ok("FO-13c DW6 fail: a check with hidden matches is written with no result; its checker confirming → 403; a Case Officer → 403; the Owner from whom the case party is hidden too → 403 (review M3); firm B → 404",
-    c3.status === 201 && c3.body.result === null && c3.body.needsConfirmation === true && selfC.status === 403 && oC3.status === 403 && rC3.status === 403 && /hidden from you too/.test(rC3.body.detail) && bC3.status === 404, [c3.body, selfC.status, oC3.status, rC3.status, bC3.status]);
+  ok("FO-13c DW6 fail: a check with hidden matches is written with no result; its checker confirming → 403; a Case Officer → 404 (its state is not told, break R3-m5); the Owner from whom the case party is hidden too → 403 (review M3); firm B → 404",
+    c3.status === 201 && c3.body.result === null && c3.body.needsConfirmation === true && selfC.status === 403 && oC3.status === 404 && rC3.status === 403 && /hidden from you too/.test(rC3.body.detail) && bC3.status === 404, [c3.body, selfC.status, oC3.status, rC3.status, bC3.status]);
   const adFor = await call("GET", `conflict-checks/${id3}/for-confirmation`, AD.token), tFor = await call("GET", `conflict-checks/${id3}/for-confirmation`, T.token);
   const adList = await call("GET", `prospects/${X3}/conflict-checks`, AD.token), adPv = await call("POST", "conflict-checks/preview", AD.token, { prospectId: X3 }), adRec = await check(X3, { result: "CONFLICT_CANNOT_ACT" }, AD.token);
   ok("FO-13c DW6 pass (review M3): the firm's Admin reads the check waiting for confirmation with its terms searched again seeing every match (both hidden ones named, none hidden); its checker cannot (404)",
@@ -274,6 +274,13 @@ try {
   const pv10 = await call("POST", "conflict-checks/preview", T.token, { prospectId: X10 }), c10 = await check(X10, { result: "NO_CONFLICT" }, T.token);
   ok("FO-13c DW2 fail (break M-1): behind 60 visible same-name matches, the hidden same-email match is still counted, so NO_CONFLICT waits for a confirmation",
     pv10.status === 200 && pv10.body.hiddenCount === 1 && pv10.body.matches.length === 60 && c10.status === 409 && c10.body.code === "NEEDS_CONFIRMATION", [pv10.body?.hiddenCount, pv10.body?.matches?.length, c10.status]);
+
+  // Break R3-M1: an Owner checking their own prospect sees every front-office match (contract §3.1's firm admin), so a
+  // firm whose only Owner runs the check is never stuck on a match nobody can confirm.
+  const X12 = prospectOf(person(R.id, "Sol Owner", { email: "sol.shared@example.com" })); person(O.id, "Other Person", { email: "sol.shared@example.com" });
+  const pv12 = await call("POST", "conflict-checks/preview", R.token, { prospectId: X12 }), c12 = await check(X12, { result: "NO_CONFLICT" });
+  ok("FO-13c DW2 pass (break R3-M1): the Owner's own check names the Case Officer's matching lead (nothing hidden) and is recorded at once",
+    pv12.body.hiddenCount === 0 && /Other Person/.test(JSON.stringify(pv12.body.matches)) && c12.status === 201 && c12.body.result === "NO_CONFLICT", [pv12.body, c12.status]);
 
   // Break R2-M3: a client with very many matches can still be checked: the 200 strongest are stored, the rest counted.
   const P11 = person(R.id, "Rory Crowd", { email: "rory.crowd@example.com" }), X11 = prospectOf(P11);
