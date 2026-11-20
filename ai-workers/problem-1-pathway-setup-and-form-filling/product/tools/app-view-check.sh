@@ -19,5 +19,5 @@ echo "app view read ${age} min ago: $(sed -n 2p "$f")"
 while IFS= read -r l; do ACT "app view: ${l#FLAG  }"; done < <(grep '^FLAG' "$f")
 while IFS= read -r l; do ACT "app view: $l"; done < <(grep '^UNREADABLE' "$f")
 # B204 (4): the page returned as many sessions as it asked for, or said more remain: lanes past the limit are unseen.
-while IFS= read -r l; do ACT "app view: $l: raise LIMIT in tools/app-view.js or read the rest in claude.ai/code"; done < <(grep '^WARNING: list may be cut' "$f")
+while IFS= read -r l; do ACT "app view: $l (claude.ai lists at most 50; the rest are hidden)"; done < <(grep '^WARNING: list may be cut' "$f")
 exit "$n"
