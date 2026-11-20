@@ -53,4 +53,9 @@ S="$(cd "$TOOLS/../../../.." && pwd)/.claude/skills/lead/SKILL.md"
 grep -q "first action is creating its check" "$S" && grep -q "CronList shows" "$S" && grep -q '`run lead-watch gap`' "$S" && grep -q "one push notification per gap and messages the current Lead" "$S" && grep -q "no answer by 30 min → the lowest-numbered standby takes over (the other only notifies)" "$S" && grep -q "new sessions only for work no lane covers" "$S" && grep -q "adopts the running lanes from STATE" "$S"
 ok "skill lead: new Lead's check first, old one deleted only after its CronList shows it, standby gap check, one push per gap, lowest standby takes over at 30, lanes adopted not duplicated" "$([ $? = 0 ] && echo 1)"
 b=$(wc -c < "$S" | tr -d ' '); ok "skill lead stays under 10,240 bytes ($b)" "$([ "$b" -lt 10240 ] && echo 1)" "$b bytes"
+# skill lead-watch (reviewer Major, 21 Nov): a standby's "run lead-watch gap" must not be served by the full run, which
+# rewrites the Lead's stamp every 10 min and so hides the very gap the watchdog is for.
+W="${S%/lead/SKILL.md}/lead-watch/SKILL.md"
+ok "skill lead-watch: the standby prompt runs only lead-watch.sh gap, never the full run" "$(grep -q 'Standby prompt `run lead-watch gap` → only `lead-watch.sh gap`\*\* (a full run rewrites the Lead.s stamp)' "$W" && echo 1)" "no gap line in $W"
+b=$(wc -c < "$W" | tr -d ' '); ok "skill lead-watch stays under 10,240 bytes ($b)" "$([ "$b" -lt 10240 ] && echo 1)" "$b bytes"
 finish
