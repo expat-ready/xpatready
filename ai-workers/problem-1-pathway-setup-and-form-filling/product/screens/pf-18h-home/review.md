@@ -123,3 +123,32 @@ A fresh reviewer read only `git diff 8386faca7..b1737d7e1` (P-610): `home-page.t
 6. **R6 Minor:** Ctrl/Cmd or middle click marking read has no check line (it works by my probe).
 
 **Verdict: Approve** (for `b1737d7e1786c4d04eebda41eee8f90d45eebe70`).
+
+## Re-review at 0a9b2a0115aee5d92396d60036c77d8de7e8474d
+A fresh reviewer read only `git diff b1737d7e1..0a9b2a011` (P-610). That diff covers the focus target in `home-page.tsx`, two check changes, build notes, review.md and the re-taken screenshots. Copy `rr218h` on :4722 (`AI_LIVE=off PLATFORM_IDENTITY=local`), stopped at the end. The screenshots my runs re-took were restored with `git checkout`. US$0.
+
+**Re-run:** `check_pf18h_home_browser.ts 4722 xr_studio_rr218h` passed **25/25** on a fresh copy (2 min 13 s). The same copy, reused, then passed every other line in the mutant runs below.
+
+**Each fix:**
+* **R1 (loading and load-error states):** fixed. The new line holds the GET open and waits for `role=status` named "Loading what needs you…", then runs axe. It then releases a 500 (with `retry: 1`, the retry also gets 500), waits for "Could not load what needs you.", runs axe, unroutes, presses Try again and waits for the list. Both axe runs were clean. Build notes now say S1 was half done and how it was finished.
+* **R3 (focus after the "came back" notice):** fixed. `focusAfter` now carries `{ id, control }`. The came-back path asks for `button`, and the next-row path asks for `a` with a `button` fallback (`home-page.tsx:60,79-80`). Probe by keyboard (Tab to Hide, Space, server answers `readAt: null`) at 320 and 1440 px, as the officer and as the representative: focus is on the pressed Hide every time, Shift+Tab reaches that row's link, and there is no sideways scroll.
+
+**The new check lines can fail.** I built mutant bundles into the session scratchpad. The shared `web/dist` was not touched, and its stamp still matches. I served them through a temporary routed copy of the check, deleted afterwards:
+* **M1, R3 undone** (came-back asks for `a` again): the m3 line **FAILS**, and the other 24 pass. 24/25.
+* **M2, Try again inert:** the states line stops on the list wait. The catch counts a FAIL and exits 1. (The summary still prints "4/4 passed" when a run stops. That comes from the existing recorder and is not part of this diff.)
+* A loading status with no name also stops at its `waitFor`, and an axe violation on either state turns the line false (read from the code).
+
+**No regression:**
+* **Open order:** unchanged. The diff does not touch `act`'s mark-then-navigate. DW3 and the BR-4 fail line pass.
+* **Focus after a successful Hide:** the new `a`-then-`button` lookup does what the old first-of-`a, button` did. Probe with 3 items, keyboard Space on the first Hide: focus lands on the link of row 2, the expected row. The last Hide still goes to the heading (DW2 passes). The failed-mark focus (`requestAnimationFrame`, S2) is unchanged.
+* **Scope:** no server, contract or copy change.
+
+**Scope:** nothing added. There are no new words, and the only UI change is which control gets focus.
+
+**Journey (reviewer, diff only):** I walked the changed paths by keyboard at 320 and 1440 px: a load that fails then recovers, and a came-back Hide. Both held. Score **9/10** (pass, no 0), unchanged. The half point is still Q2's simulated person on the case page, which is accepted. No separate journey report was written; the 21 Nov report stands.
+
+**Issues (none Blocker or Major):**
+1. **R7 Minor:** the m3 line reads `document.activeElement` straight after the notice text appears. The notice renders before the refetch that moves focus, so a slow machine could fail it falsely. It never passes falsely: M1 failed as it should. Fix: wait for the focus with `waitForFunction`.
+2. **Still open from the last re-review, Minor:** R2 (no line for focus after a failed Hide), R4 (copy beyond concept §5, for the Lead), R5 (a locked row's link looks unchanged) and R6 (no line for new-tab clicks).
+
+**Verdict: Approve** (for `0a9b2a0115aee5d92396d60036c77d8de7e8474d`).
