@@ -263,3 +263,28 @@ No Blocker. No Major. Still open: m9 (the Lead's note on the job key) and F4 (th
 Verdict: Approve
 
 Reviewer: Approve 40639a2de
+
+## Part 2 re-review (c84e1eb08, main merged)
+
+Diff only (P-683, Lead 81's chain). c84e1eb08 has two parents: 0cf50a5cb, the branch, and abf2176ef, main with #2321 (FO-2w). After my Approve at 40639a2de the branch's own commits touch only `screens/CS-K1/*.md` (+121 lines, no code). I changed no code. Live AI was off and nothing was spent. I worked in a scratch worktree at c84e1eb08 with my copy `fo8r5` on :4738; I stopped the copy and removed the worktree afterwards.
+
+* **The row's diff is unchanged by the merge.** I compared `git diff abf2176ef c84e1eb08 -- …/prototype` (the row against today's main) with `git diff 37d1b196d 40639a2de -- …/prototype` (the reviewed row against its old base), using `cmp` on the +/- lines. They are **identical**: 581 changed lines, 18 files, +549 / -32.
+* **Of my touched files, the merge changed only the two you named, and only main's own lines:**
+  * `firm-scope.ts` gains PF-19p's two BYPASS_USES entries (`job:messages.send`, `platform.account.mail`), which sit beside `cases.prospect-won.catch-up` (still exactly one entry).
+  * `runtime.ts` gains CS-V1 part 3's `CaseListQuery`/`QuestionnaireQuery` parsing in `list`, the new `questionnaire` method and two controller lines. None of that touches `createCase`, `by`, `newClient`, the opening's `withFirm` or the FO_PERSON_PORT injection.
+  * Every other file of the row is the same at 40639a2de and c84e1eb08.
+* **The migrations still line up.** Main adds `20261119163000_pf19p_platform_account_mail`, `20261119170000_pf18bk_support_keys`, `20261119173000_pf4dn_invitation_display_name` and `20261119180000_pf18a_notification_prefs`. All four are earlier than `20261120100000_csk1_client_link_check`, which is still the newest and unique, and is the slot Lead 98 confirmed. None of them names `case_client`, `runtime_case`, `case_lookup`, `fo_person`, `fo_company` or the default privileges.
+* **Main adds no new writers or harnesses that this row affects:**
+  * Main's changes outside FO-2w add no `createCase`, `newClient`, `case_client` write, port call or `prospect.won` reader.
+  * No suite that puts `Runtime` in a Nest module is missing the `FO_PERSON_PORT` binding: I grepped every `providers: … Runtime` in `tests/`.
+* **FO-2w's payload matches what FO-8 and J-72 read:**
+  * `winProspect` builds the payload with `wonPayload` (`front-office/sales/prospects.ts:96-112`): `won_via: via`, and `retainer_id` set to the retainer that made the win. For Signed offline that retainer is the one `retainers/service.ts:609` names. Both go through `ProspectWonPayload.parse`, where `won_via` is the enum E_SIGNED/SIGNED_OFFLINE/CONVERTED and `retainer_id` is a nullable uuid.
+  * FO-8's `offerOf` reads `retainer_id` and takes the representative from that retainer's version merge value. It deliberately does not take the payload's `representative_staff_id`, which comes from the retainer row.
+  * J-72 W8 (user-T in the version, user-R on the row) is exactly what tells the two apart. `won_via` goes only into FO-8's audit detail, and J-72 W5 asserts `won_via = SIGNED_OFFLINE` with this `retainer_id`.
+* **What I ran on c84e1eb08** (fresh copy): `check_fo8_prospect_won.ts` **43/43** and `check_fo2w_won_event.ts` **19/19**, the two suites where FO-2w and this row now meet, with the copy's own poll running. `check_csk1_client` and J-72 are being run by the builder (twice each); I did not repeat them. I also did not run full `ci` or the typecheck.
+
+No new finding. No Blocker, no Major. Still open from before: m9 (the job key, a note for the Lead) and F4 (the firm-scope question with the tech lead).
+
+Verdict: Approve
+
+Reviewer: Approve c84e1eb08
