@@ -35,7 +35,7 @@ export function PricingPage() {
         {q.isPending ? <p role="status" className="mt-6 text-sm text-text-muted">Loading the plans…</p>
           : q.isError ? <Notice tone="danger" title="Plans could not be loaded" className="mt-6">{(q.error as unknown as Problem).detail ?? "Please try again later."}</Notice>
             : <>
-              {!q.data.pricesAvailable ? <Notice tone="warn" title="Prices unavailable" className="mt-6"><span data-prices-unavailable>We could not read the prices just now. You can still start a free trial; the price shows on your plan before any payment.</span></Notice> : null}
+              {!q.data.pricesAvailable || plans.every((p) => !p.monthly && !p.yearly) ? <Notice tone="warn" title="Prices unavailable" className="mt-6"><span data-prices-unavailable>We could not read the prices just now. You can still start a free trial; the price shows on your plan before any payment.</span></Notice> : null}
               <ul className="mt-6 grid gap-4 md:grid-cols-3">
                 {plans.map((p, i) => {
                   const price = money(period === "YEARLY" ? p.yearly : p.monthly);

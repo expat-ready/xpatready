@@ -43,7 +43,7 @@ export function SignUpPage() {
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     await call("signup", {
       email: values.email, password: values.password, firmName: values.firmName, countryCode: "CA", planCode: plan?.code ?? data.defaultPlan, period: values.period,
-      acceptedTerms: data.terms.map((t) => t.id), formStamp: data.formStamp, ...(trap.current?.value ? { [TRAP]: trap.current.value } : {}),
+      acceptedTerms: values.agree ? data.terms.map((t) => t.id) : [], formStamp: data.formStamp, ...(trap.current?.value ? { [TRAP]: trap.current.value } : {}),
     });
   };
   const send = async (e: React.FormEvent) => {
@@ -129,7 +129,7 @@ export function SignUpPage() {
                   ) : <p><span data-signup-plan-line>{plan ? `${plan.name}, ${periodWord(v.period)}` : "—"}</span> <Button type="button" variant="link" className="h-auto px-1 py-0" onClick={() => setChanging(true)} data-signup-plan-change>Change</Button></p>}
                   {errors.planCode && !changing ? <p role="alert" className="text-xs text-text-danger">{errors.planCode}</p> : null}
                 </div>
-                <Terms terms={q.data.terms} agree={v.agree} error={errors.acceptedTerms} onChange={(b) => set("agree", b)} />
+                <Terms terms={q.data.terms} agree={v.agree} error={errors.acceptedTerms} onChange={(b) => { set("agree", b); if (b) setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== "acceptedTerms"))); }} />
                 <div aria-hidden className="absolute -left-[9999px] h-px w-px overflow-hidden"><input ref={trap} name={TRAP} type="text" tabIndex={-1} autoComplete="off" defaultValue="" /></div>
                 <Button type="submit" size="lg" busy={busy} className="self-start" data-signup-submit>Start free trial</Button>
               </form>
