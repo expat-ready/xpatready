@@ -9,7 +9,7 @@ import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { conflict, notFound, written, type Tx } from "./common.ts";
-import { NO_RULE, placeNewLead } from "../assignment/place.ts";
+import { NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -32,6 +32,8 @@ export type ArrivalIn = {
   ipHash?: string | null;
   existingPersonId?: string;   // Add a lead for a person already on file (the known-person check): no new person
   ownerStaffId?: string | null;   // the adder (AG-2-4 rule 8); none for a form lead, except a one-user firm's one user (X-4)
+  /** FO-10 part 2 (AG-2-85 rule 1(b)): the host of the booking that brought the person; BOOKING door only. */
+  bookingHostStaffId?: string;
   actor: string;
   payloadHash: string;
 };
@@ -43,6 +45,15 @@ export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: Ar
   if (!or.length) return null;
   const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
   return m?.id ?? null;
+}
+
+/** How the owner was set, for the lead's arrival line (the timeline shows it). */
+function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null, owner: string | null): string {
+  if (fact === "BOOKING_HOST") return `, owned by the booking's host, staff ${owner}`;
+  if (fact === "HOST_INACTIVE") return ", left in Unassigned leads: the booking's host is not active";
+  if (!p.ruleId) return "";
+  if (p.ownerStaffId) return `, assigned to staff ${p.ownerStaffId} by ${p.strategy === "OWNER" ? "the default owner rule" : "round robin"}`;
+  return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
 }
 
 export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx> }): Promise<ArrivalOut> {
@@ -86,13 +97,21 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     personId = randomUUID();
     await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
   }
-  let owner = a.ownerStaffId ?? null;
+  let owner = a.ownerStaffId ?? null, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null = null;
+  // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;
+  // a host no longer active gives no owner and no rule applies (every booking has one host, fo_booking.staff_id).
+  if (owner === null && a.door === "BOOKING" && a.bookingHostStaffId) {
+    const host = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: a.bookingHostStaffId, status: "ACTIVE" as const }), select: { id: true } });
+    owner = host?.id ?? null;
+    fact = host ? "BOOKING_HOST" : "HOST_INACTIVE";
+  }
   if (owner === null) {
     const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });
     if (active.length === 1) owner = active[0].id;   // X-4: a one-user firm's one user owns every lead
   }
   // FO-10 (AG-2-13a): no owner yet → the firm's assignment rule, else Unassigned leads; the audit line names the rule.
-  const placed = owner === null ? await placeNewLead(tx, firmId, a.door, a.interestedInServiceId ?? null) : NO_RULE;
+  // A possible match is placed by no rule (FO-10 part 2, AG-2-85 rule 10): it waits for a person.
+  const placed = owner === null && fact !== "HOST_INACTIVE" ? await placeNewLead(tx, firmId, a.door, a.interestedInServiceId ?? null, { possibleMatch: match !== null }) : NO_RULE;
   owner ??= placed.ownerStaffId;
   const lead = await tx.foLead.create({
     data: { firmId, personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match, createdBy: a.actor },
@@ -104,8 +123,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
   await written(tx, ports.audit, {
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
-    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}${placed.ruleId ? (placed.ownerStaffId ? `, assigned to staff ${placed.ownerStaffId} by ${placed.strategy === "OWNER" ? "the default owner rule" : "round robin"}` : `, left in Unassigned leads: ${placed.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : "no one in the rule's turn is active"}`) : ""}.`,
-    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent, ...(placed.ruleId ? { assignmentRuleId: placed.ruleId, assignmentStrategy: placed.strategy, assignmentFallback: placed.fallback } : {}) },
+    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}${placedWords(placed, fact, owner)}.`,
+    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent, ...(fact ? { ownerFact: fact } : {}), ...(placed.ruleId ? { assignmentRuleId: placed.ruleId, assignmentStrategy: placed.strategy, assignmentFallback: placed.fallback } : {}) },
     // R1.8 (QA-594, P-687): the lead's values in full, its new person's name and contact included; the message stays in fo_note.
     before: null, after: { personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match,
       ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },

@@ -15,6 +15,9 @@ import { eligible, RULE_DOORS, type Strategy } from "./place.ts";
 
 export { NO_RULE, placeNewLead, SALES_KEY, type Placement } from "./place.ts";
 
+/** The catch-all rule's criteria: any door, any service. It is the firm's sharing setting (FO-10 part 2). */
+const CATCH_ALL = "ANY:ANY";
+
 /** The firm's rules (AG-2-13b: criteria, strategy, eligible set), kept by people holding agent/prospect:configure-source. */
 @Injectable()
 export class AssignmentRules {
@@ -54,7 +57,10 @@ export class AssignmentRules {
       }
       const criteriaKey = `${door ?? "ANY"}:${serviceId ?? "ANY"}`, by = actorOf(ctx);
       // R1.8 (QA-594): the rule's values before (none for a new rule) and after, in full.
-      const was = await tx.foAssignmentRule.findUnique({ where: { firmId_criteriaKey: { firmId, criteriaKey } }, select: { strategy: true, ownerStaffId: true, eligibleStaffIds: true, active: true } });
+      // Locked first (review r2-m1), so two saves of one criteria at once each record the values they replaced.
+      const [was] = await tx.$queryRaw<{ strategy: Strategy; ownerStaffId: string | null; eligibleStaffIds: string[]; active: boolean }[]>`
+        select strategy::text as strategy, owner_staff_id::text as "ownerStaffId", eligible_staff_ids::text[] as "eligibleStaffIds", active
+        from fo_assignment_rule where firm_id = ${firmId}::uuid and criteria_key = ${criteriaKey} for update`;
       const rule = await tx.foAssignmentRule.upsert({
         where: { firmId_criteriaKey: { firmId, criteriaKey } },
         create: { firmId, door, serviceId, criteriaKey, strategy, ownerStaffId: owner, eligibleStaffIds: among, createdBy: by, updatedBy: by },
@@ -81,5 +87,32 @@ export class AssignmentRules {
       }
       return { id: r.id, active: false };
     });
+  }
+
+  // ------------------------------------------------------------------ the firm's sharing setting (FO-10 part 2; P-773)
+  /** "How new leads are shared" (AG-2-85 rule 3) is the firm's default rule: the catch-all rule (any door, any service).
+   *  Anyone takes it = no active catch-all; Round robin and Always one person = that rule. Door and service rules (P-574)
+   *  still come first, being more specific. */
+  async sharing(ctx: StaffContext) {
+    const r = await this.db.foAssignmentRule.findUnique({ where: { firmId_criteriaKey: { firmId: firmScope(ctx.firmId).firmId, criteriaKey: CATCH_ALL } } });
+    if (!r?.active) return { mode: "ANYONE" as const, onePersonStaffId: null, rotationStaffIds: [] as string[] };
+    return r.strategy === "OWNER" ? { mode: "ONE_PERSON" as const, onePersonStaffId: r.ownerStaffId, rotationStaffIds: [] as string[] } : { mode: "ROUND_ROBIN" as const, onePersonStaffId: null, rotationStaffIds: r.eligibleStaffIds };
+  }
+
+  async setSharing(ctx: StaffContext, b: Record<string, unknown>) {
+    const extra = Object.keys(b).filter((k) => !["mode", "onePersonStaffId", "rotationStaffIds"].includes(k));
+    if (extra.length) unprocessable(`Unknown field: ${extra[0]}.`, { [extra[0]]: "Not a field of the sharing setting." });
+    if (b.mode === "ANYONE") {
+      if (b.onePersonStaffId != null || b.rotationStaffIds !== undefined) unprocessable("Anyone takes it names nobody.", { mode: "Anyone takes it names nobody." });
+      const r = await this.db.foAssignmentRule.findUnique({ where: { firmId_criteriaKey: { firmId: firmScope(ctx.firmId).firmId, criteriaKey: CATCH_ALL } }, select: { id: true } });
+      if (r) await this.off(ctx, r.id);
+    } else if (b.mode === "ONE_PERSON") {
+      if (b.rotationStaffIds !== undefined) unprocessable("Always one person takes no rotation list.", { rotationStaffIds: "Leave empty for one person." });
+      await this.save(ctx, { strategy: "OWNER", ownerStaffId: b.onePersonStaffId });
+    } else if (b.mode === "ROUND_ROBIN") {
+      if (b.onePersonStaffId != null) unprocessable("Round robin names no single person.", { onePersonStaffId: "Leave empty for round robin." });
+      await this.save(ctx, { strategy: "ROUND_ROBIN", ...(b.rotationStaffIds !== undefined ? { eligibleStaffIds: b.rotationStaffIds } : {}) });
+    } else unprocessable("Choose Anyone takes it, Round robin or Always one person.", { mode: "Choose ANYONE, ROUND_ROBIN or ONE_PERSON." });
+    return this.sharing(ctx);
   }
 }
