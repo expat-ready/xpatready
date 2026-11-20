@@ -182,7 +182,8 @@ try {
   const saved = await writeSetting(db, { firmId: firmA, key: "platform.currency", value: "USD", by: "user-R", workspaceId: WS });
   ok("PF-3 pass: a setting change is saved and writes one audit line (who, the firm, from and to)",
     saved.changed && await readSetting(db, firmA, "platform.currency") === "USD" && await readSetting(db, firmB, "platform.currency") === "CAD" && audits() === "1"
-    && sql(DEMO, `select actor || '|' || entity_key || '|' || (detail->>'from') || '|' || (detail->>'to') from audit_event where entity = 'platform_firm_setting'`) === `user-R|${firmA}:platform.currency|CAD|USD`);
+    // AUD-1m part 2c (Lead 94, #2289): the line's actor is user-R's typed word, staff:<their staff id in firm A>.
+    && sql(DEMO, `select actor || '|' || entity_key || '|' || (detail->>'from') || '|' || (detail->>'to') from audit_event where entity = 'platform_firm_setting'`) === `staff:${sql(DEMO, `select id from platform_staff where firm_id = '${firmA}' and actor_id = 'user-R'`)}|${firmA}:platform.currency|CAD|USD`);
   // A forced audit failure: the database refuses this one actor's audit line (a trigger of this check's own).
   sql(DEMO, `create function pf3_force_audit_fail() returns trigger language plpgsql as $$ begin if new.actor = 'system:force-audit-failure' then raise exception 'pf3 forced audit failure'; end if; return new; end $$;
     create trigger pf3_force_audit_fail before insert on audit_event for each row execute function pf3_force_audit_fail()`);

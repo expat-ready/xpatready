@@ -142,7 +142,9 @@ try {
   const last = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass: saving 5 with a reason is saved, and the warning (s. 7.2) and the reason are on its one audit line",
     withReason.status === 200 && withReason.body.years === 5 && /s\. 7\.2/.test(withReason.body.warning ?? "") && await readSetting(db, FIRM_A, KEY) === 5 && lines() === before + 1
-    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2.* Reason given: /.test(last.reason) && /Reason given: Files are also kept by our parent firm's records office\./.test(last.reason), [withReason.body, last]);
+    // AUD-1m part 2c (Lead 94's (A1) on #2289): detail keeps the reason cut to 200 characters; the line's summary keeps it whole.
+    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2/.test(last.reason) && last.reason.length <= 200
+    && /Below the College's rule: .*s\. 7\.2.* Reason given: Files are also kept by our parent firm's records office\./.test(sql(`select summary from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`)), [withReason.body, last]);
   before = lines();
   const six = await put(tR, { years: 6 });
   const sixLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
