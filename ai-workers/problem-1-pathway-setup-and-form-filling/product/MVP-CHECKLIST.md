@@ -44,7 +44,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 ### B. The firm as our customer (self-serve SaaS)
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
-| 19 | A firm is created once, with plan, trial and owner | Platform | PF-3 merged; PF-5 | Shaped |
+| 19 | A firm is created once, with plan, trial and owner | Platform | PF-3 merged; PF-5; PF-5s (sign-up screens; qa #1950, Lead 66) | Shaped |
 | 20 | One entitlement check; seat and plan limits; downgrade check; invite many at once | Platform | PF-5, PF-15, PF-4c, PF-6 | Shaped |
 | 21 | Our own invoices with sales tax | Platform | PF-5 (Stripe Tax) | Shaped |
 | 22 | Suspend, cancel, failed-payment hold, data download on exit | Platform | PF-5; PF-11, PF-11s, PF-27, PF-11c | Shaped |
@@ -55,14 +55,14 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 91 | Plans, change, cancel, invoices, card update, yearly plans, refunds, billing emails | Platform | PF-5, PF-5s, PF-16 | Shaped |
 | 92 | Firm profile, offices and time zones, licence-number check | Platform | PF-5s, PF-18a, PF-18s, PF-4c | Shaped |
 | 93 | Our team's console; health per firm; support button | Platform | PF-4s, PF-17, PF-18b, PF-18s | Shaped |
-| 100 | Recorded acceptance of our terms, privacy notice and data agreement | Platform | PF-5 | Shaped |
+| 100 | Recorded acceptance of our terms, privacy notice and data agreement | Platform | PF-5; PF-5t (a new terms version asks again at the next sign-in; to shape, Lead B; qa #1950, Lead 66) | Shaped |
 
 ### C. Enquiries, leads and pipeline
 | Map | Capability | Module | BACKLOG rows | Status |
 |---|---|---|---|---|
 | 26 | Public enquiry form, hardened against abuse | Front office | FO-2, FO-4, FO-4b | Shaped |
-| 27 | Every lead carries a source | Front office | FO-1a (In PR #1742), FO-2 | Shaped |
-| 28 | Consent recorded per purpose | Platform + front office | PF-19a, FO-2 | Shaped |
+| 27 | Every lead carries a source (lead import comes when AG-18's import engine lands, AG-2-7, AG18-D2: no row yet; Lead B rev 16.63, Lead 66) | Front office | FO-1a (In PR #1742), FO-2; FO-4sf (source filter on the leads list, after FO-2v #1933) | Shaped |
+| 28 | Consent recorded per purpose | Platform + front office | PF-19a, FO-2; PF-19b part 2 (one-click unsubscribe, first caller of `ConsentPort.withdraw`; qa #1950, Lead 66) | Shaped |
 | 29 | One person record; duplicate warning; safe merge | Front office | FO-1a (In PR #1742), FO-9a, FO-9b, FO-9s | Shaped |
 | 30 | Lead lists, filters and board | Front office | FO-4 | Shaped |
 | 31 | Stage kinds; won by signature; totals per currency | Front office | FO-2, FO-4 | Shaped |
@@ -113,7 +113,7 @@ Module names follow P-575 and P-584: **Platform** (sign-in, firms, billing, mess
 | 56 | Client invoices, tax by province, government-fee line | Client money | FO-7a, FO-7b; FO-7s0, FO-7g, FO-7q, FO-7s1 | Shaped |
 | 57 | Card payment of invoiced fees into the firm's operating account | Client money | FO-7c; FO-7s2 | Shaped |
 | 58 | Trust or operating on every payment; per-client ledger; "to move" list | Client money | FO-7a, FO-7t; FO-7s3a, FO-7s3b, FO-7m | Shaped |
-| 59 | Money arithmetic | Client money | FO-7a | Shaped |
+| 59 | Money arithmetic | Client money | FO-7a; FO-7b (tax rounded per line; qa #1950, Lead 66) | Shaped |
 | 60 | Deposit invoice prepared on signature | Client money | FO-7b | Shaped |
 | 96 | Reversals, refunds, credit notes, payment plans, write-offs | Client money | FO-7b, FO-7p, FO-7r; FO-7v, FO-7s4 | Shaped |
 | 111 | Client statement and period exports for the accountant | Client money | FO-7r; FO-7s5 | Shaped |
@@ -254,3 +254,34 @@ Drawn from Google's production readiness review, the AWS Well-Architected pillar
 | C31 | Trust ledger's outside review and the accountant's read (Unconfirmed: no counsel) | Not started (founder books) | no decision yet (map open item 4) |
 | C32 | The College's rules read for the conflict, complaints and identity checks (Unconfirmed: no counsel) | Not started | P-579 |
 | C33 | A narrow launch scope written for the first firm | Not started | P-551 |
+
+## Sub-parts named before building (P-644 rule 1; Lead 69, 21:1x IST 16 Nov, from Build Lead A rev 16.74; form confirmed by the board session on cockpit-data.py at d66bcfd2d)
+The board counts each listed part; a PR title must name it the same way ("runtime: PF-13 part 1 — …"); a title without "part" counts as the whole id.
+- PF-13 parts 1-2
+- PF-18a parts 1-2
+- PF-11 parts 1-3
+- PF-15 parts 1-2
+- PF-4c parts 1-2
+- FO-3st1 parts 1-2
+- FO-9b parts 0-2
+- PF-26 parts 1, 1b and 2
+- FO-3a parts 1a, 1b, 2a and 2b
+- PF-21s parts 3 and 4 (stage 2; stage 1 merged as #1821)
+- From Build Lead C (commit cdcccb52d, 21:1x IST 16 Nov):
+- R1.74: CS-DL1 parts 1-2
+- R1.10: CS-V1 part 1, CS-V1 part 2, CS-V1 part 3a, CS-V1 part 3b
+- R1.76: CS-NT1 parts 1-4
+- R1.8: AUD-1a, AUD-1b, AUD-1m part 1, AUD-1m part 2a, AUD-1m part 2b
+- R1.105: AUD-5 parts 1-2
+- R1.97: AUD-1c parts 1-2, AUD-2 parts 1-2, AUD-2c parts 1-2
+- R1.87: AUD-3 parts 1-3, AUD-3b parts 1-3
+- R1.88: AUD-4, AUD-4s parts 1-2 (1 = concept)
+- R1.102: CS-S1 parts 1-2
+- R1.79: CS-R1 parts 1-2
+- R1.34: CS-X1 parts 1-3
+- R1.68: CS-D5 parts 1-2
+- R1.69: CS-D6 parts 1-3
+- R1.70: CS-D7c, CS-D7 parts 1-2
+- R1.64/R1.67: CS-D1 parts 1-3
+- R1.106: CS-106c parts 1-2
+- R1.56/R1.57/R1.58 (R1.96/R1.111): FO-7ts parts 1-3; FO-7t parts 1-5; FO-7c parts 1-3; FO-7g parts 1-2; FO-7r parts 1-3
