@@ -136,16 +136,14 @@ export class PlatformIdentity implements OnModuleInit {
    *  the new session's sign-in time, so a session that started earlier is refused and this one is not. The person's row is
    *  locked while the time is chosen, so parallel sign-ins are taken one after the other and each ends the one before it
    *  (break m1). atOf: the new session's time (ms) from the last sign-in and the last revocation, or null for none.
-   *  R1.5 (J-5 break B1, B2): the firm's row first (key share: sign-ins never wait for each other), in the same order as
-   *  every staff change (`inFirm`: firm, then person), so a sign-in and a deactivation never deadlock; and the person
-   *  must still be active under the lock, so a sign-in that raced a deactivation is refused ("inactive") rather than
-   *  dated after it, where reactivation would bring its token back. A steady stream of sign-ins can delay that firm's
-   *  staff changes by a few hundred ms (key share holders go ahead of a waiting change; re-review n2): only the demo-only
-   *  local door can be hit that fast, Cognito reaches here once per real sign-in. */
+   *  R1.5 (J-5 break B1, B2): no firm lock here. Staff changes hold the firm's row FOR NO KEY UPDATE (`inFirm`), which
+   *  never conflicts with the key-share lock this transaction's inserts take on it, so a sign-in and a deactivation never
+   *  deadlock and a stream of sign-ins never starves a staff change (re-break R1: an explicit key share here did). They
+   *  meet only on the person's row; under that lock the person must still be active, so a sign-in that raced a
+   *  deactivation is refused ("inactive") rather than dated after it, where reactivation would bring its token back. */
   private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
     return this.db.$transaction(async (tx) => {
       const fid = firmScope(firmId).firmId;
-      await tx.$queryRaw`select id from platform_firm where id = ${fid}::uuid for key share`;
       const [row] = await tx.$queryRaw<{ last: Date | null; status: string }[]>`select last_sign_in_at as last, status::text as status from platform_staff where id = ${staffId}::uuid and firm_id = ${fid}::uuid for update`;
       if (!row) return null;
       if (row.status !== "ACTIVE") return "inactive" as const;
@@ -192,7 +190,7 @@ export class PlatformIdentity implements OnModuleInit {
   private inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const id = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;   // serializes staff changes; never blocks a sign-in's key share (J-5 B1)
       const me = await tx.platformStaff.findFirst({ where: firmScope(id, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(id, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
@@ -291,9 +289,12 @@ export class PlatformIdentity implements OnModuleInit {
       if (isOwner && !actor.roles.includes("OWNER")) forbidden("Only an Owner deactivates an Owner.", "OWNER_ONLY");
       if (isOwner) this.stepUp(actor, "deactivating an Owner");   // break M3: the same check as removing the Owner role
       if (isOwner && t.status === "ACTIVE" && await this.onlyOwner(tx, actor, t.id)) { refuse = true; return null; }
-      // Never before their latest sign-in (the stand-in may date one a few ms ahead of the clock): every session they have ends (J-5 B2).
-      const now = new Date(Math.max(this.clock.now(), t.lastSignInAt?.getTime() ?? 0));
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "DEACTIVATED", deactivationReason: reason } });
+      // Read after the update: it waited for any sign-in holding the person's row, so that sign-in is seen here, and later
+      // ones wait for this change and find them deactivated. Never before their latest sign-in (the stand-in may date one a
+      // few ms ahead of the clock): every session they have ends (J-5 B2).
+      const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: t.id }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
+      const now = new Date(Math.max(this.clock.now(), last));
       await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId: t.id, revokedAt: now, reason: "deactivated" } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_DEACTIVATED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)

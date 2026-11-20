@@ -4,6 +4,8 @@
 //   B1: every Deactivate and Sign out everywhere answers 200 and no sign-in answers 500 (before the fix: the sign-in took
 //       the person's row, then the firm's; staff changes take the firm's, then the person's; Postgres deadlocked and 7 of
 //       10 deactivations answered 500);
+//   B1 (re-break R1): a colleague's stream of sign-ins never starves a staff change: Deactivate and Reactivate of
+//       someone else answer 200 within 5 s while it runs (with a firm-row key share on sign-in: 500 or no answer in 60 s);
 //   B2: after the person is reactivated, no token from the burst works (before the fix: a sign-in checked "active" before
 //       its lock and was dated after the deactivation, so reactivation brought its token back).
 // The race is real (parallel requests, no test hook), so each round is a chance, not a certainty; ROUNDS rounds make a
@@ -76,6 +78,21 @@ try {
   ok(`R1.5 B1: Sign out everywhere raced the same way answers 200 every round`, out.every((s) => s === 200), out);
   ok("R1.5 B1: no sign-in in any burst answers 500 (each answers 200, or 401 in words once deactivated)", fives.every((f) => f === 0), fives);
   ok("R1.5 B2: after reactivation, no token issued during a burst that raced the deactivation works (each gets 401)", alive.length === 0, { alive, tokensPerRound: tokens });
+  // Re-break R1: a colleague's sign-ins (4 loops, all through the changes) never starve the Owner's staff changes.
+  const colleague = person("c"), other = person("o"); people.push(colleague.id, other.id);
+  let streaming = true; const streamed: number[] = [];
+  const stream = async () => { while (streaming) streamed.push((await signIn(colleague.email)).status); };
+  const streams = Array.from({ length: 4 }, stream);
+  await new Promise((r) => setTimeout(r, 50));
+  const timed = async (f: () => Promise<Ans>) => { const t0 = Date.now(); const a = await Promise.race([f(), new Promise<Ans>((r) => setTimeout(() => r({ status: 0, body: "no answer in 5 s" }), 5_000))]); return { status: a.status, ms: Date.now() - t0 }; };
+  const changes = [];
+  for (let i = 0; i < 3; i++) {
+    changes.push(await timed(() => api(owner, "POST", `/platform/staff/${other.id}/deactivate`, { reason: "pf4r starve (Sample)" })));
+    changes.push(await timed(() => api(owner, "POST", `/platform/staff/${other.id}/reactivate`, { reason: "pf4r starve back (Sample)" })));
+  }
+  streaming = false; await Promise.all(streams);
+  ok("R1.5 B1: while a colleague signs in non-stop (4 loops), the Owner's Deactivate and Reactivate of someone else each answer 200 within 5 s (3 rounds)",
+    changes.every((c) => c.status === 200) && streamed.length > 20 && streamed.every((s) => s === 200), { changes, signIns: streamed.length, not200: streamed.filter((s) => s !== 200).length });
   // The pass half: a calm sign-in after reactivation works, so the refusals above are the race rules and nothing else.
   const calm = await signIn(sql(`select email from platform_staff where id = '${people[0]}'`));
   ok("R1.5 B2 pass: a calm sign-in after reactivation gives a working token", calm.status === 200 && (await api(calm.body.token, "GET", "/platform/me")).status === 200, calm.status);

@@ -98,3 +98,60 @@ After Sign out everywhere or Deactivate, the next click shows a blank "Sign in t
   At 1024 px the first Tab lands on the frame's home link.
 
 Probe scripts and screenshots (scratchpad, not committed): `/tmp/claude-0/-home-user-xpatready/77f06a84-9440-5f11-8649-acdba98d353a/scratchpad/p1b.mjs`, `p2.mjs`–`p7.mjs`, `ui-1-idle-after-deactivation.png`, `ui-2-next-click.png`.
+
+## Re-break aff1fd011 (20 Nov, the fix for B1 and B2)
+
+Fresh copy `j5c` on :4436, built from aff1fd011 (`PLATFORM_IDENTITY=local`, a fresh database per run, stopped after; not
+4405, 4416 or 4421). I re-ran `p1b`, `p2`–`p6` and the new `p8` and `p9`. `p7` (the UI) was not re-run: the frame is
+unchanged. Log: `var/isolated-logs/j5c-api.log`.
+
+**R1 Major: B1 is not fixed. The deadlock is gone, but deactivation now starves behind sign-ins.**
+* Postgres deadlocks are now +0, and no sign-in answers 500 any more (31,006 and 39,611 in the loops below).
+* Steps: 4 parallel loops of `POST /session/local` while the Owner sends `POST /staff/{O}/deactivate` (`p9.mjs`, a
+  client timeout of 60 s).
+* While O (the person being deactivated) signs in, only 1 of 7 changes went through:
+  `500/38267ms, 200/37ms, re:200, 500/44938ms, no answer in 60 s, 500/8400ms, no answer in 60 s`.
+* While T (a colleague, not the target) signs in, 0 of 6 went through:
+  `no answer in 60 s, 500/17340ms, no answer ×3, 500/12826ms`.
+* `p4` (3 loops of O): deactivate failed 3 of 10 and Sign out everywhere 7 of 10, every failure a 500.
+* An earlier run had one deactivate with no answer for 300 s (status 499 at 300,422 ms).
+* With nobody signing in, the same deactivate answered 200 in 21 ms.
+* The 500s are Prisma P2028 (transaction timeout) at `identity/service.ts:194` and `session/service.ts:48`. In both
+  places `inFirm` asks for `platform_firm … for update`.
+* Likely cause: sign-ins now take `for key share` on the same firm row (`service.ts:148`). Postgres lets a new
+  key-share locker join while a `for update` waits, so a steady stream of sign-ins starves the change.
+* What changed:
+  * Before, only the target's own sign-ins hurt.
+  * Now any colleague's sign-ins block every staff change in the firm: deactivate, reactivate, roles, invitations,
+    Sign out everywhere.
+* The leaving person can still block their own lock-out with a script. On Cognito the provider limits how fast
+  sign-ins come, so the window is narrower.
+
+**R2 Minor (from the code; Cognito cannot be tested here): a provider sign-in made while deactivated works after
+reactivation.**
+* `deactivate` neither disables the person at the provider nor signs them out there. Only Sign out everywhere calls
+  `IdentityAdminPort`.
+* So on Cognito the person can sign in while deactivated. Their token is refused before `recordSignIn` runs
+  (`service.ts:121`), so nothing is recorded.
+* After reactivation, that token's `auth_time` is later than the deactivation's revocation, so it is accepted.
+* The new `"inactive"` branch only closes the narrow race. It is a real two-step sign-in by the person, hence Minor.
+  This belongs with PF-4bc.
+
+**Held on aff1fd011**
+* **B2 is fixed.**
+  * `p3`, 8 rounds × 25 sign-ins against a deactivation: 0 tokens dated after it, 0 alive after reactivation, and 0
+    sign-in audit lines while deactivated.
+  * `p6`: 0 live race tokens. `p4`: 0.
+  * The sign-in that loses the race now answers `401 STAFF_NOT_ACTIVE`.
+* **Sign-ins during reactivate** (8 rounds of 6): `200×8, 401×48`. No token was dated at or before the deactivation.
+* **Sign-ins during role changes:** 56 × 200. The newest token reads the new roles each time.
+* **Sign-ins during invite, resend and revoke:** `200×80, 201×5`, no 5xx.
+* **Load:** no 5xx in any of these:
+  * 60 parallel sign-ins of 3 people across two firms: p50 219 ms, max 343 ms.
+  * 60 parallel sign-ins of one person: p50 404 ms, max 616 ms.
+  * 150 parallel sign-ins of 2 people: p50 540 ms, max 896 ms.
+  * People do not wait for each other. One person's sign-ins still run one after another, as designed.
+* **Everything that held before still holds:** the second-step variants (`p1b`, `p5`), crafted tokens, deactivated
+  tokens on every route, Sign out everywhere and your own sign-out, the old token after a calm reactivation (`p2`), and
+  the role and firm limits (`p5`).
+* I wrote no token file outside the scratchpad (searched: none).
