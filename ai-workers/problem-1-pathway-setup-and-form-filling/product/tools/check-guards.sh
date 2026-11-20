@@ -81,7 +81,6 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 comment|../../.github/workflows/queue-gate.yml|/comment.author_association/d|check-queue-gate.sh
 15 dispatch|product/tools/queue-gate.sh|s/schedule.workflow_dispatch)/schedule)/|check-queue-gate.sh
 15 gatewd|../../.github/workflows/queue-gate.yml|s/ .. github.event_name == .workflow_dispatch.$//|check-queue-gate.sh
-15 full|product/tools/queue-gate.sh|s/^  fullproof "\$head" .. return 1/  true/|check-queue-gate.sh
 15 full head|product/tools/queue-gate.sh|s/select(.title == \$t)/select(true)/|check-queue-gate.sh
 15 full green|product/tools/queue-gate.sh|s/if \[ "\$st \$co" = "completed success" \]; then/if true; then/|check-queue-gate.sh
 15 full main|product/tools/queue-gate.sh|s/^      grep -qx "\$sha" "\$H.m" .. continue/      true/|check-queue-gate.sh
@@ -115,9 +114,14 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
-15 full needed|product/tools/queue-gate.sh|s/^  fullproof "\$@" .. { why="it was in the failed merge batch run/  true .. { why="x/|check-queue-gate.sh
+15 full needed|product/tools/queue-gate.sh|s/^  fullproof "\$@" .. { why="it was in the failed merge batch run \$rid, so the label needs a green full run (P-731): \$why"; return 1; }; }$/  true; }/|check-queue-gate.sh
+15 start rid|product/tools/queue-gate.sh|s/ \&\& batchrun \&\& \[ -n "\$rid" \]; then start/ \&\& batchrun; then start/|check-queue-gate.sh
+15 rid reset|product/tools/queue-gate.sh|s/^  unset rid; cs=""$/  cs=""/|check-queue-gate.sh
+15 deq unlabel|product/tools/queue-gate.sh|s/^          api -X DELETE "\$API\/repos\/\$REPO\/issues\/\$PR\/labels\/review%3A%20approved"/          true/|check-queue-gate.sh
+15 proof deq|product/tools/queue-gate.sh|s/ \] .. has dequeued; then/ ]; then/|check-queue-gate.sh
+15 start red|product/tools/queue-gate.sh|s/\[ "\$ci_state" = failure \] \&\& { echo "#\$PR: ci is red/false \&\& { echo "#$PR: ci is red/|check-queue-gate.sh
 15 start|product/tools/queue-gate.sh|s/^  api -X POST "\$API\/repos\/\$REPO\/actions\/workflows\/ci.yml\/dispatches"/  true/|check-queue-gate.sh
-15 start who|product/tools/queue-gate.sh|s/^  approved .. { echo "#\$PR: no full run: \$why"; return 0; }/  true/|check-queue-gate.sh
+15 start who|product/tools/queue-gate.sh|s/^  approved \(..\) { \[ "\$why" = "its comments cannot be read" \]/  true \1 { [ "$why" = "its comments cannot be read" ]/|check-queue-gate.sh
 15 start wake|../../.github/workflows/queue-gate.yml|s/ .. (github.event.action == .labeled. \&\& github.event.label.name == .dequeued.)//|check-queue-gate.sh
 15 notred|product/tools/queue-gate.sh|s/ \&\& covered \&\& notred; }; then/ \&\& covered; }; then/|check-queue-gate.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh

@@ -31,6 +31,7 @@ case "$m $p" in
   "POST issues/"*/comments) n=${p#issues/}; echo "COMMENT ${n%%/*} $(echo "$d" | jq -r .body | head -1 | cut -c1-700)" >> "$FX/log"; echo '{}';;
   "POST statuses/"*) echo "STATUS ${p#statuses/} $(echo "$d" | jq -r '.context + " " + .state')" >> "$FX/log"; echo '{}';;
   "POST actions/runs/"*/rerun) r=${p#actions/runs/}; echo "RERUN ${r%%/*}" >> "$FX/log"; echo '{}';;
+  "DELETE issues/"*/labels/*) n=${p#issues/}; echo "UNLABEL ${n%%/*}" >> "$FX/log"; echo '[]';;
   "POST actions/workflows/ci.yml/dispatches") [ -n "${FAIL_DISPATCH:-}" ] && { echo '{"message":"no"}'; exit 22; }; echo "DISPATCH $(echo "$d" | jq -r '.ref + " " + .inputs.pr + " " + .inputs.head')" >> "$FX/log"; echo '';;
   *) echo "unexpected $m $p" >> "$FX/log"; exit 22;;
 esac
@@ -51,7 +52,7 @@ cirun() {  # cirun <head> <status> <conclusion> <started> [attempt] → the chec
   jq -n --arg t "$4" --argjson a "${5:-1}" --arg s "$2" '{id: 77, run_started_at: $t, run_attempt: $a, status: $s}' > "$T/fx/run-77.json"; }
 run() {  # run <mode> <pr> → $out $log $r
   : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main PR=$2 \
-    REVIEWERS="${REV:-}" LABELED_AT="${LAT:-}" TRIGGER="${TRIG:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+    QG_POLL=0 REVIEWERS="${REV:-}" LABELED_AT="${LAT:-}" TRIGGER="${TRIG:-}" HEADS="${HEADS:-}" RELABEL="${RELABEL:-}" FAIL_FULL="${FAIL_FULL:-}" bash "$G" "$1" 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 # CI-PRE: full <id> <pr> <head> <status> <conclusion> [main's commit] [branch] [event] [path] [repo] → one run of fullruns.json (newest first)
 FR='[]'; fullset() { jq -n --argjson r "$FR" '{workflow_runs: $r}' > "$T/fx/fullruns.json"; }
 full() { FR=$(jq -c --argjson id "$1" --arg t "full-run PR #$2 $3" --arg s "$4" --arg c "$5" --arg sha "${6:-$MAINSHA}" --arg b "${7:-main}" --arg e "${8:-workflow_dispatch}" --arg p "${9:-.github/workflows/ci.yml}" --arg r "${10:-o/r}" \
@@ -144,7 +145,7 @@ nofull; full 41 7 $HEAD1 completed success; run label 7
 ok "full run: green on the exact head: labelled" "$(grep -qx 'LABEL 7' <<< "$log" && grep -q 'green full run' <<< "$out" && echo 1)" "$out / $log"
 nofull; TRIG=approve run label 7
 ok "full run: none on the head: refused, and the comment says why" "$(nolabel && grep -q '^COMMENT 7 .*not put on by itself: it was in the failed merge batch run 880, so the label needs a green full run (P-731): no full run on 111111111 yet' <<< "$log" && echo 1)" "$out / $log"
-ok "full run: none on the head, a reviewer's Approve: the full run starts by itself on that head (B206 part 2), with a comment" "$(grep -qx "DISPATCH main 7 $HEAD1" <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (B206):\*\* it was in the failed merge batch run 880, so the full run' <<< "$log" && echo 1)" "$out / $log"
+ok "full run: none on the head, a reviewer's Approve: the full run starts by itself on that head (B206 part 2), with a comment" "$(grep -qx "DISPATCH main 7 $HEAD1" <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (B206):\*\* it was in the failed merge batch run 880, so `review: approved` is off and the full run' <<< "$log" && echo 1)" "$out / $log"
 LAT=2026-11-19T05:00:00Z run eligible 7
 ok "full run: none on the head: not eligible (label-sweep.sh takes a workflow's own label off)" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 full 43 7 $OLD completed success; run label 7
@@ -302,7 +303,7 @@ cirun $HEAD1 completed success 2026-11-15T13:00:00Z; run label 9
 ok "label on a fresh head: queue-fresh success before the label" "$(grep -n . <<< "$log" | awk -F: '/STATUS/ && /success/ {s=$1} /LABEL 9/ {l=$1} END {exit !(s && l && s < l)}' && echo 1)" "$out / $log"
 # --- events, as GitHub sends them
 printf '%s' "{\"issue\": {\"number\": 9, \"pull_request\": {}}, \"comment\": {\"body\": \"Reviewer: Approve $HEAD1\"}}" > "$T/fx/ev.json"
-ev() { : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main GITHUB_EVENT_NAME=$1 GITHUB_EVENT_PATH="$T/fx/ev.json" bash "$G" event 2>&1); r=$?; log=$(cat "$T/fx/log"); }
+ev() { : > "$T/fx/log"; out=$(cd "$T/git" && PATH="$T/bin:$PATH" FX="$T/fx" QG_POLL=0 GH_TOKEN=x REPO=o/r API=https://api.test MAIN_REF=main GITHUB_EVENT_NAME=$1 GITHUB_EVENT_PATH="$T/fx/ev.json" bash "$G" event 2>&1); r=$?; log=$(cat "$T/fx/log"); }
 ev issue_comment
 ok "event issue_comment: an Approve comment labels the PR and sets queue-fresh once (no second verdict)" "$([ $r = 0 ] && grep -qx 'LABEL 9' <<< "$log" && [ "$(grep -c '^STATUS' <<< "$log")" = 1 ] && echo 1)" "exit $r: $out / $log"
 printf '{"workflow_run": {"pull_requests": [{"number": 9}]}}' > "$T/fx/ev.json"; ev workflow_run
@@ -333,7 +334,13 @@ fail7() { jq -n --arg s $F7 '[{number: 880, title: "merge queue: checking #7 on 
   jq -n '{jobs: [{name: "shard (9)", conclusion: "failure"}]}' > "$T/fx/jobs-880.json"; }
 deq() { jq -n --arg a "${2:-labeled}" --arg l "${3:-dequeued}" --argjson n "$1" '{action: $a, label: {name: $l}, pull_request: {number: $n}}' > "$T/fx/ev.json"; ev pull_request_target; }
 prj 7 $HEAD1 false "review: approved,dequeued"; files 7 "$S/api/src/form.ts"; cmt 7 o OWNER "Reviewer: Approve $HEAD1"; fail7; nofull; deq 7
-ok "event dequeued after a failed batch: the full run starts on the head (ci.yml on main, inputs pr and head), with a comment, no label" "$([ $r = 0 ] && grep -qx "DISPATCH main 7 $HEAD1" <<< "$log" && grep -q '^COMMENT 7 \*\*Queue gate (B206):\*\*' <<< "$log" && ! grep -q '^LABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+ok "event dequeued after a failed batch: the label comes off, then the full run starts on the head (ci.yml on main, inputs pr and head), with a comment" "$([ $r = 0 ] && grep -n . <<< "$log" | awk -F: '/UNLABEL 7/ {u=$1} /DISPATCH main 7 '"$HEAD1"'/ {d=$1} END {exit !(u && d && u < d)}' && grep -q '^COMMENT 7 \*\*Queue gate (B206):\*\*' <<< "$log" && ! grep -q '^LABEL' <<< "$log" && echo 1)" "exit $r: $out / $log"
+HEADS="$HEAD1" run proof 7
+ok "proof on a PR carrying dequeued (no RELABEL): the failed-batch rule is asked, refused without the full run (part 2 review M1)" "$([ $r = 1 ] && grep -q 'failed merge batch run 880' <<< "$out" && echo 1)" "exit $r: $out"
+cirun $HEAD1 completed failure 2026-11-15T13:00:00Z; nofull; deq 7
+ok "event dequeued: ci red on the head: no full run (fix it first)" "$([ $r = 0 ] && ! grep -q DISPATCH <<< "$log" && grep -q 'ci is red' <<< "$out" && echo 1)" "exit $r: $out / $log"
+cirun $HEAD1 completed success 2026-11-15T13:00:00Z; FAIL_FULL=1; export FAIL_FULL; deq 7; unset FAIL_FULL
+ok "event dequeued: the full runs cannot be read: the job is red (exit 2), never a silent no-start" "$([ $r = 2 ] && ! grep -q DISPATCH <<< "$log" && echo 1)" "exit $r: $out / $log"
 full 70 7 $HEAD1 in_progress ""; deq 7
 ok "event dequeued: a full run already running on the head: nothing started" "$([ $r = 0 ] && ! grep -q DISPATCH <<< "$log" && grep -q 'has not ended' <<< "$out" && echo 1)" "exit $r: $out / $log"
 nofull; full 71 7 $HEAD1 completed success; deq 7
@@ -356,6 +363,15 @@ mv "$T/fx/checks-$F7.json" "$T/fx/x.json"; deq 7
 ok "event dequeued: the batch's ci cannot be read: red (exit 2), nothing started" "$([ $r = 2 ] && ! grep -q DISPATCH <<< "$log" && echo 1)" "exit $r: $out / $log"
 mv "$T/fx/x.json" "$T/fx/checks-$F7.json"; run start 7
 ok "start (by hand): the same full run" "$([ $r = 0 ] && grep -qx "DISPATCH main 7 $HEAD1" <<< "$log" && echo 1)" "exit $r: $out / $log"
+# Approve on a PR with no failed batch whose label waits (ci pending): no full run (P-743: never on every PR)
+rm -f "$T/fx/pulls.json"; prj 7 $HEAD1; nofull; cirun $HEAD1 in_progress "" 2026-11-15T13:00:00Z; TRIG=approve run label 7
+ok "approve, no failed batch, label waiting on ci: no full run started (P-743)" "$(! grep -q DISPATCH <<< "$log" && ! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
+cirun $HEAD1 completed success 2026-11-15T13:00:00Z; fail7
+# two PRs in one ci event: the first (no failed batch) must not decide the second (part 2 review m2: rid is per PR)
+prj 6 $HEAD1; files 6 "$S/api/src/form.ts"; cmt 6 o OWNER "Reviewer: Approve $HEAD1"; prj 7 $HEAD1
+jq --arg s $F7 '.[0].title = "merge queue: checking #7 on main"' "$T/fx/pulls.json" > "$T/fx/x.json" && mv "$T/fx/x.json" "$T/fx/pulls.json"
+nofull; full 74 6 $HEAD1 completed success; printf '{"workflow_run": {"pull_requests": [{"number": 6}, {"number": 7}]}}' > "$T/fx/ev.json"; ev workflow_run
+ok "event workflow_run with two PRs: #6 (no failed batch) labelled, #7 (failed batch, no full run) not" "$(grep -qx 'LABEL 6' <<< "$log" && ! grep -qx 'LABEL 7' <<< "$log" && echo 1)" "exit $r: $out / $log"
 # a "Batch failures covered:" comment wakes the gate: the label goes on when the full run is green
 prj 7 $HEAD1; full 73 7 $HEAD1 completed success
 jq -n --arg h $HEAD1 '[{user: {login: "o"}, author_association: "OWNER", body: ("Reviewer: Approve " + $h)}, {user: {login: "o"}, author_association: "OWNER", body: "Batch failures covered: 880: shard (9)"}]' > "$T/fx/comments-7.json"
