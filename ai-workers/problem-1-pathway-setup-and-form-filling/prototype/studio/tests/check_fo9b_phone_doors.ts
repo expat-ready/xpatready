@@ -8,7 +8,7 @@
 //      no country code and keeps it unreadable (P-747: refused on the field only on the edit route);
 //   D6 the duplicate check meets two spellings of one number, and an unreadable one matches nothing;
 //   E  the edit route still refuses an impossible number (422; FO-9a unchanged);
-//   G  one normaliser: no phone regex in front-office/ outside duplicates/phone.ts, no door calls the looser phoneE164.
+//   G  one normaliser: no phone regex in api/src/front-office outside duplicates/phone.ts, no door calls the looser phoneE164.
 // US$0, no model call.
 //   tsx studio/tests/check_fo9b_phone_doors.ts
 import "reflect-metadata";
@@ -195,11 +195,14 @@ try {
   ok("FO-9b E pass: the staff edit saves the trunk-0 spelling as +442079460958", (await people.editPhone(R, pid, { phone: TRUNK })).phone === UK);
 
   // ------------------------------------------------------------------------------------- G: one normaliser, no second regex
-  const FO = join(STUDIO, "api", "src", "front-office"), WEB = join(STUDIO, "web", "src", "modules", "front-office");
+  // The API doors only (the brief's grep): a suite that also lists the web folder would be picked by every page change
+  // (check-select-suites.sh "that page chooses fewer than 30 suites"). The booking screen's phone check is proven by
+  // behaviour instead: J-33 W5 books with "0044 …" on screen, and check_fo3w_booking_browser.ts.
+  const FO = join(STUDIO, "api", "src", "front-office");
   const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? files(join(dir, e.name)) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []);
   const PHONE_RE = /\[0-9\]\{6,14\}|\\\+\[1-9\]|\[2-9\]\[0-9\]\{9\}/;
-  const regexHits = [...files(FO), ...files(WEB)].filter((f) => !f.endsWith(join("duplicates", "phone.ts")) && PHONE_RE.test(readFileSync(f, "utf8"))).map((f) => relative(STUDIO, f));
-  ok("FO-9b G pass: no phone regex in api/src/front-office or the web front office outside duplicates/phone.ts", regexHits.length === 0, regexHits);
+  const regexHits = files(FO).filter((f) => !f.endsWith(join("duplicates", "phone.ts")) && PHONE_RE.test(readFileSync(f, "utf8"))).map((f) => relative(STUDIO, f));
+  ok("FO-9b G pass: no phone regex in api/src/front-office outside duplicates/phone.ts", regexHits.length === 0, regexHits);
   const looseHits = files(FO).filter((f) => !f.endsWith(join("duplicates", "phone.ts")) && /import\s*\{[^}]*\bphoneE164\b(?!Exact)[^}]*\}\s*from\s*"[^"]*duplicates\/phone\.ts"/.test(readFileSync(f, "utf8"))).map((f) => relative(STUDIO, f));
   ok("FO-9b G fail: no front-office file imports the looser phoneE164; every door uses phoneE164Exact", looseHits.length === 0, looseHits);
   ok("FO-9b G pass: phone() in sales/common.ts calls phoneE164Exact", /phoneE164Exact\(t\)/.test(readFileSync(join(FO, "sales", "common.ts"), "utf8")));
