@@ -57,6 +57,9 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
+# on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
+python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
