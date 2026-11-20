@@ -89,8 +89,9 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
     # or .yaml, bare or with a path) is a file on this branch, tracked or new and not ignored, by that path or ending in
     # "/<it>", so the register never claims a check that is not there (the audit of 21 Nov found 5 stale cells). A cell
     # that says "owed" claims nothing yet. KNOWN_STALE: the cells stale when this check landed; the tech lead fixes them
-    # in RULES.md (the proposed patch is on the E7 PR), then deletes the ID here. Test: check-rule-register.sh.
-    KNOWN_STALE=" P-690 "
+    # in RULES.md (the proposed patch is on the E7 PR), then deletes the ID here: P-690 (plan-watch.py, never built);
+    # IDX-23 on the Lead's branch (resource-claim-guard.sh arrives with #2590). Test: check-rule-register.sh.
+    KNOWN_STALE=" P-690 IDX-23 "
     git -C "$ROOT" ls-files -z --cached --others --exclude-standard 2>/dev/null | python3 -I -c '
 import re, sys
 files = [f for f in sys.stdin.buffer.read().decode("utf-8", "replace").split("\0") if f]

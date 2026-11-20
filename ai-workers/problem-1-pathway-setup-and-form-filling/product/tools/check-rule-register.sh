@@ -45,8 +45,8 @@ ok "E7: a path whose folder differs, or a look-alike name, fails" "$([ $r = 1 ] 
 ok "E7: a file whose name only ends in the enforcer's name (xa.sh for a.sh) does not count" "$([ $r = 1 ] && echo "$out" | grep -q 'P-1 is enforced by a.sh' && echo 1)" "exit $r: $out"
 printf '| P-1 | A rule. | script: later.sh (owed) | 15 Nov |\n| P-2 | A rule. | prose (rules/x.md, gate.mjs owed) | 15 Nov |\n' | page; run
 ok "E7: a cell that says owed claims nothing yet and passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
-printf '| P-690 | A rule. | script: plan-watch.py via check-docs.sh | 15 Nov |\n' | page; run
-ok "E7: the cell known stale when the check landed (P-690) waits for the tech lead's RULES.md fix" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+printf '| P-690 | A rule. | script: plan-watch.py via check-docs.sh | 15 Nov |\n| IDX-23 | Rows stand. | hook: resource-claim-guard.sh | 15 Nov |\n' | page; run
+ok "E7: the cells known stale when the check landed (P-690, IDX-23) wait for the tech lead's RULES.md fix" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 : > "$P/tools/new.sh"; printf '| P-1 | A rule. | script: new.sh | 15 Nov |\n' | page; run
 ok "E7: a new enforcer file not yet committed counts (a builder runs check-docs before the commit)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 printf 'ignored.sh\n' > "$T/c/.gitignore"; : > "$P/tools/ignored.sh"; printf '| P-1 | A rule. | script: ignored.sh | 15 Nov |\n' | page; run

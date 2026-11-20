@@ -198,7 +198,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 32 E7|product/tools/check-docs.sh|s/    if rid in stale or re.search/    if True or re.search/|check-rule-register.sh
 32 E7 suffix|product/tools/check-docs.sh|s/        if f.removeprefix("\.\/") not in have:/        if not any(x.endswith(f) for x in files):/|check-rule-register.sh
 32 E7 path|product/tools/check-docs.sh|s/^have = set(files) .*$/have = set(files)/|check-rule-register.sh
-32 E7 stale|product/tools/check-docs.sh|s/^    KNOWN_STALE=" P-690 "/    KNOWN_STALE=" P-1 P-690 "/|check-rule-register.sh'
+32 E7 stale|product/tools/check-docs.sh|s/^    KNOWN_STALE=" P-690 IDX-23 "/    KNOWN_STALE=" P-1 P-690 IDX-23 "/|check-rule-register.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
