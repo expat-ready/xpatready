@@ -35,6 +35,7 @@ import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts"
 import { sees, visibilityOf, type Visibility } from "../sales/common.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
+import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
 import { issueToken, liveToken } from "./tokens.ts";
 
@@ -127,7 +128,9 @@ export const PublicBookingBody = z.strictObject({
   givenNames: Name,
   familyName: Name,
   email: z.email().max(254),
-  phone: z.string().trim().transform((p) => p.replace(/[\s.()-]/g, "")).pipe(z.string().regex(/^\+[1-9][0-9]{6,14}$/, "a phone number with its country code, e.g. +1 416 555 0100")).optional(),
+  /** FO-9b (P-747): any typed number is taken (one line, at most 40, no control or invisible marks); the door reads it
+   *  with FO-9a's exact normaliser and keeps one it cannot read as typed, flagged "Fix number", never refused. */
+  phone: z.string().trim().max(40).refine((v) => !/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "one line, no control or invisible characters").transform((v) => v || undefined).optional(),
   mode: z.enum(MODES),
   startsAt: Instant,
   timeZone: Zone,
@@ -291,7 +294,8 @@ export class BookingService {
       if (!wording || wording.wordingId.toLowerCase() !== b.consentWordingId.toLowerCase()) throw problem(409, "consent-wording-changed", "Please reload", "The firm's agreement text has changed. Please reload the page and tick the box again.");
       consent = { wordingId: wording.wordingId, givenAt: this.ports.clock.now() };
     }
-    const person = { givenNames: b.givenNames, familyName: b.familyName, email: b.email, ...(b.phone ? { phone: b.phone } : {}) };
+    const e164 = b.phone ? phoneE164Exact(b.phone) : null;
+    const person = { givenNames: b.givenNames, familyName: b.familyName, email: b.email, ...(b.phone ? (e164 ? { phone: e164 } : { phone: b.phone, phoneReadable: false as const }) : {}) };
     const out = await this.create(firm.id, type, { startsAt: b.startsAt, mode: b.mode, timeZone: b.timeZone }, { word: "system:booking-page" },
       async (tx, bookingId) => this.ports.arrival.bookingArrived(tx, { firmId: firm.id, person, ...(consent ? { consent } : {}), bookingId }),
       { gate: () => this.gate(firm.id, b.formStamp), token: true });
