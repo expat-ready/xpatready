@@ -28,7 +28,7 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
-IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?|ask|next step|to do)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
+IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
   r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit)\b", I)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"

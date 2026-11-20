@@ -41,7 +41,7 @@ for m in 'Recommend: at 07:00, open https://github.com/expat-ready/xpatready/pul
          'Will you add the "Done when" line to #2578 at 07:00, or leave it parked?' 'Please edit the PR description of #2578.' \
          'Open https://claude.ai/code and press Return in the lane.'; do
   r=$(stop lead "$m"); ok "refused (21 Nov): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
-for m in 'I added the Done when line to #2578 in the built-in browser.' 'The lane fixed one line in #2452.' 'Open https://github.com/expat-ready/xpatready/pull/2578 to see it merged.'; do
+for m in 'Next step: add the Done when line to #2578 (I will do it in the built-in browser).' 'I edited the PR description of #2578 in the built-in browser.' 'I added the Done when line to #2578 in the built-in browser.' 'The lane fixed one line in #2452.' 'Open https://github.com/expat-ready/xpatready/pull/2578 to see it merged.'; do
   r=$(stop lead "$m"); ok "passes (21 Nov): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
