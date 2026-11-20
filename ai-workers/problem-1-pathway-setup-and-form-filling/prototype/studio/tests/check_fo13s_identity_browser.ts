@@ -5,7 +5,7 @@
 // .pdf; BR-7 one row for a Save; BR-8 the keys (Billing and finance: no Record, no Open copy; Read-only: Open copy, no
 // Record); M1 the panel on the prospect page too; M4 the error summary. Also a keyboard-only Save, axe-core (WCAG 2.2 AA),
 // no sideways scroll and screenshots at 375, 1024 and 1440 px. Seeds the Sample firms itself. US$0, no model call.
-//   zsh studio/tools/isolated.sh screens_fo13s 4561 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo13s_identity_browser.ts 4561 xr_studio_screens_fo13s
+//   zsh studio/tools/isolated.sh screens_fo13s 4561 start PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500 && tsx studio/tests/check_fo13s_identity_browser.ts 4561 xr_studio_screens_fo13s
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -38,7 +38,7 @@ const zone = await readSetting<string>(db, A, TIME_ZONE.key);
 const dayIn = (ms: number) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
 const TODAY = dayIn(Date.now()), YESTERDAY = dayIn(Date.now() - 86_400_000);
 const staffOf = (actor: string) => { const [id, email] = sql(`select id || '|' || email from platform_staff where actor_id = '${actor}'`).split("|"); return { id, email }; };
-const O = staffOf("user-O");   // Case Officer: records, opens copies
+const O = staffOf("user-O"), R = staffOf("user-R");   // Case Officer: records, opens copies; Owner: converts (part 2)
 const addStaff = (tag: string, role: string) => { const email = `fo13s-${tag}-${run}@sample-firm.example.com`;
   const id = sql(`insert into platform_staff (id, firm_id, email, display_name, actor_id, updated_at) values (gen_random_uuid(), '${A}', '${email}', 'Sample ${tag} ${run}', 'fo13s-${tag}-${run}', now()) returning id`);
   sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:FO-13s-test')`); return { id, email }; };
@@ -52,7 +52,7 @@ async function signIn(email: string): Promise<string> {
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
   console.error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`); process.exit(2);
 }
-const tok = { O: await signIn(O.email), BF: await signIn(BF.email), RO: await signIn(RO.email) };
+const tok = { O: await signIn(O.email), R: await signIn(R.email), BF: await signIn(BF.email), RO: await signIn(RO.email) };
 const PDF = join(WORK, "passport-copy.pdf"), FAKE = join(WORK, "notes.pdf");
 writeFileSync(PDF, "%PDF-1.4\n% FO-13s Sample copy\n%%EOF\n"); writeFileSync(FAKE, "just some text, not a PDF\n");
 const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -184,6 +184,36 @@ try {
   await o.goto(`${BASE}/front-office/prospects/${prospect.id}`); await panel(o).locator("[data-check]").first().waitFor({ timeout: 30_000 });
   ok("FO-13s M1: the prospect page shows the same panel with the person's four checks", eng.status === 201 && (await panel(o).locator("[data-check]").count()) === 4, eng.status);
   await axe(o, "the prospect page");
+
+  // --------------------------------------------------- part 2 (QA-610): the client page, read-only, and its states
+  const conv = await fetch(`${BASE}/api/front-office/prospects/${prospect.id}/convert`, { method: "POST", headers: { authorization: `Bearer ${tok.R}`, "content-type": "application/json" }, body: "{}" });
+  let CID = "";
+  for (const until = Date.now() + 15_000; !CID && Date.now() < until; await new Promise((res) => setTimeout(res, 100))) CID = sql(`select id from case_client where prospect_id = '${prospect.id}'`);
+  ok("FO-13s part 2 setup: Convert to client makes the person's client (FO-8's poll)", conv.status === 200 && !!CID, conv.status);
+  const openClient = async (p: Page) => { await p.goto(`${BASE}/clients/${CID}`); await p.locator("[data-client-page]").waitFor({ timeout: 60_000 }); await panel(p).waitFor({ timeout: 15_000 }); await panel(p).locator("[data-loading]").waitFor({ state: "detached", timeout: 15_000 }); };
+  await openClient(o); await panel(o).locator("[data-check]").first().waitFor({ timeout: 15_000 });
+  ok("FO-13s part 2 pass: the client page lists the person's four checks, newest first, with Open copy for the Case Officer",
+    (await panel(o).locator("[data-check]").count()) === 4 && (await panel(o).getByRole("button", { name: "Open copy" }).count()) >= 1);
+  ok("FO-13s part 2 fail: the client page offers no Record a check (recorded on the lead or prospect page)", (await panel(o).getByRole("button", { name: "Record a check" }).count()) === 0);
+  await axe(o, "the client page with checks"); await shot(o, "client-1440");
+  // M1 (review): a viewer who may see the client but not the person (all leads not shared, another's lead) gets a plain line.
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: false, by: "seed:FO-13s-test", workspaceId: await platformAuditWorkspaceId(db), reason: "FO-13s part 2: own leads only" });
+  const bfc = await pageAs(tok.BF); await openClient(bfc);
+  await panel(bfc).locator("[data-identity-hidden]").waitFor({ timeout: 15_000 });
+  ok("FO-13s part 2 fail: with leads not shared, a viewer who does not have the person's lead sees a plain line, no error and no Try again",
+    (await panel(bfc).locator("[data-check]").count()) === 0 && (await panel(bfc).getByRole("button", { name: "Try again" }).count()) === 0 && (await panel(bfc).getByText("No such person", { exact: false }).count()) === 0);
+  await axe(bfc, "the client page, checks not visible");
+  await writeSetting(db, { firmId: A, key: EVERYONE_SEES_ALL.key, value: true, by: "seed:FO-13s-test", workspaceId: await platformAuditWorkspaceId(db), reason: "FO-13s part 2: restore" });
+  // S3 (review): a role without the list's key is told so, and the panel asks the server nothing.
+  sql(`delete from platform_role_permission where role = 'READ_ONLY' and permission_key = 'agent/prospect:show'`);
+  try {
+    const roc = await pageAs(tok.RO); let asked = 0;
+    roc.on("request", (r) => { if (/\/identity-checks$/.test(new URL(r.url()).pathname)) asked++; });
+    await roc.goto(`${BASE}/clients/${CID}`); await roc.locator("[data-client-page]").waitFor({ timeout: 60_000 });
+    await panel(roc).locator("[data-identity-forbidden]").waitFor({ timeout: 15_000 });
+    ok("FO-13s part 2 fail: a role that may see clients but not prospects sees the reason line, and no identity request is sent", asked === 0 && (await panel(roc).locator("[data-check]").count()) === 0, asked);
+    await axe(roc, "the client page, no key");
+  } finally { sql(`insert into platform_role_permission (role, permission_key) values ('READ_ONLY', 'agent/prospect:show') on conflict do nothing`); }
 
   // ----------------------------------------------------------------------------------------- widths
   for (const w of [375, 1024, 1440]) {
