@@ -50,3 +50,40 @@ Journeys: (1) a stranger signs up with an existing staff email; (2) a new email;
 The deployed Cognito custom sender's wiring (not in the repo). A real SES send (US$0, local adapter only). The cap exhaustion was not run to 50 (it would need hours on the per-address limit). It follows from the counter moving by 1 per anonymous request, together with `DAILY_CAP` and `MAILS_PER_EMAIL_HOUR`.
 
 **Verdict: Changes requested** (Block). Fix M1 and M2, then re-review at the new head. The Minors are optional.
+
+## Re-review at `371811798084852b890096541adcc0105dd50484` (20 Nov)
+**Read:** only `git diff a482612fd..371811798`. **Run:** `COPY_PREFIX=rev19r3b run-suites.sh --only "check_pf19r_every_sender.ts check_pf19r_senders.ts check_pf5_signup_billing.ts check_pf19p_platform_mail.ts check_pf5v_signup_mail.ts"` at that head: **PASS 19/0, 28/0, 53/0, 68/0, 7/0**. Isolated copy `rev19r3` on :4437 again (walled pool, `PLATFORM_IDENTITY=local`), stopped afterwards. My earlier probe set run against the new `audit()` in a scratch copy (not committed).
+
+**M1: resolved.** `signup.ts:146` sends `platformAccount: true` and no `firmId`. My own check on the copy:
+* sign-ups with `user-o@…` (staff) and `representative@…` (staff and the firm's contact email) each gave 202 with the same body (5-19 ms);
+* each gave one `PLATFORM_ACCOUNT|TRANSACTIONAL|SENT` row with no firm;
+* `msg_send_counter` has 0 rows;
+* the email is From and Reply-To `ExpatReady <no-reply@expatready.com>`, with "Sent by ExpatReady." and no firm name;
+* there was no "background step failed" line.
+
+The nested `asBypass("platform.account.mail")` passes its route check inside `later()`, because the scope keeps the route `POST /api/public/signup`. DW7 now asserts a row with no firm, the ExpatReady layout and an unchanged firm counter. Its new fail case, the same email sent the firm's way, moves the counter by 1, so the check is not blind. The dropped suppressed-address case was right to drop: platform account rows have no consent gate by PF-19p's design (`messages.ts:11-12`).
+
+**M2: resolved for what it claimed.** Any file outside `features/` that holds a port name, a stand-in, a raw SES transport, `demoMessage` or a `.mail` property must now be in the table. Every `.send(`, `.sendIn(` and destructured `send` in such a file is counted exactly, whatever the receiver is called. Of my 15 earlier probes, 9 are now caught: `this.email.send`, `mailer.send`, `m.send`, `port.send(tx)`, `mm.sendIn`, a `.send(` on the next line, a destructured send, and SESv2 with or without its import. A send after `/* … */` is also caught when the file names its port type, because the file must be in the table. The 9 new fail shapes and the exact-count case in a listed file are real fails. The ones still not seen fall under the limit the header now states (text, not types):
+* an untyped object with no port name (`sender.send`, `this.d.emails.send`, `this.d.outbox.send`, `this.ports.messagePort.send`);
+* an email kept in memory in another shape;
+* a `fetch` to a mail API;
+* a job enqueued with mail data;
+* a `/* … */`-prefixed send in a file that holds no port name.
+
+Each of these needs code written to avoid every port type and name. A new transport would also need STANDARDS §1's gate. Minor, already disclosed: **m4** below.
+
+**m2: resolved.** `qa/built/PF-19r.md` now says "every email send call found in api/src … (two gaps still open; R1.47 stays Partial)" and names the unverified Cognito wiring.
+**m1, m3: unchanged.** Both were optional. m1: the walled-pool proof stays manual; it has now been confirmed on three runs (the builder's two, and mine at each head). m3: the log line is moot for this path now, because a platform account row cannot be SUPPRESSED, so no refusal is thrown.
+**m4 (new, Minor, no change asked):**
+* The scanner's remaining blind spots are listed above. If the guard ever needs to be complete, count call sites by type with the TypeScript compiler.
+* "Already have an account" is now outside the consent gate and every suppression list (PF-19p's rule for the sign-up door). The only limit on how often it goes to one address is the in-memory 3 an hour, per process. This is the same exposure the verification code will have under PF-19p's ruling, so it belongs to that ruling, not to this PR.
+
+**Journey score at the new head: 9.5/10, no criterion at 0.**
+* Plain words, correct data and trust now score 1: an ExpatReady notice comes from ExpatReady, and the firm has no row and no count.
+* Feedback and state stays at 1.
+* Error recovery is ½: a bounce or complaint on a platform address has no gate on this path (m4).
+* Journey 5 (repeated sign-ups against one firm) now passes: the firm's counter does not move.
+
+No open Blocker or Major.
+
+**Verdict: Approve** (for `371811798084852b890096541adcc0105dd50484`).
