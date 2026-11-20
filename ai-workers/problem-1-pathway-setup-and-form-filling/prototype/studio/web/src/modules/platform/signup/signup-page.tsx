@@ -126,7 +126,7 @@ export function SignUpPage() {
                       <Field label="Billing" className="min-w-32"><Select value={v.period} onChange={(e) => set("period", e.target.value as Period)}><option value="MONTHLY">Monthly</option><option value="YEARLY">Yearly</option></Select></Field>
                       <Button type="button" variant="outline" onClick={() => setChanging(false)}>Done</Button>
                     </div>
-                  ) : <p><span data-signup-plan-line>{plan ? `${plan.name} (Sample), ${periodWord(v.period)}` : "—"}</span> <Button type="button" variant="link" className="h-auto px-1 py-0" onClick={() => setChanging(true)} data-signup-plan-change>Change</Button></p>}
+                  ) : <p><span data-signup-plan-line>{plan ? `${plan.name}, ${periodWord(v.period)}` : "—"}</span> <Button type="button" variant="link" className="h-auto px-1 py-0" onClick={() => setChanging(true)} data-signup-plan-change>Change</Button></p>}
                   {errors.planCode && !changing ? <p role="alert" className="text-xs text-text-danger">{errors.planCode}</p> : null}
                 </div>
                 <Terms terms={q.data.terms} agree={v.agree} error={errors.acceptedTerms} onChange={(b) => set("agree", b)} />
@@ -150,7 +150,7 @@ function Terms({ terms, agree, error, onChange }: { terms: Plans["terms"]; agree
         <label htmlFor={id}>I agree to the Terms of Service, Privacy Notice and Data Processing Terms</label>
       </div>
       <ul id={`${id}-docs`} className="mt-1 pl-6 text-xs text-text-muted">
-        {docs.map((t) => <li key={t.id} data-signup-term={t.kind}><a className="text-text-link underline" href={safeUrl(t.url)} target="_blank" rel="noopener noreferrer">{KIND_LABEL[t.kind] ?? t.kind}</a>, version {t.version} (Sample)</li>)}
+        {docs.map((t) => <li key={t.id} data-signup-term={t.kind}><a className="text-text-link underline" href={safeUrl(t.url) ?? undefined} target="_blank" rel="noopener noreferrer">{KIND_LABEL[t.kind] ?? t.kind}<span className="sr-only"> (opens in a new tab)</span></a>, version {t.version}</li>)}
       </ul>
       {error ? <p id={`${id}-note`} role="alert" className="mt-1 pl-6 text-xs text-text-danger" data-signup-terms-error>{error}</p> : null}
     </div>

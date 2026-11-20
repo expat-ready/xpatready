@@ -41,7 +41,7 @@ export function PricingPage() {
                   const price = money(period === "YEARLY" ? p.yearly : p.monthly);
                   return (
                     <li key={p.code} className="flex flex-col rounded-xl border border-border bg-surface-raised p-5 shadow-sm" data-plan={p.code}>
-                      <h2 className="text-base font-semibold">{p.name} <span className="text-xs font-normal text-text-muted">(Sample)</span></h2>
+                      <h2 className="text-base font-semibold">{p.name}</h2>
                       {price ? <p className="mt-2"><span className="text-2xl font-semibold" data-price>{price}</span> <span className="text-sm text-text-muted">per {period === "YEARLY" ? "year" : "month"}, CAD</span></p>
                         : <p className="mt-2 text-sm text-text-muted" data-price-missing>Price not shown</p>}
                       {price ? <p className="text-xs text-text-muted">{q.data.taxNote}</p> : null}

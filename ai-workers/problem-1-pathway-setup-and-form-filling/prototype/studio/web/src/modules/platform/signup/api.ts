@@ -39,8 +39,8 @@ export function byField(errors: string[]): Record<string, string> {
 export const KIND_LABEL: Record<string, string> = { TERMS_OF_SERVICE: "Terms of Service", PRIVACY_NOTICE: "Privacy Notice", DATA_PROCESSING: "Data Processing Terms" };
 const ORDER = ["TERMS_OF_SERVICE", "PRIVACY_NOTICE", "DATA_PROCESSING"];
 export const termsInOrder = (t: Plans["terms"]) => [...t].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
-/** Only an http(s) address becomes a link (a stored url is data, never a script). */
-export const safeUrl = (u: string) => (/^https?:\/\//i.test(u) ? u : undefined);
+/** The terms module's one check of a stored url before it becomes a link. */
+export { safeUrl } from "../terms/contract";
 
 export function money(p: { amountCents: number; currency: string } | null) {
   if (!p) return null;
