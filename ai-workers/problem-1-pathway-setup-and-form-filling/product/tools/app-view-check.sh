@@ -1,7 +1,7 @@
 #!/bin/bash
 # The app view's ACT lines (B197 (3), founder A110, 16 Nov; P-326, P-339): run by lead-watch.sh every check and by
 # lead-check-guard.sh at a check turn's end. Reads product/state/app-view-latest.txt (app-view-save.sh): over 35 min old
-# or missing = "ACT app view not read in N min"; otherwise one ACT per FLAG line in it, and one for an UNREADABLE line.
+# or missing = "ACT app view not read in N min"; otherwise one ACT per FLAG line in it, one for an UNREADABLE line and one for a "WARNING: list may be cut" line (B204).
 #   bash product/tools/app-view-check.sh [--stale-only]     exit = the number of ACT lines
 # Env (tests): APP_VIEW_FILE, NOW (epoch seconds). Test: check-app-view.sh.
 STALE_MIN=35
@@ -18,4 +18,6 @@ if [ "$age" -gt "$STALE_MIN" ]; then ACT "app view not read in ${age} min (over 
 echo "app view read ${age} min ago: $(sed -n 2p "$f")"
 while IFS= read -r l; do ACT "app view: ${l#FLAG  }"; done < <(grep '^FLAG' "$f")
 while IFS= read -r l; do ACT "app view: $l"; done < <(grep '^UNREADABLE' "$f")
+# B204 (4): the page returned as many sessions as it asked for, or said more remain: lanes past the limit are unseen.
+while IFS= read -r l; do ACT "app view: $l: raise LIMIT in tools/app-view.js or read the rest in claude.ai/code"; done < <(grep '^WARNING: list may be cut' "$f")
 exit "$n"
