@@ -20,7 +20,7 @@ import { fakeFiles } from "../ports/files.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
-import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, currentBypass, BypassNotRecorded, BypassRefused, FirmScopeError, inRequest, onBypassAudit, touchFirm, touchingAudit, WalledPool } from "../api/src/platform/firm-scope.ts";
+import { appDatabaseUrl, asBypass, asJob, BYPASS_USES, currentBypass, mayRunInside, BypassNotRecorded, BypassRefused, FirmScopeError, inRequest, onBypassAudit, touchFirm, touchingAudit, WalledPool } from "../api/src/platform/firm-scope.ts";
 import { FirmSignUp, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 import { LocalSignUp } from "../api/src/platform/firms/signup-identity.ts";
 import { resetSampleFirmSettings } from "../api/src/platform/identity/demo-reset.ts";
@@ -38,7 +38,7 @@ import { ConsentStore } from "../api/src/platform/messages/consent/consent-store
 import { channelsOf } from "../api/src/platform/messages/send/channels.ts";
 import { MessagesMail } from "../api/src/platform/messages/send/mail.ts";
 import { JsonLog, useLog } from "../api/src/platform/observability/log.ts";
-import { CATCH_UP_USE, touchedEach } from "../api/src/case-clients/live.ts";
+import { BACKOFF_MAX_MS, CATCH_UP_USE, touchedEach, type WonBackoff } from "../api/src/case-clients/live.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -135,13 +135,17 @@ try {
   const nested = await errOf(() => inRequest(inboxRoute, () => asBypass("platform.demo.inbox", () => asBypass("platform.identity.authenticate", () => db.platformStaff.findMany()))));
   ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused, String(nested));
   const signupRoute = { method: "POST", path: "/api/public/signup" };
-  const pair = await inRequest(signupRoute, () => asBypass("platform.firms.signup", async () => { const inner = await asBypass("platform.account.mail", () => currentBypass()); return [inner, currentBypass()]; }));
+  let pair: unknown;
+  try { pair = await inRequest(signupRoute, () => asBypass("platform.firms.signup", async () => { const inner = await asBypass("platform.account.mail", () => currentBypass()); return [inner, currentBypass()]; })); } catch (e) { pair = String(e); }   // review n1: a regression prints FAIL
   ok("PF-12b pass (the one named exception, PF-19p): platform.account.mail (touches no firm's rows) runs inside platform.firms.signup under its own name, and sign-up's use comes back after it", JSON.stringify(pair) === JSON.stringify(["platform.account.mail", "platform.firms.signup"]), pair);
   const notNamed = await errOf(() => inRequest(signupRoute, () => asBypass("platform.firms.signup", () => asBypass("platform.identity.authenticate", () => 1))));
   const reversed = await errOf(() => inRequest(signupRoute, () => asBypass("platform.account.mail", () => asBypass("platform.firms.signup", () => 1))));
   const named = Object.entries(BYPASS_USES).filter(([, e]) => e.inside?.length).map(([k, e]) => `${k}<${e.inside!.join("|")}`);
   ok("PF-12b fail (the exception stays narrow): another use inside sign-up, and sign-up inside platform.account.mail, are both refused; only that one pair is named, on a none use",
     notNamed instanceof BypassRefused && reversed instanceof BypassRefused && JSON.stringify(named) === JSON.stringify(["platform.account.mail<platform.firms.signup"]) && BYPASS_USES["platform.account.mail"].audit.startsWith("none: "), { notNamed: String(notNamed), reversed: String(reversed), named });
+  const mail = BYPASS_USES["platform.account.mail"];
+  ok("PF-12b fail (review m1): a per-firm use that names an outer use may still not run inside it; nor may a none use inside a use it does not name",
+    mayRunInside(mail, "platform.firms.signup") && !mayRunInside({ ...mail, audit: "per-firm" }, "platform.firms.signup") && !mayRunInside(mail, "platform.demo.inbox") && !mayRunInside({ audit: mail.audit }, "platform.firms.signup"));
   const spoof = fakeAudit(), wasS = onBypassAudit(spoof);
   await requestScope.run({ correlationId: "Client.A.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, A); }));
   await requestScope.run({ correlationId: "job:Client.A.passport.lost", firmId: () => undefined }, () => asBypass("platform.demo.reset", async () => { await touchFirm({}, B); }));
@@ -307,16 +311,34 @@ try {
   const madeIn: string[] = [];
   const work = (f: string) => async () => { madeIn.push(f); return f; };
   const wonBefore = lines(CATCH_UP_USE);
-  const wonRan = await asBypass(CATCH_UP_USE, async () => { const each = touchedEach(db); return [await each(A, work(A)), await each(A, work(A)), await each(B, work(B))]; });
+  const wonRan = await asBypass(CATCH_UP_USE, async () => { const each = touchedEach(db); return [await each(A, work(A), "pA1"), await each(A, work(A), "pA2"), await each(B, work(B), "pB1")]; });
   ok("PF-12b pass (CS-K1 catch-up): one platform.bypass line per firm with a due prospect, once a run (A's two prospects, one line), then each prospect runs",
     wonBefore === "" && lines(CATCH_UP_USE) === [A, B].sort().map((f) => `${f}:1`).join(",") && wonRan.join(",") === `${A},${A},${B}` && madeIn.length === 3, { lines: lines(CATCH_UP_USE), wonRan });
   const wonRec = fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }), wasW = onBypassAudit(wonRec);
   madeIn.length = 0;
-  const wonErrs = await asBypass(CATCH_UP_USE, async () => { const each = touchedEach(db); return Promise.all([errOf(() => each(A, work(A))), errOf(() => each(B, work(B))), errOf(() => each(B, work(B)))]); });
+  const wonErrs = await asBypass(CATCH_UP_USE, async () => { const each = touchedEach(db); return Promise.all([errOf(() => each(A, work(A), "pA1")), errOf(() => each(B, work(B), "pB1")), errOf(() => each(B, work(B), "pB2"))]); });
   onBypassAudit(wasW);
   ok("PF-12b fail (CS-K1 catch-up): when firm B's line cannot be written, B's prospects are not taken in (each refused in plain words), A's still are",
     wonErrs[0] === null && plain(wonErrs[1]) && plain(wonErrs[2]) && JSON.stringify(madeIn) === JSON.stringify([A]) && wonRec.entries.map((e) => e.firmId).join(",") === A, { errs: wonErrs.map(String), madeIn });
-  ok("PF-12b pass (CS-K1 catch-up): outside the bypass use (a suite or the tool) the same helper writes no line", await (async () => { const n = total(); await touchedEach(db)(A, work(A)).catch(() => null); return total() === n; })());
+  ok("PF-12b pass (CS-K1 catch-up): outside the bypass use (a suite or the tool) the same helper writes no line", await (async () => { const n = total(); await touchedEach(db)(A, work(A), "pA1").catch(() => null); return total() === n; })());
+  // Break M1 (20 Nov): a prospect that never succeeds must not write a line on every poll (8,640 a day at 10 s).
+  let t = 1_000_000; const tNow = () => t, backoff: WonBackoff = new Map();
+  const stuck = async () => { throw new Error("a prospect that never succeeds"); };
+  const run = () => asBypass(CATCH_UP_USE, async () => { const each = touchedEach(db, backoff, tNow, 10_000); return [await errOf(() => each(A, stuck, "stuck")), await each(B, work(B), "fine")]; });
+  const linesOf = (f: string) => Number(sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'use' = '${CATCH_UP_USE}' and detail->>'firmId' = '${f}'`));
+  const a0 = linesOf(A), b0 = linesOf(B);
+  const tries: number[] = [];
+  // A day of polls, every 10 s. A poll while the prospect waits writes nothing and tries nothing (the next check proves it),
+  // so only the polls where its wait is over are run here, to keep the suite fast.
+  for (let k = 0; k < 8640; k++, t += 10_000) { const h = backoff.get(`${A}:stuck`); if (h && h.until > t) continue; const before = linesOf(A); await run(); if (linesOf(A) > before) tries.push(t); }
+  const day = linesOf(A) - a0, waits = tries.slice(1).map((x, i) => x - tries[i]);
+  ok("PF-12b pass (break M1): a prospect that never succeeds is retried after a doubling wait capped at one hour, so a day of 10 s polls writes about 33 lines to its firm, not 8,640",
+    day >= 20 && day <= 40 && waits.slice(0, 3).join(",") === "10000,20000,40000" && Math.max(...waits) <= BACKOFF_MAX_MS + 10_000 && backoff.get(`${A}:stuck`)!.wait === BACKOFF_MAX_MS, { day, waits: waits.slice(0, 12) });
+  ok("PF-12b fail (break M1): while firm A's prospect waits, a poll writes no line for A and does not try it; firm B's healthy prospect is tried (and lined) on its runs, and leaves no backoff",
+    await (async () => { const n = linesOf(A); const r = await run(); return linesOf(A) === n && r[0] === null && r[1] === B && !backoff.has(`${B}:fine`) && linesOf(B) > b0; })());
+  backoff.set(`${A}:mends`, { until: t - 1, wait: BACKOFF_MAX_MS });
+  const mended = await asBypass(CATCH_UP_USE, () => touchedEach(db, backoff, tNow, 10_000)(A, work(A), "mends"));
+  ok("PF-12b pass (break M1): a waiting prospect whose wait is over is tried (with its line) and, once it succeeds, leaves the backoff", mended === A && !backoff.has(`${A}:mends`));
 
   // ------------------------------------------------- sign-up with the real platform account mail (merge of main, 20 Nov)
   // Sign-up's background step runs inside "platform.firms.signup"; its verification email (PF-19p, MessagesMail) opens
@@ -335,6 +357,13 @@ try {
   await realSignUp.signUp({ ...form, email: knownTo, formStamp: pk.formStamp }, "10.12.0.10"); await realSignUp.settled();
   ok("PF-12b pass (sign-up, real mail): an email already on firm A's staff gets the \"already have an account\" platform email, and firm A gets one more platform.bypass line",
     sql(`select count(*) from msg_outbox where audience = 'PLATFORM_ACCOUNT' and address = '${knownTo}'`) === "1" && lines("platform.firms.signup") !== knownLines, { knownTo, before: knownLines, after: lines("platform.firms.signup") });
+  const knownB = sql(`select email from platform_staff where firm_id = '${B}' order by email limit 1`);
+  const refuseB = fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }), wasK = onBypassAudit(refuseB);
+  const pb = await realSignUp.plans(); await clock.advance({ seconds: 5 });
+  await realSignUp.signUp({ ...form, email: knownB, formStamp: pb.formStamp }, "10.12.0.11"); await realSignUp.settled();
+  onBypassAudit(wasK);
+  ok("PF-12b fail (review m2): when firm B's line cannot be written, the known-account lookup sends no \"already have an account\" email (the line comes first, P-607)",
+    sql(`select count(*) from msg_outbox where address = '${knownB}'`) === "0" && refuseB.entries.length === 0, { knownB, rows: sql(`select count(*) from msg_outbox where address = '${knownB}'`) });
 } finally {
   for (const c of clients) await c.$disconnect().catch(() => {});
   for (const p of pools) await p.end().catch(() => {});

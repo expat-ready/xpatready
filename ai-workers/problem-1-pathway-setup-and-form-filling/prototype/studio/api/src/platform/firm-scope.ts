@@ -120,7 +120,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "none: a platform job sends one PLATFORM_ACCOUNT message, a row with no firm; it reads and writes no firm's rows (PF-19p). A firm's send job runs as its firm, not on this use." },
   "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "none: a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row; no firm's rows (PF-19p).", inside: ["platform.firms.signup"] },
   "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true, audit: "none: every re-encrypt job is queued with its firm and runs as that firm (withFirm, not this use); a job of this queue with no firm is refused before any read (reencrypt.ts)" },
-  "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm), and at the first run each firm with an unlinked client gets its one-time link job (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
+  "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
@@ -154,6 +154,11 @@ export function onBypassLine(f: (use: string, route: string | undefined) => void
 /** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
  *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
  *  per firm it touches (touchFirm). */
+/** The one nesting rule (PF-12b, merge of PF-19p): a use runs inside an outer use only when it touches no firm's rows
+ *  ("none: …") and names that outer use in `inside`. Exported for the suite's per-firm stand-in (review m1, 20 Nov). */
+export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
+  return entry.audit.startsWith("none: ") && (entry.inside ?? []).includes(outer);
+}
 export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promise<T> {
   const entry = Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined;
   const store = scope.getStore(), route = store?.route;
@@ -168,7 +173,7 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   if (store?.bypass === use) return await fn();
   // The one named exception (merge of PF-19p): sign-up's emails open platform.account.mail inside platform.firms.signup.
   // A use that touches no firm's rows may run inside an outer use it names; the outer use comes back after it.
-  const within = !!store?.bypass && entry.audit.startsWith("none: ") && (entry.inside ?? []).includes(store.bypass);
+  const within = !!store?.bypass && mayRunInside(entry, store.bypass);
   if (store?.bypass && !within) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());

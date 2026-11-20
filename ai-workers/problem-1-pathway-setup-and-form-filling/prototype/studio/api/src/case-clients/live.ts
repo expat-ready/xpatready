@@ -23,13 +23,29 @@ export const CATCH_UP_USE = "cases.prospect-won.catch-up";
 export const pollMs = () => Math.min(3_600_000, Math.max(200, Number(process.env.PROSPECT_WON_POLL_MS) || 10_000));   // breaker F7
 
 /** PF-12b (QA-499, P-607): how one run takes each due prospect. The list read crossed firms on CATCH_UP_USE, so each firm
- *  with a due prospect gets its platform.bypass line once a run (its own transaction), before any of its clients is made
- *  as that firm (withFirm); a firm whose line cannot be written is not taken in: its prospects fail and are retried. */
-export function touchedEach(db: PrismaClient) {
+ *  with a prospect tried this run gets its platform.bypass line once a run (its own transaction), before any of its
+ *  clients is made as that firm (withFirm); a firm whose line cannot be written is not taken in: its prospects fail.
+ *  `backoff` (the poller's, kept across runs; break M1 of 20 Nov): a prospect that failed is not tried again, and so
+ *  writes no line, until its wait is over; the wait doubles from one poll to at most an hour (about 33 lines a day for a
+ *  prospect that never succeeds, not one each poll). A prospect that succeeds leaves the backoff. */
+export type WonBackoff = Map<string, { until: number; wait: number }>;
+export const BACKOFF_MAX_MS = 3_600_000;
+export function touchedEach(db: PrismaClient, backoff: WonBackoff = new Map(), now: () => number = Date.now, firstWait: number = pollMs()) {
   const lined = new Map<string, Promise<void>>();
-  return <T,>(firmId: string, fn: () => Promise<T>): Promise<T> => {
+  return async <T,>(firmId: string, fn: () => Promise<T>, prospectId: string): Promise<T | null> => {
+    const key = `${firmId}:${prospectId}`, held = backoff.get(key);
+    if (held && held.until > now()) return null;
     if (!lined.has(firmId)) lined.set(firmId, touchFirms(db, [firmId]));
-    return lined.get(firmId)!.then(() => withFirm(firmId, fn));
+    try {
+      await lined.get(firmId)!;
+      const r = await withFirm(firmId, fn);
+      backoff.delete(key);
+      return r;
+    } catch (e) {
+      const wait = held ? Math.min(BACKOFF_MAX_MS, held.wait * 2) : Math.min(BACKOFF_MAX_MS, firstWait);
+      backoff.set(key, { until: now() + wait, wait });
+      throw e;
+    }
   };
 }
 
@@ -37,6 +53,8 @@ export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, On
   private timer: ReturnType<typeof setInterval> | null = null;
   private running: Promise<void> | null = null;
   private validated = false;
+  /** PF-12b: failed prospects wait before their next try (touchedEach). */
+  private readonly backoff: WonBackoff = new Map();
   /** The last run's result (a test reads it). */
   last: WonCatchUp | null = null;
   constructor(private readonly db: Db, private readonly ws: Workspace, private readonly foPerson: FoPersonPort<Prisma.TransactionClient>, private readonly jobs?: PlatformJobs) {}
@@ -57,7 +75,7 @@ export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, On
     try {
       const deps = { workspaceId: await this.ws.id(), foPerson: this.foPerson, audit: auditEvent };
       // The outbox is walled (PF-12): only its read crosses firms; case_client is the case side's own table (review m7).
-      this.last = await asBypass(CATCH_UP_USE, () => catchUpProspectsWon(this.db, deps, touchedEach(this.db)));
+      this.last = await asBypass(CATCH_UP_USE, () => catchUpProspectsWon(this.db, deps, touchedEach(this.db, this.backoff)));
       if (this.last.failed.length) console.warn(`FO-8: ${this.last.failed.length} won prospect(s) not taken in: ${this.last.failed.map((f) => f.prospectId).join(", ")}`);
       if (!this.jobs?.runner.started) return;
       const waiting = await this.db.caseClient.findMany({ where: { firmId: { not: null }, foPersonId: null, foCompanyId: null }, distinct: ["firmId"], orderBy: [{ firmId: "asc" }, { clientNumber: "asc" }], select: { firmId: true, id: true } });
