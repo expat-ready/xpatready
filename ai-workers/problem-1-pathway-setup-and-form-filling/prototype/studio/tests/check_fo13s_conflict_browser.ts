@@ -146,6 +146,18 @@ try {
   await r.reload(); await status(r).waitFor();
   ok("FO-13s2 BR-5 fail: the client's email changed after the check → the status is the stale refusal (a new check is needed)", (await status(r).getAttribute("data-conflict-status")) === "CONFLICT_CHECK_STALE" && /new check/.test(await status(r).innerText()));
 
+  // ---------------------------------------------------- break R1: the list cannot load, Convert is refused: the refusal still shows
+  const fin = prospect("Fin", R.id), rf = await pageAs(tok.R);
+  await rf.route(/\/api\/front-office\/prospects\/[^/]+\/conflict-checks$/, (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ title: "Server error", detail: "Sample failure", status: 500 }) }));
+  await rf.goto(`${BASE}/front-office/prospects/${fin.id}`); await rf.getByRole("button", { name: "Convert to client" }).waitFor({ timeout: 30_000 });
+  await rf.getByRole("button", { name: "Convert to client" }).click();
+  const convF = rf.getByRole("dialog", { name: /Convert .* to a client\?/ });
+  await convF.getByRole("button", { name: "Yes, convert to client" }).click();
+  await convF.getByText(/Record a conflict-of-interest check for this client first/).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  ok("FO-13s2 break R1 fail: with the conflict list failing, a Convert refusal still shows the server's sentence once (never a silent dialog)",
+    (await convF.getByText(/Record a conflict-of-interest check for this client first/).count()) === 1 && sql(`select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${fin.id}'`) !== "WON");
+  await rf.context().close();
+
   // ---------------------------------------------------- review M2: every opening searches afresh (never the last answer)
   const eve = prospect("Eve", R.id);
   await open(r, eve.id); await runCheck(r);

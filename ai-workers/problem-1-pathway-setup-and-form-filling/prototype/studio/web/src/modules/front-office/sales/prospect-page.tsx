@@ -31,10 +31,11 @@ function ProspectBody({ id }: { id: string }) {
   const me = useStaff(), owners = useOwners(), move = useMove(), toast = useToast(), qc = useQueryClient();
   const key = ["fo", "prospects", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Prospect.parse(await staffApi(`/front-office/prospects/${encodeURIComponent(id)}`)) });
-  const conflictRefused = useConflictList(id).data?.clearance.ok === false;   // FO-13s: "Work can start" never shows under a conflict refusal (challenge m5)
+  const verdict = useConflictList(id).data?.clearance, conflictRefused = verdict?.ok === false;   // FO-13s: "Work can start" never shows under a conflict refusal (challenge m5)
+  const noteCode = verdict && !verdict.ok ? verdict.code : null;
   const board = useQuery({ queryKey: ["fo", "prospects", "board"], queryFn: async () => Board.parse(await staffApi("/front-office/pipelines/INDIVIDUAL/board")) });
   const [open, setOpen] = React.useState<Act | null>(null);
-  const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string } | null>(null);
+  const [reasonId, setReasonId] = React.useState(""), [text, setText] = React.useState(""), [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const reasons = useQuery({ enabled: open === "lost", queryKey: ["fo", "lost-reasons"], queryFn: async () => LostReasons.parse(await staffApi("/front-office/prospects/lost-reasons")) });
   const lock = useLock(), focus = useReturnFocus();
   const [currency, setCurrency] = React.useState("");
@@ -58,14 +59,13 @@ function ProspectBody({ id }: { id: string }) {
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
       if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id] });   // FO-13s: the gate's verdict read again
-      if (e instanceof StaffApiError && FIXED_BY_A_CHECK.has(e.problem.code ?? "")) { setError(null); return; }   // the dialog's conflict note says it once, with its link (review minor)
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
       // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
       if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
       const field = e instanceof StaffApiError ? (["reasonId", "reason", "value", "currency"].find((f) => e.field(f)) ?? null) : null;
       // A refusal about a field stays on the field, with what was typed kept (BIC-13); any other is said at the top of
       // the panel; the prospect is read again either way.
-      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message });
+      setError({ field, text: !(e instanceof StaffApiError) ? "Could not save. Please try again." : field === "reasonId" && a === "lost" ? "Choose why it was lost." : e.message, code: e instanceof StaffApiError ? e.problem.code : undefined });
     },
     onSettled: () => { lock.free(); return qc.invalidateQueries({ queryKey: ["fo", "prospects"] }); },
   });
@@ -105,7 +105,8 @@ function ProspectBody({ id }: { id: string }) {
     if (!lock.take()) return;
     setError(null); act.mutate(a);
   };
-  const general = error && !error.field ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;
+  const saidByNote = !!error?.code && FIXED_BY_A_CHECK.has(error.code) && error.code === noteCode;   // FO-13s: said once, by the note with its link; kept when the note cannot show it (break R1)
+  const general = error && !error.field && !saidByNote ? <Notice tone="danger" title={error.text} className="mb-3" /> : null;
   const row = (label: string, value: React.ReactNode) => <div className="grid grid-cols-[8rem_1fr] gap-2 py-1.5 text-sm"><dt className="text-text-muted">{label}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{value}</dd></div>;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
