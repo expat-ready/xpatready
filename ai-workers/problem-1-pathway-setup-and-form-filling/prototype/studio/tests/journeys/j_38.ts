@@ -27,6 +27,13 @@
 // with the product's own functions.
 //   W6 (R1.38's staff zone, FO-3st1): the host, signed in from a browser in Europe/London, sees the booking at 10:00 in
 //       the office zone on the staff calendar and in its detail, beside the booker's 19:00 (Asia/Dubai).
+//   W9 (R1.38 "across a daylight-saving change", QA-616): the next Toronto clock change is found from today's clock (so the
+//       walk never goes stale), and a booker in Asia/Dubai books, by screens, 10:00 Toronto on the last open day before it
+//       and the first open day after it (15:00Z and 14:00Z in March; 14:00Z and 15:00Z in November). Each is stored at its
+//       own instant; the host, in a Europe/London browser, sees both in the 10:00 row of the staff calendar in the office
+//       zone, and their details read 10:00–10:30 America/Toronto beside the booker's hour; both mails name each one's own
+//       zone (10:00 a.m. America/Toronto for the host, the right p.m. hour in Asia/Dubai for the booker), and both invites
+//       start at the right UTC instant. The type's booking window is 250 days so the next change is always bookable.
 // Setup a person cannot do through the product yet (the firm, its host, hours and consultation type) is written straight
 // to the copy's database (Sample rows). Sample values only; US$0, no model call.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -93,7 +100,7 @@ await copyFirmHoursTo(db, firm.id, [host.id]);
 // W6 signs the host in (PF-4's local stand-in, PLATFORM_IDENTITY=local on the copy) as a Case Officer (a seeded role).
 await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "CASE_OFFICER", grantedBy: "seed:J-38-test" } });
 await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "OWNER", grantedBy: "seed:J-38-test" } });   // W7, W8: staff who may move and cancel
-await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30 } });
+await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30, windowDays: 250 } });   // W9: the next clock change is at most ~240 days away
 console.log(`setup (not through the product: no firm, staff, hours or type screens in this walk): firm ${key} in ${FIRM_ZONE}, one host, type "free"`);
 
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -305,6 +312,110 @@ try {
       { mails: list.map((m) => m.subject), method: i.method, status: statusOf(last), uid: i.uid === uid, seq: [seqOf(prev), seqOf(last)] });
   }
   ok("J-38 W8: the booker's cancel mail carries no manage link (nothing left to change)", !!b8[2] && !/manage#|reschedule or cancel/i.test(b8[2].body), seen(b8[2]?.body ?? ""));
+
+  // ---------------------------------------------------------------------------------------------- W9: across a clock change (R1.38, QA-616)
+  // The next day Toronto's UTC offset changes, worked out here with Intl (never the product's code): the offset is read
+  // at noon UTC each day from today. The walk books 10:00 Toronto on the last open day the page offers before that day and
+  // the first one after it, at least 26 hours ahead; if the change is too near for a day before it, the following change.
+  const offsetOn = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: FIRM_ZONE, timeZoneName: "shortOffset" }).formatToParts(t).find((x) => x.type === "timeZoneName")?.value ?? "";
+  const DAY = 24 * HOUR, today = Math.floor(Date.now() / DAY) * DAY + 12 * HOUR;
+  const changes: number[] = [];
+  for (let d = 1; d < 400 && changes.length < 2; d++) if (offsetOn(today + d * DAY) !== offsetOn(today + (d - 1) * DAY)) changes.push(today + d * DAY);   // noon UTC of the first day on the new offset
+  const tenToronto = (noon: number) => [14, 15].map((h) => noon + (h - 12) * HOUR).find((x) => torontoClock.format(x) === "10:00") ?? 0;
+  const monthName = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "long", year: "numeric" }).format(t);   // "March 2027"
+  const dayLabel = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(t).replace(",", "");
+  /** Opens the booking page at the month of `t` and returns the open days the page offers there (their noon UTC). */
+  const openDays = async (t: number) => {
+    await p.goto(`${BASE}/book/${key}`);
+    await p.getByRole("link", { name: "Choose Free consultation" }).click();
+    await p.getByRole("heading", { name: "Choose a time" }).waitFor();
+    await p.locator("[data-loading]").waitFor({ state: "detached" });
+    for (let i = 0; i < 10 && (await monthHeading.innerText()) !== monthName(t); i++) {
+      const before = await monthHeading.innerText();
+      await p.getByRole("button", { name: "Next month" }).click(); await monthHeading.filter({ hasNotText: before }).waitFor();
+      await p.locator("[data-loading]").waitFor({ state: "detached" });
+    }
+    const shown = await monthHeading.innerText();
+    const labels = await p.getByRole("group", { name: shown }).locator("button:not([disabled])").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label") ?? ""));
+    return labels.map((l) => Date.parse(`${l.split(" ")[1]} ${shown} 12:00 UTC`)).filter((x) => Number.isFinite(x));
+  };
+  /** Whether the page offers 10:00 Toronto (in the booker's zone) on the day at `noon`: the day is opened and its times read,
+   *  as a person does (an open day in Dubai can hold only Toronto's evening before, e.g. Saturday 00:00-01:30). */
+  const offersTen = async (noon: number) => {
+    const t = tenToronto(noon); if (!t) return false;
+    const label = dayLabel(noon);
+    if ((await monthHeading.innerText()) !== monthName(noon) || !(await p.getByRole("button", { name: label, exact: true }).count())) await openDays(noon);
+    const b = p.getByRole("button", { name: label, exact: true });
+    if (!(await b.count()) || await b.isDisabled()) return false;
+    await b.click(); await dayTimes(label).waitFor();
+    return (await p.getByRole("button", { name: `${label}, ${pad(new Date(t).getUTCHours() + 4)}:00 ${BOOKER_ZONE} time`, exact: true }).count()) === 1;
+  };
+  let pair: { before: number; after: number; change: number } | null = null;
+  for (const change of changes) {
+    const near = [...new Set([...(await openDays(change - 7 * DAY)), ...(await openDays(change)), ...(await openDays(change + 7 * DAY))])].sort((a, b) => a - b);
+    let before = 0, after = 0;
+    for (const n of near.filter((x) => x < change && x >= change - 7 * DAY && tenToronto(x) > Date.now() + 26 * HOUR).reverse()) if (await offersTen(n)) { before = n; break; }
+    for (const n of near.filter((x) => x >= change && x <= change + 7 * DAY)) if (await offersTen(n)) { after = n; break; }
+    if (before && after) { pair = { before, after, change }; break; }
+  }
+  ok("J-38 W9: the next Toronto clock change is found from today's clock, with an open day on the booking page either side of it", !!pair, { changes: changes.map((c) => new Date(c).toISOString().slice(0, 10)) });
+  if (!pair) throw new Error("W9: no open day either side of the next clock change");
+  console.log(`NOTE  W9: Toronto's clocks change on ${new Date(pair.change - DAY).toISOString().slice(0, 10)}/${new Date(pair.change).toISOString().slice(0, 10)}; booking ${dayLabel(pair.before)} and ${dayLabel(pair.after)}`);
+  const sides = [{ tag: "before", noon: pair.before }, { tag: "after", noon: pair.after }].map((x) => {
+    const at9 = tenToronto(x.noon), h = new Date(at9).getUTCHours();
+    return { ...x, at: at9, utcHour: h, dubaiHour: h + 4, label: dayLabel(x.noon), email: `booker-w9${x.tag}-${run}@j38-client.example`,
+      torontoDay: new Intl.DateTimeFormat("en-CA", { timeZone: FIRM_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(at9),
+      mailDay: new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", dateStyle: "full" }).format(at9) };
+  });
+  ok(`J-38 W9: the two sides are on different UTC offsets (10:00 Toronto = ${sides[0].utcHour}:00Z, then ${sides[1].utcHour}:00Z)`, sides[0].utcHour !== sides[1].utcHour && sides.every((x) => x.utcHour === 14 || x.utcHour === 15), sides.map((x) => new Date(x.at).toISOString()));
+  const w9ids: Record<string, string> = {};
+  for (const x of sides) {
+    await openDays(x.noon);
+    await p.getByRole("button", { name: x.label, exact: true }).click();
+    await dayTimes(x.label).waitFor();
+    const name9 = `${x.label}, ${pad(x.dubaiHour)}:00 ${BOOKER_ZONE} time`;
+    const slot9 = p.getByRole("button", { name: name9, exact: true });
+    ok(`J-38 W9 ${x.tag}: "${name9}" is offered (10:00 Toronto, shown in the booker's zone)`, (await slot9.count()) === 1, await p.locator("[data-day-times] li button").allInnerTexts());
+    await slot9.click();
+    await p.getByRole("heading", { name: "Your details" }).waitFor();
+    await p.getByLabel("Given names").fill("Ana"); await p.getByLabel("Family name").fill("Sample"); await p.getByLabel("Email").fill(x.email);
+    await p.waitForTimeout(3_500);   // the form's minimum fill time
+    await p.getByRole("button", { name: "Book this time" }).click();
+    await p.locator('[data-public-state="booked"], [data-summary]').first().waitFor({ timeout: 20_000 });
+    const said = await p.locator("main").innerText();
+    await shot(p, `W9-${x.tag}-booked`);
+    const r9 = await db.foBooking.findFirst({ where: { firmId: firm.id, startsAt: new Date(x.at) } });
+    w9ids[x.tag] = r9?.id ?? "";
+    ok(`J-38 W9 ${x.tag}: "You are booked" for ${name9}; underneath it is at ${new Date(x.at).toISOString()} with the booker's zone kept`, said.includes("You are booked") && said.includes(name9) && r9?.bookerTimeZone === BOOKER_ZONE && r9?.staffId === host.id, { said: said.slice(0, 160), r9: [r9?.startsAt, r9?.bookerTimeZone] });
+  }
+  const londonCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "Europe/London", locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
+  await londonCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);   // W7's sign-in, the host's current session
+  const lp = await londonCtx.newPage();
+  lp.on("console", (m) => { if (m.type() === "error") console.log(`NOTE  W9 browser: ${m.text().slice(0, 200)}`); });
+  for (const x of sides) {
+    const londonHour9 = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(x.at));
+    await lp.goto(`${BASE}/front-office/bookings?view=week&whose=mine&date=${x.torontoDay}`);
+    await lp.locator("[data-grid]").waitFor({ timeout: 30_000 }).catch(async (e) => { await shot(lp, `W9-${x.tag}-no-grid`); console.log(`NOTE  W9: ${(await lp.locator("main").innerText().catch(() => "")).slice(0, 300)}`); throw e; });
+    const zone9 = await lp.locator("[data-zone-line]").innerText();
+    const inTen9 = await lp.locator(`[data-cell="${x.torontoDay}T10"] [data-block="${w9ids[x.tag]}"]`).count();
+    await shot(lp, `W9-${x.tag}-staff-week`); await axe(lp, `W9 ${x.tag}: the host's week`);
+    ok(`J-38 W9 ${x.tag}: the host's calendar (browser in Europe/London) names ${FIRM_ZONE} and shows the booking in the 10:00 row of ${x.torontoDay}`, zone9.includes(FIRM_ZONE) && inTen9 === 1, { zone9, inTen9 });
+    await lp.locator(`[data-block="${w9ids[x.tag]}"]`).click();
+    await lp.locator("[data-booking-detail]").waitFor({ timeout: 20_000 });
+    const when9 = await lp.locator("[data-when]").innerText();
+    await shot(lp, `W9-${x.tag}-staff-detail`);
+    ok(`J-38 W9 ${x.tag}: the detail reads 10:00–10:30 ${FIRM_ZONE} and ${pad(x.dubaiHour)}:00 for the booker (${BOOKER_ZONE}), no London time (${londonHour9}:00)`,
+      when9.includes(`10:00–10:30 ${FIRM_ZONE}`) && when9.includes(`${pad(x.dubaiHour)}:00 for Ana Sample (${BOOKER_ZONE})`) && !when9.includes("Europe/London") && !when9.includes(`${pad(londonHour9)}:00`), when9);
+  }
+  await londonCtx.close();
+  const host9 = await inbox(hostEmail, 5);
+  for (const x of sides) {
+    const hm = host9.find((m) => plain(m.subject).includes(x.mailDay)), [bm] = await inbox(x.email, 1);
+    const hostSays = `${x.mailDay} at 10:00 a.m. (${FIRM_ZONE})`, bookerSays = `${x.mailDay} at ${clock12(x.dubaiHour, 0)} (${BOOKER_ZONE})`, z = new Date(x.at).toISOString();
+    ok(`J-38 W9 ${x.tag}: the host's mail reads "${hostSays}" and the booker's "${bookerSays}"`, !!hm && plain(`${hm.subject}\n${hm.body}`).includes(hostSays) && !!bm && plain(`${bm.subject}\n${bm.body}`).includes(bookerSays), [hm?.subject, seen(plain(bm?.body ?? ""))]);
+    const [hi, bi] = [icsAt(hm), icsAt(bm)];
+    ok(`J-38 W9 ${x.tag}: both invites are one event starting at ${z} (UTC), the booking's UID`, hi.start === x.at && bi.start === x.at && hi.events === 1 && bi.events === 1 && !!hi.uid && hi.uid === bi.uid && hi.uid.startsWith(w9ids[x.tag]), [hi.rawStart, bi.rawStart, hi.uid]);
+  }
 } finally {
   await browser.close();
   await db.$disconnect();
