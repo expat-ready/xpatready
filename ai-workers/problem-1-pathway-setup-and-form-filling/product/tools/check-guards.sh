@@ -187,7 +187,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 cap|product/tools/waves.py|s/    if len(building) > CAP_BUILDING:/    if False:/|check-waves.sh
 28 ids|product/tools/waves.py|s/        if miss or extra or dup:/        if False:/|check-waves.sh
 30 stale|product/tools/runs-waiting.py|s/(stale if c and now - c >= timedelta(hours=FRESH_H) else fresh)/fresh/|check-runs-waiting.sh
-30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh'
+30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh
+31|product/tools/image-size.sh|s/ --not "\$base"//|check-image-size.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

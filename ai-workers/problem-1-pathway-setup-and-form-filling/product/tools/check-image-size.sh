@@ -34,6 +34,11 @@ g checkout -qb side main; g checkout -q main; bytes shots/main-only.png 500000; 
 g checkout -q side; bytes shots/side.png 1000; g add -A; g commit -qm side
 ok "base moved on after the branch was cut: an image only main added is not the branch's" "$([ "$(run --enforce main..side)" = 0 ] && ! has main-only && has 'new to history: 1 (1 KB)' && echo 1 || echo 0)" "$(cat "$T/out")"
 
+g checkout -qb copy side; g show main:shots/main-only.png > "$R/shots/copy.png"; g add -A; g commit -qm copy
+ok "bytes main already holds (base not an ancestor of head) are not new under another name" "$([ "$(run --enforce main..copy)" = 0 ] && ! has copy.png && echo 1 || echo 0)" "$(cat "$T/out")"
+S="$T/shallow"; git clone -q --depth 1 --branch side "file://$R" "$S" 2>/dev/null && git -C "$S" fetch -q --depth 1 origin main:refs/remotes/origin/main 2>/dev/null
+ok "a depth-1 clone (CI's checkout) counts only what the branch adds, not the whole tree" "$( (cd "$S" && bash "$TOOL" origin/main..HEAD > "$T/out" 2>&1); has 'new to history: 1 (1 KB)' && ! has old-big && echo 1 || echo 0)" "$(cat "$T/out")"
+
 g checkout -qb edge main; head -c 307200 /dev/urandom > "$R/shots/at-limit.png"; head -c 307201 /dev/urandom > "$R/shots/one-over.png"
 bytes "shots/sub dir/café é.webp" 320000; g add -A; g commit -qm edge
 ok "exactly 300 KB passes, one byte more is listed" "$([ "$(run main..edge)" = 0 ] && ! has at-limit && has 'shots/one-over.png (301 KB)' && echo 1 || echo 0)" "$(cat "$T/out")"

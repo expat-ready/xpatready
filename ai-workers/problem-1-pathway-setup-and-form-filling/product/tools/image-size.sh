@@ -6,7 +6,9 @@
 # shrunk by a later commit still counts (PRs merge with merge commits, so every commit stays), a file main changed
 # after the branch was cut does not, and a rename of an existing image adds nothing. Report-only by default (exit 0, so
 # it slows no lane); with --enforce, exit 1 on any such image. Wired into nothing yet: whether and where it blocks is
-# the tech lead's decision. Exit 2 on bad use or when git cannot read the range (never a pass). US$0, no network.
+# the tech lead's decision. --objects-edge-aggressive also leaves out every file in the base commit itself, so a
+# shallow clone (CI's default checkout) or a base that is not an ancestor of head never counts the whole tree. An image
+# deleted before the base and later restored counts as new (rare; errs toward reporting). Exit 2 on bad use or when git cannot read the range (never a pass). US$0, no network.
 #   bash product/tools/image-size.sh [--enforce] <base>..<head>
 # Test: product/tools/check-image-size.sh.
 set -u -o pipefail
@@ -31,7 +33,7 @@ base="${range%%..*}"; head="${range#*..}"
 for r in "$base" "$head"; do git rev-parse --verify -q "$r^{commit}" >/dev/null || { echo "cannot read $r" >&2; exit 2; }; done
 # Every blob new to the range with the first path git saw it under, then its size. Held in a variable, so a git error
 # ends the run (pipefail) instead of reading as "no images".
-list=$(git rev-list --objects "$head" --not "$base" \
+list=$(git rev-list --objects-edge-aggressive "$head" --not "$base" \
   | git cat-file --batch-check='%(objecttype) %(objectsize) %(rest)') || { echo "git cannot read the range $range" >&2; exit 2; }
 n=0; over=0; total=0; over_total=0
 while IFS= read -r line; do
