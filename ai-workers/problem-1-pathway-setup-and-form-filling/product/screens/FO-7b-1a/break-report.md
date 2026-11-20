@@ -69,3 +69,61 @@ Isolated copy `brk7b` on :4479 (database `xr_studio_brk7b`, `PLATFORM_IDENTITY=l
 * A firm with no payment settings (`PAYMENTS_NOT_SET_UP`). Both seeded firms needed settings for the rest of the run. This was checked by code reading only (`drafts.ts` `settingsOrRefuse`).
 
 Verdict: Changes requested
+
+## Re-break of 8f298699c
+
+Scope (P-277): only the diff `8a243502f..8f298699c`:
+* `drafts.ts`: `money_text_ok` is asked before the write; adding to another person's draft needs `agent/invoice:edit` through `holdsKey`; GET reads in one REPEATABLE READ transaction.
+* `ports/client-money.ts`: the 500-character limit is counted in code points.
+
+Setup: a fresh isolated copy `brk7b` on :4479 at `8f298699c`, the same Sample setup as before (user-T is a Case Manager, with no `:edit`). The copy was stopped at the end.
+
+### Findings (Minor only)
+
+**Minor 3: about 200 or more requests at once on one draft give a 500 (P2028), now on GET as well.**
+* **Requests:** one draft, then 200 `POST …/lines` and 200 `GET …/:id`, all sent at once.
+* **Results over four runs:**
+  * add: 26-47 × 500 per run;
+  * GET: 0, 43, 89 and 74 × 500;
+  * 300 adds alone: 122 × 500.
+* **Cause:** the api.log shows `PrismaClientKnownRequestError P2028`: the interactive transaction did not start within Prisma's default 2 s `maxWait`.
+* **Row state:** the lines stored equal the 201 answers, and line rows equal `invoice.line_added` audit rows (2,182 = 2,182). Nothing is lost and nothing is extra.
+* **Below that load it held:** 100 adds + 100 GETs, 600 GETs alone, 150 adds alone, and 5 drafts × (20 adds + 20 GETs) gave no 500.
+* **Why Minor:** the add path was a transaction already at `8a243502f` (my first run went only to 60 at once). The GET path is new to this commit. This repository already rates this case as a break (`api/src/busy.ts` `busyWords`, "C9.5 (break m7)"; `api/src/runtime.ts:374`, "Prisma's default 2 s and 5 s answered a 500 (P2028)").
+* **Fix:** pass `{ maxWait: 10_000, timeout: 15_000 }` to both `$transaction` calls in `drafts.ts`, and wrap them in `busyWords`, so the answer is a worded 503 and never a 500.
+
+**Minor 4: under the same load, two adds sometimes take the same position; the database refuses one of them with a 409 that reads as a duplicate.**
+* **Requests:** 300 adds at once, or 200 adds + 200 GETs.
+* **Results:** 2 or 3 adds answered `409 "Already exists" … "This already exists, or someone else saved the same thing at the same moment."` (the P2002 mapping in `main.ts:216`).
+* **What the database log says** (`pg18-data/server.log`):
+  * `duplicate key value violates unique constraint "money_invoice_line_firm_id_invoice_id_position_key"` on the line INSERT;
+  * near the same times, `WARNING: there is already a transaction in progress`.
+  So when the connection pool is exhausted, the `FOR UPDATE` lock on the invoice row did not always make adds wait their turn.
+* **Row state:** positions are still unique and run without gaps (1..n on every draft), because the unique index catches it. Nothing wrong was saved.
+* **Fix:** the same as Minor 3 (longer `maxWait` and `busyWords`). Map P2002 on `money_invoice_line_firm_id_invoice_id_position_key` to the 503 "busy, try again" answer. Root cause (a reused connection still inside a transaction) is unconfirmed: it sits in the Prisma adapter or pool layer, not in this row.
+
+### What held at 8f298699c
+* **Major 1 fixed.** All seven of my strings get `400` at `description`, nothing written:
+  * `​`, `Fee \u0085 x`, `Fee \u0080`, `Fee ‮…`, `Fee ⁦x⁩`, `́́` and `ㅤ`;
+  * and also `\u009f`, `‪`, `⁨`, ZWJ, WJ, LRM, ALM, a tag character alone, VS16 alone, Braille blank and a skin-tone modifier alone.
+  * 40 adds at once, half of them with a bidi override: 20 × 201 and 20 × 400, no 500.
+* **Other text, no 500:**
+  * NUL → 400 "no tabs or control characters";
+  * a lone high or low surrogate is stored as U+FFFD (201);
+  * `Fee ‏` (RLM) is accepted by both rules alike;
+  * "💸", "€", "+", Arabic, mixed scripts, SQL text, `$$ ${x}` and backslashes are stored as sent.
+* **Minor 1 fixed:**
+  * 499 a + 💸 (500 code points) → 201; 501 code points → 400;
+  * 500 × 💸 → 201; 501 × 💸 → 400;
+  * 250 × "é" written as e + U+0301 (500 code points) → 201; 251 → 400;
+  * a 1,000,000-character description → 400.
+* **Key rule:**
+  * Case Officer on the Owner's draft → 403 `MISSING_PERMISSION` naming `agent/invoice:edit`, 0 lines written. This holds with bad text or a USD line too: 403 comes before 400.
+  * Case Officer on their own draft → 201. Owner on the Case Officer's draft → 201.
+  * Case Manager (no `:edit`) on the Owner's draft → 403; on their own draft → 201.
+  * BILLING_FINANCE granted by SQL during a session → 201 on the same token. The grant ended mid-session → 403 on the next add, own draft still 201. `holdsKey` reads live grants (`ended_at is null`).
+  * All roles of the Case Officer ended → 403 on create, add and read.
+  * No audit row for any refused add.
+* **Read snapshot:** 10 rounds of 20 adds + 40 GETs at once on one draft: 400 GETs, each with `totalMinor` = Σ(amount + tax) of its own lines = subtotal + tax (0 that disagree).
+
+Verdict: Approve 8f298699cb7f80954e9b72c4a7c0732b9437e101
