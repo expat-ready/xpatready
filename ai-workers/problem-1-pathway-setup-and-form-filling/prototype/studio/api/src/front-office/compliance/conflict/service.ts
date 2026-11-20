@@ -21,17 +21,20 @@ import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../../duplicates/phone.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../../sales/corporate/match.ts";
 import { actorOf, visibilityOf } from "../../sales/common.ts";
-import { partyOf, termsOf, type Party, type Terms } from "./gate.ts";
+import { clean, lockParty, longTextOk, partyOf, termsOf, type Party, type Terms } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 type Clock = { now(): number };
 const RESULTS = ["NO_CONFLICT", "POTENTIAL_CONFLICT", "CONFLICT_CANNOT_ACT"] as const;
 type Result = (typeof RESULTS)[number];
+/** Rows asked of each match function (M-1: visible rows come first, so a hidden match must never fall past the limit). */
+const LIMIT = 501;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const NOT_SEARCHED = "Other parties on cases are not searched yet (the case side's party search is not connected).";
 export const HIDDEN_LINE = "Matches with records you cannot open: a manager who may see them confirms this check.";
 const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const notFound = (what = "prospect"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
+const tooMany = (): never => problem(422, "Too many matches", "More than 500 records match this client: the check cannot be complete. Ask the tech lead.", { code: "TOO_MANY_MATCHES" });
 const forbidden = (detail: string): never => problem(403, "Not allowed", detail, { code: "FORBIDDEN" });
 /** Stored match, FO-13's shape (fo_compliance_matches_ok). */
 type StoredMatch = { source: "FRONT_OFFICE" | "CASE"; kind: string; recordId: string; displayName?: string; matchedOn: string[]; score?: number; caseId?: string; caseNumber?: string; clientId?: string; roleOnCase?: string };
@@ -64,7 +67,8 @@ export class ConflictChecks {
       const rows = (await this.db.$queryRaw<PersonRow[]>`
         select id::text, given_names, family_name, by_email, by_phone, sim, seen
           from fo_sales_person_matches(${ctx.firmId}::uuid, ${email}::text, ${phone ? [phone] : []}::text[], ${name}::text, ${ctx.staffId}::uuid,
-                                       ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, 50)`).filter((r) => r.id !== party.id && (r.by_email || r.by_phone || r.sim >= NAME_THRESHOLD));
+                                       ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, ${LIMIT}::int)`).filter((r) => r.id !== party.id && (r.by_email || r.by_phone || r.sim >= NAME_THRESHOLD));
+      if (rows.length >= LIMIT - 1) tooMany();
       hidden += rows.filter((r) => !r.seen).length;
       const seen = rows.filter((r) => r.seen), ids = seen.map((r) => r.id);
       const pros = await this.db.foProspect.findMany({ where: firmScope(ctx.firmId, { OR: [{ subjectPersonId: { in: ids } }, { primaryContactPersonId: { in: ids } }] }), select: { subjectPersonId: true, primaryContactPersonId: true, stage: { select: { kind: true } } } });
@@ -74,21 +78,22 @@ export class ConflictChecks {
         const mine = pros.filter((x) => x.subjectPersonId === r.id || x.primaryContactPersonId === r.id);
         const [kind, rel] = mine.some((x) => x.stage.kind === "WON") ? ["PROSPECT", "client"] : mine.length ? ["PROSPECT", "prospect"] : contacts.has(r.id) ? ["COMPANY_CONTACT", "company contact"] : leads.has(r.id) ? ["LEAD", "lead"] : ["PERSON", "person"];
         const reasons: MatchReason[] = [...(r.by_email ? [{ key: "EMAIL" as const }] : []), ...(r.by_phone ? [{ key: "PHONE" as const }] : []), ...(r.sim >= NAME_THRESHOLD ? [{ key: "NAME" as const, similarity: Math.min(1, r.sim) }] : [])];
-        const nm = [r.given_names, r.family_name].filter(Boolean).join(" ") || "(no name)";
-        out.push({ source: "FRONT_OFFICE", kind, recordId: r.id, displayName: `${nm.slice(0, 280)} · ${rel}`, matchedOn: reasons.map((x) => x.key), score: matchScore(reasons) / 100 });
+        const nm = clean([r.given_names, r.family_name].filter(Boolean).join(" "), 280) ?? "(no name)";
+        out.push({ source: "FRONT_OFFICE", kind, recordId: r.id, displayName: `${nm} · ${rel}`, matchedOn: reasons.map((x) => x.key), score: matchScore(reasons) / 100 });
       }
     } else if (t.name) {
       const rows = (await this.db.$queryRaw<{ id: string; operating_name: string; sim: number }[]>`
-        select id::text, operating_name, sim from fo_sales_company_matches(${ctx.firmId}::uuid, ${normaliseCompanyName(t.name)}::text, ${NAME_THRESHOLD}::real, 50)`).filter((r) => r.id !== party.id && r.sim >= NAME_THRESHOLD);
+        select id::text, operating_name, sim from fo_sales_company_matches(${ctx.firmId}::uuid, ${normaliseCompanyName(t.name)}::text, ${NAME_THRESHOLD}::real, ${LIMIT}::int)`).filter((r) => r.id !== party.id && r.sim >= NAME_THRESHOLD);
+      if (rows.length >= LIMIT - 1) tooMany();
       const seer: Seer = { see: (o) => vis.seesAll || o === ctx.staffId, seesAll: vis.seesAll, actor: actorOf(ctx) };
       const seen = new Set((await this.db.foCompany.findMany({ where: firmScope(ctx.firmId, { id: { in: rows.map((r) => r.id) } }), select: { id: true, createdBy: true, prospects: { select: { ownerStaffId: true } } } })).filter((c) => seesCompany(seer, c)).map((c) => c.id));
       hidden += rows.filter((r) => !seen.has(r.id)).length;
-      for (const r of rows.filter((x) => seen.has(x.id))) out.push({ source: "FRONT_OFFICE", kind: "COMPANY", recordId: r.id, displayName: r.operating_name.slice(0, 300), matchedOn: ["NAME"], score: Math.floor(Math.min(1, r.sim) * 10000) / 10000 });
+      for (const r of rows.filter((x) => seen.has(x.id))) out.push({ source: "FRONT_OFFICE", kind: "COMPANY", recordId: r.id, displayName: clean(r.operating_name, 300) ?? "(no name)", matchedOn: ["NAME"], score: Math.floor(Math.min(1, r.sim) * 10000) / 10000 });
     }
     if (this.parties) {
       const c = await this.parties.search({ firmId: ctx.firmId, staffId: ctx.staffId }, { name: t.name, email, phone });
       hidden += c.hidden_count;
-      for (const m of c.matches) out.push({ source: "CASE", ...m, score: Math.floor(m.score * 10000) / 10000 });
+      for (const m of c.matches) out.push({ source: "CASE", ...m, displayName: clean(m.displayName, 300) ?? "(no name)", score: Math.floor(m.score * 10000) / 10000 });
     }
     return { matches: out.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)), hidden, scope: this.parties ? null : NOT_SEARCHED };
   }
@@ -119,7 +124,7 @@ export class ConflictChecks {
     if (b.disclosureText !== undefined && b.disclosureText !== null && typeof b.disclosureText !== "string") bad("disclosureText", "The disclosure is text.");
     if (result === "POTENTIAL_CONFLICT" && !d) bad("disclosureText", "A potential conflict needs the disclosure text the client will read in the retainer (Code s. 15(1), 24(3)(o)).");
     if (result !== "POTENTIAL_CONFLICT" && d) bad("disclosureText", "A disclosure belongs to a POTENTIAL_CONFLICT result.");
-    if (d && ([...d].length > 10000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(d))) bad("disclosureText", "The disclosure is at most 10,000 characters, with no control characters.");
+    if (d && ([...d].length > 10000 || !longTextOk(d))) bad("disclosureText", "The disclosure is at most 10,000 characters of visible text, with no control or direction characters.");
     return { result, disclosureText: d };
   }
 
@@ -137,7 +142,12 @@ export class ConflictChecks {
     const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per check.");
     const { prospect, party } = await this.engagement(ctx, b.prospectId);
     const had = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
-    if (had) return had.checkedBy === ctx.staffId && had.prospectId === prospect.id ? { ...this.view(had, ctx, false), scope: this.parties ? null : NOT_SEARCHED } : problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" });
+    const reused = (): never => problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" });
+    if (had) {
+      // A replay is the same request (M-2): the same person, prospect, result and disclosure; anything else is refused.
+      const o0 = this.outcome(b, false);
+      return had.checkedBy === ctx.staffId && had.prospectId === prospect.id && had.result === o0.result && had.disclosureText === o0.disclosureText ? { ...this.view(had, ctx, false), scope: this.parties ? null : NOT_SEARCHED } : reused();
+    }
     const t = await termsOf(this.db, ctx.firmId, party), s = await this.search(ctx, party, t);
     const o = this.outcome(b, s.hidden === 0);
     // M1 (brief): with hidden matches the check is written with no result; the confirmer, who sees them, gives it.
@@ -145,6 +155,7 @@ export class ConflictChecks {
     const now = new Date(this.clock.now());
     try {
       await this.db.$transaction(async (tx) => {
+        await lockParty(tx, ctx.firmId, party);   // m-3: a win waiting on this party sees this check
         await tx.foConflictCheck.create({ data: { id, firmId: ctx.firmId, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, prospectId: prospect.id,
           searchedName: t.name, searchedEmail: t.email, searchedPhone: t.phone, matches: s.matches as Prisma.InputJsonValue, hiddenCount: s.hidden, result: o.result, disclosureText: o.disclosureText, checkedBy: ctx.staffId, checkedAt: now } });
         await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
@@ -152,7 +163,7 @@ export class ConflictChecks {
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
-      if ((e as { code?: unknown })?.code === "P2002" && !retried) return this.record(ctx, b, true);   // a concurrent replay won the id: answer as a replay, once
+      if ((e as { code?: unknown })?.code === "P2002") return retried ? problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" }) : this.record(ctx, b, true);   // a concurrent replay won the id: answer as a replay, once (m-2)
       throw e;
     }
     const c = await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id }) });

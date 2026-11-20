@@ -22,7 +22,7 @@ import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
-import { assertDisclosurePrinted, clearance, disclosureFor } from "../compliance/conflict/gate.ts";
+import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
 
@@ -312,7 +312,7 @@ export class Retainers {
   }
 
   /** The merge values bound into a version (AG-5-3): copied, so a later change to the person never alters it. */
-  private async mergeValues(firmId: string, p: { id: string; type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[]) {
+  private async mergeValues(firmId: string, p: { id: string; type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[], printsDisclosure = false) {
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { operatingName: true } });
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: repId }, include: { credential: true } });
     const client = p.type === "CORPORATE" ? p.subjectCompany?.operatingName ?? null : (p.subjectPerson ? nameOf(p.subjectPerson) || null : null);
@@ -326,7 +326,8 @@ export class Retainers {
       "firm.name": firm.operatingName, "agreement.date": new Date(this.clock.now()).toISOString().slice(0, 10), "agreement.version": String(n),
       fees: fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? null : cad(f.amountMinor), when: WHEN_WORDS[f.when], due_on: f.dueOn })),
       "fees.total": amounts.length ? cad(amounts.reduce((a, b) => a + b, 0n)) : null,
-      "conflict.disclosure": await disclosureFor(this.db, firmId, p.id),   // FO-13c, s. 24(3)(o)
+      // FO-13c, s. 24(3)(o): only a version whose template prints it holds it, so the value proves it was printed (break B-1).
+      "conflict.disclosure": printsDisclosure ? await disclosureFor(this.db, firmId, p.id) : null,
       // Who signs and who represents, by id (FO-5f review M-2: a Signed offline copy of this version restores them). Not
       // placeholders: a template naming them is refused.
       [SIGNER_ID]: signer?.id ?? null, [REPRESENTATIVE_ID]: repId,
@@ -377,7 +378,7 @@ export class Retainers {
     if (!reps.some((r) => r.staffId === repId)) unprocessable("The representative must be an active person with a licence and the case-manager permissions.", { representativeStaffId: "Not eligible to represent." });
     const s = this.signerFor(p, uuidOf(body.signerPersonId, "signerPersonId"));
     const fees = body.fees === undefined ? [{ label: "Deposit on signing", amountMinor: null, when: "ON_SIGNING" as const, dueOn: null }] : feesOf(body.fees);
-    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees);
+    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees, t.placeholders.includes("conflict.disclosure"));
     const file = await this.renderVersion(ctx.firmId, id, 1, t.fileKey, values);
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
@@ -473,7 +474,9 @@ export class Retainers {
     }
     const s = this.signerFor(p, body.signerPersonId !== undefined ? uuidOf(body.signerPersonId, "signerPersonId") : r.signerPersonId);
     const fees = body.fees !== undefined ? feesOf(body.fees) : cur.fees.map((f) => ({ label: f.label, amountMinor: f.amountMinor, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }));
-    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees);
+    const prints = "placeholders" in t ? t.placeholders.includes("conflict.disclosure")
+      : (await this.placeholdersMadeFrom(ctx.firmId, r, await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } }))).includes("conflict.disclosure");
+    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, prints);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
     await this.tx(async (tx) => {
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
@@ -511,7 +514,11 @@ export class Retainers {
     const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
     const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
     await this.tx(async (tx) => {
-      if (r.kind === "RETAINER" && r.prospectId) await clearance(tx, ctx.firmId, r.prospectId);   // FO-13c (m3): asked again in the send's transaction
+      if (r.kind === "RETAINER" && r.prospectId) {   // FO-13c (m3, m-3): asked again in the send's transaction, after the party's lock
+        const party = await partyOf(tx, ctx.firmId, r.prospectId);
+        if (party) await lockParty(tx, ctx.firmId, party);
+        assertDisclosurePrinted(await clearance(tx, ctx.firmId, r.prospectId), page.version.values);
+      }
       const now = new Date(this.clock.now());
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
@@ -525,12 +532,11 @@ export class Retainers {
   /** FO-13c: a retainer is sent or signed only for a party with a recorded conflict check that clears it (gate.ts), and
    *  with a potential conflict only when the version prints the check's disclosure (s. 24(3)(o)). A consultation
    *  agreement never makes a client and is not gated. */
-  private async conflictCleared(ctx: StaffContext, r: { kind: string; prospectId: string | null; templateId: string; templateVersion: number; templateFileKey: string }, values: Record<string, unknown>) {
+  private async conflictCleared(ctx: StaffContext, r: { kind: string; prospectId: string | null }, values: Record<string, unknown>) {
     if (r.kind !== "RETAINER" || !r.prospectId) return;
-    const c = await clearance(this.db, ctx.firmId, r.prospectId);
-    const tpl = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } });
-    assertDisclosurePrinted(c, values, await this.placeholdersMadeFrom(ctx.firmId, r, tpl));
+    assertDisclosurePrinted(await clearance(this.db, ctx.firmId, r.prospectId), values);
   }
+
 
   /** Withdraw (BR-10; AG-5-34): a reason 1-200, from Sent, Viewed or Client signed; the request ends. */
   async withdraw(ctx: StaffContext, id: string, body: Record<string, unknown>) {

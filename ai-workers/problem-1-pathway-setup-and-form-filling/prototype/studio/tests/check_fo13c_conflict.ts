@@ -224,6 +224,16 @@ try {
     page5.version.values["conflict.disclosure"] === TEXT && !page5.missing.includes("conflict.disclosure") && s5.status === 200 && won(X5)
     && sql(`select written_consent_ref from fo_conflict_check where person_id = '${P5}' and result = 'POTENTIAL_CONFLICT'`) === r5, [page5.version.values["conflict.disclosure"], s5.status]);
 
+  // Break B-1: a version made from a template without the placeholder never counts as printing it, even signed on paper
+  // after a newer version that does print it.
+  const X5d = prospectOf(person(R.id, "Indigo Four")); await check(X5d, { result: "POTENTIAL_CONFLICT", disclosureText: TEXT });
+  const r5d = await draft(X5d); await svc.edit(ctxR, r5d, { templateId: disc.id, expectedVersion: 1, expectedStatus: "DRAFT" });
+  const old5 = await refusal(() => svc.signedOffline(ctxR, r5d, { expectedVersion: "2", signedVersion: "1", reason: "Signed at the office" }, pdf()));
+  ok("FO-13c DW4 fail (break B-1): Signed offline of version 1 (its template has no {conflict.disclosure}) after version 2 prints it → 409, not won, no consent recorded",
+    old5?.code === "CONFLICT_DISCLOSURE_NOT_PRINTED" && !won(X5d) && sql(`select count(*) from fo_conflict_check where prospect_id = '${X5d}' and written_consent_ref is not null`) === "0", old5);
+  await svc.signedOffline(ctxR, r5d, { expectedVersion: "2", reason: "Signed at the office" }, pdf());
+  ok("FO-13c DW4 pass (break B-1): Signed offline of version 2, which prints it, makes the client", won(X5d));
+
   // ---------------------------------------------------------------------------------------------------------- DW5
   const P6 = person(R.id, "Jules"), X6 = prospectOf(P6), r6 = await draft(X6);
   await check(X6, { result: "NO_CONFLICT" });
@@ -237,6 +247,25 @@ try {
   const s6c = await send(r6b);
   ok("FO-13c DW5 fail: a one-letter change of the family name alone also asks for a new check", s6c.status === 409 && s6c.body.code === "CONFLICT_CHECK_STALE", s6c.body);
   ok("FO-13c DW5 pass: a new check (it searches the new email and name) clears it", c6.body.searched?.email === "jules.new@example.com" && c6.body.searched?.name === "Jule Sample" && s6b.status === 200, [c6.body.searched, s6b.status]);
+
+  // Break M-2: one requestId with another result is refused, never answered with the old one.
+  const X8 = prospectOf(person(R.id, "Mo")), rid8 = crypto.randomUUID();
+  const m1 = await check(X8, { requestId: rid8, result: "NO_CONFLICT" }), m2 = await check(X8, { requestId: rid8, result: "CONFLICT_CANNOT_ACT" });
+  ok("FO-13c DW6 fail (break M-2): the same requestId with another result → 409 REQUEST_REUSED; the stored check is unchanged", m1.status === 201 && m2.status === 409 && m2.body.code === "REQUEST_REUSED", [m1.status, m2.body]);
+  // Break M-5, m-1: a name the public form accepts (a C1 control mark, many emoji) is searched and stored cleaned, never a 500;
+  // a disclosure with a direction mark is a 400.
+  const P9 = person(R.id, "Ana\u0085", { email: "ana.c1@example.com" }), X9 = prospectOf(P9), P9b = person(R.id, "😀".repeat(100), { email: "emoji@example.com" }), X9b = prospectOf(P9b);
+  const n9 = await check(X9, { result: "NO_CONFLICT" }), n9b = await check(X9b, { result: "NO_CONFLICT" }), d9 = await check(X8, { result: "POTENTIAL_CONFLICT", disclosureText: "We acted \u202e for them." });
+  ok("FO-13c DW6 pass/fail (break M-5, m-1): names with a control mark or 100 emoji are checked (201, stored cleaned); a disclosure with a direction mark → 400",
+    n9.status === 201 && n9.body.searched.name === "Ana Sample" && n9b.status === 201 && d9.status === 400, [n9.status, n9.body?.searched, n9b.status, d9.status]);
+  // Break M-1: a hidden match is still counted behind 60 visible matches of the same name (no row limit drops it).
+  const P10 = person(T.id, "Quinn Many", { email: "quinn.many@example.com" }), X10 = prospectOf(P10, T.id);
+  sql(`with p as (insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) select gen_random_uuid(), '${A}', 'Quinn Many', 'Sample', 'quinn.' || g || '@example.com', 'test', now() from generate_series(1, 60) g returning id)
+    insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) select gen_random_uuid(), '${A}', id, 'MANUAL', 'WEBSITE', '${T.id}', 'test', now() from p`);
+  person(O.id, "Someone Else", { email: "quinn.many@example.com" });
+  const pv10 = await call("POST", "conflict-checks/preview", T.token, { prospectId: X10 }), c10 = await check(X10, { result: "NO_CONFLICT" }, T.token);
+  ok("FO-13c DW2 fail (break M-1): behind 60 visible same-name matches, the hidden same-email match is still counted, so NO_CONFLICT waits for a confirmation",
+    pv10.status === 200 && pv10.body.hiddenCount === 1 && pv10.body.matches.length === 60 && c10.status === 409 && c10.body.code === "NEEDS_CONFIRMATION", [pv10.body?.hiddenCount, pv10.body?.matches?.length, c10.status]);
 
   // A Corporate prospect: the party is its company (FO-1a's two kinds of party).
   const CO1 = u(), CO2 = u(), PCc = person(R.id, "Lane Contact"), XC = u();
