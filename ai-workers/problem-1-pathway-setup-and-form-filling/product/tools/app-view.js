@@ -6,14 +6,15 @@
 // A line starts FLAG when the session needs the Lead: status need_input, blocked or failed; idle over 90 min with work
 // left (status not completed, or a needs_action); context over 45% (P-565: refresh past about half). Otherwise "ok".
 // Signed out or the call refused: one line "UNREADABLE ..." (ask the founder to sign in; save it all the same).
-// It asks for LIMIT (200) sessions (B204 (4): at 50, the sidebar's "Show more" hid 11 of 45 sessions on 20 Nov); when the
-// answer holds as many sessions as the limit, or says more remain (has_more, a next page or cursor), the second line is
-// "WARNING: list may be cut (N of LIMIT)" and app-view-check.sh makes it an ACT.
+// It asks for LIMIT (200) sessions (B204 (4)), but claude.ai answers at most API_MAX (50) and a resume_token, and no paging
+// parameter works (resume_token, page_token, after, starting_after, next_page, page: the same 50; cursor: 400; ENF-761, 20 Nov).
+// So a list of 50 (or of the limit, if lower) is cut, and so is any "more" marker (resume_token, has_more, a next page or
+// cursor): the second line is "WARNING: list may be cut (N of 50): archive ended sessions" and app-view-check.sh makes it an ACT.
 // Node (tests): require('./app-view.js').lines(json, nowMs) gives the same text without the network. Test:
 // check-app-view.sh. Read-only: it changes nothing on the page or in any session.
 (function () {
   const IDLE_MIN = 90, CTX_SHARE = 0.45, WINDOW = 1000000; // WINDOW: assumed context size when the API gives none
-  const LIMIT = 200;
+  const LIMIT = 200, API_MAX = 50; // API_MAX: the most sessions claude.ai returns, whatever limit is asked (20 Nov)
   const WORK_DONE = ['completed'];
   const FLAG_STATUS = ['need_input', 'blocked', 'failed'];
   const clean = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
@@ -49,7 +50,7 @@
   function more(json) {   // the API's own "there is another page" markers, whichever it uses
     if (!json || Array.isArray(json)) return false;
     return json.has_more === true || json.has_more === 'true'
-      || ['next_page', 'next_cursor', 'next', 'next_page_token'].some((k) => json[k] != null && json[k] !== '' && json[k] !== false);
+      || ['resume_token', 'next_page', 'next_cursor', 'next', 'next_page_token'].some((k) => json[k] != null && json[k] !== '' && json[k] !== false);
   }
   function lines(json, now, limit) {
     limit = Number(limit) || LIMIT;
@@ -58,7 +59,8 @@
     const out = list.map((s) => one(s, now));
     const n = out.filter((o) => o.flagged).length;
     out.sort((a, b) => Number(b.flagged) - Number(a.flagged));
-    const cut = list.length >= limit || more(json) ? [`WARNING: list may be cut (${list.length} of ${limit})`] : [];
+    const cap = Math.min(limit, API_MAX);
+    const cut = list.length >= cap || more(json) ? [`WARNING: list may be cut (${list.length} of ${cap}): archive ended sessions`] : [];
     return [`app view ${list.length} sessions · ${n} flagged`, ...cut, ...out.map((o) => o.line)].join('\n');
   }
   if (typeof module !== 'undefined' && module.exports) { module.exports = { lines }; return undefined; }
