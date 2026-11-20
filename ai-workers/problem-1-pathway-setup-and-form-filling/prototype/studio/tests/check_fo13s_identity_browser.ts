@@ -5,7 +5,7 @@
 // .pdf; BR-7 one row for a Save; BR-8 the keys (Billing and finance: no Record, no Open copy; Read-only: Open copy, no
 // Record); M1 the panel on the prospect page too; M4 the error summary. Also a keyboard-only Save, axe-core (WCAG 2.2 AA),
 // no sideways scroll and screenshots at 375, 1024 and 1440 px. Seeds the Sample firms itself. US$0, no model call.
-//   zsh studio/tools/isolated.sh screens_fo13s 4561 start PLATFORM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo13s_identity_browser.ts 4561 xr_studio_screens_fo13s
+//   zsh studio/tools/isolated.sh screens_fo13s 4561 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo13s_identity_browser.ts 4561 xr_studio_screens_fo13s
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
