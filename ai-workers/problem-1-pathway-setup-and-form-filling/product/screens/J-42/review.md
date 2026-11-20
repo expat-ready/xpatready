@@ -48,3 +48,36 @@ No new scope: this asks only that the existing gap be reported where the verdict
 * D17 and D20 stay with the founder.
 
 Verdict: Changes requested
+
+---
+
+## Re-review 1: head `0e122afd521b177a3c30902e2c0334f9ea877546` (P-277: read only `git diff a736537ff..0e122afd5`)
+
+The diff since my review: `j_42.ts` (+23/-10); the records note (one line); this review and the journey-test file committed (e4dabdf); 6 screenshots refreshed, and `W2-choose-new-time` added. Commits after e4dabdf are screenshots only. Run on e4dabdf (isolated :4444): `/tmp/claude-0/j42c.log`, 22/22 PASS, two `HELD` lines, exit 0. I read the log; I did not run the journey.
+
+**M1, fixed.**
+* `j_42.ts:226-228` now prints `HELD  J-42 W8 screen: …` (when no panel) and `HELD  J-42 W9: …`. Both lines start with `HELD `, so walk.mjs counts them (`walk.mjs:74-78`); the log shows both.
+* W8's two judged labels say "route, no screen yet" and "route" (`:233`, `:238`).
+* The header (`:13-18`) says R1.42 is not complete until FO-3st1's consult record part lands.
+* The PR body now marks W8 as **route, no screen yet**, does not carry `Completes: R1.42`, says the J-42 row stays open, and asks the tech lead to shape the panel.
+* W9 is printed even when a panel is found, which is right: the next-step button is still not walked, and the NOTE line says to switch W8 over and drop the HELD lines.
+
+**Minors.**
+* m1, fixed: records note line 16.
+* m2, fixed: `:225` now checks the panel text for "consult record" or "time spent", or a "Save record" button. It no longer matches any "notes".
+* m3, fixed: `:238` also requires `issues` to name `quotedFeeCurrency`.
+* m4, fixed: `:183-188`. After the cancel, the new email's link opens to bad-link with BAD's words, and a third mail whose subject contains "cancel" arrives. The log shows "Your Free consultation is cancelled". The move issues one token (`service.ts:579`) and returns it to the page and the mail, so "the link that cancelled" is accurate.
+* m5, fixed: `W2-choose-new-time-1440.png` is committed.
+* m6, fixed: `pageerror` is collected on every page (`:100`) and judged at the end (`:239`); axe now also runs on W1 (`:139`) and W4 (`:183`). Both are clean in the log.
+* m7, fixed: the header now says 11 to 14 minutes.
+
+**New, Minor (not blocking).**
+* **m8.** `j_42.ts:184`: the new email's link is never shown to work before the cancel. If that mail carried a broken link, W4's "refused after the cancel" would still pass. Fix (optional): open `linkIn(aMails2[1])` before `:177` and expect `manage`.
+
+**Not this diff's.** `run-suites.sh --changed` fails on `check_journey_recording.ts` (6 fixture-walk lines). The builder reports the same 6 failing on a clean origin/main worktree in this container (`/tmp/claude-0/jr-main.log` vs `/tmp/claude-0/jr.log`). This PR does not touch walk.mjs, record.ts or the fixtures, so it is not a finding here. GitHub CI decides.
+
+**Journey score:** unchanged at **8/10, pass (no 0)**. "Task completed" stays ½ until W8 and W9 are walked on a screen; the gap is now reported where the verdict is read.
+
+No open Blocker or Major.
+
+Verdict: Approve 0e122afd521b177a3c30902e2c0334f9ea877546
