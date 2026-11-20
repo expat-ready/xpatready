@@ -11,6 +11,7 @@
 // (an entry fixed or gone fails, an entry with no fix part fails). Named cases DW1-DW7 (DW8 is the PR's browser run).
 // Field errors answer 422 (Lead B rev 17.21; FIELD_ERROR_STATUS; question on #2619). US$0, no model call.
 //   zsh studio/tools/isolated.sh runtime_pf28 4487 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf28_inputs.ts 4487 xr_studio_runtime_pf28
+// (by hand, from studio/: tsx --tsconfig api/tsconfig.json tests/check_pf28_inputs.ts 4487 xr_studio_runtime_pf28; run-suites.sh adds it)
 import "reflect-metadata";
 import { MODULE_METADATA, PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from "@nestjs/common/constants.js";
 import { Reflector } from "@nestjs/core";
@@ -77,8 +78,20 @@ ok("PF-28 DW1 fail: a throwaway front-office route with an unparsed body fails t
 ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict schema) passes", dw1good.length === 1 && dw1good[0].parsedAt === "Things.put", dw1good);
 
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
-ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-5, by area)", unnamed(allow).length === 0, unnamed(allow));
+ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
+/** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
+const PROBES_CEILING = 220;   // part 1 commits 220 probe entries (71 code entries); a fix part lowers both
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 71 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
+
+// The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
+// any field; a "__proto__" key is refused; a long unknown key name is cut to 64 characters; never the value.
+const { parseInput, strict: strictOf, text: textOf } = await import("../api/src/platform/http/input.ts");
+const refusal = (v: unknown) => { try { parseInput(strictOf({ name: textOf(50) }), v); return null; } catch (e) { return (e as { getResponse(): { status: number; fields: Record<string, string>; detail: string } }).getResponse(); } };
+const [missing, wrong, ctor, proto, long, good] = [{}, { name: 7 }, { name: "a", constructor: 1 }, JSON.parse('{"name":"a","__proto__":{"x":1}}'), { name: "a", ["k".repeat(300)]: "secret value" }, { name: "Sample" }].map(refusal);
+ok("PF-28 rule pass: a missing field says it is required; a wrong type says what it must be", missing?.fields.name === "This is required." && wrong?.fields.name === "This must be text.", [missing?.fields, wrong?.fields]);
+ok("PF-28 rule fail (break m2): \"constructor\" and \"__proto__\" are refused and named, never accepted or \"0 fields\"", Object.hasOwn(ctor?.fields ?? {}, "constructor") && Object.hasOwn(proto?.fields ?? {}, "__proto__") && !/^0 fields/.test(ctor?.detail ?? "0"), [ctor?.detail, proto?.detail]);
+ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters and the value is never repeated; a good body passes", Object.keys(long?.fields ?? {}).every((k) => k.length <= 64) && !JSON.stringify(long).includes("secret value") && good === null && long?.status === 422, long?.fields);
 
 // ------------------------------------------------------------------------------------- (b) a running copy: the probes
 const { registerFeatures } = await import("../api/src/features.ts");
@@ -127,23 +140,34 @@ const tR = await signIn("user-R"), keysR = new Set<string>(((await call("GET", "
 
 /** The PF/FO tables' row counts by table (exact counts, so a probe that stored anything shows). Left out: the session
  *  table (sign-in) and msg_firm, the key row the messages module inserts on first read (PF-19a, ON CONFLICT DO NOTHING). */
-const rows = async () => { return Object.fromEntries(sql(`select string_agg(relname || ':' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', relname), false, true, '')))[1]::text, ',') from pg_stat_user_tables where relname ~ '^(platform_|fo_|money_|msg_|plat_|auto_)' and relname not in ('platform_session_revocation', 'msg_firm')`).split(",").map((x) => x.split(":"))); };
+const rows = async () => { return Object.fromEntries(sql(`select string_agg(relname || ':' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', relname), false, true, '')))[1]::text, ',') from pg_stat_user_tables where (relname ~ '^(platform_|fo_|money_|msg_|plat_|auto_)' or relname in ('module_event', 'webhook_receipt')) and relname not in ('platform_session_revocation', 'msg_firm')`).split(",").map((x) => x.split(":"))); };
 const before = await rows();
 
 const MB = "a".repeat(1024 * 1024);
 /** What each probe must answer (Lead B rev 17.21): an unknown field 422 naming it; a wrong type and a missing field 422 (an
- *  empty body may pass when nothing is required: the row counts judge it); a 1 MB string 413; a malformed id 404. A route
- *  with path ids may answer 404 first (its random record does not exist). */
+ *  empty body may pass when nothing is required: the row counts judge it); a 1 MB string 413; a malformed id 404. A body
+ *  or query probe answered 404 (a random record looked up before the input was read) proves nothing, so it does not pass
+ *  (review M1): such a route is on the allow-list until its fix part reads the input first or the sweep gets a real id. */
 export function fine(probe: string, withIds: boolean, a: { status: number; body: Record<string, unknown> | null }): boolean {
   const named = (k: string) => typeof a.body?.fields === "object" && a.body.fields !== null && k in (a.body.fields as object);
   if (probe === "1mb") return a.status === 413;
   if (probe.startsWith("id:")) return a.status === 404;
-  if (withIds && a.status === 404) return true;
+  void withIds;
   if (probe === "unknown" || probe === "query-unknown") return a.status === FIELD_ERROR_STATUS && named("pf28Unknown");
   if (probe === "missing" && a.status >= 200 && a.status < 300) return true;
   return a.status === FIELD_ERROR_STATUS;
 }
-const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : randomUUID()));
+/** Path keys that are not record ids (break M1): a random uuid there makes every probe a 404 that proves nothing, so the
+ *  Sample firm's real key, form token and a public consultation type's slug are used. A door whose key has no real value
+ *  here (a booking link's or an invitation's token) is "unreached": on the allow-list until its fix part reaches it. */
+const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
+const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
+if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
+const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p);
+const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
+const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[keyOf(path, m)] || randomUUID()));
+/** Whether a 404 may stand for "this random record does not exist": only when some path value is a random id. */
+const randomIds = (path: string) => (path.match(/:[A-Za-z_]+/g) ?? []).some((p) => !REAL[keyOf(path, p)]);
 const failing: string[] = [], seen: string[] = [], skipped: string[] = [];
 const answers = new Map<string, Answer>();
 for (const d of all) {
@@ -153,10 +177,12 @@ for (const d of all) {
   if (d.body) probes.push(["unknown", fill(d.path), JSON.stringify({ pf28Unknown: "x" })], ["wrong-type", fill(d.path), "[1]"], ["missing", fill(d.path), "{}"], ["1mb", fill(d.path), JSON.stringify({ pf28: MB })]);
   if (d.query) probes.push(["query-unknown", `${fill(d.path)}?pf28Unknown=x`, undefined]);
   for (const p of d.path.match(/:[A-Za-z_]+/g) ?? []) probes.push([`id${p}`, fill(d.path, p), d.body ? "{}" : undefined]);
+  const unreached = (d.path.match(/:[A-Za-z_]+/g) ?? []).filter((p) => isKey(d.path, p) && !REAL[keyOf(d.path, p)]);
+  if (unreached.length && (d.body || d.query)) { const k = `${d.method} ${d.path} unreached`; seen.push(k); failing.push(k); answers.set(k, { status: 0, body: { keys: unreached } }); }
   for (const [probe, url, body] of probes) {
     const key = `${d.method} ${d.path} ${probe}`, a = await call(method, url, { token, body });
     seen.push(key); answers.set(key, a);
-    if (!fine(probe, /:/.test(d.path), a)) failing.push(key);
+    if (!fine(probe, randomIds(d.path), a)) failing.push(key);
   }
 }
 if (process.env.PF28_DUMP) writeFileSync(process.env.PF28_DUMP, JSON.stringify(Object.fromEntries(answers), null, 1));   // every answer, for writing the allow-list
@@ -178,7 +204,7 @@ ok("PF-28 DW2 fail: POST /api/platform/staff/invitations parses loosely today (4
 const big = await call("POST", "/api/platform/offices", { token: tR, body: JSON.stringify({ name: MB }) });
 ok("PF-28 DW3 fail: a 1 MB string on a platform route → 413 BODY_TOO_LARGE in size-neutral words", big.status === 413 && big.body?.code === "BODY_TOO_LARGE" && big.body?.detail === "This request is larger than this address takes. Nothing was saved or started.", big);
 const note = await call("POST", `/api/front-office/leads/${randomUUID()}/notes`, { token: tR, body: JSON.stringify({ text: "Sample long note. ".repeat(11_600) }) }), tooBig = await call("POST", `/api/front-office/leads/${randomUUID()}/notes`, { token: tR, body: JSON.stringify({ text: "Sample long note. ".repeat(16_000) }) });
-ok("PF-28 DW3 pass: a 200 KB body passes the 256 KB limit and reaches the route (its own answer, here 404 for a lead that does not exist), never 413 or 500; 280 KB → 413", note.status !== 413 && note.status < 500 && tooBig.status === 413, { note: note.status, tooBig: tooBig.status });
+ok("PF-28 DW3 pass: a 200 KB body passes the 256 KB limit and reaches the route's own rule (here 422: notes are capped at 5,000 characters), never 413 or 500; 280 KB → 413", note.status === 422 && tooBig.status === 413, { note: note.status, tooBig: tooBig.status });
 
 // DW4: a non-uuid staff id → the one not-found; a valid uuid of another firm → the same 404.
 const other = sql(`select id from platform_staff where firm_id <> (select id from platform_firm where key = 'sample-firm') limit 1`);

@@ -27,12 +27,14 @@ export const text = (max: number) => z.string().trim().max(max);
 export const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const name = (path: readonly PropertyKey[]) => path.map(String).join(".") || "body";
+/** A field's name as the answer gives it: at most 64 characters (an unknown key is the caller's text, break m3). */
+const name = (path: readonly PropertyKey[]) => (path.map(String).join(".") || "body").slice(0, 64);
 
 /** One plain sentence per issue; never the value itself (it may be personal, or 1 MB long). */
 function words(i: z.core.$ZodIssue): string {
   switch (i.code) {
-    case "invalid_type": return i.input === undefined ? "This is required." : `This must be ${i.expected === "string" ? "text" : i.expected === "array" ? "a list" : `a ${i.expected}`}.`;
+    // zod 4 keeps no input on an issue unless asked, so a missing field is told by its message (break m1).
+    case "invalid_type": return /received undefined$/.test(i.message) ? "This is required." : `This must be ${i.expected === "string" ? "text" : i.expected === "array" ? "a list" : `a ${i.expected}`}.`;
     case "too_big": return i.origin === "string" ? `This is too long: at most ${i.maximum} characters.` : i.origin === "array" ? `Too many items: at most ${i.maximum}.` : `This is too large: at most ${i.maximum}.`;
     case "too_small": return i.origin === "string" ? (Number(i.minimum) <= 1 ? "This is required." : `This is too short: at least ${i.minimum} characters.`) : i.origin === "array" ? `Add at least ${i.minimum}.` : `This is too small: at least ${i.minimum}.`;
     case "invalid_value": return "This is not one of the allowed choices.";
@@ -43,16 +45,19 @@ function words(i: z.core.$ZodIssue): string {
 
 /** The fields of a failed parse, each with its plain words; an unknown field gets "This field is not allowed here." */
 export function fieldsOf(error: z.ZodError): Record<string, string> {
-  const out: Record<string, string> = {};
+  // Own keys only, so "constructor" or "toString" is named like any other field (break m2); at most 20 fields.
+  const out: Record<string, string> = {}, put = (k: string, v: string) => { if (!Object.hasOwn(out, k) && Object.keys(out).length < 20) Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true }); };
   for (const i of error.issues) {
-    if (i.code === "unrecognized_keys") for (const k of i.keys) out[name([...i.path, k])] ??= "This field is not allowed here.";
-    else out[name(i.path)] ??= words(i);
+    if (i.code === "unrecognized_keys") for (const k of i.keys) put(name([...i.path, k]), "This field is not allowed here.");
+    else put(name(i.path), words(i));
   }
   return out;
 }
 
 /** The value as the schema reads it, or a refusal (FIELD_ERROR_STATUS, the fields named, nothing stored). */
 export function parseInput<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
+  // A "__proto__" key that JSON.parse made an own key is never a field of ours: refused before the schema (break m2).
+  if (value !== null && typeof value === "object" && Object.hasOwn(value, "__proto__")) return problem(FIELD_ERROR_STATUS, "Check the details", "One field needs a change: __proto__: This field is not allowed here. Nothing was saved.", { code: "INVALID", fields: { ["__proto__"]: "This field is not allowed here." } });
   const r = schema.safeParse(value);
   if (r.success) return r.data;
   const fields = fieldsOf(r.error), n = Object.keys(fields).length;
@@ -67,5 +72,7 @@ export function idParam(v: unknown, what = "record"): string {
 
 /** main.ts, before the app-wide parser: the JSON limit of INPUT_PATHS. A larger body is refused 413 by ProblemErrors. */
 export function inputBodyLimit(app: Pick<NestExpressApplication, "use">) {
-  (app as unknown as Pick<express.Express, "use">).use(INPUT_PATHS, express.json({ limit: INPUT_BODY_LIMIT }));
+  const json = express.json({ limit: INPUT_BODY_LIMIT });
+  // The SNS notice door keeps its own 300 KB limit (PF-19b part 2; break m4): AWS sets it, not us.
+  (app as unknown as Pick<express.Express, "use">).use(INPUT_PATHS, (req, res, next) => (/^\/api\/public\/messages\/ses-notices\/?$/i.test(req.originalUrl.split("?")[0]) ? next() : json(req, res, next)));
 }
