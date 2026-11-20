@@ -126,3 +126,16 @@ Rows changed from 7½:
 All other rows are as before. **9½/10, no 0: passes.**
 
 Verdict: Approve 12f7387b26b9d9dec0e4fc410e15f40e1eacfdeb
+
+---
+
+# Re-review 2, diff only (P-277): `git diff 12f7387b2 b9fdc07d7` at b9fdc07d70ee038c4941d2040ac94635e7182211
+
+* **Suites** (worktree at b9fdc07): `check_fo10p2_sharing` **35/35**, `check_fo10_assignment` **42/42**.
+* **n1 fixed.** `eligible()` (`place.ts:27-47`) is one query again: the filter and `for share of s` run together when `lock` is true. This is the form my scratch-table race kept correct (old form `2`, not `2,1`). `lock=false` runs the same query without the lock. Only `setSharing`'s pre-checks use it, outside a transaction, and `save()` re-checks with the lock inside its own. The duplicated SQL text is a nit only.
+* **n2 fixed.** The junk turn now sits on the higher id. With the guard reverted to `(t as number) ?? 0`, the test fails (mutation run, reverted).
+* **n4 fixed.** Switching the firm-wide rule off writes "How new leads are shared set to anyone takes it." (`rules.ts:92`). Reverting it fails the new test.
+* **n3** is left as recorded (setup-row lock during a rule save). Accepted: saves are rare and short, and there is no lock cycle (re-review 1).
+* No new findings. Journey score is unchanged at 9½/10, no 0.
+
+Verdict: Approve b9fdc07d70ee038c4941d2040ac94635e7182211
