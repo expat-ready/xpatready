@@ -22,6 +22,7 @@
 | `tests/check_pf19b3_delivery.ts` (runs part 2's `check_pf19b2_ses.ts` inside) | 24 passed, 0 failed, twice | `2026-11-20-capability-R1.48/pf19b3-delivery-run{1,2}.txt` |
 | `tests/check_pf19b3_panel_browser.ts` (DW4 to DW6: the copy's own worker, test events, panel, keyboard, axe, 375/1024/1440 px, 404s) | 24/24 in runs 1, 3, 4, 5; **23/24 in run 2** (DW6 focus: QA-600) | `…/pf19b3-panel-run{1..5}.txt` |
 | `tests/qa/check_qa600_older_focus.ts` (new; CPU x6, 6 tries) | fails today: focus lost in 4/6 and 6/6 tries | `…/qa600-run{1,2}.txt` |
+| `tests/qa/check_qa601_provider_failed.ts` (new; a provider that always refuses, 8 fake hours of job runner and sweep) | fails today, twice: 9 tries, row still QUEUED, no reason, no FAILED event | `…/qa601-run{1,2}.txt` |
 
 No GitHub run exists for R1.48. Item-proof cannot PASS until `tests/journeys/j_48.ts` exists (P-405: a missing journey is FAIL).
 
