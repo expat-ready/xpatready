@@ -2,13 +2,13 @@
 
 Main tested: **414820671**, which includes CS-K1s #2511 (merged 15:54 UTC, merge aa70168f7). The later commits up to ff6997410 change no app code. Isolated copies only (PLATFORM_IDENTITY=local, PROSPECT_WON_POLL_MS=500, ports 4471-4472); :4400 was not touched.
 
-## R1.72 Case with applicants, representative, pinned release: **Partial** (awaiting the GitHub walks; QA-615 open)
+## R1.72 Case with applicants, representative, pinned release: **Partial** (walks green on GitHub; held on QA-615)
 
 **Signal (P-606):** every checklist part is merged: C6.1 (Works), FO-8 with CS-K1 parts 1-2 (#2406), and the screen CS-K1s (#2511, which closes QA-593). The row is scored.
 
 **Journeys on main's head**
 * Local, on main 414820671's exact tree: `tests/journeys/j_72.ts` passed **31/31 twice** on fresh isolated copies, exit 0.
-* GitHub's runners (P-339, P-700): **not yet run.** I have asked Lead 4 on the records PR to dispatch `walks.yml` with `j_72` twice on main. The run ids go into the row in a follow-up commit.
+* GitHub's runners (P-339, P-700), dispatched by Lead 4 on main's head **ff6997410** (the app code is the same as 414820671's): walks runs **44792732814** (job 136484627528) and **44792924533** (job 136485249770). Both are green, `j_72` 31/31, exit 0.
 
 **Fresh Opus reader (P-303), read only:** "Works for the principal-applicant path, Partial on the plural 'applicants'". Confidence medium-high.
 
@@ -20,7 +20,7 @@ Main tested: **414820671**, which includes CS-K1s #2511 (merged 15:54 UTC, merge
 | …with its applicants, representative and pinned release | Met for the principal; see QA-615 | W4/W8: the case page shows the client, the **principal applicant**, the representative of record and **Release 7** (`:142-146`; screenshot `screens/CS-K1/screenshots/j72-W4-case.png`). W8's representative is the signed version's `representative.staff_id` (`:189-191`). |
 
 **Verdict: Partial.** The behaviour behind every part works on main, on screen. It stays short of Works for two reasons:
-1. **No green walk on GitHub's runners on main's head yet** (P-339; waiting for Lead 4's dispatch).
+1. ~~No green walk on GitHub's runners~~: met, runs 44792732814 and 44792924533.
 2. **QA-615 (Ambiguity · Minor):** the front office holds one person per prospect (no spouse or dependant field; grep `api/src/front-office`, the fo_ schema), and open-case carries only `principal` (`prospect-won.ts:203-204`). Family members are added on the case afterwards ("Add spouse or partner", C6.1). If "its applicants" means the people the prospect record holds, the clause is met. If it means the family too, a row is needed. This is the Lead's ruling, or the founder's if the board counts it.
 
 Weak spots the reader named. Neither fails the clause:
@@ -34,11 +34,10 @@ Weak spots the reader named. Neither fails the clause:
 0 Blocker · 0 Critical · 0 Major · 1 Minor new (QA-615); 1 closed (QA-593).
 
 ## Could not test
-* The GitHub walks (dispatch; see above).
 * Coverage (c8) and the 400 px replay were not rerun. J-72 itself checks 1024 and 1440 px with no sideways scroll, keyboard only, and axe clean.
 
 ## Questions for the Lead
-1. Please dispatch `walks.yml` with `j_72` twice on main and post both run ids on this PR.
+1. Done: Lead 4 dispatched both walks, and they are green.
 2. QA-615: does "its applicants" mean the principal only (what the prospect holds today), or the family too?
 
 ## Suggestions
