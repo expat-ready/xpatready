@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 02:0x IST: Lead 7 handed over to Lead 8 (series 3) · milestone: Release 1 proven 27 of 101 (28 when #2593 merges) · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 04:07 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -16,7 +16,12 @@ updated: 2026-11-21 02:0x IST: Lead 7 handed over to Lead 8 (series 3) · milest
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
 (3d) **02:18 IST:** wave 3 J0 lanes started (cloud, Opus high): R1.5 (task_337374e9), R1.13 (task_6d28c109), R1.14+R1.15 (task_de89f0f8). Allow notes moved to their own PR **#2623** (waves.tsv is not a record); fresh Opus reviewer subagent reviewing; Lead labels on its Approve + green. Records PR #2591 relabelled on d8c2a79e8 (P-773, P-774, STATE). Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93) once #2608 merges (same sign-up area, P-774 (c)). Owed at next check: app view in the browser with Show more; #2596 migration read + NotificationPort ruling; #2594 question; 13 tooling PR diff reads.
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
-(3h) **02:47 IST:** walks j_38/j_110 both GREEN (44818224820, 44818327469); qa Q2 running the R1.38/R1.110 proof. Queued: #2556 R1.26, #2608 R1.100, #2594 R1.74 spare, #2623 allow notes. Answered in the browser: R1.14/15 lane (take baton on stale #2001 PF-24w on a fresh branch, supersedes; PF-8a + CI half of PF-8rc, non-blocking job; cloud parts held); R1.27/R1.32 lane (#2620 etc.: mark ready, label on green; FO-2 API findings → follow-up rows with FO-10 p2); PF-18n1 lane rulings (key per item and kind; security DW2 later; lookup table part 2; reminder-sweep role finding → follow-up row). Follow-up rows owed by the Lead: FO-2 duplicate-check newest-only, Reassign unreachable with sharing off, reminder sweep role.
+(3m) **03:5x IST:** #2642 MERGED → **R1.100 Works on main (29)**. #2476 (R1.32 p1) folder renamed (R100, SQL identical) → Lead read + labelled. #2644 dequeued on a conflict with main → qa Q1 told to merge main (message sent twice: prompt-box bubbles render >30 s late; never resend in the same check). #2591 FO-10c row added (P-773 decision-impact) and relabelled. #2620 new head 1c897aeb5 (lane relabels on Approve). #2478 waits on its /run full.
+(3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
+(3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
+(3j) 03:2x check (R1.26, R1.100 merged; R1.110 Works; R1.38 QA-616): word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
+(3h) 02:47 check: word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
+(3i) R1.74 path (PF-18h #2621 approved; CS-DL3 part 3 brief @aacfe11ad to the warm lane; proof tomorrow morning): word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
 (3f/3g) 02:3x-02:4x: R1.38 and R1.110 merged, walks started in the browser, duplicates archived, #2596 migration read: word for word in `product/history/STATE-2026-11-21-0250-lead8s3-items-3f-3g.md`.
 (3c/3e/4a) Lead 8's 02:1x-02:2x checks (duplicate lanes, #2556 run, app view answers, old lane copies list): word for word in `product/history/STATE-2026-11-21-0240-lead8s3-items-3c-3e-4a.md`.
 (4) **Disk:** 7.9 GB at 01:54; kept worktrees from archived sessions hold 5.3 GB with uncommitted changes (do not delete without checking GitHub, P-468).
