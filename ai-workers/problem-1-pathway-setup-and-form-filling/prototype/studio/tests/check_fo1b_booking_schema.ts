@@ -328,9 +328,14 @@ try {
   sql(DEMO, book(u(236), booker, `${D2} 22:00Z`, `${D2} 22:30Z`));
   ok("FO-1b fail (foreign key, break B-2): deleting a staff member who has a booking (and nothing else) is refused by fo_booking_firm_id_staff_id_fkey (RESTRICT: SQLSTATE 23001); the booking keeps its host",
     refusedCode(DEMO, `delete from platform_staff where id = '${booker}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_booking_firm_id_staff_id_fkey"/) && sql(DEMO, `select staff_id from fo_booking where id = '${u(236)}'`) === booker);
-  ok("FO-1b fail (foreign key): a staff member with hours cannot be deleted or change id (RESTRICT: 23001)",
-    refusedCode(DEMO, `delete from platform_staff where id = '${newStaff}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_availability_firm_id_staff_id_fkey"/)
-    && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id = '${newStaff}'`, "23001", /violates RESTRICT setting of foreign key constraint "fo_availability_firm_id_staff_id_fkey"/));
+  // A staff member's hours are held by two RESTRICT keys (fo_availability, and fo_availability_set, whose row the windows'
+  // trigger makes): PostgreSQL reports whichever key's check trigger fires first, in trigger-name order, which follows the
+  // cluster's OIDs (Lead 4's ruling on #2527, P-294). Either key proves the refusal; both are RESTRICT.
+  const HOURS_KEY = /violates RESTRICT setting of foreign key constraint "fo_availability(_set)?_firm_id_staff_id_fkey"/;
+  ok("FO-1b fail (foreign key): a staff member with hours cannot be deleted or change id (RESTRICT: 23001, by either of their two hours keys)",
+    refusedCode(DEMO, `delete from platform_staff where id = '${newStaff}'`, "23001", HOURS_KEY)
+    && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id = '${newStaff}'`, "23001", HOURS_KEY)
+    && sql(DEMO, `select count(*) from platform_staff where id = '${newStaff}'`) === "1");
   const firmE = sql(DEMO, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-e', 'E', 'CA', 'e@firm-e.example.com', now()) returning id`);
   ok("FO-1b pass: a firm with no front-office row can still be deleted (as before FO-1b)", sql(DEMO, `delete from platform_firm where id = '${firmE}' returning 1`) === "1");
   const firmF = sql(DEMO, `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'firm-f', 'F', 'CA', 'f@firm-f.example.com', now()) returning id`);

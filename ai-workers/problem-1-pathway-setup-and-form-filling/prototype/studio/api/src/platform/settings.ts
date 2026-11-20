@@ -173,6 +173,8 @@ export async function writeSetting(db: DbOrTx, w: SettingWrite): Promise<{ key: 
       firmId: scope.firmId, actor: await auditActorOf(tx, w.by), action: "platform.setting.change", entity: "platform_firm_setting",
       entityKey: `${scope.firmId}:${w.key}`, summary: `Firm ${firm.key}: setting ${w.key} ${changed ? "changed" : "saved unchanged"}${w.reason ? ` (${w.reason})` : ""}`.slice(0, 600),
       detail: { firmKey: firm.key, key: w.key, ...asDetail("from", from), ...asDetail("to", value), ...(w.reason ? { reason: cut(w.reason) } : {}) } as AuditEntry["detail"],
+      // R1.8 (QA-594): the setting's before and after are its from and to above (asDetail, read by AUD-4 as "key: from → to").
+      before: null, after: null,
     });
     return { key: w.key, value: parsed.data, changed };
   };

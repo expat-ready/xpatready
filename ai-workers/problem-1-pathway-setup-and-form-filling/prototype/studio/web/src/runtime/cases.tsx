@@ -30,6 +30,7 @@ import { RepresentativeReviewLatest, RepresentativeReviewPage } from "./represen
 import { CaseReadinessPill } from "./readiness-figure"; // C7.10
 import { HandOff, handedFrom } from "./hand-off"; // BK-4c
 import { clientCardState } from "./client-card"; // QA-427
+import { CaseAreaNav } from "./clients"; // CS-K1s
 import type { CaseListRow, OpenableRelease } from "../../../contracts/runtime";
 
 /** Simulated case people (the firm and the clients of lib/simulated-people.ts, BK-4a); the picker is demo chrome. */
@@ -60,7 +61,7 @@ export function RuntimeApp() {
   const client = isClient(actor);
   return (
     <Frame area={client ? "client" : "cases"} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
-      controls={<PersonPicker area={client ? "client" : "cases"} />}>
+      controls={<>{client ? null : <CaseAreaNav />}<PersonPicker area={client ? "client" : "cases"} /></>}>
       <Routes>
         <Route index element={<CaseList />} />
         <Route path="clients" element={<Navigate to="/cases" replace />} />
