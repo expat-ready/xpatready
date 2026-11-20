@@ -3,7 +3,7 @@
 // default; the client's read returns only CLIENT_VISIBLE current notes, filtered in SQL; marking client-visible is a
 // deliberate, audited act, and needs agent/note:share-with-client, the requirement's §10 key), AG-13-23 (pin and unpin,
 // pinned first, audited), AG-13-24 (edit is firm-scoped and only the author or an Owner or Admin; every edit audited).
-// Storage: case_note is insert-only (case-notes.prisma, migration 20261119150000_csnt1a_case_note): each change writes
+// Storage: case_note is insert-only (case-notes.prisma, migration 20261120030000_csnt1a_case_note): each change writes
 // the note's next version, so every earlier version stays readable (the history route). AG-13-24's "before/after" is
 // kept as the before and after version ids in the audit line, never the text (personal data: no note text in an audit
 // line or an event). STANDARDS §4: a change names the version it was made on (a stale one → 409 NOTE_CHANGED with the
