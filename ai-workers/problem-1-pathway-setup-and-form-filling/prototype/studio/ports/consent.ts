@@ -221,6 +221,16 @@ export function decide(q: { class: MessageClass; channel: Channel }, suppression
   return { allowed: false, reason: rows.length || withdrawals.length ? "WITHDRAWN" : "NO_CONSENT", purpose };
 }
 
+/** QA-518 (row 49; tech lead's ruling, Lead 96, P-294, 19 Nov; Unconfirmed: no counsel): a one-click unsubscribe stops
+ *  marketing email to every person of the firm at that address, not only the person the mail went to (same-email persons
+ *  are never linked, AG-2-84). Only a fresh express consent the person gave themselves on a public page (a web form or a
+ *  booking tick) with its own wording, given after the unsubscribe, lifts it; a staff-recorded, imported, copied or older
+ *  consent (on any person record) never does. The adapter finds the unsubscribe's time from the address. */
+export const LIFTS_ADDRESS_OPT_OUT: ReadonlyArray<z.output<typeof ConsentSource>> = ["WEB_FORM", "BOOKING_FORM"];
+export function liftsAddressOptOut(optOutAt: Date, c: { givenAt: Date; basis: string; source: string; wordingId: string | null; copiedFromId: string | null }): boolean {
+  return c.givenAt.getTime() > optOutAt.getTime() && c.basis === "EXPRESS" && (LIFTS_ADDRESS_OPT_OUT as readonly string[]).includes(c.source) && !!c.wordingId && !c.copiedFromId;
+}
+
 /** sha256 of a text's UTF-8 bytes, lower-case hex (the same as the migration's text_hash check). */
 export async function sha256Hex(text: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));

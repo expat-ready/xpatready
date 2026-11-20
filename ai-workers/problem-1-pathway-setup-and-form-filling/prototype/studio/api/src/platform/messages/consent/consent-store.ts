@@ -9,7 +9,7 @@ import type { AuditPort } from "../../../../../ports/audit.ts";
 import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import {
   AllowsQuery, ConsentRecordInput, ConsentRefused, PublishWordingInput, SuppressInput, WithdrawInput, decide,
-  copyKeeps, endingWithdrawal, normaliseAddress, notInFuture, purposeNeeded, sha256Hex,
+  copyKeeps, endingWithdrawal, liftsAddressOptOut, normaliseAddress, notInFuture, purposeNeeded, sha256Hex,
   type ConsentDecision, type ConsentPort, type PublishedWording, type Withdrawn,
 } from "../../../../../ports/consent.ts";
 import { firmScope } from "../../firm-scope.ts";
@@ -138,9 +138,23 @@ export class ConsentStore implements ConsentPort<Tx> {
     const sup = await db.msgSuppression.findFirst({ where: firmScope(firmId, { channel: q.channel, address }), select: { reason: true } });
     const purpose = purposeNeeded(q.class, q.channel);
     const key = q.subject && purpose && !sup ? firmScope(firmId, { subjectKind: q.subject.kind, subjectId: q.subject.id.toLowerCase(), channel: q.channel, purpose }) : null;
-    const rows = key ? await db.msgConsent.findMany({ where: key, select: { id: true, givenAt: true, withdrawnAt: true } }) : [];
+    const rows = key ? await db.msgConsent.findMany({ where: key, select: { id: true, givenAt: true, withdrawnAt: true, basis: true, source: true, wordingId: true, copiedFromId: true } }) : [];
     const outs = key ? await db.msgConsentWithdrawal.findMany({ where: key, select: { withdrawnAt: true } }) : [];
-    return decide(q, sup?.reason ?? null, rows, outs.map((o) => o.withdrawnAt));
+    const d = decide(q, sup?.reason ?? null, rows, outs.map((o) => o.withdrawnAt));
+    if (!d.allowed || d.reason !== "CONSENT" || d.purpose !== "MARKETING" || q.channel !== "EMAIL") return d;
+    // QA-518: the latest one-click unsubscribe of marketing email from this address, by any person of the firm. The
+    // unsubscribe door writes its withdrawal `by system:unsubscribe:<outbox id>` (unsubscribe.ts), and that outbox row
+    // holds the address the message went to.
+    const [opt] = await db.$queryRaw<{ at: Date | null }[]>`
+      SELECT max(w."withdrawn_at") AS at FROM "msg_consent_withdrawal" w
+      JOIN "msg_outbox" o ON o."firm_id" = w."firm_id" AND w."withdrawn_by" = 'system:unsubscribe:' || o."id"::text
+      WHERE w."firm_id" = ${firmId}::uuid AND w."via" = 'UNSUBSCRIBE'::"MsgWithdrawalVia" AND w."channel" = 'EMAIL'::"MsgChannel"
+        AND w."purpose" = 'MARKETING'::"MsgPurpose" AND o."channel" = 'EMAIL'::"MsgChannel" AND lower(o."address") = ${address}`;
+    if (!opt?.at) return d;
+    const optOutAt = opt.at;
+    // Withdrawn rows still count for the person's own last withdrawal; live rows count only when they lift the opt-out.
+    const lifted = decide(q, null, rows.filter((r) => r.withdrawnAt || liftsAddressOptOut(optOutAt, r)), outs.map((o) => o.withdrawnAt));
+    return lifted.allowed ? lifted : { allowed: false, reason: "WITHDRAWN", purpose: "MARKETING" };
   }
 
   async publishWording(txIn: Tx, input: Parameters<ConsentPort["publishWording"]>[1]): Promise<PublishedWording> {
