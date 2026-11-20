@@ -177,7 +177,7 @@ export class IdentityChecks {
           summary: `Identity check recorded (${c.method.toLowerCase().replace(/_/g, " ")}; ${c.details.length} detail${c.details.length === 1 ? "" : "s"} corroborated${stored ? "; a copy kept" : ""})`,
           detail: { checkId: id, personId: p.id, method: c.method, details: c.details, copyKept: !!stored },
           before: null, after: { personId: p.id, method: c.method, methodDetail: c.methodDetail ?? null, documentType: c.documentType, issuingCountry: c.issuingCountry ?? null,
-            documentExpiry: c.documentExpiry ? c.documentExpiry.toISOString().slice(0, 10) : null, documentNumberLast4: c.documentNumberLast4 ?? null, detailsCorroborated: c.details, copyKept: !!stored } });
+            documentExpiry: c.documentExpiry ? c.documentExpiry.toISOString().slice(0, 10) : null, detailsCorroborated: c.details, copyKept: !!stored } });
         await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.IDENTITY_CHECKED, subjectId: id, payload } });   // last (contracts §0.5)
       });
     } catch (e) {
