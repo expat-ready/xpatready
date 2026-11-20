@@ -117,6 +117,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
 15 full depth|../../.github/workflows/label-guard.yml|/^          fetch-depth: 0$/d|check-queue-gate.sh
 15 full name|../../.github/workflows/ci.yml|s/format(.full-run PR #{0} {1}., inputs.pr, inputs.head)/inputs.head/|check-queue-gate.sh
+15 lead soft|product/tools/queue-gate.sh|s/^    grep -qiEf "\$H.soft" <<< "\$f" .. continue$/    continue/|check-queue-gate.sh
+15 lead hard|product/tools/queue-gate.sh|s/^    if grep -qiEf "\$H.hard" <<< "\$f"; then printf .%s\\n. "\$f"; continue; fi$/    true/|check-queue-gate.sh
+15 lead closed|product/tools/queue-gate.sh|s/ 2>\/dev\/null)" = yes \] \&\& continue$/ 2>\/dev\/null)" != x ] \&\& continue/|check-queue-gate.sh
 16 source|product/tools/cockpit-data.py|s/                elif st != "open":/                elif False:/|check-lead-watch-board.sh
 16 count|product/tools/lead-watch.sh|s/; echo "\$bw"; act=\$((act + \$(grep -c .^ACT. <<<"\$bw")))/; echo "$bw"/|check-lead-watch-board.sh
 17 wall|product/tools/known-failures.py|s/(1 if b > int(row\["threshold"\]) else 0)/0/|check-known-failures.sh

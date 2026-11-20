@@ -94,6 +94,21 @@ for f in ".github/workflows/x.yml" ".mergify.yml" "ai-workers/x/product/tools/qu
   files 7 "$S/api/src/form.ts" "$f"; run label 7
   ok "label refused: $f keeps the Lead's read (P-423)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
 done
+# B206 part 3 (P-751): money and permissions keep the Lead's read; a screenshot (*.png under screens/) or a record
+# (records-only.sh) sets off only the guard lines (.github/, product/tools/, schema, migrations), never money.
+PR3=ai-workers/problem-1-pathway-setup-and-form-filling/product
+for f in "$S/api/src/permissions.ts" "$S/api/src/platform/identity/roles.ts" "ai-workers/x/product/tools/fees.md" "ai-workers/x/product/tools/screens/fee.png" ".github/screens/fee.png" "$PR3/screens/R1.58/fees.json" "$PR3/qa/walks/payment/walk.cjs" "$S/prisma/migrations/9_fee/README.md"; do
+  files 7 "$S/api/src/form.ts" "$f"; run label 7
+  ok "label refused: $f keeps the Lead's read (B206 part 3: money, permissions and the guard lines stay)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
+done
+for f in "$PR3/screens/R1.58/payment-shot.png" "$PR3/qa/reports/2026-11-19-fees/README.md" "$PR3/qa/reports/2026-11-19-fees/invoice-run.txt" "$PR3/design/ledger-plan.md" "$S/web/screens/fee-form.png"; do
+  files 7 "$S/api/src/form.ts" "$f"; run label 7
+  ok "label: $f is a screenshot or a record: no Lead read for it (B206 part 3)" "$(grep -qx 'LABEL 7' <<< "$log" && echo 1)" "$out / $log"
+done
+files 7 "$S/api/src/form.ts" "$PR3/design/ledger-plan.md"; RECORDS_ONLY=/nonexistent; export RECORDS_ONLY; run label 7; unset RECORDS_ONLY
+ok "label refused: records-only.sh cannot answer, so a money-named record keeps the Lead's read (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && grep -q "Lead's read" <<< "$out" && echo 1)" "$out / $log"
+grep -v '^# --- records-exempt' "$TOOLS/lead-read-paths.txt" > "$T/lrp.txt"; files 7 "$S/api/src/form.ts" "$PR3/screens/R1.58/payment-shot.png"; LEAD_READ_PATHS="$T/lrp.txt"; export LEAD_READ_PATHS; run label 7; unset LEAD_READ_PATHS
+ok "label refused: with no records-exempt marker every line holds for every file (fails closed)" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"
 files 7 "$S/api/src/form.ts"
 cmt 7 o OWNER "> Reviewer: Approve $HEAD1"; run label 7
 ok "label refused: a quoted Approve line (> ...) is not the reviewer's own" "$(! grep -q '^LABEL' <<< "$log" && echo 1)" "$out / $log"

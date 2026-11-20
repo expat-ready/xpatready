@@ -5,7 +5,8 @@
 #            by the repository owner's account or a login in REVIEWERS (space-separated; the repository variable, so no
 #            name sits in a file), author association OWNER, MEMBER or COLLABORATOR, and it is the last "Reviewer:"
 #            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (c) no changed path
-#            matches lead-read-paths.txt (.github/, .mergify.yml, migrations, money: those keep the Lead's read, P-423).
+#            matches lead-read-paths.txt (.github/, .mergify.yml, migrations, money: those keep the Lead's read, P-423;
+#            a screenshot or a record sets off only the guard lines, never money or permissions: B206 part 3).
 #            No more waiting for a sleeping lane to wake and label. A refusal is commented only when the Approve comment
 #            itself started the run. label-sweep.sh keeps a github-actions[bot] label only when `eligible` passes.
 #   fresh  — the commit status "queue-fresh" that Mergify's product queue needs for a PR touching prototype/
@@ -38,7 +39,7 @@ set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"; CTX="queue-fresh"
 HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "queue-gate: $v is not set"; exit 2; }; done
-H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
+H=$(mktemp); trap 'rm -f "$H" "$H.v" "$H.p" "$H.f" "$H.m" "$H.hard" "$H.soft"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
 api() { curl -sS --fail-with-body -H @"$H" "$@"; }
 pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
@@ -72,6 +73,17 @@ san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-
 # Records-only: main's one definition on the PR's file names AND the label "records" that records-label.yml sets from a
 # full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
 records() { has records && [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
+leadread() {  # stdin: changed paths → those that keep the Lead's read (P-423, lead-read-paths.txt). Lines after its
+  # "--- records-exempt" marker (money, permissions) are not set off by a screenshot (*.png under screens/) nor by a record
+  # (records-only.sh, main's one definition; one call a candidate file, fails closed: no answer keeps the read). B206 part 3.
+  local f all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}"   # LEAD_READ_PATHS: the test's stand-in
+  awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$all" > "$H.hard"; awk 'f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$all" > "$H.soft"
+  while IFS= read -r f; do [ -n "$f" ] || continue
+    if grep -qiEf "$H.hard" <<< "$f"; then printf '%s\n' "$f"; continue; fi
+    grep -qiEf "$H.soft" <<< "$f" || continue
+    grep -qiE '(^|/)screens/([^/]+/)*[^/]+\.png$' <<< "$f" && continue
+    [ "$(printf '%s\n' "$f" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ] && continue
+    printf '%s\n' "$f"; done; rm -f "$H.hard" "$H.soft"; }
 failing() {  # a run's id [all] → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable. all: in any attempt
   api "$API/repos/$REPO/actions/runs/$1/jobs?filter=${2:-latest}&per_page=100" 2>/dev/null \
     | jq -r '[.jobs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled") | .name | select(. != "retry-comment")] | (map(select(. != "ci")) | if length > 0 then . else empty end) // . | .[]' 2>/dev/null | san | cut -c1-120 | grep .; true; }
@@ -164,7 +176,7 @@ judge() {  # eligibility for the label; reason in $why
     [ "$keep" = 1 ] && last=$l; done < "$H.v"; rm -f "$H.v"
   grep -qiE "^[[:space:]]*reviewer:[[:space:]]*approve[sd]?[[:space:]]+$head\b" <<< "$last" \
     || { why="the last \"Reviewer:\" verdict about $head from the owner's account or a known reviewer is not an Approve naming it"; return 1; }
-  bad=$(grep -iEf <(grep -v '^#' "$HERE/lead-read-paths.txt" | grep .) <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
+  bad=$(leadread <<< "$files" | head -3 | sed 's/.*/`&`/' | paste -sd ' ' -)
   [ -z "$bad" ] || { why="it touches a path that keeps the Lead's read (P-423): $bad"; return 1; }
   ci; [ "$ci_state" = success ] || { why="ci on ${head:0:9} is $ci_state"; return 1; }
   fullproof "$head" || return 1   # CI-PRE (P-731): one green full run on this exact head
