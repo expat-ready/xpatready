@@ -86,6 +86,7 @@ model PlatformFirm {
 
   // back-relation slot: messages (PF-19a)
   messages MsgFirm? // platform-messages.prisma (the slot's comment stays: check_pf0p_ports keeps every slot line)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma
 
   // back-relation slot: money (FO-7a)
   moneySettings MoneyPaymentSettings? // client-money.prisma (FO-7a; Lead B's OK on #1758)
@@ -246,6 +247,7 @@ model PlatformStaff {
   foBookings     FoBooking[]
 
   // back-relation slot: messages (PF-19a)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma (the person's own in-app notifications)
 
   // back-relation slot: money (FO-7a)
 
