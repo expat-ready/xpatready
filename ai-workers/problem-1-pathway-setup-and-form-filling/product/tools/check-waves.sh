@@ -63,13 +63,40 @@ sed -i.bak 's/^| R1.1 | a | P | Works/| R1.1 | a | P | Partial/' "$T/caps.md"
 printf 'x\tbroken\n' >> "$T/waves.tsv"; wv allow R1.1; ok "a malformed waves.tsv line stops allow (exit 2), never a pass" "$([ $r = 2 ] && echo 1)" "rc=$r $out"
 sed -i.bak '$d' "$T/waves.tsv"
 
+# pr (pr-rules.yml): the items a PR names, outside the open waves.
+pr() { out=$(printf '%s' "$1" | python3 -I "$W" pr 2>&1); r=$?; }
+pr $'runtime: X-9 — R1.6 part 1\nDuplicate check: none'; ok "pr: a title naming a wave 4 item is flagged (exit 1)" "$([ $r = 1 ] && grep -q '^OUTSIDE WAVE: R1.6 is in wave 4; open waves 0, 1, 2' <<<"$out" && echo 1)" "rc=$r $out"
+pr $'runtime: X-1\nItem: R1.1\nClash: R1.6 is next door'; ok "pr: an Item line in an open wave passes; R1.x in free body text is not read" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "rc=$r $out"
+pr $'runtime: X-1\n- Completes: R1.6'; ok "pr: a Completes line outside the open waves is flagged" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
+pr $'records: notes\n'; ok "pr: a PR naming no item passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
+ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; PRW="$ROOTD/.github/workflows/pr-rules.yml"
+grep -qF 'base/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/waves.py pr' "$PRW" && grep -qF 'labels[]=outside-wave' "$PRW" && grep -q '::warning' "$PRW" && grep -q 'pull-requests: write' "$PRW"
+ok "pr-rules.yml runs the base commit's waves.py pr, adds the label outside-wave and a warning" "$([ $? = 0 ] && echo 1)"
+awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -q 'exit 0$' && ! awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -qE 'exit 1|exit "\$'
+ok "pr-rules.yml's waves step always exits 0 (flag, never fail: P-214)" "$([ $? = 0 ] && echo 1)"
+grep -q 'waves.py" wip' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$wp\"" "$TOOLS/lead-watch.sh"
+ok "lead-watch.sh runs waves.py wip each check and counts its ACT lines" "$([ $? = 0 ] && echo 1)"
+
 # 3. wip: an open PR naming R1.1 in its title, one with "Item: R1.6" (wave 4), a draft (not counted), a lane naming R1.2.
 jq -n '[{number:1,title:"runtime: X-1 — R1.1 part",body:"",isDraft:false,headRefName:"a"},{number:2,title:"runtime: Y",body:"Item: R1.6\nDuplicate check: none",isDraft:false,headRefName:"b"},
   {number:3,title:"runtime: R1.4 draft",body:"",isDraft:true,headRefName:"c"},{number:4,title:"merge",body:"R1.5",isDraft:false,headRefName:"mergify/x"}]' > "$T/prs.json"
 printf 'saved x epoch 1\napp view 1 sessions · 0 flagged\nok    Builder R1.2 lane · cloud · working\n' > "$T/av.txt"
 wv wip --prs "$T/prs.json" --lanes "$T/av.txt"
 ok "wip counts PRs and lanes naming items, not drafts or merge-queue PRs" "$(grep -q '^wip   building 3 (cap 8): R1.1 #1, R1.2 lane, R1.6 #2 · Built-not-Proven 1 (cap 12): R1.3' <<<"$out" && echo 1)" "$out"
-ok "wip gives one ACT for an item building outside the open waves (exit 1)" "$([ $r = 1 ] && grep -q '^ACT   wip: R1.6 (wave 4) is being built by #2' <<<"$out" && echo 1)" "rc=$r $out"
+ok "wip gives one ACT for an item building outside the open waves" "$([ "$(grep -c '^ACT   wip:' <<<"$out")" = 1 ] && grep -q '^ACT   wip: R1.6 (wave 4) is being built by #2' <<<"$out" && echo 1)" "rc=$r $out"
+# ENF-761 part 1: under the caps. Building 3 of 8 while open waves 1-2 hold R1.4 (its PR a draft), R1.5, R1.40-42 with
+# no PR or lane (R1.3 is Built: qa's, not a lane's); no qa lane while R1.3 waits for qa. exit = 3 ACTs (R1.6 too).
+ok "capacity: building 3 of 8 with 5 open-wave items unstarted is an ACT naming the first (pass case)" "$(grep -qx 'ACT   capacity: building 3 of 8 while the active or next wave has 5 items with no lane or open PR: start lanes (cards if this is not a founder-typed turn) · first: R1.4, R1.5, R1.40, R1.41, R1.42' <<<"$out" && echo 1)" "$out"
+ok "capacity: qa lanes 0 of 4 while 1 item is built and not proven is an ACT; exit counts all 3" "$([ $r = 3 ] && grep -qx 'ACT   capacity: qa lanes 0 of 4 while 1 items are built and not proven' <<<"$out" && echo 1)" "rc=$r $out"
+printf 'saved x epoch 1\napp view 4 sessions · 0 flagged\nok    qa 11 · cloud\nok    QA 12 · cloud\nok    qa13 x · cloud\nok    qa 14 · mac\nok    quality review · cloud\n' > "$T/av4.txt"
+jq -n '[range(1;8) as $i | {number:(100+$i), title:"Item work", body:"Item: R1.\([1,2,4,5,40,41,42][$i-1])", isDraft:false, headRefName:"p\($i)"}]' > "$T/full.json"
+wv wip --prs "$T/full.json" --lanes "$T/av4.txt"
+ok "capacity: every open-wave item started and 4 qa lanes (\"qa N\" titles, any case): no capacity ACT (fail case)" "$(! grep -q '^ACT   capacity' <<<"$out" && grep -q '^wip   building 7 (cap 8)' <<<"$out" && [ $r = 0 ] && echo 1)" "rc=$r $out"
+wv wip --prs "$T/prs.json" --lanes "$T/none.txt"
+ok "capacity: no app view read: no qa-lanes ACT (the stale view is its own ACT), the building ACT stays" "$(! grep -q '^ACT   capacity: qa lanes' <<<"$out" && grep -q '^ACT   capacity: building 2 of 8 while the active or next wave has 6 items' <<<"$out" && echo 1)" "$out"
+printf 'saved x epoch 1\nUNREADABLE app view: HTTP 401 (signed out? ask the founder to sign in to claude.ai)\n' > "$T/av-unread.txt"
+wv wip --prs "$T/prs.json" --lanes "$T/av-unread.txt"
+ok "capacity: a saved UNREADABLE view is not read: no qa-lanes ACT from it, and 'lanes not read' is said (review on efd0118)" "$(! grep -q '^ACT   capacity: qa lanes' <<<"$out" && grep -q 'lanes not read' <<<"$out" && echo 1)" "rc=$r $out"
 jq -n '[range(10;19) | {number:., title:"R1.\(.)", body:"", isDraft:false, headRefName:"x"}]' > "$T/many.json"
 for n in $(seq 10 18); do printf 'R1.%s\t1\tJ0\n' "$n" >> "$T/waves.tsv"; printf '| R1.%s | x | P | Partial | x |\n' "$n" >> "$T/caps.md"; done
 wv wip --prs "$T/many.json" --lanes "$T/none.txt"

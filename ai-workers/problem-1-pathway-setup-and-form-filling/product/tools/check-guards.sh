@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) with ENF-761's under-cap ACTs (761c) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
@@ -186,11 +186,17 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 page|product/tools/waves.py|s/        if norm(old) != norm(gen_block(rows, st)):/        if False:/|check-waves.sh
 28 cap|product/tools/waves.py|s/    if len(building) > CAP_BUILDING:/    if False:/|check-waves.sh
 28 ids|product/tools/waves.py|s/        if miss or extra or dup:/        if False:/|check-waves.sh
+28 pr|product/tools/waves.py|s/               if i in wave and wave\[i\]\[0\] not in ok and not wave\[i\]\[1\].startswith(.allow:.)\]/               if False]/|check-waves.sh
+28 watch|product/tools/lead-watch.sh|/waves.py" wip --prs/d|check-waves.sh
+28 flag|../../.github/workflows/pr-rules.yml|/labels\[\]=outside-wave/d|check-waves.sh
 28 item|product/tools/brief-check.sh|s/^  if \[ -z "\$item" \]; then bad=/  if false; then bad=/|check-lane-preflight.sh
 28 wave|product/tools/brief-check.sh|s/waves.py" allow /waves.py" active /|check-lane-preflight.sh
 28 none|product/tools/brief-check.sh|s/waves.py" none-ok 2>\&1)/waves.py" active 2>\&1)/|check-lane-preflight.sh
 30 stale|product/tools/runs-waiting.py|s/(stale if c and now - c >= timedelta(hours=FRESH_H) else fresh)/fresh/|check-runs-waiting.sh
-30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh'
+30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh
+761c build|product/tools/waves.py|s/    if len(building) < CAP_BUILDING and waiting:/    if False:/|check-waves.sh
+761c qa|product/tools/waves.py|s/    if qa is not None and qa < CAP_QA and built:/    if False:/|check-waves.sh
+761c view|product/tools/waves.py|s/^        if re.search(r"^UNREADABLE".*/        if False:/|check-waves.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
