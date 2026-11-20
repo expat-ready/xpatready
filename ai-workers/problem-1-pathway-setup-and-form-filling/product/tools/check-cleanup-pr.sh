@@ -26,7 +26,7 @@ DONE=$'Done when: x\nDuplicate check: none'
 fresh r1; echo z > "$R/olddir/z.txt"; git -C "$R" add -A; git -C "$R" commit -qm add
 ok "an ordinary PR passes and still runs the stale-path check" "$([ "$(run "$DONE")" = 0 ] && grep -q 'stale paths: ' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 
-fresh r2; git -C "$R" mv olddir newdir; sed -i 's#olddir/x#newdir/x#' "$R/.github/ci.yml"; printf 'olddir/\n' >> "$R/$TL/stale-paths.txt"; git -C "$R" commit -qam mv
+fresh r2; git -C "$R" mv olddir newdir; echo "run: bash newdir/x.txt" > "$R/.github/ci.yml"; printf 'olddir/\n' >> "$R/$TL/stale-paths.txt"; git -C "$R" commit -qam mv
 ok "a move that lists its old path but has no Clean-up line fails" "$([ "$(run "$DONE")" = 1 ] && grep -q 'NO CLEAN-UP LINE: this PR edits' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 ok "... and passes with 'Clean-up: move; allow: .github/ci.yml'" "$(y "$(run "$DONE"$'\nClean-up: move; allow: .github/ci.yml')" 0)" "$(cat "$T/out")"
 ok "... but fails with 'Clean-up: move' alone (the ci.yml edit is not pure)" "$([ "$(run "$DONE"$'\nClean-up: move')" = 1 ] && grep -q 'NOT PURE.*ci.yml' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
@@ -46,7 +46,8 @@ ok "... under the limit it passes" "$(y "$(CLEANUP_BULK=4 run "$DONE")" 0)" "$(c
 
 fresh r6; git -C "$R" rm -q olddir/y.txt; git -C "$R" commit -qm rm
 ok "an unreadable Clean-up line fails, saying how to write it" "$([ "$(run "$DONE"$'\nClean-up: tidy')" = 1 ] && grep -q 'cannot be read' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
-ok "a Clean-up line with a CR line end (a pasted body) is read" "$(y "$(run "$DONE"$'\nClean-up: delete\r')" 0)" "$(cat "$T/out")"
+echo two > "$R/CLAUDE.md"; git -C "$R" commit -qam claude
+ok "a Clean-up line with a CR line end (a pasted body) is read, its allow list too" "$(y "$(run "$DONE"$'\nClean-up: delete; allow: CLAUDE.md\r')" 0)" "$(cat "$T/out")"
 ok "an unknown base is bad use (exit 2)" "$(y "$(run "$DONE" --base nope)" 2)" "$(cat "$T/out")"
 ok "--base with no value is bad use (exit 2)" "$(y "$( cd "$R" && printf 'x\n' | bash "$R/$TL/cleanup-pr-check.sh" --base > "$T/out" 2>&1; echo $? )" 2)" "$(cat "$T/out")"
 rm "$R/$TL/stale-paths.txt"
