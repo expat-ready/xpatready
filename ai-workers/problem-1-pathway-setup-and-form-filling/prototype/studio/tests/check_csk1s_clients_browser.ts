@@ -11,7 +11,7 @@
 //   DW7 the offer read returns no prospect answers (e-mail, phone).
 // Keyboard on the card's button; axe clean (WCAG 2.2 A/AA); 1024 and 1440 px with no sideways scroll. Sample rows only;
 // US$0, no model call; live AI off. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh csk1s_clients 4643 start PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500 && tsx studio/tests/check_csk1s_clients_browser.ts csk1s_clients 4643
+//   zsh studio/tools/isolated.sh csk1s_clients 4643 start PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500 && tsx studio/tests/check_csk1s_clients_browser.ts 4643 xr_studio_csk1s_clients
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -26,9 +26,9 @@ import { ClientOfferView } from "../contracts/runtime.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const [NAME, PORT] = [process.argv[2] ?? "csk1s_clients", Number(process.argv[3] ?? 4643)];
-if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
-const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
+const [PORT, DBNAME] = [Number(process.argv[2] ?? 4643), process.argv[3] ?? "xr_studio_csk1s_clients"];
+if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo on :4400"); process.exit(2); }
+const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "CS-K1s", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const POLL = Number(process.env.PROSPECT_WON_POLL_MS) || 500;
 const { ok, summary } = recorder();
