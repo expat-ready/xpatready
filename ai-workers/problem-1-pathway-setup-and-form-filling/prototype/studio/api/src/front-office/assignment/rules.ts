@@ -22,20 +22,23 @@ export type Placement = {
   ownerStaffId: string | null;
   ruleId: string | null;
   strategy: Strategy | null;
-  /** Why a matching rule placed no one: its named owner is not active, or nobody in its set is active with the key. */
+  /** Why a matching rule placed no one: its named owner is not active or lost the sales key, or nobody in its set is active with the key. */
   fallback: "OWNER_INACTIVE" | "NO_ELIGIBLE" | null;
 };
 export const NO_RULE: Placement = { ownerStaffId: null, ruleId: null, strategy: null, fallback: null };
 
-/** Active staff of the firm holding the sales key, ordered by id (the round robin's fixed order), within `among` when given. */
+/** Active staff of the firm holding the sales key through a live grant (an ended grant gives no key, as the guard reads
+ *  it: identity/service.ts), ordered by id (the round robin's fixed order), within `among` when given. The rows are
+ *  share-locked, so a deactivation waits for the arrival that picked the person (break m3). */
 async function eligible(tx: Tx, firmId: string, among: string[]): Promise<string[]> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     select s.id::text from platform_staff s
     where s.firm_id = ${firmId}::uuid and s.status = 'ACTIVE'
       and exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
-                  where g.staff_id = s.id and rp.permission_key = ${SALES_KEY})
+                  where g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${SALES_KEY})
       and (cardinality(${among}::uuid[]) = 0 or s.id = any(${among}::uuid[]))
-    order by s.id`;
+    order by s.id
+    for share of s`;
   return rows.map((r) => r.id);
 }
 
@@ -52,8 +55,9 @@ export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId
     limit 1 for update`;
   if (!rule) return NO_RULE;
   if (rule.strategy === "OWNER") {
-    const active = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: rule.owner!, status: "ACTIVE" as const }), select: { id: true } });
-    return { ownerStaffId: active?.id ?? null, ruleId: rule.id, strategy: "OWNER", fallback: active ? null : "OWNER_INACTIVE" };
+    // The named person must still be able to work leads (break M2): active, with the sales key; else Unassigned.
+    const [able] = await eligible(tx, firmId, [rule.owner!]);
+    return { ownerStaffId: able ?? null, ruleId: rule.id, strategy: "OWNER", fallback: able ? null : "OWNER_INACTIVE" };
   }
   const set = await eligible(tx, firmId, rule.among);
   if (!set.length) return { ownerStaffId: null, ruleId: rule.id, strategy: "ROUND_ROBIN", fallback: "NO_ELIGIBLE" };
@@ -68,8 +72,8 @@ export class AssignmentRules {
   constructor(@Inject(Db) private readonly db: PrismaClient, @Inject(SALES_PORTS) private readonly ports: SalesPorts) {}
 
   async list(ctx: StaffContext) {
-    const rows = await this.db.foAssignmentRule.findMany({ where: firmScope(ctx.firmId, {}), orderBy: [{ criteriaKey: "asc" }], include: { service: { select: { label: true } } } });
-    return rows.map((r) => ({ id: r.id, door: r.door, serviceId: r.serviceId, serviceLabel: r.service?.label ?? null, strategy: r.strategy, ownerStaffId: r.ownerStaffId, eligibleStaffIds: r.eligibleStaffIds, active: r.active, updatedAt: r.updatedAt.toISOString() }));
+    const rows = await this.db.foAssignmentRule.findMany({ where: firmScope(ctx.firmId, {}), orderBy: [{ criteriaKey: "asc" }], include: { service: { select: { label: true, active: true } } } });
+    return rows.map((r) => ({ id: r.id, door: r.door, serviceId: r.serviceId, serviceLabel: r.service?.label ?? null, serviceActive: r.service ? r.service.active : null, strategy: r.strategy, ownerStaffId: r.ownerStaffId, eligibleStaffIds: r.eligibleStaffIds, active: r.active, updatedAt: r.updatedAt.toISOString() }));
   }
 
   /** One rule per criteria: a second save for the same door and service replaces the first and keeps its cursor. */
@@ -86,9 +90,11 @@ export class AssignmentRules {
       }
       let owner: string | null = null, among: string[] = [];
       if (strategy === "OWNER") {
-        const o = typeof b.ownerStaffId === "string" && UUID.test(b.ownerStaffId) ? await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: b.ownerStaffId.toLowerCase(), status: "ACTIVE" as const }), select: { id: true } }) : null;
-        owner = o?.id ?? unprocessable("Choose an active person of your firm.", { ownerStaffId: "Choose a person from the list." });
+        if (b.eligibleStaffIds !== undefined) unprocessable("One person takes no turn list.", { eligibleStaffIds: "Leave empty for one person." });   // break m4
+        const [o] = typeof b.ownerStaffId === "string" && UUID.test(b.ownerStaffId) ? await eligible(tx, firmId, [b.ownerStaffId.toLowerCase()]) : [];
+        owner = o ?? unprocessable("Choose an active person of your firm who can work leads.", { ownerStaffId: "Choose a person who can work leads." });
       } else {
+        if (b.ownerStaffId !== undefined && b.ownerStaffId !== null) unprocessable("Round robin names no single person.", { ownerStaffId: "Leave empty for round robin." });   // break m4
         const asked = b.eligibleStaffIds === undefined ? [] : Array.isArray(b.eligibleStaffIds) && b.eligibleStaffIds.length <= 200 && b.eligibleStaffIds.every((x) => typeof x === "string" && UUID.test(x))
           ? [...new Set((b.eligibleStaffIds as string[]).map((x) => x.toLowerCase()))] : unprocessable("eligibleStaffIds: a list of people of your firm.", { eligibleStaffIds: "A list of people." });
         if (asked.length) {

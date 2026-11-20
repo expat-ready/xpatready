@@ -62,6 +62,7 @@ try {
   };
   const R = ctxOf("user-R"), O = ctxOf("user-O"), T = ctxOf("user-T"), SOLO = ctxOf("user-S");
   const addStaff = (name: string, role: string, status = "ACTIVE", f = A) => { const id = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${f}', '${name.toLowerCase()}@fo10.example.com', '${name} (Sample)', '${status}', now()) returning id`); sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${f}', '${id}', '${role}', 'seed:FO-10-test')`); return id; };
+  const addStaffGrant = (id: string, role: string) => sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:FO-10-test')`);
   // Firm A gets a second solo-like staff member in firm S, so firm S is no one-user firm (X-4 would place every lead).
   const S2 = addStaff("Helper", "CASE_OFFICER", "ACTIVE", S);
 
@@ -147,17 +148,33 @@ try {
   const orphan = await arrival("BOOKING");
   ok("FO-10 fail: a rule naming a person no longer active → Unassigned, and the timeline says the rule's person is not active", ownerOf(orphan.leadId) === "none" && createdLine(orphan.leadId).endsWith(`|${bookingRule.id}|OWNER_INACTIVE`));
   const items = (await timeline.lead(R, orphan.leadId!)).lines;
-  ok("FO-10 pass: the lead's timeline shows the rule's line", items.some((l) => l.summary?.includes("the rule's person is not active")), items);
+  ok("FO-10 pass: the lead's timeline shows the rule's line", items.some((l) => l.summary?.includes("the rule's person is not active or cannot work leads")), items);
   sql(`update platform_staff set status = 'ACTIVE' where id = '${O.staffId}'`);
   await rules.off(R, bookingRule.id);
   ok("FO-10 fail: a rule switched off places nothing (Unassigned again); its row stays", ownerOf((await arrival("BOOKING")).leadId) === "none" && sql(`select active from fo_assignment_rule where id = '${bookingRule.id}'`) === "f");
+
+  // ------------------------------------------------------------------------------------------- who can work leads (break M1, M2, m4)
+  ok("FO-10 fail (break M2): one person who cannot work leads (Read-only) → refused at the field", (await refusal(() => rules.save(R, { door: "BOOKING", strategy: "OWNER", ownerStaffId: viewer })))?.status === 422);
+  ok("FO-10 fail (break m4): a field the strategy does not use → refused, never dropped silently", (await refusal(() => rules.save(R, { door: "BOOKING", strategy: "ROUND_ROBIN", ownerStaffId: SOLO.staffId })))?.status === 422 && (await refusal(() => rules.save(R, { door: "BOOKING", strategy: "OWNER", ownerStaffId: O.staffId, eligibleStaffIds: [SOLO.staffId] })))?.status === 422);
+  const ender = addStaff("Ender", "CASE_MANAGER");
+  const enderRule = await rules.save(R, { door: "BOOKING", strategy: "OWNER", ownerStaffId: ender });
+  ok("FO-10 pass: a booking lead goes to the rule's person while they hold a sales role", ownerOf((await arrival("BOOKING")).leadId) === ender);
+  sql(`update platform_role_grant set ended_at = now(), ended_by = 'seed:FO-10-test', end_reason = 'role changed' where staff_id = '${ender}'`);
+  addStaffGrant(ender, "READ_ONLY");
+  const endedLead = await arrival("BOOKING");
+  ok("FO-10 fail (break M2): the rule's person whose sales role was ended → Unassigned with the reason, never a lead nobody sees", ownerOf(endedLead.leadId) === "none" && createdLine(endedLead.leadId).endsWith(`|${enderRule.id}|OWNER_INACTIVE`), createdLine(endedLead.leadId));
+  ok("FO-10 fail (break M1): a turn naming someone whose sales role was ended → refused at the field", (await refusal(() => rules.save(R, { door: "BOOKING", strategy: "ROUND_ROBIN", eligibleStaffIds: [ender, T.staffId] })))?.status === 422);
+  const open2: string[] = [];
+  for (let i = 0; i < everyone.length + 1; i++) open2.push(ownerOf((await arrival("WEB_FORM")).leadId));
+  ok("FO-10 fail (break M1): the open turn never gives a lead to someone whose sales role was ended", !open2.includes(ender) && open2.every((x) => x !== "none"), open2);
+  await rules.off(R, enderRule.id);
 
   // ------------------------------------------------------------------------------------------- by hand, firms
   const added = await leads.add(T, { requestId: randomUUID(), givenNames: "Hand", email: "hand@fo10.example.org", source: "Phone call", interestedIn: service }) as { id?: string; ownerStaffId?: string };
   ok("FO-10 fail: a lead added by hand belongs to its adder, whatever the rules say", added.ownerStaffId === T.staffId, added);
   const inS = await arrival("WEB_FORM", { firmId: S });
   ok("FO-10 fail: firm A's rules never place firm B's leads", ownerOf(inS.leadId) === "none");
-  ok("FO-10 fail: firm B cannot see or switch off firm A's rule (404), and lists only its own", (await refusal(() => rules.off(SOLO, rr.id)))?.status === 404 && (await rules.list(SOLO)).length === 0 && (await rules.list(R)).length === 3);
+  ok("FO-10 fail: firm B cannot see or switch off firm A's rule (404), and lists only its own", (await refusal(() => rules.off(SOLO, rr.id)))?.status === 404 && (await rules.list(SOLO)).length === 0 && (await rules.list(R)).length === 3 && (await rules.list(R)).every((r) => r.serviceActive !== false));
   void S2;
 
   // ------------------------------------------------------------------------------------------- take and reassign
