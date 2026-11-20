@@ -70,8 +70,8 @@ pr $'runtime: X-1\nItem: R1.1\nClash: R1.6 is next door'; ok "pr: an Item line i
 pr $'runtime: X-1\n- Completes: R1.6'; ok "pr: a Completes line outside the open waves is flagged" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
 pr $'records: notes\n'; ok "pr: a PR naming no item passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
 ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; PRW="$ROOTD/.github/workflows/pr-rules.yml"
-grep -q 'waves.py" pr' "$PRW" && grep -qF 'labels[]=outside-wave' "$PRW" && grep -q '::warning' "$PRW" && grep -q 'pull-requests: write' "$PRW"
-ok "pr-rules.yml runs waves.py pr, adds the label outside-wave and a warning" "$([ $? = 0 ] && echo 1)"
+grep -qF 'base/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/waves.py pr' "$PRW" && grep -qF 'labels[]=outside-wave' "$PRW" && grep -q '::warning' "$PRW" && grep -q 'pull-requests: write' "$PRW"
+ok "pr-rules.yml runs the base commit's waves.py pr, adds the label outside-wave and a warning" "$([ $? = 0 ] && echo 1)"
 awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -q 'exit 0$' && ! awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -qE 'exit 1|exit "\$'
 ok "pr-rules.yml's waves step always exits 0 (flag, never fail: P-214)" "$([ $? = 0 ] && echo 1)"
 grep -q 'waves.py" wip' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$wp\"" "$TOOLS/lead-watch.sh"
