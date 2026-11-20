@@ -78,6 +78,7 @@ model Case {
   reviewRoundForms  ReviewRoundForm[]   // C8.3
   reviewChecks      ReviewCheck[]       // C8.3
   decisions         CaseDecision[]      // CS-C1a
+  milestones        CaseMilestone[]     // CS-DL3 part 1
   closedFromStage   CaseStage?          @relation("CaseClosedFromStage", fields: [closedFromStageId], references: [id], onDelete: NoAction)
   /// CS-K1: firm-matched by the key (always) and by the platform firm id (once both are filled: CS-W1 part 1 leaves it null).
   client            CaseClient          @relation("CaseClient", fields: [clientId, workspaceId, firmKey], references: [id, workspaceId, firmKey], onDelete: Restrict, onUpdate: Restrict)
@@ -431,4 +432,36 @@ model CaseDecision {
   @@index([firmId, caseId])
   @@index([filingId])
   @@map("case_decision")
+}
+
+/// CS-DL3 part 1 (R1.74, QA-591; Doc 3 line 3337 CaseMilestone): a government step on a case (a biometrics instruction
+/// letter, a medical exam request, ...), with the letter's date and, when the letter gives one, its due date as typed by
+/// staff from IRCC's letter (never computed, P-170). Insert-only apart from cancelling: a due date is never edited; a
+/// wrong one is cancelled and recorded again, and both lines stay (AG-7-96 r7). The database refuses every other change.
+model CaseMilestone {
+  id           String    @id @default(uuid()) @db.Uuid
+  /// The platform firm (platform_firm.id) of the case's firm key; checked by the insert trigger.
+  firmId       String    @map("firm_id") @db.Uuid
+  caseId       String    @map("case_id") @db.Uuid
+  /// One of MILESTONE_KEYS (api/src/case-deadlines/milestones.ts), a Sample list until the configurator defines them.
+  milestoneKey String    @map("milestone_key")
+  /// The letter's date.
+  occurredOn   DateTime  @map("occurred_on") @db.Date
+  /// The due date on the letter; null when the letter gives none. Never before occurred_on.
+  dueOn        DateTime? @map("due_on") @db.Date
+  /// The IRCC letter's number.
+  reference    String?
+  note         String?
+  /// A typed actor ("staff:<platform_staff.id>").
+  recordedBy   String    @map("recorded_by")
+  recordedAt   DateTime  @default(now()) @map("recorded_at") @db.Timestamptz
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz
+  cancelledBy  String?   @map("cancelled_by")
+  cancelReason String?   @map("cancel_reason")
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([firmId, caseId])
+  @@index([dueOn])
+  @@map("case_milestone")
 }
