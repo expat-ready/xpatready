@@ -10,7 +10,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { DraftIn, InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
-import { problemFromZod } from "../../../contracts/programs.ts";
+import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { taxForLine } from "./tax-round.ts";
@@ -34,7 +34,7 @@ const notFound = (what: string): never => problem(404, "Not found", `No such ${w
 export class InvoiceDrafts {
   constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>) {}
 
-  /** POST /api/client-money/invoices. */
+  /** POST /api/front-office/money/invoices. */
   async create(ctx: StaffContext, body: unknown): Promise<InvoiceView> {
     const d = parse(DraftIn, body);
     return this.db.$transaction(async (tx) => {
@@ -50,7 +50,7 @@ export class InvoiceDrafts {
     });
   }
 
-  /** POST /api/client-money/invoices/:id/lines. The invoice row is locked first, so two lines added at once take
+  /** POST /api/front-office/money/invoices/:id/lines. The invoice row is locked first, so two lines added at once take
    *  positions one after the other and the total stays the sum of both. */
   async addLine(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
     const l = parse(LineIn, body);
@@ -76,7 +76,7 @@ export class InvoiceDrafts {
     });
   }
 
-  /** GET /api/client-money/invoices/:id. */
+  /** GET /api/front-office/money/invoices/:id. */
   async read(ctx: StaffContext, invoiceId: string): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     return this.view(this.db, ctx.firmId, invoiceId.toLowerCase());

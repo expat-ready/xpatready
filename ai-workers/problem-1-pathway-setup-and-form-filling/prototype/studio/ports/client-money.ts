@@ -18,7 +18,7 @@ const whole = (what: string, min: number, max: number) => z.number({ error: `${w
 /** Ignored on input: the server computes it (QA-482). Read so that sending it is never a 400. */
 const ignored = z.unknown().optional().transform(() => undefined);
 
-/** POST /api/client-money/invoices: a draft for one client (a person or a company of the firm) in one currency; the
+/** POST /api/front-office/money/invoices: a draft for one client (a person or a company of the firm) in one currency; the
  *  firm's default currency when none is sent. */
 export const DraftIn = z.strictObject({
   personId: id("The person").optional(),
@@ -27,7 +27,7 @@ export const DraftIn = z.strictObject({
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
-/** POST /api/client-money/invoices/:id/lines: one line. The rate is in parts per million (13 % is 130000), 0 when absent;
+/** POST /api/front-office/money/invoices/:id/lines: one line. The rate is in parts per million (13 % is 130000), 0 when absent;
  *  a government fee is never taxed. The currency, when sent, must be the invoice's. */
 export const LineIn = z.strictObject({
   kind: LineKind,
