@@ -1,106 +1,98 @@
-# Review: PR #2527, R1.8 "Audit trail nobody can edit" (QA-594, QA-595), commit e81b8cd51
+# Review: PR #2527, R1.8 "Audit trail nobody can edit" (QA-594, QA-595)
 
-Independent reviewer (did not build it), 20 Nov 2026. Diff `origin/main...e81b8cd51` (45 files, +493 −149; the PR's newer head f15adc814 only adds J-8 screenshots, so the code is the same). Ruling followed: P-687 (AG-13-43, the firm's Activity log shows before and after in full, personal data included). Not a screen, so the D1–D20 and BIC tables do not apply. The journey score is below. Report: `journey-test-reviewer-2026-11-20.md`.
+Independent reviewer (did not build it), 20 Nov 2026. Ruling followed: P-687 (AG-13-43, the firm's Activity log shows before and after in full, personal data included). R1.8 is not a screen, so the D1–D20 and BIC tables do not apply. Journey report: `journey-test-reviewer-2026-11-20.md`.
 
-## What I ran (this container, Postgres 127.0.0.1:54329; isolated copy on :4436, runtime lane, never :4400)
-* `check_aud_values.ts`: 12 passed, 0 failed. `check_aud1b_adapter.ts`: 39 passed, 0 failed (DW8, DW9 and the contract case on both fake and adapter).
-* J-8 header command (`isolated.sh j8r 4436 start --ttl 30 PLATFORM_IDENTITY=local … j_8.ts`): 33 of 33 passed, exit 0.
-* Suites the PR did not list, picked because they read audit lines:
-  * `check_aud4_firm_log.ts`: **32 passed, 1 failed**.
-  * `check_fo9a_phone_edit.ts`: **35 passed, 1 failed**.
-  * `check_fo2pv_prospect_value.ts`: **25 passed, 1 failed**.
-  * `check_pf18b_support.ts`: **40 passed, 1 failed**.
-  * `check_pf19a_messages_schema.ts`: **92 passed, 2 failed**.
-* CI on e81b8cd51: **`module-cards` failed and `pr-rules` failed** (GitHub check runs 136276121897, 136276122478). The app suites were skipped, so CI has not yet seen the failures above.
+## Round 2: delta e81b8cd51..f204e0f84 (`git diff e81b8cd51 f204e0f84 -- . ':!*.png'`)
 
-## Blockers
-None.
+### What I ran (this container, HEAD = f204e0f84, clean; Postgres 127.0.0.1:54329; isolated copies on :4436/:4437, runtime lane, never :4400)
+| Suite | Result |
+|---|---|
+| `check_aud_values` | 14 passed, 0 failed (new: caseIdOf pass/fail, wider secret list) |
+| `check_aud1b_adapter` | 39/0 |
+| `check_aud4_firm_log` | 33/0 (was 32/1) |
+| `check_fo9a_phone_edit` | 37/0 (was 35/1) |
+| `check_fo2pv_prospect_value` | 27/0 (was 25/1) |
+| `check_pf18b_support` | 41/0 (was 40/1) |
+| `check_pf19a_messages_schema` | 94/0 (was 92/2) |
+| `check_fo8_prospect_won` (on an isolated copy, :4437) | 44/44 |
+| `check_pf4_identity` part A | 111/111 |
+| `check_aud1m_case_writes` | 17/0 |
+| `check_case_feed` | 42/42 |
+| `check_pf0p_ports` | 126/0 |
+| `check_pf0a_audit_port` | 24/0 |
+| J-8 (header command on :4436) | 33/33 |
 
-## Majors
-1. **The export line now shows false changes (a regression of AUD-4's review M2).** `api/src/platform/audit/firm-read/service.ts:187-188` adds `before: null, after: { rangeFrom, rangeTo, rows }` to `audit.exported`. `flattenValues` turns these into `rangeFrom_after`, `rangeTo_after` and `rows_after`, and `changesOf` shows them as three additions ("rows: (none) → 100000"). `check_aud4_firm_log.ts:192-193` ("the export's own line shows no false change") now fails. An export is an action, not a row change. **Fix:** `before: null, after: null` there, as the PR already does for settings (`platform/settings.ts:176`). The range and count are in `detail` already.
-2. **Existing "no personal data in the audit line" tests are red, and the PR changes some of these tests but not others.** P-687 does change these rules, so the code is not wrong, but the tests have to move in the same PR (STANDARDS: "when a decision changes behaviour, its pack changes in the same PR"). They are:
-   * `check_fo9a_phone_edit.ts:141-142`: the phone is now at `front-office/people/edit.ts:65`.
-   * `check_fo2pv_prospect_value.ts:120`: the amounts are now at `sales/prospect-edit.ts:51`.
-   * `check_pf18b_support.ts:219-221`: the body and page are now at `platform/support/support.ts:156, 196, 212`.
-   * `check_pf19a_messages_schema.ts:314-316`: the suppressed address is at `messages/consent/consent-store.ts:129`. The second failure in that suite is the wording text, `consent-store.ts:164`.
-   * `tests/journeys/j_33.ts:133` (W3 "ids only (no number)"). I read this one and did not run it. It checks `detail::text !~ '4165550100'`, and `phone_after` now holds that number.
-   
-   This also contradicts the PR's stated policy (Questions, point 1: values were "kept out" where a test says they never reach the trail). The support body, the consent wording text and the suppressed address are exactly that kind of field, and each has a test saying so. **Fix:** for each field, either follow P-687 and update its test, keeping a positive assertion as `check_pf21_complaints.ts:265` and `check_pf4_identity.ts:452` do, or keep it out as Question 1 does. Post the full run of the affected suites on the PR. The PR body still promises "the full 70-suite set … goes in a comment", and no comment exists.
-3. **CI is red on this commit.**
-   * `module-cards`: "`api/src/platform/MODULE.rows/R1.8.md`: a fragment is named after its row, e.g. FO-3a.md". The tree's convention is `R1-30.md`, so rename it to `R1-8.md`.
-   * `pr-rules`: "MISSING: no Done when" in the PR body.
+Not run:
+* J-33: the builder reports 19/0, and I read its new W3 assertion (`j_33.ts:133`): numbers only as `phone_after`.
+* PF-4 part B: its one failure is the missing isolated copy on its fixed port (:4541), outside my lane's ports.
 
-## Minors
-1. **Before values that were not read from the row.**
-   * `identity/session/service.ts:199` writes `before: { twoStep: "SET_UP" }` as a fixed value. Two-step state lives at the provider, so the person may never have set it up.
-   * `retainers/service.ts:625`: `prospect.won` (signed on paper) is a change but has `before: null`, so the reader shows it as a creation. Pass `{ stage, wonVia: null }`, as `sales/prospects.ts` "convert" does.
-   
-   Every other before I sampled (more than 30 sites; below) is read before its update.
-2. **Licence number in full (PR Question 2).** The PR says AG-1-31 "does not forbid audit values". The newest text (requirements-2026-11-02, AG-01 §, AG-1-31) says licence PII is "Confidential … encrypted at rest (TARGET) … never logged". Case-side summaries on main already carry licence numbers (`case-prepare` "reviewed … (licence …)"), so this is not new, and QA-594 names this exact field. The Lead should still answer Question 2 on the PR, quoting AG-1-31 accurately (AGENTS rule 2), before this merges. `check_pf4_identity.ts:452-457` was edited to match.
-3. **Case-firm wall: gaps a future caller could open (none is reachable today; `core.ts:167` is the only CaseEntry caller).**
-   * `recordCase` does not check that the case's `workspace_id` equals the line's `workspaceId`. `caseIdOf` does, but the adapter does not.
-   * A CaseEntry with no `caseId` whose words name a case gets no case firm. `caseIdOf` covers this for `Audit.log` only.
-   * With no request firm and no case, a named `firmId` is accepted unchecked (`audit-event.ts:87`), which is the same as the PF path.
-   * A PF/FO line carrying `caseId` (`case-clients/prospect-won.ts`, the "Open a case?" line) is not checked against the case's firm. `case-feed.ts` never reads area entities as case lines, so nothing leaks today.
-4. **Sweep strength.** `check_aud_values.ts:43-59` checks that the `before` and `after` keys are present, not what they hold. `before: undefined`, a fixed value or both null all pass. Helpers with required typed parameters make up for most of this. J-8 DW6's negative-result (NR) check (`j_8.ts:216-217`) runs the judge on a hand-built object rather than on a stand-in writer.
-5. **`SECRET_FIELD` (`ports/audit.ts:36`) matches by name.**
-   * It catches `password`, `token`, `hash`, `otp` and api, signing or private keys.
-   * It misses `pwd`, `credential` and a bare `code` used as a one-time code.
-   * It falsely matches `footprint` and `hashtag`. That is fail-closed, so harmless.
-   
-   No sampled site passes a secret under another name: invitation tokens, request hashes and IP hashes stay out, and `fileSha256` is a file digest.
-6. The header of `consent-store.ts` (lines 1-6) still says "never an address … or the wording's text". That is true of `detail` but no longer of the line. The comment on `type Values` in `sales/corporate/service.ts:224` says "as AuditPort's AuditDetail".
+### Round 1 findings
+* **M1 (export line), fixed.** `firm-read/service.ts:188` now passes `before: null, after: null`; its range and count stay in `detail`. AUD-4 DW6 (review M2) passes again.
+* **M2 (red suites), fixed.** Personal record fields stay in full (P-687) and each test now asserts two things: nothing outside `_before`/`_after`, plus a positive check of the value. This covers:
+  * `check_fo9a_phone_edit.ts:141-145`
+  * `check_fo2pv_prospect_value.ts:116-118`
+  * `check_pf19a_messages_schema.ts:314-316`
+  * `check_fo8_prospect_won.ts:118-122`
+  * `fo-person-port.contract.ts:41-44`
+  * `j_33.ts:133`
 
-## Judged as asked
-1. **Port and writer: correct.**
-   * `AuditValues` keeps values flat, strings at most 4000, lists at most 100, at most 60 fields, and refuses secrets.
-   * The detail-key `.refine` is enforced in one place (`ports/audit.ts:76`).
-   * `flattenValues` leaves out unchanged fields, gives a create lone `_after` keys and a delete lone `_before` keys, and keeps a change to or from null.
-   * `firmId` is spread last, so a value can never overwrite it (`audit-event.ts:61`).
-   * `caseFirmOf` (`:103-107`) reads `firm_id`, else `case_lookup.case_firm_id_of_key`, and refuses an unknown case.
-   * Refusals: the alert's firm is the request's, set before any refusal (`:77`). The case firm is set only after both checks pass (`:89`). DW9 checks the first alert names firm B.
-   * Still one try (`attempts: 1`), still fail-closed, and the refusal text goes to the server log and a generic 500 only (`main.ts:227`).
-2. **Before and after at caller sites: right, apart from Minor 1.** Sampled:
-   * Complaints: before is the locked row, after a re-read (`complaints.ts:358-362`).
-   * Identity and session: roles, deactivate/reactivate, licence (`identity/service.ts:319`, read before the upsert), invitations, sign-in (read `for update`).
-   * Offices and staff office (read before the update), settings, storage, limit changes, sign-up, web address, terms, consent, support.
-   * Front office: booking attendance, reschedule, zone, cancel; availability set, change, delete, time off; booking types; consult record; identity check; phone edit; fo-person port.
-   * Sales: leads, prospects (engage, move, lost, convert, undo), corporate (engage, contact add, role, end, type change), prospect value, calls and notes (notes kept out), arrival.
-   * Retainers: template upload, version, rename; drafted, edited (the earlier version's fees), sent, withdrawn, signed offline.
-   * case-clients: won, again, case opened.
-   
-   In all of these:
-   * No secret, token or hash is passed.
-   * Free text is bounded, either by its validator (reasons 200, notes 2000, licence 100) or by `.slice(0, 4000)`.
-   * Placeholders are at most the 18 known names (unknown names are refused).
-   * No site reads `before` after its update.
-3. **Case-firm wall: not bypassable on today's paths** (DW9 and J-8 DW7, plus Minor 3).
-   * `runtime_case` has no RLS. If RLS ever hid the case, the line would be refused ("does not exist"), never mis-attributed.
-   * A caseId in another workspace never reaches the adapter through `core.ts`.
-4. **Tests.**
-   * `check_aud_values`, `check_aud1b_adapter` DW8/DW9, the contract case and J-8 DW6/DW7 each have a pass and a fail. Removing the wall line `audit-event.ts:86` fails DW9.
-   * The edits to `check_pf21_complaints.ts` and `check_pf4_identity.ts` relax the leak checks only for before/after, in line with P-687, and each adds a positive assertion, so they are not weakened. The `check_pf0a_audit_port.ts` edit only passes the new required parameters.
-   * Weakness: five other suites and J-33 now fail (Majors 1 and 2).
-5. **Database and size.** No change under `prisma/`, no grant or trigger touched, and J-8 DW3 still shows UPDATE and DELETE refused as `xr_app`. No migration. The diff is 642 changed lines, under 800.
+  Free text and requirement-guarded values are now kept out, so their tests return to main's wording:
+  * support body and page (`support.ts:156, 196, 212`; PF-18b, AG-16-63);
+  * consent wording text, recorded as `textLength` (`consent-store.ts:164`);
+  * the licence number (`identity/service.ts:316-321`). It records only `licenceNumberChanged`, per AG-1-31 "never logged", and `check_pf4_identity.ts:452` is back to main's.
 
-## Journey score (reviewer; journey-test skill, J-8 on :4436): 8.5 / 10
-| Criterion | Score | Evidence |
-|---|---|---|
-| Task completed | 1 | J-8 33/33; PF office add and rename, FO phone edit and case lines all write who, when, before and after. |
-| Next step obvious | ½ | The values show only through `GET /api/platform/audit`; the AUD-4s page (R1.88) is not built. |
-| Plain words | ½ | The export line reads as three additions (Major 1). |
-| Feedback and state | 1 | Refusals are fail-closed and nothing is written (DW9, DW7). |
-| Correct data | ½ | Fixed `twoStep` before value; `prospect.won` before is null (Minor 1). |
-| Error recovery | 1 | Rollback with the line (DW5). |
-| Accessibility and screen sizes | 1 | axe clean; 1024 and 1440 px with no sideways scroll. |
-| Speed | 1 | One indexed select per case line. |
-| Visual quality | 1 | Activity unchanged. |
-| Trust and sources | 1 | Values sit inside the hash-chained line; the table is insert-only. |
+  That settles my round 1 Minor 2 (Question 2) the cautious way. The policy is now consistent: record fields in full, free text and Confidential numbers out.
+* **M3 (CI), part fixed.**
+  * The fragment is renamed to `MODULE.rows/R1-8.md`, and `pr-rules` is green on f204e0f84 (run 136288474553, after "Done when" was added to the body).
+  * **`module-cards` is still red on f204e0f84** (job 136288473696) for a different reason. Three more modules are touched with no card change and no `Card unchanged: <reason>` line in the PR body: api-cases (`case-clients/prospect-won.ts`), api-core (`core.ts`) and api-front-office (16 files). The earlier "Card unchanged except …" sentence was dropped from the body.
+  * This is now a PR-body gate, not code. CI enforces it before any merge, so I record it as Minor N1 below rather than block the code on it.
 
-## To fix before Approve
-Majors 1-3: the export line values; the red suites and J-33 brought in line with P-687, or the fields kept out; the fragment renamed to `R1-8.md`; "Done when" added to the body. Then post the affected suites' results on the PR. Minors 1 and 6 are cheap to fold in. Question 2 needs the Lead's answer.
+### The delta's other changes
+* **`core.ts:150-155` `caseIdOf` (breaker M1): correct.** Only an entity in `CASE_ENTITIES` is read for its case, so a configuration line's typed words ("see case bbbbbbbb") never put it on that case's firm trail.
+  * `CASE_ENTITIES` (`case-feed.ts:17-23`) includes case, person, case fact, row, item, filing, case document, assessment and the other case entities, so real case lines keep their case id.
+  * J-8 DW7, `check_aud1m_case_writes` and `check_case_feed` all pass.
+  * Code-made words come first in case-entity summaries (e.g. filing `warning_passed`: "on case <id>: <reason>"), and `caseOf` takes the first match, so a typed reason cannot redirect the line. Pass and fail are in `check_aud_values.ts:39-49`.
+* **`retainers/service.ts:623-625`: `prospect.won` (signed on paper) now reads its before values from the locked row.** `winProspect` (`sales/prospects.ts:82-90`) passes `p`, which is locked and read before the update. That fixes half of my round 1 Minor 1.
+* **`money-line.ts:19`: `before: null, after: null`,** as PF-6m froze the line. It is an event of the role change, whose own line carries `roles` before and after. Acceptable.
+* **`SECRET_FIELD` widened (`ports/audit.ts:36`):** pwd, credential, bearer, jwt, cookie, session id, and invite/magic/reset/sign-in/login/unsubscribe links. All 13 suites above stay green, so no real field is caught by mistake.
+* **Insert-only:** still no change under `prisma/`, no migration, and no grant or trigger touched. Without the review records the diff is about 690 changed lines, under 800.
 
-## Could not check
-The CI walk with video (the walk was skipped on this commit). The full 70-suite set. J-33 (by reading only). A real screen reader.
+### Open after round 2 (none Blocker or Major)
+* **N1 (Minor, PR body):** `module-cards` is red (above). Add `Card unchanged: <reason>` for api-cases, api-core and api-front-office. If cards or fragments are changed instead, the head moves and needs a new review.
+* **Round 1 Minors still open (follow-ups, not blocking):**
+  * The fixed `twoStep: "SET_UP"` before value (`session/service.ts:199`).
+  * The adapter does not check that the case's workspace matches the line's.
+  * `CaseEntry.firmId` is trusted when there is no request firm and no case (breaker m2).
+  * A PF/FO line's `caseId` is not checked against its firm (breaker m3).
+  * The sweep checks that the keys are present, not their values.
+* **Breaker M2 (demo reset refuses a non-Sample firm's case line) and m1 (`Audit.log` on the shared client):** these are the breaker's findings and the PR raises them as Questions 3-4 for the Lead. Every demo case's firm comes from a Sample firm key today. I did not re-judge them.
 
-Verdict: Changes requested
+### Journey score (reviewer, J-8 on :4436, 33/33): 9 / 10
+"Plain words" (the export line) and "correct data" (`prospect.won`) are now 1. "Next step obvious" stays ½: the values are visible only through `GET /api/platform/audit`, because the AUD-4s page (R1.88) is not built. The fixed `twoStep` before value is minor and does not change the score.
+
+## Round 1 (e81b8cd51), for the record
+Majors raised:
+* **M1:** the export line showed false changes.
+* **M2:** five suites and J-33 were red because "no personal data" tests were not updated with P-687.
+* **M3:** CI was red (`module-cards` on the fragment name, `pr-rules` with no "Done when").
+
+Minors raised:
+* Before values not read from the row: the `twoStep` fixed value, and `prospect.won` before null.
+* The licence number against AG-1-31.
+* Latent case-wall gaps.
+* Sweep strength.
+* `SECRET_FIELD` by name.
+* Stale comments.
+
+Judged sound in round 1:
+* the port and writer;
+* every sampled caller's before and after (30+ sites);
+* the case-firm wall on today's paths;
+* the tests' pass/fail pairs, with no test weakened;
+* insert-only, no migration.
+
+Full round 1 text: git history of this file at 09594b40b.
+
+Could not check: the CI walk with video, the full 70-suite set, and a real screen reader.
+
+Verdict: Approve f204e0f8445dc390bb3e73ea678dc7066b963804
