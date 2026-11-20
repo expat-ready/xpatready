@@ -389,7 +389,7 @@ try {
     ok(`J-38 W9 ${x.tag}: "You are booked" for ${name9}; underneath it is at ${new Date(x.at).toISOString()} with the booker's zone kept`, said.includes("You are booked") && said.includes(name9) && r9?.bookerTimeZone === BOOKER_ZONE && r9?.staffId === host.id, { said: said.slice(0, 160), r9: [r9?.startsAt, r9?.bookerTimeZone] });
   }
   const londonCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "Europe/London", locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
-  await londonCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);   // W7's sign-in, the host's current session
+  await londonCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);   // W7's sign-in: a new sign-in ends the host's earlier session (one session at a time), so W6's token is no longer valid
   const lp = await londonCtx.newPage();
   lp.on("console", (m) => { if (m.type() === "error") console.log(`NOTE  W9 browser: ${m.text().slice(0, 200)}`); });
   for (const x of sides) {
@@ -410,11 +410,14 @@ try {
   await londonCtx.close();
   const host9 = await inbox(hostEmail, 5);
   for (const x of sides) {
-    const hm = host9.find((m) => plain(m.subject).includes(x.mailDay)), [bm] = await inbox(x.email, 1);
+    // The host's mail for this W9 booking, found by its invite's UID: W9's "before" day can be W1's day (W1's first mail
+    // names the same date at 10:00 a.m.), so matching on the date alone could read W1's mail (review m1).
+    const uidW9 = `${w9ids[x.tag]}@booking.expatready.com`;
+    const hm = host9.find((m) => icsAt(m).uid === uidW9), [bm] = await inbox(x.email, 1);
     const hostSays = `${x.mailDay} at 10:00 a.m. (${FIRM_ZONE})`, bookerSays = `${x.mailDay} at ${clock12(x.dubaiHour, 0)} (${BOOKER_ZONE})`, z = new Date(x.at).toISOString();
     ok(`J-38 W9 ${x.tag}: the host's mail reads "${hostSays}" and the booker's "${bookerSays}"`, !!hm && plain(`${hm.subject}\n${hm.body}`).includes(hostSays) && !!bm && plain(`${bm.subject}\n${bm.body}`).includes(bookerSays), [hm?.subject, seen(plain(bm?.body ?? ""))]);
     const [hi, bi] = [icsAt(hm), icsAt(bm)];
-    ok(`J-38 W9 ${x.tag}: both invites are one event starting at ${z} (UTC), the booking's UID`, hi.start === x.at && bi.start === x.at && hi.events === 1 && bi.events === 1 && !!hi.uid && hi.uid === bi.uid && hi.uid.startsWith(w9ids[x.tag]), [hi.rawStart, bi.rawStart, hi.uid]);
+    ok(`J-38 W9 ${x.tag}: both invites are one event starting at ${z} (UTC), the booking's UID`, hi.start === x.at && bi.start === x.at && hi.events === 1 && bi.events === 1 && !!hi.uid && hi.uid === uidW9 && bi.uid === uidW9, [hi.rawStart, bi.rawStart, hi.uid]);
   }
 } finally {
   await browser.close();
