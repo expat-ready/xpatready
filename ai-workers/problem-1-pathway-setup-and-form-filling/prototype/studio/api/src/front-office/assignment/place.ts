@@ -24,15 +24,15 @@ export const NO_RULE: Placement = { ownerStaffId: null, ruleId: null, strategy: 
 /** Active staff of the firm holding the sales key through a live grant (an ended grant gives no key, as the guard reads
  *  it: identity/service.ts), ordered by id (the round robin's fixed order), within `among` when given. The rows are
  *  share-locked, so a deactivation waits for the arrival that picked the person (break m3). */
-export async function eligible(tx: Tx, firmId: string, among: string[]): Promise<string[]> {
+export async function eligible(tx: Tx, firmId: string, among: string[], lock = true): Promise<string[]> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     select s.id::text from platform_staff s
     where s.firm_id = ${firmId}::uuid and s.status = 'ACTIVE'
       and exists (select 1 from platform_role_grant g join platform_role_permission rp on rp.role = g.role
                   where g.staff_id = s.id and g.ended_at is null and rp.permission_key = ${SALES_KEY})
       and (cardinality(${among}::uuid[]) = 0 or s.id = any(${among}::uuid[]))
-    order by s.id
-    for share of s`;
+    order by s.id`;
+  if (lock && rows.length) await tx.$queryRaw`select 1 from platform_staff where firm_id = ${firmId}::uuid and id = any(${rows.map((r) => r.id)}::uuid[]) for share`;
   return rows.map((r) => r.id);
 }
 
@@ -41,8 +41,8 @@ export async function eligible(tx: Tx, firmId: string, among: string[]): Promise
  *  A possible match is placed by no rule and moves no turn (AG-2-85 rule 10): it waits in Unassigned leads. */
 export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId: string | null, o: { possibleMatch?: boolean } = {}): Promise<Placement> {
   if (door === "MANUAL") return NO_RULE;
-  const [rule] = await tx.$queryRaw<{ id: string; strategy: Strategy; owner: string | null; among: string[]; last: string | null }[]>`
-    select id::text, strategy::text as strategy, owner_staff_id::text as owner, eligible_staff_ids::text[] as among, last_staff_id::text as last
+  const [rule] = await tx.$queryRaw<{ id: string; strategy: Strategy; owner: string | null }[]>`
+    select id::text, strategy::text as strategy, owner_staff_id::text as owner
     from fo_assignment_rule
     where firm_id = ${firmId}::uuid and active
       and (door is null or door = ${door}::"FoDoor") and (service_id is null or service_id = ${serviceId}::uuid)
@@ -56,7 +56,7 @@ export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId
     return { ownerStaffId: able ?? null, ruleId: rule.id, strategy: "OWNER", fallback: able ? null : "OWNER_INACTIVE" };
   }
   // Only round robin writes its rule, so only it locks the row (review m2): parallel arrivals take turns one after another,
-  // reading the cursor afresh under the lock. A rule switched off or replaced meanwhile is read again as it now stands.
+  // reading the turns afresh under the lock. A rule switched off or replaced meanwhile is read again as it now stands.
   const [locked] = await tx.$queryRaw<{ among: string[]; strategy: Strategy; active: boolean; turns: Record<string, number> }[]>`
     select eligible_staff_ids::text[] as among, strategy::text as strategy, active, turns
     from fo_assignment_rule where firm_id = ${firmId}::uuid and id = ${rule.id}::uuid for update`;
@@ -64,7 +64,9 @@ export async function placeNewLead(tx: Tx, firmId: string, door: Door, serviceId
   const set = await eligible(tx, firmId, locked.among);
   if (!set.length) return { ownerStaffId: null, ruleId: rule.id, strategy: "ROUND_ROBIN", fallback: "NO_ELIGIBLE" };
   // Least recently given first (never given = 0), ties by id; someone away keeps their old turn, so they come back first.
-  const next = set.reduce((best, id) => ((locked.turns[id] ?? 0) < (locked.turns[best] ?? 0) ? id : best));
+  // A value that is no whole number (only hand-written SQL could put one there) counts as never given (break m5).
+  const turn = (id: string) => { const t = locked.turns[id]; return typeof t === "number" && Number.isSafeInteger(t) && t > 0 ? t : 0; };
+  const next = set.reduce((best, id) => (turn(id) < turn(best) ? id : best));
   await tx.$executeRaw`update fo_assignment_rule set turn_no = turn_no + 1, turns = turns || jsonb_build_object(${next}::text, turn_no + 1), last_staff_id = ${next}::uuid
     where firm_id = ${firmId}::uuid and id = ${rule.id}::uuid`;
   return { ownerStaffId: next, ruleId: rule.id, strategy: "ROUND_ROBIN", fallback: null };

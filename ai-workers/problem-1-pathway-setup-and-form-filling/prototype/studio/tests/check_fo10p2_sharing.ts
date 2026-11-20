@@ -57,6 +57,7 @@ try {
   };
   const R = ctxOf("user-R"), O = ctxOf("user-O"), T = ctxOf("user-T");
   const addStaff = (name: string, role: string, status = "ACTIVE") => { const id = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${A}', '${name.toLowerCase()}@fo10p2.example.com', '${name} (Sample)', '${status}', now()) returning id`); sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:FO-10p2-test')`); return id; };
+  const addStaffWithId = (id: string, name: string, role: string) => { sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values ('${id}', '${A}', '${name.toLowerCase()}@fo10p2.example.com', '${name} (Sample)', 'ACTIVE', now())`); sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:FO-10p2-test')`); return id; };
   const status = (id: string, s: string) => sql(`update platform_staff set status = '${s}' where id = '${id}'`);
 
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), now: () => Date.now(), publicOrigin: "http://localhost:4400", formKey: Buffer.from("fo10p2-test (Sample, not a secret)") };
@@ -79,7 +80,10 @@ try {
   const rr = await rules.save(R, { door: "WEB_FORM", strategy: "ROUND_ROBIN", eligibleStaffIds: trio });
   const first = await take(3);
   ok("FO-10p2 pass (rule 5): three leads, three people, each given one (nobody given one yet: by id)", JSON.stringify(first) === JSON.stringify(trio), first);
-  const newcomer = addStaff("Newcomer", "CASE_OFFICER");
+  // An id just after the lowest of the three: part 1's "next id after the cursor" would pick the lowest id, not the
+  // newcomer, so this test fails on the old rule every time (review m5).
+  const between = trio[0].slice(0, -1) + (parseInt(trio[0].slice(-1), 16) + 1 > 15 ? "f" : (parseInt(trio[0].slice(-1), 16) + 1).toString(16));
+  const newcomer = addStaffWithId(between === trio[0] ? trio[0].replace(/.$/, "0") : between, "Newcomer", "CASE_OFFICER");
   await rules.save(R, { door: "WEB_FORM", strategy: "ROUND_ROBIN", eligibleStaffIds: [...trio, newcomer] });
   ok("FO-10p2 fail (rule 5): a person added to the turn, never given a lead, is next (never behind a stored place in an id order)", (await take(1))[0] === newcomer);
   status(O.staffId, "SUSPENDED");
@@ -125,7 +129,7 @@ try {
   // ------------------------------------------------------------------------------- the sharing setting (rule 3)
   const keysOf = (m: string) => (Reflect.getMetadata(PLATFORM_ACCESS, (LeadSharingController.prototype as unknown as Record<string, object>)[m]) as { keys?: string[] } | undefined)?.keys?.join(",");
   ok("FO-10p2 pass (rule 8): reading and changing the setting need agent/firm-capability:manage, held by Owner and Admin", keysOf("read") === "agent/firm-capability:manage" && keysOf("set") === "agent/firm-capability:manage" && R.keys.includes("agent/firm-capability:manage"));
-  ok("FO-10p2 fail (rule 8): a Case Officer and a Case Manager hold no such key (403 at the guard)", !O.keys.includes("agent/firm-capability:manage") && !T.keys.includes("agent/firm-capability:manage"));
+  ok("FO-10p2 fail (rule 8): the routes need the key and a Case Officer's and a Case Manager's roles do not grant it", !O.keys.includes("agent/firm-capability:manage") && !T.keys.includes("agent/firm-capability:manage"));
   ok("FO-10p2 pass: PF-4's start-up rule accepts both routes", (() => { try { assertEveryRouteDeclared([{ name: "LeadSharingController.read", method: "GET", path: "/api/front-office/lead-sharing", access: Reflect.getMetadata(PLATFORM_ACCESS, LeadSharingController.prototype.read) }, { name: "LeadSharingController.set", method: "PUT", path: "/api/front-office/lead-sharing", access: Reflect.getMetadata(PLATFORM_ACCESS, LeadSharingController.prototype.set) }]); return true; } catch { return false; } })());
   ok("FO-10p2 pass (rule 3): the default is Anyone takes it", (await rules.sharing(R)).mode === "ANYONE");
   await rules.off(R, rr.id);   // no door rule for the web form: the setting decides
@@ -143,6 +147,42 @@ try {
   ok("FO-10p2 fail: Always one person naming someone who cannot work leads → refused at the field", (await refusal(() => rules.setSharing(R, { mode: "ONE_PERSON", onePersonStaffId: viewer })))?.status === 422);
   ok("FO-10p2 fail: an unknown mode, an unknown field, or a person with Anyone takes it → refused at the field", (await refusal(() => rules.setSharing(R, { mode: "LOAD_BALANCED" })))?.status === 422 && (await refusal(() => rules.setSharing(R, { mode: "ANYONE", weights: 1 })))?.status === 422 && (await refusal(() => rules.setSharing(R, { mode: "ANYONE", onePersonStaffId: O.staffId })))?.status === 422);
   ok("FO-10p2 pass: each change of the setting writes its audit line with before and after", sql(`select count(*) || '|' || count(*) filter (where exists (select 1 from jsonb_object_keys(detail) k where k like '%\\_after')) from audit_event where entity = 'fo_assignment_rule' and action like 'assignment\\_rule.%' and entity_key = (select id::text from fo_assignment_rule where firm_id = '${A}' and criteria_key = 'ANY:ANY')`) === "3|3");
+
+  // ------------------------------------------------------------------------------- review and break findings
+  ok("FO-10p2 fail (break M1): Round robin with no ticked list → refused, never \"everyone\" by omission", (await refusal(() => rules.setSharing(R, { mode: "ROUND_ROBIN" })))?.body.fields !== undefined && (await refusal(() => rules.setSharing(R, { mode: "ROUND_ROBIN", rotationStaffIds: [] })))?.status === 422);
+  const ticked = await rules.setSharing(R, { mode: "ROUND_ROBIN", rotationStaffIds: [R.staffId, T.staffId] });
+  ok("FO-10p2 pass (break M1): Round robin keeps exactly the people ticked", [...ticked.rotationStaffIds].sort().join() === [R.staffId, T.staffId].sort().join());
+  await rules.setSharing(R, { mode: "ANYONE" });
+  const echoedOne = await rules.setSharing(R, { ...(await rules.sharing(R)), mode: "ONE_PERSON", onePersonStaffId: O.staffId });   // GET: rotationStaffIds []
+  const echoed = await rules.setSharing(R, { ...(await rules.sharing(R)), mode: "ANYONE", onePersonStaffId: null });   // GET: rotationStaffIds []
+  ok("FO-10p2 pass (review m2): the body GET answers (an empty list, a null person) is accepted back with the mode changed", echoed.mode === "ANYONE" && echoedOne.mode === "ONE_PERSON");
+  const wrongPerson = await refusal(() => rules.setSharing(R, { mode: "ONE_PERSON", onePersonStaffId: viewer }));
+  const wrongList = await refusal(() => rules.setSharing(R, { mode: "ROUND_ROBIN", rotationStaffIds: [viewer] }));
+  ok("FO-10p2 fail (review m3): a bad person or list is named under the setting's own field", !!(wrongPerson?.body.fields as Record<string, string>)?.onePersonStaffId && !!(wrongList?.body.fields as Record<string, string>)?.rotationStaffIds, [wrongPerson, wrongList]);
+  await rules.setSharing(R, { mode: "ANYONE" });
+  const rb = await rules.save(R, { door: "BOOKING", strategy: "OWNER", ownerStaffId: O.staffId });
+  const keyless = await arrival("BOOKING", { host: viewer });
+  ok("FO-10p2 fail (break M2): a booking host who cannot work leads (Read-only) owns nothing; the lead waits in Unassigned and no rule steps in", ownerOf(keyless.leadId) === "none" && line(keyless.leadId).split("|")[1] === "HOST_INACTIVE", line(keyless.leadId));
+  await rules.off(R, rb.id);
+  const S = sql(`select id from platform_firm where key = 'sample-solo'`), SOLO = sql(`select id from platform_staff where actor_id = 'user-S'`);
+  const awayS = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${S}', 'away@fo10p2.example.com', 'Away (Sample)', 'SUSPENDED', now()) returning id`);
+  const soloLead = await db.$transaction((tx) => arrive(tx, { firmId: S, door: "BOOKING", intakeKey: `booking:${randomUUID()}`, person: { givenNames: "Solo", familyName: "Sample", email: "solo.booker@fo10p2.example.org", phone: null }, source: "BOOKING", bookingHostStaffId: awayS, actor: "system:fo10p2-test", payloadHash: "solo" }, { audit: ports.audit, consent: ports.consent }));
+  ok("FO-10p2 fail (review m1): a one-user firm whose booking host is away: its one user owns the lead and the line does not say Unassigned", ownerOf(soloLead.leadId) === SOLO && !line(soloLead.leadId).includes("Unassigned") && line(soloLead.leadId).split("|")[1] === "", line(soloLead.leadId));
+  const typeS = sql(`insert into fo_consultation_type (id, firm_id, slug, name, modes, host_staff_ids, minutes, updated_at) values (gen_random_uuid(), '${S}', 'fo10p2s', 'Consult (Sample)', '{VIDEO}', '{${SOLO}}', 30, now()) returning id`);
+  const bookingS = sql(`insert into fo_booking (id, firm_id, type_id, staff_id, mode, starts_at, ends_at, visitor_time_zone, updated_at) values (gen_random_uuid(), '${S}', '${typeS}', '${SOLO}', 'VIDEO', now() + interval '3 days', now() + interval '3 days 30 minutes', 'America/Toronto', now()) returning id`);
+  const crossed = await db.$transaction((tx) => adapter.bookingArrived(tx, { firmId: A, bookingId: bookingS, person: { givenNames: "Crossed", familyName: "Sample", email: "crossed@fo10p2.example.org" } }));
+  ok("FO-10p2 fail (review m5): another firm's booking id never lends its host to this firm's lead", sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where person_id = '${crossed.personId}'`) === "none");
+  const junk = await rules.save(R, { door: "WEB_FORM", strategy: "ROUND_ROBIN", eligibleStaffIds: [R.staffId, T.staffId] });
+  sql(`update fo_assignment_rule set turns = jsonb_build_object('${R.staffId}', 'abc', '${T.staffId}', 5), turn_no = 5 where id = '${junk.id}'`);
+  ok("FO-10p2 fail (break m5): a turn value that is no whole number counts as never given, never shutting the person out", (await take(1))[0] === R.staffId);
+  await rules.off(R, junk.id);
+  const fresh = sql(`insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'fo10p2-new', 'New firm (Sample)', 'CA', 'ACTIVE', 'new@fo10p2.example.com', now()) returning id`);
+  const freshOwner = sql(`insert into platform_staff (id, firm_id, email, display_name, status, updated_at) values (gen_random_uuid(), '${fresh}', 'owner@fo10p2-new.example.com', 'Owner (Sample)', 'ACTIVE', now()) returning id`);
+  sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${fresh}', '${freshOwner}', 'OWNER', 'seed:FO-10p2-test')`);
+  const freshCtx: StaffContext = { ...R, staffId: freshOwner, firmId: fresh, firmKey: "fo10p2-new" };
+  const noSetup = sql(`select count(*) from fo_sales_setup where firm_id = '${fresh}'`);
+  const freshSet = await rules.setSharing(freshCtx, { mode: "ONE_PERSON", onePersonStaffId: freshOwner }).then((x) => x, (e) => String(e));
+  ok("FO-10p2 fail (review M1): a firm whose front office was never set up can choose its sharing setting (set up on the way, no 500)", noSetup === "0" && typeof freshSet === "object" && freshSet.mode === "ONE_PERSON" && sql(`select count(*) from fo_sales_setup where firm_id = '${fresh}'`) === "1", freshSet);
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-10p2: the check stopped — ${String((e as Error).stack ?? e).slice(0, 1200)}`);

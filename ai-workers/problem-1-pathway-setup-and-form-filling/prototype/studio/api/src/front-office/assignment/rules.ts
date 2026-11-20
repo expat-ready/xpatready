@@ -2,14 +2,15 @@
 // (sales/arrival.ts) calls placeNewLead (place.ts) inside its own transaction; the firm's Owner and Admin keep the rules
 // (agent/prospect:configure-source) through AssignmentRules. A lead the rule cannot place lands in Unassigned leads,
 // and the lead's `lead.created` audit line names the rule and why (the timeline reads it).
-// Not yet (FO-10 part 2, named in the PR): the rule as an action of PF-20's automation engine (not built), the "needs
-// you" notification when a rule names an inactive person, and the settings panel.
+// FO-10 part 2 (P-773): the firm's sharing setting is its catch-all rule (sharing/setSharing below). Not yet: the rule
+// as an action of PF-20's automation engine (not built), the notices (AG-2-85 rules 9, 10, 20) and the settings panel.
 import { Inject, Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { type StaffContext } from "../../platform/identity/keys.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { actorOf, notFound, unprocessable, UUID } from "../sales/common.ts";
+import { actorOf, conflict, notFound, unprocessable, UUID, type Tx } from "../sales/common.ts";
+import { seedFirmFrontOffice } from "../firm-seed.ts";
 import { SALES_PORTS, type SalesPorts } from "../sales/public.ts";
 import { eligible, RULE_DOORS, type Strategy } from "./place.ts";
 
@@ -56,6 +57,10 @@ export class AssignmentRules {
         among = asked.sort();
       }
       const criteriaKey = `${door ?? "ANY"}:${serviceId ?? "ANY"}`, by = actorOf(ctx);
+      // A firm's front office is set up lazily (its first booking or case client): a rule needs its setup row first
+      // (review M1 on FO-10 part 2; idempotent). A firm that cannot be set up (closing, deleted) hears so in words.
+      await seedFirmFrontOffice(tx, firmId);
+      if (!(await tx.foSalesSetup.findUnique({ where: { firmId }, select: { firmId: true } }))) conflict("This firm's front office is not open, so leads are not shared yet.", "NO_FRONT_OFFICE");
       // R1.8 (QA-594): the rule's values before (none for a new rule) and after, in full.
       // Locked first (review r2-m1), so two saves of one criteria at once each record the values they replaced.
       const [was] = await tx.$queryRaw<{ strategy: Strategy; ownerStaffId: string | null; eligibleStaffIds: string[]; active: boolean }[]>`
@@ -67,7 +72,8 @@ export class AssignmentRules {
         update: { strategy, ownerStaffId: owner, eligibleStaffIds: among, active: true, updatedBy: by, updatedAt: new Date() },
       });
       await this.ports.audit.record(tx, { firmId, actor: by, action: "assignment_rule.saved", entity: "fo_assignment_rule", entityKey: rule.id,
-        summary: `Assignment rule for ${door ?? "any door"}${serviceId ? " and one service" : ""} set to ${strategy === "OWNER" ? "one person" : "round robin"}.`,
+        summary: criteriaKey === CATCH_ALL ? `How new leads are shared set to ${strategy === "OWNER" ? "always one person" : "round robin"}.`
+          : `Assignment rule for ${door ?? "any door"}${serviceId ? " and one service" : ""} set to ${strategy === "OWNER" ? "one person" : "round robin"}.`,
         detail: { door, serviceId, strategy, ownerStaffId: owner, eligible: among.length },
         before: was ? { door, serviceId, strategy: was.strategy, ownerStaffId: was.ownerStaffId, eligibleStaffIds: was.eligibleStaffIds, active: was.active } : null,
         after: { door, serviceId, strategy, ownerStaffId: owner, eligibleStaffIds: among, active: true } });
@@ -102,16 +108,27 @@ export class AssignmentRules {
   async setSharing(ctx: StaffContext, b: Record<string, unknown>) {
     const extra = Object.keys(b).filter((k) => !["mode", "onePersonStaffId", "rotationStaffIds"].includes(k));
     if (extra.length) unprocessable(`Unknown field: ${extra[0]}.`, { [extra[0]]: "Not a field of the sharing setting." });
+    // The body GET answers can be sent back with only the mode changed (review m2): an empty list and a null person are "none".
+    const list = b.rotationStaffIds === undefined || b.rotationStaffIds === null || (Array.isArray(b.rotationStaffIds) && b.rotationStaffIds.length === 0) ? null : b.rotationStaffIds;
+    const firmId = firmScope(ctx.firmId).firmId;
     if (b.mode === "ANYONE") {
-      if (b.onePersonStaffId != null || b.rotationStaffIds !== undefined) unprocessable("Anyone takes it names nobody.", { mode: "Anyone takes it names nobody." });
+      if (b.onePersonStaffId != null || list !== null) unprocessable("Anyone takes it names nobody.", { mode: "Anyone takes it names nobody." });
       const r = await this.db.foAssignmentRule.findUnique({ where: { firmId_criteriaKey: { firmId: firmScope(ctx.firmId).firmId, criteriaKey: CATCH_ALL } }, select: { id: true } });
       if (r) await this.off(ctx, r.id);
     } else if (b.mode === "ONE_PERSON") {
-      if (b.rotationStaffIds !== undefined) unprocessable("Always one person takes no rotation list.", { rotationStaffIds: "Leave empty for one person." });
-      await this.save(ctx, { strategy: "OWNER", ownerStaffId: b.onePersonStaffId });
+      if (list !== null) unprocessable("Always one person takes no rotation list.", { rotationStaffIds: "Leave empty for one person." });
+      // Checked here so the error names this setting's field (review m3); save() checks it again in its transaction.
+      const [o] = typeof b.onePersonStaffId === "string" && UUID.test(b.onePersonStaffId) ? await eligible(this.db as unknown as Tx, firmId, [b.onePersonStaffId.toLowerCase()], false) : [];
+      if (!o) unprocessable("Choose an active person of your firm who can work leads.", { onePersonStaffId: "Choose a person who can work leads." });
+      await this.save(ctx, { strategy: "OWNER", ownerStaffId: o });
     } else if (b.mode === "ROUND_ROBIN") {
       if (b.onePersonStaffId != null) unprocessable("Round robin names no single person.", { onePersonStaffId: "Leave empty for round robin." });
-      await this.save(ctx, { strategy: "ROUND_ROBIN", ...(b.rotationStaffIds !== undefined ? { eligibleStaffIds: b.rotationStaffIds } : {}) });
+      // AG-2-85 rule 3: round robin is "between the people the admin ticks": the list is required, never "everyone" by
+      // omission (break M1 on FO-10 part 2: an omitted list had silently widened the turn to every sales person).
+      const ok = Array.isArray(list) && list.length <= 200 && list.every((x) => typeof x === "string" && UUID.test(x)) ? [...new Set((list as string[]).map((x) => x.toLowerCase()))] : null;
+      if (!ok) unprocessable("Tick the people who share new leads.", { rotationStaffIds: "Tick at least one person." });
+      if ((await eligible(this.db as unknown as Tx, firmId, ok, false)).length !== ok.length) unprocessable("Everyone ticked must be an active person of your firm who can work leads.", { rotationStaffIds: "Someone here cannot work leads." });
+      await this.save(ctx, { strategy: "ROUND_ROBIN", eligibleStaffIds: ok });
     } else unprocessable("Choose Anyone takes it, Round robin or Always one person.", { mode: "Choose ANYONE, ROUND_ROBIN or ONE_PERSON." });
     return this.sharing(ctx);
   }

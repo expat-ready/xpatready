@@ -8,8 +8,8 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { conflict, notFound, written, type Tx } from "./common.ts";
-import { NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
+import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
+import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -50,7 +50,7 @@ export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: Ar
 /** How the owner was set, for the lead's arrival line (the timeline shows it). */
 function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null, owner: string | null): string {
   if (fact === "BOOKING_HOST") return `, owned by the booking's host, staff ${owner}`;
-  if (fact === "HOST_INACTIVE") return ", left in Unassigned leads: the booking's host is not active";
+  if (fact === "HOST_INACTIVE") return ", left in Unassigned leads: the booking's host is not active or cannot work leads";
   if (!p.ruleId) return "";
   if (p.ownerStaffId) return `, assigned to staff ${p.ownerStaffId} by ${p.strategy === "OWNER" ? "the default owner rule" : "round robin"}`;
   return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
@@ -101,13 +101,15 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;
   // a host no longer active gives no owner and no rule applies (every booking has one host, fo_booking.staff_id).
   if (owner === null && a.door === "BOOKING" && a.bookingHostStaffId) {
-    const host = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: a.bookingHostStaffId, status: "ACTIVE" as const }), select: { id: true } });
-    owner = host?.id ?? null;
+    // The host must be able to work the lead (break M2 on FO-10 part 2): active with the sales key, as every rule asks;
+    // else no owner, and the lead waits in Unassigned leads where someone who can work it sees it.
+    const [host] = UUID.test(a.bookingHostStaffId) ? await eligible(tx, firmId, [a.bookingHostStaffId.toLowerCase()]) : [];
+    owner = host ?? null;
     fact = host ? "BOOKING_HOST" : "HOST_INACTIVE";
   }
   if (owner === null) {
     const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });
-    if (active.length === 1) owner = active[0].id;   // X-4: a one-user firm's one user owns every lead
+    if (active.length === 1) { owner = active[0].id; fact = null; }   // X-4: a one-user firm's one user owns every lead (and the line says so, review m1)
   }
   // FO-10 (AG-2-13a): no owner yet → the firm's assignment rule, else Unassigned leads; the audit line names the rule.
   // A possible match is placed by no rule (FO-10 part 2, AG-2-85 rule 10): it waits for a person.

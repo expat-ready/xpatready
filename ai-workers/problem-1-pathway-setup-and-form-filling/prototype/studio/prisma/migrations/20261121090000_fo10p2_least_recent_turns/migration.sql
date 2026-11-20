@@ -9,3 +9,6 @@ ADD COLUMN     "turns" JSONB NOT NULL DEFAULT '{}';
 
 -- turns is an object (staff id → the turn number that person last got); turn_no never goes below 0.
 ALTER TABLE "fo_assignment_rule" ADD CONSTRAINT "fo_assignment_rule_turns_check" CHECK (jsonb_typeof("turns") = 'object' AND "turn_no" >= 0);
+-- A rule that already gave leads under part 1's cursor keeps that knowledge (review m4): its last person counts as given
+-- most recently, so the first lead after this change goes to someone else.
+UPDATE "fo_assignment_rule" SET "turn_no" = 1, "turns" = jsonb_build_object("last_staff_id"::text, 1) WHERE "last_staff_id" IS NOT NULL;
