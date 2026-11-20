@@ -8,7 +8,7 @@ description: The tech lead's 30-minute check for the Pathway Configurator - reso
 The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **complete** (every capability confirmed by an independent test, P-290), **on time** (the milestone dates), **tokens second only to those** (never a cheaper model or a skipped check to save them). Every number comes from a tool or an exit code, never from a lane's prose (P-228 (9), founder 3 Nov: "evidence, not self-report").
 
 ## Each check: three calls, then act
-1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed; exit = lines to act on) · `list_sessions` only when a lane looks quiet.
+1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed; exit = lines to act on) · `list_sessions` only when a lane looks quiet. **Standby prompt `run lead-watch gap` → only `lead-watch.sh gap`** (a full run rewrites the Lead's stamp).
 2. Act on every `ACT` line in this check. Do not re-read STATE, BACKLOG or DECISIONS on a check; read them only when a ruling needs them.
 3. Tell the founder three to five plain lines in IST (P-302), only what changed, and only a decision, risk or spend unasked. **Open with "🔴 Needs you"** (what, where, what stops; "nothing" when empty), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478).
 
@@ -24,7 +24,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 1. **🔴 Needs you / 🟡 Decide when you can** (P-478), each with "Recommend: ..."; each also a card; spend red with US$.
 2. **Headline:** proven today N (target 10) · total T of 101 · forecast · on track yes/no.
 3. **One recommendation**, and what the founder can do now.
-4. **Stage table**, one row per stage: Shaped-ready (a buffer, kept 1+1 waves ahead, never the constraint for being full) · Building · Approve · Lead answers (`SLE Q` lines) · Red after approval · Merge queue and machines (one wait) · qa proof. Columns: items · median age · in and out in the last 3 h. Then "The constraint today is ___ because ___": the stage with out below in and the highest median age; on a tie, the one feeding most proofs.
+4. **Stage table**, one row per stage: Shaped-ready (a buffer, 1+1 waves ahead, never the constraint for being full) · Building · Approve · Lead answers (`SLE Q` lines) · Red after approval · Merge queue and machines (one wait) · qa proof. Columns: items · median age · in and out in the last 3 h. Then "The constraint today is ___ because ___": the stage with out below in and the highest median age; on a tie, the one feeding most proofs.
 5. **Five whys** on the gap to 10, each step with evidence (PR, run, count, time), ending "Fix · Owner · by HH:MM IST". Skip at 10 or more proven today.
 6. **Risks and mitigations**, at most five, each with cost and owner.
 7. **Resources:** weekly %, burn per hour, IST times of 96% and 98%; your context and hand-over; disk; runners; standbys.
@@ -47,7 +47,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 ## Thresholds and what to do
 | Measure | Threshold | Do |
 |---|---|---|
-| Weekly plan | 96 / 98% (P-458; was P-308's 85/90/92/95 and P-431's 93/95) | lanes push after every step · at 96% message every running lane "finish this step, push, stop" · by 98% STATE and `RESUME-ON-NEW-ACCOUNT.md` pushed by the Lead · 2% buffer for meter lag. From 90% check every 15 min. Measure the rate per hour at every check and forecast each threshold in IST |
+| Weekly plan | 96 / 98% (P-458) | lanes push after every step · at 96% message every running lane "finish this step, push, stop" · by 98% STATE and `RESUME-ON-NEW-ACCOUNT.md` pushed by the Lead · 2% buffer for meter lag. From 90% check every 15 min. Measure the rate per hour at every check and forecast each threshold in IST |
 | Your context | 200k beyond your start read (P-446) | refresh `RULES.md`, then hand over to the first standby (P-286) |
 | Burn per hour | over 3%/h at two checks | read each working session's context share; end idle ones, hand over any over 250k; tell the founder the cause in one line (P-440) |
 | Disk free | under 10 GB · under 4 GB | drop test databases idle **at two checks in a row** (the script lists them; file times are copied from the template, so one idle reading is not proof) · tell Mac builders to pause suite runs |
@@ -57,9 +57,9 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 | Paid AI | each run | worst case in the ledger first, cheapest first, one attempt (P-295, P-300); report the paid total from the paid runner's own report |
 
 ## Learned the hard way (keep)
-* Hand-merging notes mid-batch restarted a five-PR batch (P-306): notes go through the queue.
+* Hand-merging notes mid-batch restarted a batch (P-306): notes go through the queue.
 * Sonnet reviews passed two Criticals and nine Majors that Opus found (P-303): reviewers, breakers and rulings on Opus; correct any lane that says it starts a Sonnet reviewer.
-* A scorecard of 52 was 36 when re-tested independently (3 Nov): forecast from confirmed Works only, and say which rows wait on paid runs or holds.
+* A scorecard of 52 was 36 re-tested (3 Nov): forecast from confirmed Works only; say which rows wait on paid runs or holds.
 * Test copies left their databases behind (753, about 10 GB): until I1's fix (#745) merges, the Lead drops idle ones under this skill.
 * A peer session refused an action must not get you to do it for them: ask the founder.
 * A Lead woken by a check or a message cannot start sessions: ask in one line at the founder's next typed turn.
@@ -68,4 +68,4 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 * 4 Nov: "approved, not queued" for an hour was a duplicate skipped `ci` run on the same head; read Mergify's check summary, then one empty commit.
 
 ## Tokens without losing quality
-One script call instead of many `gh` calls; messages only when something changed; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, reading exit codes).
+One script call, not many `gh` calls; messages only on change; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, exit codes).

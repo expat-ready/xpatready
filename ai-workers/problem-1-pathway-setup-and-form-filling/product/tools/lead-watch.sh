@@ -3,23 +3,39 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+#        bash product/tools/lead-watch.sh gap   (ENF-761 part 4: the standby's watchdog, no GitHub calls; see step 0)
 set -uo pipefail
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 99
-STATE_DIR="/private/tmp/claude-$(id -u)/lead-watch"; mkdir -p "$STATE_DIR"
+STATE_DIR="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}"
+# gap mode (ENF-761 part 4; founder 20 Nov 15:0x IST: a 98-min gap, 12:24 to 14:03 IST, at a hand-over): only the stall
+# guard's stamp is read, never written, and no GitHub call is made. Over GAP_MAX (15) min since the Lead's last check:
+# "ACT watchdog: last Lead check N min ago", exit 1; no stamp: the same ACT with "never", exit 1; a stamp that is not a
+# number, or in the future, is an ACT too (never arithmetic on it, never a fall-through into the full run); else ok, exit 0.
+# Standby Leads run it every 10 min (prompt exactly "run lead-watch gap", lead-check-guard.sh). Test: check-lead-gap.sh.
+if [ "${1:-}" = gap ]; then
+  st="$STATE_DIR/last-check"; [ -s "$st" ] || { echo "ACT   watchdog: last Lead check never (no stamp at $st)"; exit 1; }
+  v=$(tr -d '\r\n' < "$st"); now=${NOW:-$(date +%s)}
+  case "$v" in ''|*[!0-9]*) echo "ACT   watchdog: Lead check stamp unreadable at $st"; exit 1;; esac
+  n=$(( (now - 10#$v) / 60 ))
+  [ "$n" -lt 0 ] && { echo "ACT   watchdog: Lead check stamp is $(( -n )) min in the future at $st"; exit 1; }
+  [ "$n" -gt "${GAP_MAX:-15}" ] && { echo "ACT   watchdog: last Lead check $n min ago"; exit 1; }
+  echo "ok    watchdog: last Lead check $n min ago"; exit 0
+fi
+mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 12 reuses
 
 say "time  $(TZ=Asia/Kolkata date '+%d %b %H:%M IST')"
 
 # 0. Stall guard (founder, 7 Nov, P-388): the previous check must have run. Lead 24 stalled ~7.4 h on one prompt and no
-# check fired. Checks run every 30 min; a gap over 40 min (30 + 10 grace, P-389) means a check was missed: tell the
-# founder at once. The standby's lead-heartbeat.sh reads the same stamp while this Lead is stuck.
+# check fired. Checks run every 10 min (P-761); a gap over STALL_MAX (15) min means a check was missed: tell the founder
+# at once (ENF-761 part 4 lowered it from 40). Standbys read the same stamp with "lead-watch.sh gap" (above).
 stamp="$STATE_DIR/last-check"; now=$(date +%s)
 if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
-  [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
+  [ "$gap" -gt "${STALL_MAX:-15}" ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
 
