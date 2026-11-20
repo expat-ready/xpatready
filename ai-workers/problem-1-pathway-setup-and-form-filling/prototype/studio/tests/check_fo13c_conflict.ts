@@ -60,12 +60,13 @@ try {
   const counts = () => sql(`select (select count(*) from platform_role_permission) || ':' || (select count(*) from platform_permission_key)`).split(":").map(Number);
   const before = counts();
   ok("FO-13c key fail: before the migration agent/conflict:check is not seeded", sql(`select count(*) from platform_role_permission where permission_key = '${KEY}'`) === "0");
-  for (const d of all.filter((x) => x >= NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
+  psql(["-f", join(MIG, NEW, "migration.sql")]);
   const after = counts();
-  ok("FO-13c key pass: the migration (own stamp, the newest) adds the key for OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER and its catalogue row (NONE, GENERAL) on demo data, nothing else",
-    all.at(-1) === NEW && after[0] === before[0] + 4 && after[1] === before[1] + 1
+  for (const d of all.filter((x) => x > NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
+  ok("FO-13c key pass: the migration (its own stamp) adds the key for OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER and its catalogue row (NONE, GENERAL) on demo data, nothing else",
+    all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && after[0] === before[0] + 4 && after[1] === before[1] + 1
     && sql(`select string_agg(role::text, ',' order by role) from platform_role_permission where permission_key = '${KEY}'`) === "OWNER,ADMIN,CASE_MANAGER,CASE_OFFICER"
-    && sql(`select scope || ':' || class from platform_permission_key where key = '${KEY}'`) === "NONE:GENERAL", { before, after, last: all.at(-1) });
+    && sql(`select scope || ':' || class from platform_permission_key where key = '${KEY}'`) === "NONE:GENERAL", { before, after });
   await seedSampleFirmsFrontOffice(db);
 
   const A = sql(`select id from platform_firm where key='sample-firm'`), B = sql(`select id from platform_firm where key='sample-solo'`);

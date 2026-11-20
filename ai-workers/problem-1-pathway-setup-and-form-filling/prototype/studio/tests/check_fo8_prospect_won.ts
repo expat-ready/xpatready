@@ -55,6 +55,7 @@ const { foPersonPort } = await import("../api/src/front-office/people/fo-person-
 const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
 const { Leads } = await import("../api/src/front-office/sales/leads.ts");
 const { Prospects } = await import("../api/src/front-office/sales/prospects.ts");
+const { clearingConflicts } = await import("./lib/conflict-clear.ts");
 const { Corporate } = await import("../api/src/front-office/sales/corporate/service.ts");
 const { catchUpProspectsWon, offerOf, onProspectWon, OFFER_REFUSED, PROSPECT_WON_ACTOR } = await import("../api/src/case-clients/prospect-won.ts");
 type StaffContext = import("../api/src/platform/identity/keys.ts").StaffContext;
@@ -86,6 +87,7 @@ try {
   for (const f of [A, B]) await writeSetting(db, { firmId: f, key: EVERYONE_SEES_ALL.key, value: true, by: "system:test", workspaceId: auditWs });
   const ports = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), pros = new Prospects(db, ports), corp = new Corporate(db, ports);
+  clearingConflicts(db, { prospects: Prospects.prototype });   // FO-13c: the conflict check first
   const deps: Deps = { workspaceId: await nest.get(Workspace).id(), foPerson: foPersonPort, audit: auditEvent };
   // A service of firm A on the released combination, so a lead can be "interested in" it (firm-seed makes these from releases).
   const service = sql(`select id from fo_service where firm_id = '${A}' and combination_id = '${VV}'`)
