@@ -51,7 +51,8 @@ function BoardView() {
   const board = useBoard(src.sources, !src.known.isPending && !src.blocked);
   const filters = <div className="flex flex-wrap items-center gap-3" data-board-filters><ProspectSources src={src} params={params} setParams={setParams} /></div>;
   // The value on a card comes from the list (the board route carries names and totals only).
-  const rows = useQuery({ queryKey: ["fo", "prospects", "list", ""], queryFn: async () => ProspectRows.parse(await staffApi("/front-office/prospects?type=INDIVIDUAL")) });
+  const vq = src.sources.length ? `&${sourceQs(src.sources)}` : "";   // the same sources as the board (never an unfiltered list)
+  const rows = useQuery({ enabled: !src.known.isPending && !src.blocked, queryKey: ["fo", "prospects", "list", vq], queryFn: async () => ProspectRows.parse(await staffApi(`/front-office/prospects?type=INDIVIDUAL${vq}`)) });
   const [more, setMore] = React.useState<Record<string, number>>({});
   const go = useNavigate();
   // The card being dragged, and the column the pointer is over (for the outline). Only a person who may move
