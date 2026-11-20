@@ -63,3 +63,33 @@ None.
   * Open copy is focusable.
 * **Widths:** 375 / 1024 px and 200 % zoom with ordinary data: no sideways scroll, and the record panel fits with Save check visible.
 * **No name:** a person with no name reads "No identity check is recorded for the signer." on both the lead and prospect pages, matching retainers/service.ts.
+
+## Round 2 (20 Nov 2026): head 1efbf26e7, after origin/main (#2305 expired → 422, Messages panel, Phone edit row)
+Isolated copy `brk_fo13s` on :4571 (PLATFORM_IDENTITY=local), stopped and removed at the end. Playwright (Chromium) and direct multipart calls. US$0. MJ-1 and MJ-2 re-checked: both fixed (no sideways scroll; a half-typed date gives "Enter the whole date…").
+
+**Blocker:** none. **Major:** none.
+
+**Minor**
+* **m9. Errors arrive one at a time, so an expired date surfaces only after other fixes.** Did: POST an expired date plus empty details, then an expired date plus a text file named .pdf. Expected: the summary lists every problem (BIC-13 "There is a problem" list). Actual: 400 on `details` only, then 422 on expiry after that fix. The copy's 415 appears only after the date is fixed (3 Saves for 3 problems). Where: `service.ts:76-113` returns on the first refusal, and the 422 runs after parse (`:161`). This is FO-13i ordering; the concept says no API change, so note only.
+* **m10. Earlier minors still open at this head:** m5 (Billing and finance sees no reason line once checks exist: `identity-panel.tsx:186,193`), m6 (summary items have no links: `:134`), m7 (Checked times use the browser's zone: `sales/time.ts:14-15`). In a browser set to Pacific/Marquesas the row read the browser's clock. m2 and m3 are fixed: Cancel asks, and the question now reads "Discard the details you typed?".
+* Note (not a finding): with the same `requestId` reused after a success, an expired date gives 409 REQUEST_REUSED, not 422 (`service.ts:158` replays before the expiry rule). The screen reaches this only through round-1 m1.
+
+**What held (round 2)**
+* **Expired through the API:** firm-yesterday, 1900-01-01, `"  <yesterday>\t"` and `"<yesterday>\n"` (trimmed) all give 422 with `fields.documentExpiry` = "This document has expired. Check a current one." Today saves, and so does 2028-02-29.
+* **Odd formats** get 400 "a real date as YYYY-MM-DD": 1899-12-31, `/`, compact, a time suffix, `2026-1-5`, full-width and Arabic-Indic digits, DMY, 2025-02-29, month 00, `-`/`+` years, and two `documentExpiry` parts.
+* **Expiry without a type:** with no document, 400 on Document type "An expiry needs the document it belongs to." (not 422). With a country and last 4 but no type, 400 "named by its type, issuing country and last 4 together". In the UI each lands on Document type with focus. After the document is completed, the 422 follows.
+* **Order:** wrong role is refused before the rule. Billing and finance and Read-only get 403, no token gets 401, an unknown person gets 404. An expired date with a good, bad or 10 MB+ copy gives 422 before any copy check.
+* **Nothing stored or audited on a refusal:** over 30 refused POSTs left fo_identity_check, audit_event (`identity.checked`), module_event and the copy folder unchanged. api.log has only route/status lines, with no expiry or last 4.
+* **Retry after refusal:** the same id expired twice gives 422 both times, then the same id with today gives 201, then a replay gives 201 with one row. Six concurrent same-id expired POSTs gave 6 × 422 and 0 rows. Six concurrent same-id today POSTs gave 6 × 201 and 1 row.
+* **Firm time zone:** with the firm on Pacific/Pago_Pago (firm Nov 19, UTC Nov 20), Nov 19 saved and Nov 18 got 422. On Pacific/Kiritimati, its today saved and its yesterday got 422.
+* **A real firm midnight** (Pacific/Marquesas, 09:30 UTC):
+  * Recorded at 23:22 with expiry = that day: 201.
+  * After midnight, replaying the same id returned the saved check (201, one row). A new id with the same date got 422. The new day saved.
+  * A panel filled before midnight and saved after it showed the 422 under Expiry date, with 0 rows.
+* **UI, lead and prospect pages:**
+  * An expired Save shows the sentence in the summary and under Expiry date (`aria-describedby` points at it), focus on the date, and 0 rows and 0 audit lines.
+  * Editing the date clears the error. Save after the fix sends the same requestId (one row).
+  * Focus is back on "Record a check" within 2 s, at 1440, 1024, 375, 720 and 512 (200 % zoom) on both pages. No sideways scroll; Save check is in the viewport with the error showing.
+  * A typed 01/01/1900 gets 422; a typed year 0001 gets the format message (round-1 m4).
+* **Refusal keeps input:** the chosen PDF copy stays after a 422 and is stored with the fixed Save. Escape after a refusal asks; dismissing keeps the panel open; accepting closes it and returns focus.
+* **Next to the new panels:** with the Phone row's Edit open and typed in, a full identity Save left the Phone value as typed and returned focus to Record. The Messages panel does not disturb the layout at any width. No page errors; only the expected 4xx console lines.
