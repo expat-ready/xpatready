@@ -6,7 +6,7 @@ Main tested: **568e240fd** (20 Nov 09:01 UTC). Every part merged: AUD-1a #2003, 
 
 **Journey runs (P-339):**
 * **Run cited by the Lead, 44701378950 (`walk j_8` job 136170595156): green, but not on main's head.** It ran on PR branch `claude/jolly-euler-jtwv60` at 7d79ed88f (#2456's head, since merged), not main. It is an ancestor of main, but 41 studio files changed between it and main 568e240fd. P-339 needs the walk on main's head on GitHub's runners: **Question for the tech lead** on the PR (a walks dispatch on main, P-439).
-* **Independent re-run by qa (P-290), this container, isolated copies, main 568e240fd, `walk.mjs j_8` twice (the walks job's own runner):** LOCAL_RESULT.
+* **Independent re-run by qa (P-290), this container, isolated copies, main 568e240fd, `walk.mjs j_8` twice (the walks job's own runner):** 28/28 PASS, exit 0, twice (each on a fresh isolated copy, j_8.ts run directly per its header; a first walk.mjs attempt reached 17 PASS 0 FAIL then crashed on this container's missing ffmpeg for video: environment, not the app).
 * **Fresh Opus reader (P-303), read only:** "Verdict: Partial", confidence medium-high. qa checked its main claims in the code (below).
 
 | Done-when clause | Status on main 568e240fd | Evidence |
