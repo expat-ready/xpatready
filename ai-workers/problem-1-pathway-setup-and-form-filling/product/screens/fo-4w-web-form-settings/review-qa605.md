@@ -194,3 +194,21 @@ Reviewer: Changes requested
 **Open:** no Blocker and no Major. m4 (the switch offered before a wording exists) stays Minor.
 
 Reviewer: Approve f295b3db950b2635381279ae37ffdd1b0186341c
+
+---
+
+## Re-review at `b3d63580dd135520160ba5d9661c2777e07cde3c` (diff `57c233b35..b3d63580d`; 57c233b is a type cast plus PNGs, approved)
+
+**The change:** `refocus` now holds the version the press produced. On success that is `saved.version`; after a refusal it is the unchanged `form.version`. The effect on `[busy, form.version]` focuses only when `!busy` and the version matches (`web-form-settings-page.tsx:116`, `:130`). This closes the cache-tick race in my f295b3d note: if `busy = false` is drawn first, nothing is spent, and focus fires when the new keyed button arrives.
+
+**Edge cases, by reading:**
+- A refusal (422 or 409) focuses at once.
+- If a background refetch moves the version during a refusal, `refocus` keeps a stale value that can never match again. That is harmless.
+
+**My runs (screenshots restored with `git checkout`):**
+- Pack on :4537: **48/48**, including the five throttled Enter presses.
+- Focus probe on :4538 at CPU 1x, 8x and 12x: **21 of 21** focused on the new switch, including the stale path.
+
+**Open:** no Blocker and no Major. m4 stays Minor.
+
+Reviewer: Approve b3d63580dd135520160ba5d9661c2777e07cde3c
