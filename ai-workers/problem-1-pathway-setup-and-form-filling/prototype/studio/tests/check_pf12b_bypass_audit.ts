@@ -306,6 +306,29 @@ try {
       && sweepRec.entries.map((e) => e.firmId).join(",") === A
       && logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId === B.toLowerCase()) && !logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId !== B.toLowerCase()),
     { swErr: String(swErr), firmJobs, platJobs, lines: sweepRec.entries.map((e) => e.firmId), logged: logged.filter((l) => String(l.event).startsWith("messages_sweep")) });
+
+  // Merge of main (QA-601, 20 Nov): a firm row the provider refused is queued again once its wait is over. That read crosses
+  // firms too, so each firm with a due retry gets its line first, and a firm whose line fails gets no retry queued.
+  await clock.advance({ hours: 1 });
+  const longAgo = new Date(clock.now().getTime() - 2 * 86_400_000).toISOString();
+  sql(`update msg_outbox set state = 'SENT' where state = 'QUEUED'`);   // only the two retry rows below are due
+  const retryIds = [A, B].map((f) => sql(`insert into msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, state_reason, created_at, updated_at) values (gen_random_uuid(), '${f}', 'EMAIL', 'retry@pf12b.example.com', repeat('d', 64), 'TRANSACTIONAL', 'QUEUED', 'send failed: try 1 of 5', '${longAgo}', '${longAgo}') returning id`));
+  const retryRec = fakeAudit({ failOn: (e) => e.action === "platform.bypass" && e.firmId === B }), wasR = onBypassAudit(retryRec);
+  const rjBefore = pjobs.jobs.length;
+  const rErr = await errOf(() => asJob("messages.outbox_sweep", () => pm.sweep()));
+  onBypassAudit(wasR);
+  const rJobs = pjobs.jobs.slice(rjBefore).map((j) => (j.payload as { outboxId?: string }).outboxId);
+  ok("PF-12b fail (QA-601 retry, merge of main): firm B's line cannot be written, so B's due retry is not queued; firm A's is, after A's one line; the sweep then fails",
+    rErr instanceof BypassNotRecorded && JSON.stringify(rJobs) === JSON.stringify([retryIds[0]]) && retryRec.entries.map((e) => e.firmId).join(",") === A, { rErr: String(rErr), rJobs, retryIds, lines: retryRec.entries.map((e) => e.firmId) });
+  // No clock step here: the fake runner's own minute sweep would take this hour's keys first.
+  // The fake job runner tried the rows meanwhile (the stand-in hash fails delivery): both are put back to a due retry, a later try (a new job key).
+  sql(`update msg_outbox set state = 'QUEUED', state_reason = 'send failed: try 2 of 5', updated_at = '${new Date(clock.now().getTime() - 2 * 86_400_000).toISOString()}' where id in ('${retryIds[0]}', '${retryIds[1]}')`);
+  const passRec = fakeAudit(), wasP = onBypassAudit(passRec), pjBefore = pjobs.jobs.length;
+  await asJob("messages.outbox_sweep", () => pm.sweep());
+  onBypassAudit(wasP);
+  const pJobs = pjobs.jobs.slice(pjBefore).map((j) => (j.payload as { outboxId?: string }).outboxId).sort();
+  ok("PF-12b pass (QA-601 retry, merge of main): with both trails writable, each firm with a due retry gets one line and its retry is queued",
+    JSON.stringify(pJobs) === JSON.stringify([...retryIds].sort()) && passRec.entries.map((e) => e.firmId).sort().join(",") === [A, B].sort().join(","), { pJobs, lines: passRec.entries.map((e) => e.firmId) });
   // ------------------------------------------------------------------- CS-K1 part 2's catch-up (merge of main, 20 Nov)
   // cases.prospect-won.catch-up lists every firm's won prospects on the bypass; each firm with a due prospect gets its line
   // once a run, before its clients are made as that firm (case-clients/live.ts touchedEach).
