@@ -1,0 +1,30 @@
+{
+  "item": "R1.100",
+  "name": "100 Recorded acceptance of our terms, privacy notice and data agreement",
+  "pr": 2608,
+  "sha": "fa72345c785390845e7b8f30c950088c3ee611a7",
+  "run_id": "44822570062",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44822570062",
+  "at": "2026-11-20T21:45:05.293Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_100.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44822570062/artifacts/14672826313",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.100-fa72345c785390845e7b8f30c950088c3ee611a7.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
