@@ -72,3 +72,27 @@ Scope: only `git diff 602a4f8b0 7ec5724cf`. Only `form-embed.js`, the test file,
 - **Where**: form-embed.js:187-197 (new); `done()` at :139-146 clears the box.
 
 Verdict: Block (R1 open; M1, m1's target case and m3 fixed; m2 remains the tech lead's question).
+
+## Re-check on 0f60e4737
+
+Scope: only `git diff 7ec5724cf 0f60e4737` (public.ts `openRefusals`, the `corsFor` header removal, form-embed.js refusal handling and "Sending…", a snippet.ts comment). Set-up: a fresh isolated copy `brk_fo4b3` on :4493, seeded as the suite does, now stopped and dropped; the tree was at 0f60e4737, so the API served the script from disk; host pages on `http://localhost:5555` (allowed) and `http://127.0.0.1:5555` (not allowed).
+
+### Held
+- **R1, offline**: drew and filled the form, went offline, pressed Send. Result: "Not sent / … Please check your connection and try again.", answers kept, button back to "Send my enquiry". Back online, the same press made 1 lead. Both POSTs carried the same submissionId.
+- **R1, double 429**: 40 POSTs and 130 reads from the page, then Send. The pre-flight itself got 429 (it counts in the read limit and has no CORS header), so one read followed. That read was a readable 429, and the visitor saw "Too many requests. Please wait a minute and try again." with answers kept. A 429 on the POST alone is now readable directly: one request, the same words, no extra read.
+- **Form switched off mid-fill**: the pre-flight 404 has no CORS header, so one read followed. Its readable 404 FORM_NOT_AVAILABLE gave "This form is not available." and 0 leads.
+- **M1 still fixed** under the exact CSP from M1 (constructed sheet and `<style>` fallback both checked). The honeypot is hidden at 0×0 and a send makes 1 lead.
+- **`*` scope**: `*` appears only on the form door's refusals made before the form is known. Those are the 404 for an unknown, off or malformed token (one identical body), 429 and the in-controller 413.
+  - No CORS header on: an existing form read from a site not allowed or with no Origin (200; `removeHeader` works), a send from a site not allowed, JSON or text/plain (403), and that site's pre-flight (403).
+  - An allowed site gets its own origin, never `*`.
+  - `*` does not leak onto other routes: staff `/api/front-office/leads` and `/api/session` give 401 with no CORS header, and the public booking page has none.
+- **A real page on the site not allowed**, in Chromium: the form is not drawn (link only). Reading the existing form, a JSON send and a text/plain send are all blocked. `credentials: "include"` against a `*` refusal is blocked by the browser. The only readable thing is the generic 404 body.
+- **Leaks**: nothing new. A page on a site not allowed can now tell "unknown or off token" (readable 404) from "live form" (blocked). The same read is already open to any server-side client: 200 with the form's words for anyone holding the token, and its `frame-ancestors` header lists the allowed sites, as before this PR. The token is 32 random characters, and the 404 names no firm.
+
+### m4 (Minor, new): a site removed from the allowed list mid-fill is told "check your connection"
+- Steps: draw the form on the allowed site. `update fo_web_form set allowed_sites = array['https://other.example']`. Fill and press Send.
+- Observed: the pre-flight gets 403 with no CORS header, and the read gets 200 with no CORS header, so both fail. The visitor sees "Please check your connection and try again", answers kept, 0 leads. Retrying cannot help, and there is no pointer to the hosted form.
+- Expected: wording that fits, or the hosted-form link. It needs a firm to change its settings while a visitor is filling the form, and nothing is stored wrongly, so it does not block.
+- Where: form-embed.js:192-196.
+
+Verdict: Approve (no open Blocker or Major for 0f60e4737; m2 and m4 remain Minor).
