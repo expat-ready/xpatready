@@ -1,0 +1,27 @@
+{
+  "item": "R1.40",
+  "name": "40 Calendar invite files",
+  "pr": 2247,
+  "sha": "418be9f1a0996d804ff2131dee95b3024428e4c8",
+  "run_id": "44665318730",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44665318730",
+  "at": "2026-11-20T03:08:22.244Z",
+  "overall": "FAIL",
+  "why": [
+    "tests/journeys/j_40.ts: fail (no J-test file on main)"
+  ],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_40.ts",
+      "result": "fail",
+      "exit": null,
+      "note": "no J-test file on main"
+    }
+  ],
+  "video": null,
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.40-418be9f1a0996d804ff2131dee95b3024428e4c8.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
