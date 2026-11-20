@@ -14,6 +14,7 @@ updated: 2026-11-21 02:0x IST: Lead 7 handed over to Lead 8 (series 3) · milest
 (1) **Tooling for P-772:** PRs #2595 E6, #2597 E5, #2598 E11+E19, #2599 E7, #2600 E16, #2602 E1 nightly, #2603 E2, #2604 E14, #2605 E12+E13, #2607 E15, #2609 E9, #2610 E3, #2611 E10: each needs the Lead's diff read (`.github/`, `tools/`, `.mergify.yml`) before its label; pipeline queue only. Queued earlier: #2590 (dequeued, guards was running), #2591 (Lead 6+7 records; Kind tags added 5700397f7; label when green).
 (2) **#2478** FO-13c labelled 01:5x (Lead read posted), R1.108 lane on FO-13s next. **#2476** R1.32 lane told: green under P-573/P-773, then FO-10 part 2 with AG-02's three behaviours.
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
+(3b) **Lead B (9) owed starts at the founder's next typed turn (02:0x):** PF-18n1 (notification store + deadline reminders; Opus high; Lead's P-423 migration read) first, then PF-18h (staff Home "Needs you"; concept first; Lead approval); briefs in design/lead-b-briefs on lead-b-front-office (093ded45e). On #2326 merge: walk j_38, then R1.38 to qa.
 (4) **Disk:** 7.9 GB at 01:54; kept worktrees from archived sessions hold 5.3 GB with uncommitted changes (do not delete without checking GitHub, P-468).
 Lead 6's and Lead 7's earlier block word for word: `product/history/STATE-2026-11-21-0200-lead7s3-handover-6-7-block-final.md`.
 
