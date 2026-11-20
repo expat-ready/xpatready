@@ -1,21 +1,20 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_59a9ad7a-2010-4e9f-bdb0-6800116c75cd Lead 100 · 20 Nov 08:48 IST (series 2, the last; took over from Lead 99 (series 2, local_2e11a30f) at ~330k, P-446); next Leads are series 3 from Lead 1 (P-749)
+current_lead: local_94786348-b0e8-4685-9713-f5aaa6303967 Lead 1 · 20 Nov 12:18 IST (series 3; took over from Lead 100 (series 2, local_59a9ad7a) at ~390k, P-446)
 
-updated: 2026-11-20 10:59 IST: Lead 99 handed over to Lead 100 · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-748**) · this branch: `lead/2026-11-07-lead31`
-
-
+updated: 2026-11-20 12:18 IST: Lead 100 handed over to Lead 1 (series 3) · milestone: Release 1 proven ~18 of 101 · rules: **`RULES.md`** (as of **P-756**) · this branch: `lead/2026-11-07-lead31`
 
 
 
-## Hand-over Lead 99 → Lead 100, 08:48 IST 20 Nov (read this first; Lead 99 at ~330k, P-446)
-**Lead 100: rename yourself "Lead 100 · tech lead (current) · from <date> <IST start>", run /lead, create the check (`run lead-watch; read STATE Start here`). Standby: Lead 1 (series 3, local_94786348); start one more standby ("Lead 2 (series 3) · standby", P-749) at the founder's next typed turn.** RULES as of P-748; DECISIONS to P-749. Founder (A217, A218): full power, fix and enforce in code, keep updating him; weekly usage needs no watching (he applies the reset credit at 98%).
-(1) **#2413 records PR (P-747..P-749)**: new head adds the two missing history pages (fast failed on a MISSING LINK); post "Reviewer: Approve <head>" after reading it (records only, P-385), label; once merged, re-run #2322's pr-rules (Size exception: P-748), then Approve-check and label #2322 (R1.38 3/4, outside waves, finishes).
-(2) **Queue:** #2406 (R1.72) queued; #2296 (R1.31) merged, walks j_31 dispatched on main; R1.31 Works needs qa (pairs with qa 11's R1.30). Full runs dispatched 08:4x for #2305 (R1.110) and #2338 (R1.8): on green, relabel with "Batch failures covered: <run>: fast, ci" (P-731).
-(3) **Lanes (cloud):** PF-12b1m on #2029 (R1.4; head 63771158a checked by Lead B as row owner; waits its reviewer's Approve, then Lead read + full run + label); qa 11 (R1.40, R1.30); qa 12 (R1.33); R1.74 lane on #2317; B204 told to merge main into #2363 (wave caps in code, founder-approved; Lead reads tools diff, labels, then #2365); R1.76 told to merge main on #2320 then stop; ENF-746c answered "draft PR, Lead decides".
-(4) **Founder asks open:** staging domain: answered 08:5x, staging/dev/AWS at Proven 30 (benchmark 30-40), P-750; reconnect Claude in Chrome (built-in browser used meanwhile); permanent fix owed: move queue-gate's job off the Mac runner `xr-mac` to GitHub-hosted (a fix under P-734), plus a 10 GB disk alarm.
-(5) **Close or keep (Lead's call, work saved on branches):** close #2026, #2032 (stale), #2234, #2210 (outside waves); #2372 (founder asked Ready 19 Nov: ask before closing); #2339 R1.88 only with /run full; #2361 is a fix (Lead read, label); #2368 R1.59 needs migration read + a size row.
-Earlier block (Lead 98 → 99 and the Lead 99 lines) word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-20-0850-lead99s2-handover-98-99-block.md`.
+
+
+## Hand-over Lead 100 → Lead 1 (series 3), 12:18 IST 20 Nov (read this first; Lead 100 at ~390k, P-446)
+**Lead 1: rename yourself "Lead 1 · tech lead (current) · from <date> <IST start>", run /lead, create the check (`run lead-watch; read STATE Start here`). Standby: Lead 2 (series 3, local_daadc134); start one more ("Lead 3 (series 3) · standby") at the founder's next typed turn.** RULES as of P-756; DECISIONS to P-756 (all on branch; P-753 and older on main). Founder today: full power, fix and enforce in code, keep him updated; he applies the reset credit at 98% weekly (93% at 12:15, ~1.4%/h: 96% ~14:20, 98% ~15:45 IST; message him at 96%).
+(1) **Unblock:** #2435 (P-754 hold of the date-dependent FO-3st2 suite) and #2438 (Mergify case-deadlines scope, guards red on main) are batched together (draft #2441). After they merge: post `/run full` on #2406 (R1.72, Lead read done), #2305 (R1.110, lane fixing shard 8; check its head), and check #2322's full run (R1.38, started 11:4x); relabel each with its "Batch failures covered" line (P-731). Then #2326. The fix lane (cloud "Fix · FO-3st2 …", not reachable by message) must remove the hold in its PR: never label it with the hold in.
+(2) **Labelled, waiting:** #2425 (B206 part 1). **#2427** (commercial/ out of public main, P-753): reopened 12:00 for a fresh pr-rules; get an independent Approve on its head (subagent), Lead read, label. **#2442** library refresh (8 of 9): answer its 3 questions (P-697/P-608 medium is newer than P-666; the sourcing map artifact needs the Mac), Lead read, label.
+(3) **Lanes:** guard tunes 1-2 (cloud, P-756), library refresh (cloud), B206 (#2428 part 3, #2431 part 4 = ENF-738 #2285 dup: keep one), B203 (#2370 step 3 needs Lead read; #2359 red), B204 (#2432, #2433 need Lead read; #2433 changes pr-rules permissions: read carefully; create label `outside-wave`), ENF-746b #2372 (ask the founder). Outside waves, finishing then stop: R1.88 (awaiting input), R1.76, R1.3, R1.92. Lead B (8) at 45%: start Lead B (9) at the founder's next typed turn; Lead C (4) at 23%.
+(4) **Standing:** P-752 browser fallback for blocked labels; `tools/lead-pr.sh` (reopen, approve-records) is allowed in settings.local.json; gh's TLS fails in the sandbox, use curl with `gh auth token`. Library: `library/engineering-map.md` (P-755 scale) and plan items #225-#237; guard review `design/guard-review-2026-11-20.md` (ASK and MERGE rows wait; guards 18-23 not wired: a settings question for the founder).
+Earlier block (Lead 99 → 100) word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-20-1218-lead100s2-handover-99-100-block.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 **For the founder (open):** (a) R1.20 vs PF-4c invite rule: done, P-727; (b) close #2088; owed isolated.sh `stop` timer row. Full earlier line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1110-lead87s2-for-founder-line.md`.
@@ -54,5 +53,6 @@ Earlier Start here lines (19 Nov target P-697, Drafts P-685): word for word in `
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
+**Series 3 (P-749):** Lead 1 (local_94786348, from 20 Nov 12:18 IST).
 **Series 2 (P-433):** current = `current_lead:`; … → Lead 87 (local_019a74ed) → Lead 90 (local_3eea0506, new account) → Lead 91 (local_d2a979e6) → Lead 92 (local_9e102072) → Lead 93 (local_ce66c66a) → Lead 94 (local_8d88d9c8) → Lead 95 (local_98ab55d2) → **Lead 96 (local_3500a818) → Lead 97 (local_d04f3736) → Lead 98 (local_b18084c0) → Lead 99 (local_2e11a30f) → **Lead 100 (local_59a9ad7a)**; series 3: standby Lead 1 (local_94786348). The full line (Leads 68 to 91) word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1229-lead90s2-leads-in-order-line.md`.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
