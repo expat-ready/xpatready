@@ -40,6 +40,7 @@ ok("FO-4b setup: the Sample firm and its front office are seeded", !!A && fo.fai
 
 // The firm's "own site": one small server, reached as localhost (allowed) and as 127.0.0.1 (not allowed).
 let token = "";
+const CAMPAIGN_QUERY = "utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123";   // the campaign a visitor arrives with
 const hostServer: Server = createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   const page = (title: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
@@ -48,9 +49,8 @@ const hostServer: Server = createServer((req, res) => {
   // A firm with a strict CSP (break M1): our origin allowed for script and connect, no inline style.
   if (path === "/csp.html") { res.setHeader("content-security-policy", `default-src 'self'; script-src ${BASE}; connect-src ${BASE}; style-src 'self'`); return res.end(page("Contact us, strict (Sample)", `<h2>Contact us</h2>${embedSnippet(BASE, token)}`).replace(/<style>.*?<\/style>/, "")); }
   if (path === "/host.html") return res.end(page("Contact us (Sample)", `<h2 id="contact">Contact us</h2>${embedSnippet(BASE, token)}`));
-  // The link carries the page's query on, re-encoded and escaped for the attribute: never the raw request text (CodeQL).
-  const q = new URL(req.url ?? "/", "http://host.invalid").searchParams.toString().replace(/&/g, "&amp;");
-  if (path === "/ref.html") return res.end(page("A blog post (Sample)", `<p><a id="go" href="/host.html${q ? `?${q}` : ""}">Contact the firm</a></p>`));
+  // The blog post links to the host page with the test's own fixed campaign query: nothing from the request reaches the page (CodeQL).
+  if (path === "/ref.html") return res.end(page("A blog post (Sample)", `<p><a id="go" href="/host.html?${CAMPAIGN_QUERY.replace(/&/g, "&amp;")}">Contact the firm</a></p>`));
   res.statusCode = 404; res.end("not here");
 });
 await new Promise<void>((r) => hostServer.listen(0, () => r()));   // every address, so localhost (either family) and 127.0.0.1 reach it
@@ -116,7 +116,7 @@ const thanksText = "Thank you. We will be in touch within one working day. (Samp
 // 3. Drawn on the allowed site; one enquiry with its campaign facts (AG-2-5 rules 2 and 7, AG-2-8a).
 const { ctx: c1, p: v1 } = await context(375);
 watchReads(v1);
-const query = "utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc123";
+const query = CAMPAIGN_QUERY;
 await v1.goto(`${SITE}/ref.html?${query}`); await v1.locator("#go").click();
 await v1.getByLabel("First name").waitFor({ timeout: 30_000 });
 ok("FO-4b: on the allowed site the script draws the firm's form in place of the link, with its words and its list", await stateOf(v1) === "form" && await v1.locator("[data-expatready-form] h2").count() === 1 && await v1.getByLabel("Interested in (optional)").locator("option", { hasText: "Work permit (Sample)" }).count() === 1);
