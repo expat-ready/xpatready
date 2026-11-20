@@ -8,10 +8,13 @@
 //   W4: a retainer Send after the check answers no warning;
 //   W5: an expiry before the firm's today shows "This document has expired. Check a current one." on the field (FO-13i
 //       part 2's 422, the firm's own rule, P-735; Unconfirmed: no counsel), and nothing is stored; the server itself answers 422 on fields.documentExpiry (QA-510).
+//   W6: the won prospect's client page shows the check read-only: method, type, country, expiry, who and when (FO-13s
+//       part 2, QA-610, QA-611);
 // Scaffolding (P-33): no retainer screen is on main (FO-5s not built), so W1 and W4's Send goes through FO-5's real API
-// (template upload, draft, send) as the firm's Owner; everything else is by screens.
+// (template upload, draft, send) as the firm's Owner, and W6's win is FO-2w's Convert route as the Owner, its client found
+// by the database once FO-8's poll makes it; everything else (record, list, copy, the client page) is by screens.
 // Run from prototype/ (US$0, no model call; HEADED=1 for a visible browser):
-//   zsh studio/tools/isolated.sh j110 4437 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j110 4437 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_110.ts j110 4437
+//   zsh studio/tools/isolated.sh j110 4437 start --ttl 30 PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500 && trap 'zsh studio/tools/isolated.sh j110 4437 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_110.ts j110 4437
 import "reflect-metadata";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -23,6 +26,7 @@ import { buildDocx } from "../../api/src/front-office/retainers/docx.ts";
 import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { readSetting, TIME_ZONE } from "../../api/src/platform/settings.ts";
 
+const POLL = Number(process.env.PROSPECT_WON_POLL_MS) || 500;   // the copy is started with the same value (the run line)
 const [NAME, PORT] = [process.argv[2] ?? "j110", Number(process.argv[3] ?? 4437)];
 const BASE = `http://127.0.0.1:${PORT}`, DB_URL = `postgresql://xr_studio@127.0.0.1:54329/xr_studio_${NAME}`;
 const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "screens", "J-110"); mkdirSync(SHOTS, { recursive: true });
@@ -134,6 +138,32 @@ try {
   ok("J-110 W5: an expiry before the firm's today shows the sentence on the field, the panel stays open and nothing is stored",
     (await drawer.getByText(EXPIRED, { exact: true }).count()) === 1 && (await drawer.getByLabel(/^Expiry date/).getAttribute("aria-invalid")) === "true" && (await rows()) === 1);
   await shot("w5-expired-1440");
+  // ----------------------------------------------------------------------------------------------------------- W6
+  // FO-13s part 2 (QA-610, QA-611): the won prospect's client page shows the person's checks read-only, with the method,
+  // the document's type and country, its expiry, who checked and when (in the firm's words, the same row as the lead page).
+  const conv = await api(rTok, "POST", `/prospects/${after.prospectId}/convert`, {});
+  let clientId: string | undefined;
+  for (const until = Date.now() + 3 * POLL + 5_000; !clientId && Date.now() < until; await new Promise((res) => setTimeout(res, 100)))
+    clientId = (await db.caseClient.findFirst({ where: { prospectId: after.prospectId }, select: { id: true } }))?.id;
+  ok("J-110 W6 setup: Convert to client wins the prospect, and the app's poll makes its client (FO-8), linked to the same person",
+    conv.status === 200 && !!clientId && (await db.caseClient.findUnique({ where: { id: clientId! } }))?.foPersonId === person.id, { conv: conv.status, clientId });
+  await o.goto(`${BASE}/clients/${clientId}`);
+  await o.locator(`[data-client-page]`).waitFor({ timeout: 60_000 });
+  const cPanel = o.locator("[data-identity-panel]"), cRow = cPanel.locator("[data-check]").first();
+  await cRow.waitFor({ timeout: 15_000 });
+  const cText = await cRow.innerText(), checker = O.displayName;
+  // QA-611 (review M2): "when" is the stored checked_at, shown as the panel shows it (en-CA, medium date, short time,
+  // in the browser's zone); a time that is not the stored one fails here.
+  const savedAt = (await db.foIdentityCheck.findFirstOrThrow({ where: { personId: person.id }, orderBy: { checkedAt: "desc" } })).checkedAt.toISOString();
+  const shownWhen = await cRow.locator("[data-checked]").innerText(), shownIso = await cRow.locator("[data-checked]").getAttribute("data-checked");
+  const expectWhen = await o.evaluate((iso) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)), savedAt);
+  ok("J-110 W6 pass: the client page lists the check with method, document type and country, expiry, who checked and when",
+    (await cPanel.locator("[data-check]").count()) === 1 && /Document copy/.test(cText) && (await cRow.locator("[data-doc]").innerText()) === "Passport, IN ···4K9Z"
+      && (await cRow.locator("[data-expiry]").innerText()) === new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${TODAY}T00:00:00Z`))
+      && cText.includes(`${expectWhen} by ${checker}`) && shownWhen === expectWhen && shownIso === savedAt, { cText, shownWhen, expectWhen, shownIso, savedAt });
+  ok("J-110 W6 fail: on the client page the panel is read-only (no Record a check; checks are recorded on the lead or prospect page)",
+    (await cPanel.getByRole("button", { name: "Record a check" }).count()) === 0);
+  await shot("w6-client-1440");
   ok("J-110: no page error in any browser step", errors.length === 0, errors);
 } finally {
   await browser.close(); await db.$disconnect(); rmSync(WORK, { recursive: true, force: true });
