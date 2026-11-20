@@ -6,6 +6,7 @@
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh"
+TESTS="$TESTS check-cleanup-checks.sh check-cleanup-pr.sh"   # E5 (P-674 to P-677): the clean-up safety net, a line of its own
 bad=0
 for t in $TESTS; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
@@ -195,6 +196,13 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh'
+MUT="$MUT"'
+E5 pure|product/tools/cleanup-pr-check.sh|s/^  \[ "\$r" = 0 \] .. bad=1$/  true/|check-cleanup-pr.sh
+E5 list|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$lists" -gt 0 \]; then/  if false; then/|check-cleanup-pr.sh
+E5 bulk|product/tools/cleanup-pr-check.sh|s/^  if \[ "\$moved" -ge "\$BULK" \]; then/  if false; then/|check-cleanup-pr.sh
+E5 stale|product/tools/cleanup-pr-check.sh|s/^bash "\$TOOLS\/check-stale-paths.sh"; r=\$?/r=0/|check-cleanup-pr.sh
+E5 ci|../../.github/workflows/pr-rules.yml|/cleanup-pr-check.sh" --base HEAD^1/d|check-cleanup-pr.sh
+E5 move|product/tools/check-pure-move.sh|s/ \&\& { \[ "\$st" != R100 \] .. \[ "\$om" = "\$nm" \]; }//|check-cleanup-checks.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
