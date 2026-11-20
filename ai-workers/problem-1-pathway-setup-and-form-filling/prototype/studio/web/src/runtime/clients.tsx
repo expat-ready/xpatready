@@ -10,8 +10,8 @@ import { Link, NavLink, Route, Routes, useNavigate, useParams, useSearchParams }
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { ArrowRight } from "lucide-react";
-import { useToast } from "@/lib/api";
-import { personOf } from "@/lib/simulated-people";
+import { getActor, setActor, useToast } from "@/lib/api";
+import { isFirmStaff, personOf } from "@/lib/simulated-people";
 import { cn } from "@/lib/utils";
 import { Button, Field, Input, Notice, Table } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,11 +28,16 @@ const QUESTIONNAIRE_LOGIN = "user-P";
 const KIND: Record<string, string> = { PERSON: "Person", COMPANY: "Company" };
 const WON_VIA: Record<string, string> = { CONVERTED: "Convert to client", SIGNED_OFFLINE: "Retainer signed offline", E_SIGNED: "Retainer signed online" };
 const SEARCH_HELP = "A name, or a client code such as CL-00012";
+/** The search as the API takes it: no control or invisible characters (breaker m4), at most 200 characters (m3). */
+const searchOf = (v: string) => v.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 200);
+/** Breaker M1: the case pages read the simulated person, so before a case of this client opens, the browser acts as the
+ *  signed-in staff member's own case-side person (BK-4a's notice says the change). No such person: nothing changes. */
+const actAs = (actorId: string | null) => { if (actorId && isFirmStaff(actorId) && getActor() !== actorId) setActor(actorId); };
 
 const Line = z.object({ id: z.string(), number: z.string(), display_name: z.string(), display_kind: z.string() });
 const ClientList = z.object({ clients: z.array(Line.extend({ cases: z.number() })), page: z.number(), page_size: z.number(), total: z.number() });
 type ClientRow = z.infer<typeof ClientList>["clients"][number];
-const ClientView = Line.extend({ file_owner: z.object({ staff_id: z.string(), name: z.string() }).nullable(), cases: z.array(z.object({ id: z.string(), case_number: z.string() })) });
+const ClientView = Line.extend({ file_owner: z.object({ staff_id: z.string(), name: z.string() }).nullable(), viewer_actor_id: z.string().nullable(), cases: z.array(z.object({ id: z.string(), case_number: z.string() })) });
 
 /** The case area's own menu: "Cases" and, for a person who may see cases, "Clients". Hidden from a signed-in staff member
  *  without agent/case:show (the server refuses them anyway); before sign-in it shows, and the page asks to sign in. */
@@ -91,31 +96,32 @@ function ClientListPage() {
   const token = useStaffToken();
   const [sp, setSp] = useSearchParams();
   // As the case list (A24-2): the search is kept in the address (?q=), so Back and a reload keep it; sent once typing stops.
-  const q = (sp.get("q") ?? "").trim();
+  const q = searchOf(sp.get("q") ?? "");
   const [typed, setTyped] = React.useState(q);
   const wrote = React.useRef(q);
   React.useEffect(() => { if (q !== wrote.current) { wrote.current = q; setTyped(q); } }, [q]);
   React.useEffect(() => {
-    const t = setTimeout(() => { const w = typed.trim(); wrote.current = w; setSp((p) => { const n = new URLSearchParams(p); if (w) n.set("q", w); else n.delete("q"); return n; }, { replace: true }); }, 300);
+    const t = setTimeout(() => { const w = searchOf(typed); wrote.current = w; setSp((p) => { const n = new URLSearchParams(p); if (w) n.set("q", w); else n.delete("q"); return n; }, { replace: true }); }, 300);
     return () => clearTimeout(t);
   }, [typed, setSp]);
   const path = (page: number) => `/runtime/clients?${q ? `query=${encodeURIComponent(q)}&` : ""}page=${page}`;
   const first = useQuery({ queryKey: ["pf", "clients", token, q], retry: false, queryFn: async () => ClientList.parse(await staffApi(path(1))) });
   // Later pages belong to the session and the search they were loaded for; a new search or person drops them.
   const owner = `${token}|${q}`;
-  const [kept, setKept] = React.useState<{ owner: string; rows: ClientRow[]; page: number } | null>(null);
+  const [kept, setKept] = React.useState<{ owner: string; rows: ClientRow[]; page: number; total: number } | null>(null);
   const more = kept?.owner === owner ? kept : null;
   const [loading, setLoading] = React.useState(false);
   const [moreError, setMoreError] = React.useState<string | null>(null);
   // Each client once, even when a client made meanwhile moves a row onto the next page.
   const rows = [...(first.data?.clients ?? []), ...(more?.rows ?? [])].filter((c, i, all) => all.findIndex((x) => x.id === c.id) === i);
-  const total = first.data?.total ?? 0;
+  // The newest page's count (breaker m2): clients made meanwhile count, never a stale "55 of 55".
+  const total = Math.max(first.data?.total ?? 0, more?.total ?? 0);
   const lastPage = more?.page ?? 1;
   const hasMore = !!first.data && lastPage * first.data.page_size < total;
   async function showMore() {
     if (!hasMore || loading) return;
     setLoading(true); setMoreError(null);
-    try { const page = ClientList.parse(await staffApi(path(lastPage + 1))); setKept((m) => ({ owner, rows: [...(m?.owner === owner ? m.rows : []), ...page.clients], page: lastPage + 1 })); }
+    try { const page = ClientList.parse(await staffApi(path(lastPage + 1))); setKept((m) => ({ owner, rows: [...(m?.owner === owner ? m.rows : []), ...page.clients], page: lastPage + 1, total: page.total })); }
     catch (e) { setMoreError(e instanceof Error ? e.message : "Try again."); } finally { setLoading(false); }
   }
   const clear = () => { setTyped(""); setSp((p) => { const n = new URLSearchParams(p); n.delete("q"); return n; }, { replace: true }); };
@@ -126,7 +132,7 @@ function ClientListPage() {
         <Field label="Search clients" hint={SEARCH_HELP}><Input type="search" value={typed} maxLength={200} onChange={(e) => setTyped(e.target.value)} placeholder="CL-00012" data-client-search /></Field>
       </form>
       {first.isLoading ? <Skeleton className="h-40 w-full" data-loading />
-        : first.isError ? <Notice tone="danger" title={q ? "The search could not be run" : "Clients could not be loaded"} action={<Button size="sm" variant="secondary" busy={first.isFetching} onClick={() => void first.refetch()}>Try again</Button>}>{first.error instanceof StaffApiError ? first.error.field("query") ?? first.error.message : "Try again in a moment."}</Notice>
+        : first.isError ? <Notice tone="danger" title={q ? "The search could not be run" : "Clients could not be loaded"} action={q ? <Button size="sm" variant="secondary" onClick={clear}>Clear search</Button> : <Button size="sm" variant="secondary" busy={first.isFetching} onClick={() => void first.refetch()}>Try again</Button>}>{first.error instanceof StaffApiError ? first.error.field("query") ?? first.error.message : "Try again in a moment."}</Notice>
         : !rows.length ? (q ? <Notice title={`No client matches "${q}"`} action={<Button size="sm" variant="secondary" onClick={clear}>Clear search</Button>}>Search looks at the client's name and client code.</Notice>
           : <Notice title="No clients yet">A client appears when a prospect is won.</Notice>)
         : <Table head={["Client code", "Name", "Person or Company", "Cases"]} label="Clients">{rows.map((c) => (
@@ -167,13 +173,13 @@ function ClientPage() {
       </div>
       {offer.isLoading ? <Skeleton className="h-32 w-full max-w-2xl" />
         : offer.isError ? <Notice tone="danger" title="Whether a case is waiting to be opened could not be checked" action={<Button size="sm" variant="secondary" busy={offer.isFetching} onClick={() => void offer.refetch()}>Try again</Button>}>{offer.error instanceof Error ? offer.error.message : "Try again."}</Notice>
-        : o?.offer ? <OfferCard clientId={c.id} offer={o.offer} canOpen={me.keys.includes(CREATE)} reread={() => { void offer.refetch(); void client.refetch(); }} refreshCases={() => void client.refetch()} />
+        : o?.offer ? <OfferCard clientId={c.id} viewer={c.viewer_actor_id} offer={o.offer} canOpen={me.keys.includes(CREATE)} reread={() => { void offer.refetch(); void client.refetch(); }} refreshCases={() => void client.refetch()} />
         : o && (o.reason === "WITHDRAWN" || o.reason === "CHANGED") ? <Notice tone="warn" title="No case to open from this client now" className="max-w-2xl"><span data-offer-gone={o.reason}>{o.detail}</span></Notice>
         : null}
       <section aria-labelledby="client-cases" className="space-y-2">
         <h2 id="client-cases" className="text-lg font-semibold">Cases</h2>
         {c.cases.length ? <ul className="space-y-1" aria-label={`${c.display_name}'s cases`}>{c.cases.map((k) => (
-          <li key={k.id}><Link className="inline-flex min-h-6 items-center font-semibold tabular-nums text-text-link hover:underline" to={`/cases/${k.id}`} data-client-case={k.case_number}>{k.case_number}</Link></li>))}</ul>
+          <li key={k.id}><Link className="inline-flex min-h-6 items-center font-semibold tabular-nums text-text-link hover:underline" to={`/cases/${k.id}`} onClick={() => actAs(c.viewer_actor_id)} data-client-case={k.case_number}>{k.case_number}</Link></li>))}</ul>
           : <p className="text-sm text-text-muted" data-no-cases>{o && !o.offer && o.reason === "NO_OFFER" ? "This client has no cases yet, and no case waiting to be opened from a won prospect." : "No cases yet."}</p>}
       </section>
     </div>
@@ -184,14 +190,18 @@ type Offer = NonNullable<ClientOfferView["offer"]>;
 
 /** "Open a case?": what the opening pre-fills, read-only, and one button. The server pre-fills from the same offer (the
  *  body names only the questionnaire login, which the offer cannot know); a second click sends nothing. */
-function OfferCard({ clientId, offer, canOpen, reread, refreshCases }: { clientId: string; offer: Offer; canOpen: boolean; reread: () => void; refreshCases: () => void }) {
+function OfferCard({ clientId, viewer, offer, canOpen, reread, refreshCases }: { clientId: string; viewer: string | null; offer: Offer; canOpen: boolean; reread: () => void; refreshCases: () => void }) {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const sending = React.useRef(false);
   const [busy, setBusy] = React.useState(false);
   const [refusal, setRefusal] = React.useState<{ code: string | null; text: string } | null>(null);
-  const done = refusal?.code === "OFFER_USED" || refusal?.code === "OFFER_WITHDRAWN";
+  // A refusal that pressing again cannot change turns the button off (breaker m6: NO_CASE_USER too).
+  const done = refusal?.code === "OFFER_USED" || refusal?.code === "OFFER_WITHDRAWN" || refusal?.code === "NO_CASE_USER";
+  const alertRef = React.useRef<HTMLParagraphElement>(null);
+  // Breaker m1: the refusal takes the focus, so a keyboard user is not left on <body> when the button turns off.
+  React.useEffect(() => { if (refusal) alertRef.current?.focus(); }, [refusal]);
   const login = personOf(QUESTIONNAIRE_LOGIN)?.name ?? "the Sample client";
   const blocked = !offer.combination ? "The prospect named no program a case can open on, so this case cannot be opened from here."
     : !offer.principalName ? "The client's name is too short or too long for a principal applicant, so this case cannot be opened from here." : null;
@@ -202,6 +212,7 @@ function OfferCard({ clientId, offer, canOpen, reread, refreshCases }: { clientI
       const made = await staffApi<{ id: string; case_number: string }>(`/runtime/clients/${encodeURIComponent(clientId)}/open-case`, { method: "POST", json: { clientActor: QUESTIONNAIRE_LOGIN } });
       for (const queryKey of [["runtime"], ["pf", "clients"], ["pf", "client"], ["pf", "client-offer"]]) void qc.invalidateQueries({ queryKey });
       toast.push({ tone: "ok", text: `Case ${made.case_number} opened` });
+      actAs(viewer);
       nav(`/cases/${made.id}`);
       return;   // leaving the page: the button stays off, so nothing more is sent
     } catch (e) {
@@ -226,7 +237,7 @@ function OfferCard({ clientId, offer, canOpen, reread, refreshCases }: { clientI
         {!canOpen ? <p className="text-sm" data-offer-ask>Ask someone who can open cases.</p>
           : blocked ? <p className="text-sm text-text-muted" data-offer-blocked>{blocked}</p>
           : <Button onClick={() => void open()} busy={busy} disabled={done} data-open-case>Open the case <ArrowRight aria-hidden /></Button>}
-        {refusal ? <p role="alert" className="min-w-0 flex-1 text-sm text-text-danger" data-offer-refusal={refusal.code ?? "ERROR"}>{refusal.text}</p> : null}
+        {refusal ? <p ref={alertRef} tabIndex={-1} role="alert" className="min-w-0 flex-1 text-sm text-text-danger outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" data-offer-refusal={refusal.code ?? "ERROR"}>{refusal.text}</p> : null}
       </div>
     </section>
   );

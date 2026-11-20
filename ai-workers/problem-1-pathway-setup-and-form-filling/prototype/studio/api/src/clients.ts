@@ -124,7 +124,10 @@ export class Clients {
     const cases = await this.db.case.findMany({ where: { clientId: c.id, firmKey }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, caseNumber: true } });
     // CS-K1s: the file owner (FO-8 sets it from the won prospect's owner), a staff member of this firm, by name.
     const owner = c.fileOwner && UUID.test(c.fileOwner) ? await this.db.platformStaff.findFirst({ where: { firmId: ctx.firmId, id: c.fileOwner }, select: { id: true, displayName: true } }) : null;
-    return { ...line(c), created_at: c.createdAt, file_owner: owner ? { staff_id: owner.id, name: owner.displayName } : null, cases: cases.map((k) => ({ id: k.id, case_number: k.caseNumber })) };
+    // CS-K1s (breaker M1): the signed-in staff member's own case-side person (the identity join's actor_id), so the page
+    // opens this client's cases as them (the case pages read the simulated person), never as a person of another firm.
+    const me = await this.db.platformStaff.findFirst({ where: { firmId: ctx.firmId, id: ctx.staffId }, select: { actorId: true } });
+    return { ...line(c), created_at: c.createdAt, file_owner: owner ? { staff_id: owner.id, name: owner.displayName } : null, viewer_actor_id: me?.actorId ?? null, cases: cases.map((k) => ({ id: k.id, case_number: k.caseNumber })) };
   }
 
   /** CS-K1s: GET /api/runtime/clients/:id/offer: the client's "Open a case?" offer, read through FO-8's one rule (offerOf)

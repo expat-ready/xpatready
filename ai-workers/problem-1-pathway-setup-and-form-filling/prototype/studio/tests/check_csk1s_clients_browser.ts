@@ -4,7 +4,7 @@
 //   DW1 a staff member without agent/case:show gets no "Clients" menu entry, and /clients shows the no-access page;
 //   DW2 the list searches by name and by client code; "Show more" shows each client once;
 //   DW3 a won client with no case shows the card with the offer's three values; one click opens exactly one case and lands
-//       on it; a double click makes no second case;
+//       on it (also when the browser's simulated person is another firm's: breaker M1); a double click makes no second case;
 //   DW4 a used, withdrawn or changed offer shows the opening's own words, and no case is made;
 //   DW5 firm B's staff get 404 on firm A's client, through the page and through GET …/offer;
 //   DW6 without agent/case:create the card shows with no button (and the server refuses the opening);
@@ -231,6 +231,24 @@ try {
   ok("CS-K1s DW4 pass (changed): a 409 OFFER_CHANGED shows the opening's words and reads the offer again", (await cAlert.innerText()) === OFFER_REFUSED.CHANGED && reads >= 1, reads);
   await page.unroute(`**/api/runtime/clients/${eve.client.id}/open-case`);
   ok("CS-K1s DW4 fail (stand-in): no case was made for the withdrawn or the changed offer", casesOf(dee.client.id) === 0 && casesOf(eve.client.id) === 0);
+
+  // DW3, breaker M1: the case pages read the simulated person. A firm A sign-in in a browser whose simulated person is the
+  // solo firm's must still land on a case it can see: the page acts as the staff member's own case-side person first.
+  const mixed = await tab(TA, "user-S");
+  await openClient(mixed, eve.client.id);
+  await mixed.getByRole("button", { name: "Open the case" }).click();
+  await mixed.waitForURL(/\/cases\/[0-9a-f-]{36}$/, { timeout: 60_000 });
+  await mixed.getByText(`Client: ${eve.name}`).first().waitFor({ timeout: 60_000 });
+  const mixedActor = await mixed.evaluate(() => localStorage.getItem("xr-actor"));
+  ok("CS-K1s DW3 pass (breaker M1): signed in as firm A while acting as the solo firm's person, \"Open the case\" lands on the case it opened (not \"No such case\"), acting as the staff member's own person (user-R), said by the person notice",
+    !/No such case/.test(await mixed.locator("main").innerText()) && mixedActor === "user-R" && casesOf(eve.client.id) === 1 && (await mixed.getByText("Now: Representative (simulated)").count()) >= 1, mixedActor);
+  await shot(mixed, "dw3-mixed-landed");
+  await openClient(mixed, eve.client.id);
+  await mixed.evaluate(() => localStorage.setItem("xr-actor", "user-S"));
+  await mixed.locator("[data-client-case]").first().click();
+  await mixed.getByText(`Client: ${eve.name}`).first().waitFor({ timeout: 60_000 });
+  ok("CS-K1s DW3 pass (breaker M1): a case link on the client page opens the case as the staff member's own person too", !/No such case/.test(await mixed.locator("main").innerText()));
+  await mixed.context().close();
 
   // ------------------------------------------------------------------------------------------- DW5: another firm
   const pb = await tab(TB, "user-S");
