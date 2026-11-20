@@ -57,7 +57,8 @@ export function Field({ label, hint, error, children, className, calm }: { label
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label htmlFor={id} className="text-xs font-medium text-text">{label}</label>
       {React.isValidElement(children) ? React.cloneElement(children as React.ReactElement<any>, { id, "aria-invalid": error ? true : undefined, "aria-describedby": error || hint ? `${id}-note` : undefined }) : children}
-      {error ? <p id={`${id}-note`} role={calm ? "status" : "alert"} className="text-xs text-text-danger">{error}</p> : hint ? <p id={`${id}-note`} className="text-xs text-text-muted">{hint}</p> : null}
+      {calm && !hint ? <p id={`${id}-note`} role="status" className={error ? "text-xs text-text-danger" : "sr-only"}>{error ?? ""}</p>   /* kept mounted, so the words are announced when they arrive */
+        : error ? <p id={`${id}-note`} role="alert" className="text-xs text-text-danger">{error}</p> : hint ? <p id={`${id}-note`} className="text-xs text-text-muted">{hint}</p> : null}
     </div>
   );
 }

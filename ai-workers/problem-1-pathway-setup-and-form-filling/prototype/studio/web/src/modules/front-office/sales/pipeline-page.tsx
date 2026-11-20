@@ -21,7 +21,7 @@ import { Board, can, KEY, money, ProspectRows, words, type Money } from "./contr
 import { Loading } from "./loading";
 import { MoveMenu, useMove, useOwners } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
-import { rangeError, SourceFilter, useAddressSources, useKept } from "./source-filter";
+import { dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
 import { staffApi, StaffApiError } from "./session";
 import { arrivedLabel } from "./time";
 const PAGE = 200;
@@ -48,11 +48,11 @@ function BoardView() {
   const me = useStaff(), owners = useOwners(), move = useMove();
   const [params, setParams] = useSearchParams();
   const src = useAddressSources(params);
-  const board = useBoard(src.sources, !src.known.isPending && !src.blocked);
+  const board = useBoard(src.sources, src.ready);
   const filters = <div className="flex flex-wrap items-center gap-3" data-board-filters><ProspectSources src={src} params={params} setParams={setParams} /></div>;
   // The value on a card comes from the list (the board route carries names and totals only).
   const vq = src.sources.length ? `&${sourceQs(src.sources)}` : "";   // the same sources as the board (never an unfiltered list)
-  const rows = useQuery({ enabled: !src.known.isPending && !src.blocked, queryKey: ["fo", "prospects", "list", vq], queryFn: async () => ProspectRows.parse(await staffApi(`/front-office/prospects?type=INDIVIDUAL${vq}`)) });
+  const rows = useQuery({ enabled: src.ready, queryKey: ["fo", "prospects", "list", vq], queryFn: async () => ProspectRows.parse(await staffApi(`/front-office/prospects?type=INDIVIDUAL${vq}`)) });
   const [more, setMore] = React.useState<Record<string, number>>({});
   const go = useNavigate();
   // The card being dragged, and the column the pointer is over (for the outline). Only a person who may move
@@ -126,14 +126,12 @@ function ListView() {
   const [params, setParams] = useSearchParams();
   const board = useBoard();   // the stages, for the Stage filter and "Move to…"
   const src = useAddressSources(params);
-  const f = { stage: params.get("stage") ?? "", owner: params.get("owner") ?? "", from: params.get("from") ?? "", to: params.get("to") ?? "" };
+  const f = { stage: params.get("stage") ?? "", owner: params.get("owner") ?? "", from: dayParam(params, "from"), to: dayParam(params, "to") };
   const set = (k: keyof typeof f, v: string) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const qs = (Object.keys(f) as (keyof typeof f)[]).filter((k) => f[k]).map((k) => `&${k}=${encodeURIComponent(f[k])}`).join("") + (src.sources.length ? `&${sourceQs(src.sources)}` : "");
-  // QA-572: a from day after the to day is said at the field and never sent; the last list stays on screen.
+  // QA-572: a from day after the to day is said at the field and never sent; no list stands under it (break M1).
   const badRange = rangeError(f.from, f.to);
-  const asked = useQuery({ enabled: !src.known.isPending && !src.blocked && !badRange, queryKey: ["fo", "prospects", "list", qs], queryFn: async () => ProspectRows.parse(await staffApi(`/front-office/prospects?type=INDIVIDUAL${qs}`)) });
-  const kept = useKept(asked.data, !!badRange);
-  const rows = { ...asked, data: badRange ? kept : asked.data, isPending: !badRange && (asked.isPending || src.known.isPending), isError: !badRange && asked.isError };
+  const rows = useQuery({ enabled: src.ready && !badRange, queryKey: ["fo", "prospects", "list", qs], queryFn: async () => ProspectRows.parse(await staffApi(`/front-office/prospects?type=INDIVIDUAL${qs}`)) });
   const stages = board.data?.stages ?? [];
   const lost = f.stage === "LOST";
   return (
@@ -148,10 +146,9 @@ function ListView() {
       </div>
       {board.isError ? <Failed error={board.error} retry={() => board.refetch()} what="the stages (the Stage filter and Move to… need them)" /> : null}
       {src.blocked ? <SourcesBlocked sources={src.sources} />
-        : badRange && !rows.data ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">Change the dates to see the prospects: the from date must be on or before the to date.</p>
+        : badRange ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">Change the dates to see the prospects: the from date must be on or before the to date.</p>
         : rows.isPending ? <Loading label="Loading prospects" />
         : rows.isError ? <Failed error={rows.error} retry={() => rows.refetch()} what="the prospects" />
-          : !rows.data ? <Loading label="Loading prospects" />
           : !rows.data.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{qs ? (lost ? "No lost prospects match these filters." : "No prospects match these filters.") : "No prospects yet. Engage a lead to start one."}</p>
             : (
               <>

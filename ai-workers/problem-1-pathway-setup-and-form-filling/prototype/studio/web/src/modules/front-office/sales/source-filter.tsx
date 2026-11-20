@@ -76,16 +76,20 @@ export function useAddressSources(params: URLSearchParams) {
   const choices = known.data ?? [];
   const asked = params.getAll("source").filter((x, i, all) => all.indexOf(x) === i);
   const sources = known.isPending ? [] : known.isError ? asked : asked.filter((x) => choices.includes(x));
-  return { known, choices, sources, blocked: known.isError && asked.length > 0 };
+  // `ready`: the list may be fetched. Only an address that asks for a source waits for the choices (break m2).
+  const blocked = known.isError && asked.length > 0;
+  return { known, choices, sources, blocked, ready: !blocked && !(known.isPending && asked.length > 0) };
+}
+
+/** A day filter from the address: a real calendar day as YYYY-MM-DD, else "" (dropped, as Leads always did; break m1:
+ *  "abc", "2026-02-30" or "2026-1-5" never reach the server or the from/to comparison). */
+export function dayParam(params: URLSearchParams, k: string): string {
+  const v = params.get(k) ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v) ? v : "";
 }
 
 /** QA-572 (EXPERIENCE :27, :43, BIC-13): a "from" day after the "to" day is said at the from field, in plain words, and
- *  never sent (the server would refuse it). */
+ *  never sent (the server would refuse it). No list is shown while it stands (break M1: a kept list went stale and
+ *  ignored a new source), only the words to change the dates. */
 export const rangeError = (from: string, to: string) => (from && to && from > to ? "The from date must be on or before the to date." : null);
 
-/** The last answer for filters that could be sent, so a person's half-typed range keeps the list on screen (QA-572). */
-export function useKept<T>(value: T | undefined, hold: boolean): T | undefined {
-  const last = React.useRef<T | undefined>(undefined);
-  if (!hold && value !== undefined) last.current = value;
-  return hold ? last.current : value;
-}

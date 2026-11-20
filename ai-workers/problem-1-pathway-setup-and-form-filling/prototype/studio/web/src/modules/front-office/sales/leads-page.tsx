@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
 import { Loading } from "./loading";
 import { useOwners } from "./prospect-actions";
-import { rangeError, SourceFilter, useAddressSources, useKept } from "./source-filter";
+import { dayParam, rangeError, SourceFilter, useAddressSources } from "./source-filter";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -35,9 +35,9 @@ function LeadsBody() {
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
   // The chip and the sources live in the address (?view=, ?source= once per source), so a reload or Back keeps both
   // (FO-4sf). Only sources the person has are kept: one typed into the address that they have not is dropped.
-  const { known, choices, sources, blocked } = useAddressSources(params);
+  const { known, choices, sources, blocked, ready } = useAddressSources(params);
   const owners = useOwners();
-  const day = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(params.get(k) ?? "") ? params.get(k)! : "");
+  const day = (k: string) => dayParam(params, k);
   // The owner filter is All open's (Mine and Unassigned leads already say whose); it is dropped with any other chip.
   const narrow = { owner: view === "all" && owners.choices.some((o) => o.staffId === params.get("owner")) ? params.get("owner")! : "", from: day("from"), to: day("to") };
   const go = (next: View, src: string[], n: typeof narrow = narrow) => {
@@ -48,11 +48,9 @@ function LeadsBody() {
   const more = (["owner", "from", "to"] as const).filter((k) => narrow[k]).map((k) => `&${k}=${encodeURIComponent(narrow[k])}`).join("");
   const toggle = (c: string) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : choices.filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  // QA-572: a from day after the to day is said at the field and never sent; the last list stays on screen.
+  // QA-572: a from day after the to day is said at the field and never sent; no list stands under it (break M1).
   const badRange = rangeError(narrow.from, narrow.to);
-  const fetched = useLeads(view, sources, !known.isPending && !blocked && !badRange, more);
-  const kept = useKept(fetched.data, !!badRange);
-  const rows = { ...fetched, data: badRange ? kept : fetched.data, isPending: !badRange && fetched.isPending, isError: !badRange && fetched.isError };
+  const rows = useLeads(view, sources, ready && !badRange, more);
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
@@ -90,10 +88,9 @@ function LeadsBody() {
         {more ? <Button variant="link" size="sm" data-clear-filters onClick={() => go(view, sources, { owner: "", from: "", to: "" })}>Clear owner and dates</Button> : null}
       </div>
       {blocked ? <p data-source-blocked className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">The leads from {sources.map(words).join(" or ")} are not shown because the sources could not be loaded. Use Try again beside Source, or choose All sources.</p>
-        : badRange && !rows.data ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">Change the dates to see the leads: the from date must be on or before the to date.</p>
-        : rows.isPending || known.isPending ? <Loading label="Loading leads" />
+        : badRange ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">Change the dates to see the leads: the from date must be on or before the to date.</p>
+        : rows.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
-        : !rows.data ? <Loading label="Loading leads" />
           : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map(words).join(" or ")} here. Choose All sources to see every lead.</p>
           : !rows.data.length ? <p data-empty role={more ? "status" : undefined} className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{more ? "No leads match the owner and dates chosen." : empty}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”{sources.length ? ` among ${sources.map(words).join(" or ")}` : ""}.</p>

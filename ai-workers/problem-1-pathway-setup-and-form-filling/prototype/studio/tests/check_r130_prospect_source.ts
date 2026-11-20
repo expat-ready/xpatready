@@ -48,9 +48,11 @@ const lead = (source: string, owner: string) => {
 const engage = async (t: string, leadId: string) => (await (await fetch(`${BASE}/api/front-office/leads/${leadId}/engage`, { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" } })).json()) as { id: string; number: string };
 // Four prospects (the source is the lead's, "where it came from"): two Referral (one the Case Officer's), one Phone call,
 // one with a comma in its source (one value, never split). Values in two currencies, so the board's totals can be read.
+// Sources unique to this run, so a second run on the same database adds nothing to these lines' totals.
+const REF = `Referral ${run}`, PHONE = `Phone call ${run}`, COMMA = `Event, Toronto ${run}`;
 const P = {
-  tRef: await engage(tok.T, lead("Referral", T.id)), oRef: await engage(tok.O, lead("Referral", O.id)),
-  tPhone: await engage(tok.T, lead("Phone call", T.id)), tComma: await engage(tok.T, lead("Event, Toronto", T.id)),
+  tRef: await engage(tok.T, lead(REF, T.id)), oRef: await engage(tok.O, lead(REF, O.id)),
+  tPhone: await engage(tok.T, lead(PHONE, T.id)), tComma: await engage(tok.T, lead(COMMA, T.id)),
 };
 sql(`update fo_prospect set value_cents = 100000, currency = 'CAD' where id = '${P.tRef.id}'`);
 sql(`update fo_prospect set value_cents = 50000, currency = 'USD' where id = '${P.oRef.id}'`);
@@ -61,21 +63,21 @@ const ids = (b: unknown) => new Set(Array.isArray(b) ? (b as { id: string }[]).m
 const same = (a: Set<string>, b: string[]) => a.size === b.length && b.every((x) => a.has(x));
 
 // ------------------------------------------------------------------------------------------- DW1: GET prospects ?source=
-const ref = await get(tok.T, `prospects?type=INDIVIDUAL&${enc("Referral")}`);
+const ref = await get(tok.T, `prospects?type=INDIVIDUAL&${enc(REF)}`);
 ok("R1.30 DW1 pass: prospects ?source=Referral returns only the prospects whose lead came from Referral", ref.status === 200 && same(ids(ref.body), [P.tRef.id, P.oRef.id]), [ref.status, [...ids(ref.body)]]);
-const two = await get(tok.T, `prospects?type=INDIVIDUAL&${enc("Referral", "Event, Toronto")}`), all = await get(tok.T, "prospects?type=INDIVIDUAL"), blank = await get(tok.T, "prospects?type=INDIVIDUAL&source=");
+const two = await get(tok.T, `prospects?type=INDIVIDUAL&${enc(REF, COMMA)}`), all = await get(tok.T, "prospects?type=INDIVIDUAL"), blank = await get(tok.T, "prospects?type=INDIVIDUAL&source=");
 ok("R1.30 DW1 pass: two sources return both, a comma source is one value; no source (or an empty one) → every prospect, as before",
   same(ids(two.body), [P.tRef.id, P.oRef.id, P.tComma.id]) && same(ids(all.body), Object.values(P).map((x) => x.id)) && same(ids(blank.body), Object.values(P).map((x) => x.id)), [[...ids(two.body)], ids(all.body).size, ids(blank.body).size]);
-const withStage = await get(tok.T, `prospects?type=INDIVIDUAL&stage=ENGAGED&${enc("Phone call")}`);
+const withStage = await get(tok.T, `prospects?type=INDIVIDUAL&stage=ENGAGED&${enc(PHONE)}`);
 ok("R1.30 DW1 pass: source combines with the other filters (stage)", withStage.status === 200 && same(ids(withStage.body), [P.tPhone.id]), [...ids(withStage.body)]);
-const bad = await get(tok.T, `prospects?type=INDIVIDUAL&${enc("Referral", "FAX")}`), badBody = bad.body as { code?: string; detail?: string; allowed?: string[] };
+const bad = await get(tok.T, `prospects?type=INDIVIDUAL&${enc(REF, "FAX")}`), badBody = bad.body as { code?: string; detail?: string; allowed?: string[] };
 ok("R1.30 DW1 fail: an unknown source is refused 400 UNKNOWN_SOURCE naming it and the choices (never ignored, QA-533)",
-  bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /FAX/.test(badBody.detail ?? "") && (badBody.allowed ?? []).includes("Referral"), [bad.status, badBody]);
+  bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /FAX/.test(badBody.detail ?? "") && (badBody.allowed ?? []).includes(REF), [bad.status, badBody]);
 
 // ------------------------------------------------------------------------------------------- DW2: the board route
 type B = { totals: { currency: string; valueCents: number }[]; stages: { key: string; totals: { currency: string; valueCents: number }[]; prospects: { id: string }[] }[] };
 const board = async (t: string, qs: string) => { const r = await get(t, `pipelines/INDIVIDUAL/board${qs ? `?${qs}` : ""}`); return { status: r.status, b: r.body as B, ids: new Set(((r.body as B).stages ?? []).flatMap((s) => s.prospects.map((p) => p.id)).filter((id) => ours.has(id))) }; };
-const bRef = await board(tok.T, enc("Referral")), bAll = await board(tok.T, "");
+const bRef = await board(tok.T, enc(REF)), bAll = await board(tok.T, "");
 const engaged = (x: B) => x.stages.find((s) => s.key === "ENGAGED")!;
 ok("R1.30 DW2 pass: the board ?source=Referral draws only Referral cards; without it every card", bRef.status === 200 && same(bRef.ids, [P.tRef.id, P.oRef.id]) && same(bAll.ids, Object.values(P).map((x) => x.id)), [[...bRef.ids], bAll.ids.size]);
 const cad = (lines: { currency: string; valueCents: number }[]) => lines.find((l) => l.currency === "CAD")?.valueCents ?? 0;
@@ -87,11 +89,11 @@ ok("R1.30 DW2 fail: the board refuses an unknown source 400 UNKNOWN_SOURCE", bBa
 
 // ------------------------------------------------------------------------------------------- DW3: own-only visibility
 await seesAll(false);
-const oRef = await get(tok.O, `prospects?type=INDIVIDUAL&${enc("Referral")}`), oBoard = await board(tok.O, enc("Referral"));
+const oRef = await get(tok.O, `prospects?type=INDIVIDUAL&${enc(REF)}`), oBoard = await board(tok.O, enc(REF));
 ok("R1.30 DW3 pass: the source narrows inside the visibility: the Case Officer gets only their own Referral prospect, on the List and the board",
   same(ids(oRef.body), [P.oRef.id]) && same(oBoard.ids, [P.oRef.id]) && cad(oBoard.b.totals) === 0, [[...ids(oRef.body)], [...oBoard.ids]]);
-const oPhone = await get(tok.O, `prospects?type=INDIVIDUAL&${enc("Event, Toronto")}`);
-ok("R1.30 DW3 fail: a source only on leads the Case Officer cannot see is unknown to them (400), never named in a list", oPhone.status === 400 && !((oPhone.body as { allowed?: string[] }).allowed ?? []).includes("Event, Toronto"), oPhone.status);
+const oPhone = await get(tok.O, `prospects?type=INDIVIDUAL&${enc(COMMA)}`);
+ok("R1.30 DW3 fail: a source only on leads the Case Officer cannot see is unknown to them (400), never named in a list", oPhone.status === 400 && !((oPhone.body as { allowed?: string[] }).allowed ?? []).includes(COMMA), oPhone.status);
 await seesAll(true);
 
 // ------------------------------------------------------------------------------------------- DW4: the screens
@@ -103,21 +105,21 @@ const errors: string[] = []; p.on("pageerror", (e) => errors.push(e.message));
 const rowsShown = async (attr: string) => new Set(await p.locator(`[${attr}]`).evaluateAll((els, a) => els.map((e) => e.getAttribute(a) ?? ""), attr));
 const num = (k: keyof typeof P) => P[k].number;
 await p.goto(`${BASE}/front-office/pipeline?view=list`); await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 30_000 });
-await p.locator("[data-source-toggle]").click(); await p.locator('[data-source="Referral"]').click();
-await p.locator('[data-source-chip="Referral"]').waitFor({ timeout: 10_000 }); await p.keyboard.press("Escape");
+await p.locator("[data-source-toggle]").click(); await p.locator(`[data-source="${REF}"]`).click();
+await p.locator(`[data-source-chip="${REF}"]`).waitFor({ timeout: 10_000 }); await p.keyboard.press("Escape");
 await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ state: "detached", timeout: 15_000 });
 let shown = await rowsShown("data-prospect-row");
 ok("R1.30 DW4 pass: List → Source → Referral shows only the Referral prospects, a chip names it, the address keeps it, focus back on Source",
-  shown.has(num("tRef")) && shown.has(num("oRef")) && !shown.has(num("tComma")) && p.url().includes("source=Referral") && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), [[...shown], p.url()]);
+  shown.has(num("tRef")) && shown.has(num("oRef")) && !shown.has(num("tComma")) && p.url().includes(`source=${encodeURIComponent(REF).replace(/%20/g, "+")}`) && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), [[...shown], p.url()]);
 await p.reload(); await p.locator(`[data-prospect-row="${num("tRef")}"]`).waitFor({ timeout: 30_000 });
 shown = await rowsShown("data-prospect-row");
-ok("R1.30 DW4 pass: a reload keeps the List's Source filter", !shown.has(num("tPhone")) && (await p.locator('[data-source-chip="Referral"]').count()) === 1);
+ok("R1.30 DW4 pass: a reload keeps the List's Source filter", !shown.has(num("tPhone")) && (await p.locator(`[data-source-chip="${REF}"]`).count()) === 1);
 const axeList = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
 ok("R1.30 DW4 pass: axe finds no WCAG A/AA violation on the List with Source chosen", axeList.violations.length === 0, axeList.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`));
 await p.locator('[data-view="board"]').click(); await p.locator(`[data-card="${num("tRef")}"]`).waitFor({ timeout: 30_000 });
 const cards = await rowsShown("data-card");
 ok("R1.30 DW4 pass: the Board/List switch keeps the source; the board draws only the Referral cards, with the chip",
-  p.url().includes("source=Referral") && cards.has(num("tRef")) && cards.has(num("oRef")) && !cards.has(num("tPhone")) && (await p.locator('[data-source-chip="Referral"]').count()) === 1, [[...cards], p.url()]);
+  p.url().includes(`source=${encodeURIComponent(REF).replace(/%20/g, "+")}`) && cards.has(num("tRef")) && cards.has(num("oRef")) && !cards.has(num("tPhone")) && (await p.locator(`[data-source-chip="${REF}"]`).count()) === 1, [[...cards], p.url()]);
 const axeBoard = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
 ok("R1.30 DW4 pass: axe finds no WCAG A/AA violation on the board with Source chosen", axeBoard.violations.length === 0, axeBoard.violations.map((v) => `${v.id}: ${v.nodes[0]?.target}`));
 for (const w of [400, 1024]) {
@@ -132,9 +134,15 @@ ok("R1.30 DW4 fail: an unknown ?source= in the address is dropped: no chip, ever
 let unfiltered = 0;
 await p.route("**/api/front-office/leads/sources", (r) => r.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ title: "Unavailable", detail: "Sample outage." }) }));
 p.on("request", (r) => { const u = new URL(r.url()); if (/\/api\/front-office\/(prospects|pipelines\/INDIVIDUAL\/board)$/.test(u.pathname) && !u.searchParams.has("source")) unfiltered++; });
-await p.goto(`${BASE}/front-office/pipeline?source=Referral`); await p.locator("[data-source-blocked]").waitFor({ timeout: 30_000 });
+await p.goto(`${BASE}/front-office/pipeline?${enc(REF)}`); await p.locator("[data-source-blocked]").waitFor({ timeout: 30_000 });
 ok("R1.30 DW4 fail: when the sources cannot be loaded, the board keeps the asked source, fetches and shows no unfiltered board, and offers Try again",
   unfiltered === 0 && (await p.locator("[data-card]").count()) === 0 && (await p.getByRole("button", { name: "Try again" }).count()) >= 1, { unfiltered });
+await p.unroute("**/api/front-office/leads/sources");
+// Break m2: with no source asked, a slow sources route never holds the board back.
+await p.route("**/api/front-office/leads/sources", async (r) => { await new Promise((ok2) => setTimeout(ok2, 8_000)); await r.continue().catch(() => undefined); });
+const t0 = Date.now(); await p.goto(`${BASE}/front-office/pipeline`); await p.locator(`[data-card="${num("tPhone")}"]`).waitFor({ timeout: 30_000 });
+const secs = (Date.now() - t0) / 1000;
+ok("R1.30 DW4 pass (break m2): with no source asked the board draws before a slow sources lookup answers", secs < 6, secs);
 await p.unroute("**/api/front-office/leads/sources");
 
 // ------------------------------------------------------------------------------------------- DW5: QA-572
@@ -144,13 +152,23 @@ p.on("request", (r) => { const u = new URL(r.url()); const f = u.searchParams.ge
 await p.goto(`${BASE}/front-office/pipeline?view=list`); await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 30_000 });
 await p.getByLabel("Engaged to").fill(day(0)); await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 15_000 });
 await p.getByLabel("Engaged from").fill(day(-3));
-await p.locator("text=The from date must be on or before the to date.").waitFor({ timeout: 10_000 });
+await p.getByText("The from date must be on or before the to date.", { exact: true }).waitFor({ timeout: 10_000 });
 const from = p.getByLabel("Engaged from");
-ok("R1.30 DW5 pass (QA-572): a from after to is said at the from field (aria-invalid, described), the list stays, no alert, nothing sent",
-  (await from.getAttribute("aria-invalid")) === "true" && (await p.locator(`[data-prospect-row="${num("tPhone")}"]`).count()) === 1 && (await p.getByRole("alert").count()) === 0 && sentBad === 0, { sentBad });
-await from.fill(day(1)); await p.locator("text=The from date must be on or before the to date.").waitFor({ state: "detached", timeout: 10_000 });
-await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 15_000 }).catch(() => undefined);
-ok("R1.30 DW5 pass (QA-572): a from on or before to clears the message and the list follows the range", (await from.getAttribute("aria-invalid")) !== "true" && (await p.locator(`[data-prospect-row="${num("tPhone")}"]`).count()) === 1, [await from.getAttribute("aria-invalid"), p.url(), await p.locator("[data-empty]").innerText().catch(() => "")]);
+await p.locator("[data-empty]").waitFor({ timeout: 10_000 });
+ok("R1.30 DW5 pass (QA-572): a from after to is said at the from field (aria-invalid, described), plain words in place of the list, no alert, nothing sent",
+  (await from.getAttribute("aria-invalid")) === "true" && /Change the dates/.test(await p.locator("[data-empty]").innerText()) && (await p.locator("[data-prospect-row]").count()) === 0 && (await p.getByRole("alert").count()) === 0 && sentBad === 0, { sentBad });
+// Break M1: while the range stands, choosing a source never shows a stale list under the new chip.
+await p.locator("[data-source-toggle]").click(); await p.locator(`[data-source="${REF}"]`).click(); await p.locator(`[data-source-chip="${REF}"]`).waitFor({ timeout: 10_000 }); await p.keyboard.press("Escape");
+ok("R1.30 DW5 fail (break M1): a source chosen while the range is wrong shows no rows that ignore it, only the words", (await p.locator("[data-prospect-row]").count()) === 0 && (await p.locator("[data-empty]").count()) === 1);
+await from.fill(day(1)); await p.getByText("The from date must be on or before the to date.", { exact: true }).waitFor({ state: "detached", timeout: 10_000 });
+await p.locator(`[data-prospect-row="${num("tRef")}"]`).waitFor({ timeout: 15_000 }).catch(() => undefined);
+const fixed = await rowsShown("data-prospect-row");
+ok("R1.30 DW5 pass (QA-572): a from on or before to clears the message and the list follows the range and the source", (await from.getAttribute("aria-invalid")) !== "true" && fixed.has(num("tRef")) && !fixed.has(num("tPhone")), [...fixed]);
+// Break m1: a day in the address that is not a real YYYY-MM-DD day is dropped (as Leads does), never a raw error.
+for (const bad of ["abc", "2026-02-30", "2026-1-5"]) {
+  await p.goto(`${BASE}/front-office/pipeline?view=list&from=${bad}&to=${day(0)}`); await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ timeout: 30_000 }).catch(() => undefined);
+  ok(`R1.30 DW5 fail (break m1): from=${bad} in the address is dropped: the list shows, no alert, no "from after to"`, (await p.locator(`[data-prospect-row="${num("tPhone")}"]`).count()) === 1 && (await p.getByRole("alert").count()) === 0 && (await p.getByText("The from date must be").count()) === 0 && sentBad === 0);
+}
 await p.goto(`${BASE}/front-office/pipeline?view=list&from=${day(1)}&to=${day(5)}`);
 await p.locator("[data-empty]").waitFor({ timeout: 30_000 });
 ok("R1.30 DW5 fail (QA-572): a from after to typed into the address shows plain words to change the dates (no raw 'from:'), nothing sent",
