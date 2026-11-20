@@ -10,11 +10,12 @@
 //   W6: once B's meeting has ended, B's link is refused as expired (the same bad-link words);
 //   W7: B's host signs in, opens B on the staff booking detail and answers Attended (one click): the booking is COMPLETED
 //       and one audit line names the host and the time;
-//   W8: the host records the outcome and a note in the consult record: stored with who and when, one audit line.
-//       GAP: the consult record has no screen on main (detail-panel.tsx: "Part 2 adds the consult record and the next
-//       step"), so W8 is walked through the route the screen will call, with the host's own session; the line "W8 screen"
-//       reports the missing screen and the walk cannot reach row 53's first step (the next-step button). Question for the
-//       tech lead on the PR.
+//   W8 (route, no screen yet): the host records the outcome and a note in the consult record: stored with who and when,
+//       one audit line. The consult record has no screen on main (detail-panel.tsx: "Part 2 adds the consult record and
+//       the next step"), so W8 saves it through the route the screen will call, with the host's own session, and the walk
+//       reports two HELD lines (walk.mjs counts them): "W8 screen" (no consult record panel) and "W9" (row 53's first step,
+//       the next-step button, not reachable). R1.42 is not complete until FO-3st1's consult record part lands; question
+//       for the tech lead on #2613.
 //   DW1: the manage link travels by the real sending path: A's confirmation and the reschedule's new mail are msg_outbox
 //        rows SENT or DELIVERED by the local adapter, read back from the copy's demo inbox (fakeMail wrote no row).
 //   DW2: the attendance answer and the consult record are database rows with audit_event lines (the in-memory audit fake
@@ -23,7 +24,7 @@
 // (default 240), times every 5 minutes, a 60-minute self-service limit (default 240), 5-minute meetings (the shortest),
 // and its one host works every hour of every day; so B's meeting starts and ends within about 15 minutes and the walk
 // waits for its end. Setup a person cannot do through the product yet (firm, host, hours, type) is written straight to the
-// copy's database (Sample rows). Sample values only; US$0, no model call. About 18 minutes.
+// copy's database (Sample rows). Sample values only; US$0, no model call. About 11 to 14 minutes.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j42 4442 start --ttl 40 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j42 4442 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_42.ts j42 4442
 import "reflect-metadata";
@@ -91,11 +92,13 @@ if (termIds.length) await call(tok, "POST", "/platform/me/terms/accept", { versi
 const aEmail = `booker-a-${run}@j42-client.example`, bEmail = `booker-b-${run}@j42-client.example`;
 console.log(`setup (not through the product): firm ${key} in ${ZONE} (phone ${PHONE}), one host (Case Officer) on every hour, type "free" (no notice, 60 min self-service limit, 5 min)`);
 
+const errors: string[] = [];
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 async function pageAs(session: string | null): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: ZONE, locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
   if (session) await ctx.addInitScript((t) => { if (!sessionStorage.getItem("xr-staff-session")) sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, session);
-  return ctx.newPage();
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errors.push(String(e)));
+  return p;
 }
 /** Full page, except a long list (two weeks of times): the screen as a person sees it. */
 const shot = (p: Page, name: string, fullPage = true) => p.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage });
@@ -133,7 +136,7 @@ try {
   const pa = await pageAs(null), pb = await pageAs(null);
   const bAt = await book(pb, mark(Date.now() + 4 * MIN), "Ben", bEmail);
   const aAt = await book(pa, mark(Date.now() + 90 * MIN), "Ana", aEmail);
-  await shot(pa, "W1-booked");
+  await shot(pa, "W1-booked"); await axe(pa, "W1 the confirmation");
   const rows = await db.foBooking.findMany({ where: { firmId: firm.id }, select: { id: true, startsAt: true, endsAt: true, staffId: true } });
   const A = rows.find((r) => r.startsAt.getTime() === aAt), B = rows.find((r) => r.startsAt.getTime() === bAt);
   ok(`J-42 W1: A books ${aAt ? slotName(aAt) : "a time ~90 min ahead"} and B ${bAt ? slotName(bAt) : "the next free time"}; two bookings underneath`, !!A && !!B && rows.length === 2, rows.map((r) => r.startsAt));
@@ -177,6 +180,12 @@ try {
   await shot(mine, "W4-cancelled");
   ok('J-42 W4 pass: A cancels on the same page: "Your booking is cancelled. …"; underneath CANCELLED',
     (await main(mine)).includes("Your booking is cancelled. We have sent you an email.") && (await db.foBooking.findUniqueOrThrow({ where: { id: A.id } })).status === "CANCELLED");
+  await axe(mine, "W4 the cancelled page");
+  const newLink = linkIn(aMails2[1]), again = await pageAs(null);
+  await open(again, newLink);
+  const aMails3 = await inbox(aEmail, 3);
+  ok("J-42 W4 fail: after the cancel, the link that cancelled is refused too, and A's cancel mail arrives (AG-4-36)",
+    (await state(again)) === "bad-link" && (await main(again)).includes(BAD) && aMails3.length === 3 && /cancel/i.test(aMails3[2].subject), { state: await state(again), inbox: aMails3.map((m) => m.subject) });
 
   // ---------------------------------------------------------------------------------------------- W5: inside the limit
   const bLink = linkIn((await inbox(bEmail, 1))[0]);
@@ -213,18 +222,21 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W8, DW2: the consult record
   const panel = await staff.locator("[data-booking-detail]").innerText();
-  const hasScreen = /consult record|time spent|notes/i.test(panel);
-  console.log(`${hasScreen ? "NOTE" : "GAP "}  W8 screen: the booking detail ${hasScreen ? "shows" : "has no"} consult record (FO-3st1 part 2 not on main); the record is saved through its route with the host's session`);
+  const hasScreen = /consult record|time spent/i.test(panel) || (await staff.getByRole("button", { name: /save record/i }).count()) > 0;
+  console.log(hasScreen ? "NOTE  J-42 W8 screen: the booking detail now shows a consult record: switch W8 from the route to the panel (and drop the HELD lines)"
+    : "HELD  J-42 W8 screen: the booking detail has no consult record panel (FO-3st1's consult record part is not on main); W8 is saved through its route with the host's session");
+  console.log("HELD  J-42 W9: row 53's first step (the consult record's next-step button) is not reachable by screens: no consult record panel");
   const note = "Sample: has a job offer; next, an employer check.";
   const saved = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { timeSpentMinutes: 5, notes: note });
   const rec = await db.foConsultRecord.findFirst({ where: { firmId: firm.id, bookingId: B.id } });
   const recLines = await db.auditEvent.findMany({ where: { firmId: firm.id, entity: "fo_consult_record" } });
-  ok("J-42 W8 pass / DW2: the host records the outcome and a note: the record is stored with who (created and updated by the host) and when, and one audit line names the host",
+  ok("J-42 W8 (route, no screen yet) pass / DW2: the host records the outcome and a note: the record is stored with who (created and updated by the host) and when, and one audit line names the host",
     saved.status === 200 && rec?.notes === note && rec.createdBy.includes(host.id) && rec.updatedBy.includes(host.id) && rec.createdAt.getTime() >= before - 5_000
     && recLines.length === 1 && recLines[0].action === "booking.consult_record.created" && recLines[0].actor.includes(host.id) && !JSON.stringify(recLines[0].detail).includes(note),
     { status: saved.status, rec, lines: recLines.map((l) => [l.action, l.actor]) });
   const eur = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { quotedFeeMinor: 1000, quotedFeeCurrency: "EUR", version: saved.body?.version });
-  ok("J-42 W8 fail: a quoted fee in EUR is refused (400) and the record is unchanged", eur.status === 400 && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === null, eur);
+  ok("J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged", eur.status === 400 && JSON.stringify(eur.body?.issues ?? "").includes("quotedFeeCurrency") && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === null, eur);
+  ok("J-42: no page error in any browser during the walk", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();
   await db.$disconnect();

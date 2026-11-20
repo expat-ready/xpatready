@@ -13,4 +13,4 @@ Who and when for the outcome: AG-4-39 rule 3 asks only for the status, the event
 
 Duplicate check: open PRs (REST, 20 Nov) — #2322 (FO-3st1 part 1, the screen, R1.38/R1.39) and #2108 (records) only; no open PR names R1.42; FO-3a1c/1d are other parts.
 
-Recommendation: no build PR. Send R1.42 to qa for re-proof (`/qa capability R1.42`) against current main. The client-link half was proven by QA-496's walk. What's left is a J-42 walk (attendance → consult record through FO-3st1's screen, #2322), which is J-42's row, not FO-3a's.
+Recommendation: no build PR. Send R1.42 to qa for re-proof (`/qa capability R1.42`) against current main. The client-link half was proven by QA-496's walk. What's left is a J-42 walk (attendance on FO-3st1's booking detail, #2322; the consult record has no screen yet: FO-3st1's consult record part is not built), which is J-42's row, not FO-3a's.
