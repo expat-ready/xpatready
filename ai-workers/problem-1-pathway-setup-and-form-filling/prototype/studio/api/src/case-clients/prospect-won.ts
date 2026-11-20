@@ -113,7 +113,9 @@ export type WonCatchUp = { results: WonResult[]; failed: { prospectId: string; f
 
 /** Catch-up over the outbox: every prospect with a `prospect.won` and no client (or a client with no case that no longer matches who was won), whose Convert still stands and whose
  *  firm is still served, so a missed or failed delivery is made good by the next run. One prospect that fails is named and the others still run. */
-export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps): Promise<WonCatchUp> {
+export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDeps,
+  /** CS-K1 part 2: how each prospect runs (the app's poller: as its own firm, withFirm); a suite or the tool runs it as is. */
+  each: <T>(firmId: string, fn: () => Promise<T>) => Promise<T> = (_f, fn) => fn()): Promise<WonCatchUp> {
   const rows = await db.$queryRaw<{ firm_id: string; prospect_id: string; payload: unknown }[]>`
     select distinct on (e.firm_id, e.subject_id) e.firm_id::text as firm_id, e.subject_id as prospect_id, e.payload
       from module_event e join platform_firm f on f.id = e.firm_id
@@ -126,7 +128,7 @@ export async function catchUpProspectsWon(db: PrismaClient, deps: ProspectWonDep
      order by e.firm_id, e.subject_id, e.seq desc`;
   const out: WonCatchUp = { results: [], failed: [] };
   for (const r of rows) {
-    try { const made = await onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps); if (made) out.results.push(made); }
+    try { const made = await each(r.firm_id, () => onProspectWon(db, { type: EVENT.PROSPECT_WON, firmId: r.firm_id, payload: r.payload }, deps)); if (made) out.results.push(made); }
     catch (e) { out.failed.push({ prospectId: r.prospect_id, firmId: r.firm_id, error: String(e).slice(0, 300) }); }
   }
   return out;
@@ -162,7 +164,7 @@ export const OFFER_REFUSED = {
   NO_OFFER: "This client did not come from a won prospect, so there is no \"Open a case?\" offer for it. Open a case for the client instead.",
   USED: "A case was already opened from this offer. Open another case for the client instead.",
   WITHDRAWN: "The Convert to client was undone, so there is no case to open from it. Convert the prospect again first.",
-  CHANGED: "This prospect was won again as another type and its client has not been updated yet (it is when the won prospects are next taken in). Nothing was opened.",
+  CHANGED: "This prospect was won again as another type and its client has not been updated yet. It updates by itself within a few seconds; try again then. Nothing was opened.",
 } as const;
 
 /** What the opening needs from the API (runtime.ts gives its own): the session's client lookup, the case opening with
@@ -202,7 +204,7 @@ export async function openCaseFromOffer<A>(door: OpenDoor<A>, ctx: { staffId: st
     refuse(now.displayKind !== client.displayKind || now.displayName !== client.displayName ? { ...offer, state: "CHANGED" } : await offerOf(tx, now, opened.id));
     const clientType = await door.clientTypeOf(tx, opened.combinationId);
     await door.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: EVENT.CASE_OPENED, entity: "fo_prospect", entityKey: offer.prospectId, caseId: opened.id,
-      summary: `The won prospect's "Open a case?" offer was taken (the case is in the detail).`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
+      summary: `A case was opened from the "Open a case?" offer.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CASE_OPENED, subjectId: opened.id,
       payload: CaseOpenedPayload.parse({ firm_id: ctx.firmId, prospect_id: offer.prospectId, client_id: client.id, case_id: opened.id, case_number: opened.caseNumber, client_type: clientType }) } });
   });
