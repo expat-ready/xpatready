@@ -1,0 +1,30 @@
+{
+  "item": "R1.26",
+  "name": "26 Public enquiry form, hardened against abuse",
+  "pr": 2525,
+  "sha": "c5967c56a71ab24f8af7e365d6324e11b8069102",
+  "run_id": "44743324739",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44743324739",
+  "at": "2026-11-20T13:23:01.521Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_26.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44743324739/artifacts/14631837332",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.26-c5967c56a71ab24f8af7e365d6324e11b8069102.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
