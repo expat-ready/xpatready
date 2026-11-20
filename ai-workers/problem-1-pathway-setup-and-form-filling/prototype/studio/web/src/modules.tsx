@@ -13,7 +13,7 @@ export type ModuleRoute = { path: string; element: ReactNode };
  *  A module path equal to one of these, or under one ending in "/*" (as /cases/*), would take that page away, so it
  *  stops the app. The test reads App.tsx and fails when this list and App.tsx differ. */
 export const APP_ROUTES = [
-  "/sign-in", "/cases/*", "/link", "/inbox",
+  "/sign-in", "/cases/*", "/clients/*", "/link", "/inbox",
   "/", "/start", "/review", "/structure", "/review/change/:id", "/review/proposals", "/review/batch/:id", "/review/merge/:id",
   "/review/held/:id", "/review/edition/:id", "/review/form-fields/:id", "/c/:id", "/c/:id/:tab", "/c/:id/jobs/:jobId",
   "/library/fields", "/library/fields/:key", "/library/sections", "/library/documents", "/library/forms", "/library/checks",

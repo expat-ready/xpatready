@@ -11,7 +11,7 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import { STORAGE_HARD_AFTER_DAYS } from "../../../../ports/entitlement.ts";
 import { LocalFiles } from "../../front-office/files.ts";
 import { auditEvent } from "../audit/audit-event.ts";
-import { asBypass, firmScope, withFirm } from "../firm-scope.ts";
+import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
 import { TEAM_INBOX_SAMPLE } from "../config/settings.ts";
 import { PgEntitlements, mbOf, planLimitReached } from "./limits.ts";
@@ -86,8 +86,14 @@ export class StorageWatch {
 
   /** The daily job: every firm that is not closed, each in its own firm scope; one firm's failure never stops the rest. */
   async daily(): Promise<{ measured: number; failed: number }> {
-    const firms = await asBypass(`job:${STORAGE_DAILY_QUEUE}`, () => this.d.db.platformFirm.findMany({ where: { status: { notIn: ["DELETED" as const, "ABANDONED" as const] } }, select: { id: true }, orderBy: { id: "asc" } }));
-    let measured = 0, failed = 0;
+    // PF-12b: the list reads every firm's row, so each firm listed gets its platform.bypass line (its own transaction)
+    // before it is measured; a firm whose line cannot be written is not measured and counts as failed (P-607).
+    const { firms, unrecorded } = await asBypass(`job:${STORAGE_DAILY_QUEUE}`, async () => {
+      const all = await this.d.db.platformFirm.findMany({ where: { status: { notIn: ["DELETED" as const, "ABANDONED" as const] } }, select: { id: true }, orderBy: { id: "asc" } });
+      const { failed: lost } = await touchEachFirm(this.d.db, all.map((f) => f.id));
+      return { firms: all.filter((f) => !lost.has(f.id.toLowerCase())), unrecorded: lost.size };
+    });
+    let measured = 0, failed = unrecorded;
     for (const f of firms) {
       try { await withFirm(f.id, () => this.measure(f.id)); measured++; } catch (e) { failed++; console.warn(`storage daily: firm ${f.id}: ${String((e as Error)?.message ?? e).slice(0, 200)}`); }
     }
