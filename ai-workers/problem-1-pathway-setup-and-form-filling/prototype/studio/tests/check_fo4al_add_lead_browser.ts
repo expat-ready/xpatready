@@ -67,8 +67,10 @@ async function pageAs(t: string, width = 1440): Promise<Page> {
 }
 async function openPanel(p: Page) {
   await p.goto(`${BASE}/front-office/leads?view=mine`);
+  await p.getByRole("heading", { level: 1, name: "Leads" }).waitFor({ timeout: 30_000 });
+  await p.locator("[data-add-lead-open]").waitFor({ timeout: 30_000 });   // shown once the signed-in person's keys are read
   await p.locator("[data-add-lead-open]").click();
-  await p.locator("[data-add-lead]").waitFor({ timeout: 20_000 });
+  await p.getByLabel("First name", { exact: true }).waitFor({ timeout: 20_000 });
 }
 const fill = async (p: Page, v: { given?: string; family?: string; email?: string; phone?: string; source?: string }) => {
   if (v.given !== undefined) await p.getByLabel("First name", { exact: true }).fill(v.given);
@@ -76,6 +78,9 @@ const fill = async (p: Page, v: { given?: string; family?: string; email?: strin
   if (v.email !== undefined) await p.getByLabel("Email", { exact: true }).fill(v.email);
   if (v.phone !== undefined) await p.getByLabel("Phone", { exact: true }).fill(v.phone);
   if (v.source !== undefined) await p.getByLabel("Source", { exact: true }).fill(v.source);
+  // What was typed is still there before anything is pressed (a fresh copy is slow; a wiped field must fail loudly here).
+  const now = { given: await p.getByLabel("First name", { exact: true }).inputValue(), email: await p.getByLabel("Email", { exact: true }).inputValue(), source: await p.getByLabel("Source", { exact: true }).inputValue() };
+  for (const k of ["given", "email", "source"] as const) if (v[k] !== undefined && now[k] !== v[k]) throw new Error(`fill: ${k} reads "${now[k]}", typed "${v[k]}"`);
 };
 try {
   // ---------------------------------------------------------------- AL1: the button follows agent/prospect:create

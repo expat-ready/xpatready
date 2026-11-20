@@ -64,3 +64,9 @@
 - AG-2-4 rules 5 and 7's server effects (Link fields, "Combined into"), which are FO-2's.
 
 **Verdict: Block.** 7.5/10 with two Majors (M1, M2), reviewed on commit `376411977`.
+
+**Re-check (20 Nov, head `a0b33f63e`):** M1 and M2 are fixed and the M2 test can now fail (details in `review.md`). Score now **9/10**:
+- next step 1, plain words ½ (S2), correct data 1, accessibility 1, trust ½ (S1);
+- the other five criteria are unchanged at 1.
+
+**Pass.** A fresh-copy flake in the check is noted as a Should.

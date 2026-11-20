@@ -40,7 +40,9 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
   const [f, setF] = React.useState<Form>(EMPTY);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [matches, setMatches] = React.useState<z.infer<typeof KnownMatches> | null>(null);
-  const [requestId, setRequestId] = React.useState("");
+  // A fresh panel each time it opens (the opener gives it a new key): empty fields and a new request id, set as it is
+  // made, never cleared afterwards (a late clear could wipe what was already typed; review re-check, flaky fresh copies).
+  const [requestId] = React.useState(() => crypto.randomUUID());
   const sending = React.useRef(false);   // one Save at a time, also for two clicks in one frame
   const matchBox = React.useRef<HTMLDivElement>(null);
   // The keyboard lands on the choice (break m5), after the browser has moved focus off the Save lead button it just
@@ -48,8 +50,6 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
   React.useEffect(() => { if (!matches) return; const t = setTimeout(() => matchBox.current?.focus(), 50); return () => clearTimeout(t); }, [matches]);
   const seen = useSources().data ?? [];
   const offered = suggestions([...seen, ...SAMPLE_SOURCES]);
-  // A fresh panel each time it opens: empty fields and a new request id (a reopened panel is a new Add).
-  React.useEffect(() => { if (open) { setF(EMPTY); setErrors({}); setMatches(null); setRequestId(crypto.randomUUID()); } }, [open]);
   const save = useMutation({
     mutationFn: async (c: Choice) => Lead.parse(await staffApi("/front-office/leads", { method: "POST", json: {
       requestId, givenNames: f.givenNames.trim() || undefined, familyName: f.familyName.trim() || undefined, email: f.email.trim() || undefined,

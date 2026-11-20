@@ -58,8 +58,8 @@ function LeadsBody() {
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   // FO-4 Add a lead (R1.27, QA-606; AG-2-4 rule 10): shown only to people who may create a lead.
-  const [adding, setAdding] = React.useState(false), addButton = React.useRef<HTMLButtonElement>(null);
-  const panel = (o: boolean) => { setAdding(o); if (!o) setTimeout(() => addButton.current?.focus(), 60); };
+  const [adding, setAdding] = React.useState(false), [addKey, setAddKey] = React.useState(0), addButton = React.useRef<HTMLButtonElement>(null);
+  const panel = (o: boolean) => { if (o) setAddKey((k) => k + 1); setAdding(o); if (!o) setTimeout(() => addButton.current?.focus(), 60); };
   const canTake = can(me, KEY.edit);
   const needle = q.trim().toLowerCase();
   const shown = (rows.data ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle) || l.number.toLowerCase().includes(needle));
@@ -127,7 +127,7 @@ function LeadsBody() {
                   ))}
                 </Table>
               )}
-      <AddLeadPanel open={adding} onOpenChange={panel} />
+      <AddLeadPanel key={addKey} open={adding} onOpenChange={panel} />
     </div>
   );
 }
