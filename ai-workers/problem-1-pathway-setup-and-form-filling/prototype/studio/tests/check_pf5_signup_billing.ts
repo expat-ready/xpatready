@@ -24,7 +24,10 @@ import { billingPortContract } from "../ports/contracts/billing-port.contract.ts
 import { EVENT } from "../ports/events.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
+import { randomUUID } from "node:crypto";
+import { asBypass } from "../api/src/platform/firm-scope.ts";
 import { runtimeSignUpPorts } from "../api/src/platform/firms/runtime-ports.ts";
+import { Runtime, RuntimeController } from "../api/src/runtime.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { StripeBilling } from "../api/src/platform/billing/stripe.ts";
 import { PlatformSignUpController } from "../api/src/platform/firms/routes.ts";
@@ -370,7 +373,9 @@ try {
   billing.subs.set("sub_f7", snap("sub_f7", { status: "paused" })); billing.events.set(JSON.parse(p7).id, eventFacts(JSON.parse(p7)));
   failAudit = "platform.subscription.synced"; await send(p7); failAudit = null;
   const rolledBack = `${subOf(F7).split(" ")[0]}/${firmOf(F7)}/${evs(F7, EVENT.FIRM_PAYMENT_HOLD)}/${sql(`select count(*) from webhook_receipt where event_id = '${JSON.parse(p7).id}' and handled_at is null`)}`;
-  await clock.advance({ minutes: 3 }); const sweptN = await hooks.sweep();
+  await clock.advance({ minutes: 3 }); const sweptN = await asBypass("job:platform.billing.webhook_sweep", () => hooks.sweep());   // as the job runs it (no firm)
+  const sweepLines = (f: string) => sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id = '${f}' and detail->>'use' = 'job:platform.billing.webhook_sweep'`);
+  ok("PF-12b pass/fail (PF-5 part 2): the sweep writes one platform.bypass line to the firm whose event it handled, none to another firm", sweepLines(F7) === "1" && sweepLines(firmId) === "0", [sweepLines(F7), sweepLines(firmId)]);
   ok("PF-5 part 2 pass/fail: a forced audit failure rolls the change and its event back (the receipt stays unhandled); the sweep handles it once",
     rolledBack === "TRIAL/TRIAL/0/1" && sweptN === 1 && firmOf(F7) === "PAYMENT_HOLD" && evs(F7, EVENT.FIRM_PAYMENT_HOLD) === 1 && (await hooks.sweep()) === 0, rolledBack);
 
@@ -427,7 +432,9 @@ try {
 
   // ------------------------------------------------------------------- part 2 over HTTP: the raw-body door and the 402
   await seedSampleFirms(db);
-  @Module({ controllers: [PlatformIdentityController, StripeHookController, BillingController, PlatformTermsController] as never[], providers: [{ provide: Db, useValue: db }, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, PlatformTerms, { provide: TERMS_GATE, useExisting: PlatformTerms },
+  // Lead B (7013594855): the case-opening route itself, with a Runtime that only counts the calls that reach it.
+  const opened: string[] = [], runtime = { openCaseFromOffer: (_s: unknown, id: string) => { opened.push(id); return { opened: true }; } };
+  @Module({ controllers: [PlatformIdentityController, StripeHookController, BillingController, PlatformTermsController, RuntimeController] as never[], providers: [{ provide: Db, useValue: db }, { provide: Runtime, useValue: runtime }, { provide: APP_GUARD, useClass: ConfigReadGuard }, PlatformClock, PlatformTerms, { provide: TERMS_GATE, useExisting: PlatformTerms },
     { provide: IDENTITY_PORT, useValue: new LocalIdentity("pf5-part2-check-signing-key-0123456789", () => Date.now()) }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
     { provide: BILLING_PORTS, useValue: bp }, PlatformBillingEvents, PlatformBillingAccount, PaymentHoldGate, { provide: APP_INTERCEPTOR, useExisting: PaymentHoldGate }] as never[] }) class BillingApp {}
   const nest = await NestFactory.create(BillingApp, { logger: false }); stripeRawBody(nest); await nest.listen(0, "127.0.0.1");
@@ -442,11 +449,16 @@ try {
     const before = await open();
     sql(`update platform_firm set status = 'PAYMENT_HOLD' where key = 'sample-firm'`);
     const held = await open(), words = (await call("GET", "/api/platform/staff/invitations", { token: tR })).body;
+    const openCase = async () => (await call("POST", `/api/runtime/clients/${randomUUID()}/open-case`, { token: tR, body: "{}" })).status, cases = () => sql(`select count(*) from runtime_case`);
+    const casesBefore = cases(), caseHeld = await openCase(), reachedHeld = opened.length;
     const addrHeld = (await call("PUT", "/api/platform/billing/address", { token: tR, body: JSON.stringify(addr) })).status;
     const v2 = sql(`insert into platform_terms_version (id, kind, version, url, published_at) values (gen_random_uuid(), 'TERMS_OF_SERVICE', 'sample-held-2', '/terms/2', now() - interval '1 minute') returning id`).split("\n")[0];
     const termsHeld = [(await call("GET", "/api/platform/billing", { token: tR })).status, (await call("POST", "/api/platform/me/terms/accept", { token: tR, body: JSON.stringify({ versionIds: [v2] }) })).status, (await call("GET", "/api/platform/billing", { token: tR })).status];
     ok("PF-5 part 2 fail (review r10, PF-5t): a held firm's Owner with new terms is never locked out: 428 on billing, accepts the terms, then billing 200", termsHeld.join() === "428,200,200", termsHeld);
     sql(`update platform_firm set status = 'ACTIVE' where key = 'sample-firm'`);
+    const caseActive = await openCase();
+    ok("PF-5 part 2 fail (Lead B, PF-15c break): a held firm's staff opening a case (POST clients/:id/open-case) get 402 and no case row is written", caseHeld === 402 && reachedHeld === 0 && cases() === casesBefore, { caseHeld, reachedHeld });
+    ok("PF-5 part 2 pass (Lead B, PF-15c break): an active firm's same call is not refused by the hold (it reaches the case opening)", caseActive !== 402 && opened.length === 1, { caseActive, opened: opened.length });
     ok("PF-5 part 2 pass/fail: a held firm's staff get 402 on other routes and 200 on billing (address too) and their own identity; Active again → 200",
       before.join() === "200,200,200" && held.join() === "402,200,200" && words?.code === "PAYMENT_HOLD" && words.detail === HOLD_WORDS && addrHeld === 200, { before, held, addrHeld });
     const officer = [(await call("GET", "/api/platform/billing", { token: tO })).status, (await call("POST", "/api/platform/billing/portal", { token: tO })).status];
