@@ -11,7 +11,8 @@
 //   W6: the won prospect's client page shows the check read-only: method, type, country, expiry, who and when (FO-13s
 //       part 2, QA-610, QA-611);
 // Scaffolding (P-33): no retainer screen is on main (FO-5s not built), so W1 and W4's Send goes through FO-5's real API
-// (template upload, draft, send) as the firm's Owner; everything else is by screens.
+// (template upload, draft, send) as the firm's Owner, and W6's win is FO-2w's Convert route as the Owner, its client found
+// by the database once FO-8's poll makes it; everything else (record, list, copy, the client page) is by screens.
 // Run from prototype/ (US$0, no model call; HEADED=1 for a visible browser):
 //   zsh studio/tools/isolated.sh j110 4437 start --ttl 30 PLATFORM_IDENTITY=local PROSPECT_WON_POLL_MS=500 && trap 'zsh studio/tools/isolated.sh j110 4437 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_110.ts j110 4437
 import "reflect-metadata";
@@ -149,10 +150,15 @@ try {
   const cPanel = o.locator("[data-identity-panel]"), cRow = cPanel.locator("[data-check]").first();
   await cRow.waitFor({ timeout: 15_000 });
   const cText = await cRow.innerText(), checker = O.displayName;
+  // QA-611 (review M2): "when" is the stored checked_at, shown as the panel shows it (en-CA, medium date, short time,
+  // in the browser's zone); a time that is not the stored one fails here.
+  const savedAt = (await db.foIdentityCheck.findFirstOrThrow({ where: { personId: person.id }, orderBy: { checkedAt: "desc" } })).checkedAt.toISOString();
+  const shownWhen = await cRow.locator("[data-checked]").innerText(), shownIso = await cRow.locator("[data-checked]").getAttribute("data-checked");
+  const expectWhen = await o.evaluate((iso) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)), savedAt);
   ok("J-110 W6 pass: the client page lists the check with method, document type and country, expiry, who checked and when",
     (await cPanel.locator("[data-check]").count()) === 1 && /Document copy/.test(cText) && (await cRow.locator("[data-doc]").innerText()) === "Passport, IN ···4K9Z"
       && (await cRow.locator("[data-expiry]").innerText()) === new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${TODAY}T00:00:00Z`))
-      && cText.includes(`by ${checker}`) && /\b20\d\d\b.*\d{1,2}:\d{2}/.test(cText), cText);
+      && cText.includes(`${expectWhen} by ${checker}`) && shownWhen === expectWhen && shownIso === savedAt, { cText, shownWhen, expectWhen, shownIso, savedAt });
   ok("J-110 W6 fail: on the client page the panel is read-only (no Record a check; checks are recorded on the lead or prospect page)",
     (await cPanel.getByRole("button", { name: "Record a check" }).count()) === 0);
   await shot("w6-client-1440");

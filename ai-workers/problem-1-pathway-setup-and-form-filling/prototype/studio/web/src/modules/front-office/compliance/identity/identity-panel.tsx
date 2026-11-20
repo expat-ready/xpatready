@@ -17,7 +17,8 @@ import { arrivedLabel } from "../../sales/time";
 import { COPY_MAX_BYTES, COPY_TOO_LARGE, DETAILS, detailLabel, DOCUMENT_TYPES, documentLabel, DownloadLink, ID_KEY, IdentityChecks, METHODS, methodLabel, noCheckLine, type IdentityCheck } from "./contract";
 
 const path = (personId: string) => `/front-office/people/${encodeURIComponent(personId)}/identity-checks`;
-const READ_ONLY_LINE = "Identity checks are recorded on the person's lead or prospect page.";
+const READ_ONLY_LINE = "A check is recorded on a lead or prospect page; this person's checks are listed here once recorded.";
+const HIDDEN_REASON = "This person's identity checks are seen by whoever has their lead or prospect, or by everyone when your firm shares all leads.";
 const SHOW_REASON = "Seeing identity checks needs a role that sees prospects: ask your firm's Owner or Admin.";
 const RECORD_REASON = "Recording a check needs a role that works leads: ask your firm's Owner or Admin.";
 /** A stored calendar date (YYYY-MM-DD) in words, formatted in UTC so it never moves a day (challenge m4). */
@@ -65,7 +66,7 @@ function CheckRow({ c, mayCopy }: { c: IdentityCheck; mayCopy: boolean }) {
     <li data-check={c.id} className="rounded-lg border border-border p-3 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="min-w-0 font-medium [overflow-wrap:anywhere]">{methodLabel(c.method)}{c.methodDetail ? <span className="font-normal text-text-muted"> · {c.methodDetail}</span> : null}</p>
-        <p className="text-xs text-text-muted">{arrivedLabel(c.checkedAt)} by {c.checkedBy.name}</p>
+        <p className="text-xs text-text-muted"><span data-checked={c.checkedAt}>{arrivedLabel(c.checkedAt)}</span> by {c.checkedBy.name}</p>
       </div>
       <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[7rem_1fr]">
         <dt className="text-text-muted">Document</dt><dd data-doc className="min-w-0 [overflow-wrap:anywhere]">{doc}</dd>
@@ -180,9 +181,14 @@ function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; on
 export function IdentityCheckPanel({ personId, name, me: given, readOnly = false }: { personId: string; name: string; me?: Me | null; readOnly?: boolean }) {
   const framed = useStaff(), me = given ?? framed, focus = useReturnFocus();
   const [open, setOpen] = React.useState(false);
-  const list = useQuery({ queryKey: ["fo", "identity-checks", personId], retry: false, queryFn: async () => IdentityChecks.parse(await staffApi(path(personId))) });
+  const maySee = can(me, ID_KEY.show);
+  const list = useQuery({ queryKey: ["fo", "identity-checks", personId], retry: false, enabled: maySee, queryFn: async () => IdentityChecks.parse(await staffApi(path(personId))) });
   const mayRecord = !readOnly && can(me, ID_KEY.record), mayCopy = can(me, ID_KEY.copy);
-  const forbidden = list.error instanceof StaffApiError && list.error.status === 403;
+  // A viewer without the list's key is told so without asking (review S3); the server's 403 says the same. On the
+  // read-only client page a 404 means the person's lead or prospect is another person's while the firm does not share
+  // all leads (review M1): a plain line, not an error with a Try again that cannot help.
+  const forbidden = !maySee || (list.error instanceof StaffApiError && list.error.status === 403);
+  const hidden = readOnly && list.error instanceof StaffApiError && list.error.status === 404;
   const panel = (o: boolean) => { if (o) focus.mark(); else focus.back(); setOpen(o); };
   return (
     <section aria-labelledby="fo-identity" data-identity-panel className="rounded-xl border border-border bg-surface-raised p-4">
@@ -190,8 +196,9 @@ export function IdentityCheckPanel({ personId, name, me: given, readOnly = false
         <h2 id="fo-identity" className="text-sm font-semibold">Identity check</h2>
         {mayRecord ? <Button size="sm" variant="outline" data-record-check onClick={() => panel(true)}>Record a check</Button> : null}
       </div>
-      {list.isPending ? <div className="mt-2"><Loading label="Loading the identity checks" rows={1} /></div>
-        : forbidden ? <p className="mt-2 text-sm text-text-muted" data-identity-forbidden>{SHOW_REASON}</p>
+      {forbidden ? <p className="mt-2 text-sm text-text-muted" data-identity-forbidden>{SHOW_REASON}</p>
+        : list.isPending ? <div className="mt-2"><Loading label="Loading the identity checks" rows={1} /></div>
+        : hidden ? <p className="mt-2 text-sm text-text-muted" data-identity-hidden>{HIDDEN_REASON}</p>
         : list.isError ? (
           <Notice tone="danger" className="mt-2" title={list.error instanceof StaffApiError ? list.error.message : "Could not load the identity checks."} action={<Button size="sm" variant="outline" onClick={() => void list.refetch()}>Try again</Button>} />
         ) : list.data.checks.length === 0 ? (

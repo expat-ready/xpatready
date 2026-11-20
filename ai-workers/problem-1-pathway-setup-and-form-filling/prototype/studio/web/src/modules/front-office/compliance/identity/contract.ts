@@ -12,7 +12,7 @@ export const IdentityChecks = z.object({ personId: z.string(), checks: z.array(I
 export const DownloadLink = z.object({ url: z.string(), expiresAt: z.union([z.string(), z.number()]) });
 
 /** The keys (FO-13i's routes): list with prospect:show, record with identity-check:record, the copy with document:show. */
-export const ID_KEY = { record: "agent/identity-check:record", copy: "agent/document:show" } as const;
+export const ID_KEY = { record: "agent/identity-check:record", copy: "agent/document:show", show: "agent/prospect:show" } as const;
 
 /** FO-13i's lists in plain words (Sample lists, the server's enums). */
 export const METHODS: [string, string][] = [["IN_PERSON", "In person"], ["VIDEO", "Video call"], ["DOCUMENT_COPY", "Document copy"], ["OTHER", "Other"]];
