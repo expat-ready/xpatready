@@ -198,8 +198,8 @@ const pf = async (tok: string, method: string, path: string, body?: unknown) => 
 const owner = await tokenOf("sample-firm", REP), ownerId = sql(`select id from platform_staff where firm_id = ${lit(firmA)} and actor_id = ${lit(REP)}`);
 const officeName = `Sample office J8 ${run}`, renamed = `Sample office J8 ${run} (renamed)`;
 const added = await pf(owner, "POST", "/platform/offices", { name: officeName });
-const officeId: string = added.body?.id ?? "";
-const changed = officeId ? await pf(owner, "PATCH", `/platform/offices/${officeId}`, { name: renamed, version: added.body?.version }) : null;
+const officeId: string = added.body?.office?.id ?? "";
+const changed = officeId ? await pf(owner, "PATCH", `/platform/offices/${officeId}`, { name: renamed, version: added.body?.office?.version }) : null;
 const officeLines = lines(`entity = 'platform_office' and entity_key = ${lit(officeId)}`);
 const addLine = officeLines.find((l) => l.action === "platform.office.add"), changeLine = officeLines.find((l) => l.action === "platform.office.change");
 const { changesOf } = await import("../../api/src/platform/audit/firm-read/render.ts");
