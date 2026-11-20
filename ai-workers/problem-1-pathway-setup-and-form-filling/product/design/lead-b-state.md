@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21:27 IST 20 Nov):** **#2322 labelled** by Lead 4 after full run 44759585301 on 79b1930ea came back green (29/0); its cover line for 44686838150 is posted. Merges by itself. Then #2326 (needs a writer: merge main, keep W7/W8 beside W6).
+
 **Lead B (9) update (20:4x IST 20 Nov):** **#2322**: the R1.38 lane is gone (not in the claude.ai list). Lead 4 pushed the ruling's fix itself, 79b1930ea: two NOT_FOLD_OUTS lines (data-more-menu, data-zone-change), test only; I checked it matches ruling 7033519396. check_bk2_fold_outs 16/16. Lead 4 runs the diff-only review, the full run and the label. #2326 next: it needs a writer (its lane is probably gone too) to merge main after #2322.
 
 **Lead B (9) update (20:30 IST 20 Nov):** **#2029 (R1.4) merged** on 1c4a697dc; Lead 4 told (J-4 walk if Done when needs one, then qa). Open: #2322 (lane's NOT_FOLD_OUTS fix), #2326 after it. The watcher now covers 2322 and 2326.
