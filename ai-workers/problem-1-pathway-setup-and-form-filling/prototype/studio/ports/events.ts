@@ -75,6 +75,10 @@ export const EVENT = {
   CASE_CLOSED: "case.closed",
   /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
   CASE_REOPENED: "case.reopened",
+  /** A government step (an IRCC letter: biometrics, medical, ...) was recorded on a case (CS-DL3 part 1). Ids only. */
+  CASE_MILESTONE_RECORDED: "case.milestone_recorded",
+  /** A recorded government step was cancelled (a wrong due date is cancelled and recorded again; CS-DL3 part 1). Ids only. */
+  CASE_MILESTONE_CANCELLED: "case.milestone_cancelled",
   /** The case side made a client from a won prospect (FO-8; P-560; case-side contract v0.1 §4). Written last in the
    *  transaction that makes the client; module_event.subject_id is the client id. */
   CLIENT_CREATED: "client.created",
@@ -251,6 +255,10 @@ export const CaseReopenedPayload = z.strictObject({
   reopenedAt: z.iso.datetime({ offset: true }),
 });
 export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;
+/** `case.milestone_recorded` and `case.milestone_cancelled` (CS-DL3 part 1): the case and the step, ids only (never the
+ *  note, the reference or a reason: a consumer reads the step). */
+export const CaseMilestonePayload = z.strictObject({ caseId: Uuid, milestoneId: Uuid });
+export type CaseMilestonePayload = z.infer<typeof CaseMilestonePayload>;
 
 // FO-8 (P-560; case-side contract v0.1 §4, front-office contracts §2.6): what the case side writes back, ids and codes only
 // (never a name: a consumer reads the client or the case). The firm is also the outbox row's firm_id.
