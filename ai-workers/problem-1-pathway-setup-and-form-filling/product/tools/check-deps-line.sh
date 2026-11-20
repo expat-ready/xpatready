@@ -30,6 +30,12 @@ fresh r2; pj app/package.json '{"name":"app","dependencies":{"react":"19.0.0"},"
 ok "a new devDependency counts too" "$([ "$(run "$B")" = 1 ] && grep -q 'ADDED: stryker' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 fresh r3; pj app/package.json '{"name":"app","dependencies":{"react":"19.1.0"},"devDependencies":{"vitest":"3.0.0"}}'
 ok "a version change needs no line" "$(y "$(run "$B")" 0)" "$(cat "$T/out")"
+fresh r11; pj app/package.json '{"name":"app","dependencies":{"react":"npm:preact@10.0.0"},"devDependencies":{"vitest":"3.0.0"}}'
+ok "an old name pointed at another package (npm: alias) counts as added" "$([ "$(run "$B")" = 1 ] && grep -q 'ADDED: react (now npm:preact@10.0.0)' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
+fresh r12; pj app/package.json '{"name":"app","dependencies":{"react":"github:someone/react"},"devDependencies":{"vitest":"3.0.0"}}'
+ok "... a github: spec too" "$(y "$(run "$B")" 1)" "$(cat "$T/out")"
+fresh r13; printf '\357\273\277{"name":"app","dependencies":{"react":"19.0.0","left-pad":"1.3.0"},"devDependencies":{"vitest":"3.0.0"}}\n' > "$R/app/package.json"; git -C "$R" commit -qam bom
+ok "a package.json with a byte-order mark is read (npm accepts it)" "$([ "$(run "$B")" = 1 ] && grep -q 'ADDED: left-pad' "$T/out" && echo 1 || echo 0)" "$(cat "$T/out")"
 fresh r4; pj app/package.json '{"name":"app","dependencies":{"react":"19.0.0"}}'
 ok "a removal needs no line" "$(y "$(run "$B")" 0)" "$(cat "$T/out")"
 fresh r5; pj app/package.json '{"name":"app","dependencies":{"vitest":"3.0.0"},"devDependencies":{"react":"19.0.0"}}'

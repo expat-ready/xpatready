@@ -198,7 +198,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'
 E16 line|product/tools/deps-line-check.sh|s/^  exit 1$/  exit 0/|check-deps-line.sh
-E16 new|product/tools/deps-line-check.sh|s/sorted(names(sys.argv\[2\]) - names(sys.argv\[1\]))/[]/|check-deps-line.sh
+E16 new|product/tools/deps-line-check.sh|s/^out = \[n for n in new if n not in old\]/out = []/|check-deps-line.sh
+E16 alias|product/tools/deps-line-check.sh|s/ and new\[n\].startswith(ALIAS)\]/ and False]/|check-deps-line.sh
 E16 ci|../../.github/workflows/pr-rules.yml|/deps-line-check.sh" --base HEAD^1/d|check-deps-line.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
