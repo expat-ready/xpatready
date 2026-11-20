@@ -86,6 +86,33 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
   fi
+  # E14 (P-772; IDX-1, -2, -4, -5): an index row stands for DECISIONS rows, so every P-ID an IDX row lists (one by one,
+  # or "P-a to P-b", every number between) is a row of DECISIONS.md or of a side file in decisions/ (struck-through
+  # rows count: the row is still there). IDX rows are read in RULES.md and in rules/*.md, where the moved full lists
+  # live. A lettered ID (P-348c) is found by its own row or its number's. Test: check-idx-integrity.sh.
+  if [ -f "$D" ]; then
+    python3 -I - "$PH" <<'PY' || echo "INDEX: the IDX check stopped with an error (python exit $?), so no index row was checked (E14)"
+import glob, os, re, sys
+ph = sys.argv[1]; have = set()
+for f in [os.path.join(ph, "DECISIONS.md")] + sorted(glob.glob(os.path.join(ph, "decisions", "*.md"))):
+    for l in open(f, encoding="utf-8"):
+        m = re.match(r"^\| *~*(P-[0-9]+[a-z]?)\b", l)
+        if m: have.add(m.group(1))
+for f in [os.path.join(ph, "RULES.md")] + sorted(glob.glob(os.path.join(ph, "rules", "*.md"))):
+    if not os.path.exists(f): continue
+    name = os.path.relpath(f, ph)
+    for n, l in enumerate(open(f, encoding="utf-8"), 1):
+        if not l.startswith("| IDX-"): continue
+        c = l.split("|"); rid = c[1].strip(); txt = c[2] if len(c) > 2 else ""
+        ids = set(re.findall(r"\bP-[0-9]+[a-z]?\b", txt))
+        for a, b in re.findall(r"\bP-([0-9]+) to P-([0-9]+)\b", txt):
+            a, b = int(a), int(b)
+            if b < a or b - a > 200: print(f"INDEX: {name} line {n} ({rid}) has the range P-{a} to P-{b}, which runs backwards or spans over 200 rows (E14)"); continue
+            ids |= {f"P-{i}" for i in range(a, b + 1)}
+        miss = sorted((i for i in ids if i not in have and re.sub(r"[a-z]$", "", i) not in have), key=lambda i: int(re.sub(r"\D", "", i)))
+        if miss: print(f"INDEX: {name} line {n} ({rid}) lists {', '.join(miss)}, not a row of DECISIONS.md or decisions/*.md: fix the ID or the index row (E14)")
+PY
+  fi
   # B193 part 5 (P-619 step 6; P-188, P-611): rows moved out of the register are never lost. Each rules/rule-id-map-*.tsv
   # lists every ID the register had before a triage: "kept" is still a RULES.md row; "merged" and "retired" rows sit word
   # for word (same sha256 as the old line) in the paired rules/merged-and-retired-*.md, and a merged row's target is still

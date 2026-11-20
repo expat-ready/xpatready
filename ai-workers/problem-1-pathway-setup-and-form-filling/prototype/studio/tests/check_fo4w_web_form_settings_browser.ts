@@ -4,7 +4,12 @@
 // reloads), copies the snippet (embed/snippet.ts's text) and the hosted link; a Case Officer has no menu item, the page
 // says so, the API refuses (403), nobody is 401, another firm's form is 404; one audit line per save; the copied
 // snippet draws the form on the saved site. axe (WCAG 2.2 AA), keyboard-only save, no sideways scroll, screenshots at
-// 375 and 1440 px. Sample firms (PF-3, FO-1a seeds). US$0, live AI off.
+// 375 and 1440 px. R1.26 QA-605: the on/off switch: the Owner switches the form off and on by screens (one audit line
+// each, before and after in full; a switched-off form refuses public sends); a Read-only member is refused (403), a stale
+// version is 409 STALE on the API and on the screen, the same state again changes nothing, a malformed body is 422, a
+// form with no consent wording cannot be switched on (422 on its field, never a 500; review Major); while off the send
+// door refuses too; focus stays on the switch (review m1).
+// Sample firms (PF-3, FO-1a seeds). US$0, live AI off.
 //   zsh studio/tools/isolated.sh screens_fo4w 4527 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4w_web_form_settings_browser.ts 4527 xr_studio_screens_fo4w
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -42,12 +47,20 @@ const otherBefore = sql(`select array_to_string(allowed_sites, ' ') from fo_web_
 const staffWith = (role: string) => sql(`select s.email from platform_staff s join platform_role_grant g on g.staff_id = s.id where s.firm_id = '${A}' and g.role = '${role}' and s.status = 'ACTIVE' order by s.email limit 1`);
 const OWNER = staffWith("OWNER"), OFFICER = staffWith("CASE_OFFICER");
 ok("FO-4w setup: the Sample firm has an Owner and a Case Officer", !!OWNER && !!OFFICER, { OWNER: !!OWNER, OFFICER: !!OFFICER });
+// A Read-only member (QA-605's fail case): the Sample firm's, else one added for this check (Sample).
+let READER = staffWith("READ_ONLY");
+if (!READER) {
+  READER = `fo4w-reader-${Date.now().toString(36)}@sample-firm.example.com`;
+  const r = await db.platformStaff.create({ data: { firmId: A, email: READER, displayName: "Sample Reader (FO-4w check)", status: "ACTIVE" } });
+  await db.platformRoleGrant.create({ data: { firmId: A, staffId: r.id, role: "READ_ONLY", grantedBy: "seed:FO-4w-test" } });
+}
+ok("FO-4w setup: the Sample firm has a Read-only member", !!READER && staffWith("READ_ONLY") !== "");
 async function signIn(email: string): Promise<string> {
   const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, secondStep: true }) });
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
   console.error(`STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`); process.exit(2);
 }
-const tokens = { owner: await signIn(OWNER), officer: await signIn(OFFICER) };
+const tokens = { owner: await signIn(OWNER), officer: await signIn(OFFICER), reader: await signIn(READER) };
 const api = (tok: string | null, method: string, path: string, body?: unknown) => fetch(`${BASE}/api${path}`, { method, headers: { ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) })
   .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) as Record<string, any> | null }));   // eslint-disable-line @typescript-eslint/no-explicit-any -- answers read loosely in checks
 const stored = () => sql(`select array_to_string(allowed_sites, ' ') from fo_web_form where id = '${formId}'`);
@@ -87,6 +100,28 @@ const same = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/a
 ok("FO-4w (review m3): saving the same list again changes nothing: same version, no audit line", same.status === 200 && same.body?.version === cleared.body?.version && audits() === 2, { status: same.status, audits: audits() });
 const stale = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/allowed-sites`, { sites: [SITE], version: "2020-01-01T00:00:00.000Z" });
 ok("FO-4w fail: a save naming an old version → 409 STALE in plain words, nothing saved", stale.status === 409 && stale.body?.code === "STALE" && stored() === "", stale.body);
+
+// R1.26 QA-605: on/off by the API (who may, the version, the same state, the body).
+const enabledNow = () => sql(`select enabled from fo_web_form where id = '${formId}'`);
+const onoffAudits = () => Number(sql(`select count(*) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`));
+const vNow = async () => (await api(tokens.owner, "GET", "/front-office/web-forms")).body?.forms.find((f: { id: string }) => f.id === formId)?.version as string;
+const readerPut = await api(tokens.reader, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
+const officerOff = await api(tokens.officer, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
+const nobodyOff = await api(null, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
+ok("QA-605 fail: a Read-only member → 403, a Case Officer → 403, nobody signed in → 401; the form stays on, no audit line", readerPut.status === 403 && officerOff.status === 403 && nobodyOff.status === 401 && enabledNow() === "t" && onoffAudits() === 0, { reader: readerPut.status, officer: officerOff.status, nobody: nobodyOff.status });
+const staleOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: "2020-01-01T00:00:00.000Z" });
+ok("QA-605 fail: switching with an old version → 409 STALE in plain words; the form stays on, no audit line", staleOff.status === 409 && staleOff.body?.code === "STALE" && enabledNow() === "t" && onoffAudits() === 0, staleOff.body);
+const badBody = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: "yes", version: await vNow() });
+const extra = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow(), allowedSites: ["https://x.example.com"] });
+const otherOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${otherForm}/enabled`, { enabled: true, version: new Date().toISOString() });
+ok("QA-605 fail: \"yes\" for on/off or an extra field → 422; another firm's form → 404; nothing changed", badBody.status === 422 && !!badBody.body?.fields?.enabled && extra.status === 422 && otherOff.status === 404 && enabledNow() === "t" && onoffAudits() === 0, { bad: badBody.status, extra: extra.status, other: otherOff.status });
+const v1 = await vNow(), sameOn = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: v1 });
+ok("QA-605: switching on a form that is on changes nothing: same version, no audit line", sameOn.status === 200 && sameOn.body?.version === v1 && onoffAudits() === 0, sameOn.status);
+// A new firm's form: off, with no consent wording (firm-seed.ts). Switching it on is refused in plain words, never a 500.
+sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
+const noWording = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: await vNow() });
+ok("QA-605 fail (review Major): a form with no consent wording cannot be switched on: 422 on its field in plain words, still off, no audit line", noWording.status === 422 && noWording.body?.code === "NO_CONSENT_WORDING" && /no consent wording/.test(String(noWording.body?.fields?.enabled)) && enabledNow() === "f" && onoffAudits() === 0, noWording.body);
+sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
 
 // The screen.
 const browser: Browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -146,11 +181,65 @@ const fresh = await api(tokens.owner, "GET", "/front-office/web-forms");
 const theirs = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/allowed-sites`, { sites: [SITE, "https://www.example.com"], version: fresh.body?.forms.find((f: { id: string }) => f.id === formId)?.version });
 await o.getByRole("button", { name: "Add a site" }).click(); await o.getByLabel("Site 2", { exact: true }).fill("https://other.example.org");
 await o.getByRole("button", { name: "Save sites" }).click();
-await o.getByText("Someone else changed this form's sites").waitFor({ timeout: 15_000 });
+await o.getByText("Someone else changed this form since you opened it").waitFor({ timeout: 15_000 });
 ok("FO-4w fail: a save after someone else's is refused in plain words with a Reload; their list is kept", theirs.status === 200 && stored() === `${SITE.toLowerCase()} https://www.example.com`);
 await o.getByRole("button", { name: "Reload" }).click();
 await o.waitForFunction(() => (document.querySelectorAll<HTMLInputElement>('input[placeholder="https://www.example.com"]')[1]?.value ?? "") === "https://www.example.com", undefined, { timeout: 10_000 });
-ok("FO-4w: Reload shows the newest list and takes the \"someone else changed\" notice away", await o.getByLabel("Site 2", { exact: true }).inputValue() === "https://www.example.com" && await o.getByText("Someone else changed this form's sites").count() === 0);
+ok("FO-4w: Reload shows the newest list and takes the \"someone else changed\" notice away", await o.getByLabel("Site 2", { exact: true }).inputValue() === "https://www.example.com" && await o.getByText("Someone else changed this form since you opened it").count() === 0);
+// R1.26 QA-605 on the screen: the Owner switches the form off, then on; one audit line each with before and after.
+// First, a form with no consent wording: the switch says why it stays off, on the screen, in plain words.
+sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
+await o.reload(); await o.getByRole("button", { name: "Switch the form on" }).click();
+await o.getByText("This form cannot be switched on yet: it has no consent wording").waitFor({ timeout: 15_000 });
+ok("QA-605 fail (review Major) on the screen: with no consent wording the switch says why the form stays off; nothing stored", enabledNow() === "f" && onoffAudits() === 0 && await o.getByText("Something went wrong").count() === 0);
+await shot(o, "qa605-00-no-wording-1440");
+sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
+await o.reload(); await o.getByRole("button", { name: "Switch the form off" }).waitFor({ timeout: 15_000 });
+// Full run 44804722228 (CI): axe caught the switch mid-transition: the same button animated from the secondary look
+// (white fill, dark text) to primary (blue fill, white text), and halfway both are mid-tones. Every transition is held
+// at its midpoint here (100 s long, started 50 s in), so every machine sees what a slow one saw: a state change must
+// never show the switch in an unreadable colour.
+const slow = await o.addStyleTag({ content: "*, *::before, *::after { transition-duration: 100s !important; transition-delay: -50s !important; }" });
+await o.getByRole("button", { name: "Switch the form off" }).click();
+await o.getByText(/^Switched off\./).waitFor({ timeout: 15_000 });
+await o.waitForTimeout(300);   // a few frames, so a transition (if any) has begun at its midpoint
+await axe("QA-605 settings, form off (any transition held at its midpoint)", o);
+await slow.evaluate((el) => (el as Element).remove());
+const offLine = sql(`select concat_ws('|', actor, detail->>'enabled_before', detail->>'enabled_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
+ok("QA-605: the Owner switches the form off by screens: stored off, the page says Off, one audit line by the Owner with before true and after false", enabledNow() === "f" && await o.getByText("This form is off").isVisible() && onoffAudits() === 1 && /^staff:.+\|true\|false$/.test(offLine), { enabled: enabledNow(), offLine });
+const offSend = await fetch(`${BASE}/api/public/forms/${token}`);
+const offPost = await fetch(`${BASE}/api/public/forms/${token}/submissions`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+ok("QA-605: a switched-off form refuses the public door, the read and the send (not available)", offSend.status === 404 && /not available/i.test(await offSend.text()) && offPost.status === 404 && /FORM_NOT_AVAILABLE/.test(await offPost.text()), { read: offSend.status, send: offPost.status });
+await axe("QA-605 settings, form off", o); await shot(o, "qa605-01-off-1440");
+// Typed but unsaved sites are kept across a switch (the switch makes a new version, the list is the same).
+await o.getByRole("button", { name: "Add a site" }).click(); await o.getByLabel("Site 3", { exact: true }).fill("https://typed.example.org");
+await o.getByRole("button", { name: "Switch the form on" }).click();
+await o.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
+const onLine = sql(`select concat_ws('|', detail->>'enabled_before', detail->>'enabled_after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
+ok("QA-605: the Owner switches the form on by screens: stored on, one more audit line with before false and after true; a site being typed is kept", enabledNow() === "t" && onoffAudits() === 2 && onLine === "false|true" && await o.getByText("This form is off").count() === 0 && await o.getByLabel("Site 3", { exact: true }).inputValue() === "https://typed.example.org", { onLine, audits: onoffAudits() });
+await o.getByRole("button", { name: /Remove site 3/ }).click();
+// Stale on the screen: someone else switches it off first; this screen's switch says so, Reload shows theirs.
+const theirOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: false, version: await vNow() });
+await o.getByRole("button", { name: "Switch the form off" }).click();
+await o.getByText("Someone else changed this form since you opened it").waitFor({ timeout: 15_000 });
+ok("QA-605 fail: a switch after someone else's change is refused in plain words with a Reload; their state is kept, no extra audit line", theirOff.status === 200 && enabledNow() === "f" && onoffAudits() === 3);
+await o.getByRole("button", { name: "Reload" }).click();
+await o.getByRole("button", { name: "Switch the form on" }).waitFor({ timeout: 10_000 });
+ok("QA-605: Reload shows the form off and takes the notice away", await o.getByText("Someone else changed this form since you opened it").count() === 0 && await o.getByText("This form is off").isVisible());
+// Keyboard only, on a slow machine (Chrome's CPU throttled 8x, review M2): five presses of Enter (on, off, on, off, on).
+// After each, focus must be on the new switch (never left on <body>), so the next Enter switches again.
+const cpu = await o.context().newCDPSession(o); await cpu.send("Emulation.setCPUThrottlingRate", { rate: 8 });
+await o.getByRole("button", { name: "Switch the form on" }).focus();
+const kept: string[] = [];
+for (const [now, next] of [["on", "off"], ["off", "on"], ["on", "off"], ["off", "on"], ["on", "off"]] as const) {
+  await o.keyboard.press("Enter");
+  await o.getByRole("button", { name: `Switch the form ${next}` }).waitFor({ timeout: 30_000 });
+  await o.waitForTimeout(1_000);
+  kept.push(`${now}:${await o.evaluate(() => document.activeElement?.textContent ?? document.activeElement?.tagName ?? "")}`);
+}
+await cpu.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+ok("QA-605: the switch works by keyboard (Enter) on a CPU throttled 8x; after each of five presses focus is on the new switch (review m1, M2); the form ends on", JSON.stringify(kept) === JSON.stringify(["on:Switch the form off", "off:Switch the form on", "on:Switch the form off", "off:Switch the form on", "on:Switch the form off"]) && enabledNow() === "t" && onoffAudits() === 8, { kept, audits: onoffAudits() });
+await axe("QA-605 settings, form on", o); await shot(o, "qa605-02-on-1440");
 // The copied snippet works on the saved site (FO-4b's embed draws).
 const { ctx: vc } = await pageAs(tokens.owner); const v = await vc.newPage();
 await v.goto(`${SITE}/`); await v.getByLabel("First name").waitFor({ timeout: 30_000 });
@@ -166,8 +255,11 @@ const menuItem = await c.getByRole("navigation", { name: "Sales" }).getByRole("l
 await c.goto(`${BASE}/front-office/settings/web-form`); await c.getByText("Owners and Admins only").waitFor({ timeout: 20_000 });
 ok("FO-4w fail: a Case Officer has no Web form menu item; the page says only an Owner or Admin can change it and shows no snippet", menuItem === 0 && await c.getByLabel("Snippet to paste into your page").count() === 0);
 await axe("FO-4w settings, Case Officer", c);
+const { ctx: rc, p: rp } = await pageAs(tokens.reader);
+await rp.goto(`${BASE}/front-office/settings/web-form`); await rp.getByText("Owners and Admins only").waitFor({ timeout: 20_000 });
+ok("QA-605 fail: a Read-only member's page offers no switch", await rp.getByRole("button", { name: /Switch the form/ }).count() === 0);
 
 ok("FO-4w: no page error in the browser", errors.length === 0, errors);
-for (const x of [oc, vc, sc, cc]) await x.close();
+for (const x of [oc, vc, sc, cc, rc]) await x.close();
 await browser.close(); host.close(); await db.$disconnect();
 process.exit(summary() ? 1 : 0);
