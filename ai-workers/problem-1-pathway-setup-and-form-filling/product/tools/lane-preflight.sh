@@ -9,8 +9,9 @@
 #                                                 any brief failing brief-check.sh --brief is refused (G-4 (3), (7))
 #                                                 (it also needs "Item: R1.x" in an open wave, waves.py allow, B204)
 #                                                 and a builder brief naming an R1 item or row that is not on
-#                                                 product/focus-list.md is refused (ENF-733; focus-check.py)
-# Test: check-lane-preflight.sh; the focus list: check-focus-list.sh.
+#                                                 product/focus-list.md is refused (ENF-733; focus-check.py), and a
+#                                                 "Touches:" file an open PR already changes is refused (E10; touch-overlap.py)
+# Test: check-lane-preflight.sh; the focus list: check-focus-list.sh; the touch list: check-touch-overlap.sh.
 DIR="$(cd "$(dirname "$0")" && pwd)"; min=${PREFLIGHT_MIN_GB:-7}; maxload=${PREFLIGHT_MAX_LOAD:-16}; cap=${COPY_CAP:-4}
 if [ "${1:-}" = --hook ]; then
   in=$(cat); target=$(echo "$in" | jq -r '.tool_input.target // .tool_input.location // empty' 2>/dev/null)
@@ -20,6 +21,9 @@ if [ "${1:-}" = --hook ]; then
   # ENF-733 (P-733 (1), P-734 (2)): a builder brief names only R1 items and rows on product/focus-list.md (focus-check.py).
   off=$(echo "$in" | jq -r '.tool_input.prompt // .tool_input.message // .tool_input.brief // empty' | python3 -I "$DIR/focus-check.py") \
     || { jq -n --arg r "Lane brief refused (P-733, P-734): ${off:-focus-check.py could not run, so nothing was checked.}" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
+  # E10 (P-576, P-526b, P-438b): a "Touches:" file already changed by an open PR is refused, here or in the cloud (touch-overlap.py).
+  hot=$(echo "$in" | jq -r '.tool_input.prompt // .tool_input.message // .tool_input.brief // empty' | python3 -I "$DIR/touch-overlap.py" 2>&1) \
+    || { jq -n --arg r "Lane brief refused (E10, P-576): ${hot:-touch-overlap.py could not run, so nothing was checked.}" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'; exit 0; }
   case "$(echo "$in" | jq -r '.tool_name // empty')" in *create_session) target=cloud;; esac
   [ "$target" = cloud ] && exit 0
   out=$(bash "$0"); [ $? = 0 ] && exit 0
