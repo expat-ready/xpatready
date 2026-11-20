@@ -187,7 +187,12 @@ def wip(args):
         print(f"ACT   wip: open PRs unreadable ({e}): building not counted"); return 1
     lanef = val("--lanes") or APP_VIEW
     try:
-        lanes = [l.split(" · ")[0] for l in open(lanef, encoding="utf-8").read().split("\n") if re.match(r"^(FLAG|ok) ", l)]
+        view = open(lanef, encoding="utf-8").read()
+        lanes = [l.split(" · ")[0] for l in view.split("\n") if re.match(r"^(FLAG|ok) ", l)]
+        # ENF-761 review: a saved UNREADABLE line (signed out) or no "app view N sessions" header is not a read view:
+        # 0 qa lanes from it would be a false ACT, so it counts as not read.
+        if re.search(r"^UNREADABLE", view, re.M) or not re.search(r"^app view \d+ sessions", view, re.M):
+            lanes = None
     except OSError:
         lanes = None
     by = {}

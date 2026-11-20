@@ -195,7 +195,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 30 stale|product/tools/runs-waiting.py|s/(stale if c and now - c >= timedelta(hours=FRESH_H) else fresh)/fresh/|check-runs-waiting.sh
 30 board|product/tools/cockpit-data.py|s/ - len(stale)$//|check-runs-waiting.sh
 761c build|product/tools/waves.py|s/    if len(building) < CAP_BUILDING and waiting:/    if False:/|check-waves.sh
-761c qa|product/tools/waves.py|s/    if qa is not None and qa < CAP_QA and built:/    if False:/|check-waves.sh'
+761c qa|product/tools/waves.py|s/    if qa is not None and qa < CAP_QA and built:/    if False:/|check-waves.sh
+761c view|product/tools/waves.py|s/^        if re.search(r"^UNREADABLE".*/        if False:/|check-waves.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
