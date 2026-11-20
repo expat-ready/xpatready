@@ -186,6 +186,8 @@ try {
   await axe(o, "the prospect page");
 
   // --------------------------------------------------- part 2 (QA-610): the client page, read-only, and its states
+  // FO-13c: no client without a recorded conflict check; recorded through its API first (the conflict panel is FO-13s part 2).
+  await fetch(`${BASE}/api/front-office/conflict-checks`, { method: "POST", headers: { authorization: `Bearer ${tok.R}`, "content-type": "application/json" }, body: JSON.stringify({ prospectId: prospect.id, requestId: crypto.randomUUID(), result: "NO_CONFLICT" }) });
   const conv = await fetch(`${BASE}/api/front-office/prospects/${prospect.id}/convert`, { method: "POST", headers: { authorization: `Bearer ${tok.R}`, "content-type": "application/json" }, body: "{}" });
   let CID = "";
   for (const until = Date.now() + 15_000; !CID && Date.now() < until; await new Promise((res) => setTimeout(res, 100))) CID = sql(`select id from case_client where prospect_id = '${prospect.id}'`);

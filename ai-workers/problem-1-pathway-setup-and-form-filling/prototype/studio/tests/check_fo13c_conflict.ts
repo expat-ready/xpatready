@@ -14,7 +14,7 @@ import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
-const NEW = "20261120200000_fo13c_conflict_check_key", KEY = "agent/conflict:check";
+const NEW = "20261121030000_fo13c_conflict_check_key", KEY = "agent/conflict:check";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo13c_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `fo13c-check-${process.pid}`);
