@@ -9,17 +9,22 @@ SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT" || exit 99
-STATE_DIR="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}"; mkdir -p "$STATE_DIR"
+STATE_DIR="${LEAD_WATCH_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}"
 # gap mode (ENF-761 part 4; founder 20 Nov 15:0x IST: a 98-min gap, 12:24 to 14:03 IST, at a hand-over): only the stall
 # guard's stamp is read, never written, and no GitHub call is made. Over GAP_MAX (15) min since the Lead's last check:
-# "ACT watchdog: last Lead check N min ago", exit 1; no stamp: the same ACT with "never", exit 1; else one ok line, exit 0.
+# "ACT watchdog: last Lead check N min ago", exit 1; no stamp: the same ACT with "never", exit 1; a stamp that is not a
+# number, or in the future, is an ACT too (never arithmetic on it, never a fall-through into the full run); else ok, exit 0.
 # Standby Leads run it every 10 min (prompt exactly "run lead-watch gap", lead-check-guard.sh). Test: check-lead-gap.sh.
 if [ "${1:-}" = gap ]; then
   st="$STATE_DIR/last-check"; [ -s "$st" ] || { echo "ACT   watchdog: last Lead check never (no stamp at $st)"; exit 1; }
-  n=$(( (${NOW:-$(date +%s)} - $(cat "$st")) / 60 ))
+  v=$(tr -d '\r\n' < "$st"); now=${NOW:-$(date +%s)}
+  case "$v" in ''|*[!0-9]*) echo "ACT   watchdog: Lead check stamp unreadable at $st"; exit 1;; esac
+  n=$(( (now - 10#$v) / 60 ))
+  [ "$n" -lt 0 ] && { echo "ACT   watchdog: Lead check stamp is $(( -n )) min in the future at $st"; exit 1; }
   [ "$n" -gt "${GAP_MAX:-15}" ] && { echo "ACT   watchdog: last Lead check $n min ago"; exit 1; }
   echo "ok    watchdog: last Lead check $n min ago"; exit 0
 fi
+mkdir -p "$STATE_DIR"
 act=0; say() { echo "$1"; echo "$1" >> "$SEEN"; }; ACT() { act=$((act+1)); echo "ACT   $1"; echo "ACT   $1" >> "$SEEN"; }
 SEEN="$STATE_DIR/seen.$$"; : > "$SEEN"; seen() { printf '%s\n' "$1" >> "$SEEN"; }; trap 'rm -f "$SEEN"' EXIT   # B202: lines step 12 reuses
 

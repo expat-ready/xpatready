@@ -24,6 +24,10 @@ echo $((NOW - 10 * 60)) > "$T/state/last-check"
 gap; ok "gap at 10 min: one ok line, exit 0" "$([ $r = 0 ] && [ "$out" = 'ok    watchdog: last Lead check 10 min ago' ] && echo 1)" "exit $r: $out"
 echo $((NOW - 20 * 60)) > "$T/state/last-check"
 gap; ok "gap at 20 min: 'ACT watchdog: last Lead check 20 min ago', exit 1" "$([ $r = 1 ] && [ "$out" = 'ACT   watchdog: last Lead check 20 min ago' ] && echo 1)" "exit $r: $out"
+for bad in '12 34' 'abc' 'TOOLS[$(touch '"$T"'/pwned)]'; do printf '%s\n' "$bad" > "$T/state/last-check"; : > "$T/gh.log"
+  gap; ok "garbage stamp '$bad': ACT unreadable, exit 1, stamp untouched, no gh call, nothing run" "$([ $r = 1 ] && [ "$out" = "ACT   watchdog: Lead check stamp unreadable at $T/state/last-check" ] && [ "$(cat "$T/state/last-check")" = "$bad" ] && [ ! -s "$T/gh.log" ] && [ ! -e "$T/pwned" ] && echo 1)" "exit $r: $out"; done
+echo $((NOW + 60 * 60)) > "$T/state/last-check"
+gap; ok "stamp 60 min in the future (clock jump): ACT, exit 1, not a silent ok" "$([ $r = 1 ] && grep -q '^ACT   watchdog: Lead check stamp is 60 min in the future' <<< "$out" && echo 1)" "exit $r: $out"
 # The normal run's stall guard (step 0) is lowered from 40 to 15 min; only its first lines are read (real clock, fake gh).
 run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; out=$(PATH="$T/bin:$PATH" LEAD_WATCH_STATE_DIR="$T/state" timeout 60 bash "$TOOLS/lead-watch.sh" 2>/dev/null | head -2); }
 run 20; ok "normal run, previous check 20 min ago: the stall ACT (was silent under the 40-min guard)" "$(grep -q '^ACT   previous check ran 20 min ago' <<< "$out" && echo 1)" "$out"
@@ -39,7 +43,7 @@ r=$(guard lead 'check the queue every 10 minutes'); ok "guard: another recurring
 r=$(guard qa 'run lead-watch gap now'); ok "guard: ... in any copy, since it names lead-watch" "$([ "$r" = deny ] && echo 1)" "got $r"
 # skill lead: the hand-over order and the standby's watchdog.
 S="$(cd "$TOOLS/../../../.." && pwd)/.claude/skills/lead/SKILL.md"
-grep -q "first action is creating its check" "$S" && grep -q "CronList shows" "$S" && grep -q '`run lead-watch gap`' "$S" && grep -qi "push notification" "$S" && grep -q "30 min" "$S"
-ok "skill lead: new Lead's check first, old one deleted only after its CronList shows it, standby gap check, push at 15, take over at 30" "$([ $? = 0 ] && echo 1)"
+grep -q "first action is creating its check" "$S" && grep -q "CronList shows" "$S" && grep -q '`run lead-watch gap`' "$S" && grep -q "one push notification per gap and messages the current Lead" "$S" && grep -q "no answer by 30 min → the lowest-numbered standby takes over (the other only notifies)" "$S" && grep -q "new sessions only for work no lane covers" "$S" && grep -q "adopts the running lanes from STATE" "$S"
+ok "skill lead: new Lead's check first, old one deleted only after its CronList shows it, standby gap check, one push per gap, lowest standby takes over at 30, lanes adopted not duplicated" "$([ $? = 0 ] && echo 1)"
 b=$(wc -c < "$S" | tr -d ' '); ok "skill lead stays under 10,240 bytes ($b)" "$([ "$b" -lt 10240 ] && echo 1)" "$b bytes"
 finish
