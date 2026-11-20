@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 04:17 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 04:28 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 29 of 101 on main (R1.110 scored Works, records #2637 pending) · rules: **`RULES.md`** (as of **P-771**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,6 +15,7 @@ updated: 2026-11-21 04:17 IST: Lead 8 (series 3) current; checks every 10 min ·
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
 (3d) **02:18 IST:** wave 3 J0 lanes started (cloud, Opus high): R1.5 (task_337374e9), R1.13 (task_6d28c109), R1.14+R1.15 (task_de89f0f8). Allow notes moved to their own PR **#2623** (waves.tsv is not a record); fresh Opus reviewer subagent reviewing; Lead labels on its Approve + green. Records PR #2591 relabelled on d8c2a79e8 (P-773, P-774, STATE). Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93) once #2608 merges (same sign-up area, P-774 (c)). Owed at next check: app view in the browser with Show more; #2596 migration read + NotificationPort ruling; #2594 question; 13 tooling PR diff reads.
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
+(3o) **04:2x IST:** #2644 MERGED (R1.26 Partial records). qa Q2 had NOT received the 03:2x QA-616 ask (the check matched its suggestion chip); re-sent with tag ZQ616, bubble confirmed by screenshot, lane working. Prompt-box rule: unique tag + screenshot; page text holds each message twice.
 (3n) **04:1x IST:** #2596 PF-18n1 MERGED. **#2649 (R1.26 QA-617 fix) approved + queued** → on merge: walks j_26 twice, qa Q1 re-scores. #2478: lane's /run full was defused (P-751), Lead posted /run full on 4d8329551, relabel on green. FO-13s PR A #2648 and PR B #2651 drafts building; PF-18h #2621 draft building (merge main + route line). Queued: #2591, #2620, #2644, #2476. R1.38 waits on qa Q2's J-38 W9 PR (not open yet).
 (3m) 03:5x check (R1.100 Works on main; #2476 relabelled; #2644 conflict): word for word in `product/history/STATE-2026-11-21-0415-lead8s3-item-3m.md`.
 (3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
