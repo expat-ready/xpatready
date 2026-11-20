@@ -30,6 +30,12 @@ r=$(stop lead 'Please click Approve on the 2FA prompt on your phone.'); ok "a 2F
 r=$(stop lead 'Widening the permission is yours (P-387): click Allow in settings.'); ok "a permission widening passes (P-387)" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop lead 'I clicked Convert to draft on #2413 in the built-in browser and added the label. #2322 is ready for review.')
 ok "a report of what the Lead did itself passes" "$([ "$r" = pass ] && echo 1)" "got $r"
+for m in 'Please add the `review: approved` label to #2413.' 'Please convert #2413 to a draft.' 'Please label #2413 review: approved.' \
+         'Please merge #2413 on GitHub.' 'Go to github.com/expat-ready/xpatready/pull/1 and press Merge.'; do
+  r=$(stop lead "$m"); ok "refused: $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'Founder: #2322 is ready for review and green.' 'You will see #2322 ready for review in a minute.' 'You can see #2322 is now ready for review.' \
+         'The founder asked me to reopen #2210; done.' 'Open #2413 and you will see the green checks.' 'I merged #2413 and reopened #2210 myself.'; do
+  r=$(stop lead "$m"); ok "a status line to the founder passes: $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")

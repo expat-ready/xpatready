@@ -15,12 +15,14 @@ import re, sys
 mode, text = sys.argv[1], sys.stdin.read()
 I = re.I
 # A step on github.com, claude.ai or a cloud console.
-ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto draft\b|\badd(ing)? (the |a |that )?label|\bready for review\b"
-  r"|\breopen(ing)?\b|\bopen #\d+\b[^\n]*\band\b|\bin the ([\w.-]+ ){0,3}console\b|\bpress (the )?[\w ]{0,20}button\b"
+ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draft\b|\badd(ing)?\b[^.\n]{0,40}\blabel\b|\blabel #\d+"
+  r"|\b(mark|set|make|move|press|hit|select)\b[^.\n]{0,30}\bready for review\b|\breopen(ing)?\b|\b(merge|approve)\b (the (pr|pull request)|#\d+)"
+  r"|\bopen #\d+\b[^.\n]{0,60}\band (then )?(click|press|hit|add|convert|mark|reopen|merge|approve|label|select)\b|\bin the ([\w.-]+ ){0,3}console\b"
+  r"|\b(press|hit) (the )?[\w ]{0,20}button\b|\bgo to (https?://)?(github\.com|claude\.ai)"
   + (r"|\b(close|merge|label) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
-YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should|can|may|will)\b|for you to|"
-  r"founder|yourself|needs you|your (click|turn|side))", I)
+YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
+  r"yourself|needs you|your (click|turn|side))", I)
 IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap)\b", I)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
