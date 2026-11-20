@@ -725,7 +725,7 @@ SOURCE_TOK = re.compile(r"[A-Za-z0-9][A-Za-z0-9.\-]*")     # a token: letters, d
 SOURCE_ID = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Z0-9][A-Za-z0-9]*)+")   # an id token: AG-4-16, SA11-D8, AG-2-8a, P-574 (not P-decision)
 LABEL_GUARD_HEAD = "**Label guard:**"            # tools/label-guard.sh and label-guard.yml start every removal comment so
 RULES_STEP = re.compile(r"check-docs", re.I)       # ci.yml steps whose name names tools/check-docs.sh (the notes run's "notes check 1 of 2 …")
-BUNDLE_STEP = re.compile(r"^rules files", re.I)     # shard 1's "rules files, decision impact, …": check-docs.sh plus 16 other commands
+BUNDLE_STEP = re.compile(r"^(rules files|graph, official PDFs)", re.I)   # job fast's tool-checks step: "rules files, …" until ENF-746c (20 Nov), then "graph, official PDFs, …" (check-docs.sh moved to its own PR-only step, counted by RULES_STEP)
 
 
 def cap_size(r):
@@ -1291,7 +1291,12 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
     # created to started (a job still queued counts its wait so far) for the newest CI_SAMPLE_RUNS runs of ci.yml (the test
     # shards; the many quick checks start at once and would hide the wait) created in the last 3 h. Skipped jobs, and jobs held for an approval or another job ("waiting", "pending"), are left out.
     try:
-        qn = gh.get("/actions/runs?status=queued&per_page=1").get("total_count")
+        # B206 part 1 (P-751): only runs created under 6 h ago are waiting for a machine; older ones are stale (runs-waiting.py)
+        qd = gh.get("/actions/runs?status=queued&per_page=100")
+        old6 = (NOW - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        qr = qd.get("workflow_runs") or []
+        stale = [x.get("id") for x in qr if (x.get("created_at") or "9") <= old6]   # exactly 6 h is stale, as runs-waiting.py
+        qn = qd.get("total_count", len(qr)) - len(stale)
         ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
         since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rg = gh.get(f"/actions/workflows/ci.yml/runs?created=%3E%3D{since}&per_page=100")   # the test runs, not the quick checks
@@ -1306,7 +1311,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
                     waits.append({"min": round(max(0, (datetime.now(timezone.utc) - c).total_seconds()) / 60, 1), "still_queued": True})
                 elif s:
                     waits.append({"min": round(max(0, (s - c).total_seconds()) / 60, 1), "still_queued": False})
-        wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "in_progress_runs": ipn,
+        wj("github/ci_queue.json", {"taken_at": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"), "queued_runs": qn, "stale_queued_runs": stale, "in_progress_runs": ipn,
                                     "runs_in_3h": rg.get("total_count", len(rr)), "runs_sampled": min(len(rr), CI_SAMPLE_RUNS), "job_waits": waits})
     except Exception as e:                                   # offline or the API failed: the box says not measured
         wj("github/ci_queue.json", {"error": str(e)[:200]})
@@ -3274,7 +3279,7 @@ def flow_box(d, fc, li, li_src, ci):
              "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90} min" if p90 is not None else "")),
              "target": f"median {FLOW_MERGE_MIN[0]} min or less; failed batches {FLOW_FAIL_PCT[0]}% or less; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
              "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
-                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
+                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs waiting now (created under 6 h); median job wait {cw} min over the last 3 h "
                         f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} test runs; {still} still waiting)"
                         if cq and cw is not None else "not measured: " + (
                             "this snapshot has no CI reading" if ci is None else ci.get("error") if isinstance(ci, dict) and ci.get("error")
@@ -3358,7 +3363,7 @@ def stuck_now(d, sc, ci, li, li_src):
          "src": f"main's newest commit time (GitHub commits/main), as lead-watch's jam line (P-646); green to {STUCK_MERGE_MIN[0]} min, red over {STUCK_MERGE_MIN[1]}; " + at},
         {"key": "queue", "light": flow_band(q, *STUCK_QUEUE) or "grey",
          "text": (f"Actions runs waiting for a machine: {q}" if q is not None else "Actions runs waiting for a machine: not measured"),
-         "src": f"GitHub Actions runs with status queued (total_count), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
+         "src": f"GitHub Actions runs with status queued created under 6 h ago (older ones are stale, B206), as lead-watch's jam line (P-646); green to {STUCK_QUEUE[0]}, red over {STUCK_QUEUE[1]}; " + at}]
     if isinstance(ss, list):
         names = [f"{x.get('title') or 'untitled'} ({': '.join(str(v) for v in (x.get('state') or 'state not given', x.get('reason')) if v)})"
                  for x in ss if isinstance(x, dict)]

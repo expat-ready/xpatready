@@ -171,3 +171,23 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 | P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
+
+## Moved 20 Nov (Lead 96, from RULES.md, word for word)
+
+Moved by Lead 99, 20 Nov, word for word:
+
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-740 | Release 1 stays 29 Nov (founder 19 Nov 20:0x); Proven per day reported each evening; slips said plainly. | prose | 19 Nov |
+| P-739 | Six merge batches at once (max_parallel_checks 6; P-730's hold lifted by the founder 19 Nov); back to 3 if failures cascade. | prose | 19 Nov |
+
+| P-744 | Test quality and impact map now (exception to P-734): c8 per-test coverage → capability → code → test graph, test impact analysis at the PR stage, Stryker mutation pilot; merge batch keeps every suite (B203). | prose (B203) | 20 Nov |
+| P-743 | No full run on every PR (CI-PRE back to P-733 (4)): `FULL_RUN_FROM=2026-11-22T14:30:00Z`; a PR that failed a batch still needs `/run full` and its failures named; code fix owed, then delete the variable. | CI: queue-gate.sh FULL_FROM (repository variable) | 20 Nov |
+| P-742 | Cut wasted test runs, no lower bar: qa proof data under `qa/reports/` is a record (#2355); affected-only tests via B203. | script: records-only.sh (#2355) | 19 Nov |
+
+
+### IDX-19 row, moved word for word from RULES.md (Lead 100, 11:1x IST 20 Nov, size limit)
+| IDX-19 | 20 Nov rows P-739, P-740, P-745 (waves, WIP caps 8/12), P-746 (core = Waves 1-2 by 29 Nov), P-747, P-748: word for word in DECISIONS and `rules/tech-lead.md` › Moved 20 Nov. | script: B204 waves check (part, owed); prose | 20 Nov |
+
+### IDX-9 row, moved word for word from RULES.md (Lead 100, 20 Nov, size limit)
+| IDX-9 | 18-19 Nov rows stand as recorded: P-703 to P-715 and P-716 (freeze to Proven 30), P-717 (records and pipeline in their own lane), P-718 (queue first, staging at Proven 30), P-721 to P-723, P-725 to P-727, P-729, P-730 (19 Nov proof sprint, tracks, hold); word for word in `rules/tech-lead.md`. | prose | 19 Nov |
