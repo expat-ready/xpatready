@@ -2,17 +2,19 @@
 """Touch-list overlap (enforcement plan row E10; P-576, P-526b, P-438b): a lane brief that declares the files it will
 change on a "Touches:" line (also "- **Touches:** ...") is refused when one of them is already changed by an open pull
 request, so two lanes never edit the same file at once (8 conflicts, 13-16 Nov). Entries are split on commas and
-spaces, backticks dropped; "Touches: none" or no line checks nothing. An entry matches a changed file when it is the
+spaces, backticks dropped; an empty "Touches:" reads the bullet list under it; "Touches: none" or no line checks nothing. An entry matches a changed file when it is the
 same path, the end of it after a "/" (`lane-preflight.sh`, `tools/lane-preflight.sh`), a folder ending in "/" holding it,
-or a glob (`prisma/*`). A pull request the brief names as #N (the lane's own PR, resumed) is not counted.
+or a glob (`prisma/*`). A pull request the brief names as "PR #N", "continue(s) #N" or "resume(s) #N" (the lane's own PR) is not counted.
 Reads stdin (the brief). Open PRs and their files come from GitHub through gh.sh (one GraphQL list, REST for a PR with
 over 100 files), or from TOUCH_PRS, a file of "number<TAB>path" lines (tests). Prints each overlap; exit 0 clean,
 1 on an overlap, 2 when the open PRs cannot be read (the hook refuses then too: fails closed).
 Used by lane-preflight.sh --hook. Test: check-touch-overlap.sh."""
-import fnmatch, json, os, re, subprocess, sys
+import fnmatch, json, os, re, subprocess, sys, time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-LINE = re.compile(r"^[\s>*\-\d.]*\**Touches\**:\**\s*(.*)$", re.I | re.M)
+LINE = re.compile(r"^[ \t>*\-\d.]*\**Touches\**:\**[ \t]*(.*)$", re.M)   # one line; an empty one takes the bullets below it
+BULLET = re.compile(r"^[ \t]*[-*+][ \t]+(.+)$")
+DEADLINE = time.monotonic() + float(os.environ.get("TOUCH_BUDGET_S", "12"))   # the hook itself gets 15 s (settings.json)
 QUERY = ("query($o:String!,$r:String!,$a:String){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:50,after:$a)"
          "{pageInfo{hasNextPage endCursor} nodes{number files(first:100){pageInfo{hasNextPage} nodes{path}}}}}}")
 
@@ -20,12 +22,24 @@ QUERY = ("query($o:String!,$r:String!,$a:String){repository(owner:$o,name:$r){pu
 def touches(brief):
     out = []
     for m in LINE.finditer(brief):
-        out += [e.strip("`*'\".;()") for e in re.split(r"[,\s]+", m.group(1)) if e.strip("`*'\".;()")]
+        vals = [m.group(1)]
+        if not m.group(1).strip():   # "Touches:" then a bullet list
+            after = brief[m.end():].splitlines()[1:]
+            vals = []
+            for l in after:
+                b = BULLET.match(l)
+                if not b: break
+                vals.append(b.group(1))
+        for v in vals:
+            out += [e.strip("`*'\";()").rstrip(".") for e in re.split(r"[,\s]+", v) if e.strip("`*'\";()").rstrip(".")]
     return [] if [e.lower() for e in out] in ([], ["none"]) else [e for e in out if e.lower() != "none"]
 
 
 def gh(*args):
-    r = subprocess.run(["bash", os.path.join(TOOLS, "gh.sh"), *args], capture_output=True, text=True, timeout=120)
+    left = DEADLINE - time.monotonic()
+    if left <= 1:
+        raise RuntimeError("out of time reading GitHub (TOUCH_BUDGET_S)")
+    r = subprocess.run(["bash", os.path.join(TOOLS, "gh.sh"), *args], capture_output=True, text=True, timeout=left)
     if r.returncode != 0:
         raise RuntimeError("gh %s failed: %s" % (args[0], (r.stderr or r.stdout).strip()[:200]))
     return r.stdout
@@ -51,8 +65,8 @@ def open_pr_files():
         for pr in page["nodes"]:
             files = [x["path"] for x in pr["files"]["nodes"]]
             if pr["files"]["pageInfo"]["hasNextPage"]:   # a big PR (a clean-up stage): every file, by REST
-                files = gh("api", "--paginate", "repos/%s/%s/pulls/%d/files" % (owner, name, pr["number"]),
-                           "--jq", ".[].filename").split()
+                files = gh("api", "--paginate", "repos/%s/%s/pulls/%d/files?per_page=100" % (owner, name, pr["number"]),
+                           "--jq", ".[].filename").splitlines()
             prs[pr["number"]] = files
         if not page["pageInfo"]["hasNextPage"]:
             return prs
@@ -60,7 +74,7 @@ def open_pr_files():
 
 
 def hit(entry, path):
-    e = entry.lstrip("./")
+    e = re.sub(r"^(\./)+", "", entry.replace("\\", "/")).lstrip("/")   # ./x and /x are x; .github stays .github
     if e.endswith("/"):
         return path.startswith(e) or ("/" + e) in ("/" + path)
     if any(c in e for c in "*?["):
@@ -73,7 +87,7 @@ def main():
     want = touches(brief)
     if not want:
         return 0
-    own = {int(n) for n in re.findall(r"#(\d+)\b", brief)}
+    own = {int(n) for n in re.findall(r"\b(?:PR|continues|continue|resumes|resume)\s+#(\d+)\b", brief, re.I)}
     try:
         prs = open_pr_files()
     except Exception as x:   # no network, no token, a changed API: nothing was checked, so no start

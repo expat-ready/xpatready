@@ -9,7 +9,7 @@ set -u
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/touch.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 TO="$TOOLS/touch-overlap.py"; P1=ai-workers/problem-1-pathway-setup-and-form-filling
-printf '2001\t%s/prototype/studio/apps/api/prisma/schema.prisma\n2001\t%s/prototype/studio/apps/api/src/case/case-prepare.service.ts\n2002\t%s/product/tools/lane-preflight.sh\n2002\t%s/product/screens/R1.9/review.md\n' "$P1" "$P1" "$P1" "$P1" > "$T/prs.tsv"
+printf '2001\t%s/prototype/studio/apps/api/prisma/schema.prisma\n2001\t%s/prototype/studio/apps/api/src/case/case-prepare.service.ts\n2002\t%s/product/tools/lane-preflight.sh\n2002\t%s/product/screens/R1.9/review.md\n2002\t.github/workflows/label-guard.yml\n' "$P1" "$P1" "$P1" "$P1" > "$T/prs.tsv"
 to() { out=$(printf '%s\n' "$1" | TOUCH_PRS="$T/prs.tsv" python3 -I "$TO" 2>&1); r=$?; }
 y() { [ "$1" = "$2" ] && echo 1 || echo 0; }
 
@@ -21,8 +21,16 @@ to $'**Touches**: */case/*.service.ts'; ok "a glob matches" "$([ $r = 1 ] && ech
 to $'Touches: product/tools/lane-preflight.sh, prisma/schema.prisma'; ok "every overlap is named at once" "$([ $r = 1 ] && echo "$out" | grep -q '#2001' && echo "$out" | grep -q '#2002' && echo 1 || echo 0)" "exit $r: $out"
 to $'Touches: product/tools/new-check.sh, prototype/studio/apps/web/src/x.tsx'; ok "files no open PR changes pass" "$(y "$r" 0)" "$out"
 to $'Touches: preflight.sh'; ok "a name is matched after a /, never inside a name (preflight.sh is not lane-preflight.sh)" "$(y "$r" 0)" "$out"
-to $'Touches: tools/'; ok "a folder name matches only whole folders (tools/ holds product/tools/lane-preflight.sh)" "$(y "$r" 1)" "$out"
+to $'Touches: tools/'; ok "a folder name matches a whole folder anywhere in the path (tools/ holds product/tools/lane-preflight.sh)" "$(y "$r" 1)" "$out"
 to $'Continue #2002.\nTouches: lane-preflight.sh'; ok "the PR the brief names as #N (the lane's own) is not counted" "$(y "$r" 0)" "$out"
+to $'Touches: .github/workflows/label-guard.yml'; ok "a path starting with a dot (.github/) is matched, not stripped" "$([ $r = 1 ] && echo "$out" | grep -q '#2002' && echo 1 || echo 0)" "exit $r: $out"
+to $'Touches: ./.github/workflows/label-guard.yml'; ok "... and ./ in front of it is dropped" "$(y "$r" 1)" "$out"
+to $'Touches: prototype\\studio\\apps\\api\\prisma\\schema.prisma'; ok "a Windows-style path is read with /" "$(y "$r" 1)" "$out"
+to $'Touches:\n- product/tools/new.sh\n- `prisma/schema.prisma`\n\nDone when: x'; ok "an empty Touches: reads the bullet list under it, every bullet" "$([ $r = 1 ] && echo "$out" | grep -q 'prisma/schema.prisma is changed by open PR #2001' && echo 1 || echo 0)" "exit $r: $out"
+to $'Touches:\nDone when: STATE.md updated'; ok "an empty Touches: never reads the next line as its list" "$(y "$r" 0)" "$out"
+to $'touches: lane-preflight.sh in prose'; ok "a lower-case touches: in prose is not a Touches: line" "$(y "$r" 0)" "$out"
+to $'See #2002 for context.\nTouches: lane-preflight.sh'; ok "a #N in passing does not exempt that PR (only PR #N, continue #N, resume #N)" "$(y "$r" 1)" "$out"
+to $'Resumes PR #2002.\nTouches: lane-preflight.sh'; ok "... 'Resumes PR #2002' does" "$(y "$r" 0)" "$out"
 to $'Touches: none'; ok "Touches: none checks nothing" "$(y "$r" 0)" "$out"
 to $'Row X-1. Model: Opus 5.5.'; ok "a brief with no Touches: line checks nothing (and reads no PRs)" "$([ $r = 0 ] && [ -z "$out" ] && echo 1 || echo 0)" "$out"
 out=$(printf 'Touches: x.ts\n' | TOUCH_PRS="$T/none.tsv" python3 -I "$TO" 2>&1); r=$?
