@@ -145,7 +145,7 @@ export class PlatformIdentity implements OnModuleInit {
       // Always, even on a first recorded sign-in (review r2-m1): an older session that never made a call (Cognito device A
       // signed in before device B) is ended too.
       await tx.platformSessionRevocation.create({ data: { firmId, staffId, revokedAt: new Date(atMs - 1), reason: "another-device" } });
-      await auditStaff(tx, { firmId, firmKey, actor: actorWord(staffId), action: "platform.staff.sign_in", entityKey: staffId, summary: `a staff member signed in (${via}); ${hadSession ? "their older session was ended" : "first session"}`, detail: { staffId, via, at: at.toISOString() } });
+      await auditStaff(tx, { firmId, firmKey, actor: actorWord(staffId), action: "platform.staff.sign_in", entityKey: staffId, summary: `a staff member signed in (${via}); ${hadSession ? "their older session was ended" : "first session"}`, detail: { staffId, via, at: at.toISOString() }, before: { lastSignInAt: row.last?.toISOString() ?? null }, after: { lastSignInAt: at.toISOString() } });
       return atMs;
     });
   }
@@ -232,7 +232,7 @@ export class PlatformIdentity implements OnModuleInit {
     return owners.length === 1 && owners[0].staffId === targetId;
   }
   private async refuseOnlyOwner(actor: StaffContext, targetId: string, attempted: string): Promise<never> {
-    await this.db.$transaction(async (tx) => auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.only_owner_refused", entityKey: targetId, summary: `refused: ${attempted} the firm's only active Owner`, detail: { staffId: targetId, attempted } }));
+    await this.db.$transaction(async (tx) => auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.only_owner_refused", entityKey: targetId, summary: `refused: ${attempted} the firm's only active Owner`, detail: { staffId: targetId, attempted }, before: null, after: null }));
     return forbidden(ONLY_OWNER, "ONLY_OWNER");
   }
 
@@ -256,7 +256,7 @@ export class PlatformIdentity implements OnModuleInit {
       const now = new Date(this.clock.now());
       for (const g of t.grants.filter((g) => removed.includes(g.role))) await tx.platformRoleGrant.update({ where: { id: g.id }, data: { endedAt: now, endedBy: actorWord(actor.staffId), endReason: reason ?? "roles changed" } });
       for (const role of added) await tx.platformRoleGrant.create({ data: { firmId: actor.firmId, staffId: t.id, role, grantedBy: actorWord(actor.staffId), grantedAt: now } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.roles_changed", entityKey: t.id, summary: `roles changed: ${from.join(", ") || "none"} → ${to.join(", ")}`, detail: { staffId: t.id, before: from, after: to, reason }, before: { roles: from }, after: { roles: to } });
       // PF-6b ruling 2 (b): a role that brings money keys writes its own line (the one shared helper, PF-6m).
       await writeMoneyKeysGranted(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), staffId: t.id, roles: added });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_ROLES_CHANGED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
@@ -281,7 +281,7 @@ export class PlatformIdentity implements OnModuleInit {
       const now = new Date(this.clock.now());
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId: t.id, revokedAt: now, reason: "deactivated" } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_DEACTIVATED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)
       return { staffId: t.id, status: "DEACTIVATED" as const };
     });
@@ -298,7 +298,7 @@ export class PlatformIdentity implements OnModuleInit {
       if (t.grants.some((g) => g.role === "OWNER")) this.stepUp(actor, "reactivating an Owner");   // break M3
       await this.seatCheck(tx, actor.firmId);
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "ACTIVE", deactivationReason: null } });
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.reactivated", entityKey: t.id, summary: "a staff member was reactivated (they sign in again)", detail: { staffId: t.id, reason } });
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.reactivated", entityKey: t.id, summary: "a staff member was reactivated (they sign in again)", detail: { staffId: t.id, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "ACTIVE", deactivationReason: null } });
       return { staffId: t.id, status: "ACTIVE" as const };
     });
   }
@@ -313,8 +313,12 @@ export class PlatformIdentity implements OnModuleInit {
       const before = await tx.platformStaffCredential.findFirst({ where: firmScope(actor.firmId, { staffId: t.id }) });
       const changed = (Object.keys(data) as (keyof typeof data)[]).filter((k) => !before || before[k] !== data[k]);
       await tx.platformStaffCredential.upsert({ where: { firmId_staffId: { firmId: actor.firmId, staffId: t.id } }, create: { firmId: actor.firmId, staffId: t.id, ...data, updatedBy: actorWord(actor.staffId) }, update: { ...data, updatedBy: actorWord(actor.staffId) } });
-      // Field names only: the licence number itself is never written to an audit line (AG-1-31).
-      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own } });
+      // R1.8 (QA-594): the licence record's type and body before and after; the licence number itself is never written to
+      // an audit line (AG-1-31: licence numbers are never logged; BR-8): only whether it changed (a question for the tech
+      // lead on #2527, P-687 against AG-1-31).
+      await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own },
+        before: before ? { representativeType: before.representativeType, licensingBody: before.licensingBody } : null,
+        after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
       return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
     });
   }
@@ -364,7 +368,7 @@ export class PlatformIdentity implements OnModuleInit {
       await this.rowCheck(tx, actor, email, roles, reason);
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, email, roles, actorWord(actor.staffId), displayName);
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason } });
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${roles.join(", ")}; 72 hours)`, detail: { invitationId: row.id, roles, reason }, before: null, after: { email, displayName, roles, expiresAt: new Date(row.expires_at).toISOString() } });
       return { id: row.id, email, roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
@@ -395,7 +399,7 @@ export class PlatformIdentity implements OnModuleInit {
       const made = [];
       for (const r of clean) {
         const row = await this.insertInvitation(tx, actor.firmId, r.email!, r.roles!, actorWord(actor.staffId));
-        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${clean.length} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true } });
+        await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.created", entityKey: row.id, summary: `an invitation was sent (${r.roles!.join(", ")}; 72 hours; one of ${clean.length} in one form)`, detail: { invitationId: row.id, roles: r.roles, reason: null, batch: true }, before: null, after: { email: r.email!, displayName: null, roles: r.roles!, expiresAt: new Date(row.expires_at).toISOString() } });
         made.push({ row: r.row, id: row.id, email: r.email!, roles: r.roles!, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token, name: r.name });
       }
       return { made, seats: seats! };
@@ -435,7 +439,7 @@ export class PlatformIdentity implements OnModuleInit {
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${old.id}::uuid`;
       await this.seatCheck(tx, actor.firmId);
       const row = await this.insertInvitation(tx, actor.firmId, old.email, old.roles, actorWord(actor.staffId), old.displayName);   // PF-4dn: the name goes with the new link
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles } });
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.resent", entityKey: row.id, summary: "an invitation was sent again; the old link no longer works", detail: { invitationId: row.id, replaces: old.id, roles: old.roles }, before: null, after: { email: old.email, displayName: old.displayName, roles: old.roles, expiresAt: new Date(row.expires_at).toISOString(), replaces: old.id } });
       return { id: row.id, replaces: old.id, email: old.email, roles: old.roles, status: "PENDING" as const, expiresAt: row.expires_at, token: row.token };
     });
     const { token, ...answer } = out;
@@ -446,7 +450,7 @@ export class PlatformIdentity implements OnModuleInit {
     return this.inFirm(actor, async (tx) => {
       const inv = await this.openInvitation(tx, actor.firmId, id);
       await tx.$executeRaw`update platform_invitation set revoked_at = now() where id = ${inv.id}::uuid`;
-      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.revoked", entityKey: inv.id, summary: "an invitation was revoked (its seat is free)", detail: { invitationId: inv.id } });
+      await auditInvitation(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.invitation.revoked", entityKey: inv.id, summary: "an invitation was revoked (its seat is free)", detail: { invitationId: inv.id }, before: { status: "PENDING" }, after: { status: "REVOKED" } });
       return { id: inv.id, status: "REVOKED" as const };
     });
   }

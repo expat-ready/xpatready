@@ -70,7 +70,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     await recordConsent(personId);
     await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "ON_OPEN_PROSPECT", completedAt: new Date(), personId } });
     // The booking goes on the person's record (AG-2-84 rule 8): one audit line, ids only.
-    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent } });
+    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent },
+      before: null, after: { outcome: "ON_OPEN_PROSPECT", personId, door: a.door, consent: !!a.consent } });
     return { leadId: null, personId, created: true };
   }
 
@@ -101,6 +102,9 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
     summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
     detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
+    // R1.8 (QA-594, P-687): the lead's values in full, its new person's name and contact included; the message stays in fo_note.
+    before: null, after: { personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match,
+      ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });
   return { leadId: lead.id, personId, created: true };

@@ -50,7 +50,8 @@ export class InvoiceDrafts {
       if (!client) notFound(d.personId ? "person" : "company");
       const currency = d.currency ?? settings.defaultCurrency;
       const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
-      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id, summary: `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency } });
+      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id, summary: `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency },
+        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
       return this.view(tx, ctx.firmId, inv.id);
     });
   }
@@ -81,7 +82,8 @@ export class InvoiceDrafts {
       if (position > 500) problem(409, "Not possible now", "An invoice holds at most 500 lines. Nothing was saved.", { code: "TOO_MANY_LINES" });
       const line = await tx.moneyInvoiceLine.create({ data: { firmId, invoiceId: id, position, kind: l.kind, description: l.description, quantity: l.quantity, unitAmountMinor: l.unitMinor, amountMinor, taxRatePpm: ratePpm, taxMinor, currency: inv.currency as "CAD" | "USD" }, select: { id: true } });
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.line_added", entity: "money_invoice_line", entityKey: line.id,
-        summary: `Line ${position} added to a draft invoice: ${inv.currency} ${MONEY(amountMinor)}, tax ${MONEY(taxMinor)}.`, detail: { invoiceId: id, position, kind: l.kind, amountMinor, ratePpm, taxMinor } });
+        summary: `Line ${position} added to a draft invoice: ${inv.currency} ${MONEY(amountMinor)}, tax ${MONEY(taxMinor)}.`, detail: { invoiceId: id, position, kind: l.kind, amountMinor, ratePpm, taxMinor },
+        before: null, after: { position, kind: l.kind, description: l.description, quantity: l.quantity, unitAmountMinor: l.unitMinor, amountMinor, taxRatePpm: ratePpm, taxMinor, currency: inv.currency } });   // R1.8 (QA-594): the line as added
       return this.view(tx, ctx.firmId, id);
     });
   }
