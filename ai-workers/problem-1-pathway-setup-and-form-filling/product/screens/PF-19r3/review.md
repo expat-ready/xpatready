@@ -87,3 +87,14 @@ Each of these needs code written to avoid every port type and name. A new transp
 No open Blocker or Major.
 
 **Verdict: Approve** (for `371811798084852b890096541adcc0105dd50484`).
+
+## Re-review 2 (a23ea3fd2, diff only)
+
+Read only `git diff 0b85f84ca a23ea3fd2` (P-303): one line in `tests/check_pf19r_every_sender.ts`, `new LocalMail()` → `new LocalMail(() => Date.now())`.
+* **Correct.** `LocalMail`'s constructor is `constructor(private readonly now: () => number)` (`api/src/platform/identity/session/mail.ts:14`); the old call with no argument was CI's TS2554. `() => Date.now()` matches the type, and `now` is only read inside `send()`, which this check never calls.
+* **The S2 fail case still proves what it claims.** `bindings()` reports `MAIL_PORT` whenever its one provider is not `useExisting: MESSAGES_MAIL`. A `useValue` of a real `LocalMail` instance is exactly the pre-PF-19r part 1 binding, and the clock argument does not change that. The other `new LocalMail()` (line 129, S1) is text inside a string replacement, not a call. It is never type-checked and still matches S1's `/\bnew LocalMail\(/`, so it needs no change.
+* **Runs at a23ea3fd2:** `COPY_PREFIX=rr19r run-suites.sh --only check_pf19r_every_sender.ts` PASS, 19 passed, 0 failed. `typecheck.mjs`: "PASS no new type errors (15 known, 0 fixed)". The api project includes `../tests/*.ts`, and web has 0 errors.
+
+No new findings. The earlier score (9.5/10) and the open Minors (m1, m3, m4) stand unchanged.
+
+**Verdict: Approve** (for `a23ea3fd203f296aa2a79e961400e24832848416`).
