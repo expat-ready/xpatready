@@ -50,9 +50,9 @@ All elements are the capability (P-33). The retainer Send step in J-108 goes thr
 
 ## 7. Questions (recommendation first)
 For the tech lead (challenge M3, M4):
-1. **Size: split in two, records first.** Part 1 (#2309) merged at 998 lines; this is ~1,100-1,300. **Recommend:** `concept.md` + `challenge.md` in a records PR (P-686); **PR A** = panel, Run a check, the API additions (clearance, names), the Convert dialog's reason and link, the browser suite, J-108's first walk, `Completes: R1.108`; **PR B** = the confirm page and J-108's hidden-match walk. PR A is enough for the default firm ("everyone sees all" is on by default, so nothing is hidden there).
+1. **Size: split in two, records first.** Part 1 (#2309) merged at 998 lines; this is ~1,100-1,300. **Recommend:** `concept.md` + `challenge.md` in a records PR (P-686); **PR A** = panel, Run a check, the API additions (clearance, names), the Convert dialog's reason and link, the browser suite, J-108's first walk, (`Completes: R1.108` on PR B, the Lead's answer); **PR B** = the confirm page and J-108's hidden-match walk. PR A is enough for the default firm ("everyone sees all" is on by default, so nothing is hidden there).
 2. **Touch list:** add FO-13c's `compliance/conflict/service.ts` and `tests/check_fo13c_conflict.ts` to FO-13s's touch list once #2478 has merged.
 For the founder (via the tech lead): 3. Does R1.108 count as Works once PR A merges, the confirm page following as PR B? **Recommend yes.**
 
 ## Definition of ready
-Acceptance: `tests/check_fo13s_conflict_browser.ts` and `tests/journeys/j_108.ts` green twice. Row text: BACKLOG FO-13s (conflict panel half). Decisions: P-579, #2478 merged, the answers to §7. Concept approved by the tech lead after `challenge.md` (all four Majors and every Minor taken in this revision; see its Lead response). PR A ends with `Completes: R1.108`.
+Acceptance: `tests/check_fo13s_conflict_browser.ts` and `tests/journeys/j_108.ts` green twice. Row text: BACKLOG FO-13s (conflict panel half). Decisions: P-579, #2478 merged, the answers to §7. Concept approved by the tech lead after `challenge.md` (all four Majors and every Minor taken in this revision; see its Lead response). Approved (see `challenge.md` Agreement): PR B ends with `Completes: R1.108` unless the founder decides Works on PR A alone.
