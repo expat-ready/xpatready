@@ -3,7 +3,7 @@
 **Item:** R1.48 "Each message shows Sent, Delivered, Bounced or Failed from the provider's test events; a hard bounce stops sends to that address; the from-name is the firm's." The tech lead (Lead 4, series 3) asked for this proof at 19:2x IST.
 **Main:** f0b4fb03c. Its app code is the same as 78ccdacf9's (no `prototype/` or `.github/` change between them) and contains #2521 (fc3d2aab2). The local runs used commit 954347590: main 78ccdacf9 merged into the qa branch, with the same app tree.
 
-**Verdict: every clause is met on main's code; Works is held only for the GitHub walk (P-339).** The fresh Opus reader gives **Works, ~90%**, on condition the GitHub walk of J-48 passes. qa agrees. The row stays **Partial** until J-48 is green on GitHub's runners on main's head, twice. The tech lead was asked on #2521 (comment 7041038849), because item-proof never ran for #2521 (QA-607).
+**Verdict: Works** (updated 19:4x IST, after the GitHub walks below). Every clause is met on main's code, and J-48 is green on GitHub's runners on main's head, twice (P-339). The fresh Opus reader gives **Works, ~90%**, on condition the GitHub walk of J-48 passes. qa agrees. The row stays **Partial** until J-48 is green on GitHub's runners on main's head, twice. The tech lead was asked on #2521 (comment 7041038849), because item-proof never ran for #2521 (QA-607).
 
 ## Clause by clause (main f0b4fb03c)
 | Clause | Met? | Evidence |
@@ -26,10 +26,13 @@ The first two walk attempts crashed before any app step, on a missing Playwright
 
 Walked as a person, from the DW6 screenshot: the lead page's Messages box reads Sent, **Failed** in red with "The email provider did not take it", and Delivered, with addresses masked and the firm's name on each line. DW6's rows sit on the visitor's person record by design (the journey sends the refused address to that person), so a different masked address on that lead is expected.
 
-## GitHub walks: asked for, not yet run
+## GitHub walks: green, twice, on main's head f0b4fb03c (the Lead's dispatch, 19:3x IST)
+- walks run **44750278940** (job 136336516275): j_48 **41 PASS, 0 FAIL**, 7 videos, 75 step shots; it ends at J-49's first step.
+- walks run **44750290384** (job 136336365407): j_48 **41 PASS, 0 FAIL**, the same. Artifact `walk-j_48-f0b4fb03ce656a82c025dd94eef47f37b7164d2a`. The self-test journeys j_0_fails and j_0_throws behaved as expected in both runs.
+
+Before the dispatch:
 - item-proof on #2521's merge (run **44740866695**, fc3d2aab2): `items []`, so nothing ran (QA-607).
 - walks.yml has not been dispatched for j_48 on main. Lead asked on #2521.
-- **Failing clause until then:** P-339 "pack green on main's head on GitHub's runners" for J-48. Every product clause above is met.
 
 ## Bugs: 0 Blocker · 0 Critical · 0 Major · 1 Minor new (QA-607); QA-601 closed
 - **QA-601 closed** (Gap · Major), moved to `BUGS-CLOSED.md`.
@@ -42,8 +45,8 @@ Walked as a person, from the DW6 screenshot: the lead page's Messages box reads 
 `qa/built/R1.48.md` was deleted (re-scored).
 
 ## Questions for the Lead
-1. Please dispatch walks.yml `j_48` on main twice (or item-proof with pr = 2521). qa moves R1.48 to Works with both run ids when they are green.
-2. QA-607: should the fix be pr-rules refusing a mid-line `Completes:` (recommended: loud, and one line of shell), or `detect` reading it anywhere?
+1. Done: the Lead dispatched both walks, and they are green.
+2. QA-607 (accepted by the Lead as tooling, 19:3x IST): should the fix be pr-rules refusing a mid-line `Completes:` (recommended: loud, and one line of shell), or `detect` reading it anywhere?
 
 ## Could not test
 - A real SES refusal: QA-602 still blocks deployed sends.
