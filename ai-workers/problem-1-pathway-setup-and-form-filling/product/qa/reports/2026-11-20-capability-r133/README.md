@@ -2,7 +2,7 @@
 
 **Verdict: Works** on main d07a08fbc. R1.33's last part, FO-9b #2405 (one exact phone normaliser at every arrival door; ruling P-747), merged at bc51aac90. Since then main has changed messages code, two lines of `lead-page.tsx` (MessagesPanel) and qa tests; no phone code. Mode `/qa capability R1.33`, Opus 5.5 at high effort, P-608. Isolated copies :4471 and :4472 only; never :4400. Live AI off, US$0, no priced button.
 
-Bugs: 0 Blocker · 0 Critical · 0 Major open on R1.33 · 3 new Minor (QA-540, QA-541, QA-542). **Closed:** QA-526 (Major) and QA-528. **Answered:** QA-527, by P-747.
+Bugs: 0 Blocker · 0 Critical · 0 Major open on R1.33 · 3 new Minor (QA-540, QA-541, QA-542; QA-542 since closed as decided: Sample, Lead 2, ruling P-760). **Closed:** QA-526 (Major) and QA-528. **Answered:** QA-527, by P-747.
 
 ## The Done when, read under P-747
 The row says: "Stored as E.164 with country; an impossible number refused on the field; two spellings of one number match as duplicates". P-747 limits the refusal to the staff edit route. At every arrival door an impossible number is kept as typed and flagged "Fix number" (AG-2-84 rule 5).
@@ -54,8 +54,8 @@ A fresh Opus reader read the code, the journey and these files, and ran nothing:
 * N5: gate A's header claimed more than the check does → fixed in the header.
 
 ## Questions for the Lead
-* None blocking. QA-542 needs a decision: is pre-FO-9b phone data Sample (drop it), or does it get a one-off re-read?
-* P-747 is quoted only in `screens/FO-9b/review.md` and `qa/built/R1.33.md`; there is no row for it in `DECISIONS.md` or `RULES.md` on main d07a08fbc. QA-527's closure points to it, so the ruling needs a row.
+* Answered by Lead 2 (series 3), 20 Nov: QA-542 is decided Sample (ruling P-760): no customer data exists before launch, and copies are rebuilt from seed. Closed in `BUGS-CLOSED.md`.
+* P-747 is quoted only in `screens/FO-9b/review.md` and `qa/built/R1.33.md`; there is no row for it in `DECISIONS.md` or `RULES.md` on main d07a08fbc. QA-527's closure points to it, so the ruling needs a row. Answered: P-747 is now a row in `DECISIONS.md` on main (Lead 2, series 3).
 
 ## Records hygiene (reviewer's Changes requested on f0262a690)
 The first capture of `door-probe-http.txt` (commit 007ef8c7a) held a local stand-in session token, cut off at 260 characters: the JWT header and most of its payload, with no signature. It came from the throwaway isolated copy :4471, which no longer exists. The token is now redacted in the file, and the check prints only the status and whether a token came back (`check_r133_phone_doors_http.ts:47`). The copy in history stays, because rewriting history is barred (AGENTS.md rule 1).
