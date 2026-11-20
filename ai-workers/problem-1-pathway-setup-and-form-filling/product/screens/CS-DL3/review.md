@@ -51,3 +51,22 @@ Partly: STANDARDS §7 "no duplicated logic between web and API" (S4); EXPERIENCE
 A real screen reader; an intended user's unaided walk (D17/D20 stay with the founder); notifications reaching a person (PF-18n is not on main); the full `ci` run.
 
 **Verdict: Approve.** No open Blocker or Major. Shoulds S1–S6 and the Minors are fixed or listed in the PR.
+
+## Re-review, diff only: 324b8ca46 → 6ec560048 (P-277)
+I read only `git diff 324b8ca46 6ec5600485 -- …/prototype/studio` (`milestones.tsx`, `check_csdl3_milestones_browser.ts`, `j_74.ts`). Ran on a fresh copy rv_csdl3 at :4661, stopped afterwards: `tsc -p web` clean; browser check **20/20**, exit 0; then J-74 on the **same, already used copy**, **17/17**, exit 0. The one line fewer than before is the demo-load setup line, skipped because the copy was already loaded.
+| Finding | Now |
+|---|---|
+| S1 / m3 | Fixed. Offset 0 reads "on the day" only when it falls on the due date, else "the last working day before" (`milestones.tsx:28`). The browser run shows "Fri 18 Dec 2026 (the last working day before)" for Sun 20 Dec. The header wording is updated and "(pack-defined in the source)" is removed. |
+| S2 / m2 | Fixed. The section keeps the draft. A 401 on send, or the token disappearing while a dialog is open, shows "… was not sent: nothing was recorded"; signing in again reopens the dialog with what was typed, plus a "Signed in again" notice. DW11 pass and fail; removing the restore fails DW11 pass. |
+| S3 | Met in words. The footer says "none is sent to anyone until the firm's notifications are connected." That answers the trust point. The chip goes to the tech lead as the builder said. |
+| S4 | Fixed. The dialogs run `RecordMilestoneBody` / `CancelMilestoneBody.safeParse`. Only the two empty-choice messages are the web's own. |
+| S6 | Fixed. W3/W4 judge `toldHere()` (this case's stage ids). Held on a used copy, as above. |
+| m1 | Fixed. A focus effect runs once `busy` is false and aims at `[data-gov-refusal]`. DW11 shows the focus on "This step is already cancelled." |
+| m4, m6 | Fixed. Back asks before discarding; `maxLength` is gone; counters count characters. |
+| m5, m7, S5, BIC-13, BIC-14, browser time zone | Not done, to go to the tech lead as listed. None is Blocker or Major. |
+
+**New, Minor (no fix needed to merge):**
+* `milestones.tsx:69-74`: the restore effect reopens the dialog without checking that the person who signed in has `agent/case:edit`, or that the case is still open. A Read only person who signs in after a lost record gets the dialog back, then a 403 or 409 in words on send. The server decides and nothing is written. Also, the draft is offered to whoever signs in next in that tab, the same as "Decision and closing" does. Fix later: reopen only when `mayEdit`.
+* `milestones.tsx:67`: `lose` calls `setLost` inside a `setAct` updater, a side effect in an updater. It is harmless here because a second run sets the same value.
+
+**Verdict: Approve 6ec5600485fe9bbb67c521bba550b2ced9c91700.** No open Blocker or Major.
