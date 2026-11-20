@@ -6,12 +6,12 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { FoldArrow } from "@/components/fold-out";
 import { Button, Field, Input, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
-import { can, KEY, LeadRows, LeadSources, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
+import { can, KEY, LeadRows, READ_ONLY_REASON, seesUnassigned, words, type LeadRow } from "./contract";
 import { Loading } from "./loading";
 import { useOwners } from "./prospect-actions";
+import { rangeError, SourceFilter, useAddressSources, useKept } from "./source-filter";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
@@ -27,67 +27,6 @@ export function useLeads(view: View, sources: string[] = [], enabled = true, mor
   const q = sources.map((x) => `&source=${encodeURIComponent(x)}`).join("") + more;
   return useQuery({ enabled, queryKey: ["fo", "leads", view, ...(sources.length || more ? [sources, more] : [])], queryFn: async () => LeadRows.parse(await staffApi(`/front-office/leads?view=${view}${q}`)) });
 }
-const useSources = () => useQuery({ queryKey: ["fo", "lead-sources"], queryFn: async () => LeadSources.parse(await staffApi("/front-office/leads/sources")).sources });
-/** FO-4sf (AG-2-23 rule 1): one Source control for an open-ended list. A button opens a checkbox list with type-to-find;
- *  each chosen source shows as a removable chip beside it. Escape or a click outside closes it and focus returns. */
-function SourceFilter({ choices, chosen, toggle, clear, failed, retry }: { choices: string[]; chosen: string[]; toggle: (c: string) => void; clear: () => void; failed: boolean; retry: () => void }) {
-  const [open, setOpen] = React.useState(false);
-  const [find, setFind] = React.useState("");
-  const box = React.useRef<HTMLDivElement>(null), opener = React.useRef<HTMLButtonElement>(null), finder = React.useRef<HTMLInputElement>(null);
-  const panel = React.useRef<HTMLDivElement>(null);
-  const [shift, setShift] = React.useState(0);
-  const close = (refocus: boolean) => { setOpen(false); setFind(""); setShift(0); if (refocus) opener.current?.focus(); };
-  // The panel never crosses the screen's right edge (review M7: 200 % zoom): it moves left by what would overflow.
-  React.useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => { if (!box.current || !panel.current) return; const left = box.current.getBoundingClientRect().left, width = panel.current.offsetWidth; setShift(Math.min(0, window.innerWidth - 16 - width - left)); };
-    place(); window.addEventListener("resize", place);   // again on a resize or zoom while open (review m10)
-    return () => window.removeEventListener("resize", place);
-  }, [open]);
-  React.useEffect(() => {
-    if (!open) return;
-    finder.current?.focus();
-    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) close(false); };
-    document.addEventListener("mousedown", away); return () => document.removeEventListener("mousedown", away);
-  }, [open]);
-  const needle = find.trim().toLowerCase();
-  const listed = choices.filter((c) => !needle || words(c).toLowerCase().includes(needle) || c.toLowerCase().includes(needle));
-  return (
-    <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}
-      onBlur={(e) => { if (open && !box.current?.contains(e.relatedTarget as Node | null)) close(false); }}>   {/* focus leaving closes it (review m9) */}
-      <Button ref={opener} variant="outline" size="sm" aria-expanded={open} aria-controls="fo-source-list" data-source-toggle onClick={() => (open ? close(true) : setOpen(true))}>
-        <FoldArrow open={open} />{chosen.length ? `Source (${chosen.length})` : "Source: all"}
-      </Button>
-      {chosen.map((c) => (
-        <span key={c} data-source-chip={c} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-primary bg-primary/10 pl-3 pr-1 text-sm font-medium text-text-link [overflow-wrap:anywhere]">
-          {words(c)}
-          <button type="button" aria-label={`Remove source: ${words(c)}`} onClick={() => { toggle(c); opener.current?.focus(); }} className="rounded-full px-1.5 outline-none hover:bg-text/10 focus-visible:ring-[3px] focus-visible:ring-ring/50">×</button>
-        </span>
-      ))}
-      {chosen.length ? <Button variant="link" size="sm" data-source-clear onClick={clear}>All sources</Button> : null}
-      {failed ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={retry}>Try again</Button></span> : null}
-      {open ? (
-        <div id="fo-source-list" ref={panel} tabIndex={-1} style={{ left: shift }} className="absolute top-full outline-none z-20 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-raised p-2 shadow-lg">
-          <label className="block">
-            <span className="sr-only">Find a source</span>
-            <Input ref={finder} type="search" placeholder="Find a source" value={find} onChange={(e) => setFind(e.target.value)} data-source-find />
-          </label>
-          <fieldset className="mt-2 max-h-64 overflow-y-auto">
-            <legend className="sr-only">Show leads from these sources</legend>
-            {!choices.length ? <p className="px-2 py-1 text-sm text-text-muted">No sources yet.</p>
-              : !listed.length ? <p role="status" className="px-2 py-1 text-sm text-text-muted">No source matches “{find.trim()}”.</p>
-                : listed.map((c) => (
-                  <label key={c} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-text hover:bg-text/5 [overflow-wrap:anywhere]">
-                    <input type="checkbox" data-source={c} checked={chosen.includes(c)} onChange={() => toggle(c)} className="size-4 accent-[var(--color-primary,currentColor)]" />
-                    {words(c)}
-                  </label>
-                ))}
-          </fieldset>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 function LeadsBody() {
   const me = useStaff();
   const [params, setParams] = useSearchParams();
@@ -96,13 +35,7 @@ function LeadsBody() {
   const view: View = chips.some((c) => c.view === asked) ? asked! : chips[0].view;
   // The chip and the sources live in the address (?view=, ?source= once per source), so a reload or Back keeps both
   // (FO-4sf). Only sources the person has are kept: one typed into the address that they have not is dropped.
-  const known = useSources();
-  const choices = known.data ?? [];
-  const askedSources = params.getAll("source").filter((x, i, all) => all.indexOf(x) === i);
-  // The sources could not be loaded: the asked ones are kept as they are and no list is fetched, so a failed lookup
-  // never turns a filtered address into every lead (Devin on #1962).
-  const sources = known.isPending ? [] : known.isError ? askedSources : askedSources.filter((x) => choices.includes(x));
-  const blocked = known.isError && askedSources.length > 0;
+  const { known, choices, sources, blocked } = useAddressSources(params);
   const owners = useOwners();
   const day = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(params.get(k) ?? "") ? params.get(k)! : "");
   // The owner filter is All open's (Mine and Unassigned leads already say whose); it is dropped with any other chip.
@@ -115,7 +48,11 @@ function LeadsBody() {
   const more = (["owner", "from", "to"] as const).filter((k) => narrow[k]).map((k) => `&${k}=${encodeURIComponent(narrow[k])}`).join("");
   const toggle = (c: string) => go(view, sources.includes(c) ? sources.filter((x) => x !== c) : choices.filter((x) => x === c || sources.includes(x)));
   const [q, setQ] = React.useState("");
-  const rows = useLeads(view, sources, !known.isPending && !blocked, more);
+  // QA-572: a from day after the to day is said at the field and never sent; the last list stays on screen.
+  const badRange = rangeError(narrow.from, narrow.to);
+  const fetched = useLeads(view, sources, !known.isPending && !blocked && !badRange, more);
+  const kept = useKept(fetched.data, !!badRange);
+  const rows = { ...fetched, data: badRange ? kept : fetched.data, isPending: !badRange && fetched.isPending, isError: !badRange && fetched.isError };
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit);
@@ -140,7 +77,7 @@ function LeadsBody() {
             </button>
           ))}
         </div>
-        <SourceFilter choices={choices} chosen={sources} toggle={toggle} clear={() => go(view, [])} failed={known.isError} retry={() => known.refetch()} />
+        <SourceFilter choices={choices} chosen={sources} toggle={toggle} clear={() => go(view, [])} failed={known.isError} retry={() => known.refetch()} legend="Show leads from these sources" />
         <label className="w-full sm:w-72">
           <span className="sr-only">Search leads by name or number</span>
           <Input type="search" placeholder="Search by name or number" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -148,13 +85,15 @@ function LeadsBody() {
       </div>
       <div className="flex flex-wrap items-end gap-3" data-lead-filters>
         {view === "all" && !owners.oneUser && owners.choices.length ? <Field label="Owner"><Select value={narrow.owner} onChange={(e) => go(view, sources, { ...narrow, owner: e.target.value })}><option value="">Everyone</option>{owners.choices.map((o) => <option key={o.staffId} value={o.staffId}>{o.displayName}</option>)}</Select></Field> : null}
-        <Field label="Arrived from"><Input type="date" value={narrow.from} max={narrow.to || undefined} onChange={(e) => go(view, sources, { ...narrow, from: e.target.value })} /></Field>
+        <Field label="Arrived from" error={badRange} calm><Input type="date" value={narrow.from} max={narrow.to || undefined} onChange={(e) => go(view, sources, { ...narrow, from: e.target.value })} /></Field>
         <Field label="Arrived to"><Input type="date" value={narrow.to} min={narrow.from || undefined} onChange={(e) => go(view, sources, { ...narrow, to: e.target.value })} /></Field>
         {more ? <Button variant="link" size="sm" data-clear-filters onClick={() => go(view, sources, { owner: "", from: "", to: "" })}>Clear owner and dates</Button> : null}
       </div>
       {blocked ? <p data-source-blocked className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">The leads from {sources.map(words).join(" or ")} are not shown because the sources could not be loaded. Use Try again beside Source, or choose All sources.</p>
+        : badRange && !rows.data ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">Change the dates to see the leads: the from date must be on or before the to date.</p>
         : rows.isPending || known.isPending ? <Loading label="Loading leads" />
         : rows.isError ? <p role="alert" className="text-sm text-text-danger">{rows.error instanceof StaffApiError ? rows.error.message : "Could not load the leads."} <Button variant="link" size="sm" onClick={() => rows.refetch()}>Try again</Button></p>
+        : !rows.data ? <Loading label="Loading leads" />
           : !rows.data.length && sources.length ? <p data-empty role="status" className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">No leads from {sources.map(words).join(" or ")} here. Choose All sources to see every lead.</p>
           : !rows.data.length ? <p data-empty role={more ? "status" : undefined} className="rounded-xl border border-dashed border-border bg-surface-raised px-4 py-8 text-center text-sm text-text-muted">{more ? "No leads match the owner and dates chosen." : empty}</p>
             : !shown.length ? <p role="status" className="text-sm text-text-muted">No lead matches “{q.trim()}”{sources.length ? ` among ${sources.map(words).join(" or ")}` : ""}.</p>

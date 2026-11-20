@@ -1,0 +1,91 @@
+// FO-4sf (AG-2-23 rule 1), moved here for R1.30 (QA-533): the one Source control, used by Leads, the prospects List
+// and the board, with the same choices (`GET leads/sources`: the sources of the leads the person may see) and words.
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { FoldArrow } from "@/components/fold-out";
+import { Button, Input } from "@/components/ui/controls";
+import { LeadSources, words } from "./contract";
+import { staffApi } from "./session";
+export const useSources = () => useQuery({ queryKey: ["fo", "lead-sources"], queryFn: async () => LeadSources.parse(await staffApi("/front-office/leads/sources")).sources });
+/** FO-4sf (AG-2-23 rule 1): one Source control for an open-ended list. A button opens a checkbox list with type-to-find;
+ *  each chosen source shows as a removable chip beside it. Escape or a click outside closes it and focus returns. */
+export function SourceFilter({ choices, chosen, toggle, clear, failed, retry, legend }: { choices: string[]; chosen: string[]; toggle: (c: string) => void; clear: () => void; failed: boolean; retry: () => void; legend: string }) {
+  const [open, setOpen] = React.useState(false);
+  const [find, setFind] = React.useState("");
+  const box = React.useRef<HTMLDivElement>(null), opener = React.useRef<HTMLButtonElement>(null), finder = React.useRef<HTMLInputElement>(null);
+  const panel = React.useRef<HTMLDivElement>(null);
+  const [shift, setShift] = React.useState(0);
+  const close = (refocus: boolean) => { setOpen(false); setFind(""); setShift(0); if (refocus) opener.current?.focus(); };
+  // The panel never crosses the screen's right edge (review M7: 200 % zoom): it moves left by what would overflow.
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => { if (!box.current || !panel.current) return; const left = box.current.getBoundingClientRect().left, width = panel.current.offsetWidth; setShift(Math.min(0, window.innerWidth - 16 - width - left)); };
+    place(); window.addEventListener("resize", place);   // again on a resize or zoom while open (review m10)
+    return () => window.removeEventListener("resize", place);
+  }, [open]);
+  React.useEffect(() => {
+    if (!open) return;
+    finder.current?.focus();
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) close(false); };
+    document.addEventListener("mousedown", away); return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const needle = find.trim().toLowerCase();
+  const listed = choices.filter((c) => !needle || words(c).toLowerCase().includes(needle) || c.toLowerCase().includes(needle));
+  return (
+    <div ref={box} data-source-filter className="relative flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(true); } }}
+      onBlur={(e) => { if (open && !box.current?.contains(e.relatedTarget as Node | null)) close(false); }}>   {/* focus leaving closes it (review m9) */}
+      <Button ref={opener} variant="outline" size="sm" aria-expanded={open} aria-controls="fo-source-list" data-source-toggle onClick={() => (open ? close(true) : setOpen(true))}>
+        <FoldArrow open={open} />{chosen.length ? `Source (${chosen.length})` : "Source: all"}
+      </Button>
+      {chosen.map((c) => (
+        <span key={c} data-source-chip={c} className="inline-flex min-h-8 items-center gap-1 rounded-full border border-primary bg-primary/10 pl-3 pr-1 text-sm font-medium text-text-link [overflow-wrap:anywhere]">
+          {words(c)}
+          <button type="button" aria-label={`Remove source: ${words(c)}`} onClick={() => { toggle(c); opener.current?.focus(); }} className="rounded-full px-1.5 outline-none hover:bg-text/10 focus-visible:ring-[3px] focus-visible:ring-ring/50">×</button>
+        </span>
+      ))}
+      {chosen.length ? <Button variant="link" size="sm" data-source-clear onClick={clear}>All sources</Button> : null}
+      {failed ? <span role="alert" className="text-sm text-text-danger">Could not load the sources. <Button variant="link" size="sm" onClick={retry}>Try again</Button></span> : null}
+      {open ? (
+        <div id="fo-source-list" ref={panel} tabIndex={-1} style={{ left: shift }} className="absolute top-full outline-none z-20 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface-raised p-2 shadow-lg">
+          <label className="block">
+            <span className="sr-only">Find a source</span>
+            <Input ref={finder} type="search" placeholder="Find a source" value={find} onChange={(e) => setFind(e.target.value)} data-source-find />
+          </label>
+          <fieldset className="mt-2 max-h-64 overflow-y-auto">
+            <legend className="sr-only">{legend}</legend>
+            {!choices.length ? <p className="px-2 py-1 text-sm text-text-muted">No sources yet.</p>
+              : !listed.length ? <p role="status" className="px-2 py-1 text-sm text-text-muted">No source matches “{find.trim()}”.</p>
+                : listed.map((c) => (
+                  <label key={c} className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-text hover:bg-text/5 [overflow-wrap:anywhere]">
+                    <input type="checkbox" data-source={c} checked={chosen.includes(c)} onChange={() => toggle(c)} className="size-4 accent-[var(--color-primary,currentColor)]" />
+                    {words(c)}
+                  </label>
+                ))}
+          </fieldset>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The sources in the address (`?source=` once per source) that the person has: one typed in that they have not is
+ *  dropped. While the choices load nothing is fetched; when they cannot be loaded the asked ones are kept as they are
+ *  and `blocked` says so, so a failed lookup never turns a filtered address into every row (Devin on #1962). */
+export function useAddressSources(params: URLSearchParams) {
+  const known = useSources();
+  const choices = known.data ?? [];
+  const asked = params.getAll("source").filter((x, i, all) => all.indexOf(x) === i);
+  const sources = known.isPending ? [] : known.isError ? asked : asked.filter((x) => choices.includes(x));
+  return { known, choices, sources, blocked: known.isError && asked.length > 0 };
+}
+
+/** QA-572 (EXPERIENCE :27, :43, BIC-13): a "from" day after the "to" day is said at the from field, in plain words, and
+ *  never sent (the server would refuse it). */
+export const rangeError = (from: string, to: string) => (from && to && from > to ? "The from date must be on or before the to date." : null);
+
+/** The last answer for filters that could be sent, so a person's half-typed range keeps the list on screen (QA-572). */
+export function useKept<T>(value: T | undefined, hold: boolean): T | undefined {
+  const last = React.useRef<T | undefined>(undefined);
+  if (!hold && value !== undefined) last.current = value;
+  return hold ? last.current : value;
+}
