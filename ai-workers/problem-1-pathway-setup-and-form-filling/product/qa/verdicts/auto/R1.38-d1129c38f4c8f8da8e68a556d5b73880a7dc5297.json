@@ -1,0 +1,30 @@
+{
+  "item": "R1.38",
+  "name": "38 Time zones from booking page to invite",
+  "pr": 2326,
+  "sha": "d1129c38f4c8f8da8e68a556d5b73880a7dc5297",
+  "run_id": "44817142151",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44817142151",
+  "at": "2026-11-20T21:09:46.954Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_38.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44817142151/artifacts/14669872919",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.38-d1129c38f4c8f8da8e68a556d5b73880a7dc5297.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
