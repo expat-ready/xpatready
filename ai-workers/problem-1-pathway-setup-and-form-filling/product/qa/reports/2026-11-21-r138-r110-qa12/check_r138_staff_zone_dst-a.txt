@@ -1,0 +1,17 @@
+setup (Sample, not through the product): firm qa-r138-mwphdppr in America/Toronto, one host (Case Officer), type "free"
+PASS  R1.38 booker: "Friday 12 March, 19:00" (Asia/Dubai) is offered
+PASS  R1.38 booker: "You are booked" for Friday 12 March, 19:00
+PASS  R1.38 est: stored in UTC (2027-03-12T15:00:00.000Z) with the booker's zone, hosted by the host
+PASS  R1.38 booker: "Monday 15 March, 18:00" (Asia/Dubai) is offered
+PASS  R1.38 booker: "You are booked" for Monday 15 March, 18:00
+PASS  R1.38 edt: stored in UTC (2027-03-15T14:00:00.000Z) with the booker's zone, hosted by the host
+PASS  axe clean: the host's week of 2027-03-12
+PASS  R1.38 staff est: the week of 2027-03-12 names America/Toronto and shows the booking in the 10:00 row, not the London 15:00 row (browser in Europe/London)
+PASS  R1.38 staff est: the detail reads 10:00–10:30 America/Toronto and 19:00 for the booker (Asia/Dubai), nothing in London time
+PASS  axe clean: the host's week of 2027-03-15
+PASS  R1.38 staff edt: the week of 2027-03-15 names America/Toronto and shows the booking in the 10:00 row, not the London 14:00 row (browser in Europe/London)
+PASS  R1.38 staff edt: the detail reads 10:00–10:30 America/Toronto and 18:00 for the booker (Asia/Dubai), nothing in London time
+PASS  R1.38 staff mail est: the host's mail reads "Friday, March 12, 2027 at 10:00 a.m. (America/Toronto)" and its invite starts at 20270312T150000Z
+PASS  R1.38 staff mail edt: the host's mail reads "Monday, March 15, 2027 at 10:00 a.m. (America/Toronto)" and its invite starts at 20270315T140000Z
+
+14 passed, 0 failed
