@@ -182,11 +182,11 @@ try {
   // ---------------------------------------------------------------------------------------------- W6: the staff zone (R1.38)
   // The host opens the staff calendar (FO-3st1) from a browser in a third zone, Europe/London, so a time shown in the
   // browser's zone would read 15:00 (or 14:00 in summer) and fail: the screen shows the office zone and names it.
-  const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: key, email: hostEmail, secondStep: true }) });
-  if (!signIn.ok) throw new Error(`W6: the host's sign-in was refused (${signIn.status}): start the copy with PLATFORM_IDENTITY=local, as the header's line does`);
-  const { token } = await signIn.json() as { token: string };
+  const staffSignIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: key, email: hostEmail, secondStep: true }) });
+  if (!staffSignIn.ok) throw new Error(`W6: the host's sign-in was refused (${staffSignIn.status}): start the copy with PLATFORM_IDENTITY=local, as the header's line does`);
+  const { token: staffToken } = await staffSignIn.json() as { token: string };
   const staffCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "Europe/London", locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
-  await staffCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);
+  await staffCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), staffToken);
   const sp = await staffCtx.newPage();
   const torontoDay = new Intl.DateTimeFormat("en-CA", { timeZone: FIRM_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(start);
   await sp.goto(`${BASE}/front-office/bookings?view=week&whose=mine&date=${torontoDay}`);
@@ -194,7 +194,7 @@ try {
   const zoneSaid = await sp.locator("[data-zone-line]").innerText();
   const inTen = await sp.locator(`[data-cell="${torontoDay}T10"] [data-block="${row?.id}"]`).count();
   await shot(sp, "W6-1-staff-week"); await axe(sp, "W6 the host's week");
-  ok(`J-38 W6: the host's calendar names the office zone (${FIRM_ZONE}) and shows the booking in the 10:00 row of ${torontoDay}`, signIn.ok && zoneSaid.includes(FIRM_ZONE) && inTen === 1, { status: signIn.status, zoneSaid, inTen });
+  ok(`J-38 W6: the host's calendar names the office zone (${FIRM_ZONE}) and shows the booking in the 10:00 row of ${torontoDay}`, staffSignIn.ok && zoneSaid.includes(FIRM_ZONE) && inTen === 1, { status: staffSignIn.status, zoneSaid, inTen });
   await sp.locator(`[data-block="${row?.id}"]`).click();
   await sp.locator("[data-booking-detail]").waitFor({ timeout: 20_000 });
   const whenSaid = await sp.locator("[data-when]").innerText();
