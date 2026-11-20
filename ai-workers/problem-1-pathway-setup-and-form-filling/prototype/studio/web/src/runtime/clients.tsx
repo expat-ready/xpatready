@@ -13,7 +13,7 @@ import { ArrowRight } from "lucide-react";
 import { getActor, setActor, useToast } from "@/lib/api";
 import { isFirmStaff, personOf } from "@/lib/simulated-people";
 import { cn } from "@/lib/utils";
-import { Button, Field, Input, Notice, Table } from "@/components/ui/controls";
+import { Button, Field, Input, Notice, Pill, Table } from "@/components/ui/controls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Frame, PersonPicker, useWhere } from "@/components/frame";
 import { staffApi, StaffApiError, useMe, useSessionEnd, useStaffToken } from "@/modules/platform/session";
@@ -140,7 +140,7 @@ function ClientListPage() {
             <td className="whitespace-nowrap tabular-nums">{c.number}</td>
             <td><Link className="inline-flex min-h-6 items-center font-medium text-text-link [overflow-wrap:anywhere] hover:underline" to={`/clients/${c.id}`}>{c.display_name}</Link></td>
             <td>{KIND[c.display_kind] ?? c.display_kind}</td>
-            <td className="tabular-nums" data-client-cases={c.cases}>{c.cases ? c.cases : <span className="text-text-muted">None yet</span>}</td>
+            <td className="tabular-nums" data-client-cases={c.cases}>{c.cases ? c.cases : <span className="whitespace-nowrap text-text-muted">None yet</span>}</td>
           </tr>))}</Table>}
       {moreError ? <Notice tone="danger" title="More clients could not be loaded">{moreError}</Notice> : null}
       {rows.length ? <div className="flex flex-wrap items-center gap-3 text-[13px] text-text-muted"><span role="status" data-client-count>{rows.length} of {total} client{total === 1 ? "" : "s"} shown{q ? ` for "${q}"` : ""}</span>{hasMore ? <Button size="sm" variant="secondary" busy={loading} onClick={() => void showMore()} data-show-more>Show more</Button> : null}</div> : null}
@@ -231,7 +231,8 @@ function OfferCard({ clientId, viewer, offer, canOpen, reread, refreshCases }: {
         <dt className="text-text-muted">Program</dt><dd data-offer-program>{offer.combination?.label ?? <span className="text-text-muted">Not chosen on the prospect</span>}</dd>
         <dt className="text-text-muted">Principal applicant</dt><dd className="[overflow-wrap:anywhere]" data-offer-principal>{offer.principalName ?? <span className="text-text-muted">Not set</span>}</dd>
         <dt className="text-text-muted">Representative of record</dt><dd data-offer-representative>{offer.representative?.name ?? <span className="text-text-muted">Your firm's representative of record (the retainer names none)</span>}</dd>
-        <dt className="text-text-muted">Questionnaire login</dt><dd>{login} (simulated)</dd>
+        {/* Demo chrome, not for porting (review m2): the prototype's simulated client login the opening asks for. */}
+        <dt className="text-text-muted">Questionnaire login</dt><dd className="text-text-muted" data-demo-chrome>{login} <Pill>Simulated</Pill></dd>
       </dl>
       <div className="mt-4 flex flex-wrap items-start gap-3">
         {!canOpen ? <p className="text-sm" data-offer-ask>Ask someone who can open cases.</p>
