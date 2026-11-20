@@ -98,3 +98,52 @@ Read only `git diff 0b85f84ca a23ea3fd2` (P-303): one line in `tests/check_pf19r
 No new findings. The earlier score (9.5/10) and the open Minors (m1, m3, m4) stand unchanged.
 
 **Verdict: Approve** (for `a23ea3fd203f296aa2a79e961400e24832848416`).
+
+## Re-review 3 (9c3bfe166, merge resolution, diff only)
+
+Read only `git diff origin/main...9c3bfe166` and `git diff e8fd7ca17 9c3bfe166` for the two suites, the two MODULE rows and `qa/built/PF-19r.md` (P-303). I also read main's `runtime-ports.ts`, `signup.ts:147`, `signup-identity.ts` and `features/platform-firms.ts` on the merged tree.
+**Runs at 9c3bfe166:**
+* `COPY_PREFIX=rr3 run-suites.sh --only "check_pf19r_every_sender.ts check_pf19r_senders.ts check_pf5_signup_billing.ts check_pf5v_signup_mail.ts"`: **PASS 21/0, 27/0, 54/0, 13/0**. No `rr3_` copy was left running.
+* `typecheck.mjs`: "PASS no new type errors (15 known, 0 fixed)" (api 15 known, web 0).
+* Eight mutation probes of `check_pf19r_every_sender.ts`, run in a scratch worktree at 9c3bfe166 (removed afterwards, nothing committed).
+
+**Taking main's side: correct and complete.**
+* Against `origin/main` (fea4be78f, which contains #2456 as fd97b2ea1), the PR changes no file under `api/src` except the two MODULE rows, and `check_pf5_signup_billing.ts` is byte-identical to main.
+* Main already does what M1 asked for. `signup.ts:147` sends `platformAccount: true` with no `firmId`. The stand-in's verification code goes the same way (`signup-identity.ts:42`, `platformAccount: true`). `features/platform-firms.ts` injects `MESSAGES_MAIL` and passes it as the 4th argument.
+* The one piece of this PR's intent that is gone is "no mail → 503 SIGNUP_NOT_SET_UP". Main defaults `mail` to `fakeMail()` (PF-5v part 2's design, reviewed there). The app's only caller passes the mail (grep: the feature is the only caller in `api/src`; every other caller is a test), and S2 proves that. The platform MODULE row honestly drops the "keeps the door shut" sentence. Main's own header (`runtime-ports.ts:10-11`, "never a 'check your email' that sends nothing") now reads a little wider than the default does. That is main's file, so it is not this PR's to change.
+
+**STANDIN_DEFAULTS: narrow in text; the default itself is reachable by a new caller (Minor m5).** Probes on `runtime-ports.ts` and around it:
+| Probe | Result |
+|---|---|
+| P1: the feature ignores the injected mail (`runtimeSignUpPorts()`) | 2 S2 FAILs |
+| P2: `new LocalSignUp(…)` built without `mail` | S2 identity FAIL |
+| P3: the stand-in given `fakeMail()` | S1 + S2 FAIL |
+| P4: a 2nd `fakeMail()` default added on the signature line | S2 FAIL (the 4th argument shifts) |
+| P6: the allowed signature line copied into another file | S1 FAIL (the allowance is keyed by file) |
+| P7: `fakeMail()` in the function body | S1 FAIL |
+| P8: the signature reflowed over lines (Prettier) | S1 FAIL (a false alarm, on the safe side) |
+| **P5: a new `api/src` file that calls `runtimeSignUpPorts()` with no mail** | **21/0, unreported** |
+
+So the allowance cannot itself let a stand-in into the running app's sign-up binding: S2 calls that factory and checks both `mail` and `identity.mail`. But any new app caller that omits the mail gets `fakeMail()` silently. Before the merge, that caller got a 503. No such caller exists today, so this is a guard gap, not a live bypass. *Fix (optional, small):* add `runtimeSignUpPorts` to a CALLER_GIVES-style rule: any call in `api/src` outside the feature must pass four arguments, or be listed.
+
+**The new and changed checks against their names.**
+* **S1 fail (rewritten):** real. It first asserts that the replacement target `clock: systemClock, mail, identity:` exists, so it cannot pass on a no-op replacement. It is then reported as a stand-in. P3 and P7 show the same rule on other shapes.
+* **S2 pass (new, the stand-in gets the same mail):** real. It calls the feature's own factory with a fresh sentinel and fails on P1, P2, P3 and P4.
+* **S2 fail (new):** weak but harmless (nit). It only checks that a freshly built `LocalSignUp(clock)` has no `mail` equal to the sentinel. It does not run the pass's predicate on a changed factory. P1 and P2 show the pass itself is not blind, so nothing is unproven.
+* **signup-identity.ts entry:** `mailSend 1, anySend 1` matches its one line (`this.mail.send` at :42). No `open` entry remains in SENDERS.
+* **DW7:** `/account` is main's text (`signup.ts:147`), and the web has `/account` (`account-sections.ts:6`). Pass and fail are unchanged otherwise. The DW7 door swaps in a stand-in with no mail, so DW7 proves only the "already" email. The verification code over MessagePort is proven by S2's new pass and by `check_pf5v_signup_mail.ts` (13/0). Removing "no mail keeps the door shut" was right: under main it would fail. `check_pf5v_signup_mail.ts:62` already covers what the no-mail default does.
+* **Nit:** two labels still say "before this PR" for the `fakeMail` era: S2 fail at `check_pf19r_every_sender.ts:213`, and S3 fail ("what sign-up used before this PR"). Both now mean "before PF-5v part 2". The checks themselves are right.
+
+**qa/built text: accurate.** Each claim matches the code:
+* parts 1 and 2 as before;
+* sign-up's two emails moved with PF-5v part 2 (#2456, merged) as platform account emails from ExpatReady;
+* part 3 (#2452) adds the every-sender suite and DW7;
+* R1.47 stays Partial for PF-13's logo and colour only (true: the table has no open entry left);
+* the deployed custom sender's wiring is "not verified".
+The MODULE rows match the suites.
+
+**Journey score:** 9.5/10 stands, with no criterion at 0. This PR now changes no runtime code. The sign-up path that runs is main's, reviewed under #2456. No HTTP journeys were re-run in this diff-only pass.
+
+Open Minors: m1, m3, m4 (unchanged) and m5 (new, optional). Nits: the S2 fail's weak form and the two stale labels. No open Blocker or Major.
+
+Verdict: Approve
