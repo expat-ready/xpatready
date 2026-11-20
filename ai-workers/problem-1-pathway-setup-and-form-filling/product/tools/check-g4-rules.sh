@@ -83,7 +83,7 @@ grep -q 'pr-size.sh" "$CODE" 0' "$W" && grep -q 'contents: read' "$W" && grep -q
 printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"
 lp() { out=$(jq -n --arg t "$1" --arg p "$2" '{tool_name:$t,tool_input:{prompt:$p}}' | FOCUS_LIST="$T/focus-list.md" bash "$TOOLS/lane-preflight.sh" --hook); }
 lp mcp__claude-code-remote__create_session "$GOOD"; ok "(7) a brief with no model and effort line is refused" "$(deny)" "$out"
-lp mcp__claude-code-remote__create_session "$GOOD"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a brief naming model and effort starts" "$([ -z "$out" ] && echo 1)" "$out"
+lp mcp__claude-code-remote__create_session "$GOOD"$'\nModel: Opus 5.5, effort: medium\nItem: R1.2'; ok "(7) a brief naming model and effort starts (R1.2 is Proven: wave 0, always open)" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"$'\nModel: Opus 5.5, effort: medium'; ok "(7) a start naming no row (qa, standby) needs only the model and effort line" "$([ -z "$out" ] && echo 1)" "$out"
 lp mcp__claude-code-remote__create_session $'/next screens B124\nModel: Opus 5.5, effort: medium'; ok "(7) a /next brief naming a row (B124) still needs Done when and Duplicate check" "$(deny)" "$out"
 lp mcp__claude-code-remote__create_session "/qa after-merge"; ok "(7) ... and is refused without it" "$(deny)" "$out"

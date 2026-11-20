@@ -9,7 +9,7 @@ import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { conflict, notFound, written, type Tx } from "./common.ts";
-import { NO_RULE, placeNewLead } from "../assignment/rules.ts";
+import { NO_RULE, placeNewLead } from "../assignment/place.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -71,7 +71,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     await recordConsent(personId);
     await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "ON_OPEN_PROSPECT", completedAt: new Date(), personId } });
     // The booking goes on the person's record (AG-2-84 rule 8): one audit line, ids only.
-    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent } });
+    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent },
+      before: null, after: { outcome: "ON_OPEN_PROSPECT", personId, door: a.door, consent: !!a.consent } });
     return { leadId: null, personId, created: true };
   }
 
@@ -105,6 +106,9 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
     summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}${placed.ruleId ? (placed.ownerStaffId ? `, assigned to staff ${placed.ownerStaffId} by ${placed.strategy === "OWNER" ? "the default owner rule" : "round robin"}` : `, left in Unassigned leads: ${placed.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : "no one in the rule's turn is active"}`) : ""}.`,
     detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent, ...(placed.ruleId ? { assignmentRuleId: placed.ruleId, assignmentStrategy: placed.strategy, assignmentFallback: placed.fallback } : {}) },
+    // R1.8 (QA-594, P-687): the lead's values in full, its new person's name and contact included; the message stays in fo_note.
+    before: null, after: { personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match,
+      ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });
   return { leadId: lead.id, personId, created: true };

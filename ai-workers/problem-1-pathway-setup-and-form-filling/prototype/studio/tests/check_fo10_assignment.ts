@@ -80,6 +80,10 @@ try {
   const ownerOf = (leadId: string | null) => sql(`select coalesce(owner_staff_id::text, 'none') from fo_lead where id = '${leadId}'`);
   const createdLine = (leadId: string | null) => sql(`select summary || '|' || coalesce(detail->>'assignmentRuleId', '') || '|' || coalesce(detail->>'assignmentFallback', '') from audit_event where entity = 'fo_lead' and entity_key = '${leadId}' and action = 'lead.created'`);
 
+  // ------------------------------------------------------------------------------------------- import order (merge batch #2500)
+  const loadsFirst = (file: string) => { try { return execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "tests", "lib", "load-first.ts"), join(STUDIO, file)], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().endsWith("loaded"); } catch { return false; } };
+  ok("FO-10 fail (batch #2500): loading the public door or the person edit first never meets an import cycle (SALES_PORTS uninitialised)", loadsFirst("api/src/front-office/sales/public.ts") && loadsFirst("api/src/front-office/people/edit.ts") && loadsFirst("api/src/features/front-office-sales.ts"));
+
   // ------------------------------------------------------------------------------------------- no rule: Unassigned
   const bare = await arrival("WEB_FORM"), bareB = await arrival("BOOKING");
   ok("FO-10 fail: with no rule, a web-form lead and a booking lead land in Unassigned leads, and the audit line names no rule", ownerOf(bare.leadId) === "none" && ownerOf(bareB.leadId) === "none" && createdLine(bare.leadId).endsWith("||"), createdLine(bare.leadId));
@@ -101,7 +105,7 @@ try {
   // ------------------------------------------------------------------------------------------- round robin
   const trio = [R.staffId, O.staffId, T.staffId].sort();
   const rr = await rules.save(R, { door: "WEB_FORM", strategy: "ROUND_ROBIN", eligibleStaffIds: [T.staffId, O.staffId, R.staffId] });
-  ok("FO-10 pass: saving a rule writes one audit line", sql(`select count(*) from audit_event where entity = 'fo_assignment_rule' and entity_key = '${rr.id}' and action = 'assignment_rule.saved'`) === "1");
+  ok("FO-10 pass: saving a rule writes one audit line, with its values after and none before (R1.8)", sql(`select count(*) from audit_event where entity = 'fo_assignment_rule' and entity_key = '${rr.id}' and action = 'assignment_rule.saved'`) === "1" && sql(`select (detail->>'strategy_after') || '|' || coalesce(detail->>'strategy_before', 'none') from audit_event where entity = 'fo_assignment_rule' and entity_key = '${rr.id}' and action = 'assignment_rule.saved'`) === "ROUND_ROBIN|none");
   const three = [await arrival("WEB_FORM"), await arrival("WEB_FORM"), await arrival("WEB_FORM")].map((x) => ownerOf(x.leadId));
   ok("FO-10 pass: three leads from the web form go to three people in turn", JSON.stringify(three) === JSON.stringify(trio), three);
   ok("FO-10 pass: the lead's audit line names the rule and round robin; the timeline shows it", createdLine((await arrival("WEB_FORM")).leadId).includes(`by round robin.|${rr.id}|`));
