@@ -31,6 +31,10 @@ out=$(python3 -I "$R" --runs "$T/none.json" --now $NOW)
 ok "nothing queued: 0 waiting, no stale line" "$(grep -qx 'runs  0 Actions run(s) waiting for a machine (created under 6 h)' <<< "$out" && ! grep -q '^stale' <<< "$out" && echo 1)" "$out"
 echo 'not json' > "$T/bad.json"; out=$(python3 -I "$R" --runs "$T/bad.json" --now $NOW --save "$T/b.json"); r=$?
 ok "unreadable answer: \"not measured\", never 0 waiting" "$([ $r = 0 ] && grep -q '^runs  waiting for a machine: not measured' <<< "$out" && jq -e .error "$T/b.json" >/dev/null && echo 1)" "exit $r: $out"
+echo '{"message": "API rate limit exceeded", "documentation_url": "x"}' > "$T/err.json"; out=$(python3 -I "$R" --runs "$T/err.json" --now $NOW 2>&1)
+ok "an error body from GitHub (rate limit, 404, 5xx): \"not measured\", never 0 waiting" "$(grep -q '^runs  waiting for a machine: not measured (no workflow_runs in the answer: API rate limit exceeded' <<< "$out" && echo 1)" "$out"
+echo '[1, 2]' > "$T/list.json"; out=$(python3 -I "$R" --runs "$T/list.json" --now $NOW 2>&1)
+ok "an answer that is not an object: \"not measured\", no traceback" "$(grep -q 'not measured' <<< "$out" && ! grep -q Traceback <<< "$out" && echo 1)" "$out"
 jq '.total_count = 140' "$T/runs.json" > "$T/many.json"; out=$(python3 -I "$R" --runs "$T/many.json" --now $NOW)
 ok "more queued than one page read: said on a warn line" "$(grep -q '^warn  140 queued runs, only the newest 6 read' <<< "$out" && echo 1)" "$out"
 # lead-watch.sh prints the two lines each check and cancels nothing
@@ -38,5 +42,5 @@ L="$TOOLS/lead-watch.sh"
 ok "lead-watch.sh runs runs-waiting.py and saves its measure" "$(grep -q 'runs-waiting.py" --save "\$STATE_DIR/runs-waiting.json"' "$L" && echo 1)" "no call in $L"
 ok "no tool here cancels a run (P-371)" "$(! grep -qE "/cancel|force-cancel|run cancel" "$R" "$L" && echo 1)" "a cancel call found"
 # the board's Stuck now count uses the same 6 h rule
-ok "cockpit-data.py counts only runs created under 6 h (stale ones apart)" "$(grep -q 'stale = \[x.get("id") for x in qr if (x.get("created_at") or "9") < old6\]' "$TOOLS/cockpit-data.py" && grep -q 'qn = qd.get("total_count", len(qr)) - len(stale)' "$TOOLS/cockpit-data.py" && echo 1)" "cockpit-data.py still counts every queued run"
+ok "cockpit-data.py counts only runs created under 6 h (stale ones apart)" "$(grep -q 'stale = \[x.get("id") for x in qr if (x.get("created_at") or "9") <= old6\]' "$TOOLS/cockpit-data.py" && grep -q 'qn = qd.get("total_count", len(qr)) - len(stale)' "$TOOLS/cockpit-data.py" && echo 1)" "cockpit-data.py still counts every queued run"
 finish

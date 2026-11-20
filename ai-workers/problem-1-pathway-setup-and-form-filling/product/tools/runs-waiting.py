@@ -69,13 +69,16 @@ def main(argv):
             doc = json.load(open(a["--runs"]))
         else:
             tools = __file__.rsplit("/", 1)[0]
-            raw = subprocess.run(["bash", f"{tools}/gh.sh", "api", "repos/{owner}/{repo}/actions/runs?status=queued&per_page=100"],
-                                 capture_output=True, text=True, timeout=60).stdout
-            doc = json.loads(raw)
-    except (OSError, ValueError, subprocess.SubprocessError) as e:
-        m = {"error": str(e)[:200]}
-    else:
+            p = subprocess.run(["bash", f"{tools}/gh.sh", "api", "repos/{owner}/{repo}/actions/runs?status=queued&per_page=100"],
+                               capture_output=True, text=True, timeout=60)
+            if p.returncode != 0:   # gh prints GitHub's error body on stdout too: never read it as "0 waiting"
+                raise ValueError(f"gh api exit {p.returncode}: {(p.stdout or p.stderr).strip()[:120]}")
+            doc = json.loads(p.stdout)
+        if not (isinstance(doc, dict) and isinstance(doc.get("workflow_runs"), list)):
+            raise ValueError("no workflow_runs in the answer: " + str(doc.get("message") if isinstance(doc, dict) else type(doc).__name__)[:120])
         m = measure(doc, now)
+    except Exception as e:   # any unreadable answer is "not measured", never a traceback and never 0
+        m = {"error": str(e)[:200]}
     if a["--save"]:
         with open(a["--save"], "w") as f:
             json.dump(m, f)

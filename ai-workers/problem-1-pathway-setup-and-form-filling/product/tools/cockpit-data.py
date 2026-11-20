@@ -1295,7 +1295,7 @@ def take_snapshot(snap, gh, cache, lead_input, appcode_max):
         qd = gh.get("/actions/runs?status=queued&per_page=100")
         old6 = (NOW - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
         qr = qd.get("workflow_runs") or []
-        stale = [x.get("id") for x in qr if (x.get("created_at") or "9") < old6]
+        stale = [x.get("id") for x in qr if (x.get("created_at") or "9") <= old6]   # exactly 6 h is stale, as runs-waiting.py
         qn = qd.get("total_count", len(qr)) - len(stale)
         ipn = gh.get("/actions/runs?status=in_progress&per_page=1").get("total_count")
         since = (NOW - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -3279,7 +3279,7 @@ def flow_box(d, fc, li, li_src, ci):
              "big": ("approved to merged " + (f"{mm} min" if mm is not None else "not measured") + (f", p90 {p90} min" if p90 is not None else "")),
              "target": f"median {FLOW_MERGE_MIN[0]} min or less; failed batches {FLOW_FAIL_PCT[0]}% or less; a test machine within {FLOW_CI_WAIT_MIN[0]} min",
              "lines": ["Failed merge batches: " + (f"{fp}%" if fp is not None else "not measured"),
-                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs queued now; median job wait {cw} min over the last 3 h "
+                       ("Waiting for a test machine: " + (f"{cq.get('queued_runs')} runs waiting now (created under 6 h); median job wait {cw} min over the last 3 h "
                         f"({len(ws)} jobs of the newest {cq.get('runs_sampled')} of {cq.get('runs_in_3h')} test runs; {still} still waiting)"
                         if cq and cw is not None else "not measured: " + (
                             "this snapshot has no CI reading" if ci is None else ci.get("error") if isinstance(ci, dict) and ci.get("error")
