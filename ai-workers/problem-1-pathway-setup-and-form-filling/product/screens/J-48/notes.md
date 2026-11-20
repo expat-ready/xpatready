@@ -12,7 +12,9 @@ Brief: `design/build-lead-c-briefs/J-48.md` on `claude/build-lead-c-647b40`. Tes
 
 ## Results
 37/37, exit 0: once on a fresh copy and again on the same kept copy, before and after the review fixes. Reviewer (Opus, high, fresh context): `review.md`, Approve on 0ec7e5dd0, 8.5/10, no Blocker or Major, seven Minors, all fixed in 2eb0b505d.
-Not verified here: the recorded walk (`walk.mjs`): this cloud container has no ffmpeg for Playwright's video; CI's `walks` job installs it and runs the journey on the PR.
+**QA-601 / DW6 (20 Nov, PR #2521, onto main):** DW6 adds the Failed state: an email the provider keeps refusing (a Sample refused address the local adapter refuses) is tried 5 times and ends Failed "send failed" with one Failed event; NR on an address the provider takes; the lead page shows "Failed" with "The email provider did not take it" (`DW6-lead-messages-failed-1440.png`; its Failed and Sent times are hours after the lead's arrival because DW6 runs the worker on its own fake clock). 41/41, exit 0, `walk.mjs j_48` twice; `check_qa601_provider_failed.ts` 2/2. Reviewer (Opus, fresh context): `review-qa601.md`, Approve on 73ad89aff, 8.5/10, six Minors: m2 fixed (the count's transaction gets the worker's timeout); m5, m6 this paragraph; m1 (a daily-cap hold restarts the try count), m3 (the retry sweep's per-firm share is taken after the first 2000 rows) and m4 (DW6's in-process worker sweeps a kept copy's other QUEUED rows; CI runs a fresh copy) listed on the PR as accepted, for a follow-up.
+The earlier "not verified here" walk line is superseded: walks ran here with the system ffmpeg.
+Not verified here (before 20 Nov): the recorded walk (`walk.mjs`): this cloud container has no ffmpeg for Playwright's video; CI's `walks` job installs it and runs the journey on the PR.
 
 ## Waits on (found while building; the brief names only the first)
 1. PF-19b part 3 (this lane's first PR).

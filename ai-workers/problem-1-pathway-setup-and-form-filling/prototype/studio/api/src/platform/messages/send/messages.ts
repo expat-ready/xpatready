@@ -183,7 +183,7 @@ export class Messages implements MessagePort<Tx> {
         data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: now } : { stateReason: `send failed: try ${tries} of ${FIRM_SEND_TRIES}`, updatedAt: now } });
       if (n.count && last) await tx.msgEvent.create({ data: { firmId, outboxId, kind: "FAILED", occurredAt: now, detail: { reason: "send failed", tries } } });
       return { tries, last, counted: n.count > 0 };
-    });
+    }, { timeout: DELIVER_TX_MS, maxWait: 10_000 });   // review m2: the row lock may wait on another worker's slow provider call
     if (out?.counted) this.d.log?.(`messages: firm ${firmId} outbox ${outboxId} send failed (${cause instanceof Error ? cause.name : "error"}), try ${out.tries} of ${FIRM_SEND_TRIES}${out.last ? ": FAILED" : ""}`);
     if (out?.counted && out.last) return "failed";
     throw cause;
