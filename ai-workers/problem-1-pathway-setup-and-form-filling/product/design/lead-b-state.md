@@ -23,6 +23,9 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (23:3x IST 20 Nov, Lead 5):** main is red on check_fo1b because **#2322 (FO-3st1, my row) added a second RESTRICT key on the staff member**, and the test expected one. The test fix is in #2527 (R1.8, Build Lead C's), with Lead 5's type-error fix d412bfe80 under diff-only review. **Order: #2527 merges first, then /run full on #2326's 5b573ce07, then relabel with "Batch failures covered: 44780258803: shard (9), ci". Do not requeue #2326 before #2527 lands.** Watcher: 2326 and 2527.
+Lesson (row owner): FO-3st1's full run went green on 79b1930ea, yet main went red on fo1b after it merged. Ask Lead 5 why the full run didn't catch it (a shared-demo-DB suite that isn't retried, or an order effect).
+
 **Lead B (9) update (23:2x IST 20 Nov):** **#2326 dequeued** at 23:15 IST: batch #2572 (run 44780258803) failed shard (9) on check_fo1b_booking_schema.ts 79/80 (FK RESTRICT: a staff member with hours cannot be deleted; runs on the shared demo database, not retried). This is not #2326's fault (records plus j_38.ts only). Sent to Lead 5 with a proposed cover line, a full run and a relabel; check main for fo1b first.
 
 **Lead B (9) update (22:3x IST 20 Nov):** the current Lead is **Lead 5 (series 3)** (`local_08ac9385-2393-48cc-8cdd-9b770ded5e16`); I've reported to it. **#2326** is approved at 5b573ce07 and queued (22:32 IST); on merge R1.38 has 4/4 parts and goes to qa. Merged today: #2305 R1.110, #2029 R1.4, #2322 R1.38 3/4.
