@@ -67,12 +67,16 @@ export class MyNotifications {
     const mine = await this.db.msgNotification.findFirst({ where: firmScope(firmId, { id, staffId }), select: { id: true, readAt: true } });
     if (!mine) return null;
     if (mine.readAt) return { id, readAt: mine.readAt.toISOString() };
-    const at = this.now();
-    await this.db.msgNotification.updateMany({ where: firmScope(firmId, { id, staffId, readAt: null }), data: { readAt: at } });
-    return { id, readAt: at.toISOString() };
+    const f = firmScope(firmId).firmId;
+    // Never before its created_at (the table's check): a row a later reminder re-surfaced reads at that time at the earliest.
+    const [r] = await this.db.$queryRaw<{ read_at: Date }[]>`update msg_notification set read_at = greatest(${this.now()}::timestamptz, created_at)
+      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and id = ${id}::uuid and read_at is null returning read_at`;
+    return r ? { id, readAt: r.read_at.toISOString() } : this.markRead(firmId, staffId, id);   // read meanwhile: its first time stays
   }
   async markAllRead(firmId: string, staffId: string) {
-    const r = await this.db.msgNotification.updateMany({ where: firmScope(firmId, { staffId, readAt: null }), data: { readAt: this.now() } });
-    return { marked: r.count };
+    const f = firmScope(firmId).firmId;
+    const n = await this.db.$executeRaw`update msg_notification set read_at = greatest(${this.now()}::timestamptz, created_at)
+      where firm_id = ${f}::uuid and staff_id = ${staffId}::uuid and read_at is null`;
+    return { marked: n };
   }
 }
