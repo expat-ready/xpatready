@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Input, Notice, Panel, Select } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { endSession, setStaffToken, staffApi, StaffApiError, staffToken } from "@/modules/platform/session";
-import { can, problemOf } from "../../sales/contract";
+import { can, problemOf, type Me } from "../../sales/contract";
 import { useLock, useReturnFocus } from "../../sales/prospect-actions";
 import { useStaff } from "../../sales/sales-frame";
 import { Loading } from "../../sales/loading";
@@ -17,6 +17,8 @@ import { arrivedLabel } from "../../sales/time";
 import { COPY_MAX_BYTES, COPY_TOO_LARGE, DETAILS, detailLabel, DOCUMENT_TYPES, documentLabel, DownloadLink, ID_KEY, IdentityChecks, METHODS, methodLabel, noCheckLine, type IdentityCheck } from "./contract";
 
 const path = (personId: string) => `/front-office/people/${encodeURIComponent(personId)}/identity-checks`;
+const READ_ONLY_LINE = "Identity checks are recorded on the person's lead or prospect page.";
+const SHOW_REASON = "Seeing identity checks needs a role that sees prospects: ask your firm's Owner or Admin.";
 const RECORD_REASON = "Recording a check needs a role that works leads: ask your firm's Owner or Admin.";
 /** A stored calendar date (YYYY-MM-DD) in words, formatted in UTC so it never moves a day (challenge m4). */
 const EXPIRY = new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "UTC" });
@@ -172,12 +174,15 @@ function RecordPanel({ open, onOpenChange, personId, name }: { open: boolean; on
   );
 }
 
-/** The Identity check section of a person's page. `name` is the person's name as stored (empty when none). */
-export function IdentityCheckPanel({ personId, name }: { personId: string; name: string }) {
-  const me = useStaff(), focus = useReturnFocus();
+/** The Identity check section of a person's page. `name` is the person's name as stored (empty when none). Outside the
+ *  sales frame (the client page) the caller passes its own `me`; `readOnly` lists the checks without Record a check,
+ *  because a check is recorded on the lead or prospect page, before the retainer is sent (FO-13s part 2, QA-610). */
+export function IdentityCheckPanel({ personId, name, me: given, readOnly = false }: { personId: string; name: string; me?: Me | null; readOnly?: boolean }) {
+  const framed = useStaff(), me = given ?? framed, focus = useReturnFocus();
   const [open, setOpen] = React.useState(false);
   const list = useQuery({ queryKey: ["fo", "identity-checks", personId], retry: false, queryFn: async () => IdentityChecks.parse(await staffApi(path(personId))) });
-  const mayRecord = can(me, ID_KEY.record), mayCopy = can(me, ID_KEY.copy);
+  const mayRecord = !readOnly && can(me, ID_KEY.record), mayCopy = can(me, ID_KEY.copy);
+  const forbidden = list.error instanceof StaffApiError && list.error.status === 403;
   const panel = (o: boolean) => { if (o) focus.mark(); else focus.back(); setOpen(o); };
   return (
     <section aria-labelledby="fo-identity" data-identity-panel className="rounded-xl border border-border bg-surface-raised p-4">
@@ -186,11 +191,12 @@ export function IdentityCheckPanel({ personId, name }: { personId: string; name:
         {mayRecord ? <Button size="sm" variant="outline" data-record-check onClick={() => panel(true)}>Record a check</Button> : null}
       </div>
       {list.isPending ? <div className="mt-2"><Loading label="Loading the identity checks" rows={1} /></div>
+        : forbidden ? <p className="mt-2 text-sm text-text-muted" data-identity-forbidden>{SHOW_REASON}</p>
         : list.isError ? (
           <Notice tone="danger" className="mt-2" title={list.error instanceof StaffApiError ? list.error.message : "Could not load the identity checks."} action={<Button size="sm" variant="outline" onClick={() => void list.refetch()}>Try again</Button>} />
         ) : list.data.checks.length === 0 ? (
           <div className="mt-2" data-no-check>
-            <Notice tone="warn" title={noCheckLine(name)}>{mayRecord ? "Record a check before the retainer is sent." : RECORD_REASON}</Notice>
+            <Notice tone="warn" title={noCheckLine(name)}>{readOnly ? READ_ONLY_LINE : mayRecord ? "Record a check before the retainer is sent." : RECORD_REASON}</Notice>
           </div>
         ) : (
           <ul className="mt-2 flex flex-col gap-2" aria-label="Identity checks, newest first">{list.data.checks.map((c) => <CheckRow key={c.id} c={c} mayCopy={mayCopy} />)}</ul>
