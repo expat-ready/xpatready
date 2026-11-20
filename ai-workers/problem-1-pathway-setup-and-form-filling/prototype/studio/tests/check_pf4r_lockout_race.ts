@@ -12,7 +12,7 @@
 import { client, recorder } from "./runtime/api.ts";
 
 const [NAME, PORT] = [process.argv[2] ?? "pf4r", Number(process.argv[3] ?? 4421)];
-const BASE = `http://localhost:${PORT}`, ROUNDS = 6, LOOPS = 3, PER_LOOP = 6;
+const BASE = `http://localhost:${PORT}`, ROUNDS = 6, LOOPS = 3, PER_LOOP = 12;   // a burst outlasts the Deactivate's wait (re-review n1: ~100-175 ms)
 const { ok, summary } = recorder();
 const { sql } = client(PORT, `xr_studio_${NAME}`);
 const run = Date.now().toString(36);
@@ -54,19 +54,24 @@ async function race(email: string, change: () => Promise<Ans>) {
 
 const people: string[] = [];
 try {
-  const deact: number[] = [], out: number[] = [], fives: number[] = [], alive: string[] = [], tokens: number[] = [];
+  const deact: number[] = [], out: number[] = [], fives: number[] = [], alive: string[] = [], tokens: number[] = [], refusedInRace: number[] = [];
   for (let n = 0; n < ROUNDS; n++) {
     const p = person(`d${n}`); people.push(p.id);
     await signIn(p.email);   // they have a session already
     const { changed, signIns } = await race(p.email, () => api(owner, "POST", `/platform/staff/${p.id}/deactivate`, { reason: "pf4r race (Sample)" }));
     deact.push(changed.status); fives.push(signIns.filter((s) => s.status >= 500).length);
     const issued = signIns.map((s) => s.body?.token).filter((t): t is string => typeof t === "string"); tokens.push(issued.length);
+    refusedInRace.push(signIns.filter((s) => s.status === 401 && s.body?.code === "STAFF_NOT_ACTIVE").length);
     const back = await api(owner, "POST", `/platform/staff/${p.id}/reactivate`, { reason: "pf4r back (Sample)" });
     for (const t of issued) { const me = await api(t, "GET", "/platform/me"); if (me.status !== 401) alive.push(`round ${n}: ${me.status} (reactivate ${back.status})`); }
     // Sign out everywhere, raced the same way, on the reactivated person.
     const so = await race(p.email, () => api(owner, "POST", `/platform/staff/${p.id}/sign-out-everywhere`, {}));
     out.push(so.changed.status); fives.push(so.signIns.filter((s) => s.status >= 500).length);
   }
+  // Re-review n1: a green run must come from rounds that raced: at least one burst split around the deactivation (some
+  // sign-ins issued, some refused because they came after it), else the rounds proved nothing and this line fails.
+  ok("R1.5 race happened: in at least one round the burst split around the deactivation (sign-ins issued before it, refused STAFF_NOT_ACTIVE after it)",
+    tokens.some((t, i) => t > 0 && refusedInRace[i] > 0), { tokens, refusedInRace });
   ok(`R1.5 B1: Deactivate raced by ${LOOPS}x${PER_LOOP} parallel sign-ins answers 200 every round (${ROUNDS} rounds)`, deact.every((s) => s === 200), deact);
   ok(`R1.5 B1: Sign out everywhere raced the same way answers 200 every round`, out.every((s) => s === 200), out);
   ok("R1.5 B1: no sign-in in any burst answers 500 (each answers 200, or 401 in words once deactivated)", fives.every((f) => f === 0), fives);
@@ -75,7 +80,8 @@ try {
   const calm = await signIn(sql(`select email from platform_staff where id = '${people[0]}'`));
   ok("R1.5 B2 pass: a calm sign-in after reactivation gives a working token", calm.status === 200 && (await api(calm.body.token, "GET", "/platform/me")).status === 200, calm.status);
 } finally {
-  for (const id of people) if (sql(`select status from platform_staff where id = '${id}'`) === "ACTIVE") await api(owner, "POST", `/platform/staff/${id}/deactivate`, { reason: "pf4r done (Sample)" });
+  // The lent seats first (re-review n3), then the round's people leave; a failed clean-up never hides the first failure.
   sql(`update platform_plan set seats_limit = ${Number(plan[1])} where id = '${plan[0]}'`);
+  for (const id of people) if (sql(`select status from platform_staff where id = '${id}'`) === "ACTIVE") await api(owner, "POST", `/platform/staff/${id}/deactivate`, { reason: "pf4r done (Sample)" }).catch(() => undefined);
 }
 process.exit(summary() ? 1 : 0);

@@ -139,7 +139,9 @@ export class PlatformIdentity implements OnModuleInit {
    *  R1.5 (J-5 break B1, B2): the firm's row first (key share: sign-ins never wait for each other), in the same order as
    *  every staff change (`inFirm`: firm, then person), so a sign-in and a deactivation never deadlock; and the person
    *  must still be active under the lock, so a sign-in that raced a deactivation is refused ("inactive") rather than
-   *  dated after it, where reactivation would bring its token back. */
+   *  dated after it, where reactivation would bring its token back. A steady stream of sign-ins can delay that firm's
+   *  staff changes by a few hundred ms (key share holders go ahead of a waiting change; re-review n2): only the demo-only
+   *  local door can be hit that fast, Cognito reaches here once per real sign-in. */
   private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
     return this.db.$transaction(async (tx) => {
       const fid = firmScope(firmId).firmId;
