@@ -6,15 +6,18 @@ without the other, and no check told the Lead to merge them by hand. P-758: at t
 the queue, the Lead merges the approved check-only fix in the built-in browser that same check. This prints its ACT line.
 
 The queue is held by checks when main's newest finished guards run is red, or a merge-queue batch's ci failed in the
-last WINDOW_H hours, or a PR got the `dequeued` label in that time. Then every open PR (not a draft, not a Mergify batch)
+last WINDOW_H hours, or a PR got the `dequeued` label in that time. guards.yml runs on pull requests only (20 Nov), so
+"main's guards" is its newest finished run on main or on a Mergify batch branch (main plus the batch); when none is in the
+newest 100 runs, a "guards" line says it was not measured and the other two signals decide. Then every open PR (not a draft, not a Mergify batch)
 that touches only check paths (CHECK_ONLY), is approved on its head (`review: approved`, or the last "Reviewer:" verdict
-naming the head from someone with write access is "Reviewer: Approve <head>") and has a green `ci` on its head gets:
+naming the head from the repository owner's account or a login in REVIEWERS, with write access, is
+"Reviewer: Approve <head>", queue-gate.sh's rule) and has a green `ci` on its head gets:
   ACT   queue blocked by checks: #N (<title>) is a check-only fix, approved, ci green: merge it in the browser now (P-757, P-758)
 Not held: one "checks" line, and no per-PR read. A reading that fails is said on a warn line, never a silent pass: the
 queue then counts as possibly held, so a waiting check-only fix is still shown.
 
 GitHub is read through gh.sh (the helper lead-watch.sh uses; QB_GH replaces it in the test). Read-only, US$0.
-  python3 product/tools/queue-blocked.py [--repo OWNER/NAME] [--now ISO]
+  [REVIEWERS="login ..."] python3 product/tools/queue-blocked.py [--repo OWNER/NAME] [--now ISO]
 Test: check-queue-blocked.sh (fake GitHub answers, no network).
 """
 import json, os, re, shlex, subprocess, sys
@@ -27,6 +30,7 @@ CHECK_ONLY = [re.compile(x) for x in (
     r"(^|/)prototype/studio/tests/", r"^tests/", r"^\.github/", r"^\.mergify\.yml$", r"(^|/)run-suites\.sh$",
     r"(^|/)product/tools/check-[^/]+\.sh$", r"(^|/)product/tools/[^/]*guard[^/]*$", r"(^|/)product/tools/fixtures/")]
 TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
+PAGES = {"events": 5, "files": 30, "comments": 10}   # page caps; past one, a warn line, never a silent pass
 SHA = re.compile(r"\b[0-9a-f]{7,40}\b", re.I)
 
 
@@ -55,6 +59,17 @@ def api(path, kind):
     return doc
 
 
+def pages(path, cap, enough=lambda page: False):
+    """Every page of a list answer (100 a page) until a short page, or enough(page) says the rest is not needed."""
+    out = []
+    for n in range(1, cap + 1):
+        page = api("%s&page=%d" % (path, n), list)
+        out += page
+        if len(page) < 100 or enough(page):
+            return out
+    raise Unread("more than %d pages" % cap)
+
+
 def when(s):
     try:
         return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
@@ -63,15 +78,16 @@ def when(s):
 
 
 def check_only(files):
+    """files: every changed path, both sides of a rename."""
     return bool(files) and all(any(r.search(f) for r in CHECK_ONLY) for f in files)
 
 
-def approved_by_comment(comments, head):
+def approved_by_comment(comments, head, who):
     """The last "Reviewer:" verdict that can be about this head (it names the head or a prefix of it, or no SHA) from
     someone with write access must be an Approve naming the full head (queue-gate.sh's rule)."""
     last = ""
     for c in comments:
-        if c.get("author_association") not in TRUSTED:
+        if c.get("author_association") not in TRUSTED or (c.get("user") or {}).get("login") not in who:
             continue
         for line in re.sub(r"[*_`]", "", c.get("body") or "").splitlines():
             if not re.match(r"\s*reviewer:", line, re.I):
@@ -92,14 +108,16 @@ def ci_green(runs):
 
 def held(repo, now):
     """(reasons, warnings): why checks hold the queue now."""
-    why, warn, since = [], [], now - timedelta(hours=WINDOW_H)
+    why, warn, note, since = [], [], [], now - timedelta(hours=WINDOW_H)
     try:
-        g = [r for r in api("repos/%s/actions/workflows/guards.yml/runs?branch=main&per_page=20" % repo, dict).get("workflow_runs") or []
-             if r.get("status") == "completed"]
+        g = [r for r in api("repos/%s/actions/workflows/guards.yml/runs?per_page=100" % repo, dict).get("workflow_runs") or []
+             if r.get("status") == "completed" and main_like(r.get("head_branch"))]
         if g:
             last = max(g, key=lambda r: r.get("created_at") or "")
             if last.get("conclusion") in ("failure", "timed_out"):
-                why.append("guards red on main (run %s)" % last.get("id"))
+                why.append("guards red on %s (run %s)" % ("main" if last.get("head_branch") == "main" else "a merge batch", last.get("id")))
+        else:
+            note.append("guards: no finished run on main or a merge batch in the newest 100 (guards.yml runs on pull requests only): not measured")
     except Unread as e:
         warn.append("main's guards runs unreadable (%s)" % e)
     try:
@@ -111,14 +129,19 @@ def held(repo, now):
     except Unread as e:
         warn.append("merge batch runs unreadable (%s)" % e)
     try:
-        d = sorted({e.get("issue", {}).get("number") for e in api("repos/%s/issues/events?per_page=100" % repo, list)
+        old = lambda page: any((when(e.get("created_at")) or now) < since for e in page)
+        d = sorted({e.get("issue", {}).get("number") for e in pages("repos/%s/issues/events?per_page=100" % repo, PAGES["events"], old)
                     if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == "dequeued"
                     and (when(e.get("created_at")) or now) >= since} - {None})
         if d:
             why.append("dequeued in %d h: %s" % (WINDOW_H, " ".join("#%s" % n for n in d)))
     except Unread as e:
         warn.append("dequeue events unreadable (%s)" % e)
-    return why, warn
+    return why, warn, note
+
+
+def main_like(branch):
+    return branch == "main" or str(branch or "").startswith("mergify/merge-queue/")
 
 
 def main(argv):
@@ -130,11 +153,14 @@ def main(argv):
         repo = repo or gh("repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner").strip()
     except Unread as e:
         print("warn  queue blocked by checks: not measured (repository unreadable: %s)" % e); return 0
-    why, warn = held(repo, now)
+    why, warn, note = held(repo, now)
+    who = [repo.split("/")[0]] + os.environ.get("REVIEWERS", "").split()
+    for x in note:
+        print(x)
     for w in warn:
         print("warn  queue blocked by checks: %s; counted as possibly held" % w)
     if not why and not warn:
-        print("checks main's guards green, no failed merge batch or dequeue in %d h: the queue is not held by checks" % WINDOW_H); return 0
+        print("checks %sno failed merge batch or dequeue in %d h: the queue is not held by checks" % ("" if note else "main's guards green, ", WINDOW_H)); return 0
     try:
         prs = api("repos/%s/pulls?state=open&per_page=100" % repo, list)
     except Unread as e:
@@ -145,11 +171,12 @@ def main(argv):
         if p.get("draft") or str((p.get("head") or {}).get("ref") or "").startswith("mergify/") or not head:
             continue
         try:
-            files = [f.get("filename") for f in api("repos/%s/pulls/%s/files?per_page=100" % (repo, n), list)]
+            files = [x for f in pages("repos/%s/pulls/%s/files?per_page=100" % (repo, n), PAGES["files"])
+                     for x in (f.get("filename"), f.get("previous_filename")) if x]
             if not check_only(files):
                 continue
             labels = [l.get("name") for l in p.get("labels") or []]
-            if "review: approved" not in labels and not approved_by_comment(api("repos/%s/issues/%s/comments?per_page=100" % (repo, n), list), head):
+            if "review: approved" not in labels and not approved_by_comment(pages("repos/%s/issues/%s/comments?per_page=100" % (repo, n), PAGES["comments"]), head, who):
                 continue
             if not ci_green(api("repos/%s/commits/%s/check-runs?check_name=ci&filter=latest&per_page=100" % (repo, head), dict).get("check_runs") or []):
                 continue
