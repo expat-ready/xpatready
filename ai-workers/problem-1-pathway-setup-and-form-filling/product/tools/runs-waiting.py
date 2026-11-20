@@ -13,6 +13,7 @@ Test: check-runs-waiting.sh. US$0, read-only.
 import json, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
+IST = timezone(timedelta(hours=5, minutes=30))   # times as the Lead reads them (P-302)
 FRESH_H = 6   # older than this, a queued run is stale: no machine took it, and none will by waiting longer
 
 
@@ -51,7 +52,7 @@ def lines(m):
     if m["stale"]:
         since = parse(m["stale"][0]["created_at"])
         out.append(f"stale {len(m['stale'])} run(s) queued over {FRESH_H} h, not counted, never cancelled (P-371)"
-                   + (f", since {since.strftime('%-d %b')}" if since else "") + ": "
+                   + (f", since {since.astimezone(IST).strftime('%-d %b %H:%M IST')}" if since else "") + ": "
                    + " ".join(str(s["id"]) for s in m["stale"]))
     if m["total_queued"] and m["total_queued"] > m["read"]:
         out.append(f"warn  {m['total_queued']} queued runs, only the newest {m['read']} read")

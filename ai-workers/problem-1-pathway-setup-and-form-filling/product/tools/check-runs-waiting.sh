@@ -18,7 +18,7 @@ cat > "$T/runs.json" <<'EOF'
 EOF
 out=$(python3 -I "$R" --runs "$T/runs.json" --now $NOW --save "$T/m.json"); r=$?
 ok "runs created under 6 h count: 2 waiting, oldest 359 min" "$([ $r = 0 ] && grep -qx 'runs  2 Actions run(s) waiting for a machine (created under 6 h), oldest 359 min' <<< "$out" && echo 1)" "exit $r: $out"
-ok "runs queued over 6 h: one stale line, oldest first, all four ids, never cancelled" "$(grep -qx 'stale 4 run(s) queued over 6 h, not counted, never cancelled (P-371), since 12 Nov: 43098053155 43098053168 43098053377 43098053395' <<< "$out" && echo 1)" "$out"
+ok "runs queued over 6 h: one stale line, oldest first, all four ids, never cancelled" "$(grep -qx 'stale 4 run(s) queued over 6 h, not counted, never cancelled (P-371), since 12 Nov 14:39 IST: 43098053155 43098053168 43098053377 43098053395' <<< "$out" && echo 1)" "$out"
 ok "--save writes the measure for the constraint section (fresh 2, four stale)" "$(jq -e '.fresh == 2 and (.stale | length) == 4 and .oldest_fresh_min == 359' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
 jq '.workflow_runs[1].created_at = "2026-11-19T23:00:00Z"' "$T/runs.json" > "$T/edge.json"
 out=$(python3 -I "$R" --runs "$T/edge.json" --now $NOW)
