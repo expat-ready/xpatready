@@ -28,9 +28,10 @@ import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
 import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
-import { firmScope } from "../../firm-scope.ts";
+import { firmScope, touchEachFirm } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
+import { logPort } from "../../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -273,8 +274,6 @@ export class Messages implements MessagePort<Tx> {
         FROM "msg_outbox" WHERE "firm_id" IS NOT NULL AND "state" = 'QUEUED' AND "created_at" < ${new Date(now.getTime() - SWEEP_AFTER_MS)}::timestamptz
           AND ("state_reason" IS NULL OR "state_reason" = ${HELD_DAILY_LIMIT})) x
       WHERE rn <= ${SWEEP_PER_FIRM} ORDER BY ("state_reason" IS NOT NULL), rn, "created_at" LIMIT 2000`;
-    let n = 0;
-    for (const r of rows) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     // QA-601: a firm row the provider refused (its tries counted on the row) is queued again once its wait is over
     // (platformRetryAfterMs from the last try's updated_at), SWEEP_PER_FIRM per firm, the fewest tries first.
     const retry = await this.d.db.$queryRaw<{ id: string; firmId: string; reason: string; updatedAt: Date }[]>`
@@ -285,7 +284,15 @@ export class Messages implements MessagePort<Tx> {
     const firmDue = retry.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.reason)))
       .sort((x, y) => triesOf(x.reason) - triesOf(y.reason) || x.updatedAt.getTime() - y.updatedAt.getTime())
       .filter((r) => { const k = (perFirm.get(r.firmId) ?? 0) + 1; perFirm.set(r.firmId, k); return k <= SWEEP_PER_FIRM; });
-    for (const r of firmDue) if ((await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    // PF-12b: on its named use (job:messages.outbox_sweep) the reads crossed firms: each firm with a row this sweep queues
+    // (a stuck or held row, or a QA-601 retry whose wait is over) gets one platform.bypass line, in its own transaction,
+    // before any of its rows is queued; a firm whose line cannot be written gets nothing queued, the other firms go ahead,
+    // and the sweep then fails (P-607; break m6). A retry row still waiting is read but not acted on, and writes no line.
+    const { failed, error } = await touchEachFirm(this.d.db, [...rows, ...firmDue].map((r) => r.firmId));
+    for (const f of failed) logPort.warn("messages_sweep_firm_skipped", { firmId: f, reason: "bypass_not_recorded" });   // brief PF-12b1m: skipped and logged
+    let n = 0;
+    for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
+    for (const r of firmDue) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     const due = await this.d.db.msgOutbox.findMany({
       where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
@@ -296,6 +303,7 @@ export class Messages implements MessagePort<Tx> {
     // The hour is in the key (as the firm rows'), so a try that failed before it was counted is queued again next hour
     // instead of waiting on a key already used (break R2, review m-r2).
     for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: `${platformJobKey(r.id, triesOf(r.stateReason))}:sweep:${hour}`, platform: true })).queued) n++;
+    if (error) throw error;
     return n;
   }
 
