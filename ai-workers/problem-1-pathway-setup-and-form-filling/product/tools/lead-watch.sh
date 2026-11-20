@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
-# Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
+# Read-only, except step 6b's private sync (P-678). Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 set -uo pipefail
@@ -22,6 +22,9 @@ if [ -s "$stamp" ]; then last=$(cat "$stamp"); gap=$(( (now - last) / 60 ))
   [ "$gap" -gt 40 ] && ACT "previous check ran ${gap} min ago ($(TZ=Asia/Kolkata date -r "$last" '+%d %b %H:%M IST' 2>/dev/null || TZ=Asia/Kolkata date -d "@$last" '+%d %b %H:%M IST')): checks were missed; tell the founder at once (P-388, P-389)"
 fi
 echo "$now" > "$stamp.$$" && mv -f "$stamp.$$" "$stamp"   # atomic: the standby never reads a half-written stamp
+# 0b. The Lead's context (E12, P-446 (1)): hand over at the first check after 200k beyond the start read; at 150k the first
+# standby reads RULES+STATE. get_usage is the Lead's tool only, so the Lead passes it: LEAD_CONTEXT=<k> (no value = ACT).
+lc=$(python3 -I "$TOOLS/lead-upkeep.py" context --state "$TOOLS/../STATE.md" 2>&1); echo "$lc"; act=$((act + $(grep -c '^ACT' <<<"$lc"))); seen "$lc"
 
 # 1. Disk and test databases (P-308 disk rule: under 10 GB the Lead frees space, under 4 GB Mac suites pause).
 free=$(df -g / | awk 'NR==2 {print $4}')
@@ -144,6 +147,9 @@ case "$ts" in   # empty, "null" (the curl fallback's jq -r) or any unparsable va
   *) age=$(( ( $(date -u +%s) - ts ) / 3600 )); say "backup last push ${age} h ago"
      [ "$age" -ge 24 ] && ACT "backup ${age} h old: run tools/backup-refresh.sh (allowed_domains github.com)";;
 esac
+# 6b. Private home sync (E13, P-678: "the Lead runs the sync at each check"): the one write this check makes, to
+# github.com/expat-ready/private, bounded at 90 s; a refusal (a note holding a real secret), a failure or a timeout = ACT.
+ps=$(python3 -I "$TOOLS/lead-upkeep.py" sync 2>&1); echo "$ps"; act=$((act + $(grep -c '^ACT' <<<"$ps"))); seen "$ps"
 
 # 7. Records reach main (Lead 53, 15 Nov, founder A76: P-606's skill lines sat off main for 5 days and no check said so).
 # The newest DECISIONS row and the next/qa skills on this Lead branch must be on origin/main; otherwise cloud builders and
