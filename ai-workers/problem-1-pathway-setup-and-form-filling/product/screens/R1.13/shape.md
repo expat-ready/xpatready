@@ -71,3 +71,11 @@ US$0, live AI off.
   and the logger's contract, not each run end to end. Said in the PR.
 * Found while walking: Stripe's SDK 23.1.0 writes one plugin hint straight to stderr when `CLAUDECODE` is set (agent
   sessions only), past the logger. No personal value; J-13 names that exact line as its one exception.
+* Review fixes after the reviewer's Approve at 0f49fafb0 (5 Minors, all fixed): m1 the scan is wider (launcher and
+  provider words, `.stack`, JSON of an error, a text after a literal, injected `log?.(` callbacks, logPort fields from a
+  template) and flags the 7 old lines it used to miss; m2 `launcherReason` logs a fixed reason code (guard,
+  usage_limit, live_off, timeout, not_found, spend_cap, busy, other, none) where the launcher's words were dropped;
+  m3 `plainRunText(t, runId)` names the run, so its callers `runs.ts` (one line) and `ai.ts` (one line) join the touch
+  list (no open PR touches either); m4 the site check refuses text-like field values; m5 J-13 W3b reaches a moved site
+  on the running copy (`GET /api/runs/:id`). Added exception: `platform/identity/sample-seed.ts` 30 (open #2001's
+  file; `d.why` is one of three fixed sentences).

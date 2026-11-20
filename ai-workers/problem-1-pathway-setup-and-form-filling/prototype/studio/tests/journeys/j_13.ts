@@ -9,6 +9,8 @@
 //       when an agent session starts the copy) and none holds the seeded name, any word of it, the email or the
 //       passport number; the fail case: the same scan on a scratch copy of the log with one leaking line added flags it;
 //   W3: /api/health/live and /api/health/ready answer 200 (ready counts the database and the job queue);
+//   W3b: an author opens a failed AI run whose message holds a server path and the person (GET /api/runs/:id, a moved
+//       site, plain-run-text.ts): plain words on the page, one log line naming the run, no seeded value (review m5);
 //   W4: a job waiting longer than STUCK_JOB_MS (Sample, 30 min) raises one `job_stuck` alarm line (embedded metric
 //       format, metric "Alerts", AlertKind job_stuck) naming its queue and job id within 2 minutes; the next minute's
 //       check raises none (one page per incident, ALERT_REPEAT_MS 5 min, Sample).
@@ -84,6 +86,22 @@ try {
   // W3: health.
   const live = await call("/api/health/live"), ready = await call("/api/health/ready");
   ok("J-13 W3: /api/health/live and /api/health/ready answer 200; ready counts the database and the job queue, both ok", live.status === 200 && ready.status === 200 && ready.body.checks?.database?.ok === true && ready.body.checks?.job_queue?.ok === true, { live, ready });
+
+  // W3b (review m5): a moved site on the running copy. An author opens a failed AI run whose step message holds a server
+  // path and the seeded person (written as a run that stopped on this computer would leave it); the page gets plain
+  // words, the log gets one run_message_kept_from_page line naming the run, and no line holds a seeded value.
+  const ws = await db.workspace.findFirstOrThrow({ select: { id: true } });
+  const runMsg = `ENOENT: open /home/app/var/${GIVEN} ${FAMILY} ${PASSPORT} ${EMAIL}.pdf`;
+  const batch = await db.aiBatch.create({ data: { workspaceId: ws.id, idempotencyKey: `j13-${run}`, operation: "draft_field_maps", scopeKind: "form", scopeLabel: "Sample J-13 form", mode: "REPLAY", status: "FAILED", planSha256: "0".repeat(64), plan: {}, spendLimitUsd: 0, worstCaseUsd: 0, startedBy: "user-A", message: runMsg, finishedAt: new Date() } });
+  await db.draftingJob.create({ data: { workspaceId: ws.id, batchId: batch.id, kind: "field_map", mode: "REPLAY", status: "FAILED", startedBy: "user-A", message: runMsg, finishedAt: new Date() } });
+  const before = logLines().length;
+  const view = await call(`/api/runs/${batch.id}`, { headers: { "x-actor": "user-A", "X-Request-Id": `j13-run-${run}` } });
+  await pause(300);
+  const after = logLines().slice(before), kept = after.flatMap((l) => { try { const x = JSON.parse(l) as Record<string, unknown>; return x.event === "run_message_kept_from_page" ? [x] : []; } catch { return []; } });
+  const runPage = JSON.stringify(view.body);
+  ok("J-13 W3b: the author's failed run page shows plain words, never the path or the person; the log names the run (run_message_kept_from_page with its id) and holds no seeded value",
+    view.status === 200 && !SEEDED.some((v) => runPage.includes(v)) && !runPage.includes("/home/app") && kept.length >= 1 && kept.some((x) => x.runId === batch.id) && scan(after).leaking.length === 0,
+    { status: view.status, error: view.body.error, kept, leaking: scan(after).leaking });
 
   // W4: a stuck job reaches the alarm, once. A queue of its own with no handler, so nothing runs the job.
   const queue = `j13.probe_${run}`;

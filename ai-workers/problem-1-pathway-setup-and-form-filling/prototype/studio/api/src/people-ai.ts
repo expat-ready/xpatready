@@ -26,6 +26,7 @@ import { GUIDE_SOURCE_KIND } from "./guide-sources.ts";
 import { Sources, aiLive, usesFakeLauncher } from "./sources.ts";
 import { Studio } from "./studio.ts";
 import { logPort } from "./platform/observability/log.ts";
+import { launcherReason } from "./plain-run-text.ts";
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -287,11 +288,11 @@ export class PeopleFromGuide implements OnModuleInit {
       const last = (o: string) => { for (const l of o.trim().split("\n").reverse()) { try { return JSON.parse(l); } catch { /* not JSON */ } } return null; };
       // QA-88: the launcher's and the provider's own text go to the server log, never to the person.
       const stub = await this.sources.launchOnce(jobId, "stub");
-      if (stub.code !== 0) { logPort.warn("who_can_be_stub_refused", { jobId, exit: stub.code });   /* PF-23m: the launcher's words stay out of the log */ return { ok: false, costUsd: 0, reason: AI_FAILED.refused }; }
+      if (stub.code !== 0) { logPort.warn("who_can_be_stub_refused", { jobId, exit: stub.code, reason: launcherReason(String(last(stub.out)?.refused ?? stub.err)) });   /* PF-23m: the launcher's words stay out of the log */ return { ok: false, costUsd: 0, reason: AI_FAILED.refused }; }
       const live = await this.sources.launchOnce(jobId, "live", wanted);
       if (live.cancelled || live.stopped) return { ok: false, costUsd: 0, reason: "Stopped by a person before AI answered." };
       const lj = last(live.out);
-      if (!lj?.run_file) { logPort.warn("who_can_be_live_not_run", { jobId, exit: live.code, refused: !!lj?.refused });   /* PF-23m */ return { ok: false, costUsd: 0, reason: AI_FAILED.notRun }; }
+      if (!lj?.run_file) { logPort.warn("who_can_be_live_not_run", { jobId, exit: live.code, reason: launcherReason(String(lj?.refused ?? lj?.error ?? live.err)) });   /* PF-23m */ return { ok: false, costUsd: 0, reason: AI_FAILED.notRun }; }
       const rec = JSON.parse(readFileSync(lj.run_file, "utf8"));
       const cost = Number(rec.drafting_run?.usage?.cost_usd ?? 0);
       const spent = ` Cost US$${cost.toFixed(2)}.`;
