@@ -9,7 +9,7 @@
 // that fails a client throws, and pg-boss retries it); with none waiting, the link check is validated once. When PF-14's JobPort gets a schedule
 // finer than a minute, a later row moves the poll onto it (its cron is minute-level, so not now).
 import { Inject, Injectable, Optional, type OnApplicationBootstrap, type OnApplicationShutdown, type OnModuleInit } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { FO_PERSON_PORT, type FoPersonPort } from "../../../ports/fo-person.ts";
 import { Db, Workspace } from "../core.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
@@ -21,6 +21,17 @@ import { catchUpProspectsWon, type WonCatchUp } from "./prospect-won.ts";
 export const CATCH_UP_USE = "cases.prospect-won.catch-up";
 /** Sample: how often the outbox is read (ms). */
 export const pollMs = () => Math.min(3_600_000, Math.max(200, Number(process.env.PROSPECT_WON_POLL_MS) || 10_000));   // breaker F7
+
+/** PF-12b (QA-499, P-607): how one run takes each due prospect. The list read crossed firms on CATCH_UP_USE, so each firm
+ *  with a due prospect gets its platform.bypass line once a run (its own transaction), before any of its clients is made
+ *  as that firm (withFirm); a firm whose line cannot be written is not taken in: its prospects fail and are retried. */
+export function touchedEach(db: PrismaClient) {
+  const lined = new Map<string, Promise<void>>();
+  return <T,>(firmId: string, fn: () => Promise<T>): Promise<T> => {
+    if (!lined.has(firmId)) lined.set(firmId, touchFirms(db, [firmId]));
+    return lined.get(firmId)!.then(() => withFirm(firmId, fn));
+  };
+}
 
 export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, OnApplicationShutdown {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -46,14 +57,7 @@ export class ProspectWonPoll implements OnModuleInit, OnApplicationBootstrap, On
     try {
       const deps = { workspaceId: await this.ws.id(), foPerson: this.foPerson, audit: auditEvent };
       // The outbox is walled (PF-12): only its read crosses firms; case_client is the case side's own table (review m7).
-      // PF-12b (QA-499): the list read crossed firms, so each firm with a due prospect gets its platform.bypass line, once a
-      // run, before its client is made; a firm whose line cannot be written is not taken in (its prospects fail, P-607).
-      const lined = new Map<string, Promise<void>>();
-      const each = <T,>(firmId: string, fn: () => Promise<T>) => {
-        if (!lined.has(firmId)) lined.set(firmId, touchFirms(this.db, [firmId]));
-        return lined.get(firmId)!.then(() => withFirm(firmId, fn));
-      };
-      this.last = await asBypass(CATCH_UP_USE, () => catchUpProspectsWon(this.db, deps, each));
+      this.last = await asBypass(CATCH_UP_USE, () => catchUpProspectsWon(this.db, deps, touchedEach(this.db)));
       if (this.last.failed.length) console.warn(`FO-8: ${this.last.failed.length} won prospect(s) not taken in: ${this.last.failed.map((f) => f.prospectId).join(", ")}`);
       if (!this.jobs?.runner.started) return;
       const waiting = await this.db.caseClient.findMany({ where: { firmId: { not: null }, foPersonId: null, foCompanyId: null }, distinct: ["firmId"], orderBy: [{ firmId: "asc" }, { clientNumber: "asc" }], select: { firmId: true, id: true } });

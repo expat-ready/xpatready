@@ -100,7 +100,9 @@ export function enterFirm(firmId: string) {
  *  why the use writes no line (it touches no firm's rows, or it is an own-firm door that PF-12b part 2 moves off the
  *  bypass). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
 export type BypassAudit = "per-firm" | `none: ${string}`;
-export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit }>> = Object.freeze({
+/** `inside`: the only outer uses this use may run within (one bypass use at a time otherwise, break M1). Only a use that
+ *  touches no firm's rows ("none: …") may name one: it then crosses under its own name, and the outer use's lines stand. */
+export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] }>> = Object.freeze({
   "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
   "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
   "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
@@ -116,7 +118,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "job:platform.entitlements.storage_daily": { why: "the daily storage measure lists every firm, then measures each in its own firm scope (PF-15, SA-3-40)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.outbox_sweep": { why: "the outbox sweep picks up every firm's stuck rows, each firm its own share (PF-19b)", routes: [], outside: true, audit: "per-firm" },
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "none: a platform job sends one PLATFORM_ACCOUNT message, a row with no firm; it reads and writes no firm's rows (PF-19p). A firm's send job runs as its firm, not on this use." },
-  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "none: a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row; no firm's rows (PF-19p)." },
+  "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "none: a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row; no firm's rows (PF-19p).", inside: ["platform.firms.signup"] },
   "job:platform.secret_box.reencrypt": { why: "the secret store re-encrypts every firm's secrets under the new key (PF-24)", routes: [], outside: true, audit: "none: every re-encrypt job is queued with its firm and runs as that firm (withFirm, not this use); a job of this queue with no firm is refused before any read (reencrypt.ts)" },
   "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm), and at the first run each firm with an unlinked client gets its one-time link job (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
@@ -164,7 +166,10 @@ export async function asBypass<T>(use: string, fn: () => Promise<T> | T): Promis
   // A use inside its own scope (a job handler that names its use again under asJob, e.g. the storage measure) runs where
   // it is: the same use, the same lines. Any other use inside it is refused.
   if (store?.bypass === use) return await fn();
-  if (store?.bypass) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
+  // The one named exception (merge of PF-19p): sign-up's emails open platform.account.mail inside platform.firms.signup.
+  // A use that touches no firm's rows may run inside an outer use it names; the outer use comes back after it.
+  const within = !!store?.bypass && entry.audit.startsWith("none: ") && (entry.inside ?? []).includes(store.bypass);
+  if (store?.bypass && !within) throw new BypassRefused(`asBypass: "${use}" may not run inside "${store.bypass}" (one bypass use at a time)`);
   bypassLine(use, route);
   return scope.run({ route, bypass: use }, async () => await fn());
 }
