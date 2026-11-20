@@ -27,6 +27,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { BookingEvent, EVENT } from "../../../../ports/events.ts";
 import type { JobPort, JobRun } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
+import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-scope.ts";
@@ -57,6 +58,8 @@ export type BookingPorts = {
   formKey?: Buffer;
   /** Where after-commit failures are told (never thrown). */
   warn?: (msg: string) => void;
+  /** PF-18a DW6: the host's office zone (OfficeClockPort, platform's OFFICE_CLOCK in the running app). Absent → the firm's own zone. */
+  offices?: OfficeClockPort;
 };
 // Reads are limited per IP only: a per-firm read limit let a group of addresses close a firm's page for everyone (break
 // R2-1). The per-firm booking limit counts only bookings actually made, so refused or never-offered forms cannot close it
@@ -181,9 +184,10 @@ const METHOD: Record<MailKind, InviteMethod> = { booked: "REQUEST", moved: "REQU
 export const wallLabel = (at: Date, zone: string) => `${new Intl.DateTimeFormat("en-CA", { timeZone: zone, dateStyle: "full", timeStyle: "short" }).format(at)} (${zone})`;
 const MODE_WORDS: Record<Mode, string> = { VIDEO: "Video call", PHONE: "Phone call", IN_PERSON: "In person" };
 /** The zone a host's booking mail states its time in: the host's office zone (AG-04 v2.1 Part B rule 9, AG01-24; FO-3h,
- *  QA-470). Offices with their own zones arrive with PF-18a, which extends this; today it is the firm's zone (PF-3). */
-export async function hostZone(db: Tx | PrismaClient, firmId: string, _staffId: string): Promise<string> {
-  return readSetting<string>(db, firmId, TIME_ZONE.key);
+ *  QA-470; PF-18a DW6): the zone of the host's office through OfficeClockPort, the firm's own zone when the host has no office
+ *  (or when no port is given: the suites that pass none). */
+export async function hostZone(db: Tx | PrismaClient, firmId: string, staffId: string, offices?: OfficeClockPort): Promise<string> {
+  return offices ? offices.zoneFor(firmId, await offices.officeOfStaff(firmId, staffId)) : readSetting<string>(db, firmId, TIME_ZONE.key);
 }
 
 export class BookingService {
@@ -655,7 +659,7 @@ export class BookingService {
       // The host's copy holds only what runs the meeting (AG-4-42).
       // The host's own office time, with the zone named (FO-3h, QA-470); the booker's zone is for the booker's mails.
       const host = await this.db.platformStaff.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.staffId }), select: { email: true, displayName: true } });
-      const hostWhen = wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId));
+      const hostWhen = wallLabel(b.startsAt, await hostZone(this.db, b.firmId, b.staffId, this.ports.offices));
       await this.ports.mail.send({ firmId: b.firmId, to: host.email, replyTo: firm.contactEmail, class: "SERVICE", person: { kind: "STAFF", id: b.staffId }, idempotencyKey: job.key, templateKey: `booking.host_${p.kind}`,
         subject: `Consultation ${verb}: ${hostWhen}`, text: `${type.name} ${verb}: ${hostWhen}. ${how}.`, attachments: [invite({ name: host.displayName, email: host.email })]  }).catch((e) => this.refusedIsFinal(e, b.id));
       return;
@@ -779,7 +783,7 @@ export class BookingService {
       tx.platformStaff.findFirstOrThrow({ where: firmScope(firmId, { id: staffId }), select: { displayName: true } }),
       windowsFor(tx, firmId, type.id, [staffId]),
       tx.foTimeOff.findMany({ where: firmScope(firmId, { staffId, startsAt: { lt: new Date(e) }, endsAt: { gt: startsAt } }) }),
-      readSetting<string[]>(tx, firmId, CLOSED_DAYS.key), readSetting<string>(tx, firmId, TIME_ZONE.key), hostZone(tx, firmId, staffId),
+      readSetting<string[]>(tx, firmId, CLOSED_DAYS.key), readSetting<string>(tx, firmId, TIME_ZONE.key), hostZone(tx, firmId, staffId, this.ports.offices),
     ]);
     const out: Warning[] = [];
     if (closedDays.includes(localDate(startsAt, firmZone).iso) || closedDays.includes(localDate(new Date(e - 1), firmZone).iso)) out.push({ code: "CLOSED_DAY", label: "Closed day" });
