@@ -1,7 +1,8 @@
 // PF-21w (PF-21's part 2; P-579, P-584 (8)): the complaints record's routes under /api/platform/complaints. Each declares
 // its access (PF-4's keys.ts; the platform guard refuses the rest, default deny); every rule stays in ComplaintsService
 // (complaints.ts, its "Who" lines): agent/complaint:record records; agent/complaint:read reads every one; record + read
-// act on any and change the handler; the handler reads and handles their own without either key; anyone else gets the
+// act on any and change the handler; the handler reads their own without either key and handles it while holding the
+// record key (PF-21j); anyone else gets the
 // same 404 as for another firm's complaint. Delete is refused for everyone (the service's 405: the same answer for any
 // id, so it says nothing about which ids exist). The controller only reads the request and calls the service.
 import { Body, Controller, Delete, Get, Headers, HttpCode, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
@@ -14,7 +15,7 @@ type B = Record<string, unknown>;
 type Q = Record<string, unknown>;
 
 const SEES = "the handler sees their own; agent/complaint:read sees all, checked by the service";
-const HANDLES = "the handler handles their own; record + read act on any, checked by the service";
+const HANDLES = "the handler holding agent/complaint:record handles their own; record + read act on any, checked by the service";
 
 /** A query value as one string: a repeated parameter (?view=a&view=b) is not one value, so the service refuses it. */
 const one = (v: unknown): string | undefined => (v === undefined ? undefined : typeof v === "string" ? v : "\u0000");

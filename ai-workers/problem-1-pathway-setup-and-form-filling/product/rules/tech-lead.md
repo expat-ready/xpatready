@@ -160,3 +160,14 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-668 | Engineering System v1 cards T9, T11, T12, T14, T16, T17, W1, W3-W6 adopted as recommended. | prose | 17 Nov |
 | P-646 | Jam alarms each check (disk, no merge 60 min, CI queue over 30); drafts until Approve; act unasked. | script: lead-watch.sh (1b, 2b) | 16 Nov |
 | P-674 | Clean-up (with P-675 to P-677): plan now, staged moves after the org move; repo name platform; October files out (tagged); business plan private. | prose | 17 Nov |
+
+
+## Moved 19 Nov (Lead 94): RULES rows P-664 to P-670, word for word
+| P-664 | qa verdict records PRs go first in the merge queue. | prose (.mergify.yml priority owed) | 17 Nov |
+| P-665 | Fast PR checks, one full check after Approve, every suite once in the batch (CI-B on CI-A). | prose (CI-B owed) | 17 Nov |
+| P-666 | Builders start on high effort; 48 h stop rule on review rounds, CI rounds, plan points. | prose | 17 Nov |
+| P-667 | Rules v2 (21 enforced, 12 judged) replaces this page when it lands; old rows in an ID map. | prose | 17 Nov |
+| P-668 | Engineering System v1 cards adopted as recommended: list in `rules/tech-lead.md` › Moved 19 Nov. | prose | 17 Nov |
+| P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
+| P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
+| P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |

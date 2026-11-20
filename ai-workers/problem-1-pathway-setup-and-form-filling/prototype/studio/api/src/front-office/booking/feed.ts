@@ -1,6 +1,6 @@
 // FO-3a part 2b (AG-4-67; concept fo-3-booking §6 "Calendar, list, detail", BR-14, Q4): the staff read feed. One answer
 // carries everything the calendar, list and detail show, so the browser reads nothing else and works out no rule
-// (STANDARDS §7): the times in UTC and the office zone (the firm's zone until PF-18a, concept §6b; FO-3h `hostZone`), the
+// (STANDARDS §7): the times in UTC and the office zone (each host's office, PF-18a; the firm's for a host with none; `hostZone`), the
 // person, the type, the host, what the booking hangs on, FO-3sa's recorded "outside hours", the attendance, whether a
 // consult record exists, and, per viewer, `canAnswerAttendance`, `canEdit` and `attendanceDue`.
 // Routes: `BookingFeedController` below (GET feed, GET feed/:id), registered before FO-3sr's `/:id`.
@@ -45,7 +45,7 @@ export class BookingFeed {
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from } };
     const rows = q.view === "team" ? await this.b.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`, where, "startsAt")
       : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, staffId: ctx.staffId }), orderBy: [{ startsAt: "asc" }, { id: "asc" }] });
-    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId), items: await this.items(ctx, rows) };
+    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId, this.ports.offices), items: await this.items(ctx, rows) };
   }
 
   /** `GET bookings/feed/:id`: one booking, for its host or within the record rule (Q4); else the one not-found. */
@@ -62,8 +62,9 @@ export class BookingFeed {
     const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))];
     const pieces = async <T>(xs: string[], read: (part: string[]) => Promise<T[]>) => { const out: T[] = []; for (let i = 0; i < xs.length; i += PIECE) out.push(...await read(xs.slice(i, i + PIECE))); return out; };
     const personIds = uniq(rows.map((r) => r.personId)), leadPeople = uniq(rows.filter((r) => !r.prospectId).map((r) => r.personId));
-    const [zone, vis, types, hosts, people, prospects, leads, records, lines] = await Promise.all([
-      hostZone(this.db, f, ctx.staffId), visibilityOf(this.db, ctx),
+    const [zones, vis, types, hosts, people, prospects, leads, records, lines] = await Promise.all([
+      // PF-18a: each booking's office zone is its host's office's (the firm's when the host has no office), as the host's mail states it.
+      Promise.all(uniq(rows.map((r) => r.staffId)).map(async (h) => [h, await hostZone(this.db, f, h, this.ports.offices)] as const)).then((z) => new Map(z)), visibilityOf(this.db, ctx),
       pieces(uniq(rows.map((r) => r.typeId)), (part) => this.db.foConsultationType.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, name: true, purpose: true, selfServiceLimitMinutes: true } })),
       pieces(uniq(rows.map((r) => r.staffId)), (part) => this.db.platformStaff.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, displayName: true } })),
       pieces(personIds, (part) => this.db.foPerson.findMany({ where: firmScope(f, { id: { in: part } }), select: { id: true, givenNames: true, familyName: true, email: true } })),
@@ -104,7 +105,7 @@ export class BookingFeed {
       const limit = type?.selfServiceLimitMinutes ?? 0;
       return {
         id: r.id, status: r.status, mode: r.mode, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),
-        officeTimeZone: zone, bookerTimeZone: r.bookerTimeZone,
+        officeTimeZone: zones.get(r.staffId) ?? "", bookerTimeZone: r.bookerTimeZone,
         type: { id: r.typeId, name: type?.name ?? "" },
         host: { id: r.staffId, name: host?.displayName ?? "" },
         person: person ? { id: person.id, name: [person.givenNames, person.familyName].filter(Boolean).join(" "), email: person.email } : null,
