@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (18:0x IST 20 Nov):** **#2029 approved head 65f766108** (Review 5 read the new code at 817c274d1; break test: no Blocker or Major, m3 for the Lead), sent to Lead 3. Owed: a full run on the head plus the cover line "Batch failures covered: 44575458798: shard (18), ci" (shard 18 = check_aud1a DW3, the PR's own, fixed in 865df8f2e), then the Lead's P-423 read and label.
+
 **Lead B (9) update (17:4x IST 20 Nov):** #2029's lane pushed ae0db80a0, 535ed62c8 and d54f8bacf (a main merge), still without the cases rows file; module-cards red (job 136279922697). Lead 3 sent the instruction in the lane's prompt box (bubble confirmed 17:4x): rows file, push, Approve on the exact head, breaker, label.
 
 **Lead B (9) update (17:2x IST 20 Nov):** #2029: **Lead 3's overnight runtime lane is the only writer** (it pushed 9d60f8a74); other lanes stop (comment 7038750128). 9d60f8a74 is still red on module-cards (it changed only platform/MODULE.md); the cases rows file `MODULE.cases.rows/PF-12b.md` is still owed, then an Approve on the new head. Lead 3 told; Lead 3 does the Approve check and the label.
