@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-761**, 14:40 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1440-lead2s3-as-of-P-756.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-765**, 16:15 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -158,6 +158,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
 | IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
 | IDX-21 | P-757 to P-761 (browser merges of queue-blocking check fixes, browser authority, clean-up window, QA-542 Sample, 10-min check) stand: word for word in DECISIONS. | script: lead-watch.sh (part) | 20 Nov |
+| IDX-22 | P-762 (enforcement tooling merged by the Lead after Approve + green ci + read), P-763 (agents do every GitHub, claude.ai or console step themselves; only sign-in, codes, payment, accounts, permission widening go to the founder), P-764 (product and tooling never share a merge batch), P-765 (founder exceptions to the P-734 lock; tag "Lock: founder exception.") stand: word for word in DECISIONS. | hook: stop-check.sh founder-click-guard (P-763); script: check-docs.sh lock (P-765); ENF-764 (owed) | 20 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
