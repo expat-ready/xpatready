@@ -486,7 +486,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
+          cache: ${{ github.event_name != 'workflow_dispatch' && 'npm' || '' }}   # as job shard (check-queue-gate.sh: no plain cache: npm in ci.yml); pr-suites runs on pull_request only
           cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
       - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser suites need)
         run: bash "$P/tools/cloud-setup.sh"
