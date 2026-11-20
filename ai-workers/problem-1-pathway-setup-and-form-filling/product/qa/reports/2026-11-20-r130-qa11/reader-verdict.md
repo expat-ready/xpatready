@@ -20,3 +20,6 @@ Judgement: keyboard at 400/1024 and a positive Stage filter at 400/1024 were not
 
 ## qa 11's follow-up on (2)
 The check gained, at each of 400, 1024 and 1440: "Move to…" by keyboard only (focus, Enter, ArrowDown, Enter) moves a card to Qualified with exactly one PERSON move into Qualified underneath, no sideways scroll; then the List's Stage = Qualified shows that prospect and none of the Engaged ones. 53/55 twice (`check_r130_run1.txt`, `check_r130_run2.txt`); the two FAILs are the date-range lines of (4).
+
+## qa 11, after the records review
+This reader was not shown QA-533 (its row was out of `BUGS.md` after #2296's split, and qa's brief did not name it). qa 9's earlier readers refused Works on it. R1.30 is scored **Partial** on QA-533 (see the report).
