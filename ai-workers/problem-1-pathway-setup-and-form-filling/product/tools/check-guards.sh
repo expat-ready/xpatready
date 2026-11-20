@@ -194,7 +194,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 31 trusted|product/tools/queue-blocked.py|s/c.get("author_association") not in TRUSTED or //|check-queue-blocked.sh
 31 who|product/tools/queue-blocked.py|s/ or (c.get("user") or {}).get("login") not in who:/:/|check-queue-blocked.sh
 31 source|product/tools/queue-blocked.py|s/ and main_like(r.get("head_branch"))\]/]/|check-queue-blocked.sh
-31 measured|product/tools/queue-blocked.py|s/("" if note else "main.s guards green, ")/"main.s guards green, "/|check-queue-blocked.sh
+31 measured|product/tools/queue-blocked.py|s/"" if note else "main.s guards green, "/"main.s guards green, "/|check-queue-blocked.sh
 31 pages|product/tools/queue-blocked.py|s/^        if len(page) < 100 or enough(page):/        if True:/|check-queue-blocked.sh
 31 rename|product/tools/queue-blocked.py|s/, f.get("previous_filename"))/,)/|check-queue-blocked.sh
 31 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh

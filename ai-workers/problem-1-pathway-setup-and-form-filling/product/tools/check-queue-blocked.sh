@@ -85,9 +85,12 @@ put "repos/$R/commits/$H/check-runs?check_name=ci&filter=latest&per_page=100" '{
 out=$(run); ok "ci still running: silent" "$(quiet "$out" && echo 1)" "$out"
 put "repos/$R/commits/$H/check-runs?check_name=ci&filter=latest&per_page=100" '{"check_runs":[]}'
 out=$(run); ok "no ci on the head: silent" "$(quiet "$out" && echo 1)" "$out"
+put "repos/$R/commits/$H/check-runs?check_name=ci&filter=latest&per_page=100" '{"check_runs":[{"name":"ci","status":"completed","conclusion":"success","completed_at":"2026-11-20T07:10:00Z","app":{"slug":"github-actions"}},{"name":"ci","status":"in_progress","conclusion":null,"app":{"slug":"github-actions"}}]}'
+out=$(run); ok "a green ci with a newer ci still running (a re-run): silent" "$(quiet "$out" && echo 1)" "$out"
 
 scene skip; put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"t","draft":true,"head":{"sha":"'$H'","ref":"fix/x"},"labels":[{"name":"review: approved"}]},{"number":11,"title":"t","draft":false,"head":{"sha":"'$H'","ref":"mergify/merge-queue/x"},"labels":[{"name":"review: approved"}]}]'
-out=$(run); ok "a draft and a Mergify batch PR: silent" "$(quiet "$out" && echo 1)" "$out"
+put "repos/$R/pulls/11/files?per_page=100&page=1" '[{"filename":".mergify.yml"}]'
+out=$(run); ok "a draft and a Mergify batch PR: silent, and neither is read" "$(quiet "$out" && ! grep -q 'pulls/1[01]/' "$D/log" && echo 1)" "$out"
 
 scene unread; rm -f "$D"/*guards*; out=$(run)
 ok "guards runs unreadable: said on a warn line, and the queue counts as possibly held (the fix still shows)" "$(grep -q '^warn  queue blocked by checks: main.s guards runs unreadable' <<< "$out" && grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
