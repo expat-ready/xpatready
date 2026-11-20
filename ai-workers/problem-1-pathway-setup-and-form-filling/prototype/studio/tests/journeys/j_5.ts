@@ -12,8 +12,10 @@
 //       Person panel's roles).
 //   DW1: lock-out at the next request, not at expiry: the deactivated person's token, still unexpired, gets 401 on
 //       /api/platform/me at once; the revocation row and the audit line (before and after) are read from the database.
-//   DW2: the second step is checked, and the check fails on the fake (P-606): the sign-in door without the second step
-//       (missing or false) answers 401 TWO_STEP_REQUIRED in words and no token; the same request with it gives a token.
+//   DW2: the second step is checked: the sign-in door without it (missing, false, or the text "true") answers 401
+//       TWO_STEP_REQUIRED in words and no token; the control, the same request with it, gives a working token. No fake is
+//       in this path (the stand-in is the provider here), so this is a pass and its control, not a fake-to-real swap.
+//   The race of a sign-in with Deactivate or Sign out everywhere (break B1, B2) is tests/check_pf4r_lockout_race.ts.
 //       (The guard's own `amr` check on a token is PF-4's check_pf4_identity.ts.)
 // What this cannot show (shape L2, L3): a wrong code, an expired code, repeated wrong tries and a passkey happen on the
 // identity provider's own pages (concept pf-6-staff r2); they need a real Cognito pool (the live proof, C21).
@@ -54,7 +56,6 @@ const api = async (t: string, method: string, path: string, body?: unknown): Pro
 };
 // Seats lent for the walk (the Sample plan may be full on a kept copy), given back in the finally.
 const plan = sql(`select p.id || '|' || p.seats_limit from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = '${A}' and s.status <> 'ENDED' limit 1`).split("|");
-sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 5} where id = '${plan[0]}'`);
 
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
@@ -72,7 +73,7 @@ async function signInOnCard(p: Page, email: string) {
   await p.getByLabel("Firm key").fill("sample-firm"); await p.getByLabel("Work email").fill(email); await p.keyboard.press("Enter");
 }
 /** The next request: a move inside the app (My account's Profile link) makes the frame check the session again. */
-async function nextClick(p: Page) { await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click().catch(() => p.goto(`${BASE}/account`)); }
+async function nextClick(p: Page) { await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click({ timeout: 15_000 }); }
 /** Opens a person's panel from Team (the Owner's page). */
 async function openPerson(p: Page, email: string, view: "active" | "inactive" = "active") {
   await p.goto(`${BASE}/platform/team${view === "active" ? "" : `?view=${view}`}`); await p.locator("[data-seat-line]").waitFor({ timeout: 30_000 });
@@ -88,6 +89,7 @@ async function act(p: Page, button: string, reason?: string) {
 
 const NEW = `j5-officer-${run}@sample-firm.example.com`;
 let newId = "";
+sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 5} where id = '${plan[0]}'`);   // lent; given back first in the finally
 try {
   // ---------------------------------------------------------------------------------------------- W1: invite → accept
   const owner = await fresh();
@@ -120,7 +122,8 @@ try {
   await dev1.locator("[data-account]", { hasText: NEW }).waitFor({ timeout: 30_000 });
   newId = sql(`select coalesce((select id::text from platform_staff where email = '${NEW}'), '')`);
   await shot(dev1, "W1-invitee-signed-in-1440");
-  ok("J-5 W1 step 4: the invitee accepts in a second browser and is signed in (My account shows them; one staff row)", !!newId && (await dev1.locator("[data-staff-name]").count()) === 1);
+  const shownName = (await dev1.locator("[data-staff-name]").innerText()).trim(), storedName = sql(`select coalesce(display_name, '') from platform_staff where id = '${newId}'`);
+  ok("J-5 W1 step 4: the invitee accepts in a second browser and is signed in (My account shows them; the header shows their name as stored)", !!newId && !!shownName && shownName === storedName, { shownName, storedName });
 
   // ------------------------------------------------------------------- W2: one session; sign out everywhere
   const dev2 = await fresh();
@@ -136,7 +139,7 @@ try {
   await openPerson(owner, NEW);
   await axeOf(owner, "W2 the Person panel");
   await act(owner, "[data-sign-out-everywhere]");
-  ok("J-5 W2 step 2: the Owner's Person panel → Sign out everywhere is done (one revocation row)", Number(sql(`select count(*) from platform_session_revocation where staff_id = '${newId}' and reason <> 'another-device'`)) >= 1);
+  ok("J-5 W2 step 2: the Owner's Person panel → Sign out everywhere is done (one revocation row of its own)", Number(sql(`select count(*) from platform_session_revocation where staff_id = '${newId}' and reason <> 'another-device'`)) === 1);
   await nextClick(dev2);
   await card(dev2).waitFor({ timeout: 20_000 });
   const afterSignOut = await api(dev2Token, "GET", "/platform/me");
@@ -167,6 +170,8 @@ try {
   await nextClick(dev2);
   await card(dev2).waitFor({ timeout: 20_000 });
   await shot(dev2, "W3-deactivated-next-click-1440");
+  // The card gives no reason here (the frame keeps only the 401's code: review m1, break B3, a follow-up for the tech
+  // lead); the words come when they try to sign in (step 3).
   ok("J-5 W3 step 2: their next click shows the sign-in card (the page's work is gone)", (await dev2.locator("[data-staff-name]").count()) === 0);
   await signInOnCard(dev2, NEW);
   const refusal = dev2.locator("[data-sign-in-card]");
@@ -184,6 +189,8 @@ try {
   await dev2.getByLabel("Work email").fill(NEW); await dev2.keyboard.press("Enter");
   await dev2.locator("[data-staff-name]").waitFor({ timeout: 20_000 });
   const back = await api(await tokenOf(dev2), "GET", "/platform/me");
+  const oldAfter = await api(liveToken, "GET", "/platform/me");
+  ok("J-5 DW1: after reactivation the token from before the deactivation stays dead (401): only a new sign-in brings them back", oldAfter.status === 401, oldAfter.body?.code);
   ok("J-5 W4 step 2: they sign in again with the role they had (Case Officer): reactivation keeps the roles (AG-1-15)", back.status === 200 && JSON.stringify(back.body?.roles) === JSON.stringify(["CASE_OFFICER"]), back.body?.roles);
   // Ends at R1.6's first step: the Owner's Person panel, roles.
   await openPerson(owner, NEW);
@@ -196,13 +203,16 @@ try {
   ok("J-5 DW2 pass: the sign-in door without the second step (missing, false, or the text \"true\") answers 401 TWO_STEP_REQUIRED in words and no token",
     [noStep, falseStep, textStep].every((a) => a.status === 401 && a.body?.code === "TWO_STEP_REQUIRED" && /Two-step sign-in is required/.test(String(a.body?.detail)) && !a.body?.token), [noStep.body?.code, falseStep.body?.code, textStep.body?.code]);
   const withStep = await signInApi(NEW, true), mine = withStep.body?.token ? await api(withStep.body.token, "GET", "/platform/me") : { status: 0, body: null };
-  ok("J-5 DW2 fail (the fake): the same request with the second step gives a token that /me accepts as this person, so the refusal above is the second-step check and nothing else",
+  ok("J-5 DW2 control: the same request with the second step gives a token that /me accepts as this person, so the refusal above is the second-step check and nothing else",
     withStep.status === 200 && mine.status === 200 && mine.body?.staffId === newId, [withStep.status, mine.status]);
 } finally {
-  // Repeatable: the walk's new person leaves (seat freed) and the lent seats go back, whatever failed above.
-  const owner = (await signInApi(R_EMAIL)).body?.token as string;
-  const left = newId && sql(`select status from platform_staff where id = '${newId}'`) === "ACTIVE" ? await api(owner, "POST", `/platform/staff/${newId}/deactivate`, { reason: "J-5 walk done (Sample)" }) : { status: 200, body: null };
+  // Repeatable: the lent seats go back first, then the walk's new person leaves (seat freed), whatever failed above;
+  // a failed clean-up is its own FAIL line and never hides the first failure (review m3).
   sql(`update platform_plan set seats_limit = ${Number(plan[1])} where id = '${plan[0]}'`);
+  let left: Ans = { status: 200, body: null };
+  try {
+    if (newId && sql(`select status from platform_staff where id = '${newId}'`) === "ACTIVE") left = await api((await signInApi(R_EMAIL)).body?.token as string, "POST", `/platform/staff/${newId}/deactivate`, { reason: "J-5 walk done (Sample)" });
+  } catch (e) { left = { status: 0, body: String(e) }; }
   ok("J-5 clean-up: the walk's new person is deactivated and the lent seats are given back", left.status === 200 && sql(`select seats_limit from platform_plan where id = '${plan[0]}'`) === plan[1], left.status);
 }
 ok("J-5: no page error in the browser", errors.length === 0, errors);

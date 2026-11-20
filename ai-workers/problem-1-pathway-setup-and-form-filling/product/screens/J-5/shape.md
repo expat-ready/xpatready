@@ -23,20 +23,21 @@ J-5, and the live proof.
 screens on main on an isolated copy (`PLATFORM_IDENTITY=local`, its own database and port, never :4400) at 1440 px:
 * `J-5 W1`: the Owner signs in → Team → Invite people (Case Officer) → in a second browser the invitee opens the link from the
   demo inbox → Accept → signed in, their name in the header.
-* `J-5 W2`: the Owner, Person panel → Sign out everywhere → the invitee's next click shows the sign-in card in words; they sign
-  in again.
-* `J-5 W3`: the Owner → Deactivate with a reason → the invitee's next request is refused in words and the sign-in card shows;
-  their sign-in is refused on screen with "This staff account is not active. Ask your firm's Owner or Admin."
+* `J-5 W2`: a second device's sign-in ends the first ("Signed in elsewhere"); the Owner, Person panel → Sign out everywhere →
+  the invitee's next click shows the sign-in card (no reason on it: see "Found while building"); they sign in again.
+* `J-5 W3`: the Owner → Deactivate with a reason → the invitee's next request is refused (401 in words by the API) and the
+  sign-in card shows, without a reason; their sign-in is refused on screen with "This staff account is not active. Ask your
+  firm's Owner or Admin."
 * `J-5 W4`: Reactivate → the invitee signs in again with the same roles (AG-1-15: reversible). The walk ends at R1.6's first
   step, the Person panel's roles.
 * `J-5 DW1`: the deactivated person's old token, not yet expired, gets 401 on `/api/platform/me` at the next request (not at
   expiry). The revocation row and the audit line (before and after) are read back from the database.
-* `J-5 DW2`: no second step → 401 `TWO_STEP_REQUIRED` in words (sign-in without `secondStep`, and a token whose `amr` lacks
-  `otp`). It fails on the fake: the same check against a token signed with `amr: ["pwd","otp"]` must pass (P-606).
+* `J-5 DW2`: no second step → 401 `TWO_STEP_REQUIRED` in words at the sign-in door (missing, false, the text "true"), with a
+  control (the same request with it works). A token whose `amr` lacks `otp` is PF-4's `check_pf4_identity.ts`, not repeated.
 * axe-core on the sign-in card, Signed in elsewhere and the Person panel. Screenshots go in `screens/J-5/screenshots/`.
 
-**Touch:** `prototype/studio/tests/journeys/j_5.ts` (new) and `product/screens/J-5/*`. App code changes only if the walk stops,
-named in the PR. Files of the open PRs for the 32 (#2608, #2556, #2326, #2568, #2478) were read: none is touched.
+**Touch:** `prototype/studio/tests/journeys/j_5.ts` (new) and `product/screens/J-5/*`; after the breaker's B1 and B2 (below),
+`api/src/platform/identity/service.ts`, `tests/check_pf4r_lockout_race.ts` (new) and `api/src/platform/MODULE.rows/R1.5.md`. Files of the open PRs for the 32 (#2608, #2556, #2326, #2568, #2478) were read: none is touched.
 **Done when:** `J-5 W1..W4` and `J-5 DW1..DW2` exit 0 on a fresh isolated copy built from the branch, and once in a visible
 browser at 1440 px. Reviewer Approve at the head, plus a breaker run (permissions).
 
@@ -51,3 +52,14 @@ settings checked against AWS's own pages (PF-4b's first step).
 ## What is not met after part 1
 L2 and L3. qa can score part 1's walk tomorrow, but R1.5 stays Partial until part 3 runs. That is why part 1 carries no
 `Completes: R1.5` unless the tech lead rules otherwise (question 1 in the PR).
+
+## Found while building (breaker, 20 Nov; `break-report.md`)
+* **B1 Major, fixed here:** a Deactivate or Sign out everywhere raced by the person's parallel sign-ins answered 500 (7 of 10):
+  the sign-in locked the person, then the firm; staff changes lock the firm, then the person; Postgres deadlocked. The
+  sign-in now takes the firm's row first (key share), as every staff change does.
+* **B2 Major, fixed here:** a sign-in checked "active" before its lock and was dated after the deactivation, so reactivation
+  brought its token back. The sign-in now re-checks the person under the lock (refused 401 STAFF_NOT_ACTIVE; the Cognito path
+  too), and a deactivation's revocation is never earlier than the person's latest sign-in. Fail test:
+  `check_pf4r_lockout_race.ts` (1/5 on main's code, 5/5 after, twice).
+* **B3 Minor, not fixed here (a question for the tech lead):** after a lock-out the sign-in card gives no reason; the frame
+  keeps only the 401's code (`web/src/modules/platform/session.ts:82`, `frame.tsx:98`). EXPERIENCE §2.7 "Reasons everywhere".
