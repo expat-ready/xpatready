@@ -5,10 +5,10 @@ Written 21 Nov 03:1x IST by Build Lead C (4), after #2594 (CS-DL3 part 2) merged
 **PR title:** `screens: CS-DL3 part 3 — a government step's reminder reaches the case officer; J-74 walks it`
 **Model:** Opus 5.5, effort medium. Reviewer; no breaker (no schema, no contract, no new route).
 
-**Ready when:** **#2596 has merged** (`msg_notification`, `PrismaNotificationPort` bound to `CASE_DEADLINE_NOTIFICATIONS`, `GET /api/platform/me/notifications/items`), **and a screen that lists a person's reminders is on `main`**: Lead B's PF-18h deadline "Needs you" item (QA-471) or PF-18ns's bell and list. Lead B says which one. This PR builds neither; it walks whichever has merged. If both are on `main`, walk "Needs you".
+**Ready when:** **#2596 has merged** (`msg_notification`, `PrismaNotificationPort` bound to `CASE_DEADLINE_NOTIFICATIONS`, `GET /api/platform/me/notifications/items`), **and #2621 has merged** (Lead B's PF-18h; its deadline "Needs you" item is the screen this PR walks, ruled by Lead 8 21 Nov). This PR builds neither; it walks "Needs you". The lane may start on #2596 + #2621's branches and finish when both are on `main`.
 
 **Build (touch list, nothing else):**
-1. `web/src/runtime/milestones.tsx:96`: the `data-gov-not-sent` sentence ("…none is sent to anyone until the firm's notifications are connected") is false once #2596 lands. Replace it with one plain sentence that names who is reminded and where it shows, e.g. "The case officer and the lead representative are reminded in [Needs you / Notifications]." Wording follows the surface that merged. Rename the data attribute to `data-gov-reminded`, and update `check_csdl3_milestones_browser.ts` to match (DW8 keeps its pass and fail).
+1. `web/src/runtime/milestones.tsx:96`: the `data-gov-not-sent` sentence ("…none is sent to anyone until the firm's notifications are connected") is false once #2596 lands. Replace it with one plain sentence that names who is reminded and where it shows, e.g. "The case officer and the lead representative are reminded in Needs you." (Match the words #2621 uses for that list.) Rename the data attribute to `data-gov-reminded`, and update `check_csdl3_milestones_browser.ts` to match (DW8 keeps its pass and fail).
 2. `tests/journeys/j_74.ts`: after the walk records the biometrics step (W5), add steps that:
    * advance the clock port to 7 working days before its due date, skipping the firm's closed days;
    * run the case-deadline job through its test entry, the way `check_csdl3_milestones.ts` does;
@@ -24,7 +24,7 @@ Written 21 Nov 03:1x IST by Build Lead C (4), after #2594 (CS-DL3 part 2) merged
 * `check_csdl3_milestones_browser.ts` and `check_csdl3_milestones.ts` pass;
 * the module-card check passes;
 * full `ci` is green.
-Body says "Completes: R1.74", and adds "Fixes: QA-471 (part: seen on screen)" only if the reminder screen it walks is QA-471's "Needs you".
+Body says "Completes: R1.74", and adds "Fixes: QA-471 (part: seen on screen)".
 
 **Parallel safety:** one screen file (one sentence), one test, one journey, one card line. It touches no `ports/`, `api/`, migration or notification file. A clash with Lead B's PF-18h or PF-18ns is impossible on files; if their item's wording changes after merge, walk what is on `main`.
 
