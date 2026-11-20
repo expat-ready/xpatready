@@ -142,7 +142,9 @@ export class FirmSignUp {
     const known = await this.knownAccount(email);
     if (known) {
       await touchFirms(this.db, [known]);   // PF-12b: the lookup read that firm's staff; its line before the email (P-607)
-      await this.ports.mail.send({ firmId: known, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/sign-in`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
+      // PF-5v part 2 (review M1 of #2456): our own platform account email (PF-19p), never the firm's: as the firm's it
+      // would go From the firm, and anyone repeating the public form would spend the firm's daily email cap.
+      await this.ports.mail.send({ platformAccount: true, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/account`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
       return;
     }
     const token = randomBytes(32).toString("base64url");

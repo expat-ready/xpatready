@@ -20,7 +20,7 @@ import { isBarcodeForm } from "../../contracts/forms.ts";
 import type { FormFact } from "../../engine/runtime/forms.ts";
 import { ReviewDecision, ReviewOpen, ReviewReapprove, ReviewTick, SendForReview, type ChangedSinceReview, type FormStamp, type ReviewRound, type ReviewRoundFiling } from "../../contracts/runtime.ts";
 import { problemFromZod } from "../../contracts/programs.ts";
-import { actorOf, CaseRead, Db, RUNTIME_ACTORS, type Actor } from "./core.ts";
+import { actorOf, Audit, CaseRead, Db, RUNTIME_ACTORS, type Actor } from "./core.ts";
 import { firmByKey } from "./firms.ts";
 import { Runtime, type Reached } from "./runtime.ts";
 import { CasePrepare, type ReviewBasis, type ReviewBasisForm } from "./case-prepare.ts";
@@ -181,7 +181,7 @@ export class ReviewRounds {
     return { n, per };
   }
   private async audit(tx: Tx, c: Reached, actor: Actor, action: string, entityKey: string, summary: string, detail: unknown) {
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action, entity: "review round", entityKey, summary: summary.slice(0, 600), detail: detail as object } });
+    await new Audit(tx as never).log(c.workspaceId, actor.id, action, "review round", entityKey, summary.slice(0, 600), detail);
   }
 
   // ---------------------------------------------------------------- BR-1 send
@@ -437,7 +437,7 @@ export class ReviewRounds {
       await this.lockCase(tx, c);
       const review = await tx.filingReview.create({ data: { workspaceId: c.workspaceId, filingId: x.filing, reviewedBy: actor.id, kind, licenceNumber: licence!.number, note: null, factsHash: rd!.facts_hash } });
       const roundId = await write(tx, review.id, kind);
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: kind, entity: "filing", entityKey: x.filing, summary: `${actor.name} ${kind === "self_reviewed" ? "self-reviewed" : "reviewed"} a filing on case ${c.id.slice(0, 8)} (licence ${licence!.number}), each form stamped`.slice(0, 600), detail: { case: c.id, round: roundId } } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, kind, "filing", x.filing, `${actor.name} ${kind === "self_reviewed" ? "self-reviewed" : "reviewed"} a filing on case ${c.id.slice(0, 8)} (licence ${licence!.number}), each form stamped`.slice(0, 600), { case: c.id, round: roundId });
       return review;
     }, TX));
     const name = this.nameOf(c, actor.id) ?? actor.name;

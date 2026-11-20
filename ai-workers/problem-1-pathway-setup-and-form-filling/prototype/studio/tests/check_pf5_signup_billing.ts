@@ -192,6 +192,8 @@ try {
   const known = await up(await form(), "10.0.0.6");
   ok("PF-5 pass/fail: a sign-up for an email that already has an account → the same answer, an email saying \"You already have an account. Sign in.\", nothing stored",
     known.message === ACCEPTED && mail.inbox("owner@maple.example.com").some((m) => m.text.startsWith(ALREADY)) && pendingCount("owner@maple.example.com") === "2" && verifyMails("owner@maple.example.com").length === 2);
+  { const a = mail.inbox("owner@maple.example.com").find((m) => m.text.startsWith(ALREADY)) as { platformAccount?: true; firmId?: string; text: string } | undefined;
+    ok("PF-5v part 2 (review M1 of #2456): the \"already have an account\" email is our platform account email (no firm: never the firm's sender or its daily cap) and links to the firm sign-in card", a?.platformAccount === true && a.firmId === undefined && a.text.endsWith("/account"), a); }
   await up(await form(), "10.0.0.9");
   ok("PF-5 fail (break m3): at most 3 sign-up emails to one address an hour (the 4th sends nothing, same answer)", mail.inbox("owner@maple.example.com").length === 1);
   failMail = true;

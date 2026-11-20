@@ -57,6 +57,9 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
+# on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
+python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -200,5 +203,8 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+# 13. Founder asks that are clicks (ENF-763, P-752/P-763): STATE's "For the founder", "Founder asks open" and "Needs you"
+# entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
+fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
 
 exit "$act"

@@ -174,9 +174,9 @@ export class ReleaseUpdates {
       if (over.length) await tx.filingFormAddition.updateMany({ where: { id: { in: over.map((a) => a.id) }, removedAt: null, filing: { stageId: c.stage.id } }, data: { removedAt: new Date(), removedBy: actor.id, removedReason: `Part of ${target.label}: the release's own line replaces the form added by the case officer.` } });
       takenOver = over.map((a) => ({ form: a.formKey, person: names.get(a.subjectId) ?? "" }));
       // Break m8 (round 1): the audit line is written in the move's own transaction: no move without its line.
-      await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "moved_release", entity: "case", entityKey: c.id, combinationId: c.combinationId,
-        summary: `${actor.name} moved case ${short(c.id)} from ${before.current.label} (pin revision ${before.current.revision}) to ${target.label} (pin revision ${row.revision}) of ${before.combination}; reason given`.slice(0, 600),
-        detail: { case: c.id, from: { version: before.current.version, revision: before.current.revision }, to: { version: target.version, revision: row.revision }, counts } } });
+      await new Audit(tx as never).log(c.workspaceId, actor.id, "moved_release", "case", c.id,
+        `${actor.name} moved case ${short(c.id)} from ${before.current.label} (pin revision ${before.current.revision}) to ${target.label} (pin revision ${row.revision}) of ${before.combination}; reason given`.slice(0, 600),
+        { case: c.id, from: { version: before.current.version, revision: before.current.revision }, to: { version: target.version, revision: row.revision }, counts }, c.combinationId);
       return row;
     }, { timeout: 15_000, maxWait: 10_000 }));
     if (made === "stale") return stale();
