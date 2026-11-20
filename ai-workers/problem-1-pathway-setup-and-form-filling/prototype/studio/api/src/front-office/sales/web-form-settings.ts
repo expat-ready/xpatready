@@ -8,7 +8,12 @@
 //          trailing slash), duplicates merged, at most MAX_SITES. A refused entry names its place on the field
 //          (`sites.<n>`); nothing is saved. The save names the version it read: another person's newer save → 409 STALE.
 //          The row and one audit line (entity fo_web_form) are written in one transaction.
-// Not here (the panel's later parts, concept screen 2b): on/off, consent wording version, thank-you text.
+//   enabled (R1.26, QA-605; the tech lead's ruling 20 Nov: switching the form on is part of R1.26): switches one form on
+//          or off. The same version check (409 STALE), the same transaction; one audit line per change
+//          (fo.web_form.enabled_changed) with the state before and after in full (`before`, `after`: booleans, no
+//          personal data). The same state again changes nothing: no new version, no audit line. A form that is off
+//          refuses public sends as before (public.ts: "This form is not available").
+// Not here (the panel's later parts, concept screen 2b): consent wording version, thank-you text.
 import type { PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
@@ -100,6 +105,32 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
       firmId: ctx.firmId, actor: actorOf(ctx), action: "fo.web_form.sites_changed", entity: "fo_web_form", entityKey: formId,
       summary: `Web form "${before.name}": allowed sites changed (${sites.length} now; ${added.length} added, ${removed.length} removed).`,
       detail: { count: sites.length, addedCount: added.length, removedCount: removed.length, added: listFor(added), removed: listFor(removed) },
+    });
+    return view(after, origin);
+  });
+}
+
+/** Switch one form on or off (R1.26, QA-605). */
+export async function saveEnabled(db: PrismaClient, audit: AuditPort<Tx>, ctx: StaffContext, formId: string, body: unknown, publicOrigin: string) {
+  if (typeof formId !== "string" || !UUID.test(formId)) return notFound("web form");
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (typeof b !== "object" || Array.isArray(b) || Object.keys(b).some((k) => k !== "enabled" && k !== "version")) return unprocessable("Send on or off and the version you read.", { body: "Send on or off and the version you read." });
+  if (typeof b.enabled !== "boolean") return unprocessable("Choose on or off.", { enabled: "Choose on or off." });
+  if (typeof b.version !== "string" || Number.isNaN(Date.parse(b.version))) return unprocessable("Reload the page and try again.", { version: "Reload the page and try again." });
+  const enabled = b.enabled;
+  const origin = siteOf(publicOrigin) ?? publicOrigin;
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`select 1 from fo_web_form where firm_id = ${ctx.firmId}::uuid and id = ${formId}::uuid for update`;
+    const before = await tx.foWebForm.findFirst({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
+    if (!before) return notFound("web form");
+    if (before.updatedAt.toISOString() !== b.version) return conflict("Someone else changed this form since you opened it. Reload to see their change, then make yours again.", "STALE");
+    if (before.enabled === enabled) return view(before, origin);
+    await tx.foWebForm.updateMany({ where: firmScope(ctx.firmId, { id: formId }), data: { enabled, updatedBy: actorOf(ctx) } });
+    const after = await tx.foWebForm.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
+    await audit.record(tx, {
+      firmId: ctx.firmId, actor: actorOf(ctx), action: "fo.web_form.enabled_changed", entity: "fo_web_form", entityKey: formId,
+      summary: `Web form "${before.name}": switched ${enabled ? "on" : "off"} (was ${before.enabled ? "on" : "off"}).`,
+      detail: { before: before.enabled, after: after.enabled },
     });
     return view(after, origin);
   });

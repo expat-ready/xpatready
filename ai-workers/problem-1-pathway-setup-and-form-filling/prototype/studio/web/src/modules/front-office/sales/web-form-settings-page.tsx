@@ -3,7 +3,8 @@
 // it (edited as a list, saved at once, the server's words on each field; a newer save by someone else says so and
 // offers a reload) and the snippet to paste on the firm's own site, from embed/snippet.ts (the one source of its text),
 // with Copy; the hosted page's link with Copy. A page and not a right panel: there is no form list on main for a panel
-// to open from yet (stated on the PR). On/off, consent wording and thank-you text are the panel's later parts.
+// to open from yet (stated on the PR). R1.26 QA-605: the form's on/off switch (the same version check: a newer change by
+// someone else says so and offers a reload). Consent wording and thank-you text are the panel's later parts.
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -46,7 +47,11 @@ function Sites({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   const inputs = React.useRef<(HTMLInputElement | null)[]>([]);
   // A newer version (a save here, or a Reload after someone else's) shows the newest list; a "someone else changed it"
   // notice goes with the old list, a "Saved." stays.
-  React.useEffect(() => { setRows(form.allowedSites.length ? form.allowedSites : [""]); setErrors({}); setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
+  // The list is reset only when the stored list changes, so switching the form on or off (a new version, the same
+  // sites) keeps what is being typed here (QA-605).
+  const stored = form.allowedSites.join(" ");
+  React.useEffect(() => { setRows(form.allowedSites.length ? form.allowedSites : [""]); setErrors({}); }, [stored]);   // eslint-disable-line react-hooks/exhaustive-deps -- keyed on the stored list's text
+  React.useEffect(() => { setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErrors({}); setSaid(null);
@@ -97,6 +102,33 @@ function Sites({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   );
 }
 
+/** R1.26 QA-605: switch the form on or off, Owner and Admin (the page is theirs); saved at once, version-checked. */
+function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) {
+  const [said, setSaid] = React.useState<{ tone: "ok" | "danger"; text: string; stale?: boolean } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const qc = useQueryClient();
+  React.useEffect(() => { setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
+  const flip = async () => {
+    setBusy(true); setSaid(null);
+    try {
+      const saved = Form.parse(await staffApi(`/front-office/web-forms/${encodeURIComponent(form.id)}/enabled`, { method: "PUT", json: { enabled: !form.enabled, version: form.version } }));
+      onSaved(saved);
+      setSaid({ tone: "ok", text: saved.enabled ? "Switched on. Visitors can send enquiries through this form." : "Switched off. Visitors now see \"This form is not available\"." });
+    } catch (x) {
+      const p = x instanceof StaffApiError ? x : null;
+      setSaid({ tone: "danger", text: p?.message ?? "Not changed. Please try again.", stale: p?.problem.code === "STALE" });
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-3" role="group" aria-labelledby={`onoff-${form.id}`}>
+      <h3 id={`onoff-${form.id}`} className="text-sm font-semibold">On or off</h3>
+      <p className="text-sm text-text-muted">{form.enabled ? "The form is on: visitors can send enquiries, on your site and on the hosted page. Switching it off stops new enquiries at once." : "Switch it on to take enquiries, on your site and on the hosted page. It takes effect at once."}</p>
+      <div><Button type="button" size="sm" variant={form.enabled ? "secondary" : "default"} busy={busy} onClick={flip}>{form.enabled ? "Switch the form off" : "Switch the form on"}</Button></div>
+      {said ? <Notice tone={said.tone} action={said.stale ? <Button type="button" size="sm" variant="secondary" onClick={() => qc.invalidateQueries({ queryKey: ["fo", "web-forms"] })}>Reload</Button> : undefined}>{said.text}</Notice> : null}
+    </div>
+  );
+}
+
 function OneForm({ form, origin, onSaved }: { form: FormT; origin: string; onSaved: (f: FormT) => void }) {
   const snippet = embedSnippet(origin, form.publicToken);
   const snippetRef = React.useRef<HTMLTextAreaElement>(null), linkRef = React.useRef<HTMLInputElement>(null);
@@ -107,6 +139,7 @@ function OneForm({ form, origin, onSaved }: { form: FormT; origin: string; onSav
         <Pill tone={form.enabled ? "ok" : "neutral"}>{form.enabled ? "On" : "Off"}</Pill>
       </div>
       {!form.enabled ? <Notice tone="warn" title="This form is off">While it is off, visitors see "This form is not available", on your site and on the hosted page.</Notice> : null}
+      <OnOff form={form} onSaved={onSaved} />
       <Sites form={form} onSaved={onSaved} />
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold">Put the form on your site</h3>
