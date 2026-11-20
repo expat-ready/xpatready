@@ -41,3 +41,34 @@ Breaker run, 20 Nov 2026. Isolated copy `brk_fo4b` with its own database (`xr_st
 - Running the PR suite rewrites `product/screens/fo-4b-embed/screenshots/*.png`. `fo4b-07-too-many-1440.png` was already modified in this working tree before this run. This breaker committed nothing.
 
 Verdict: Block (M1 open; m1-m3 do not block on their own).
+
+## Re-check on 7ec5724cf
+
+Scope: only `git diff 602a4f8b0 7ec5724cf`. Only `form-embed.js`, the test file, screenshots and this report changed; no API file did. Test set-up:
+- A fresh isolated copy `brk_fo4b2` on :4492, seeded as the suite does, now stopped and dropped.
+- The working tree stays at 602a4f8b0 (no checkout here), so each test page got the exact `git show 7ec5724cf:…/form-embed.js` through a Playwright route on `<api>/api/public/embed/form.js`, against the real API.
+- Host pages on `http://localhost:5555`, the only allowed site.
+
+### Held
+- **M1 fixed** under the exact CSP from M1 (`default-src 'self'; script-src <api>; connect-src <api>; style-src 'self'`):
+  - The honeypot's box has `hidden` and measures 0×0. The constructed stylesheet is applied (one adopted sheet, no `<style>`, button `rgb(29,78,216)`), and there are 0 CSP console errors.
+  - A person's send makes 1 lead.
+  - With `adoptedStyleSheets` removed (the fallback path), the `<style>` is blocked (1 CSP error) and the form is unstyled, but the honeypot is still 0×0 and hidden. The send makes 1 lead.
+- **m1, the case it targets**: the form is switched off after the draw. The send is followed by one read; the visitor gets "This form is not available." (state `not-available`) and 0 leads.
+- **m3 fixed**: `?wbraid=w-1&li_fat_id=l-2` is stored as `w-1|OTHER` (the first one in list order). The suite covers `gbraid`.
+- **A post refused with 429 while the read still works**: "Not sent / … wait a minute and try again.", answers kept, state `form`.
+- **Extra request per refused send**: exactly one GET per refused send, and only after an unreadable refusal (seen: POST, then GET). It counts in the per-address read limit, needs the visitor's own press (`busy` guard), writes nothing, and gives an attacker nothing it cannot already get from the open read. It does not amplify traffic.
+
+### R1 (Major, new in 7ec5724cf): a network failure, or a 429 on the read, shows "This form is not available." and erases the answers
+- **Steps, offline**: draw the form on the allowed site, fill First name and Email, wait 2 s, go offline (`context.setOffline(true)`), press Send.
+  - Observed: POST fails, GET fails, and the box is replaced by "This form is not available." (state `not-available`). The typed answers are gone and there is no retry button or link.
+  - The same happens when both requests are cut with a connection reset (`route.abort("connectionreset")`).
+  - At 602a4f8b0 this case said "The form could not be sent. Please wait a minute and try again." and kept the answers.
+- **Steps, 429 on both**: from the allowed page, use up the address's minute: 30 POSTs, then 119 reads, plus the page's own read = 120. Then fill and press Send.
+  - Observed: POST 429, read 429, then "This form is not available." with the answers erased.
+  - Cause: limit refusals carry no Access-Control-Allow-Origin, because `limit()` runs before `corsFor` (public.ts:67, :88-89, :132). The browser therefore rejects with a bare TypeError, `q.status` is never 429, and the 429 branch at the new form-embed.js:194 is dead code on a firm's site.
+- **Expected**: "not available" only on positive evidence that the form is off. A failed read cannot tell CORS, network and 429 apart. Otherwise the visitor should keep their answers and get a retry message (or the hosted-form link), as AG-2-49 rule 1 and the old line did.
+- **Why Major**: a failed connection is the most common failure in the wild, far more common than a form switched off mid-fill. Telling a visitor on a flaky mobile connection that the firm's form is off, and erasing what they typed, will lose enquiries on the firm's main public entry. The fix for m1 turned a recoverable state into a false final one.
+- **Where**: form-embed.js:187-197 (new); `done()` at :139-146 clears the box.
+
+Verdict: Block (R1 open; M1, m1's target case and m3 fixed; m2 remains the tech lead's question).

@@ -204,6 +204,22 @@ await v6.locator('[data-form-state="not-available"], [data-expatready-form] #xr-
 ok("FO-4b fail (break m1): a form switched off after it was drawn says \"This form is not available.\" and saves nothing", (await v6.locator('[data-form-state="not-available"]').count()) === 1 && (await v6.locator('[data-form-state="not-available"]').innerText()).trim() === "This form is not available." && leadsOf(offName) === 0);
 sql(`update fo_web_form set enabled = true where public_token = '${token}' returning 1`);
 
+// 5d. A lost connection at the send (break R1): the answers stay and a retry is asked for; never "not available".
+const { ctx: c7, p: v7 } = await context(1440);
+await v7.goto(`${SITE}/host.html`); await v7.getByLabel("First name").waitFor({ timeout: 30_000 });
+const lost = `Lost${run}`;
+await fill(v7, { given: lost, email: `lost-${run}@example.org` }); await v7.waitForTimeout(2200);
+await c7.setOffline(true);
+await v7.getByRole("button", { name: "Send my enquiry" }).click();
+await v7.locator('[data-form-state="not-available"], [data-expatready-form] #xr-summary:not([hidden])').first().waitFor({ timeout: 15_000 });
+ok("FO-4b fail (break R1): offline at the send → \"Not sent\" with a retry line, the answers kept, never \"not available\"", await v7.locator('[data-form-state="not-available"]').count() === 0 && /check your connection and try again/.test(await v7.locator("#xr-summary").innerText()) && await v7.getByLabel("First name").inputValue() === lost);
+await c7.setOffline(false);
+await v7.getByRole("button", { name: "Send my enquiry" }).click();
+await v7.locator('[data-form-state="thanks"]').waitFor({ timeout: 15_000 });
+ok("FO-4b (break R1): back online, the same press sends: one lead", leadsOf(lost) === 1);
+const offRead = await raw("GET", `/api/public/forms/not-a-token-at-all-xxxxxxxx`, { origin: OTHER });
+ok("FO-4b (break R1): the door's generic not-available answer may be read by any page (Access-Control-Allow-Origin *, no credentials)", offRead.status === 404 && offRead.headers["access-control-allow-origin"] === "*" && !offRead.headers["access-control-allow-credentials"], offRead.headers["access-control-allow-origin"]);
+
 // 6. The same page on a site not allowed: not drawn, the link stays, its send is refused.
 const { ctx: c3, p: v3 } = await context(1440);
 await v3.goto(`${OTHER}/host.html?utm_campaign=spring`);
@@ -236,7 +252,7 @@ ok("FO-4b fail: past the per-address limit the send is refused with \"Not sent\"
 await shot(v5, "fo4b-07-too-many-1440");
 
 ok("FO-4b: no page error in the browser", errors.length === 0, errors);
-for (const c of [c1, c2, c3, c4, c5, c6]) await c.close();
+for (const c of [c1, c2, c3, c4, c5, c6, c7]) await c.close();
 await browser.close();
 hostServer.close();
 await db.$disconnect();

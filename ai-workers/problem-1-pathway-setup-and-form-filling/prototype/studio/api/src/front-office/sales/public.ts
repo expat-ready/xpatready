@@ -46,7 +46,7 @@ const CLICK_KINDS = new Set(["GCLID", "FBCLID", "MSCLKID", "TTCLID", "OTHER"]);
 export const siteOf = (s: string): string | null => { try { const u = new URL(s); return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : null; } catch { return null; } };
 
 type Req = { ip?: string; socket?: { remoteAddress?: string }; headers: Record<string, string | string[] | undefined> };
-type Res = { setHeader(name: string, value: string): unknown };
+type Res = { setHeader(name: string, value: string): unknown; removeHeader?(name: string): unknown };
 const header = (r: Req, n: string) => { const h = r.headers[n]; return Array.isArray(h) ? h[0] : h; };
 const ipOf = (r: Req) => String(r.ip ?? r.socket?.remoteAddress ?? "unknown").slice(0, 64);
 
@@ -64,6 +64,7 @@ export class PublicForms {
 
   /** The form and its words, for drawing it (open read). Sets `frame-ancestors` to the firm's allowed sites. */
   async read(token: string, req: Req, res?: Res) {
+    openRefusals(res);
     this.limit(`read:ip:${ipOf(req)}`, this.limits.readsPerIp);
     const form = await this.form(token);
     res?.setHeader("Content-Security-Policy", frameAncestors(form.allowedSites, this.ports.publicOrigin));
@@ -84,6 +85,7 @@ export class PublicForms {
 
   /** One enquiry (AG-2-5 rule 10, AG-2-49). */
   async submit(token: string, body: unknown, req: Req, res?: Res) {
+    openRefusals(res);
     const ip = ipOf(req);
     this.limit(`post:ip:${ip}`, this.limits.postsPerIp);
     this.limit(`post:form:${String(token).slice(0, 100)}`, this.limits.postsPerForm);
@@ -143,7 +145,7 @@ export class PublicForms {
     res?.setHeader("Vary", "Origin");
     const origin = siteOf(header(req, "origin") ?? "");
     const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
-    if (!origin || !allowed.has(origin)) return false;
+    if (!origin || !allowed.has(origin)) { res?.removeHeader?.("Access-Control-Allow-Origin"); return false; }
     res?.setHeader("Access-Control-Allow-Origin", origin);
     return true;
   }
@@ -186,6 +188,12 @@ export function publicFormBodyLimit(app: Pick<express.Express, "use"> | Pick<Nes
     res.status(413).type("application/problem+json").json({ type: "https://expatready.local/problems/too-large", title: "Too large", status: 413, detail: "This form is too long. Please shorten your message and try again.", code: "TOO_LARGE" });
   });
 }
+
+/** FO-4b (break R1): the door's generic refusals made before the form is known (too many requests, too large, not
+ *  available: the same words for every firm and token, no credentials, no data) may be read by any page, so the embed
+ *  script tells "the form is off" or "wait a minute" from a lost connection instead of guessing. corsFor takes the
+ *  header away again, or names the one site, once the form is known: a form's own answers stay its allowed sites'. */
+function openRefusals(res?: Res) { res?.setHeader("Access-Control-Allow-Origin", "*"); }
 
 /** Only the allowed sites and our own page may frame the form (AG-2-49 rule 4). */
 export function frameAncestors(sites: string[], own?: string) {

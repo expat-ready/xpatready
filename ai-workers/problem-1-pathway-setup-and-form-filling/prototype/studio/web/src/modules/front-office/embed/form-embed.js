@@ -157,7 +157,7 @@
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@.]+$/.test(v.email)) own.email = "Enter an email like name@example.com.";
       show(own, null);
       if (Object.keys(own).length) return;
-      busy = true; button.disabled = true; button.setAttribute("aria-busy", "true");
+      busy = true; button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Sending…";   // the hold up to 2 s and the network (review m3)
       var wait = Math.max(0, drawnAt + MIN_FILL_MS - Date.now());
       new Promise(function (r) { setTimeout(r, wait); }).then(function () {
         var body = { submissionId: form.submissionId, loadStamp: form.loadStamp, givenNames: v.givenNames, email: v.email, attribution: campaign() };
@@ -185,16 +185,16 @@
         Object.keys(fields).forEach(function (k) { if (errs[k]) onField[k] = fields[k]; else other.push(fields[k]); });
         if (Object.keys(onField).length) { show(onField, null); return; }
         if (typeof p.detail === "string" && p.status) { show({}, p.detail); return; }
-        // A refusal the page cannot read (no CORS header: the form switched off, too many sends, the network). Ask the
-        // form's read once: refused too → the form is not available (AG-2-5 rule 11, break m1); read → wait and retry.
-        // The read's new submissionId is not used: the visitor's send keeps its own, so a retry is still one lead.
-        return call(encodeURIComponent(formRef)).then(function () {
-          show({}, "The form could not be sent. Please wait a minute and try again.");
-        }, function (q) {
-          if (q && q.status === 429) show({}, "The form could not be sent. Please wait a minute and try again.");
-          else done("This form is not available.", "not-available");
+        // Nothing readable came back: the network, or a form switched off (its pre-flight fails before the send). Ask the
+        // form's read once. Only its readable "not available" closes the form (AG-2-5 rule 11, break m1); anything else
+        // keeps every answer and asks for a retry (break R1). The read's new submissionId is not used: the visitor's
+        // send keeps its own, so a retry is still one lead.
+        var retry = "The form could not be sent. Please check your connection and try again.";
+        return call(encodeURIComponent(formRef)).then(function () { show({}, retry); }, function (q) {
+          if (q && q.code === "FORM_NOT_AVAILABLE") done("This form is not available.", "not-available");
+          else show({}, q && q.status && typeof q.detail === "string" ? q.detail : retry);
         });
-      }).then(function () { busy = false; button.disabled = false; button.removeAttribute("aria-busy"); });
+      }).then(function () { busy = false; button.disabled = false; button.removeAttribute("aria-busy"); button.textContent = "Send my enquiry"; });
     });
 
     // A constructed style sheet where the browser has one (a page CSP without 'unsafe-inline' does not block it, break
