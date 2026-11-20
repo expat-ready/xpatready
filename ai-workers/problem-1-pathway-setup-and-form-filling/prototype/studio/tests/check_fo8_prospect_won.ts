@@ -115,9 +115,11 @@ try {
     first?.made === true && written(ana.id) === "1:1:1" && c.display_name === "Ana Sample" && c.display_kind === "PERSON" && c.fo_person_id === ana.personId && c.fo_company_id === null && c.file_owner === R.staffId && c.firm_id === A && c.created_by === PROSPECT_WON_ACTOR
     && /^CL-\d{5}$/.test(first!.clientNumber), [first, written(ana.id), c]);
   const ev = sql(`select payload::text from module_event where type = '${EVENT.CLIENT_CREATED}' and subject_id = '${first!.clientId}'`);
-  ok("FO-8 DW1 pass: client.created carries { firm_id, prospect_id, client_id, client_number } and no name; the audit line holds ids and the client code, never the name",
+  ok("FO-8 DW1 pass: client.created carries { firm_id, prospect_id, client_id, client_number } and no name; the audit line holds ids and the client code, never the name outside its after values",
     JSON.stringify(Object.keys(JSON.parse(ev)).sort()) === JSON.stringify(["client_id", "client_number", "firm_id", "prospect_id"]) && !ev.includes("Ana")
-    && !sql(`select summary || detail::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana"), ev);
+    && !sql(`select summary || (select coalesce(jsonb_object_agg(k, v), '{}'::jsonb) from jsonb_each(detail) e(k, v) where k !~ '_(before|after)$')::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana"), ev);
+  // R1.8 (QA-594, P-687): the client's name is the line's after value, in full, and nowhere else on it.
+  ok("FO-8 DW1 pass (R1.8): the client.created line holds the new client's name as an after value", sql(`select detail::text from audit_event where entity_key = '${ana.id}' and action = '${EVENT.CLIENT_CREATED}'`).includes("Ana Sample"));
   const n0 = counter(), again = await onProspectWon(db, event(ana.id), deps);
   ok("FO-8 DW1 fail: the same event delivered again makes none: the same client answered, no second client, event, audit line or client number", again?.made === false && again.clientId === first!.clientId && written(ana.id) === "1:1:1" && counter() === n0, [again, written(ana.id)]);
   const bo = await wonPerson("Bo"), three = await Promise.all([0, 1, 2].map(() => onProspectWon(db, event(bo.id), deps)));
