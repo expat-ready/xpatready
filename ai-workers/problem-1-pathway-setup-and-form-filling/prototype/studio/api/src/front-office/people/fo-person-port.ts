@@ -26,7 +26,8 @@ export class PrismaFoPerson implements FoPersonPort<Tx> {
     await this.setup(tx, firmId);
     const phone = a.phone === null ? null : keepPhone(a.phone, phoneE164Exact), id = randomUUID();
     await tx.foPerson.create({ data: { id, firmId, ...nameParts(a), email: a.email, phone: phone?.phone ?? null, phoneReadable: phone?.readable ?? true, createdBy: a.actor } });
-    await this.audit.record(tx, { firmId, actor: a.actor, action: FO_PERSON_ACTION.PERSON, entity: "fo_person", entityKey: id, summary: "A front-office person was made for a new case client.", detail: { foPersonId: id } });
+    await this.audit.record(tx, { firmId, actor: a.actor, action: FO_PERSON_ACTION.PERSON, entity: "fo_person", entityKey: id, summary: "A front-office person was made for a new case client.", detail: { foPersonId: id },
+      before: null, after: { ...nameParts(a), email: a.email, phone: phone?.phone ?? null, phoneReadable: phone?.readable ?? true } });
     return { foPersonId: id };
   }
 
@@ -36,7 +37,8 @@ export class PrismaFoPerson implements FoPersonPort<Tx> {
     await this.setup(tx, firmId);
     const id = randomUUID();
     await tx.foCompany.create({ data: { id, firmId, operatingName: a.name, normalisedName: normaliseCompanyName(a.name), createdBy: a.actor } });
-    await this.audit.record(tx, { firmId, actor: a.actor, action: FO_PERSON_ACTION.COMPANY, entity: "fo_company", entityKey: id, summary: "A front-office company was made for a new case client.", detail: { foCompanyId: id } });
+    await this.audit.record(tx, { firmId, actor: a.actor, action: FO_PERSON_ACTION.COMPANY, entity: "fo_company", entityKey: id, summary: "A front-office company was made for a new case client.", detail: { foCompanyId: id },
+      before: null, after: { operatingName: a.name } });
     return { foCompanyId: id };
   }
 

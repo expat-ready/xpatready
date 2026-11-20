@@ -85,7 +85,8 @@ async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, deliver
       const { displayName, displayKind, foPersonId, foCompanyId, contact } = await subjectOf(tx, deps, firmId, p);
       await tx.caseClient.update({ where: { id: held.id }, data: { displayName, displayKind, foPersonId, foCompanyId, contact } });
       await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: "client.subject_changed", entity: "fo_prospect", entityKey: p.prospect_id,
-        summary: `The prospect was won again as ${kind === "PERSON" ? "a person" : "a company"}; client ${code(held.clientNumber)} follows it.`, detail: { clientId: held.id, prospectId: p.prospect_id, kind } });
+        summary: `The prospect was won again as ${kind === "PERSON" ? "a person" : "a company"}; client ${code(held.clientNumber)} follows it.`, detail: { clientId: held.id, prospectId: p.prospect_id, kind },
+        before: { displayName: held.displayName, displayKind: held.displayKind, foPersonId: held.foPersonId, foCompanyId: held.foCompanyId }, after: { displayName, displayKind, foPersonId, foCompanyId } });
     }
     return { prospectId: p.prospect_id, clientId: held.id, clientNumber: code(held.clientNumber), made: false };
   }
@@ -95,7 +96,8 @@ async function makeClient(tx: Tx, deps: ProspectWonDeps, firmId: string, deliver
   const clientNumber = code(client.clientNumber);
   // The line sits on the prospect (the audit port takes area entities only until AUD-1 moves the case side onto it).
   await deps.audit.record(tx, { firmId, actor: PROSPECT_WON_ACTOR, action: EVENT.CLIENT_CREATED, entity: "fo_prospect", entityKey: p.prospect_id,
-    summary: `The won prospect became client ${clientNumber}; "Open a case?" is offered.`, detail: { clientId: client.id, clientNumber, prospectId: p.prospect_id, kind: client.displayKind, wonVia: p.won_via } });
+    summary: `The won prospect became client ${clientNumber}; "Open a case?" is offered.`, detail: { clientId: client.id, clientNumber, prospectId: p.prospect_id, kind: client.displayKind, wonVia: p.won_via },
+    before: null, after: { clientNumber, displayName: client.displayName, displayKind: client.displayKind, foPersonId: client.foPersonId, foCompanyId: client.foCompanyId, fileOwner: client.fileOwner } });
   await tx.moduleEvent.create({ data: { firmId, type: EVENT.CLIENT_CREATED, subjectId: client.id, payload: ClientCreatedPayload.parse({ firm_id: firmId, prospect_id: p.prospect_id, client_id: client.id, client_number: clientNumber }) } });
   return { prospectId: p.prospect_id, clientId: client.id, clientNumber, made: true };
 }
@@ -204,7 +206,8 @@ export async function openCaseFromOffer<A>(door: OpenDoor<A>, ctx: { staffId: st
     refuse(now.displayKind !== client.displayKind || now.displayName !== client.displayName ? { ...offer, state: "CHANGED" } : await offerOf(tx, now, opened.id));
     const clientType = await door.clientTypeOf(tx, opened.combinationId);
     await door.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: EVENT.CASE_OPENED, entity: "fo_prospect", entityKey: offer.prospectId, caseId: opened.id,
-      summary: `A case was opened from the "Open a case?" offer.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId } });
+      summary: `A case was opened from the "Open a case?" offer.`, detail: { clientId: client.id, caseId: opened.id, caseNumber: opened.caseNumber, prospectId: offer.prospectId },
+      before: null, after: { caseId: opened.id, caseNumber: opened.caseNumber, clientId: client.id, combinationId: opened.combinationId ?? null } });
     await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.CASE_OPENED, subjectId: opened.id,
       payload: CaseOpenedPayload.parse({ firm_id: ctx.firmId, prospect_id: offer.prospectId, client_id: client.id, case_id: opened.id, case_number: opened.caseNumber, client_type: clientType }) } });
   });
