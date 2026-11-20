@@ -29,7 +29,7 @@ export class PlatformInbox {
     let a = "";
     try { a = normaliseAddress("EMAIL", address ?? ""); } catch { fail("Enter an email address like name@example.com.", HttpStatus.BAD_REQUEST); }
     const rows = await this.db.msgOutbox.findMany({
-      where: { channel: "EMAIL", address: a, state: "SENT", providerId: { startsWith: `${LOCAL_PROVIDER}:` } },
+      where: { channel: "EMAIL", address: a, state: { in: ["SENT", "DELIVERED"] }, providerId: { startsWith: `${LOCAL_PROVIDER}:` } },
       orderBy: [{ sentAt: "desc" }, { id: "desc" }], take: 50, select: { id: true, firmId: true, audience: true, class: true, sentAt: true },
     });
     const messages = [];
