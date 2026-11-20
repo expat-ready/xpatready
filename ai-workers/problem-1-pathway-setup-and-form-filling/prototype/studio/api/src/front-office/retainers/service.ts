@@ -134,8 +134,8 @@ export function feesOf(v: unknown): FeeIn[] {
 
 /** The service. `audit` defaults to the one trail (AuditEventAdapter until AUD-1); a test passes a failing one. */
 /** R1.8 (QA-594): a retainer's fees as flat words for an audit line's before and after ("Deposit on signing: 150000 ON_SIGNING"). */
-const feeWords = (fees: { label: string; amountMinor: number | null; when: string; dueOn: string | null }[]) =>
-  fees.map((f) => `${f.label}: ${f.amountMinor ?? "no amount"} ${f.when}${f.dueOn ? ` ${f.dueOn}` : ""}`);
+const feeWords = (fees: { label: string; amountMinor: bigint | number | null; when: string; dueOn: string | null }[]) =>
+  fees.map((f) => `${f.label}: ${f.amountMinor === null ? "no amount" : String(f.amountMinor)} ${f.when}${f.dueOn ? ` ${f.dueOn}` : ""}`);
 
 export class Retainers {
   readonly render: DocxRender;

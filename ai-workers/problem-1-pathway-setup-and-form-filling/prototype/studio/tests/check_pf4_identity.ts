@@ -449,7 +449,11 @@ try {
   // --------------------------------------------- a licence number never in a log line, event payload or email
   const numbers = [...readSampleFirms().flatMap((f) => f.users.map((u) => u.licence?.number).filter((n): n is string => !!n)), NUMBER];
   const leaks = (text: string) => numbers.filter((n) => text.includes(n));
-  const auditText = sql(DB, `select coalesce(string_agg(summary || ' ' || coalesce(detail::text, ''), ' | '), '') from audit_event`);
+  // R1.8 (QA-594, P-687): the licence record's line holds the number in full in its before and after values
+  // (<field>_before/_after, shown to holders of the audit permission); never in a summary or any other detail field.
+  const auditText = sql(DB, `select coalesce(string_agg(summary || ' ' || coalesce((detail - 'licenceNumber_before' - 'licenceNumber_after')::text, ''), ' | '), '') from audit_event`);
+  ok("PF-4 pass (R1.8, P-687): the licence record's line holds the saved number as its after value",
+    sql(DB, `select count(*) from audit_event where action = 'platform.staff.credential_saved' and detail->>'licenceNumber_after' = '${NUMBER}'`) !== "0");
   const eventText = sql(DB, `select coalesce(string_agg(payload::text || ' ' || type, ' | '), '') from module_event`);
   ok(`PF-4 pass: no licence number (${numbers.length} known: the Sample ones and the one saved above) in any log line this run printed, any audit line or any event payload; this row sends no email (PF-4b's MailPort)`,
     leaks(printed).length === 0 && leaks(auditText).length === 0 && leaks(eventText).length === 0, { printed: leaks(printed), audit: leaks(auditText), events: leaks(eventText) });
