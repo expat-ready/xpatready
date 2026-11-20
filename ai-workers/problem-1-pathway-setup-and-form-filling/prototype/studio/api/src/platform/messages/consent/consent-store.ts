@@ -3,7 +3,7 @@
 // writes one audit line through AuditPort.record(tx, …) (fail-closed: a failed line rolls the change back). Every query
 // is scoped by firmScope (api/src/platform/firm-scope.ts); the database adds the rest (composite keys keep a consent on
 // its own firm's wording; triggers keep wording write-once and a withdrawal set once). Audit detail carries ids and
-// enum words only: never an address, a name or the wording's text.
+// enum words only, plus (R1.8, P-687) a suppressed address in full in the line's after; never a name or the wording's text.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
@@ -161,7 +161,7 @@ export class ConsentStore implements ConsentPort<Tx> {
       firmId, actor: w.by, action: "consent.wording.published", entity: "msg_consent_wording", entityKey: row.id,
       summary: `Consent wording published: ${w.channel.toLowerCase()} ${w.purpose.toLowerCase()} (${w.locale}), version ${version}.`,
       detail: { channel: w.channel, purpose: w.purpose, locale: w.locale, version, textHash },
-      before: null, after: { channel: w.channel, purpose: w.purpose, locale: w.locale, version, text: w.text.slice(0, 4000) },
+      before: null, after: { channel: w.channel, purpose: w.purpose, locale: w.locale, version, textLength: w.text.length },   // the wording is free text, kept in its own table
     });
     return { id: row.id, version, textHash };
   }

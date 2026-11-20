@@ -620,9 +620,9 @@ export class Retainers {
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: from as never, currentVersion: filed }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       // FO-2w: the one win (sales/prospects.ts `winProspect`): moves the prospect and raises `prospect.won`, once per prospect.
-      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: () =>
+      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: (p) =>
         this.audit.record(tx, { ...this.line(ctx, "prospect.won", r.prospectId!, "Won: retainer signed on paper", { prospectId: r.prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect",
-          before: null, after: { won: true, wonVia: "SIGNED_OFFLINE", retainerId: r.id } }) })) !== null;
+          before: { stageKind: p.kind, stage: p.key, wonVia: p.won_via }, after: { stageKind: "WON", wonVia: "SIGNED_OFFLINE", retainerId: r.id } }) })) !== null;
       await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer",
         before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
         after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
