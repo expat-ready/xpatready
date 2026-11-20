@@ -417,3 +417,11 @@ For Lead 80: BACKLOG rows for PF-19r and CS-C1s; assign PF-19b part 3 (delivery 
 * 06:21 IST 20 Nov: Lead 98 **confirmed the CS-K1-2 migration slot 20261120100000_csk1_client_link_check** (main's newest is 20261119180000) and messaged the cloud lane to open its PR. No PR by ~07:30 IST → founder lane ask. Lead B (8) told FO-5rp and FO-2u are not in R1.72's chain.
 * 06:3x IST 20 Nov: **#2307 PF-15c merged 06:25 IST (6b12e2a3f)**. With #2289, CS-C1r's trigger is complete, but under P-745 CS-C1r waits for its wave and does not start. Reported to Lead 98. Still watching #2339.
 * 06:4x IST 20 Nov: **#2406 CS-K1 part 2 + J-72 opened 06:32 IST** (head 9b951ad9a, about 540 code and test lines; Completes: R1.72). Row owner accepted it. It still needs: an Approve naming the head (the two commits after c84e1eb08 are records only), Lead 98's P-423 migration read, and green ci and walks.
+* 07:0x IST 20 Nov (pushed 08:1x, after the disk was full 07:0x–08:08 IST):
+  * Lead 98 **read #2406's migration and BYPASS_USES line: OK**.
+  * Carried forward: once #2029 lands, `cases.prospect-won.catch-up` needs audit "per-firm" (J-109 lane told).
+  * **Current Lead is Lead 99 (local_2e11a30f).**
+  * Lead 99 found **two red checks on #2406** (head 9b951ad9a):
+    * types: TS2554 at `check_pf15c_case_limits.ts:79`. #2307's DW4 builds `new Runtime` with 4 arguments; #2406 adds a fifth.
+    * module-cards: `features/MODULE.md`.
+  * Fix sent to the lane (PR comment 7027507345, plus a one-way message): merge main, add the fifth `null as never`, a card line or "Card unchanged:", then a diff-only Approve on the new head. No new head by about 08:00 IST → a typed nudge.
