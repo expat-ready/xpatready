@@ -10,7 +10,7 @@ import { Db, fail, isDemoWorkspace, OpenRead, RUNTIME_ACTORS } from "../../core.
 import { LOCAL_PROVIDER } from "./channels/email/local.ts";
 import { unsubscribeHeaders, type UnsubscribeTokens } from "./channels/email/unsubscribe.ts";
 import { fileKeyOf, filesSpaceOf } from "./send/messages.ts";
-import { asBypass } from "../firm-scope.ts";
+import { asBypass, touchFirms } from "../firm-scope.ts";
 
 type H = string | undefined;
 /** A text attachment longer than this is listed without its text (review m4; an invite is about 1 KB). */
@@ -32,6 +32,8 @@ export class PlatformInbox {
       where: { channel: "EMAIL", address: a, state: { in: ["SENT", "DELIVERED"] }, providerId: { startsWith: `${LOCAL_PROVIDER}:` } },
       orderBy: [{ sentAt: "desc" }, { id: "desc" }], take: 50, select: { id: true, firmId: true, audience: true, class: true, sentAt: true },
     });
+    // PF-12b: each firm whose mail is listed, before any is read; a PLATFORM_ACCOUNT row (PF-19p) has no firm and is never touched as one.
+    await touchFirms(this.db, rows.flatMap((r) => (r.firmId ? [r.firmId] : [])));
     const messages = [];
     for (const r of rows) {
       const f = await this.files.get(filesSpaceOf(r.firmId), fileKeyOf(r.firmId, r.id));

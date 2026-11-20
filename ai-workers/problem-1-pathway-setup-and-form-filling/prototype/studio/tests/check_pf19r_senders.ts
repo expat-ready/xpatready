@@ -2,7 +2,7 @@
 // mail through MessagePort. The staff invitation and the two-step reset notice (MAIL_PORT, now the app's MESSAGES_MAIL),
 // the identity provider's code emails (handleCustomEmail over the same MailPort) and the complaint acknowledgement
 // reminder (the complaints feature's ports). Named tests DW1-DW6 from the brief, each with a pass and a fail; DW7 (part 3):
-// sign-up's "You already have an account" on the app's MESSAGES_MAIL. A scratch
+// sign-up's "You already have an account" on the app's MESSAGES_MAIL (moved by PF-5v part 2; DW7 proves it through MessagePort). A scratch
 // database with every migration and the Sample firms; a Nest app of the identity classes with the app's own MAIL_PORT and
 // MESSAGES_MAIL providers (from their feature files), MessagePort on fakeJobs and a test clock, files in a scratch
 // folder, the local email adapter. No model call, nothing leaves the machine (US$0). The database and folder are removed.
@@ -291,16 +291,14 @@ try {
   const r7 = await rowsTo(ownerEmail), m7 = (await inbox.list(ownerEmail, undefined)).messages.find((m: { subject: string }) => m.subject === "You already have an ExpatReady account");
   ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort as a platform account email (review M1): one outbox row with no firm (PLATFORM_ACCOUNT, TRANSACTIONAL, SENT), the one layout from ExpatReady, and the firm's daily count unchanged",
     signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === null && r7[0].audience === "PLATFORM_ACCOUNT" && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
-    && !!m7 && m7.html.includes(`font-weight:bold">ExpatReady</div>`) && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/sign-in") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
+    && !!m7 && m7.html.includes(`font-weight:bold">ExpatReady</div>`) && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/account") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
   // Fail: the same email as the firm's (main's shape with firmId, which this PR's first commit sent) spends the firm's cap.
   await appMail.send({ firmId: firmA.id, to: "dw7.firm.shape@example.com", replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: "x", class: "TRANSACTIONAL" }); await run();
   ok("DW7 fail: the firm-shaped send (firmId) is counted against the firm's daily cap (the check above is not blind)", (await firmCount()) === before7 + 1, { before7, after: await firmCount() });
   await fclock.advance({ hours: 2 });   // past the 3-an-hour limit per address
   const a7s = await d7.signUp(await form(d7, "Nobody.Known@example.com"), "10.7.0.2"); await d7.settled(); await run();
-  ok("DW7 fail: an email with no account gets no \"already\" email (only the verification), and the same answer",
+  ok("DW7 fail: an email with no account gets no \"already\" email (this door's identity stand-in has no mail, so nothing at all), and the same answer",
     a7s.message === ACCEPTED && (await rowsTo("nobody.known@example.com")).length === 0, await rowsTo("nobody.known@example.com"));
-  const shut = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
-  ok("DW7 fail: sign-up's ports with no MailPort keep the door shut with a reason (never a stand-in that sends nothing)", /email sending is not set up/.test(shut.notReady ?? ""), shut.notReady);
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : String(e)}`);
 } finally {

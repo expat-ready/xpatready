@@ -60,6 +60,11 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         printf '%s\n' "$areas" | grep -qviE '^ *(tooling|qa|records|tech lead|lead) *([(;,:./]|$)' && continue;;
       esac
       printf '%s\n' "$row" | grep -qiE '\bfix(es|ed|ing)?\b' && printf '%s\n' "$row" | grep -qiE '\bbroken: *[^ |]' && continue
+      # Founder exceptions to the P-734 lock (founder 20 Nov 16:0x IST chose "Exception for my approvals"; P-765): the rows
+      # below quote his typed approval (P-760 is a scope ruling, not a workflow change); from P-765 on, a row approved by
+      # him says "Lock: founder exception." and passes by itself. Anything he did not approve stays locked.
+      case " P-754 P-755 P-756 P-757 P-758 P-759 P-760 P-761 P-762 P-763 P-764 " in *" $id "*) continue;; esac
+      printf '%s\n' "$row" | grep -qE 'Lock: founder exception\.' && continue
       echo "WORKFLOW LOCK: $id changes the workflow (it is in decision-impact.sh's EXEMPT, or only tooling, qa, records or Lead backlog rows carry it) and is dated before 23 Nov, while P-733 runs unchanged to the evening of 22 Nov (P-734 (1)). Keep it for 23 Nov, or, if it fixes something broken, say so in the row: the word fix, and \"Broken: <what is broken, with its evidence>\""
     done
   fi
