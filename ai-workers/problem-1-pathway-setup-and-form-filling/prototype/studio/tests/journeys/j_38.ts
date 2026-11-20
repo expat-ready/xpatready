@@ -158,8 +158,11 @@ try {
   // ---------------------------------------------------------------------------------------------- DW1: the mail port
   const [bookerMails, hostMails] = [await inbox(bookerEmail, 1), await inbox(hostEmail, 1)];
   const sent = await db.msgOutbox.findMany({ where: { firmId: firm.id, channel: "EMAIL" }, select: { address: true, state: true, providerId: true, idempotencyKey: true } });
-  const sentTo = (address: string, who: string) => sent.filter((o) => o.address === address && o.state === "SENT" && o.providerId?.startsWith("local:") && o.idempotencyKey === `mail:booking:${row?.id}:${row?.sequence}:mail-${who}`).length;
-  ok("J-38 DW1: booking's mail is the real sending path: one outbox row each for the booker and the host, SENT by the local adapter, both in the app's demo inbox (the in-memory fake wrote neither)",
+  // A delivered mail is SENT or DELIVERED: since PF-19b part 3 (#2397) the local adapter's Delivery test event moves the row
+  // SENT -> DELIVERED a moment after it is sent (local.ts, bounces.ts), so either is right; QUEUED, FAILED or BOUNCED never is (QA-570).
+  const delivered = (s: string) => s === "SENT" || s === "DELIVERED";
+  const sentTo = (address: string, who: string) => sent.filter((o) => o.address === address && delivered(o.state) && o.providerId?.startsWith("local:") && o.idempotencyKey === `mail:booking:${row?.id}:${row?.sequence}:mail-${who}`).length;
+  ok("J-38 DW1: booking's mail is the real sending path: one outbox row each for the booker and the host, sent by the local adapter (SENT or DELIVERED), both in the app's demo inbox (the in-memory fake wrote neither)",
     sent.length === 2 && sentTo(bookerEmail, "person") === 1 && sentTo(hostEmail, "host") === 1 && bookerMails.length === 1 && hostMails.length === 1, { outbox: sent.map((o) => [o.address, o.state, o.idempotencyKey?.replace(row?.id ?? "-", "<booking>")]), inbox: [bookerMails.length, hostMails.length] });
   const bookerMail = bookerMails[0], hostMail = hostMails[0];
   const seen = (t: string) => t.replace(/#\S+/g, "#<token>").slice(0, 260);   // a failing line shows the mail, never the booker's token

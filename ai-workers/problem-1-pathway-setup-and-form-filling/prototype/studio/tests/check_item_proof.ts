@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts } from "../tools/item-proof.mjs";
+import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts, journeyOf } from "../tools/item-proof.mjs";
 import { videoSize } from "./journeys/video-size.ts";
 
 const F = join(import.meta.dirname, "fixtures", "item-proof"), TOOL = join(import.meta.dirname, "..", "tools", "item-proof.mjs");
@@ -36,6 +36,10 @@ ok("P1 R1.77: the C8.2 pack, the suite its Done when names, a named file that is
 ok("P2 R1.6: no pack or suite named; its journey j_6.ts exists on this tree", p6.found && !p6.packs.length && !p6.suites.length && p6.journeyExists, p6);
 ok("P3 a C id with no acceptance pack is listed as missing", JSON.stringify(p3.packsMissing) === '["C99.99"]', p3);
 ok("P4 an item with no row is not found; a bad id throws", !p9.found && (() => { try { plan("C8.2", caps); return false; } catch { return true; } })());
+// P5 (QA-570, tech lead 20 Nov): an item proven by another row's journey resolves to that file, never a copy; R1.40 is J-38.
+const p40 = JSON.parse(cli(["plan", "R1.40"]).stdout || "{}"), td = mkdtempSync(join(tmpdir(), "ip-")), v40 = cli(["verdict", "--item", "R1.40", "--plan", join(td, "none.json"), "--results", join(td, "none.jsonl"), "--sha", "abc1234", "--pr", "1", "--run-id", "1", "--run-url", "u"]);
+ok("P5 R1.40 (calendar invite files) is proven by J-38: plan from qa/CAPABILITIES.md names tests/journeys/j_38.ts, which exists; no j_40.ts is made", p40.found && p40.journey === "tests/journeys/j_38.ts" && p40.journeyExists && !existsSync(join(import.meta.dirname, "journeys", "j_40.ts")) && journeyOf("R1.77") === "tests/journeys/j_77.ts", p40);
+ok("P6 a verdict with no plan (set-up failed) for R1.40 still names j_38.ts", JSON.parse(v40.stdout || "{}").suites?.some((s: { name: string }) => s.name === "tests/journeys/j_38.ts"), v40.stdout.slice(0, 300));
 
 // V: verdict shape, PASS and FAIL.
 const base = { sha: "a".repeat(40), pr: 2200, runId: 123, runUrl: "https://example.test/run/123", artifactUrl: "https://example.test/art/9", repo: "o/r", at: "2026-11-19T10:00:00Z" };

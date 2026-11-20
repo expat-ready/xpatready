@@ -8,7 +8,8 @@
 //           when a "Completes:" line cannot be read (pr-rules.yml: the convention is checked before the merge).
 //   plan    <R1.n> [--caps f]  what proves the item, from its row in qa/CAPABILITIES.md: the acceptance packs of the C ids
 //           in its "Case side" and "Done when" cells (works-set.mjs --run, holds in qa/REGRESSION-HELD.md kept), the
-//           studio/tests suites its "Done when" names (run-suites.sh --only), and its journey tests/journeys/j_<n>.ts.
+//           studio/tests suites its "Done when" names (run-suites.sh --only), and its journey tests/journeys/j_<n>.ts
+//           (or the J-row SHARED_JOURNEY names, e.g. R1.40 -> j_38.ts).
 //   verdict --item R1.n --plan f --results f --sha s --pr n --run-id i --run-url u [--artifact-url u] [--repo o/r]
 //           one verdict JSON (results: one JSON line a run, {kind, name, exit}); PASS only when the journey and every
 //           planned run passed; a missing journey, a missing pack or a run with no result line is FAIL (P-405).
@@ -27,6 +28,10 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const S = resolve(HERE, ".."), P = resolve(S, "../../product"), CAPS = join(P, "qa/CAPABILITIES.md");
 const ITEM = /^R1\.([1-9]\d{0,2})$/;
+/** An item proven by another row's journey (one J-row walks two map rows), never a copy of the file: R1.40 calendar
+ *  invite files is walked by J-38 with R1.38 (tech lead, 20 Nov, QA-570; qa/reports/2026-11-20-r140-qa11.md). */
+export const SHARED_JOURNEY = { "R1.40": 38 };
+export const journeyOf = (item) => `tests/journeys/j_${SHARED_JOURNEY[item] ?? item.slice(3)}.ts`;
 
 /** The R1 items a PR body completes. A "Completes:" line (optionally a list item, a quote or bold) holds R1 ids only,
  *  separated by commas, spaces or "and"; anything else on it makes the line unreadable (bad), never a silent guess.
@@ -59,7 +64,7 @@ export function plan(item, md, studio = S) {
     if (c.includes("Case side") && c.some((x) => /^Done when/.test(x))) { head = c; continue; }
     if (head && c[1] === item) { row = c; break; }
   }
-  const n = item.slice(3), journey = `tests/journeys/j_${n}.ts`;
+  const journey = journeyOf(item);
   const out = { item, found: !!row, name: "", status: "", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey, journeyExists: existsSync(join(studio, journey)) };
   if (!row) return out;
   const at = (re) => row[head.findIndex((x) => re.test(x))] ?? "";
@@ -184,7 +189,7 @@ function main(argv) {
   if (cmd === "verdict") {
     const results = existsSync(opt.results) ? readFileSync(opt.results, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
     // No plan (the set-up failed before it): still a verdict, FAIL, so the report always has one (review M1).
-    let pl; try { pl = JSON.parse(readFileSync(opt.plan, "utf8")); } catch { pl = { found: false, why: "the prove job ended before its plan (set-up failed; see the run)", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey: `tests/journeys/j_${String(opt.item).slice(3)}.ts`, journeyExists: false }; }
+    let pl; try { pl = JSON.parse(readFileSync(opt.plan, "utf8")); } catch { pl = { found: false, why: "the prove job ended before its plan (set-up failed; see the run)", packs: [], packsMissing: [], suites: [], suitesMissing: [], journey: journeyOf(String(opt.item)), journeyExists: false }; }
     console.log(JSON.stringify(verdict({ item: opt.item, plan: pl, results, sha: opt.sha, pr: opt.pr, runId: opt["run-id"], runUrl: opt["run-url"], artifactUrl: opt["artifact-url"] || null, repo: opt.repo ?? "" }), null, 2));
     return 0;
   }
