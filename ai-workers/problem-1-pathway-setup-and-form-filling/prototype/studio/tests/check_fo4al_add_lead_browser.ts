@@ -166,6 +166,12 @@ try {
   await z.context().close();
   // M2, m4: the suggestions are words a person typed, once each; a stored code (WEBSITE) is never offered.
   await post(tok.O, { requestId: randomUUID(), givenNames: `Case${run}`, email: `case.${run}@example.org`, source: "phone   CALL" });
+  // A web-form lead the Case Officer owns, so the stored code WEBSITE is among the sources they see (review re-check: on a
+  // fresh copy there was none, and the test could not fail).
+  const webP = sql(`insert into fo_person (id, firm_id, given_names, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Webb${run}', 'webb.${run}@example.org', 'test', now()) returning id`);
+  sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${webP}', 'WEB_FORM', 'WEBSITE', '${O.id}', 'test', now())`);
+  const seenSources = await (await fetch(`${BASE}/api/front-office/leads/sources`, { headers: { authorization: `Bearer ${tok.O}` } })).json() as { sources: string[] };
+  ok("FO-4al AL7 M2 setup: the Case Officer's sources include the stored code WEBSITE", seenSources.sources.includes("WEBSITE"), seenSources);
   await openPanel(o);
   const options = await o.locator("#fo-add-lead-sources option").evaluateAll((xs) => xs.map((x) => (x as HTMLOptionElement).value));
   ok("FO-4al AL7 M2 fail: the stored code WEBSITE is not offered as a source", !options.includes("WEBSITE"), options);

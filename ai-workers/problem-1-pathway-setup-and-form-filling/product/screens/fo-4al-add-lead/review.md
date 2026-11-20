@@ -91,3 +91,27 @@ D17 simulated only. D18 3: the source shows on the lead; the match line does not
 - A visible headed browser: walked headless with screenshots.
 - An intended user's unaided walk (D17, D20 stay with the founder).
 - The retrofit mapping of `KNOWN_PERSON`/`personId`/`confirmedNew` to the team's `confirmToken`/`createAnyway` is FO-2's to record; it is not in this PR.
+
+## Re-review (P-277, diff only): `376411977` → `7e28235788c103904986ff474466cf0e17e40dde`
+Read: `git diff 376411977 7e2823578 -- …/prototype` (`add-lead-panel.tsx`, `check_fo4al_add_lead_browser.ts`). Walked on :4534 (`xr_studio_screens_al2`, which serves this head). The new check was also run on a fresh copy of mine (:4441, since stopped): 26/26.
+- **M1: fixed.** The match box takes focus and is in view.
+  - 720×450: top 247 px, body bottom 389 px.
+  - 1366×657: 454 px against 596 px.
+  - "Add as new" now sits inside the box. Save lead is switched off while a match waits, and Enter on the box saves nothing (0 persons).
+  - Tab from the box goes to "Use existing person". The new check asserts the box is on screen and focused, and nothing is saved.
+- **M2: behaviour fixed, but its fail test does not fail without the fix (Major, still open).**
+  - Live on :4534 the API still returns `WEBSITE`, and the datalist offers `["Email","Phone call","Walk-in","Referral"]`, so the fix works.
+  - But `check_fo4al…:167-171` never makes a web-form lead. On a fresh copy (CI's case) the list has no `WEBSITE` to drop: my run printed `["Phone call","Walk-in","Email","Referral"]`, and the copy's leads were only Walk-in, Email, Referral, Phone call and "phone   CALL".
+  - So the assertion passes even with `suggestions()` removed. That breaks STANDARDS §7 [M] (a rule's test fails when the rule is removed) and WAY-OF-WORKING step 4 (each Major fixed with a fail test).
+  - **Fix:** create one web-form lead visible to the Case Officer first (switch the form on and submit as j_27 W1 does, or post it). Then assert `GET /front-office/leads/sources` includes `WEBSITE` before asserting the datalist does not.
+- **Also checked in the diff, sound:**
+  - B1 (choice moved into the box; the test clicks twice 250 ms apart and nothing is saved).
+  - m1 (`fieldset disabled` while saving).
+  - m3 (`fieldWords`: "required" becomes the panel's words; the emoji-only source gives "Pick a source.").
+  - m4 (case and space twins offered once; the test is meaningful, since the adder owns "phone   CALL").
+  - S4 (`confirmClose` on Escape, X and overlay; Cancel still closes at once, as the house `Dialog` guard does; tested).
+- **Minor, new:** the focused match box has `outline-none`, so the keyboard user sees no ring on it. The box is plainly visible and the next Tab lands on a ringed button. Fix or list it.
+- **Still open as Should, listed in the PR:** S1 (asked of the tech lead), S2 (the email message still gives no fix), S3, S5.
+- **Journey score now 9/10:** next step 1, plain words ½ (S2), correct data 1, accessibility 1, trust ½ (S1).
+
+**Verdict: Block** on `7e28235788c103904986ff474466cf0e17e40dde`. The one item: make the M2 test fail without the fix. A re-check will read only that test diff.

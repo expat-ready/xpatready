@@ -100,7 +100,7 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
         <Field label="First note (optional)" error={err("note")}><Textarea rows={3} maxLength={5000} value={f.note} onChange={set("note")} /></Field>
         </fieldset>
         {matches ? (
-          <div data-known-person role="status" tabIndex={-1} ref={matchBox} className="flex flex-col gap-2 rounded-lg border border-border p-3 outline-none">
+          <div data-known-person role="status" tabIndex={-1} ref={matchBox} className="flex flex-col gap-2 rounded-lg border border-border p-3 outline-none focus:ring-[3px] focus:ring-ring/50">
             <p className="text-sm font-medium">This person may already be on file. Nothing is saved until you choose.</p>
             {matches.map((m, i) => m.personId ? (
               <div key={m.personId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
