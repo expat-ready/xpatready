@@ -28,6 +28,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
+7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
+7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh
+7 tens|product/tools/check-docs.sh|s/\[0-9\]{2}:\[0-5\]\[0-9x\]) IST/[0-9]{2}:[0-5][0-9]) IST/|check-state-page.sh
 8|product/tools/lead-check-guard.sh|s/^\[ -z "\$why" \] \&\& exit 0/exit 0/|check-lead-cron.sh
 9|product/tools/label-sweep.sh|s/^  if \[ "\$who" != "\$BOT" \]; then/  if true; then/|check-label-sweep.sh
 9 sched|../../.github/workflows/label-guard.yml|/cron: "\*\/10 \* \* \* \*"/d|check-label-sweep.sh
