@@ -74,6 +74,10 @@ export class ConsentStore implements ConsentPort<Tx> {
       firmId, actor: c.recordedBy, action: "consent.recorded", entity: "msg_consent", entityKey: row.id,
       summary: `Consent recorded: ${c.channel.toLowerCase()} ${c.purpose.toLowerCase()}, from ${c.source.toLowerCase().replace(/_/g, " ")}.`,
       detail: { subjectKind: c.subject.kind, subjectId: c.subject.id.toLowerCase(), channel: c.channel, purpose: c.purpose, basis: c.basis, source: c.source, wordingId: c.wordingId ?? null, copiedFromId: c.copiedFromId ?? null, writtenWithdrawn: !!end },
+      // R1.8 (QA-594): the consent row as created (never the IP's hash: no hash or secret is an audit value).
+      before: null, after: { subjectKind: c.subject.kind, subjectId: c.subject.id.toLowerCase(), channel: c.channel, purpose: c.purpose, wordingId: c.wordingId?.toLowerCase() ?? null, basis: c.basis, source: c.source,
+        sourceRef: c.sourceRef ?? null, evidenceRef: c.evidenceRef ?? null, locale: c.locale ?? null, jurisdiction: c.jurisdiction ?? null, recordedKind: c.recordedKind, recordedBy: c.recordedBy,
+        copiedFromId: c.copiedFromId ?? null, givenAt: givenAt.toISOString(), withdrawnAt: end ? end.at.toISOString() : null },
     });
     return row;
   }
@@ -101,6 +105,7 @@ export class ConsentStore implements ConsentPort<Tx> {
       firmId, actor: w.by, action: "consent.withdrawn", entity: "msg_consent_withdrawal", entityKey: out.id,
       summary: `Consent withdrawn: ${w.channel.toLowerCase()} ${w.purpose.toLowerCase()}, by ${w.via.toLowerCase()} (${rows.length} live record${rows.length === 1 ? "" : "s"} ended).`,
       detail: { subjectKind: w.subject.kind, subjectId, channel: w.channel, purpose: w.purpose, via: w.via, consentIds: rows.slice(0, 50).map((r) => r.id), count: rows.length },
+      before: null, after: { subjectKind: w.subject.kind, subjectId, channel: w.channel, purpose: w.purpose, via: w.via, withdrawnBy: w.by, withdrawnAt: at.toISOString(), consentsEnded: rows.length },
     });
     return { withdrawalId: out.id, withdrawn: rows.length };
   }
@@ -121,6 +126,7 @@ export class ConsentStore implements ConsentPort<Tx> {
       firmId, actor: s.by, action: "message.address.suppressed", entity: "msg_suppression", entityKey: rows[0].id,
       summary: `An ${s.channel === "EMAIL" ? "email address" : "WhatsApp number"} was suppressed: ${s.reason.toLowerCase().replace(/_/g, " ")}.`,
       detail: { channel: s.channel, reason: s.reason },
+      before: null, after: { channel: s.channel, address, reason: s.reason, note: s.note?.slice(0, 4000) ?? null },   // R1.8 (P-687): the address in full
     });
     return { created: true };
   }
@@ -155,6 +161,7 @@ export class ConsentStore implements ConsentPort<Tx> {
       firmId, actor: w.by, action: "consent.wording.published", entity: "msg_consent_wording", entityKey: row.id,
       summary: `Consent wording published: ${w.channel.toLowerCase()} ${w.purpose.toLowerCase()} (${w.locale}), version ${version}.`,
       detail: { channel: w.channel, purpose: w.purpose, locale: w.locale, version, textHash },
+      before: null, after: { channel: w.channel, purpose: w.purpose, locale: w.locale, version, text: w.text.slice(0, 4000) },
     });
     return { id: row.id, version, textHash };
   }

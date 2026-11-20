@@ -67,7 +67,7 @@ export class PlanLimitChanges {
         summary: row.lowered
           ? `${planRow.name}'s limit on ${WORD[metric]} lowered from ${shown(row.old)} to ${shown(value)}; it applies to this firm from ${f.effectiveAt.toISOString().slice(0, 10)}. Nothing is deleted.`
           : `${planRow.name}'s limit on ${WORD[metric]} raised from ${shown(row.old)} to ${shown(value)}; it applies to this firm now.`,
-        detail: { plan, metric, oldValue: row.old, newValue: value, effectiveAt: f.effectiveAt.toISOString() } });
+        detail: { plan, metric, oldValue: row.old, newValue: value, effectiveAt: f.effectiveAt.toISOString() }, before: { [metric]: row.old }, after: { [metric]: value } });
       return { row, firms };
     }));
     const notices = out.row.lowered ? await this.sendNotices(out.row.id) : { sent: 0, failed: [] };
