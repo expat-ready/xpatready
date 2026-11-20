@@ -41,8 +41,9 @@ type Ans = { status: number; body: any };   // eslint-disable-line @typescript-e
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const [R_ID, R_EMAIL, R_NAME] = sql(`select id || '|' || email || '|' || display_name from platform_staff where actor_id = 'user-R'`).split("|");   // the Owner
 ok("J-5 setup: the Sample firm and its Owner are seeded", !!A && !!R_ID);
+const OMIT = Symbol("no secondStep field");
 const signInApi = async (email: string, secondStep: unknown = true) => {
-  const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, ...(secondStep === undefined ? {} : { secondStep }) }) });
+  const r = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email, ...(secondStep === OMIT ? {} : { secondStep }) }) });
   return { status: r.status, body: await r.json().catch(() => null) } as Ans;
 };
 const first = await signInApi(R_EMAIL);
@@ -191,7 +192,7 @@ try {
   ok("J-5 W4 step 3: the walk ends at R1.6's first step, the Person panel's roles, for the reactivated person", await owner.locator("[data-person-roles]").isVisible());
 
   // ------------------------------------------------------------------------- DW2: the second step, real and fake
-  const noStep = await signInApi(NEW, undefined), falseStep = await signInApi(NEW, false), textStep = await signInApi(NEW, "true");
+  const noStep = await signInApi(NEW, OMIT), falseStep = await signInApi(NEW, false), textStep = await signInApi(NEW, "true");
   ok("J-5 DW2 pass: the sign-in door without the second step (missing, false, or the text \"true\") answers 401 TWO_STEP_REQUIRED in words and no token",
     [noStep, falseStep, textStep].every((a) => a.status === 401 && a.body?.code === "TWO_STEP_REQUIRED" && /Two-step sign-in is required/.test(String(a.body?.detail)) && !a.body?.token), [noStep.body?.code, falseStep.body?.code, textStep.body?.code]);
   const withStep = await signInApi(NEW, true), mine = withStep.body?.token ? await api(withStep.body.token, "GET", "/platform/me") : { status: 0, body: null };
