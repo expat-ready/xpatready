@@ -12,9 +12,10 @@ Used by lane-preflight.sh --hook. Test: check-touch-overlap.sh."""
 import fnmatch, json, os, re, subprocess, sys, time
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
-LINE = re.compile(r"^[ \t>*\-\d.]*\**Touches\**:\**[ \t]*(.*)$", re.M)   # one line; an empty one takes the bullets below it
-BULLET = re.compile(r"^[ \t]*[-*+][ \t]+(.+)$")
-DEADLINE = time.monotonic() + float(os.environ.get("TOUCH_BUDGET_S", "12"))   # the hook itself gets 15 s (settings.json)
+LINE = re.compile(r"^[ \t>*\-\d.]*\**(?:Touches|TOUCHES)\**:\**[ \t]*(.*)$", re.M)   # one line; an empty one takes the bullets below it
+BULLET = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(.+)$")
+FIELD = re.compile(r"^\**[A-Z][A-Za-z ]{0,30}:")   # "- **Done when:** ..." is the next field, not a file
+DEADLINE = time.monotonic() + float(os.environ.get("TOUCH_BUDGET_S", "9"))   # the hook itself gets 15 s (settings.json), with checks before and after this one
 QUERY = ("query($o:String!,$r:String!,$a:String){repository(owner:$o,name:$r){pullRequests(states:OPEN,first:50,after:$a)"
          "{pageInfo{hasNextPage endCursor} nodes{number files(first:100){pageInfo{hasNextPage} nodes{path}}}}}}")
 
@@ -27,11 +28,14 @@ def touches(brief):
             after = brief[m.end():].splitlines()[1:]
             vals = []
             for l in after:
+                if not l.strip() and not vals: continue   # blank lines before the list
                 b = BULLET.match(l)
-                if not b: break
+                if not b or FIELD.match(b.group(1)): break
                 vals.append(b.group(1))
         for v in vals:
-            out += [e.strip("`*'\";()").rstrip(".") for e in re.split(r"[,\s]+", v) if e.strip("`*'\";()").rstrip(".")]
+            for e in re.split(r"[,\s]+", v):
+                e = re.sub(r"[`*'\";().]+$", "", re.sub(r"^[`*'\"(]+", "", e))   # a leading dot stays (.github)
+                if e: out.append(e)
     return [] if [e.lower() for e in out] in ([], ["none"]) else [e for e in out if e.lower() != "none"]
 
 

@@ -31,6 +31,11 @@ to $'Touches:\nDone when: STATE.md updated'; ok "an empty Touches: never reads t
 to $'touches: lane-preflight.sh in prose'; ok "a lower-case touches: in prose is not a Touches: line" "$(y "$r" 0)" "$out"
 to $'See #2002 for context.\nTouches: lane-preflight.sh'; ok "a #N in passing does not exempt that PR (only PR #N, continue #N, resume #N)" "$(y "$r" 1)" "$out"
 to $'Resumes PR #2002.\nTouches: lane-preflight.sh'; ok "... 'Resumes PR #2002' does" "$(y "$r" 0)" "$out"
+to $'Touches: `product/tools/new.sh`, `lane-preflight.sh`.'; ok "the last entry of a list ending in a full stop is read (backticks, then .)" "$(y "$r" 1)" "$out"
+to $'Touches: the model (prisma/schema.prisma).'; ok "... and in brackets" "$(y "$r" 1)" "$out"
+to $'- **Touches:**\n- **Done when:** STATE.md shows the row'; ok "a bulleted next field (- **Done when:**) is not read as the list" "$(y "$r" 0)" "$out"
+to $'Touches:\n\n1. prisma/schema.prisma'; ok "a blank line, then a numbered list, is read" "$(y "$r" 1)" "$out"
+to $'TOUCHES: lane-preflight.sh'; ok "TOUCHES: in capitals is read" "$(y "$r" 1)" "$out"
 to $'Touches: none'; ok "Touches: none checks nothing" "$(y "$r" 0)" "$out"
 to $'Row X-1. Model: Opus 5.5.'; ok "a brief with no Touches: line checks nothing (and reads no PRs)" "$([ $r = 0 ] && [ -z "$out" ] && echo 1 || echo 0)" "$out"
 out=$(printf 'Touches: x.ts\n' | TOUCH_PRS="$T/none.tsv" python3 -I "$TO" 2>&1); r=$?
