@@ -1,0 +1,43 @@
+{
+  "_note": "PF-18a part 2 (AG-16-10, AG-16-11): the eight notification groups of My account → Notifications, as data: each group's words, who sees it and its In-app and Email defaults. Taken from AG-16 v1.24 (25 Oct 2026) §3.3 'Staff notifications' (the table and the 'Defaults' line), requirement snapshot requirements-2026-11-02, read 19 Nov 2026; every value below quotes that text, nothing is invented. The group codes are PF-18np's NotificationGroup enum (ports/notifications.ts): the app refuses this file unless it names exactly those eight, once each. The labels are the one place the screen's English words live (AG-16-11: English only in Release 1, translation-ready). The switches are per group (AG-16-10); in group 7 the items §3.3 marks 'in-app only, email off' never send an email whatever the switch: that is the sender's rule (PF-18n), listed here as emailNeverItems.",
+  "source": { "document": "AG-16-firm-settings-and-integrations_v1.24_2026-10-25.md", "section": "§3.3", "requirements": ["AG-16-10", "AG-16-11"], "snapshot": "requirements-2026-11-02", "read": "2026-11-19" },
+  "securityEmails": {
+    "label": "Security emails (new sign-in, password change)",
+    "quote": "Security emails (new sign-in, password change) are always on, with no switch."
+  },
+  "groups": [
+    { "group": "WORK_HANDED_TO_ME", "number": 1, "label": "Work handed to me",
+      "whatIsInIt": "A case, task or lead assigned to me (including a new lead and a handover); a review requested from me; my review sent back; a client booked a consultation with me.",
+      "whoSeesIt": { "kind": "everyone" }, "whoQuote": "Everyone",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "NEEDS_YOU", "number": 2, "label": "Needs you",
+      "whatIsInIt": "An item waiting for me in Needs you.",
+      "whoSeesIt": { "kind": "everyone" }, "whoQuote": "Everyone",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "MY_DEADLINES", "number": 3, "label": "My deadlines and reminders",
+      "whatIsInIt": "Government deadlines on my cases; the target filing date; the expiry watch; my overdue tasks; reminders I set for myself.",
+      "whoSeesIt": { "kind": "everyone" }, "whoQuote": "Everyone",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "CLIENT_MESSAGED_ME", "number": 4, "label": "A client or lead messaged me",
+      "whatIsInIt": "A client or lead messaged me, including one alert when a WhatsApp chat starts.",
+      "whoSeesIt": { "kind": "everyone" }, "whoQuote": "Everyone",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "MENTIONS", "number": 5, "label": "Mentions",
+      "whatIsInIt": "@mentions.",
+      "whoSeesIt": { "kind": "everyone" }, "whoQuote": "Everyone",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "TEAM_WATCH", "number": 6, "label": "Team watch",
+      "whatIsInIt": "A deadline nobody is watching; escalation alerts; work left unassigned after someone left; how new leads are shared went back to Anyone takes it.",
+      "whoSeesIt": { "kind": "key", "key": "agent/case:assign" }, "whoQuote": "Holders of `agent/case:assign` only",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On" },
+    { "group": "PAYMENTS", "number": 7, "label": "Payments",
+      "whatIsInIt": "Payment failed; invoice overdue (email on). Payment received; invoice sent; refund; dunning escalation (in-app only).",
+      "whoSeesIt": { "kind": "key", "key": "agent/invoice:list" }, "whoQuote": "Billing holders only: holders of `agent/invoice:list`",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On for payment failed and invoice overdue; off for the rest",
+      "emailNeverItems": ["Payment received", "Invoice sent", "Refund", "Dunning escalation"] },
+    { "group": "FIRM_AND_CONNECTIONS", "number": 8, "label": "Firm and connections",
+      "whatIsInIt": "Connection problem; token expiring; payment account paused.",
+      "whoSeesIt": { "kind": "roles", "roles": ["OWNER", "ADMIN"] }, "whoQuote": "Owner and Admin only",
+      "defaults": { "inApp": true, "email": true }, "emailQuote": "On, as AG-16-16 allows" }
+  ]
+}

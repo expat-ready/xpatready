@@ -48,7 +48,7 @@ In-flight work outside Waves 1-2 finishes its current PR and stops: R1.76 (#2320
 <!-- waves.py gen: start (generated from design/waves.tsv and qa/CAPABILITIES.md; edit waves.tsv, then run tools/waves.py gen) -->
 ## Waves as code (B204)
 
-Now: 52 Partial, 37 Not built, 12 Works; active wave 1; lane starts open for waves 0, 1, 2; R1.38 by note.
+Now: 45 Partial, 37 Not built, 19 Works; active wave 1; lane starts open for waves 0, 1, 2; R1.38 by note.
 
 ### Wave 0: Proven before the waves (fixes only) (12)
 
@@ -64,14 +64,14 @@ Now: 52 Partial, 37 Not built, 12 Works; active wave 1; lane starts open for wav
 | Journey | Items |
 |---|---|
 | J0 | R1.4 (Partial), R1.8 (Partial) |
-| J1 | R1.80 (Partial) |
+| J1 | R1.80 (Works) |
 | J2 | R1.100 (Partial) |
 | J3 | R1.47 (Partial) |
-| J4 | R1.26 (Partial), R1.28 (Partial), R1.30 (Partial), R1.33 (Partial) |
-| J5 | R1.37 (Partial), R1.40 (Partial), R1.41 (Partial) |
-| J7 | R1.72 (Partial), R1.74 (Partial), R1.77 (Partial) |
-| J8 | R1.67 (Partial) |
-| J10 | R1.109 (Partial) |
+| J4 | R1.26 (Partial), R1.28 (Works), R1.30 (Partial), R1.33 (Partial) |
+| J5 | R1.37 (Works), R1.40 (Partial), R1.41 (Works) |
+| J7 | R1.72 (Partial), R1.74 (Partial), R1.77 (Works) |
+| J8 | R1.67 (Works) |
+| J10 | R1.109 (Works) |
 
 ### Wave 2: Next (12)
 

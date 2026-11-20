@@ -14,6 +14,8 @@
 # commit (a pure merge of main stays exempt, as above), and, when the label was just put on (LABELED), every failed part
 # of the newest failed merge batch that held the PR named in a "Batch failures covered:" comment line. Main's
 # queue-gate.sh proof judges both (records-only PRs exempt) and gives the reason the comment carries.
+# ENF-746a (P-746): for a records-only PR (the "records" label and main's records-only.sh), a merge of main that changes
+# records files the PR also changes still counts as pure, so qa's proof records keep their Approve across main's merges.
 # Env: GH_TOKEN, REPO (owner/name), PR, AFTER (the push's head, or the PR's head when the label was added; the PR's
 # current head wins), BEFORE (for the comment; empty when the label was added); LABELED (the label just added, if any);
 # FULL_FROM (queue-gate.sh); QUEUE_GATE (the test's stand-in);
@@ -22,6 +24,7 @@
 # Test: check-label-guard.sh.
 set -uo pipefail
 API="${API:-https://api.github.com}"; MAIN_REF="${MAIN_REF:-origin/main}"; LABEL="review: approved"
+HERE=$(cd "$(dirname "$0")" && pwd)
 for v in GH_TOKEN REPO PR AFTER; do [ -n "${!v:-}" ] || { echo "label-guard: $v is not set"; exit 2; }; done
 H=$(mktemp); trap 'rm -f "$H"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
 printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH_TOKEN" > "$H"
@@ -65,8 +68,19 @@ pure() {  # $1 a commit → 0 when it is a pure merge of main touching none of t
   mine=$(git diff --no-renames --name-only "$(git merge-base "${par[0]}" "${par[1]}")" "${par[0]}")
   touched=$(git diff --no-renames --name-only "${par[0]}" "$1")
   both=$(comm -12 <(echo "$mine" | sort -u) <(echo "$touched" | sort -u) | grep . | head -5)
-  [ -z "$both" ] || { why="${1:0:9}'s merge of main changes the PR's own files ($(echo "$both" | paste -sd ' ' -))"; return 1; }
+  if [ -n "$both" ]; then
+    # ENF-746a (P-746, founder 20 Nov): a records-only PR (qa's proof records) keeps its Approve across a merge of main
+    # that changes only records files it also changes (BUGS.md, CAPABILITIES.md): no code a reviewer read changed.
+    # Both tests fail closed, as queue-gate.sh records(): the "records" label (records-label.yml, from a full checkout)
+    # and main's records-only.sh on every file the PR changes. Any other PR keeps the rule above (P-318 (1)).
+    records_pr "$mine" && records_pr "$both" \
+      || { why="${1:0:9}'s merge of main changes the PR's own files ($(echo "$both" | paste -sd ' ' -))"; return 1; }
+    echo "${1:0:9}'s merge of main changes only records files of this records-only PR ($(echo "$both" | paste -sd ' ' -)): counted as pure (ENF-746a)"
+  fi
   next=${par[0]}; return 0; }
+records_pr() {  # $1 changed paths → 0 when the PR carries the records label and main's records-only.sh calls them records
+  echo "$labels" | jq -e 'any(.[]; .name == "records")' >/dev/null || return 1
+  [ "$(printf '%s\n' "$1" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
 
 c=$AFTER; merges=0; why="$headless"; seen=""; unproved=""
 [ -n "$why" ] || git cat-file -e "$c^{commit}" 2>/dev/null || why="the head ${c:0:9} is not in this copy"
