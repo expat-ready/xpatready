@@ -3,6 +3,7 @@
 export type AccountSection = { label: string; path: string; /** The permission key a person needs to see the entry; null: everyone. */ key: string | null };
 
 export const ACCOUNT_SECTIONS: AccountSection[] = [
+  { label: "Home", path: "/home", key: null },   // PF-18h: the staff Home, everyone's own
   { label: "Profile", path: "/account", key: null },
   { label: "Licence", path: "/account/licence", key: null },   // PF-6 part 2b: everyone's own
   { label: "Availability", path: "/account/availability", key: null },   // FO-3st2: own hours need no key (AG-4-62 §8)
