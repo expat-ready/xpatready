@@ -3,6 +3,8 @@
 // per set, 409 on a stale save), their time off (FO-1b's fo_time_off until AG-16 My account holds it), and which set a
 // type uses per host. A person with no set gets "Normal hours" (the firm's business hours) on the first read, under the
 // person's lock; slot computation writes nothing. Rule 7: nothing here writes a booking row. One audit line per change.
+// Part 1c (Lead B on #2243; breaker M4, m11): a person's set names differ, ignoring case and repeated spaces (409 on
+// fields.name; the database's unique index holds it); a deactivated person is not a target (404, as "not found").
 import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -23,6 +25,7 @@ const invalid = (fields: Record<string, string>) => {
   const [first] = Object.entries(fields);
   return problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
 };
+const nameTaken = (name: string) => problem(409, "conflict", "Please check the highlighted details", HOURS_WORDS.nameTaken(name), { code: "NAME_TAKEN", fields: { name: HOURS_WORDS.nameTaken(name) }, issues: [`name: ${HOURS_WORDS.nameTaken(name)}`] });
 export const HOURS_WORDS = {
   name: "Name must be 1 to 80 characters.",
   time: "Give a time as HH:MM, from 00:00 to 24:00.",
@@ -35,7 +38,10 @@ export const HOURS_WORDS = {
   notHost: "This person is not a host of this type.",
   notTheirSet: "Choose one of this host's sets.",
   timeOffLength: "Time off can be at most 366 days.",
+  nameTaken: (name: string) => `You already have a set called ${name}.`,
 } as const;
+/** The database's unique index on a person's set names (migration 20261119081500_fo3a_set_name_unique). */
+const NAME_INDEX = "fo_availability_set_firm_id_staff_id_name_norm_key";
 
 // ------------------------------------------------------------------------------------------------------------- inputs
 const HHMM = /^(?:([01]\d|2[0-3]):([0-5]\d)|24:00)$/;
@@ -111,26 +117,28 @@ export class AvailabilityService {
     const target = await this.target(ctx, staffId);
     const b = parse(SetCreate, body, "a set of hours");
     const windows = windowsOf(b.windows ?? []);
-    return this.db.$transaction(async (tx) => {
+    return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.ensureDefault(tx, ctx.firmId, target);
+      await this.nameFree(tx, ctx.firmId, target, b.name);
       const timeZone = b.timeZone ?? await readSetting<string>(tx, ctx.firmId, TIME_ZONE.key);   // rule 4: the office's zone (the firm's until PF-18a)
       if (b.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
       const set = await tx.foAvailabilitySet.create({ data: { firmId: firmScope(ctx.firmId).firmId, staffId: target, name: b.name, timeZone, isDefault: b.isDefault ?? false } });
       if (windows.length) await tx.foAvailability.createMany({ data: windows.map((w) => ({ firmId: set.firmId, staffId: target, setId: set.id, timeZone, ...w })) });
       await this.audit(tx, ctx, target, "availability.set_created", "Availability changed: a set of hours was added.", { setId: set.id, name_after: auditName(set.name), timeZone_after: timeZone, isDefault_after: set.isDefault, windows_after: auditWindows(windows) });
       return setView(await this.readSet(tx, ctx.firmId, target, set.id));
-    });
+    }));
   }
 
   async updateSet(ctx: StaffContext, staffId: string, setId: string, body: unknown) {
     const target = await this.target(ctx, staffId);
     const b = parse(SetPatch, body, "a set of hours");
     const windows = b.windows ? windowsOf(b.windows) : undefined;
-    return this.db.$transaction(async (tx) => {
+    return this.named(b.name, () => this.db.$transaction(async (tx) => {
       await this.lockPerson(tx, ctx.firmId, target);
       const before = await this.readSet(tx, ctx.firmId, target, setId);
       if (before.version !== b.version) throw problem(409, "stale-version", "Changed by someone else", HOURS_WORDS.stale, { code: "STALE_VERSION", version: before.version });
       if (b.isDefault === false && before.isDefault) throw invalid({ isDefault: HOURS_WORDS.unsetDefault });
+      if (b.name !== undefined) await this.nameFree(tx, ctx.firmId, target, b.name, before.id);
       const timeZone = b.timeZone ?? before.timeZone;
       if (b.isDefault && !before.isDefault) await tx.foAvailabilitySet.updateMany({ where: firmScope(ctx.firmId, { staffId: target, isDefault: true }), data: { isDefault: false, version: { increment: 1 } } });
       await tx.foAvailabilitySet.update({ where: { id: before.id }, data: { ...(b.name !== undefined ? { name: b.name } : {}), timeZone, ...(b.isDefault ? { isDefault: true } : {}), version: { increment: 1 } } });
@@ -143,7 +151,7 @@ export class AvailabilityService {
         setId: after.id, name_before: auditName(before.name), name_after: auditName(after.name), timeZone_before: before.timeZone, timeZone_after: after.timeZone,
         isDefault_before: before.isDefault, isDefault_after: after.isDefault, windows_before: auditWindows(before.windows), windows_after: auditWindows(after.windows) });
       return setView(after);
-    });
+    }));
   }
 
   async deleteSet(ctx: StaffContext, staffId: string, setId: string) {
@@ -211,12 +219,31 @@ export class AvailabilityService {
   }
 
   // --------------------------------------------------------------------------------------------------- helpers
-  /** The person whose hours these are: "me" is the caller; another id must be staff of the caller's firm (else 404). */
+  /** The person whose hours these are: "me" is the caller; another id must be staff of the caller's firm who is not
+   *  deactivated (else 404, the same answer as an id the firm does not have: part 1c, breaker m11). */
   private async target(ctx: StaffContext, staffId: string): Promise<string> {
     if (staffId === "me") return ctx.staffId;
     if (!z.uuid().safeParse(staffId).success) return notInFirm("staff member");
-    const s = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: staffId.toLowerCase() }), select: { id: true } });
+    const s = await this.db.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: staffId.toLowerCase(), status: { not: "DEACTIVATED" as const } }), select: { id: true } });
     return s?.id ?? notInFirm("staff member");
+  }
+
+  /** Part 1c (breaker M4): the person has no other set with this name, compared as the database's index compares
+   *  (case and repeated spaces ignored). Called under the person's lock. */
+  private async nameFree(tx: Tx, firmId: string, staffId: string, name: string, exceptId?: string) {
+    const taken = await tx.$queryRaw<{ id: string; name: string }[]>`
+      SELECT "id", "name" FROM "fo_availability_set" WHERE "firm_id" = ${firmScope(firmId).firmId}::uuid AND "staff_id" = ${staffId}::uuid
+        AND lower(regexp_replace(btrim("name"), '[[:space:]]+', ' ', 'g')) = lower(regexp_replace(btrim(${name}), '[[:space:]]+', ' ', 'g')) ORDER BY "created_at", "id"`;
+    const other = taken.find((t) => t.id !== exceptId);
+    if (other) throw nameTaken(other.name);
+  }
+
+  /** A save that still meets the index (a writer that did not take the person's lock) gets the same 409. */
+  private async named<T>(name: string | undefined, save: () => Promise<T>): Promise<T> {
+    try { return await save(); } catch (e) {
+      if (name !== undefined && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && JSON.stringify(e.meta ?? {}).includes(NAME_INDEX)) throw nameTaken(name);
+      throw e;
+    }
   }
 
   /** The person's lock: FO-1b's copy takes the same one, so a first read and a copy never both make a set. */

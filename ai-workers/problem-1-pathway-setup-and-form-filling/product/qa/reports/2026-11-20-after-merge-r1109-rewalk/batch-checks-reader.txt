@@ -1,0 +1,2 @@
+Merge batch draft #2371 (holding #2315) head eabe462db: ci 44601627608, all 29 non-skipped jobs success (ci-jobs.txt). Its studio tree 9a14d742b differs from main 6f6efac88's (8bc206112) only by tests/journeys/j_41.ts (+156 lines, J-41 #2302 merged before #2315); no complaints code differs.
+Walks on main 6f6efac88, started by the tech lead (no item-proof: #2315's body has no Completes line): pack run 44608469689 job 135859331855 (walk-44608469689.txt, 26 PASS), independent re-run 44608482750 job 135858756145 (walk-44608482750.txt, 26 PASS).

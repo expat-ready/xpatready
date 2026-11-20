@@ -31,6 +31,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 import { chromium, type Page } from "playwright";
+import { textPdf } from "../../acceptance/lib/fixtures.ts";
 import { client, recorder, type Res } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
@@ -78,7 +79,8 @@ ok("J-8 setup: firm B (the Sample solo firm) has its own Visitor visa case", ope
 // ------------------------------------------------------------------------- the three actions (the walk's own, by API)
 const answer = (caseId: string, subject: string, fact: string, value: unknown, actor: string | null): Promise<Res> => call("PUT", `/runtime/cases/${caseId}/answers/${subject}/${fact}`, { value, expectedId: null }, actor);
 const upload = async (lineId: string, name: string, actor: string | null) => {
-  const fd = new FormData(); fd.append("file", new Blob([new TextEncoder().encode(`%PDF-1.4\n% Sample synthetic document ${name}\n`)]), name);
+  // CS-D1t (R1.67, on main): a PDF that does not open is refused as damaged, so the Sample document is a well-formed PDF.
+  const fd = new FormData(); fd.append("file", new Blob([new Uint8Array(textPdf([`Sample synthetic document ${name}`]))]), name);
   const res = await fetch(`${BASE}/api/runtime/checklist-lines/${lineId}/documents`, { method: "POST", headers: actor ? { "x-actor": actor } : {}, body: fd }).catch(() => null);
   return res?.status ?? 0;
 };

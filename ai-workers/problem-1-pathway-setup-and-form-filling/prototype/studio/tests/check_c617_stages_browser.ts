@@ -14,6 +14,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { request } from "node:http";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 import { AUTHOR, OFFICER, PORT, sql } from "../acceptance/lib/m3.ts";
 
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
@@ -81,7 +82,7 @@ try {
   const passport = p.locator("[data-documents-panel] [data-line]").filter({ has: p.locator("[data-line-label]", { hasText: /^Passport information page copy$/ }) }).first();
   await passport.waitFor(); await passport.locator("[data-line-menu]").click();
   const chooser = p.waitForEvent("filechooser"); await p.locator('[data-action="upload"]').click();
-  await (await chooser).setFiles({ name: "sample-passport-study.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% Sample synthetic passport copy (C6.17 walk)\n") });
+  await (await chooser).setFiles({ name: "sample-passport-study.pdf", mimeType: "application/pdf", buffer: textPdf(["Sample synthetic passport copy (C6.17 walk)"]) });   // CS-D1t: a PDF that opens
   await passport.locator("[data-state-words]", { hasText: "Received" }).waitFor();
   ok("C6.17-5 (P-444): on the study permit's Documents panel the officer uploads Client A's passport copy through the line's menu: Received, the file named", /sample-passport-study\.pdf/.test(await passport.innerText()));
   await passport.scrollIntoViewIfNeeded(); await p.evaluate(() => window.scrollBy(0, 200));

@@ -10,6 +10,7 @@
 // per network address, so a second run within the minute is refused with 429 (by design, BR-4).
 import { request } from "node:http";
 import { AUTHOR, CLIENT, OFFICER, PORT, agent, answer, call, main, needVisitorVisa, ok, openCase, run, sendFile, sql, yearsAgo, type Person } from "./lib/m3.ts";
+import { textPdf } from "./lib/fixtures.ts";
 
 type R = { status: number; body: any; headers: Record<string, string | string[] | undefined> }; // eslint-disable-line @typescript-eslint/no-explicit-any -- responses read loosely, as in the other packs
 /** A call to /api/link/* (or anywhere) with a Bearer session and no x-actor, unless one is given (to prove it is refused). */
@@ -32,7 +33,7 @@ type Q = { subjectId: string; fact: string; value_type: string; collected_from: 
 const qs = (v: { sections?: { questions: Q[] }[] } | undefined) => (v?.sections ?? []).flatMap((s) => s.questions);
 /** A multipart upload as Client A, with form fields beside the file (C6.5's document with no checklist line). */
 const upload = async (path: string, fields: Record<string, string>): Promise<{ status: number; body: any }> => { // eslint-disable-line @typescript-eslint/no-explicit-any -- read loosely
-  const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v); fd.append("file", new Blob([new Uint8Array(Buffer.from("%PDF-1.4\n% Sample\n%%EOF\n", "latin1"))]), "sample.pdf");
+  const fd = new FormData(); for (const [k, v] of Object.entries(fields)) fd.append(k, v); fd.append("file", new Blob([new Uint8Array(textPdf(["Sample"]))]), "sample.pdf");
   const res = await fetch(`http://127.0.0.1:${PORT}/api${path}`, { method: "POST", headers: { "x-actor": CLIENT }, body: fd }).catch(() => null);
   return { status: res?.status ?? 0, body: await res?.json().catch(() => null) };
 };
@@ -131,7 +132,7 @@ await main("C6.16", "Adult privacy and Send to …", async () => {
   ok("C6.16-4 fail: Client A's none-apply, add row and remove row on Partner are each 403", !!groupQ && na.status === 403 && addR.status === 403 && delR.status === 403, [groupQ?.group, na.status, addR.status, staffRow.status, delR.status]);
   const lines = (await call("GET", `/runtime/cases/${id}/checklist`, undefined, officer)).body?.people?.find((p: { subject: string }) => p.subject === S)?.lines ?? [];
   const lineId: string | undefined = lines[0]?.id;
-  const up = lineId ? await sendFile(`/runtime/checklist-lines/${lineId}/documents`, Buffer.from("%PDF-1.4\n% Sample\n%%EOF\n", "latin1"), "sample.pdf", CLIENT) : { status: 0, body: null };
+  const up = lineId ? await sendFile(`/runtime/checklist-lines/${lineId}/documents`, textPdf(["Sample"]), "sample.pdf", CLIENT) : { status: 0, body: null };
   const caseDoc = await upload(`/runtime/cases/${id}/documents`, { subjectId: S, documentType: "letter_of_invitation" });
   ok("C6.16-4 fail: Client A's upload of a document with no checklist line for Partner is 403", caseDoc.status === 403 && /private to them and the firm/.test(caseDoc.body?.detail ?? ""), [caseDoc.status, caseDoc.body?.detail]);
   const parentPutA = parentQ ? await call("PUT", `/runtime/cases/${id}/answers/${parentQ.subjectId}/${parentQ.fact}`, { value: "Changed by Client A", expectedId: null }, CLIENT) : { status: 0, body: null };
