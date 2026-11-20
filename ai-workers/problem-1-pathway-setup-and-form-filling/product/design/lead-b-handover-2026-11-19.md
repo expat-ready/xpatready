@@ -131,3 +131,30 @@ CS-C1r (reopen skips the case limit) is Build Lead C's. Main's V2 red was fixed 
 * The founder approved switching off "full run on every PR" (P-733 (4), the FULL_RUN_FROM variable) until 22 Nov 20:00 IST. Once it is set, only PRs that failed a batch need `/run full`.
 * Full runs started by the Lead: #2268, #2302 and #2308 (earlier); #2323, #2109 and #2322 (23:58).
 * Waiting: #1961 is held by the Lead until #2341 merges. #2029 is green and labelled, in the queue. #2315 (PF-21j) is in queue batches #2352/#2354.
+
+## Lead B (8) hand-over (20 Nov 06:29 IST): the next Lead B starts here
+**Session:** Lead B (8), worktree `jolly-chatterjee-f02f6d`. The sandbox blocks writing `.claude/skills`, so `lead-b-front-office` is **not checked out**: commit with a temporary index (`GIT_INDEX_FILE=$TMPDIR/idx; git read-tree origin/lead-b-front-office; git update-index --cacheinfo …; git commit-tree …; git push origin <sha>:refs/heads/lead-b-front-office`). **Current Lead:** Lead 98 (`local_b18084c0-4fca-4a71-81bc-9826c722a44f`), handing to Lead 99 next: always ask `tools/current-lead.sh`. **Rules now:** P-745 waves (`design/waves.md` on `lead/2026-11-07-lead31`): caps 8 building, 12 Built-not-Proven; Wave 2 starts only when Wave 1 has ≤ 8 building and R1.30, R1.31, R1.40, R1.67 are proved (Lead 98). P-747 (phones at arrival doors). The focus list `lead-b-briefs/lane-order-P733-2026-11-19.md` now opens with the P-745 order.
+
+### Items
+| Item | State | Next |
+|---|---|---|
+| R1.4 firm walls | **#2029** conflicts with main; not mechanical (two new bypass uses from PF-19p) | brief **`PF-12b1m.md`** (6e96c88fb; my ruling: both new uses `audit: "none: …"`); Lead 98/99 starts a PF lane at the founder's next typed turn unless the J-109 lane pushes first |
+| R1.33 phones | #2268 merged 03:01; Partial on QA-526 | **FO-9b** (`FO-9b.md`) being built by the R1.33 lane on `claude/confident-mendel-v60owc` (started 05:37) |
+| R1.40 invites | proof was Partial on QA-522 | **J-38r** (W7 reschedule, W8 cancel) with the R1.40 J-38 lane; no PR seen yet |
+| R1.38 time zones | #2308 merged 06:15; **#2313** queued (06:28) | then #2322, then #2326 (each: merge main, diff-only Approve, the Lead labels); #2326 and J-38r share j_38.ts |
+| R1.48 sending | **#2397** PF-19b part 3 queued | J-48 holds under the cap (Lead 98) |
+| R1.109 | Works in qa 7's #2382 | QA-525 → row **PF-21jt** after Wave 1's open items |
+| R1.30/R1.31 | #2323 merged 05:24 | qa 9 re-proves |
+| R1.41, R1.37, R1.28, R1.80 | proven or with qa | — |
+| R1.72 (Build Lead C) | #2321 FO-2w merged 06:19 | CS-K1 part 2 (theirs); **FO-5rp/FO-2u held** until after R1.72's proof |
+| Parked | R1.20 (#2109, #2307 merged), R1.92 (#2304 merged), R1.54 (#2038) | lanes told to stop |
+
+### How the pipeline behaves tonight (lessons)
+* A failed-batch PR needs a fresh full run **and** a "Batch failures covered: <run>: <every failed part>" line for **every** failed batch its head sat in; read the label guard's own list, read each job log, and post the parts with whose fault each is. The Lead posts the line (or accepts mine) and relabels.
+* `/run full` on a head that already has a full run re-runs the old pinned run; the Lead dispatches ci.yml by hand (pipeline row with Lead 97). A re-run of failed jobs also tests the old merge: never use one to pick up a main fix. Close/reopen gives a fresh PR-level ci.
+* Mergify takes a requeue only as a bare comment.
+* Cloud lanes post `/run full` mangled; they can't start runs.
+* Times: read `TZ=Asia/Kolkata date` before writing one (I stamped ahead several times).
+
+### Watch ($TMPDIR; dies with the session)
+`watch.py` (GraphQL every 240 s; exits on a new head, merge, finished CI, a newly added "dequeued", a new question or a reviewer Approve naming the head; queue-label churn ignored). PRs: 2397, 2029, 2038, 2001, 2313, 2322, 2326. Only one watcher at a time (shared state file).
