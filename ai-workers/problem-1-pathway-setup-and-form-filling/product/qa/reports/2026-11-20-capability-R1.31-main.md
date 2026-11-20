@@ -29,7 +29,7 @@ Pending: walks.yml `j_31` on main's head, twice (the pack run and the independen
 - **Any other move is refused.** A person's move into Won gets 422 WON_BY_EVENT (`:263`), a move out of Won gets TERMINAL (`:265`), a change of type refuses a won prospect, and a booking moves only open-stage prospects (`arrival-port.ts:158`).
 - **Totals are grouped per currency in the database** (`board-totals.ts:11-21`) and shown side by side (`pipeline-page.tsx:24-26`).
 - **By screens:** the drag onto Won is refused (`j_30.ts:236`), Won is not offered by Move to… (`:185`), and Convert works (`:293-295`). By API (P-741): the refused move (`:85`), and Signed offline on a retainer the test inserts by SQL (`:317-322`).
-- **Weak spot, a Minor test gap:** `j_30.ts:322` asserts `won_via !== "CONVERTED"` rather than `=== "SIGNED_OFFLINE"`. Recorded as a suggestion, not a bug: the row it checks was made by the Signed offline call, and a wrong cause would still show in the event log line J-30 reads.
+- **Weak spot, a Minor test gap:** `j_30.ts:322` asserts `won_via !== "CONVERTED"` rather than `=== "SIGNED_OFFLINE"`. Recorded as a suggestion below: the behaviour is right in the code (`retainers/service.ts:609` passes SIGNED_OFFLINE); only the assertion is loose.
 - No open Major or Critical names R1.31.
 
 ## Suggestions
