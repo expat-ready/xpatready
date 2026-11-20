@@ -84,3 +84,28 @@ Scope: `git diff 47debd8c..33af6d2d05c64ff1b3c19324dde68f3690a17e8a` only, on th
 * **M3. `check_bk4a.ts` BR-1 fails at 33af6d2d.** The fix adds a `setActor(` call site in `web/src/runtime/clients.tsx:35` (`actAs`), and BK-4a's register of the only places a person may change (`tests/check_bk4a.ts:55-62`, `ALLOWED`) does not list it: `sites` has `"runtime/clients.tsx": 1`, `allowed` does not. The check exists precisely to make each new person-change site argued in place (BK-4a BR-1). **Fix:** add `"runtime/clients.tsx": 1, // CS-K1s breaker M1: before landing on a case the client page opened or links to, act as the signed-in staff member's own case-side person (the notice says so)` to `ALLOWED` and re-run `check_bk4a.ts` (22/22). Test-only, one line; the behaviour itself is right.
 
 **Verdict on 33af6d2d: Block** (M3 only; no Blocker; no other Major). With the one `ALLOWED` line added and `check_bk4a.ts` green, nothing else in this diff stands in the way; a check of that one-line diff suffices. Journey score unchanged in substance and raised by M1's fix: task completed 1, feedback and state 1 → **9.5 / 10** (plain words stays ½ for m4).
+
+## Final check on 61a2bfc7 (20 Nov, UTC 11:2x)
+Scope: `git diff 33af6d2d..61a2bfc7c51d8b4e3e01690ba81fef73cfcd0f8f` on the exact head (HEAD = 61a2bfc7): `tests/check_bk4a.ts` (+1), `tests/check_bk4c.ts` (+3/-1), this file. No app, API or contract code changed, so the 33af6d2d runs (row check 33/33, J-72 31/31, M1 landing walk) still stand.
+Static checks run on 61a2bfc7 (tsx, no server): `check_bk4a.ts` 22/22 · `check_bk4c.ts` 16/16 · `check_bk4b_handoffs.ts` 15/15 · `check_pf1_module_routes.ts` 28/28 · `check_bk3_frame.ts` 156/156.
+My miss: in the 33af6d2d re-check I ran `check_bk4a` and not `check_bk4c`, which failed for the same reason. The builder found it.
+
+* **M3 closed.** `ALLOWED` now lists `"runtime/clients.tsx": 1`, with its reason (CS-K1s breaker M1, said by PersonNotice).
+* **BK-4c (1) amendment: I agree, Minor, not a Major.** BK-4c's test names two rules:
+  * Targets come from data, never from a literal id: still enforced, and the "literal" line passes.
+  * Each change in the case area sits at a named, argued place. This one is argued in both registers.
+  * The change only happens because of the person's own explicit action ("Open the case", or a case link on the client page).
+  * It moves to the signed-in staff member's own person (`viewer_actor_id`, read firm-scoped on the server), not to a chosen other person.
+  * PersonNotice says the change, which is the same treatment as BK-4a's BR-8 first-person switch.
+  * A "Continue as <person>" button would add a step to a demo-only mismatch, and the one-identity production product has no such step.
+* **Residual Minor (list it, with the deviation, for the tech lead):** `actAs` (`clients.tsx:35`) switches whenever the picker differs from the staff member's own person. That includes a firm A person who could already see the case: a founder demoing as Case officer while signed in as the representative becomes Representative on landing. The notice says so, and nothing is lost. If the tech lead wants it narrower, switch only when the current person is not of the staff member's firm, or is a client.
+
+**Verdict on 61a2bfc7c51d8b4e3e01690ba81fef73cfcd0f8f: Approve.** No Blocker or Major is open.
+
+Minors listed for follow-up rows:
+* m1: no-program dead end; the tech lead's question.
+* m4: USED words name a step the page lacks.
+* m5: local zod for `cases`, `file_owner`, `viewer_actor_id`.
+* BK-4c deviation (above).
+
+Journey score 9.5 / 10.
