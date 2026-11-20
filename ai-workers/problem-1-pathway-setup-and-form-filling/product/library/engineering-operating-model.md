@@ -1,6 +1,6 @@
 # Engineering Operating Model
-Version: 1.0
-Updated 17 Nov 2026 · owner: the tech lead · status: living master
+Version: 1.1
+Updated 20 Nov 2026 · owner: the tech lead · status: living master
 
 How we code, test, review, prove, merge and run unattended: best practice, our numbers, today's changes and what proves them (A144). Board Library row: "Engineering operating model".
 
@@ -8,6 +8,7 @@ How we code, test, review, prove, merge and run unattended: best practice, our n
 | Version | Date (IST) | Change |
 |---|---|---|
 | 1.0 | 17 Nov 2026 | First master, assembled from the engineering operating model draft, version 2 (17 Nov 2026, 09:5x IST) |
+| 1.1 | 20 Nov 2026 | Refresh against the feeds changed since 17 Nov 13:26 IST (workflows and `.mergify.yml` on main at 156057c4a, `.claude/settings.json` on main, RULES.md on the tech lead's branch as of P-752): "Since 17 Nov" notes under 3.5, 3.6, 3.7, 4, 5, 5a and 5b mark what landed or changed, and new section 12 describes how work flows on 20 Nov (CI jobs, merge queue, hooks, permissions, rules), each fact with its PR, commit and decision row. The 17 Nov plan text above is kept as it was. |
 
 **About the source.** Draft version 2, 17 Nov 2026, 09:5x IST (clock from `TZ=Asia/Kolkata date`, 09:41 IST at the start of that revision). Asked for by the founder in A141, A142 and A144. It replaces the CI research's day-by-day plan (research §13, "day 2-5") with one plan on today's clock, followed by measurement. Version 2 took in two independent critiques of version 1 (both "ready with fixes"). It was read-only work: nothing was changed on GitHub or in the repository, nothing was run, and nothing was spent.
 
@@ -169,6 +170,14 @@ Either way, before the paste: `test -f` each script path in the checkout the hoo
 | Checks must start | 47 `records-label` and 37 `label-guard` suites with `startup_failure` [B] fault 7 (cause unread) | Read the cause first; fix in one lane PR. records-label routes records PRs, so this bears on Proven | builder lane PR | read 09:45; fix this afternoon | `startup_failure` suites a day: 0 |
 | The pipeline measures itself (O1) | 11 of 15 metrics have no tool. REST budget at 0 from 08:19 to 09:02 and again at 08:58 [B] | Move `app-code-prs.sh` and the board (about 150 REST calls a run) to GraphQL. A8 hourly `pipeline-metrics.yml`. `baseline-snapshot.py` committed without raw JSON | builder lane PR | REST fix about 13:30-14:00 / 16:30+; A8 this evening | REST budget never at 0; 15 metrics each hour |
 
+**Since 17 Nov (refresh 20 Nov).** The CI plan above is partly superseded; the plan text stays as the 17 Nov record.
+* "One full PR check per PR, run once" (Q1, CI-B, P-665) was not built as written. Built instead, on P-651 (2): a builder's PR runs only the fast checks (`kind`, `fast`, `types`); the suites on the parts, the packs by diff, the protected regression set and gate B's named packs run once, on the merge-queue batch (#2151, commit 3911fa145, merged 19 Nov 01:45 IST).
+* Then a full run before the label (CI-PRE, P-731): `/run full` starts main's `ci.yml` by `workflow_dispatch` on the PR's head merged with main, and queue-gate and label-guard need it green (#2249, merged 19 Nov 22:46 IST). P-733 (4) narrowed it to PRs that failed a batch; P-743 set the repository variable `FULL_RUN_FROM` to 20:00 IST 22 Nov, so heads approved before then need no full run (change log C35, C36).
+* The type check has an 8 GB heap (#2250, change log C30); batch suites run on 18 parts, was 8 (#2282, change log C31).
+* Records rules (check-docs.sh, decision-impact.sh) run on the PR only, skipped in a merge-queue run (ENF-746c, #2410, P-746, change log C38).
+* Scheduled workflows were re-registered after the org move, and label-guard and queue-gate can be started by hand (#2176, commit 479ed84b6). The label sweep gets REVIEWERS again, since the owner is now the organisation (#2209, commit 1a79efda5).
+* `pr-rules` lets records-only PRs pass `pr-size` (#2086, P-686) and checks a "Completes: R1.n" line (#2233). It is still not a required check: RULES P-606 and P-610 say "not yet a required check".
+
 ### 3.6 Merge
 
 | Practice (source) | Baseline (source) | Change | Who | When | Metric |
@@ -178,6 +187,13 @@ Either way, before the paste: `test -f` each script path in the checkout the hoo
 | Closest to done goes first ([R] D7) | #1961 waited 18.1 h and #1956 14.5 h for a first machine; Approved to merged median 1.98 h [B]. `.mergify.yml` has no priority rules [OWN] | Priority for near-Proven **product** PRs: a `.mergify.yml` PR, merged by the tech lead under P-214 once its own check passes. **qa verdict records PRs first reverses B119 / P-376 (1). Needs his yes** | builder lane PR; founder for records | about 11:45 / 13:15 | Approved to merged under 1 h |
 | Server-side protection of main (O23) | Known gaps are tracked privately by the tech lead. | Ruleset, exactly: required status `ci`; block force-push; block deletion. **Not** GitHub's "require merge queue" (Mergify is our queue), **not** a review requirement (P-423), **not** "require branches up to date". P-214 kept | founder at 10:30 | after the move | Force-push and delete refused; merges unchanged |
 
+**Since 17 Nov (refresh 20 Nov).** The card `max_parallel_checks: 2` was not applied. Instead:
+* Mergify runs `mode: parallel` with one files scope per fenced module (platform, front-office, money, case-side, forms-engine), plus `migrations` and `pipeline` lanes (capacity 1 each, money 1 too) and barrier files that serialize the queue. Batch size is 2, was 6, with at most 2 failure-resolution rounds (#2207, merged 19 Nov 16:59 IST; P-715, P-717).
+* `max_parallel_checks` went from 3 to 6 (#2290, merged 19 Nov 22:11 IST; P-739, lifting P-730's hold; change log C33).
+* qa verdict records PRs go first through a new queue `verdicts`, which takes PRs labelled `records`, titled `qa:` and changing qa/CAPABILITIES.md (#2073, merged 17 Nov 19:23 IST; P-664; change log C11).
+* Pipeline-only PRs have their own queue `pipeline` and never share a batch with product (P-717 (a)).
+* queue-gate's gate job runs on the Mac runner xr-mac (#2145; change log C29). Emergency hand merges stay allowed for a pipeline fix while the queue is broken (P-691; change log C30, C31).
+
 ### 3.7 Main
 
 | Practice (source) | Baseline (source) | Change | Who | When | Metric |
@@ -185,6 +201,12 @@ Either way, before the paste: `test -f` each script path in the checkout the hoo
 | Main stays green, shown nightly (O1) | No nightly since 16 Nov 05:31 IST [B] | `/run nightly` now; check the 01:53 run | tech lead | 09:45, 02:15 | One nightly a night |
 | Judge red only from the deciding check | A FAILURE rollup came from gate jobs while `ci` was green [B] fault 3 | `lead-watch red()` and `factory-board` read `ci` only; count Release 1 Proven | builder lane PR | afternoon | False red alarms: 0 |
 | Demo after every merge | 7 of 7 green; lag median 0.8 min [B] | KEEP | - | - | Within 10 min |
+
+**Since 17 Nov (refresh 20 Nov).**
+* The nightly gained a restore drill job: dump, restore and check on the pinned PostgreSQL every night (#2014, merged 18 Nov 18:39 IST; PF-8r).
+* `pipeline-heartbeat.yml` checks every 30 min, outside every session, that the approved set-up is in force and the pipeline moves. It is read-only and mails the owner on red (#2081, merged 18 Nov 19:47 IST; CK-2).
+* `walks.yml` records gate A walks on GitHub's machines (#2133, merged 18 Nov 23:08 IST; P-700).
+* `item-proof.yml` proves an item automatically at its last merge (#2233, merged 19 Nov 19:55 IST; P-728 (3), P-729 (1); change log C32).
 
 ### 3.8 Operations (long unattended runs)
 
@@ -236,6 +258,8 @@ Either way, before the paste: `test -f` each script path in the checkout the hoo
 * **One batch yes for 20 rows** that lose a detail from the live register (each stays in DECISIONS, history and its skill), naming P-626.
 * **Inform only:** 99 rows keep their meaning; 16 are the tech lead's own rulings [RV2] §5.
 
+**Since 17 Nov (refresh 20 Nov).** Rules v2 has not replaced the register: P-667 stands only as a recorded row (RULES IDX-15). RULES.md on the tech lead's branch is still the one-line register, now as of P-752 (11:15 IST 20 Nov). Long rows have moved word for word to `rules/tech-lead.md`, `rules/goal-and-order.md` and `rules/builders-and-qa.md` under IDX rows (IDX-7 to IDX-20), so the register stays under 25 KB (commits 713dd20bf, 08f03e389). The rows that change how work flows are summarised in section 12.
+
 ---
 
 ## 5. Checks: keep, fix, remove, add
@@ -246,6 +270,8 @@ Either way, before the paste: `test -f` each script path in the checkout the hoo
 | FIX | F1 = Q1 (card). F2 = Q2 + Q4. F3 = `max_parallel_checks` (card, P-224). F5 `pr-rules` required (conditional, section 3.1). F6 `guards` by path. F4, F7, F8, F9: tracked privately by the tech lead. F10 SessionStart output under 1.5 KB. F11 check-docs fails on a future time. F12 drop label-guard's `workflow_run`. F13 `records-label` and `label-guard` start failures. F14 measuring scripts off REST |
 | REMOVE | `m3-guard.sh` (unused since 8 Nov). Building checks for about 100 rules never broken (only if Q1 is yes). **The P-446 context alarm stays until Q3 is yes** |
 | ADD | A1 deny lines. A2 wire U1-U5 and pr-open-guard. A3 one allow-list door for GitHub writes inside `merge-guard.sh` (E-11). A5 round counter. A6 touch-list overlap. A7 push before stop. A8 hourly metrics. A4 and A9 (including a reviewer identity): tracked privately by the tech lead. A10 actionlint and zizmor, LATER |
+
+**Since 17 Nov (refresh 20 Nov).** Workflows added to KEEP since this table: `item-proof`, `walks`, `pipeline-heartbeat` and the nightly restore drill (section 3.8). On F6, `guards` gained trigger paths and a 30-minute limit for its mutation run (#2249, commit 43a238b44; #2363). It is still not a merge condition.
 
 **Order.** CI-0b, PR-W, A4, F13, F14 and the priority PR start 09:45. CI-0a (F6 only) starts 09:45; F3 and F5 join only after their cards. CI-A starts 09:45. CI-B is built on CI-A and labelled only after Q1 and Q5. All `.github` diffs are read by the tech lead (P-423).
 
@@ -290,6 +316,7 @@ The founder pastes these into the Mac copy's `.claude/settings.json` → `permis
 * Changed from version 1: `--method *` is now `--method P*` and `--method DELETE*`, so `--method GET` reads still work (POST, PUT and PATCH all start with P), and lanes are not refused on reads. Commit `--no-verify` and `core.hooksPath` config lines added.
 * `*/rulesets*` and `*branches/*/protection*` also refuse reads; acceptable, since the founder sets the ruleset in the browser.
 * After the paste: check the startup warnings once.
+* **Since 17 Nov (refresh 20 Nov).** These 31 lines are on main for every copy, byte for byte with the founder's paste (#2075, merged 17 Nov 19:24 IST; P-670, P-672; change log C10, C12). Main's file also denies the same five Drive writes for a second connector id. It holds 75 deny lines and 2 allow lines (read 20 Nov).
 
 ### 5b. Hook lines for the later paste
 
@@ -321,6 +348,8 @@ Stop, beside `stop-check.sh`, with both Stop timeouts at about 60 s:
 If option 2 of section 2.0 is chosen, `$CLAUDE_PROJECT_DIR/…` becomes the path of the main-tools checkout. The merge-guard handlers come with F8. L2 comes with L1. `autoMode.environment`'s JSON shape is checked against O8 at paste time (unverified here).
 
 Known gaps are tracked privately by the tech lead.
+
+**Since 17 Nov (refresh 20 Nov).** The hook paste above has not reached main. Main's `.claude/settings.json` hooks are unchanged since 17 Nov: SessionStart, PreToolUse on Bash, session starts, Agent/Task and CronCreate, Stop and UserPromptSubmit. They call merge-guard, agent-model-guard, lane-preflight, lead-check-guard, stop-check, prompt-log and session-start; none of `ist-time-guard.py`, `lead-read-guard.sh`, `queued-push-guard.sh`, `wip-guard.py` or `lead-act-check.sh` is wired there (read 20 Nov). `.githooks/pre-push` on main is unchanged since 6 Nov. The PR-W line (`pr-open-guard.sh` in pre-push) exists only on the tech lead's branch (G-4, commit 5912f30a0, 15 Nov).
 
 ---
 
@@ -477,3 +506,58 @@ About 75-90 min of the founder's time (estimate). Every card that reverses a dec
 4. **"Move the tech lead to a fresh branch first" [C2, version 1].** Not taken as the main path: the branch is 1,367 commits ahead and the merge would go through the slowest queue. Option 2 (hooks pointing at a main-tools checkout) is recommended instead, to be tested on one hook.
 5. **"`lead-read-guard` reads the PR before checking sensitivity" [C2].** Taken as stated but not re-read by me; the fix (F14 or an exemption) works either way.
 6. **Records PRs first for all records [C2 implied].** Narrowed: the card asks for qa verdict records PRs only, so B119's aim (records never block code) mostly holds.
+
+---
+
+## 12. How work flows on 20 Nov 2026 (refresh)
+
+Read on 20 Nov 2026. Workflows and `.mergify.yml` are from origin/main at 156057c4a; RULES.md is from the tech lead's branch, as of P-752. Each line names its source. The plan in sections 1-11 is the 17 Nov record; where it differs, this section is what runs now.
+
+### 12.1 CI jobs (`ci.yml`)
+
+| Step | What runs now | Source |
+|---|---|---|
+| Draft PR | Job `guard` only (the push guard) | P-371 (1), unchanged |
+| Ready PR, code | `kind`, `fast` (push guard, rules files, tools' own checks, gate B part 1 without packs) and `types`. No suite runs on a PR | #2151 (3911fa145), P-651 (2) |
+| Ready PR, records | Job `fast` alone; the records rules (check-docs.sh, decision-impact.sh) run here | ENF-746c, #2410 (831731b07), P-746 |
+| Merge-queue batch, code | Every suite on 18 parts (repository variable SHARDS 18; the default is 18 since 19 Nov), packs by diff, the protected regression set, gate B's named packs (GATE_B_ONCE). The records rules are skipped | #2151; #2282 (C31); #2410 |
+| Full run before the label | `/run full` comment → main's `ci.yml` by `workflow_dispatch` on the PR head merged with main, named "full-run PR #n head". queue-gate and label-guard need it green for heads approved after `FULL_RUN_FROM` (20:00 IST 22 Nov); a PR that failed a batch still needs it, with its failed parts named | #2249 (1bf23c0a4), P-731, P-733 (4), P-743; change log C35, C36 |
+| Type check | `tsc` with an 8 GB heap | #2250 (C30) |
+| After a merge | `item-proof` proves each "Completes: R1.n" item and posts the verdict to the branch `auto-verdicts`, never main | #2233, P-728 (3), P-729 (1); C32 |
+| Outside PRs | `nightly` with a restore drill; `pipeline-heartbeat` every 30 min; `walks` by hand or on a PR changing journeys | #2014, #2081, #2133, P-700 |
+| Required for Mergify | `ci` (and `xfa-engine` for engine paths); `pr-rules` and `guards` are not merge conditions | `.mergify.yml` on main; RULES P-606, P-610 |
+
+### 12.2 Merge queue (`.mergify.yml`)
+
+| Setting | Now | Was (17 Nov) | Source |
+|---|---|---|---|
+| Mode | `parallel`, by files scope | serial checking, up to 3 stacked batches | #2207, P-715, P-717 |
+| Batches checked at once | 6 | 3 | #2290, P-739 (C33) |
+| Scopes | platform, front-office, money, case-side (now including `api/src/case-clients/*.ts`), forms-engine, migrations, pipeline. Capacity 1 for money, migrations and pipeline. Barrier files (package files, tsconfig, base schema files, main.ts, core.ts, studio.ts) serialize | none | #2207; #2255 (C34) |
+| Queues, in order | `verdicts` (qa verdict records), `product`, `pipeline` (every file a pipeline path), `records` | `product`, `records` | #2073 (P-664), #2207 (P-717 (a)) |
+| Batch size | 2, at most 2 failure-resolution rounds | 6 | #2207 (P-715) |
+| New blocking checks | Start report-only; join no queue condition until clean for 24 h or 10 PR runs | - | `.mergify.yml` comment, P-717 (b) |
+
+### 12.3 Hooks and permissions
+
+* **Deny lines:** 75 in main's `.claude/settings.json` (section 5a's 31 lines via #2075, P-670), for every copy. The founder alone widens permissions (P-387).
+* **Session hooks:** unchanged since 17 Nov; the section 5b paste is not on main (see the note under 5b).
+* **Git hooks:** `.githooks/pre-push` on main unchanged; the push guard still runs there and in CI.
+* **Gate jobs:** queue-gate runs on xr-mac (#2145); label-guard and the sweep read REVIEWERS (#2209); both can be started by hand (#2176).
+
+### 12.4 Rules that shape the flow (RULES as of P-752)
+
+| Row | What it says (short) | Enforced by (as RULES states) |
+|---|---|---|
+| P-686 | Records PRs skip the 800-line limit; tooling rows exempt; IDX-moved rules count | script: pr-size.sh, decision-impact.sh, check-docs.sh |
+| P-691 | Emergency hand merge only for a pipeline or CI fix while the queue is broken | prose (ruleset bypass; this Library's change log) |
+| P-699 | Agents build, review, test and label; the tech lead does a stuck step in the signed-in browser | prose |
+| P-728 | Ten a day: J-test in the item's last PR; 6 batches only after P-730's conditions (lifted by P-739); proof automatic at the last merge | prose |
+| P-731 | A PR that failed a batch is relabelled only after a green full run on its head, every failing suite named (P-733 (4)) | CI: label-guard (CI-PRE) |
+| P-733, P-734 | Items nearest done first; automatic proof on merge; P-733 runs unchanged to 22 Nov evening; no new workflow row before 23 Nov unless it is a fix | CI: #2233; script ENF-733 (owed) |
+| P-738 | Each check: measure the flow, name the one constraint, fix it the simplest way, re-measure | lead-watch.sh constraint section (ENF-738, owed) |
+| IDX-17 | P-742, P-743 (`FULL_RUN_FROM` to 22 Nov 20:00 IST), P-744 | CI: queue-gate.sh FULL_FROM; script: records-only.sh |
+| IDX-19 | P-739, P-740, P-745 to P-748 (P-745: journey waves with WIP caps) | script: B204 waves check (guard 28, #2363) |
+| IDX-20 | P-749 to P-752 (P-751: the pipeline adjusts itself; P-752: the Lead does a blocked label, ready or reopen in the built-in browser) | script: lead-pr.sh |
+| Account | `expat-ready/xpatready` on Enterprise Cloud since 18 Nov (500 jobs documented, 1-6 measured) | RULES header |
+

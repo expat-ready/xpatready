@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-752**, 11:15 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1115-lead100s2-as-of-P-748.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-755**, 12:09 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1209-refresh-as-of-P-752.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -156,7 +156,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule), P-741 (R1.31 includes FO-2pv, not QA-531) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
 | IDX-17 | Test-run rows P-742, P-743 (`FULL_RUN_FROM` to 22 Nov 20:00 IST), P-744 (B203 now): word for word in `rules/tech-lead.md` › Moved 20 Nov. | CI: queue-gate.sh FULL_FROM; script: records-only.sh | 20 Nov |
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
-| IDX-20 | 20 Nov rows P-749 (titles; Lead 1 series 3), P-750 (staging at Proven 30), P-751 (self-adjusting pipeline, B206), P-752 (blocked label/ready/reopen: Lead does it in the built-in browser): word for word in DECISIONS. | script: lead-pr.sh | 20 Nov |
+| IDX-20 | 20 Nov rows P-749 (titles; Lead 1 series 3), P-750 (staging at Proven 30), P-751 (self-adjusting pipeline, B206), P-752 (blocked label/ready/reopen: Lead does it in the built-in browser), P-753 (#2427 size exception), P-754 (FO-3st2 suite held from PR and batch runs until its fix), P-755 (scale: 50-100 firms, 1-10 staff): word for word in DECISIONS. | script: lead-pr.sh; CI: #2435 QUARANTINE (P-754, open) | 20 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
