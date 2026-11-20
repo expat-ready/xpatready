@@ -28,7 +28,7 @@ PR expat-ready/xpatready#2621. Concept r3 (tech lead's approval at r2, PR commen
 ## Checks run
 | Check | Result |
 |---|---|
-| `check_pf18h_home_browser.ts`, on an isolated copy | 21/21 at 8386faca; 24/24 after the review and break fixes |
+| `check_pf18h_home_browser.ts`, on an isolated copy | 21/21 at 8386faca; 24/24 at b1737d7; 25/25 after the re-review fixes |
 | `check_pf18n_notifications.ts` (store change) | 34/34 |
 | `check_pf6a_frame_browser.ts` | 52/52 |
 | `check_pf6f_callback_browser.ts` | 11/11 |
@@ -57,7 +57,14 @@ Not changed, with reasons:
 * **Review minor (the graph tool cannot see `/home`):** tooling, not this row.
 * **X-rows Q1 and Q2:** BACKLOG rows are the Lead's to write (P-521, P-582). They are named in the PR body.
 
-After the fixes: `check_pf18h_home_browser.ts` passes 24/24 on a fresh copy and 24/24 twice on a reused one.
+After the fixes: `check_pf18h_home_browser.ts` passed 24/24 on a fresh copy and 24/24 twice on a reused one.
+
+**Re-review at b1737d7: Approve** (`review.md`). Its findings and what was done:
+* **R1 (Should):** S1 above was only half done. The loading and load-error states had no check line. Both now have one: a named status while loading, then "Could not load what needs you." with Try again, which loads the list, and axe runs on both.
+* **R3:** after the "came back" notice, focus now returns to the Hide that was pressed, not the link. Asserted in the check.
+* **Left as Minors:** R2 (the failed-Open focus line would pass without the fix; failed-Hide focus has no line), R5 (a locked row's link looks unchanged) and R6 (no check line for new-tab clicks). R4 (copy beyond concept §5) is for the Lead.
+
+Check now: 25/25 on a fresh copy and 25/25 on a reused one.
 
 ## Standards (STANDARDS / EXPERIENCE)
 * **States:** empty, loading (skeleton, `role=status`), normal, long (text wraps; the case number never breaks), error (Notice with Try again), mark failed (Notice with "Open the case anyway"), more than 20 (foot line).

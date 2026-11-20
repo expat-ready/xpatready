@@ -82,3 +82,44 @@ BIC-01 to 10, 12, 13, 15, 16 and 17 are N/A: the screen asks nothing, shows no d
 * The builder's uncommitted edits to `home-page.tsx`, `contract.ts` and the check, which appeared in this checkout after my runs (22:59 UTC). They are not part of this verdict.
 
 **Verdict: Approve** (for `8386faca7bc09f4f061a86a0d9ceee0b19416f75`).
+
+## Re-review at b1737d7e1786c4d04eebda41eee8f90d45eebe70
+A fresh reviewer read only `git diff 8386faca7..b1737d7e1` (P-610): `home-page.tsx`, `contract.ts`, the check, build notes, the added records and the re-taken screenshots. Copy `rer18h` on :4721 (`AI_LIVE=off PLATFORM_IDENTITY=local`), stopped at the end. The screenshots my run re-took were restored with `git checkout`. US$0.
+
+**Re-run:** `check_pf18h_home_browser.ts 4721 xr_studio_rer18h` passed 24/24 on a fresh copy in 2 min 10 s. I also ran my own probes on the same copy (scripts in the session scratchpad). They used the colleague's rows with linked whole-millisecond rows added by SQL.
+
+**Each fix, checked against build notes:**
+* **S3 / break m2 (number wraps):** fixed. `Words` puts the number in a `whitespace-nowrap` span. At 320 px, all 4 number spans stay on 1 line, with no sideways scroll and axe clean.
+* **Review m2 / break m1 (unknown kind):** fixed. `kind` is now `z.string()` and `whatOf` gives "A deadline". I inserted a `case-task-deadline` row in MY_DEADLINES. Its row reads "A deadline on case C-2026-00002", the known rows show, and there is no error.
+* **S2 (focus lost on a failed Hide):** fixed. With the POST at 503, focus returns to that row's Hide after a mouse press and after a keyboard Space. The Notice says "We could not hide this reminder." and offers no "Open the case anyway". The item stays unread.
+* **S1 (failure branch and states untested):** partly fixed. New lines cover the open-failed state (page stays, Notice, link, item unread, axe) and axe on the empty state. **Still untested:** the load-error state (GET fails, "Could not load…", Try again recovers) and the loading state. Build notes call S1 fixed (see R1).
+* **Break m3 (Hide on a reminder that came back):** fixed. The info Notice is announced (`role=status`/`alert`), and the row stays unread. Focus lands on that row's link, not on the Hide that was pressed (R3).
+* **Break m4 (swallowed second Hide):** fixed for Hide. While one row is busy, the other rows' Hide is `disabled` and their links get `aria-disabled`. A forced click on another row's link sends nothing and stays on `/home`, but the link looks unchanged (R5).
+* **Review m1 (modified clicks):** fixed. Ctrl/Cmd-click sends 1 POST, opens a new tab, leaves the page on `/home` and marks 1 row read. A middle click does the same. A right click sends nothing.
+* **Review m4 (open-failure copy):** changed in code, and "Open the case anyway" now shows only for an open (R4).
+* **Not changed (m5 microsecond `seen`, m3 settings hint, DW3 preset, graph, X-rows):** the reasons are recorded and acceptable. Break m5 is still latent: rows I inserted with `now()` would have hit it, so I truncated them to milliseconds.
+
+**No regression:**
+* **Open order:** Open still awaits the mark before it navigates (DW3 passes, and the BR-4 fail line passes).
+* **Focus after Hide:** a successful keyboard Hide moves focus to the next row's link (probe). The last Hide moves focus to the heading (DW2).
+* **Scope:** firm and person scope are unchanged; the diff touches no server code. DW4 and its fail line pass.
+* **Check changes:** the `remind` clock change and the looser DW3 fail line keep the line able to fail, through `rowsOf(REP) === 1`.
+
+**The new lines can fail:**
+* **Empty-state axe:** fails on a violation.
+* **m3 line:** waits for the new words, and a timeout drops into the check's catch, which counts a FAIL and exits 1.
+* **BR-4 fail line:** asserts the new copy, the URL, the link, the unread row and axe.
+
+**Scope:** nothing beyond the findings. The only new words are the two Notice texts and "A deadline".
+
+**Journey (reviewer, diff only):** I walked the changed paths by mouse and keyboard at 320 and 1440 px: failed Hide, failed Open, a reminder that came back, a second Hide while busy, a new tab, an unknown kind. All held, and the earlier 9/10 stands: **9/10** (pass, no 0). The half point is still Q2's simulated person on the case page, which is accepted. No separate journey report was written; the 21 Nov report stands.
+
+**Issues (none Blocker or Major):**
+1. **R1 Should:** the load-error state (Try again recovering) and the loading state have no check line and no axe run, so S1 is only half done (`check_pf18h_home_browser.ts`). Fix: `page.route` `**/platform/me/needs-you` to 500, then assert "Could not load what needs you." and that Try again recovers, with axe. Also correct build notes' "S1 fixed".
+2. **R2 Minor:** the BR-4 fail line's `focusBack` tests the link, which never loses focus (`aria-disabled` only). It would pass with S2's fix removed, and the failed-Hide focus has no line. Fix: assert focus on Hide after a failed Hide.
+3. **R3 Minor:** after the "came back" Notice, focus goes to the row's link, because the `focusAfter` selector `a, button` picks the first control (`home-page.tsx`, the focus effect). Keyboard users land one stop back from the Hide they pressed. The m3 line does not assert focus.
+4. **R4 Minor, for the Lead:** the copy differs from concept r3 §5. Open-failed is now "We could not open this reminder." (the concept says "hide", and review m4 sent this to the Lead). "A newer reminder came in for this deadline, so it stays on your list." and "A deadline" are new words. They are recorded in build notes but not in the concept; the Lead should confirm them or update concept §5.
+5. **R5 Minor:** a locked row's link is `aria-disabled` but looks the same (colour unchanged), so a click on it is swallowed with no visible cue. Hide does show as disabled.
+6. **R6 Minor:** Ctrl/Cmd or middle click marking read has no check line (it works by my probe).
+
+**Verdict: Approve** (for `b1737d7e1786c4d04eebda41eee8f90d45eebe70`).

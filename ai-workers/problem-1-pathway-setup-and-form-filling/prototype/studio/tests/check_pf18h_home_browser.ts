@@ -138,6 +138,24 @@ try {
   ok("PF-18h BR-7: times are in my office's zone: the officer (no office) gets the firm's America/Toronto, named on the page; the London colleague gets Europe/London",
     n1.body?.zone === ZONE && (await section(p).innerText()).includes("Times in America/Toronto") && nc.body?.zone === "Europe/London", { officer: n1.body?.zone, colleague: nc.body?.zone });
 
+  // ---------------------------------------------------------------------------------------------- re-review R1: the loading and load-error states
+  const pe = await tab(TO);
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  await pe.route("**/api/platform/me/needs-you", async (r) => { await held; await r.fulfill({ status: 500, json: { title: "Internal error" } }); });
+  await pe.goto(`${BASE}/home`);
+  await section(pe).locator('[role="status"][aria-label="Loading what needs you…"]').waitFor({ timeout: 60_000 });
+  const vLoading = await axe(pe);
+  release();
+  await section(pe).getByText("Could not load what needs you.").waitFor({ timeout: 30_000 });
+  const vError = await axe(pe);
+  await pe.unroute("**/api/platform/me/needs-you");
+  await section(pe).getByRole("button", { name: "Try again" }).click();
+  await section(pe).locator("[data-needs-you-count]").waitFor({ timeout: 30_000 });
+  ok("PF-18h states: loading shows a named status, a failed load says \"Could not load what needs you.\" with Try again, which loads the list; axe clean on both",
+    vLoading.length === 0 && vError.length === 0 && await items(pe).count() === 1, { vLoading: vLoading.map((x) => x.id), vError: vError.map((x) => x.id) });
+  await pe.context().close();
+
   // ---------------------------------------------------------------------------------------------- DW2 (hide by keyboard: DW5's Space)
   const hide = first.locator("[data-needs-you-hide]");
   await reach(p, hide); await p.keyboard.press("Space");
@@ -166,7 +184,8 @@ try {
   await mine.locator("[data-needs-you-hide]").click();
   await section(p).getByText("A newer reminder came in for this deadline, so it stays on your list.").waitFor({ timeout: 15_000 });
   ok("PF-18h (break m3): Hide on a row whose deadline was reminded again after the page loaded keeps it, says so, and the store keeps it unread (PF-18n's seen)",
-    told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1, { told0, unread: rowsOf(OFF) });
+    told0 === 2 && rowsOf(OFF) === 1 && await items(p).filter({ hasText: NUMBER }).count() === 1
+      && await items(p).filter({ hasText: NUMBER }).locator("[data-needs-you-hide]").evaluate((el) => el === document.activeElement), { told0, unread: rowsOf(OFF) });
 
   // ---------------------------------------------------------------------------------------------- BR-6
   await home(p);

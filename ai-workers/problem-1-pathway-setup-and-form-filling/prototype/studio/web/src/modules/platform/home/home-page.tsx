@@ -51,12 +51,13 @@ function NeedsYouSection() {
   const [failed, setFailed] = React.useState<{ item: NeedsYouItem; open: boolean } | null>(null);
   const [cameBack, setCameBack] = React.useState(false);
   const heading = React.useRef<HTMLHeadingElement>(null), list = React.useRef<HTMLUListElement>(null);
-  const focusAfter = React.useRef<string | null | undefined>(undefined);   // the row to focus once the list is fresh (null: the heading)
+  // The row (and which of its controls) to focus once the list is fresh; null: the heading.
+  const focusAfter = React.useRef<{ id: string; control: "a" | "button" } | null | undefined>(undefined);
 
   React.useEffect(() => {
     if (focusAfter.current === undefined || q.isFetching) return;
-    const id = focusAfter.current; focusAfter.current = undefined;
-    const row = id ? list.current?.querySelector<HTMLElement>(`[data-needs-you-item="${CSS.escape(id)}"] a, [data-needs-you-item="${CSS.escape(id)}"] button`) : null;
+    const to = focusAfter.current; focusAfter.current = undefined;
+    const row = to ? list.current?.querySelector<HTMLElement>(`[data-needs-you-item="${CSS.escape(to.id)}"] ${to.control}`) ?? list.current?.querySelector<HTMLElement>(`[data-needs-you-item="${CSS.escape(to.id)}"] button`) : null;
     (row ?? heading.current)?.focus();
   }, [q.isFetching, q.data]);
 
@@ -75,8 +76,8 @@ function NeedsYouSection() {
     if (open && item.link) { void qc.invalidateQueries({ queryKey: KEY }); navigate(item.link); return; }
     const items = q.data?.items ?? [], at = items.findIndex((i) => i.id === item.id);
     // Kept unread (a newer reminder after this list loaded): say so and keep focus on that row; else focus moves on.
-    if (!r?.readAt) { setCameBack(true); focusAfter.current = item.id; }
-    else focusAfter.current = (items[at + 1] ?? items[at - 1])?.id ?? null;
+    if (!r?.readAt) { setCameBack(true); focusAfter.current = { id: item.id, control: "button" }; }   // back on the Hide pressed (re-review R3)
+    else { const next = (items[at + 1] ?? items[at - 1])?.id; focusAfter.current = next ? { id: next, control: "a" } : null; }
     await qc.invalidateQueries({ queryKey: KEY });
   };
 
