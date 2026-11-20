@@ -111,3 +111,44 @@ STANDARDS [M] lines:
 - Note for the Lead: the trace tool warns "SA-11-37 has no @hash (now @fdf6cb2f)" on the BACKLOG row. This PR does not touch that row.
 
 **Verdict: Approve.** There is no open Blocker or Major. The five Minors are Should-fix and can follow in this PR or the next part (PF-23c).
+
+## Re-review (diff only) at cbef4f6cf
+Diff `0f49fafb0..cbef4f6cf` (one commit). It touches `plain-run-text.ts`, `rounds.ts`, `people-ai.ts`, `runs.ts`, `ai.ts`, `check_pf23m_log_calls.ts`, `j_13.ts` and the shape's "As built". The review and journey files it adds are byte-identical to mine.
+
+**What I ran:**
+- `check_pf23m_log_calls.ts`: 15/15.
+- J-13 on rv13 :4436: 8/8 (W3b included). rv13 is stopped.
+- `check_forms_rounds`: 78/0.
+- `count-any --against origin/main`: 416 = 416.
+- `graph.mjs --check`: exit 0.
+- `tsc`: no error in `api/src` or in the changed tests.
+
+**The five Minors:**
+- **m1: fixed.**
+  - `WRITES` now also covers `log?.(`, `this.d.log?.(` and `logPort.*`.
+  - `LEAKS` adds `.err`, `.stack`, `.refused`, `.error`, `why`, `${error}` and `JSON.stringify(e)`, plus a text variable after a literal and a template inside `logPort` fields.
+  - The 7 lines the old scan missed are now fail cases, and all are flagged. Safe forms, including `console.error("…", e)` and a `launcherReason(…)` field, are not flagged.
+  - Multi-line calls are still left to review. This is disclosed, and not a finding.
+- **m2: fixed.**
+  - `launcherReason` returns a closed set of codes (guard, usage_limit, live_off, timeout, not_found, spend_cap, busy, other, none). It never returns the text, and the test shows a seeded string gives `other`.
+  - The two digest and sources refusals in `p2/launch.ts` (112/115) map to `other`. That is coarse, but safe and still better than nothing. Not a finding.
+- **m3: fixed.**
+  - `plainRunText(t, runId)` is called from `runs.ts` 53/79/82 and `ai.ts` 454.
+  - On rv13 the lines carry `runId`: the batch id for the run message, and the job id for the step message.
+  - The test asserts `runId`, so removing it fails the test.
+- **m4: fixed.**
+  - `textyFields` refuses text-like names or values in the fields object, as `{ why }` or `{ note: why }`. It passes ids and codes (after `launcherReason(…)` is replaced by `CODE`).
+  - Its fail case is present.
+- **m5: fixed.**
+  - J-13 W3b reaches a moved site on the running copy, through a FAILED run with the seeded person in the step message and `GET /api/runs/:id`.
+  - It checks plain words on the page, a log line with the run's id, and no seeded value. On rv13, 0 lines held a seeded value.
+
+**New exception:** `platform/identity/sample-seed.ts:30`.
+- It logs only when `d.why.startsWith("refused")`, which is one fixed sentence ("refused: PLATFORM_ENVIRONMENT=production never seeds Sample firms", lines 19-21). No input reaches it.
+- The file is open PR #2001's, and the check fails if the line moves.
+- I accept the exception.
+
+**New findings:** none.
+Journey score: unchanged at 9/10. "Next step obvious" would now earn 1, so 8 of 8 applicable, but I did not re-walk the other journeys.
+
+Verdict: Approve at cbef4f6cf (Blocker 0 · Major 0 · Minor 0 open).
