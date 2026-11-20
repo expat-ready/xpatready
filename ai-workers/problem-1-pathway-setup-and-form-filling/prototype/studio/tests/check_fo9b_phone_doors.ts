@@ -34,6 +34,7 @@ import { foPersonPort } from "../api/src/front-office/people/fo-person-port.ts";
 import { PrismaArrival } from "../api/src/front-office/sales/arrival-port.ts";
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
+import { Prospects } from "../api/src/front-office/sales/prospects.ts";
 import { PublicForms, type SalesPorts } from "../api/src/front-office/sales/public.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
 import { dutiesOf, type StaffContext } from "../api/src/platform/identity/keys.ts";
@@ -69,6 +70,9 @@ try {
   ok("FO-9b P0 pass (QA-528): \"0044 20 7946 0958\" (00 dialling), \"+44 (0) 20 7946 0958\" (a trunk 0) and \"011 44 20 7946 0958\" are all +442079460958",
     phoneE164Exact("0044 20 7946 0958") === UK && phoneE164Exact(TRUNK) === UK && phoneE164Exact("011 44 20 7946 0958") === UK && phoneE164Exact("00 44 20 7946 0958") === UK,
     ["0044 20 7946 0958", TRUNK, "011 44 20 7946 0958"].map(phoneE164Exact));
+  const NANP_BAD = ["000-000-0000", "0000000000", "123 456 7890", "00 0 123 4567", "+1 416 055 0100", "(115) 555-0100"];
+  ok("FO-9b P0 fail (review M1): a North American number whose area code or exchange starts with 0 or 1 reads as nothing (\"possible\" checks only the length)",
+    NANP_BAD.every((x) => phoneE164Exact(x) === null) && phoneE164Exact("+1 416 555 0100") === "+14165550100" && phoneE164Exact("(212) 555-0100") === "+12125550100", NANP_BAD.map(phoneE164Exact));
   ok("FO-9b P0 fail: \"00\" alone, \"+999 123\", \"555 0101\" (no area code) and \"0044\" with no number read as nothing",
     ["00", IMPOSSIBLE, "555 0101", "0044"].every((x) => phoneE164Exact(x) === null), ["00", IMPOSSIBLE, "555 0101", "0044"].map(phoneE164Exact));
 
@@ -116,6 +120,8 @@ try {
   const [lUk, lBad, lCa] = [await add({ ...lead.uk, phone: TRUNK }), await add({ ...lead.bad, phone: IMPOSSIBLE }), await add({ ...lead.ca, phone: LOCAL })];
   ok("FO-9b D2 pass (Add a lead): +442079460958 and +14165550101, readable", lUk === null && lCa === null && stored(`email = '${lead.uk.email}'`) === STORED_UK && stored(`email = '${lead.ca.email}'`) === STORED_CA, [lUk, lCa]);
   ok("FO-9b D2 fail (Add a lead): \"+999 123\" is accepted and unreadable, never readable as \"+999123\"", lBad === null && stored(`email = '${lead.bad.email}'`) === STORED_BAD, { lBad, s: stored(`email = '${lead.bad.email}'`) });
+  const junk = who("LeadJunk"), lJunk = await add({ ...junk, phone: "000-000-0000" });
+  ok("FO-9b D2 fail (review M1): \"000-000-0000\" is accepted and kept as typed, unreadable (Fix number), never +10000000000", lJunk === null && stored(`email = '${junk.email}'`) === "000-000-0000|false|-", stored(`email = '${junk.email}'`));
 
   // ------------------------------------------------------------------------------------- D3: a company's new contact
   const companyId = randomUUID();
@@ -164,6 +170,13 @@ try {
   ok("FO-9b D5 pass (booking arrival, real adapter): an E.164 phone is stored readable", stored(`id = '${aUk}'`) === STORED_UK, stored(`id = '${aUk}'`));
   ok("FO-9b D5 fail (booking arrival, real adapter): an unreadable phone is kept as typed with readable false, and is no contact phone",
     stored(`id = '${aBad}'`) === "555 0101|false|-" && !(await real.contactOf(db, A, aBad))?.phone, stored(`id = '${aBad}'`));
+  // Review m1: a booker on file with an open prospect and no phone gives an unreadable one: it fills the empty phone
+  // flagged unreadable (keepPhone's readable=false branch); kept readable it would break fo_person_phone_check (a 500).
+  const held = who("Held");
+  const heldLead = await leads.add(R, { requestId: randomUUID(), source: "Phone call", confirmedNew: true, ...held }) as { id: string; person: { id: string } };
+  await new Prospects(db, ports).engage(R, heldLead.id);
+  const heldR = await refusal(() => db.$transaction((tx) => real.bookingArrived(tx, { firmId: A, person: { ...held, phone: "555 0101", phoneReadable: false }, bookingId: randomUUID() })));
+  ok("FO-9b D5 fail (review m1): a booker on file with no phone and an open prospect: \"555 0101\" fills the phone as typed, unreadable (no 500)", heldR === null && stored(`id = '${heldLead.person.id}'`) === "555 0101|false|-", { heldR, s: stored(`id = '${heldLead.person.id}'`) });
   ok("FO-9b D5 fail (the port's contract): an unflagged phone that is not E.164 is still refused by the port, never stored readable",
     (await refusal(() => db.$transaction((tx) => real.bookingArrived(tx, { firmId: A, person: { ...who("ArriveRaw"), phone: "555 0101" }, bookingId: randomUUID() })))) !== null);
 

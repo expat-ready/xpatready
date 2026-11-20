@@ -158,10 +158,11 @@ export function fakeArrival(opts: { wording?: ConsentWording | null; failOn?: (a
       return { ...p };
     },
     addPerson(firmId, person) {
-      const p = ArrivalPerson.parse(person), k = pkey(firmId, p.email);
+      const { phoneReadable, ...p } = ArrivalPerson.parse(person), k = pkey(firmId, p.email);
       const personId = people.get(k) ?? crypto.randomUUID();
       people.set(k, personId);
-      contacts.set(`${firmId.toLowerCase()}|${personId}`, p);
+      // As bookingArrived: an unreadable phone is never the contact phone (FO-9b, review m3).
+      contacts.set(`${firmId.toLowerCase()}|${personId}`, phoneReadable === false ? (({ phone: _p, ...rest }) => rest)(p) : p);
       return personId;
     },
     discard(tx) {

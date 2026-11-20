@@ -25,6 +25,10 @@ export function phoneE164Exact(v: string): string | null {
   // A local-only length is "possible" (555 0100 → +15550100): the number must be possible as dialled from anywhere,
   // with its country code and no default region (review M1 on b6b6b3d4).
   if (!parsePhoneNumberFromString(n.number)?.isPossible()) return null;
+  // A North American number's area code and exchange each start with 2-9 (the NANP's NXX-NXX-XXXX): "possible" checks only
+  // the length, so "000-000-0000" or "123 456 7890" was read as a whole number (review M1 on 4bdf017a; FO-2's old rule
+  // kept them unreadable).
+  if (n.countryCallingCode === "1" && !/^[2-9][0-9]{2}[2-9][0-9]{6}$/.test(n.nationalNumber)) return null;
   const typed = parseIncompletePhoneNumber(t), cc = n.countryCallingCode, nat = n.nationalNumber;
   const heads = typed.startsWith("+") ? [`+${cc}`] : ["", cc, `00${cc}`, `011${cc}`];
   return heads.some((h) => typed === `${h}${nat}` || typed === `${h}0${nat}`) ? n.number : null;
