@@ -29,10 +29,7 @@ Lead 6's block word for word: `product/history/STATE-2026-11-21-0125-lead6s3-han
 | A241 | 21 Nov 01:2x typed to Lead 7: implement every recommendation live (enforcement plan); why the Lead hung waiting for a typed turn and did not read claude.ai; set up fully for the night; no less than 32 by 07:00 | Lead 7: lanes started this turn (owed builders + tooling lanes with row queues), browser read, 32 = 27 + R1.8, R1.38, R1.110, R1.26, R1.47 (#2452) |
 | A240 | 21 Nov ~01:2x (typed to Lead 6, relayed to Lead 7): enforce in code what adds value (5 audit items + triage of 35 partial / 99 prose), merge fast, never hurdle product | P-772 recorded; triage list by Lead 7 to the founder; tooling lanes start at the founder's next typed turn |
 | A237-A239 | 20-21 Nov asks (why tooling not live; lessons as rules; /lead-watch 00:0x) | rows word for word in `product/history/STATE-2026-11-21-0135-lead7s3-asks-A237-A239.md` |
-| A234-A236 | 20 Nov 15:2x-16:5x: product vs tooling queues; browser merge refused (A235); plan for 07:00 (A236 → `design/plan-2026-11-21-0700.md`) | rows word for word in `product/history/STATE-2026-11-20-1805-lead3s3-1725-and-asks-A234-A236.md` |
-| A199-A222 | 19-20 Nov asks | rows word for word in `history/STATE-2026-11-20-1440-lead2s3-asks-A199-A222.md` |
-| A196-A215 | 19 Nov asks | rows word for word in `history/STATE-2026-11-20-0155-lead97s2-asks-A196-A215.md` |
-| A186-A191 | 19 Nov 07:4x-07:5x asks (how we build page, staging, queue first → P-718) | rows word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1012-lead87s2-asks-A186-A191-rows.md` |
+| A186-A236 (older) | 19-20 Nov asks, pointer rows | word for word in `product/history/STATE-2026-11-21-0155-lead7s3-asks-pointer-rows.md` |
 
 Engineering set-up tracker (A160): section word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1122-lead87s2-setup-tracker-section.md`.
 
