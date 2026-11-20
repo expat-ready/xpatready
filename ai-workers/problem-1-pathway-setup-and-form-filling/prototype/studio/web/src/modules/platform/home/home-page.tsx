@@ -16,7 +16,8 @@ import { staffApi } from "../session";
 import { cameIn, COPY, countWords, itemWords, NeedsYou, type NeedsYouItem, zoneName } from "./contract";
 
 const KEY = ["pf", "home", "needs-you"] as const;
-const markRead = (id: string) => staffApi(`/platform/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+// `seen`: the time this list showed, so a reminder that came back after it stays unread (PF-18n part 1).
+const markRead = (i: NeedsYouItem) => staffApi(`/platform/me/notifications/${encodeURIComponent(i.id)}/read?seen=${encodeURIComponent(i.createdAt)}`, { method: "POST" });
 
 function Row({ item, zone, onOpen, onHide, busy }: { item: NeedsYouItem; zone: string; onOpen: (i: NeedsYouItem) => void; onHide: (i: NeedsYouItem) => void; busy: boolean }) {
   const words = itemWords(item), when = cameIn(item.createdAt, zone);
@@ -52,7 +53,7 @@ function NeedsYouSection() {
   const act = async (item: NeedsYouItem, open: boolean) => {
     if (busy) return;
     setBusy(item.id); setFailed(null);
-    try { await markRead(item.id); }
+    try { await markRead(item); }
     catch { setFailed(item); setBusy(null); return; }
     setBusy(null);
     if (open && item.link) { void qc.invalidateQueries({ queryKey: KEY }); navigate(item.link); return; }

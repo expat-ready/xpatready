@@ -82,7 +82,7 @@ const TC = await signIn("sample-firm", { actorId: colleague.actorId! });
 const opened = await api(null, "POST", "/runtime/cases", { combinationId: VV, reference: `PF18H-${run}`, clientActor: "user-P", principal: { displayName: "Sample Client PF18h" }, representative: "user-R", caseOfficers: ["user-O"] }, "user-O");
 const CASE = opened.body?.id as string, NUMBER = opened.body?.case_number as string;
 const step = await api(TR, "POST", `/runtime/cases/${CASE}/milestones`, { milestoneKey: "biometrics", occurredOn: today, dueOn: plus(today, 30), reference: `B-${run}` });
-const STEP = sql(`select id from case_milestone where case_id = '${CASE}' and state = 'OPEN' order by created_at desc limit 1`);
+const STEP = sql(`select id from case_milestone where case_id = '${CASE}' and cancelled_at is null limit 1`);
 ok("PF-18h setup: the Sample firms, officer, representative, a colleague in a London office and firm B's staff signed in; an open case with a government step due in 30 days",
   !!VV && !!A && !!B && !!OFF && !!REP && !!TB && !!TC && opened.status < 300 && !!NUMBER && step.status < 300 && !!STEP, { opened: opened.status, step: step.text.slice(0, 200) });
 
