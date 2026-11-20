@@ -163,7 +163,8 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     const last = await tx.foStageMove.findFirst({ where: firmScope(firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
     await tx.foProspect.update({ where: { id: p.id }, data: { stageId: consult.id } });
     await tx.foStageMove.create({ data: { firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: consult.id, cause: "BOOKING", byActor: actor } });
-    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" } });
+    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" },
+      before: { stage: p.key }, after: { stage: consult.key } });
     await tx.moduleEvent.create({ data: { firmId, type: EVENT.PROSPECT_STAGE_MOVED, subjectId: p.id, payload: ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: consult.key, ownerStaffId: p.owner_staff_id, cause: "BOOKING" }) } });
     return p.id;
   }

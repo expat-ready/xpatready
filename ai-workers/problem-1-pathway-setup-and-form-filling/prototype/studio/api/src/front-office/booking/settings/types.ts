@@ -138,17 +138,18 @@ const auditValue = (k: string, v: unknown): Scalar => {
   if (typeof v === "string" && EMAILISH.test(v)) return "(not kept: shaped like an email address)";   // the audit port refuses those
   return (Array.isArray(v) ? v.map(String) : v ?? null) as Scalar;
 };
-function diff(before: Row | null, after: Row | null): Record<string, Scalar> {
-  const out: Record<string, Scalar> = {}, changed: string[] = [];
+/** R1.8 (QA-594): the changed fields (detail.fields) and their values before and after, for the line's before and after. */
+function diff(before: Row | null, after: Row | null): { detail: { fields: string[] }; before: Record<string, Scalar> | null; after: Record<string, Scalar> | null } {
+  const b0: Record<string, Scalar> = {}, a0: Record<string, Scalar> = {}, changed: string[] = [];
   for (const k of AUDITED) {
     const b = before ? auditValue(k, before[k]) : null, a = after ? auditValue(k, after[k]) : null;
     if (before && after && JSON.stringify(b) === JSON.stringify(a) && !(FREE_TEXT.has(k) && before[k] !== after[k])) continue;
     if (!before && a === null) continue;
     changed.push(k);
-    if (before) out[`${k}_before`] = b;
-    if (after) out[`${k}_after`] = a;
+    if (before) b0[k] = b;
+    if (after) a0[k] = a;
   }
-  return { fields: changed, ...out };
+  return { detail: { fields: changed }, before: before ? b0 : null, after: after ? a0 : null };
 }
 
 /** The per-firm transaction lock that slug choices take (the same firm's other types are read after it). */
@@ -275,8 +276,9 @@ export class BookingTypesService {
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
           // A copy keeps the source's set of hours per host, a child row (AG-4-9 rule 3; FO-3a 1b-i review M1).
           if (fromId) await tx.foTypeHostSet.createMany({ data: (await tx.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: fromId }) })).map((h) => ({ firmId: h.firmId, typeId: row.id, staffId: h.staffId, setId: h.setId })) });
+          const d = diff(null, row);
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
-            detail: { ...diff(null, row), ...(fromId ? { copiedFrom: fromId } : {}) } });
+            detail: { ...d.detail, ...(fromId ? { copiedFrom: fromId } : {}) }, before: d.before, after: d.after });
           return row;
         });
       } catch (e) {
@@ -305,8 +307,9 @@ export class BookingTypesService {
         const asked = Object.entries(data).filter(([k]) => k !== "deletedAt");
         if (!("deletedAt" in data) && asked.every(([k, v]) => JSON.stringify(v) === JSON.stringify(before[k as keyof Row]))) return before;   // nothing to change (break m5)
         const after = await tx.foConsultationType.update({ where: { id: before.id }, data: { ...data, version: { increment: 1 } } });
+        const d = diff(before, after);
         await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: after.id,
-          summary: `Booking type ${said(after.name)} ${word}.`, detail: diff(before, after) });
+          summary: `Booking type ${said(after.name)} ${word}.`, detail: d.detail, before: d.before, after: d.after });
         return after;
       });
     } catch (e) {

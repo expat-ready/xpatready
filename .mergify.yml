@@ -194,6 +194,12 @@ queue_rules:
           - -files ~= /prototype/
     merge_conditions:
       - check-success = ci
+      # QA-449 part 2 (R1.16; P-717 (b), Lead 4 series 3, 20 Nov): skeleton ran clean on 10 merge batches since #2517,
+      # so a red container proof now blocks a product batch. Guarded: a batch that touches none of skeleton.yml's
+      # `paths` gets no skeleton run and is not held. Keep this regex in step with skeleton.yml's `paths` block.
+      - or:
+          - check-success = skeleton
+          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
     merge_method: merge
   # P-717 (a), founder 19 Nov ~07:3x IST: pipeline work (checks, workflows, Mergify, tools, agent rules) has its own
   # lane. Every file of the PR is a pipeline path; with the scope "pipeline" (capacity 1) it never shares a batch with
