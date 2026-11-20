@@ -37,3 +37,12 @@ The fixes worth most:
 3. Paste the DW8 browser results.
 
 **Not tested:** a real screen reader, an intended user's unaided walk (D17 and D20 stay with the founder), and the browser suites.
+
+## Round 2 (head aeeb5f07, diff only)
+| Journey | Before | Now |
+|---|---|---|
+| 4 (wrong type) | Wrong words | "This must be text." The missing case still says "This is required.". **Held** |
+| 7 (public booking) | Not proven | Real `sample-firm` key, and listed `unreached` until the sweep can reach the door. **No longer falsely green** |
+| 8 (later builder) | Partly held | The list is capped at 71/220 (`<=`, review r2-m1) |
+
+Task completed goes to 1, and plain words to 1. **Score: 8.5/10, no 0. Passes the bar of 8.**

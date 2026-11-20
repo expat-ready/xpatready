@@ -84,3 +84,63 @@ None.
 To fix before Approve: M1, M2. The Minors are recommended in the same round; m8's DW8 results are needed before the label in any case.
 
 Verdict: Changes requested
+
+---
+
+## Round 2: diff only (P-277), `git diff 56d2d6bc2 aeeb5f0728543d22ee7898fda9a14ad333f4b36d`
+
+Reviewer: Opus 5.5, effort high, 20 Nov. I read the diff of `input.ts`, `check_pf28_inputs.ts` and `pf28-allow-list.json`; the rest are records. The worktree was clean at this head before I ran anything. Isolated copy `rev2619` on :4591, started and stopped in one command each time. I did not change any code.
+
+### Checks run
+- `check_pf28_inputs.ts`: **24/24**, run twice on the same copy. 169 routes, 430 probes, 220 allow-listed, 0 NOT TESTED by keys.
+- Read from the dump, the probes not on the list answer only:
+  - 413 (1 MB);
+  - 404 (`id:` probes);
+  - 422 (unknown, wrong type, missing). The 8 passing unknown-field probes all name `pf28Unknown`.
+  No body or query probe passes on a 404 any more.
+- All-table counts before and after the sweep: the same three changes as round 1, all from sign-in and the first read. No probe wrote anything.
+- Live checks (`ses.mjs`):
+  - A 280 KB JSON body to `/api/public/messages/ses-notices`, to the same path with a trailing slash, and to `/API/PUBLIC/MESSAGES/SES-NOTICES?x=1` reaches the door (400 "not verified").
+  - `/api/public/messages/ses-noticesx`, `/api/public/signup` and the form door still answer 413.
+
+### Round 1 findings
+- **M1: resolved.**
+  - `fine()` no longer accepts a 404 on body or query probes (`check_pf28_inputs.ts:154-162`). The 65 probes that passed on a 404 are now on the list under their fix parts.
+  - Public doors use the real `sample-firm` key, plus a slug and form token from the database when one exists.
+  - A door whose key has no real value gets an `unreached` entry (`:180-181`). It is emitted whatever the door answers, so the entry leaves the list only when the sweep can reach the door for real.
+  - The six `unreached` entries cover all five inputs on the `route()`-helper booking doors, plus the web-form door. Not teaching `tests/lib/routes.ts` the helper therefore **does not block**: the running half now judges those doors' real answers before their entries can go.
+- **M2: resolved.**
+  - `invalid_type` now tells missing from wrong type by zod's message (`input.ts:37`).
+  - The new "rule pass" line pins both wordings ("This is required." and "This must be text."). It would fail on round 1's code.
+- **m1: mostly resolved.** The list is capped at 71 code entries and 220 probe entries, and DW7's words now say part 2-6. See r2-m1 for what is left.
+- **m2 and the breaker's m3: resolved.**
+  - Fields are own keys only, so `constructor` is named.
+  - A top-level `__proto__` is refused with 422.
+  - Field names are cut to 64 characters, with at most 20 fields.
+  - Values are never repeated. Unit lines pin all of this.
+- **m3 (DW3): resolved.** The case now asserts 422 from the notes rule, and that 280 KB gives 413.
+- **m4: accepted as Minor, not Major.**
+  - `module_event` and `webhook_receipt` are now counted.
+  - `audit_event` stays out for a stated reason, and in both rounds no probe changed it.
+  - Updates remain unseen. The "missing" 2xx exemption is used by 0 probes today.
+- **m5: resolved.** The SNS door is skipped by the 256 KB parser (`input.ts:75-77`). The anchored path match lets no other path past.
+- **m6–m9: not yet done.** They are records the builder will put in the PR body. At this head the PR body is still the round-1 draft text: it names neither the touch-list extras nor the deliberate 405/410/200 behaviours, and has no DW8 results. All of that is needed **before the label**. It does not block approval of this commit.
+
+### New in round 2 (all Minor)
+- **r2-m1: the cap still leaves room to grow.** The check uses `<=` (`check_pf28_inputs.ts:84`). Once a fix part removes entries without lowering 71/220, the room it frees could be refilled by labelled entries. Use `===`, so each fix part must lower the numbers in the same PR.
+- **r2-m2: the missing-or-wrong-type test depends on zod's wording.** `/received undefined$/` relies on zod's default English message. A schema with its own `error` text, or a zod upgrade that changes the message, would word a missing field as a wrong type. The unit line catches the second case; `safeParse(v, { reportInput: true })` without echoing the value would remove the dependence.
+- **r2-m3: one new entry contradicts the SNS exemption.** `POST /api/public/messages/ses-notices 1mb` is on the list as a "part 2 (platform)" fix, but this round deliberately exempts that door. Name it as a rule exception with its reason, so part 2 does not "fix" it back to 413.
+- **r2-m4 (existing behaviour, noted only): some id probes still prove little.** On routes with two parameters, an `id:` probe can be a 404 because of the other, random id. The required outcome (404, never 500) still holds.
+
+### Done when, re-ticked
+- DW1, DW2, DW4: yes.
+- DW3: yes.
+- DW5: yes. The public doors are reached with real keys, or listed as `unreached`.
+- DW6: NOT TESTED, never green.
+- DW7: yes, with the cap (r2-m1).
+- DW8: the builder must paste it before the label.
+
+### Journey note (API only)
+Re-scored on the diff: 8.5/10, no 0. Task completed goes from ½ to 1, and plain words from ½ to 1. Accessibility, speed and visual quality stay at ½ (N/A for the API, or not timed). That passes the bar of 8.
+
+Verdict: Approve aeeb5f0728543d22ee7898fda9a14ad333f4b36d

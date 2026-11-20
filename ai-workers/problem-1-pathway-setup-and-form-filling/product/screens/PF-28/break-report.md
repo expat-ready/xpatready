@@ -67,3 +67,33 @@ Sweep at this head: `tsx --tsconfig api/tsconfig.json tests/check_pf28_inputs.ts
 
 ## Verdict
 Round 1 at 56d2d6bc2: **1 Major (M1)** and 7 Minor (m1–m7). No Blocker.
+
+# Round 2 — re-check at head aeeb5f072 (scoped to the round-1 findings)
+
+Same copy, `brk2619` on :4593, started and stopped in one command. Fresh copy: sweep **24/24**, 430 probes, 220 allow-listed (the ceiling is 220). Scratch: `/tmp/claude-0/brk2619/unit2.ts`, `probe3.mjs`, `dump2.json` (fresh copy), `dump3.json` (with a public type).
+
+| Round 1 | Status at aeeb5f072 | Evidence |
+|---|---|---|
+| M1 public doors swept by neither half | **Fixed** | A 404 no longer passes a body or query probe (`fine()`). **Fresh copy:** the slots query, bookings body, token and form doors answer 404 and are listed (`unreached`, plus the probes, for part 4 or part 3). **After creating public type `pf28-public`:** slots `?pf28Unknown` answers 200 and bookings `{"pf28Unknown"}` answers 400. Both now fail the sweep and both are on the list, so both cases are caught. |
+| m1 wrong type worded "required" | **Partly fixed** (see R2-m1) | `{name:123}` and `{name:null}` now give "This must be text."; `{}` gives "This is required." |
+| m2 constructor / `__proto__` | **Fixed at the top level** (see R2-m2) | `constructor`, `toString` and `hasOwnProperty` are each named, with no "0 fields". A top-level `__proto__` gets 422 naming it. Nothing polluted. |
+| m3 key names echoed in full | **Fixed** | Names are cut to 64 characters, at most 20 fields, and the value is never repeated. |
+| m4 SNS door capped at 256 KB | **Fixed** | 280 KB JSON on `…/ses-notices`, with a trailing `/`, in upper case, or with `?x=1`, reaches the route (400 "not signed"). 6 MB still gets 413 from the 5 MB parser. The skip cannot be borrowed: `…/ses-noticesX`, `…/ses-notices/../../signup` and `offices?x=/api/public/messages/ses-notices` all get 413 at 300 KB. |
+| m5 DW3 did not show success | **Fixed** | DW3 now asserts 422 for the 200 KB note and 413 for 280 KB, and it passes. |
+| m6 415 → 500 | Out of scope (from before this PR; a follow-up in the PR body) | Not re-tested. |
+| m7 hand-run line | **Fixed** | The header now names `--tsconfig api/tsconfig.json`. |
+
+The limit re-check after the SNS wrapper also held. 300 KB gets 413 on `/api/platform`, `/API/PLATFORM`, a trailing slash, `/api/front-office`, `/api/public` and `/api/system`, and gzip of 300 KB gets 413. An exactly 256 KB body passes the parser; 1 byte more gets 413. FO-2's 33 KB form still answers `TOO_LARGE` in its own words.
+
+## New or remaining in round 2 (all Minor)
+- **R2-m1: "required" is still told apart from "wrong type" by zod's English message.**
+  - Where: `input.ts:37` checks `/received undefined$/`.
+  - Problem: a missing field reads "This must be text." if the schema has its own error text (`z.string({ error: "Give v." })`; 13 PF/FO schemas use this form, e.g. booking `types.ts:70`) or if a zod locale is set (`z.config(z.locales.fr())`). Repro in `unit2.ts`.
+  - Effect: only once those schemas move to `parseInput`; with default messages the wording is right today. Also, 30 unknown keys read "20 fields need a change" (counted after the 20-field cap).
+- **R2-m2: a nested `__proto__` is still silently accepted.** `{"name":"a","inner":{"a":"b","__proto__":{"x":1}}}`, and `[{"__proto__":1}]` against `z.array(strict(…))`, both parse OK (zod drops the key; nothing polluted). "An unknown field is refused" holds for `__proto__` at the top level only.
+- **R2-m3: the real-key path goes red when a public consultation type exists.**
+  - Repro: create `pf28-public` on the copy, then re-run the sweep: **21/24**.
+  - Failures: `…/book/:slug/slots unreached → gone` and `…/bookings unreached → gone` fail "the list only shrinks"; and the row counts fail on `msg_consent_wording 0→1`. The anonymous `GET …/slots` seeds the Sample wording once (`sales/arrival-port.ts:96-99`), the same lazy kind as `msg_firm`, which the sweep leaves out. DW2 then fails, because it depends on unchanged counts.
+  - These are false reds only (no false green). CI runs each suite on a fresh copy, where no public type exists. But a hand run on a used copy, or the day the Sample seed gains a public type, turns the sweep red, and part 4 needs a real slug to clear its `unreached` entries.
+
+Round 2: no Blocker or Major at aeeb5f072
