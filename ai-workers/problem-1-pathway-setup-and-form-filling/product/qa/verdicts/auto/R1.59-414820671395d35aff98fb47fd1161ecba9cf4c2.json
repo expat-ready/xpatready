@@ -1,0 +1,30 @@
+{
+  "item": "R1.59",
+  "name": "59 Money arithmetic",
+  "pr": 2502,
+  "sha": "414820671395d35aff98fb47fd1161ecba9cf4c2",
+  "run_id": "44778921658",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44778921658",
+  "at": "2026-11-20T17:02:55.301Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_59.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44778921658/artifacts/14650985763",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.59-414820671395d35aff98fb47fd1161ecba9cf4c2.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
