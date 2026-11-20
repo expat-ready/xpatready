@@ -24,7 +24,9 @@
 // The day is the first one the page offers 10:00 Toronto on, at least 26 hours ahead, so the test never goes stale. In
 // Toronto's winter (EST, UTC-5) that is 15:00 UTC and 7:00 p.m. in Dubai, as the brief words it; in summer (EDT, UTC-4)
 // it is 14:00 UTC and 6:00 p.m. What is expected is worked out here with plain UTC sums (Dubai is UTC+4 all year), never
-// with the product's own functions. Not here (a later lane adds it): the staff member's own time-zone step for R1.38.
+// with the product's own functions.
+//   W6 (R1.38's staff zone, FO-3st1): the host, signed in from a browser in Europe/London, sees the booking at 10:00 in
+//       the office zone on the staff calendar and in its detail, beside the booker's 19:00 (Asia/Dubai).
 // Setup a person cannot do through the product yet (the firm, its host, hours and consultation type) is written straight
 // to the copy's database (Sample rows). Sample values only; US$0, no model call.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -88,6 +90,8 @@ await writeSetting(db, { firmId: firm.id, key: TIME_ZONE.key, value: FIRM_ZONE, 
 const hostEmail = `host-${run}@j38-firm.example`, bookerEmail = `booker-${run}@j38-client.example`;
 const host = await db.platformStaff.create({ data: { firmId: firm.id, email: hostEmail, displayName: "Sample host", status: "ACTIVE" } });
 await copyFirmHoursTo(db, firm.id, [host.id]);
+// W6 signs the host in (PF-4's local stand-in, PLATFORM_IDENTITY=local on the copy) as a Case Officer (a seeded role).
+await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "CASE_OFFICER", grantedBy: "seed:J-38-test" } });
 await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "OWNER", grantedBy: "seed:J-38-test" } });   // W7, W8: staff who may move and cancel
 await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 30 } });
 console.log(`setup (not through the product: no firm, staff, hours or type screens in this walk): firm ${key} in ${FIRM_ZONE}, one host, type "free"`);
@@ -174,6 +178,34 @@ try {
   ok("J-38 W2: the booker's mail states no other zone's time (the firm's zone is not in it)", !!bookerMail && !bookerText.includes(FIRM_ZONE) && !/10:00 a\.m\./.test(bookerText), seen(bookerText));
   ok(`J-38 W3: the host's mail reads "${mailDay} at ${hostTime}", in its subject and its text`, plain(hostMail?.subject ?? "").includes(`${mailDay} at ${hostTime}`) && plain(hostMail?.body ?? "").includes(`${mailDay} at ${hostTime}`), hostText.slice(0, 260));
   ok("J-38 W3: the host's mail states no other zone's time (the booker's zone is not in it)", !!hostMail && !hostText.includes(BOOKER_ZONE) && !hostText.includes(clock12(dubaiHour, 0)), hostText.slice(0, 260));
+
+  // ---------------------------------------------------------------------------------------------- W6: the staff zone (R1.38)
+  // The host opens the staff calendar (FO-3st1) from a browser in a third zone, Europe/London, so a time shown in the
+  // browser's zone would read 15:00 (or 14:00 in summer) and fail: the screen shows the office zone and names it.
+  const staffSignIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: key, email: hostEmail, secondStep: true }) });
+  if (!staffSignIn.ok) throw new Error(`W6: the host's sign-in was refused (${staffSignIn.status}): start the copy with PLATFORM_IDENTITY=local, as the header's line does`);
+  const { token: staffToken } = await staffSignIn.json() as { token: string };
+  const staffCtx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "Europe/London", locale: "en-GB", colorScheme: "light", reducedMotion: "reduce" });
+  await staffCtx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), staffToken);
+  const sp = await staffCtx.newPage();
+  const torontoDay = new Intl.DateTimeFormat("en-CA", { timeZone: FIRM_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(start);
+  await sp.goto(`${BASE}/front-office/bookings?view=week&whose=mine&date=${torontoDay}`);
+  await sp.locator("[data-grid]").waitFor({ timeout: 30_000 });
+  const zoneSaid = await sp.locator("[data-zone-line]").innerText();
+  const inTen = await sp.locator(`[data-cell="${torontoDay}T10"] [data-block="${row?.id}"]`).count();
+  await shot(sp, "W6-1-staff-week"); await axe(sp, "W6 the host's week");
+  ok(`J-38 W6: the host's calendar names the office zone (${FIRM_ZONE}) and shows the booking in the 10:00 row of ${torontoDay}`, staffSignIn.ok && zoneSaid.includes(FIRM_ZONE) && inTen === 1, { status: staffSignIn.status, zoneSaid, inTen });
+  await sp.locator(`[data-block="${row?.id}"]`).click();
+  await sp.locator("[data-booking-detail]").waitFor({ timeout: 20_000 });
+  const whenSaid = await sp.locator("[data-when]").innerText();
+  await shot(sp, "W6-2-staff-detail"); await axe(sp, "W6 the booking's detail");
+  ok(`J-38 W6: the detail reads 10:00–10:30 ${FIRM_ZONE} and ${pad(dubaiHour)}:00 for the booker (${BOOKER_ZONE}), the same moment as both mails`,
+    whenSaid.includes(`10:00–10:30 ${FIRM_ZONE}`) && whenSaid.includes(`${pad(dubaiHour)}:00 for Ana Sample (${BOOKER_ZONE})`), whenSaid);
+  // London's own hour for that moment, from its own offset (the weeks when only one of the two countries has changed
+  // its clocks included; review m2).
+  const londonHour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(start));
+  ok("J-38 W6: the staff screen states no time in the browser's own zone (Europe/London)", !whenSaid.includes("Europe/London") && !whenSaid.includes(`${pad(londonHour)}:00`) && !zoneSaid.includes("Europe/London"), { whenSaid, londonHour });
+  await staffCtx.close();
 
   // ---------------------------------------------------------------------------------------------- W4: the .ics
   const attached = (m?: Mail) => m?.attachments.find((a) => /\.ics$/.test(a.filename));
