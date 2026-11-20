@@ -38,6 +38,7 @@ Earlier block (Lead 98 → 99 and the Lead 99 lines) word for word in `ai-worker
 Engineering set-up tracker (A160): section word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1122-lead87s2-setup-tracker-section.md`.
 
 ## Start here (next Lead)
+🟩 **P-752 standing: when the shell refuses a label, Ready for review or reopen, do it at once in the built-in browser on github.com as the founder (after the P-423 read; never in place of a reviewer's Approve on code); records-only and reopens via `tools/lead-pr.sh`.**
 📅 **21 Nov: Claude Code GitHub Action evaluation (A200; cost and STANDARDS §1 gate, nothing installed) and run P-702** (evaluation of the adopted changes, plan #181), result to the founder the same day.
 🎯 **P-719 in flight (items, parts left, lanes as of 08:2x IST 19 Nov):** line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1152-lead90s2-p719-in-flight-line.md`; the current per-item state is in "Where we are" above and in Lead B (7)'s and Build Lead C (2)'s state files. Parked: R1.100, R1.72, R1.10, R1.3. Next to start when one is Proven: R1.100 (Lead B).
 🔁 **Account switch (A196, P-725): done 11:37 IST 19 Nov by Lead 90; at the next one the founder types `/lead` on the new account and that Lead resumes from this page;** the line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1204-lead90s2-account-switch-line.md`.
