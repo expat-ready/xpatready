@@ -112,6 +112,11 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 15 batch sweep|product/tools/queue-gate.sh|s/judge \&\& { \[ -z "\${LABELED_AT:-}" \] .. covered; } \&\&/judge \&\&/|check-queue-gate.sh
 15 batch since|product/tools/queue-gate.sh|s/\[\[ "\$(cut -f2 <<< "\$c")" < "\$LABELED_AT" \]\] .. continue;;/true;;/|check-queue-gate.sh
 15 batch rerun|product/tools/queue-gate.sh|s/sort_by(.completed_at \/\/ "0") . first) as \$f/sort_by(.completed_at \/\/ "0") . last) as $f/|check-queue-gate.sh
+15 p743 held|product/tools/queue-gate.sh|s/^  if \[ "\$held_state" != failed \]; then   # no failed batch/  if false; then   #/|check-queue-gate.sh
+15 p743 red|product/tools/queue-gate.sh|s/^    full "\$@"; \[ "\$full_state" = failure \] .. { why=\$full_why; return 1; }; /    /|check-queue-gate.sh
+15 p743 cache|product/tools/queue-gate.sh|s/^  \[ "\${held_pr:-}" = "\$PR" \] .. return 0/  [ -n "${held_pr:-}" ] \&\& return 0/|check-queue-gate.sh
+15 p743 norid|product/tools/queue-gate.sh|s/^  \[ "\$held_state" != failed \] .. \[ -n "\$held_rid" \] .. { why=[^}]*}/  true/|check-queue-gate.sh
+15 p743 unread|product/tools/queue-gate.sh|s/^  held .. { full_state=unread; return 1; }/  if ! held; then return 1; fi/|check-queue-gate.sh
 15 batch at|product/tools/label-sweep.sh|s/PR=\$pr LABELED_AT="\${at:-}" bash/PR=$pr bash/|check-label-sweep.sh
 15 full reviewed|../../.github/workflows/ci.yml|s/^            grep -qx .\[1-9\]\[0-9\]\*. <<< "\$ok" .. {.*/            true/|check-queue-gate.sh
 15 full wake|../../.github/workflows/queue-gate.yml|s/startsWith(github.event.workflow_run.display_title, .full-run PR #.)/true/|check-queue-gate.sh
