@@ -1,7 +1,8 @@
 // PF-19r part 1 (gap G4, QA-495; Release 1 rows R1.47 one email layout, R1.49 the gate on every path): staff and system
 // mail through MessagePort. The staff invitation and the two-step reset notice (MAIL_PORT, now the app's MESSAGES_MAIL),
 // the identity provider's code emails (handleCustomEmail over the same MailPort) and the complaint acknowledgement
-// reminder (the complaints feature's ports). Named tests DW1-DW6 from the brief, each with a pass and a fail. A scratch
+// reminder (the complaints feature's ports). Named tests DW1-DW6 from the brief, each with a pass and a fail; DW7 (part 3):
+// sign-up's "You already have an account" on the app's MESSAGES_MAIL. A scratch
 // database with every migration and the Sample firms; a Nest app of the identity classes with the app's own MAIL_PORT and
 // MESSAGES_MAIL providers (from their feature files), MessagePort on fakeJobs and a test clock, files in a scratch
 // folder, the local email adapter. No model call, nothing leaves the machine (US$0). The database and folder are removed.
@@ -266,6 +267,37 @@ try {
   ok("DW6 pass: no file under api/src/features/ binds MAIL_PORT to LocalMail or uses fakeMail(", offenders.length === 0, offenders);
   const probe = "{ provide: MAIL_PORT, useFactory: () => new LocalMail(() => 0) }; runtimeComplaintPorts = () => ({ mail: fakeMail() })";
   ok("DW6 fail: the same scan finds both in main's old lines (the scan is not blind)", /\bLocalMail\b/.test(probe) && /\bfakeMail\(/.test(probe));
+
+  // ----------------------------------------------------------------------- DW7 (part 3) sign-up's "already have an account"
+  // The sign-up door's ports as the app builds them (features/platform-firms.ts: runtimeSignUpPorts with MESSAGES_MAIL),
+  // on the app's MessagesMail; the form's time stamp on a test clock. A known staff email gets the email through MessagePort.
+  const { runtimeSignUpPorts } = await import("../api/src/platform/firms/runtime-ports.ts");
+  const { FirmSignUp, ACCEPTED } = await import("../api/src/platform/firms/signup.ts");
+  const firmsFeature = (await import("../api/src/features/platform-firms.ts")).default as { providers: unknown[] };
+  const { SIGNUP_PORTS } = await import("../api/src/platform/firms/routes.ts");
+  const signupBinding = providerOf(firmsFeature, SIGNUP_PORTS) as P & { useFactory: (m: unknown) => ReturnType<typeof runtimeSignUpPorts> };
+  const fclock = new FakeClock(new Date());
+  // This scratch server has no identity provider set (notReady says so); the local stand-in and the fake billing stand in,
+  // and the mail is the factory's own (the thing under test).
+  const { LocalSignUp } = await import("../api/src/platform/firms/signup-identity.ts");
+  const { fakeBilling } = await import("../ports/billing.ts");
+  const built = signupBinding.useFactory(appMail);
+  const door = () => new FirmSignUp(db, { ...built, notReady: null, identity: new LocalSignUp(() => fclock.now()), billing: fakeBilling(), clock: fclock, appUrl: "http://localhost:4400" });
+  const form = async (d: InstanceType<typeof FirmSignUp>, email: string) => { const p = await d.plans(); await fclock.advance({ seconds: 30 }); return { email, password: "a long enough password 1", firmName: "Known Firm", countryCode: "CA", acceptedTerms: p.terms.map((t) => t.id), formStamp: p.formStamp }; };
+  const ownerEmail = (await db.platformStaff.findFirstOrThrow({ where: { firmId: firmA.id, actorId: "user-O" } })).email;
+  const d7 = door(), a7 = await d7.signUp(await form(d7, ownerEmail.toUpperCase()), "10.7.0.1"); await d7.settled(); await run();
+  const r7 = await rowsTo(ownerEmail), m7 = (await inbox.list(ownerEmail, undefined)).messages.find((m: { subject: string }) => m.subject === "You already have an ExpatReady account");
+  ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort: one outbox row for that firm (TRANSACTIONAL, SENT) with the one layout and the firm's sender",
+    signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === firmA.id && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
+    && !!m7 && m7.html.includes(`font-weight:bold">${firmA.operatingName}</div>`) && m7.html.includes(`Sent by ${firmA.operatingName}.`) && m7.body.includes("/sign-in"), { a7, r7, m7 });
+  await db.msgSuppression.create({ data: { firmId: firmA.id, channel: "EMAIL", address: ownerEmail.toLowerCase(), reason: "COMPLAINT", createdBy: "seed:pf19r" } });
+  await fclock.advance({ hours: 2 });   // past the 3-an-hour limit per address
+  const a7s = await d7.signUp(await form(d7, ownerEmail), "10.7.0.2"); await d7.settled(); await run();
+  const r7s = await rowsTo(ownerEmail);
+  ok("DW7 fail: the same sign-up to a suppressed address → the gate holds it (SUPPRESSED, nothing sent), the answer still says nothing about the account",
+    a7s.message === ACCEPTED && r7s.length === 2 && r7s[1].state === "SUPPRESSED", r7s);
+  const shut = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  ok("DW7 fail: sign-up's ports with no MailPort keep the door shut with a reason (never a stand-in that sends nothing)", /email sending is not set up/.test(shut.notReady ?? ""), shut.notReady);
 } catch (e) {
   fail++; console.log(`FAIL  the check stopped: ${e instanceof Error ? e.stack : String(e)}`);
 } finally {

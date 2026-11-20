@@ -260,7 +260,7 @@ try {
   ok(`PF-5 pass/fail (Lead B (3)): the hourly ${PURGE_JOB} job through JobPort removes an expired sign-up`, pendingCount("sweep@firm.example.com") === "0");
   const shut = new FirmSignUp(db, runtimeSignUpPorts({ environment: "test", stripe: { secretKey: null, webhookSecret: null } }, { identity: "cognito", environment: "test", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {}));
   const shutUp = await problemOf(async () => shut.signUp(await form({ email: "shut@firm.example.com" }), "10.6.0.1"));
-  const localPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  const localPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {}, fakeMail());   // PF-19r part 3: the door takes a MailPort (none: shut)
   ok("PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a \"check your email\" that sends nothing; local runs the stand-ins",
     shutUp?.status === 503 && shutUp.body.code === "SIGNUP_NOT_SET_UP" && pendingCount("shut@firm.example.com") === "0" && localPorts.notReady === null, shutUp);
 
