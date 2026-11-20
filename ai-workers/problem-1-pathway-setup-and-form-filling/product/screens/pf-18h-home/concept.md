@@ -48,7 +48,7 @@ Copy is from PRODUCT §4 words: "case", "deadline", "government step". No ids, k
 * **DW4** another person's and another firm's items never show, API and page (fail: firm B's officer sees an empty list, and `POST …/<firm A id>/read` is 404).
 * **DW5** keyboard only (Tab to the row, Enter opens; Tab to Hide, Space; focus lands on the next row), axe-core clean at 375/1024/1440 (fail: the check run against a page with the count shown by colour only reports an axe or text failure).
 * **BR-6** a row whose case is gone shows with no link; **BR-7** an office in another zone shows that zone's time; **BR-8** the count line is text. Scale: 25 items → 20 shown, "of 25" in words.
-* **J-74 walk step** (after CS-DL3 part 2, #2594, is on main; `j_74.ts` is theirs until then): reminder → Home shows it → open → case. Exits 0 twice.
+* **No J-74 step here (r3, row owner's ruling on #2621, 21 Nov 03:0x IST, P-294):** Lead C's follow-up PR after #2594, R1.74's last PR, walks reminder → Home → open → case in `j_74.ts` (P-728: the J-test sits in the item's last PR). One writer per file. This PR keeps stable hooks for that walk: `data-needs-you-item` on each row, `data-needs-you-open` on its link, `data-needs-you-hide` on "Hide until next reminder" (plus `data-needs-you-count` on the count line).
 
 ## 6b. Capability or scaffolding
 All elements are capability, needed for the proof of R1.74, except: the fake reader (scaffolding, test-only after #2596 merges; never bound in the app); "the rest are in your notifications" points at PF-18ns (Not built, no link).
@@ -60,4 +60,4 @@ All elements are capability, needed for the proof of R1.74, except: the fake rea
 * Accepted from the challenge (no question): M1 person's zone, M2 the route in PF-18n's file after it merges, M4 "Hide until next reminder", m1–m4 and m8. m5 ("Home" under "My account") and m6 are noted for the founder's morning look.
 
 ## Definition of ready
-Acceptance test: `tests/check_pf18h_home_browser.ts` DW1–DW5 + the J-74 step. Row text: brief PF-18h. Waits on: #2596 merged (API part, DW1–DW4), #2608 merged (route line, Q3), #2594 merged (J-74 step). Decisions: Q1–Q3 answered by the tech lead. r2 after `challenge.md` (verdict: Build after these changes).
+Acceptance test: `tests/check_pf18h_home_browser.ts` DW1–DW5 on the real app (the J-74 walk is Lead C's, r3). Row text: brief PF-18h. Waits on: #2596 merged (API part, DW1–DW4), #2608 merged (route line, Q3). The build starts only after the tech lead's approval **and** #2596 on main (row owner, r3). Decisions: Q1–Q3 answered by the tech lead. r2 after `challenge.md` (verdict: Build after these changes).
