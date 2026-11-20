@@ -9,6 +9,9 @@
 //   AL4  a match the adder may not open shows only "Possible match with a record you cannot open — ask a manager", with
 //        no name and no "Use existing person" (rule 6);
 //   AL5  two clicks on Save make one lead (one request id per panel);
+//   AL7  the breaker's findings: a double click on Save lead for a known person saves nothing (B1); the keyboard lands
+//        on the match (m5); no stored code (WEBSITE) and no case/space twin among the sources (M2, m4); a server
+//        refusal in the panel's words (m3);
 //   AL6  keyboard only (Tab to the fields, Enter saves), axe clean with the panel open, no sideways scroll at 375, 1024
 //        and 1440 px.
 // Sample rows only; US$0, no model call. Usage, from prototype/:
@@ -114,6 +117,8 @@ try {
   await t.getByRole("button", { name: "Save lead" }).click();
   await t.locator("[data-known-person]").waitFor({ timeout: 10_000 });
   const line = await t.locator("[data-known-person]").innerText();
+  await t.waitForTimeout(300);
+  ok("FO-4al AL7 m5: after one Save, when the match arrives, the keyboard is on the choice (the match box)", await t.locator("[data-known-person]").evaluate((e) => e === document.activeElement || e.contains(document.activeElement)), await t.evaluate(() => document.activeElement?.outerHTML.slice(0, 100)));
   await t.screenshot({ path: join(SHOTS, "fo4al-03-known-person-1440.png"), fullPage: true });
   ok("FO-4al AL3 fail (BR-2, AG-2-4 rule 4): the same email shows \"Possible match: <name> (L-…)\" and nothing is saved yet", line.includes(`Possible match: ${ana} Sample (L-`) && leads(`Anna${run}`) === "0" && persons(`ana.${run}@example.org`) === "1", line);
   await t.getByRole("button", { name: "Use existing person" }).click();
@@ -138,6 +143,38 @@ try {
   await o.getByRole("button", { name: "Add as new" }).click();
   await o.getByRole("heading", { level: 1, name: new RegExp(`Hugo${run}`) }).waitFor({ timeout: 20_000 });
   ok("FO-4al AL4: Add as new still works for that person", leads(`Hugo${run}`) === "1");
+
+  // ---------------------------------------------------------------- AL7: the breaker's findings (B1, M2, m3, m4, m5)
+  // B1: two clicks on Save lead 250 ms apart for a known email never send "Add as new": the choice is elsewhere.
+  await openPanel(o);
+  await fill(o, { given: `Dup${run}`, email: `ana.${run}@example.org`, source: "Phone call" });
+  const saveBtn = o.getByRole("button", { name: "Save lead" });
+  await saveBtn.click(); await o.waitForTimeout(250); await saveBtn.click({ force: true, timeout: 2_000 });   // the second click lands on a disabled button: that is the point
+  await o.locator("[data-known-person]").waitFor({ timeout: 10_000 }); await o.waitForTimeout(800);
+  ok("FO-4al AL7 B1 fail: two clicks on Save lead for a known person save nothing; the match waits for a choice", leads(`Dup${run}`) === "0" && (await saveBtn.isDisabled()), leads(`Dup${run}`));
+  // Review M1 (EXPERIENCE §2.12): at 200 % zoom (720 x 450) the match is scrolled into view and holds the focus.
+  const z = await pageAs(tok.O, 720); await z.setViewportSize({ width: 720, height: 450 }); await openPanel(z);
+  await fill(z, { given: `Zoom${run}`, email: `ana.${run}@example.org`, source: "Phone call" });
+  await z.getByRole("button", { name: "Save lead" }).click();
+  await z.locator("[data-known-person]").waitFor({ timeout: 10_000 }); await z.waitForTimeout(400);
+  const seen = await z.locator("[data-known-person]").evaluate((e) => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, h: window.innerHeight, focused: e === document.activeElement }; });
+  await z.screenshot({ path: join(SHOTS, "fo4al-05-match-200pct-720.png") });
+  ok("FO-4al AL7 review M1: at 720 x 450 the match is on screen and focused, nothing saved", seen.top >= 0 && seen.top < seen.h && seen.focused && leads(`Zoom${run}`) === "0", seen);
+  // Review S4: Escape on a half-typed panel asks first; dismissing the question keeps what was typed.
+  z.once("dialog", (d) => void d.dismiss()); await z.keyboard.press("Escape"); await z.waitForTimeout(300);
+  ok("FO-4al AL7 review S4: Escape on a half-typed panel asks, and \"Cancel\" keeps the panel and its words", (await z.locator("[data-add-lead]").count()) === 1 && (await z.getByLabel("First name", { exact: true }).inputValue()) === `Zoom${run}`);
+  await z.context().close();
+  // M2, m4: the suggestions are words a person typed, once each; a stored code (WEBSITE) is never offered.
+  await post(tok.O, { requestId: randomUUID(), givenNames: `Case${run}`, email: `case.${run}@example.org`, source: "phone   CALL" });
+  await openPanel(o);
+  const options = await o.locator("#fo-add-lead-sources option").evaluateAll((xs) => xs.map((x) => (x as HTMLOptionElement).value));
+  ok("FO-4al AL7 M2 fail: the stored code WEBSITE is not offered as a source", !options.includes("WEBSITE"), options);
+  ok("FO-4al AL7 m4: sources told apart only by case or spaces are offered once", options.filter((x) => x.trim().replace(/\s+/g, " ").toLowerCase() === "phone call").length === 1, options);
+  // m3: a source the server refuses ("this is required." for emoji only) is said in the panel's words.
+  await fill(o, { given: `Emo${run}`, email: `emo.${run}@example.org`, source: "🙂🙂" });
+  await o.getByRole("button", { name: "Save lead" }).click();
+  await o.locator("[data-add-lead]").getByText("Pick a source.").waitFor({ timeout: 10_000 });
+  ok("FO-4al AL7 m3: an emoji-only source is refused as \"Pick a source.\", nothing saved", leads(`Emo${run}`) === "0");
 
   // ---------------------------------------------------------------- AL6: keyboard, axe, widths
   await openPanel(o);
