@@ -7,7 +7,8 @@
 // person's move and Mark lost (keys edit, lose), Convert and Undo convert (convert). FO-4 part 2a: the reasons Mark lost
 // offers (`prospects/lost-reasons`, read-only).
 // FO-4w (R1.26): the web-form settings the embed needs, Owner and Admin (`agent/prospect:configure-form`): `web-forms`
-// (read) and `web-forms/:id/allowed-sites` (replace the allowed sites; web-form-settings.ts).
+// (read), `web-forms/:id/allowed-sites` (replace the allowed sites) and `web-forms/:id/enabled` (switch it on or off,
+// R1.26 QA-605; web-form-settings.ts).
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import { Db } from "../../core.ts";
@@ -17,7 +18,7 @@ import { Leads } from "./leads.ts";
 import { Prospects } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { Timeline } from "./timeline.ts";
-import { readWebForms, saveAllowedSites } from "./web-form-settings.ts";
+import { readWebForms, saveAllowedSites, saveEnabled } from "./web-form-settings.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
@@ -34,6 +35,9 @@ export class SalesController {
 
   @Put("web-forms/:id/allowed-sites") @PermissionKeys("agent/prospect:configure-form")
   allowedSites(@Req() r: R, @Param("id") id: string, @Body() b: B) { return saveAllowedSites(this.db, this.ports.audit, staffOf(r), id, b, this.origin()); }
+
+  @Put("web-forms/:id/enabled") @PermissionKeys("agent/prospect:configure-form")
+  webFormEnabled(@Req() r: R, @Param("id") id: string, @Body() b: B) { return saveEnabled(this.db, this.ports.audit, staffOf(r), id, b, this.origin()); }
 
   @Get("leads") @PermissionKeys("agent/prospect:show") @OwnOrAll("agent/prospect")
   list(@Req() r: R, @Query("view") view?: string, @Query("source") source?: string | string[], @Query("owner") owner?: string, @Query("from") from?: string, @Query("to") to?: string) { return this.leads.list(staffOf(r), view, source, { owner, from, to }); }
