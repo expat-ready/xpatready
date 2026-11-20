@@ -1,0 +1,30 @@
+{
+  "item": "R1.110",
+  "name": "110 Client identity check",
+  "pr": 2309,
+  "sha": "3912aa7e640b01156aa642f07c6f83590075ce34",
+  "run_id": "44765456665",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44765456665",
+  "at": "2026-11-20T15:42:31.736Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_110.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44765456665/artifacts/14646340144",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.110-3912aa7e640b01156aa642f07c6f83590075ce34.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
