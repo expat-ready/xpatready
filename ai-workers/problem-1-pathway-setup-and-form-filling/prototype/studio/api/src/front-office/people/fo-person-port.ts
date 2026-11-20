@@ -1,6 +1,6 @@
 // FO-1p: the real FoPersonPort (ports/fo-person.ts) over fo_person and fo_company, inside the caller's transaction (it
-// never opens its own; CS-K1 part 2's case opening). It reuses the front office's own rules: FO-9a's phone normaliser
-// (duplicates/phone.ts, libphonenumber-js), FO-2b's company name key (sales/corporate/match.ts), and FO-1a's one seed
+// never opens its own; CS-K1 part 2's case opening). It reuses the front office's own rules: FO-9a's exact phone normaliser
+// (duplicates/phone.ts phoneE164Exact, libphonenumber-js; FO-9b), FO-2b's company name key (sales/corporate/match.ts), and FO-1a's one seed
 // helper (firm-seed.ts seedFirmFrontOffice) for a firm whose sales setup row is not there yet, so a case opening never
 // fails over it. A prospect's own party is read under a share lock, so a Change type waits for the caller's commit. No
 // match, link or merge here (BR-2: FO-9a's warning and FO-9b's merge own that). One audit line per party made, ids only.
@@ -10,7 +10,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { FO_PERSON_ACTION, FoPersonKindMismatch, FoPersonNotFound, keepPhone, NO_FRONT_OFFICE, nameParts, parseCompanyInput, parsePersonInput, prospectIdOrMiss, type EnsureCompanyForClientInput, type EnsureForClientInput, type FoPersonPort } from "../../../../ports/fo-person.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { firmScope, ownFirm } from "../../platform/firm-scope.ts";
-import { phoneE164 } from "../duplicates/phone.ts";
+import { phoneE164Exact } from "../duplicates/phone.ts";
 import { seedFirmFrontOffice } from "../firm-seed.ts";
 import { normaliseCompanyName } from "../sales/corporate/match.ts";
 
@@ -24,7 +24,7 @@ export class PrismaFoPerson implements FoPersonPort<Tx> {
     const a = parsePersonInput(raw), firmId = firmScope(a.firmId).firmId;
     if (a.prospectId !== null) return { foPersonId: await this.party(tx, firmId, a.prospectId, "INDIVIDUAL") };
     await this.setup(tx, firmId);
-    const phone = a.phone === null ? null : keepPhone(a.phone, phoneE164), id = randomUUID();
+    const phone = a.phone === null ? null : keepPhone(a.phone, phoneE164Exact), id = randomUUID();
     await tx.foPerson.create({ data: { id, firmId, ...nameParts(a), email: a.email, phone: phone?.phone ?? null, phoneReadable: phone?.readable ?? true, createdBy: a.actor } });
     await this.audit.record(tx, { firmId, actor: a.actor, action: FO_PERSON_ACTION.PERSON, entity: "fo_person", entityKey: id, summary: "A front-office person was made for a new case client.", detail: { foPersonId: id } });
     return { foPersonId: id };

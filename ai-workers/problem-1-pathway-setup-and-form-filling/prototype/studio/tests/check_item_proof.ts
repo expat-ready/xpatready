@@ -1,7 +1,7 @@
 // P-728 (3), P-729 (1): the automatic proof at an item's last merge (.github/workflows/item-proof.yml, tools/item-proof.mjs).
 // Fixture PR bodies (tests/fixtures/item-proof/): one that completes R1.77 (detected), one that does not (an example in
 // a fence is no claim), one with unreadable lines (refused, never guessed); the plan read from a fixture row (packs from
-// its C ids, suites its Done when names, the journey j_<n>.ts); a PASS and a FAIL verdict's shape (a missing journey,
+// its C ids, suites its Done when names, the journey j_<n>.ts, or the J-row SHARED_JOURNEY names: R1.40 -> j_38.ts); a PASS and a FAIL verdict's shape (a missing journey,
 // pack or result line is FAIL, P-405); the comment and the founder's page; the secret scan (a planted key is caught, by
 // shape and by an env value, never printed); the video size fitting 800 x 800; and the workflow's shape.
 // No server, no database; US$0. Run from prototype/:
@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts } from "../tools/item-proof.mjs";
+import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts, journeyOf } from "../tools/item-proof.mjs";
 import { videoSize } from "./journeys/video-size.ts";
 
 const F = join(import.meta.dirname, "fixtures", "item-proof"), TOOL = join(import.meta.dirname, "..", "tools", "item-proof.mjs");
@@ -36,6 +36,10 @@ ok("P1 R1.77: the C8.2 pack, the suite its Done when names, a named file that is
 ok("P2 R1.6: no pack or suite named; its journey j_6.ts exists on this tree", p6.found && !p6.packs.length && !p6.suites.length && p6.journeyExists, p6);
 ok("P3 a C id with no acceptance pack is listed as missing", JSON.stringify(p3.packsMissing) === '["C99.99"]', p3);
 ok("P4 an item with no row is not found; a bad id throws", !p9.found && (() => { try { plan("C8.2", caps); return false; } catch { return true; } })());
+// P5 (QA-570, tech lead 20 Nov): an item proven by another row's journey resolves to that file, never a copy; R1.40 is J-38.
+const p40 = JSON.parse(cli(["plan", "R1.40"]).stdout || "{}"), td = mkdtempSync(join(tmpdir(), "ip-")), v40 = cli(["verdict", "--item", "R1.40", "--plan", join(td, "none.json"), "--results", join(td, "none.jsonl"), "--sha", "abc1234", "--pr", "1", "--run-id", "1", "--run-url", "u"]);
+ok("P5 R1.40 (calendar invite files) is proven by J-38: plan from qa/CAPABILITIES.md names tests/journeys/j_38.ts, which exists; no j_40.ts is made", p40.found && p40.journey === "tests/journeys/j_38.ts" && p40.journeyExists && !existsSync(join(import.meta.dirname, "journeys", "j_40.ts")) && journeyOf("R1.77") === "tests/journeys/j_77.ts", p40);
+ok("P6 a verdict with no plan (set-up failed) for R1.40 still names j_38.ts", JSON.parse(v40.stdout || "{}").suites?.some((s: { name: string }) => s.name === "tests/journeys/j_38.ts"), v40.stdout.slice(0, 300));
 
 // V: verdict shape, PASS and FAIL.
 const base = { sha: "a".repeat(40), pr: 2200, runId: 123, runUrl: "https://example.test/run/123", artifactUrl: "https://example.test/art/9", repo: "o/r", at: "2026-11-19T10:00:00Z" };
@@ -43,7 +47,8 @@ const p6ok = { ...p6, journeyExists: true };
 const vPass = verdict({ item: "R1.6", plan: p6ok, results: [{ kind: "journey", name: p6.journey, exit: 0 }, { kind: "scan", name: "no key", exit: 0 }], ...base });
 const keys = ["item", "name", "pr", "sha", "run_id", "run_url", "at", "overall", "why", "suites", "video", "trace", "file", "repo", "note"];
 ok("V1 PASS: every key, the video link, no trace, the verdict file named R1.6-<sha>.json", vPass.overall === "PASS" && keys.every((k) => k in vPass) && vPass.video === base.artifactUrl && vPass.trace === null && vPass.file.endsWith("/verdicts/auto/R1.6-" + base.sha + ".json") && vPass.run_id === "123", vPass);
-const vFail = verdict({ item: "R1.77", plan: p77, results: [{ kind: "pack", name: "C8.2", exit: 0 }, { kind: "suite", name: "check_item_proof.ts", exit: 1 }], ...base });
+const p77gone = { ...p77, journeyExists: false }; // j_77.ts landed on main 19 Nov (#2263): V2 tests a missing journey, so it says so itself
+const vFail = verdict({ item: "R1.77", plan: p77gone, results: [{ kind: "pack", name: "C8.2", exit: 0 }, { kind: "suite", name: "check_item_proof.ts", exit: 1 }], ...base });
 const res = (n: string) => vFail.suites.find((s: { name: string }) => s.name === n)?.result;
 ok("V2 FAIL: a red suite, a named non-suite and a missing journey each FAIL; the green pack passes; the link is the trace", vFail.overall === "FAIL" && res("C8.2") === "pass" && res("check_item_proof.ts") === "fail" && res("check_not_a_suite.ts") === "fail" && res("tests/journeys/j_77.ts") === "fail" && vFail.video === null && vFail.trace === base.artifactUrl, vFail);
 const vNoRun = verdict({ item: "R1.6", plan: p6ok, results: [], ...base });

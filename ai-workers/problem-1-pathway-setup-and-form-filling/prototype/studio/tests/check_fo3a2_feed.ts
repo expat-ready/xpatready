@@ -19,6 +19,7 @@ import { fakeAudit } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { fakeJobs } from "../ports/jobs.ts";
 import { fakeMail } from "../ports/mail.ts";
+import { FIRM_DEFAULTS, fakeOfficeClock } from "../ports/offices.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -212,6 +213,17 @@ try {
   ok("FO-3a2 hangsOn fail/pass (break F3): the host who may not open the colleague's lead gets no lead named; the lead's owner gets it", coView.id === coHosts && coView.hangsOn === null && co2View.hangsOn?.kind === "lead", { co: coView.hangsOn, co2: co2View.hangsOn });
   const y0 = await go(`/feed?from=0000-01-01T00:00:00Z&to=0000-01-05T00:00:00Z`, OWNER);
   ok("FO-3a2 DW10 fail (break F1): a year outside 2000-2099 is refused with 400, never a 500", y0.status === 400, y0.status);
+
+  // PF-18a (on main since this row was briefed): a booking's office zone is its host's office's; the firm's for a host
+  // with none. The feed reads the booking ports' OfficeClockPort at call time, so the fake is put in here.
+  const offices = fakeOfficeClock();
+  offices.setFirm(A, { ...FIRM_DEFAULTS, zone: "America/Toronto" });
+  offices.assign(A, CO.id, offices.addOffice(A, { ...FIRM_DEFAULTS, zone: "America/Vancouver" }));
+  (ports as { offices?: unknown }).offices = offices;
+  const [inVan, inFirm, coFeed] = [(await go(`/feed/${coHosts}`, CO)).body, (await go(`/feed/${onColleagues}`, CO2)).body, await feed(CO, "mine")];
+  delete (ports as { offices?: unknown }).offices;
+  ok("FO-3a2 PF-18a pass/fail: a booking hosted from the Vancouver office says America/Vancouver (and the feed's own zone is the viewer's office); a host with no office keeps the firm's America/Toronto",
+    inVan.officeTimeZone === "America/Vancouver" && coFeed.body.officeTimeZone === "America/Vancouver" && inFirm.officeTimeZone === "America/Toronto", { van: inVan.officeTimeZone, feed: coFeed.body?.officeTimeZone, firm: inFirm.officeTimeZone });
 
   // ------------------------------------------------------------------------------------------- firm walls
   const inB = booking(B, BOWNER.id, client(B, "Client Z"));

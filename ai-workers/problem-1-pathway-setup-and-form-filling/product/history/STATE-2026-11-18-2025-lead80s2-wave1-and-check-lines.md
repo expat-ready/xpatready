@@ -1,0 +1,5 @@
+# STATE lines moved word for word by Lead 80 at hand-over, 20:2x IST 18 Nov (covered by the hand-over block)
+
+**19:5x check (Lead 80):** batch #2122 merged 19:47 (#2113, #2081 heartbeat dispatched once, #2117, #2121, #2114, #2009); wave 1 builders 11 (+FO-1p via browser, P-699); open: #2137 isolated.sh fix awaits the founder's naming (Lead PR), #2000 and #2136 conflicts sent to owners, #2131 relabel after fresh Approve, #2064 merge-main sent. Load 3, disk 16 GB.
+
+🚀 **Wave 1 started🚀 **Wave 1 started 19:2x IST 18 Nov on the founder's "Go" (P-697, P-698):** cloud builders requested: CS-W1, PF-15 part 1, PF-6 part 2b, PF-F4, FO-3a next part (AUD-1b's start refused twice by the permission check: founder). qa: qa-2 local_3f116e04 (re-score A-F, ports 4476-7), qa-3 local_cd7d9470 (G-L, 4478-9), qa-4 local_ff10dee7 (wave 1 rows as they merge, 4474-5), plus qa local_bb3bf1ad. Lead B shapes Sales, Registers, Terms; Build Lead C shapes Messages, Money, Case (CS-K1, QA-502); Pipeline QA-449 is the Lead's. Start them at the founder's next typed turn.

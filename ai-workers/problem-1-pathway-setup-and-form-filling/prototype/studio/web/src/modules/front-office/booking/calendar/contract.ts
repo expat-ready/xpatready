@@ -41,9 +41,11 @@ export const STATUS: Record<string, { label: string; tone: string; tip: (person:
 export const personOf = (b: FeedItem) => b.person?.name || "No name";
 
 // ------------------------------------------------------------------ times in the office zone (no calendar library)
+// One formatter per zone, kept (break m7: building one per call made a 373-booking week take 3 s).
+const fmts = new Map<string, Intl.DateTimeFormat>();
+const fmt = (zone: string) => fmts.get(zone) ?? fmts.set(zone, new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" })).get(zone)!;
 const parts = (iso: string | number, zone: string) => {
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" })
-    .formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  const p = Object.fromEntries(fmt(zone).formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
   return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), minute: Number(p.minute), weekday: p.weekday as string };
 };
 /** "2027-01-11" for the instant in the zone. */

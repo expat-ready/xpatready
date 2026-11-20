@@ -3,13 +3,12 @@
 // (its build, its routes, PF-4's local sign-in, the system clock). Sample firm `maple` is written to the copy's database
 // with the seeded roles' staff, hours, a type, leads and bookings (Sample rows); the browser signs in as each person.
 // One named case per Done when line, a pass and a fail each: J-S1, J-S2, J-S3, J-S4, J-S9, DW10 (axe, keyboard only,
-// 375/1024/1440, 60 bookings in a week with no overlapping blocks), DW11 (PF-1's route check). US$0, no model call.
-//   zsh studio/tools/isolated.sh screens_fo3st1 4541 start PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh screens_fo3st1 4541 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo3st1_calendar_browser.ts 4541 xr_studio_screens_fo3st1
+// 375/1024/1440, 60 bookings in a week with no overlapping blocks), DW11 (the new paths overlap no APP_ROUTES entry; PF-1's own suite checks every module). US$0, no model call.
+//   zsh studio/tools/isolated.sh screens_fo3st1 4541 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo3st1_calendar_browser.ts 4541 xr_studio_screens_fo3st1
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -67,6 +66,7 @@ const tue10 = await db.foBooking.count({ where: { firmId: M.id, startsAt: wall(p
 const due = await book(C.id, O.person.id, new Date(now - 61 * MIN)), notYet = await book(C.id, B.person.id, new Date(now - 59 * MIN + 1), "SCHEDULED", true), gone = await book(C.id, P.person.id, new Date(now - 4 * HOUR), "CANCELLED");
 const others = await book(I.id, B.person.id, new Date(now - 3 * HOUR));   // Client I's, ended: the Owner sees its question on the booking
 const billing = await book(BF.id, P.person.id, new Date(now - 2 * HOUR));   // hosted by Billing and finance (no list key)
+const old = await book(C.id, O.person.id, new Date(now - 9 * DAY));   // ended 9 days ago, never answered (review M1)
 const soon = await book(F.id, P.person.id, new Date(Math.ceil((now + 2 * HOUR) / (30 * MIN)) * 30 * MIN));   // starts within the 4-hour limit
 const onColleague = await book(I.id, B.person.id, wall(plus(nextMonday, 2), "16:00")), cHosts = await book(C.id, B.person.id, wall(plus(nextMonday, 3), "16:00"));
 ok("FO-3st1 setup: firm maple, six staff on the seeded roles, Mon-Fri hours, 60 bookings next week with five at Tue 10:00", tue10 === 5, { tue10 });
@@ -78,7 +78,8 @@ async function as(email: string, width = 1440): Promise<Page> {
   const { token } = await r.json() as { token: string };
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: "Asia/Dubai", colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(String(e)));
-  await ctx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), token);
+  // Two days: the night case below sets the browser's clock up to a day ahead of the server's.
+  await ctx.addInitScript((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 2 * 86_400_000 })), token);
   return p;
 }
 const go = async (p: Page, path: string) => { await p.goto(`${BASE}${path}`); await p.locator("main h1").first().waitFor({ timeout: 30_000 }); await p.locator("[data-loading]").first().waitFor({ state: "detached", timeout: 30_000 }).catch(() => undefined); };
@@ -132,15 +133,17 @@ try {
   // --------------------------------------------------------------------------------------------- J-S3 (BR-13, FO-3sa)
   let sunday = plus(today, 2); while (new Date(`${sunday}T12:00:00Z`).getUTCDay() !== 0) sunday = plus(sunday, 1);
   const count0 = await db.foBooking.count({ where: { firmId: M.id } });
-  const newBooking = async () => {
+  const newBooking = async (dubai = false) => {
     await go(ow, "/front-office/bookings");
     await ow.locator("[data-new-booking]").click();
     await ow.locator("[data-person-find]").fill("Client P");
     await ow.locator("[data-person]").selectOption({ label: `Client P Sample (lead ${P.lead.number})` }).catch(async () => ow.locator("[data-person]").selectOption({ index: 1 }));
     await ow.locator("[data-times-zone]").filter({ hasText: "Client P" }).waitFor({ timeout: 10_000 });
-    await ow.locator("[data-host]").selectOption({ label: "Client F" });
+    await ow.locator("[data-host]").selectOption({ label: "Client F (you)" });
+    // BR-13 (review M3): the zone is shown and can be changed; 20:00 Asia/Dubai is 11:00 Toronto on a winter Sunday.
+    if (dubai) { await ow.locator("[data-zone-change]").click(); await ow.locator("[data-zone]").selectOption("Asia/Dubai"); }
     await ow.locator("[data-pick-other]").click();
-    await ow.locator("[data-other-date]").fill(sunday); await ow.locator("[data-other-time]").fill("11:00");
+    await ow.locator("[data-other-date]").fill(sunday); await ow.locator("[data-other-time]").fill(dubai ? "20:00" : "11:00");
     await ow.locator("[data-book]").click();
     await ow.locator("[data-book-anyway]").waitFor({ timeout: 15_000 }).catch(async (e) => { await shot(ow, "debug-new-booking"); throw new Error(`no Book anyway: ${(await ow.getByRole("dialog").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 600)} ${String(e).slice(0, 80)}`); });
   };
@@ -151,20 +154,34 @@ try {
   await ow.getByRole("button", { name: "Close", exact: true }).last().click();
   const afterCancel = await db.foBooking.count({ where: { firmId: M.id } });
   ok("FO-3st1 J-S3 fail: New booking for lead Client P on Sunday 11:00 asks \"Book anyway?\" listing \"Outside Client F's hours\"; Cancel saves nothing", reasons.some((r) => r === "Outside Client F's hours") && afterCancel === count0, { reasons, afterCancel, count0 });
-  await newBooking();
+  await newBooking(true);
   await ow.locator("[data-book-anyway]").getByRole("button", { name: "Book anyway" }).click();
   await ow.locator("[data-book]").waitFor({ state: "detached", timeout: 15_000 });
+  const said = await ow.locator("[data-saved]").innerText().catch(() => "");
   const made = await db.foBooking.findFirst({ where: { firmId: M.id, startsAt: wall(sunday, "11:00"), staffId: F.id } });
   const audit = made ? await db.auditEvent.findFirst({ where: { entity: "fo_booking", entityKey: made.id, action: "booking.scheduled" } }) : null;
-  ok("FO-3st1 J-S3 pass: Book anyway saves it for Client F at Sunday 11:00 Toronto, with the audit line naming the warning", !!made && made.personId === P.person.id && JSON.stringify(audit?.detail ?? {}).includes("OUTSIDE_HOURS"), { made: made?.id, audit: audit?.summary });
+  ok("FO-3st1 J-S3 pass: Book anyway saves it for Client F at Sunday 11:00 Toronto (chosen as 20:00 in the changed zone, Asia/Dubai, which is kept for the person's mails), says \"Booked\", and the audit line names the warning",
+    !!made && made.personId === P.person.id && made.bookerTimeZone === "Asia/Dubai" && said.startsWith("Booked Client P Sample") && JSON.stringify(audit?.detail ?? {}).includes("OUTSIDE_HOURS"), { made: made?.id, zone: made?.bookerTimeZone, said, audit: audit?.summary });
+  // Break M4: a person the search no longer shows is no longer chosen, and Book cannot book them.
+  await go(ow, "/front-office/bookings"); await ow.locator("[data-new-booking]").click();
+  await ow.locator("[data-person-find]").fill("Client P"); await ow.locator("[data-person]").selectOption({ index: 1 });
+  await ow.locator("[data-person-find]").fill("Client B");
+  const [stale, bookOff] = [await ow.locator("[data-person]").inputValue(), await ow.locator("[data-book]").isDisabled()];
+  await ow.getByRole("button", { name: "Close", exact: true }).last().click();
+  ok("FO-3st1 J-S3 fail (break M4): choosing Client P, then searching Client B, leaves nobody chosen and Book off", stale === "" && bookOff, { stale, bookOff });
 
   // --------------------------------------------------------------------------------------------- J-S4 (BR-14)
   await go(co, "/front-office/bookings?whose=mine");
   await co.locator("[data-zone-line]").waitFor();
+  await co.locator(`[data-due="${due.id}"]`).waitFor({ timeout: 15_000 }).catch(() => undefined);
   const pinned = await co.locator("[data-due]").evaluateAll((els) => els.map((e) => e.getAttribute("data-due")));
   await axe("J-S4 pinned question", co); await shot(co, "attendance-pinned-1440");
   ok("FO-3st1 J-S4 pass: the viewer's own meeting that ended 30 min ago is pinned (\"Did Client O attend?\")", pinned.includes(due.id) && (await co.locator(`[data-due="${due.id}"]`).innerText()).includes("Did Client O Sample attend?"), pinned);
   ok("FO-3st1 J-S4 fail: one that ended 29 min ago is not pinned yet; a cancelled one never", !pinned.includes(notYet.id) && !pinned.includes(gone.id), pinned);
+  await co.getByRole("button", { name: "Next week" }).click();
+  await co.locator(`[data-due="${due.id}"]`).waitFor({ timeout: 10_000 }).catch(() => undefined);
+  const nextWeek = await co.locator("[data-due]").evaluateAll((els) => els.map((e) => e.getAttribute("data-due")));
+  ok("FO-3st1 J-S4 pass (review M1): the questions stay pinned whatever week is shown, a meeting from 9 days ago included", nextWeek.includes(due.id) && nextWeek.includes(old.id) && pinned.includes(old.id), { pinned, nextWeek });
   await go(ow, `/front-office/bookings/${others.id}`);
   await ow.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
   const ownerPinned = await ow.locator(`[data-due="${others.id}"]`).count(), ownerAsk = await ow.locator(`[data-attendance="${others.id}"]`).count();
@@ -195,21 +212,53 @@ try {
   const [inside, outside] = [await moveSentence(soon.id), await moveSentence(cHosts.id)];
   ok("FO-3st1 detail pass/fail: More → Reschedule says \"This is inside the 4-hour limit. Client P Sample can no longer change it online.\" for a booking 2 h away, and nothing for one next week",
     inside === "This is inside the 4-hour limit. Client P Sample can no longer change it online." && outside === "", { inside, outside });
+  // Review M2: a move the server gives to another free host says so. Every week host is busy at Monday 09:00 next week;
+  // Client D (Billing and finance) is a free host of the type.
+  await go(ow, `/front-office/bookings/${cHosts.id}`);
+  await ow.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
+  await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Reschedule" }).click();
+  await ow.locator("[data-pick-other]").click();
+  await ow.locator("[data-other-date]").fill(nextMonday); await ow.locator("[data-other-time]").fill("09:00");
+  await ow.locator("[data-move]").click();
+  const changed = await ow.getByText("The host changed").waitFor({ timeout: 15_000 }).then(async () => (await ow.locator("[data-booking-detail]").innerText()).replace(/\s+/g, " "), () => "");
+  const movedTo = (await db.foBooking.findUniqueOrThrow({ where: { id: cHosts.id } })).staffId;
+  ok("FO-3st1 detail pass/fail (review M2): moving Client C's booking to a time Client C is busy gives it to a free host, and the panel says \"Client C was not free then, so Client D now hosts this booking.\"",
+    movedTo === BF.id && changed.includes("Client C was not free then, so Client D now hosts this booking."), { movedTo, changed: changed.slice(0, 200) });
   await go(ow, `/front-office/bookings/${soon.id}`);
   await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Cancel booking" }).click();
   await ow.getByRole("button", { name: "Keep booking" }).click();
+  await ow.locator("[data-cancel-booking]").waitFor({ state: "detached", timeout: 10_000 });
   const kept = (await db.foBooking.findUniqueOrThrow({ where: { id: soon.id } })).status;
   await ow.locator("[data-more-menu]").click(); await ow.getByRole("menuitem", { name: "Cancel booking" }).click();
   await axe("Cancel booking?", ow);
   await ow.locator("[data-cancel-booking]").click();
   await ow.getByRole("dialog", { name: /Cancel .*booking\?/ }).waitFor({ state: "detached", timeout: 15_000 });
   const gone2 = (await db.foBooking.findUniqueOrThrow({ where: { id: soon.id } })).status;
-  const chipTip = await ow.locator("[data-booking-detail]").locator("xpath=ancestor::*[@role='dialog']").locator("span[title^='Cancelled by']").getAttribute("title").catch(() => null);
+  const chipTip = await ow.locator("span[title='Cancelled by Client F.']").first().waitFor({ timeout: 10_000 }).then(() => "Cancelled by Client F.", () => null);
   ok("FO-3st1 detail pass/fail: Keep booking changes nothing; Cancel booking cancels it, and its chip says who (\"Cancelled by Client F.\")", kept === "SCHEDULED" && gone2 === "CANCELLED" && chipTip === "Cancelled by Client F.", { kept, gone2, chipTip });
+
+  // --------------------------------------------------------------------------------------------- break M1, M7, M9 / review M4
+  for (const bad of ["?date=2027-13-45", "?view=list&hour=foo", "?date=2027-02-30&view=day"]) await go(ow, `/front-office/bookings${bad}`);
+  const bad = errors.length;
+  ok("FO-3st1 detail fail (break M1): a malformed date or hour in the address falls back to the defaults, no blank page, no page error", bad === 0 && (await ow.locator("[data-zone-line]").count()) === 1, errors.slice(0, 2));
+  await go(ow, `/front-office/bookings${week}`);
+  await ow.locator("[data-host-filter]").selectOption(CM.id);
+  await ow.getByRole("button", { name: "Next week" }).click(); await ow.getByRole("button", { name: "Next week" }).click();
+  const kept2 = await ow.locator("[data-host-filter] option:checked").innerText();
+  ok("FO-3st1 detail pass/fail (break M7): a host chosen in the filter stays named on a week with none of their bookings", kept2 === "Client K", kept2);
+  const night = await as(AD.email);   // another person: signing Client F in again would end their session (one at a time)
+  await night.clock.install({ time: wall(today, "21:30") });   // 21:30 in Toronto is already tomorrow in UTC
+  await night.clock.resume();
+  await go(night, "/front-office/bookings?view=day");
+  await night.locator("[data-range]").filter({ hasText: /\d/ }).waitFor();
+  const dayShown = await night.locator("[data-range]").innerText();
+  const want = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${today}T12:00:00Z`));
+  await night.context().close();
+  ok("FO-3st1 detail pass/fail (review M4): at 21:30 in Toronto, Today is the office's day, not the next UTC day", dayShown === want, { dayShown, want });
 
   // --------------------------------------------------------------------------------------------- DW10 (keyboard, widths)
   await go(ow, `/front-office/bookings${week}`);
-  await ow.locator("[data-grid]").waitFor();
+  await ow.locator("[data-grid]").waitFor().catch(async (e) => { await shot(ow, "debug-dw10"); throw new Error(`DW10 no grid: ${ow.url()} ${(await ow.locator("main").innerText()).replace(/\s+/g, " ").slice(0, 300)}`); });
   let reached = false;
   for (let i = 0; i < 60 && !reached; i++) { await ow.keyboard.press("Tab"); reached = await ow.evaluate(() => document.activeElement?.hasAttribute("data-block") ?? false); }
   await ow.keyboard.press("Enter");
@@ -235,8 +284,13 @@ try {
   ok("FO-3st1 DW10: no page error in the browser", errors.length === 0, errors.slice(0, 3));
 
   // --------------------------------------------------------------------------------------------- DW11
-  let pf1 = ""; try { pf1 = execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), [join(STUDIO, "tests", "check_pf1_module_routes.ts")], { encoding: "utf8", cwd: join(STUDIO, "..") }); } catch (e) { pf1 = String((e as { stdout?: string }).stdout ?? e); }
-  ok("FO-3st1 DW11 pass/fail: PF-1's route check passes with the two new paths (no path overlaps APP_ROUTES)", !/FAIL/.test(pf1) && /pass/i.test(pf1), pf1.split("\n").filter((l) => /FAIL|passed/.test(l)).slice(0, 4));
+  // PF-1's own suite (check_pf1_module_routes.ts, its own copy on :4517) checks every module's paths; here, without a
+  // second copy: the two new paths are not among APP_ROUTES (modules.tsx), and the running app (which stops on any
+  // clash of addresses, modules.tsx routeProblems) served them above.
+  const appRoutes = [...(readFileSync(join(STUDIO, "web", "src", "modules.tsx"), "utf8").match(/export const APP_ROUTES = \[([\s\S]*?)\] as const/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const ours = ["/front-office/bookings", "/front-office/bookings/:id"];
+  const clash = ours.filter((r) => appRoutes.some((a) => a === r || (a.endsWith("/*") && r.startsWith(a.slice(0, -1)))));
+  ok("FO-3st1 DW11 pass/fail: the two new paths overlap no APP_ROUTES entry, and the app served them (it stops on a clash)", appRoutes.length > 20 && clash.length === 0 && reached, { appRoutes: appRoutes.length, clash });
 } catch (e) {
   ok("FO-3st1: the check ran to the end", false, String((e as Error)?.stack ?? e).slice(0, 1200));
 } finally {

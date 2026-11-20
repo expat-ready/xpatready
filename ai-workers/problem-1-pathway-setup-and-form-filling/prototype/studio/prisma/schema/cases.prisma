@@ -114,6 +114,9 @@ model CaseClient {
   /// The front office's fo_person or fo_company (at most one set, a check); no foreign key (contract §1 rule 4).
   foPersonId   String?  @map("fo_person_id") @db.Uuid
   foCompanyId  String?  @map("fo_company_id") @db.Uuid
+  /// CS-K1 part 2: a client the database made or moved with no link (a fixture case, CS-W1's firm fill); the one-time job
+  /// links it and clears this. Otherwise a client of a platform firm is linked by its kind (a NOT VALID check, then validated).
+  foLinkPending Boolean @default(false) @map("fo_link_pending")
   /// The won prospect (FO-8): unique within the firm when present, so prospect.won makes one client however often it comes.
   prospectId   String?  @map("prospect_id") @db.Uuid
   /// The staff member who owns the file: null until FO-8 sets it from the won prospect's owner.

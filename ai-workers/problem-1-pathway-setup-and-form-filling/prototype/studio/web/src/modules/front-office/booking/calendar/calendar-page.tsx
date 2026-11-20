@@ -1,7 +1,7 @@
 // FO-3st1 part 1 (concept fo-3-booking r2 §4 "Staff calendar", §5, §6 J-S1, J-S2, J-S4, J-S9; BR-14; AG-4-67): the
 // Bookings area's Calendar inside PF-6's PlatformFrame. Day · Week (Monday first, seven days) · List, on our own grid (no
 // calendar library); Mine / Team only with agent/booking:list; a host filter; times in the office zone, named. Same-time
-// blocks sit side by side, up to three, then "+<n> more" opens List for that hour, so no block ever covers another. "Did
+// blocks sit one under another in their cell (side by side read "C…" at 1024 px: break M8), up to three, then "+<n> more" opens List for that hour, so no block ever covers another. "Did
 // <person> attend?" is pinned above only where the feed says `attendanceDue` (the viewer's own, end + 30 min). The view,
 // whose, day, host and hour are kept in the address, so Back returns to them. A person without the list key has no
 // Bookings menu and opens their own booking by its link (Q4). Every rule shown is the feed's answer (STANDARDS §7).
@@ -10,6 +10,7 @@ import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-d
 import { useQuery } from "@tanstack/react-query";
 import { Button, Notice, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
+import { Loading } from "@/modules/front-office/sales/loading";
 import { PlatformFrame, usePlatformStaff, type Area } from "@/modules/platform/frame";
 import { staffApi } from "@/modules/platform/session";
 import { addDays, CREATE_KEY, dayOf, Feed, hhmm, hourOf, LIST_KEY, longWhen, MODE_WORDS, mondayOf, personOf, shortDay, STATUS, type FeedItem } from "./contract";
@@ -27,7 +28,8 @@ const AREA: Area = {
     </nav>
   ) : null,
 };
-const today = () => new Date().toISOString().slice(0, 10);
+/** A real calendar date ("2027-02-30" and "2027-13-45" are not; break M1), else null. */
+const realDate = (s: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s) ? s : null);
 /** Below 768 px the week becomes a day (concept §4). */
 function useNarrow() {
   const q = "(max-width: 767px)";
@@ -54,22 +56,37 @@ function Calendar({ openId }: { openId: string | null }) {
   const asked = (sp.get("view") as View) || "week";
   const view: View = asked === "week" && narrow ? "day" : (["day", "week", "list"] as View[]).includes(asked) ? asked : "week";
   const whose = sp.get("whose") === "mine" || !lists ? "mine" : "team";
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.get("date") ?? "") ? sp.get("date")! : today();
+  // The office's zone, from any answer of the feed (the pinned list below always loads); the browser's until then.
+  const [zoneSeen, setZone] = React.useState("");
+  // Today is the office's date, never the UTC one (review M4, break M9).
+  const today = zoneSeen ? dayOf(Date.now(), zoneSeen) : dayOf(Date.now(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const date = realDate(sp.get("date")) ?? today;
   const host = sp.get("host") ?? "";
-  const hour = sp.get("hour");
+  const hourAsked = sp.get("hour");
+  const hour = view === "list" && hourAsked && /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(hourAsked) && realDate(hourAsked.slice(0, 10)) ? hourAsked : null;   // break m1
   const set = (k: Record<string, string | null>) => { const n = new URLSearchParams(sp); for (const [a, b] of Object.entries(k)) b === null ? n.delete(a) : n.set(a, b); setSp(n); };
   const first = view === "day" ? date : mondayOf(date), days = view === "day" ? 1 : 7;
   const dates = Array.from({ length: days }, (_, i) => addDays(first, i));
   // A day either side, so every booking of those office-zone days is in the answer whatever the zone; filtered below.
   const feed = useFeed(whose, `${addDays(first, -1)}T00:00:00Z`, `${addDays(first, days + 1)}T00:00:00Z`, lists);
-  const zone = feed.data?.officeTimeZone ?? "";
+  // BR-14: the pinned questions are the viewer's own, whatever days are on screen (review M1, break M2): the last 60 days.
+  const [[since, until]] = React.useState(() => [new Date(Date.now() - 60 * 86_400_000).toISOString(), new Date(Date.now() + 86_400_000).toISOString()]);   // fixed once: a key that moves never settles
+  const pins = useFeed("mine", since, until, lists);
+  const zone = feed.data?.officeTimeZone ?? pins.data?.officeTimeZone ?? "";
+  React.useEffect(() => { if (zone && zone !== zoneSeen) setZone(zone); }, [zone, zoneSeen]);
+  // Host names seen in any week, so a chosen host stays named when they have no bookings this week (break M7).
+  const names = React.useRef(new Map<string, string>());
+  for (const b of [...(feed.data?.items ?? []), ...(pins.data?.items ?? [])]) names.current.set(b.host.id, b.host.name);
   const shown = (feed.data?.items ?? []).filter((b) => b.status !== "CANCELLED" && b.status !== "EXPIRED" && dates.includes(dayOf(b.startsAt, zone)) && (!host || b.host.id === host)
     && (!hour || (view === "list" && dayOf(b.startsAt, zone) === hour.slice(0, 10) && hourOf(b.startsAt, zone) === Number(hour.slice(11, 13)))));
-  const hosts = [...new Map((feed.data?.items ?? []).map((b) => [b.host.id, b.host.name])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  const due = (feed.data?.items ?? []).filter((b) => b.attendanceDue);
+  const hosts = [...names.current.entries()].concat(host && !names.current.has(host) ? [[host, "The chosen host"]] : []).sort((a, b) => a[1].localeCompare(b[1]));
+  const due = (pins.data?.items ?? []).filter((b) => b.attendanceDue);
+  const [saved, setSaved] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
   const open = (b: FeedItem) => navigate({ pathname: `${HOME}/${b.id}`, search: sp.toString() });
   const close = () => navigate({ pathname: HOME, search: sp.toString() });
+  // Focus goes back to the block or row that opened the panel (review m3).
+  const back = () => document.querySelector<HTMLElement>(`[data-block="${openId}"], [data-row="${openId}"] button`);
   const step = (n: number) => set({ date: addDays(date, n * days), hour: null });
   const label = view === "day" ? shortDay(date) : `${shortDay(first)} – ${shortDay(addDays(first, 6))}`;
   if (!lists) {
@@ -77,7 +94,8 @@ function Calendar({ openId }: { openId: string | null }) {
     return (<>
       <h1 className="text-2xl font-semibold">Bookings</h1>
       {openId ? <p className="mt-1 text-sm text-text-muted">Your booking.</p> : <Notice tone="warn" className="mt-3" title="You do not have permission to do this. Ask an Owner or Admin.">Your own bookings open from their links.</Notice>}
-      {openId ? <BookingPanel id={openId} onClose={close} /> : null}
+      {openId ? <BookingPanel id={openId} onClose={close} onSaved={setSaved} /> : null}
+      {saved ? <p role="status" className="mt-3 text-sm text-text-ok">{saved}</p> : null}
     </>);
   }
   return (
@@ -105,13 +123,14 @@ function Calendar({ openId }: { openId: string | null }) {
         </div>
       ))}
       <div className="mt-3">
-        {feed.isPending ? <p role="status" className="text-sm text-text-muted" data-loading>Loading bookings…</p>
+        {saved ? <p role="status" className="mb-2 text-sm text-text-ok" data-saved>{saved}</p> : null}
+        {feed.isPending ? <Loading label="Loading bookings" rows={5} />
           : feed.isError ? <Notice tone="danger" title="Could not load the bookings." action={<Button size="sm" variant="outline" onClick={() => void feed.refetch()}>Try again</Button>}>{feed.error.message}</Notice>
             : view === "list" ? <List items={shown} zone={zone} open={open} hour={hour} clearHour={() => set({ hour: null })} />
               : <Grid dates={dates} items={shown} zone={zone} open={open} more={(d, h) => set({ view: "list", hour: `${d}T${String(h).padStart(2, "0")}` })} />}
       </div>
-      {openId ? <BookingPanel id={openId} onClose={close} /> : null}
-      {creating ? <NewBookingDialog zone={zone} onClose={() => setCreating(false)} /> : null}
+      {openId ? <BookingPanel id={openId} onClose={close} onSaved={setSaved} returnFocus={back} /> : null}
+      {creating ? <NewBookingDialog zone={zone} hostNames={names.current} onClose={(done) => { setCreating(false); if (done) setSaved(done); }} /> : null}
     </div>
   );
 }
@@ -128,7 +147,7 @@ function Block({ b, zone, open }: { b: FeedItem; zone: string; open: (b: FeedIte
   const s = STATUS[b.status];
   return (
     <button type="button" onClick={() => open(b)} data-block={b.id} title={`${personOf(b)} · ${b.type.name} · Host: ${b.host.name} · ${hhmm(b.startsAt, zone)} ${zone} · ${hhmm(b.startsAt, b.bookerTimeZone)} for ${personOf(b)} (${b.bookerTimeZone})`}
-      className={cn("min-w-0 flex-1 basis-0 truncate rounded border-l-[3px] px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      className={cn("block w-full min-w-0 truncate rounded border-l-[3px] px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         b.status === "COMPLETED" ? "border-ok bg-ok/12" : b.status === "NO_SHOW" ? "border-text-muted bg-surface" : "border-primary bg-primary/10")}>
       {/* The row names the hour: the person first, the minutes only when not on the hour (three blocks share a cell). */}
       <span className="font-medium">{hhmm(b.startsAt, zone).endsWith(":00") ? "" : `${hhmm(b.startsAt, zone)} `}{personOf(b)}</span> · {b.type.name}{s.label !== "Scheduled" ? ` · ${s.label}` : ""}
@@ -151,7 +170,7 @@ function Grid({ dates, items, zone, open, more }: { dates: string[]; items: Feed
               const here = items.filter((b) => dayOf(b.startsAt, zone) === d && hourOf(b.startsAt, zone) === h);
               return (
                 <td key={d} className="h-9 border-l border-t border-border p-0.5 align-top" data-cell={`${d}T${String(h).padStart(2, "0")}`}>
-                  {here.length ? <div className="flex min-w-0 gap-0.5">{here.slice(0, 3).map((b) => <Block key={b.id} b={b} zone={zone} open={open} />)}</div> : null}
+                  {here.length ? <div className="flex min-w-0 flex-col gap-0.5">{here.slice(0, 3).map((b) => <Block key={b.id} b={b} zone={zone} open={open} />)}</div> : null}
                   {here.length > 3 ? <button type="button" onClick={() => more(d, h)} title={`${here.length - 3} more bookings at this time. Opens the list.`} className="text-xs text-text-link underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" data-more>+{here.length - 3} more</button> : null}
                 </td>
               );

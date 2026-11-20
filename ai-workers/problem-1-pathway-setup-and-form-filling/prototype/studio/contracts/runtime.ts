@@ -50,6 +50,26 @@ export const ClientListQuery = z.object({
   page: z.string({ message: "A page is a whole number from 1." }).regex(/^\d{1,5}$/, "A page is a whole number from 1.").optional(),
 });
 
+/** CS-K1s (R1.72, QA-593): GET /api/runtime/clients/:id/offer (clients.ts offer), the "Open a case?" card's read, from
+ *  FO-8's one offer rule (case-clients/prospect-won.ts offerOf). Ids and names only: never the prospect's answers (its
+ *  e-mail, phone or residence). Strict both ways, so a field added by mistake fails the read's own parse. `detail` is
+ *  the opening's own refusal words (prospect-won.ts OFFER_REFUSED), shown as they are. */
+export const OFFER_GONE = ["NO_OFFER", "USED", "WITHDRAWN", "CHANGED"] as const;
+export const ClientOfferView = z.union([
+  z.strictObject({ offer: z.strictObject({
+    /** The program the prospect was interested in, while a case can open on it; null: the prospect named none. */
+    combination: z.strictObject({ id: z.string(), label: z.string() }).nullable(),
+    /** The principal applicant the opening pre-fills (the client's name); null: the name is outside the opening's limits. */
+    principalName: z.string().nullable(),
+    /** The representative of record the signed retainer names; null: none named (the opening uses the firm's own). */
+    representative: z.strictObject({ staffId: z.string(), name: z.string() }).nullable(),
+    wonVia: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
+    prospectNumber: z.string().nullable(),
+  }) }),
+  z.strictObject({ offer: z.null(), reason: z.enum(OFFER_GONE), detail: z.string() }),
+]);
+export type ClientOfferView = z.infer<typeof ClientOfferView>;
+
 export const NewCase = z.object({
   combinationId: z.string({ message: "Choose a released combination." }).uuid("Choose a released combination."),
   /** The firm's own reference, optional since A24-1 (CS-7): every case gets a case number at opening. Given, it keeps
@@ -79,6 +99,11 @@ export const NewCase = z.object({
     key_details: z.record(z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/, "A key detail is named by its field."), z.union([z.string(), z.null()], { message: "Write a key detail as text." })).optional(),
   }, { message: "Each earlier stage is an object." }), { message: "Earlier stages are a list." }).max(10, "A route has at most 10 earlier stages.").optional(),
 });
+
+/** FO-8: the body of "Open a case?" (POST clients/:id/open-case). The opening's own fields, each optional where the offer
+ *  pre-fills it (the combination, the principal, the representative); the client is the route's and the key is not taken,
+ *  so neither is a field here. Strict: an unknown field is refused by name, never dropped. */
+export const OpenCaseFromOffer = NewCase.omit({ clientId: true, idempotencyKey: true }).partial({ combinationId: true, principal: true }).strict();
 
 /** C6.11 (BR-20, SI-9): the firm admin changes the representative of record, with a reason kept in the history; a new
  *  representative asks for a new IMM 5476 (BR-12). */
@@ -418,7 +443,9 @@ export type CaseStageView = { id: string; key: string; name: string; client_name
   state: "DONE_BEFORE" | "NOT_RECORDED" | "CURRENT" | "ENDED_NEXT_STARTED" | "NOT_STARTED"; words: string; cannot_start_why: string | null; started_from: "BEGIN" | "NEXT_STAGE" | null;
   started_at: string | null; ended_at: string | null; version: number;
   key_details: { field: string; label: string; type: "STRING" | "DATE"; value: string | null; by: string | null; same_every_stage: boolean }[];
-  deadline: { label: string; due: string | null; why: string; sample: true } | null };
+  deadline: { label: string; due: string | null; why: string; sample: true;
+    /** CS-DL1 (AG-7-94 r3): the date with its weekday and a "(weekend)" / "(closed day)" mark, never moved; Missed: before today in the firm's zone. */
+    weekday?: string | null; mark?: "weekend" | "closed day" | null; shown?: string | null; missed?: boolean } | null };
 export type CaseStages = { case_id: string; route: { key: string; label: string; basis: string } | null; stages: CaseStageView[]; current: string; next: string | null };
 /** BR-4: what "Start next stage" will do, shown before the click. */
 export type StartNextPreview = { from: { stage: string; name: string; client_name: string; version: number }; to: { stage: string; name: string; release_version: number; release: string } | null;
@@ -571,3 +598,34 @@ export type CaseDecisionsView = z.infer<typeof CaseDecisionsView>;
 export const AddableQuery = z.strictObject({ q: AddableSearch, subject: AddableSubject }, onlyFilters("q, subject"));
 export const AddableDetailQuery = z.strictObject({ subject: AddableSubject }, onlyFilters("subject"));
 export const CopyFileQuery = z.strictObject({ original: CopyFileOriginal }, onlyFilters("original"));
+
+// ------------------------------------------------------------------ CS-V1 part 3: the last five case-side inputs
+// The same rule as part 2: a field that is not part of the request, a wrong type (a value given twice is a list) and an
+// over-long value answer 400 naming the field; every request the screens and helpers send is still accepted, and the
+// checks a route already made keep their words (they stay in the route, after this).
+/** A refused write: the standard 400 naming each field, and nothing was stored (the parse comes before any read or write). */
+export const nothingStored = (e: z.ZodError) => {
+  const errors = e.issues.map((i) => ({ field: i.path.join(".") || "body", message: i.message }));
+  return { type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: 400, detail: `${errors.map((x) => x.message).join(" ")} Nothing was stored.`, errors };
+};
+/** POST /runtime/items/:id/pdf-copy (case-prepare.ts): the copy's idempotency key, checked as Generate checks it. */
+export const PdfCopyBody = z.strictObject({ idempotencyKey: idemKey.nullish() }, notHere("a PDF copy"));
+/** The printed copy a signing step or a signed scan names (B130): a generated copy's id; empty or null names none. */
+const namedCopyId = z.union([z.string().max(100, "copy is the printed copy's id, at most 100 characters."), z.null()], { error: "Give copy once, as the printed copy's id (text), or leave it out." }).optional();
+/** POST /runtime/items/:id/sign-steps/:key (sign-steps.ts). */
+export const SignStepBody = z.strictObject({ copy: namedCopyId }, notHere("a signing step"));
+/** POST /runtime/items/:id/signed-scan (sign-steps.ts): the upload's text fields (the file itself is "file", judged by its bytes). */
+export const SignedScanFields = z.strictObject({ copy: namedCopyId }, notHere("a signed scan (send the file as \"file\" and, if you like, the printed copy's id as \"copy\")"));
+/** GET /runtime/cases (runtime.ts Runtime.list): each filter once, as text. take keeps its default (50) and its limits
+ *  (1 to 100; a value that is not a number is 50, as before); after is the `next` of the page read; client and q keep
+ *  the route's own checks ("Name one client login."; q at most 80 characters once trimmed). */
+export const CaseListQuery = z.strictObject({
+  take: z.string({ error: "Give take once, as a number from 1 to 100." }).max(10, "Give take as a number from 1 to 100.").optional(),
+  after: z.string({ error: "Give after once: the next value of the page you read." }).regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Give after as the next value of the page you read.").optional(),
+  client: z.string({ error: "Name one client login." }).max(200, "Name one client login (at most 200 characters).").optional(),
+  q: z.string({ error: "Search with one text." }).max(1000, "Search with at most 80 characters.").refine((v) => v.trim().length <= 80, "Search with at most 80 characters.").optional(),
+}, onlyFilters("take, after, client, q"));
+/** GET /runtime/cases/:id/questionnaire (runtime.ts): agent is the Agent view, pqr the people's questions, sqr (or
+ *  client, or none) the Client questionnaire, as the route reads them. */
+export const QUESTIONNAIRE_MODES = ["agent", "pqr", "sqr", "client"] as const;
+export const QuestionnaireQuery = z.strictObject({ mode: z.enum(QUESTIONNAIRE_MODES, { error: "mode is agent, pqr, sqr or client (or leave it out for the Client questionnaire)." }).optional() }, onlyFilters("mode"));
