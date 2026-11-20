@@ -203,7 +203,7 @@ ok("S2 fail: sign-up's ports built with fakeMail (main before this PR) are repor
 const ignores = bindings(swap(COMPLAINT_PORTS, { provide: COMPLAINT_PORTS, useFactory: () => ({ mail: fakeMail() }), inject: [MESSAGES_MAIL] }), TOKENS);
 ok("S2 fail: a factory that takes MESSAGES_MAIL but returns another mail is reported", ignores.some((p) => /COMPLAINT_PORTS .*not the one given/.test(p)), ignores);
 const { LocalMail } = await import("../api/src/platform/identity/session/mail.ts");
-const localBound = bindings(swap(MAIL_PORT, { provide: MAIL_PORT, useValue: new LocalMail() }), TOKENS);
+const localBound = bindings(swap(MAIL_PORT, { provide: MAIL_PORT, useValue: new LocalMail(() => Date.now()) }), TOKENS);
 ok("S2 fail: MAIL_PORT bound to LocalMail (main before PF-19r part 1) is reported", localBound.some((p) => p.startsWith("MAIL_PORT")), localBound);
 
 // ------------------------------------------------------------------------------------------------ S3 MessagePort's layout
