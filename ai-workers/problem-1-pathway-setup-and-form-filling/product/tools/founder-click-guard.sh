@@ -19,11 +19,17 @@ ASK = re.compile(r"\bclick(s|ing)?\b|\bconvert(ing)?\b[^.\n]{0,30}\bto (a )?draf
   r"|\b(mark|set|make|move|press|hit|select)\b[^.\n]{0,30}\bready for review\b|\breopen(ing)?\b|\b(merge|approve)\b (the (pr|pull request)|#\d+)"
   r"|\bopen #\d+\b[^.\n]{0,60}\band (then )?(click|press|hit|add|convert|mark|reopen|merge|approve|label|select)\b|\bin the ([\w.-]+ ){0,3}console\b"
   r"|\b(press|hit) (the )?[\w ]{0,20}button\b|\bgo to (https?://)?(github\.com|claude\.ai)"
+  # 21 Nov (founder: "whatever you are asking me to do, right, to add one line, please do yourself"): a link to open,
+  # Edit on a description or title, or a line to add to a PR are clicks too (Lead 6 asked all three and passed).
+  r"|\bopen (https?://)?(github\.com|claude\.ai)\S*[^.\n]{0,60}\b(press|click|hit|add|edit|type|convert|mark|reopen|merge|approve|label|select)\b|\b(press|click|hit|use|choose) (the )?edit\b"
+  r"|\bedit (the |its |this )?(pr |pull request )?(description|body|title)\b"
+  r"|\badd\b[^.\n]{0,40}\bline\b[^.\n]{0,40}(#\d+|\bdescription\b|\bbody\b|\bpr\b|pull request)"
   + (r"|\b(close|merge|label) #\d+" if mode == "state" else ""), I)
 # Addressed to the founder (a message): a request, or a sentence that starts with the step itself.
 YOU = re.compile(r"\b(please|pls|could you|can you|would you|will you|need you|want you|you (need|have|must|should)\b|for you to|"
   r"yourself|needs you|your (click|turn|side))", I)
-IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap)\b", I)
+IMP = re.compile(r"^\W*(\(?\w{1,2}[.)]\s*)?((recommend(ed)?|ask|next step|to do)\s*:?\s*)?(at [\d:x]+( IST)?,?\s*)?"
+  r"(then |and |just |now )?(click|open|add|press|convert|mark|reopen|go to|select|hit|tap|edit)\b", I)
 # Only the founder can: sign-in, password, 2FA/one-time code, payment, new account or key (P-551), permission widening (P-387).
 ONLY = re.compile(r"sign(ed)?[- ]?(in|out)|log(ged)?[- ]?(in|out)|password|\b2fa\b|two[- ]factor|one[- ]time (code|password)|\botp\b|passkey"
   r"|verification code|payment|billing|credit card|\bnew (account|key|token)\b|create (a |an )?(new )?account|\b(api|access|secret|ssh) key"

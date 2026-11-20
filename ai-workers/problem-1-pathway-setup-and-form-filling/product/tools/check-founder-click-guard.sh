@@ -36,6 +36,13 @@ for m in 'Please add the `review: approved` label to #2413.' 'Please convert #24
 for m in 'Founder: #2322 is ready for review and green.' 'You will see #2322 ready for review in a minute.' 'You can see #2322 is now ready for review.' \
          'The founder asked me to reopen #2210; done.' 'Open #2413 and you will see the green checks.' 'I merged #2413 and reopened #2210 myself.'; do
   r=$(stop lead "$m"); ok "a status line to the founder passes: $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
+# 21 Nov (Lead 6, founder: "to add one line, please do yourself"): a link to open, Edit on a description, a line to add.
+for m in 'Recommend: at 07:00, open https://github.com/expat-ready/xpatready/pull/2578, press Edit on the description, and add this line at the top:' \
+         'Will you add the "Done when" line to #2578 at 07:00, or leave it parked?' 'Please edit the PR description of #2578.' \
+         'Open https://claude.ai/code and press Return in the lane.'; do
+  r=$(stop lead "$m"); ok "refused (21 Nov): $m" "$([ "$r" = block ] && echo 1)" "got $r"; done
+for m in 'I added the Done when line to #2578 in the built-in browser.' 'The lane fixed one line in #2452.' 'Open https://github.com/expat-ready/xpatready/pull/2578 to see it merged.'; do
+  r=$(stop lead "$m"); ok "passes (21 Nov): $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 r=$(stop qa "$click"); ok "a non-Lead copy is untouched" "$([ "$r" = pass ] && echo 1)" "got $r"
 r=$(stop unbound "$click"); ok "... and an unbound copy" "$([ "$r" = pass ] && echo 1)" "got $r"
 out=$(jq -n --arg d "$T/copy" --arg m "$click" '{cwd:$d,last_assistant_message:$m}' | FAKE_LANE=lead bash "$G")
