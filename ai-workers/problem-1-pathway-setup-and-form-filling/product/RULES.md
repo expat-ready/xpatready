@@ -158,7 +158,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
 | IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
 | IDX-21 | 20 Nov P-757 to P-765 stand: row word for word in `rules/tech-lead.md` › IDX-21. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
-| IDX-23 | P-766 to P-774 stand as in DECISIONS (P-770 Lead does every GitHub step; P-771 measured numbers only; P-772 enforce in code, tooling queue apart; P-773 R1.32 = P-574 + AG-02, FO-10c; P-774 wave 3 tonight, the 32 first). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5) | 21 Nov |
+| IDX-23 | P-766 to P-774 stand as in DECISIONS (P-770 Lead does every GitHub step; P-771 measured numbers only; P-772 enforce in code, tooling queue apart; P-773 R1.32 = P-574 + AG-02, FO-10c; P-774 wave 3 tonight, 32 first). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5) | 21 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
