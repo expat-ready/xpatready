@@ -155,3 +155,46 @@ reactivation.**
   tokens on every route, Sign out everywhere and your own sign-out, the old token after a calm reactivation (`p2`), and
   the role and firm limits (`p5`).
 * I wrote no token file outside the scratchpad (searched: none).
+
+## Re-break 6a71adf5 (20 Nov)
+
+**Setup.** Fresh copy `j5d` on :4446, built from 6a71adf57 (a fresh database per run, stopped after). I re-ran `p3`,
+`p4`, `p8` and `p9`, plus three new probes:
+* `p10`: a sign-in stream against each staff change and against terms accept;
+* `p11`: invite, resend and revoke under a stream, with 200 seats lent so the plan limit does not refuse;
+* `p12`: invitation accept under a colleague's stream.
+
+Each stream was 4 parallel sign-in loops. In every run, Postgres deadlocks were +0 and no sign-in answered 5xx.
+
+**R1 is fixed.** With nothing left to starve, every change landed in tens of milliseconds:
+
+| Sign-in stream from | Change | Result |
+|---|---|---|
+| the target O | deactivate | `p4` 10/10; `p8` 20/20; `p9` 6/6, max 164 ms |
+| the target O | Sign out everywhere | `p4` 10/10; `p8` 20/20 |
+| a colleague, T | deactivate | `p9` 6/6, max 38 ms |
+| either | deactivate and reactivate | `p10` 16/16, max 89 ms |
+| either | roles | `p10` 8/8, max 116 ms |
+| either | Sign out everywhere | `p10` 8/8 |
+| either | invite, resend, revoke | `p11` 6/6 each, max 121 ms |
+| T | invitation accept | `p12` 6/6, max 50 ms |
+
+**B2 has not come back.**
+* `p3` (8 rounds × 25 sign-ins against a deactivation): 0 tokens dated after it, 0 alive after reactivation, 0 sign-in
+  lines while deactivated.
+* `p4` found 0 race tokens.
+* `p8`, sign-ins during reactivate: `200×8, 401×48`, none dated at or before the deactivation.
+
+**Terms accept**, which still takes `FOR UPDATE` on the firm row:
+* under O's or T's stream, the Owner accepting a new privacy notice: 8/8 each, max 31 ms;
+* T accepting while T's own sign-in loops run: 20 × `401 SESSION_REVOKED`, never 500. Their own new sign-ins end the
+  session, so it is not a lock problem.
+
+**Load:** no 5xx at any size.
+* 60 parallel sign-ins (3 people): p50 237 ms. 60 parallel sign-ins (one person): p50 287 ms.
+* 150 parallel sign-ins: p50 619 ms, max 909 ms.
+
+**Nothing new broke.** R2 (Cognito deactivation does not disable the person at the provider) stays a note for PF-4bc.
+
+**A probe artefact, not a defect.** `p8`'s role-change line shows some 401s because it picks the last answer in array
+order. `p9` picks the newest token by `auth_time`, and that token read the new roles 6 of 6.
