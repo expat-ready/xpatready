@@ -31,7 +31,7 @@ const ITEM = /^R1\.([1-9]\d{0,2})$/;
 /** An item proven by another row's journey (one J-row walks two map rows), never a copy of the file: R1.40 calendar
  *  invite files is walked by J-38 with R1.38 (tech lead, 20 Nov, QA-570; qa/reports/2026-11-20-r140-qa11.md). */
 export const SHARED_JOURNEY = { "R1.40": 38 };
-export const journeyOf = (item) => `tests/journeys/j_${SHARED_JOURNEY[item] ?? item.slice(3)}.ts`;
+export const journeyOf = (item) => `tests/journeys/j_${Object.hasOwn(SHARED_JOURNEY, item) ? SHARED_JOURNEY[item] : String(item).slice(3)}.ts`;
 
 /** The R1 items a PR body completes. A "Completes:" line (optionally a list item, a quote or bold) holds R1 ids only,
  *  separated by commas, spaces or "and"; anything else on it makes the line unreadable (bad), never a silent guess.

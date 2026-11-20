@@ -1,7 +1,7 @@
 // P-728 (3), P-729 (1): the automatic proof at an item's last merge (.github/workflows/item-proof.yml, tools/item-proof.mjs).
 // Fixture PR bodies (tests/fixtures/item-proof/): one that completes R1.77 (detected), one that does not (an example in
 // a fence is no claim), one with unreadable lines (refused, never guessed); the plan read from a fixture row (packs from
-// its C ids, suites its Done when names, the journey j_<n>.ts); a PASS and a FAIL verdict's shape (a missing journey,
+// its C ids, suites its Done when names, the journey j_<n>.ts, or the J-row SHARED_JOURNEY names: R1.40 -> j_38.ts); a PASS and a FAIL verdict's shape (a missing journey,
 // pack or result line is FAIL, P-405); the comment and the founder's page; the secret scan (a planted key is caught, by
 // shape and by an env value, never printed); the video size fitting 800 x 800; and the workflow's shape.
 // No server, no database; US$0. Run from prototype/:

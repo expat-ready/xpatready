@@ -2,7 +2,8 @@
 // brief lead-b-briefs/J-rows.md §J-38). It adds no feature: it walks FO-3w's public booking page (parts 1 and 2 on main)
 // and reads the mails in the demo inbox, on an isolated copy of the running app (its own database and port, never :4400).
 //   DW1: booking's mail port is the real one (PF-19b part 1 did the swap; J-37 shares it): both mails are msg_outbox rows
-//        SENT (or DELIVERED, once the local Delivery test event lands: #2397, QA-570) by the local adapter and are read back from the running app's demo inbox. Fails on the fake: fakeMail kept
+//        SENT, or DELIVERED once the local Delivery test event lands (#2397, QA-570), by the local adapter and are read
+//        back from the running app's demo inbox. Fails on the fake: fakeMail kept
 //        mail in the API's memory, wrote no outbox row and gave the inbox nothing, so DW1 and W2..W5 would all fail.
 //   W1: a booker whose browser is in Asia/Dubai books 10:00 Toronto time on the public page, by screens at 1440 px;
 //   W2: the booker's mail states the time in the booker's zone: 7:00 p.m. (Asia/Dubai);
