@@ -2,7 +2,7 @@
 // PF-18a part 1 (AG-1-74, AG-16-68, AG-16-59). Its own file (P-600): platform_firm and platform_staff get only their back-relation lines, under the slot `offices (PF-18a)`
 // in platform.prisma (Lead B on #2009, rows rev 16.6). Real keys on (firm, …); the rules Prisma cannot say are in 20261117120000_pf18a_offices. Read and written only
 // through api/src/platform/settings/offices/; other modules read the clock through OfficeClockPort (ports/offices.ts). PF-18a part 2 adds
-// platform_notification_preference to this file.
+// platform_notification_preference to this file (its own migration, 20261119180000_pf18a_notification_prefs).
 
 /// One office of a firm (AG-16-68, AG-1-74). A firm with no row has one implicit office: its own settings
 /// (platform.time_zone, platform.business_hours, platform.closed_days). Rows exist only once a second office is added;
@@ -43,4 +43,21 @@ model PlatformStaffOffice {
   @@unique([firmId, staffId])
   @@index([firmId, officeId])
   @@map("platform_staff_office")
+}
+
+/// PF-18a part 2 (AG-16-10, AG-16 §3.3): one person's In-app and Email switches for one of the eight notification groups. A row exists only once the
+/// person saved that group; no row → the group's §3.3 default (samples/notification-groups.json). `group` is PF-18np's NotificationGroup
+/// (ports/notifications.ts); the database checks the same eight names (migration 20261119180000_pf18a_notification_prefs). Security emails are not a
+/// group and have no row: always on. Written only through api/src/platform/settings/notifications/, by the person themself.
+model PlatformNotificationPreference {
+  staffId   String   @map("staff_id") @db.Uuid
+  firmId    String   @map("firm_id") @db.Uuid
+  group     String
+  inApp     Boolean  @map("in_app")
+  email     Boolean
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  staff PlatformStaff @relation(fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([staffId, group])
+  @@index([firmId, staffId])
+  @@map("platform_notification_preference")
 }
