@@ -24,6 +24,7 @@ import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
 import { checkPlaceholders } from "../api/src/front-office/retainers/placeholders.ts";
 import { RetainersController } from "../api/src/front-office/retainers/routes.ts";
 import { OFFLINE_PDF_MAX_BYTES, Retainers } from "../api/src/front-office/retainers/service.ts";
+import { clearingConflicts } from "./lib/conflict-clear.ts";
 import { PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
@@ -314,6 +315,7 @@ try {
   const clock = { now: () => nowMs };
   const store = new LocalFiles(join(WORK, "files")), links = new FileLinks("test-link-key-0123456789abcdef");
   const svc = new Retainers(db, store, clock);
+  clearingConflicts(db, { retainers: Retainers.prototype });   // FO-13c: the conflict check first
   // An edit sends the version the page shows (the stale-save rule): the retainer's current one, read just before.
   const cv = async (id: string) => (await db.foRetainer.findUnique({ where: { id } }))?.currentVersion ?? 1;
   const sd = async (c: StaffContext, id: string) => svc.send(c, id, { expectedVersion: await cv(id) });
