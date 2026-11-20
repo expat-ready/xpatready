@@ -13,7 +13,8 @@ import { staffApi, StaffApiError } from "@/modules/platform/session";
 import { SalesFrame } from "../../sales/sales-frame";
 import { Loading } from "../../sales/loading";
 import { arrivedLabel } from "../../sales/time";
-import { ConflictCheck, ConflictMatch, MATCHED_ON, RESULTS, resultLabel } from "./contract";
+import { CHOOSE_RESULT, ConflictCheck, ConflictMatch, MATCHED_ON, RESULTS, resultLabel } from "./contract";
+import { useLock } from "../../sales/prospect-actions";
 import { z } from "zod";
 
 const ForConfirmation = ConflictCheck.extend({ confirmedByName: z.string().nullable().optional(), matchesNow: z.array(ConflictMatch), hiddenNow: z.number() });
@@ -23,27 +24,40 @@ function ConfirmBody({ id }: { id: string }) {
   const qc = useQueryClient(), key = ["fo", "conflict-check", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => ForConfirmation.parse(await staffApi(`${path(id)}/for-confirmation`)) });
   const [result, setResult] = React.useState(""), [disclosure, setDisclosure] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [general, setGeneral] = React.useState<string | null>(null);
-  const [done, setDone] = React.useState<string | null>(null);
+  const [done, setDone] = React.useState<string | null>(null), [ended, setEnded] = React.useState<string | null>(null);
+  const lock = useLock(), form = React.useRef<HTMLFormElement>(null), final = React.useRef<HTMLDivElement>(null);
+  const [focusTick, setFocusTick] = React.useState(0);   // the first field in error takes focus (BIC-13); the final notice takes focus (review m3)
+  React.useEffect(() => { if (focusTick) (final.current ?? form.current?.querySelector<HTMLElement>('[aria-invalid="true"]'))?.focus(); }, [focusTick]);
   const confirm = useMutation({
     mutationFn: () => staffApi(`${path(id)}/confirm`, { method: "POST", json: { result: result || undefined, disclosureText: result === "POTENTIAL_CONFLICT" ? disclosure : undefined } }),
-    onSuccess: (r) => { setDone(resultLabel((r as { result?: string | null })?.result ?? result)); void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks"] }); },
+    onSuccess: (r) => { setDone(resultLabel((r as { result?: string | null })?.result ?? result)); setFocusTick((x) => x + 1); void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks"] }); },
     onError: (e) => {
       if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Confirm again to retry."); return; }
-      // Confirmed meanwhile, or the result is already fixed (m7): the server's words, and the check read again.
-      if (e.problem.code === "ALREADY_CONFIRMED" || e.problem.code === "RESULT_FIXED") void one.refetch();
+      // Confirmed meanwhile (another manager, or this page's own answer lost), or the result already fixed (m7): the
+      // server's sentence is the end of the page; the check is not read again, since a confirmed check no longer waits (review M1).
+      if (e.problem.code === "ALREADY_CONFIRMED" || e.problem.code === "RESULT_FIXED") { setEnded(e.message); setFocusTick((x) => x + 1); return; }
       const fields = e.problem.fields ?? {};
       setErrors(fields); setGeneral(Object.keys(fields).length ? null : e.message);
+      setFocusTick((x) => x + 1);
     },
+    onSettled: () => lock.free(),
   });
-  if (done) return <div data-confirmed><Notice tone="ok" title={`Check confirmed: ${done}.`}>The checker's page shows it now.</Notice></div>;
+  if (done || ended) return <div data-confirmed={done ? "" : undefined} data-confirm-ended={ended ? "" : undefined} ref={final} tabIndex={-1} className="outline-none">
+    {done ? <Notice tone="ok" title={`Check confirmed: ${done}.`}>The checker sees it the next time their page is opened.</Notice> : <Notice tone="warn" title={ended ?? ""} />}</div>;
   if (one.isPending) return <Loading label="Loading the conflict check" rows={2} />;
-  if (one.isError) return <div data-confirm-refused><Notice tone="danger" title={one.error instanceof StaffApiError ? one.error.message : "Could not load the check."} /></div>;
-  const c = one.data, fixed = c.result;
+  if (one.isError) return <div data-confirm-refused><Notice tone="danger" title={one.error instanceof StaffApiError ? one.error.message : "Could not load the check."}
+    action={one.error instanceof StaffApiError ? undefined : <Button size="sm" variant="outline" onClick={() => void one.refetch()}>Try again</Button>} /></div>;
+  const c = one.data, fixed = c.result, stillHidden = c.hiddenNow > 0;
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fixed && !result) { setErrors({ result: CHOOSE_RESULT }); setFocusTick((x) => x + 1); return; }   // on screen first, in plain words
+    if (lock.take()) confirm.mutate();   // one Confirm at a time (review m4)
+  };
   return (
-    <form onSubmit={(e) => { e.preventDefault(); confirm.mutate(); }} noValidate className="flex flex-col gap-4">
+    <form ref={form} onSubmit={submit} noValidate className="flex flex-col gap-4">
       <section aria-labelledby="fo-confirm-check" className="rounded-xl border border-border bg-surface-raised p-4 text-sm">
         <h2 id="fo-confirm-check" className="text-sm font-semibold">The check</h2>
-        <p className="mt-1" data-searched>Searched for {[c.searched.name, c.searched.email, c.searched.phone].filter(Boolean).join(" · ")}</p>
+        <p className="mt-1 [overflow-wrap:anywhere]" data-searched>Searched for {[c.searched.name, c.searched.email, c.searched.phone].filter(Boolean).join(" · ")}</p>
         <p className="text-xs text-text-muted" data-checked-by>{arrivedLabel(c.checkedAt)} by {c.checkedByName ?? "a colleague"}</p>
       </section>
       <section aria-labelledby="fo-confirm-matches" className="rounded-xl border border-border bg-surface-raised p-4">
@@ -55,20 +69,22 @@ function ConfirmBody({ id }: { id: string }) {
               <span className="text-xs text-text-muted">matched on {m.matchedOn.map((k) => MATCHED_ON[k] ?? k).join(", ")}</span>
             </li>))}</ul>
         ) : <p className="mt-2 text-sm text-text-muted">No record matches.</p>}
+        {stillHidden ? <p className="mt-2 text-sm text-text-warn" data-still-hidden>{c.hiddenNow} match{c.hiddenNow === 1 ? " is" : "es are"} still hidden from you: a person who may see {c.hiddenNow === 1 ? "it" : "them"} confirms this check.</p> : null}
       </section>
       {general ? <Notice tone="danger" title={general} /> : null}
-      <fieldset disabled={confirm.isPending} className="flex flex-col gap-2">
+      {Object.keys(errors).length ? <div data-error-summary><Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{k === "disclosureText" ? "Disclosure" : "Result"}: {v}</li>)}</ul></Notice></div> : null}
+      <fieldset disabled={confirm.isPending || stillHidden} aria-describedby={errors.result ? "fo-confirm-result-error" : undefined} aria-invalid={errors.result ? true : undefined} tabIndex={errors.result ? -1 : undefined} className="flex flex-col gap-2 outline-none">
         <legend className="text-xs font-medium">Result</legend>
         {fixed ? <p className="text-sm" data-fixed-result>The checker recorded: {resultLabel(fixed)}. Confirming keeps it.</p>
           : RESULTS.map(([k, l]) => <label key={k} className="flex items-center gap-2 text-sm"><input type="radio" name="fo-confirm-result" className="size-4" checked={result === k} onChange={() => { setResult(k); setErrors({}); }} />{l}</label>)}
-        {errors.result ? <p role="alert" className="text-xs text-text-danger">{errors.result}</p> : null}
+        {errors.result ? <p id="fo-confirm-result-error" role="alert" className="text-xs text-text-danger">{errors.result}</p> : null}
       </fieldset>
       {result === "POTENTIAL_CONFLICT" && !fixed ? (
         <Field label="Disclosure" hint="Printed in the retainer the client signs." error={errors.disclosureText}>
           <Textarea rows={4} maxLength={10000} value={disclosure} onChange={(e) => { setDisclosure(e.target.value); setErrors({}); }} />
         </Field>
       ) : null}
-      <div><Button type="submit" busy={confirm.isPending} data-confirm-check>Confirm check</Button></div>
+      <div><Button type="submit" busy={confirm.isPending} disabled={stillHidden} data-confirm-check>Confirm check</Button></div>
     </form>
   );
 }

@@ -6,6 +6,7 @@
 // requestId per opening (BR-6). With any hidden match the result waits for a manager's confirmation (PR B's page).
 // Insert-only (BR-1). Code SOR/2022-128 s. 5, 15, 16 (our product rule; the Code names no check step). Unconfirmed: no counsel.
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Notice, Panel, Pill, Textarea } from "@/components/ui/controls";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,17 +50,18 @@ function Matches({ matches, label }: { matches: ConflictMatch[]; label: string }
 /** BR-8 (PR B): the link the checker sends to a manager who may see every record (the confirm page). */
 function WaitingLink({ id }: { id: string }) {
   const toast = useToast(), href = `/front-office/conflict-checks/${encodeURIComponent(id)}`;
-  const copy = () => navigator.clipboard?.writeText(new URL(href, window.location.origin).toString()).then(() => toast.push({ tone: "ok", text: "Link copied." }), () => toast.push({ tone: "danger", text: "Could not copy: select the link instead." }));
+  const failed = () => toast.push({ tone: "danger", text: "Could not copy: open the confirm page and copy its address instead." });
+  const copy = () => (navigator.clipboard ? navigator.clipboard.writeText(new URL(href, window.location.origin).toString()).then(() => toast.push({ tone: "ok", text: "Link copied." }), failed) : Promise.resolve(failed()));   // no clipboard API: say so (review m2, break m5)
   return (
     <p className="mt-1 flex flex-wrap items-center gap-2 text-xs" data-waiting-link>
       <span className="text-text-muted">Send this link to a manager who may see every record:</span>
-      <a href={href} className="text-text-link [overflow-wrap:anywhere] hover:underline">{href}</a>
+      <Link to={href} className="text-text-link hover:underline" data-confirm-link>Open the confirm page</Link>
       <Button size="sm" variant="outline" onClick={() => void copy()}>Copy link</Button>
     </p>
   );
 }
 
-function CheckRow({ c }: { c: ConflictCheck }) {
+function CheckRow({ c, latest }: { c: ConflictCheck; latest: boolean }) {   // only the latest check offers the confirm link (break m4)
   const tone = c.result === "NO_CONFLICT" ? "ok" : c.result === "CONFLICT_CANNOT_ACT" ? "danger" : "warn";
   return (
     <li data-conflict-check={c.id} className="rounded-lg border border-border p-3 text-sm">
@@ -72,7 +74,7 @@ function CheckRow({ c }: { c: ConflictCheck }) {
       <p className="mt-1 text-xs text-text-muted" data-counts>{c.matches.length} match{c.matches.length === 1 ? "" : "es"} named{c.hiddenCount ? `, ${c.hiddenCount} hidden` : ""}
         {c.confirmedAt ? ` · confirmed by ${c.confirmedByName ?? "a colleague"}, ${arrivedLabel(c.confirmedAt)}` : c.needsConfirmation ? " · waiting for a manager's confirmation" : ""}</p>
       {c.disclosureText ? <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]" data-disclosure>{c.disclosureText}</p> : null}
-      {c.needsConfirmation ? <WaitingLink id={c.id} /> : null}
+      {c.needsConfirmation && latest ? <WaitingLink id={c.id} /> : null}
       {c.matches.length || c.hiddenCount ? (
         <details className="mt-2"><summary className="cursor-pointer text-xs text-text-link">Matches</summary>
           <div className="mt-2 flex flex-col gap-2"><Matches matches={c.matches} label="Matches of this check" />
@@ -171,7 +173,7 @@ export function ConflictCheckPanel({ prospectId, corporate }: { prospectId: stri
             <ConflictStatus list={list.data} />
             {!mayRun ? <p className="text-xs text-text-muted" data-why-no-run>{RUN_REASON}</p> : null}
             {list.data.scope ? <p className="text-xs text-text-muted">{list.data.scope}</p> : null}
-            {list.data.checks.length ? <ul className="flex flex-col gap-2" aria-label="Conflict checks, newest first">{list.data.checks.map((c) => <CheckRow key={c.id} c={c} />)}</ul> : null}
+            {list.data.checks.length ? <ul className="flex flex-col gap-2" aria-label="Conflict checks, newest first">{list.data.checks.map((c, i) => <CheckRow key={c.id} c={c} latest={i === 0} />)}</ul> : null}
           </div>
         )}
       {mayRun ? <RunPanel open={open} onOpenChange={panel} prospectId={prospectId} corporate={corporate} /> : null}

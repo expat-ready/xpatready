@@ -185,16 +185,24 @@ try {
   ok("FO-13s2 BR-8 pass: the waiting check shows the link to send to a manager", !!link && /^\/front-office\/conflict-checks\/[0-9a-f-]{36}$/.test(link ?? ""), link);
   await t.goto(`${BASE}${link}`); await t.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
   ok("FO-13s2 m7 fail: the checker opening the link gets the server's sentence, and no Confirm", /waiting for your confirmation/.test(await t.locator("[data-confirm-refused]").innerText()) && (await t.locator("[data-confirm-check]").count()) === 0);
-  const ad = await pageAs(tok.AD);
+  const ad = await pageAs(tok.AD), ad2 = await pageAs(tok.AD);   // two tabs of the Admin's (review M1)
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
+  await ad2.goto(`${BASE}${link}`); await ad2.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
   ok("FO-13s2 BR-8 pass: the Admin sees the check (who and when, by name) and the hidden match by name, searched again", (await ad.locator("[data-checked-by]").innerText()).includes(T.name) && (await ad.getByText(`Hidden${run} Sample`).count()) >= 1);
   await shot(ad, "confirm-1440"); await axe(ad, "the confirm page", "main");
   await ad.locator("[data-confirm-check]").click();
-  await ad.getByRole("alert").first().waitFor({ timeout: 10_000 });
-  ok("FO-13s2 m7 fail: Confirm with no result shows the server's words, nothing confirmed", sql(`select coalesce(confirmed_by::text, 'none') from fo_conflict_check where prospect_id = '${dee.id}'`) === "none");
+  await ad.locator("#fo-confirm-result-error").waitFor({ timeout: 10_000 });
+  ok("FO-13s2 m7 fail: Confirm with no result says so in plain words on Result (summary, focus), nothing confirmed",
+    (await ad.locator("#fo-confirm-result-error").innerText()).includes("Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.") && await ad.locator("[data-error-summary]").isVisible()
+    && await ad.locator('fieldset[aria-invalid="true"]').evaluate((el) => el === document.activeElement) && sql(`select coalesce(confirmed_by::text, 'none') from fo_conflict_check where prospect_id = '${dee.id}'`) === "none");
   await ad.getByLabel("No conflict").check(); await ad.locator("[data-confirm-check]").click();
   await ad.locator("[data-confirmed]").waitFor({ timeout: 15_000 });
-  ok("FO-13s2 m7 pass: after Confirm the page says so, with no link to the prospect the Admin may not open", /Check confirmed: No conflict/.test(await ad.locator("[data-confirmed]").innerText()) && (await ad.locator(`a[href*="/front-office/prospects/"]`).count()) === 0);
+  ok("FO-13s2 m7 pass: after Confirm the page says so (focus on it), with no link to the prospect the Admin may not open",
+    /Check confirmed: No conflict/.test(await ad.locator("[data-confirmed]").innerText()) && (await ad.locator(`a[href*="/front-office/prospects/"]`).count()) === 0 && await ad.locator("[data-confirmed]").evaluate((el) => el === document.activeElement));
+  await ad2.getByLabel("Conflict: the firm cannot act").check(); await ad2.locator("[data-confirm-check]").click();
+  await ad2.locator("[data-confirm-ended]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 M1 fail (review): the second tab's Confirm, after the first confirmed, says the check is already confirmed (never \"no such check\"); one confirmation, the first result kept",
+    /already confirmed/.test(await ad2.locator("[data-confirm-ended]").innerText()) && sql(`select result::text from fo_conflict_check where prospect_id = '${dee.id}'`) === "NO_CONFLICT");
   await t.goto(`${BASE}/front-office/prospects/${dee.id}`); await t.locator('[data-conflict-status="CLEARED"]').waitFor({ timeout: 30_000 });
   ok("FO-13s2 BR-8 pass: the checker's page is Cleared, naming who confirmed", (await panel(t).locator("[data-counts]").first().innerText()).includes("confirmed by Sample admin"));
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
