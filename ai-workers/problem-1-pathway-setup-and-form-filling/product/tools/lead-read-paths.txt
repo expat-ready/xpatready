@@ -18,8 +18,8 @@
 # The schema and its migrations (P-423)
 /prisma/migrations/
 /prisma/schema/
-# --- records-exempt: the lines below (money and permissions) are not set off by a screenshot (*.png under screens/) or a
-# record (what records-only.sh calls records: product/ notes, images, .txt, .html that no suite reads): B206 part 3, P-751.
+# --- records-exempt: the lines below (money and permissions) are not set off by a screenshot (*.png under screens/), an
+# image or .txt under product/, or any file of a records-only PR (records-only.sh and the "records" label): B206 part 3, P-751.
 # Every line above holds for any file. queue-gate.sh leadread() reads this marker line.
 # Permissions: roles and identity (as lead-read-guard.sh)
 permission

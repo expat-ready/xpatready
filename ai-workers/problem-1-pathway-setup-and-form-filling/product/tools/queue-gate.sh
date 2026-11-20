@@ -5,8 +5,9 @@
 #            by the repository owner's account or a login in REVIEWERS (space-separated; the repository variable, so no
 #            name sits in a file), author association OWNER, MEMBER or COLLABORATOR, and it is the last "Reviewer:"
 #            line naming that head (a later "Changes needed" on it wins); (b) the check "ci" on that head is green; (c) no changed path
-#            matches lead-read-paths.txt (.github/, .mergify.yml, migrations, money: those keep the Lead's read, P-423;
-#            a screenshot or a record sets off only the guard lines, never money or permissions: B206 part 3).
+#            matches lead-read-paths.txt (.github/, .mergify.yml, the guards, schema, migrations, money,
+#            permissions; a screenshot, an image or .txt under product/, or a records-only PR sets off only the guard
+#            lines, never money or permissions: B206 part 3).
 #            No more waiting for a sleeping lane to wake and label. A refusal is commented only when the Approve comment
 #            itself started the run. label-sweep.sh keeps a github-actions[bot] label only when `eligible` passes.
 #   fresh  — the commit status "queue-fresh" that Mergify's product queue needs for a PR touching prototype/
@@ -74,15 +75,20 @@ san() { LC_ALL=C tr -cd 'A-Za-z0-9 ().,_\n-'; }; sanl() { LC_ALL=C tr -cd 'A-Za-
 # full checkout (this job's checkout holds the tools only, where no suite is seen reading a product/ .md; breaker M1).
 records() { has records && [ "$(printf '%s\n' "$files" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ]; }
 leadread() {  # stdin: changed paths → those that keep the Lead's read (P-423, lead-read-paths.txt). Lines after its
-  # "--- records-exempt" marker (money, permissions) are not set off by a screenshot (*.png under screens/) nor by a record
-  # (records-only.sh, main's one definition; one call a candidate file, fails closed: no answer keeps the read). B206 part 3.
-  local f all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}"   # LEAD_READ_PATHS: the test's stand-in
+  # "--- records-exempt" marker (money, permissions) are not set off by a screenshot (*.png under screens/), an image or
+  # .txt under product/ (never product/tools/; select-suites.mjs reads none as data), or any file of a records-only PR
+  # (records(): main's records-only.sh AND the "records" label set from a full checkout, as this job's checkout holds
+  # the tools only and would call a suite-read .md a record; part 3 review M1). B206 part 3. Fails closed.
+  local f all="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}" rec=0   # LEAD_READ_PATHS: the test's stand-in
+  [ -r "$all" ] && grep -q '^# --- records-exempt' "$all" || { echo "lead-read-paths.txt unreadable or without its marker"; return; }
   awk '/^# --- records-exempt/ {exit} !/^#/ && NF' "$all" > "$H.hard"; awk 'f && !/^#/ && NF; /^# --- records-exempt/ {f = 1}' "$all" > "$H.soft"
+  records && rec=1
   while IFS= read -r f; do [ -n "$f" ] || continue
     if grep -qiEf "$H.hard" <<< "$f"; then printf '%s\n' "$f"; continue; fi
     grep -qiEf "$H.soft" <<< "$f" || continue
+    [ "$rec" = 1 ] && continue
     grep -qiE '(^|/)screens/([^/]+/)*[^/]+\.png$' <<< "$f" && continue
-    [ "$(printf '%s\n' "$f" | (cd "$HERE" && bash "${RECORDS_ONLY:-$HERE/records-only.sh}" is-records --files) 2>/dev/null)" = yes ] && continue
+    grep -qiE '/product/tools/' <<< "$f" || ! grep -qE '^ai-workers/problem-1-pathway-setup-and-form-filling/product/([^/]+/)*[^/]+\.(png|jpe?g|gif|webp|svg|txt)$' <<< "$f" || continue
     printf '%s\n' "$f"; done; rm -f "$H.hard" "$H.soft"; }
 failing() {  # a run's id [all] → its failed jobs' names, one a line (the summary job "ci" only when nothing else failed); nothing when unreadable. all: in any attempt
   api "$API/repos/$REPO/actions/runs/$1/jobs?filter=${2:-latest}&per_page=100" 2>/dev/null \
