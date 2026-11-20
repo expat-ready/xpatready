@@ -48,7 +48,9 @@ const hostServer: Server = createServer((req, res) => {
   // A firm with a strict CSP (break M1): our origin allowed for script and connect, no inline style.
   if (path === "/csp.html") { res.setHeader("content-security-policy", `default-src 'self'; script-src ${BASE}; connect-src ${BASE}; style-src 'self'`); return res.end(page("Contact us, strict (Sample)", `<h2>Contact us</h2>${embedSnippet(BASE, token)}`).replace(/<style>.*?<\/style>/, "")); }
   if (path === "/host.html") return res.end(page("Contact us (Sample)", `<h2 id="contact">Contact us</h2>${embedSnippet(BASE, token)}`));
-  if (path === "/ref.html") return res.end(page("A blog post (Sample)", `<p><a id="go" href="/host.html${(req.url ?? "").includes("?") ? `?${(req.url ?? "").split("?")[1]}` : ""}">Contact the firm</a></p>`));
+  // The link carries the page's query on, re-encoded and escaped for the attribute: never the raw request text (CodeQL).
+  const q = new URL(req.url ?? "/", "http://host.invalid").searchParams.toString().replace(/&/g, "&amp;");
+  if (path === "/ref.html") return res.end(page("A blog post (Sample)", `<p><a id="go" href="/host.html${q ? `?${q}` : ""}">Contact the firm</a></p>`));
   res.statusCode = 404; res.end("not here");
 });
 await new Promise<void>((r) => hostServer.listen(0, () => r()));   // every address, so localhost (either family) and 127.0.0.1 reach it
