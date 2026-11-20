@@ -57,6 +57,7 @@ const ALLOWED: Record<string, number> = {
   "runtime/cases.tsx": 2, // the first person of a browser with none (BR-6/BR-8); BR-8's "Continue as Case officer"
   "runtime/hand-off.tsx": 1, // BK-4c: the case area's hand-off button (to the case's client, back to the firm, to the representative)
   "pages/sign-in.tsx": 1, // signing in
+  "runtime/clients.tsx": 1, // CS-K1s (breaker M1): before landing on a client's case, act as the signed-in staff member's own case-side person (said by PersonNotice)
   // pages/start.tsx: none since BK-5 PR 2 (its "Sign in as the Configuration author" is a link to the sign-in page).
   "components/hand-off.tsx": 2, // BK-4b's HandOff button (#1582, reviewed): its one call, plus its doc comment "default setActor(to.id)"
   "lib/api.ts": 0, // defines setActor

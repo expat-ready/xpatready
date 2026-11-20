@@ -66,3 +66,21 @@ D1 4: every brief element is present, deviations argued (M1 aside) · D2 5: one 
 A real screen reader. An intended user's unaided walk (D17, D20 stay with the founder). The real `OFFER_CHANGED` race in a browser. The full `ci` run.
 Outside this diff: the existing list search does not fold case for "ñúñez" vs "Ñúñez" (CS-K1 part 2's API).
 My first row-check run wrote its screenshots into `screens/CS-K1s/screenshots` and `screens/CS-K1/screenshots` in the shared checkout, as the check does by design. The builder's later commits may contain those files.
+
+## Re-check on 33af6d2d (20 Nov, UTC 10:5x-11:1x; second and last round, P-293)
+Scope: `git diff 47debd8c..33af6d2d05c64ff1b3c19324dde68f3690a17e8a` only, on the exact head (`git rev-parse HEAD` = 33af6d2d; the builder did not commit while I checked). Web rebuilt (`npx vite build web`); fresh isolated copies on :4444, stopped afterwards; the row checks' screenshots they rewrote in the checkout were restored to the head's files.
+
+| Run on 33af6d2d | Result |
+|---|---|
+| `check_csk1s_clients_browser.ts 4444 xr_studio_csk1s_review` | 33/33, exit 0 (two new DW3 M1 lines pass) |
+| `journeys/j_72.ts csk1s_review 4444` (fresh copy) | 31/31, exit 0 |
+| `check_bk3_frame.ts` | 156/156 |
+| `check_bk4a.ts` | **21/22: FAIL BR-1** (below) |
+| My M1 landing walk, staff session = firm A's representative (user-R) | Picker on Solo representative, Client A, Configuration author: each lands on the opened case (C-2026-00006/7/8, "Client: <name>"), `xr-actor` becomes user-R, notice "Now: Representative (simulated)" beside "Case … opened"; screenshot `land2-user-P.png` |
+
+**Closed:** M1 (`clients.tsx` `actAs` before `nav`, and on the client page's case links; `clients.ts` adds `viewer_actor_id` from the staff member's own row, firm-scoped; DW3 has pass lines with a mismatched `xr-actor`). M2's original line (`check_bk4a.ts:99`, 3 KnownPerson guards) passes. m2 (muted, "Simulated" pill, `data-demo-chrome`, comment), m3 (`whitespace-nowrap`), m6 (alert takes focus, `tabIndex=-1`). Breaker m2-m4, m6 read: correct. m1, m4, m5 listed as follow-ups: acceptable (m1 is the tech lead's question).
+
+**Open, Major (same class as M2: a required suite red):**
+* **M3. `check_bk4a.ts` BR-1 fails at 33af6d2d.** The fix adds a `setActor(` call site in `web/src/runtime/clients.tsx:35` (`actAs`), and BK-4a's register of the only places a person may change (`tests/check_bk4a.ts:55-62`, `ALLOWED`) does not list it: `sites` has `"runtime/clients.tsx": 1`, `allowed` does not. The check exists precisely to make each new person-change site argued in place (BK-4a BR-1). **Fix:** add `"runtime/clients.tsx": 1, // CS-K1s breaker M1: before landing on a case the client page opened or links to, act as the signed-in staff member's own case-side person (the notice says so)` to `ALLOWED` and re-run `check_bk4a.ts` (22/22). Test-only, one line; the behaviour itself is right.
+
+**Verdict on 33af6d2d: Block** (M3 only; no Blocker; no other Major). With the one `ALLOWED` line added and `check_bk4a.ts` green, nothing else in this diff stands in the way; a check of that one-line diff suffices. Journey score unchanged in substance and raised by M1's fix: task completed 1, feedback and state 1 → **9.5 / 10** (plain words stays ½ for m4).
