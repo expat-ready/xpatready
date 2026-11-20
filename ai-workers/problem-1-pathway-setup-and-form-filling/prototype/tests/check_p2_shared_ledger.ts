@@ -4,7 +4,7 @@
 // project's own folder as before). US$0.
 // Run: tsx --tsconfig studio/api/tsconfig.json tests/check_p2_shared_ledger.ts
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SpendLedger } from "../p2/ledger.ts";
@@ -65,6 +65,9 @@ t("stage 2a pass: from any depth in the main copy or a lane copy, the guard's ro
 const noMark = mkdtempSync(join(tmpdir(), "p2-nomark-")); mkdirSync(join(noMark, "a", "b"), { recursive: true }); mkdirSync(join(noMark, "a", "AGENTS.md"));
 const threw = (() => { try { findRootFrom(join(noMark, "a", "b")); return false; } catch (e) { return /no AGENTS\.md/.test((e as Error).message); } })();
 t("stage 2a fail: with no AGENTS.md file above (a folder of that name does not count) the guard refuses, never guesses", threw);
+const loop = mkdtempSync(join(tmpdir(), "p2-loop-")); writeFileSync(join(loop, "AGENTS.md"), "# root\n"); mkdirSync(join(loop, "sub")); symlinkSync("AGENTS.md", join(loop, "sub", "AGENTS.md")); // links to itself
+const loopErr = (() => { try { findRootFrom(join(loop, "sub")); return "walked up"; } catch (e) { return (e as NodeJS.ErrnoException).code ?? "other"; } })();
+t("stage 2a fail: a broken marker (an AGENTS.md link that loops) is an error, never a reason to walk up to a higher root", loopErr === "ELOOP");
 const top = execFileSync("git", ["-C", import.meta.dirname, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 t("stage 2a pass: the guard's ROOT is this checkout's git top level, and PROTOTYPE is what the old folder count gave",
   ROOT === top && PROTOTYPE === join(import.meta.dirname, ".."));

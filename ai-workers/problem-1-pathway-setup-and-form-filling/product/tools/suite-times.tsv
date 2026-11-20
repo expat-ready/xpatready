@@ -231,6 +231,7 @@ check_c117_intake_edition.ts	20
 check_c46_preview_channels_browser.cjs	20
 check_forms_c34_masters_browser.cjs	20
 check_p2_launch.ts	20
+check_p2_shared_ledger.ts	1
 check_pqr_browser.cjs	20
 check_qa163_listed_form_saved.ts	20
 check_uxa4_details_browser.cjs	20

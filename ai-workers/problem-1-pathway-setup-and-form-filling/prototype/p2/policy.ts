@@ -11,7 +11,14 @@ import { dirname, join, relative, resolve, sep } from "node:path";
  *  (pathcode.ts), so a change to the rule needs a new stub pass. REPO_ROOT is NOT honoured here: the spend guard never
  *  takes its key, ledger or official files from another copy. No marker at all: refuse, never guess. */
 export function findRootFrom(from: string): string {
-  const isMarker = (d: string): boolean => { try { return statSync(join(d, "AGENTS.md")).isFile(); } catch { return false; } };
+  const isMarker = (d: string): boolean => {
+    try { return statSync(join(d, "AGENTS.md")).isFile(); } catch (e) {
+      // Not there, or a folder the permission model hides: no marker here. Anything else (a broken link, a disk error) is
+      // an error, never a reason to walk further up.
+      if (["ENOENT", "ENOTDIR", "ERR_ACCESS_DENIED"].includes((e as NodeJS.ErrnoException).code ?? "")) return false;
+      throw e;
+    }
+  };
   for (let d = resolve(from); ; d = dirname(d)) {
     if (isMarker(d)) return d;
     if (dirname(d) === d) throw new Error(`no AGENTS.md at or above ${from}: the spend guard cannot find the repository root`);
