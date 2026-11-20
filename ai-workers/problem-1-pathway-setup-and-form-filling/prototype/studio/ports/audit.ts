@@ -27,6 +27,34 @@ export const AuditDetail = z
  *  `audit….record(tx, {...})` caller for this). */
 export const AREA_ENTITY = /^(platform|plat|fo|money|msg)_[a-z][a-z0-9_]*$/;
 
+/** R1.8 (QA-594; SA-11-2 "before/after snapshot (JSONB) where applicable"; AG-13-43 and P-687: the firm's Activity log
+ *  shows them in full, personal data included): a row's values before or after the change, field by field. Unlike
+ *  `detail`, a value may be personal (a name, a phone number, an address) and as long as 4000 characters; flat values only.
+ *  Secrets never: a field named like a password, a secret, a token, a hash, a salt or a one-time code is refused (AG-13
+ *  §12 "secrets sanitised in audit payloads"). Personal data in an insert-only table that cannot be erased: Unconfirmed: no
+ *  counsel. */
+export const SECRET_FIELD = /pass(word|code)|pwd|secret|token|hash|salt|otp|signing_?key|private_?key|api_?key|credential|bearer|jwt|cookie|session_?id|(invite|invitation|magic|reset|sign_?in|login|unsubscribe)_?(link|url)/i;
+const ValueScalar = z.union([z.string().max(4000), z.number(), z.boolean(), z.null()]);
+export const AuditValues = z
+  .record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/, "a field name"), z.union([ValueScalar, z.array(ValueScalar).max(100)]))
+  .refine((v) => !Object.keys(v).some((k) => SECRET_FIELD.test(k)), "before and after never hold a secret (a password, token, hash or one-time code)")
+  .refine((v) => Object.keys(v).length <= 60, "at most 60 fields");
+export type AuditValues = z.input<typeof AuditValues>;
+
+/** The one shape a line's before and after take in detail, the shape AUD-4's reader (firm-read/render.ts changesOf)
+ *  already reads: `<field>_before` and `<field>_after`; a lone `_after` is an addition (a create), a lone `_before` a
+ *  removal (a delete). A field whose value did not change is left out of a change, so the log shows what changed. */
+export function flattenValues(before: AuditValues | null | undefined, after: AuditValues | null | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {}, b = before ?? {}, a = after ?? {};
+  const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
+  for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) {
+    if (before && after && k in b && k in a && same(b[k], a[k])) continue;
+    if (before && k in b) out[`${k}_before`] = b[k];
+    if (after && k in a) out[`${k}_after`] = a[k];
+  }
+  return out;
+}
+
 export const AuditEntry = z.strictObject({
   firmId: FirmId,
   actor: AuditActor,
@@ -41,7 +69,11 @@ export const AuditEntry = z.strictObject({
   detail: AuditDetail.default({}),
   /** AUD-1b (case-side contract §2.5): the case the line is about, when there is one (a uuid); kept on the line. */
   caseId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "a case id (uuid)").optional(),
-});
+  /** R1.8 (QA-594): the row's values before the change (null: a create, nothing before) and after it (null: a delete).
+   *  Every create, change and delete passes both (tests/check_aud_values.ts sweeps every caller for them). */
+  before: AuditValues.nullable().optional(),
+  after: AuditValues.nullable().optional(),
+}).refine((e) => !Object.keys(e.detail ?? {}).some((k) => /_(before|after)$/.test(k)), "a field's before and after go in before and after, never in detail");
 export type AuditEntry = z.input<typeof AuditEntry>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,8 +86,8 @@ export const CaseActor = z.string().regex(/^(?:(?:staff|person|system|seed):[A-Z
 /** AUD-1m: a line of the case side or the configuration (core.ts's Audit.log). It names its workspace (the demo reset
  *  deletes the demo workspace's lines, P-571 (1)) and never an area entity, so a case line is never read as a platform
  *  line, and the reverse (AuditEntry refuses every entity outside the areas; tests/check_case_feed.ts sweeps both). The
- *  firm is not the caller's: the adapter takes the request's or job's (null outside both, until CS-W1). Detail stays the
- *  case side's own JSON, as before (its ids-only floor is a later row's). */
+ *  firm (R1.8, QA-595): the named case's own firm, else the request's or job's (null outside every one: a configuration
+ *  line). Detail stays the case side's own JSON, as before (its ids-only floor is a later row's). */
 export const CaseEntry = z.strictObject({
   workspaceId: z.string().regex(UUID, "a workspace id (uuid)"),
   actor: CaseActor,
@@ -70,6 +102,10 @@ export const CaseEntry = z.strictObject({
   combinationId: z.string().regex(UUID, "a combination id (uuid)").nullable().optional(),
   /** The case the line is about, when its entity or key names one (a uuid). */
   caseId: z.string().regex(UUID, "a case id (uuid)").optional(),
+  /** R1.8 (QA-595): the firm the caller says the line is about. The adapter takes the case's own firm when the line names
+   *  a case, else the request's or job's; a line naming a firm that is not that firm is refused (a line never lands on
+   *  another firm's trail, the case side too). */
+  firmId: FirmId.optional(),
 });
 export type CaseEntry = z.input<typeof CaseEntry>;
 /** A case line names its workspace; a platform or front-office line never does (AuditEntry is strict). */

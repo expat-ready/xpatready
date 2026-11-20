@@ -21,6 +21,7 @@ import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
+import { winProspect } from "../sales/prospects.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
 
@@ -132,6 +133,10 @@ export function feesOf(v: unknown): FeeIn[] {
 }
 
 /** The service. `audit` defaults to the one trail (AuditEventAdapter until AUD-1); a test passes a failing one. */
+/** R1.8 (QA-594): a retainer's fees as flat words for an audit line's before and after ("Deposit on signing: 150000 ON_SIGNING"). */
+const feeWords = (fees: { label: string; amountMinor: bigint | number | null; when: string; dueOn: string | null }[]) =>
+  fees.map((f) => `${f.label}: ${f.amountMinor === null ? "no amount" : String(f.amountMinor)} ${f.when}${f.dueOn ? ` ${f.dueOn}` : ""}`);
+
 export class Retainers {
   readonly render: DocxRender;
   constructor(private readonly db: PrismaClient, private readonly files: FilesPort, private readonly clock: Clock, private readonly audit: AuditPort<Tx> = auditEvent) {
@@ -208,6 +213,8 @@ export class Retainers {
     await tx.moduleEvent.create({ data: { firmId, type, subjectId: payload.retainerId, payload: RetainerEventPayload.parse(payload) } });   // last (contracts §0.5)
   }
 
+  // R1.8 (QA-594): every line below passes before and after (the retainer's or template's values; null for the side that
+  // does not exist). The fees as one flat list of words, one per fee.
   private line(ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Record<string, string | number | boolean | null> = {}) {
     return { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_retainer", entityKey, summary, detail };
   }
@@ -253,7 +260,8 @@ export class Retainers {
     {
       await this.tx(async (tx) => {
         await tx.foRetainerTemplate.create({ data: { id, firmId: ctx.firmId, name, kind, fileKey: key, fileSha256: stored.sha256, placeholders: c.placeholders, createdBy: `staff:${ctx.staffId}`, updatedBy: `staff:${ctx.staffId}` } });
-        await this.audit.record(tx, { ...this.line(ctx, "retainer.template.uploaded", id, `Template uploaded (${kind.toLowerCase()}, version 1)`, { templateId: id, kind, version: 1, sha256: stored.sha256 }), entity: "fo_retainer_template" });
+        await this.audit.record(tx, { ...this.line(ctx, "retainer.template.uploaded", id, `Template uploaded (${kind.toLowerCase()}, version 1)`, { templateId: id, kind, version: 1, sha256: stored.sha256 }), entity: "fo_retainer_template",
+          before: null, after: { name, kind, version: 1, active: true, fileSha256: stored.sha256, placeholders: c.placeholders } });
       }, { fo_retainer_template_firm_id_name: taken, "(`firm_id`,`name`)": taken, firmId_name: taken });
     }
     return { id, name, kind, version: 1, active: true, placeholders: c.placeholders, warnings: c.warnings };
@@ -269,7 +277,8 @@ export class Retainers {
     await this.tx(async (tx) => {
       const n = await tx.foRetainerTemplate.updateMany({ where: { firmId: ctx.firmId, id, version: t.version }, data: { version, fileKey: key, fileSha256: stored.sha256, placeholders: c.placeholders, updatedBy: `staff:${ctx.staffId}` } });
       if (n.count !== 1) conflict("Someone changed this template at the same time. Open it again.", "CHANGED");
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.new_version", id, `Template version ${version} uploaded`, { templateId: id, version, sha256: stored.sha256 }), entity: "fo_retainer_template" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.new_version", id, `Template version ${version} uploaded`, { templateId: id, version, sha256: stored.sha256 }), entity: "fo_retainer_template",
+        before: { version: t.version, fileSha256: t.fileSha256, placeholders: t.placeholders }, after: { version, fileSha256: stored.sha256, placeholders: c.placeholders } });
     });
     return { id, version, placeholders: c.placeholders, warnings: c.warnings };
   }
@@ -284,7 +293,8 @@ export class Retainers {
     const taken = () => conflict("A template with this name already exists.", "NAME_TAKEN");
     await this.tx(async (tx) => {
       await tx.foRetainerTemplate.update({ where: { id: t.id }, data: { ...data, updatedBy: `staff:${ctx.staffId}` } });
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.changed", id, `Template ${data.active === false ? "switched off" : data.active ? "switched on" : "renamed"}`, { templateId: id, active: data.active ?? t.active }), entity: "fo_retainer_template" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.template.changed", id, `Template ${data.active === false ? "switched off" : data.active ? "switched on" : "renamed"}`, { templateId: id, active: data.active ?? t.active }), entity: "fo_retainer_template",
+        before: { name: t.name, active: t.active }, after: { name: data.name ?? t.name, active: data.active ?? t.active } });
     }, { fo_retainer_template_firm_id_name: taken, "(`firm_id`,`name`)": taken, firmId_name: taken });
     return { id, ...data };
   }
@@ -379,7 +389,8 @@ export class Retainers {
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
       await this.writeVersion(tx, ctx, id, 1, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.drafted", id, `${kind === "RETAINER" ? "Retainer" : "Consultation agreement"} drafted (version 1)`, { retainerId: id, prospectId: p.id, templateId: t.id, templateVersion: t.version, sha256: file.sha256 }), entity: "fo_retainer",
+        before: null, after: { kind, status: "DRAFT", version: 1, prospectId: p.id, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, fees: feeWords(fees), fileSha256: file.sha256 } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_DRAFTED, { retainerId: id, kind, prospectId: p.id, version: 1 });
     }, { fo_retainer_one_live_per_prospect: open });
     return { ...(await this.read(ctx, id)), warnings: s.warnings, signerOptions: s.options };
@@ -479,7 +490,9 @@ export class Retainers {
       if (ends) await tx.foRetainerVersion.update({ where: { id: cur.id }, data: { endedAt: new Date(this.clock.now()), endReason: "UPDATED" } });
       await tx.foRetainer.update({ where: { id: r.id }, data: { status: "DRAFT", currentVersion: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey } });
       await this.writeVersion(tx, ctx, r.id, n, values, file, fees);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${ends ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: ends ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.edited", r.id, `Edited: version ${n}${ends ? " (the earlier request ended)" : ""}`, { retainerId: r.id, version: n, endedVersion: ends ? cur.n : null, sha256: file.sha256 }), entity: "fo_retainer",
+        before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId, templateId: r.templateId, templateVersion: r.templateVersion, fees: feeWords(cur.fees.map((f) => ({ ...f, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }))) },
+        after: { status: "DRAFT", version: n, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId, templateId: t.id, templateVersion: t.version, fees: feeWords(fees) } });
       // FO-5f item 1: the ended request is told outside FO-5 (FO-6 cancels the signing request on it).
       if (ends) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: cur.n, reason: "UPDATED" });
     }, { fo_retainer_one_live_per_prospect: open });
@@ -511,7 +524,8 @@ export class Retainers {
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
       await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion }, data: { sentAt: now } });
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.sent", r.id, `Sent (version ${r.currentVersion})${noCheck ? "; warning: no identity check is recorded for the signer" : ""}`, { retainerId: r.id, version: r.currentVersion, ...(noCheck ? { warning: "NO_IDENTITY_CHECK", signerPersonId: signer!.id } : {}) }), entity: "fo_retainer",
+        before: { status: "DRAFT", sentAt: null }, after: { status: "SENT", sentAt: now.toISOString() } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return { ...(await this.read(ctx, id)), warnings };
@@ -531,7 +545,8 @@ export class Retainers {
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: r.currentVersion, endedAt: null }, data: { endedAt: now, endReason: "WITHDRAWN" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: r.status, currentVersion: r.currentVersion }, data: { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: `staff:${ctx.staffId}`, withdrawnReason: reason } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer" });
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.withdrawn", r.id, "Withdrawn with a reason", { retainerId: r.id, version: r.currentVersion }), entity: "fo_retainer",
+        before: { status: r.status, withdrawnReason: null }, after: { status: "WITHDRAWN", withdrawnAt: now.toISOString(), withdrawnReason: reason } });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_WITHDRAWN, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     });
     return this.read(ctx, id);
@@ -604,29 +619,17 @@ export class Retainers {
       const v = await tx.foRetainerVersion.updateMany({ where: { firmId: ctx.firmId, retainerId: r.id, n: filed, endedAt: null }, data: { endedAt: now, endReason: "SIGNED_OFFLINE" } });
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: from as never, currentVersion: filed }, data: { status: "SIGNED_OFFLINE", offlineAt: now, offlineBy: `staff:${ctx.staffId}`, offlineReason: reason, offlineFileKey: offlineKey, offlineFileSha256: stored.sha256 } });
       if (n.count !== 1 || v.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");
-      if (r.kind === "RETAINER" && r.prospectId) prospectWon = await this.winProspect(tx, ctx, r.prospectId, now);
-      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer" });
+      // FO-2w: the one win (sales/prospects.ts `winProspect`): moves the prospect and raises `prospect.won`, once per prospect.
+      if (r.kind === "RETAINER" && r.prospectId) prospectWon = (await winProspect(tx, ctx, r.prospectId, { via: "SIGNED_OFFLINE", at: now, retainerId: r.id, audit: (p) =>
+        this.audit.record(tx, { ...this.line(ctx, "prospect.won", r.prospectId!, "Won: retainer signed on paper", { prospectId: r.prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect",
+          before: { stageKind: p.kind, stage: p.key, wonVia: p.won_via }, after: { stageKind: "WON", wonVia: "SIGNED_OFFLINE", retainerId: r.id } }) })) !== null;
+      await this.audit.record(tx, { ...this.line(ctx, "retainer.signed_offline", r.id, `Signed on paper${copy ? ` (version ${k}, filed as version ${filed}, a copy of it)` : ""}${prospectWon ? "; the prospect is won" : ""}`, { retainerId: r.id, version: filed, signedVersion: k, copiedFrom: copy ? k : null, endedVersion: ended, sha256: stored.sha256, prospectWon, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId }), entity: "fo_retainer",
+        before: { status: r.status, version: r.currentVersion, signerPersonId: r.signerPersonId, representativeStaffId: r.representativeStaffId },
+        after: { status: "SIGNED_OFFLINE", version: filed, signerPersonId: copy ? copy.signerPersonId : r.signerPersonId, representativeStaffId: copy?.representativeStaffId ?? r.representativeStaffId, offlineAt: now.toISOString(), offlineReason: reason, offlineFileSha256: stored.sha256 } });
       if (ended !== null) await this.event(tx, ctx.firmId, EVENT.RETAINER_REQUEST_ENDED, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: ended, reason: "UPDATED" });
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SIGNED_OFFLINE, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: filed, prospectWon });
     });
     return { ...(await this.read(ctx, id)), prospectWon };
-  }
-
-  /** The prospect moves to its pipeline's WON stage, won via SIGNED_OFFLINE, once (a prospect already won stays as it is). */
-  private async winProspect(tx: Tx, ctx: StaffContext, prospectId: string, now: Date): Promise<boolean> {
-    const rows = await tx.$queryRaw<{ stage_id: string; type: string; kind: string }[]>(Prisma.sql`
-      select p.stage_id::text, p.type::text, s.kind::text from fo_prospect p join fo_stage s on s.firm_id = p.firm_id and s.id = p.stage_id
-       where p.firm_id = ${ctx.firmId}::uuid and p.id = ${prospectId}::uuid for update of p`);
-    const p = rows[0];
-    if (!p || p.kind === "WON") return false;
-    const won = await tx.foStage.findFirst({ where: { firmId: ctx.firmId, pipeline: p.type as never, kind: "WON" } });
-    if (!won) return false;
-    await tx.foProspect.update({ where: { id: prospectId }, data: { stageId: won.id, wonVia: "SIGNED_OFFLINE", wonAt: now, lostReasonId: null, lostReasonKind: null, lostNote: null } });
-    // The chain of moves (FO-1a): a move starts where the last one ended, the first starts nowhere.
-    const last = await tx.foStageMove.findFirst({ where: { firmId: ctx.firmId, prospectId }, orderBy: { seq: "desc" }, select: { toStageId: true } });
-    await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId, fromStageId: last?.toStageId ?? null, toStageId: won.id, cause: "SIGNED_OFFLINE", byActor: `staff:${ctx.staffId}` } });
-    await this.audit.record(tx, { ...this.line(ctx, "prospect.won", prospectId, "Won: retainer signed on paper", { prospectId, wonVia: "SIGNED_OFFLINE" }), entity: "fo_prospect" });
-    return true;
   }
 
   /** A download re-checks that the person still sees the retainer the file belongs to (Devin 4575579436: a link outlived

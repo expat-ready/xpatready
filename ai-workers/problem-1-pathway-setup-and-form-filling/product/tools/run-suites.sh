@@ -115,7 +115,13 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # whole suite (this list is per suite); its 13 other steps still run nightly, and acceptance/C6.13.test.ts (32 steps)
 # still runs in PR and queue packs. Fix row QA-420 (qa/BUGS.md, runtime): the check waits for the focus move (or the
 # product moves focus only after its re-render), 5 runs green in a row, then off this list in that PR.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs"
+# check_fo3st2_availability_browser.ts (FO-3st2 staff Availability and Time off, screens) held 20 Nov by the founder's choice
+# (11:2x IST, "Hold the failing staff-hours test"; Lead 100): J-A2 ("Evening calls" made default changes the public slots,
+# Tue 18:00-20:00) and J-A4 (whole-day time off on "the Monday", Toronto) fail both tries on every PR and batch since
+# 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
+# merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
+# pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do

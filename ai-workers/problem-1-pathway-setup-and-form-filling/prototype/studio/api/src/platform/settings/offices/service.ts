@@ -57,6 +57,9 @@ const auditView = (r: Row, p = "") => {
   const k = (n: string) => (p ? `${p}${n[0].toUpperCase()}${n.slice(1)}` : n);
   return { [k("nameLength")]: [...r.name].length, [k("countryCode")]: r.countryCode, [k("province")]: r.province, [k("timeZone")]: r.timeZone, [k("hours")]: hours, [k("closedDays")]: closed.slice(0, 50), [k("closedDayCount")]: closed.length };
 };
+/** R1.8 (QA-594, P-687): an office's values in full as an audit line's before or after (the name included). */
+const valuesOf = (r: Row) => ({ name: r.name, countryCode: r.countryCode, province: r.province, timeZone: r.timeZone,
+  businessHours: (r.businessHours as Hours).map((h) => `${h.day} ${h.opens}-${h.closes}`), closedDays: (r.closedDays as string[]).slice(0, 100) });
 const closedDelta = (from: string[], to: string[]) => ({ closedDaysAdded: to.filter((d) => !from.includes(d)).slice(0, 50), closedDaysRemoved: from.filter((d) => !to.includes(d)).slice(0, 50) });   // a date past the snapshots' first 50 is never lost (Devin on #2009)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actor = (a: OfficeActor) => `staff:${a.staffId}`;
@@ -99,7 +102,7 @@ export class Offices {
         } }), "The firm's own time zone (Settings → Your firm) is not one on the list: choose another there first.");   // break B4 (round 2)
         names.add(first.name.toLowerCase());
         await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.add", entity: "platform_office", entityKey: first.id,
-          summary: "First office written from the firm's own settings (a second office is being added)", detail: { ...auditView(first), first: true } });
+          summary: "First office written from the firm's own settings (a second office is being added)", detail: { ...auditView(first), first: true }, before: null, after: valuesOf(first) });
       }
       if (names.has(b.name.toLowerCase())) conflict("An office with this name already exists.");
       const pre = prefillZone(firmZone, country, province);
@@ -109,7 +112,7 @@ export class Offices {
       } }));
       const from = chosenZone ? "chosen" as const : pre.from;
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.add", entity: "platform_office", entityKey: office.id,
-        summary: `Office added (time zone ${office.timeZone}, ${from === "chosen" ? "chosen" : `pre-filled from the ${from}`})`, detail: { ...auditView(office), timeZoneFrom: from } });
+        summary: `Office added (time zone ${office.timeZone}, ${from === "chosen" ? "chosen" : `pre-filled from the ${from}`})`, detail: { ...auditView(office), timeZoneFrom: from }, before: null, after: valuesOf(office) });
       return { office: view(office), first: first ? view(first) : null, timeZoneFrom: from };
     });
   }
@@ -141,7 +144,8 @@ export class Offices {
       } }));
       const zoneChanged = before.timeZone !== after.timeZone;
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: zoneChanged ? "platform.office.time_zone_change" : "platform.office.change", entity: "platform_office", entityKey: after.id,
-        summary: zoneChanged ? `Office time zone changed from ${before.timeZone} to ${after.timeZone}` : "Office changed", detail: { ...auditView(before, "from"), ...auditView(after, "to"), ...closedDelta(before.closedDays as string[], after.closedDays as string[]) } });
+        summary: zoneChanged ? `Office time zone changed from ${before.timeZone} to ${after.timeZone}` : "Office changed", detail: { ...auditView(before, "from"), ...auditView(after, "to"), ...closedDelta(before.closedDays as string[], after.closedDays as string[]) },
+        before: valuesOf(before), after: valuesOf(after) });
       return view(after);
     });
   }
@@ -162,7 +166,8 @@ export class Offices {
         await tx.platformStaffOffice.upsert({ where: { staffId: staff.id }, create: { staffId: staff.id, firmId, officeId: office.id, setBy: actor(a) }, update: { officeId: office.id, setBy: actor(a) } });
       }
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.staff", entity: "platform_staff_office", entityKey: staff.id,
-        summary: officeId ? "Staff member placed in an office" : "Staff member taken out of their office", detail: { fromOffice: before?.officeId ?? null, toOffice: officeId?.toLowerCase() ?? null } });
+        summary: officeId ? "Staff member placed in an office" : "Staff member taken out of their office", detail: { fromOffice: before?.officeId ?? null, toOffice: officeId?.toLowerCase() ?? null },
+        before: before ? { officeId: before.officeId } : null, after: officeId ? { officeId: officeId.toLowerCase() } : null });
       return { staffId: staff.id, officeId };
     });
   }

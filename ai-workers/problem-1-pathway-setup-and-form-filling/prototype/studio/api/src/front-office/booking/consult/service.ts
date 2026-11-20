@@ -103,6 +103,10 @@ const facts = (r: RecordRow | null, prefix: "before" | "after") => ({
   [`${prefix}QuotedFeeCurrency`]: r?.quotedFeeCurrency ?? null, [`${prefix}RecommendedCount`]: r ? r.recommended.length : null,
 });
 
+/** R1.8 (QA-594): the record's values for the audit line's before and after. The notes stay out (free text of any
+ *  length; notesChanged says whether they changed). */
+const values = (r: RecordRow) => ({ timeSpentMinutes: r.timeSpentMinutes, quotedFeeMinor: r.quotedFeeMinor, quotedFeeCurrency: r.quotedFeeCurrency, recommended: [...r.recommended] });
+
 export class ConsultRecordService {
   constructor(private readonly db: PrismaClient, private readonly ports: ConsultPorts) {}
 
@@ -141,6 +145,7 @@ export class ConsultRecordService {
         firmId: ctx.firmId, actor: actor(ctx), action: before ? "booking.consult_record.changed" : "booking.consult_record.created", entity: "fo_consult_record", entityKey: saved.id,
         summary: before ? "Consult record changed." : "Consult record saved.",
         detail: { recordId: saved.id, bookingId: b.id, ...facts(before, "before"), ...facts(saved, "after"), notesChanged: (before?.notes ?? null) !== saved.notes },
+        before: before ? values(before) : null, after: values(saved),
       });
       return { b, saved };
     }, TX);

@@ -1,0 +1,12 @@
+job 136005240188: run-suites: check_fo9b_phone_doors.ts starts, 901 s into this part
+job 136005240188: | check_fo9b_phone_doors.ts | PASS | 5 s | FO-9b phone doors: 26 passed, 0 failed |
+job 136005240226: run-suites: check_fo9b_port.ts starts, 507 s into this part
+job 136005240226: | check_fo9b_port.ts | PASS | 1 s | 20 passed, 0 failed |
+job 136005240248: run-suites: check_fo1p_person_port.ts starts, 284 s into this part
+job 136005240248: | check_fo1p_person_port.ts | PASS | 7 s | FO-1p person port: 35 passed, 0 failed |
+job 136005240270: run-suites: check_fo9a_phone_edit.ts starts, 622 s into this part
+job 136005240270: | check_fo9a_phone_edit.ts | PASS | 6 s | FO-9a phone edit: 36 passed, 0 failed |
+job 136005240395: run-suites: check_fo2_leads_prospects.ts starts, 394 s into this part
+job 136005240395: | check_fo2_leads_prospects.ts | PASS | 7 s | FO-2 leads (parts 1-2): 113 passed, 0 failed |
+job 136005240636: run-suites: check_fo9a_duplicates.ts starts, 566 s into this part
+job 136005240636: | check_fo9a_duplicates.ts | PASS | 6 s | FO-9a duplicates: 53 passed, 0 failed |
