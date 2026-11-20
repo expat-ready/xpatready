@@ -91,3 +91,78 @@ The text should list only the outbox read.
   runner refuses a platform job that names a firm (pgboss-jobs.ts:283).
 
 Nothing was fixed or committed. The scratch databases were dropped (0 `xr_studio_break%` databases left).
+
+## Break 2: exact head 2cc0c3149
+
+Scope: the per-prospect backoff in `touchedEach` (case-clients/live.ts:25-50, the poller's map at :57, :78), the
+`mayRunInside` refactor (firm-scope.ts:154-158, 176), and main's FO-4b OPTIONS pre-flight on `fo.sales.web-form`
+(firm-scope.ts:109; front-office/sales/embed.ts:33-34, public.ts:133-140, 153-158). I used the same method as Break 1:
+my own scratch database `xr_studio_break_pf12b2_<pid>`, every migration, `seedSampleFirms`, the walled `xr_app` client,
+and `wallUnscopedQueries()`. Every catch-up run went through the real `ProspectWonPoll.tick()`. To make time pass, I moved
+each backoff entry's `until` back by one poll per tick, which is the same as the clock moving on. Probe:
+`/tmp/claude-0/-home-user-xpatready/c9b4d7b9-186d-5a82-a622-ddb4ba5bdb02/scratchpad/probe_pf12b_2.mts`. Result: 26 held
+and 2 BREAK lines, both from one cause (m3). The PR's `tests/check_pf12b_bypass_audit.ts` gave 54 passed, 0 failed.
+
+Verdict: **no Blocker or Major.** I found one Minor. Break 1's M1 is closed for every prospect that throws. No prospect
+was made a client without its firm's line first, and no line landed in another firm's trail.
+
+**m3 (Minor): the backoff starts only when a run throws. A listed prospect whose run returns, but which stays on the
+list, still writes its firm's line on every poll, with no limit.**
+`touchedEach` writes the firm's line (live.ts:38-40). Then any run that does not throw clears the key (live.ts:42). The
+catch-up lists prospects by `e.subject_id` and checks for an existing client by `c.prospect_id::text = e.subject_id`
+(prospect-won.ts:121, 126). `makeClient`, however, reads the newest row by the payload's `prospect_id` (prospect-won.ts:73).
+It returns null when that id has no won row (:74), or `made: false` when it finds a client by the payload's id (:77-78, :90).
+Either way the same row is listed again on the next run.
+- Repro R6: insert into `module_event` a `prospect.won` for firm A with subject S, whose payload names a different
+  prospect id Q. Run 30 ticks, one poll apart. Expected: one line, then a wait. Actual: 30 lines in A's trail, 0 clients,
+  `failed` empty, and no backoff entry.
+- Repro R6b: a won row in firm B whose subject id is in upper case and whose payload has the same id in lower case.
+  Actual: 30 lines in B's trail from 30 ticks, 0 clients.
+How reachable: the product's only writer sets both ids to `p.id` read from the database (front-office/sales/prospects.ts:91,
+109). So this needs a hand-written outbox row, like Break 1's M1 repro, and M1's wider route (any refusal that persists) is
+now bounded. But any later `return null` or `made: false` in `makeClient` for a condition that lasts would bring back the
+8,640 lines a day per prospect, and the AUD-4 413 that follows (Break 1, M1). A fix could treat "still listed after its
+run" as not taken, or have `onProspectWon` refuse a row whose payload id is not its subject id.
+
+**What held (probe ids)**
+- **M1 through the real tick** (R1): 8,640 ticks, a simulated day at 10 s. A's prospect that names no person wrote **32**
+  lines to A. B's won event that names firm A wrote **32** lines to B. In Break 1 each would have written 8,640. The wait
+  stops at `BACKOFF_MAX_MS` (live.ts:32, 45): the final wait was 3,600,000 ms. Neither prospect was made a client.
+- **No prospect taken without its line** (R2, R3): while A's stuck prospect waits, a new prospect of A in the same run
+  gets A's one line, then its client. The waiting prospect is not tried and is not in `failed`. When A's trail refuses
+  the line, neither of A's two new prospects is made (`BypassNotRecorded`) and both wait (R3). A tick inside the wait
+  tries neither (R3b). After the wait, both are made: A's trail reads
+  `platform.bypass>client.created>client.created`, and both keys leave the backoff (R3c).
+- **Success after a wait** (R4): the stuck prospect, mended by a newer won row after a one-hour wait, is made a client
+  and leaves the backoff.
+- **No poisoning across firms** (R5): the same prospect id is in A (failing) and in B (good). B's prospect is made, and
+  only `A:<id>` waits. The firm part of the key is `firm_id::text`, a 36-character uuid with no colon, so two firms'
+  `firm:prospect` keys cannot be the same string.
+- **Two pollers** (R8): over 6 simulated hours, one stuck prospect in B gave 28 lines, about twice one poller's count.
+  Each process keeps its own map, and the count stays bounded. Break 1's C9 still holds: two pollers make one client.
+- **Lines in the right firm** (R1b, R8b): after every run above, 0 catch-up lines have `firm_id`, `entity_key` and
+  `detail.firmId` disagreeing.
+- **FO-4b OPTIONS** (O1-O8): on A's token from A's site, the pre-flight answers only `Vary`,
+  `Access-Control-Allow-Origin`, `-Methods`, `-Headers` and `-Max-Age`. The origin it sends back is the caller's own, and
+  it carries no form, firm or site list (O1, O7). The rest of that request runs as A with no bypass (O1). A's token from
+  B's site gets 403 and no CORS header (O2). On firm B's address, A's token is refused before any CORS header
+  (`enterFirm` → not found) (O6). OPTIONS on the read path, or with an extra path segment, is refused by `asBypass` (O3,
+  O4). Another use, such as sign-up, is refused on the OPTIONS route (O8). The pre-flight reads only the form row its
+  token names (public.ts:155). Nothing it reads is returned except the yes or no on the caller's own origin, so it opens
+  no cross-firm read.
+- **Nesting** (N1-N6): `mayRunInside` is the same expression as before (firm-scope.ts:156-158, used at :176). Over the
+  whole list it allows exactly one pair, `platform.account.mail` inside `platform.firms.signup` (N1, N2). A per-firm use
+  that names an outer use, or a "none" use that names none, is refused (N3). `account.mail` inside the catch-up is still
+  refused (N5). Sign-up on `OPTIONS /api/public/signup` is refused (N6).
+
+**Not findings (seen, left as is)**
+- The backoff map is never pruned (R7). An entry stays until restart when its prospect leaves the list some other way:
+  an Undo convert, a deleted firm, or another process making the client. The map grows with such prospects, not with time,
+  and the wait is still capped.
+- A firm whose line cannot be written backs off all of its due prospects at once (R3). After an outage of the audit trail,
+  a won prospect can wait up to an hour more before it becomes a client. This is the documented design (live.ts:25-30).
+- Lines grow with the number of app processes (R8). The OPTIONS pattern is case-insensitive (O5), like every other door
+  pattern.
+- At the end, a database `xr_studio_pf12b_24421` (the PR suite's own name pattern, created 12:24 UTC by a run that was not
+  this break's) was on the cluster. I left it as is. My own scratch databases were dropped. Nothing was fixed or committed,
+  and :4400 was never touched.
