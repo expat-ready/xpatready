@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (13:3x IST 20 Nov), from Lead 1:** #2322's full run 44686838150 **failed on its own code**: shard (2) `check_bk2_fold_outs.ts`, "More" menu button `detail-panel.tsx:58` (aria-expanded, no FoldArrow). My ruling (P-294, PR comment 7033519396): list it in NOT_FOLD_OUTS (a menu, not a fold-out), and the "(change)" zone button too if it's flagged; then diff-only re-Approve, new head, the Lead's new full run. #2435 (FO-3st2 hold) and #2438 merged 13:2x; **#2305** relabelled with its cover line and back in the queue. #2326 is dirty: merge main after #2322.
+
 **Lead B (7) took over (19 Nov 11:43 IST)** from Lead B (6) (old account, gone at the switch), on the new account; Opus 5.5 medium; worktree `elegant-sinoussi-bab4cf`, branch `lead-b-front-office`. Started by and reports to **Lead 90** (`local_3eea0506-288c-4b7e-8c3e-5343fafb6212`). Start read: `lead-b-handover-2026-11-19.md`, this file, rows rev 17.30-17.48, the J2 and J4 lane plans.
 
 State read from GitHub at 11:44 IST (main is `4aa912c92`, unchanged since 09:01 IST; batch #2228 = #2199 #2200 #2209 #2219 #2195 #2103 still testing, #2229/#2230 stacked). Every PR below is red **only** on `module-cards` (main's 41-line platform card), which #2195 fixes:
