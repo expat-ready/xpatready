@@ -6,7 +6,9 @@
 //   DW9  cancel it with a reason and record it again: both lines shown, the first as cancelled with its reason; fail: a
 //        cancel with no reason is refused at the field and the step stays open;
 //   DW10 a staff member without agent/case:edit (Read only) sees the steps and no button; fail: the same record sent
-//        through the API with that session is 403 and writes nothing (the server decides, the screen only shows).
+//        through the API with that session is 403 and writes nothing (the server decides, the screen only shows);
+//   DW11 (review S2, break m1, m2) a refusal takes the focus to its words; a staff sign-in that ends mid-dialog says
+//        nothing was recorded (fail), and signed in again the dialog opens with what was typed (pass).
 // Keyboard on every control (dates set on the focused field); axe clean (WCAG 2.2 A/AA) on the section and both dialogs;
 // 1024 and 1440 px with no sideways scroll. Sample rows only (the step names are Sample); US$0, no model call; live AI off.
 // Screenshots (deviceScaleFactor 1) in product/screens/CS-DL3/screenshots/. Run from prototype/:
@@ -159,6 +161,32 @@ try {
   const before = rows();
   const forced = await api(TRO, "POST", `/runtime/cases/${CASE}/milestones`, { milestoneKey: "biometrics", occurredOn: today, dueOn: due });
   ok("CS-DL3 DW10 fail: the same record sent through the API with the Read only session is 403 and writes nothing", forced.status === 403 && rows() === before, forced.status);
+
+  // ---------------------------------------------------------------------------------------------- DW11 (S2, m1, m2)
+  page.on("dialog", (d) => void d.accept());   // Back with something typed asks first (break m4)
+  const openId = (await section(page).locator('[data-gov-state="open"]').getAttribute("data-gov-step"))!;
+  await press(page, section(page).locator(`[data-gov-step="${openId}"] [data-gov-cancel]`)); await dialog(page, "cancel").waitFor();
+  await field(page, "cancel", "reason").focus(); await page.keyboard.type("Done elsewhere (test walk)");
+  const elsewhere = await api(TR, "POST", `/runtime/cases/${CASE}/milestones/${openId}/cancel`, { reason: "Cancelled in another tab (test walk)" });
+  await press(page, dialog(page, "cancel").locator("[data-gov-cancel-send]"));
+  await dialog(page, "cancel").locator("[data-gov-refusal]").waitFor({ timeout: 10_000 }); await page.waitForTimeout(200);
+  ok("CS-DL3 DW11 (break m1): cancelled in another tab first, the refusal says so in words and takes the focus",
+    elsewhere.status === 200 && (await dialog(page, "cancel").locator("[data-gov-refusal]").innerText()).includes("already cancelled") && await page.evaluate(() => document.activeElement?.hasAttribute("data-gov-refusal")), { status: elsewhere.status, refusal: await dialog(page, "cancel").locator("[data-gov-refusal]").innerText(), active: await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 160)) });
+  await press(page, dialog(page, "cancel").getByRole("button", { name: "Back" })); await dialog(page, "cancel").waitFor({ state: "detached" });
+  await press(page, section(page).locator("[data-gov-record]")); await dialog(page, "record").waitFor();
+  await fillRecord(page, { occurredOn: today, dueOn: due, reference: `S2-${run}` });
+  const n0 = rows(), out = await api(TR, "POST", "/platform/session/sign-out");
+  await press(page, dialog(page, "record").locator("[data-gov-send]"));
+  await section(page).locator("[data-gov-session-lost]").waitFor({ timeout: 15_000 });
+  ok("CS-DL3 DW11 fail (break m2): the sign-in ended elsewhere while Record a step was open: the section says it was not sent and nothing was recorded",
+    out.status < 300 && /^Record a step was not sent: nothing was recorded\./.test(await section(page).locator("[data-gov-session-lost]").innerText()) && rows() === n0, out.status);
+  const card = page.locator("[data-case-decision]");
+  await card.getByLabel("Firm key").fill("sample-firm"); await card.getByLabel("Work email").fill(sql(`select email from platform_staff where actor_id = 'user-R'`));
+  await card.getByRole("button", { name: "Sign in" }).click();
+  await dialog(page, "record").locator("[data-gov-restored]").waitFor({ timeout: 30_000 });
+  ok("CS-DL3 DW11 pass (review S2): signed in again, Record a step opens with what was typed; nothing sent yet",
+    await field(page, "record", "reference").inputValue() === `S2-${run}` && await field(page, "record", "dueOn").inputValue() === due && rows() === n0);
+  await press(page, dialog(page, "record").getByRole("button", { name: "Back" })); await dialog(page, "record").waitFor({ state: "detached" });
   ok("CS-DL3 walk: no page error on the way", errs.length === 0, errs);
 } catch (e) {
   failed++; console.log(`FAIL  CS-DL3 browser check stopped: ${(e as Error).stack ?? e}`);

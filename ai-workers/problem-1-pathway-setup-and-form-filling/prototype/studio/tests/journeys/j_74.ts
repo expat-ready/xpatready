@@ -118,15 +118,18 @@ try {
   const asPerson = await staffApi(null, "POST", `/runtime/cases/${caseId}/withdraw`, { reason: "Test walk", withdrawnOn: new Date().toISOString().slice(0, 10) }, "user-R");
   await dl.sweep();
   ok("J-74 DW3 NR: the withdraw sent as the simulated person (x-actor only) is 401, writes no case.closed and cancels nothing", asPerson.status === 401 && one(`select count(*) from module_event where subject_id = '${caseId}'`) === "0" && mine(caseId, "waiting").length === 3, asPerson.status);
+  // Review S6: on a copy used before, other open cases on the cited route have reminders too; W3 and W4 judge this case's.
+  const stagesHere = new Set((sql(`select id from case_stage where case_id = '${caseId}'`) ?? "").split("\n").map((x) => x.trim()).filter(Boolean));
+  const toldHere = () => told.filter((t) => stagesHere.has(t.stageId));
   const w = await staffApi(R, "POST", `/runtime/cases/${caseId}/withdraw`, { reason: "The client withdrew (test walk)", withdrawnOn: new Date().toISOString().slice(0, 10) });
   await dl.sweep(); await walk("2027-02-26T12:00:00.000Z");
   ok("J-74 W3 (DW3): withdrawn through CS-C1a's route with the representative's session: case.closed in the outbox, the three reminders cancelled, none fires (24 Feb passes)",
-    w.status === 200 && one(`select count(*) from module_event where subject_id = '${caseId}' and type = 'case.closed'`) === "1" && mine(caseId, "cancelled").length === 3 && told.length === 0, w.status);
+    w.status === 200 && one(`select count(*) from module_event where subject_id = '${caseId}' and type = 'case.closed'`) === "1" && mine(caseId, "cancelled").length === 3 && toldHere().length === 0, w.status);
   const r = await staffApi(R, "POST", `/runtime/cases/${caseId}/reopen`, { reason: "The client came back (test walk)" });
   await dl.sweep(); await walk("2027-03-09T12:00:00.000Z");
-  const at = [...new Set(told.map((t) => t.at))];
+  const at = [...new Set(toldHere().map((t) => t.at))];
   ok("J-74 W4 (DW2): reopened: the two reminders still to come reach the representative and the officer once each (Wed 3 and Thu 4 Mar, 09:00 Toronto); the passed one never fires late",
-    r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && told.length === 4 && told.every((t) => t.stageId === one(`select id from case_stage where case_id = '${caseId}' and state = 'CURRENT'`) && [REP, OFF].includes(t.staffId)), { status: r.status, told });
+    r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && toldHere().length === 4 && toldHere().every((t) => t.stageId === one(`select id from case_stage where case_id = '${caseId}' and state = 'CURRENT'`) && [REP, OFF].includes(t.staffId)), { status: r.status, told: toldHere() });
   // ---------------------------------------------------------------------------------------------------- W5-W7 a government step
   // Its own clock and queue at now (the walk's clock has passed March 2027); the copy's server reads its own real day.
   const clock2 = new FakeClock(new Date()), jobs2 = fakeJobs(clock2), dl2 = new CaseDeadlines({ db, jobs: jobs2, notifications, clock: clock2 });
