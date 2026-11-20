@@ -72,5 +72,10 @@ ok "the suites step is --changed, time-limited, and runs only after a good set-u
 ok "the parts' job limit covers its steps' limits plus 5 min" "$(grep -qw limits <<< "$w" && echo 1)" "$w"
 ok "the plan reads change-kind.sh and pr-suites-plan.sh" "$(grep -qw plan <<< "$w" && echo 1)" "$w"
 ok "read-only tokens (it runs the PR's code)" "$(grep -qw read-only <<< "$w" && echo 1)" "$w"
+# a change to how a PR's suites run runs them: select-suites.mjs counts pr-suites.yml and pr-suites-plan.sh as suite tooling
+for f in .github/workflows/pr-suites.yml ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/pr-suites-plan.sh; do
+  o=$(cd "$TOOLS/../../../.." && printf '%s\n' "$f" | node "$TOOLS/select-suites.mjs" | head -1); k=$(cd "$TOOLS/../../../.." && printf '%s\n' "$f" | bash "$TOOLS/change-kind.sh" --files)
+  ok "${f##*/}: kind code and every suite (so its own PR runs the parts, --direct)" "$([ "$k" = code ] && grep -qP '^ALL\t' <<< "$o" && echo 1)" "kind $k, $o"
+done
 ok "no Mergify condition names pr-suites (P-717 (b): report only until the tech lead adds it)" "$(! grep -q 'pr-suites' "$M" && echo 1)" "pr-suites found in .mergify.yml"
 finish

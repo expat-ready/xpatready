@@ -43,7 +43,8 @@ jobs:
         env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}" }
         run: |
           main=$(git rev-parse origin/main)
-          out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$main") || { echo "::warning title=pr-suites (report only)::the PR does not merge onto main $main: no suite ran"; exit 0; }
+          st=0; out=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$main") || st=$?
+          if [ "$st" != 0 ]; then echo "::warning title=pr-suites (report only)::pr-base.sh merge exit $st (1: does not merge onto main $main or refused; 2: could not run): no suite ran"; exit 0; fi
           range=$(tail -1 <<< "$out")
           kind=$(bash "$P/tools/change-kind.sh" "$range") || kind=unknown
           if [ "$kind" != code ]; then echo "**pr-suites (report only):** change kind \"$kind\": no suite to run." >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
