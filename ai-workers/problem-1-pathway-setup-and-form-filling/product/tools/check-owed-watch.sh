@@ -56,6 +56,20 @@ ok "nothing owed: a 'none' line, no ACT" "$([ "$(acts "$out")" = 0 ] && grep -q 
 out=$($W starts --state "$T/nope.md"); ok "STATE unreadable: an ACT, never a silent pass" "$([ "$(acts "$out")" = 1 ] && grep -q 'not measured' <<<"$out" && echo 1)" "$out"
 printf 'x start a lane at the founder'"'"'s next typed turn; start a lane at the founder'"'"'s next typed turn\n' > "$T/s3.md"
 out=$($W starts --state "$T/s3.md"); ok "the same item twice is listed once" "$(grep -q 'owed at the founder.s next typed turn: 2:' <<<"$out" && echo 1)" "$out"
+printf '\xff\xfe broken \xc3\x28\n' > "$T/s4.md"; out=$($W starts --state "$T/s4.md"); r=$?
+ok "STATE not UTF-8: an ACT, exit 0, no traceback (reviewer Minor 1)" "$([ $r = 0 ] && [ "$(acts "$out")" = 1 ] && ! grep -q Traceback <<<"$out" && echo 1)" "exit $r: $out"
+cat > "$T/s5.md" <<'X'
+🔴 **(2) Founder's next typed turn:** (a) restart Lead B for #2401 (merge main; then label) (b) start a qa lane for R1.40
+Standbys: start one more standby ("Lead 2 (series 3) · standby", P-749) at the founder's next typed turn.
+Start a qa lane for R1.5 once #2400 is done, at the founder's next typed turn.
+**Founder’s next typed turn**: restart Lead D; start a lane for R1.77
+X
+out=$($W starts --state "$T/s5.md")
+ok "a heading item keeps a ; inside its brackets (one item, not two)" "$(grep -q 'owed  restart Lead B for #2401 (merge main; then label)$' <<<"$out" && ! grep -q 'owed  then label' <<<"$out" && echo 1)" "$out"
+ok "a · inside quotes and brackets does not cut the item" "$(grep -q 'owed  Standbys: start one more standby ("Lead 2 (series 3) · standby", P-749) at the founder' <<<"$out" && echo 1)" "$out"
+ok "'once #2400 is done' does not hide an owed start" "$(grep -q 'owed  Start a qa lane for R1.5 once #2400 is done' <<<"$out" && echo 1)" "$out"
+ok "a heading with the colon outside the bold and a curly apostrophe lists every item" "$(grep -q 'owed  restart Lead D' <<<"$out" && grep -q 'owed  start a lane for R1.77' <<<"$out" && echo 1)" "$out"
+ok "six owed in all" "$(grep -q 'typed turn: 6:' <<<"$out" && echo 1)" "$out"
 
 # --- wiring in lead-watch.sh
 L="$TOOLS/lead-watch.sh"

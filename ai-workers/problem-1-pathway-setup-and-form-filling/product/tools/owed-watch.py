@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What is owed and nobody has raised yet: lead-watch.sh steps 14 (E11) and 15 (E19). Founder 21 Nov (P-772): every
+"""What is owed and nobody has raised yet: lead-watch.sh steps 13b (E11) and 13c (E19). Founder 21 Nov (P-772): every
 valuable rule in code; the Lead stalled when work arrived from a teammate session while starts could happen only in a
 founder-typed turn, so the owed starts waited unseen.
 
@@ -48,26 +48,31 @@ def lanes(a):
             print(f"ACT   lane {ln} has {r} ready row(s), under {a.min}: shape or unblock rows for it now (P-599)")
 
 
-TYPED = re.compile(r"(founder'?s|his) next typed turn|founder-typed turn|next typed turn", re.I)
-HEAD = re.compile(r"(founder-typed turn to-do|founder'?s next typed turn)[^:]{0,80}:\*\*", re.I)   # a bold heading only
+TYPED = re.compile(r"(founder['’]?s|his) next typed turn|founder-typed turn|next typed turn", re.I)
+HEAD = re.compile(r"(founder-typed turn to-do|founder['’]?s next typed turn)[^:]{0,80}(:\*\*|\*\*:)", re.I)   # a bold heading only
 START = re.compile(r"\bstart(s|ing)?\b|\brestart\b|\bunarchive\b|\bstandbys?\b|\bnew session\b|\b(lane|qa lane)\b", re.I)
-DONE = re.compile(r"\bstarted\b|\bdone\b|\bcreated\b|\bnot owed\b", re.I)
-SENT = r"(?:(?<=[.!?])|(?<=[.!?]\*\*))\s+(?=[A-Z(🔴*])|\s·\s"
-SPLIT = re.compile(SENT + r"|;\s+|\s\([a-z]\)\s")   # the items of a to-do heading
-CLAUSE = re.compile(SENT)
+DONE = re.compile(r"\bstarted\b|\bnot owed\b|\balready (running|created|done)\b", re.I)
+SENT = r"(?:(?<=[.!?])|(?<=[.!?]\*\*))\s+(?=[A-Z(🔴*])|\s·\s|;\s+"
+CUT = {False: re.compile(SENT), True: re.compile(SENT + r"|\s\([a-z]\)\s")}   # True: the items of a to-do heading
 
 
-def clauses(line):   # inline: sentences, then ";" outside brackets (one inside keeps the row it belongs to)
-    out = []
-    for sent in CLAUSE.split(line):
-        depth, cur = 0, ""
-        for ch in sent:
-            depth += (ch == "(") - (ch == ")" and depth > 0)
-            if ch == ";" and depth == 0:
-                out.append(cur); cur = ""
-            else:
-                cur += ch
-        out.append(cur)
+def parts(text, heading):
+    """Split at sentence ends, " · " and "; " (and "(b)" markers after a heading), only outside brackets and quotes:
+    "R1.33 (re-prove; needs a qa lane ...)" and '("Lead 2 (series 3) · standby", P-749)' stay whole."""
+    depth, q, at = [], False, 0
+    for ch in text:
+        if ch == '"':
+            q = not q
+        elif ch == "(":
+            at += 1
+        elif ch == ")" and at:
+            at -= 1
+        depth.append(at or q)
+    out, last = [], 0
+    for m in CUT[heading].finditer(text):
+        if not depth[m.start()]:
+            out.append(text[last:m.start()]); last = m.end()
+    out.append(text[last:])
     return out
 
 
@@ -79,8 +84,8 @@ def clean(s):
 def starts(a):
     try:
         text = open(a.state, encoding="utf-8").read()
-    except OSError as e:
-        print(f"ACT   starts owed not measured: {a.state} unreadable ({e.strerror}) (E19)")
+    except (OSError, ValueError) as e:   # ValueError: not UTF-8
+        print(f"ACT   starts owed not measured: {a.state} unreadable ({(getattr(e, 'strerror', None) or str(e))[:80]}) (E19)")
         return
     owed = []
     for line in text.splitlines():
@@ -88,9 +93,9 @@ def starts(a):
             continue
         h = HEAD.search(line)
         if h:   # a to-do heading: every item after it is owed at that turn
-            items = SPLIT.split(line[h.end():])
+            items = parts(line[h.end():], True)
         else:   # inline: only the clause that names the typed turn
-            items = [c for c in clauses(line) if TYPED.search(c)]
+            items = [c for c in parts(line, False) if TYPED.search(c)]
         for c in items:
             if START.search(c) and not DONE.search(c):
                 c = clean(c)
@@ -111,7 +116,10 @@ def main():
     l = s.add_parser("lanes"); l.add_argument("--board", required=True); l.add_argument("--lanes", default=LANES); l.add_argument("--min", type=int, default=2)
     t = s.add_parser("starts"); t.add_argument("--state", required=True)
     a = p.parse_args()
-    (lanes if a.cmd == "lanes" else starts)(a)
+    try:
+        (lanes if a.cmd == "lanes" else starts)(a)
+    except Exception as e:   # never a traceback with no ACT: lead-watch counts ACT lines only
+        print(f"ACT   owed-watch {a.cmd} crashed ({type(e).__name__}: {str(e)[:80]}): nothing was checked")
 
 
 if __name__ == "__main__":
