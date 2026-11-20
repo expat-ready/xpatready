@@ -1,7 +1,7 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
-# Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
+# Exit code = number of ACT lines; step 13 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 set -uo pipefail
 SINCE="${1:-30}"

@@ -178,7 +178,8 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 27 tooling|product/tools/check-docs.sh|s/^        \[ -n "\$areas" \] .. continue$/        continue/|check-workflow-lock.sh
 27 closed|product/tools/check-docs.sh|/EXEMPT list in tools\/decision-impact.sh could not be read/d|check-workflow-lock.sh
 29 machines|product/tools/flow-constraint.py|s/(mc.get("oldest_min") or 0) > BAR\["wait_min"\]/False/|check-flow-constraint.sh
-29 culprit|product/tools/flow-constraint.py|s/(" (culprit: still open)" if y\["open"\] else "")/""/|check-flow-constraint.sh
+29 culprit|product/tools/flow-constraint.py|s/ if y\["open"\] and not y.get("requeued")})/ if y["open"]})/|check-flow-constraint.sh
+29 stale|product/tools/flow-constraint.py|s/ and age > STALE_MIN else$/ and False else/|check-flow-constraint.sh
 29 unread|product/tools/flow-constraint.py|s/^    if unmeasured:$/    if False:/|check-flow-constraint.sh
 29 count|product/tools/lead-watch.sh|s/; echo "\$cs"; act=\$((act + \$(grep -c .^ACT. <<<"\$cs")))/; echo "$cs"/|check-flow-constraint.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py

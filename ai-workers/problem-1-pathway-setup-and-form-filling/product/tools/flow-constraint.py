@@ -19,18 +19,21 @@ approved to merged, no supply (nothing approved and nothing merging), proof. Non
 --facts reads gathered facts (tests); otherwise read with gh (REST and one GraphQL query). Read-only, US$0, never cancels.
 Test: check-flow-constraint.sh.
 """
-import json, statistics, subprocess, sys
+import json, os, re, statistics, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
 WINDOW_H = 6
 BAR = {"wait_min": 15, "fail_share": 0.10, "batch_min": 45, "merge_min": 60, "proven_short": 0}
 IST = timezone(timedelta(hours=5, minutes=30))
-TOOLS = __file__.rsplit("/", 1)[0]
+TOOLS = os.path.dirname(os.path.abspath(__file__))
+GH = os.environ.get("FLOW_GH") or f"{TOOLS}/gh.sh"   # FLOW_GH: the test's stand-in for gh.sh
+STALE_MIN = 45   # a saved file or the board older than this is not this check's measure (the board's amber line)
 
 
 def iso(s):
     try:
-        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        d = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)   # a time with no zone is read as UTC
     except (TypeError, ValueError):
         return None
 
@@ -41,7 +44,7 @@ def mins(a, b):
 
 
 def gh(*args):
-    p = subprocess.run(["bash", f"{TOOLS}/gh.sh", *args], capture_output=True, text=True, timeout=90)
+    p = subprocess.run(["bash", GH, *args], capture_output=True, text=True, timeout=90)
     if p.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args)[:60]}: exit {p.returncode} {(p.stdout or p.stderr).strip()[:80]}")
     return json.loads(p.stdout)
@@ -62,6 +65,7 @@ def gather(now):
         b = [r for r in runs if str(r.get("head_branch", "")).startswith("mergify/merge-queue/") and r.get("status") == "completed"]
         f["batches"] = [{"id": r["id"], "conclusion": r.get("conclusion"), "started": r.get("run_started_at"), "updated": r.get("updated_at"),
                          "pr": (r.get("pull_requests") or [{}])[0].get("number"), "head": r.get("head_branch")} for r in b]
+        f["runs_page_full"] = len(runs) >= 100
         if b:
             newest = max(b, key=lambda r: r.get("updated_at") or "")
             jobs = gh("api", f"repos/{{owner}}/{{repo}}/actions/runs/{newest['id']}/jobs?per_page=100")["jobs"]
@@ -71,7 +75,8 @@ def gather(now):
     try:
         pulls = gh("api", "repos/{owner}/{repo}/pulls?state=all&sort=updated&direction=desc&per_page=100")
         f["pulls"] = {str(p["number"]): {"title": p.get("title") or "", "body": (p.get("body") or "")[:4000], "state": p.get("state"),
-                                         "merged_at": p.get("merged_at"), "login": (p.get("user") or {}).get("login")} for p in pulls}
+                                         "merged_at": p.get("merged_at"), "login": (p.get("user") or {}).get("login"),
+                                         "ref": (p.get("head") or {}).get("ref") or ""} for p in pulls}
     except Exception as e:   # noqa: BLE001
         f["pulls"] = {"error": str(e)[:160]}
     try:
@@ -88,7 +93,6 @@ def gather(now):
 
 def members(p):
     """Member PR numbers of a Mergify batch PR: "#n" in its title and the body's "- number: n" lines (as queue-gate.sh)."""
-    import re
     t = [int(x) for x in re.findall(r"#(\d+)", p.get("title") or "")]
     b = [int(x) for x in re.findall(r"(?m)^\s*-\s*number:\s*(\d+)\s*$", p.get("body") or "")]
     return sorted(set(t + b))
@@ -103,18 +107,28 @@ def measure(f, rw, board, now):
         walls = [w for w in (mins(b["started"], b["updated"]) for b in bs) if w is not None]
         nj = f.get("newest_jobs") or {}
         top = max((j for j in nj.get("jobs", []) if j.get("min") is not None), key=lambda j: j["min"], default=None)
-        m["batch"] = {"n": len(bs), "median_min": round(statistics.median(walls)) if walls else None,
+        m["batch"] = {"n": len(bs), "n3": sum(1 for b in bs if (iso(b.get("updated")) or now) >= now - timedelta(hours=3)),
+                      "page_full": bool(f.get("runs_page_full")), "median_min": round(statistics.median(walls)) if walls else None,
                       "longest": {"run": nj.get("run"), "name": top["name"], "min": round(top["min"])} if top else None}
         pulls = f.get("pulls")
         fl = []
+        bad = isinstance(pulls, dict) and "error" in pulls
+        pl = {} if bad else (pulls or {})
+        bots = {int(k): members(v) for k, v in pl.items() if v.get("login") == "mergify[bot]" and str(v.get("ref", "")).startswith("mergify/merge-queue/") or (v.get("login") == "mergify[bot]" and not v.get("ref"))}
         for b in sorted((b for b in bs if b.get("conclusion") in ("failure", "timed_out")), key=lambda b: b.get("updated") or ""):
-            if isinstance(pulls, dict) and "error" in pulls:
+            if bad:
                 fl.append({"run": b["id"], "members": None}); continue
-            bp = (pulls or {}).get(str(b.get("pr"))) or {}
-            ms = members(bp) if bp.get("login") == "mergify[bot]" else []
-            fl.append({"run": b["id"], "members": [{"n": n, "open": ((pulls or {}).get(str(n)) or {}).get("state") == "open"
-                                                     and not ((pulls or {}).get(str(n)) or {}).get("merged_at")} for n in ms]})
+            # The run's batch PR: by number, else by its branch (GitHub often leaves pull_requests empty once Mergify deletes it)
+            n0 = b.get("pr") or next((int(k) for k, v in pl.items() if b.get("head") and v.get("ref") == b.get("head")), None)
+            ms = bots.get(n0, []) if n0 else []
+            # A culprit is a member still open and in no later batch (Mergify splits a failed batch: innocent members are
+            # re-queued in a newer batch PR and merge there; part 4 review M2)
+            later = {m for k, v in bots.items() if n0 and k > n0 for m in v}
+            fl.append({"run": b["id"], "batch_pr": n0, "members": [{"n": n, "open": (pl.get(str(n)) or {}).get("state") == "open"
+                                                     and not (pl.get(str(n)) or {}).get("merged_at"), "requeued": n in later} for n in ms]})
         m["failed"] = {"n": len(fl), "of": len(bs), "batches": fl}
+    if isinstance(rw, dict) and isinstance(rw.get("_age_min"), (int, float)) and rw["_age_min"] > STALE_MIN:
+        rw = {"error": f"runs-waiting.json is {round(rw['_age_min'])} min old (step 2c did not write it this check)"}
     m["machines"] = ({"error": rw["error"]} if isinstance(rw, dict) and "error" in rw else
                      {"fresh": rw.get("fresh"), "oldest_min": rw.get("oldest_fresh_min"), "stale": len(rw.get("stale") or [])} if isinstance(rw, dict) else
                      {"error": "runs-waiting.json not found (lead-watch step 2c)"})
@@ -129,8 +143,9 @@ def measure(f, rw, board, now):
         m["rate"] = {"per_hour": round(len(h3) / 3, 1), "n": len(h3)}
     t = ((board or {}).get("first") or {}).get("today") if isinstance(board, dict) else None
     gen = ((board or {}).get("freshness") or {}).get("generated_at") if isinstance(board, dict) else None
-    m["proven"] = ({"proven": t.get("proven"), "goal": t.get("goal"), "short": t.get("short"), "waiting": t.get("waiting"),
-                    "age_min": round((now - iso(gen)).total_seconds() / 60) if iso(gen) else None} if isinstance(t, dict) else
+    age = round((now - iso(gen)).total_seconds() / 60) if iso(gen) else None
+    m["proven"] = ({"error": f"the board is {age} min old: refresh it (P-591)"} if isinstance(t, dict) and age is not None and age > STALE_MIN else
+                   {"proven": t.get("proven"), "goal": t.get("goal"), "short": t.get("short"), "waiting": t.get("waiting"), "age_min": age} if isinstance(t, dict) else
                    {"error": "the board's data.json has no Today card"})
     return m
 
@@ -140,39 +155,48 @@ def err(x):
 
 
 def lines(m, now):
+    act = pick(m)   # first: it marks a median missing while there was something to measure as not measured
     out = [f"constraint (P-738, ENF-738) measured {now.astimezone(IST).strftime('%d %b %H:%M IST')}"]
     b, fl, mc, mg, rt, pv = (m.get(k) for k in ("batch", "failed", "machines", "merge", "rate", "proven"))
     nm = lambda x: f"not measured ({x['error'][:70]})"
-    out.append("  batch     " + (nm(b) if err(b) else f"{b['n']} batch(es) ended in {WINDOW_H} h, median wall "
+    out.append("  batch     " + (nm(b) if err(b) else f"{b['n']} batch(es) started in the last {WINDOW_H} h and ended, median wall "
                + (f"{b['median_min']} min" if b["median_min"] is not None else "not measured")
-               + (f"; newest's longest part {b['longest']['name']} {b['longest']['min']} min (run {b['longest']['run']})" if b.get("longest") else "")))
+               + (f"; newest's longest part {b['longest']['name']} {b['longest']['min']} min (run {b['longest']['run']})" if b.get("longest") else "")
+               + ("; only the newest 100 ci runs read" if b.get("page_full") else "")))
     out.append("  machines  " + (nm(mc) if err(mc) else f"{mc['fresh']} run(s) waiting (created under 6 h)"
                + (f", oldest {mc['oldest_min']} min" if mc.get("oldest_min") is not None else "") + (f"; {mc['stale']} stale, not counted" if mc.get("stale") else "")))
     if err(fl):
         out.append("  failed    " + nm(fl))
     else:
         desc = "; ".join(f"run {x['run']}: " + ("members unreadable" if x["members"] is None else
-                         (", ".join(f"#{y['n']}" + (" (culprit: still open)" if y["open"] else "") for y in x["members"]) or "no members named"))
+                         (", ".join(f"#{y['n']}" + (" (re-queued)" if y["open"] and y.get("requeued") else " (culprit: still open)" if y["open"] else "") for y in x["members"]) or "no members named"))
                          for x in fl["batches"])
         out.append(f"  failed    {fl['n']} of {fl['of']} batch(es) failed in {WINDOW_H} h" + (f": {desc}" if desc else ""))
     out.append("  merge     " + (nm(mg) if err(mg) else "approved to merged median " + (f"{mg['median_min']} min" if mg["median_min"] is not None else "not measured") + f" (n={mg['n']}, merged in 24 h)"))
     out.append("  rate      " + (nm(rt) if err(rt) else f"{rt['per_hour']} merges per hour (last 3 h, {rt['n']} merges)"))
     out.append("  proven    " + (nm(pv) if err(pv) else f"Proven today {pv['proven']}" + (f" of {pv['goal']} ({pv.get('short', 0)} short)" if pv.get("goal") is not None else "")
                + (f", {pv['waiting']} Built waiting for qa" if pv.get("waiting") is not None else "") + (f" (board {pv['age_min']} min old)" if pv.get("age_min") is not None else "")))
-    out.append("ACT   " + pick(m))
+    out.append("ACT   " + act)
     return out
 
 
 def pick(m):
-    """The one constraint: the first over its bar, in flow order. Unmeasured parts are named, never passed as fine."""
+    """The one constraint: the first over its bar, in flow order. A part not measured (unread, stale, or a median missing
+    while there was something to measure) is named, never passed as fine (part 4 review M1)."""
     b, fl, mc, mg, rt, pv = (m.get(k) for k in ("batch", "failed", "machines", "merge", "rate", "proven"))
+    if not err(mc) and mc.get("fresh") and mc.get("oldest_min") is None:
+        mc = m["machines"] = {"error": "runs wait with no age"}
+    if not err(b) and b.get("n") and b.get("median_min") is None:
+        b = m["batch"] = {"error": "batches with no wall time"}
+    if not err(mg) and not err(rt) and rt.get("n") and mg.get("median_min") is None:
+        mg = m["merge"] = {"error": "merges with no approval time (label not found)"}
     if not err(mc) and (mc.get("oldest_min") or 0) > BAR["wait_min"]:
         return (f"constraint: machines — {mc['fresh']} run(s) waiting, oldest {mc['oldest_min']} min (bar {BAR['wait_min']}): "
                 "check both Mac runners are online (xr-mac, xr-mac-light) and which jobs hold them; product lanes keep priority")
     if not err(fl) and fl["of"] and fl["n"] / fl["of"] > BAR["fail_share"]:
-        cul = sorted({f"#{y['n']}" for x in fl["batches"] for y in (x["members"] or []) if y["open"]})
+        cul = sorted({f"#{y['n']}" for x in fl["batches"] for y in (x["members"] or []) if y["open"] and not y.get("requeued")})
         return (f"constraint: failed batches — {fl['n']} of {fl['of']} failed in {WINDOW_H} h (bar {int(BAR['fail_share'] * 100)}%), culprits "
-                + (", ".join(cul) if cul else "not named") + ": send each culprit back to its lane with the batch's failed parts; "
+                + (", ".join(cul) if cul else "not named yet (members re-queued or unread)") + ": send each culprit back to its lane with the batch's failed parts; "
                 "it rejoins on a green full run and a \"Batch failures covered:\" line (P-731)")
     if not err(b) and (b.get("median_min") or 0) > BAR["batch_min"]:
         lp = b.get("longest")
@@ -181,12 +205,12 @@ def pick(m):
     if not err(mg) and (mg.get("median_min") or 0) > BAR["merge_min"]:
         return (f"constraint: approved to merged — median {mg['median_min']} min (bar {BAR['merge_min']}): find what holds the oldest "
                 "approved PR (Lead read, a dequeue, a stale queue-fresh) and clear it")
-    if not err(rt) and rt["n"] == 0 and not err(fl) and fl["of"] == 0:
+    if not err(rt) and rt["n"] == 0 and not err(b) and b.get("n3") == 0:
         return "constraint: supply — no merge and no batch in 3 h: approved PRs are missing; answer lane questions and Lead reads, give idle lanes their next row"
-    unmeasured = [k for k in ("machines", "failed", "batch", "merge", "rate") if err(m.get(k))]
+    unmeasured = [k for k in ("machines", "failed", "batch", "merge", "rate", "proven") if err(m.get(k))]
     if unmeasured:
-        return f"constraint: not measured — {', '.join(unmeasured)} unreadable this check: read them by hand before naming a constraint (P-738 (3))"
-    if not err(pv) and pv.get("goal") is not None and (pv.get("short") or 0) > BAR["proven_short"]:
+        return f"constraint: not measured — {', '.join(unmeasured)} unreadable or stale this check: read them by hand before naming a constraint (P-738 (3))"
+    if pv.get("goal") is not None and (pv.get("short") or 0) > BAR["proven_short"]:
         return (f"constraint: proof — Proven today {pv['proven']} of {pv['goal']}, {pv.get('waiting')} Built waiting for qa: "
                 "point qa lanes at the Built items nearest done (P-733)")
     return "constraint: none over its bar — re-measure next check; keep lanes fed (P-738 (2))"
@@ -201,7 +225,9 @@ def main(argv):
     load = lambda p: json.load(open(p)) if p else None
     try:
         rw = load(a["--runs-waiting"])
-    except (OSError, ValueError):
+        if isinstance(rw, dict):
+            rw["_age_min"] = (now - datetime.fromtimestamp(os.path.getmtime(a["--runs-waiting"]), timezone.utc)).total_seconds() / 60
+    except (OSError, ValueError, TypeError):
         rw = None
     try:
         board = load(a["--board"])
