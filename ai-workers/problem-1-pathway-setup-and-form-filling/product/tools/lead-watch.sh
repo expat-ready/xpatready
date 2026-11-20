@@ -81,6 +81,9 @@ bash "$TOOLS/lead-queue.sh" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
 git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
 
+# 3c (G-4 (5); ENF-761 part 5): branches ahead of main with no PR and no LANE-REPORT: one summary line, the list in
+# $STATE_DIR/stale-branches.txt, an ACT only for a branch pushed in the last 24 h (branch-sweep.sh).
+sw=$(SWEEP_STATE_DIR="$STATE_DIR" bash "$TOOLS/branch-sweep.sh" 2>&1); [ -n "$sw" ] && echo "$sw"; act=$((act + $(grep -c '^ACT' <<<"$sw"))); seen "$sw"
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
 # 1b. Local lanes (founder, 8 Nov, P-420): a Mac lane that stops, or whose messages are paused, makes no GitHub signal.

@@ -23,4 +23,5 @@ ok "... the list file names both branches, not the one with an open PR" "$([ "$(
 sw NOW=$later SWEEP_ACT_HOURS=72; ok "the same branches inside a 72 h window still ACT (the quiet rule's fail case)" "$([ $r = 2 ] && echo 1)" "exit $r: $out"
 echo '[{"headRefName":"lane/a","headRefOid":"x","state":"OPEN"},{"headRefName":"lane/b","headRefOid":"x","state":"OPEN"},{"headRefName":"lane/open","headRefOid":"x","state":"OPEN"}]' > "$T/all.json"
 sw; ok "no stale branch: no output at all, and the list file is emptied" "$([ $r = 0 ] && [ -z "$out" ] && [ ! -s "$L" ] && echo 1)" "exit $r: $out"
+grep -q 'SWEEP_STATE_DIR="$STATE_DIR" bash "$TOOLS/branch-sweep.sh"' "$TOOLS/lead-watch.sh"; ok "lead-watch.sh 3c runs branch-sweep.sh with its state folder" "$([ $? = 0 ] && echo 1)"
 finish

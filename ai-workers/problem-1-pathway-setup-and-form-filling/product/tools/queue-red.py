@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """lead-watch.sh step 2, the queue (ENF-761 part 3): open PRs (gh pr list --json number,title,labels,isDraft,headRefName,
 statusCheckRollup) on stdin; prints the queue line, one ACT per dequeued PR, and one ACT per labelled PR whose head has a
-FAILED REQUIRED check (--required, comma list: the ruleset's required checks read by lead-watch.sh, plus ci always).
-A labelled PR red only on optional checks (module-cards, walks, CodeQL, pr-rules while not required) gets one info line,
-no ACT: Mergify queues it all the same (20 Nov: 3 of 7 "red after approval" PRs were queued, red only on optional checks).
+FAILED REQUIRED check (--required, comma list: the ruleset's required checks read by lead-watch.sh), plus MERGIFY: ci,
+and xfa-engine, which .mergify.yml's queues require for engine PRs and which runs only on those (review on #2475).
+A labelled PR red only on other checks (module-cards, walks, CodeQL, pr-rules while not required) gets one info line,
+no ACT: Mergify queues it all the same (20 Nov: 3 of 7 "red after approval" PRs were queued, red only on such checks).
+queue-fresh (required for prototype PRs) is renewed by queue-gate re-running ci, so it stays an info line.
 Test: check-queue-red.sh."""
 import argparse, json, sys
 
 FAILED = {"FAILURE", "TIMED_OUT", "ERROR", "STARTUP_FAILURE"}
+MERGIFY = {"ci", "xfa-engine"}   # .mergify.yml queue conditions: check-success = ci; = xfa-engine for engine paths
 
 
 def failed(p):
@@ -23,7 +26,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--required", default="ci")
     a = ap.parse_args()
-    req = {r.strip() for r in a.required.split(",") if r.strip()} | {"ci"}
+    req = {r.strip() for r in a.required.split(",") if r.strip()} | MERGIFY
     prs = [p for p in json.load(sys.stdin) if not p["headRefName"].startswith("mergify/")]
     L = lambda p: [l["name"] for l in p["labels"]]
     q = [p for p in prs if "queued" in L(p)]
@@ -44,7 +47,7 @@ def main():
         elif f:
             opt.append("#%d (%s)" % (p["number"], ", ".join(sorted(set(f)))))
     if opt:
-        print("info  red only on optional checks, not blocking (required: %s): %s" % (", ".join(sorted(req)), "; ".join(opt)))
+        print("info  red only on checks the queue does not require (required: %s; queue-fresh renews itself): %s" % (", ".join(sorted(req)), "; ".join(opt)))
 
 
 if __name__ == "__main__":

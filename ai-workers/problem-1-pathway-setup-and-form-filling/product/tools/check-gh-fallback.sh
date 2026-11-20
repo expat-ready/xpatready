@@ -63,6 +63,8 @@ rm -f "$T/once"; e3=""; for i in 1 2 3; do run env GH_TLS_NOTE_ONCE="$T/once" ba
 ok "GH_TLS_NOTE_ONCE: three fallbacks in one run print the curl notice once" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 1 ] && echo 1)" "$e3"
 e3=""; for i in 1 2 3; do run bash "$GH" run list --limit 2 --json databaseId; e3="$e3$err"$'\n'; done
 ok "... and without it, each fallback prints it (3)" "$([ "$(grep -c 'answered through curl' <<< "$e3")" = 3 ] && echo 1)" "$e3"
+rm -f "$T/once"; run env GH_TLS_NOTE_ONCE="$T/no-such-dir/once" bash "$GH" run list --limit 2 --json databaseId
+ok "... a flag file that cannot be made: the notice is still printed (never silent)" "$(grep -q 'answered through curl' <<< "$err" && echo 1)" "$err"
 grep -q 'export GH_TLS_NOTE_ONCE="$STATE_DIR/tls-noted.$$"' "$TOOLS/lead-watch.sh"; ok "lead-watch.sh sets GH_TLS_NOTE_ONCE per run" "$([ $? = 0 ] && echo 1)"
 run bash "$GH" pr view 1052 --json files,mergeable --jq '.files[].path'
 ok "pr view --json files --jq" "$([ $r = 0 ] && [ "$out" = a.ts ] && echo 1)" "exit $r: $out $err"

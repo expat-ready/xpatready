@@ -195,7 +195,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 761 quiet|product/tools/branch-sweep.sh|/^  \[ "\$t" -ge "\$recent" \] .. continue$/d|check-branch-sweep.sh
 761 one|product/tools/branch-sweep.sh|s/^  stale=\$((stale + 1)); echo "\$b: /  stale=$((stale + 1)); echo "ACT   \$b: /|check-branch-sweep.sh
 761r req|product/tools/queue-red.py|s/n for n in f if n in req/n for n in f/|check-queue-red.sh
-761r ci|product/tools/queue-red.py|s/ . {"ci"}$//|check-queue-red.sh'
+761r ci|product/tools/queue-red.py|s/ . MERGIFY$//|check-queue-red.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

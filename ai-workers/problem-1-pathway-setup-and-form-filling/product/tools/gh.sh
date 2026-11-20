@@ -11,7 +11,8 @@ if [ "${GH_FALLBACK:-auto}" != always ]; then
   fi
   # GH_TLS_NOTE_ONCE=<file> (lead-watch.sh sets one per run, ENF-761 part 5): the notice only while that file is missing,
   # then the file is made, so a run says it once instead of once per read (93 times on 20 Nov).
-  if [ -z "${GH_TLS_NOTE_ONCE:-}" ] || { [ ! -e "$GH_TLS_NOTE_ONCE" ] && : > "$GH_TLS_NOTE_ONCE"; }; then
+  if [ -z "${GH_TLS_NOTE_ONCE:-}" ] || [ ! -e "$GH_TLS_NOTE_ONCE" ]; then   # a flag that cannot be made: said every time
+    [ -n "${GH_TLS_NOTE_ONCE:-}" ] && : > "$GH_TLS_NOTE_ONCE" 2>/dev/null
     echo "gh: TLS failed ($(head -1 "$err" | cut -c1-120)); answered through curl with gh auth token (P-363)${GH_TLS_NOTE_ONCE:+; said once per run}" >&2
   fi
 fi

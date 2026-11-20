@@ -15,7 +15,7 @@ prs=$(gh pr list --state all --limit 500 --json headRefName,headRefOid,state 2>/
   && echo "$prs" | jq -e 'type == "array"' >/dev/null 2>&1 || { echo "ACT   branch sweep: PRs unreadable, branches not swept"; exit 1; }
 named=$(jq -r '.[]?.branch // empty' "$ITEMS" 2>/dev/null)
 now=${NOW:-$(date +%s)}; cut=$(( now - days * 86400 )); recent=$(( now - ${SWEEP_ACT_HOURS:-24} * 3600 )); act=0; stale=0
-SD="${SWEEP_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}"; mkdir -p "$SD" 2>/dev/null || SD=$(mktemp -d "${TMPDIR:-/tmp}/sweep.XXXXXX"); LIST="$SD/stale-branches.txt"; : > "$LIST"
+SD="${SWEEP_STATE_DIR:-/private/tmp/claude-$(id -u)/lead-watch}"; mkdir -p "$SD" 2>/dev/null || { SD="${TMPDIR:-/tmp}/lead-watch-sweep"; mkdir -p "$SD"; }; LIST="$SD/stale-branches.txt"; : > "$LIST"
 while read -r t sha ref; do
   b=${ref#origin/}; case "$b" in main|HEAD|mergify/*|origin) continue;; esac; [ "$t" -ge "$cut" ] || continue
   n=$(git rev-list --count "$MAIN_REF..$sha" 2>/dev/null); [ "${n:-0}" -gt 0 ] || continue
