@@ -844,7 +844,8 @@ export class BookingService {
 
   private selfServiceOpen(b: BookingRow, type: TypeRow) { return this.ports.clock.now().getTime() < b.startsAt.getTime() - type.selfServiceLimitMinutes * MIN; }
 
-  private async staffBooking(ctx: StaffContext, bookingId: string) {
+  /** Also the feed's one-booking read (FO-3a part 2b). */
+  async staffBooking(ctx: StaffContext, bookingId: string) {
     if (!UUID.test(bookingId)) return notInFirm("booking");
     const b = await this.db.foBooking.findFirst({ where: firmScope(ctx.firmId, { id: bookingId }) });
     if (!b) return notInFirm("booking");
