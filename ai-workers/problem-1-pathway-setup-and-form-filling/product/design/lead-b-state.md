@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (14:4x IST 20 Nov):** the current Lead is now **Lead 3 (series 3)** (`local_b0640d3f-6f07-406e-9cb9-714db24c29c4`), and it has my open items. Unknown whether Lead 2 started the J-37d lane.
+
 **Lead B (9) update (14:3x IST 20 Nov):** j_37/j_38 red on main (walks 44701378950 at 7d79ed88f): DELIVERED vs SENT. The app is right (#2397 PF-19b3's Delivery event, QA-570). j_38 is already fixed on main (a6597ab64); j_37:152 and :170 still strict. Brief `lead-b-briefs/J-37d.md` sent to Lead 2 to start a lane.
 
 **Lead B (9) update (14:00 IST 20 Nov):** **#2305 (R1.110) merged**; Lead 2 told (R1.110 to qa). Open: #2322 (waits on the lane's NOT_FOLD_OUTS fix), #2326 (after #2322), #2029 (waits on Approve).
