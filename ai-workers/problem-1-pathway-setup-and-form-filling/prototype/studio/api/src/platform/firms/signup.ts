@@ -195,16 +195,17 @@ export class FirmSignUp {
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
       const firm = await tx.platformFirm.create({ data: { key: `${slug(pending.firmName)}-${randomBytes(4).toString("hex")}`, operatingName: pending.firmName, countryCode: pending.countryCode, status: "PROVISIONING", ownerEmail: pending.email, contactEmail: pending.email, billingEmail: pending.email } });
       await touchFirm(tx, firm.id);   // PF-12b: the new firm's platform.bypass line, in the transaction that creates it
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "firm.created", entity: "platform_firm", entityKey: firm.id, summary: "Firm created by self-serve sign-up (setting up)", detail: { status: "PROVISIONING", country: pending.countryCode },
+        before: null, after: { key: firm.key, operatingName: firm.operatingName, countryCode: firm.countryCode, status: firm.status, ownerEmail: firm.ownerEmail, contactEmail: firm.contactEmail, billingEmail: firm.billingEmail } });
       const owner = await tx.platformStaff.create({ data: { firmId: firm.id, email: pending.email, displayName: pending.email.split("@")[0], identitySubject: pending.identitySubject } });
       await tx.platformRoleGrant.create({ data: { firmId: firm.id, staffId: owner.id, role: "OWNER", grantedBy: ACTOR, grantedAt: now } });
       // PF-6m2 (break F4; PF-6b rule (2)): the first Owner's money keys are logged like any other grant, in this transaction.
       await writeMoneyKeysGranted(tx, { firmId: firm.id, firmKey: firm.key, actor: "system:signup", staffId: owner.id, roles: ["OWNER"] });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.staff.owner_created", entity: "platform_staff", entityKey: owner.id, summary: "The person who signed up is the firm's Owner", detail: { staffId: owner.id }, before: null, after: { email: owner.email, displayName: owner.displayName, roles: ["OWNER"] } });
       for (const versionId of pending.termsVersionIds) await tx.platformTermsAcceptance.create({ data: { firmId: firm.id, staffId: owner.id, versionId, acceptedAt: pending.termsAcceptedAt } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: owner.id, summary: "The Owner's acceptance of the current terms recorded", detail: { staffId: owner.id, versions: pending.termsVersionIds.length }, before: null, after: { versionIds: pending.termsVersionIds, acceptedAt: pending.termsAcceptedAt.toISOString() } });
       const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL" } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period }, before: null, after: { plan: plan.code, period: pending.period, status: sub.status } });
       await tx.moduleEvent.create({ data: { firmId: firm.id, type: EVENT.FIRM_CREATED, subjectId: firm.id, payload: { firmId: firm.id } } });   // last (m8)
       return { firm, owner, sub };
     });
@@ -221,7 +222,7 @@ export class FirmSignUp {
     const customerId = had ?? (await this.ports.billing.ensureCustomer({ firmId: firm.id, email: firm.contactEmail, name: firm.operatingName })).customerId;
     if (!had) await this.db.$transaction(async (tx) => {
       await tx.platformSubscription.updateMany({ where: firmScope(firm.id, { id: subId, stripeCustomerId: null }), data: { stripeCustomerId: customerId } });
-      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.customer_linked", entity: "platform_subscription", entityKey: subId, summary: "The firm's billing customer was created", detail: { customerId } });
+      await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.customer_linked", entity: "platform_subscription", entityKey: subId, summary: "The firm's billing customer was created", detail: { customerId }, before: { stripeCustomerId: null }, after: { stripeCustomerId: customerId } });
     });
     return this.ports.billing.startTrialCheckout({ firmId: firm.id, customerId, priceId, trialDays: plan.trialDays, successUrl: `${this.ports.appUrl}/sign-up/trial-started`, cancelUrl: `${this.ports.appUrl}/sign-up/trial` });
   }

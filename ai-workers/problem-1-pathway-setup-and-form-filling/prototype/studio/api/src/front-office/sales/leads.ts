@@ -258,6 +258,7 @@ export class Leads {
       await written(tx, this.ports.audit, {
         firmId: ctx.firmId, actor: actorOf(ctx), action, entityKey: id, summary: `Staff ${ctx.staffId} ${r.summary}: ${l.number}.`,
         detail: { ownerStaffId: r.owner, previousOwnerStaffId: l.owner_staff_id, ...(action === EVENT.LEAD_TAKEN ? { fromUnassigned: activeOf(l.owner_staff_id) === null } : {}), ...(r.reasonKey ? { reasonKey: r.reasonKey } : {}), ...(r.via ? { via: r.via } : {}) },
+        before: { ownerStaffId: l.owner_staff_id, state: l.state }, after: { ownerStaffId: r.owner, state: r.state ?? l.state, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) },
         event: { type, subjectId: id, payload: LeadEventPayload.parse({ leadId: id, personId: l.person_id, door: l.door, state: r.state ?? l.state, ownerStaffId: r.owner, ...(r.reasonKey ? { closeReasonKey: r.reasonKey } : {}) }) },
       });
     });

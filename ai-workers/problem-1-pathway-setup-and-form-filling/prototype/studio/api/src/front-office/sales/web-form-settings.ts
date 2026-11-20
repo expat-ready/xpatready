@@ -100,6 +100,8 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
       firmId: ctx.firmId, actor: actorOf(ctx), action: "fo.web_form.sites_changed", entity: "fo_web_form", entityKey: formId,
       summary: `Web form "${before.name}": allowed sites changed (${sites.length} now; ${added.length} added, ${removed.length} removed).`,
       detail: { count: sites.length, addedCount: added.length, removedCount: removed.length, added: listFor(added), removed: listFor(removed) },
+      // R1.8 (QA-594): the form's allowed sites before and after, in full (at most 20, MAX_SITES).
+      before: { allowedSites: before.allowedSites }, after: { allowedSites: after.allowedSites },
     });
     return view(after, origin);
   });

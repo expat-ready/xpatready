@@ -185,7 +185,7 @@ export class FirmAuditLog implements OnModuleInit {
         for (const k of ["staffId", "actorType", "area", "action", "entity", "entityKey"] as const) if (f[k]) detail[k] = SAFE.test(String(f[k])) ? String(f[k]) : "(withheld)";
         if (f.ours) detail.ours = true;
         await this.db.$transaction((w) => auditEvent.record(w, { firmId, actor: actorWord(actor.staffId), action: "audit.exported", entity: "plat_audit_export", entityKey: randomUUID(),
-          summary: `Activity log exported: ${n} line${n === 1 ? "" : "s"} from ${iso(f.from)} to ${iso(f.to)}.`, detail }));
+          summary: `Activity log exported: ${n} line${n === 1 ? "" : "s"} from ${iso(f.from)} to ${iso(f.to)}.`, detail, before: null, after: null }));   // an export changes no record: its range and count stay in detail (review M1)
         const out = createWriteStream(path, { mode: 0o600 });
         const put = async (chunk: string) => { if (!out.write(chunk)) await once(out, "drain"); };
         try {
