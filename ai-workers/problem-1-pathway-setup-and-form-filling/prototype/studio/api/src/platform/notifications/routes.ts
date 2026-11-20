@@ -8,7 +8,8 @@ import { MyNotifications } from "./store.ts";
 
 type R = { platform?: StaffContext };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const whole = (v: unknown) => (typeof v === "string" && /^\d{1,6}$/.test(v) ? Number(v) : undefined);
+/** A whole number from the query (any length: the service clamps it); anything else is the default. */
+const whole = (v: unknown) => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : undefined);
 
 @Controller("api/platform/me/notifications")
 export class MyNotificationsController {

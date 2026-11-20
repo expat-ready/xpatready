@@ -2,10 +2,11 @@
 // (ports/notifications.ts) over msg_notification, and the person's own reads of it (routes.ts). The rules:
 //   * notify runs inside the caller's transaction and in its firm (PF-12's scope: a job's firm, a request's firm), so a
 //     rollback leaves no row; no firm in scope is refused, never a silent drop;
-//   * the person's In-app switch for the kind's group is asked first (NotificationPrefsPort, NOTIFICATION_PREFS): off, or a
-//     person who is not this firm's active staff, writes nothing;
+//   * the person's In-app switch for the kind's group is asked first (NotificationPrefsPort; its real adapter, the one behind
+//     NOTIFICATION_PREFS, built over the caller's tx: one connection per call, and a switch or person changed earlier in the
+//     same transaction is seen, breaker M1): off, or a person who is not this firm's active staff, writes nothing;
 //   * one row per person, item and kind: a repeat (the 7-day, 2-day and on-the-day reminders of one deadline) sets read_at
-//     back to empty and created_at to now, never a second row ("duplicate beats a miss");
+//     back to empty and created_at to now (never earlier than it was, breaker m2), never a second row ("duplicate beats a miss");
 //   * ids only; the link is built when a row is read (`linkOf`), never stored.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { NOTIFICATION_GROUP, parseNotify, type NotificationItem, type NotificationKind, type NotificationPort, type NotificationRecipient } from "../../../../ports/notifications.ts";
@@ -17,18 +18,20 @@ export const NOTIFICATION_PORT = Symbol.for("platform.NotificationPort");
 type DbOrTx = PrismaClient | Prisma.TransactionClient;
 
 export class PrismaNotificationPort implements NotificationPort<Prisma.TransactionClient> {
-  constructor(private readonly prefs: NotificationPrefsPort, private readonly now: () => Date = () => new Date()) {}
+  /** `prefsOver(tx)`: NotificationPrefsPort read through the caller's transaction (features/platform-notifications.ts passes
+   *  PrismaNotificationPrefs, NOTIFICATION_PREFS' adapter; a test may pass a fake). */
+  constructor(private readonly prefsOver: (tx: Prisma.TransactionClient) => NotificationPrefsPort, private readonly now: () => Date = () => new Date()) {}
 
   async notify(tx: Prisma.TransactionClient, recipient: NotificationRecipient, kind: NotificationKind, item: NotificationItem): Promise<void> {
     const p = parseNotify(recipient, kind, item);   // a ZodError before anything is read or written
     const firm = currentFirm();
     if (!firm) throw new Error("NotificationPort: no firm in scope (call it in the firm's own scope: a job's or a request's)");
     const firmId = firmScope(firm).firmId, staffId = p.recipient.staffId.toLowerCase(), group = NOTIFICATION_GROUP[p.kind];
-    if (!(await this.prefs.allows(firmId, staffId, group, "IN_APP"))) return;
+    if (!(await this.prefsOver(tx).allows(firmId, staffId, group, "IN_APP"))) return;
     const at = this.now();
     await tx.$executeRaw`insert into msg_notification (id, firm_id, staff_id, kind, "group", item_kind, item_id, created_at)
       values (gen_random_uuid(), ${firmId}::uuid, ${staffId}::uuid, ${p.kind}, ${group}, ${p.item.kind}, ${p.item.id.toLowerCase()}::uuid, ${at})
-      on conflict (firm_id, staff_id, item_kind, item_id, kind) do update set read_at = null, created_at = excluded.created_at`;
+      on conflict (firm_id, staff_id, item_kind, item_id, kind) do update set read_at = null, created_at = greatest(msg_notification.created_at, excluded.created_at)`;
   }
 }
 
@@ -40,7 +43,8 @@ type Row = { id: string; kind: string; group: string; itemKind: string; itemId: 
 async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<string, string>> {
   const ids = (k: string) => [...new Set(rows.filter((r) => r.itemKind === k).map((r) => r.itemId))];
   const links = new Map<string, string>();
-  for (const id of ids("case")) links.set(`case|${id}`, `/cases/${id}`);
+  const cases = ids("case");
+  if (cases.length) for (const c of await db.case.findMany({ where: { id: { in: cases }, firmId }, select: { id: true } })) links.set(`case|${c.id}`, `/cases/${c.id}`);   // breaker m4: the firm's own case only
   const stages = ids("case-stage"), steps = ids("case-milestone");
   if (stages.length) for (const s of await db.caseStage.findMany({ where: { id: { in: stages }, firmId }, select: { id: true, caseId: true } })) links.set(`case-stage|${s.id}`, `/cases/${s.caseId}`);
   if (steps.length) for (const m of await db.caseMilestone.findMany({ where: { id: { in: steps }, firmId }, select: { id: true, caseId: true } })) links.set(`case-milestone|${m.id}`, `/cases/${m.caseId}`);
@@ -51,7 +55,7 @@ async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<str
 export class MyNotifications {
   constructor(private readonly db: DbOrTx, private readonly now: () => Date = () => new Date()) {}
   async list(firmId: string, staffId: string, q: { unread?: boolean; page?: number; size?: number }) {
-    const size = Math.min(Math.max(Math.trunc(q.size ?? 20), 1), 100), page = Math.max(Math.trunc(q.page ?? 1), 1);
+    const size = Math.min(Math.max(Math.trunc(q.size ?? 20), 1), 100), page = Math.min(Math.max(Math.trunc(q.page ?? 1), 1), 1_000_000);   // clamped, breaker m5
     const where = firmScope(firmId, { staffId, ...(q.unread ? { readAt: null } : {}) });
     const rows: Row[] = await this.db.msgNotification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * size, take: size + 1,
       select: { id: true, kind: true, group: true, itemKind: true, itemId: true, createdAt: true, readAt: true } });

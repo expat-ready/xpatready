@@ -73,7 +73,8 @@ try {
   const GONE = (await db.platformStaff.create({ data: { firmId: FA, email: "gone@pf18n.example.com", displayName: "Sample gone", actorId: "pf18n-gone", status: "DEACTIVATED" } })).id;
   const prefs = new PrismaNotificationPrefs(db);
   let now = new Date("2026-11-21T10:00:00.000Z");
-  const port = new PrismaNotificationPort(prefs, () => now);
+  const prefsOver = (tx: unknown) => new PrismaNotificationPrefs(tx as never);   // NOTIFICATION_PREFS' adapter over the caller's tx, as the feature wires it
+  const port = new PrismaNotificationPort(prefsOver, () => now);
   const tell = (firmId: string, staffId: string, kind: typeof S | typeof M, item: { kind: "case-stage" | "case-milestone"; id: string }) =>
     withFirm(firmId, () => db.$transaction((tx) => port.notify(tx, { staffId }, kind, item)));
 
@@ -102,6 +103,14 @@ try {
   try { await q("insert into msg_notification (id, firm_id, staff_id, kind, \"group\", item_kind, item_id) values (gen_random_uuid(), $1, $2, 'case-stage-deadline', 'MY_DEADLINES', 'case', gen_random_uuid())", [FB, OFF]); } catch (e) { cross = (e as { code?: string }).code ?? ""; }
   ok("PF-18n DW1 fail (the table's rules): a row's item never changes (23514), words in place of a kind are refused (23514), and firm B's row cannot name firm A's person (23503)", words === "23514" && free === "23514" && cross === "23503", { words, free, cross });
 
+  now = new Date("2026-11-22T09:00:00.000Z");   // breaker m2: a repeat with an older clock (a slower worker)
+  await tell(FA, OFF, S, stage);
+  let back = "";
+  try { await q("update msg_notification set created_at = '1970-01-01' where id = $1", [first!.id]); } catch (e) { back = (e as { code?: string }).code ?? ""; }
+  ok("PF-18n DW1 fail (breaker m2): a repeat with an older clock re-marks it unread but never moves created_at back, and the database refuses an earlier created_at (23514)",
+    (await rowsOf(OFF)).find((r) => r.id === first!.id)?.created_at.toISOString() === "2026-11-26T14:00:00.000Z" && back === "23514", { back });
+  now = new Date("2026-11-26T15:00:00.000Z");
+
   // ---------------------------------------------------------------- DW2 the person's In-app switch decides
   const quiet = { kind: "case-stage" as const, id: randomUUID() };
   await withFirm(FA, () => db.platformNotificationPreference.create({ data: { firmId: FA, staffId: REP, group: "MY_DEADLINES", inApp: false, email: true } }));
@@ -113,6 +122,18 @@ try {
   await tell(FA, GONE, S, quiet); await tell(FA, SOLO, S, quiet);
   ok("PF-18n DW2 fail: a deactivated person, or another firm's person named under firm A's scope, gets no row (and no key error)", (await rowsOf(GONE)).length === 0 && (await rowsOf(SOLO)).length === 0);
   ok("PF-18n DW2: no kind maps to SECURITY (security emails are not a group and have no in-app row, AG-16 §3.3; question for the tech lead on the PR)", Object.values(NOTIFICATION_GROUP).every((g) => (g as string) !== "SECURITY"));
+
+  const same = { kind: "case-stage" as const, id: randomUUID() };
+  await withFirm(FA, () => db.$transaction(async (tx) => {
+    await tx.platformNotificationPreference.update({ where: { staffId_group: { staffId: REP, group: "MY_DEADLINES" } }, data: { inApp: false } });
+    await port.notify(tx, { staffId: REP }, S, same);
+    await tx.platformNotificationPreference.update({ where: { staffId_group: { staffId: REP, group: "MY_DEADLINES" } }, data: { inApp: true } });
+  }));
+  ok("PF-18n DW2 fail (breaker M1): the switch is read inside the caller's transaction: turned off earlier in it, notify writes nothing", (await rowsOf(REP)).every((r) => r.item_id !== same.id));
+  const many = Array.from({ length: 14 }, () => ({ kind: "case-stage" as const, id: randomUUID() }));
+  const t0 = Date.now(), settled = await Promise.allSettled(many.map((it) => tell(FA, OFF, S, it)));
+  ok("PF-18n DW2 pass (breaker M1): 14 notifies at once (more than the pool's 10 connections) all commit, one row each, without waiting on a second connection",
+    settled.every((r) => r.status === "fulfilled") && (await rowsOf(OFF)).filter((r) => many.some((m) => m.id === r.item_id)).length === 14 && Date.now() - t0 < 4_000, { ms: Date.now() - t0, failed: settled.filter((r) => r.status === "rejected").map((r) => String((r as PromiseRejectedResult).reason).slice(0, 120)) });
 
   // ---------------------------------------------------------------- DW3 the caller's transaction
   const rolled = { kind: "case-stage" as const, id: randomUUID() };
@@ -127,7 +148,7 @@ try {
   // ---------------------------------------------------------------- P-606: the shared contract, on the real adapter
   // The contract names people by fresh ids: the harness makes each one an active staff member of firm A first (the
   // adapter writes only for a firm's active person), then calls the adapter unchanged inside firm A's transaction.
-  const contractPort = new PrismaNotificationPort(prefs);
+  const contractPort = new PrismaNotificationPort(prefsOver);
   const ensure = async (id: unknown) => { if (typeof id === "string" && /^[0-9a-f-]{36}$/.test(id)) await db.platformStaff.upsert({ where: { id }, create: { id, firmId: FA, email: `${id}@pf18n.example.com`, displayName: "Sample contract person" }, update: {} }); };
   await runContract(notificationPortContract, "PrismaNotificationPort", () => ({
     notifications: { async notify(t: unknown, r: { staffId: string }, k: typeof S, i: { kind: "case"; id: string }) { await ensure(r?.staffId); return contractPort.notify(t as never, r, k, i); } },
@@ -234,6 +255,16 @@ try {
     again2.body.marked === 0 && reread.body.readAt === one.body.readAt && (await call("GET", "/unread-count", OFF)).body.unread === 0, { again2: again2.body, reread: reread.body });
   const page1 = await call("GET", "/items?size=1", OFF), page2 = await call("GET", "/items?size=1&page=2", OFF);
   ok("PF-18n DW4: the list is paged (size 1: page 1 names page 2, page 2 the next row)", page1.body.items.length === 1 && page1.body.nextPage === 2 && page2.body.items.length === 1 && page2.body.items[0].id !== page1.body.items[0].id, { page1: page1.body, page2: page2.body });
+  const far = await call("GET", "/items?page=9999999", OFF), big = await call("GET", "/items?size=100000", OFF), zero = await call("GET", "/items?size=0", OFF);
+  ok("PF-18n DW4 fail (breaker m5): paging values are clamped, never reset: page 9999999 is an empty page (not page 1), size 100000 is 100, size 0 is 1",
+    far.status === 200 && far.body.items.length === 0 && far.body.page === 1_000_000 && big.body.size === 100 && zero.body.size === 1 && zero.body.items.length === 1, { far: far.body.page, big: big.body.size, zero: zero.body.size });
+  // breaker m4: a row whose item is a case links only to the firm's own case (firm B's case id gives no link).
+  const BCASE = randomUUID();
+  psql(`set session_replication_role = replica; insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id) values ('${BCASE}', '${W}', '${CMB[1]}', 'user-P', 'user-S', 'C-2026-90002', 'sample-solo', '${FB}')`);
+  await q("insert into msg_notification (id, firm_id, staff_id, kind, \"group\", item_kind, item_id) values (gen_random_uuid(), $1, $2, 'case-stage-deadline', 'MY_DEADLINES', 'case', $3), (gen_random_uuid(), $1, $2, 'case-stage-deadline', 'MY_DEADLINES', 'case', $4)", [FA, OFF, BCASE, CASE]);
+  const links = (await call("GET", "/items?size=100", OFF)).body.items.filter((i: { item: { kind: string } }) => i.item.kind === "case");
+  ok("PF-18n DW4 fail (breaker m4): item kind case links to the firm's own case (/cases/<id>) and gives no link for another firm's case id",
+    links.find((i: { item: { id: string } }) => i.item.id === CASE)?.link === `/cases/${CASE}` && links.find((i: { item: { id: string } }) => i.item.id === BCASE)?.link === null, links);
 } finally {
   for (const a of apps) await a.close().catch(() => undefined);
   await sql.end(); await db.$disconnect();

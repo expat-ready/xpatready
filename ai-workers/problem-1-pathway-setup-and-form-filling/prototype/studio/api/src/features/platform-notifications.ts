@@ -3,16 +3,17 @@
 // same adapter (useExisting), so CaseDeadlineJobs (features/case-deadlines.ts, not edited here) registers its jobs and sweep at start.
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
-import type { NotificationPrefsPort } from "../../../ports/notification-prefs.ts";
 import { CASE_DEADLINE_NOTIFICATIONS } from "./case-deadlines.ts";
-import { NOTIFICATION_PREFS } from "../platform/settings/notifications/prefs.ts";
+import { PrismaNotificationPrefs } from "../platform/settings/notifications/prefs.ts";
 import { MyNotifications, NOTIFICATION_PORT, PrismaNotificationPort } from "../platform/notifications/store.ts";
 import { MyNotificationsController } from "../platform/notifications/routes.ts";
 
 export default {
   controllers: [MyNotificationsController],
   providers: [
-    { provide: NOTIFICATION_PORT, useFactory: (prefs: NotificationPrefsPort) => new PrismaNotificationPort(prefs), inject: [NOTIFICATION_PREFS] },
+    // The switch is read by NOTIFICATION_PREFS' own adapter over the caller's transaction (breaker M1: the shared pool would
+    // need a second connection per notify, and a switch changed in the same transaction would be missed).
+    { provide: NOTIFICATION_PORT, useFactory: () => new PrismaNotificationPort((tx) => new PrismaNotificationPrefs(tx)) },
     { provide: CASE_DEADLINE_NOTIFICATIONS, useExisting: NOTIFICATION_PORT },
     { provide: MyNotifications, useFactory: (db: Db) => new MyNotifications(db), inject: [Db] },
   ],

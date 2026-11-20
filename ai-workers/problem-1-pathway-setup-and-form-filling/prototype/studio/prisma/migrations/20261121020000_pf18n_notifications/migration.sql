@@ -6,7 +6,7 @@
 --   * real keys, RESTRICT both ways: firm_id → platform_firm(id); (firm_id, staff_id) → platform_staff(firm_id, id), so a row
 --     never points at another firm's person (the PF-18bk pattern). platform.prisma gets two back-relation lines only.
 --   * ids only (AG-7-39 r10): kind and item_kind are PF-18np's kebab-case names, group one of its eight; no text column.
---   * after insert only read_at and created_at change; no delete or truncate by the app (part 2's 90-day job will add its own).
+--   * after insert only read_at and created_at change (created_at never earlier); no delete or truncate by the app (part 2's 90-day job will add its own).
 --   * every function is msg_notification_ (area prefix msg_, rows rev 15.2).
 -- Rollback (in this order): DROP TABLE "msg_notification"; DROP FUNCTION msg_notification_write(); delete this folder's row from
 --   _prisma_migrations.
@@ -38,11 +38,15 @@ ALTER TABLE "msg_notification"
   ADD CONSTRAINT "msg_notification_group_check" CHECK ("group" IN ('WORK_HANDED_TO_ME', 'NEEDS_YOU', 'MY_DEADLINES', 'CLIENT_MESSAGED_ME', 'MENTIONS', 'TEAM_WATCH', 'PAYMENTS', 'FIRM_AND_CONNECTIONS')),
   -- A row is never read before it was made.
   ADD CONSTRAINT "msg_notification_read_check" CHECK ("read_at" IS NULL OR "read_at" >= "created_at");
--- A row stays its firm's, person's, kind's and item's: only read_at and created_at change.
+-- A row stays its firm's, person's, kind's and item's: only read_at and created_at change, and created_at only forwards.
 CREATE FUNCTION msg_notification_write() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF (NEW.id, NEW.firm_id, NEW.staff_id, NEW.kind, NEW."group", NEW.item_kind, NEW.item_id) IS DISTINCT FROM (OLD.id, OLD.firm_id, OLD.staff_id, OLD.kind, OLD."group", OLD.item_kind, OLD.item_id) THEN
     RAISE EXCEPTION 'msg_notification: only read_at and created_at of a row change' USING ERRCODE = 'check_violation';
+  END IF;
+  -- A repeat surfaces a row again; it never moves it back in time (breaker m2).
+  IF NEW.created_at < OLD.created_at THEN
+    RAISE EXCEPTION 'msg_notification: created_at never moves earlier' USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;
