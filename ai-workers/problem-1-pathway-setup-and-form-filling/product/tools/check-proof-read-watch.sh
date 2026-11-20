@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Guard test for proof-read-watch.py (founder 20 Nov 23:1x IST, STATE hand-over Lead 4 -> Lead 5 item (3)): (a) a merged
+# "Completes:" capability with no qa PR after 30 min is an ACT, a wait or a later qa PR is not, R1.5 is never proved by
+# "R1.59"; (b) an approved, unlabelled, ready PR on a Lead-read path with no "Lead read the diff: <head>" is an ACT, over
+# 24 h it joins one line; a failed read is an ACT. Fixtures only: US$0, no network.
+#   bash product/tools/check-proof-read-watch.sh
+set -u
+. "$(dirname "$0")/guard-test-lib.sh"
+W="$TOOLS/proof-read-watch.py"
+F=$(mktemp -d "${TMPDIR:-/tmp}/prw.XXXXXXXX"); trap 'rm -rf "$F"' EXIT
+H=abcdef1234567890abcdef1234567890abcdef12; OLD=1111111222222233333334444444555555566666
+NOW=2026-11-20T18:00:00Z
+cat > "$F/closed.json" <<J
+[{"number":10,"merged_at":"2026-11-20T17:20:00Z","created_at":"2026-11-20T10:00:00Z","title":"runtime: a","body":"Done\nCompletes: R1.59\n"},
+ {"number":11,"merged_at":"2026-11-20T17:00:00Z","created_at":"2026-11-20T10:00:00Z","title":"screens: b","body":"Completes: R1.72"},
+ {"number":12,"merged_at":"2026-11-20T17:50:00Z","created_at":"2026-11-20T10:00:00Z","title":"runtime: c","body":"Completes: R1.5"},
+ {"number":13,"merged_at":"2026-11-20T16:00:00Z","created_at":"2026-11-20T10:00:00Z","title":"runtime: d","body":"**Completes:** R1.8"},
+ {"number":14,"merged_at":"2026-11-18T10:00:00Z","created_at":"2026-11-18T09:00:00Z","title":"runtime: old","body":"Completes: R1.9"},
+ {"number":15,"merged_at":null,"created_at":"2026-11-20T10:00:00Z","title":"closed unmerged","body":"Completes: R1.11"},
+ {"number":20,"merged_at":"2026-11-20T17:10:00Z","created_at":"2026-11-20T17:05:00Z","title":"qa: capability R1.72 Works on main","body":""},
+ {"number":21,"merged_at":null,"created_at":"2026-11-20T15:00:00Z","title":"qa: capability R1.8 Partial","body":""}]
+J
+pr() { printf '{"number":%s,"draft":%s,"title":"pr %s","head":{"ref":"%s","sha":"%s"},"labels":[%s]}' "$1" "$2" "$1" "$3" "$4" "$5"; }
+echo "[$(pr 30 false b30 $H ''),$(pr 31 false b31 $H ''),$(pr 32 false b32 $H ''),$(pr 33 false b33 $H ''),$(pr 34 false b34 $H '{"name":"review: approved"}'),$(pr 35 true b35 $H ''),$(pr 36 false b36 $H ''),$(pr 37 false b37 $H ''),$(pr 38 false mergify/x $H '')]" > "$F/open.json"
+ap() { printf '{"created_at":"%s","body":"%s"}' "$1" "$2"; }
+MIG='[{"filename":"ai-workers/x/prototype/studio/prisma/migrations/2026/migration.sql"}]'
+for n in 30 31 32 34 35 36 37 38; do echo "$MIG" > "$F/files_$n.json"; done
+echo '[{"filename":"ai-workers/x/prototype/studio/web/src/page.tsx"}]' > "$F/files_33.json"
+echo "[$(ap 2026-11-20T17:00:00Z "Reviewer: Approve $H")]" > "$F/comments_30.json"
+echo "[$(ap 2026-11-20T17:00:00Z "Reviewer: Approve $H"),$(ap 2026-11-20T17:10:00Z "Lead read the diff: ${H:0:9} (Lead 5)")]" > "$F/comments_31.json"
+echo "[$(ap 2026-11-20T17:00:00Z "Reviewer: Approve $OLD")]" > "$F/comments_32.json"
+for n in 33 34 35 38; do cp "$F/comments_30.json" "$F/comments_$n.json"; done
+echo "[$(ap 2026-11-19T10:00:00Z "Reviewer: Approve $H")]" > "$F/comments_36.json"
+echo "[$(ap 2026-11-20T17:00:00Z "**Reviewer:** Approve \`$H\`")]" > "$F/comments_37.json"
+
+out=$(python3 -I "$W" --fixture "$F" --now "$NOW"); rc=$?
+has() { grep -qF -- "$1" <<<"$out" && echo 1 || echo 0; }
+hasnt() { grep -qF -- "$1" <<<"$out" && echo 0 || echo 1; }
+ok "(a) merged 40 min ago with no qa PR is an ACT naming the command" "$(has 'ACT   R1.59 merged in #10')" "$out"
+ok "(a) the ACT says what to type" "$(has '"/qa capability R1.59"')" "$out"
+ok "(a) a qa PR opened after the merge proves it" "$(hasnt 'ACT   R1.72')" "$out"
+ok "(a) under 30 min it waits, no ACT" "$(hasnt 'ACT   R1.5 ')" "$out"
+ok "(a) a qa PR opened before the merge does not count" "$(has 'ACT   R1.8 merged in #13')" "$out"
+ok "(a) outside 24 h and unmerged PRs are ignored" "$( [ "$(has 'R1.9 ')$(has 'R1.11')" = 00 ] && echo 1 || echo 0)" "$out"
+ok "(b) approved on head, migration, no read is an ACT with its age" "$(has 'ACT   #30 approved at abcdef123 60 min ago')" "$out"
+ok "(b) a Lead read on the head clears it" "$(hasnt '#31 ')" "$out"
+ok "(b) an Approve on an older head does not count" "$(hasnt '#32 ')" "$out"
+ok "(b) no Lead-read path, no ACT" "$(hasnt '#33 ')" "$out"
+ok "(b) labelled, draft and mergify PRs are skipped" "$( [ "$(has '#34 ')$(has '#35 ')$(has '#38 ')" = 000 ] && echo 1 || echo 0)" "$out"
+ok "(b) bold and backticked Approve lines count" "$(has 'ACT   #37 approved')" "$out"
+ok "(b) over 24 h joins one line" "$(has '1 approved PR(s) waiting over 24 h on the Lead'"'"'s P-423 read: #36 (32 h)')" "$out"
+ok "exit code is the ACT count (5)" "$( [ "$rc" = 5 ] && echo 1 || echo 0)" "rc=$rc; $out"
+echo '{not json' > "$F/open.json"
+out=$(python3 -I "$W" --fixture "$F" --now "$NOW"); rc=$?
+ok "a failed read is an ACT and exit 1, never a silent pass" "$( [ "$rc" = 1 ] && has 'ACT   proof/read watch could not run' || echo 0)" "$out"
+grep -q "proof-read-watch.py" "$TOOLS/lead-watch.sh"; ok "lead-watch.sh 2d runs proof-read-watch.py and counts its ACT lines" "$([ $? = 0 ] && echo 1 || echo 0)"
+finish
