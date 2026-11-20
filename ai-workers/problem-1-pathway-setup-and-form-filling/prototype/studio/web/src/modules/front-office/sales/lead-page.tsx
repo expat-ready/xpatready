@@ -18,6 +18,7 @@ import { useLock, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
+import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
 import { arrivedLabel, sinceLabel } from "./time";
 const ATTRIBUTION: Record<string, string> = { utmSource: "Campaign source", utmMedium: "Medium", utmCampaign: "Campaign", utmTerm: "Term", utmContent: "Content", clickId: "Click id", clickIdKind: "Click id kind", landingPage: "Landing page", referrerUrl: "Referring page" };
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -122,6 +123,7 @@ function LeadBody({ id }: { id: string }) {
               <Row label="Phone"><PhoneRow person={l.person} mayEdit={can(me, KEY.edit)} /></Row>
             </dl>
           </section>
+          <IdentityCheckPanel personId={l.person.id} name={[l.person.givenNames, l.person.familyName].filter((x) => x && x.trim()).join(" ")} />
           <section aria-labelledby="fo-enquiry" className="rounded-xl border border-border bg-surface-raised p-4">
             <h2 id="fo-enquiry" className="text-sm font-semibold">Enquiry</h2>
             <dl className="mt-2">
