@@ -54,7 +54,7 @@ function LeadsBody() {
   const [q, setQ] = React.useState("");
   // QA-572: a from day after the to day is said at the field and never sent; no list stands under it (break M1).
   const badRange = rangeError(narrow.from, narrow.to);
-  const rows = useLeads(view, sources, ready && !badRange, more);
+  const rows = useLeads(view, sources, ready && !badRange && owners.settled, more);   // the chip is known first (re-review M1)
   const empty = view === "mine" && !can(me, KEY.edit) ? "You have no open leads." : EMPTY[view];
   const take = useTakeIt();
   const canTake = can(me, KEY.edit) && !owners.oneUser;

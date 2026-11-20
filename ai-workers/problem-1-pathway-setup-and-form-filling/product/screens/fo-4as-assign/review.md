@@ -61,3 +61,27 @@ Met: server authorisation (unchanged API; 403 and 422 seen) · concurrency, stal
 A real screen reader. A visible headed browser (walked headless with screenshots). An intended user's unaided walk (D17, D20 stay with the founder). Prospect and Leads-row Assign and DW19 are declared out of this item, and #2476's rules are another lane's, so none of them is a finding.
 
 **Verdict: Block** at `3118d382771d7a6019549bbc7c47118328c60e3d`. To fix: **M1** (hide the "n unassigned" menu badge in a one-user firm and assert it in AS5). m1–m6 are Should: fix them or list each with a follow-up row.
+
+---
+
+## Re-review, diff only (P-277): 3118d38 → `9b6088e59d829bbf261a5590a6b02c520a6bfb69`
+Read: `git diff 3118d3827 9b6088e59 -- …/prototype` (sales-frame.tsx, lead-owner.tsx, lead-page.tsx, prospect-actions.tsx, the check). Ran on my own copy of 9b6088e (:4441, `xr_studio_rvas2`, web rebuilt; stopped after): check_fo4as **25/25** twice, plus a targeted walk (scratchpad `jt/rewalk.mjs`, `jt/r2.mjs`).
+
+| Item | Status | Evidence |
+|---|---|---|
+| **M1** badge in a one-user firm | **Still open (path not covered)** | The badge now waits for `oneUser === false`, and AS5 passes. But AS5 opens Leads at `?view=all`. A one-user firm's person who opens **Leads with no `?view`** (the menu link) still gets **"1 unassigned"**: seen twice, after a clean copy restart. That stays true on Pipeline. Cause: while `useOwners` is pending, `solo` is false, so `chips[0]` is Unassigned. `useLeads("unassigned")` (`leads-page.tsx:57`) then fetches `["fo","leads","unassigned"]` (1 `view=unassigned` request seen). That is the badge's query key, and `useQuery({ enabled: false })` in `sales-frame.tsx:22` still returns that cached data. **Fix:** in `Menu` show the count only when `on` (for example `on ? data.length : 0`), or give the badge its own key. Also enable the Leads list only once `owners.settled`. Add an AS5 step that opens `/front-office/leads` with no `?view` and checks no badge |
+| m1 history names a departed assignee | Fixed | AS4b: a Case Officer reads "assigned it to (Inactive) Sample Temp …". The names come from the timeline's own actors and the lead's owner label |
+| m2 rail reflow | Fixed | With `assignees` slowed 2 s, the page holds Loading, then draws Owner, Take it, Assign and Engage at once |
+| m3 failed `assignees` read | **Fixed on Leads, broke the lead page** | Leads with `assignees` answering 500 now keeps the Unassigned chip, the Owner column and Take it. But **the lead page never leaves "Loading the lead"**: over 60 s it made **119 `leads/assignees` requests** (`r2-fail-lead.png`). Before this round the page drew. Cause: `lead-page.tsx:92` gates on `owners.settled`, and the errored query keeps refetching as observers re-mount. **Fix:** treat an error as settled without refetch looping (for example `retryOnMount: false` on the `["fo","assignees"]` queries), or draw the lead and show the rail's owner parts as unavailable with Try again |
+| m4 empty / over-500 history | Fixed | Shows "No owner changes yet."; the over-500 case is worded |
+| m5 duplicated "active owner" test, and 3 clicks | Listed in the PR | Accepted as follow-ups |
+| m6 error tied to the group | Fixed | `aria-describedby="fo-assign-problem"` → "Choose who gets the lead."; axe (WCAG 2.2 A/AA) clean with the error showing |
+| Breaker 3b, 4, 5, 6, 7 | Hold | AS7 passes (sharing off → toast "You no longer see it." and back on Leads). After a refusal no choice stays checked and the description reads "now Case officer (Sample)". Escape returns focus to Assign |
+
+### Ranked, to fix
+1. **M1 Major (Must), still open:** the one-user firm's badge shows after opening Leads by its menu link (above).
+2. **N1 Major (Must), new in this round:** if `leads/assignees` fails, the lead page stays on Loading forever and polls about 2 requests per second (`lead-page.tsx:92`, `prospect-actions.tsx:22`). A failed read must draw an error with Try again (EXPERIENCE §4), never a spinner plus a request loop. Add a check that routes `assignees` to a 500 and expects the lead page to draw.
+
+Copy note: my own copy stopped twice during the walk with nothing logged (outside interference; no product error in its log). Every result above comes from a clean restart in which the copy stayed up (HTTP 200 after the run).
+
+**Verdict: Block** at `9b6088e59d829bbf261a5590a6b02c520a6bfb69`. To fix: **M1** (the badge after opening Leads with no `?view`, with an AS5 step) and **N1** (the lead page stuck on Loading and looping when `assignees` fails, with a check).

@@ -11,6 +11,7 @@
 //        are not shown;
 //   AS4b a deactivated new owner keeps their name in the history, for every reader;
 //   AS7  with "everyone sees all" off, assigning a lead away ends on Leads with a word, not on "Lead not found";
+//   AS8  when `leads/assignees` fails, the lead page still draws (no endless wait, no request loop);
 //   AS6  keyboard only, axe clean with the panel open, no sideways scroll at 375, 1024 and 1440 px.
 // Sample rows only; US$0, no model call. Usage, from prototype/:
 //   zsh studio/tools/isolated.sh screens_as 4532 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4as_assign_browser.ts 4532 xr_studio_screens_as
@@ -147,6 +148,9 @@ try {
   const solo = await api(tok.S, "GET", "/leads/assignees");
   const s1 = lead(SOLO, `Sol${run}`);
   const s = await pageAs(tok.S);
+  // Leads opened from the menu (no ?view): the badge stays hidden while the page works out its first chip (re-review M1).
+  await s.goto(`${BASE}/front-office/leads`); await s.getByRole("heading", { level: 1, name: "Leads" }).waitFor({ timeout: 30_000 }); await s.waitForTimeout(1_500);
+  ok("FO-4as AS5 (re-review M1): Leads opened from the menu in a one-user firm shows no \"n unassigned\" badge", (await s.locator("[data-unassigned-badge]").count()) === 0);
   await s.goto(`${BASE}/front-office/leads?view=all`);
   await s.locator(`tr[data-lead-row="${s1.number}"]`).waitFor({ timeout: 30_000 });
   const heads = await s.locator("table th").allInnerTexts();
@@ -179,6 +183,15 @@ try {
     ok(`FO-4as AS6: no sideways page scroll with the Assign panel open at ${w} px`, !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
     await p.context().close();
   }
+  // ---------------------------------------------------------------- AS8: the colleague list fails (re-review N1)
+  const f = await pageAs(tok.T); let asked = 0;
+  await f.route("**/api/front-office/leads/assignees", (r) => { asked++; return r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ status: 500, detail: "Sample outage" }) }); });
+  await f.goto(`${BASE}/front-office/leads/${a1.id}`);
+  const drew = await f.getByRole("heading", { level: 1, name: a1.name }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+  await f.waitForTimeout(3_000);
+  ok("FO-4as AS8 (re-review N1): when the colleague list fails, the lead page still draws, with its owner line, and asks for the list only a few times", drew && (await f.locator("aside [data-owner]").count()) === 1 && asked <= 3, { drew, asked });
+  await f.context().close();
+
   // ---------------------------------------------------------------- AS7: assigned away with sharing off (break 3b)
   await sharing(false);
   const a7 = lead(A, `Off${run}`);
