@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 05:03 IST):** #2621's size exception is granted as **P-775**: a standing rule for code and tests under 800 plus the PR's own screens records. It's in records PR #2660 (queued). After #2660 merges, Lead 8 re-runs pr-rules and labels 65f56d5cc. Future PRs on my rows with records over the cap cite P-775.
+
 **Lead B (9) update (21 Nov 05:01 IST):** **#2621 (PF-18h) approved head 65f56d5cc**, sent to Lead 8. It needs the Lead's size ruling (~1,000 lines = 510 code and tests + 489 records); I recommend a P-748-style exception, then a fresh run and the label. In scope: no case files, no j_74.
 
 **Lead B (9) update (21 Nov 04:09 IST, Lead 8):** #2594 (CS-DL3 part 2) merged at 03:04 IST. R1.74 still needs PF-18h #2621, then CS-DL3 part 3 (Lead C's, owns J-74). #2608 merged, so PF-18h's route line goes in platform/routes.tsx, no fallback (PF-18h lane told).
