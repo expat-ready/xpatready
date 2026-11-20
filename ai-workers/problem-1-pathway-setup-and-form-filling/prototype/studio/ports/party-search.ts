@@ -29,11 +29,11 @@ export interface PartySearchPort {
 }
 
 /** A fake party: its case, role, keys, and whether this caller may see it. */
-export type FakeParty = Omit<PartyMatch, "matchedOn" | "score"> & { firmId: string; email?: string; phone?: string; hidden?: boolean };
+export type FakeParty = Omit<PartyMatch, "matchedOn" | "score"> & { firmId?: string; email?: string; phone?: string; hidden?: boolean; seenBy?: string[] };
 
 /** The fake: the given firm's five Sample parties (client, spouse, sponsor, employer, one hidden), or the ones the test
- *  passes. A party matches on its email (exact, lower-cased), its phone (exact) or its name (the same name key). */
-export function fakePartySearch(firmId: string, parties?: FakeParty[]): PartySearchPort & { parties: FakeParty[] } {
+ *  passes. With no firm, the parties answer every firm (CS-S1's `fakePartySearch()`). A party matches on its email (exact, lower-cased), its phone (exact) or its name (the same name key). */
+export function fakePartySearch(firmId?: string, parties?: FakeParty[]): PartySearchPort & { parties: FakeParty[] } {
   const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
   const list: FakeParty[] = parties ?? [
     { firmId, kind: "CLIENT", recordId: id(1), caseId: id(11), caseNumber: "C-2026-1", clientId: id(21), roleOnCase: "PRINCIPAL", displayName: "Sample Client Avery", email: "avery.client@example.test" },
@@ -46,16 +46,17 @@ export function fakePartySearch(firmId: string, parties?: FakeParty[]): PartySea
     parties: list,
     async search(ctx, query) {
       const q = PartySearchQuery.parse(query), email = normaliseEmail(q.email), name = q.name ? personNameKey(q.name, "") : "";
-      const found = list.filter((p) => p.firmId === ctx.firmId).map((p) => {
+      const found = list.filter((p) => p.firmId === undefined || p.firmId === ctx.firmId).map((p) => {
         const on: PartyMatch["matchedOn"] = [];
         if (name && personNameKey(p.displayName, "") === name) on.push("NAME");
         if (email && p.email === email) on.push("EMAIL");
         if (q.phone && p.phone === q.phone) on.push("PHONE");
         return { p, on };
       }).filter((x) => x.on.length);
-      const hidden = found.filter((x) => x.p.hidden).length;
+      const isHidden = (p: FakeParty) => !!p.hidden && !(p.seenBy ?? []).includes(ctx.staffId);   // a hidden party, unless this staff member sees its case
+      const hidden = found.filter((x) => isHidden(x.p)).length;
       return {
-        matches: found.filter((x) => !x.p.hidden).map(({ p, on }) => PartyMatch.parse({ kind: p.kind, recordId: p.recordId, caseId: p.caseId, caseNumber: p.caseNumber, clientId: p.clientId, roleOnCase: p.roleOnCase, displayName: p.displayName, matchedOn: on, score: on.includes("EMAIL") || on.includes("PHONE") ? 1 : 0.9 })),
+        matches: found.filter((x) => !isHidden(x.p)).map(({ p, on }) => PartyMatch.parse({ kind: p.kind, recordId: p.recordId, caseId: p.caseId, caseNumber: p.caseNumber, clientId: p.clientId, roleOnCase: p.roleOnCase, displayName: p.displayName, matchedOn: on, score: on.includes("EMAIL") || on.includes("PHONE") ? 1 : 0.9 })),
         hidden_count: hidden, needs_confirmation_by_role: hidden ? ["FILE_OWNER", "FIRM_ADMIN"] : [],
       };
     },

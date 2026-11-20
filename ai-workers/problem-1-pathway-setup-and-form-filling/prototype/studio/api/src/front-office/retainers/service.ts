@@ -511,6 +511,7 @@ export class Retainers {
     const noCheck = !!signer && (await this.db.foIdentityCheck.count({ where: { firmId: ctx.firmId, personId: signer.id } })) === 0;
     const warnings = noCheck ? [`No identity check is recorded for ${nameOf(signer!) || "the signer"}.`] : [];
     await this.tx(async (tx) => {
+      if (r.kind === "RETAINER" && r.prospectId) await clearance(tx, ctx.firmId, r.prospectId);   // FO-13c (m3): asked again in the send's transaction
       const now = new Date(this.clock.now());
       const n = await tx.foRetainer.updateMany({ where: { firmId: ctx.firmId, id: r.id, status: "DRAFT", currentVersion: r.currentVersion }, data: { status: "SENT" } });
       if (n.count !== 1) conflict("This agreement changed at the same time. Open it again.", "CHANGED");

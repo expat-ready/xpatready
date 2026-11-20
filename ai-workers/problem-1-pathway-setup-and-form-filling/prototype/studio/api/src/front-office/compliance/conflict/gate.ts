@@ -53,7 +53,7 @@ export async function clearance(db: Db, firmId: string, prospectId: string) {
   const party = await partyOf(db, firmId, prospectId);
   const c = party ? await latestCheck(db, firmId, party) : null;
   if (!party || !c) return refuse(REQUIRED, "CONFLICT_CHECK_REQUIRED");
-  if (c.result === null) return refuse(UNCONFIRMED, "CONFLICT_CHECK_UNCONFIRMED");
+  if (c.result === null || (c.hiddenCount > 0 && !c.confirmedBy)) return refuse(UNCONFIRMED, "CONFLICT_CHECK_UNCONFIRMED");   // M1
   if (c.result === "CONFLICT_CANNOT_ACT") return refuse(CANNOT_ACT, "CONFLICT_CANNOT_ACT");
   if (!same({ name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, await termsOf(db, firmId, party))) return refuse(STALE, "CONFLICT_CHECK_STALE");
   return c;

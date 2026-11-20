@@ -37,6 +37,10 @@ const forbidden = (detail: string): never => problem(403, "Not allowed", detail,
 type StoredMatch = { source: "FRONT_OFFICE" | "CASE"; kind: string; recordId: string; displayName?: string; matchedOn: string[]; score?: number; caseId?: string; caseNumber?: string; clientId?: string; roleOnCase?: string };
 type PersonRow = { id: string; given_names: string | null; family_name: string | null; by_email: boolean; by_phone: boolean; sim: number; seen: boolean };
 
+/** Who may see every front-office match (contract v0.1 §3.1 "a person who may see the matches": a firm admin, or one who
+ *  sees all records): the firm's Owner or Admin, or "everyone sees all" with agent/prospect:view.all. */
+const seesEveryMatch = (ctx: StaffContext, vis: { seesAll: boolean }) => vis.seesAll || ctx.roles.some((r) => r === "OWNER" || r === "ADMIN");
+
 export class ConflictChecks {
   constructor(private readonly db: PrismaClient, private readonly clock: Clock, private readonly parties: PartySearchPort | null = null, private readonly audit: AuditPort<Tx> = auditEvent) {}
 
@@ -44,7 +48,7 @@ export class ConflictChecks {
   private async engagement(ctx: StaffContext, prospectId: unknown) {
     if (typeof prospectId !== "string" || !UUID.test(prospectId)) return bad("prospectId", "prospectId: the prospect the check is for (a uuid).");
     const p = await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: prospectId.toLowerCase() }), select: { id: true, ownerStaffId: true, wonVia: true } });
-    if (!p || (!(await visibilityOf(this.db, ctx)).seesAll && p.ownerStaffId !== ctx.staffId)) return notFound();
+    if (!p || (!seesEveryMatch(ctx, await visibilityOf(this.db, ctx)) && p.ownerStaffId !== ctx.staffId)) return notFound();
     const party = await partyOf(this.db, ctx.firmId, p.id) ?? notFound("party on this prospect");
     return { prospect: p, party };
   }
@@ -52,7 +56,7 @@ export class ConflictChecks {
   /** The search, read-only: the visible matches in FO-13's shape and how many the checker may not see. */
   private async search(ctx: StaffContext, party: Party, t: Terms) {
     if (!t.name && !t.email && !t.phone) problem(422, "Check the details", "The client has no name, email or phone to search.", { code: "NOTHING_TO_SEARCH" });
-    const vis = await visibilityOf(this.db, ctx), out: StoredMatch[] = [];
+    const v0 = await visibilityOf(this.db, ctx), every = seesEveryMatch(ctx, v0), vis = every ? { seesAll: true, seesUnassigned: true } : v0, out: StoredMatch[] = [];
     let hidden = 0;
     const email = normaliseEmail(t.email), phone = t.phone ? phoneE164Exact(t.phone) : null;
     if (party.kind === "PERSON") {
@@ -90,15 +94,18 @@ export class ConflictChecks {
   }
 
   /** What a check shows: the searched terms, the visible matches grouped by case for CASE ones, never the hidden ones. */
-  private view(c: Prisma.FoConflictCheckGetPayload<object>) {
-    const matches = c.matches as StoredMatch[];
+  /** M2: the names are shown to the checker and to a reader who sees every match; anyone else reads the check with its
+   *  matches counted as hidden (the records' visibility may differ from the checker's). */
+  private view(c: Prisma.FoConflictCheckGetPayload<object>, ctx: StaffContext, every: boolean) {
+    const all = c.matches as StoredMatch[], named = every || c.checkedBy === ctx.staffId || c.confirmedBy === ctx.staffId;
+    const matches = named ? all : [], hiddenCount = c.hiddenCount + (named ? 0 : all.length);
     return {
       id: c.id, prospectId: c.prospectId, partyKind: c.partyKind, personId: c.personId, companyId: c.companyId,
       searched: { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone }, matches,
       byCase: Object.values(matches.filter((m) => m.source === "CASE").reduce<Record<string, { caseId: string; caseNumber: string | null; parties: StoredMatch[] }>>((a, m) => {
         (a[m.caseId!] ??= { caseId: m.caseId!, caseNumber: m.caseNumber ?? null, parties: [] }).parties.push(m); return a;
       }, {})),
-      hiddenCount: c.hiddenCount, hiddenLine: c.hiddenCount ? HIDDEN_LINE : null, needsConfirmation: c.hiddenCount > 0 && !c.confirmedBy,
+      hiddenCount, hiddenLine: hiddenCount ? HIDDEN_LINE : null, needsConfirmation: c.hiddenCount > 0 && !c.confirmedBy,
       result: c.result, disclosureText: c.disclosureText, writtenConsentRef: c.writtenConsentRef,
       checkedBy: c.checkedBy, checkedAt: c.checkedAt, confirmedBy: c.confirmedBy, confirmedAt: c.confirmedAt,
     };
@@ -125,15 +132,16 @@ export class ConflictChecks {
 
   /** Runs and records one check (201): the search again, server-side, and the result in the same insert. Idempotent by
    *  `requestId` (the check's id): a replay by the same person for the same prospect returns the saved check. */
-  async record(ctx: StaffContext, body: Record<string, unknown>) {
+  async record(ctx: StaffContext, body: Record<string, unknown>, retried = false) {
     const b = body ?? {};
     const id = typeof b.requestId === "string" && UUID.test(b.requestId.trim()) ? b.requestId.trim().toLowerCase() : bad("requestId", "requestId: a uuid the screen makes once per check.");
     const { prospect, party } = await this.engagement(ctx, b.prospectId);
     const had = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id }) });
-    if (had) return had.checkedBy === ctx.staffId && had.prospectId === prospect.id ? { ...this.view(had), scope: this.parties ? null : NOT_SEARCHED } : problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" });
+    if (had) return had.checkedBy === ctx.staffId && had.prospectId === prospect.id ? { ...this.view(had, ctx, false), scope: this.parties ? null : NOT_SEARCHED } : problem(409, "Already used", "This request was already used. Start a new check.", { code: "REQUEST_REUSED" });
     const t = await termsOf(this.db, ctx.firmId, party), s = await this.search(ctx, party, t);
     const o = this.outcome(b, s.hidden === 0);
-    if (s.hidden && o.result === "NO_CONFLICT") problem(409, "Needs a confirmation", `${HIDDEN_LINE} Record the check without a result, or with another result.`, { code: "NEEDS_CONFIRMATION" });
+    // M1 (brief): with hidden matches the check is written with no result; the confirmer, who sees them, gives it.
+    if (s.hidden && o.result !== null) problem(409, "Needs a confirmation", `${HIDDEN_LINE} Record the check without a result.`, { code: "NEEDS_CONFIRMATION" });
     const now = new Date(this.clock.now());
     try {
       await this.db.$transaction(async (tx) => {
@@ -144,11 +152,11 @@ export class ConflictChecks {
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
-      if ((e as { code?: unknown })?.code === "P2002") return this.record(ctx, b);
+      if ((e as { code?: unknown })?.code === "P2002" && !retried) return this.record(ctx, b, true);   // a concurrent replay won the id: answer as a replay, once
       throw e;
     }
     const c = await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id }) });
-    return { ...this.view(c), scope: s.scope };
+    return { ...this.view(c, ctx, false), scope: s.scope };
   }
 
   /** Confirms a check with hidden matches: another active staff member who may see them (sees every record, or the
@@ -159,7 +167,11 @@ export class ConflictChecks {
     if (c.hiddenCount === 0) problem(409, "Not possible now", "This check has no hidden matches: there is nothing to confirm.", { code: "NOTHING_TO_CONFIRM" });
     if (c.confirmedBy) problem(409, "Not possible now", "This check is already confirmed.", { code: "ALREADY_CONFIRMED" });
     if (c.checkedBy === ctx.staffId) forbidden("Another staff member who may see the hidden matches confirms a check, never its checker.");
-    if (!(await visibilityOf(this.db, ctx)).seesAll && !ctx.roles.some((r) => r === "OWNER" || r === "ADMIN")) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
+    if (!seesEveryMatch(ctx, await visibilityOf(this.db, ctx))) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
+    // M3: the confirmer sees the matches: the same terms searched again with their visibility hide nothing.
+    const party = { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party;
+    const seen = await this.search(ctx, party, { name: c.searchedName, email: c.searchedEmail, phone: c.searchedPhone });
+    if (seen.hidden) forbidden("Some of this check's matches are hidden from you too (on cases you cannot open): a person who sees them confirms it.");
     const o = this.outcome(body ?? {}, c.result === null);
     if (c.result !== null && o.result !== null && o.result !== c.result) problem(409, "Not possible now", `This check already says ${c.result}; it never changes. Record a new check instead.`, { code: "RESULT_FIXED" });
     const now = new Date(this.clock.now()), won = c.prospectId ? (await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: c.prospectId }), select: { wonVia: true } }))?.wonVia ?? null : null;
@@ -169,14 +181,15 @@ export class ConflictChecks {
       await this.written(tx, ctx, "conflict.confirmed", c.id, `Conflict check confirmed (${c.result ?? o.result})`,
         { checkId: c.id, prospectId: c.prospectId!, partyKind: c.partyKind, personId: c.personId, companyId: c.companyId, result: c.result ?? o.result, hiddenMatches: true, confirmed: true, clientAlready: won !== null });
     });
-    return this.view(await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: c.id }) }));
+    return { ...this.view(await this.db.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: c.id }) }), ctx, true), matchesNow: seen.matches };
   }
 
   /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for). */
   async list(ctx: StaffContext, prospectId: string) {
     const { party } = await this.engagement(ctx, prospectId);
     const rows = await this.db.foConflictCheck.findMany({ where: firmScope(ctx.firmId, party.kind === "PERSON" ? { personId: party.id } : { companyId: party.id }), orderBy: [{ checkedAt: "desc" }, { id: "desc" }] });
-    return { checks: rows.map((r) => this.view(r)), scope: this.parties ? null : NOT_SEARCHED };
+    const every = seesEveryMatch(ctx, await visibilityOf(this.db, ctx));
+    return { checks: rows.map((r) => this.view(r, ctx, every)), scope: this.parties ? null : NOT_SEARCHED };
   }
 
   /** One audit line (ids and the result, never a searched value), then `conflict.checked` last (contracts §0.5). */
