@@ -75,3 +75,25 @@ The shared tree was not changed apart from this file. Its screenshots were not r
 - **j_26:** its claims (one site saved by screens, stored once, one audit line, snippet copied and drawn) match what the code does. It does not test multiple sites (see M1).
 
 Verdict: Block (one open Major, M1, at 43f51b83c).
+
+## Re-check on e9dc1b3ef (round 2 of 2)
+Checked only `git diff 43f51b83c e9dc1b3ef`, on a fresh isolated copy of e9dc1b3ef (`brk2_fo4w` on :4492, from a scratch worktree, seeded the same way as before). I re-ran audit, valid, roles and ui.
+- **M1 fixed.** 6, 7, 8 and 20 sites save at once (200), and removing all of them at once also saves (200). Twenty sites of about 183 characters save and clear.
+  The audit line carries `addedCount` and `removedCount` plus lists of whole sites cut to fit, ending "(+n more)". There was no 500 and no audit alarm.
+  Sites of 201 and 210 characters get 422 on their own field. A non-ASCII name that grows when converted to punycode is still bounded: a label over 63 characters is refused, and a 151-character punycode site saves. The input's maxLength is now 200.
+- **m1 fixed.** These hosts are now refused on their field: `https://*`, `https://*.example.com`, a quote, `;`, `,`, `$`, `(`, `!`, `%2A`, a zero-width space,
+  a label starting or ending with `-`, and a trailing dot. These are still accepted: upper case with :443, `bücher.de` and `café.fr`
+  (stored as punycode), `localhost` with or without a port, IPv4, IPv6 with a port, and `:8080`.
+  `a_b.example.com` is now refused. That is acceptable, because browsers seldom send such an origin.
+- **m2 and m3 fixed.** After Remove, each message stays on its own row's value ("bad one" and `https://x.com/page` keep theirs, and the blank row has none).
+  Focus goes to a site field after removing the first, a middle or the last row, by mouse or by keyboard.
+- **New: an unchanged list writes nothing.** Saving the same list, or the same list written differently (upper case, slash, :443, duplicates), returns 200 with the same version and no audit line.
+  A reordered list counts as a change: one line and a new version. A stale version with the same list still gets 409 (the version check runs first).
+- **Still held:** roles (Owner and Admin 200; Officer, Case Manager, Read-only and Billing 403; deactivated 401; ended grant 403);
+  another firm's form 404; odd JSON 400 or 422; 10 parallel saves give one 200 and nine 409 with one audit line; script in the form name shows as text;
+  no sideways scroll at 1024 px, 375 px or 200 % zoom; the copy fallback; Enter saves; no page errors.
+- **n1 (Minor, new):** the summary that names rows ("Not saved: check sites 2 and 5.", `web-form-settings-page.tsx`, the `rowsOff`
+  summary) is not updated by Remove. After removing the refused rows, it still names sites 2 and 5, though no row is refused any more. It clears on the next save.
+- **Note, not a finding:** `check_fo4w…` sets `const focusedIsSite = true` as a constant. Focus is actually proved only by the `waitForFunction` just before it, which throws if focus is wrong.
+
+Verdict: Approve (no open Blocker or Major at e9dc1b3ef; n1 is Minor).
