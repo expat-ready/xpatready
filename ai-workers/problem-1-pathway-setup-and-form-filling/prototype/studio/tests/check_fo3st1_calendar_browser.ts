@@ -3,13 +3,12 @@
 // (its build, its routes, PF-4's local sign-in, the system clock). Sample firm `maple` is written to the copy's database
 // with the seeded roles' staff, hours, a type, leads and bookings (Sample rows); the browser signs in as each person.
 // One named case per Done when line, a pass and a fail each: J-S1, J-S2, J-S3, J-S4, J-S9, DW10 (axe, keyboard only,
-// 375/1024/1440, 60 bookings in a week with no overlapping blocks), DW11 (PF-1's route check). US$0, no model call.
-//   zsh studio/tools/isolated.sh screens_fo3st1 4541 start PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh screens_fo3st1 4541 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo3st1_calendar_browser.ts 4541 xr_studio_screens_fo3st1
+// 375/1024/1440, 60 bookings in a week with no overlapping blocks), DW11 (the new paths overlap no APP_ROUTES entry; PF-1's own suite checks every module). US$0, no model call.
+//   zsh studio/tools/isolated.sh screens_fo3st1 4541 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo3st1_calendar_browser.ts 4541 xr_studio_screens_fo3st1
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -285,8 +284,13 @@ try {
   ok("FO-3st1 DW10: no page error in the browser", errors.length === 0, errors.slice(0, 3));
 
   // --------------------------------------------------------------------------------------------- DW11
-  let pf1 = ""; try { pf1 = execFileSync(join(STUDIO, "node_modules", ".bin", "tsx"), [join(STUDIO, "tests", "check_pf1_module_routes.ts")], { encoding: "utf8", cwd: join(STUDIO, "..") }); } catch (e) { pf1 = String((e as { stdout?: string }).stdout ?? e); }
-  ok("FO-3st1 DW11 pass/fail: PF-1's route check passes with the two new paths (no path overlaps APP_ROUTES)", !/FAIL/.test(pf1) && /pass/i.test(pf1), pf1.split("\n").filter((l) => /FAIL|passed/.test(l)).slice(0, 4));
+  // PF-1's own suite (check_pf1_module_routes.ts, its own copy on :4517) checks every module's paths; here, without a
+  // second copy: the two new paths are not among APP_ROUTES (modules.tsx), and the running app (which stops on any
+  // clash of addresses, modules.tsx routeProblems) served them above.
+  const appRoutes = [...(readFileSync(join(STUDIO, "web", "src", "modules.tsx"), "utf8").match(/export const APP_ROUTES = \[([\s\S]*?)\] as const/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const ours = ["/front-office/bookings", "/front-office/bookings/:id"];
+  const clash = ours.filter((r) => appRoutes.some((a) => a === r || (a.endsWith("/*") && r.startsWith(a.slice(0, -1)))));
+  ok("FO-3st1 DW11 pass/fail: the two new paths overlap no APP_ROUTES entry, and the app served them (it stops on a clash)", appRoutes.length > 20 && clash.length === 0 && reached, { appRoutes: appRoutes.length, clash });
 } catch (e) {
   ok("FO-3st1: the check ran to the end", false, String((e as Error)?.stack ?? e).slice(0, 1200));
 } finally {
