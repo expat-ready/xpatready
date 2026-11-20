@@ -62,6 +62,12 @@ n += 1
 pc = [c.replace(" ", "") for c in conds.get("product", [])]
 if "check-success=pr-rules" not in pc or "check-success=ci" not in pc:
     bad.append("the product queue does not wait for both check-success = pr-rules (E6, P-772) and check-success = ci")
+# ... and pr-rules must then run on every PR that can reach that queue: its job never skips on a label read from the event
+# (records-label.yml drops "records" on the same push that adds code; no run follows a GITHUB_TOKEN label change).
+n += 1
+pr = yaml.safe_load(open(os.path.join(root, ".github/workflows/pr-rules.yml"), encoding="utf-8"))
+jif = str(((pr.get("jobs") or {}).get("pr-rules") or {}).get("if", ""))
+if "label" in jif: bad.append(f"pr-rules.yml: the job skips on a label ({jif}), so a product PR can wait for a check that never runs")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)
