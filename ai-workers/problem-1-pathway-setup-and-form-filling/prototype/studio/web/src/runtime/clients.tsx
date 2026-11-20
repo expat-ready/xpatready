@@ -232,7 +232,7 @@ function OfferCard({ clientId, viewer, offer, canOpen, reread, refreshCases }: {
         <dt className="text-text-muted">Principal applicant</dt><dd className="[overflow-wrap:anywhere]" data-offer-principal>{offer.principalName ?? <span className="text-text-muted">Not set</span>}</dd>
         <dt className="text-text-muted">Representative of record</dt><dd data-offer-representative>{offer.representative?.name ?? <span className="text-text-muted">Your firm's representative of record (the retainer names none)</span>}</dd>
         {/* Demo chrome, not for porting (review m2): the prototype's simulated client login the opening asks for. */}
-        <dt className="text-text-muted">Questionnaire login</dt><dd className="text-text-muted" data-demo-chrome>{login} <Pill>Simulated</Pill></dd>
+        <dt className="text-text-muted">Client questionnaire login</dt><dd className="text-text-muted" data-demo-chrome>{login} <Pill>Simulated</Pill></dd>
       </dl>
       <div className="mt-4 flex flex-wrap items-start gap-3">
         {!canOpen ? <p className="text-sm" data-offer-ask>Ask someone who can open cases.</p>
