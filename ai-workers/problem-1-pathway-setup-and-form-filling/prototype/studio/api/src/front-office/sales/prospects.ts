@@ -3,6 +3,8 @@
 // person's move, Mark lost, Convert to client and Undo convert, and the board's totals per currency. Each change is one
 // transaction: the prospect under its row lock and seen again, the prospect row first, then its move (FO-1a's chain
 // trigger), one audit line through AuditPort with a typed actor, the outbox row last. Won by signature stays FO-6's.
+// FO-2w: every win (Convert, Signed offline, and FO-6's e-signature) goes through `winProspect`, the one place that
+// moves a prospect to WON and raises `prospect.won`, once per prospect, in the caller's transaction.
 import { Inject, Injectable } from "@nestjs/common";
 import type { FoPipeline, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, ProspectWonPayload, type EventName } from "../../../../ports/events.ts";
@@ -24,7 +26,7 @@ export const WON_REFUSED = "This stage is set when the prospect becomes a client
 export const NOT_SIGNED = "Retainer not signed. Work can start. Invoices will warn you, and the case will show a warning.";   // AG-2-47 rule 16
 const bad = (detail: string, field: string, code = "INVALID") => problem(400, "Check the details", detail, { code, fields: { [field]: detail } });
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ") || "(no name)";
-type Locked = { id: string; number: string; type: FoPipeline; lead_id: string; owner_staff_id: string | null; stage_id: string; kind: FoStageKind; key: string; label: string; won_via: string | null; subject_person_id: string | null; subject_company_id: string | null; primary_contact_person_id: string };
+export type Locked = { id: string; number: string; type: FoPipeline; lead_id: string; owner_staff_id: string | null; stage_id: string; kind: FoStageKind; key: string; label: string; won_via: string | null; subject_person_id: string | null; subject_company_id: string | null; primary_contact_person_id: string };
 
 /** A date filter's day (`YYYY-MM-DD`, years 1900 to 2999, in the firm's zone), or null; anything else → 400 at the field
  *  (break m2: year 0000 or 9999 reached the database and answered 500). */
@@ -50,6 +52,66 @@ export async function ownerAsked(db: Tx | PrismaClient, firmId: string, v: unkno
   if (v === undefined || v === null || v === "") return null;
   const s = typeof v === "string" && UUID.test(v) ? await db.platformStaff.findFirst({ where: firmScope(firmId, { id: v.toLowerCase() }), select: { id: true } }) : null;
   return s?.id ?? bad("owner: choose a person of your firm.", "owner", "UNKNOWN_OWNER");
+}
+
+async function signedRetainer(db: Tx | PrismaClient, firmId: string, prospectId: string) {
+  return (await db.foRetainer.count({ where: firmScope(firmId, { prospectId, kind: "RETAINER" as const, status: { in: [...SIGNED] } }) })) > 0;
+}
+
+/** The prospect under its row lock, with its stage (the row lock first, on the prospect alone; break M1). */
+async function lockProspect(tx: Tx, firmId: string, id: string): Promise<Locked | null> {
+  const [row] = await tx.$queryRaw<Omit<Locked, "kind" | "key" | "label">[]>`
+    select p.id::text, p.number, p.type, p.lead_id::text, p.owner_staff_id::text, p.stage_id::text, p.won_via::text,
+           p.subject_person_id::text, p.subject_company_id::text, p.primary_contact_person_id::text
+      from fo_prospect p where p.firm_id = ${firmId}::uuid and p.id = ${id}::uuid for update`;
+  const st = row ? await tx.foStage.findFirst({ where: firmScope(firmId, { id: row.stage_id }), select: { kind: true, key: true, label: true } }) : null;
+  return row && st ? { ...row, ...st } : null;
+}
+
+export type WonVia = "CONVERTED" | "SIGNED_OFFLINE" | "E_SIGNED";
+const CAUSE = { CONVERTED: "CONVERT", SIGNED_OFFLINE: "SIGNED_OFFLINE", E_SIGNED: "RETAINER_EXECUTED" } as const;
+
+/** FO-2w: the one win (contracts §7 §2.6; AG-2-26 rule 3, AG-2-47). In the caller's transaction, under the prospect's row
+ *  lock: a prospect already WON (or not found) → null and nothing written, so a second win of any kind raises nothing.
+ *  Otherwise the prospect row moves to its pipeline's WON stage (`wonVia`, `wonAt`, any lost reason cleared), then its move
+ *  from where the last one ended (FO-1a's chain), then the caller's audit line, then `prospect.won` with the subject part
+ *  (`wonSubjectOf`) last. The caller's own refusals (Convert's 409s, a retainer's state) come before it.
+ *  Callers: Convert (`Prospects.convert`) and Signed offline (`Retainers.signedOffline`). For FO-6's owner: the e-signature
+ *  win calls this with `via: "E_SIGNED"` and the signed retainer's id; never raise `prospect.won` anywhere else. */
+export async function winProspect(tx: Tx, ctx: StaffContext, prospectId: string, w: { via: WonVia; at: Date; retainerId?: string | null; audit: (p: Locked, retainerSigned: boolean) => Promise<unknown> }) {
+  const p = await lockProspect(tx, ctx.firmId, prospectId);
+  if (!p || p.kind === "WON") return null;
+  const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "WON" as const }) });
+  const last = await tx.foStageMove.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
+  const signed = await signedRetainer(tx, ctx.firmId, p.id);
+  await tx.foProspect.update({ where: { id: p.id }, data: { stageId: to.id, wonVia: w.via, wonAt: w.at, lostReasonId: null, lostReasonKind: null, lostNote: null } });
+  await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: to.id, cause: CAUSE[w.via], byActor: actorOf(ctx) } });
+  await w.audit(p, signed);
+  await tx.moduleEvent.create({ data: { firmId: ctx.firmId, type: EVENT.PROSPECT_WON, subjectId: p.id, payload: (await wonPayload(tx, ctx, p, w.via, signed, w.retainerId ?? null)) as Prisma.InputJsonValue } });
+  return { prospect: p, retainerSigned: signed };
+}
+
+/** `prospect.won` as contracts §2.6 lists it (P-559 (4)): the answers are the person's (the subject, or a company's
+ *  primary contact), the consents are theirs (ids only), the retainer and its representative only when one is signed. */
+async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, signed: boolean, retainerId: string | null) {
+  const personId = p.subject_person_id ?? p.primary_contact_person_id;
+  const [person, lead, consents, retainer, subject] = await Promise.all([
+    tx.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: personId }), select: { givenNames: true, familyName: true, email: true, phone: true, phoneE164: true } }),
+    tx.foLead.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: p.lead_id }), select: { interestedIn: { select: { id: true, label: true, combinationId: true } } } }),
+    tx.msgConsent.findMany({ where: { firmId: ctx.firmId, subjectKind: "FO_PERSON", subjectId: personId }, select: { id: true }, orderBy: { id: "asc" } }),
+    // The retainer that made the win when the caller names it, else the newest signed one.
+    signed ? tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id, kind: "RETAINER" as const, status: { in: [...SIGNED] }, ...(retainerId ? { id: retainerId } : {}) }), select: { id: true, representativeStaffId: true }, orderBy: { createdAt: "desc" } }) : null,
+    wonSubjectOf(tx, ctx.firmId, p.id),
+  ]);
+  const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
+  return ProspectWonPayload.parse({
+    firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: via,
+    retainer_id: retainer?.id ?? null, representative_staff_id: rep?.id ?? null, representative_actor_id: rep?.actorId ?? null, owner_staff_id: p.owner_staff_id,
+    interested_in: lead.interestedIn ? { serviceId: lead.interestedIn.id, label: lead.interestedIn.label, combinationId: lead.interestedIn.combinationId } : null,
+    answers: { "person.given_names": person.givenNames, "person.family_name": person.familyName, "person.email": person.email, "person.phone_number": person.phoneE164 ?? person.phone, "person.current_residence_country": null },
+    consent_ids: consents.map((c) => c.id), sealed_retainer_sha256: null,
+    type: p.type, fromStageKey: p.key, retainerSigned: signed, subject,
+  });
 }
 
 @Injectable()
@@ -144,7 +206,7 @@ export class Prospects {
     if (typeof id !== "string" || !UUID.test(id)) return notFound("prospect");
     const p = await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }), include: { stage: true, lead: { select: { number: true } }, subjectPerson: true, subjectCompany: true, lostReason: { select: { key: true, label: true } } } });
     if (!p || !(await this.seer(ctx)).see(p.ownerStaffId)) return notFound("prospect");
-    const [{ version }, signed] = await Promise.all([this.versionOf(this.db, ctx.firmId, p.id), this.signedRetainer(this.db, ctx.firmId, p.id)]);
+    const [{ version }, signed] = await Promise.all([this.versionOf(this.db, ctx.firmId, p.id), signedRetainer(this.db, ctx.firmId, p.id)]);
     return {
       id: p.id, number: p.number, type: p.type, leadId: p.leadId, leadNumber: p.lead.number, ownerStaffId: p.ownerStaffId, version,
       stage: { id: p.stageId, key: p.stage.key, label: p.stage.label, kind: p.stage.kind },
@@ -155,20 +217,11 @@ export class Prospects {
     };
   }
 
-  private async signedRetainer(db: Tx | PrismaClient, firmId: string, prospectId: string) {
-    return (await db.foRetainer.count({ where: firmScope(firmId, { prospectId, kind: "RETAINER" as const, status: { in: [...SIGNED] } }) })) > 0;
-  }
-
   /** The prospect under its row lock with its stage, seen again (404 otherwise); a version given must be the current one. */
   private async locked(tx: Tx, ctx: StaffContext, id: string, version: unknown, see: (o: string | null) => boolean) {
     // The row lock first, on the prospect alone, then its stage (break M1): a join re-checked after a waiting lock no longer
     // matches once the other change moved the stage, and the loser would hear 404 instead of the stale-version 409.
-    const [row] = await tx.$queryRaw<Omit<Locked, "kind" | "key" | "label">[]>`
-      select p.id::text, p.number, p.type, p.lead_id::text, p.owner_staff_id::text, p.stage_id::text, p.won_via::text,
-             p.subject_person_id::text, p.subject_company_id::text, p.primary_contact_person_id::text
-        from fo_prospect p where p.firm_id = ${ctx.firmId}::uuid and p.id = ${id}::uuid for update`;
-    const st = row ? await tx.foStage.findFirst({ where: firmScope(ctx.firmId, { id: row.stage_id }), select: { kind: true, key: true, label: true } }) : null;
-    const p: Locked | null = row && st ? { ...row, ...st } : null;
+    const p = await lockProspect(tx, ctx.firmId, id);
     if (!p || !see(p.owner_staff_id)) return notFound("prospect");
     const v = await this.versionOf(tx, ctx.firmId, id);
     if (version !== undefined && version !== null && String(version) !== v.version) {
@@ -248,38 +301,14 @@ export class Prospects {
     const pid = this.idOf(id);
     const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
-      const { p, last } = await this.locked(tx, ctx, pid, b.version, see);
+      const { p } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind === "WON") return conflict("This prospect is already a client.", "ALREADY_WON");
       if (p.kind === "LOST") return conflict("A lost prospect cannot be converted. Start a new prospect.", "TERMINAL");
-      const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "WON" as const }) });
-      const signed = await this.signedRetainer(tx, ctx.firmId, p.id);
-      await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "CONVERT", { wonVia: "CONVERTED", wonAt: new Date() });
-      await this.audit(tx, ctx, EVENT.PROSPECT_WON, p.id, `Staff ${ctx.staffId} converted ${p.number} to a client${signed ? "" : " (retainer not signed)"}.`, { wonVia: "CONVERTED", fromStageKey: p.key, retainerSigned: signed });
-      await this.event(tx, ctx.firmId, EVENT.PROSPECT_WON, p.id, await this.wonPayload(tx, ctx, p, signed));
+      // The lock above is held, so the helper's own lock is a re-read; it finds the prospect not yet won.
+      await winProspect(tx, ctx, p.id, { via: "CONVERTED", at: new Date(), audit: (w, signed) =>
+        this.audit(tx, ctx, EVENT.PROSPECT_WON, w.id, `Staff ${ctx.staffId} converted ${w.number} to a client${signed ? "" : " (retainer not signed)"}.`, { wonVia: "CONVERTED", fromStageKey: w.key, retainerSigned: signed }) });
     });
     return this.read(ctx, pid);
-  }
-
-  /** `prospect.won` as contracts §2.6 lists it (P-559 (4)): the answers are the person's (the subject, or a company's
-   *  primary contact), the consents are theirs (ids only), the retainer and its representative only when one is signed. */
-  private async wonPayload(tx: Tx, ctx: StaffContext, p: Locked, signed: boolean) {
-    const personId = p.subject_person_id ?? p.primary_contact_person_id;
-    const [person, lead, consents, retainer, subject] = await Promise.all([
-      tx.foPerson.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: personId }), select: { givenNames: true, familyName: true, email: true, phone: true, phoneE164: true } }),
-      tx.foLead.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: p.lead_id }), select: { interestedIn: { select: { id: true, label: true, combinationId: true } } } }),
-      tx.msgConsent.findMany({ where: { firmId: ctx.firmId, subjectKind: "FO_PERSON", subjectId: personId }, select: { id: true }, orderBy: { id: "asc" } }),
-      signed ? tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id, kind: "RETAINER" as const, status: { in: [...SIGNED] } }), select: { id: true, representativeStaffId: true }, orderBy: { createdAt: "desc" } }) : null,
-      wonSubjectOf(tx, ctx.firmId, p.id),
-    ]);
-    const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
-    return ProspectWonPayload.parse({
-      firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: "CONVERTED",
-      retainer_id: retainer?.id ?? null, representative_staff_id: rep?.id ?? null, representative_actor_id: rep?.actorId ?? null, owner_staff_id: p.owner_staff_id,
-      interested_in: lead.interestedIn ? { serviceId: lead.interestedIn.id, label: lead.interestedIn.label, combinationId: lead.interestedIn.combinationId } : null,
-      answers: { "person.given_names": person.givenNames, "person.family_name": person.familyName, "person.email": person.email, "person.phone_number": person.phoneE164 ?? person.phone, "person.current_residence_country": null },
-      consent_ids: consents.map((c) => c.id), sealed_retainer_sha256: null,
-      type: p.type, fromStageKey: p.key, retainerSigned: signed, subject,
-    });
   }
 
   /** Undo convert (AG-2-47 rules 18-19; BR-11): only a prospect won by Convert, only while the client is empty, with a
@@ -294,7 +323,7 @@ export class Prospects {
       const { p, last } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind !== "WON") return conflict("Only a converted prospect can be undone.", "NOT_WON");
       if (p.won_via !== "CONVERTED") return conflict("This prospect was won by a signed retainer: Undo convert is not possible.", "SIGNED");
-      if (await this.signedRetainer(tx, ctx.firmId, p.id)) return conflict("The client has a signed retainer: Undo convert is not possible (AG-2-47 rule 18).", "SIGNED");
+      if (await signedRetainer(tx, ctx.firmId, p.id)) return conflict("The client has a signed retainer: Undo convert is not possible (AG-2-47 rule 18).", "SIGNED");
       const convertMove = last?.cause === "CONVERT" ? last : null;
       const before = convertMove?.fromStageId ? await tx.foStage.findFirst({ where: firmScope(ctx.firmId, { id: convertMove.fromStageId, pipeline: p.type, active: true }) }) : null;
       const to = before ?? (await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "ACTIVE" as const, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }));
