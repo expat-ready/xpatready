@@ -226,10 +226,19 @@ ok("QA-605 fail: a switch after someone else's change is refused in plain words 
 await o.getByRole("button", { name: "Reload" }).click();
 await o.getByRole("button", { name: "Switch the form on" }).waitFor({ timeout: 10_000 });
 ok("QA-605: Reload shows the form off and takes the notice away", await o.getByText("Someone else changed this form since you opened it").count() === 0 && await o.getByText("This form is off").isVisible());
-await o.getByRole("button", { name: "Switch the form on" }).focus(); await o.keyboard.press("Enter");
-await o.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
-await o.waitForFunction(() => document.activeElement?.textContent === "Switch the form off", undefined, { timeout: 5_000 });
-ok("QA-605: the switch works by keyboard (Enter); the form is on again; focus stays on the switch (review m1)", enabledNow() === "t" && onoffAudits() === 4);
+// Keyboard only, on a slow machine (Chrome's CPU throttled 8x, review M2): five presses of Enter (on, off, on, off, on).
+// After each, focus must be on the new switch (never left on <body>), so the next Enter switches again.
+const cpu = await o.context().newCDPSession(o); await cpu.send("Emulation.setCPUThrottlingRate", { rate: 8 });
+await o.getByRole("button", { name: "Switch the form on" }).focus();
+const kept: string[] = [];
+for (const [now, next] of [["on", "off"], ["off", "on"], ["on", "off"], ["off", "on"], ["on", "off"]] as const) {
+  await o.keyboard.press("Enter");
+  await o.getByRole("button", { name: `Switch the form ${next}` }).waitFor({ timeout: 30_000 });
+  await o.waitForTimeout(1_000);
+  kept.push(`${now}:${await o.evaluate(() => document.activeElement?.textContent ?? document.activeElement?.tagName ?? "")}`);
+}
+await cpu.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+ok("QA-605: the switch works by keyboard (Enter) on a CPU throttled 8x; after each of five presses focus is on the new switch (review m1, M2); the form ends on", JSON.stringify(kept) === JSON.stringify(["on:Switch the form off", "off:Switch the form on", "on:Switch the form off", "off:Switch the form on", "on:Switch the form off"]) && enabledNow() === "t" && onoffAudits() === 8, { kept, audits: onoffAudits() });
 await axe("QA-605 settings, form on", o); await shot(o, "qa605-02-on-1440");
 // The copied snippet works on the saved site (FO-4b's embed draws).
 const { ctx: vc } = await pageAs(tokens.owner); const v = await vc.newPage();

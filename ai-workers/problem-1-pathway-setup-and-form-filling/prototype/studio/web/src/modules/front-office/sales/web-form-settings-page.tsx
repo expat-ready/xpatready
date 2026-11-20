@@ -108,6 +108,10 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   const [busy, setBusy] = React.useState(false);
   const qc = useQueryClient();
   const button = React.useRef<HTMLButtonElement>(null);
+  // Focus goes back to the switch once React has drawn the result (review m1, M2): an effect, never a timer, so the
+  // keyed new button exists and is enabled. A timer could run first, on the old disabled button, on a slow machine.
+  const refocus = React.useRef(false);
+  React.useEffect(() => { if (!busy && refocus.current) { refocus.current = false; button.current?.focus(); } }, [busy, form.enabled]);
   React.useEffect(() => { setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
   const flip = async () => {
     setBusy(true); setSaid(null);
@@ -119,8 +123,8 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
       const p = x instanceof StaffApiError ? x : null;
       setSaid({ tone: "danger", text: p?.problem.fields?.enabled ?? p?.message ?? "Not changed. Please try again.", stale: p?.problem.code === "STALE" });
     } finally {
-      // The button is disabled while busy, which drops focus: it goes back to the button (review m1).
-      setBusy(false); requestAnimationFrame(() => button.current?.focus());
+      // The button is disabled while busy, which drops focus: the effect above puts it back (review m1, M2).
+      refocus.current = true; setBusy(false);
     }
   };
   return (

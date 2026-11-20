@@ -139,3 +139,42 @@ I did not build this. I read only the fixes, then reran everything on my own cop
 **Open:** no Blocker and no Major. One Minor (m4).
 
 Reviewer: Approve 1a571ee7bc2d4998f55f1f7aa93bd3a3c4295032
+
+---
+
+## Re-review at `8fb9274c769ec82b56869bd8d295f2935f28e9ef` (diff `41cec86e4..8fb9274c7`; 41cec86e4 is a pure merge of origin/main)
+
+**What I ran**
+- The pack on my own copy (:4537): **48/48**. This includes the new "transition held at its midpoint" axe step.
+- A focus probe on :4538. Owner at 1024 px; six switches alternating keyboard (Enter or Space) and mouse; then the stale path. Each read of `document.activeElement` is taken 1 s after the "Switched…" message. Chrome CPU throttling at 1x, 4x and 8x, the slow-runner condition this fix itself uses as evidence.
+- Screenshots restored with `git checkout`.
+
+**What holds**
+- **Audit line.** `web-form-settings.ts:143-144` passes the port's top-level `before: { enabled }` / `after: { enabled }`. On main (`ports/audit.ts:44-53`, `audit-event.ts:61`) these are stored as `enabled_before` / `enabled_after`, the shape the Activity log reads. `detail` no longer carries a `before`/`after` the port's refine would refuse. The tests read the new keys (pack :208, :218; j_26.ts:101).
+- **Contrast.** Keying the switch (`web-form-settings-page.tsx:132`) removes the secondary-to-primary animation. The pack now holds every transition at its midpoint and runs axe (pack :202-207), so a test fails if the animation comes back. Brand tokens are unchanged.
+
+**Changes requested: M2 Major (Must). Focus restore is racy: focus is lost on a slow CPU, and the pack's focus check will flake there.**
+- **Where:** `web/src/modules/front-office/sales/web-form-settings-page.tsx:123`. `requestAnimationFrame(() => button.current?.focus())` in `finally` runs on a timer, not after React's commit.
+- **Why it races:** when the frame comes before the commit, `button.current` is still the old button, disabled while busy (or about to unmount, now that it is keyed, :132). The focus call does nothing and focus stays on `<body>`.
+- **Probe results:**
+
+| CPU | Focus kept after a switch | Stale path |
+|---|---|---|
+| 1x | 6 of 6 | on the button |
+| 4x | 6 of 6 | on the button |
+| 8x, run 1 | 2 of 6 (both key presses lost) | on the button |
+| 8x, run 2 | 3 of 6 | on `<body>` |
+
+- The stale path does not remount, so the race predates the key change and was already in 1a571ee. I approved that commit without throttling.
+- **Impact:**
+  - A keyboard user loses their place again on a slow machine (EXPERIENCE [M] 12, BIC-20).
+  - The pack's assertion `waitForFunction(activeElement … "Switch the form off")` at pack :231 waits 5 s for a focus that never arrives. On the slow CI runner that caught the contrast failure, it will fail intermittently and stall the merge queue.
+- **Fix:** move the focus to after the commit.
+  1. In `finally`, set a `refocus` ref to true. Remove the rAF.
+  2. Add `React.useEffect(() => { if (!busy && refocus.current) { refocus.current = false; button.current?.focus(); } }, [busy, form.enabled])`. Effects run after the commit, so the new keyed button is mounted and enabled.
+
+  Rerun the pack's keyboard step with Chrome's CPU throttled 8x, via CDP `Emulation.setCPUThrottlingRate` (the way the contrast step now holds transitions), so it fails on the old code and passes on the fixed code.
+
+**Open:** M2 (Major). Earlier m4 stays Minor.
+
+Reviewer: Changes requested
