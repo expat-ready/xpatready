@@ -5,21 +5,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { App, RemovalPolicy, Stack, aws_s3 as s3 } from "aws-cdk-lib";
+import { App, CfnParameter, NestedStack, RemovalPolicy, Stack, aws_s3 as s3 } from "aws-cdk-lib";
 import { Template as Assert } from "aws-cdk-lib/assertions";
-import { buildApp, STAGES } from "../lib/app.ts";
+import { allStacks, buildApp } from "../lib/app.ts";
 import { EstateStack } from "../lib/estate.ts";
-import { availabilityFindings, bucketFindings, databaseFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
+import { availabilityFindings, bucketFindings, databaseFindings, dataRouteFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const { stacks } = buildApp();
+const { app: estate } = buildApp();
 const tpl = (s: Stack): Template => Assert.fromStack(s).toJSON() as Template;
-const real: SynthStack[] = STAGES.map((st) => ({ name: stacks[st].stackName, region: stacks[st].region, template: tpl(stacks[st]) }));
+const real: SynthStack[] = allStacks(estate); // every stack of the real app, nested ones included (review M2)
+const COMPOSE_PG = /image: postgres:(\d+\.\d+)/.exec(readFileSync(join(HERE, "..", "..", "compose.test.yml"), "utf8"))![1];
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const firstOf = (t: Template, type: string) => Object.values(t.Resources ?? {}).find((r) => r.Type === type)!;
 
-test("PF-8a region pass: both stacks are in ca-central-1 and no resource names another region", () => {
-  assert.deepEqual(real.map((s) => s.region), ["ca-central-1", "ca-central-1"]);
+test("PF-8a region pass: the app's stacks (exactly the two) are in ca-central-1 and nothing names another region", () => {
+  assert.deepEqual(real.map((s) => [s.name, s.region]), [["xr-staging", "ca-central-1"], ["xr-production", "ca-central-1"]]);
   assert.deepEqual(regionFindings(real), []);
 });
 
@@ -29,16 +30,38 @@ test("PF-8a region pass: a stray AWS_REGION or a caller's region cannot move the
   assert.equal(s.region, "ca-central-1");
 });
 
-test("PF-8a region fail: a test stack with a us-east-1 bucket is caught (shown once, never part of the app)", () => {
-  const app = new App({ analyticsReporting: false });
-  const bad = new Stack(app, "bad", { env: { region: "us-east-1" } });
-  new s3.Bucket(bad, "Stray", { removalPolicy: RemovalPolicy.DESTROY });
-  const f = regionFindings([{ name: "bad", region: bad.region, template: tpl(bad) }]);
-  assert.ok(f.some((l) => l.includes("stack region us-east-1")), f.join("; "));
-  // and a home-region stack whose resource names another region (a replication target, an ARN)
-  const t = clone(real[0].template);
-  (firstOf(t, "AWS::S3::Bucket").Properties as Record<string, unknown>).ReplicationConfiguration = { Role: "arn:aws:iam::1:role/r", Rules: [{ Destination: { Bucket: "arn:aws:s3:::copy-eu-west-1" }, Status: "Enabled", Note: "eu-west-1" }] };
-  assert.ok(regionFindings([{ ...real[0], template: t }]).some((l) => l.includes("eu-west-1")));
+test("PF-8a region fail: a us-east-1 stack added to the app, or nested in a home stack, is caught (review M2)", () => {
+  const { app } = buildApp();
+  const edge = new Stack(app, "xr-edge", { env: { region: "us-east-1" } }); // e.g. a CloudFront certificate stack
+  new s3.Bucket(edge, "Stray", { removalPolicy: RemovalPolicy.DESTROY });
+  const f = regionFindings(allStacks(app));
+  assert.ok(f.some((l) => l.startsWith("xr-edge: stack region us-east-1")), f.join("; "));
+  const { app: app2, stacks } = buildApp();
+  const nested = new NestedStack(stacks.production, "Extra");
+  new CfnParameter(nested, "Where", { default: "us-west-2" }); // a region hidden in a parameter default (review m1)
+  const f2 = regionFindings(allStacks(app2));
+  assert.ok(f2.some((l) => l.includes("xr-production/Extra") && l.includes("us-west-2")), f2.join("; "));
+});
+
+test("PF-8a region fail: real S3 replication to a bucket outside the app is caught though its ARN names no region (review M1)", () => {
+  const { app, stacks } = buildApp();
+  const away = s3.Bucket.fromBucketArn(stacks.staging, "Away", "arn:aws:s3:::xr-documents-copy");
+  new s3.Bucket(stacks.staging, "Replicated", { versioned: true, replicationRules: [{ destination: away, priority: 1 }] });
+  const f = regionFindings(allStacks(app));
+  assert.ok(f.some((l) => l.includes("replicates to a bucket outside the scanned stacks")), f.join("; "));
+  // and replication to a bucket inside the same home stack passes (not every replication is wrong)
+  const { app: ok, stacks: st2 } = buildApp();
+  const home = new s3.Bucket(st2.staging, "HomeCopy", { versioned: true });
+  new s3.Bucket(st2.staging, "Source", { versioned: true, replicationRules: [{ destination: home, priority: 1 }] });
+  assert.deepEqual(regionFindings(allStacks(ok)).filter((l) => l.includes("replicates")), []);
+});
+
+test("PF-8a region fail: newer region families (us-isof-south-1, eu-isoe-west-1, eusc-de-east-1) are recognised (review m1)", () => {
+  for (const region of ["us-isof-south-1", "eu-isoe-west-1", "eusc-de-east-1", "ap-southeast-7", "mx-central-1"]) {
+    const t = clone(real[0].template);
+    t.Resources!.X = { Type: "AWS::SSM::Parameter", Properties: { Value: `arn:aws:sns:${region}:1:t` } };
+    assert.ok(regionFindings([{ ...real[0], template: t }]).some((l) => l.includes(region)), region);
+  }
 });
 
 test("PF-8a region: an allowance admits a region only inside its resource types (PF-8rc's ca-west-1 backup copy)", () => {
@@ -54,7 +77,10 @@ for (const s of real) {
     assert.deepEqual(databaseFindings(s.template), []);
     const db = firstOf(s.template, "AWS::RDS::DBInstance").Properties!;
     assert.equal(db.Engine, "postgres");
-    assert.match(String(db.EngineVersion), /^18\.3/); // as deploy/compose.test.yml's postgres:18.3
+    assert.equal(String(db.EngineVersion), COMPOSE_PG); // read from deploy/compose.test.yml (review m3)
+  });
+  test(`PF-8a database subnets pass (${s.name}): no route leaves them, no public addresses (review m4)`, () => {
+    assert.deepEqual(dataRouteFindings(s.template), []);
   });
   test(`PF-8a buckets pass (${s.name}): three buckets, public access blocked, versioned, KMS, plain HTTP refused`, () => {
     assert.equal(Object.values(s.template.Resources ?? {}).filter((r) => r.Type === "AWS::S3::Bucket").length, 3);
@@ -89,25 +115,30 @@ test("PF-8a availability pass and fail: production Multi-AZ, staging single-zone
   assert.equal(availabilityFindings(real[1].template, "staging").length, 1);
 });
 
-test("PF-8a database in isolated subnets only: its subnet group uses the data subnets, which have no internet route", () => {
-  const t = real[1].template;
-  const group = firstOf(t, "AWS::RDS::DBSubnetGroup").Properties!;
-  const ids = (group.SubnetIds as { Ref: string }[]).map((r) => r.Ref);
-  assert.equal(ids.length, 2); // two zones
-  for (const id of ids) assert.match(id, /data/i);
-  const dataRoutes = (x: Template) => Object.values(x.Resources ?? {}).filter((r) => r.Type === "AWS::EC2::Route" && /data/i.test(JSON.stringify(r.Properties)));
-  assert.deepEqual(dataRoutes(t), []); // no route (internet or NAT) from a data subnet's table
-  // fail: a NAT route added to a data subnet's table is found (the check is not blind)
-  const tableId = Object.keys(t.Resources ?? {}).find((k) => t.Resources![k].Type === "AWS::EC2::RouteTable" && /data/i.test(k))!;
-  const bad = clone(t); bad.Resources!.Leak = { Type: "AWS::EC2::Route", Properties: { RouteTableId: { Ref: tableId }, DestinationCidrBlock: "0.0.0.0/0" } };
-  assert.equal(dataRoutes(bad).length, 1);
+test("PF-8a database subnets fail: a NAT route on a database subnet's table, or public addresses, are found", () => {
+  const t = clone(real[1].template);
+  const assoc = Object.values(t.Resources ?? {}).find((r) => r.Type === "AWS::EC2::SubnetRouteTableAssociation" && /data/i.test(JSON.stringify(r.Properties)))!;
+  t.Resources!.Leak = { Type: "AWS::EC2::Route", Properties: { RouteTableId: assoc.Properties!.RouteTableId, DestinationCidrBlock: "0.0.0.0/0" } };
+  const sub = (firstOf(t, "AWS::RDS::DBSubnetGroup").Properties!.SubnetIds as { Ref: string }[])[0].Ref;
+  t.Resources![sub].Properties!.MapPublicIpOnLaunch = true;
+  const f = dataRouteFindings(t).join("\n");
+  assert.ok(f.includes("Leak: a route leaves a database subnet") && f.includes("gives public addresses"), f);
+  assert.deepEqual(dataRouteFindings({ Resources: {} }), ["no database subnet group"]);
+});
+
+test("PF-8a buckets fail: a TLS deny narrowed to one action or one principal does not count (review m2)", () => {
+  for (const narrow of [{ Action: "s3:GetObject" }, { Principal: { AWS: "arn:aws:iam::1:root" } }]) {
+    const t = clone(real[0].template);
+    for (const r of Object.values(t.Resources ?? {})) if (r.Type === "AWS::S3::BucketPolicy") for (const st of (r.Properties!.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement) Object.assign(st, narrow);
+    assert.equal(bucketFindings(t).filter((l) => l.includes("plain HTTP")).length, 3, JSON.stringify(narrow));
+  }
 });
 
 test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only, never in a merge-queue batch (P-772 (a))", () => {
   const raw = readFileSync(join(HERE, "..", "..", "..", "..", "..", "..", "..", ".github", "workflows", "deploy-synth.yml"), "utf8");
   const wf = raw.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n"); // the header comment names merge_group in words
   const paths = [...wf.matchAll(/^ {6}- "([^"]+)"$/gm)].map((m) => m[1]);
-  assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", ".github/workflows/deploy-synth.yml"]);
+  assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml", ".github/workflows/deploy-synth.yml"]);
   assert.doesNotMatch(wf, /merge_group|schedule:|push:/);
   assert.doesNotMatch(wf, /AWS_ACCESS_KEY_ID: \$\{\{|secrets\./); // no AWS key or repository secret reaches the job
 });

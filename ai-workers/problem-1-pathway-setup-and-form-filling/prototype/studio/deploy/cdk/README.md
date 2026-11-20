@@ -22,11 +22,15 @@ CDK_DISABLE_CLI_TELEMETRY=true npx cdk synth --quiet --no-notices   # writes cdk
 Telemetry is off in three places: `CDK_DISABLE_CLI_TELEMETRY=true` for the CLI, and `versionReporting: false` plus `analyticsReporting: false` for template metadata.
 
 ## The checks (`lib/checks.ts`, `test/estate.test.ts`)
-* **Region guard:** every stack is in ca-central-1, and no resource names another region. The only exception is an allowance by resource type, which PF-8rc uses for the ca-west-1 backup copy.
+* **Region guard:** it is fed every stack of the app, nested ones included (`allStacks`). Every stack must be in ca-central-1, and nothing in a template (resources, parameters, outputs) may name another region. An S3 replication rule must target a bucket inside the scanned stacks, because a bucket ARN carries no region, and multi-region resource types are refused. The only exception is an allowance by resource type, which PF-8rc uses for the ca-west-1 backup copy.
+* **Database subnets:** no route leaves them and they hand out no public addresses (`dataRouteFindings`).
 * **Database:** private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs. It sits in isolated subnets only.
 * **Buckets:** public access blocked, versioned, KMS-encrypted, plain HTTP refused.
 * **Availability:** production is Multi-AZ; staging is single-zone (cost, P-562).
 * **CI job:** `.github/workflows/deploy-synth.yml` runs on pull requests that change this folder, and never in a merge-queue batch. It is report-only until measured green (P-717 (b), P-772 (a)).
+
+## Not decided yet
+* **CDK feature flags:** synth reports 81 that are not configured. They must be set before the first deploy, because flipping one later can replace resources. That choice is PF-8c's (review m5).
 
 ## Next rows
 * **PF-8b:** the service on Fargate, its secrets and DNS.
