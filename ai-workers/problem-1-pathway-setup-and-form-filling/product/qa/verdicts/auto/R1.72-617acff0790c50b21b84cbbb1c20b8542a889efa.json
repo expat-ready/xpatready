@@ -1,0 +1,39 @@
+{
+  "item": "R1.72",
+  "name": "72 Case with applicants, representative, pinned release",
+  "pr": 2406,
+  "sha": "617acff0790c50b21b84cbbb1c20b8542a889efa",
+  "run_id": "44701615035",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44701615035",
+  "at": "2026-11-20T08:24:12.237Z",
+  "overall": "FAIL",
+  "why": [
+    "C6.1: fail (no acceptance pack for this capability (P-405: never green))"
+  ],
+  "suites": [
+    {
+      "kind": "pack",
+      "name": "C6.1",
+      "result": "fail",
+      "exit": null,
+      "note": "no acceptance pack for this capability (P-405: never green)"
+    },
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_72.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": null,
+  "trace": "https://github.com/expat-ready/xpatready/actions/runs/44701615035/artifacts/14613381959",
+  "file": "product/qa/verdicts/auto/R1.72-617acff0790c50b21b84cbbb1c20b8542a889efa.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
