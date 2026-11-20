@@ -151,7 +151,8 @@ try {
   await t.getByRole("dialog").getByRole("button", { name: "Reassign", exact: true }).focus(); await t.keyboard.press("Enter");
   await t.getByRole("dialog").waitFor({ state: "detached", timeout: 10_000 });
   await t.locator("aside [data-owner]", { hasText: T.name }).waitFor({ timeout: 10_000 });
-  ok("FO-4as AS6: keyboard only (Enter, Space, Enter) reassigns, and focus returns to Reassign", ownerOf(a1.id) === T.id && (await t.evaluate(() => document.activeElement?.hasAttribute("data-assign-open") ?? false)));
+  const focusBack = await t.waitForFunction(() => document.activeElement?.hasAttribute("data-assign-open") ?? false, null, { timeout: 5_000 }).then(() => true, () => false);
+  ok("FO-4as AS6: keyboard only (Enter, Space, Enter) reassigns, and focus returns to Reassign", ownerOf(a1.id) === T.id && focusBack, { owner: ownerOf(a1.id), focus: await t.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)) });
   for (const w of [375, 1024, 1440]) {
     const p = await pageAs(tok.T, w); await openLead(p, a1);
     await p.locator("[data-assign-open]").click(); await p.locator("[data-assign-choices]").waitFor({ timeout: 10_000 });

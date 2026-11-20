@@ -37,7 +37,7 @@ export function AssignPanel({ lead, open, onOpenChange }: { lead: Lead; open: bo
   const send = () => { if (!to) { setProblem("Choose who gets the lead."); return; } if (sending.current) return; sending.current = true; setProblem(null); assign.mutate(to); };
   const verb = current ? "Reassign" : "Assign";
   return (
-    <Panel open={open} onOpenChange={(o) => { if (!assign.isPending) onOpenChange(o); }} title={`${verb} lead`} description={`${lead.number} · now ${current ? owners.name(current) : "nobody"}`}
+    <Panel open={open} onOpenChange={(o) => { if (!assign.isPending) onOpenChange(o); }} returnFocus={() => document.querySelector<HTMLElement>("[data-assign-open]")} title={`${verb} lead`} description={`${lead.number} · now ${current ? owners.name(current) : "nobody"}`}
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)} disabled={assign.isPending}>Cancel</Button><Button busy={assign.isPending} onClick={send}>{verb}</Button></>}>
       {problem ? <Notice tone="danger" className="mb-3" title={problem} /> : null}
       <fieldset data-assign-choices className="flex flex-col gap-1">

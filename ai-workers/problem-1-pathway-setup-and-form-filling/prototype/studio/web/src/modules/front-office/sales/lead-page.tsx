@@ -80,7 +80,7 @@ function LeadBody({ id }: { id: string }) {
   const [engaging, setEngaging] = React.useState(false), lock = useLock(), focus = useReturnFocus();
   // R1.32 (AG-2-13c, X-4): Assign or Reassign for people who may assign; a one-user firm sees no owner, Take it or Assign.
   const owners = useOwners(), [assigning, setAssigning] = React.useState(false);
-  const assignPanel = (o: boolean) => { if (o) focus.mark(); else focus.back("[data-assign-open]"); setAssigning(o); };
+  const assignPanel = (o: boolean) => setAssigning(o);   // focus returns to Assign/Reassign as the panel closes (Panel returnFocus)
   const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
