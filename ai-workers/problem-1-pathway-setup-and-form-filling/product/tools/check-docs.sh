@@ -160,15 +160,32 @@ PY
     done
   done
 } | sort -u > "$out"
-# Times are read, not guessed (6 Nov): a warning, never a failure, when STATE's "updated: YYYY-MM-DD HH:MM IST" is more
-# than 30 minutes from the time it was committed (now, while STATE.md has uncommitted changes). Test: check-state-page.sh.
-if [ -f "$PH/STATE.md" ]; then
-  u=$(sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}) IST.*/\1/p' "$PH/STATE.md" | head -1)
-  c=$(cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null && git log -1 --format=%ct -- STATE.md 2>/dev/null); [ -n "$c" ] || c=$(date +%s)
-  [ -n "$u" ] && python3 -I -c 'import sys, datetime as d
+# Times are read, not guessed (6 Nov; E9, P-302: 17 breaks 13-16 Nov, so now a failure): STATE's "updated: YYYY-MM-DD
+# HH:MM IST" (or "HH:Mx IST", any minute of that ten) must be within 30 minutes of the time it was committed (now, while
+# STATE.md has uncommitted changes); an "updated:" line in neither form fails too. It fails when this branch wrote the
+# time: STATE.md uncommitted, or changed by a commit not yet on STATE_TIME_BASE (default origin/main; none = this branch).
+# A time already on main only warns, so one bad merge never stops every lane. Test: check-state-page.sh.
+if [ -f "$PH/STATE.md" ] && grep -q '^updated:' "$PH/STATE.md"; then
+  ul=$(grep -m1 '^updated:' "$PH/STATE.md")
+  u=$(printf '%s\n' "$ul" | sed -nE 's/^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-5][0-9x]) IST.*/\1/p')
+  mine=1; c=""
+  # The time is judged against this branch's newest STATE commit not yet on the base, merges left out: CI's test merge,
+  # or a merge of main, is never taken for it (it is dated when it is made). None: the time came from the base (warn).
+  if (cd "$PH" && git diff --quiet HEAD -- STATE.md 2>/dev/null); then
+    b="${STATE_TIME_BASE:-origin/main}"
+    if (cd "$PH" && git rev-parse -q --verify "$b^{commit}" >/dev/null); then
+      c=$(cd "$PH" && git log -1 --no-merges --format=%ct "$b..HEAD" -- STATE.md 2>/dev/null)
+      [ -n "$c" ] || { mine=0; c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); }
+    else c=$(cd "$PH" && git log -1 --no-merges --format=%ct -- STATE.md 2>/dev/null); fi
+  fi
+  [ -n "$c" ] || c=$(date +%s)
+  if [ -z "$u" ]; then msg="STATE TIME: STATE.md's first updated: line cannot be read: write 'updated: YYYY-MM-DD HH:MM IST' (or HH:Mx) from TZ=Asia/Kolkata date"
+  else msg=$(python3 -I -c 'import sys, datetime as d
 ist = d.timezone(d.timedelta(hours=5, minutes=30))
-u = d.datetime.strptime(sys.argv[1], "%Y-%m-%d %H:%M").replace(tzinfo=ist); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
-m = abs((c - u).total_seconds()) / 60
-if m > 30: print("WARN  STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"
+lo = d.datetime.strptime(sys.argv[1].replace("x", "0"), "%Y-%m-%d %H:%M").replace(tzinfo=ist)
+hi = lo + d.timedelta(minutes=9 if sys.argv[1].endswith("x") else 0); c = d.datetime.fromtimestamp(int(sys.argv[2]), ist)
+m = max((lo - c).total_seconds(), (c - hi).total_seconds(), 0) / 60
+if m > 30: print("STATE TIME: STATE.md says updated %s IST, but it was committed %s IST (%d min apart): read the time with TZ=Asia/Kolkata date, never guess" % (sys.argv[1], c.strftime("%Y-%m-%d %H:%M"), m))' "$u" "$c"); fi
+  if [ -n "$msg" ]; then [ "$mine" = 1 ] && echo "$msg" >> "$out" || echo "WARN  ${msg#STATE TIME: } (already on ${STATE_TIME_BASE:-origin/main})"; fi
 fi
 cat "$out"; [ -s "$out" ] && exit 1; echo "docs OK"; exit 0
