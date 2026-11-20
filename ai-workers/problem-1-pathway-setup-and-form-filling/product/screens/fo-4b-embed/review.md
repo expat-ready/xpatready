@@ -81,3 +81,44 @@ D1 4 (rules 2 and 7, AG-2-8a and AG-2-49 met; rule 11 is not met on the embed, m
 - Running the suites rewrote screenshots in this working tree, as in the builder's and breaker's runs. I committed nothing.
 
 **Verdict: Block** for 602a4f8b0. To fix: M1, keeping the honeypot hidden whatever the host page's CSP, with a strict-CSP suite check. m1–m5 should be fixed or listed with a follow-up row; m2's record wording is a small change worth making in the same PR.
+
+## Re-review on 0f60e4737 (diff since 602a4f8b0 only)
+I ran a fresh isolated copy on :4448 (and :4449 with PLATFORM_IDENTITY=local for FO-4); the script cache started empty. Live AI off, US$0. HEAD was 0f60e4737 at the start and at the end.
+
+**Suites:**
+- check_fo4b_embed_browser.ts: 45/45, twice.
+- check_fo4_sales_browser.ts: 45/45.
+- check_fo2_leads_prospects.ts: 113/113.
+- pf12 not re-run: the diff does not touch firm-scope.ts.
+
+**Each finding:**
+- **M1: closed.**
+  - The trap box now carries `hidden` (form-embed.js:117), and the browser's own rule hides it. The form's styles go through an adopted constructed sheet (:202-206).
+  - My strict-CSP page from before: the trap input is now "not visible", so a person cannot click or type in it.
+  - The suite's strict-CSP page has its styles (8 px radius, no CSP console line), and a person's send makes one lead. Screenshot fo4b-08 shows the styled thank-you under `style-src 'self'`.
+- **m1: closed.**
+  - `openRefusals` (public.ts:196) sets `*` before the form is known.
+  - `corsFor` (public.ts:148) removes it for a site that is not allowed, or names the allowed site.
+  - Probed by hand on a found form:
+    - allowed origin, read and 400 send: `Access-Control-Allow-Origin` names the site;
+    - other origin, read 200 and send 403 SITE_NOT_ALLOWED: no header;
+    - other origin, pre-flight: 403, no header.
+  - So only the generic 429 and not-available answers are open, and they carry no data and never credentials.
+  - Journey J5 now ends in "This form is not available." (state `not-available`), and nothing is saved.
+  - An answer the page cannot read now gets one read; the form closes only on a readable FORM_NOT_AVAILABLE, otherwise the answers stay with a retry line. The suite's offline check covers this, and back online the same press makes one lead.
+- **m2: closed.** qa/built/R1.26.md and snippet.ts:3-5 now say that no screen sets allowed sites or shows the snippet, and that R1.26 stays Partial until FO-4's panel lands.
+- **m3: closed.** The button reads "Sending…" while busy and resets afterwards (form-embed.js:160, :198).
+- **m4: closed.** gbraid, wbraid, dclid, li_fat_id and twclid are kept with kind OTHER; the suite checks gbraid → OTHER.
+- **m5: accepted as is.** run-suites.sh always gives a fresh copy.
+
+**Journey re-walk on :4448:**
+- J1 to J6 all held, J5 included. The only console lines were expected network logs (the RELOAD 400, an off form's failed pre-flight and its 404 reads); there were no page errors.
+- Journey score on this head: **9/10** ("feedback and state" and "error recovery" rise to 1; "correct data" stays ½ only for the residual below).
+
+**Residual (Minor, not blocking):**
+- A body over 32 KB is refused by the door's middleware (public.ts:184-187), which runs before `openRefusals`, so that 413 stays unreadable and the visitor sees the connection-retry line. The embed's input limits make this hard to reach.
+- If a site is removed from the allowed list during a fill, the visitor also sees the connection-retry line. This is rare, and nothing is saved.
+
+No Blocker or Major is open on 0f60e4737.
+
+**Verdict: Approve** for a37264b37 (code as at 0f60e4737; a37264b37 adds only the breaker's re-check section in break-report.md, checked with `git diff 0f60e4737 a37264b37 --stat`).
