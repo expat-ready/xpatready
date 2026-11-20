@@ -237,11 +237,14 @@ export async function touchEachFirm(db: Pick<PrismaClient, "$transaction">, firm
 /** An AuditPort that writes the firm's platform.bypass line first, in the same transaction, then the caller's own line
  *  (the web-address catch-up, whose lines are written by firm-created.ts). The entries pass through unchanged: their
  *  literal objects stay where check_case_feed's sweep reads them, at their source.
- *  A case-side line (AUD-1m's CaseEntry: a workspace, no firm) names no firm to write the bypass line for: on a bypass
+ *  A case-side line (AUD-1m's CaseEntry: a workspace; since R1.8 it may name its firm, which it then touches) naming no firm to write the bypass line for: on a bypass
  *  use it is refused (fail-closed, P-607); outside one it passes through, as touchFirm writes nothing there. */
 export function touchingAudit<Tx>(inner: AuditPort<Tx>): AuditPort<Tx> {
   return { record: async (tx, entry) => {
-    if ("firmId" in entry) await touchFirm(tx, entry.firmId);
+    // R1.8 (QA-595): a case line may now name its firm (optional); a line naming one touches it, one naming none is
+    // refused on a bypass use as before (fail-closed, P-607).
+    const firmId = "firmId" in entry ? entry.firmId : undefined;
+    if (firmId) await touchFirm(tx, firmId);
     else if (currentBypass()) throw new FirmScopeError("touchingAudit: a case line names no firm, so a bypass use cannot record the firm it touches");
     await inner.record(tx, entry);
   } };
