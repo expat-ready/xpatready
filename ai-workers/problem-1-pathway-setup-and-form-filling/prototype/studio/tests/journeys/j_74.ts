@@ -14,6 +14,11 @@
 //   next stage with the study permit's end date: the work permit's deadline shows "Mon 8 Mar 2027 (closed day)", the
 //   reminders armed for it (the deadline followed the stage); W3 withdraw: none fires; W4 reopen: the two still to come
 //   reach the representative and the officer once each.
+//   W5-W7, a government step (CS-DL3 part 2, QA-591) on the same case, reopened, as the representative signed in (staff
+//   session): W5 Government steps › Record a step, by keyboard: a biometrics instruction letter of today, due in 30 days;
+//   W6 its reminders are listed on the case, and they are the very jobs the reminders arm (7, 2 and 0 open days before);
+//   W7 cancel it with a reason and record it again: both lines show, the first as cancelled, its jobs cancelled, the
+//   second's armed. Today is the server's real day here (the walk's own FakeClock and queue start at now).
 // What stays a stand-in (said, not hidden): the reminders run in this process on the copy's own database with PF-0p's
 // fakeJobs on a FakeClock (PF-14's runner is the same JobPort) and fakeNotifications (PF-18n's real adapter is not on main;
 // the app arms nothing until it is bound, features/case-deadlines.ts). The route is marked CITED here: labelled test data,
@@ -35,7 +40,8 @@ const BASE = `http://localhost:${PORT}`, HEADED = process.env.HEADED === "1";
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DB}`, options: "-c TimeZone=UTC" }) });
 const { CaseDeadlines } = await import("../../api/src/case-deadlines/reminders.ts");
 const { REMINDER_JOB } = await import("../../api/src/case-deadlines/plan.ts");
-const { CLOSED_DAYS, writeSetting } = await import("../../api/src/platform/settings.ts");
+const { MILESTONE_JOB } = await import("../../api/src/case-deadlines/milestones.ts");
+const { CLOSED_DAYS, TIME_ZONE, readSetting, writeSetting } = await import("../../api/src/platform/settings.ts");
 const { platformAuditWorkspaceId } = await import("../../api/src/platform/identity/audit.ts");
 const { FakeClock } = await import("../../ports/clock.ts"), { fakeJobs } = await import("../../ports/jobs.ts"), { fakeNotifications } = await import("../../ports/notifications.ts");
 const one = (q: string) => (sql(q) ?? "").split("\n")[0].trim();
@@ -121,6 +127,51 @@ try {
   const at = [...new Set(told.map((t) => t.at))];
   ok("J-74 W4 (DW2): reopened: the two reminders still to come reach the representative and the officer once each (Wed 3 and Thu 4 Mar, 09:00 Toronto); the passed one never fires late",
     r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && told.length === 4 && told.every((t) => t.stageId === one(`select id from case_stage where case_id = '${caseId}' and state = 'CURRENT'`) && [REP, OFF].includes(t.staffId)), { status: r.status, told });
+  // ---------------------------------------------------------------------------------------------------- W5-W7 a government step
+  // Its own clock and queue at now (the walk's clock has passed March 2027); the copy's server reads its own real day.
+  const clock2 = new FakeClock(new Date()), jobs2 = fakeJobs(clock2), dl2 = new CaseDeadlines({ db, jobs: jobs2, notifications, clock: clock2 });
+  await dl2.register({ sweep: false });
+  const ZONE = await readSetting<string>(db as never, FA, TIME_ZONE.key);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const due = new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10);
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], words = (d: string) => `${Number(d.slice(8, 10))} ${MON[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
+  const steps = p.locator("[data-gov-steps]"), gov = (k: string) => p.locator(`[data-gov-dialog="${k}"]`), fld = (k: string, f: string) => gov(k).locator(`[data-gov-field="${f}"]`);
+  const reach = async (el: ReturnType<typeof p.locator>) => { for (let i = 0; i < 250; i++) { if (await el.evaluate((x) => x === document.activeElement).catch(() => false)) return; await p.keyboard.press("Tab"); } throw new Error("not reached by Tab"); };
+  const record = async (dueOn: string) => {
+    await reach(steps.locator("[data-gov-record]")); await p.keyboard.press("Enter"); await gov("record").waitFor();
+    await reach(fld("record", "milestoneKey")); await fld("record", "milestoneKey").selectOption("biometrics");
+    await reach(fld("record", "occurredOn")); await fld("record", "occurredOn").fill(today);   // Tab walks a date's own parts: reach the next field
+    await reach(fld("record", "dueOn")); await fld("record", "dueOn").fill(dueOn);
+    await reach(fld("record", "reference")); await p.keyboard.type("B-J74-0001");
+    await reach(gov("record").locator("[data-gov-send]")); await p.keyboard.press("Enter"); await gov("record").waitFor({ state: "detached", timeout: 15_000 });
+  };
+  const mjobs = (id: string, status?: string) => jobs2.jobs.filter((j) => j.name === MILESTONE_JOB && j.payload.milestoneId === id && (!status || j.status === status));
+  await p.evaluate((t) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })), R);
+  await p.reload(); await steps.locator("[data-gov-empty]").waitFor({ timeout: 30_000 }); await settle();
+  await record(due);
+  const line1 = steps.locator('[data-gov-state="open"]'); await line1.waitFor();
+  const t1 = await line1.innerText(), m1 = (await line1.getAttribute("data-gov-step"))!;
+  ok(`J-74 W5: the representative records a biometrics instruction letter of ${words(today)} by keyboard; Government steps shows it due ${words(due)}, "in 30 days", with its reference`,
+    t1.includes("Biometrics instruction letter") && t1.includes(words(due)) && t1.includes("in 30 days") && t1.includes("Ref. B-J74-0001")
+      && one(`select due_on from case_milestone where id = '${m1}'`) === due, t1);
+  await dl2.sweep();
+  const listed = (await line1.locator("[data-gov-reminders]").innerText()), armed = mjobs(m1, "waiting").map((j) => j.payload.day as string).sort();
+  ok("J-74 W6: its reminders are listed on the case, and they are the jobs the reminders armed: three, 7, 2 and 0 open days before the due date, each day named on the case",
+    listed.startsWith("Reminders planned:") && armed.length === 3 && armed.every((d) => listed.includes(words(d))) && mjobs(m1).map((j) => j.payload.offset).sort().join() === "0,2,7", { listed, armed });
+  const va = (await new AxeBuilder({ page: p }).include("[data-gov-steps]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
+  ok("J-74 W6 axe: Government steps has no WCAG 2.2 A/AA violation", va.length === 0, va.map((x) => x.id));
+  await reach(line1.locator("[data-gov-cancel]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor();
+  await reach(fld("cancel", "reason")); await p.keyboard.type("The due date was typed wrong (test walk)");
+  await reach(gov("cancel").locator("[data-gov-cancel-send]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor({ state: "detached", timeout: 15_000 });
+  await steps.locator('[data-gov-state="cancelled"]').waitFor();
+  const due2 = new Date(Date.parse(`${due}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  await record(due2); await steps.locator('[data-gov-state="open"]').waitFor();
+  await dl2.sweep();
+  const m2 = (await steps.locator('[data-gov-state="open"]').getAttribute("data-gov-step"))!, tc = await steps.locator('[data-gov-state="cancelled"]').innerText();
+  ok(`J-74 W7: cancelled with a reason and recorded again (due ${words(due2)}): both lines show, the first as Cancelled with its reason; its three jobs are cancelled and the new step's three armed`,
+    await steps.locator("[data-gov-step]").count() === 2 && tc.includes("Cancelled") && tc.includes("Reason: The due date was typed wrong (test walk)") && m2 !== m1
+      && mjobs(m1, "cancelled").length === 3 && mjobs(m1, "waiting").length === 0 && mjobs(m2, "waiting").length === 3
+      && one(`select string_agg(due_on::text || ':' || (cancelled_at is not null)::text, ',' order by recorded_at) from case_milestone where case_id = '${caseId}'`) === `${due}:true,${due2}:false`, { tc, m1: mjobs(m1).map((j) => j.status), m2: mjobs(m2).map((j) => j.status) });
   ok("J-74 walk: no page error on the way", errs.length === 0, errs);
   await b.close();
 } catch (e) {
