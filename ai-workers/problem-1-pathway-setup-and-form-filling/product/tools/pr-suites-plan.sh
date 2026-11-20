@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# E2 (P-772, B203; enforcement plan 21 Nov): plans ci.yml's report-only job pr-suites for one pull request.
+# E2 (P-772, B203; enforcement plan 21 Nov): plans the report-only workflow pr-suites.yml for one pull request.
 #   bash product/tools/pr-suites-plan.sh <base>..<head>
-# Prints GITHUB_OUTPUT lines: direct=true|false, units=<n>, n=<parts>, shards=[1,...,n].
+# Used by .github/workflows/pr-suites.yml. Prints GITHUB_OUTPUT lines: direct=true|false, units=<n>, n=<parts>, shards=[1,...,n].
 #   * the pick is run-suites.sh --changed (select-suites.mjs). When the change would pick every suite ("ALL"), it is
 #     --direct instead (the suites that import or name its files, plus the smoke set): the whole set is the merge queue's
 #     job (P-651), and a PR must not spend 18 machines on it;
@@ -14,7 +14,8 @@ TOOLS="${PR_SUITES_TOOLS:-$(cd "$(dirname "$0")" && pwd)}"   # PR_SUITES_TOOLS: 
 R="${1:-}"; [[ "$R" == *..* ]] || { echo "usage: pr-suites-plan.sh <base>..<head>" >&2; exit 2; }
 PER="${PR_SUITES_PER_PART:-25}"; MAX="${PR_SUITES_MAX:-12}"
 [[ "$PER" =~ ^[1-9][0-9]*$ ]] || PER=25; [[ "$MAX" =~ ^[1-9][0-9]*$ ]] || MAX=12
-files=$(git diff --name-only "${R%%..*}...${R##*..}") || { echo "pr-suites-plan: git diff $R failed" >&2; exit 2; }
+# The file list as run-suites.sh reads it (E2 review m2: with renames off, a renamed file shows both paths).
+files=$(git -c core.quotePath=false diff --no-renames --name-only "${R%%..*}...${R##*..}") || { echo "pr-suites-plan: git diff $R failed" >&2; exit 2; }
 direct=false
 if [ -n "$files" ]; then
   sel=$(printf '%s\n' "$files" | node "$TOOLS/select-suites.mjs") || { echo "pr-suites-plan: select-suites.mjs failed" >&2; exit 2; }
