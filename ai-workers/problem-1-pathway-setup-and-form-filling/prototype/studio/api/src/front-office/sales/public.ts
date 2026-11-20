@@ -3,6 +3,7 @@
 // …/submissions: the limits (30/min per address, 60 per token), 32 KB (also at the door), the token, the site (Origin), a
 // strict body, the honeypot and 2-second fill (answered like anyone, nothing stored; a stamp not ours → reload), then the
 // arrival path; the answer is the thank-you text, known person or not. Limits and stamp key (FO_FORM_STAMP_KEY, else random) in-process.
+// FO-4b: the read, the send and the send's pre-flight (embed.ts) carry CORS headers for the form's allowed sites only (corsFor).
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Param, Post, Req, Res } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -67,6 +68,7 @@ export class PublicForms {
     const form = await this.form(token);
     res?.setHeader("Content-Security-Policy", frameAncestors(form.allowedSites, this.ports.publicOrigin));
     res?.setHeader("Cache-Control", "no-store");   // a fresh submissionId and stamp each draw (review m7)
+    this.corsFor(form, req, res);   // FO-4b: the embed script on an allowed site may read it; any other site cannot
     const [services, wording] = await Promise.all([
       this.db.foService.findMany({ where: { firmId: form.firmId, active: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, label: true } }),
       form.consentWordingVersionId ? this.db.msgConsentWording.findFirst({ where: { firmId: form.firmId, id: form.consentWordingVersionId }, select: { text: true } }) : null,
@@ -81,15 +83,13 @@ export class PublicForms {
   }
 
   /** One enquiry (AG-2-5 rule 10, AG-2-49). */
-  async submit(token: string, body: unknown, req: Req) {
+  async submit(token: string, body: unknown, req: Req, res?: Res) {
     const ip = ipOf(req);
     this.limit(`post:ip:${ip}`, this.limits.postsPerIp);
     this.limit(`post:form:${String(token).slice(0, 100)}`, this.limits.postsPerForm);
     if (Number(header(req, "content-length") ?? 0) > this.limits.maxBytes || Buffer.byteLength(JSON.stringify(body ?? null)) > this.limits.maxBytes) return tooBig();
     const form = await this.form(token);
-    const origin = siteOf(header(req, "origin") ?? "");
-    const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
-    if (!origin || !allowed.has(origin)) return offSite();
+    if (!this.corsFor(form, req, res)) return offSite();
     const b = body as Record<string, unknown>;
     if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).some((k) => !BODY_KEYS.has(k))) return badBody();
     if (typeof b.submissionId !== "string" || !UUID.test(b.submissionId) || typeof b.loadStamp !== "string") return badBody();
@@ -124,6 +124,28 @@ export class PublicForms {
       actor: "system:web-form", payloadHash: hash(JSON.stringify([person, message, interestedInServiceId, b.consent === true, attribution])),
     }, this.ports));
     return thanks;
+  }
+
+  /** FO-4b: a send from the embed script on the firm's own site is pre-flighted by the browser: an allowed site is told
+   *  POST with a JSON body may come (no credentials, ever); any other site is refused like its send would be. */
+  async preflight(token: string, req: Req, res: Res) {
+    this.limit(`read:ip:${ipOf(req)}`, this.limits.readsPerIp);
+    const form = await this.form(token);
+    if (!this.corsFor(form, req, res)) return offSite();
+    res.setHeader("Access-Control-Allow-Methods", "POST");
+    res.setHeader("Access-Control-Allow-Headers", "content-type, accept");
+    res.setHeader("Access-Control-Max-Age", "600");
+  }
+
+  /** The browser's Origin is one of the form's allowed sites or our own (AG-2-49 rule 4). When it is, the answer may be
+   *  read by that site's page (FO-4b's embed script, CORS without credentials); otherwise no CORS header is sent. */
+  private corsFor(form: { allowedSites: string[] }, req: Req, res?: Res): boolean {
+    res?.setHeader("Vary", "Origin");
+    const origin = siteOf(header(req, "origin") ?? "");
+    const allowed = new Set([...form.allowedSites.map(siteOf), siteOf(this.ports.publicOrigin ?? "")].filter(Boolean));
+    if (!origin || !allowed.has(origin)) return false;
+    res?.setHeader("Access-Control-Allow-Origin", origin);
+    return true;
   }
 
   private async form(token: unknown) {
@@ -196,5 +218,5 @@ export class PublicFormsController {
   read(@Param("token") token: string, @Req() req: Req, @Res({ passthrough: true }) res: Res) { return this.forms.read(token, req, res); }
 
   @Post(":token/submissions") @HttpCode(201)
-  submit(@Param("token") token: string, @Body() body: unknown, @Req() req: Req) { return this.forms.submit(token, body, req); }
+  submit(@Param("token") token: string, @Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res) { return this.forms.submit(token, body, req, res); }
 }
