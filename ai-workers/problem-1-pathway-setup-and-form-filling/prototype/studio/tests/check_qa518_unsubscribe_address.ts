@@ -11,7 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { readdirSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { LocalFiles } from "../api/src/front-office/files.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
@@ -152,6 +152,16 @@ try {
   ok("Q9 fail: it refuses an import, a copy, a staff row, a portal or API row, no wording, and the same instant",
     ![{ basis: "IMPORT_DECLARED", source: "IMPORT_DECLARED" }, { copiedFromId: uuid(), recordedKind: "SYSTEM" }, { source: "STAFF_RECORDED", recordedKind: "USER" }, { source: "PORTAL" }, { source: "API" }, { wordingId: null }, { givenAt: at }]
       .some((c) => liftsAddressOptOut(at, { ...row, ...c })));
+
+  // Review M1 (STANDARDS [M] "Read paths indexed"): with 30,000 outbox rows the address read uses the two indexes of
+  // this row's migration and scans neither table whole.
+  sql(`INSERT INTO msg_outbox (id, firm_id, channel, address, rendered_hash, class, state, updated_at) SELECT gen_random_uuid(), '${firmA}', 'EMAIL', 'bulk' || g || '@example.com', repeat('a', 64), 'MARKETING', 'SENT', now() FROM generate_series(1, 30000) g`);
+  sql(`ANALYZE msg_outbox; ANALYZE msg_consent_withdrawal`);
+  const plan = sql(`EXPLAIN SELECT max(w."withdrawn_at") FROM "msg_outbox" o JOIN "msg_consent_withdrawal" w ON w."firm_id" = o."firm_id" AND w."withdrawn_by" = 'system:unsubscribe:' || o."id"::text WHERE o."firm_id" = '${firmA}'::uuid AND o."channel" = 'EMAIL' AND o."address" = '${Z}' AND w."via" = 'UNSUBSCRIBE' AND w."channel" = 'EMAIL' AND w."purpose" = 'MARKETING'`);
+  ok("Q10 pass: the address read's plan uses msg_outbox_firm_id_channel_address_idx (30,000 outbox rows)", plan.includes("msg_outbox_firm_id_channel_address_idx"), plan);
+  ok("Q10 fail: the plan has no sequential scan of msg_outbox", !/Seq Scan on msg_outbox/.test(plan), plan);
+  const src = readFileSync(join(STUDIO, "api", "src", "platform", "messages", "consent", "consent-store.ts"), "utf8");
+  ok("Q10 pass: the adapter runs that query shape (it starts from the address, joins the withdrawal by its writer)", /FROM "msg_outbox" o\s+JOIN "msg_consent_withdrawal" w ON w."firm_id" = o."firm_id" AND w."withdrawn_by" = 'system:unsubscribe:' \|\| o."id"::text/.test(src));
 } finally {
   await db.$disconnect();
   try { execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); } catch { /* left for the sweep */ }

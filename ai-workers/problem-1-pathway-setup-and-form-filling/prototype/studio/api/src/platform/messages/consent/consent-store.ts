@@ -145,14 +145,15 @@ export class ConsentStore implements ConsentPort<Tx> {
     // QA-518: the latest one-click unsubscribe of marketing email from this address, by any person of the firm. The
     // unsubscribe door writes its withdrawal `by system:unsubscribe:<outbox id>` (unsubscribe.ts), and that outbox row
     // holds the address the message went to (stored lower case: the msg_address_ok check). The read starts from the
-    // firm's UNSUBSCRIBE withdrawals (its index leads with firm_id) and finds each outbox row by its primary key, so it
-    // never scans the outbox (review M1). Known limit: the stop lives as long as that outbox row; a future retention or
-    // erasure of msg_outbox must keep the address of an unsubscribed row, or this stop is lost (review m4).
+    // address (index msg_outbox(firm_id, channel, address)) and finds an unsubscribe of each row by its writer (index
+    // msg_consent_withdrawal(firm_id, withdrawn_by)); both indexes are this row's migration (review M1). Known limit: the
+    // stop lives as long as that outbox row; a future retention or erasure of msg_outbox must keep the address of an
+    // unsubscribed row, or this stop is lost (review m4).
     const [opt] = await db.$queryRaw<{ at: Date | null }[]>`
-      SELECT max(w."withdrawn_at") AS at FROM "msg_consent_withdrawal" w
-      JOIN "msg_outbox" o ON o."firm_id" = w."firm_id" AND o."id" = (CASE WHEN w."withdrawn_by" ~ '^system:unsubscribe:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN substr(w."withdrawn_by", 20)::uuid END)
-      WHERE w."firm_id" = ${firmId}::uuid AND w."via" = 'UNSUBSCRIBE'::"MsgWithdrawalVia" AND w."channel" = 'EMAIL'::"MsgChannel"
-        AND w."purpose" = 'MARKETING'::"MsgPurpose" AND o."channel" = 'EMAIL'::"MsgChannel" AND o."address" = ${address}`;
+      SELECT max(w."withdrawn_at") AS at FROM "msg_outbox" o
+      JOIN "msg_consent_withdrawal" w ON w."firm_id" = o."firm_id" AND w."withdrawn_by" = 'system:unsubscribe:' || o."id"::text
+      WHERE o."firm_id" = ${firmId}::uuid AND o."channel" = 'EMAIL'::"MsgChannel" AND o."address" = ${address}
+        AND w."via" = 'UNSUBSCRIBE'::"MsgWithdrawalVia" AND w."channel" = 'EMAIL'::"MsgChannel" AND w."purpose" = 'MARKETING'::"MsgPurpose"`;
     if (!opt?.at) return d;
     const optOutAt = opt.at;
     // Withdrawn rows still count for the person's own last withdrawal; live rows count only when they lift the opt-out.
