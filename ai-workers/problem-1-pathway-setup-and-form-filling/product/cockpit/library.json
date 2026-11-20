@@ -1,22 +1,164 @@
 {
- "_about": "Library masters and what feeds each (founder, 15 Nov: keep the library current on need, not on a timer, in the most token-efficient way). tools/library-freshness.py marks a living document 'behind' when a feed changed after the document's last commit; history documents are never checked. 'name' matches the board's Library row. 'feeds' are git pathspecs from the repository root; 'feed_grep' (optional) counts only feed commits whose changed lines match it (git log -G). An artifact or local-only document has no git date, so 'refreshed' (IST date and time) is its last refresh, updated by whoever refreshes it. A source document (feeds empty) is current by definition.",
- "docs": [
-  {"name": "Team requirements (the PRD)", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/domain", "status": "living", "feeds": [], "local_feed_glob": "sources/drive-snapshot-*", "refresh": "on the Mac: bash product/tools/sync-requirements.sh (name-free copy of the newest snapshot)"},
-  {"name": "Capability sourcing map", "path": "artifact:https://claude.ai/artifact/8Fr4UUNR8yxwZrQ4nVi6wC", "status": "living", "refreshed": "2026-11-15T11:09:00+05:30", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"], "feed_grep": "(capability map|sourcing map|Release 1 scope|Build rows?|Optional rows?|Held rows?|deferred to after launch)", "refresh": "republish the map's draft with the scope decisions since 'refreshed'; then set 'refreshed'"},
-  {"name": "Release 1 checklist", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/MVP-CHECKLIST.md", "status": "living", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/CAPABILITIES.md"], "refresh": "carry qa's new verdicts into the rows' status"},
-  {"name": "Backlog", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/BACKLOG.md", "status": "living", "feeds": [], "refresh": "source document"},
-  {"name": "Contracts between modules", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/*contract*", "status": "living", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports"], "refresh": "bring the contract text in line with the ports, fakes and event names changed since"},
-  {"name": "Rules in force", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md", "status": "living", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"], "refresh": "one current page as of the newest DECISIONS row (P-440; check-docs allows 3 rows behind)"},
-  {"name": "Decisions", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md", "status": "living", "feeds": [], "refresh": "source document"},
-  {"name": "CRM shell decision", "path": "artifact:https://claude.ai/artifact/BReRqAYujJXhKf33Rgt9Vo", "status": "decision record", "feeds": []},
-  {"name": "Factory plan", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/2-factory-plan", "status": "history", "feeds": []},
-  {"name": "Solution 1 one-pager", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/1-requirements-and-workflow", "status": "history", "feeds": []},
-  {"name": "Product home (PRODUCT.md)", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/PRODUCT.md", "status": "history", "feeds": []},
-  {"name": "Pathway Configurator handover", "path": "local:reference/private", "status": "history", "feeds": []},
-  {"name": "Engineering operating model", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-operating-model.md", "status": "living", "version": "1.0", "feeds": [".github/workflows", ".mergify.yml", ".githooks", ".claude/settings.json", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]},
-  {"name": "CI pipeline strategy", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/ci-pipeline-strategy.md", "status": "living", "version": "1.0", "feeds": [".github/workflows", ".mergify.yml"]},
-  {"name": "Agent failure modes", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/agent-failure-modes.md", "status": "living", "version": "1.0", "feeds": [".claude/skills", ".claude/agents", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]},
-  {"name": "Engineering System v1", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-system.md", "status": "living", "version": "1.0", "feeds": ["ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md", "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"]},
-  {"name": "Engineering change log", "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-change-log.md", "status": "living", "version": "1.1", "feeds": [".github/workflows", ".mergify.yml", ".githooks", ".claude/settings.json", "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"]}
- ]
+  "_about": "Library masters and what feeds each (founder, 15 Nov: keep the library current on need, not on a timer, in the most token-efficient way). tools/library-freshness.py marks a living document 'behind' when a feed changed after the document's last commit; history documents are never checked. 'name' matches the board's Library row. 'feeds' are git pathspecs from the repository root; 'feed_grep' (optional) counts only feed commits whose changed lines match it (git log -G). An artifact or local-only document has no git date, so 'refreshed' (IST date and time) is its last refresh, updated by whoever refreshes it. A source document (feeds empty) is current by definition.",
+  "docs": [
+    {
+      "name": "Team requirements (the PRD)",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/domain",
+      "status": "living",
+      "feeds": [],
+      "local_feed_glob": "sources/drive-snapshot-*",
+      "refresh": "on the Mac: bash product/tools/sync-requirements.sh (name-free copy of the newest snapshot)"
+    },
+    {
+      "name": "Capability sourcing map",
+      "path": "artifact:https://claude.ai/artifact/8Fr4UUNR8yxwZrQ4nVi6wC",
+      "status": "living",
+      "refreshed": "2026-11-15T11:09:00+05:30",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"
+      ],
+      "feed_grep": "(capability map|sourcing map|Release 1 scope|Build rows?|Optional rows?|Held rows?|deferred to after launch)",
+      "refresh": "republish the map's draft with the scope decisions since 'refreshed'; then set 'refreshed'"
+    },
+    {
+      "name": "Release 1 checklist",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/MVP-CHECKLIST.md",
+      "status": "living",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/CAPABILITIES.md"
+      ],
+      "refresh": "carry qa's new verdicts into the rows' status"
+    },
+    {
+      "name": "Backlog",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/BACKLOG.md",
+      "status": "living",
+      "feeds": [],
+      "refresh": "source document"
+    },
+    {
+      "name": "Contracts between modules",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/*contract*",
+      "status": "living",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/ports"
+      ],
+      "refresh": "bring the contract text in line with the ports, fakes and event names changed since"
+    },
+    {
+      "name": "Rules in force",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md",
+      "status": "living",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"
+      ],
+      "refresh": "one current page as of the newest DECISIONS row (P-440; check-docs allows 3 rows behind)"
+    },
+    {
+      "name": "Decisions",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md",
+      "status": "living",
+      "feeds": [],
+      "refresh": "source document"
+    },
+    {
+      "name": "CRM shell decision",
+      "path": "artifact:https://claude.ai/artifact/BReRqAYujJXhKf33Rgt9Vo",
+      "status": "decision record",
+      "feeds": []
+    },
+    {
+      "name": "Factory plan",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/2-factory-plan",
+      "status": "history",
+      "feeds": []
+    },
+    {
+      "name": "Solution 1 one-pager",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/reference/1-requirements-and-workflow",
+      "status": "history",
+      "feeds": []
+    },
+    {
+      "name": "Product home (PRODUCT.md)",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/PRODUCT.md",
+      "status": "history",
+      "feeds": []
+    },
+    {
+      "name": "Pathway Configurator handover",
+      "path": "local:reference/private",
+      "status": "history",
+      "feeds": []
+    },
+    {
+      "name": "Engineering operating model",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-operating-model.md",
+      "status": "living",
+      "version": "1.0",
+      "feeds": [
+        ".github/workflows",
+        ".mergify.yml",
+        ".githooks",
+        ".claude/settings.json",
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"
+      ]
+    },
+    {
+      "name": "CI pipeline strategy",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/ci-pipeline-strategy.md",
+      "status": "living",
+      "version": "1.0",
+      "feeds": [
+        ".github/workflows",
+        ".mergify.yml"
+      ]
+    },
+    {
+      "name": "Agent failure modes",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/agent-failure-modes.md",
+      "status": "living",
+      "version": "1.0",
+      "feeds": [
+        ".claude/skills",
+        ".claude/agents",
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"
+      ]
+    },
+    {
+      "name": "Engineering System v1",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-system.md",
+      "status": "living",
+      "version": "1.0",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md",
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/DECISIONS.md"
+      ]
+    },
+    {
+      "name": "Engineering change log",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-change-log.md",
+      "status": "living",
+      "version": "1.1",
+      "feeds": [
+        ".github/workflows",
+        ".mergify.yml",
+        ".githooks",
+        ".claude/settings.json",
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/RULES.md"
+      ]
+    },
+    {
+      "name": "Engineering map",
+      "path": "ai-workers/problem-1-pathway-setup-and-form-filling/product/library/engineering-map.md",
+      "status": "living",
+      "version": "1.0",
+      "feeds": [
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/design/full-power-plan-2026-11-17.md",
+        ".github/workflows",
+        "ai-workers/problem-1-pathway-setup-and-form-filling/product/ENVIRONMENT.md"
+      ],
+      "refresh": "carry plan items #225-#237's status into the Status column; add a row when an environment, deploy or monitoring change lands"
+    }
+  ]
 }
