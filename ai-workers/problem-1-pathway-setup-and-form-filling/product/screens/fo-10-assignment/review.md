@@ -58,3 +58,51 @@ A real `xr_app` walled server run of the arrival path with the policy added (it 
 **Verdict: Block.** To fix: B1 (Blocker: the PF-12 policy on `fo_assignment_rule`; `check_pf12_walls.ts` green), M1 (ended grants), M2 (OWNER key check). M1 and M2 appear fixed in 981dea1, which needs its own re-review together with the B1 fix.
 
 Verdict: Block
+
+---
+
+## Re-review, diff only (P-277): `git diff 0d8b42d68..c343a6497` (981dea1 breaker fixes + c343a64 review fixes)
+
+**Ran at c343a64:**
+* `check_fo10_assignment.ts`: **41 passed, 0 failed**.
+* `check_pf12_walls.ts`: **100 passed, 0 failed**. The guard now finds no unwalled table.
+* Mutations and probes on a `git archive` copy of c343a64 in my scratchpad (deleted after).
+
+**Closed:**
+* **B1.** `migration.sql:61-64` (the four lines appended at the end) add ENABLE and FORCE row-level security, the `pf12_firm` USING/WITH CHECK policy and the `0_pf12_firm_first` trigger, in the same form as `platform_notification_preference` and `money_move_batch`.
+  * Under the walls the arrival path still sees its firm's rules. The public form calls `enterFirm(form.firmId)` before `arrive()` (`public.ts:132`), and the walled `fo_lead`/`fo_person` writes in the same transaction already depend on that.
+* **M1.** `rules.ts:39` adds `g.ended_at is null`. Tests: a turn naming an ended role is refused at save; the open turn skips it.
+* **M2.** OWNER now goes through `eligible()` at save and at placement, falling back to `OWNER_INACTIVE`. Tests: a Read-only owner is refused; an owner whose role ended goes to Unassigned with the reason.
+* **m1.** The route check now passes the real methods and paths.
+* **m4.** The breaker's m4 and m5 are fixed (fields the strategy does not use get 422; the list returns `serviceActive`).
+
+**m2: is it still fair, and can the re-pick loop?** (`rules.ts:55-68`)
+* **Fairness holds.** The first select is unlocked. Round robin then takes `FOR UPDATE` on the rule by `firm_id` and `id`, and uses `last` and `among` from that locked read, not the stale ones. Under READ COMMITTED a waiting `FOR UPDATE` returns the row as the previous arrival committed it.
+  * The 20-parallel test passes.
+  * With the re-read's `for update` removed it fails both runs ([4,11,5], [3,10,7]), so the test guards the change.
+* **The re-pick cannot loop on its own.**
+  * It recurses only when the locked row is inactive or no longer ROUND_ROBIN. Each new call runs a fresh unlocked select, which in READ COMMITTED sees the change that made it recurse. It then either skips the switched-off rule or returns the OWNER rule without locking.
+  * A second recursion needs another committed change to that rule inside that short window, so the depth is bounded by concurrent admin edits.
+  * Under REPEATABLE READ or SERIALIZABLE, a `FOR UPDATE` on a concurrently changed row raises a serialization error instead of looping. Prisma's default is READ COMMITTED.
+* **Probes:** an arrival held on the rule's lock while it is switched off and committed:
+  * Switched off: the lead goes to Unassigned with no rule line (correct; no less specific web-form rule existed).
+  * Turned into OWNER: the lead goes to the named person with "the default owner rule".
+  * Five off/on flips with an arrival waiting each time: all five finished, with no hang and no error.
+* **No new deadlock order.**
+  * Arrivals lock the rule, then share-lock staff rows. `save` share-locks staff rows, then writes the rule. Share locks do not conflict with each other.
+  * Deactivation takes only the staff row.
+  * Holding the first rule's lock while a re-pick locks a second one would need the same pair crossed in reverse by a second arrival after a further flip. That is theoretical, and Postgres would detect it and fail one arrival.
+
+**Minor (does not block)**
+* **r-m1.** `rules.ts:66`: no test covers the re-pick branch. If the `!locked?.active || strategy !== "ROUND_ROBIN"` check were removed, a round-robin rule switched off while arrivals waited would still place them, and the suite would stay green. My probe shows the branch works. A test like the probe above (hold the lock in a second connection, switch the rule off, release) would cover it.
+* The earlier m3 (a raw staff id on the timeline) and the breaker's m3 and m6 stay as recorded, for later parts.
+
+**Journey score, re-review:** 9½/10 (was 7½).
+* Correct data, Access and Consistency each rise to 1 with M1, M2 and B1 closed.
+* Next step obvious rises to 1 (m4).
+* Plain words stays ½ (raw id on the timeline).
+* Task completed and Trust and sources stay 1; Speed stays 1, with OWNER rules no longer serialised.
+
+**Verdict: Approve.** No Blocker or Major is open at c343a64.
+
+Verdict: Approve c343a6497b1619dbb64770139d661a117f54ee1e
