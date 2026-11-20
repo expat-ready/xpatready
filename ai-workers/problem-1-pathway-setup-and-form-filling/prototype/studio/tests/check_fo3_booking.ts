@@ -316,7 +316,7 @@ try {
   // -------------------------------------------------------------------- reminders, attendance question, no auto no-show
   const rem = make();
   await rem.svc.registerJobs();
-  const ctxA = fakeStaff({ firmId: A.id, firmKey: A.key, staffId: A1.id, keys: ["agent/booking:create", "agent/booking:edit", "agent/booking:list"] });
+  const ctxA = fakeStaff({ firmId: A.id, firmKey: A.key, staffId: A1.id, keys: ["agent/booking:create", "agent/booking:edit", "agent/booking:list", "agent/prospect:assign"] });   // FO-3vr: AG-4-67 rule 3, a not-linked booking needs the unassigned-lead rule
   await clock.set(at("2026-11-02 08:00"));
   const rb = await book(rem.svc, "free", "2026-11-06 10:00", "remind");
   const scheduled = rem.jobs as ReturnType<typeof fakeJobs>;

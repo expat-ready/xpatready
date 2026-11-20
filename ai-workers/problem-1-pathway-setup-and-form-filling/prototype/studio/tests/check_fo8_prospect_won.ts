@@ -40,6 +40,7 @@ const { ConfigReadGuard, Db, Workspace, Audit } = await import("../api/src/core.
 const { Programs } = await import("../api/src/programs.ts");
 const { Runtime, RuntimeController } = await import("../api/src/runtime.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { PgEntitlements } = await import("../api/src/platform/entitlements/limits.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
 const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
@@ -70,6 +71,7 @@ try {
   const db = nest.get(Db), tag = `${process.pid}-${Date.now().toString(36)}`;
   await seedSampleFirms(db);
   await seedSampleFirmsFrontOffice(db);
+  nest.get(Runtime).useEntitlements((tx) => new PgEntitlements(tx));   // PF-15c: the real limits on the Sample plans (P-710), bound explicitly (this app loads no features/platform-entitlements.ts)
   const firm = (key: string) => sql(`select id from platform_firm where key = '${key}'`);
   const A = firm("sample-firm"), B = firm("sample-solo");
   const ctxOf = (actorId: string): StaffContext => {

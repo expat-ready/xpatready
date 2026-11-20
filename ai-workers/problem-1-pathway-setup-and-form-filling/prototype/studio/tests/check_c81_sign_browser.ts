@@ -174,7 +174,7 @@ const choose = async (files: { name: string; mimeType: string; buffer: Buffer })
 };
 await choose({ name: "scan.pdf", mimeType: "application/pdf", buffer: Buffer.from("not a pdf, only words (Sample)") });
 const typeErr = (await block().locator("[data-scan-error]").innerText().catch(() => "")).trim();
-ok("C8.1-8 / BR-6 fail: a scan that is not a PDF or image (judged by its bytes, named .pdf) is refused on the upload in the server's words; nothing stored", /Send the signed scan as a PDF, JPEG or PNG/.test(typeErr) && /Nothing was stored/.test(typeErr) && scans() === 0 && steps().length === 2, { typeErr, scans: scans() });
+ok("C8.1-8 / BR-6 fail: a scan that is not a PDF or image (judged by its bytes, named .pdf) is refused on the upload in PF-F4's words (QA-520); nothing stored", /^This type of file is not accepted\. Allowed here: PDF, JPEG and PNG\./.test(typeErr) && /Nothing was stored/.test(typeErr) && scans() === 0 && steps().length === 2, { typeErr, scans: scans() });
 ok("keyboard: after the refusal the focus is back on the upload button, described by the error", await p.evaluate(() => document.activeElement?.getAttribute("data-step-action")) === "scan_received" && (await block().locator('[data-step-action="scan_received"]').getAttribute("aria-invalid")) === "true");
 await state("scan-refused");
 await choose({ name: "big-scan.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(20 * 1024 * 1024 + 1, 0x25) });
