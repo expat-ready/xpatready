@@ -189,6 +189,7 @@ for (const [where, from, to, url] of [["List", "Engaged from", "Engaged to", "/f
   const end = await Promise.race([
     p.getByRole("alert").first().waitFor({ timeout: 30_000 }).then(() => "alert"),
     p.locator("[data-empty]").waitFor({ timeout: 30_000 }).then(() => "empty"),
+    p.locator("[data-prospect-row], [data-lead-row]").first().waitFor({ timeout: 30_000 }).then(() => "rows"),   // once fixed: the list keeps its rows
   ]).catch(() => "still loading after 30 s");
   const secs = Math.round((Date.now() - t0) / 1000);
   const fromVal = await p.getByLabel(from).inputValue();
