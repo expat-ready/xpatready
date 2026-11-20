@@ -1,4 +1,4 @@
-# Rule register (the tech lead keeps it; as of **P-765**, 16:15 IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`, whose first line lists the older ones)
+# Rule register (the tech lead keeps it; as of **P-768**, 23:0x IST 20 Nov; earlier pages word for word in `history/RULES-*.md`, newest `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`, whose first line lists the older ones)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
@@ -158,6 +158,7 @@ One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each f
 | IDX-19 | 20 Nov rows P-739, P-740, P-745 to P-748: row word for word in `rules/tech-lead.md` › IDX-19. | script: B204 waves check | 20 Nov |
 | IDX-20 | 20 Nov rows P-749 to P-756 stand: list word for word in `rules/tech-lead.md` › IDX-20 row. | script: lead-pr.sh | 20 Nov |
 | IDX-21 | 20 Nov P-757 to P-765 (browser merges and authority, clean-up window, QA-542 Sample, 10-min check, tooling fast path, agents do outside steps, tooling apart from product, lock exceptions) stand: word for word in DECISIONS; earlier row in `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
+| IDX-22 | P-766 to P-768 (20 Nov) stand: word for word in DECISIONS. | prose | 20 Nov |
 | P-738 | Each check the Lead measures the flow, names the one constraint, fixes it the simplest way, re-measures; no cause claimed unmeasured. | script: lead-watch.sh constraint section (ENF-738, owed) | 19 Nov |
 
 ## Tokens, money, account (detail: `rules/tokens-money-account.md`)
