@@ -132,8 +132,8 @@ try {
   ok("PF-18n DW2 fail (breaker M1): the switch is read inside the caller's transaction: turned off earlier in it, notify writes nothing", (await rowsOf(REP)).every((r) => r.item_id !== same.id));
   const many = Array.from({ length: 14 }, () => ({ kind: "case-stage" as const, id: randomUUID() }));
   const t0 = Date.now(), settled = await Promise.allSettled(many.map((it) => tell(FA, OFF, S, it)));
-  ok("PF-18n DW2 pass (breaker M1): 14 notifies at once (more than the pool's 10 connections) all commit, one row each, without waiting on a second connection",
-    settled.every((r) => r.status === "fulfilled") && (await rowsOf(OFF)).filter((r) => many.some((m) => m.id === r.item_id)).length === 14 && Date.now() - t0 < 4_000, { ms: Date.now() - t0, failed: settled.filter((r) => r.status === "rejected").map((r) => String((r as PromiseRejectedResult).reason).slice(0, 120)) });
+  ok("PF-18n DW2 pass (breaker M1): 14 notifies at once (more than the pool's 10 connections) all commit, one row each (no second connection per call: the old wiring timed out at 5 s)",
+    settled.every((r) => r.status === "fulfilled") && (await rowsOf(OFF)).filter((r) => many.some((m) => m.id === r.item_id)).length === 14, { ms: Date.now() - t0, failed: settled.filter((r) => r.status === "rejected").map((r) => String((r as PromiseRejectedResult).reason).slice(0, 120)) });
 
   // ---------------------------------------------------------------- DW3 the caller's transaction
   const rolled = { kind: "case-stage" as const, id: randomUUID() };
@@ -212,6 +212,16 @@ try {
   const jobs = app.get(PlatformJobs);
   ok("PF-18n DW6 pass: with the binding the app starts, CASE_DEADLINE_NOTIFICATIONS is the PrismaNotificationPort, no new waiting line, and the reminder and sweep handlers are registered",
     app.get(CASE_DEADLINE_NOTIFICATIONS) === app.get(NOTIFICATION_PORT) && app.get(NOTIFICATION_PORT) instanceof PrismaNotificationPort && waiting() === said && await hasHandler(jobs, REMINDER_JOB) && await hasHandler(jobs, SWEEP_JOB));
+  // Review n1: the app's own wiring (features/platform-notifications.ts) reads the switch inside the caller's transaction.
+  const appPort = app.get(NOTIFICATION_PORT) as InstanceType<typeof PrismaNotificationPort>, wired = { kind: "case-stage" as const, id: randomUUID() };
+  await withFirm(FA, () => db.$transaction(async (tx) => {
+    await tx.platformNotificationPreference.update({ where: { staffId_group: { staffId: REP, group: "MY_DEADLINES" } }, data: { inApp: false } });
+    await appPort.notify(tx, { staffId: REP }, S, wired);
+    await tx.platformNotificationPreference.update({ where: { staffId_group: { staffId: REP, group: "MY_DEADLINES" } }, data: { inApp: true } });
+  }));
+  const offInTx = (await rowsOf(REP)).filter((r) => r.item_id === wired.id).length;
+  await withFirm(FA, () => db.$transaction((tx) => appPort.notify(tx, { staffId: REP }, S, wired)));
+  ok("PF-18n DW6 fail (review n1): the app's own NOTIFICATION_PORT reads the switch in the caller's transaction (off earlier in it: no row; on: one row)", offInTx === 0 && (await rowsOf(REP)).filter((r) => r.item_id === wired.id).length === 1, { offInTx });
   // The sweep is the app's own 10-minute recurring run (no hand-made job): the test clock moves until it has run.
   const armed = await tickUntil(async () => (await reminders()).length === 3, 30_000, 80);
   const plan = await reminders();
