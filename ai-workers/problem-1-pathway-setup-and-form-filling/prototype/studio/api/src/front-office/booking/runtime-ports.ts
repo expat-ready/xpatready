@@ -8,13 +8,15 @@
 import { PrismaArrival } from "../sales/arrival-port.ts";
 import { systemClock } from "../../../../ports/clock.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
+import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { consentStore } from "../../platform/messages/consent/index.ts";
 import type { GivenBookingPorts } from "./service.ts";
 
-export function runtimeBookingPorts(mail: MailPort): GivenBookingPorts {
+/** `offices`: platform's OFFICE_CLOCK (PF-18a DW6: the host's mails state the host's office zone). */
+export function runtimeBookingPorts(mail: MailPort, offices?: OfficeClockPort): GivenBookingPorts {
   return {
-    audit: auditEvent, clock: systemClock, mail, arrival: new PrismaArrival({ audit: auditEvent, consent: consentStore }),
+    audit: auditEvent, clock: systemClock, mail, offices, arrival: new PrismaArrival({ audit: auditEvent, consent: consentStore }),
     publicBaseUrl: process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.STUDIO_PORT ?? 4400}`,
   };
 }

@@ -130,6 +130,29 @@ echo "2 queue-gate: GH_TOKEN is not set" > "$T/fx/proof"; guard "$c1" "$c2" "$la
 ok "CI-PRE: a proof that could not finish stops the guard (exit 2; the workflow then takes the label off)" "$([ $r = 2 ] && [ -z "$log" ] && echo 1)" "exit $r, $out / $log"
 rm -f "$T/fx/proof" "$T/fx/proof.log"; guard "$c1" "$c2" "$label" "[]"
 ok "CI-PRE: a head with no Approve is never asked for a full run (the review comes first)" "$([ "$(removed)" = 1 ] && [ ! -e "$T/fx/proof.log" ] && echo 1)" "$out / $log"
+# ENF-746a (P-746): qa's proof PR (records only) keeps its Approve across a merge of main that changes the same records
+# files (#2291 lost it: "merge of main changes the PR's own files"). Main's records-only.sh judges the paths for real.
+Q=ai-workers/problem-1-pathway-setup-and-form-filling; QA=$Q/product/qa; APP=$Q/prototype/studio/api/src/app.ts
+R0=$R; R="$T/repo2"; git init -q -b main "$R"; cd "$R" && git config user.email t@t && git config user.name t && git config commit.gpgsign false
+mkdir -p "$QA" "${APP%/*}"; printf '1\n2\n3\n4\n5\n6\n7\n8\n' > "$QA/BUGS.md"; echo a > "$APP"; git add -A && git commit -qm base
+git checkout -qb q; sed -i.bak 's/^1$/R1.28 Works/' "$QA/BUGS.md"; rm -f "$QA/BUGS.md.bak"; mkdir -p "$QA/reports/2026-11-19-after-merge-r128-works"
+echo proof > "$QA/reports/2026-11-19-after-merge-r128-works/README.md"; git add -A; git commit -qm "qa proof"; q1=$(git rev-parse HEAD)
+git checkout -qb a main; sed -i.bak 's/^1$/R1.28 Works/' "$QA/BUGS.md"; rm -f "$QA/BUGS.md.bak"; echo b >> "$APP"; git commit -qam "qa + app"; a1=$(git rev-parse HEAD)
+git checkout -q main; sed -i.bak 's/^8$/QA-600 open/' "$QA/BUGS.md"; rm -f "$QA/BUGS.md.bak"; git commit -qam "main: BUGS.md"
+git checkout -q -b qm "$q1"; git merge -q --no-edit main >/dev/null 2>&1; qmerge=$(git rev-parse HEAD)
+git checkout -q -b am "$a1"; git merge -q --no-edit main >/dev/null 2>&1; amerge=$(git rev-parse HEAD); git checkout -q main; cd - >/dev/null
+reclabel='[{"name":"review: approved"},{"name":"records"}]'
+guard "$q1" "$qmerge" "$reclabel" "$(cm "Reviewer: Approve $q1")"
+ok "ENF-746a: a qa-only PR (records label) keeps its Approve across a merge of main that changes its own BUGS.md" "$(kept)" "exit $r, $out / $log"
+ok "ENF-746a: ... and the full-run rule is asked from the merge back to the approved commit (records-only: exempt there)" "$(grep -qx "proof PR=1052 HEADS= $qmerge $q1 RELABEL=0" "$T/fx/proof.log" && echo 1)" "$(cat "$T/fx/proof.log" 2>&1)"
+guard "$q1" "$qmerge" "$label" "$(cm "Reviewer: Approve $q1")"
+ok "ENF-746a: the same merge without the records label (set from a full checkout) voids the Approve (fails closed)" "$(removed)" "$out / $log"
+guard "$a1" "$amerge" "$reclabel" "$(cm "Reviewer: Approve $a1")"
+ok "ENF-746a: a PR with one app file (records label or not) loses the Approve when main's merge changes its own BUGS.md" "$(removed)" "$out / $log"
+echo "$out" | grep -q 'BUGS.md'; ok "ENF-746a: ... naming that file, as today" "$([ $? = 0 ] && echo 1)" "$out"
+RECORDS_ONLY=/nonexistent guard "$q1" "$qmerge" "$reclabel" "$(cm "Reviewer: Approve $q1")"
+ok "ENF-746a: records-only.sh that cannot run voids the Approve (fails closed)" "$(removed)" "$out / $log"
+R=$R0; rm -f "$T/fx/proof.log"
 W="$(cd "$TOOLS/../../../.." && pwd)/.github/workflows/label-guard.yml"
 ge=$(python3 -I -c 'import sys,yaml; e=[s for s in yaml.safe_load(open(sys.argv[1]))["jobs"]["guard"]["steps"] if s.get("name") == "label guard"][0]["env"]
 print("ok" if "".join(str(e.get("LABELED")).split()) == "${{github.event.action=='"'"'labeled'"'"'&&github.event.label.name||'"'"''"'"'}}" and "vars.FULL_RUN_FROM" in str(e.get("FULL_FROM")) and "vars.REVIEWERS" in str(e.get("REVIEWERS")) else e)' "$W" 2>&1)
