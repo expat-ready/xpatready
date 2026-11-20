@@ -28,6 +28,8 @@ export function SignUpPage() {
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [refused, setRefused] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  /** Break m1: set before the first await, so two submits in one instant send one request. */
+  const inFlight = React.useRef(false);
   const [sentTo, setSentTo] = React.useState<string | null>(null);
   const [sentAt, setSentAt] = React.useState(0);
   const [changing, setChanging] = React.useState(false);
@@ -48,7 +50,7 @@ export function SignUpPage() {
   };
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || !q.data) return;
+    if (inFlight.current || !q.data) return;
     // The form's own checks first, on the field and in a summary, with every answer kept (BIC-13).
     const own: Record<string, string> = {};
     if (!v.email.trim()) own.email = "Enter your work email.";
@@ -59,7 +61,7 @@ export function SignUpPage() {
     if (!v.agree) own.acceptedTerms = TERMS_REQUIRED;
     setErrors(own); setRefused(null);
     if (Object.keys(own).length) { focusSummary(); return; }
-    setBusy(true);
+    inFlight.current = true; setBusy(true);
     try {
       await post(v, q.data);
       setSentTo(v.email.trim()); setSentAt(Date.now());
@@ -74,14 +76,21 @@ export function SignUpPage() {
         else { setErrors(f); setRefused("The terms have changed since this page opened. Read the current versions and tick again."); }
       } else { setErrors(f); setRefused(Object.keys(f).length ? null : p.detail ?? "Not sent. Please try again."); }
       focusSummary();
-    } finally { setBusy(false); }
+    } finally { inFlight.current = false; setBusy(false); }
   };
   const again = async () => {
-    if (busy || !q.data || Date.now() - sentAt < RESEND_MS) return;
-    setBusy(true); setRefused(null);
-    try { await post(v, q.data); setSentAt(Date.now()); } catch (x) { setRefused((x as Problem).detail ?? "Not sent. Please try again."); } finally { setBusy(false); }
+    if (inFlight.current || !q.data || Date.now() - sentAt < RESEND_MS) return;
+    inFlight.current = true; setBusy(true); setRefused(null);
+    try { await post(v, q.data); setSentAt(Date.now()); } catch (x) {
+      const p = x as Problem;
+      // Break m2: the terms changed (or the page is too old) since the form was sent: back to the form, where the
+      // current versions are read again and the tick is cleared, as the main submit does.
+      if (p.code === "RELOAD" || byField(p.errors).acceptedTerms) {
+        await q.refetch(); setV((x2) => ({ ...x2, agree: false })); setSentTo(null);
+        setErrors(p.code === "RELOAD" ? {} : byField(p.errors)); setRefused("The terms have changed since you signed up. Read the current versions, tick again and press Start free trial.");
+      } else setRefused(p.detail ?? "Not sent. Please try again.");
+    } finally { inFlight.current = false; setBusy(false); }
   };
-
   if (sentTo) return (
     <Frame area="outside" title="Check your email">
       <Place label="Check your email" />

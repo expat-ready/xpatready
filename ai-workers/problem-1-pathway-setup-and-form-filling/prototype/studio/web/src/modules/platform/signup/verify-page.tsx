@@ -31,25 +31,28 @@ export function VerifyPage() {
   const [view, setView] = React.useState<View>(link.current ? { step: "form" } : { step: "closed", words: NO_LINK, signUpAgain: true });
   const [error, setError] = React.useState<string | null>(null), [busy, setBusy] = React.useState(false);
   const heading = React.useRef<HTMLHeadingElement>(null);
+  /** Break m1: one confirm at a time, and nothing replaces the done view once the firm key is shown. */
+  const inFlight = React.useRef(false), done = React.useRef(false);
   React.useEffect(() => { document.title = "Confirm your email · Expat Ready"; }, []);
   React.useEffect(() => { if (view.step !== "form") heading.current?.focus(); }, [view.step]);
   const confirm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || !link.current) return;
+    if (inFlight.current || done.current || !link.current) return;
     if (!/^\d{6}$/.test(code.trim())) { setError("Type the 6 digits from the email."); return; }
-    setBusy(true); setError(null);
+    inFlight.current = true; setBusy(true); setError(null);
     try {
       const { token } = link.current;
       const r = await call<{ firmKey?: string }>("signup/verify", { token, code: code.trim() });
-      held = null;
+      held = null; done.current = true;
       setView({ step: "done", firmKey: r.firmKey ?? "" });
     } catch (x) {
+      if (done.current) return;
       const p = x as Problem;
       if (p.code === "CODE_WRONG") setError(p.detail ?? "That code is not the one we sent.");
       else if (p.status === 404) { held = null; setView({ step: "closed", words: EXPIRED, signUpAgain: true }); }
       else if (p.code === "ACCOUNT_EXISTS" || p.code === "PLAN_GONE") { held = null; setView({ step: "closed", words: p.detail ?? EXPIRED, signUpAgain: p.code === "PLAN_GONE" }); }
       else setError(p.detail ?? "Not confirmed. Please try again.");
-    } finally { setBusy(false); }
+    } finally { inFlight.current = false; setBusy(false); }
   };
   return (
     <Frame area="outside" title="Confirm your email">
@@ -70,7 +73,7 @@ export function VerifyPage() {
           </p>
         </> : <>
           <h1 id="verify-h" className="text-lg font-semibold">Confirm your email</h1>
-          <p className="mt-1 text-sm text-text-muted">The 6-digit code from the email is filled in. Press Confirm my email to finish your sign-up.</p>
+          <p className="mt-1 text-sm text-text-muted">{/^\d{6}$/.test(linked?.code ?? "") ? "The 6-digit code from the email is filled in. Press Confirm my email to finish your sign-up." : "Type the 6-digit code from the email, then press Confirm my email."}</p>
           <form noValidate method="post" onSubmit={confirm} className="mt-4 flex flex-col gap-3">
             <Field label="Code from the email" error={error}><Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="w-40 font-mono tracking-widest" data-signup-code /></Field>
             <Button type="submit" size="lg" busy={busy} className="self-start" data-signup-confirm>Confirm my email</Button>
