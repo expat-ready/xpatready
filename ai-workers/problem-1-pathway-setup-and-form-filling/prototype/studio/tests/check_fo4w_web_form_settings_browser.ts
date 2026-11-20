@@ -6,7 +6,9 @@
 // snippet draws the form on the saved site. axe (WCAG 2.2 AA), keyboard-only save, no sideways scroll, screenshots at
 // 375 and 1440 px. R1.26 QA-605: the on/off switch: the Owner switches the form off and on by screens (one audit line
 // each, before and after in full; a switched-off form refuses public sends); a Read-only member is refused (403), a stale
-// version is 409 STALE on the API and on the screen, the same state again changes nothing, a malformed body is 422.
+// version is 409 STALE on the API and on the screen, the same state again changes nothing, a malformed body is 422, a
+// form with no consent wording cannot be switched on (422 on its field, never a 500; review Major); while off the send
+// door refuses too; focus stays on the switch (review m1).
 // Sample firms (PF-3, FO-1a seeds). US$0, live AI off.
 //   zsh studio/tools/isolated.sh screens_fo4w 4527 start PLATFORM_IDENTITY=local && tsx studio/tests/check_fo4w_web_form_settings_browser.ts 4527 xr_studio_screens_fo4w
 import "reflect-metadata";
@@ -115,6 +117,11 @@ const otherOff = await api(tokens.owner, "PUT", `/front-office/web-forms/${other
 ok("QA-605 fail: \"yes\" for on/off or an extra field → 422; another firm's form → 404; nothing changed", badBody.status === 422 && !!badBody.body?.fields?.enabled && extra.status === 422 && otherOff.status === 404 && enabledNow() === "t" && onoffAudits() === 0, { bad: badBody.status, extra: extra.status, other: otherOff.status });
 const v1 = await vNow(), sameOn = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: v1 });
 ok("QA-605: switching on a form that is on changes nothing: same version, no audit line", sameOn.status === 200 && sameOn.body?.version === v1 && onoffAudits() === 0, sameOn.status);
+// A new firm's form: off, with no consent wording (firm-seed.ts). Switching it on is refused in plain words, never a 500.
+sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
+const noWording = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/enabled`, { enabled: true, version: await vNow() });
+ok("QA-605 fail (review Major): a form with no consent wording cannot be switched on: 422 on its field in plain words, still off, no audit line", noWording.status === 422 && noWording.body?.code === "NO_CONSENT_WORDING" && /no consent wording/.test(String(noWording.body?.fields?.enabled)) && enabledNow() === "f" && onoffAudits() === 0, noWording.body);
+sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
 
 // The screen.
 const browser: Browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -174,18 +181,27 @@ const fresh = await api(tokens.owner, "GET", "/front-office/web-forms");
 const theirs = await api(tokens.owner, "PUT", `/front-office/web-forms/${formId}/allowed-sites`, { sites: [SITE, "https://www.example.com"], version: fresh.body?.forms.find((f: { id: string }) => f.id === formId)?.version });
 await o.getByRole("button", { name: "Add a site" }).click(); await o.getByLabel("Site 2", { exact: true }).fill("https://other.example.org");
 await o.getByRole("button", { name: "Save sites" }).click();
-await o.getByText("Someone else changed this form's sites").waitFor({ timeout: 15_000 });
+await o.getByText("Someone else changed this form since you opened it").waitFor({ timeout: 15_000 });
 ok("FO-4w fail: a save after someone else's is refused in plain words with a Reload; their list is kept", theirs.status === 200 && stored() === `${SITE.toLowerCase()} https://www.example.com`);
 await o.getByRole("button", { name: "Reload" }).click();
 await o.waitForFunction(() => (document.querySelectorAll<HTMLInputElement>('input[placeholder="https://www.example.com"]')[1]?.value ?? "") === "https://www.example.com", undefined, { timeout: 10_000 });
-ok("FO-4w: Reload shows the newest list and takes the \"someone else changed\" notice away", await o.getByLabel("Site 2", { exact: true }).inputValue() === "https://www.example.com" && await o.getByText("Someone else changed this form's sites").count() === 0);
+ok("FO-4w: Reload shows the newest list and takes the \"someone else changed\" notice away", await o.getByLabel("Site 2", { exact: true }).inputValue() === "https://www.example.com" && await o.getByText("Someone else changed this form since you opened it").count() === 0);
 // R1.26 QA-605 on the screen: the Owner switches the form off, then on; one audit line each with before and after.
+// First, a form with no consent wording: the switch says why it stays off, on the screen, in plain words.
+sql(`update fo_web_form set enabled = false, consent_wording_version_id = null where id = '${formId}'`);
+await o.reload(); await o.getByRole("button", { name: "Switch the form on" }).click();
+await o.getByText("This form cannot be switched on yet: it has no consent wording").waitFor({ timeout: 15_000 });
+ok("QA-605 fail (review Major) on the screen: with no consent wording the switch says why the form stays off; nothing stored", enabledNow() === "f" && onoffAudits() === 0 && await o.getByText("Something went wrong").count() === 0);
+await shot(o, "qa605-00-no-wording-1440");
+sql(`update fo_web_form set consent_wording_version_id = '${wording.id}', enabled = true where id = '${formId}'`);
+await o.reload(); await o.getByRole("button", { name: "Switch the form off" }).waitFor({ timeout: 15_000 });
 await o.getByRole("button", { name: "Switch the form off" }).click();
 await o.getByText(/^Switched off\./).waitFor({ timeout: 15_000 });
 const offLine = sql(`select concat_ws('|', actor, detail->>'before', detail->>'after') from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}' order by at desc limit 1`);
 ok("QA-605: the Owner switches the form off by screens: stored off, the page says Off, one audit line by the Owner with before true and after false", enabledNow() === "f" && await o.getByText("This form is off").isVisible() && onoffAudits() === 1 && /^staff:.+\|true\|false$/.test(offLine), { enabled: enabledNow(), offLine });
 const offSend = await fetch(`${BASE}/api/public/forms/${token}`);
-ok("QA-605: a switched-off form refuses the public door (not available)", offSend.status === 404 && /not available/i.test(await offSend.text()), offSend.status);
+const offPost = await fetch(`${BASE}/api/public/forms/${token}/submissions`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+ok("QA-605: a switched-off form refuses the public door, the read and the send (not available)", offSend.status === 404 && /not available/i.test(await offSend.text()) && offPost.status === 404 && /FORM_NOT_AVAILABLE/.test(await offPost.text()), { read: offSend.status, send: offPost.status });
 await axe("QA-605 settings, form off", o); await shot(o, "qa605-01-off-1440");
 // Typed but unsaved sites are kept across a switch (the switch makes a new version, the list is the same).
 await o.getByRole("button", { name: "Add a site" }).click(); await o.getByLabel("Site 3", { exact: true }).fill("https://typed.example.org");
@@ -204,7 +220,8 @@ await o.getByRole("button", { name: "Switch the form on" }).waitFor({ timeout: 1
 ok("QA-605: Reload shows the form off and takes the notice away", await o.getByText("Someone else changed this form since you opened it").count() === 0 && await o.getByText("This form is off").isVisible());
 await o.getByRole("button", { name: "Switch the form on" }).focus(); await o.keyboard.press("Enter");
 await o.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
-ok("QA-605: the switch works by keyboard (Enter); the form is on again", enabledNow() === "t" && onoffAudits() === 4);
+await o.waitForFunction(() => document.activeElement?.textContent === "Switch the form off", undefined, { timeout: 5_000 });
+ok("QA-605: the switch works by keyboard (Enter); the form is on again; focus stays on the switch (review m1)", enabledNow() === "t" && onoffAudits() === 4);
 await axe("QA-605 settings, form on", o); await shot(o, "qa605-02-on-1440");
 // The copied snippet works on the saved site (FO-4b's embed draws).
 const { ctx: vc } = await pageAs(tokens.owner); const v = await vc.newPage();

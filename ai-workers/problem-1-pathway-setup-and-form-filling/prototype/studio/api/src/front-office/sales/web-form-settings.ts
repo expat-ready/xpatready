@@ -12,7 +12,9 @@
 //          or off. The same version check (409 STALE), the same transaction; one audit line per change
 //          (fo.web_form.enabled_changed) with the state before and after in full (`before`, `after`: booleans, no
 //          personal data). The same state again changes nothing: no new version, no audit line. A form that is off
-//          refuses public sends as before (public.ts: "This form is not available").
+//          refuses public sends as before (public.ts: "This form is not available"). A form with no consent wording
+//          cannot be switched on (the table's fo_web_form_consent_check): 422 on `enabled` in plain words, never a 500
+//          (review Major; a new firm's form starts off with no wording, firm-seed.ts).
 // Not here (the panel's later parts, concept screen 2b): consent wording version, thank-you text.
 import type { PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
@@ -95,7 +97,7 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
     await tx.$executeRaw`select 1 from fo_web_form where firm_id = ${ctx.firmId}::uuid and id = ${formId}::uuid for update`;
     const before = await tx.foWebForm.findFirst({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
     if (!before) return notFound("web form");
-    if (before.updatedAt.toISOString() !== b.version) return conflict("Someone else changed this form's sites since you opened it. Reload to see their change, then make yours again.", "STALE");
+    if (before.updatedAt.toISOString() !== b.version) return conflict("Someone else changed this form since you opened it. Reload to see their change, then make yours again.", "STALE");
     // The same list again changes nothing: no new version, no audit line (review m3).
     if (sites.length === before.allowedSites.length && sites.every((s, i) => s === before.allowedSites[i])) return view(before, origin);
     await tx.foWebForm.updateMany({ where: firmScope(ctx.firmId, { id: formId }), data: { allowedSites: sites, updatedBy: actorOf(ctx) } });
@@ -110,6 +112,8 @@ export async function saveAllowedSites(db: PrismaClient, audit: AuditPort<Tx>, c
   });
 }
 
+/** Why a form with no consent wording stays off (its wording is chosen in a later part of this page). */
+export const NO_WORDING = "This form cannot be switched on yet: it has no consent wording for visitors to agree to. Choosing the wording is not on this page yet.";
 /** Switch one form on or off (R1.26, QA-605). */
 export async function saveEnabled(db: PrismaClient, audit: AuditPort<Tx>, ctx: StaffContext, formId: string, body: unknown, publicOrigin: string) {
   if (typeof formId !== "string" || !UUID.test(formId)) return notFound("web form");
@@ -125,6 +129,10 @@ export async function saveEnabled(db: PrismaClient, audit: AuditPort<Tx>, ctx: S
     if (!before) return notFound("web form");
     if (before.updatedAt.toISOString() !== b.version) return conflict("Someone else changed this form since you opened it. Reload to see their change, then make yours again.", "STALE");
     if (before.enabled === enabled) return view(before, origin);
+    if (enabled) {
+      const w = await tx.foWebForm.findFirst({ where: firmScope(ctx.firmId, { id: formId }), select: { consentWordingVersionId: true } });
+      if (!w?.consentWordingVersionId) return unprocessable(NO_WORDING, { enabled: NO_WORDING }, { code: "NO_CONSENT_WORDING" });
+    }
     await tx.foWebForm.updateMany({ where: firmScope(ctx.firmId, { id: formId }), data: { enabled, updatedBy: actorOf(ctx) } });
     const after = await tx.foWebForm.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: formId }), select: SELECT });
     await audit.record(tx, {

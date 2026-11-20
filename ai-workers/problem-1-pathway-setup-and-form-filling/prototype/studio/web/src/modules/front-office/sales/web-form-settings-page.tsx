@@ -107,6 +107,7 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
   const [said, setSaid] = React.useState<{ tone: "ok" | "danger"; text: string; stale?: boolean } | null>(null);
   const [busy, setBusy] = React.useState(false);
   const qc = useQueryClient();
+  const button = React.useRef<HTMLButtonElement>(null);
   React.useEffect(() => { setSaid((s) => (s?.stale ? null : s)); }, [form.version]);
   const flip = async () => {
     setBusy(true); setSaid(null);
@@ -116,14 +117,17 @@ function OnOff({ form, onSaved }: { form: FormT; onSaved: (f: FormT) => void }) 
       setSaid({ tone: "ok", text: saved.enabled ? "Switched on. Visitors can send enquiries through this form." : "Switched off. Visitors now see \"This form is not available\"." });
     } catch (x) {
       const p = x instanceof StaffApiError ? x : null;
-      setSaid({ tone: "danger", text: p?.message ?? "Not changed. Please try again.", stale: p?.problem.code === "STALE" });
-    } finally { setBusy(false); }
+      setSaid({ tone: "danger", text: p?.problem.fields?.enabled ?? p?.message ?? "Not changed. Please try again.", stale: p?.problem.code === "STALE" });
+    } finally {
+      // The button is disabled while busy, which drops focus: it goes back to the button (review m1).
+      setBusy(false); requestAnimationFrame(() => button.current?.focus());
+    }
   };
   return (
     <div className="flex flex-col gap-3" role="group" aria-labelledby={`onoff-${form.id}`}>
       <h3 id={`onoff-${form.id}`} className="text-sm font-semibold">On or off</h3>
       <p className="text-sm text-text-muted">{form.enabled ? "The form is on: visitors can send enquiries, on your site and on the hosted page. Switching it off stops new enquiries at once." : "Switch it on to take enquiries, on your site and on the hosted page. It takes effect at once."}</p>
-      <div><Button type="button" size="sm" variant={form.enabled ? "secondary" : "default"} busy={busy} onClick={flip}>{form.enabled ? "Switch the form off" : "Switch the form on"}</Button></div>
+      <div><Button ref={button} type="button" size="sm" variant={form.enabled ? "secondary" : "default"} busy={busy} onClick={flip}>{form.enabled ? "Switch the form off" : "Switch the form on"}</Button></div>
       {said ? <Notice tone={said.tone} action={said.stale ? <Button type="button" size="sm" variant="secondary" onClick={() => qc.invalidateQueries({ queryKey: ["fo", "web-forms"] })}>Reload</Button> : undefined}>{said.text}</Notice> : null}
     </div>
   );

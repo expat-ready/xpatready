@@ -3,10 +3,11 @@
 // embed, FO-4w's settings) on an isolated copy of the running app (its own database and port, never :4400), by screens
 // at 1440 px, and asserts the stored rows underneath with SQL on that copy.
 //   W1 the firm's Owner signs in on the sign-in card, opens Sales › Settings › Web form, switches the form on (it starts
-//      off, as a new firm's does; R1.26 QA-605: by the screen, never SQL; one audit line, before off and after on), adds
+//      off; R1.26 QA-605: by the screen, never SQL; one audit line, before off and after on), adds
 //      the firm's own site, saves, and copies the snippet. Fail: while off the hosted page says "not available"; a site
 //      with a page is refused on its field and nothing is saved.
-//      Consent wording and thank-you text are still set underneath (their screen is a later part, QA-605 scope).
+//      Consent wording and thank-you text are still set underneath (their screen is a later part, QA-605 scope): a new
+//      firm's form has no wording, and a form without one cannot be switched on (422, in check_fo4w).
 //   W2 a visitor reaches the firm's site (a page the journey serves, made of the copied snippet) from a campaign link
 //      (?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=…) and sends an enquiry through the embedded form:
 //      the firm's thank-you text, one lead (door WEB_FORM) whose attribution reads spring, google, cpc, the click id and
@@ -93,7 +94,8 @@ await owner.getByRole("navigation", { name: "Sales" }).getByRole("link", { name:
 await owner.getByRole("heading", { name: "Web form", level: 1 }).waitFor({ timeout: 20_000 });
 const hostedOff = await owner.getByLabel("Hosted form page").inputValue();
 const offProbe = await fetch(`${BASE}/api/public/forms/${hostedOff.split("/").pop()}`);
-ok("J-26 W1 fail: while the form is off the page says so and the public door answers \"not available\"", await owner.getByText("This form is off").isVisible() && offProbe.status === 404 && /not available/i.test(await offProbe.text()), offProbe.status);
+const offPost = await fetch(`${BASE}/api/public/forms/${hostedOff.split("/").pop()}/submissions`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+ok("J-26 W1 fail: while the form is off the page says so and the public door, read and send, answers \"not available\"", await owner.getByText("This form is off").isVisible() && offProbe.status === 404 && /not available/i.test(await offProbe.text()) && offPost.status === 404, { read: offProbe.status, send: offPost.status });
 await owner.getByRole("button", { name: "Switch the form on" }).click();
 await owner.getByText(/^Switched on\./).waitFor({ timeout: 15_000 });
 ok("J-26 W1: the Owner switches the form on by screens (stored on; one audit line, before false, after true)", sql(`select enabled from fo_web_form where id = '${formId}'`) === "t" && sql(`select concat_ws('|', count(*), min(detail->>'before'), min(detail->>'after')) from audit_event where action = 'fo.web_form.enabled_changed' and entity_key = '${formId}'`) === "1|false|true" && await owner.getByText("This form is off").count() === 0);
