@@ -16,9 +16,11 @@ export function phoneE164(v: unknown): string | null {
  *  country code alone (not a local-only length); no extension (it would be dropped); 7-15 digits, the shape
  *  fo_person's checks and phone_e164 take (a longer "possible" number gave a 500, a shorter one no duplicate key); and
  *  the digits typed are exactly the number, after an optional "+", international prefix (00, 011) or country code and
- *  one trunk "0" (libphonenumber drops digits from some over-long numbers: +86 1234567890123456 read as +8667890123456). */
+ *  one trunk "0" (libphonenumber drops digits from some over-long numbers: +86 1234567890123456 read as +8667890123456).
+ *  FO-9b (QA-528, check_fo9b P0): "00" then a country code is international dialling ("0044 20 7946 0958"), read as
+ *  "+"; with region CA libphonenumber never read it (no North American number starts with 0). */
 export function phoneE164Exact(v: string): string | null {
-  const t = v.trim(), n = t ? parsePhoneNumberFromString(t, DEFAULT_REGION) : undefined;
+  const t = v.trim().replace(/^00(?=[\s.()-]*[1-9])/, "+"), n = t ? parsePhoneNumberFromString(t, DEFAULT_REGION) : undefined;
   if (!n || !n.isPossible() || n.ext || !/^\+[1-9][0-9]{6,14}$/.test(n.number)) return null;
   // A local-only length is "possible" (555 0100 → +15550100): the number must be possible as dialled from anywhere,
   // with its country code and no default region (review M1 on b6b6b3d4).

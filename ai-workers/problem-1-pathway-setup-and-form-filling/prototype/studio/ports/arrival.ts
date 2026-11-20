@@ -14,12 +14,18 @@ const Uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 const Name = z.string().trim().min(1).max(100).refine((s) => !/[\u0000-\u001f\u007f]/.test(s), "no control characters");
 
 /** The person as the booker typed them (AG-4-14 rule 1: first name, last name and email always; phone in phone mode,
- *  AG-4-11 rule 1, in +<country><number> form). */
+ *  AG-4-11 rule 1, in +<country><number> form). FO-9b (P-747, additive): a number the booking door could not read
+ *  travels as typed with `phoneReadable: false` (kept and flagged "Fix number", never refused); without the flag the
+ *  phone is E.164, as before. */
 export const ArrivalPerson = z.strictObject({
   givenNames: Name,
   familyName: Name,
   email: z.email().max(254).transform((e) => e.trim().toLowerCase()),
-  phone: z.string().regex(/^\+[1-9][0-9]{6,14}$/, "a phone number in +<country><number> form").optional(),
+  phone: z.string().trim().min(1).max(40).refine((s) => !/[\u0000-\u001f\u007f]/.test(s), "no control characters").optional(),
+  phoneReadable: z.literal(false).optional(),
+}).superRefine((p, c) => {
+  if (p.phone !== undefined && p.phoneReadable === undefined && !/^\+[1-9][0-9]{6,14}$/.test(p.phone)) c.addIssue({ code: "custom", path: ["phone"], message: "a phone number in +<country><number> form, or phoneReadable: false" });
+  if (p.phoneReadable === false && p.phone === undefined) c.addIssue({ code: "custom", path: ["phoneReadable"], message: "only with a phone" });
 });
 export type ArrivalPerson = z.input<typeof ArrivalPerson>;
 
@@ -117,7 +123,9 @@ export function fakeArrival(opts: { wording?: ConsentWording | null; failOn?: (a
       const k = pkey(a.firmId, a.person.email);
       let personId = people.get(k), newLead = false;
       if (!personId) { personId = crypto.randomUUID(); people.set(k, personId); madePeople.push({ k, tx }); }
-      contacts.set(`${a.firmId.toLowerCase()}|${personId}`, a.person);
+      // An unreadable phone is kept on the person but is never their contact phone (FO-9b; the real adapter's contactOf).
+      const { phoneReadable, ...known } = a.person;
+      contacts.set(`${a.firmId.toLowerCase()}|${personId}`, phoneReadable === false ? (({ phone: _p, ...rest }) => rest)(known) : known);
       const open = prospects.filter((p) => p.personId === personId && p.open);
       const prospectId = moveOnly(personId);
       if (open.length === 0) { newLead = true; leads.push({ firmId: a.firmId.toLowerCase(), personId, key, tx }); }
