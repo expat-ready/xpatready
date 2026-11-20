@@ -36,6 +36,8 @@ to $'Touches: the model (prisma/schema.prisma).'; ok "... and in brackets" "$(y 
 to $'- **Touches:**\n- **Done when:** STATE.md shows the row'; ok "a bulleted next field (- **Done when:**) is not read as the list" "$(y "$r" 0)" "$out"
 to $'Touches:\n\n1. prisma/schema.prisma'; ok "a blank line, then a numbered list, is read" "$(y "$r" 1)" "$out"
 to $'TOUCHES: lane-preflight.sh'; ok "TOUCHES: in capitals is read" "$(y "$r" 1)" "$out"
+to $'Touches: `*.prisma`'; ok "a glob starting with * keeps it (bold ** is dropped, a glob's * is not)" "$(y "$r" 1)" "$out"
+to $'Touches: **lane-preflight.sh**'; ok "... and a bold entry is read" "$(y "$r" 1)" "$out"
 to $'Touches: none'; ok "Touches: none checks nothing" "$(y "$r" 0)" "$out"
 to $'Row X-1. Model: Opus 5.5.'; ok "a brief with no Touches: line checks nothing (and reads no PRs)" "$([ $r = 0 ] && [ -z "$out" ] && echo 1 || echo 0)" "$out"
 out=$(printf 'Touches: x.ts\n' | TOUCH_PRS="$T/none.tsv" python3 -I "$TO" 2>&1); r=$?

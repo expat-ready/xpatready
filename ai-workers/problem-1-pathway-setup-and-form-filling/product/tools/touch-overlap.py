@@ -34,7 +34,7 @@ def touches(brief):
                 vals.append(b.group(1))
         for v in vals:
             for e in re.split(r"[,\s]+", v):
-                e = re.sub(r"[`*'\";().]+$", "", re.sub(r"^[`*'\"(]+", "", e))   # a leading dot stays (.github)
+                e = re.sub(r"[`*'\";().]+$", "", re.sub(r"^(?:\*\*|[`'\"(])+", "", e))   # a leading dot stays (.github)
                 if e: out.append(e)
     return [] if [e.lower() for e in out] in ([], ["none"]) else [e for e in out if e.lower() != "none"]
 
