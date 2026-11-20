@@ -10,7 +10,8 @@
 #   * code    (the app, its suites or their tools; select-suites.mjs decides): the fast checks (job "fast") and, on a
 #             merge-queue batch only (P-651 (2), below), the studio suites on the parallel parts (job "shard",
 #             run-suites.sh --shard i/n, each a fresh copy): every suite but the quarantined ones (--skip-quarantined),
-#             once per change; a builder's PR runs no suite. A batch retries a failed suite once (B122, P-376 (8), run-suites.sh --retry): "passed on retry" or "failed
+#             once per change; a builder's PR runs no suite in its verdict (E2, 21 Nov: jobs pr-suites-plan and pr-suites run
+#             the change's suites report-only, outside "ci"). A batch retries a failed suite once (B122, P-376 (8), run-suites.sh --retry): "passed on retry" or "failed
 #             twice" in the summary, a record uploaded as suite-retries-<part>; a suite that passed only on retry in 2
 #             runs in 7 days is quarantined for every part (tools/flaky.mjs in job "kind"). The nightly never retries.
 #             F5 (founder 6 Nov): a suite named or titled race, concurrent, parallel or upsert, or on the quarantine
@@ -429,6 +430,90 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
           retention-days: 14
+  pr-suites-plan:
+    # E2 (P-772, B203; enforcement plan 21 Nov): a builder's PR of code runs the suites its change can affect, REPORT ONLY.
+    # P-651 (2) keeps the verdict in the merge queue: this job and pr-suites are not in job "ci"'s needs, not a Mergify
+    # condition and not a required check (P-717 (b): a new check starts report-only; the tech lead decides after 3 green
+    # days). The pick is run-suites.sh --changed (select-suites.mjs); a change that would pick everything runs --direct
+    # (the suites that import or name its files, plus the smoke set), since the whole set is the queue's job. The pick is
+    # split over ceil(units / 25) parts, at most 12, each a fresh copy as in job "shard". Test: check-pr-suites-job.sh.
+    needs: kind
+    if: ${{ github.event_name == 'pull_request' && needs.kind.outputs.kind == 'code' && needs.kind.outputs.queue != 'true' && needs.kind.outputs.mode != 'same' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read }
+    outputs:
+      shards: ${{ steps.p.outputs.shards }}
+      n: ${{ steps.p.outputs.n }}
+      direct: ${{ steps.p.outputs.direct }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, filter: "blob:none" }
+      - id: p
+        name: which suites can this change affect? (run-suites.sh --changed --list; read-only)
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}" }
+        run: |
+          range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE") || exit 1
+          bash "$P/tools/pr-suites-plan.sh" "$range" | tee -a "$GITHUB_OUTPUT"   # bash -eo pipefail: a failed plan runs no part
+  pr-suites:
+    # E2: the plan's parts. Report only: the suites step may fail or time out without failing this job (continue-on-error
+    # on the step), so a red suite shows as a warning and in the summary, never as a red check on the PR.
+    needs: [kind, pr-suites-plan]
+    if: ${{ needs.pr-suites-plan.outputs.shards != '' && needs.pr-suites-plan.outputs.shards != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.pr-suites-plan.outputs.shards) }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      N: ${{ needs.pr-suites-plan.outputs.n }}
+      DIRECT: ${{ needs.pr-suites-plan.outputs.direct }}
+      SUITES_QUARANTINE_AUTO: ${{ needs.kind.outputs.autoq }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: the test merge on today's main (D6, tools/pr-base.sh merge; the base job "kind" used)
+        env: { HEAD_SHA: "${{ github.event.pull_request.head.sha }}", KBASE: "${{ needs.kind.outputs.base }}" }
+        run: |
+          range=$(bash "$P/tools/pr-base.sh" merge "$HEAD_SHA" "$KBASE") || exit 1
+          echo "RANGE=$range" >> "$GITHUB_ENV"; echo "tested: $range"
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - name: set up like a cloud session (cloud-setup.sh; it also builds the web app the browser suites need)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: Playwright's own Chromium
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: the change's suites, part ${{ matrix.shard }} of ${{ needs.pr-suites-plan.outputs.n }} (report only; run-suites.sh --changed; US$0)
+        id: s
+        continue-on-error: true
+        timeout-minutes: 50
+        run: |
+          d=""; [ "$DIRECT" = true ] && d="--direct"
+          bash "$P/tools/run-suites.sh" --demo --retry --changed "$RANGE" $d --shard "${{ matrix.shard }}/$N" | tee suites.md
+          exit ${PIPESTATUS[0]}
+      - name: summary (report only)
+        if: always()
+        env: { OUTCOME: "${{ steps.s.outcome }}" }
+        run: |
+          { echo "**Report only (E2):** the suites this PR's change can affect, part ${{ matrix.shard }} of $N$([ "$DIRECT" = true ] && echo ', --direct (the change would pick every suite; the queue runs them)'). Outcome: $OUTCOME. The merge queue still decides (P-651)."; echo
+            [ -f suites.md ] && cat suites.md; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$OUTCOME" = success ] || echo "::warning title=pr-suites (report only)::part ${{ matrix.shard }} of $N: $OUTCOME; read the summary (the queue still decides)"
+      - name: logs (only when a suite failed)
+        if: steps.s.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-suite-logs-part-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites/
+          retention-days: 7
   packs:
     # D2 (P-416, 8 Nov; review of #1337): the packs this change touches (kind's gate-b.mjs --diff-groups 5), one machine a
     # group, gate B's 3 slots, each row on its scoring data; a red group is run once more (a flaky pack is retried once).
