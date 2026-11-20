@@ -19,30 +19,29 @@ The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **comple
 * **ETA board in every report:** 3–6 capabilities next to reach Works (qa-confirmed), each with an IST time and the one step it waits on, and whether the last estimate was on time or late by N minutes and why; built only from this check's own data.
 
 ## Full report (when the founder says "full report", "/lead-watch full" or "how are we doing")
-Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-measure.py --since <00:00 IST as UTC>`, the app view with "Show more" expanded, open PRs, `mergify/` batches and runners (`gh.sh api .../actions/runners`). **Act first** (Unblock playbook), then reply **in chat only** (no file), every number from a tool. Proven = R1 rows at Works in `qa/CAPABILITIES.md` on `origin/main`, now, at 00:00 IST and 24 h ago (never the "four" line, which counts C rows). Codes carry their purpose: "R1.38 (staff Bookings calendar)".
-1. **Headline:** proven today N of 10 · total T of 101 · forecast in IST at the measured 24 h rate · on track yes/no.
-2. **🔴 Needs you / 🟡 Decide when you can**, each with "Recommend: ...".
-3. **Stage table** (Shaped-ready next wave "1+1 ahead" · Building, cap 8 · Approve · Merge queue · Machines · qa proof, cap 12) with columns items, oldest wait, done in last 3 h, healthy; then "The constraint today is ___ because ___" with numbers (the stage with the longest wait and the pile in front of it).
-4. **Five whys** on the gap to 10, each step with evidence (PR, run, count, time), ending "Fix · Owner · by HH:MM IST".
-5. **Waves:** active wave item by item (owner, PR, state), next wave readiness, WIP against caps 8 and 12.
-6. **Lanes** from the app view: item, last push (IST), waiting / failed / quiet / ok.
-7. **Manual unblocks** done this time (PR, time, rule) and any still possible without lowering quality.
-8. **Resources:** weekly %, burn per hour, IST times of 96% and 98%; your context and hand-over; disk; runners; standbys.
-9. **Risks and mitigations**, at most five, each with its cost and owner.
-10. **One recommendation**, and what the founder can do now.
+Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-measure.py --since <00:00 IST as UTC>`, the app view ("Show more" expanded), open PRs, `mergify/` batches, runners (`gh.sh api .../actions/runners`). **Measure, name the constraint, act on it first (Unblock playbook), then reply in chat only** (no file). Every number from a tool, its sample named beside it (P-500); a number no tool gives says "counted by hand from <source>". Codes carry their purpose: "R1.38 (staff Bookings calendar)". Business words.
+**Counts:** Proven = R1 rows at Works in `qa/CAPABILITIES.md` on `origin/main` (not the "four" line: C rows). Proven today = now minus at 00:00 IST, net (a row that left Works subtracts). Rate = now minus 24 h ago; forecast = IST date all 101 are proven at that rate, with "(n rows in 24 h)". On track = the forecast is on or before the Release 1 date (P-609).
+1. **🔴 Needs you / 🟡 Decide when you can** (P-478), each with "Recommend: ..."; each also a card; spend red with US$.
+2. **Headline:** proven today N (target 10) · total T of 101 · forecast · on track yes/no.
+3. **One recommendation**, and what the founder can do now.
+4. **Stage table**, one row per stage: Shaped-ready (a buffer, kept 1+1 waves ahead, never the constraint for being full) · Building · Approve · Lead answers (`SLE Q` lines) · Red after approval (lead-watch "red after approval") · Merge queue and machines (one wait) · qa proof. Columns: items · median age · in and out in the last 3 h. Then "The constraint today is ___ because ___": the stage where out is below in and the median age is highest; on a tie, the one feeding most proofs.
+5. **Five whys** on the gap to 10, each step with evidence (PR, run, count, time), ending "Fix · Owner · by HH:MM IST". Skip when 10 or more are proven today.
+6. **Risks and mitigations**, at most five, each with cost and owner.
+7. **Resources:** weekly %, burn per hour, IST times of 96% and 98%; your context and hand-over; disk; runners; standbys.
+**Appendix, only when asked or when it explains a 🔴 line** (in business words): waves item by item with WIP (`waves.py wip`: building + approve + merge queue against cap 8; built not proven against cap 12) · lanes (item, last push IST, waiting / failed / quiet / ok) · manual unblocks done (PR, time, rule).
 
-## Unblock playbook (each line points to its rule)
+## Unblock playbook (each line points to its rule; read the failed log or Mergify's summary first, P-502)
 1. Dequeued after a failed batch: the "Batch failures covered" line for every failed suite, then relabel (P-731).
-2. A PR stuck in the queue: a bare `@mergifyio requeue` comment.
-3. pr-rules ran before a DECISIONS row reached main: `tools/lead-pr.sh reopen <n>`.
-4. Check-only fixes holding the queue: merge them in the built-in browser at the first check (P-757, P-758); a shell refusal is never retried (P-504).
-5. Labels, Ready for review, reopen refused in the shell: do them in the built-in browser (P-752).
+2. Approved and not queued over 60 min with Mergify's summary showing no unmet condition: a bare `@mergifyio requeue` comment (it can reset a batch: never inside a running one).
+3. pr-rules ran before a DECISIONS row reached main: `tools/lead-pr.sh reopen <n>` (it re-runs every check: only for that cause).
+4. Check-only fixes holding the queue: merge them in the built-in browser at the first check (P-757, P-758) only when they hold no product code, carry the reviewer's or the Lead's Approve and green `ci`, after the Lead's read (P-423); a classifier refusal in the shell is never routed around (P-504).
+5. Labels, Ready for review, reopen refused in the shell: do them in the built-in browser, after the Lead's read (P-423, P-752).
 6. claude.ai prompt box: click its ref, check the focus and that the text appears once, press Return, confirm the bubble.
 7. Cloud starts carry Model and effort (P-608), a Duplicate check and a Done when naming its test; on a classifier refusal leave a card.
 8. After every start, check the app view for duplicate sessions.
-9. Read the failed log before any re-run; failures outside the PR's code are covered, never forced.
-10. The Lead posts `/run full` for lanes (their comments are defused, P-751).
-11. Proactive: unowned active-wave items get lanes or cards every check; use the founder's resources: browser authority (P-758) and the reset credit he applies at 98% weekly (founder 20 Nov, STATE).
+9. Failures outside the PR's code are covered, never forced; re-run one red part alone (P-371).
+10. The Lead posts `/run full` for lanes (their comments are defused, P-751), once per head, with a reason: it costs a full suite.
+11. Proactive: unowned active-wave items get lanes or cards every check, only when `waves.py allow` says the cap has room; use the founder's resources: browser authority (P-758) and the reset credit he applies at 98% weekly (founder 20 Nov, STATE).
 12. Judge by proven, never by merges.
 
 ## Thresholds and what to do
