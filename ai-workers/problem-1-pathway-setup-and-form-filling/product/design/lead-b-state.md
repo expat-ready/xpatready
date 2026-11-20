@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 02:39 IST):** **#2326 merged: R1.38 has 4/4 parts on main** (#2308, #2313, #2322, #2326); Lead 8 dispatches j_38, then qa. **No open Lead B PRs.** Since take-over these merged: #2305 R1.110, #2029 R1.4, #2322, #2326. Owed (Lead 8 starts at the founder's next typed turn): PF-18n1, then PF-18h (R1.74, QA-471). The watcher is off (nothing to watch); restart it on the PF-18n1 PR once it opens.
+
 **Lead B (9) update (21 Nov 02:01 IST):** the current Lead is **Lead 8 (series 3)** (`local_dbce8aee-7d76-45f3-958d-84ec68333321`); I've reported to it. #2326 requeued ~01:55 IST. Lead 7 accepted PF-18n1 and PF-18h (starts owed at the founder's next typed turn; PF-18n1 first).
 
 **Lead B (9) update (21 Nov 01:24 IST):** at Lead 7's ask, I took R1.74's two PF gaps. Briefs: `lead-b-briefs/PF-18n1.md` (msg_notification store plus PrismaNotificationPort, bound to CASE_DEADLINE_NOTIFICATIONS in a new features/platform-notifications.ts; no case-side file) and `lead-b-briefs/PF-18h.md` (staff Home "Needs you" from unread MY_DEADLINES rows; concept first; after PF-18n1; its J-74 step waits for CS-DL3 part 2). Ruling: a repeat notify marks the row unread again (one item per deadline). Lead 7 starts them at the founder's next typed turn.
