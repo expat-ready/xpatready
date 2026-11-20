@@ -97,7 +97,8 @@ async function pageAs(session: string | null): Promise<Page> {
   if (session) await ctx.addInitScript((t) => { if (!sessionStorage.getItem("xr-staff-session")) sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); }, session);
   return ctx.newPage();
 }
-const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage: true });
+/** Full page, except a long list (two weeks of times): the screen as a person sees it. */
+const shot = (p: Page, name: string, fullPage = true) => p.screenshot({ path: join(SHOTS, `${name}-1440.png`), fullPage });
 const axe = async (p: Page, where: string) => { const r = await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze(); ok(`J-42 ${where}: axe finds no WCAG A/AA violation`, r.violations.length === 0, r.violations.map((v) => `${v.id}: ${v.nodes.length}`)); };
 const main = async (p: Page) => (await p.locator("main").innerText()).replace(/\s+/g, " ");
 /** A full load, as from an email (a hash change alone keeps the page). */
@@ -150,7 +151,7 @@ try {
   let to = 0;
   for (let t = aAt + 10 * MIN; t <= aAt + 40 * MIN && !to; t += 5 * MIN) if ((await mine.getByRole("radio", { name: slotName(t) }).count()) === 1) to = t;
   ok(`J-42 W2: Choose a new time offers a later time (${to ? slotName(to) : "none found 10-40 min after A's"})`, to > 0);
-  await shot(mine, "W2-choose-new-time"); await axe(mine, "W2 choose a new time");
+  await shot(mine, "W2-choose-new-time", false); await axe(mine, "W2 choose a new time");
   await mine.getByRole("radio", { name: slotName(to) }).click(); await mine.getByRole("button", { name: "Move to this time" }).click();
   await mine.locator("[data-updated]").waitFor({ timeout: 15_000 });
   const moved = await db.foBooking.findUniqueOrThrow({ where: { id: A.id } });
