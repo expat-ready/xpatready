@@ -17,6 +17,14 @@ The container proof now runs on merge batches and is green. It is still **report
 **Gap in the runs:** #2517 changed only the pipeline, so its batch ran skeleton only because `skeleton.yml` is on skeleton's own path list. Run 44739838072 is the first batch where skeleton checked a product code change. A batch that touches no image path skips skeleton by design.
 
 ## Runs on main's code
+**On main's exact head 90535a94e (the Lead's dispatch, 21:1x IST):**
+| Run | Result |
+|---|---|
+| skeleton **44764131465** (workflow_dispatch) | success: health 200 status ok; first page and bundle 200; `/api/platform/me` 200 with firmId; non-root (node, uid 1000); no secret (7 env names, 17 layers). Seeded fails caught: health 503 with the database stopped; a root image with a key. |
+| skeleton **44764145893** (workflow_dispatch) | success, the same. |
+
+Clause 3 is now proved on main's own tree, not only on batch trees.
+
 Green skeleton batch runs since #2517 (each a merge-queue batch; none red, none skipped where image paths changed):
 | Run | Batch | Note |
 |---|---|---|
@@ -28,7 +36,7 @@ Green skeleton batch runs since #2517 (each a merge-queue batch; none red, none 
 | 44755851713 | #2546 + #2309 on f0b4fb0 | |
 | 44758707203 | #2309 on 7df8b32 | main's app code plus #2309 |
 
-That is 7 clean batches toward P-717 (b)'s 10 (or 24 h from 12:55Z). ci was green on the batch that merged #2029 (44752862844). No `skeleton` dispatch on main has run yet (asked on #2517, comment 7041144493).
+That is 7 clean batches toward P-717 (b)'s 10 (or 24 h from 12:55Z). ci was green on the batch that merged #2029 (44752862844). The two dispatches above answer the request on #2517.
 
 ### First read (b201e9c1a)
 - skeleton 44734827437: success (#2517's batch)
@@ -42,7 +50,7 @@ QA-449's Expected says the proof "runs on the merge batch … and is required". 
 
 ## Questions for the Lead
 1. After 10 clean batch runs or 24 h (P-717 (b)), please add `skeleton` to `.mergify.yml` with the guarded `or:`, then ask qa to re-score R1.16. That is the last open clause.
-2. Optional: dispatch `skeleton` on main once (still not run at 90535a94e) (Actions › skeleton › Run workflow; cloud lanes get 403, P-439). That would prove it on main's exact tree, not on a batch tree.
+2. Done: skeleton was dispatched twice on main 90535a94e (44764131465, 44764145893), both green.
 
 ## Could not test
 - "An API error never reads green" for the API suites. No new evidence; it rests on PF-7.
