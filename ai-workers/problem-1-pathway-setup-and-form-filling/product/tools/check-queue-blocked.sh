@@ -101,6 +101,12 @@ scene src; put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"work
 out=$(run); ok "a red guards run on a PR branch is not main's: silent" "$(quiet "$out" && echo 1)" "$out"
 put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":4,"head_branch":"main","status":"completed","conclusion":"timed_out","created_at":"2026-11-20T06:00:00Z"}]}'
 out=$(run); ok "guards timed out on main: fires" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'guards red on main (run 4)' <<< "$out" && echo 1)" "$out"
+put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":3,"head_branch":"mergify/merge-queue/a","status":"completed","conclusion":"failure","created_at":"2026-11-20T04:00:00Z"},{"id":4,"head_branch":"mergify/merge-queue/b","status":"completed","conclusion":"cancelled","created_at":"2026-11-20T07:30:00Z"}]}'
+out=$(run); ok "a newer cancelled batch run does not hide the red one before it: fires" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'guards red on a merge batch (run 3)' <<< "$out" && echo 1)" "$out"
+put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":3,"head_branch":"mergify/merge-queue/a","status":"completed","conclusion":"failure","created_at":"2026-11-20T07:03:00Z"},{"id":4,"head_branch":"mergify/merge-queue/b","status":"completed","conclusion":"success","created_at":"2026-11-20T07:38:00Z"}]}'
+out=$(run); ok "red in one batch 57 min ago, green in another since (parallel scopes, 20 Nov 07:03/07:38): fires" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'guards red on a merge batch (run 3)' <<< "$out" && echo 1)" "$out"
+put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":3,"head_branch":"mergify/merge-queue/a","status":"completed","conclusion":"failure","created_at":"2026-11-20T05:00:00Z"},{"id":4,"head_branch":"mergify/merge-queue/b","status":"completed","conclusion":"success","created_at":"2026-11-20T07:38:00Z"}]}'
+out=$(run); ok "red 3 h ago, green since: silent" "$(quiet "$out" && echo 1)" "$out"
 put "repos/$R/actions/workflows/guards.yml/runs?per_page=100" '{"workflow_runs":[{"id":9,"head_branch":"fix/other","status":"completed","conclusion":"failure","created_at":"2026-11-20T07:55:00Z"}]}'
 out=$(run); ok "no guards run on main or a batch: a not-measured line, never \"main's guards green\", and silent" "$(quiet "$out" && grep -q '^guards: no finished run on main or a merge batch' <<< "$out" && grep -qx 'checks no failed merge batch or dequeue in 2 h: the queue is not held by checks' <<< "$out" && echo 1)" "$out"
 
@@ -122,7 +128,10 @@ scene who; put "repos/$R/pulls?state=open&per_page=100" '[{"number":10,"title":"
 put "repos/$R/issues/10/comments?per_page=100&page=1" '[{"author_association":"COLLABORATOR","user":{"login":"lane-bot"},"body":"Reviewer: Approve '$H'"}]'
 out=$(run); ok "an Approve from a collaborator outside the owner and REVIEWERS: silent (queue-gate.sh would not label it)" "$(quiet "$out" && echo 1)" "$out"
 : > "$D/log"; out=$(D="$D" QB_GH="bash $T/gh" REVIEWERS="someone lane-bot" python3 -I "$Q" --repo $R --now $NOW 2>&1)
-ok "the same Approve with its login in REVIEWERS: fires" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+ok "the same Approve with its login in REVIEWERS (env): fires" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"
+printf '%s\n' 'someone lane-bot' > "$D/$(printf '%s' "api repos/$R/actions/variables/REVIEWERS -q .value" | tr -c 'A-Za-z0-9' _)"
+: > "$D/log"; out=$(env -u REVIEWERS D="$D" QB_GH="bash $T/gh" python3 -I "$Q" --repo $R --now $NOW 2>&1)
+ok "REVIEWERS unset (the Mac): read from the repository variable through gh, and the Approve fires" "$(grep -qxF "$ACT10" <<< "$out" && grep -q 'actions/variables/REVIEWERS' "$D/log" && echo 1)" "$out"
 put "repos/$R/issues/10/comments?per_page=100&page=1" "$(python3 -c 'import json; print(json.dumps([{"author_association":"OWNER","user":{"login":"o"},"body":"note"}]*100))')"
 put "repos/$R/issues/10/comments?per_page=100&page=2" '[{"author_association":"OWNER","user":{"login":"o"},"body":"Reviewer: Approve '$H'"}]'
 out=$(run); ok "the Approve on the second page of comments: fires" "$(grep -qxF "$ACT10" <<< "$out" && echo 1)" "$out"

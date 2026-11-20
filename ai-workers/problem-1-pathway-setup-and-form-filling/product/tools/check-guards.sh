@@ -200,9 +200,13 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 31 running|product/tools/queue-blocked.py|s/ or any(r.get("status") != "completed" for r in mine)//|check-queue-blocked.sh
 31 batchpr|product/tools/queue-blocked.py|s/ or str((p.get("head") or {}).get("ref") or "").startswith("mergify\/")//|check-queue-blocked.sh
 31 label|product/tools/queue-blocked.py|s/if "review: approved" not in labels and not /if not /|check-queue-blocked.sh
+31 cancelled|product/tools/queue-blocked.py|s/ and r.get("conclusion") not in ("cancelled", "skipped")//|check-queue-blocked.sh
+31 window red|product/tools/queue-blocked.py|s/ and (r is last or (when(r.get("created_at")) or now) >= since)\]/ and r is last]/|check-queue-blocked.sh
+31 reviewers|product/tools/queue-blocked.py|s/^            rv = gh("api", .*/            rv = ""/|check-queue-blocked.sh
+31 cap|product/tools/queue-blocked.py|s/^    raise Unread("more than %d pages" % cap)/    return out/|check-queue-blocked.sh
 31 ci|product/tools/queue-blocked.py|s/^    return max(mine, .*/    return True/|check-queue-blocked.sh
 31 guards|product/tools/queue-blocked.py|s/^            if last.get("conclusion") in ("failure", "timed_out"):/            if False:/|check-queue-blocked.sh
-31 batch|product/tools/queue-blocked.py|s/startswith("mergify\/merge-queue\/")/startswith("never\/")/|check-queue-blocked.sh
+31 batch|product/tools/queue-blocked.py|s/str(r.get("head_branch") or "").startswith("mergify\/merge-queue\/") and/str(r.get("head_branch") or "").startswith("never\/") and/|check-queue-blocked.sh
 31 window|product/tools/queue-blocked.py|s/^WINDOW_H = 2 /WINDOW_H = 999 /|check-queue-blocked.sh
 31 dequeued|product/tools/queue-blocked.py|s/.get("name") == "dequeued"/.get("name") == "never"/|check-queue-blocked.sh
 31 green|product/tools/queue-blocked.py|s/^    if not why and not warn:/    if False:/|check-queue-blocked.sh

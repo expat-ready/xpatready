@@ -5,10 +5,12 @@
 without the other, and no check told the Lead to merge them by hand. P-758: at the first check that sees checks holding
 the queue, the Lead merges the approved check-only fix in the built-in browser that same check. This prints its ACT line.
 
-The queue is held by checks when main's newest finished guards run is red, or a merge-queue batch's ci failed in the
-last WINDOW_H hours, or a PR got the `dequeued` label in that time. guards.yml runs on pull requests only (20 Nov), so
-"main's guards" is its newest finished run on main or on a Mergify batch branch (main plus the batch); when none is in the
-newest 100 runs, a "guards" line says it was not measured and the other two signals decide. Then every open PR (not a draft, not a Mergify batch)
+The queue is held by checks when main's guards are red, or a merge-queue batch's ci failed in the last WINDOW_H hours,
+or a PR got the `dequeued` label in that time. guards.yml runs on pull requests only (20 Nov), so "main's guards" are its
+finished runs on main or on a Mergify batch branch (main plus the batch), cancelled and skipped ones left out: red when
+the newest is red, or when any in the last WINDOW_H hours is red (parallel queue scopes: a green batch in one scope does
+not clear a red one in another). When none is in the newest 100 runs, a "guards" line says it was not measured and the
+other two signals decide. Then every open PR (not a draft, not a Mergify batch)
 that touches only check paths (CHECK_ONLY), is approved on its head (`review: approved`, or the last "Reviewer:" verdict
 naming the head from the repository owner's account or a login in REVIEWERS, with write access, is
 "Reviewer: Approve <head>", queue-gate.sh's rule) and has a green `ci` on its head gets:
@@ -111,11 +113,13 @@ def held(repo, now):
     why, warn, note, since = [], [], [], now - timedelta(hours=WINDOW_H)
     try:
         g = [r for r in api("repos/%s/actions/workflows/guards.yml/runs?per_page=100" % repo, dict).get("workflow_runs") or []
-             if r.get("status") == "completed" and main_like(r.get("head_branch"))]
+             if r.get("status") == "completed" and r.get("conclusion") not in ("cancelled", "skipped") and main_like(r.get("head_branch"))]
         if g:
             last = max(g, key=lambda r: r.get("created_at") or "")
-            if last.get("conclusion") in ("failure", "timed_out"):
-                why.append("guards red on %s (run %s)" % ("main" if last.get("head_branch") == "main" else "a merge batch", last.get("id")))
+            red = [r for r in g if r.get("conclusion") in ("failure", "timed_out") and (r is last or (when(r.get("created_at")) or now) >= since)]
+            if red:
+                r = max(red, key=lambda r: r.get("created_at") or "")
+                why.append("guards red on %s (run %s)" % ("main" if r.get("head_branch") == "main" else "a merge batch", r.get("id")))
         else:
             note.append("guards: no finished run on main or a merge batch in the newest 100 (guards.yml runs on pull requests only): not measured")
     except Unread as e:
@@ -154,7 +158,14 @@ def main(argv):
     except Unread as e:
         print("warn  queue blocked by checks: not measured (repository unreadable: %s)" % e); return 0
     why, warn, note = held(repo, now)
-    who = [repo.split("/")[0]] + os.environ.get("REVIEWERS", "").split()
+    # REVIEWERS: the repository variable queue-gate.yml reads; on the Lead's Mac it is read through gh.sh (unreadable: owner only)
+    rv = os.environ.get("REVIEWERS")
+    if rv is None:
+        try:
+            rv = gh("api", "repos/%s/actions/variables/REVIEWERS" % repo, "-q", ".value")
+        except Unread:
+            rv = ""
+    who = [repo.split("/")[0]] + rv.split()
     for x in note:
         print(x)
     for w in warn:
