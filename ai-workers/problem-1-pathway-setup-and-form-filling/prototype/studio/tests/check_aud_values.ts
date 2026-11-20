@@ -20,7 +20,7 @@ ok("pass: personal values in full are accepted in before and after (a phone numb
   AuditEntry.safeParse(entry({ before: { phone: "+1 416 555 0100", email: "client.a@example.com" }, after: { phone: "+1 416 555 0199", address: "x".repeat(3000) } })).success);
 ok("fail: the same email address in detail is still refused (detail stays ids only)", !AuditEntry.safeParse(entry({ detail: { email: "client.a@example.com" } })).success);
 ok("fail: a secret is never stored: a password, a token, a hash or a one-time code in before or after is refused",
-  ["password", "resetToken", "passwordHash", "otp", "apiKey", "client_secret"].every((k) => !AuditEntry.safeParse(entry({ after: { [k]: "x" } })).success && !AuditValues.safeParse({ [k]: "x" }).success));
+  ["password", "resetToken", "passwordHash", "otp", "apiKey", "client_secret", "pwd", "credential", "bearer", "sessionId", "inviteLink", "magicLink", "resetUrl", "jwt", "cookie"].every((k) => !AuditEntry.safeParse(entry({ after: { [k]: "x" } })).success && !AuditValues.safeParse({ [k]: "x" }).success));
 ok("fail: a value longer than 4000 characters, a nested object, or 61 fields is refused",
   !AuditValues.safeParse({ a: "x".repeat(4001) }).success && !AuditValues.safeParse({ a: { b: 1 } }).success && !AuditValues.safeParse(Object.fromEntries(Array.from({ length: 61 }, (_, i) => [`f${i}`, i]))).success);
 ok("fail: a `<field>_before` or `<field>_after` key in detail is refused (before and after have one place)", !AuditEntry.safeParse(entry({ detail: { phone_before: "1" } })).success && !AuditEntry.safeParse(entry({ detail: { phone_after: "1" } })).success);
@@ -35,6 +35,18 @@ ok("pass: a create gives lone _after values (an addition), a delete lone _before
   JSON.stringify(created) === JSON.stringify({ name_after: "Client A", value_after: 1200 }) && JSON.stringify(removed) === JSON.stringify({ name_before: "Office 2" })
   && changesOf(created).map((c) => c.words).join("|") === "name: (none) → Client A|value: (none) → 1200" && changesOf(removed)[0]?.words === "name: Office 2 → (none)", { created, removed });
 ok("fail: a field set to empty is shown, never dropped (null → value, value → null)", JSON.stringify(flattenValues({ phone: null }, { phone: "1" })) === JSON.stringify({ phone_before: null, phone_after: "1" }) && JSON.stringify(flattenValues({ phone: "1" }, { phone: null })) === JSON.stringify({ phone_before: "1", phone_after: null }));
+
+// ------------------------------------------------------------------------------------------- a case line's case (QA-595)
+// Breaker M1 on #2527: a case line's firm is its case's, so only a case entity is read for its case; a configuration line
+// whose typed words say "case bbbbbbbb" never takes that case (nor its firm). A stand-in db answers one case for any range.
+{
+  const { caseIdOf } = await import("../api/src/core.ts");
+  const WS = "0c0c0c0c-0000-4000-8000-0000000000ee", ID = "bbbbbbbb-0000-4000-8000-000000000001";
+  const db = { case: { findMany: async () => [{ id: ID }] } } as never;
+  ok("pass (QA-595): a case entity's line names its case by its words (\"… on case bbbbbbbb\")", (await caseIdOf(db, WS, "case document", null, "uploaded a passport on case bbbbbbbb")) === ID);
+  ok("fail (breaker M1): a configuration line (a field retired, a form role, a note) whose words say \"case bbbbbbbb\" names no case, so it never lands on that case's firm",
+    (await caseIdOf(db, WS, "field", "applicant.x", "retired: see case bbbbbbbb")) === undefined && (await caseIdOf(db, WS, "form", "imm5257", "proposed role (reason: case bbbbbbbb)")) === undefined);
+}
 
 // ------------------------------------------------------------------------------------------- the sweep
 const API = join(import.meta.dirname, "..", "api", "src");

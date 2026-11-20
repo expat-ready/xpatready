@@ -33,7 +33,7 @@ export const AREA_ENTITY = /^(platform|plat|fo|money|msg)_[a-z][a-z0-9_]*$/;
  *  Secrets never: a field named like a password, a secret, a token, a hash, a salt or a one-time code is refused (AG-13
  *  §12 "secrets sanitised in audit payloads"). Personal data in an insert-only table that cannot be erased: Unconfirmed: no
  *  counsel. */
-export const SECRET_FIELD = /pass(word|code)|secret|token|hash|salt|otp|signing_?key|private_?key|api_?key/i;
+export const SECRET_FIELD = /pass(word|code)|pwd|secret|token|hash|salt|otp|signing_?key|private_?key|api_?key|credential|bearer|jwt|cookie|session_?id|(invite|invitation|magic|reset|sign_?in|login|unsubscribe)_?(link|url)/i;
 const ValueScalar = z.union([z.string().max(4000), z.number(), z.boolean(), z.null()]);
 export const AuditValues = z
   .record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/, "a field name"), z.union([ValueScalar, z.array(ValueScalar).max(100)]))
