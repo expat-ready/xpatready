@@ -144,4 +144,4 @@ try {
   for (const [id, seats] of plans) sql(`update platform_plan set seats_limit = ${seats} where id = '${id}'`);
   await browser.close(); await db.$disconnect();
 }
-summary();
+process.exit(summary() ? 1 : 0);
