@@ -1,6 +1,6 @@
 // J-42 (map row 42, R1.42: reschedule or cancel by link; outcomes; consult record): the join-and-walk row (BACKLOG J-42;
 // Lead 7's ask, 20 Nov). It adds no feature: it walks FO-3w part 2's manage page (the booker's single-use link), FO-3st1
-// part 1's booking detail (attendance) and FO-3a part 2a's consult record route, on an isolated copy of the running app
+// part 1's booking detail (attendance) and part 2's consult record panel and next-step button, on an isolated copy of the running app
 // (its own database and port, never :4400), on the real clock, at 1440 px.
 //   W1: booker A books a time about 90 minutes ahead and booker B the next free time (minutes away), on the public page;
 //   W2: A's link reschedules inside the firm's notice rule (the 60-minute self-service limit): "Booking updated";
@@ -10,12 +10,13 @@
 //   W6: once B's meeting has ended, B's link is refused as expired (the same bad-link words);
 //   W7: B's host signs in, opens B on the staff booking detail and answers Attended (one click): the booking is COMPLETED
 //       and one audit line names the host and the time;
-//   W8 (route, no screen yet): the host records the outcome and a note in the consult record: stored with who and when,
-//       one audit line. The consult record has no screen on main (detail-panel.tsx: "Part 2 adds the consult record and
-//       the next step"), so W8 saves it through the route the screen will call, with the host's own session, and the walk
-//       reports two HELD lines (walk.mjs counts them): "W8 screen" (no consult record panel) and "W9" (row 53's first step,
-//       the next-step button, not reachable). R1.42 is not complete until FO-3st1's consult record part lands; question
-//       for the tech lead on #2613.
+//   W8: the host records the consult on the booking detail's Consult record panel (FO-3st1 part 2): time spent starts at
+//       the booked length; a fee with no currency is refused in the concept's words (J-S6) and nothing is stored; then
+//       notes, a recommended item and a CAD fee are saved ("Saved"): stored with who and when, one audit line without the
+//       notes' text; a quoted fee in EUR is still refused by the route (400, on quotedFeeCurrency);
+//   W9: row 53's first step: the panel's Next step offers "Engage and prepare retainer" (B hangs on a lead, the host has
+//       agent/retainer:draft); it opens FO-4's Engage panel on B's lead page, and Engage as Individual starts the prospect.
+//       FO-5's retainer draft screen (FO-5s) is not on main, so the walk ends at the prospect (NOTE line).
 //   DW1: the manage link travels by the real sending path: A's confirmation and the reschedule's new mail are msg_outbox
 //        rows SENT or DELIVERED by the local adapter, read back from the copy's demo inbox (fakeMail wrote no row).
 //   DW2: the attendance answer and the consult record are database rows with audit_event lines (the in-memory audit fake
@@ -220,22 +221,52 @@ try {
   ok("J-42 W7 pass / DW2: one click saves Attended: B is COMPLETED, with one audit line naming the host and the time",
     bRow.status === "COMPLETED" && attLines.length === 1 && attLines[0].actor.includes(host.id) && attLines[0].at.getTime() >= before - 5_000, { status: bRow.status, lines: attLines.map((l) => [l.actor, l.at]) });
 
-  // ---------------------------------------------------------------------------------------------- W8, DW2: the consult record
-  const panel = await staff.locator("[data-booking-detail]").innerText();
-  const hasScreen = /consult record|time spent/i.test(panel) || (await staff.getByRole("button", { name: /save record/i }).count()) > 0;
-  console.log(hasScreen ? "NOTE  J-42 W8 screen: the booking detail now shows a consult record: switch W8 from the route to the panel (and drop the HELD lines)"
-    : "HELD  J-42 W8 screen: the booking detail has no consult record panel (FO-3st1's consult record part is not on main); W8 is saved through its route with the host's session");
-  console.log("HELD  J-42 W9: row 53's first step (the consult record's next-step button) is not reachable by screens: no consult record panel");
+  // ---------------------------------------------------------------------------------------------- W8, DW2: the consult record panel
+  const form = staff.locator(`[data-consult-record="${B.id}"]`);
+  await form.waitFor({ timeout: 15_000 });
+  const booked = Math.round((B.endsAt.getTime() - B.startsAt.getTime()) / MIN);
+  ok(`J-42 W8: after Attended the booking detail shows the Consult record, time spent pre-filled with the booked length (${booked} min), CAD pre-filled, and no next step before a save`,
+    (await staff.getByLabel("Time spent (minutes)").inputValue()) === String(booked) && (await staff.getByLabel("Currency").inputValue()) === "CAD" && (await staff.locator("[data-next-step]").count()) === 0);
+  await shot(staff, "W8-consult-record-empty"); await axe(staff, "W8 the consult record");
+  await staff.getByLabel("Quoted fee (optional)").fill("1500"); await staff.getByLabel("Currency").selectOption("");
+  await staff.getByRole("button", { name: "Save record" }).click();
+  await staff.getByText("Choose a currency for the quoted fee.").waitFor({ timeout: 5_000 });
+  ok('J-42 W8 fail (J-S6): a fee with no currency is refused in words ("Choose a currency for the quoted fee."), only CAD and USD are offered, and nothing is stored',
+    (await db.foConsultRecord.count({ where: { bookingId: B.id } })) === 0 && JSON.stringify(await staff.getByLabel("Currency").locator("option").allInnerTexts()) === JSON.stringify(["Choose", "CAD", "USD"]));
   const note = "Sample: has a job offer; next, an employer check.";
-  const saved = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { timeSpentMinutes: 5, notes: note });
+  await staff.getByLabel("Currency").selectOption("CAD");
+  await staff.getByLabel("Notes (optional)").fill(note);
+  await staff.getByLabel("Recommended item").fill("Express Entry assessment"); await staff.getByRole("button", { name: "+ Add" }).click();
+  await staff.getByRole("button", { name: "Save record" }).click();
+  await staff.locator("[data-consult-saved]").waitFor({ timeout: 15_000 });
+  await staff.locator("[data-next-step]").waitFor({ timeout: 15_000 });
   const rec = await db.foConsultRecord.findFirst({ where: { firmId: firm.id, bookingId: B.id } });
   const recLines = await db.auditEvent.findMany({ where: { firmId: firm.id, entity: "fo_consult_record" } });
-  ok("J-42 W8 (route, no screen yet) pass / DW2: the host records the outcome and a note: the record is stored with who (created and updated by the host) and when, and one audit line names the host",
-    saved.status === 200 && rec?.notes === note && rec.createdBy.includes(host.id) && rec.updatedBy.includes(host.id) && rec.createdAt.getTime() >= before - 5_000
+  await shot(staff, "W8-consult-record-saved"); await axe(staff, "W8 the saved record and its next step");
+  ok("J-42 W8 pass / DW2: Save record says \"Saved\"; the record is stored as typed (minutes, note, item, 1,500.00 CAD) with who (created and updated by the host) and when, and one audit line names the host without the notes' text",
+    rec?.notes === note && rec.timeSpentMinutes === booked && JSON.stringify(rec.recommended) === JSON.stringify(["Express Entry assessment"]) && rec.quotedFeeMinor === 150000 && rec.quotedFeeCurrency === "CAD"
+    && rec.createdBy.includes(host.id) && rec.updatedBy.includes(host.id) && rec.createdAt.getTime() >= before - 5_000
     && recLines.length === 1 && recLines[0].action === "booking.consult_record.created" && recLines[0].actor.includes(host.id) && !JSON.stringify(recLines[0].detail).includes(note),
-    { status: saved.status, rec, lines: recLines.map((l) => [l.action, l.actor]) });
-  const eur = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { quotedFeeMinor: 1000, quotedFeeCurrency: "EUR", version: saved.body?.version });
-  ok("J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged", eur.status === 400 && JSON.stringify(eur.body?.issues ?? "").includes("quotedFeeCurrency") && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === null, eur);
+    { rec, lines: recLines.map((l) => [l.action, l.actor]) });
+  const eur = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { quotedFeeMinor: 1000, quotedFeeCurrency: "EUR", version: rec?.version });
+  ok("J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged", eur.status === 400 && JSON.stringify(eur.body?.issues ?? "").includes("quotedFeeCurrency") && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === "CAD", eur);
+
+  // ---------------------------------------------------------------------------------------------- W9: the next-step button (row 53's first step)
+  const steps = await staff.locator("[data-next-step] button").allInnerTexts();
+  const mailsBefore = await db.msgOutbox.count({ where: { firmId: firm.id, address: bEmail } });
+  ok('J-42 W9: the Next step offers "Engage and prepare retainer" (B hangs on a lead; the host may draft retainers)', steps.includes("Engage and prepare retainer"), steps);
+  await staff.getByRole("button", { name: "Engage and prepare retainer" }).click();
+  const engagePanel = staff.getByRole("dialog", { name: "Engage" });
+  await engagePanel.waitFor({ timeout: 15_000 });
+  ok("J-42 W9: the button opens FO-4's Engage panel on B's lead page (the address carries no engage flag once open)", /\/front-office\/leads\/[0-9a-f-]+$/.test(new URL(staff.url()).pathname) && !staff.url().includes("engage=1"), staff.url());
+  await shot(staff, "W9-engage-panel");
+  await staff.getByRole("button", { name: "Engage as Individual" }).click();
+  await staff.waitForURL(/\/front-office\/prospects\//, { timeout: 15_000 });
+  const prospects = await db.foProspect.findMany({ where: { firmId: firm.id } });
+  await shot(staff, "W9-prospect");
+  ok("J-42 W9 pass: Engage as Individual starts one prospect for B and opens it; nothing is sent to B on the way (BR-16)",
+    prospects.length === 1 && staff.url().endsWith(prospects[0].id) && (await db.msgOutbox.count({ where: { firmId: firm.id, address: bEmail } })) === mailsBefore, { url: staff.url(), prospects: prospects.length });
+  console.log("NOTE  J-42 W9: the retainer step goes on in FO-5's draft screen (FO-5s, R1.53's own row), not on main; the walk ends at the prospect it starts from");
   ok("J-42: no page error in any browser during the walk", errors.length === 0, errors.slice(0, 5));
 } finally {
   await browser.close();
