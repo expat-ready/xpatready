@@ -1,0 +1,30 @@
+{
+  "item": "R1.53",
+  "name": "53 Retainer with the regulator's 26 items; versioned until sent",
+  "pr": 2826,
+  "sha": "91d72608c0f83de5c5332533f1661da0c50dc032",
+  "run_id": "44906625325",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44906625325",
+  "at": "2026-11-21T13:03:41.726Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_53.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44906625325/artifacts/14708291000",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.53-91d72608c0f83de5c5332533f1661da0c50dc032.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
