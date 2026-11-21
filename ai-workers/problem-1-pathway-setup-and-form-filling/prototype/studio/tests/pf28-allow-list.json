@@ -1,6 +1,7 @@
 {
  "unparsed": {
   "front-office/assignment/routes.ts POST /api/front-office/assignment-rules body": "PF-28 part 3 (front-office sales)",
+  "front-office/assignment/routes.ts PUT /api/front-office/lead-sharing body": "PF-28 part 3 (front-office sales)",
   "front-office/booking/consult/controller.ts PUT /api/front-office/bookings/:id/consult-record body": "PF-28 part 4 (booking)",
   "front-office/booking/settings/availability.controller.ts PATCH /api/front-office/me/availability-sets/:id body": "PF-28 part 4 (booking)",
   "front-office/booking/settings/availability.controller.ts PATCH /api/front-office/staff/:staffId/availability-sets/:id body": "PF-28 part 4 (booking)",
@@ -59,6 +60,7 @@
   "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/enabled body": "PF-28 part 3 (front-office sales)",
   "platform/audit/firm-read/routes.ts GET /api/platform/audit query": "PF-28 part 2 (platform)",
   "platform/audit/firm-read/routes.ts GET /api/platform/audit/export query": "PF-28 part 2 (platform)",
+  "platform/branding/routes.ts PUT /api/platform/branding body": "PF-28 part 2 (platform)",
   "platform/complaints/routes.ts GET /api/platform/complaints query": "PF-28 part 2 (platform)",
   "platform/firms/routes.ts POST /api/public/signup body": "PF-28 part 2 (platform)",
   "platform/firms/routes.ts POST /api/public/signup/verify body": "PF-28 part 2 (platform)",
@@ -303,6 +305,9 @@
   "PUT /api/front-office/bookings/:id/consult-record wrong-type": "PF-28 part 4 (booking)",
   "PUT /api/front-office/web-forms/:id/allowed-sites unknown": "PF-28 part 3 (front-office sales)",
   "PUT /api/front-office/web-forms/:id/enabled unknown": "PF-28 part 3 (front-office sales)",
+  "PUT /api/platform/branding missing": "PF-28 part 2 (platform)",
+  "PUT /api/platform/branding unknown": "PF-28 part 2 (platform)",
+  "PUT /api/platform/branding wrong-type": "PF-28 part 2 (platform)",
   "PUT /api/platform/keep-periods/closed-client-files missing": "PF-28 part 2 (platform)",
   "PUT /api/platform/keep-periods/closed-client-files unknown": "PF-28 part 2 (platform)",
   "PUT /api/platform/keep-periods/closed-client-files wrong-type": "PF-28 part 2 (platform)",
