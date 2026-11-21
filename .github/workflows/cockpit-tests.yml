@@ -7,6 +7,8 @@ on:
     paths:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/cockpit-*"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_cockpit_data.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-measure.py"   # the board's pipeline and review-rounds feed
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_flow_measure.py"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/fixtures/cockpit/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/**"
       - ".github/workflows/cockpit-tests.yml"
@@ -30,6 +32,8 @@ jobs:
         run: pip install jsonschema==4.26.0
       - name: unit tests (hand-worked numbers on the fixtures)
         run: python3 -m unittest "$P/tools/test_cockpit_data.py" -v
+      - name: flow-measure's Release 1 measures (ENF-782b, P-782 (3); hand-worked numbers, no network)
+        run: python3 -I "$P/tools/test_flow_measure.py"
       - name: invariants, schema and reconciliation on the fixture snapshot
         run: |
           out="$RUNNER_TEMP/cockpit"
