@@ -140,9 +140,11 @@ try {
   const p3Sub = (f: string) => sql(`insert into platform_subscription (id, firm_id, plan_id, updated_at) values (gen_random_uuid(), '${f}', '${p3Plan}', now()) returning id`).split("\n")[0];
   const yFirm = p3Firm("yearly"), ySub = p3Sub(yFirm), mFirm = p3Firm("plain"), mSub = p3Sub(mFirm);
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${ySub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
+  // A line in another firm naming this subscription is not its own (break m2): it changes nothing.
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${mSub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
   apply(P3);
   ok("PF-5 part 3 pass: right after its own migration, migrate diff names no billing-period line", p3Diff().length === 0, p3Diff());
-  ok("PF-5 part 3 pass/fail: the backfill sets YEARLY from a Yearly sign-up's audit line, and a subscription with no such line keeps MONTHLY",
+  ok("PF-5 part 3 pass/fail: the backfill sets YEARLY from a Yearly sign-up's audit line, and a subscription with no line of its own firm (another firm's line naming it) keeps MONTHLY",
     sql(`select billing_period::text from platform_subscription where id = '${ySub}'`) === "YEARLY" && sql(`select billing_period::text from platform_subscription where id = '${mSub}'`) === "MONTHLY");
   sql(`delete from platform_subscription where firm_id in ('${yFirm}', '${mFirm}')`); sql(`delete from platform_firm where id in ('${yFirm}', '${mFirm}')`);
   for (const d of all.filter((x) => x > P3)) apply(d);

@@ -13,4 +13,5 @@ FROM "audit_event" a
 WHERE a."action" = 'platform.subscription.created'
   AND a."entity" = 'platform_subscription'
   AND a."entity_key" = s."id"::text
+  AND a."firm_id" = s."firm_id"          -- the line is the subscription's own firm's (break m2)
   AND a."detail"->>'period' = 'YEARLY';
