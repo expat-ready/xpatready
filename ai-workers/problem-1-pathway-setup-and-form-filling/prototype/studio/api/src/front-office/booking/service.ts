@@ -34,6 +34,7 @@ import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-s
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { sees, visibilityOf, type Visibility } from "../sales/common.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
+import { withTimings, type WithTimings } from "./settings/timings.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
@@ -171,7 +172,8 @@ const parse = <T extends z.ZodType>(schema: T, body: unknown, title?: string): z
 };
 
 export type PublicSlot = { startsAt: string; endsAt: string; label: string };
-type TypeRow = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
+/** A type with its timings resolved (FO-3a1e: the type's, else the firm's, else the default); every reader takes this. */
+type TypeRow = WithTimings<Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>>;
 type BookingRow = Awaited<ReturnType<Tx["foBooking"]["findFirstOrThrow"]>>;
 type Actor = { word: string; staffId?: string };
 /** FO-3sa: how a staff write places its time (the public door never passes one). */
@@ -224,7 +226,7 @@ export class BookingService {
     if (typeof firmKey !== "string" || typeof slug !== "string" || !FIRM_KEY.test(firmKey) || !SLUG.test(slug)) throw notFound();
     const firm = await this.publicFirm(db, firmKey);
     // A type not shown on the booking page answers like an unknown slug (FO-3pa DW2).
-    const type = await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) });
+    const type = await withTimings(db, firm.id, await db.foConsultationType.findFirst({ where: firmScope(firm.id, { slug, active: true, deletedAt: null, showOnBookingPage: true, purpose: { in: ["FREE_CONSULT", "OTHER"] as ("FREE_CONSULT" | "OTHER")[] } }) }));
     if (!type) throw notFound();
     return { firm, type };
   }
@@ -357,7 +359,7 @@ export class BookingService {
   async staffCreate(ctx: StaffContext, body: unknown) {
     need(ctx, "agent/booking:create");
     const b = parse(StaffBookingBody, body);
-    const type = await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) });
+    const type = await withTimings(this.db, ctx.firmId, await this.db.foConsultationType.findFirst({ where: firmScope(ctx.firmId, { id: b.typeId, active: true, deletedAt: null }) }));
     if (!type) throw notInFirm("consultation type");
     if (!type.modes.includes(b.mode)) throw refused("Please choose one of the ways to meet offered.", ["mode: not offered for this consultation"]);
     const contact = await this.ports.arrival.contactOf(this.db, ctx.firmId, b.personId);
@@ -559,7 +561,7 @@ export class BookingService {
       try {
         const done = await this.db.$transaction(async (tx) => {
           const b = await this.lock(tx, firmId, bookingId);
-          const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+          const type = await withTimings(tx, firmId, await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
           if (token) await this.recheckToken(tx, token, b, type, "rescheduled");
           if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
           // The same time is no move: nothing is written, no event, the links and reminders stay (only a new zone for
@@ -591,7 +593,7 @@ export class BookingService {
         if (!(e instanceof NoSlot) && !isContention(e)) throw e;
         if (e instanceof NoSlot || attempt++ >= 4) {
           const b = await this.db.foBooking.findFirstOrThrow({ where: firmScope(firmId, { id: bookingId }) });
-          const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+          const type = await withTimings(this.db, firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
           throw slotTaken(await this.nextSlots(firmId, type, { startsAt, timeZone: zone ?? b.bookerTimeZone }, bookingId));
         }
         await new Promise((r) => setTimeout(r, 5 + Math.floor(Math.random() * 20)));
@@ -602,7 +604,7 @@ export class BookingService {
   private async cancelBooking(firmId: string, bookingId: string, actor: Actor, token?: string, reason?: string) {
     const done = await this.db.$transaction(async (tx) => {
       const b = await this.lock(tx, firmId, bookingId);
-      const type = await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) });
+      const type = await withTimings(tx, firmId, await tx.foConsultationType.findFirstOrThrow({ where: firmScope(firmId, { id: b.typeId }) }));
       if (token) await this.recheckToken(tx, token, b, type, "cancelled");
       if (!ACTIVE.includes(b.status)) throw problem(409, "not-active", "Not changed", "This booking is no longer active.");
       // The booker's reason is kept on the booking (AG-04 v2.1 Booking.cancelReason; Lead B rev 16.30), never in the audit
@@ -657,7 +659,7 @@ export class BookingService {
     const b = await this.db.foBooking.findFirst({ where: firmScope(job.firmId, { id: p.bookingId }) });
     if (!b || b.sequence !== p.sequence) return;
     if (p.kind !== "cancelled" && !ACTIVE.includes(b.status)) return;
-    const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) });
+    const type = await withTimings(this.db, b.firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) }));
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { key: true, operatingName: true, contactEmail: true } });
     const zone = b.bookerTimeZone, when = wallLabel(b.startsAt, zone), how = MODE_WORDS[b.mode as Mode], method = METHOD[p.kind];
     const where = meetWhere(b, type);
@@ -708,7 +710,7 @@ export class BookingService {
     if (!job.firmId) return;
     const b = await this.db.foBooking.findFirst({ where: firmScope(job.firmId, { id: p.bookingId }) });
     if (!b || !ACTIVE.includes(b.status) || b.sequence !== p.sequence || !b.personId) return;   // moved, cancelled or answered since
-    const type = await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) });
+    const type = await withTimings(this.db, b.firmId, await this.db.foConsultationType.findFirstOrThrow({ where: firmScope(b.firmId, { id: b.typeId }) }));
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: b.firmId }, select: { operatingName: true, contactEmail: true } });
     const person = await this.ports.arrival.contactOf(this.db, b.firmId, b.personId);
     if (!person) return;
@@ -836,7 +838,7 @@ export class BookingService {
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     const booking = await db.foBooking.findFirst({ where: firmScope(t.firmId, { id: t.bookingId }) });
     if (!booking || !ACTIVE.includes(booking.status)) throw notFound();
-    const type = await db.foConsultationType.findFirstOrThrow({ where: firmScope(t.firmId, { id: booking.typeId }) });
+    const type = await withTimings(db, t.firmId, await db.foConsultationType.findFirstOrThrow({ where: firmScope(t.firmId, { id: booking.typeId }) }));
     return { booking, type, firm, token: t };
   }
 

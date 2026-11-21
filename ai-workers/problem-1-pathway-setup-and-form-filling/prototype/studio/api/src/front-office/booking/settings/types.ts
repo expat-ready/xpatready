@@ -28,6 +28,8 @@ import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../../platform/settings.
 import { type BookingService, SlotsQuery, wallLabel } from "../service.ts";
 import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
 import { windowsFor } from "./hours.ts";
+import { forbidden } from "../../../platform/identity/keys.ts";
+import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -92,6 +94,10 @@ const CreateBody = z.strictObject({ ...Fields, description: Fields.description.o
   slug: Fields.slug.optional(), active: Fields.active.optional(), showOnBookingPage: Fields.showOnBookingPage.optional(), allowReschedule: Fields.allowReschedule.optional(),
   allowCancel: Fields.allowCancel.optional(), slotIntervalMinutes: Fields.slotIntervalMinutes.optional(), meetingLink: Fields.meetingLink.optional() });
 const PatchBody = z.strictObject({ ...Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) as { [K in keyof typeof Fields]: z.ZodOptional<(typeof Fields)[K]> },
+  version: z.number({ error: "Send the version you read." }).int().min(1) });
+
+/** FO-3a1e: a type's five timings, each a value in its range or null (the firm's). */
+const TimingsBody = z.strictObject({ ...Object.fromEntries(TIMING_FIELDS.map((f) => [f, TIMING_RANGES[f].nullable().optional()])) as { [K in TimingField]: z.ZodOptional<z.ZodNullable<(typeof TIMING_RANGES)[K]>> },
   version: z.number({ error: "Send the version you read." }).int().min(1) });
 
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
@@ -168,7 +174,7 @@ export class BookingTypesService {
     const t = await this.find(this.db, ctx.firmId, id);
     // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
     const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
-    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
+    return { ...view(t), effectiveTimings: resolveTimings(t, await firmTimings(this.db, ctx.firmId)), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {
@@ -181,6 +187,20 @@ export class BookingTypesService {
     const { version, ...b } = parse(PatchBody, body);
     if (b.slug !== undefined && RESERVED.has(b.slug)) throw fieldError(400, "slug", WORDS.slugReserved, "SLUG_RESERVED");
     return view(await this.change(ctx, id, version, b, "booking_type.updated", "edited"));
+  }
+
+  /** FO-3a1e (AG-4-66 rules 2-3, §8): a type's own timings; null = "Reset to firm default". Gaps, notice and window need
+   *  …:configure-availability, the self-service limit …:edit; only the fields that change are checked. Needs the version
+   *  read (rule 7); one audit line with before and after; a booking keeps its own times (AG-4-4 rule 8). */
+  async updateTimings(ctx: StaffContext, id: string, body: unknown) {
+    const { version, ...b } = parse(TimingsBody, body);
+    const t = await this.find(this.db, ctx.firmId, id);
+    const changed = (Object.keys(b) as TimingField[]).filter((k) => b[k] !== t[k]);
+    const missing = [...new Set(changed.map(timingKey))].filter((k) => !ctx.keys.includes(k));
+    if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
+    const after = await this.change(ctx, id, version, b, "booking_type.timings_changed", "timings changed");
+    const effectiveTimings = resolveTimings(after, await firmTimings(this.db, ctx.firmId));
+    return { ...view(after), effectiveTimings, warnings: timingWarnings(effectiveTimings) };
   }
 
   async switchTo(ctx: StaffContext, id: string, active: boolean) {
@@ -203,7 +223,7 @@ export class BookingTypesService {
 
   /** AG-4-8: the slots a visitor would see, in `tz` (the firm's zone by default), and per empty day one reason. Reads only. */
   async preview(ctx: StaffContext, id: string, query: unknown) {
-    const t = await this.find(this.db, ctx.firmId, id);
+    const t = await withTimings(this.db, ctx.firmId, await this.find(this.db, ctx.firmId, id));   // FO-3a1e: as the door resolves them
     const r = SlotsQuery.safeParse(query ?? {});
     if (!r.success) throw problem(400, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const [firmZone, closedDays] = await Promise.all([readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), readSetting<string[]>(this.db, ctx.firmId, CLOSED_DAYS.key)]);
