@@ -46,6 +46,27 @@ Never run `npx cdk synth`: the CLI looks up the account through STS when it find
 * **Availability:** production is Multi-AZ; staging is single-zone (cost, P-562).
 * **CI job:** `.github/workflows/deploy-synth.yml` runs on pull requests that change this folder, and never in a merge-queue batch. It is report-only until measured green (P-717 (b), P-772 (a)).
 
+## Logs and alarms (PF-23c, `lib/observability.ts`, `test/observability.test.ts`)
+* **Log group:** `/xr/<stage>/app` in each stack (so in ca-central-1), kept **90 days** (NFR5-14), retained if the stack goes. PF-8b's task definition sends the service's output here (`stack.observability.appLogs`).
+* **Metric filters, not embedded metric format:** CloudWatch reads PF-23's EMF lines only through an EMF-aware shipper; the plain `awslogs` driver is not one. A metric filter reads the same JSON line whatever ships it. The filters read PF-23's field names; a test fails if `metrics.ts`, `log.ts` or the alert port renames them.
+* **Alarms (each says its rule and where to look):**
+  * **5xx rate:** pages when 5xx errors exceed 1.44 % of requests for 10 minutes, with at least 20 requests. 1.44 % is NFR5-15's SLO "5xx<0.1%" times a fast-burn factor of 14.4, and that factor is Sample. A slow burn, just over 0.1 % for days, does not page: that is a gap for the founder.
+  * **Job failures:** 3 failures in 15 minutes.
+  * **Job age:** a job older than the app's `STUCK_JOB_MS`.
+  * **Mail bounce rate:** over 5 % in an hour, with at least 20 sent.
+  * **Alert lines:** the first alert line of each kind pages: audit-write failure, chain break, stuck job, privacy clock, breach clock.
+
+  All levels except the 5xx SLO are Sample. No data counts as no incident.
+* **Routing:** every alarm goes to the SNS topic `xr-<stage>-on-call`. Its one subscription is the email in the deploy parameter `OnCallEmail`. That parameter has no default: the founder names the address, and a deploy without it fails.
+  * The rate and job alarms also send their recovery ("OK").
+  * Alert-line alarms send none, because their metric stops a minute later while the incident is still open.
+  * After the first deploy, the on-call person must click AWS's confirmation link before any email arrives.
+* **The log group is retained and has a fixed name:** deleting the stack keeps the logs, and re-creating the stack needs that group imported or removed first.
+* **Held:**
+  * **A test alarm reaching the on-call person.** This is the AWS proof (P-782) and needs the founder's account.
+  * **An alarm when the audit chain checker goes quiet.** AUD-1c's row expects one on the absence of `audit.chain_verify_ok`. AUD-1c's checker PR adds it here, with `alarmFindings`, once the metric exists. The chain-break alert alarm is already here.
+  * **The bounce alarm stays silent** until PF-4b's mail adapter calls `mailLine`: it has no caller on main.
+
 ## Not decided yet
 * **CDK feature flags:** synth reports 81 that are not configured. They must be set before the first deploy, because flipping one later can replace resources. That choice is PF-8c's (review m5).
 
