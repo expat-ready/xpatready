@@ -37,7 +37,7 @@ for (const s of real) {
   test(`PF-8b pass (${s.name}): the wildcard certificate covers *.${domain} and *.${domain} reaches the load balancer`, () => assert.deepEqual(wildcardFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): the migration task uses the owner's address, the service the app role's`, () => assert.deepEqual(roleFindings(s.template, stage), []));
   test(`PF-8b pass (${s.name}): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published`, () => assert.deepEqual(mailFindings(s.template, domain), []));
-  test(`PF-8b pass (${s.name}): three separate Cognito pools, staff pools with required two-step`, () => assert.deepEqual(poolFindings(s.template, stage), []));
+  test(`PF-8b pass (${s.name}): three separate Cognito pools, staff pools with required two-step and passkeys (QA-643)`, () => assert.deepEqual(poolFindings(s.template, stage, domain), []));
   test(`PF-8b pass (${s.name}): every container runs this stack's repository by digest, never a tag; two task definitions`, () => assert.deepEqual(imageFindings(s.template), []));
   test(`PF-8b F2b pass (${s.name}): the task's PLATFORM_ADDRESS_SUFFIX is ${domain}, the zone's and the certificate's domain`, () => assert.deepEqual(addressSuffixFindings(s.template, domain), []));
   test(`PF-8b F1 pass (${s.name}): the service's and the migration's containers log with awslogs to /xr/${stage}/app`, () => assert.deepEqual(logFindings(s.template, stage), []));
@@ -142,7 +142,7 @@ test("PF-8b fail (break m2, m3, m7, m8): self sign-up, OAuth on, the service on 
   of(t, "AWS::Cognito::UserPoolClient")[0][1].Properties!.AllowedOAuthFlowsUserPoolClient = true;
   const clients = pools.find(([, p]) => String(p.Properties!.UserPoolName).endsWith("-clients"))![0];
   svcContainer(t).Environment.find((e) => e.Name === "PLATFORM_COGNITO_USER_POOL_ID")!.Value = { Ref: clients };
-  const f = poolFindings(t, "production").join("\n");
+  const f = poolFindings(t, "production", DEFAULT_DOMAIN).join("\n");
   for (const w of ["anyone may sign up", "OAuth flows on", "not the staff pool"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
   for (const [, r] of of(t, "AWS::Route53::RecordSet")) if (JSON.stringify(r.Properties!.ResourceRecords ?? "").includes("v=spf1")) r.Properties!.ResourceRecords = ['"v=spf1 include:amazonses.com +all"'];
   assert.ok(mailFindings(t, DEFAULT_DOMAIN).some((l) => l.includes("no SPF record ending")));
@@ -206,7 +206,7 @@ test("PF-8b fail: two kinds of user on one pool, a pool with no client, a staff 
   for (const [, c] of of(t, "AWS::Cognito::UserPoolClient")) if ((c.Properties!.UserPoolId as { Ref: string }).Ref === own) c.Properties!.UserPoolId = { Ref: staff };
   delete t.Resources![own];
   t.Resources![staff].Properties!.MfaConfiguration = "OPTIONAL";
-  const f = poolFindings(t, "production").join("\n");
+  const f = poolFindings(t, "production", DEFAULT_DOMAIN).join("\n");
   for (const w of ["not the three separate", "2 app clients", "without required two-step"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
@@ -356,7 +356,7 @@ test("PF-8b F3 xr:certArn: required in no-domain mode, an ACM ARN in ca-central-
 test("PF-8b F3 no domain: every estate guard still passes (region, bypass, resource policies, types, and the service's own checks)", () => {
   assert.deepEqual([...regionFindings(nd, REGION_ALLOW), ...bypassFindings(nd), ...resourcePolicyFindings(nd), ...typeFindings(nd)], []);
   assert.deepEqual([...taskSettingFindings(ndStaging, SETTINGS, "staging"), ...secretReadFindings(ndStaging), ...spreadFindings(ndStaging), ...exposureFindings(ndStaging), ...listenerFindings(ndStaging),
-    ...roleFindings(ndStaging, "staging"), ...poolFindings(ndStaging, "staging"), ...imageFindings(ndStaging), ...logFindings(ndStaging, "staging")], []);
+    ...roleFindings(ndStaging, "staging"), ...poolFindings(ndStaging, "staging", NO_DOMAIN), ...imageFindings(ndStaging), ...logFindings(ndStaging, "staging")], []);
 });
 
 test("PF-8b F3 fail: a zone left in, a listener on another or a non-ACM certificate, the suffix not the load balancer's, a capitalised name, an SES grant, are caught", () => {
@@ -394,4 +394,73 @@ test("PF-8b F3 xr:serviceTasks: default 2; 0 for staging's first deploy (either 
 test("PF-8b F3 xr:domain: a lower-case domain or exactly none; a near miss is refused, never built as a zone that cannot validate", () => {
   for (const bad of ["None", "NONE", "none.", " none", "", "example", "Example.org", "example.org."]) assert.throws(() => buildApp({ context: { "xr:domain": bad } }), /xr:domain must be a lower-case domain/, bad);
   assert.doesNotThrow(() => buildApp({ context: { "xr:domain": "example-test.com" } }));
+});
+
+test("QA-643 pass: each staff pool takes a passkey with user verification as both steps, relying party the stack's domain; the clients' pool does not", () => {
+  for (const s of real) {
+    const pools = of(s.template, "AWS::Cognito::UserPool"), clients = of(s.template, "AWS::Cognito::UserPoolClient");
+    for (const [id, p] of pools) {
+      const staff = /-(own-)?staff$/.test(String(p.Properties!.UserPoolName)), P = p.Properties as Record<string, any>;
+      const flows = clients.find(([, c]) => (c.Properties!.UserPoolId as { Ref: string }).Ref === id)![1].Properties!.ExplicitAuthFlows as string[];
+      assert.equal(P.MfaConfiguration, staff ? "ON" : "OPTIONAL", id);
+      assert.deepEqual(P.Policies?.SignInPolicy?.AllowedFirstAuthFactors, staff ? ["PASSWORD", "WEB_AUTHN"] : undefined, id);
+      assert.equal(P.WebAuthnFactorConfiguration, staff ? "MULTI_FACTOR_WITH_USER_VERIFICATION" : undefined, id);
+      assert.equal(P.WebAuthnUserVerification, staff ? "required" : undefined, id);
+      assert.equal(P.WebAuthnRelyingPartyID, staff ? domainOf(s.name) : undefined, id);
+      assert.equal(P.UserPoolTier, "ESSENTIALS", id);
+      assert.equal(flows.includes("ALLOW_USER_AUTH"), staff, id);
+      assert.ok(flows.includes("ALLOW_USER_SRP_AUTH"), id); // password plus app still signs in
+    }
+  }
+});
+
+test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second step, a remembered device, one without user verification, a passkey as one factor only, another relying party, the Lite tier, a client without USER_AUTH or with more flows are caught", () => {
+  const cases: [string, (P: Record<string, any>, c: Record<string, any>) => void][] = [
+    ["not exactly a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD"]; }],
+    ["not exactly a password and a passkey", (P) => { delete P.Policies.SignInPolicy; }],
+    ["not exactly a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD", "WEB_AUTHN", "EMAIL_OTP"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["SOFTWARE_TOKEN_MFA", "SMS_MFA"]; }],
+    ["could skip the second step", (P) => { P.DeviceConfiguration = { ChallengeRequiredOnNewDevice: false, DeviceOnlyRememberedOnUserPrompt: false }; }],
+    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_PASSWORD_AUTH"]; }],
+    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_CUSTOM_AUTH"]; }],
+    ["user verification \"preferred\", not required", (P) => { P.WebAuthnUserVerification = "preferred"; }],
+    ["a passkey is \"SINGLE_FACTOR\"", (P) => { P.WebAuthnFactorConfiguration = "SINGLE_FACTOR"; }],
+    ["a passkey is null", (P) => { delete P.WebAuthnFactorConfiguration; }],
+    ["relying party \"evil.example\", not expatready.com", (P) => { P.WebAuthnRelyingPartyID = "evil.example"; }],
+    ["tier \"LITE\" has no passkey sign-in", (P) => { P.UserPoolTier = "LITE"; }],
+    ["does not allow USER_AUTH", (_P, c) => { c.ExplicitAuthFlows = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]; }],
+  ];
+  for (const name of ["-staff", "-own-staff"]) for (const [want, breakIt] of cases) {
+    const t = clone(t0);
+    const [id, p] = of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === `xr-production${name}`)!;
+    const c = of(t, "AWS::Cognito::UserPoolClient").find(([, x]) => (x.Properties!.UserPoolId as { Ref: string }).Ref === id)![1];
+    breakIt(p.Properties as Record<string, any>, c.Properties as Record<string, any>);
+    const f = poolFindings(t, "production", DEFAULT_DOMAIN).join("\n");
+    assert.ok(f.includes(`${id}: `) && f.includes(want), `${name}: missing "${want}" in:\n${f}`);
+  }
+  // no domain: each passkey setting on its own, another first factor, a wider client, an email second step are caught
+  const nd: [string, (P: Record<string, any>, c: Record<string, any>) => void][] = [
+    ["not a password only (no domain)", (P) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "WEB_AUTHN"] }; }],
+    ["not a password only (no domain)", (P) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "EMAIL_OTP"] }; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnRelyingPartyID = "example.com"; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnFactorConfiguration = "MULTI_FACTOR_WITH_USER_VERIFICATION"; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnUserVerification = "required"; }],
+    ["not SRP and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_AUTH"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
+  ];
+  for (const [want, breakIt] of nd) {
+    const t = clone(ndStaging);
+    const [id, p] = of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === "xr-staging-staff")!;
+    const c = of(t, "AWS::Cognito::UserPoolClient").find(([, x]) => (x.Properties!.UserPoolId as { Ref: string }).Ref === id)![1];
+    breakIt(p.Properties as Record<string, any>, c.Properties as Record<string, any>);
+    const f = poolFindings(t, "staging", NO_DOMAIN).join("\n");
+    assert.ok(f.includes(want), `no domain: missing "${want}" in:\n${f}`);
+  }
+  // the clients' pool: passkeys or sign-in factors there are PF-4p's decision, caught until then
+  for (const breakIt of [(P: Record<string, any>) => { P.WebAuthnRelyingPartyID = "evil.example"; }, (P: Record<string, any>) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "EMAIL_OTP"] }; }]) {
+    const t = clone(t0);
+    breakIt(of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === "xr-production-clients")![1].Properties as Record<string, any>);
+    assert.ok(poolFindings(t, "production", DEFAULT_DOMAIN).join("\n").includes("PF-4p has not decided"));
+  }
 });
