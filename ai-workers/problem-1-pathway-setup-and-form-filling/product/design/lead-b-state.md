@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 08:53 IST):** **#2687 DEMO-LINK ready: approved head 166755a85** (re-review Approve; aud1a 42/42 and seed suite 10/10 locally; pf18h browser only in CI). Sent to Lead 10 for the label. Scratch clone deleted; disk 7.9 GB free. Left for the founder: kill the port-4660 server (no timeout) and drop the test DBs xr_studio_demolink_seed, xr_studio_runtime_aud1a, xr_studio_pf18h and xr_studio_pf18hb. Follow-ups: m5 (gate the menu behind a demo flag), m6 (signed-in smoke), and a timeout on the reset transaction.
+
 **Lead B (9) update (21 Nov 08:24 IST):** **DEMO-LINK (A243, founder's top concern; row from Lead 10) = PR #2687** (draft), branch claude/demo-link-a243, built by my subagent in a scratch clone (scratchpad/demo-link; this worktree can't switch branches because of the .claude/skills sandbox). First head 9e9d7a578 (+169/−7). Independent Opus review: **Changes requested**. B1: demo reset adds a 3rd bypass line, breaking aud1a; fix by seeding in the same per-firm transaction. M2: database test of the seed. M3: always-underlined links for axe. Plus minors. The builder is fixing. Follow-ups m5 (gate the menu behind a demo flag) and m6 (smoke walk is signed out) are noted on the PR. **Worktree `build-lead-c-647b40` holds leftovers of an aborted checkout (files at origin/main, branch unchanged); the reset was refused by the permission check; the founder runs `git reset --hard HEAD` there.**
 
 **Lead B (9) update (21 Nov 07:44 IST):** the current Lead is **Lead 10 (series 3)** (`local_8f916b74-a56d-403d-9120-ad622f53c9db`); I've reported to it. No open Lead B PRs.
