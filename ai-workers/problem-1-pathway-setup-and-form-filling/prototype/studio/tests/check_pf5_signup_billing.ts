@@ -323,6 +323,8 @@ try {
   ok("PF-5 part 2 pass (QA-481): the sign-up stores the trial end, the plan's 14 days from the verification", sql(`select abs(extract(epoch from s.trial_ends_at - f.created_at) - 14 * 86400) < 120 from platform_subscription s join platform_firm f on f.id = s.firm_id where f.id = '${firmId}'`) === "t");
   const cust1 = co!.input.customerId, done1 = raw("checkout.session.completed", { object: "checkout.session", mode: "subscription", client_reference_id: firmId, customer: cust1, subscription: "sub_t1" });
   const unsigned = await send(done1, null), changed = await send(done1.replace(`"sub_t1"`, `"sub_t9"`), billing.sign(done1));
+  const notEvent = done1.replace(`"object":"event"`, `"object":"not-event"`), notEventAns = await send(notEvent);
+  ok("PF-28 fail (PF-5 part 2, review r15-1): a correctly signed body that is not an event envelope → 422 from the schema after the signature, nothing stored", notEventAns?.status === 422 && sql(`select count(*) from webhook_receipt`) === "0", notEventAns);
   ok("PF-5 part 2 fail: an unsigned or changed webhook → 400, nothing stored", unsigned?.status === 400 && changed?.status === 400 && sql(`select count(*) from webhook_receipt`) === "0", [unsigned, changed]);
   billing.subs.set("sub_t1", snap("sub_t1", { customerId: cust1 }));
   await send(done1);

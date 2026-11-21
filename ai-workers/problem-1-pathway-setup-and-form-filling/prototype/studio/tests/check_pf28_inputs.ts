@@ -57,10 +57,11 @@ export function inputs(dir: string): CodeInput[] {
   return codeRoutes(dir).filter((r) => DOORS.test(r.path)).flatMap((r) => r.inputs.filter((i) => i.kind !== "param")
     .map((i) => ({ key: `${r.file} ${r.verb} ${r.path} ${i.kind}${i.key ? `(${i.key})` : ""}`, parsedAt: follows(dir, r.controller, r.node, i.name) })));
 }
-/** A webhook door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
- *  judges it over HTTP rather than the static follower (a raw body read off @Req() never reads as parsed). */
-const HOOK = / \/api\/hooks\//;
-const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.test(x.key)).map((x) => x.key);
+/** The Stripe door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
+ *  judges it over HTTP (signature and schema, each a pass and a fail) rather than the static follower, which never reads
+ *  a raw body off @Req() as parsed. Only this one door: any other webhook route is judged like every door (review r15-1). */
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
+const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), allow.unparsed);
 ok("PF-28 (a) pass: every PF/FO body and query reaches a zod parse, or is on the allow-list", jc.unlisted.length === 0, jc.unlisted);
@@ -234,8 +235,10 @@ else {
   const receipts = () => sql(`select count(*) from webhook_receipt where event_id like 'evt_pf28%'`);
   const sig = fakeBilling().sign(ev), before6 = receipts();
   const changed = await post(ev.replace('"customer.subscription.updated"', '"customer.subscription.updatee"'), sig), afterChanged = receipts();
+  const badEnvelope = ev.replace('"object":"event"', '"object":"not-event"'), afterBad0 = receipts(), bad = await post(badEnvelope, fakeBilling().sign(badEnvelope)), afterBad = receipts();
   const signed = await post(ev, sig);
   ok("PF-28 DW6 fail: a signed Stripe event with one byte changed is refused 400 (the signature), and nothing is stored", changed.status === 400 && changed.body?.code === "SIGNATURE" && afterChanged === before6, { changed, before6, afterChanged });
+  ok("PF-28 DW6 fail: a correctly signed body that is not an event envelope is refused 422 by the schema after the signature, and nothing is stored", bad.status === 422 && bad.body?.code === "INVALID" && afterBad === afterBad0, { bad, afterBad0, afterBad });
   ok("PF-28 DW6 pass: the same event, as signed, verifies and is stored once (the schema runs after the signature)", signed.status === 200 && signed.body?.received === true && receipts() === String(Number(before6) + 1), { signed, receipts: receipts() });
 }
 
