@@ -70,6 +70,7 @@ python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS
 # hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
 pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(grep -c '^ACT' <<<"$pw"))); seen "$pw"
+hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
