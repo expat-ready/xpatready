@@ -16,14 +16,15 @@ command -v openssl >/dev/null || { echo "openssl is needed" >&2; exit 2; }
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/xr-self-signed.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
-chmod 700 "$WORK"
 openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days "$DAYS" -keyout "$WORK/key.pem" -out "$WORK/cert.pem" \
-  -subj "/CN=${NAME}/O=Expat Ready staging (self-signed)" -addext "subjectAltName=DNS:${NAME}" 2>/dev/null
+  -subj "/CN=${NAME}/O=Expat Ready staging (self-signed)" -addext "subjectAltName=DNS:${NAME}" 2>"$WORK/openssl.err" \
+  || { cat "$WORK/openssl.err" >&2; echo "openssl could not make the certificate (LibreSSL on a Mac may lack -addext: use Homebrew's openssl)" >&2; exit 1; }
 openssl x509 -in "$WORK/cert.pem" -noout -subject -enddate -ext subjectAltName >&2
 
 if [ "$DRY" = 1 ]; then echo "dry run: nothing imported; the key is deleted with $WORK" >&2; exit 0; fi
 command -v aws >/dev/null || { echo "the AWS CLI is needed for the import (or use --dry-run)" >&2; exit 2; }
 ARN=$(aws acm import-certificate --region "$REGION" --certificate "fileb://$WORK/cert.pem" --private-key "fileb://$WORK/key.pem" \
   --tags Key=project,Value=expat-ready Key=purpose,Value=staging-no-domain --query CertificateArn --output text)
-[[ "$ARN" =~ ^arn:aws:acm:ca-central-1:[0-9]{12}:certificate/[0-9a-f-]{36}$ ]] || { echo "unexpected answer from ACM: $ARN" >&2; exit 1; }
+[[ "$ARN" =~ ^arn:aws:acm:ca-central-1:[0-9]{12}:certificate/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+  || { echo "unexpected answer from ACM: $ARN (a certificate may have been imported: check ACM in ca-central-1)" >&2; exit 1; }
 echo "$ARN"

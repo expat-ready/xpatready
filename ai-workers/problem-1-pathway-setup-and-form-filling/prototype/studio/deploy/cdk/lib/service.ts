@@ -22,6 +22,9 @@ export const CERT_ARN_PATTERN = /^arn:aws:acm:ca-central-1:[0-9]{12}:certificate
 /** PF-8b F3: the service's task count, `-c xr:serviceTasks=0|2` (default 2). 0 for a first deploy, before the secrets hold
  *  values: tasks started on placeholder secrets crash, trip the circuit breaker, and the rollback leaves retained names. */
 export const SERVICE_TASK_CHOICES = [0, MIN_TASKS] as const;
+/** A domain (`xr:domain`): lower-case DNS labels, two or more, a letters-only last one; or exactly NO_DOMAIN. A near miss
+ *  (`None`, `none.`) is refused rather than built as a zone that can never validate (break 3). */
+export const DOMAIN_PATTERN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 
 /** The values PF-24's loader requires in production that are unknown at synth: each one a Secrets Manager secret named
@@ -62,11 +65,13 @@ export class AppService extends Construct {
     const { stage, vpc, key } = props;
     const region = Stack.of(this).region;
     const noDomain = props.domain === NO_DOMAIN;
+    if (props.domain !== undefined && !noDomain && !(typeof props.domain === "string" && DOMAIN_PATTERN.test(props.domain))) throw new Error(`xr:domain must be a lower-case domain such as example.com, or ${NO_DOMAIN}`);
     if (noDomain && stage === "production") throw new Error("xr:domain=none is for staging only: production needs its domain (a self-signed certificate never serves real clients)");
     if (noDomain ? !(typeof props.certArn === "string" && CERT_ARN_PATTERN.test(props.certArn)) : props.certArn !== undefined)
       throw new Error(noDomain ? "xr:domain=none needs -c xr:certArn=<the imported certificate's ACM ARN in ca-central-1> (bin/self-signed-cert.sh prints it)" : "xr:certArn is for xr:domain=none only (a domain stack issues its own certificate)");
-    const tasks = Number(props.serviceTasks ?? MIN_TASKS);
-    if (String(props.serviceTasks ?? MIN_TASKS) !== String(tasks) || !(SERVICE_TASK_CHOICES as readonly number[]).includes(tasks)) throw new Error(`xr:serviceTasks must be ${SERVICE_TASK_CHOICES.join(" or ")} (default ${MIN_TASKS})`);
+    const rawTasks = props.serviceTasks ?? MIN_TASKS, tasks = Number(rawTasks);
+    if (!(typeof rawTasks === "number" || (typeof rawTasks === "string" && /^[0-9]$/.test(rawTasks))) || !(SERVICE_TASK_CHOICES as readonly number[]).includes(tasks)) throw new Error(`xr:serviceTasks must be ${SERVICE_TASK_CHOICES.join(" or ")} (default ${MIN_TASKS})`);
+    if (tasks === 0 && stage === "production") throw new Error("xr:serviceTasks=0 is for staging only: production always runs two tasks");
     const base = props.domain ?? DEFAULT_DOMAIN;
     const domain = stage === "production" ? base : `staging.${base}`;
     // Lead 13 ruling (3): staging runs as `test`, which PF-24's loader holds to test-mode Stripe keys (a live key refused)

@@ -79,13 +79,14 @@ export class EstateStack extends Stack {
 
     // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts). PF-8b F3: `-c
     // xr:domain=none` means staging has no domain while production keeps its default (the app synthesizes both stacks).
-    // xr:certArn names the imported certificate (no-domain staging only); xr:serviceTasks=0|2 (default 2) sets the task count.
+    // xr:certArn names the imported certificate (no-domain staging only); xr:serviceTasks=0|2 (default 2) sets staging's task
+    // count (production always runs 2: a 0 there would be an outage, break 2).
     const domain = this.node.tryGetContext("xr:domain") as string | undefined, noDomainHere = domain === NO_DOMAIN && props.stage !== "production";
     this.service = new AppService(this, "App", {
       stage: props.stage, vpc: this.vpc, key: this.key, database: this.database, appLogs: this.observability.appLogs,
       domain: domain === NO_DOMAIN && !noDomainHere ? undefined : domain,
       certArn: domain === NO_DOMAIN && !noDomainHere ? undefined : this.node.tryGetContext("xr:certArn"),
-      serviceTasks: this.node.tryGetContext("xr:serviceTasks"),
+      serviceTasks: props.stage === "production" ? undefined : this.node.tryGetContext("xr:serviceTasks"),
     });
 
     const bucket = (name: (typeof BUCKETS)[number]) => new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {

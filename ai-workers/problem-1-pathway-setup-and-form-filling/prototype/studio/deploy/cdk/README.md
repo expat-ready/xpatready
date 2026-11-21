@@ -82,14 +82,14 @@ Never run `npx cdk synth`: the CLI looks up the account through STS when it find
 * **Not here:** log groups and alarms (PF-23c), the deploy and smoke test (PF-8c), the task role's Cognito admin and bucket permissions (the adapter rows that use them).
 
 ### No-domain mode (PF-8b F3: staging while its domain is blocked)
-For the R1.13 and R1.15 proofs while no staging domain can be registered. R1.24 (firm addresses) waits for the real domain. With a domain set (or no context at all), nothing changes: a test holds all four templates byte for byte.
+For the R1.13 and R1.15 proofs while no staging domain can be registered. R1.24 (firm addresses) waits for the real domain. With a domain set (or no context at all), nothing changes: all four templates hashed identical to before this row (checked by hand), and a test holds that a domain stack has no imported certificate, a CDK-named load balancer and the same two parameters.
 * **What `-c xr:domain=none` builds (staging only):**
   * **Left out:** no hosted zone, DNS record, DNS-validated certificate, SES identity or SES grant, so no mail is sent.
   * **HTTPS:** the HTTPS listener serves a **self-signed** certificate imported into ACM. Its ARN is given as `-c xr:certArn=<arn>`: context, not a template parameter (the region guard admits only the image digest and the on-call address).
   * **App host:** the app's `PLATFORM_ADDRESS_SUFFIX` is the load balancer's AWS name. Its fixed lower-case name is `xr-staging-app`, so the AWS name is lower case, as the loader requires.
   * **Output:** `LoadBalancerHost`.
   * **Production keeps its domain:** `none` never applies to it, and the service refuses it for production.
-* **Task count:** `-c xr:serviceTasks=0|2`, default 2. Use 0 for the first deploy, before the secrets hold values: tasks started on the placeholder secrets crash, trip the circuit breaker, and the rollback leaves retained names. Fill the secrets, then redeploy with 2.
+* **Task count (staging):** `-c xr:serviceTasks=0|2`, default 2; production always runs 2. Use 0 for the first deploy, before the secrets hold values: tasks started on the placeholder secrets crash, trip the circuit breaker, and the rollback leaves retained names. Fill the secrets, then redeploy with 2.
 * **Order (the AWS session, in the founder's account):**
   1. `bash bin/self-signed-cert.sh` (openssl plus the AWS CLI; `--dry-run` imports nothing) prints the ARN. The key is made in a temporary folder that is then deleted, so it lives only in ACM.
   2. `cdk deploy xr-staging -c xr:domain=none -c xr:certArn=<arn> -c xr:serviceTasks=0`.

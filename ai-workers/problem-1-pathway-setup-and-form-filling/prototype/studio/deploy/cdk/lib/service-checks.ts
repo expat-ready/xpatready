@@ -310,6 +310,9 @@ export function noDomainFindings(t: Template): string[] {
     const certs = arr(l.Properties?.Certificates), arn = g(certs[0], "CertificateArn");
     if (certs.length !== 1 || typeof arn !== "string" || !CERT_ARN_PATTERN.test(arn)) out.push(`${id}: serves ${json(l.Properties?.Certificates)}, not one imported ACM certificate in ca-central-1`);
   }
+  // port 80 still answers only with the HTTPS redirect (break 5: the listener sits beside the early return)
+  const http = all(t, "AWS::ElasticLoadBalancingV2::Listener").filter(([, l]) => l.Properties?.Port === 80);
+  if (http.length !== 1 || g(arr(http[0][1].Properties?.DefaultActions)[0], "RedirectConfig", "Protocol") !== "HTTPS") out.push("port 80 does not redirect to HTTPS");
   const lbs = all(t, "AWS::ElasticLoadBalancingV2::LoadBalancer"), { service } = taskDefinitions(t);
   const v = service ? env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX") : undefined;
   if (lbs.length !== 1 || json(v) !== json({ "Fn::GetAtt": [lbs[0][0], "DNSName"] })) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not the load balancer's AWS name`);
