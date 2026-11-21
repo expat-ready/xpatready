@@ -1,3 +1,6 @@
+// RETIRED 21 Nov 2026: QA-621 closed under the tech lead's ruling (P-294 Option C, #2716): the persona door must make no
+// client in a production configuration (tests/check_qa621_persona_door_production.ts). This check asks for a refusal in the
+// local configuration, which the ruling does not require: it stays red by design and is not run. Kept as the record.
 // qa capability R1.108 (21 Nov; QA-621): "no client without a recorded check". Opening a case with no client named
 // (the Open a case dialog, web/src/runtime/cases.tsx: it sends no clientId) makes a new client through newClient
 // (api/src/runtime.ts:347, api/src/clients.ts:49), and with it a front-office person, with no conflict check at all.
