@@ -93,6 +93,7 @@ const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
 
 export type { PlannedForm, ReviewRunPlan, RunForm, ReviewRunResult } from "./review-run-shapes.ts";
 import type { PlannedForm, ReviewRunPlan, RunForm, ReviewRunResult } from "./review-run-shapes.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 const STEPS = [
   { n: 1, label: "Read what each form field would print (rules, US$0)", uses_ai: false },
@@ -243,7 +244,7 @@ export class ReviewRuns {
         if (cancelled) { f.note = "Not run: the run was stopped."; continue; }
         const safe = async (isCheck: boolean): Promise<RoundOut<ReviewAnswer>> => {
           try { return await this.runner.round<ReviewAnswer>(FORM_REVIEW, isCheck, { ...p.ctx, mode: "live", wanted, batchId: runId }); }
-          catch (e) { console.warn(`form review ${runId.slice(0, 8)}:`, String(e).slice(0, 400)); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; }
+          catch (e) { logPort.error("form_review_round_failed", e, { runId }); return { ok: false, costUsd: 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; }
         };
         let d: RoundOut<ReviewAnswer>, k: RoundOut<ReviewAnswer> | null;
         if (b.mode === "replay") ({ d, k } = await this.savedRounds(p.ctx));
