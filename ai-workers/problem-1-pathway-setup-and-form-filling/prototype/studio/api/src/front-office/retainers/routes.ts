@@ -33,6 +33,10 @@ export class RetainersController {
     res.setHeader("Content-Disposition", `attachment; filename="${s.filename}"`).setHeader("X-Sample-Note", s.note).type(s.contentType).send(Buffer.from(s.bytes));
   }
 
+  /** FO-5b: the template's Code s. 24(3) checklist (never refuses a send). */
+  @Get("retainer-templates/:id/checklist") @PermissionKeys("agent/retainer:list")
+  checklist(@Req() r: R, @Param("id") id: string) { return this.svc.templateChecklist(staffOf(r), id); }
+
   @Get("retainer-templates") @PermissionKeys("agent/retainer:list")
   templates(@Req() r: R) { return this.svc.listTemplates(staffOf(r)); }
 
@@ -50,6 +54,10 @@ export class RetainersController {
 
   @Post("prospects/:id/retainers") @PermissionKeys("agent/retainer:draft")
   draft(@Req() r: R, @Param("id") prospectId: string, @Body() b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
+
+  /** FO-5s: the prospect's retainers (its card on the prospect page). */
+  @Get("prospects/:id/retainers") @PermissionKeys("agent/retainer:list")
+  listForProspect(@Req() r: R, @Param("id") prospectId: string) { return this.svc.listForProspect(staffOf(r), prospectId); }
 
   @Get("retainers/:id") @PermissionKeys("agent/retainer:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }

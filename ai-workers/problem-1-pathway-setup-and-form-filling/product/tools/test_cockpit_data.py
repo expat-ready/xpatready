@@ -1732,6 +1732,23 @@ class WhatsNew(unittest.TestCase):
             self.assertIn('"whats_new.box"', f.read())
 
 
+class ReviewRounds(unittest.TestCase):
+    """ENF-782b (P-782 (3)): the review-rounds slot is filled from flow-measure.py's cached answer, never guessed."""
+    def test_slot_reads_flow_measure(self):
+        out = tempfile.mkdtemp(); os.makedirs(os.path.join(out, "cache"))
+        with open(os.path.join(out, "cache", "flow-measure.json"), "w") as f:
+            json.dump({"_as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                       "review_rounds": {"n": 31, "median": 1, "mean": 2.03, "over_2": 9, "over_2_share": 29.0}}, f)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = jread(os.path.join(out, "data.json"))
+        q = d["quality"]["review_rounds"]
+        self.assertEqual((q["v"], q["n"], q["over_2_share"]), (1, 31, 29.0))
+        self.assertIn("review_rounds.median", q["src"])
+        self.assertEqual(d["explain"]["quality.review_rounds"]["n"], 31)
+
+
 BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
 const { chromium } = require('playwright');
 const fs = require('fs');

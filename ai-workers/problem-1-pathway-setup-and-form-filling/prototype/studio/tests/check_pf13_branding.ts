@@ -64,11 +64,13 @@ const clock = new (class extends PlatformClock { t = Date.now(); override now() 
 const local = new LocalIdentity("pf13-check-signing-key-0123456789abcdef", () => clock.now());
 let app: { close(): Promise<void> } | null = null;
 try {
-  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard }];
+  const { BrandingImages } = await import("../api/src/platform/branding/images.ts"), { LocalFiles: Files } = await import("../api/src/front-office/files.ts");
+  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
+    { provide: BrandingImages, useFactory: (d: InstanceType<typeof Db>) => new BrandingImages({ db: d, files: new Files(join(WORK, "files")), publicBase: "https://app.example" }), inject: [Db] }];   // part 1b: the images (the staff read lists them)
   @Module({ controllers: [PlatformIdentityController, BrandingController] as never[], providers: providers as never[] }) class TestApp {}
   const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
   const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
-  ok("setup: the feature registers the branding controller", feature.controllers.length === 1 && feature.controllers[0] === BrandingController);
+  ok("setup: the feature registers the branding controller", feature.controllers.includes(BrandingController));
   await seedSampleFirms(db);
   const FIRM_A = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-firm" } })), FIRM_B = (await db.platformFirm.findUniqueOrThrow({ where: { key: "sample-solo" } }));
   const signIn = async (actorId: string, firmKey = "sample-firm") => { const r = await call(base, "POST", "/api/platform/session/local", { body: { firmKey, actorId, secondStep: true } }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
