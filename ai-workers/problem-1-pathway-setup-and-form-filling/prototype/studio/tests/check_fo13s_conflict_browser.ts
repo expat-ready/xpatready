@@ -201,7 +201,8 @@ try {
   const link = await panel(t).locator("[data-waiting-link] a").getAttribute("href");
   ok("FO-13s2 BR-8 pass: the waiting check shows the link to send to a manager", !!link && /^\/front-office\/conflict-checks\/[0-9a-f-]{36}$/.test(link ?? ""), link);
   await t.goto(`${BASE}${link}`); await t.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
-  ok("FO-13s2 m7 fail: the checker opening the link gets the server's sentence, and no Confirm", /waiting for your confirmation/.test(await t.locator("[data-confirm-refused]").innerText()) && (await t.locator("[data-confirm-check]").count()) === 0);
+  ok("FO-13s2 m7 fail: the checker opening the link gets the server's sentence, and no Confirm; it says to send the address, shown as text (break r2-m4)", /waiting for your confirmation/.test(await t.locator("[data-confirm-refused]").innerText()) && (await t.locator("[data-confirm-check]").count()) === 0
+    && (await t.locator("[data-checker-hint]").innerText()).includes(`${BASE}${link}`));
   const ad = await pageAs(tok.AD), ad2 = await pageAs(tok.AD);   // two tabs of the Admin's (review M1)
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
   await ad2.goto(`${BASE}${link}`); await ad2.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
@@ -223,7 +224,8 @@ try {
   await t.goto(`${BASE}/front-office/prospects/${dee.id}`); await t.locator('[data-conflict-status="CLEARED"]').waitFor({ timeout: 30_000 });
   ok("FO-13s2 BR-8 pass: the checker's page is Cleared, naming who confirmed", (await panel(t).locator("[data-counts]").first().innerText()).includes("confirmed by Sample admin"));
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
-  ok("FO-13s2 m7 fail: the link once confirmed answers the server's sentence (nothing waits)", (await ad.locator("[data-confirm-check]").count()) === 0);
+  ok("FO-13s2 m7 fail (break r2-m1, r2-m6): the link once confirmed says it was, how and by whom, and offers no Confirm", (await ad.locator("[data-confirm-check]").count()) === 0
+    && (await ad.locator('[data-confirm-refused="ALREADY_CONFIRMED"]').innerText()).includes("already confirmed: No conflict, by you"));
   // break m4: a hidden match appears after the result was chosen; Save is refused, the panel searches again, focus lands on the refusal
   const gus = prospect("Gus", T.id);
   await open(t, gus.id); await runCheck(t); await drawer(t).getByLabel("No conflict").check();
@@ -233,6 +235,17 @@ try {
   const onRefusal = await t.waitForFunction(() => (document.activeElement as HTMLElement | null)?.dataset?.refusal !== undefined, undefined, { timeout: 3_000 }).then(() => true, () => false);
   ok("FO-13s2 break m4 fail: a hidden match that appears before Save → refused, searched again, focus on the refusal (not the dialog), nothing stored", onRefusal && checks(gus.id) === 0);
   t.once("dialog", (d) => void d.accept()); await drawer(t).getByRole("button", { name: "Cancel" }).click();
+  // break r2-m3: a link to a check a newer one replaced is refused, never confirmed
+  const hal = prospect("Hal", T.id);
+  person(`Hidden3${run}`, hal.email, O.id);
+  for (let i = 0; i < 2; i++) {
+    await open(t, hal.id); await runCheck(t); await drawer(t).getByRole("button", { name: "Record for confirmation" }).click(); await drawer(t).waitFor({ state: "hidden" });
+    await t.locator('[data-conflict-status="CONFLICT_CHECK_UNCONFIRMED"]').waitFor({ timeout: 15_000 });
+  }
+  const older = sql(`select id from fo_conflict_check where prospect_id = '${hal.id}' order by checked_at, id limit 1`);
+  await ad.goto(`${BASE}/front-office/conflict-checks/${older}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
+  ok("FO-13s2 break r2-m3 fail: a manager opening the older check's link is told a newer check counts; no Confirm, nothing confirmed",
+    (await ad.locator('[data-confirm-refused="SUPERSEDED"]').count()) === 1 && (await ad.locator("[data-confirm-check]").count()) === 0 && sql(`select count(*) from fo_conflict_check where prospect_id = '${hal.id}' and confirmed_by is not null`) === "0");
   await seesAll(true);
 
   // ---------------------------------------------------- BR-7 keys; keyboard; widths

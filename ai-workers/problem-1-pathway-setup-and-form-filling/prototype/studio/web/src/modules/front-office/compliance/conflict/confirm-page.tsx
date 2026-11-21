@@ -25,17 +25,19 @@ function ConfirmBody({ id }: { id: string }) {
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => ForConfirmation.parse(await staffApi(`${path(id)}/for-confirmation`)) });
   const [result, setResult] = React.useState(""), [disclosure, setDisclosure] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [general, setGeneral] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<string | null>(null), [ended, setEnded] = React.useState<string | null>(null);
-  const lock = useLock(), form = React.useRef<HTMLFormElement>(null), final = React.useRef<HTMLDivElement>(null);
-  const [focusTick, setFocusTick] = React.useState(0);   // the first field in error takes focus (BIC-13); the final notice takes focus (review m3)
-  React.useEffect(() => { if (focusTick) (final.current ?? form.current?.querySelector<HTMLElement>('[aria-invalid="true"]'))?.focus(); }, [focusTick]);
+  const lock = useLock(), form = React.useRef<HTMLFormElement>(null), final = React.useRef<HTMLDivElement>(null), refusal = React.useRef<HTMLDivElement>(null);
+  // The final notice takes focus (review m3), else the first field in error (BIC-13), else the refusal (break r2-m5).
+  const [focusTick, setFocusTick] = React.useState(0);
+  React.useEffect(() => { if (focusTick) (final.current ?? form.current?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? refusal.current)?.focus(); }, [focusTick]);
   const confirm = useMutation({
     mutationFn: () => staffApi(`${path(id)}/confirm`, { method: "POST", json: { result: result || undefined, disclosureText: result === "POTENTIAL_CONFLICT" ? disclosure : undefined } }),
     onSuccess: (r) => { setDone(resultLabel((r as { result?: string | null })?.result ?? result)); setFocusTick((x) => x + 1); void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks"] }); },
     onError: (e) => {
-      if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Confirm again to retry."); return; }
+      if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Confirm again to retry."); setFocusTick((x) => x + 1); return; }
       // Confirmed meanwhile (another manager, or this page's own answer lost), or the result already fixed (m7): the
       // server's sentence is the end of the page; the check is not read again, since a confirmed check no longer waits (review M1).
       if (e.problem.code === "ALREADY_CONFIRMED" || e.problem.code === "RESULT_FIXED") { setEnded(e.message); setFocusTick((x) => x + 1); return; }
+      if (e.status === 403) void one.refetch();   // hidden from this manager too now: read again, so Confirm switches off (break r2-m5)
       const fields = e.problem.fields ?? {};
       setErrors(fields); setGeneral(Object.keys(fields).length ? null : e.message);
       setFocusTick((x) => x + 1);
@@ -45,8 +47,12 @@ function ConfirmBody({ id }: { id: string }) {
   if (done || ended) return <div data-confirmed={done ? "" : undefined} data-confirm-ended={ended ? "" : undefined} ref={final} tabIndex={-1} className="outline-none">
     {done ? <Notice tone="ok" title={`Check confirmed: ${done}.`}>The checker sees it the next time their page is opened.</Notice> : <Notice tone="warn" title={ended ?? ""} />}</div>;
   if (one.isPending) return <Loading label="Loading the conflict check" rows={2} />;
-  if (one.isError) return <div data-confirm-refused><Notice tone="danger" title={one.error instanceof StaffApiError ? one.error.message : "Could not load the check."}
-    action={one.error instanceof StaffApiError ? undefined : <Button size="sm" variant="outline" onClick={() => void one.refetch()}>Try again</Button>} /></div>;
+  if (one.isError) {
+    const e = one.error instanceof StaffApiError ? one.error : null;
+    return <div data-confirm-refused={e?.problem.code ?? ""}><Notice tone={e?.status === 409 ? "warn" : "danger"} title={e ? e.message : "Could not load the check."}
+      action={e ? undefined : <Button size="sm" variant="outline" onClick={() => void one.refetch()}>Try again</Button>} />
+      {e?.status === 404 ? <p className="mt-2 text-sm text-text-muted" data-checker-hint>If you recorded this check, send this page's address to a manager who may see every record, or to the firm's Owner or Admin: <span className="select-all font-mono [overflow-wrap:anywhere]">{window.location.href}</span></p> : null}</div>;   // break r2-m4
+  }
   const c = one.data, fixed = c.result, stillHidden = c.hiddenNow > 0;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,8 +77,10 @@ function ConfirmBody({ id }: { id: string }) {
         ) : <p className="mt-2 text-sm text-text-muted">No record matches.</p>}
         {stillHidden ? <p className="mt-2 text-sm text-text-warn" data-still-hidden>{c.hiddenNow} match{c.hiddenNow === 1 ? " is" : "es are"} still hidden from you: a person who may see {c.hiddenNow === 1 ? "it" : "them"} confirms this check.</p> : null}
       </section>
+      {general || Object.keys(errors).length ? <div ref={refusal} tabIndex={-1} data-refusal className="flex flex-col gap-2 outline-none">
       {general ? <Notice tone="danger" title={general} /> : null}
       {Object.keys(errors).length ? <div data-error-summary><Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{k === "disclosureText" ? "Disclosure" : "Result"}: {v}</li>)}</ul></Notice></div> : null}
+      </div> : null}
       <fieldset disabled={confirm.isPending || stillHidden} aria-describedby={errors.result ? "fo-confirm-result-error" : undefined} aria-invalid={errors.result ? true : undefined} tabIndex={errors.result ? -1 : undefined} className="flex flex-col gap-2 outline-none">
         <legend className="text-xs font-medium">Result</legend>
         {fixed ? <p className="text-sm" data-fixed-result>The checker recorded: {resultLabel(fixed)}. Confirming keeps it.</p>
