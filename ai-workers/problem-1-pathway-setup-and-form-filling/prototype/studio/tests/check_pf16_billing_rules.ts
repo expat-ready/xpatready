@@ -112,7 +112,7 @@ try {
     f.subs.set("sub_c1", { id: "sub_c1", itemId: "si_c1", priceId: PRICES[0].id, interval: "month", unitAmount: PRICES[0].unitAmount, status: "active", periodEnd: new Date(Date.now() + 15 * DAY), trialEnd: null, scheduleId: null, pendingPriceId: null });
     return { port: f, subscriptionId: "sub_c1", fromPrice: PRICES[0].id, raisePrice: "price_firmMonth", charges: () => f.charges.length, scheduled: () => f.renewals.get("sub_c1")?.priceId ?? null };
   }, ok);
-  await runContract(planChangePortContract, "StripePlanChange (recorded)", () => recordedStripe(StripePlanChange), ok);
+  await runContract(planChangePortContract, "StripePlanChange", () => recordedStripe(StripePlanChange), ok);
   {   // review M3/M5: what the adapter sends Stripe (API 2026-10-28.endive, stripe 23.1.0's types)
     const r = recordedStripe(StripePlanChange), at = new Date();
     await r.port.changeNow({ subscriptionId: "sub_r1", priceId: "price_firmMonth", prorate: false, anchorNow: false, prorationDate: at }, "pf16-params-trial");
