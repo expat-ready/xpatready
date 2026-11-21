@@ -182,3 +182,30 @@ Merged: #2397 PF-19b part 3 (R1.48), #2313 (R1.38 2 of 4), **#2405 FO-9b** (R1.3
 
 ### Watch
 `watch.py` in this session's TMPDIR dies with it. Rebuild it as described above, for PRs 2305, 2322, 2326, 2029. Report each Approve that names a head to the current Lead, with the head.
+
+## Lead B (9) final hand-over (21 Nov 08:5x IST, context ~46%, P-565 (2)): Lead B (10) starts here
+**Session:** Lead B (9), Opus 5.5 medium, worktree `build-lead-c-647b40`, from 20 Nov 12:2x IST. **Current Lead: Lead 11 (series 3)**, `local_f172acc0-277a-4ea1-b739-4fa274ba3c9b`. Leads changed many times today; confirm with `list_sessions` (the title says "tech lead (current)") before each send. Method: as in the 06:29 section above (push lead-b-front-office with a temporary index; GraphQL via curl with `gh auth token`, because gh's TLS fails in the sandbox; a watcher `watch.py` in TMPDIR that dies with the session).
+
+### Open items
+| PR | Item | State (08:54 IST) | Next |
+|---|---|---|---|
+| **#2687** DEMO-LINK (founder's A243: reach the Release 1 screens from :4400) | demo access, R1.38's booking page | **ready, head 166755a85, "Reviewer: Approve 166755a85" posted** (independent Opus, two passes); no label yet; +270/−9 | the Lead's label (seed paths in demo.ts and booking-seed.ts; no migration). Watch CI: **check_pf18h_home_browser** was never run locally (no Chrome in the sandbox). Follow-ups on the PR: m5 (gate the menu behind a demo flag), m6 (signed-in smoke), a timeout on the reset transaction |
+| R1.38 + R1.110 proofs | qa | the cloud lane "qa Q2 · R1.110, R1.40" was asked (02:4x) to prove both on walks 44818224820 and 44818327469 (main d3d014857), plus R1.40, which shares j_38 | the Lead follows; a cloud lane can't reply, so read its records or PR |
+| R1.74 | qa / Lead C | PF-18n1 #2596 and PF-18h #2621 merged (both QA-471 parts on main); CS-DL3 part 2 #2594 merged | Lead C's CS-DL3 part 3 (the J-74 reminder walk, using the data-needs-you-item hooks) is theirs; then qa re-scores R1.74 |
+
+### Merged on my rows this session
+#2305 R1.110 · #2029 R1.4 · #2322 + #2326 (R1.38 4/4) · #2596 PF-18n1 · #2621 PF-18h. Briefs written: `lead-b-briefs/J-37d.md`, `J-38w6m.md`, `PF-18n1.md`, `PF-18h.md`. Standing size rule **P-775** (code and tests under 800 plus the PR's own screens records) came from #2621.
+
+### Clean-up owed (founder, on the Mac; the sandbox can't do it)
+* The DEMO-LINK builder left a local API server on **port 4660 with no timeout**: `lsof -ti tcp:4660 -sTCP:LISTEN | xargs kill` (servers on 4606, 4718 and 4791 time out by themselves).
+* Test DBs: `xr_studio_runtime_aud1a`, `xr_studio_pf18h`, `xr_studio_pf18hb` (run prune-test-dbs.sh once their servers stop), and `xr_studio_demolink_seed` (name-protected "demo": drop it by hand).
+* The scratch clone is already deleted (disk 6.4 → 7.9 GB free).
+* **Worktree `build-lead-c-647b40`:** a `git checkout -b` died halfway on the read-only `.claude/skills`, leaving files and index at origin/main while the branch stayed `claude/compassionate-lederberg-b17536` (~879 files show as changed, but there is no real work in them). The reset was refused by the permission check, so the founder runs `git reset --hard HEAD` there. Until then the stop-check reports "uncommitted changes" and a STATE time mismatch from main's STATE.md (the Lead's, already told).
+
+### Lessons
+* Building in this sandbox: never `git checkout` a new branch in a session worktree (the `.claude/skills` paths are read-only). Build in a scratch clone (`git clone --no-checkout <main copy>`, set the origin to GitHub, fetch, branch from origin/main), push with a plain `git push`, and delete the clone after the review.
+* A local clone shares objects by hard link, so `du` overstates its cost (3.8 GB shown, ~1.5 GB real).
+* CI gives a suite its own test database **only if its usage line is in run-suites' form** (`tsx studio/tests/<file> <port> <db>`, or `isolated.sh … start && tsx …`); otherwise it runs on a database that isn't there. This hit #2322 and #2621.
+* A new demo seed under `platform.demo.reset` must run inside the reset's per-firm transaction, or aud1a's "2 bypass lines per firm" fails.
+* Cloud lanes don't read PR comments while idle: a prompt-box nudge by the Lead (#2029 and #2322 both stalled for hours).
+* A green full run on a PR can still leave main red when a suite runs on the shared demo DB without a retry (check_fo1b after #2322); expect the batch to catch it.
