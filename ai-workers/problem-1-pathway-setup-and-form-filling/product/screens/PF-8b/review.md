@@ -233,3 +233,23 @@ Scope: the test-only change, `git diff HEAD~1 HEAD -- '*.ts'`. `npm test` in dep
 * Staging's `staging.<domain>` is not checked here. The same code path builds it, so this is acceptable.
 
 Still open and accepted: n4.
+
+## Re-review (merge with PF-23c, head d9bc77cd98f3f7422cbe1840f0a92c010e25cac5)
+
+Verdict: Approve
+
+Scope: the merge resolution only, read with `git show --remerge-diff HEAD`. Run in deploy/cdk with AWS keys unset; the cdk and aws CLIs were never called. `npm run synth` exits 0; `npm test` 93/93 pass (PF-8a, PF-8rc, PF-23c and PF-8b).
+
+The merge is correct:
+* **`ESTATE_TYPES` keeps both lists.** PF-8b's 15 types stay, followed by PF-23c's five (`Logs::LogGroup`, `Logs::MetricFilter`, `CloudWatch::Alarm`, `SNS::Topic`, `SNS::Subscription`).
+* **The README keeps both sections**, PF-23c's "Logs and alarms" and then PF-8b's "The service". Main's line "Not decided yet: 81 flags" is the only thing removed, and PF-8b's "Feature flags (not set yet)" paragraph replaces it. Nothing else of main's is lost.
+* **`git diff HEAD^2 HEAD`** on deploy/cdk shows PF-8b's own files only.
+* **`estate.ts` wires both.** `AppService` is at line 77 and `Observability` at line 80. The production template contains the log group, metric filters, alarms and SNS topic as well as the ECS service.
+
+New minor (not a merge defect; it is a gap between the two rows):
+* **u1** The containers in both task definitions have no `LogConfiguration`. Yet PF-23c's README section and `estate.ts:27` say "PF-8b's task logs here" (`appLogs`).
+* As merged, nothing ships the service's output, so PF-23c's metric filters and alarms would read nothing once deployed.
+* Wiring it means `logging: ecs.LogDrivers.awsLogs({ logGroup: observability.appLogs })`. That adds `logs:CreateLogStream` and `logs:PutLogEvents` to each execution role, which `ECS_EXEC_ACTIONS` would then have to admit narrowly, on that log group only.
+* Fix: the tech lead names the row that wires it, a PF-8b follow-up or PF-8c, before any deploy. Until then, correct the README sentence.
+
+Still open and accepted: n4.
