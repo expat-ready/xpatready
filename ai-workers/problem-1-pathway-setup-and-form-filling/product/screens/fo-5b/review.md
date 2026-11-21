@@ -64,3 +64,14 @@ Head **576ba4ec69e70371371c2f43e9851d7d910d74fb**. Code diff `3060c388..9ee8ef9c
 * Suite at 9ee8ef9c (same code as 576ba4ec), detached worktree: `check_fo5b_retainer_checklist.ts` gave **28 passed, 0 failed, exit 0**. FO-5 and the other suites were not re-run, at the coordinator's request.
 
 **Verdict: Approve** (576ba4ec69e70371371c2f43e9851d7d910d74fb). No open Blocker or Major.
+
+## Re-review (B164 guard), 21 Nov 2026
+Head **7cedfd22d75440ecb8b7385306754cc7d644b93d**. Diff `5a501182..7cedfd22`: 1 commit, 1 file (`tests/check_b164_no_engine_keys.ts`), +5 / -1. This is the fix Lead B proposed (comment 7058446213) and the tech lead approved (7058483696). Nothing else changed.
+* `"code"` is added to `NOT_KEYS`, with the exact comment `// code.*: the Code of conduct's clause markers and merge value (FO-5b), never a combination`. No marker was renamed, and nothing was added to `ALLOW`.
+* Two planted self-tests were added. In the first, `code.marked` and `code.s24_3_k` are not keys. In the second, `ee.fsw` placed next to `code.marked` is still caught.
+* **Risk of hiding a real combination: none found.** The guard reads 78 known keys from programs.json, wave1.json, routes.json and fee-table.json `combinations`. Their heads are corporate, family_sponsorship, fs, individual, lm, lmia, pnp, provincial_nominees, retail, sp, study, study_permits, study_then_work, sv, visitors, vv, work, work_permits and wp. None is `code`, and no key starts with `cod`. `keyLike()` returns true for a known key or a known head before it checks `NOT_KEYS`, so a key like that would still be caught. The exemption covers only unknown two-to-five-letter strings headed exactly `code`. No IRCC program is abbreviated "code".
+* **Run** (studio, `tsx --tsconfig api/tsconfig.json tests/check_b164_no_engine_keys.ts`): last line **`67 passed, 0 failed`**, **exit 0**.
+* **Mutation:** I ran a scratch, untracked copy of the suite without `"code"` in `NOT_KEYS`. Result: exit 1, `64 passed, 3 failed`. The engine scan fails with batch #2735's hit (`code-checklist.ts:26 code.marked`, then `docx-worker.ts`), and both planted tests fail. So the guard change is what makes the suite pass, and the self-tests pin it. The copy was deleted, and the working tree has no tracked changes.
+* Note, no change needed: under the mutation, the second planted test fails because it counts 2 hits, not because `ee.fsw` stops being caught. The existing case at line 11 (`ee.fsw` on its own) still checks that the new-program catch works.
+
+**Verdict: Approve** (7cedfd22d75440ecb8b7385306754cc7d644b93d). No open Blocker or Major.
