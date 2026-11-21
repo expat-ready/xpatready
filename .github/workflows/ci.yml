@@ -35,8 +35,8 @@
 #   machine minutes (about 2 a run) but no wall time: the parts take 20+ minutes, the type check about 1.5.
 #   SHARDS=<1..24>       the number of parallel parts (default 24 since CI-SPEED-2, 21 Nov; the repository variable SHARDS, 18
 #                        since 19 Nov, overrides it until it is set to 24 or deleted; default 18 from 19 Nov; before: default 8: pipeline row 2, 10 Nov, measured in its PR; was 4,
-#                        and the repository variable SHARDS is 6 since 9 Nov, which overrides this default until it
-#                        is deleted or set to 8; I1 measured before changing it: see its PR);
+#                        and the repository variable SHARDS was 6 from 9 Nov, overriding that default until it
+#                        was deleted or set to 8; I1 measured before changing it: see its PR);
 #   PR_SUITES=direct     idle since P-651 (2) (a builder's PR runs no suite; it was select-suites.mjs --direct); it
 #                        still enters the memory verdict's context, so changing it re-tests a head; the queue runs every suite;
 #   (BATCH_RUNNER / PR_RUNNER = mac, the founder's Mac, are gone: D1, P-416, 8 Nov; off since 4 Nov. git has them.)

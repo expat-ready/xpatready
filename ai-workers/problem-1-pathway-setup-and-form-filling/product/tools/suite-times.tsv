@@ -7,8 +7,8 @@
 # 10 s and 20 % (23 did; the other 357 moved less and keep their row, so this diff stays small). Re-dealing those runs'
 # own times with this file: longest part 1332 s of suites at 18 parts (was 1495; 1257 with every median), 988 s at 24
 # (mean 942); each part also spends about 250 s outside its suites (checkout, set-up, browser).
-# The 5 suites on run-suites.sh's hand-set QUARANTINE list keep their 15 Nov times (batches skip them, so they weigh 0
-# there and these times count only in the nightly full set; check_fo3st2_availability_browser.ts has none: 30 s).
+# Of the 6 suites on run-suites.sh's hand-set QUARANTINE list, 5 keep their 15 Nov times (batches skip them, so they
+# weigh 0 there and these times count only in the nightly full set); check_fo3st2_availability_browser.ts has none: 30 s.
 # check_b78_section_names.ts: 1230 s is its measured hang, not its pass time (it passes in 0-5 s, but twice ran into the
 # 1200 s suite limit + 30 s kill, runs 42243001915 and 42377102612; see QUARANTINE). Its nightly part is dealt that time,
 # so the part still ends inside the job limit when it hangs. Set it back to its pass time (0) when it leaves the quarantine.
