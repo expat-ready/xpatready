@@ -79,7 +79,8 @@ export class Duplicates {
  *  the caller's own role, not the check's definer functions: a win also runs in a system scope (the bypass role, which
  *  may not execute them and names no session firm), and one win is a single read, so the trigram index is not needed
  *  (break B1). The test pins it equal to the definer function. Every record of the firm counts (a system result for the
- *  case side, ids only, no visibility filter); the subject itself is never its own match. Writes nothing. */
+ *  case side, ids only, no visibility filter); the subject itself is never its own match. Writes nothing. The threshold
+ *  is compared as float8 (review m1: `::real` widens 0.7 to 0.699999988, letting a pair `%` refuses through). */
 export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subject: ProspectWonSubject): Promise<WonDuplicates> {
   if (subject.subject === "PERSON") {
     const p = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: subject.personId }), select: { email: true, phoneE164: true, givenNames: true, familyName: true } });
@@ -95,7 +96,7 @@ export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subje
          where p."firm_id" = ${firmId}::uuid and p."id" <> ${subject.personId}::uuid
            and ((${email}::text is not null and p."email" = ${email}::text) or (cardinality(${phones}::text[]) > 0 and p."phone_e164" = any(${phones}::text[]))
              or (${name}::text <> '' and lower(coalesce(p."name_key", '')) <> '' and (${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]') and lower(p."name_key") = ${name}::text)
-             or (${name}::text <> '' and ${name}::text !~ '[0-9]' and p."name_key" !~ '[0-9]' and extensions.similarity(lower(p."name_key"), ${name}::text) >= ${NAME_THRESHOLD}::real))
+             or (${name}::text <> '' and ${name}::text !~ '[0-9]' and p."name_key" !~ '[0-9]' and extensions.similarity(lower(p."name_key"), ${name}::text) >= ${NAME_THRESHOLD}::float8))
       ) m order by by_email desc, by_phone desc, sim desc, created_at, id limit ${MAX_MATCHES}`;
     const matches = rows.map((r) => ({ kind: "PERSON" as const, id: r.id, reasons: personReasons(r) })).filter((m) => m.reasons.length).map((m) => ({ ...m, score: matchScore(m.reasons) }));
     return { matches: matches.sort((x, y) => y.score - x.score) };
@@ -106,7 +107,7 @@ export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subje
     select id::text, sim from (
       select c."id", (case when c."normalised_name" = ${c.normalisedName}::text then 1 else extensions.similarity(lower(c."normalised_name"), ${c.normalisedName}::text) end)::float8 as sim, c."created_at"
         from "fo_company" c where c."firm_id" = ${firmId}::uuid and c."id" <> ${subject.company.id}::uuid
-    ) m where sim >= ${NAME_THRESHOLD}::real order by sim desc, created_at, id limit ${MAX_MATCHES}`;
+    ) m where sim >= ${NAME_THRESHOLD}::float8 order by sim desc, created_at, id limit ${MAX_MATCHES}`;
   return { matches: rows.map((r) => {
     const reasons: MatchReason[] = [{ key: "NAME", similarity: Math.min(1, Math.round(r.sim * 1000) / 1000) }];
     return { kind: "COMPANY" as const, id: r.id, score: matchScore(reasons), reasons };

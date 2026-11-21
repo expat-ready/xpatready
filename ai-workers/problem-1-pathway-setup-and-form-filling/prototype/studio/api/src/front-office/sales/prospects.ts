@@ -10,6 +10,7 @@ import type { FoPipeline, FoStageKind, Prisma, PrismaClient } from "@prisma/clie
 import type { AuditValues } from "../../../../ports/audit.ts";
 import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, ProspectWonPayload, type EventName } from "../../../../ports/events.ts";
 import { wonDuplicates } from "../duplicates/service.ts";
+import { logPort } from "../../platform/observability/log.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -109,7 +110,12 @@ async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, sig
     wonSubjectOf(tx, ctx.firmId, p.id),
   ]);
   // FO-9a (contract §4): the duplicate result for the subject, in this transaction (warn only; nothing linked or merged).
-  const duplicates = await wonDuplicates(tx, ctx.firmId, subject);
+  // Under a savepoint (review m2): a failed warn-only read never rolls the win back; the event then carries no
+  // `duplicates` (absent = not known, as on older events) and the failure is logged (no ids, the platform card).
+  let duplicates: Awaited<ReturnType<typeof wonDuplicates>> | undefined;
+  await tx.$executeRaw`savepoint fo9a_won_duplicates`;
+  try { duplicates = await wonDuplicates(tx, ctx.firmId, subject); await tx.$executeRaw`release savepoint fo9a_won_duplicates`; }
+  catch (e) { await tx.$executeRaw`rollback to savepoint fo9a_won_duplicates`; logPort.error("fo9a_won_duplicates_failed", e); }
   const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
   return ProspectWonPayload.parse({
     firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: via,

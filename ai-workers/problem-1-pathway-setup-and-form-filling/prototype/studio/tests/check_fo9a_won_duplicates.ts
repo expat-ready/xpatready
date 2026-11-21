@@ -135,10 +135,14 @@ try {
     await tx.$executeRawUnsafe(`select set_config('app.firm_id', '${firm ?? ""}', true), set_config('role', '${role}', true)`);
     return wonDuplicates(tx, A, subj);
   });
+  // A firm-B twin of Lena (same phone, same name): the bypass role reads every firm, so the query's own firm filter is the wall (review m3).
+  sql(`insert into fo_person (firm_id, given_names, family_name, email, phone, phone_readable, created_by, updated_at) values ('${B}', 'Lena', 'Parks', 'lp.work@example.org', '+14165550101', true, 'test', now())`);
+  const twinB = sql(`select id from fo_person where firm_id = '${B}' and email = 'lp.work@example.org'`);
   const viaBypass = await asRole("xr_staff_bypass", null).catch((e) => String(e));
   ok("FO-9a won D8 pass: as the bypass role with no firm named (a system win, a suite's direct mode), the result still names Lena Park",
     typeof viaBypass !== "string" && viaBypass.matches.some((m) => m.id === lena.person.id), viaBypass);
   const viaApp = await asRole("xr_app", A).catch((e) => String(e));
+  ok("FO-9a won D8 fail: as the bypass role, firm B's twin of Lena (same email, phone and name) is not listed (the query's firm filter)", typeof viaBypass !== "string" && !viaBypass.matches.some((m) => m.id === twinB), viaBypass);
   ok("FO-9a won D8 pass: as the app role in firm A, the same result", typeof viaApp !== "string" && typeof viaBypass !== "string" && JSON.stringify(viaApp) === JSON.stringify(viaBypass), { viaApp, viaBypass });
   const viaWrongFirm = await db.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`select set_config('app.firm_id', '${B}', true), set_config('role', 'xr_app', true)`);
@@ -152,16 +156,36 @@ try {
       and (by_email or by_phone or sim >= 0.6)`);
     return out;
   };
-  const parity = await Promise.all([lena2, ivo, lenaS, omar2, u2, noor, zed2].map(async (l) => {
+  const li = await lead(R, "李", "明", { email: "li.a@example.org" }), li2 = await lead(R, "李", "明", { email: "li.b@example.org" }), lihua = await lead(R, "李", "明华", { email: "li.c@example.org" });
+  const liOut = await wonDuplicates(db, A, { subject: "PERSON", personId: li2.person.id });
+  ok("FO-9a won D8 pass/fail (a name key with a digit matches only exactly): 李明 finds 李明, never 李明华",
+    liOut.matches.some((m) => m.id === li.person.id && m.reasons.some((r) => r.key === "NAME")) && !liOut.matches.some((m) => m.id === lihua.person.id), liOut);
+  const parity = await Promise.all([lena2, ivo, lenaS, omar2, u2, noor, zed2, li2, lihua].map(async (l) => {
     const mine = (await wonDuplicates(db, A, { subject: "PERSON", personId: l.person.id })).matches.map((m) => m.id).sort().join(",");
     return { mine, fn: fnIds(l.person.id) };
   }));
-  ok("FO-9a won D8 pass: for each of the seven people won above, the win's read finds exactly the people the check's definer function finds", parity.every((x) => x.mine === x.fn), parity);
+  ok("FO-9a won D8 pass: for each of the nine people above (the digit rule included), the win's read finds exactly the people the check's definer function finds", parity.every((x) => x.mine === x.fn), parity);
+
+  // The same companies as the check's company definer function.
+  const coIds = (cid: string) => sql(`select string_agg(m.id::text, ',' order by m.id) from fo_company c, fo_sales_company_matches('${A}', c.normalised_name, 0.6, 50) m where c.id = '${cid}' and m.id <> c.id and m.sim >= 0.6`);
+  const coMine = (await wonDuplicates(db, A, { subject: "COMPANY", company: { id: pc.company!.id, name: "Cedar Works Ltd" }, contacts: [] } as never)).matches.map((m) => m.id).sort().join(",");
+  ok("FO-9a won D8 pass: for the Corporate win, the win's read finds exactly the companies the check's definer function finds", coMine === coIds(pc.company!.id) && coMine.includes(CO), { coMine, fn: coIds(pc.company!.id) });
+
+  // ------------------------------------------------------------- D9: a failed warn-only read never undoes the win
+  const kai = await lead(R, "Kai", "Lindqvist", { email: "kai.l@example.org" });
+  sql(`alter function extensions.similarity(text, text) rename to similarity_fo9a_off`);
+  let w9: Awaited<ReturnType<typeof convert>> | string;
+  try { w9 = await convert(R, kai).catch((e) => String(e)); } finally { sql(`alter function extensions.similarity_fo9a_off(text, text) rename to similarity`); }
+  ok("FO-9a won D9 pass: with the read failing (the similarity function gone), Convert still wins and raises prospect.won, with no duplicates (not known)",
+    typeof w9 !== "string" && w9 !== null && w9.duplicates === undefined, w9);
 
   // ------------------------------------------------------------- D7: the contract: additive, bounded
   const base = w2!;
   const { duplicates: _drop, ...before } = base;
   ok("FO-9a won D7 pass: a prospect.won written before this part (no duplicates) still reads (the field is optional)", ProspectWonPayload.safeParse(before).success);
+  const many = (k: number, sim: number) => ({ ...base, duplicates: { matches: Array.from({ length: k }, () => ({ kind: "PERSON", id: randomUUID(), score: Math.floor(sim * 100), reasons: [{ key: "NAME", similarity: sim }] })) } });
+  ok("FO-9a won D7 pass (review M1): a stored result stays readable if the Sample threshold rises or the cap falls later (similarity 0.55, 12 matches)", ProspectWonPayload.safeParse(many(12, 0.55)).success);
+  ok("FO-9a won D7 fail: more than the fixed 50 matches, or a similarity above 1, is refused", !ProspectWonPayload.safeParse(many(51, 0.9)).success && !ProspectWonPayload.safeParse(many(1, 1.2)).success);
   ok("FO-9a won D7 fail: a score above 100, a reason-less match or a name in a match is refused by the contract",
     !ProspectWonPayload.safeParse({ ...base, duplicates: { matches: [{ kind: "PERSON", id: lena.person.id, score: 101, reasons: [{ key: "EMAIL" }] }] } }).success
       && !ProspectWonPayload.safeParse({ ...base, duplicates: { matches: [{ kind: "PERSON", id: lena.person.id, score: 100, reasons: [] }] } }).success
