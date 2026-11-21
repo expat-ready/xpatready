@@ -1,0 +1,594 @@
+
+> test
+> node --test test/*.test.ts
+
+TAP version 13
+# [Warning] Template validation found issues in your templates (reported as warnings).
+# Set feature flag "@aws-cdk/core:validateAgainstDefaultRules" to true to turn these into errors.
+# file:/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/test/backup.test.ts:102:57
+# WARNING Policies.0.PolicyDocument.Statement.0.Action: Only one of ['Action', 'NotAction'] is a required property (CloudFormation Validate)
+#    bad/Not/Resource (NotAC52D66A) aws-cdk-lib.aws_iam.CfnRole
+#    Acknowledge with 'CloudFormation-Validate::E3510'
+# file:/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/test/backup.test.ts:102:57
+# WARNING Policies.0.PolicyDocument.Statement.0.NotAction: Only one of ['Action', 'NotAction'] is a required property (CloudFormation Validate)
+#    bad/Not/Resource (NotAC52D66A) aws-cdk-lib.aws_iam.CfnRole
+#    Acknowledge with 'CloudFormation-Validate::E3510'
+# file:/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/test/backup.test.ts:102:57
+# WARNING IAM policy uses NotAction which grants all actions except those listed - consider using Action instead (CloudFormation Validate)
+#    bad/Not/Resource (NotAC52D66A) aws-cdk-lib.aws_iam.CfnRole
+#    Acknowledge with 'CloudFormation-Validate::W2512'
+# A copy of this report can be found in: /tmp/cdk.outTXQNz9/validation-report.json
+# Subtest: PF-8rc plan pass (xr-staging): daily, the database and all three buckets, kept 35 days, copied to ca-west-1 only and kept 35 days there
+ok 1 - PF-8rc plan pass (xr-staging): daily, the database and all three buckets, kept 35 days, copied to ca-west-1 only and kept 35 days there
+  ---
+  duration_ms: 9.168414
+  type: 'test'
+  ...
+# Subtest: PF-8rc plan pass (xr-production): daily, the database and all three buckets, kept 35 days, copied to ca-west-1 only and kept 35 days there
+ok 2 - PF-8rc plan pass (xr-production): daily, the database and all three buckets, kept 35 days, copied to ca-west-1 only and kept 35 days there
+  ---
+  duration_ms: 0.620372
+  type: 'test'
+  ...
+# Subtest: PF-8rc region pass and fail: the copy rule names ca-west-1 and nothing else outside ca-central-1; a copy to us-east-1 is caught twice
+ok 3 - PF-8rc region pass and fail: the copy rule names ca-west-1 and nothing else outside ca-central-1; a copy to us-east-1 is caught twice
+  ---
+  duration_ms: 104.950981
+  type: 'test'
+  ...
+# Subtest: PF-8rc region fail: the ca-west-1 stack may hold only the vault and its key; a bucket or a third region there is caught
+ok 4 - PF-8rc region fail: the ca-west-1 stack may hold only the vault and its key; a bucket or a third region there is caught
+  ---
+  duration_ms: 81.322315
+  type: 'test'
+  ...
+# Subtest: PF-8rc plan fail: retention, schedule, copy retention, a missing copy, a foreign target vault and an unselected bucket are each named
+ok 5 - PF-8rc plan fail: retention, schedule, copy retention, a missing copy, a foreign target vault and an unselected bucket are each named
+  ---
+  duration_ms: 14.390767
+  type: 'test'
+  ...
+# Subtest: PF-8rc vaults pass: all four vaults (two home, two copy) have their own key, a 35-day governance lock and the deny policy
+ok 6 - PF-8rc vaults pass: all four vaults (two home, two copy) have their own key, a 35-day governance lock and the deny policy
+  ---
+  duration_ms: 1.111716
+  type: 'test'
+  ...
+# Subtest: PF-8rc vaults fail: compliance mode, a shorter lock, no lock, a narrowed deny and an undeleteable-key gap are each named
+ok 7 - PF-8rc vaults fail: compliance mode, a shorter lock, no lock, a narrowed deny and an undeleteable-key gap are each named
+  ---
+  duration_ms: 18.699325
+  type: 'test'
+  ...
+# Subtest: PF-8rc no role can bypass, pass: the only role is AWS Backup's, with its own managed policies and kms:Decrypt on the data key
+ok 8 - PF-8rc no role can bypass, pass: the only role is AWS Backup's, with its own managed policies and kms:Decrypt on the data key
+  ---
+  duration_ms: 13.012205
+  type: 'test'
+  ...
+# Subtest: PF-8rc no role can bypass, fail: a role allowed the lock bypass, the vault policy, a wildcard, NotAction or an admin managed policy is caught
+ok 9 - PF-8rc no role can bypass, fail: a role allowed the lock bypass, the vault policy, a wildcard, NotAction or an admin managed policy is caught
+  ---
+  duration_ms: 113.249027
+  type: 'test'
+  ...
+# Subtest: PF-8rc buckets pass and fail: old versions expire after 35 days; a TLS deny on the bucket but not its objects does not count (review R3)
+ok 10 - PF-8rc buckets pass and fail: old versions expire after 35 days; a TLS deny on the bucket but not its objects does not count (review R3)
+  ---
+  duration_ms: 2.668743
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: a copy into another account, the other stage's vault, or a target hidden in Fn::Sub, SSM or Fn::ImportValue is caught (B2, B3, R3)
+ok 11 - PF-8rc round 2: a copy into another account, the other stage's vault, or a target hidden in Fn::Sub, SSM or Fn::ImportValue is caught (B2, B3, R3)
+  ---
+  duration_ms: 247.521254
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: anywhere in a template, Fn::Sub with variables, an import, an SSM reference or a region in a parameter default joined in is caught (B3)
+ok 12 - PF-8rc round 2: anywhere in a template, Fn::Sub with variables, an import, an SSM reference or a region in a parameter default joined in is caught (B3)
+  ---
+  duration_ms: 109.873264
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: a multi-region key, a replica key and a backup report plan are refused (B8)
+ok 13 - PF-8rc round 2: a multi-region key, a replica key and a backup report plan are refused (B8)
+  ---
+  duration_ms: 29.283018
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: user and group inline policies, IAM writes, role assumption, trust in anyone and a customer managed policy are caught (B4 a/b, R1, R2, R6)
+ok 14 - PF-8rc round 2: user and group inline policies, IAM writes, role assumption, trust in anyone and a customer managed policy are caught (B4 a/b, R1, R2, R6)
+  ---
+  duration_ms: 47.52999
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: AdministratorAccess hidden in Fn::Select or Fn::If beside an allowed policy is caught (B5, R5)
+ok 15 - PF-8rc round 2: AdministratorAccess hidden in Fn::Select or Fn::If beside an allowed policy is caught (B5, R5)
+  ---
+  duration_ms: 16.284498
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: a key or vault policy allowing another account, a too-short lock maximum and a narrowed deny Resource are caught (B4 c, B6, R6)
+ok 16 - PF-8rc round 2: a key or vault policy allowing another account, a too-short lock maximum and a narrowed deny Resource are caught (B4 c, B6, R6)
+  ---
+  duration_ms: 1.304179
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 2: a selection narrowed by NotResources, Conditions or tags, or tied to another plan, a second plan and a disabled lifecycle rule are caught (B7, R4, R6)
+ok 17 - PF-8rc round 2: a selection narrowed by NotResources, Conditions or tags, or tied to another plan, a second plan and a disabled lifecycle rule are caught (B7, R4, R6)
+  ---
+  duration_ms: 12.589182
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: every resource type is one the estate is made of; a Lambda function or a custom resource is refused
+ok 18 - PF-8rc round 3: every resource type is one the estate is made of; a Lambda function or a custom resource is refused
+  ---
+  duration_ms: 9.150367
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: a policy built from Fn::If, Fn::Split or a JSON string cannot be read, and is a finding (R2-1)
+ok 19 - PF-8rc round 3: a policy built from Fn::If, Fn::Split or a JSON string cannot be read, and is a finding (R2-1)
+  ---
+  duration_ms: 34.730745
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: only listed actions may be allowed; CloudFormation, IAM, Lambda and copy-job escalations are refused (R2-2, review N2)
+ok 20 - PF-8rc round 3: only listed actions may be allowed; CloudFormation, IAM, Lambda and copy-job escalations are refused (R2-2, review N2)
+  ---
+  duration_ms: 13.310914
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: a key or vault policy may allow only this account's root, never a service (R2-5)
+ok 21 - PF-8rc round 3: a key or vault policy may allow only this account's root, never a service (R2-5)
+  ---
+  duration_ms: 0.348222
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: MultiRegion as a string or Fn::If, and a lock maximum through Fn::If, are caught (R2-4)
+ok 22 - PF-8rc round 3: MultiRegion as a string or Fn::If, and a lock maximum through Fn::If, are caught (R2-4)
+  ---
+  duration_ms: 37.765999
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 3: a parameter with no default or from SSM, Fn::FindInMap, a delimiter from a parameter, a split dynamic reference, and Fn::Sub ${Param} are caught (R2-3, N1, N3)
+ok 23 - PF-8rc round 3: a parameter with no default or from SSM, Fn::FindInMap, a delimiter from a parameter, a split dynamic reference, and Fn::Sub ${Param} are caught (R2-3, N1, N3)
+  ---
+  duration_ms: 200.977777
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 4: a whole policy document, trust document, key policy or Policies list in Fn::If is refused, not read as empty (R3-1, M1)
+ok 24 - PF-8rc round 4: a whole policy document, trust document, key policy or Policies list in Fn::If is refused, not read as empty (R3-1, M1)
+  ---
+  duration_ms: 28.80434
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 4: a bucket policy may only deny; an Allow to another account, or a policy in Fn::If, is caught (R3-2)
+ok 25 - PF-8rc round 4: a bucket policy may only deny; an Allow to another account, or a policy in Fn::If, is caught (R3-2)
+  ---
+  duration_ms: 19.609178
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 4: any parameter in a resource, by Ref or by ${} in Fn::Sub, is refused, even with a home-region default (R3-3)
+ok 26 - PF-8rc round 4: any parameter in a resource, by Ref or by ${} in Fn::Sub, is refused, even with a home-region default (R3-3)
+  ---
+  duration_ms: 46.635455
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 4: managed policies in Fn::If are a finding, not a crash (R3-4)
+ok 27 - PF-8rc round 4: managed policies in Fn::If are a finding, not a crash (R3-4)
+  ---
+  duration_ms: 6.27685
+  type: 'test'
+  ...
+# Subtest: PF-8rc round 4: an allowed action on everything, a policy attached to users or an outside role, a non-literal Effect and a trust action other than sts:AssumeRole are caught (R3-5, M2, M4)
+ok 28 - PF-8rc round 4: an allowed action on everything, a policy attached to users or an outside role, a non-literal Effect and a trust action other than sts:AssumeRole are caught (R3-5, M2, M4)
+  ---
+  duration_ms: 7.060442
+  type: 'test'
+  ...
+# Subtest: PF-8a region pass: the app's stacks are the two home stacks in ca-central-1 and the two PF-8rc copy stacks, and nothing else names another region
+ok 29 - PF-8a region pass: the app's stacks are the two home stacks in ca-central-1 and the two PF-8rc copy stacks, and nothing else names another region
+  ---
+  duration_ms: 87.437679
+  type: 'test'
+  ...
+# Subtest: PF-8a region pass: a stray AWS_REGION or a caller's region cannot move the estate
+ok 30 - PF-8a region pass: a stray AWS_REGION or a caller's region cannot move the estate
+  ---
+  duration_ms: 161.023907
+  type: 'test'
+  ...
+# Subtest: PF-8a region fail: a us-east-1 stack added to the app, or nested in a home stack, is caught (review M2)
+ok 31 - PF-8a region fail: a us-east-1 stack added to the app, or nested in a home stack, is caught (review M2)
+  ---
+  duration_ms: 814.101743
+  type: 'test'
+  ...
+# Subtest: PF-8a region fail: real S3 replication to a bucket outside the app is caught though its ARN names no region (review M1)
+ok 32 - PF-8a region fail: real S3 replication to a bucket outside the app is caught though its ARN names no region (review M1)
+  ---
+  duration_ms: 458.387949
+  type: 'test'
+  ...
+# Subtest: PF-8a region fail: newer region families (us-isof-south-1, eu-isoe-west-1, eusc-de-east-1) are recognised (review m1)
+ok 33 - PF-8a region fail: newer region families (us-isof-south-1, eu-isoe-west-1, eusc-de-east-1) are recognised (review m1)
+  ---
+  duration_ms: 18.595737
+  type: 'test'
+  ...
+# Subtest: PF-8a region fail: an AZ name, an id after the region, capitals and a region split across Fn::Join, nested too, are seen (break 4, review R2)
+ok 34 - PF-8a region fail: an AZ name, an id after the region, capitals and a region split across Fn::Join, nested too, are seen (break 4, review R2)
+  ---
+  duration_ms: 27.397795
+  type: 'test'
+  ...
+# Subtest: PF-8a region: an allowance admits a region only inside its resource types (PF-8rc's ca-west-1 backup copy)
+ok 35 - PF-8a region: an allowance admits a region only inside its resource types (PF-8rc's ca-west-1 backup copy)
+  ---
+  duration_ms: 3.782233
+  type: 'test'
+  ...
+# Subtest: PF-8a database pass (xr-staging): private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs
+ok 36 - PF-8a database pass (xr-staging): private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs
+  ---
+  duration_ms: 0.299553
+  type: 'test'
+  ...
+# Subtest: PF-8a database subnets pass (xr-staging): no route leaves them, no public addresses (review m4)
+ok 37 - PF-8a database subnets pass (xr-staging): no route leaves them, no public addresses (review m4)
+  ---
+  duration_ms: 0.473004
+  type: 'test'
+  ...
+# Subtest: PF-8a buckets pass (xr-staging): three buckets, public access blocked, versioned, KMS, plain HTTP refused
+ok 38 - PF-8a buckets pass (xr-staging): three buckets, public access blocked, versioned, KMS, plain HTTP refused
+  ---
+  duration_ms: 0.574077
+  type: 'test'
+  ...
+# Subtest: PF-8a database pass (xr-production): private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs
+ok 39 - PF-8a database pass (xr-production): private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs
+  ---
+  duration_ms: 0.137004
+  type: 'test'
+  ...
+# Subtest: PF-8a database subnets pass (xr-production): no route leaves them, no public addresses (review m4)
+ok 40 - PF-8a database subnets pass (xr-production): no route leaves them, no public addresses (review m4)
+  ---
+  duration_ms: 0.131946
+  type: 'test'
+  ...
+# Subtest: PF-8a buckets pass (xr-production): three buckets, public access blocked, versioned, KMS, plain HTTP refused
+ok 41 - PF-8a buckets pass (xr-production): three buckets, public access blocked, versioned, KMS, plain HTTP refused
+  ---
+  duration_ms: 0.149227
+  type: 'test'
+  ...
+# Subtest: PF-8a database fail: each broken property is named
+ok 42 - PF-8a database fail: each broken property is named
+  ---
+  duration_ms: 1.381478
+  type: 'test'
+  ...
+# Subtest: PF-8a buckets fail: a public, unversioned, unencrypted bucket with no TLS policy is caught
+ok 43 - PF-8a buckets fail: a public, unversioned, unencrypted bucket with no TLS policy is caught
+  ---
+  duration_ms: 5.11406
+  type: 'test'
+  ...
+# Subtest: PF-8a availability pass and fail: production Multi-AZ, staging single-zone
+ok 44 - PF-8a availability pass and fail: production Multi-AZ, staging single-zone
+  ---
+  duration_ms: 0.213558
+  type: 'test'
+  ...
+# Subtest: PF-8a database subnets fail: a NAT route on a database subnet's table, or public addresses, are found
+ok 45 - PF-8a database subnets fail: a NAT route on a database subnet's table, or public addresses, are found
+  ---
+  duration_ms: 0.891573
+  type: 'test'
+  ...
+# Subtest: PF-8a buckets fail: a TLS deny narrowed to one action, one principal or an unrelated resource does not count (review m2, break 5)
+ok 46 - PF-8a buckets fail: a TLS deny narrowed to one action, one principal or an unrelated resource does not count (review m2, break 5)
+  ---
+  duration_ms: 1.888586
+  type: 'test'
+  ...
+# Subtest: PF-8a buckets fail: a bucket encrypted with a key the stack does not define is caught (break 8)
+ok 47 - PF-8a buckets fail: a bucket encrypted with a key the stack does not define is caught (break 8)
+  ---
+  duration_ms: 0.618144
+  type: 'test'
+  ...
+# Subtest: PF-8a synth never runs the CDK CLI in CI or by npm (the CLI looks up the account through STS when keys exist: break 1)
+ok 48 - PF-8a synth never runs the CDK CLI in CI or by npm (the CLI looks up the account through STS when keys exist: break 1)
+  ---
+  duration_ms: 0.267552
+  type: 'test'
+  ...
+# Subtest: PF-8a the CI job runs only when deploy/cdk changes, on pull requests only, never in a merge-queue batch (P-772 (a))
+ok 49 - PF-8a the CI job runs only when deploy/cdk changes, on pull requests only, never in a merge-queue batch (P-772 (a))
+  ---
+  duration_ms: 0.589611
+  type: 'test'
+  ...
+# Subtest: PF-23c retention pass: each stage has its app log group in ca-central-1, kept 90 days, and nothing names another region
+ok 50 - PF-23c retention pass: each stage has its app log group in ca-central-1, kept 90 days, and nothing names another region
+  ---
+  duration_ms: 142.85453
+  type: 'test'
+  ...
+# Subtest: PF-23c region guard: only the on-call email subscription may read a deploy parameter; any other use is still refused
+ok 51 - PF-23c region guard: only the on-call email subscription may read a deploy parameter; any other use is still refused
+  ---
+  duration_ms: 243.37061
+  type: 'test'
+  ...
+# Subtest: PF-23c retention fail: a log group kept for ever or 30 days, the app's kept 365, or no app group at all, is named
+ok 52 - PF-23c retention fail: a log group kept for ever or 30 days, the app's kept 365, or no app group at all, is named
+  ---
+  duration_ms: 1.413042
+  type: 'test'
+  ...
+# Subtest: PF-23c alarms pass: every alarm the row names exists in both stages, pages the on-call email and reads its filter
+ok 53 - PF-23c alarms pass: every alarm the row names exists in both stages, pages the on-call email and reads its filter
+  ---
+  duration_ms: 1.407682
+  type: 'test'
+  ...
+# Subtest: PF-23c alarms fail: a missing alarm, an alarm with no action, a hard-coded or defaulted address, a changed filter are each named
+ok 54 - PF-23c alarms fail: a missing alarm, an alarm with no action, a hard-coded or defaulted address, a changed filter are each named
+  ---
+  duration_ms: 32.847571
+  type: 'test'
+  ...
+# Subtest: PF-23c the on-call address is a deploy parameter with no default that takes one email address
+ok 55 - PF-23c the on-call address is a deploy parameter with no default that takes one email address
+  ---
+  duration_ms: 0.369678
+  type: 'test'
+  ...
+# Subtest: PF-23c filters pass and fail: each pattern matches PF-23's line for its event and not its near misses
+ok 56 - PF-23c filters pass and fail: each pattern matches PF-23's line for its event and not its near misses
+  ---
+  duration_ms: 1.718016
+  type: 'test'
+  ...
+# Subtest: PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age pages past the app's STUCK_JOB_MS (all Sample)
+ok 57 - PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age pages past the app's STUCK_JOB_MS (all Sample)
+  ---
+  duration_ms: 0.809713
+  type: 'test'
+  ...
+# Subtest: PF-23c contract with the app: metrics.ts, log.ts and the alert port still write the names the filters read
+ok 58 - PF-23c contract with the app: metrics.ts, log.ts and the alert port still write the names the filters read
+  ---
+  duration_ms: 0.65594
+  type: 'test'
+  ...
+# [Warning] Template validation found issues in your templates (reported as warnings).
+# Set feature flag "@aws-cdk/core:validateAgainstDefaultRules" to true to turn these into errors.
+# file:/home/user/xpatready/ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/test/service.test.ts:219:35
+# WARNING Resources section must exist and be non-empty (CloudFormation Validate)
+#    lookup aws-cdk-lib.Stack
+#    Acknowledge with 'CloudFormation-Validate::F0001'
+# A copy of this report can be found in: /tmp/cdk.outDEnuOr/validation-report.json
+# Subtest: PF-8b the loader is read: its secret and required settings are found (a guard that the text scan still works)
+ok 59 - PF-8b the loader is read: its secret and required settings are found (a guard that the text scan still works)
+  ---
+  duration_ms: 2.081531
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): the task holds no secret value, only Secrets Manager references, and sets the two settings
+ok 60 - PF-8b pass (xr-staging): the task holds no secret value, only Secrets Manager references, and sets the two settings
+  ---
+  duration_ms: 4.35139
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): at least two Fargate tasks over two zones, nothing public but the load balancer
+ok 61 - PF-8b pass (xr-staging): at least two Fargate tasks over two zones, nothing public but the load balancer
+  ---
+  duration_ms: 0.583622
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else
+ok 62 - PF-8b pass (xr-staging): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else
+  ---
+  duration_ms: 0.278082
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): the wildcard certificate covers *.staging.expatready.com and *.staging.expatready.com reaches the load balancer
+ok 63 - PF-8b pass (xr-staging): the wildcard certificate covers *.staging.expatready.com and *.staging.expatready.com reaches the load balancer
+  ---
+  duration_ms: 0.281493
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): the migration task uses the owner's address, the service the app role's
+ok 64 - PF-8b pass (xr-staging): the migration task uses the owner's address, the service the app role's
+  ---
+  duration_ms: 0.367433
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published
+ok 65 - PF-8b pass (xr-staging): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published
+  ---
+  duration_ms: 0.298418
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): three separate Cognito pools, staff pools with required two-step
+ok 66 - PF-8b pass (xr-staging): three separate Cognito pools, staff pools with required two-step
+  ---
+  duration_ms: 1.085933
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-staging): every container runs this stack's repository by digest, never a tag; two task definitions
+ok 67 - PF-8b pass (xr-staging): every container runs this stack's repository by digest, never a tag; two task definitions
+  ---
+  duration_ms: 0.629325
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): the task holds no secret value, only Secrets Manager references, and sets the two settings
+ok 68 - PF-8b pass (xr-production): the task holds no secret value, only Secrets Manager references, and sets the two settings
+  ---
+  duration_ms: 1.332132
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): at least two Fargate tasks over two zones, nothing public but the load balancer
+ok 69 - PF-8b pass (xr-production): at least two Fargate tasks over two zones, nothing public but the load balancer
+  ---
+  duration_ms: 0.269182
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else
+ok 70 - PF-8b pass (xr-production): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else
+  ---
+  duration_ms: 0.179858
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): the wildcard certificate covers *.expatready.com and *.expatready.com reaches the load balancer
+ok 71 - PF-8b pass (xr-production): the wildcard certificate covers *.expatready.com and *.expatready.com reaches the load balancer
+  ---
+  duration_ms: 0.127625
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): the migration task uses the owner's address, the service the app role's
+ok 72 - PF-8b pass (xr-production): the migration task uses the owner's address, the service the app role's
+  ---
+  duration_ms: 0.152601
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published
+ok 73 - PF-8b pass (xr-production): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published
+  ---
+  duration_ms: 0.115535
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): three separate Cognito pools, staff pools with required two-step
+ok 74 - PF-8b pass (xr-production): three separate Cognito pools, staff pools with required two-step
+  ---
+  duration_ms: 0.145033
+  type: 'test'
+  ...
+# Subtest: PF-8b pass (xr-production): every container runs this stack's repository by digest, never a tag; two task definitions
+ok 75 - PF-8b pass (xr-production): every container runs this stack's repository by digest, never a tag; two task definitions
+  ---
+  duration_ms: 0.199102
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: a task definition missing PLATFORM_ENVIRONMENT, or set to local, or PLATFORM_IDENTITY=local, is caught
+ok 76 - PF-8b fail: a task definition missing PLATFORM_ENVIRONMENT, or set to local, or PLATFORM_IDENTITY=local, is caught
+  ---
+  duration_ms: 2.847222
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: a secret as a plain value, a secret missing, a reference outside the stack, a credential in any task are caught
+ok 77 - PF-8b fail: a secret as a plain value, a secret missing, a reference outside the stack, a credential in any task are caught
+  ---
+  duration_ms: 5.285342
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: the task role reading secrets, or the execution role reading another task's secret, is caught
+ok 78 - PF-8b fail: the task role reading secrets, or the execution role reading another task's secret, is caught
+  ---
+  duration_ms: 1.141311
+  type: 'test'
+  ...
+# Subtest: PF-8b fail (break M-2): a managed or inline policy, a wildcard action, a resource policy, a key grant without ViaService are caught
+ok 79 - PF-8b fail (break M-2): a managed or inline policy, a wildcard action, a resource policy, a key grant without ViaService are caught
+  ---
+  duration_ms: 5.857658
+  type: 'test'
+  ...
+# Subtest: PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretString, an environment file, a sidecar's plain secret are caught
+ok 80 - PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretString, an environment file, a sidecar's plain secret are caught
+  ---
+  duration_ms: 1.325848
+  type: 'test'
+  ...
+# Subtest: PF-8b fail (re-break RC-1): another registry on the migration task, a sidecar image, a tag, a third task definition
+ok 81 - PF-8b fail (re-break RC-1): another registry on the migration task, a sidecar image, a tag, a third task definition
+  ---
+  duration_ms: 1.1073
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: one task, or both tasks in one zone, is caught
+ok 82 - PF-8b fail: one task, or both tasks in one zone, is caught
+  ---
+  duration_ms: 0.76002
+  type: 'test'
+  ...
+# Subtest: PF-8b fail (break m1): public task addresses, a task or database group open to the internet are caught
+ok 83 - PF-8b fail (break m1): public task addresses, a task or database group open to the internet are caught
+  ---
+  duration_ms: 5.012182
+  type: 'test'
+  ...
+# Subtest: PF-8b fail (break m2, m3, m7, m8): self sign-up, OAuth on, the service on the clients' pool, SPF +all, a redirect to another host
+ok 84 - PF-8b fail (break m2, m3, m7, m8): self sign-up, OAuth on, the service on the clients' pool, SPF +all, a redirect to another host
+  ---
+  duration_ms: 1.500523
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: port 80 forwarding to the app, a TLS 1.0 policy or an HTTPS listener with no certificate is caught
+ok 85 - PF-8b fail: port 80 forwarding to the app, a TLS 1.0 policy or an HTTPS listener with no certificate is caught
+  ---
+  duration_ms: 1.349117
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: a certificate for the apex only, or a wildcard record pointing elsewhere, is caught
+ok 86 - PF-8b fail: a certificate for the apex only, or a wildcard record pointing elsewhere, is caught
+  ---
+  duration_ms: 5.518104
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: the service holding the owner's address, or the migration task holding the app's, is caught
+ok 87 - PF-8b fail: the service holding the owner's address, or the migration task holding the app's, is caught
+  ---
+  duration_ms: 2.45422
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: SES without DKIM, its records missing, no SPF or no DMARC is caught
+ok 88 - PF-8b fail: SES without DKIM, its records missing, no SPF or no DMARC is caught
+  ---
+  duration_ms: 4.837633
+  type: 'test'
+  ...
+# Subtest: PF-8b fail: two kinds of user on one pool, a pool with no client, a staff pool without two-step are caught
+ok 89 - PF-8b fail: two kinds of user on one pool, a pool with no client, a staff pool without two-step are caught
+  ---
+  duration_ms: 1.022032
+  type: 'test'
+  ...
+# Subtest: PF-8b synth still needs no keys: no account lookup, no missing context, every stack's account left unresolved
+ok 90 - PF-8b synth still needs no keys: no account lookup, no missing context, every stack's account left unresolved
+  ---
+  duration_ms: 646.559538
+  type: 'test'
+  ...
+# Subtest: PF-8b the domain is a parameter (review t1): -c xr:domain moves production's zone, certificate and SES identity
+ok 91 - PF-8b the domain is a parameter (review t1): -c xr:domain moves production's zone, certificate and SES identity
+  ---
+  duration_ms: 300.164406
+  type: 'test'
+  ...
+# Subtest: PF-8b staging never accepts a live Stripe key (Lead 13 ruling 3): staging runs as test, production as production, no Sample seed
+ok 92 - PF-8b staging never accepts a live Stripe key (Lead 13 ruling 3): staging runs as test, production as production, no Sample seed
+  ---
+  duration_ms: 1.495336
+  type: 'test'
+  ...
+# Subtest: PF-8b's widening of PF-8rc's guards stays narrow: actions per service, "*" for the token only, the digest parameter only, key grants via Secrets Manager only
+ok 93 - PF-8b's widening of PF-8rc's guards stays narrow: actions per service, "*" for the token only, the digest parameter only, key grants via Secrets Manager only
+  ---
+  duration_ms: 14.438757
+  type: 'test'
+  ...
+1..93
+# tests 93
+# suites 0
+# pass 93
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9032.539181
