@@ -396,7 +396,9 @@ try {
     && psql(OLD2, "select pg_get_userbyid(proowner) || ':' || prosecdef || ':' || coalesce(proconfig::text, '') from pg_proc where proname = 'fo_booking_write'") === "xr_wall_reader:true:{\"search_path=pg_catalog, public, pg_temp\"}", [padOf(new3)]);
   psql(OLD2, `update platform_firm_setting set value = '"abc"' where firm_id = '${f2}' and key = 'front_office.booking_gap_after_minutes'`);
   const new5 = book(dflt, 7);
-  ok("FO-3a1e (break m5): a stored firm value that is not a number never breaks a booking write; the database reads it as unset (default 10)", padOf(new5) === "0/10", padOf(new5));
+  const odd = ["10.5", "-600", "1e10"].map((v, i) => { psql(OLD2, `update platform_firm_setting set value = '${v}' where firm_id = '${f2}' and key = 'front_office.booking_gap_after_minutes'`); return padOf(book(dflt, 8 + i)); });
+  ok("FO-3a1e (break m5): a stored firm value that is not a whole number in range (\"abc\", 10.5, -600, 1e10) never breaks a booking write; the database reads it as unset (default 10)",
+    padOf(new5) === "0/10" && odd.every((x) => x === "0/10"), [padOf(new5), odd]);
   psql(OLD2, `update platform_firm_setting set value = '25' where firm_id = '${f2}' and key = 'front_office.booking_gap_after_minutes'`);
   ok("FO-3a DW21 fail (migration): a negative type timing is still refused by FO-1b's checks", refused(OLD2, `update fo_consultation_type set gap_after_minutes = -1 where id = '${dflt}'`, /fo_consultation_type_gaps_check/));
   psql(OLD2, `create table if not exists "_prisma_migrations" (migration_name text)`);

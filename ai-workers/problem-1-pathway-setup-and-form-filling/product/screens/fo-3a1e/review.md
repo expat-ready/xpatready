@@ -65,3 +65,29 @@ N/A. This row has no screen, so there is nothing a person can walk in a browser 
 * The CI run itself.
 
 Verdict: Changes requested
+
+## Re-review 18b828e (P-277: only the new diff 7ccd544..18b828e)
+Read `git diff 7ccd544dbadb5df1c0f59572bcdc3fbaa95c9154 18b828efac544e60f8927ae6dba2214bc8c1288b`: e43a9f86e (the B1 fix) and 18b828e (the minors).
+* **Ran at 18b828e:**
+  * `check_fo3a_hours_timings.ts` twice: 46/0 both times, no ECONNRESET.
+  * `check_fo3a_booking_types.ts` 48/0 (`parse` change) and `check_fo1b_booking_schema.ts` 80/0.
+  * `tsc -p api/tsconfig.json`: no error under `api/`.
+* **B1, closed.** The FO-1b assert now expects empty timings, which is correct, and the suite is green.
+* **m2, closed.**
+  * `GET booking-types/:id` now carries `warnings` from the resolved pair (types.ts:177-178).
+  * The firm's GET and PUT answer adds one warning that names, up to 10, the types with their own notice or window that the firm's values leave with no times (timings.ts `unbookable`). Types that inherit both are already covered by the firm-pair warning.
+  * Tested: a firm window of 1 day against a type's own notice of 2 days names "Strategy session", and the type's own read warns too.
+* **m4, closed.** `Object.create(null)` in both parsers. `constructor`, `toString` and `valueOf` now give 400 on the firm, type-timings and create routes (tested).
+* **m5, closed.** rollback.sql:3-7 now says to run it BEFORE rolling the code back, and why.
+* **m6, closed.** The new HTTP checks now run ahead of the long synchronous migrations. The only thing after those migrations is psql.
+* **Breaker m5, narrowed, not closed.** The trigger and rollback now read the firm value only when `jsonb_typeof = 'number'`, and a stored `"abc"` pads by the default (tested). A JSON number that is not a whole int4 (`10.5`, `1e10`) still raises in the cast; I checked: `('10.5'::jsonb #>> '{}')::int` gives 22P02. A negative value still gives an inverted range. The comment "anything else is treated as unset" (migration.sql:59-60) therefore says more than the code does.
+  * Minor only: no app path can store such a value, because writeSetting runs the zod int-range schema.
+  * Optional fix: also require `(s.value #>> '{}') ~ '^[0-9]{1,4}$'`.
+* **Not changed, accepted as recorded:**
+  * m1: reminders, a question to the tech lead on the PR. FO-3st3b must not offer reminders as an editable field that does nothing.
+  * m3: no version on the firm's Timings, for Lead B.
+  * m7: the stored key is `:edit`, as the brief orders.
+  * m8: no stock role holds only one of the two keys.
+* Nothing in the new diff adds a Blocker or a Major. No open Blocker or Major remains.
+
+Verdict: Approve 18b828efac544e60f8927ae6dba2214bc8c1288b

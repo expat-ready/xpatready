@@ -56,10 +56,11 @@ BEGIN
       IS DISTINCT FROM (OLD.starts_at, OLD.ends_at, OLD.staff_id, OLD.type_id, OLD.mode, OLD.status) THEN 1 ELSE 0 END;
   END IF;
   IF TG_OP = 'INSERT' OR (NEW.starts_at, NEW.ends_at, NEW.type_id, NEW.staff_id, NEW.mode) IS DISTINCT FROM (OLD.starts_at, OLD.ends_at, OLD.type_id, OLD.staff_id, OLD.mode) THEN
-    -- FO-3a1e: a type's empty gap is the firm's Timings value, else the default (AG-4-4 rule 2). Only a JSON number is
-    -- read (the settings home stores whole numbers only, by the key's schema); anything else is treated as unset.
-    SELECT COALESCE(tt.gap_before_minutes, (SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = NEW.firm_id AND s.key = 'front_office.booking_gap_before_minutes' AND jsonb_typeof(s.value) = 'number'), 0) AS gap_before_minutes,
-           COALESCE(tt.gap_after_minutes, (SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = NEW.firm_id AND s.key = 'front_office.booking_gap_after_minutes' AND jsonb_typeof(s.value) = 'number'), 10) AS gap_after_minutes,
+    -- FO-3a1e: a type's empty gap is the firm's Timings value, else the default (AG-4-4 rule 2). Only a whole, non-negative
+    -- JSON number of at most 6 digits is read (the settings home stores 0-1,440 only, by the key's schema); anything else
+    -- (a string, 10.5, -600, 1e10) is treated as unset, so a bad stored value never stops a booking write.
+    SELECT COALESCE(tt.gap_before_minutes, (SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = NEW.firm_id AND s.key = 'front_office.booking_gap_before_minutes' AND jsonb_typeof(s.value) = 'number' AND (s.value #>> '{}') ~ '^[0-9]{1,6}$'), 0) AS gap_before_minutes,
+           COALESCE(tt.gap_after_minutes, (SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = NEW.firm_id AND s.key = 'front_office.booking_gap_after_minutes' AND jsonb_typeof(s.value) = 'number' AND (s.value #>> '{}') ~ '^[0-9]{1,6}$'), 10) AS gap_after_minutes,
            tt.host_staff_ids, tt.modes INTO t FROM "fo_consultation_type" tt WHERE tt.firm_id = NEW.firm_id AND tt.id = NEW.type_id;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'fo_booking: consultation type % is not a type of firm %', NEW.type_id, NEW.firm_id USING ERRCODE = 'foreign_key_violation';
