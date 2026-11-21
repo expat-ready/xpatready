@@ -91,7 +91,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, children }: { cr
   const pending = useTermsPending(token, !!who);   // PF-5t part 2: terms to accept (428 TERMS_PENDING) replace the page
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
-    <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/account"
+    <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
       controls={who ? <><span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
       <Place crumbs={crumbs} back={back} area={area} />

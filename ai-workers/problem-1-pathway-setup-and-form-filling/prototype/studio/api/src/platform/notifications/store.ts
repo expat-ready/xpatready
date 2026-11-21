@@ -36,19 +36,29 @@ export class PrismaNotificationPort implements NotificationPort<Prisma.Transacti
   }
 }
 
+/** Home's "Needs you" shows at most this many (PF-18h BR-5). */
+export const NEEDS_YOU_SHOWN = 20;
 /** What a person's list shows of one row. */
 export type NotificationView = { id: string; kind: string; group: string; item: { kind: string; id: string }; link: string | null; createdAt: string; readAt: string | null };
 type Row = { id: string; kind: string; group: string; itemKind: string; itemId: string; createdAt: Date; readAt: Date | null };
 
-/** The page each item kind opens, built on read (null: no page yet). Case stages and steps open their case. */
-async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<string, string>> {
+/** The page each item kind opens, built on read (null: no page yet), and its case's number. Case stages and steps open their case. */
+type Linked = { link: string; caseNumber: string };
+async function linksOf(db: DbOrTx, firmId: string, rows: Row[]): Promise<Map<string, Linked>> {
   const ids = (k: string) => [...new Set(rows.filter((r) => r.itemKind === k).map((r) => r.itemId))];
-  const links = new Map<string, string>();
+  const caseOf = new Map<string, string>();   // item key → its case id, each read in the firm
   const cases = ids("case");
-  if (cases.length) for (const c of await db.case.findMany({ where: { id: { in: cases }, firmId }, select: { id: true } })) links.set(`case|${c.id}`, `/cases/${c.id}`);   // breaker m4: the firm's own case only
+  for (const id of cases) caseOf.set(`case|${id}`, id);
   const stages = ids("case-stage"), steps = ids("case-milestone");
-  if (stages.length) for (const s of await db.caseStage.findMany({ where: { id: { in: stages }, firmId }, select: { id: true, caseId: true } })) links.set(`case-stage|${s.id}`, `/cases/${s.caseId}`);
-  if (steps.length) for (const m of await db.caseMilestone.findMany({ where: { id: { in: steps }, firmId }, select: { id: true, caseId: true } })) links.set(`case-milestone|${m.id}`, `/cases/${m.caseId}`);
+  if (stages.length) for (const s of await db.caseStage.findMany({ where: { id: { in: stages }, firmId }, select: { id: true, caseId: true } })) caseOf.set(`case-stage|${s.id}`, s.caseId);
+  if (steps.length) for (const m of await db.caseMilestone.findMany({ where: { id: { in: steps }, firmId }, select: { id: true, caseId: true } })) caseOf.set(`case-milestone|${m.id}`, m.caseId);
+  // PF-18h Q1 (a): the case number comes from this one firm-scoped case read (breaker m4: the firm's own case only). X-row:
+  // a case-side CaseLabelPort replaces these platform reads of case tables.
+  const ofCase = new Map<string, string>();
+  const caseIds = [...new Set(caseOf.values())];
+  if (caseIds.length) for (const c of await db.case.findMany({ where: { id: { in: caseIds }, firmId }, select: { id: true, caseNumber: true } })) ofCase.set(c.id, c.caseNumber);
+  const links = new Map<string, Linked>();
+  for (const [key, caseId] of caseOf) { const n = ofCase.get(caseId); if (n !== undefined) links.set(key, { link: `/cases/${caseId}`, caseNumber: n }); }
   return links;
 }
 
@@ -61,8 +71,18 @@ export class MyNotifications {
     const rows: Row[] = await this.db.msgNotification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * size, take: size + 1,
       select: { id: true, kind: true, group: true, itemKind: true, itemId: true, createdAt: true, readAt: true } });
     const more = rows.length > size, shown = rows.slice(0, size), links = await linksOf(this.db, where.firmId, shown);
-    const items: NotificationView[] = shown.map((r) => ({ id: r.id, kind: r.kind, group: r.group, item: { kind: r.itemKind, id: r.itemId }, link: links.get(`${r.itemKind}|${r.itemId}`) ?? null, createdAt: r.createdAt.toISOString(), readAt: r.readAt?.toISOString() ?? null }));
+    const items: NotificationView[] = shown.map((r) => ({ id: r.id, kind: r.kind, group: r.group, item: { kind: r.itemKind, id: r.itemId }, link: links.get(`${r.itemKind}|${r.itemId}`)?.link ?? null, createdAt: r.createdAt.toISOString(), readAt: r.readAt?.toISOString() ?? null }));
     return { items, page, size, nextPage: more ? page + 1 : null };
+  }
+  /** PF-18h (BR-1, BR-5): my unread MY_DEADLINES rows for Home's "Needs you", newest first, at most 20, with the total. */
+  async needsYou(firmId: string, staffId: string) {
+    const where = firmScope(firmId, { staffId, group: "MY_DEADLINES", readAt: null });
+    const [rows, total] = await Promise.all([
+      this.db.msgNotification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: NEEDS_YOU_SHOWN, select: { id: true, kind: true, group: true, itemKind: true, itemId: true, createdAt: true, readAt: true } }) as Promise<Row[]>,
+      this.db.msgNotification.count({ where }),
+    ]);
+    const links = await linksOf(this.db, where.firmId, rows);
+    return { items: rows.map((r) => { const l = links.get(`${r.itemKind}|${r.itemId}`); return { id: r.id, kind: r.kind, caseNumber: l?.caseNumber ?? null, link: l?.link ?? null, createdAt: r.createdAt.toISOString() }; }), total };
   }
   async unreadCount(firmId: string, staffId: string) {
     return { unread: await this.db.msgNotification.count({ where: firmScope(firmId, { staffId, readAt: null }) }) };

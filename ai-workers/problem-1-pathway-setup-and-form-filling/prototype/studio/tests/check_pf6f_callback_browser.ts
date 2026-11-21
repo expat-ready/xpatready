@@ -56,6 +56,8 @@ async function newPage(tok: string | null = null): Promise<Page> {
 const posts = (p: Page) => seen.filter((s) => s.page === p && s.method === "POST" && s.path === "/api/platform/session/callback").length;
 const profileShown = (p: Page, email: string) => p.locator("[data-account]", { hasText: email }).waitFor({ timeout: 20_000 });
 /** Whether "Signing you in…" is still showing after the page has had time to decide (3 s). */
+/** PF-18h: a callback that signs in lands on Home; My account then shows who it is. */
+const landed = async (p: Page, email: string) => { await p.waitForURL(`${BASE}/home`, { timeout: 20_000 }); await p.locator('nav[aria-label="My account"] [data-account-section="/account"]').click(); await profileShown(p, email); };
 const stuck = async (p: Page) => { await p.waitForTimeout(3000); return (await p.locator("[data-loading]").count()) > 0; };
 
 // One invitee: the run lends the Sample firm's plan seats and gives them back in the finally, whatever fails.
@@ -64,7 +66,7 @@ sql(`update platform_plan set seats_limit = ${Number(plan[1]) + 100} where id = 
 try {
   const rTok = await apiSignIn(R);
   const link = await handOffLink(rTok, `pf6f-${run}@example.com`);
-  const first = await newPage(); await first.goto(`${BASE}${link}`); await profileShown(first, `pf6f-${run}@example.com`);
+  const first = await newPage(); await first.goto(`${BASE}${link}`); await landed(first, `pf6f-${run}@example.com`);
   ok("PF-6f setup: the link signs its person in once (it is used now)", posts(first) === 1);
 
   // ------------------------------------------------------------------------------------------------- DW2
@@ -84,8 +86,9 @@ try {
   await p.getByRole("link", { name: "Open My account" }).click(); await profileShown(p, T);
   await p.goBack();
   const backStuck = await stuck(p);
-  ok("PF-6f DW1 pass (Devin, #1912): refused link, Open My account, Back → My account, never left on \"Signing you in…\"",
-    !backStuck && new URL(p.url()).pathname === "/account" && (await p.locator("[data-account]", { hasText: T }).count()) > 0, { url: p.url(), backStuck });
+  // PF-18h: a signed-in callback page lands on Home (the staff's first page), no longer My account.
+  ok("PF-6f DW1 pass (Devin, #1912): refused link, Open My account, Back → Home (PF-18h), never left on \"Signing you in…\"",
+    !backStuck && new URL(p.url()).pathname === "/home" && (await p.locator("[data-needs-you]").count()) > 0, { url: p.url(), backStuck });
   ok("PF-6f DW1: the used code was posted once on that page, never again on Back", posts(p) === 1, posts(p));
   // The same path signed out: Back lands on the callback page with no session → the refusal and the sign-in card.
   await p.goto(`${BASE}${link}`); await p.locator("[data-callback-refused]").waitFor({ timeout: 15_000 });
@@ -101,7 +104,7 @@ try {
   const race = await newPage(); let held = 0;
   await race.route("**/api/platform/session/callback", async (r) => { if (held++ === 0) await new Promise((res) => setTimeout(res, 4000)); await r.continue(); });
   await race.goto(`${BASE}${L1}`); await race.waitForTimeout(300);
-  await race.evaluate((h) => { window.location.hash = h; }, L2.split("#")[1]); await profileShown(race, `pf6f-b-${run}@example.com`);
+  await race.evaluate((h) => { window.location.hash = h; }, L2.split("#")[1]); await landed(race, `pf6f-b-${run}@example.com`);
   await race.waitForTimeout(5000);
   ok("PF-6f (breaker M1): a held earlier link answers after a later one → the tab stays the later person",
     (await race.locator("[data-account]", { hasText: `pf6f-b-${run}@example.com` }).count()) > 0 && !(await race.locator("main").innerText()).includes(`pf6f-a-${run}@example.com`) && posts(race) === 2, posts(race));
@@ -110,7 +113,7 @@ try {
   const flaky = await newPage(); let tries = 0;
   await flaky.route("**/api/platform/session/callback", async (r) => { if (tries++ === 0) return r.abort("failed"); await r.continue(); });
   await flaky.goto(`${BASE}${L3}`); await flaky.getByText("Could not reach the server").waitFor({ timeout: 15_000 });
-  await flaky.evaluate((h) => { window.location.hash = h; }, L3.split("#")[1]); await profileShown(flaky, `pf6f-c-${run}@example.com`);
+  await flaky.evaluate((h) => { window.location.hash = h; }, L3.split("#")[1]); await landed(flaky, `pf6f-c-${run}@example.com`);
   ok("PF-6f (breaker m3): after a send that never reached the server, the same link opened again in the tab signs in", posts(flaky) === 2, posts(flaky));
   ok("PF-6f: no page error in any browser", errors.length === 0, errors);
 } finally {

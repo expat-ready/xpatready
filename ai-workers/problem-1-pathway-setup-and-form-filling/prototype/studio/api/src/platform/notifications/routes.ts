@@ -5,6 +5,8 @@ import { BadRequestException, Controller, Get, HttpCode, Inject, Param, Post, Qu
 import { AnyStaff, staffOf, type StaffContext } from "../identity/keys.ts";
 import { notInFirm } from "../firm-scope.ts";
 import { MyNotifications } from "./store.ts";
+import { OFFICE_CLOCK } from "../settings/offices/clock.ts";
+import type { OfficeClockPort } from "../../../../ports/offices.ts";
 
 type R = { platform?: StaffContext };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,5 +37,19 @@ export class MyNotificationsController {
     const s = staffOf(r);
     if (!UUID.test(id)) return notInFirm("notification");
     return (await this.mine.markRead(s.firmId, s.staffId, id.toLowerCase(), seenOf(seen))) ?? notInFirm("notification");
+  }
+}
+
+/** PF-18h (concept screens/pf-18h-home r3): Home's "Needs you": my unread MY_DEADLINES rows (BR-1), newest first, at most 20,
+ *  with the total (BR-5), each with its case number and link (Q1 (a), one link builder: `linksOf`), and my zone: my office's,
+ *  else the firm's (BR-7, OfficeClockPort). Own only, as above (BR-3). */
+@Controller("api/platform/me/needs-you")
+export class NeedsYouController {
+  constructor(@Inject(MyNotifications) private readonly mine: MyNotifications, @Inject(OFFICE_CLOCK) private readonly offices: OfficeClockPort) {}
+  @Get() @AnyStaff("a person's own Needs you list")
+  async list(@Req() r: R) {
+    const s = staffOf(r);
+    const [list, zone] = await Promise.all([this.mine.needsYou(s.firmId, s.staffId), this.offices.officeOfStaff(s.firmId, s.staffId).then((o) => this.offices.zoneFor(s.firmId, o))]);
+    return { ...list, zone };
   }
 }
