@@ -112,9 +112,11 @@ try {
   ok("PF-30a fail: \"Ann\" does not find Hannah (inside a word is not a prefix) nor Omar", !ids(ann).includes(hannah.person.id) && !ids(ann).includes(omar.person.id), ann);
   ok("PF-30a pass: a one-letter misspelling of a full name (\"Anabel Sample\") still finds Annabel by trigram similarity", ids(await find(R, "Anabel Sample")).includes(annabel.person.id));
   const route = new FindController(registry);
-  const one = await refusal(() => route.find({ platform: R }, "a")), none = await refusal(() => route.find({ platform: R }, undefined)), long = await refusal(() => route.find({ platform: R }, "x".repeat(101)));
+  const one = await refusal(() => route.find({ platform: R }, { q: "a" })), none = await refusal(() => route.find({ platform: R }, {})), long = await refusal(() => route.find({ platform: R }, { q: "x".repeat(101) }));
+  const misspelt = await refusal(() => route.find({ platform: R }, { query: "Anna" }));
+  ok("PF-30a fail (PF-28): a misspelt query key (query=) → 422 naming it", misspelt?.status === 422 && JSON.stringify(misspelt.body).includes("query"), misspelt);
   ok("PF-30a fail: a 1-character query, no query or 101 characters → 400, the refusal not repeating it", one?.status === 400 && none?.status === 400 && long?.status === 400 && !JSON.stringify(long).includes("xxxx"), { one, none, long });
-  ok("PF-30a pass: 2 characters are enough (\"An\" through the route)", ids(await route.find({ platform: R }, "An")).includes(anna.person.id));
+  ok("PF-30a pass: 2 characters are enough (\"An\" through the route)", ids(await route.find({ platform: R }, { q: "An" })).includes(anna.person.id));
 
   // ------------------------------------------------------------------------------------- own versus all
   await everyone(false);

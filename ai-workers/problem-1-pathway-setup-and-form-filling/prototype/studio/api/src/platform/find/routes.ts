@@ -4,17 +4,21 @@
 // logged: the request line names the route pattern only (PF-23 hook.ts), and nothing here writes it.
 import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import { FindText, type FindResult } from "../../../../ports/find.ts";
+import { parseInput, query } from "../http/input.ts";
 import { AnyStaff, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { FindRegistry } from "./registry.ts";
 
 type R = { platform?: StaffContext };
+/** The one query key the door reads. */
+export const FindQueryKeys = query("q");
 
 @Controller("api/platform")
 export class FindController {
   constructor(@Inject(FindRegistry) private readonly registry: FindRegistry) {}
   @Get("find") @AnyStaff("the find box: each module's finder applies its own view rule (PF-30a)")
-  find(@Req() r: R, @Query("q") q: unknown): Promise<FindResult> {
+  find(@Req() r: R, @Query() all: unknown): Promise<FindResult> {
     const ctx = staffOf(r);
+    const { q } = parseInput(FindQueryKeys, all ?? {});   // a misspelt key → 422 naming it (PF-28)
     if (!FindText.safeParse(q).success) return problem(400, "Check the search", "Type 2 to 100 characters to search.", { code: "QUERY_LENGTH" });
     return this.registry.find(ctx, q);
   }
