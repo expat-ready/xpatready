@@ -1,0 +1,44 @@
+# Review-round limit (ENF-783a, P-783 (1); the rule is P-293: at most two review rounds, then the tech lead decides).
+# A PR comment by someone with write access with a line starting "Reviewer: <verdict>" is one round; a third (or later)
+# round is refused unless a write-access comment has the line "Lead allows round N:" (N at least that round).
+# product/tools/review-rounds.py judges it and sets the commit status "review-rounds" on the PR's head (success /
+# failure / error when comments cannot be read: fails closed); the job fails with it. Runs when a comment that names a
+# verdict or a Lead allowance is written, edited or deleted, and on each new head. issue_comment and
+# pull_request_target run main's copy of this file and the script; the PR's code is never checked out or run.
+# Binding only once the Lead adds `status-success=review-rounds` to .mergify.yml (P-423); until then it shows red.
+# Test: product/tools/test_review_rounds.py (lead-tools-tests.yml). Read-only apart from the status, US$0.
+name: review-rounds
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+concurrency:
+  # every run reads the PR as it is now, so a newer run replaces an older one safely
+  group: review-rounds-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review-rounds:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request && (contains(github.event.comment.body, 'reviewer:') ||
+      contains(github.event.comment.body, 'lead allows round')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/review-rounds.py
+          sparse-checkout-cone-mode: false
+      - name: at most two reviewer rounds without the Lead's line
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: python3 -I ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/review-rounds.py --pr "$PR" --status
