@@ -127,3 +127,46 @@ Recommended in the same push:
 - (5) a redirect case.
 
 (4) can be done in this push or recorded for later.
+
+---
+
+## Re-review, 21 Nov: head `d1ce265c1f2e084d09e61b24092ec620f7d48950`
+Diff only (P-277): `git diff ed4f8c57d08a98e3a739bf3f879db9c2be0e8a5a d1ce265c1f2e084d09e61b24092ec620f7d48950`.
+I ran from the shared tree, which was clean at d1ce265c. Postgres was on :54329, and :4400 was never used.
+
+### Runs at d1ce265c
+- `check_pf12b_doors` **30/0**. This adds the old-address 301 case.
+- `check_fo3_booking` **133/0**. The self-service link goes through the new two-argument lookup.
+
+### The five findings
+1. **Fixed (was Major).** DW6 (`check_pf12b_doors.ts:53`) now uses PF-25's form: the folder includes NEW, every stamp before it
+   is earlier, and the stamp is unique. A later migration on `main` no longer turns it red.
+2. **Fixed.** The function is now `fo_sales_web_form_firm` in the migration, the grant loop, the rollback, `sales/public.ts:156`,
+   the front-office card and the test's list. No call to the old name is left. A grep finds `fo_web_form_firm` only in FO-1a's
+   index and constraint names, which are unrelated.
+3. **Fixed.** The platform card and the test header now name the `xr_staff_bypass` grant.
+4. **Fixed.** `fo_booking_token_firm(token_id uuid, token_hash text)` returns the firm only when the id and the secret's hash
+   (`hashVerifier`, the same function the stored column uses) both match.
+   - An unknown id and a wrong secret are now the same null, after one query each (`booking/service.ts:836-837`).
+   - It never returns the stored hash.
+   - `liveToken` still checks voided and expired as the firm.
+   - This now matches the brief's "a function that takes a token compares its sha256".
+5. **Fixed.** DW5 (`check_pf12b_doors.ts:174`) asks for the firm's old address over HTTP as `xr_app` and gets a 301 to the current
+   address. The history row and the address change are seeded in one transaction, as PF-25's triggers require.
+
+### Breaker's m2 (`at` trusted in `platform_web_address_firm`)
+Left as a note, and I agree.
+- It can only be reached by direct SQL as `xr_app`. That role can already `SET ROLE xr_staff_bypass`.
+- What leaks is at most the firm id behind an address that has expired.
+- PF-12's `platform_web_address_taken` takes `at` from its caller in the same way.
+- Over HTTP, `at` is always the server clock.
+
+### New, Minor (nice to have, not blocking)
+- `front-office/MODULE.md:24` still lists `fo_booking_token_firm(token id)`. It now takes the token id and the secret's hash.
+- No test checks the new rule in finding 4 directly. If the lookup ignored the hash, the doors would still answer 404 through
+  `liveToken`, and the suite would still pass. One DW6 line would catch it: `fo_booking_token_firm(<real id>, repeat('0', 64))`
+  as `xr_app` should be null.
+
+Scores change only for D1 (now 9: the prefix and token rules are met) and D16 (now 8).
+
+**Verdict: Approve d1ce265c1f2e084d09e61b24092ec620f7d48950**

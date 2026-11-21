@@ -17,7 +17,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
-import { issueToken } from "../api/src/front-office/booking/tokens.ts";
+import { hashVerifier, issueToken } from "../api/src/front-office/booking/tokens.ts";
 import { appDatabaseUrl, asBypass, BYPASS_USES, BypassRefused, inRequest, WalledPool } from "../api/src/platform/firm-scope.ts";
 import { PlatformIdentity } from "../api/src/platform/identity/service.ts";
 import { PlatformClock } from "../api/src/platform/identity/port.ts";
@@ -98,6 +98,10 @@ try {
   const booking = sql(`insert into fo_booking (id, firm_id, type_id, staff_id, mode, starts_at, ends_at, visitor_time_zone, updated_at) values (gen_random_uuid(), '${B}', '${type}', '${bStaff}', (select modes[1] from fo_consultation_type where id = '${type}'), '${start0.toISOString()}', '${end0.toISOString()}', 'America/Toronto', now()) returning id`).split("\n")[0];
   const link = await owner.$transaction((tx) => issueToken(tx, B, booking, end0));
   const badVerifier = `${link.split(".")[0]}.${randomBytes(32).toString("base64url")}`, unknownId = `${randomUUID()}.${link.split(".")[1]}`;
+
+  const [linkId, linkSecret] = link.split(".");
+  ok("PF-12b DW6 pass/fail (review m4): the booking link's lookup gives the firm for the token id with its secret's hash, and null for the same id with a wrong hash (the stored hash is never returned)",
+    sql(`select fo_booking_token_firm('${linkId}', '${hashVerifier(linkSecret)}')`, "xr_app") === B && sql(`select coalesce(fo_booking_token_firm('${linkId}', repeat('0', 64))::text, 'null')`, "xr_app") === "null");
 
   // --------------------------------------------------------- DW5 direct: the guard's lookup, as the API runs it (xr_app)
   const pool = new WalledPool({ connectionString: appDatabaseUrl(urlOf(), {}), options: "-c TimeZone=UTC" }); pools.push(pool);
