@@ -57,6 +57,8 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
       }
     },
   });
+  // The form mounts once per Reload, never on its own save's refresh: a remount would drop "Saved" and the focus.
+  const [loads, setLoads] = React.useState(0);
   if (q.isPending) return <Loading label="Loading the consult record" rows={2} />;
   if (q.isError) return <Notice tone="danger" title="Could not load the consult record.">{q.error instanceof StaffApiError && q.error.status === 403 ? WORDS.refused : q.error.message}</Notice>;
   const { record, bookedMinutes } = q.data;
@@ -64,7 +66,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   if (booking.attendance !== "COMPLETED") return null;
   return (
     <>
-      <RecordForm key={record?.version ?? "new"} booking={booking} record={record} bookedMinutes={bookedMinutes} onReload={() => void q.refetch()} />
+      <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} onReload={() => void q.refetch().then(() => setLoads((n) => n + 1))} />
       {record ? <NextStep booking={booking} record={record} /> : null}
     </>
   );
@@ -95,6 +97,8 @@ function RecordForm({ booking, record, bookedMinutes, onReload }: { booking: Fee
   const [errors, setErrors] = React.useState<Partial<Record<"minutes" | "fee" | "currency" | "item", string>>>({});
   const [busy, setBusy] = React.useState(false), [saved, setSaved] = React.useState(false), [failed, setFailed] = React.useState<{ text: string; stale?: boolean } | null>(null);
   const addRef = React.useRef<HTMLInputElement>(null);
+  /** The version this form last read or saved (STANDARDS §4): a first save names none. */
+  const version = React.useRef<number | null>(record?.version ?? null);
   const changed = () => { setSaved(false); };
 
   const add = () => {
@@ -116,10 +120,11 @@ function RecordForm({ booking, record, bookedMinutes, onReload }: { booking: Fee
     if (Object.keys(next).length) return;
     setBusy(true);
     try {
-      await staffApi(`/front-office/bookings/${booking.id}/consult-record`, { method: "PUT", json: {
+      const out = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`, { method: "PUT", json: {
         timeSpentMinutes: m, notes: notes.trim() ? notes : null, recommended: items, quotedFeeMinor: amount, quotedFeeCurrency: amount === null ? null : currency,
-        ...(record ? { version: record.version } : {}),
-      } });
+        ...(version.current !== null ? { version: version.current } : {}),
+      } }));
+      version.current = out.version;
       await qc.invalidateQueries({ queryKey: ["fo", "bookings"] });
       setSaved(true);
     } catch (err) {
