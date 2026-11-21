@@ -9,7 +9,7 @@ import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { REGION_ALLOW, bypassFindings, regionFindings, resourcePolicyFindings, type Template } from "../lib/checks.ts";
 import { DEFAULT_DOMAIN } from "../lib/service.ts";
-import { exposureFindings, imageFindings, listenerFindings, loaderSettings, logFindings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
+import { addressSuffixFindings, exposureFindings, imageFindings, listenerFindings, loaderSettings, logFindings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SETTINGS = loaderSettings(readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8"));
@@ -39,6 +39,7 @@ for (const s of real) {
   test(`PF-8b pass (${s.name}): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published`, () => assert.deepEqual(mailFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): three separate Cognito pools, staff pools with required two-step`, () => assert.deepEqual(poolFindings(s.template, stage), []));
   test(`PF-8b pass (${s.name}): every container runs this stack's repository by digest, never a tag; two task definitions`, () => assert.deepEqual(imageFindings(s.template), []));
+  test(`PF-8b F2b pass (${s.name}): the task's PLATFORM_ADDRESS_SUFFIX is ${domain}, the zone's and the certificate's domain`, () => assert.deepEqual(addressSuffixFindings(s.template, domain), []));
   test(`PF-8b F1 pass (${s.name}): the service's and the migration's containers log with awslogs to /xr/${stage}/app`, () => assert.deepEqual(logFindings(s.template, stage), []));
 }
 
@@ -294,4 +295,22 @@ test("PF-8b F1 fail: a container with no log driver, another driver, another gro
   assert.equal(m1.length, 2, m1.join("\n")); assert.ok(m1.every((l) => / allows logs:CreateLogStream, logs:PutLogEvents on .*, not the \/xr\/production\/app group's ARN alone$/.test(l)), m1.join("\n"));
   const wrong = logFindings(t0, "staging");                              // the production group is not staging's (2 containers, 2 grants)
   assert.equal(wrong[0], "0 log groups named /xr/staging/app, not one"); assert.equal(wrong.length, 5, wrong.join("\n"));
+});
+
+test("PF-8b F2b the suffix follows -c xr:domain: a new staging domain gives staging.<it> in the task, zone and certificate", () => {
+  const stacks = allStacks(buildApp({ context: { "xr:domain": "example-test.com" } }).app);
+  const st = stacks.find((x) => x.name === "xr-staging")!.template, pr = stacks.find((x) => x.name === "xr-production")!.template;
+  assert.equal(svcContainer(st).Environment.find((e) => e.Name === "PLATFORM_ADDRESS_SUFFIX")!.Value, "staging.example-test.com");
+  assert.deepEqual([...addressSuffixFindings(st, "staging.example-test.com"), ...addressSuffixFindings(pr, "example-test.com")], []);
+  assert.deepEqual(addressSuffixFindings(st, "staging.expatready.com"), [`PLATFORM_ADDRESS_SUFFIX is "staging.example-test.com", not this stack's domain "staging.expatready.com"`]); // the old domain does not pass for it
+});
+
+test("PF-8b F2b fail: the suffix missing, the production domain on staging, or a domain with no zone is caught", () => {
+  const st = real.find((x) => x.name === "xr-staging")!.template, d = "staging.expatready.com";
+  const t = clone(st); const c = svcContainer(t); c.Environment = c.Environment.filter((e) => e.Name !== "PLATFORM_ADDRESS_SUFFIX");
+  assert.deepEqual(addressSuffixFindings(t, d), ['PLATFORM_ADDRESS_SUFFIX is null, not this stack\'s domain "staging.expatready.com"', "PLATFORM_ADDRESS_SUFFIX null is no hosted zone of this stack", "PLATFORM_ADDRESS_SUFFIX null has no wildcard certificate in this stack"]);
+  const t2 = clone(st); svcContainer(t2).Environment.find((e) => e.Name === "PLATFORM_ADDRESS_SUFFIX")!.Value = "expatready.com";
+  assert.equal(addressSuffixFindings(t2, d).length, 3);
+  const t3 = clone(st); for (const [, z] of of(t3, "AWS::Route53::HostedZone")) z.Properties!.Name = "other.example.";
+  assert.deepEqual(addressSuffixFindings(t3, d), ['PLATFORM_ADDRESS_SUFFIX "staging.expatready.com" is no hosted zone of this stack']);
 });
