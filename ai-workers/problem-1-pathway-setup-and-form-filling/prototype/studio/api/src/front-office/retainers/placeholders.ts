@@ -26,6 +26,8 @@ export const PLACEHOLDERS: readonly Placeholder[] = [
   { name: "fees.when", label: "Fee: when it is due" },
   { name: "fees.due_on", label: "Fee: due date (On a date)" },
   { name: "fees.total", label: "Total of the fee rows (CAD)" },
+  // FO-13c: the s. 24(3)(o) item, the disclosure of a potential conflict (the party's latest conflict check); empty otherwise.
+  { name: "conflict.disclosure", label: "Disclosure of a potential conflict of interest (Code s. 24(3)(o))" },
 ];
 const KNOWN = new Set(PLACEHOLDERS.map((p) => p.name));
 
