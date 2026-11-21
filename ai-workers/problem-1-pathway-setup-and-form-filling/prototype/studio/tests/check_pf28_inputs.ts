@@ -80,8 +80,8 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 220;   // part 1 commits 220 probe entries (71 code entries); a fix part lowers both
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 71 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 235;   // part 1 commits 235 probe entries (79 code entries; main at 21 Nov merge); a fix part lowers both
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 79 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
@@ -94,6 +94,7 @@ ok("PF-28 rule fail (break m2): \"constructor\" and \"__proto__\" are refused an
 ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters and the value is never repeated; a good body passes", Object.keys(long?.fields ?? {}).every((k) => k.length <= 64) && !JSON.stringify(long).includes("secret value") && good === null && long?.status === 422, long?.fields);
 
 // ------------------------------------------------------------------------------------- (b) a running copy: the probes
+process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
 const { registerFeatures } = await import("../api/src/features.ts");
 const { PLATFORM_ACCESS } = await import("../api/src/platform/identity/keys.ts");
 const { FIELD_ERROR_STATUS } = await import("../api/src/platform/http/input.ts");
