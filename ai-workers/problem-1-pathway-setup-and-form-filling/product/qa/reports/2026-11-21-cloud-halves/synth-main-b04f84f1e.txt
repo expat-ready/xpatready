@@ -1,0 +1,4 @@
+
+> synth
+> node bin/app.ts
+
