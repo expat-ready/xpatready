@@ -29,6 +29,10 @@ export const Address = z.strictObject({
 });
 const toStripe = (a: z.output<typeof Address>, country: string): BillingAddress => ({ line1: `${a.street_number} ${a.street_name}`, ...(a.unit ? { line2: `Unit ${a.unit}` } : {}), city: a.city, province: a.province_state, postalCode: a.postal_code, country });
 
+/** QA-594: before and after take flat values, so the address goes in field by field (address_city, …); the firm's
+ *  address is not a secret and is kept in full (P-687). */
+const flatAddress = (a: Record<string, unknown>) => Object.fromEntries(Object.entries(a).filter(([k]) => /^[A-Za-z][A-Za-z0-9_]{0,55}$/.test(k))
+  .map(([k, v]) => [`address_${k}`, v === null || ["string", "number", "boolean"].includes(typeof v) ? (v as string | number | boolean | null) : JSON.stringify(v)]));
 const unavailable = () => problem(503, "BILLING_UNAVAILABLE", "Billing is unavailable", "We could not reach our billing provider. Try again in a few minutes.");
 
 export class BillingAccount {
@@ -77,7 +81,7 @@ export class BillingAccount {
     const value = { ...p.data, country: old.country ?? "canada", ...(old.phone ? { phone: old.phone } : {}) } as Prisma.InputJsonValue;
     await this.db.$transaction(async (tx) => {
       await tx.platformFirm.updateMany({ where: { id: s.firmId }, data: { businessAddress: value } });
-      await this.ports.audit.record(tx, { firmId: s.firmId, actor: `staff:${s.staffId}`, action: "platform.firm.address_changed", entity: "platform_firm", entityKey: s.firmId, summary: "The firm's business address was changed", detail: { province: p.data.province_state } });
+      await this.ports.audit.record(tx, { firmId: s.firmId, actor: `staff:${s.staffId}`, action: "platform.firm.address_changed", entity: "platform_firm", entityKey: s.firmId, summary: "The firm's business address was changed", detail: { province: p.data.province_state }, before: flatAddress(old), after: flatAddress(value as Record<string, unknown>) });
     });
     const sub = await this.current(s.firmId);
     const onStripe = sub.stripeCustomerId && !this.ports.notReady ? await this.ports.billing.updateCustomerAddress(sub.stripeCustomerId, toStripe(p.data, firm.countryCode)).then(() => true, () => false) : null;

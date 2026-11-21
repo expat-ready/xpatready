@@ -141,7 +141,7 @@ export class BillingEvents {
       const ends = { trialEndsAt: (snap.trialEnd ?? row.trialEndsAt)?.toISOString() ?? null, periodEnd: (snap.periodEnd ?? row.currentPeriodEnd)?.toISOString() ?? null };
       await this.ports.audit.record(tx, { firmId, actor: ACTOR, action: notes.length ? "platform.subscription.move_refused" : "platform.subscription.synced", entity: "platform_subscription", entityKey: row.id,
         summary: notes.length ? `Billing move refused: ${notes.join("; ")}` : `Subscription ${row.status} → ${next}; firm ${firm.status} → ${firmNext} (${reason})`,
-        detail: { from: row.status, to: next, firmFrom: firm.status, firmTo: firmNext, reason, stripeStatus: snap.status, ...ends } });
+        detail: { reason, stripeStatus: snap.status, ...ends }, before: { status: row.status, firmStatus: firm.status }, after: { status: next, firmStatus: firmNext } });   // QA-594: on a refused move after = what was kept
       if (next !== row.status) await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_SUBSCRIPTION_CHANGED, subjectId: row.id, payload: { firmId, old: row.status, new: next, reason } } });   // events last (PF-3 m8)
       if (firmNext !== firm.status && firmNext === "ACTIVE") await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_ACTIVATED, subjectId: firmId, payload: { firmId } } });
       if (firmNext !== firm.status && firmNext === "PAYMENT_HOLD") await tx.moduleEvent.create({ data: { firmId, type: EVENT.FIRM_PAYMENT_HOLD, subjectId: firmId, payload: { firmId, reason } } });
