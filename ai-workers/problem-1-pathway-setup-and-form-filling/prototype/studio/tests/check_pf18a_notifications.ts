@@ -30,6 +30,7 @@ for (const db of [EMPTY, DEMO]) { execFileSync(join(BIN, "dropdb"), [...PG, "--i
 for (const d of all) psql(EMPTY, ["-f", join(MIG, d, "migration.sql")]);
 process.env.DATABASE_URL = urlOf(EMPTY);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");

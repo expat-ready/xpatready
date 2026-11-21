@@ -27,6 +27,8 @@ jobs:
       BODY: "${{ github.event.pull_request.body }}"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
       - name: body has a testable Done when and a Duplicate check line
         run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
       - name: a "Completes:" line, if any, names R1 items only (P-728 (3); item-proof.yml proves them at the merge)
@@ -49,3 +51,8 @@ jobs:
       - name: reviewer and breaker agents on Opus high
         if: "${{ !cancelled() }}"
         run: bash "$T/agent-model-guard.sh"
+      # E16 (STANDARDS §1, P-553, P-587): a package added to any package.json needs a "STANDARDS §1:" line (the technology gate).
+      # Test: product/tools/check-deps-line.sh.
+      - name: a new package in any package.json carries a "STANDARDS §1:" line (E16)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/deps-line-check.sh" --base HEAD^1
