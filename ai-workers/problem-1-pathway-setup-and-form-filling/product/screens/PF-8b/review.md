@@ -221,3 +221,15 @@ Scope: `git diff HEAD~1 HEAD` at 23ef8fb, product/screens excluded. Run in deplo
   * Minor **t1**: that sentence is now untested. If space allows later, one assertion that `buildApp({context:{"xr:domain":"example.org"}})` yields `*.example.org` would cover it again.
 
 Still open and accepted: n4.
+
+## Re-review (t1, head 30c06be53eaf6fbe90d2cebcb7625bd85c8c43ba)
+
+Verdict: Approve
+
+Scope: the test-only change, `git diff HEAD~1 HEAD -- '*.ts'`. `npm test` in deploy/cdk: 84/84 pass, with AWS keys unset and the CDK CLI never called.
+
+* The new test covers t1. Production built with `xr:domain=example.org` passes `wildcardFindings` and `mailFindings` for `example.org`.
+* The test can also fail: the default production template (`t0`) gives findings for `example.org`, so the check is not blind.
+* Staging's `staging.<domain>` is not checked here. The same code path builds it, so this is acceptable.
+
+Still open and accepted: n4.
