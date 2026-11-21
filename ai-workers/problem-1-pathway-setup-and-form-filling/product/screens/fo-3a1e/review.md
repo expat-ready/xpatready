@@ -91,3 +91,14 @@ Read `git diff 7ccd544dbadb5df1c0f59572bcdc3fbaa95c9154 18b828efac544e60f8927ae6
 * Nothing in the new diff adds a Blocker or a Major. No open Blocker or Major remains.
 
 Verdict: Approve 18b828efac544e60f8927ae6dba2214bc8c1288b
+
+## Re-review 75294c5 (P-277: only the new diff 18b828e..75294c5, report files excluded)
+* **Breaker m5, closed.** The trigger (migration.sql:59-63) and all five rollback fills now also require `(s.value #>> '{}') ~ '^[0-9]{1,6}$'`.
+  * The `::int` cast sits in the subquery's select list, so it only runs on a row that passed the filter.
+  * jsonb prints `1e10` as `10000000000`, which has 11 digits. `10.5` and `-600` fail the pattern. `-0` prints as `0`, which is a valid 0.
+  * So every value that does not fit is now unset and pads by the default. The migration comment now says exactly what the code does.
+* **Tested.** "abc", 10.5, -600 and 1e10 each pad 0/10 (the default). `check_fo3a_hours_timings.ts` at 75294c5: 46/0, exit 0.
+* **Residual, not a finding.** A stored whole number above the key's range (e.g. 2000) would still be used by the trigger, while the app's read refuses it. No app path can store one, because writeSetting enforces the range.
+* No open Blocker or Major. m1, m3, m7 and m8 stay as recorded above.
+
+Verdict: Approve 75294c5f9c871df82b66e056dd76c76c97b400a5

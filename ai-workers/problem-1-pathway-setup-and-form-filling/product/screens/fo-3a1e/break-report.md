@@ -87,3 +87,11 @@ Same set-up: scratch databases `xr_studio_brk_*` (dropped), the walled Nest harn
 - **m4** stays with Lead B, as stated.
 
 Verdict: Approve 18b828efac544e60f8927ae6dba2214bc8c1288b
+
+## Re-break 75294c5 (P-277: only `git diff 18b828efa 75294c5f9`, screens excluded)
+Scratch database `xr_studio_brk_fin_*` (dropped); trigger run as xr_app in firm A's session, firm gap after varied:
+- **Read as stored:** `0`, `1440`, `30`, `1e3` (1000), `3e1` (30), `999999`; `-0` pads 0. **Read as unset (pad 10):** `30.0`, `10.5`, `-600`, `1e10`, `1000000`, `"30"`, `null`, `"abc"`, `[30]`. No error on any value; still SECURITY DEFINER, owned by xr_wall_reader, search_path pinned.
+- **rollback.sql (`-1`):** non-matching values fill the defaults and the columns end NOT NULL. A whole number outside the column CHECK (window `-0`, `1440`, `999999`) aborts the transaction and leaves the columns nullable (fails safe; zod in writeSetting stops such values).
+- **Suites at 75294c5:** check_fo3a_hours_timings 46/0, check_fo3_booking 133/0, check_fo1b_booking_schema 80/0. No new findings; m4 stays with Lead B.
+
+Verdict: Approve 75294c5f9c871df82b66e056dd76c76c97b400a5
