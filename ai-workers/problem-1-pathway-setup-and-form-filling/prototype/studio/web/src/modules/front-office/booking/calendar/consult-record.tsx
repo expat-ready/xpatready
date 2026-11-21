@@ -3,7 +3,8 @@
 // controls, saved through FO-3a part 2a's `GET/PUT /front-office/bookings/:id/consult-record`.
 //   * Shown to whoever may answer the booking's attendance (its host, or the edit key: the feed's canAnswerAttendance,
 //     the same people the record route lets in), once the answer is Attended; No-show and no record → nothing (J-S5).
-//   * A first record starts with time spent = the booked length (the route's 404 NO_RECORD carries bookedMinutes).
+//   * A first record starts with time spent = the booked length (worked out as the route does), and Recommended with the
+//     lead's "Interested in" service (BR-15) as its first item; the person removes or adds items.
 //   * The quoted fee is optional; its currency is CAD or USD only, pre-filled CAD (Sample: the firm's own currency has no
 //     setting yet); an amount with no currency is refused in the concept's words (J-S6). Save names the version read, so
 //     someone else's save is never overwritten (409 STALE_VERSION → the words and Reload).
@@ -19,6 +20,7 @@ import { z } from "zod";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui/controls";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
 import { Loading } from "@/modules/front-office/sales/loading";
+import { Lead } from "@/modules/front-office/sales/contract";
 import type { FeedItem } from "./contract";
 
 export const ConsultRecord = z.object({
@@ -34,16 +36,36 @@ type Read = { record: ConsultRecord | null; bookedMinutes: number };
 const WORDS = {
   currency: "Choose a currency for the quoted fee.",
   minutes: "Enter the minutes spent, from 1 to 1440.",
-  fee: "Enter the fee as an amount, for example 1500 or 1500.50.",
+  fee: "Enter the fee as an amount up to 9,999,999.99, for example 1500 or 1,500.50.",
   item: "Each item is 1 to 120 characters.",
   items: "At most 20 recommended items.",
+  duplicate: "This item is already in the list.",
+  notAttended: "The attendance changed. Reload to see it.",
   stale: "Someone else saved this record. Reload to see their changes.",
   refused: "You do not have permission to do this. Ask an Owner or Admin.",
 } as const;
-const money = (minor: number) => (minor / 100).toFixed(2);
-/** "1,500.50" → 150050; anything else that is not an amount → null. */
-const minorOf = (s: string) => { const t = s.replace(/[,\s]/g, ""); return /^\d{1,7}(\.\d{1,2})?$/.test(t) ? Math.round(Number(t) * 100) : null; };
+const money = (minor: number) => (minor / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** "1500", "1500.5" or "1,500.50" → minor units. A comma is read only as a thousands mark in its place: "1 500,50",
+ *  "15,00" or "1,5" are refused, never read as a ten or a hundred times larger fee (break M1). */
+const minorOf = (s: string) => {
+  const t = s.trim();
+  if (!/^(\d{1,7}|\d{1,3}(,\d{3}){1,2})(\.\d{1,2})?$/.test(t)) return null;
+  const n = Math.round(Number(t.replace(/,/g, "")) * 100);
+  return n <= 999_999_999 ? n : null;
+};
 const chars = (s: string) => [...s].length;
+/** An item as the route stores it (service.ts Item): NFC, invisible marks dropped, spaces folded; "" when nothing is left. */
+const INVISIBLE = /[\u200b\u200e\u200f\u2060-\u2064\ufeff\u00ad]/g;
+const itemOf = (s: string) => { const t = s.normalize("NFC").replace(INVISIBLE, "").trim().replace(/\s+/g, " "); return /[^\u200c\u200d]/.test(t) ? t : ""; };
+const sameItem = (a: string, b: string) => a.toLocaleLowerCase("en-CA") === b.toLocaleLowerCase("en-CA");
+/** The route's field issues ("recommended.2: 1 to 120 characters") by the form's field. */
+type Errors = Partial<Record<"minutes" | "notes" | "fee" | "currency" | "item", string>>;
+const FIELD: Record<string, keyof Errors> = { timeSpentMinutes: "minutes", notes: "notes", recommended: "item", quotedFeeMinor: "fee", quotedFeeCurrency: "currency" };
+function errorsOf(issues: string[] | undefined): Errors {
+  const out: Errors = {};
+  for (const i of issues ?? []) { const [path, ...rest] = i.split(": "); const f = FIELD[path.split(".")[0]]; if (f && !out[f]) out[f] = f === "item" && /\.\d+$/.test(path) ? `Item ${Number(path.split(".")[1]) + 1}: ${rest.join(": ")}` : rest.join(": "); }
+  return out;
+}
 
 export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   const q = useQuery({
@@ -57,16 +79,25 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
       }
     },
   });
+  // BR-15: a first record's Recommended starts from the lead's "Interested in" (read only while there is no record).
+  const leadId = booking.hangsOn?.kind === "lead" ? booking.hangsOn.id : null;
+  const lead = useQuery({ queryKey: ["fo", "leads", "one", leadId], enabled: !!leadId && q.isSuccess && !q.data.record, retry: false,
+    queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(leadId ?? "")}`)) });
   // The form mounts once per Reload, never on its own save's refresh: a remount would drop "Saved" and the focus.
+  const qc = useQueryClient();
   const [loads, setLoads] = React.useState(0), [justSaved, setJustSaved] = React.useState(false);
-  if (q.isPending) return <Loading label="Loading the consult record" rows={2} />;
+  if (q.isPending || (lead.fetchStatus === "fetching" && lead.isPending)) return <Loading label="Loading the consult record" rows={2} />;
   if (q.isError) return <Notice tone="danger" title="Could not load the consult record.">{q.error instanceof StaffApiError && q.error.status === 403 ? WORDS.refused : q.error.message}</Notice>;
   const { record, bookedMinutes } = q.data;
   if (record?.attendanceChanged === "NO_SHOW") return <><Notice tone="warn" title="Attendance changed to No-show." /><RecordReadOnly r={record} /></>;
   if (booking.attendance !== "COMPLETED") return null;
+  // A lead the viewer may not read leaves the list empty, as typed by hand.
+  const interested = !record && lead.data?.interestedIn ? itemOf(lead.data.interestedIn) : "";
+  const suggested = interested && chars(interested) <= 120 ? [interested] : [];
   return (
     <>
-      <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} onSaved={() => setJustSaved(true)} onReload={() => void q.refetch().then(() => setLoads((n) => n + 1))} />
+      <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} suggested={suggested} onSaved={() => setJustSaved(true)}
+        onReload={() => void qc.invalidateQueries({ queryKey: ["fo", "bookings"] }).then(() => setLoads((n) => n + 1))} />
       {record ? <NextStep booking={booking} record={record} reveal={justSaved} /> : null}
     </>
   );
@@ -80,57 +111,75 @@ function RecordReadOnly({ r }: { r: ConsultRecord }) {
     <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1" data-consult-readonly>
       <dt className="text-text-muted">Time spent</dt><dd>{r.timeSpentMinutes} minutes</dd>
       <dt className="text-text-muted">Notes</dt><dd className="whitespace-pre-wrap">{r.notes ?? "None"}</dd>
-      <dt className="text-text-muted">Recommended</dt><dd>{r.recommended.length ? r.recommended.join(", ") : "None"}</dd>
+      <dt className="text-text-muted">Recommended</dt><dd>{r.recommended.length ? r.recommended.map((i, n) => <React.Fragment key={i}>{n ? ", " : null}<bdi>{i}</bdi></React.Fragment>) : "None"}</dd>
       <dt className="text-text-muted">Quoted fee</dt><dd>{r.quotedFee ? `${money(r.quotedFee.amountMinor)} ${r.quotedFee.currency}` : "None"}</dd>
     </dl>
   );
 }
 
-function RecordForm({ booking, record, bookedMinutes, onSaved, onReload }: { booking: FeedItem; record: ConsultRecord | null; bookedMinutes: number; onSaved: () => void; onReload: () => void }) {
+function RecordForm({ booking, record, bookedMinutes, suggested, onSaved, onReload }: { booking: FeedItem; record: ConsultRecord | null; bookedMinutes: number; suggested: string[]; onSaved: () => void; onReload: () => void }) {
   const qc = useQueryClient();
   const [minutes, setMinutes] = React.useState(String(record?.timeSpentMinutes ?? bookedMinutes));
   const [notes, setNotes] = React.useState(record?.notes ?? "");
-  const [items, setItems] = React.useState<string[]>(record?.recommended ?? []);
+  const [items, setItems] = React.useState<string[]>(record?.recommended ?? suggested);
   const [adding, setAdding] = React.useState("");
   const [fee, setFee] = React.useState(record?.quotedFee ? money(record.quotedFee.amountMinor) : "");
   const [currency, setCurrency] = React.useState(record?.quotedFee?.currency ?? "CAD");
-  const [errors, setErrors] = React.useState<Partial<Record<"minutes" | "fee" | "currency" | "item", string>>>({});
-  const [busy, setBusy] = React.useState(false), [saved, setSaved] = React.useState(false), [failed, setFailed] = React.useState<{ text: string; stale?: boolean } | null>(null);
-  const addRef = React.useRef<HTMLInputElement>(null);
+  const [errors, setErrors] = React.useState<Errors>({});
+  const [busy, setBusy] = React.useState(false), [saved, setSaved] = React.useState(false), [failed, setFailed] = React.useState<{ text: string; reload?: boolean } | null>(null);
+  const addRef = React.useRef<HTMLInputElement>(null), saveRef = React.useRef<HTMLButtonElement>(null);
   /** The version this form last read or saved (STANDARDS §4): a first save names none. */
   const version = React.useRef<number | null>(record?.version ?? null);
   const changed = () => { setSaved(false); };
 
+  /** The list with the typed item added, or the words why not (null: nothing typed). */
+  const withTyped = (): { list: string[] } | { error: string } | null => {
+    if (!adding.trim()) return null;
+    const t = itemOf(adding);
+    if (!t || chars(t) > 120) return { error: WORDS.item };
+    if (items.some((i) => sameItem(i, t))) return { error: WORDS.duplicate };
+    if (items.length >= 20) return { error: WORDS.items };
+    return { list: [...items, t] };
+  };
   const add = () => {
-    const t = adding.trim().replace(/\s+/g, " ");
-    if (!t || chars(t) > 120) { setErrors((e) => ({ ...e, item: WORDS.item })); return; }
-    if (items.length >= 20) { setErrors((e) => ({ ...e, item: WORDS.items })); return; }
-    if (!items.some((i) => i.toLocaleLowerCase("en-CA") === t.toLocaleLowerCase("en-CA"))) setItems([...items, t]);
-    setAdding(""); setErrors((e) => ({ ...e, item: undefined })); changed(); addRef.current?.focus();
+    const got = withTyped();
+    if (!got) return;
+    if ("error" in got) { setErrors((e) => ({ ...e, item: got.error })); return; }
+    setItems(got.list); setAdding(""); setErrors((e) => ({ ...e, item: undefined })); changed(); addRef.current?.focus();
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     const m = Number(minutes), amount = fee.trim() ? minorOf(fee) : null;
-    const next: typeof errors = {};
+    const next: Errors = {};
     if (!/^\d+$/.test(minutes.trim()) || m < 1 || m > 1440) next.minutes = WORDS.minutes;
     if (fee.trim() && amount === null) next.fee = WORDS.fee;
     if (amount !== null && !currency) next.currency = WORDS.currency;
-    setErrors(next); setFailed(null);
+    // An item typed but not added is saved with the rest, never dropped while "Saved" shows (break m1).
+    const typed = withTyped();
+    if (typed && "error" in typed) next.item = typed.error;
+    setErrors(next); setFailed(null); setSaved(false);
     if (Object.keys(next).length) return;
+    const list = typed && "list" in typed ? typed.list : items;
+    if (typed) { setItems(list); setAdding(""); }
     setBusy(true);
     try {
       const out = ConsultRecord.parse(await staffApi(`/front-office/bookings/${booking.id}/consult-record`, { method: "PUT", json: {
-        timeSpentMinutes: m, notes: notes.trim() ? notes : null, recommended: items, quotedFeeMinor: amount, quotedFeeCurrency: amount === null ? null : currency,
+        timeSpentMinutes: m, notes: notes.trim() ? notes : null, recommended: list, quotedFeeMinor: amount, quotedFeeCurrency: amount === null ? null : currency,
         ...(version.current !== null ? { version: version.current } : {}),
       } }));
       version.current = out.version; onSaved();
       await qc.invalidateQueries({ queryKey: ["fo", "bookings"] });
       setSaved(true);
     } catch (err) {
-      const stale = err instanceof StaffApiError && err.problem.code === "STALE_VERSION";
-      setFailed({ text: stale ? WORDS.stale : err instanceof StaffApiError && err.status === 403 ? WORDS.refused : err instanceof Error ? err.message : "Not saved. Please try again.", stale });
-    } finally { setBusy(false); }
+      const code = err instanceof StaffApiError ? err.problem.code : undefined;
+      const fields = err instanceof StaffApiError ? errorsOf(err.problem.issues) : {};
+      setErrors(fields);   // the route's own words, at their fields (review M3)
+      setFailed({
+        text: code === "STALE_VERSION" ? WORDS.stale : code === "NOT_ATTENDED" || code === "CANCELLED" ? WORDS.notAttended : err instanceof StaffApiError && err.status === 403 ? WORDS.refused : err instanceof Error ? err.message : "Not saved. Please try again.",
+        reload: code === "STALE_VERSION" || code === "NOT_ATTENDED" || code === "CANCELLED",
+      });
+    } finally { setBusy(false); requestAnimationFrame(() => saveRef.current?.focus()); }   // the busy button let go of the focus (break m7)
   };
 
   return (
@@ -138,8 +187,8 @@ function RecordForm({ booking, record, bookedMinutes, onSaved, onReload }: { boo
       <Field label="Time spent (minutes)" error={errors.minutes}>
         <Input inputMode="numeric" value={minutes} onChange={(e) => { setMinutes(e.target.value); changed(); }} className="w-32" />
       </Field>
-      <Field label="Notes (optional)">
-        <Textarea value={notes} maxLength={10_000} onChange={(e) => { setNotes(e.target.value); changed(); }} />
+      <Field label="Notes (optional)" error={errors.notes}>
+        <Textarea value={notes} onChange={(e) => { setNotes(e.target.value); changed(); }} />
       </Field>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="text-xs font-medium">Recommended (optional)</legend>
@@ -147,7 +196,7 @@ function RecordForm({ booking, record, bookedMinutes, onSaved, onReload }: { boo
           <ul className="flex flex-wrap gap-2" data-recommended>
             {items.map((i) => (
               <li key={i} className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5"><bdi>{i}</bdi>
-                <button type="button" className="rounded px-1 text-text-muted hover:text-text focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none" aria-label={`Remove ${i}`} onClick={() => { setItems(items.filter((x) => x !== i)); changed(); }}>×</button></li>
+                <button type="button" className="rounded px-1 text-text-muted hover:text-text focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none" aria-label={`Remove ${i}`} title={`Remove ${i}`} onClick={() => { setItems(items.filter((x) => x !== i)); changed(); addRef.current?.focus(); }}>×</button></li>
             ))}
           </ul>
         ) : null}
@@ -169,10 +218,10 @@ function RecordForm({ booking, record, bookedMinutes, onSaved, onReload }: { boo
         </Field>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" busy={busy}>Save record</Button>
+        <Button ref={saveRef} type="submit" busy={busy}>Save record</Button>
         <span role="status" className="text-sm text-text-ok" data-consult-saved={saved || undefined}>{saved ? "Saved" : ""}</span>
       </div>
-      {failed ? <Notice tone="danger" title="Not saved" action={failed.stale ? <Button size="sm" variant="outline" type="button" onClick={onReload}>Reload</Button> : undefined}>{failed.text}</Notice> : null}
+      {failed ? <Notice tone="danger" title="Not saved" action={failed.reload ? <Button size="sm" variant="outline" type="button" onClick={onReload}>Reload</Button> : undefined}>{failed.text}</Notice> : null}
     </form>
   );
 }
@@ -194,7 +243,7 @@ function NextStep({ booking, record, reveal }: { booking: FeedItem; record: Cons
     <section ref={box} aria-labelledby="fo-next" className="mt-4 border-t border-border pt-3" data-next-step>
       <h3 id="fo-next" className="font-semibold">Next step</h3>
       <p className="mb-2 text-text-muted">Opens the next screen. Nothing is sent to {booking.person?.name || "the person"} from here.</p>
-      <div className="flex flex-wrap gap-2">{steps.map(({ s, to }) => <Button key={s} variant="default" onClick={() => go(to)}>{STEP_WORDS[s]}</Button>)}</div>
+      <div className="flex flex-wrap gap-2">{steps.map(({ s, to }) => <Button key={s} variant="outline" onClick={() => go(to)}>{STEP_WORDS[s]}</Button>)}</div>
     </section>
   );
 }
