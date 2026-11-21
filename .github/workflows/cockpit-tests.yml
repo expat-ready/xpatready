@@ -10,6 +10,8 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/fixtures/cockpit/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/cockpit/**"
       - ".github/workflows/cockpit-tests.yml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/human-sample.py"   # P-782 (1): the weekly human sample lead-watch prints
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_human_sample.py"
 permissions:
   contents: read
 concurrency:
@@ -42,3 +44,5 @@ jobs:
           print("trust:", d["trust"]["state"], "| invariants broken:", bad or "none")
           sys.exit(1 if bad or d["trust"]["state"] == "disagree" else 0)
           PY
+      - name: human sample states (ENF-782b part 2, P-782 (1); due, open, yes, no, overdue; no network)
+        run: python3 -I "$P/tools/test_human_sample.py"
