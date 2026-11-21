@@ -270,9 +270,13 @@ export class Retainers {
   }
 
   /** A new file for a template makes version n+1 (BR-1); retainers keep the version they were made from. */
-  async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined) {
+  async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined, body: Record<string, unknown> = {}) {
     if (typeof id !== "string" || !UUID.test(id)) notFound("template");
     const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id } }) ?? notFound("template");
+    // FO-5s part 2 break M1: the version the page showed (multipart digits); a colleague's newer version is never replaced
+    // silently. Optional, so earlier callers keep working.
+    if (body.expectedVersion !== undefined && body.expectedVersion !== "" && Number(body.expectedVersion) !== t.version)
+      conflict(`This template is now at version ${t.version}, not version ${String(body.expectedVersion)}. Open it again.`, "CHANGED");
     const c = await this.readTemplate(file);
     const version = t.version + 1, key = `retainer-templates/${id}/v${version}-${attempt()}.docx`;
     const stored = await this.files.put(ctx.firmId, key, file!.bytes, DOCX);

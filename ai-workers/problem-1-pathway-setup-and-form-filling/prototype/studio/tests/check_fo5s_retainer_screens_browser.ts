@@ -60,7 +60,7 @@ async function call(t: string, method: string, path: string, body?: unknown): Pr
   const x = await r.text(); let b: unknown = x; try { b = JSON.parse(x); } catch { /* file or text */ } return { status: r.status, body: b };
 }
 sql(`update fo_retainer_template set active = false where firm_id = '${A}'`);   // re-runnable: one active template (review m6)
-// Setup a person cannot do by screens yet (Retainer templates is FO-5s part 2): the firm's template, the Sample starter.
+// The firm's template, the Sample starter, through FO-5's route (the Retainer templates screen has its own check: check_fo5s2_templates_browser.ts).
 const starter = await fetch(`${BASE}/api/front-office/retainer-templates/starter`, { headers: { authorization: `Bearer ${tok.R}` } });
 const up = new FormData(); up.set("name", `Standard retainer ${run}`); up.set("file", new Blob([await starter.arrayBuffer()]), "starter.docx");
 const tpl = await call(tok.R, "POST", "/front-office/retainer-templates", up);

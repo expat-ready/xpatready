@@ -129,7 +129,7 @@ try {
   ok("J-53 W3: the saved fee is version 2 (CAD 1,500.00; version 1 keeps no amount); Send sends version 2", r.status === "SENT" && r.versions.length === 2 && r.versions[1].fees[0].amountMinor === 150000n && r.versions[0].fees[0].amountMinor === null && r.versions[1].sentAt !== null);
   const dl = p.waitForEvent("download"); await p.getByRole("button", { name: "Download version 2" }).click();
   const bytes = readFileSync(await (await dl).path());
-  const dw2 = (b: Buffer) => { try { const text = new PizZip(b).file("word/document.xml")?.asText().replace(/<[^>]+>/g, "") ?? ""; return createHash("sha256").update(b).digest("hex") === r.versions[1].originalSha256 && text.includes(client53) && text.includes("1,500.00"); } catch { return false; } };
+  const dw2 = (b: Buffer) => { try { const text = (new PizZip(b).file("word/document.xml")?.asText().match(/<w:t(?: [^>]*)?>[^<]*<\/w:t>/g) ?? []).map((t) => t.slice(t.indexOf(">") + 1, -6)).join(""); return createHash("sha256").update(b).digest("hex") === r.versions[1].originalSha256 && text.includes(client53) && text.includes("1,500.00"); } catch { return false; } };
   ok("J-53 DW2: the downloaded version 2 is the rendered agreement: SHA-256 = the stored original_sha256, and its text holds the client's name and CAD 1,500.00", dw2(bytes));
   ok("J-53 DW2 NR: the same judge fails on bytes not from the renderer", !dw2(Buffer.from("PK stand-in")));
   await shot("W3-sent");

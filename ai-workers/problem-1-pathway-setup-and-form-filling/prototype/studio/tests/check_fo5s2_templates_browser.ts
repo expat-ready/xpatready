@@ -71,6 +71,9 @@ try {
   // ------------------------------------------------------------------------------- BR-1 upload: refusals, warning, pass
   const up = r.getByRole("dialog", { name: "Upload template" });
   await r.getByRole("button", { name: "Upload template" }).click(); await up.waitFor();
+  await up.getByText("Placeholders you can use").click(); await up.getByText("{#fees} … {/fees}").waitFor({ timeout: 10_000 });
+  ok("R1.53 FO-5s2 BR-1 pass (review M1): the Upload panel lists the placeholders you can use ({client.name}, the fee loop) and offers the starter",
+    (await up.getByText("{client.name}", { exact: true }).count()) === 1 && (await up.getByRole("button", { name: "Download a starter template" }).count()) === 1);
   await up.getByLabel("Template file (.docx)").setInputFiles(starter);
   await up.getByRole("button", { name: "Upload template" }).click();
   await up.getByText("Name the template.").waitFor({ timeout: 5_000 });
@@ -89,6 +92,12 @@ try {
   await up.getByLabel("Name").fill(`Standard ${run}`); await up.getByLabel("Template file (.docx)").setInputFiles(starter);
   await up.getByRole("button", { name: "Upload template" }).click(); await up.waitFor({ state: "detached", timeout: 15_000 });
   const row = r.locator(`[data-template-row="Standard ${run}"]`); await row.waitFor({ timeout: 10_000 });
+  await r.getByRole("button", { name: "Upload template" }).click(); await up.waitFor();
+  await up.getByLabel("Name").fill(`standard ${run}`); await up.getByLabel("Template file (.docx)").setInputFiles(starter);
+  await up.getByRole("button", { name: "Upload template" }).click(); await up.getByText("A template with this name already exists.").waitFor({ timeout: 10_000 });
+  ok("R1.53 FO-5s2 BR-1 fail (review m7): a name already used (any case) is refused on the Name field", (await up.getByLabel("Name").getAttribute("aria-invalid")) === "true");
+  await r.keyboard.press("Escape"); await up.waitFor({ state: "detached" });
+  ok("R1.53 FO-5s2 (break M5): closing the panel gives focus back to Upload template", await r.evaluate(() => document.activeElement?.textContent === "Upload template"));
   ok("R1.53 FO-5s2 BR-1 pass: the starter uploads: listed Retainer, version 1, Active", /Retainer\s*1\s*\d+\s*Active/.test((await row.innerText()).replace(/\n/g, " ")), await row.innerText());
 
   // ------------------------------------------------------------------------------- BR-17 checklist, new version
@@ -99,14 +108,24 @@ try {
   ok(`R1.53 FO-5s2 BR-17 pass: the template panel says "${cl.marked} of ${cl.total} items marked in this template" and lists each unmarked item with its section and how we check, never blocking`,
     (await tp.locator("[data-template-summary]").innerText()) === `${cl.marked} of ${cl.total} items marked in this template` && (await tp.locator("[data-unmarked]").count()) === cl.total - cl.marked
     && (await tp.innerText()).includes("How we check:") && (await tp.innerText()).includes("never stops a send"));
+  const found = sql(`select cardinality(placeholders) from fo_retainer_template where id = '${tplId}'`);
+  ok("R1.53 FO-5s2 BR-1 pass (review M1): the template panel lists the placeholders found in its file", (await tp.locator("[data-placeholders-found] li").count()) === Number(found) && (await tp.locator("[data-placeholders-found]").innerText()).includes("{client.name}"), found);
   await shot(r, "template-panel-1440"); await axe(r, "the template panel");
   await tp.getByLabel("Template file (.docx)").setInputFiles(starter);
   await tp.getByRole("button", { name: "Upload version 2" }).click();
   await tp.getByRole("button", { name: "Upload version 3" }).waitFor({ timeout: 15_000 });
   ok("R1.53 FO-5s2 BR-1 pass: Upload a new version makes version 2", sql(`select version from fo_retainer_template where id = '${tplId}'`) === "2");
+  const other = new FormData(); other.set("file", new Blob([readFileSync(starter)]), "other.docx");   // a colleague's version 3, from another tab
+  const v3 = await fetch(`${BASE}/api/front-office/retainer-templates/${tplId}/versions`, { method: "POST", headers: { authorization: `Bearer ${tok.R}` }, body: other });
+  await tp.getByLabel("Template file (.docx)").setInputFiles(starter);
+  await tp.getByRole("button", { name: "Upload version 3" }).click();
+  await tp.getByText("This template is now at version 3, not version 2. Open it again.").waitFor({ timeout: 10_000 });
+  ok("R1.53 FO-5s2 fail (break M1): a panel showing version 2 cannot replace a colleague's version 3; the page refreshes and nothing is stored",
+    v3.status === 201 && sql(`select version from fo_retainer_template where id = '${tplId}'`) === "3" && await tp.getByRole("button", { name: "Upload version 4" }).isVisible().catch(() => false));
 
   // ------------------------------------------------------------------------------- inactive: not offered
   await tp.getByRole("button", { name: "Make inactive" }).click(); await tp.getByRole("button", { name: "Make active" }).waitFor({ timeout: 10_000 });
+  ok("R1.53 FO-5s2: the table shows the template Inactive", (await row.innerText()).includes("Inactive"));
   await r.keyboard.press("Escape");
   const p2 = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Ana${run}', 'Sample', 'fo5s2.${run}@example.com', 'test', now()) returning id`);
   sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p2}', 'MANUAL', 'WEBSITE', '${R.id}', 'ENGAGED', now(), 'test', 'test', now())`);
@@ -122,10 +141,12 @@ try {
   const o = await pageAs(tok.O);
   await o.goto(URL_); await o.getByText("Retainer templates are set by your firm's Owner or Admin.").waitFor({ timeout: 30_000 });
   ok("R1.53 FO-5s2 fail: a Case Officer has no Retainer templates menu item and the page says who sets them, with no Upload", (await o.getByRole("link", { name: "Retainer templates" }).count()) === 0 && (await o.getByRole("button", { name: "Upload template" }).count()) === 0);
-  for (const w of [375, 1440]) {
+  const longF = new FormData(); longF.set("name", "N".repeat(110) + run.slice(0, 8)); longF.set("file", new Blob([readFileSync(starter)]), "long.docx");
+  await fetch(`${BASE}/api/front-office/retainer-templates`, { method: "POST", headers: { authorization: `Bearer ${tok.R}` }, body: longF });   // break M4: a long unbroken name
+  for (const w of [375, 1024, 1440]) {
     const p = await pageAs(tok.R, w); await p.goto(URL_); await p.locator("[data-template-row]").first().waitFor({ timeout: 30_000 });
     const wide = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    ok(`R1.53 FO-5s2 ${w} px: the templates page has no sideways scroll`, wide <= 1, wide); await shot(p, `templates-${w}`); await p.context().close();
+    ok(`R1.53 FO-5s2 ${w} px (break M4): the templates page has no sideways scroll, with a 118-character unbroken name`, wide <= 1, wide); await shot(p, `templates-${w}`); await p.context().close();
   }
   ok("FO-5s2: no page error in any browser", errors.length === 0, errors.slice(0, 5));
 } finally {
