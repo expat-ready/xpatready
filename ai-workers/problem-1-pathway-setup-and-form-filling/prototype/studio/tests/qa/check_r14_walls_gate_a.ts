@@ -108,7 +108,10 @@ ok("R1.4 7: every walled table but the catalogues and our own registers has a po
 await new Promise((r) => setTimeout(r, 500));
 const logAfter = existsSync(LOG) ? (readFileSync(LOG, "utf8").match(/platform_bypass/g) ?? []).length : -1;
 const auditAfter = Number(owner(`select count(*) from audit_event where action ilike '%bypass%'`));
-ok("R1.4 6: the server log is readable and shows the run's bypass uses (signing in is one)", logAfter >= 0 && logAfter - logBefore > 0, { logBefore, logAfter });
+// PF-12b part 2 (#2752): the seven own-firm doors (sign-in among them) left the bypass, so signing in and the staff routes
+// above are no bypass use at all: the log must be readable and show none, and no audit_event line is written for them.
+// Before #2752 this step expected a positive count (sign-in was a bypass use with no audit line: QA-499).
+ok("R1.4 6: the server log is readable and the run's sign-ins and staff routes use the bypass 0 times (the doors left it, PF-12b2)", logAfter >= 0 && logAfter - logBefore === 0 && auditAfter - auditBefore === 0, { logBefore, logAfter, auditBefore, auditAfter });
 console.log(`NOTE  R1.4 6: bypass uses during this run: ${logAfter - logBefore} platform_bypass lines in the server log (${LOG.split("/").slice(-2).join("/")}); ${auditAfter - auditBefore} audit_event lines naming a bypass`);
 await db.$disconnect();
 process.exitCode = summary() ? 1 : 0;

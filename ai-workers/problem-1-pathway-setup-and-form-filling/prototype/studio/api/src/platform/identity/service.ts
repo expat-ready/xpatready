@@ -10,7 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { asBypass, enterFirm, firmScope, notInFirm } from "../firm-scope.ts";
+import { enterFirm, firmScope, notInFirm, withFirm } from "../firm-scope.ts";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { batchRowsOf, flagOf, seatWords } from "./batch-invite.ts";
 import { readCatalogue } from "./catalogue.ts";
@@ -19,7 +19,7 @@ import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext
 import { LocalIdentity } from "./local.ts";
 import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
-import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
+import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort, type VerifiedIdentity } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
 import { heldOf } from "../messages/send/mail.ts";
@@ -116,8 +116,16 @@ export class PlatformIdentity implements OnModuleInit {
     let id;
     try { id = await this.port.verify(token); } catch (e) { if (e instanceof IdentityRefused) return unauthorized(e.detail, e.code); throw e; }
     if (!id.secondStep) return unauthorized("Two-step sign-in is required for every staff member: finish the second step, then try again.", "TWO_STEP_REQUIRED");
-    const where = "staffId" in id.lookup ? (UUID.test(id.lookup.staffId) ? { id: id.lookup.staffId.toLowerCase() } : null) : { identitySubject: id.lookup.identitySubject };
-    const staff = where && await this.db.platformStaff.findFirst({ where, include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
+    const where: { id?: string; identitySubject?: string } | null = "staffId" in id.lookup ? (UUID.test(id.lookup.staffId) ? { id: id.lookup.staffId.toLowerCase() } : null) : { identitySubject: id.lookup.identitySubject };
+    // PF-12b part 2: the person's firm through the narrow definer lookup (firm id only), then the rest runs as that firm.
+    const firmId = where && (await this.db.$queryRaw<{ f: string | null }[]>`select platform_staff_firm(${where.id ?? null}::uuid, ${where.identitySubject ?? null}::text) as f`)[0]?.f;
+    if (!where || !firmId) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
+    return withFirm(firmId, () => this.authenticateIn(firmId, where, id));
+  }
+
+  /** authenticate, as the person's own firm (PF-12b part 2). */
+  private async authenticateIn(firmId: string, where: { id?: string; identitySubject?: string }, id: VerifiedIdentity): Promise<StaffContext> {
+    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
@@ -165,7 +173,9 @@ export class PlatformIdentity implements OnModuleInit {
   async localSignIn(body: { firmKey?: unknown; email?: unknown; actorId?: unknown; secondStep?: unknown }) {
     if (!(this.port instanceof LocalIdentity)) return problem(403, "Not available", "The local sign-in stand-in is off on this server (PLATFORM_IDENTITY is not local).", { code: "LOCAL_SIGN_IN_OFF" });
     if (typeof body.firmKey !== "string" || !body.firmKey) return problem(400, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
-    const key = body.firmKey, firm = await asBypass("platform.identity.sign-in", () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } }));
+    // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
+    const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } })) : null;
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });

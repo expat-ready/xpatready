@@ -2,8 +2,8 @@
 // Lead 7's ask, 20 Nov). It adds no feature: it walks FO-3w part 2's manage page (the booker's single-use link), FO-3st1
 // part 1's booking detail (attendance) and part 2's consult record panel and next-step button, on an isolated copy of the running app
 // (its own database and port, never :4400), on the real clock, at 1440 px.
-//   W0: an Admin adds the type on Settings → Booking types (FO-3st3 part 3a) and previews it as a booker; its timing
-//       overrides are written to the database with a HELD line (Timings, part 3b, has no route on main);
+//   W0: an Admin adds the type on Settings → Booking types (FO-3st3 part 3a), previews it as a booker, and sets its own
+//       timings under Advanced (FO-3st3b): no shortest notice, a 1-hour self-service limit;
 //   W1: booker A books a time about 90 minutes ahead and booker B the next free time (minutes away), on the public page;
 //   W2: A's link reschedules inside the firm's notice rule (the 60-minute self-service limit): "Booking updated";
 //   W3: A's first link is refused once used (the single-use link): "This link is no longer valid. …";
@@ -26,7 +26,7 @@
 // The real clock, no seam: the test's own consultation type has Sample settings a firm may choose: no shortest notice
 // (default 240), times every 5 minutes, a 60-minute self-service limit (default 240), 5-minute meetings (the shortest),
 // and its one host works every hour of every day; so B's meeting starts and ends within about 15 minutes and the walk
-// waits for its end. Setup a person cannot do through the product yet (firm, host, hours, the type's timings) is written straight to the
+// waits for its end. Setup a person cannot do through the product yet (firm, host, hours, the type's 5-minute interval) is written straight to the
 // copy's database (Sample rows). Sample values only; US$0, no model call. About 11 to 14 minutes.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j42 4442 start --ttl 40 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j42 4442 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_42.ts j42 4442
@@ -160,11 +160,26 @@ try {
   let pvDays: string[] = [];   // today may be all inside the 4-hour notice; a later day has times (the dialog reads again once it knows the zone)
   for (let i = 0; i < 40 && !pvDays.some((d) => /\d\d:\d\d/.test(d)); i++) { await pause(250); pvDays = await pv.locator("[data-preview-day]").allInnerTexts(); }
   ok("J-42 W0 pass: Preview as a booker shows the type's times for the week without booking (no booking row)", pvDays.some((d) => /\d\d:\d\d/.test(d)) && (await db.foBooking.count({ where: { firmId: firm.id } })) === 0, pvDays.map((d) => d.slice(0, 60)));
-  await shot(pw, "W0-preview"); await pw.context().close();
-  // The type's timings (no shortest notice, a 5-minute interval, a 60-minute self-service limit) have no screen yet:
-  // Timings is FO-3st3 part 3b, whose routes (FO-3a part 1b-ii) are not on main. Written to the database, held.
-  console.log("HELD  J-42 W0 timings: the type's timing overrides have no screen (FO-3st3 part 3b; FO-3a part 1b-ii not built); written to the copy's database");
-  await db.foConsultationType.update({ where: { id: typeRow!.id }, data: { minNoticeMinutes: 0, slotIntervalMinutes: 5, selfServiceLimitMinutes: 60 } });
+  await shot(pw, "W0-preview"); await pw.keyboard.press("Escape"); await pv.waitFor({ state: "hidden" });
+  // FO-3st3b: the type's own timings under Advanced, by screens: no shortest notice, a 1-hour self-service limit.
+  const timing = async (field: string, label: string, value: string) => {
+    const r = tp.locator(`[data-type-timing="${field}"]`);
+    await r.getByRole("button", { name: "Change for this type" }).click();
+    await tp.getByLabel(`${label} for this type`, { exact: true }).fill(value);
+    const answer = pw.waitForResponse((x) => x.url().endsWith(`/booking-types/${typeRow!.id}/timings`) && x.request().method() === "PATCH", { timeout: 15_000 });
+    await r.getByRole("button", { name: "Save", exact: true }).click(); await answer;
+    await r.locator("[data-type-timing-value]").waitFor();
+    return (await r.locator("[data-type-timing-value]").innerText()).trim();
+  };
+  const notice = await timing("minNoticeMinutes", "Shortest notice (hours)", "0"), selfService = await timing("selfServiceLimitMinutes", "Self-service limit (hours)", "1");
+  await shot(pw, "W0-timings");
+  const typed = await db.foConsultationType.findUniqueOrThrow({ where: { id: typeRow!.id } });
+  ok("J-42 W0 pass (FO-3st3b): under Advanced the Admin sets this type's shortest notice to 0 and its self-service limit to 1 hour; both are the type's own values",
+    notice === "0 hours (this type)" && selfService === "1 hour (this type)" && typed.minNoticeMinutes === 0 && typed.selfServiceLimitMinutes === 60, { notice, selfService, db: [typed.minNoticeMinutes, typed.selfServiceLimitMinutes] });
+  await pw.context().close();
+  // Times every 5 minutes (the slot interval) is not a timing a person sets (AG-4-4's Timings has no interval): Sample set-up.
+  console.log("setup (not through the product): the type offers a time every 5 minutes (slot interval, not on the Timings screen)");
+  await db.foConsultationType.update({ where: { id: typeRow!.id }, data: { slotIntervalMinutes: 5 } });
 
   // ---------------------------------------------------------------------------------------------- W1: two bookings
   const pa = await pageAs(null), pb = await pageAs(null);

@@ -30,7 +30,7 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
 import { MessageRefused } from "../../../../ports/messages.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { asBypass, enterFirm, firmScope, notInFirm } from "../../platform/firm-scope.ts";
+import { enterFirm, firmScope, notInFirm, withFirm } from "../../platform/firm-scope.ts";
 import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../platform/settings.ts";
 import { sees, visibilityOf, type Visibility } from "../sales/common.ts";
 import { bookingIcs, type InviteMethod } from "./ics.ts";
@@ -38,7 +38,7 @@ import { withTimings, type WithTimings } from "./settings/timings.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
-import { issueToken, liveToken } from "./tokens.ts";
+import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -234,7 +234,9 @@ export class BookingService {
   /** An ACTIVE or TRIAL firm by its key, else the one 404. */
   private async publicFirm(db: Tx | PrismaClient, firmKey: unknown) {
     if (typeof firmKey !== "string" || !FIRM_KEY.test(firmKey)) throw notFound();
-    const firm = await asBypass("fo.booking.public-page", () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT }));
+    // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
+    const firmId = (await db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${firmKey}) as f`)[0]?.f;
+    const firm = firmId ? await withFirm(firmId, () => db.platformFirm.findUnique({ where: { key: firmKey }, select: FIRM_SELECT })) : null;
     if (firm) enterFirm(firm.id);   // PF-12: the page's firm, for the rest of the request
     if (!firm || !["ACTIVE", "TRIAL"].includes(firm.status)) throw notFound();
     return firm;
@@ -830,7 +832,12 @@ export class BookingService {
   }
 
   private async byToken(db: Tx | PrismaClient, token: string) {
-    const t = await asBypass("fo.booking.self-service", () => liveToken(db, token, this.ports.clock.now()));
+    // PF-12b part 2: the link's firm through the narrow definer lookup (the token row's id and its secret's hash; firm id
+    // only, null unless both match, so an unknown id and a wrong secret take the same one query), then the token's live
+    // state is checked as that firm.
+    const parsed = parseToken(token);
+    const firmId = parsed ? (await db.$queryRaw<{ f: string | null }[]>`select fo_booking_token_firm(${parsed.id}::uuid, ${hashVerifier(parsed.verifier)}) as f`)[0]?.f : null;
+    const t = firmId ? await withFirm(firmId, () => liveToken(db, token, this.ports.clock.now())) : null;
     if (!t) throw notFound();
     enterFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
     // A firm on hold or locked answers its links like its page: not found (break B-5).
