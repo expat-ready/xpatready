@@ -44,7 +44,7 @@ export class RetainersController {
   upload(@Req() r: R, @Body() b: B, @UploadedFile() f: F) { return this.svc.uploadTemplate(staffOf(r), b ?? {}, up(f)); }
 
   @Post("retainer-templates/:id/versions") @file(TEMPLATE_MAX_BYTES) @PermissionKeys("agent/retainer:configure-template")
-  newVersion(@Req() r: R, @Param("id") id: string, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f)); }
+  newVersion(@Req() r: R, @Param("id") id: string, @Body() b: B, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f), b ?? {}); }
 
   @Patch("retainer-templates/:id") @PermissionKeys("agent/retainer:configure-template")
   changeTemplate(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.changeTemplate(staffOf(r), id, b ?? {}); }
