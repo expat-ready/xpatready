@@ -14,6 +14,8 @@ export const EVENT = {
   FIRM_SUBSCRIPTION_CHANGED: "firm.subscription_changed",
   /** A firm went on payment hold: billing and the data download only (platform, PF-5 part 2; SA-4-25). */
   FIRM_PAYMENT_HOLD: "firm.payment_hold",
+  /** A firm's plan changed (platform, PF-16 part 1a; PF-15 part 1b's bookings): payload firmId, from and to plan codes, when ("now" or "renewal"). Written last. */
+  PLAN_CHANGED: "plan.changed",
   /** A staff member's roles changed (platform, PF-4; contracts §1.2 events out). */
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
