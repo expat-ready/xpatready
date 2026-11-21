@@ -24,6 +24,7 @@ import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
 import { heldOf } from "../messages/send/mail.ts";
 import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
+import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -31,6 +32,8 @@ export const ROLES = Object.values(PlatformRole) as PlatformRole[];
 /** The only-Owner guard's words (contracts §7 §1.2; SA-6-44, AG-1-22): fixed, word for word. */
 export const ONLY_OWNER = "This is your firm's only active Owner. Give the Owner role to another person first.";
 export const ANOTHER_DEVICE = "You signed in on another device";
+/** A Cognito sign-in that raced the person's deactivation (J-5 B2): refused, in the words a deactivated token gets. */
+const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,7 +102,7 @@ export class PlatformIdentity implements OnModuleInit {
 
   async onModuleInit() {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
-    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => console.warn(`platform identity: Cognito keys not fetched at start (${String((e as Error)?.message ?? e).slice(0, 120)}); they are fetched on the first sign-in`));
+    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => logPort.error("cognito_keys_not_warmed", e));   /* they are fetched on the first sign-in */
   }
 
   /** PF-6b: the permission-key catalogue (the guard reads its LICENCE keys and checks the bundles once). */
@@ -119,7 +122,8 @@ export class PlatformIdentity implements OnModuleInit {
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
-    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)) await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs));
+    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)
+      && (await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs))) === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
     const rev = await this.db.platformSessionRevocation.findFirst({ where: firmScope(staff.firmId, { staffId: staff.id }), orderBy: { revokedAt: "desc" } });
     // A session that started at or before the person's last revocation is refused (deactivation, a newer sign-in).
     if (rev && authMs <= rev.revokedAt.getTime()) return unauthorized(rev.reason === "another-device" ? ANOTHER_DEVICE : "This session was ended. Sign in again.", rev.reason === "another-device" ? "SIGNED_IN_ELSEWHERE" : "SESSION_REVOKED");
@@ -132,11 +136,18 @@ export class PlatformIdentity implements OnModuleInit {
   /** A new sign-in ends every older session of the person (one session at a time, AG-1-55): one revocation 1 ms before
    *  the new session's sign-in time, so a session that started earlier is refused and this one is not. The person's row is
    *  locked while the time is chosen, so parallel sign-ins are taken one after the other and each ends the one before it
-   *  (break m1). atOf: the new session's time (ms) from the last sign-in and the last revocation, or null for none. */
-  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null> {
+   *  (break m1). atOf: the new session's time (ms) from the last sign-in and the last revocation, or null for none.
+   *  R1.5 (J-5 break B1, B2): no firm lock here. Staff changes hold the firm's row FOR NO KEY UPDATE (`inFirm`), which
+   *  never conflicts with the key-share lock this transaction's inserts take on it, so a sign-in and a deactivation never
+   *  deadlock and a stream of sign-ins never starves a staff change (re-break R1: an explicit key share here did). They
+   *  meet only on the person's row; under that lock the person must still be active, so a sign-in that raced a
+   *  deactivation is refused ("inactive") rather than dated after it, where reactivation would bring its token back. */
+  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
     return this.db.$transaction(async (tx) => {
-      const [row] = await tx.$queryRaw<{ last: Date | null }[]>`select last_sign_in_at as last from platform_staff where id = ${staffId}::uuid and firm_id = ${firmScope(firmId).firmId}::uuid for update`;
+      const fid = firmScope(firmId).firmId;
+      const [row] = await tx.$queryRaw<{ last: Date | null; status: string }[]>`select last_sign_in_at as last, status::text as status from platform_staff where id = ${staffId}::uuid and firm_id = ${fid}::uuid for update`;
       if (!row) return null;
+      if (row.status !== "ACTIVE") return "inactive" as const;
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       const atMs = atOf(row.last?.getTime() ?? null, rev?.revokedAt.getTime() ?? null);
       if (atMs === null) return null;   // another request recorded this sign-in already
@@ -163,6 +174,7 @@ export class PlatformIdentity implements OnModuleInit {
     if (body.secondStep !== true) return unauthorized("Two-step sign-in is required for every staff member: finish the second step (secondStep: true).", "TWO_STEP_REQUIRED");
     // The new session starts after the last sign-in and the last revocation (a deactivation in the same millisecond).
     const authMs = await this.recordSignIn(firm.id, firm.key, staff.id, "local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1));
+    if (authMs === "inactive") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");   // deactivated while signing in (J-5 B2)
     if (authMs === null) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }
@@ -179,7 +191,7 @@ export class PlatformIdentity implements OnModuleInit {
   private inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const id = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;   // serializes staff changes; never blocks a sign-in's key share (J-5 B1)
       const me = await tx.platformStaff.findFirst({ where: firmScope(id, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(id, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
@@ -278,8 +290,12 @@ export class PlatformIdentity implements OnModuleInit {
       if (isOwner && !actor.roles.includes("OWNER")) forbidden("Only an Owner deactivates an Owner.", "OWNER_ONLY");
       if (isOwner) this.stepUp(actor, "deactivating an Owner");   // break M3: the same check as removing the Owner role
       if (isOwner && t.status === "ACTIVE" && await this.onlyOwner(tx, actor, t.id)) { refuse = true; return null; }
-      const now = new Date(this.clock.now());
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "DEACTIVATED", deactivationReason: reason } });
+      // Read after the update: it waited for any sign-in holding the person's row, so that sign-in is seen here, and later
+      // ones wait for this change and find them deactivated. Never before their latest sign-in (the stand-in may date one a
+      // few ms ahead of the clock): every session they have ends (J-5 B2).
+      const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: t.id }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
+      const now = new Date(Math.max(this.clock.now(), last));
       await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId: t.id, revokedAt: now, reason: "deactivated" } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_DEACTIVATED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)

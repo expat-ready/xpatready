@@ -15,6 +15,7 @@ import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { NOT_SIGNED, Prospects, WON_REFUSED } from "../api/src/front-office/sales/prospects.ts";
+import { clearingConflicts } from "./lib/conflict-clear.ts";
 import type { SalesPorts } from "../api/src/front-office/sales/public.ts";
 import { SalesController } from "../api/src/front-office/sales/routes.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
@@ -64,6 +65,7 @@ try {
 
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), pros = new Prospects(db, ports), corp = new Corporate(db, ports);
+  clearingConflicts(db, { prospects: Prospects.prototype });   // FO-13c: the conflict check first
   let n = 0;
   const lead = async (given: string, who: StaffContext = R) => (await leads.add(who, { requestId: randomUUID(), givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}${++n}@example.com`, source: "Phone call" })) as { id: string; number: string; person: { id: string } };
   const stage = (key: string, pipeline = "INDIVIDUAL", f = A) => sql(`select id from fo_stage where firm_id = '${f}' and pipeline = '${pipeline}' and key = '${key}'`);

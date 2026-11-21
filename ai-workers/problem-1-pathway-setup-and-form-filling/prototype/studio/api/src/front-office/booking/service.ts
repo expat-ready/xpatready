@@ -634,7 +634,7 @@ export class BookingService {
   private async afterCommit(a: AfterCommit) {
     const { booking: b } = a;
     const keys = (seq: number) => ({ r24: `booking:${b.id}:${seq}:reminder-24h`, r1: `booking:${b.id}:${seq}:reminder-1h`, ask: `booking:${b.id}:${seq}:attendance` });
-    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.message : String(e)}`); } };
+    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.name : "error"}`);   /* PF-23m: never the message */ } };
     const opts = { firmId: b.firmId };
     if (a.oldSequence !== undefined) { const k = keys(a.oldSequence); for (const key of [k.r24, k.r1, k.ask]) await safe("cancel job", () => this.ports.jobs.cancel(key)); }
     if (a.kind !== "cancelled") {
@@ -691,7 +691,7 @@ export class BookingService {
    *  retry would only try again to mail someone we must not mail (Lead B, #1860). Any other failure is thrown and retried. */
   private refusedIsFinal(e: unknown, bookingId: string): void {
     if (!(e instanceof MessageRefused)) throw e;
-    this.warn(`email for booking ${bookingId} not sent, final: ${e.message}`);
+    this.warn(`email for booking ${bookingId} not sent, final (${e.name})`);   /* PF-23m: never the message */
   }
 
   /** A link for the email, issued under the booking's row lock while it is still active at `sequence`; else null. */

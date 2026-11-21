@@ -1,6 +1,7 @@
 // PF-6 part 1: the platform's staff pages through PF-1's seam: the sign-in link's page (public) and My account; PF-21s: Complaints.
 import type { ModuleRoute } from "@/modules";
 import { AccountPage } from "./account-page";
+import { HomePage } from "./home/home-page";
 import { CallbackPage } from "./callback-page";
 import { complaintRoutes } from "./complaints/routes";
 import { TeamPage } from "./staff/team-page";
@@ -9,9 +10,13 @@ import { SecurityPage } from "./account/security-page";
 import { AcceptPage } from "./staff/accept-page";
 import { LicencesPage } from "./staff/licences-page";
 import { TermsAcceptancesPage } from "./terms/acceptances-page";
+import { PricingPage } from "./signup/pricing-page";
+import { SignUpPage } from "./signup/signup-page";
+import { VerifyPage } from "./signup/verify-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
+  { path: "/home", element: <HomePage /> },   // PF-18h: the staff Home (sign-in lands here)
   { path: "/account", element: <AccountPage /> },
   ...complaintRoutes,
   { path: "/platform/team", element: <TeamPage /> },   // PF-6 part 2a
@@ -20,4 +25,7 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/security", element: <SecurityPage /> },   // PF-6 part 2b
   { path: "/invitation", element: <AcceptPage /> },   // PF-6 part 2b (public: the invitation email's link)
   { path: "/platform/terms", element: <TermsAcceptancesPage /> },   // PF-5t part 2
+  { path: "/pricing", element: <PricingPage /> },   // PF-5s part 1 (public)
+  { path: "/sign-up", element: <SignUpPage /> },   // PF-5s part 1 (public): Sign up, then Check your email
+  { path: "/sign-up/verify", element: <VerifyPage /> },   // PF-5s part 1 (public): the email's link (PF-5's door writes it)
 ];
