@@ -7,7 +7,7 @@ By the Lead's ruling, R1.5 is Partial at best: the identity provider's lines (wr
 
 **Journeys**
 * Local, on main 039b77ed3's exact tree: `tests/journeys/j_5.ts` passed **28/28 twice** on fresh isolated copies, exit 0. Screens: invitee signed in, sign-in refused, ends at the Person panel's roles (R1.6's first step).
-* GitHub's runners (P-339, P-700): asked the Lead on the records PR to dispatch `j_5` twice on main.
+* GitHub's runners (P-339, P-700): run **44881942787** on main's head 562754777, dispatched by Lead 14. Attempt 1 job 136779057927 and attempt 2 job 136783813001: `j_5` **28/28 each**, exit 0.
 
 **Fresh Opus reader (P-303; read only, ran nothing):** "Verdict: R1.5 is Partial. Confidence: high."
 
@@ -42,3 +42,9 @@ By the Lead's ruling, R1.5 is Partial at best: the identity provider's lines (wr
 ## Suggestions
 * Read the second factor from the Cognito token's `amr`, or check the pool's MFA setting at start (*Needed for the proof* at the live pool; *Capability*).
 * C8.3 suite: read the tooltip once, with an assertion that waits for its text (*Later*, *Scaffolding*).
+
+## The tech lead's rulings (Lead 14, P-294, on #2762)
+* **"Removed" is covered by Deactivate.** The member's history stays for the audit trail, sign-in is refused and the seat is freed. No separate remove action is needed. With that, the lock-out clause is met for the platform and front-office routes.
+* **QA-622 belongs to the Known gap Q2 row**, the set of routes that run as the simulated person. It does not count against R1.5's own clauses. It is listed on the R1.5 row as a linked open Major, so nobody reads R1.5 as covering case work.
+
+**Verdict (unchanged): Partial.** The provider lines (wrong code, expired code, repeated wrong tries, passkey) are Not proven in CI. Everything else is met, with the walks green twice on GitHub's runners.
