@@ -4,7 +4,7 @@
 // a state by itself: a card on file (the fake keeps no subscription for a seeded firm) and Stripe down (503); the server's
 // own answer is fetched first and only those fields change. DW1 to DW5, a pass and a fail each. The Sample firm's
 // subscription and address are put back at the end. Wording Sample; tax readings Unconfirmed: no counsel. US$0.
-//   zsh studio/tools/isolated.sh screens_pf5s2 4561 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf5s2_billing_browser.ts 4561 xr_studio_screens_pf5s2
+//   zsh studio/tools/isolated.sh screens_pf5s2 4700 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf5s2_billing_browser.ts 4700 xr_studio_screens_pf5s2
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -17,7 +17,7 @@ import { ACCOUNT_SECTIONS, visibleSections } from "../web/src/modules/platform/a
 import { day, WORDS } from "../web/src/modules/platform/saas/billing-contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
-const PORT = Number(process.argv[2] ?? 4561), DBNAME = process.argv[3] ?? "xr_studio_screens_pf5s2";
+const PORT = Number(process.argv[2] ?? 4700), DBNAME = process.argv[3] ?? "xr_studio_screens_pf5s2";
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "pf-5s-saas", "screenshots-part2"); mkdirSync(SHOTS, { recursive: true });
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
