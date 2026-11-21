@@ -178,13 +178,6 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                   {caseType(draft.purpose) ? <p className="text-xs text-text-muted">A follow-up or case review is never on the booking page.</p> : null}
                 </>)}
               </section>
-              {!ro ? (
-                <section aria-labelledby="fo3st3-adv" className="flex flex-col gap-2 border-t border-border pt-3" data-advanced>
-                  <h3 id="fo3st3-adv" className="text-sm font-semibold">Advanced</h3>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
-                  <p className="text-xs text-text-muted">What a booker may do from the link in their email. Timing overrides come with Timings.</p>
-                </section>) : null}
               <section aria-labelledby="fo3st3-hosts" className="flex flex-col gap-2 border-t border-border pt-3" data-hosts>
                 <h3 id="fo3st3-hosts" className="text-sm font-semibold">Hosts</h3>
                 {ro || !people.known ? <p className="text-sm [overflow-wrap:anywhere]">{hostWords(draft.hostStaffIds, people.names, people.known)}</p> : people.staff.filter((s) => s.status === "ACTIVE" || draft.hostStaffIds.includes(s.id) || t?.hostStaffIds.includes(s.id)).map((s) => (
@@ -194,6 +187,13 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                   </div>))}
                 {errors.hostStaffIds ? <p role="alert" className="text-xs text-text-danger">{errors.hostStaffIds}</p> : null}
               </section>
+              {!ro ? (
+                <section aria-labelledby="fo3st3-adv" className="flex flex-col gap-2 border-t border-border pt-3" data-advanced>
+                  <h3 id="fo3st3-adv" className="text-sm font-semibold">Advanced</h3>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
+                  <p className="text-xs text-text-muted">What a booker may do from the link in their email. Timing overrides come with Timings.</p>
+                </section>) : null}
               {t ? (
                 <section aria-labelledby="fo3st3-share" className="flex flex-col gap-2 border-t border-border pt-3" data-share>
                   <h3 id="fo3st3-share" className="text-sm font-semibold">Share</h3>

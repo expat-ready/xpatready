@@ -197,7 +197,9 @@ try {
   await dlg.getByLabel("Date").fill("9999-12-31"); await pa.waitForTimeout(500);
   ok("FO-3st3 break M4 fail: the date 9999-12-31 is not taken (the preview stays, no page error)", (await dlg.count()) === 1 && (await dlg.getByLabel("Date").inputValue()) !== "" && errors.length === 0, errors.slice(0, 2));
   await pa.keyboard.press("Escape"); await dlg.waitFor({ state: "detached" });
-  ok("FO-3st3 break m5: closing the preview puts the keyboard back on \"Preview as a booker\"", (await pa.evaluate(() => document.activeElement?.textContent?.trim())) === "Preview as a booker");
+  const focusedText = () => pa.evaluate(() => document.activeElement?.textContent?.trim());   // focus moves after the dialog's own close handling
+  for (let i = 0; i < 20 && (await focusedText()) !== "Preview as a booker"; i++) await pa.waitForTimeout(50);
+  ok("FO-3st3 break m5: closing the preview puts the keyboard back on \"Preview as a booker\"", (await focusedText()) === "Preview as a booker");
   await pa.keyboard.press("Escape"); await panel(pa).waitFor({ state: "detached" });
 
   // ------------------------------------------------------------------------------------------- break M1, M2: a set save that fails after the type saved

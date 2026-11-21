@@ -93,3 +93,49 @@ D1 3: J-T1..J-T4 met; allow flags missing (M1) · D2 4: server refuses bad, dupl
 My suite runs rewrote the tracked `fo3st3-*-1024.png` in the main checkout (another J-42 run there also touched `J-42/screenshots/`). Do not stage them with this file.
 
 Verdict: Changes needed. Blockers: none. Majors: M1, M2. Minors: m1-m6, n1, n2.
+
+---
+
+# Re-review: diff `6b2a083c2..a50ac3c38` only (head a50ac3c388d0f371e776ed0ff8243e409ba41989)
+
+Same reviewer, 21 Nov 2026 ~11:35 IST. I read only the new diff: `types-page.tsx`, `contract.ts`, `check_fo3st3_types_browser.ts`, and `j_42.ts:159-160`. d59d962bf and a40efddaf change screenshots only.
+
+## Runs (a fresh copy `review2_fo3st3` on :4582; the checkout's code was identical to a50ac3c38, later commits change only PNGs)
+- **Suite:** run 1 on the fresh copy: **48/49**, with **FAIL "break m5: closing the preview puts the keyboard back on 'Preview as a booker'"**. Runs 2 and 3: 48/48 each (the empty-state check runs only on an empty firm).
+- **J-42** (scratch worktree at a50ac3c38): **W0 all PASS**, including "Preview as a booker shows the type's times…" (the M2 failure is gone). W1 and DW1 also passed. I stopped it after W1 because W2 onwards is unchanged.
+- **Probe:** I closed the preview 8 times and read focus at once and again after 150 ms.
+  - At once: 4 of 8 on the page root.
+  - After 150 ms: 8 of 8 on "Preview as a booker".
+
+## Earlier findings
+| Finding | Now | Evidence |
+|---|---|---|
+| M1 allow flags | **Fixed** | "Allow reschedule" and "Allow cancellation" are under Advanced, with read-only text, and they reach the PATCH. Suite pass and fail go through the booker's manage page (Reschedule offered, then gone, Cancel stays). My walk: unticking "Allow cancellation" saves `allowCancel=false` |
+| M2 preview loads twice | **Fixed** | `placeholderData: keepPreviousData` (`types-page.tsx:232`), and `j_42.ts:159-160` waits for a day with a time. J-42 W0 passes. There are still two requests, but nothing blanks |
+| m1 focus after actions | **Fixed** | My walk: Keep and Retire → the row's name; Duplicate → its Duplicate button; Delete → the "Booking types" heading; preview close → "Preview as a booker" (after a short delay, see M3) |
+| m2 unsaved edits | **Fixed** | Clean Esc closes with no question. Dirty Esc and dirty Cancel ask "Discard your unsaved changes?", and dismissing keeps the panel |
+| m3 error summary | **Open (Should)** | To be listed in the PR as a follow-up, which is acceptable for a Should |
+| m4 empty state | **Fixed** | The Notice carries "New booking type", and the header button is hidden then. A suite check runs on an empty firm |
+| m5 Uses set untested | **Fixed** | Suite: pick "Morning calls" → host-set row; "(default)" → back to default |
+| m6 suspended host | **Fixed** | Shown ticked with "(suspended: offers no times)"; unticking and saving removes them (suite pass and fail). "<n> hosts" for read-only stays an API gap, so the follow-up row is still needed |
+| n1 strings | Open | List them in the PR. New ones: "Advanced", "What a booker may do from the link in their email. Timing overrides come with Timings.", "Discard your unsaved changes?", "(suspended: offers no times)", "The set of hours for <host> was not saved: … Open the type to choose again." |
+| n2 firm name | **Fixed** | Its own key `["fo-firm-name", firmKey]` with `staleTime: Infinity` |
+
+Breaker fixes, read and run:
+- A set save that fails after the type saved closes the panel with "Added <name>." plus a warning naming the host; there is one type row (suite).
+- The date guard holds: 9999-12-31 is not taken and there is no page error.
+- An emptied web address shows the kept slug as hint and placeholder, and the body omits the slug, so the server keeps it.
+- The list reloads in `act`'s `finally`, so it also reloads after a refused action.
+- "Uses set" re-reads the sets on open (`refetchOnMount: "always"`).
+
+## New
+**M3 (Must, test only). The new focus check races and failed on a fresh copy** (`check_fo3st3_types_browser.ts`, "break m5").
+- **Why:** the check reads `document.activeElement` straight after the dialog detaches. The code moves focus in a `setTimeout(…, 0)` (`types-page.tsx:209`), behind Radix's own unmount focus.
+- **Evidence:** my probe gets the page root at once in 4 of 8 closes, and "Preview as a booker" after 150 ms in 8 of 8. The product behaviour is right; the gate is flaky, and it failed on run 1 on a fresh copy, which is CI's condition.
+- **Fix:** poll for up to 1 s before asserting, as the stale-save check already does at `:142`. Run it twice on fresh copies.
+
+**n3.** Advanced sits between Definition and Hosts; concept §4 orders Definition · Hosts · Advanced · Share. Moving it is a one-line move. Optional.
+
+**n4.** No suite check covers the list-focus returns or the unsaved guard (my walk covers both). Add them with M3 if cheap.
+
+Verdict: Changes needed. Blockers: none. Majors: M3 (flaky focus check, test-only fix). Minors: m3 (follow-up listed), n1, n3, n4.
