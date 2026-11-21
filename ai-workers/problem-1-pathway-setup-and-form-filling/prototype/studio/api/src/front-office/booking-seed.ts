@@ -12,6 +12,7 @@ import { pathToFileURL } from "node:url";
 import { firmScope, touchFirm } from "../platform/firm-scope.ts";
 import { readSampleFirms } from "../platform/seed-sample-firms.ts";
 import { BUSINESS_HOURS, readSetting, TIME_ZONE } from "../platform/settings.ts";
+import { logPort } from "../platform/observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 type BusinessHours = typeof BUSINESS_HOURS.default;
@@ -99,7 +100,7 @@ export async function addSampleConsultationTypeSafely(tx: Tx, where: string): Pr
     return r.added;
   } catch (e) {
     await tx.$executeRaw`ROLLBACK TO SAVEPOINT demo_link_sample_type`;
-    console.warn(`${where}: could not add the Sample consultation type (DEMO-LINK): ${String(e).slice(0, 300)}`);
+    logPort.error("demo_link_sample_type_failed", e, { at: where });   // PF-23m: the error object, never its text in the line
     return false;
   }
 }
