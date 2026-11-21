@@ -25,7 +25,7 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A274 | 21 Nov 22:1x (typed): blockage? on track? check every lane, GitHub, pipeline, manual/exceptional workarounds; plan so tomorrow is not a problem; account switch at 95% (keep state zoomable); offers AWS/Cloudflare/domain help, discuss after pipeline | Pipeline answer 22:2x; lanes Q7 R1.10, Q8 R1.3, Q9 R1.19, DEMO-LINK #2687, Lead 19 standby started |
+| A274 | 21 Nov 22:1x (typed): blockage? on track? check every lane, GitHub, pipeline, manual/exceptional workarounds; plan so tomorrow is not a problem; account switch at 95% (keep state zoomable); offers AWS/Cloudflare/domain help, discuss after pipeline | Pipeline answer 22:2x; lanes Q7 R1.10, Q8 R1.3, Q9 R1.19, DEMO-LINK #2687, Lead 19 standby started; founder "Yes, start it" 22:3x → proof-route fixes lane (task_8a3ba0f1: item-proof exit on FAIL, walks >20 on PRs, Completes warning; .github read by Lead before label) |
 | A273 | 21 Nov 19:0x (typed, Mac): be extra diligent, walk claude.ai + GitHub in the browser, nobody waits on the Lead, explain phases/focus/waves, ask for resources | Walk + unblocks 19:1x; phases in chat |
 | A272 | 21 Nov 18:3x (typed): keep checking every angle, unblock stuck queues intelligently, full pipeline status | Full report 18:3x; #2834 unblocked |
 | A268-A271 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1925-lead16s3-asks-A268-A272.md` (account switch plan, commitment 8/10/13, recovery, full walk) | |
