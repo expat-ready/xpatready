@@ -52,10 +52,9 @@ export class BrandingController {
 @Controller("api/public/firms/:firmKey/branding")
 export class BrandingPublicController {
   constructor(@Inject(BrandingImages) private readonly images: BrandingImages) {}
-  @Get() @OpenRead("a client page's header: the firm's name, colours, tagline and image links (PF-13; no id)")
-  read(@Param("firmKey") firmKey: string) { return this.images.publicBranding(firmKey); }
-  @Get(":kind") @OpenRead("the firm's logo, favicon or banner by its stable link (PF-13)")
-  async image(@Param("firmKey") firmKey: string, @Param("kind") kind: string, @Query("v") v: unknown, @Res() res: Response) {
+  // The open mark and the route sit on the method's own line: QA-53's scan reads them there (check_forms_qa53.ts).
+  @OpenRead("PF-13: a client page's header, the firm's name, colours, tagline and image links, no id") @Get("") read(@Param("firmKey") firmKey: string) { return this.images.publicBranding(firmKey); }
+  @OpenRead("PF-13: the firm's logo, favicon or banner by its stable link") @Get(":kind") async image(@Param("firmKey") firmKey: string, @Param("kind") kind: string, @Query("v") v: unknown, @Res() res: Response) {
     const img = await this.images.publicImage(firmKey, kind, v);
     res.setHeader("Content-Type", img.mediaType);
     res.setHeader("X-Content-Type-Options", "nosniff");
