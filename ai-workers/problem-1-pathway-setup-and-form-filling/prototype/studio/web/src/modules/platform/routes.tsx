@@ -13,6 +13,7 @@ import { TermsAcceptancesPage } from "./terms/acceptances-page";
 import { PricingPage } from "./signup/pricing-page";
 import { SignUpPage } from "./signup/signup-page";
 import { VerifyPage } from "./signup/verify-page";
+import { BillingPage } from "./saas/billing-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -28,4 +29,5 @@ export const routes: ModuleRoute[] = [
   { path: "/pricing", element: <PricingPage /> },   // PF-5s part 1 (public)
   { path: "/sign-up", element: <SignUpPage /> },   // PF-5s part 1 (public): Sign up, then Check your email
   { path: "/sign-up/verify", element: <VerifyPage /> },   // PF-5s part 1 (public): the email's link (PF-5's door writes it)
+  { path: "/settings/billing", element: <BillingPage /> },   // PF-5s part 2: Plan and billing (PF-5 part 2 returns from Stripe here)
 ];
