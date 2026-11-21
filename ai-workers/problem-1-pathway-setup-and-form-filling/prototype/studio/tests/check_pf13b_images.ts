@@ -88,7 +88,7 @@ try {
   const signIn = async (actorId: string, firmKey = "sample-firm") => { const r = await fetch(`${base}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey, actorId, secondStep: true }) }); return (await r.json()).token as string; };
   const owner = await signIn("user-R"), manager = await signIn("user-T"), ownerB = await signIn("user-S", "sample-solo");
   const up = async (token: string, kind: string, bytes: Uint8Array, name = "x.png", type = "image/png") => {
-    const form = new FormData(); form.append("file", new Blob([bytes], { type }), name);
+    const form = new FormData(); form.append("file", new Blob([new Uint8Array(bytes)], { type }), name);
     const r = await fetch(`${base}/api/platform/branding/${kind}`, { method: "PUT", headers: { authorization: `Bearer ${token}` }, body: form });
     const t = await r.text(); let body: any = t; try { body = JSON.parse(t); } catch { /* text */ } return { status: r.status, body };
   };
