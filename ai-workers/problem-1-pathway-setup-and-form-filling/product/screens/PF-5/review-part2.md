@@ -535,3 +535,42 @@ Approved before this: `182ef7bd1` (round 12). I reviewed four commits on the fir
 **Journey score: 8/10, unchanged** (a pass, no criterion at 0). This change touches only the audit trail and the bypass registry. No screen or flow changes, so I wrote no new journey-test report.
 
 Verdict: Approve 16b7486de822ff7e654283f901d90738b16501f5
+
+## Round 14 (diff-only, 12cc086d): merge of origin/main (PF-15 part 1b, CS-W3 part 1); head `12cc086dff82f87c2f0cea40eebf25631a3fa55d`
+
+Approved before this: `16b7486de` (round 13). `1d7f4c677` adds only round 13's lines to this file. The new head is a merge with parents `1d7f4c677` and origin/main `5dfb7de12`. Since the last merge's main parent (`bfd1b2de1`), main changes 20 studio files. The two that matter here are PF-15 part 1b (booked plan changes: `entitlements/plan-booking.ts`, the daily job `job:platform.entitlements.booking_daily` and its migration) and CS-W3 part 1 (the case side's door, `features/case-firm-door.ts`, and its migration).
+
+1. **The one conflict is resolved correctly.** `git show --remerge-diff 12cc086df` shows a hand resolution in `tests/check_pf12b_bypass_audit.ts` only.
+   * Main's DW3 and PF-12b3 block is kept whole. Only this PR's two uses are added to `PER_FIRM`, in the order JavaScript's `sort()` gives: `job:platform.billing.webhook_sweep` before `job:platform.entitlements.booking_daily`, and `platform.billing.stripe-webhook` after `job:platform.entitlements.storage_daily`.
+   * The words read "eleven" and "11 per-firm uses plus 3 platform uses".
+   * `firm-scope.ts` merged without a conflict: `booking_daily` is `per-firm` next to this PR's two. The registry therefore has 14 entries, which check_pf12b asserts (67/67).
+   * No other file of this PR was touched by main. `MODULE.md` is still 39 lines and `module-cards.py tree` passes.
+2. **No bad interaction with main.**
+   * **PF-15 part 1b uses this PR's stored dates, as intended.** Its booking trigger works out the renewal from `current_period_end`, "Stripe's own period end … PF-5 part 2 stores it", then `trial_ends_at` (migration l. 17-18, 65-75). It refuses a booking on a `PAYMENT_HOLD` subscription (409 `BILLING_NOT_ACTIVE`, check_pf15_booking), and that status is the one this PR's webhook sets.
+     * PF-15b's triggers sit on `platform_subscription_change`, not on `platform_subscription`. Its only writes to `platform_subscription` are `plan_id` and `updated_at`.
+     * This PR's `refresh` writes status, Stripe ids and dates and never `plan_id`, so the two never write the same column.
+     * Booked plan moves are not yet sent to Stripe's price: that is PF-16's, as PF-15b's own comment says. Not this PR's.
+   * **CS-W3 and the hold (read from the code).** CS-W3's door tags only the case side's x-actor and link requests, and "routes that declare permission keys … are left alone". So every staff route still gets its firm, and `req.platform`, from PF-4's guard.
+     * `PaymentHoldGate` is an `APP_INTERCEPTOR`. Its feature file `platform-firms.ts` loads after `platform-firm-walls.ts` (file-name order, checked with `sort()`). So it runs inside `FirmWallsInterceptor`'s `inRequest` scope, opened from the request's tag, and its `platform_firm` read is as the staff member's firm.
+     * CS-W3's comment change ("nothing may rely on the scope entered here") does not reach it: the gate never relied on the guard's `enterWith`.
+     * The x-actor stand-in requests were never held (no `req.platform`), before or after this merge.
+     * check_csw3_firm_scope gives 48/48.
+3. **Checks run here (head `12cc086df`, Postgres on 54329, live AI off, US$0, never :4400).**
+   * Suites, all exit 0: check_pf5_signup_billing 93/93, check_pf12b_bypass_audit 67/67, check_pf12b_doors 33/33, check_pf12_walls 100/100, check_pf15_booking 42/42, check_csw3_firm_scope 48/48.
+   * `tsc -p api/tsconfig.json --noEmit`: the same 24 lines as rounds 10 to 13, all in five test files outside this PR's diff. No new errors.
+   * `module-cards.py tree`: PASS (15 cards).
+   * Not repeated here: the builder's check_pf5t, check_pf5v, check_aud_values and check_pf15_limits.
+
+**Blocker:** none. **Major:** none.
+
+**Minor r14-1 (not new, does not block):** no committed check proves the payment hold under the firm walls. check_pf5's Nest app has no `FirmWallsInterceptor`, and connects as `xr_studio`, which is a superuser with BYPASSRLS (`pg_roles`, checked). So if `PaymentHoldGate` ever ran outside the request's firm scope, its `platform_firm` read would find nothing under the walls and the hold would fail open, and no suite would notice. The order argument in point 2 says that does not happen today. Two cheap ways to close it:
+* Add `{ provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }` before the gate in check_pf5's app, with a walled client (as check_fo7b_invoices does).
+* Or make the gate fail closed when its read finds no firm.
+
+This is the same family as n5 and round 9's `observe()` note.
+
+**Open Minors:** rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7), r10-1, r12-1, round 13's nit, and r14-1 above.
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). The merge changes no behaviour of this PR's journeys. I wrote no new journey-test report, because there is no new screen or flow to walk.
+
+Verdict: Approve 12cc086dff82f87c2f0cea40eebf25631a3fa55d
