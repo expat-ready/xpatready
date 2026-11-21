@@ -44,7 +44,7 @@ export class PlatformSession {
   async inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const firmId = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as PF-4's inFirm (J-5 B1)
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
@@ -60,7 +60,9 @@ export class PlatformSession {
 
   /** Ends every session of a person now (one revocation row; the guard reads it on their next request). */
   private async endSessions(tx: Tx, actor: StaffContext, staffId: string, reason: string) {
-    // At least the person's latest sign-in (the stand-in may date one a few ms ahead of the clock: break B6).
+    // At least the person's latest sign-in (the stand-in may date one a few ms ahead of the clock: break B6), read under
+    // the person's row lock, so a sign-in in progress is seen and a later one waits for this change (J-5 re-review m2).
+    await tx.$queryRaw`select id from platform_staff where id = ${staffId}::uuid and firm_id = ${firmScope(actor.firmId).firmId}::uuid for update`;
     const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: staffId }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
     await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId, revokedAt: new Date(Math.max(this.clock.now(), last, staffId === actor.staffId ? actor.authTime * 1000 : 0)), reason } });
   }
@@ -97,7 +99,7 @@ export class PlatformSession {
     // runs on the named bypass (BYPASS_USES "platform.identity.invitation").
     return asBypass("platform.identity.invitation", () => this.db.$transaction(async (tx) => {
       const pre = await this.invitation(tx, token, false);   // one lock order with PF-4's resend and revoke: firm, then invitation
-      if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for update`;
+      if (pre) await tx.$queryRaw`select id from platform_firm where id = ${pre.firm_id}::uuid for no key update`;   // as inFirm (J-5 B1)
       const i = await this.invitation(tx, token, true), state = PlatformSession.stateOf(i);
       if (state === "EXPIRED") problem(410, "Invitation expired", INVITE_WORDS.expired(i!.firm_name), { code: "INVITATION_EXPIRED", state });
       if (state !== "VALID") problem(410, "Invitation not valid", INVITE_WORDS.notValid, { code: "INVITATION_NOT_VALID", state });
