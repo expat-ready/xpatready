@@ -44,3 +44,7 @@
 ## Moved at 02:3x IST 22 Nov
 (5q) **01:5x:** #2870 labelled + queued. #2871 merged (QA-703 closed in code). #2687 fix 06baf4dd2 (pf28 allow-list, booking-seed) → independent diff-only Opus **Approve** posted (7068801379), round 7 allowed, /run full started; label when green.
 (5r) **02:0x:** #2860 proof-route fixes: type fix ef448c1e (walk-plan.d.mts) approved, ci/types green, Lead read, **labelled**. #2870 R1.19 queued. #2687 full run going.
+
+## Moved at 02:5x IST 22 Nov
+(5s) **02:2x: #2870 merged (d0253335c)**, item-proof 44949023938 running (j_19 not on main → journey FAIL expected). qa Q9 told: merge main into #2857, j_19 reads billing_period, row stays Partial on P-339 only, reader, walks + reviewer please → after merge item-proof + Lead walks j_19 on main → one-line Works PR (→ 11/15, ETA ~04:30).
+(5t) **02:3x:** walks j_19 dispatched on #2857 head 31e89ad2d (44950091079; j_19 reads billing_period). #2687 /run full 44946651958 stopped: check_pf28_inputs conflict after #2787 → DEMO-LINK lane merging main; independent re-review + full run again after. #2794 (PF-28 2b-2c, Lead B's) approved on 4046afdd.
