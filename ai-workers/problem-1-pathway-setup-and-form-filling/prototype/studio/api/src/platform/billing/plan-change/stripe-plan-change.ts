@@ -1,0 +1,69 @@
+// PF-16 part 1a: PlanChangePort's Stripe adapter (stripe 23.1.0, pinned API 2026-10-28.endive). Test-mode keys only, never
+// in a lane: CI runs it on recorded Stripe answers (tests/check_pf16_billing_rules.ts). Each changing call carries an
+// idempotency key, so a retried request never charges or books twice.
+//   * preview: invoices.createPreview (POST /v1/invoices/create_preview) with subscription_details (items, proration
+//     behaviour, proration date, a fresh anchor); its proration lines are those whose parent says proration;
+//   * now: subscriptions.update on the one item, proration always_invoice (a raise is charged at once) or none (a trial),
+//     payment_behavior error_if_incomplete (a declined card changes nothing);
+//   * at the renewal: a subscription schedule from the subscription, its current phase kept to the period's end and then
+//     the new price, end_behavior release (no proration, no refund). Unconfirmed on a live test-mode account (no lane
+//     reaches Stripe): to be run once on the Mac with test keys before the first real firm.
+import Stripe from "stripe";
+import { ChangePreview, IdempotencyKey, PlanSubscription, PriceChange, RenewalChange, type PlanChangePort } from "../../../../../ports/plan-change.ts";
+import { SubscriptionId } from "../../../../../ports/billing.ts";
+
+const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
+const at = (s: number | null | undefined) => (typeof s === "number" ? new Date(s * 1000) : null);
+const secs = (d: Date) => Math.floor(d.getTime() / 1000);
+
+export class StripePlanChange implements PlanChangePort {
+  constructor(private readonly stripe: Stripe) {}
+  static fromKey(secretKey: string, fetchFn?: typeof fetch) {
+    return new StripePlanChange(new Stripe(secretKey, { maxNetworkRetries: 2, timeout: 10_000, ...(fetchFn ? { httpClient: Stripe.createFetchHttpClient(fetchFn) } : {}) }));
+  }
+
+  async current(id: string) {
+    const s = await this.stripe.subscriptions.retrieve(SubscriptionId.parse(id), { expand: ["items.data.price"] });
+    const item = s.items.data[0], price = item?.price;
+    return PlanSubscription.parse({
+      id: s.id, itemId: item?.id, priceId: idOf(price), interval: price?.recurring?.interval, unitAmount: price?.unit_amount, status: s.status,
+      periodEnd: at(item?.current_period_end), trialEnd: at(s.trial_end), scheduleId: idOf(s.schedule as string | { id: string } | null),
+    });
+  }
+
+  private details(c: PriceChange, itemId: string) {
+    return { items: [{ id: itemId, price: c.priceId }], proration_behavior: c.prorate ? "always_invoice" as const : "none" as const, proration_date: secs(c.prorationDate), ...(c.anchorNow ? { billing_cycle_anchor: "now" as const } : {}) };
+  }
+
+  async preview(change: PriceChange) {
+    const c = PriceChange.parse(change), cur = await this.current(c.subscriptionId);
+    const inv = await this.stripe.invoices.createPreview({ subscription: c.subscriptionId, subscription_details: this.details(c, cur.itemId) });
+    const proration = inv.lines.data.filter((l) => (l.parent as { subscription_item_details?: { proration?: boolean } } | null)?.subscription_item_details?.proration).reduce((n, l) => n + l.amount, 0);
+    return ChangePreview.parse({ amountDueCents: inv.amount_due, prorationCents: proration, currency: inv.currency });
+  }
+
+  async changeNow(change: PriceChange, idempotencyKey: string) {
+    const c = PriceChange.parse(change), key = IdempotencyKey.parse(idempotencyKey), cur = await this.current(c.subscriptionId);
+    const d = this.details(c, cur.itemId);
+    await this.stripe.subscriptions.update(c.subscriptionId, { items: d.items, proration_behavior: d.proration_behavior, proration_date: d.proration_date, payment_behavior: "error_if_incomplete",
+      ...(c.anchorNow ? { billing_cycle_anchor: "now" as const } : {}) }, { idempotencyKey: key });
+  }
+
+  async scheduleAtRenewal(change: { subscriptionId: string; priceId: string }, idempotencyKey: string) {
+    const c = RenewalChange.parse(change), key = IdempotencyKey.parse(idempotencyKey), cur = await this.current(c.subscriptionId);
+    const id = cur.scheduleId ?? (await this.stripe.subscriptionSchedules.create({ from_subscription: c.subscriptionId }, { idempotencyKey: `${key}-from` })).id;
+    const sched = await this.stripe.subscriptionSchedules.retrieve(id);
+    const now = sched.current_phase;
+    if (!now) throw new Error("the subscription schedule has no current phase");
+    await this.stripe.subscriptionSchedules.update(id, { end_behavior: "release", proration_behavior: "none", phases: [
+      { items: [{ price: cur.priceId, quantity: 1 }], start_date: now.start_date, end_date: now.end_date },
+      { items: [{ price: c.priceId, quantity: 1 }], duration: { interval: cur.interval, interval_count: 1 } },
+    ] }, { idempotencyKey: key });
+    return { scheduleId: id };
+  }
+
+  async releaseSchedule(subscriptionId: string) {
+    const cur = await this.current(subscriptionId);
+    if (cur.scheduleId) await this.stripe.subscriptionSchedules.release(cur.scheduleId);
+  }
+}
