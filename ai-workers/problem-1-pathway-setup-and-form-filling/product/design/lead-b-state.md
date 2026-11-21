@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 05:48 IST):** **#2621 dequeued** at 05:45 IST (batch run 44838643676). Both failures are its own: shard 15 `check_pf18h_home_browser.ts` (DB xr_studio_pf18h missing, the suite must make its own) and shard 13 `check_pf6_staff_browser.ts` timeout (old landing after the move to /home). Lane told (comment 7053960429, plus a cloud message): fix, diff-only Approve, cover line "44838643676: shard (13), shard (15), ci", then ask Lead 8 for /run full. Repeat lesson: a new browser suite must create its own DB (it hit #2322 too), so put this in future briefs.
+
 **Lead B (9) update (21 Nov 05:03 IST):** #2621's size exception is granted as **P-775**: a standing rule for code and tests under 800 plus the PR's own screens records. It's in records PR #2660 (queued). After #2660 merges, Lead 8 re-runs pr-rules and labels 65f56d5cc. Future PRs on my rows with records over the cap cite P-775.
 
 **Lead B (9) update (21 Nov 05:01 IST):** **#2621 (PF-18h) approved head 65f56d5cc**, sent to Lead 8. It needs the Lead's size ruling (~1,000 lines = 510 code and tests + 489 records); I recommend a P-748-style exception, then a fresh run and the label. In scope: no case files, no j_74.
