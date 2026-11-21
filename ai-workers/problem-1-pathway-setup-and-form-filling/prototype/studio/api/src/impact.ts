@@ -25,6 +25,7 @@ import { changedBoxes, compareBoxes, componentsView, impactContext, impactCost, 
 import { pairOf, RUNS, runTime, StepRunner, type AiStep, type RoundOut } from "./rounds.ts";
 import { replayPattern } from "../../engine/rounds.ts";
 import type { FieldMapOutput } from "./field-drafts.ts";
+import { logPort } from "./platform/observability/log.ts";
 
 const run = promisify(execFile);
 /** C9.1: the AI step's drafting-job kind (one per held edition and comparison). */
@@ -182,7 +183,7 @@ export class Impact {
       const safe = async (isCheck: boolean, pair?: string, window?: { after: string; before: string }): Promise<RoundOut<FieldMapOutput>> => { try { return await runner.round<FieldMapOutput>(step, isCheck, { ...ctx, ...(pair !== undefined ? { replayPair: pair } : {}), ...(window ? { replayWindow: window } : {}) }); } catch (e) {
         // Review minor: a live round that throws may have been sent; it is counted at its share of the worst case (as
         // the ledger reserves it), so the one-paid-run rule still holds. A replay that throws cost nothing.
-        console.warn(`impact ai ${aiJob.id}:`, String(e).slice(0, 400));
+        logPort.error("impact_round_failed", e, { jobId: aiJob.id });
         return { ok: false, costUsd: mode === "live" ? Math.round((offer.at_most_usd / 2) * 100) / 100 : 0, reason: "The AI step stopped on this computer, so nothing of it is used." }; } };
       const draft = await safe(false);
       // P-121: one attempt per round (the launcher retries only a transient error); no third round. The checker round runs
