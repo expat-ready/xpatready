@@ -79,7 +79,7 @@ export class PlatformTerms implements TermsGate {
     const ids = [...new Set(parsed.data.versionIds.map((x) => x.toLowerCase()))].sort();
     const firmId = firmScope(s.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as identity's inFirm: never deadlocks with the person's own sign-in (J-5 B1)
       // The person is checked again under the lock, as PlatformSession.inFirm does (Devin review on #1957): a deactivation,
       // a revoked session or a role change committed while this waited is never accepted past.
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: s.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
