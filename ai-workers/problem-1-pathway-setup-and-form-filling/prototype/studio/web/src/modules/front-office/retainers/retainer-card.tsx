@@ -51,7 +51,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
               <Pill tone={s.tone} title={s.tip}><span data-retainer-status>{s.label}</span></Pill>
               <span className="text-text-muted">Version {live.currentVersion}</span>
               {live.status === "SENT" || live.status === "VIEWED" ? <span data-waiting>Waiting for {name} to sign.</span> : null}
-              <Link to={`/front-office/retainers/${live.id}`} className="font-medium text-text-link hover:underline">{live.status === "DRAFT" ? "Continue the draft" : "Open the retainer"}</Link>
+              <Link to={`/front-office/retainers/${live.id}`} className="font-medium text-text-link hover:underline">{live.status === "DRAFT" && can(me, R_KEY.draft) ? "Continue the draft" : "Open the retainer"}</Link>
             </div>
           ) : (
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">

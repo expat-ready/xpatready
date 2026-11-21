@@ -26,21 +26,21 @@ function RetainerBody({ id }: { id: string }) {
   const me = useStaff(), qc = useQueryClient(), toast = useToast(), key = ["fo", "retainers", "one", id];
   const one = useQuery({ queryKey: key, retry: false, queryFn: async () => Retainer.parse(await staffApi(`/front-office/retainers/${encodeURIComponent(id)}`)) });
   const reps = useQuery({ enabled: can(me, R_KEY.draft), queryKey: ["fo", "retainer-representatives"], queryFn: async () => Representatives.parse(await staffApi("/front-office/retainer-representatives")) });
-  const [editing, setEditing] = React.useState(false), [rows, setRows] = React.useState<Row[]>([]), [repId, setRepId] = React.useState("");
+  const [editing, setEditing] = React.useState(false), [rows, setRows] = React.useState<Row[]>([]), [repId, setRepId] = React.useState(""), [signerId, setSignerId] = React.useState("");
   const [error, setError] = React.useState<{ field: string | null; text: string; code?: string } | null>(null);
   const [sending, setSending] = React.useState(false), [showItems, setShowItems] = React.useState(false), [warnings, setWarnings] = React.useState<string[]>([]);
   const r = one.data;
-  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); }, []);
+  const reset = React.useCallback((x: Retainer) => { setRows(rowsOf(x)); setRepId(x.representativeStaffId); setSignerId(x.signerPersonId ?? ""); }, []);
   React.useEffect(() => { if (r) reset(r); }, [r, reset]);
   const checklist = useQuery({ enabled: showItems && !!r, queryKey: ["fo", "retainer-template-checklist", r?.template.id], queryFn: async () => TemplateChecklist.parse(await staffApi(`/front-office/retainer-templates/${r!.template.id}/checklist`)) });
   const after = (x: Retainer, text: string) => { qc.setQueryData(key, x); void qc.invalidateQueries({ queryKey: ["fo", "retainers", "of"] }); setEditing(false); setError(null); setWarnings(x.warnings ?? []); toast.push({ tone: "ok", text }); };
   const fail = (e: unknown) => {
     const field = e instanceof StaffApiError ? (Object.keys(e.problem.fields ?? {})[0] ?? null) : null;
     setError({ field, text: e instanceof StaffApiError ? e.message : "Could not save. Please try again.", code: e instanceof StaffApiError ? e.problem.code : undefined });
-    if (e instanceof StaffApiError && e.problem.code === "CHANGED") void one.refetch();
+    if (e instanceof StaffApiError && e.status === 409) void one.refetch();   // a colleague changed or sent it (break m1)
   };
   const save = useMutation({
-    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees } })),
+    mutationFn: async (fees: unknown[]) => Retainer.parse(await staffApi(`/front-office/retainers/${id}`, { method: "PATCH", json: { expectedVersion: r!.version.n, expectedStatus: r!.status, representativeStaffId: repId, fees, ...(r!.subject === "COMPANY" && signerId ? { signerPersonId: signerId } : {}) } })),
     onSuccess: (x) => after(x, `Saved as version ${x.version.n}.`), onError: fail,
   });
   const send = useMutation({
@@ -62,9 +62,10 @@ function RetainerBody({ id }: { id: string }) {
   }
   const v = r.version.values, s = STATUS[r.status] ?? { label: r.status, tone: "neutral", tip: "" };
   const client = String(v["client.name"] ?? "") || "the client", to = String(v["signer.email"] ?? v["client.email"] ?? "");
-  const mayEdit = can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
+  const mayEdit = r.mayChange && can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
-  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId;
+  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && signerId !== (r.signerPersonId ?? ""));
+  const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const fees: unknown[] = [];
@@ -86,8 +87,9 @@ function RetainerBody({ id }: { id: string }) {
         <h1 className="text-2xl font-semibold text-text [overflow-wrap:anywhere]">Retainer for {client}</h1>
         <Pill tone={s.tone} title={s.tip}><span data-retainer-status>{s.label}</span></Pill>
         <span className="text-sm text-text-muted" data-version>Version {r.version.n}</span>
-        {r.prospect ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">{r.prospect.number}</Link> : null}
+        {r.prospect ? r.mayChange ? <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-sm text-text-link hover:underline">{r.prospect.number}</Link> : <span className="text-sm text-text-muted">{r.prospect.number}</span> : null}
       </header>
+      {draft && r.versions.some((x) => x.sentAt) ? <Notice tone="warn" title={`Version ${r.version.n} is not sent yet: ${client} cannot sign until you send it.`} /> : null}
       {r.status === "SENT" || r.status === "VIEWED" ? <Notice tone="info" title={`Waiting for ${client} to sign version ${r.version.n}.`}>{mayEdit ? "Edit makes a new version; the sent one stays as it was and the new one is sent again." : null}</Notice> : null}
       {!EDITABLE.includes(r.status) ? <Notice tone="info" title={r.status === "WITHDRAWN" ? "This retainer is withdrawn. Prepare a new one from the prospect." : `${client} has already signed. This retainer can no longer change.`} /> : null}
       {warnings.map((w) => <Notice key={w} tone="warn" title={w} />)}
@@ -99,10 +101,14 @@ function RetainerBody({ id }: { id: string }) {
               {mayEdit && !draft && !editing ? <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button> : null}</div>
             <form onSubmit={submit} className="mt-3 flex flex-col gap-4" noValidate>
               <dl className="grid gap-1 text-sm sm:grid-cols-[9rem_1fr]">
-                <dt className="text-text-muted">Template</dt><dd>{r.template.name ?? "(removed)"} · version {r.template.version}</dd>
-                <dt className="text-text-muted" id="fo-signer">Signer</dt><dd className="[overflow-wrap:anywhere]">{String(v["signer.name"] ?? "") || <Pill tone="warn">Choose who signs</Pill>}{to ? ` · ${to}` : ""}</dd>
+                <dt className="text-text-muted">Template</dt><dd className="[overflow-wrap:anywhere]">{r.template.name ?? "(removed)"} · version {r.template.version}</dd>
+                {!(form && company) ? <><dt className="text-text-muted">Signer</dt><dd id="fo-signer" tabIndex={-1} className="[overflow-wrap:anywhere]">{String(v["signer.name"] ?? "") || "Not chosen"}{to ? ` · ${to}` : ""}
+                  {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{!company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
+              {form && company ? <Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
+                <Select id="fo-signer" value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {o.role === "SIGNATORY" ? "Signatory" : o.role.toLowerCase()}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
+              </Field> : null}
               {form ? <Field label="Representative" hint="Only active people with a licence and the case-manager permissions." error={fieldError("representativeStaffId") ?? r.blockers.representativeStaffId ?? null}>
                 <Select id="fo-rep" value={repId} onChange={(e) => { setRepId(e.target.value); setError(null); }}>{(reps.data ?? [{ staffId: r.representativeStaffId, name: repName(r.representativeStaffId) }]).map((x) => <option key={x.staffId} value={x.staffId}>{x.name}</option>)}</Select>
               </Field> : null}
@@ -119,13 +125,13 @@ function RetainerBody({ id }: { id: string }) {
                     <Button type="button" variant="ghost" size="sm" className="self-end" aria-label={`Remove fee ${i + 1}`} onClick={() => setRows((all) => all.filter((_, j) => j !== i))}>Remove</Button>
                     {x.when === "ON_DATE" ? <Field label={`Fee ${i + 1}: due date`} error={fieldError(`fees[${i}].dueOn`)}><Input type="date" value={x.dueOn} onChange={(e) => setRow(i, { dueOn: e.target.value })} /></Field> : null}
                   </div>
-                )) : <ul className="text-sm">{r.version.fees.map((f) => <li key={f.position} className="py-0.5">{f.label}: {cad(f.amountMinor)} · {when(f.when)}{f.dueOn ? `, ${f.dueOn}` : ""}</li>)}</ul>}
+                )) : <ul className="min-w-0 text-sm">{r.version.fees.map((f) => <li key={f.position} className="py-0.5 [overflow-wrap:anywhere]">{f.label}: {cad(f.amountMinor)} · {when(f.when)}{f.dueOn ? `, ${f.dueOn}` : ""}</li>)}</ul>}
                 {form ? <Button type="button" variant="link" size="sm" className="self-start" onClick={() => setRows((all) => [...all, { label: "", amount: "", when: "ON_SIGNING", dueOn: "" }])}>Add a fee row</Button> : null}
               </fieldset>
               {form ? <div className="flex flex-wrap items-center gap-2">
                 <Button type="submit" variant={draft ? "outline" : "default"} busy={save.isPending} disabled={!changed}>Save as version {next}</Button>
                 {!draft ? <Button type="button" variant="ghost" onClick={() => { setEditing(false); reset(r); setError(null); }}>Cancel</Button> : null}
-                <span className="text-xs text-text-muted">{draft ? "Each save is a new version." : `Version ${r.version.n} stays as it was sent; version ${next} is a draft to send again.`}</span>
+                <span className="text-xs text-text-muted">{draft ? "Each save is a new version." : `Saving stops the link ${client} has for version ${r.version.n} (it stays as it was sent); version ${next} is then a draft you send again.`}</span>
               </div> : null}
             </form>
           </section>
@@ -145,13 +151,13 @@ function RetainerBody({ id }: { id: string }) {
         </div>
         <aside aria-labelledby="fo-check" className="flex flex-col gap-4 rounded-xl border border-border bg-surface-raised p-4">
           <h2 id="fo-check" className="text-sm font-semibold">Check before sending</h2>
-          {blockers.length && EDITABLE.includes(r.status) ? <div role="alert" data-error-summary className="rounded-lg border border-danger/40 bg-danger/5 p-3 text-sm">
+          {blockers.length && mayEdit ? <div role="alert" data-error-summary className="rounded-lg border border-danger/40 bg-danger/5 p-3 text-sm">
             <p className="font-medium">Before sending:</p>
             <ul className="mt-1 list-disc pl-5">{blockers.map(([f, t]) => <li key={f}><a href={`#${BLOCKER_FIELD[f] ?? "fo-values"}`} className="text-text-link hover:underline" onClick={(e) => { e.preventDefault(); document.getElementById(BLOCKER_FIELD[f] ?? "fo-values")?.focus(); }}>{t}</a></li>)}</ul>
           </div> : null}
           <dl id="fo-values" tabIndex={-1} className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-2 gap-y-1 text-sm" data-values>
             {VALUE_LABELS.filter(([k]) => k in v && (r.subject === "COMPANY" || k !== "company.name")).map(([k, l]) => (
-              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{v[k] ? String(v[k]) : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
+              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{v[k] ? String(v[k]) : blocked.has(k) && mayEdit ? <Pill tone="danger">blocks Send</Pill> : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
             ))}
           </dl>
           {r.codeChecklist ? <section aria-labelledby="fo-code" data-code-checklist className="rounded-lg border border-border p-3 text-sm">
@@ -161,7 +167,7 @@ function RetainerBody({ id }: { id: string }) {
             <details className="mt-2"><summary className="cursor-pointer text-xs text-text-muted">Each item, marked or not</summary><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></details>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
-          {draft && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
+          {draft && r.mayChange && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
         </aside>
       </div>
       <Panel open={sending} onOpenChange={setSending} title={`Send to ${client} to sign`} description={`Version ${r.version.n}. Once sent, this version never changes.`}
@@ -184,6 +190,8 @@ function RetainerBody({ id }: { id: string }) {
 
 export function RetainerPage() {
   const { id = "" } = useParams();
-  const back = { to: "/front-office/pipeline", label: "Pipeline" };
-  return <SalesFrame crumbs={[{ label: "Pipeline", to: back.to }, { label: "Retainer" }]} back={back}><RetainerBody id={id} /></SalesFrame>;
+  // Sales › Prospect › Retainer, back to the prospect once the retainer is read (the same query as the page; review m1).
+  const r = useQuery({ queryKey: ["fo", "retainers", "one", id], retry: false, enabled: !!staffToken(), queryFn: async () => Retainer.parse(await staffApi(`/front-office/retainers/${encodeURIComponent(id)}`)) }).data;
+  const back = r?.prospect && r.mayChange ? { to: `/front-office/prospects/${r.prospect.id}`, label: r.prospect.number } : { to: "/front-office/pipeline", label: "Pipeline" };
+  return <SalesFrame crumbs={[{ label: back.label, to: back.to }, { label: "Retainer" }]} back={back}><RetainerBody id={id} /></SalesFrame>;
 }

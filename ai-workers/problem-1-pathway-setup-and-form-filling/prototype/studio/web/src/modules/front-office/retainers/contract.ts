@@ -15,7 +15,7 @@ export const Retainer = z.object({
   prospect: z.object({ id: z.string(), number: z.string(), type: z.string(), stage: z.string(), stageKind: z.string() }).nullable(),
   template: z.object({ id: z.string(), name: z.string().nullable(), version: z.number() }),
   version: z.object({ n: z.number(), sha256: z.string(), sentAt: z.string().nullable(), values: z.record(z.string(), z.unknown()), fees: z.array(Fee) }),
-  canSend: z.boolean(), blockers: z.record(z.string(), z.string()), missing: z.array(z.string()), codeChecklist: DraftChecklist.nullable(),
+  mayChange: z.boolean(), canSend: z.boolean(), signerOptions: z.array(z.object({ personId: z.string(), name: z.string(), role: z.string(), email: z.string().nullable() })), blockers: z.record(z.string(), z.string()), missing: z.array(z.string()), codeChecklist: DraftChecklist.nullable(),
   versions: z.array(z.object({ n: z.number(), sentAt: z.string().nullable(), endedAt: z.string().nullable(), endReason: z.string().nullable(), note: z.string().nullable() })),
   warnings: z.array(z.string()).optional(),
 });
@@ -53,11 +53,14 @@ export const VALUE_LABELS: [string, string][] = [["client.name", "Client name"],
   ["firm.name", "Firm name"], ["agreement.date", "Date of this version"], ["agreement.version", "Version number"], ["fees.total", "Total fees"]];
 /** Cents as typed money, CAD ("1500.00" → "CAD 1,500.00"); the server keeps the cents. */
 export const cad = (minor: string | null) => (minor === null ? "No amount" : `CAD ${(Number(minor) / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-/** A typed amount ("1500" or "1500.50") as cents for the server, or a refusal in words. */
+/** A typed amount ("1500", "1,500" or "1500.50") as cents for the server, or a refusal in words. A comma only groups
+ *  thousands ("1,500.50"); "1500,50" or "1,5" is refused, never read as a hundred times the fee (break M1). At most CAD
+ *  100 million, the server's limit (FEE_MAX_MINOR; break m4). */
 export function centsIn(typed: string): { cents: string | null } | { refused: string } {
-  const t = typed.trim().replace(/,/g, "");
+  const t = typed.trim();
   if (!t) return { cents: null };
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(t)) return { refused: "An amount in dollars, for example 1500 or 1500.50." };
-  const [d, c = ""] = t.split(".");
-  return { cents: String(BigInt(d) * 100n + BigInt(c.padEnd(2, "0") || "0")) };
+  if (!/^(\d{1,9}|\d{1,3}(,\d{3}){1,2})(\.\d{1,2})?$/.test(t)) return { refused: "An amount in dollars with a dot for cents, for example 1500 or 1,500.50." };
+  const [d, c = ""] = t.replace(/,/g, "").split(".");
+  const cents = BigInt(d) * 100n + BigInt(c.padEnd(2, "0") || "0");
+  return cents > 10_000_000_000n ? { refused: "At most CAD 100,000,000.00." } : { cents: String(cents) };
 }

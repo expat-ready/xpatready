@@ -57,6 +57,7 @@ sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_act
 const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: ownerEmail, secondStep: true }) });
 const tok = ((await signIn.json()) as { token?: string }).token;
 if (!tok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
+sql(`update fo_retainer_template set active = false where firm_id = '${firmId}'`);   // re-runnable: one active template
 const starter = await fetch(`${BASE}/api/front-office/retainer-templates/starter`, { headers: { authorization: `Bearer ${tok}` } });
 const up = new FormData(); up.set("name", `Standard retainer ${run}`); up.set("file", new Blob([await starter.arrayBuffer()]), "starter.docx");
 const tplRes = await fetch(`${BASE}/api/front-office/retainer-templates`, { method: "POST", headers: { authorization: `Bearer ${tok}` }, body: up });

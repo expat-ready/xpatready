@@ -463,6 +463,12 @@ export class Retainers {
       version: { n: cur.n, sha256: cur.originalSha256, sentAt: cur.sentAt, values: { ...values, "representative.licence_number": undefined } as Record<string, unknown>,
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
       // break r2-m3: what blocks Send is shown only while the agreement can still be edited (never "Edit to choose another" on a signed one).
+      // FO-5s break M4: whether this person may change it (Edit, Send): the prospect's own visibility, not the
+      // representative's read-only right (BR-3). The screens offer no control the server would refuse.
+      mayChange: await this.visible(ctx, id, true).then(() => true, () => false),
+      // FO-5s review M1 (BR-4, AG-5-50): a company's current contacts, the signer's choices (a signatory first, never a block).
+      signerOptions: r.subject === "COMPANY" && r.companyId ? (await this.db.foCompanyContact.findMany({ where: { firmId: ctx.firmId, companyId: r.companyId, validTo: null }, include: { person: true }, orderBy: { validFrom: "asc" } }))
+        .map((c) => ({ personId: c.personId, name: nameOf(c.person) || "(no name)", role: c.role, email: c.person.email })) : [],
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: EDITABLE.includes(r.status) ? c.blockers : {}, missing: c.missing,
       // FO-5b: one quiet line, each Code s. 24(3) item present or missing in this version's template; never a blocker.
       codeChecklist: r.kind === "RETAINER" ? draftChecklist(lettersOf(values) ?? markedLetters(madeFrom), { id: r.templateId, version: r.templateVersion, currentVersion: tpl?.version ?? null }) : null,
