@@ -6,3 +6,4 @@
 (3q) 05:0x check (R1.26 fix merged; walks; #2478 queue-fresh restamp): word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
 (3m)-(3p) 03:5x-04:4x check pointers: word for word in `product/history/STATE-2026-11-21-0415-lead8s3-item-3m.md`.
 (3s) **05:1x IST:** j_26 walks GREEN (44837061226, 44837165973); qa Q1 re-scoring R1.26 (ZR126). #2637 blocked by a conflict with main → qa Q2 told (ZC2637, delivered); re-approve its new head. #2478 restamped to 20261121030000 (SQL same) → read + labelled. Queued: #2658 (J-38 W9), #2621 (PF-18h), #2660 (records P-775).
+(3t) **05:1x IST:** qa scored **R1.26 Works** (#2661, j_26 18/18 twice) → approved + labelled. #2637 (R1.110 Works) main merged → re-approved + labelled. Both edit qa/CAPABILITIES.md: if one dequeues on a conflict after the other merges, ask its qa lane to merge main. On merge: 31 on main. R1.38: #2658 queued → walks j_38 twice → Q2 scores = 32.
