@@ -87,3 +87,49 @@ Other suites (another job is running them). Whether PF-16's route will call `boo
 Fix list: M1 (commit the PF-12b test edit), M2 (take the case-open lock in `book()` plus a test).
 
 Verdict: Changes requested
+
+## Round 2 (re-review of `d1a915ce90ab4228cc73000c2f1f848d0009fe15`)
+
+**Verdict: Approve. M1 and M2 are fixed, every Minor is fixed, and no new Blocker or Major was found.**
+
+**What I checked**
+- Scope: only `git diff c10a1b98f d1a915ce9 -- …/prototype` (135 added, 28 removed; total PR still under 800) and `break-report-part1b.md`.
+- On the checkout at d1a915ce9, `check_pf15_booking.ts` gives **42 passed, 0 failed**.
+
+**Round 1 findings**
+- **M1 is closed.** Commit 3a3492094 adds `job:platform.entitlements.booking_daily` to PF-12b's per-firm list (`tests/check_pf12b_bypass_audit.ts:74-77`, now "nine"). I did not run that suite because another job is running suites. The list now matches `BYPASS_USES`.
+- **M2 is closed** (also breaker B2).
+  - The fix: `plan-booking.ts:62` takes `case-open:<key>` after the firm row.
+  - No deadlock: no other holder of `case-open` (`runtime.ts:342` createCase, `case-clients/prospect-won.ts:83`) takes the firm row afterwards. Their FK inserts take only KEY SHARE, which does not conflict with `FOR NO KEY UPDATE`.
+  - The new test holds the lock from a second connection. It shows the booking waits, then counts the third case and is refused 409, with nothing booked. The test would fail if the lock were removed.
+- **m1 is closed** (also B3).
+  - The `booked` CTE now needs `b.subscription_id = base.sub_id` (`migration.sql:174`).
+  - `applyDue` withdraws a due booking whose subscription ended, moved off `from_plan`, or whose target is inactive. It writes a `STALE` line with the same audit shape.
+  - Tests cover the plan moved another way, a resubscription, and a switched-off target.
+- **m2 is closed** (also B1).
+  - Outside a running trial, the insert trigger refuses a raise (`migration.sql:81-96`). A raise is any of:
+    - a dearer price where both plans have one;
+    - more seats;
+    - any metric where today's limit is finite (no row = 0) and the target's is higher or Unlimited.
+  - I checked the NULL logic: `c_eff IS NOT NULL AND (t_eff IS NULL OR t_eff > c_eff)` is correct.
+  - It compares plan rows, not the firm's part-2 kept values, so it errs towards refusing, which is acceptable.
+  - The B1 test runs with no prices set and refuses the move by seats or limits.
+  - With this, an early `applied_at` by a firm session can only move the firm onto a plan that is no larger on any metric. That is self-harm only. The wider gap, that `xr_app` can write `platform_subscription.plan_id` directly, is not new.
+  - The apply trigger now also needs the target to be active (breaker m2).
+- **m3 is closed.** The CHECK needs finite dates, and there is a test for it. The kept trigger stamps `withdrawn_at` with the database clock (breaker m4).
+- **m4 is closed.** Every before/after uses `{plan, bookedPlan, effectiveAt}`: booking, trial switch, withdrawal, STALE withdrawal and apply.
+- **m5 is closed.** There are tests for Unlimited now with a finite target (gives 4), and for seats with a pending part-2 lowering plus a booking (gives `least(kept, target)`). Each has a matching withdrawn case.
+- **Breaker m3 is closed.** A `TRIAL` whose `trial_ends_at` has passed now books for the renewal (tested).
+
+**Left for the Lead (not blocking this review)**
+- **B4 and the outbox row** (brief line 32): disclosed. PF-16 updates Stripe before calling `book`, and `ports/events.ts` belongs to #1959. The Lead should record this as a PF-16/#1959 follow-up so the trial switch gets its outbox row when the event name lands.
+- **Breaker m5 (OVERDUE):** there is no SA-4 rule either way.
+- **Breaker m4 (`booked_by` forgeable, `seed:` allowed by the CHECK):** a firm session only, and every audit line comes from the service. Not new exposure.
+
+### Round 2 Minor (no fix required to approve)
+- **r1. A booking left by an ended subscription stays open until its `effective_at`.** `plan-booking.ts:60` with the `applyDue` stale path at `:113-118`. During that time it lowers nothing (the CTE ignores it). But a new booking on the new subscription gets 409 PLAN_CHANGE_BOOKED until the firm withdraws it or the date passes.
+  - Scenario: book for a renewal 20 days away, the subscription ends on day 2, the firm resubscribes. A new `book()` is refused for 18 days unless the Owner withdraws first.
+  - Suggestion: in `book()`, treat an open row whose `subscription_id` is not the live one as stale, and withdraw it with the STALE line before the `had` check.
+- **r2. A firm on PAYMENT_HOLD at its renewal is counted as a failure every day.** `applyDue` falls through to the apply, the kept trigger raises, and `daily()` logs `booking_daily_failed` and counts `failed` each day until the hold clears. The docstring says this is intended. If that is meant, a quiet skip (`status = 'PAYMENT_HOLD'` → `{ applied: false }`) would keep the failure log for real failures.
+
+Verdict: Approve d1a915ce90ab4228cc73000c2f1f848d0009fe15
