@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { Template as Assert } from "aws-cdk-lib/assertions";
 import { allStacks, buildApp, STAGES } from "../lib/app.ts";
 import { regionFindings } from "../lib/checks.ts";
-import { ALARMED_ALERT_KINDS, ALARMS, FILTERS, LOG_RETENTION_DAYS, SAMPLE, alarmFindings, alertMetric, matchesFilter, retentionFindings } from "../lib/observability.ts";
+import { ALARMED_ALERT_KINDS, ALARMS, FAST_BURN, FILTERS, LOG_RETENTION_DAYS, SAMPLE, SLO_5XX_PCT, alarmFindings, alertMetric, matchesFilter, retentionFindings } from "../lib/observability.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUDIO = join(HERE, "..", "..", "..");
@@ -44,20 +44,21 @@ test("PF-23c retention pass: each stage has its app log group in ca-central-1, k
     const [, g] = find(tpl[s], "AWS::Logs::LogGroup", (r) => r.Properties?.LogGroupName === `/xr/${s}/app`);
     assert.equal(g.Properties?.RetentionInDays, LOG_RETENTION_DAYS);
     assert.equal(LOG_RETENTION_DAYS, 90);
-    assert.deepEqual(retentionFindings(tpl[s]), []);
+    assert.deepEqual(retentionFindings(tpl[s], s), []);
   }
   assert.deepEqual(regionFindings(allStacks(app)), []);
 });
 
-test("PF-23c retention fail: a log group kept for ever, or 30 days, or none at all, is named", () => {
+test("PF-23c retention fail: a log group kept for ever or 30 days, the app's kept 365, or no app group at all, is named", () => {
   const t = clone(tpl.production);
   const [id] = find(t, "AWS::Logs::LogGroup");
-  delete t.Resources[id].Properties!.RetentionInDays;
-  t.Resources.Extra = { Type: "AWS::Logs::LogGroup", Properties: { RetentionInDays: 30 } };
-  const f = retentionFindings(t);
-  assert.ok(f.some((l) => l.startsWith(`${id}: logs kept "for ever"`)), f.join("; "));
-  assert.ok(f.some((l) => l.startsWith("Extra: logs kept 30")), f.join("; "));
-  assert.deepEqual(retentionFindings({ Resources: {} }), ["no log group"]);
+  t.Resources.Forever = { Type: "AWS::Logs::LogGroup", Properties: {} };
+  t.Resources.Short = { Type: "AWS::Logs::LogGroup", Properties: { RetentionInDays: 30 } };
+  t.Resources.Longer = { Type: "AWS::Logs::LogGroup", Properties: { RetentionInDays: 365 } }; // another group may keep longer (NFR5-14 "≥ 90")
+  t.Resources[id].Properties!.RetentionInDays = 365;
+  const f = retentionFindings(t, "production");
+  assert.deepEqual(f.sort(), [`${id}: the app's logs kept 365 days, not 90`, "Forever: logs kept for ever, not a set 90+ days", "Short: logs kept 30 days, under 90"].sort());
+  assert.deepEqual(retentionFindings({ Resources: {} }, "production"), ["no log group /xr/production/app"]);
 });
 
 test("PF-23c alarms pass: every alarm the row names exists in both stages, pages the on-call email and reads its filter", () => {
@@ -83,6 +84,10 @@ test("PF-23c alarms fail: a missing alarm, an alarm with no action, a hard-coded
   const defaulted = clone(tpl.production);
   defaulted.Parameters!.OnCallEmail.Default = "someone@example.com"; // a deploy would page a guessed address
   assert.ok(alarmFindings(defaulted, "production").some((l) => l.endsWith("OKActions reach no topic with the on-call email parameter")));
+
+  const noisy = clone(tpl.production);
+  const [, al] = alarmNamed(noisy, "xr-production-alert-breach-clock-near"); al.Properties!.OKActions = al.Properties!.AlarmActions;
+  assert.ok(alarmFindings(noisy, "production").includes("xr-production-alert-breach-clock-near: an alert alarm sends OK while its incident is still open"));
 
   const orphan = clone(tpl.production);
   const [, a] = alarmNamed(orphan, "xr-production-job-failures"); a.Properties!.MetricName = "Nothing";
@@ -123,7 +128,10 @@ test("PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age
   const [, rate] = alarmNamed(t, "xr-production-5xx-rate");
   const expr = rate.Properties!.Metrics.find((m: any) => m.Expression).Expression as string;
   assert.equal(expr, `IF(FILL(den, 0) >= ${SAMPLE.minRequests}, 100 * FILL(num, 0) / den, 0)`);
-  assert.equal(rate.Properties!.Threshold, SAMPLE.errorRatePct);
+  assert.equal(SLO_5XX_PCT, 0.1); // NFR5-15 "5xx<0.1%"
+  assert.equal(rate.Properties!.Threshold, 1.44); // the SLO × the fast-burn factor 14.4 (Sample)
+  assert.equal(SAMPLE.errorRatePct, Math.round(SLO_5XX_PCT * FAST_BURN * 100) / 100);
+  assert.match(rate.Properties!.AlarmDescription, /NFR5-15 SLO 0\.1 %/);
   const [, age] = alarmNamed(t, "xr-production-job-age");
   assert.equal(age.Properties!.Statistic, "Maximum");
   const appStuck = /export const STUCK_JOB_MS = (\d+) \* 60_000/.exec(src("api/src/platform/observability/alerts.ts"));
@@ -134,7 +142,10 @@ test("PF-23c thresholds: the 5xx and bounce rates need a minimum volume; job age
     assert.equal(a.Properties!.Threshold, 1);
     assert.equal(a.Properties!.ComparisonOperator, "GreaterThanOrEqualToThreshold");
   }
-  for (const [, a] of Object.entries(t.Resources).filter(([, r]) => r.Type === "AWS::CloudWatch::Alarm")) assert.equal(a.Properties!.TreatMissingData, "notBreaching");
+  for (const [, a] of Object.entries(t.Resources).filter(([, r]) => r.Type === "AWS::CloudWatch::Alarm")) {
+    assert.equal(a.Properties!.TreatMissingData, "notBreaching");
+    assert.match(a.Properties!.AlarmDescription, /Logs: \/xr\/production\/app/); // each alarm says where to look (review m2)
+  }
 });
 
 test("PF-23c contract with the app: metrics.ts, log.ts and the alert port still write the names the filters read", () => {
