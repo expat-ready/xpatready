@@ -1,25 +1,8 @@
 // PF-8b (map row 1; the cloud halves of rows 15 and 24): the app service on Fargate with its secrets, mail and firm
-// addresses, added to each environment's stack. Synth only: nothing is deployed, no AWS account (P-551).
-//  * ECR repository (immutable tags, scanned on push); the image is PF-7's Dockerfile, run by digest only (a parameter
-//    PF-8c's deploy fills: `ImageDigest`, sha256:…), never by a tag.
-//  * ECS Fargate service of at least two tasks in the app subnets of two zones (RFP "Availability"), behind an internet-
-//    facing Application Load Balancer: HTTPS only (TLS 1.2 or 1.3), port 80 answers with a redirect and nothing else.
-//  * Task definition: PLATFORM_ENVIRONMENT=production and PLATFORM_IDENTITY=cognito set explicitly (rev 16.5); every
-//    value PF-24's loader (api/src/platform/config/settings.ts) needs that is not known at synth is injected from AWS
-//    Secrets Manager by name (SA-8-1 "supplied at deploy"), never a plain environment value. Only the execution role reads
-//    those secrets, and only its own task definition's; the task role reads none.
-//  * Migrations: a separate one-off task definition (`prisma migrate deploy`) holding the table owner's address; the
-//    service holds only the app role's address (xr_app, owns no table: PF-12's split, rev 16.2). PF-8c runs the
-//    migration task before it updates the service.
-//  * Mail: an SES identity for the environment's domain with DKIM, a MAIL FROM subdomain with its SPF record (so SPF never
-//    touches the apex, which may already carry the founder's mail provider's record) and a DMARC record (Sample policy).
-//  * Firm addresses (PF-25, AG-4-16): a hosted zone with `*.<domain>` pointing at the load balancer and a wildcard ACM
-//    certificate on it, so `<firm>.<domain>` reaches the app. Production's domain is `expatready.com`, staging's the
-//    `staging.` sub-zone (P-607 (2)); `-c xr:domain=<name>` changes it.
-//  * Cognito: three separate user pools in ca-central-1, the firms' staff (PF-4b), our own staff (PF-4s) and the firms'
-//    clients (PF-4p), each with its own app client; both staff pools require two-step sign-in (P-567).
-// Log groups and alarms are PF-23c's (not here); the deploy, rollback and smoke test are PF-8c's.
-// Sizes (CPU, memory) and the DMARC policy are Sample.
+// addresses, added to each environment's stack. Synth only: nothing is deployed, no AWS account (P-551). What each part
+// does and why (ECR by digest, 2 tasks over two zones, HTTPS-only ALB, secrets supplied at deploy, the migration task,
+// SES, the wildcard zone and certificate, three Cognito pools): ../README.md "The service". Log groups and alarms are
+// PF-23c's; deploy, rollback and smoke test PF-8c's. Sizes, timings, DMARC and password policy are Sample.
 import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_kms as kms, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
 import { Construct } from "constructs";
 

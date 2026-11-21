@@ -17,8 +17,10 @@ const secretName = (t: Template, v: unknown) => { const id = refId(v); const r =
 // unsafeUnwrap() writes) puts the secret's value into the resource in plain text, so it counts too (break M-1).
 const CREDENTIAL = /(?:^|[^A-Za-z])(sk|rk)_(test|live)_|whsec_|postgres(ql)?:\/\/[^\s/]*:[^\s/@]+@|-----BEGIN|AKIA[0-9A-Z]{16}|\{\{resolve:(secretsmanager|ssm-secure):/;
 /** Does an IAM Action value allow reading a secret's value (exact, secretsmanager:*, a Get* glob, or *)? (break M-2) */
-const readsSecret = (action: unknown) => arr(Array.isArray(action) ? action : [action]).some((a) => typeof a === "string" && /^(\*|secretsmanager:(\*|G\*|Ge\*|Get\*|GetS[A-Za-z]*\*?|GetSecretValue))$/i.test(a));
-const decrypts = (action: unknown) => arr(Array.isArray(action) ? action : [action]).some((a) => typeof a === "string" && /^(\*|kms:(\*|D\*|De\*|Decrypt\*?))$/i.test(a));
+const covers = (action: unknown, ...wanted: string[]) => arr(Array.isArray(action) ? action : [action]).some((a) => typeof a === "string"
+  && wanted.some((w) => new RegExp(`^${a.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i").test(w))); // IAM globs (re-break n2)
+const readsSecret = (action: unknown) => covers(action, "secretsmanager:GetSecretValue");
+const decrypts = (action: unknown) => covers(action, "kms:Decrypt", "kms:CreateGrant");
 /** Managed policies a role in this stack may carry: CDK's custom-resource Lambda logging only. */
 const MANAGED_OK = [/:iam::aws:policy\/service-role\/AWSLambdaBasicExecutionRole"/];
 
@@ -58,9 +60,13 @@ export function taskSettingFindings(t: Template, settings: { name: string; secre
     if (s.has(name) && !secretName(t, s.get(name))) out.push(`${name}: not a Secrets Manager secret of this stack (${json(s.get(name))})`);
   }
   const secretNames = new Set([...settings.filter((x) => x.secret).map((x) => x.name), "APP_DATABASE_URL"]);
-  for (const [id, td] of all(t, "AWS::ECS::TaskDefinition")) for (const k of containers(td)) for (const v of k.Environment ?? []) {
-    if (CREDENTIAL.test(json(v.Value))) out.push(`${id}/${k.Name}: ${v.Name} holds what looks like a credential`);
-    else if (secretNames.has(v.Name) && id !== service[0]) out.push(`${id}/${k.Name}: ${v.Name}: a secret given as a plain environment value`);
+  for (const [id, td] of all(t, "AWS::ECS::TaskDefinition")) {
+    for (const k of containers(td)) for (const v of k.Environment ?? []) {
+      if (CREDENTIAL.test(json(v.Value))) out.push(`${id}/${k.Name}: ${v.Name} holds what looks like a credential`);
+      else if (secretNames.has(v.Name) && id !== service[0]) out.push(`${id}/${k.Name}: ${v.Name}: a secret given as a plain environment value`);
+    }
+    const { Secrets: _s, Environment: _e, ...rest } = { ...(containers(td)[0] ?? {}), others: containers(td).slice(1), task: { ...td.Properties, ContainerDefinitions: undefined } };
+    if (CREDENTIAL.test(json(rest))) out.push(`${id}: a credential outside the environment (command, log settings or another field; re-break RM-1)`);
   }
   for (const [id, r] of all(t, "AWS::SecretsManager::Secret")) if (r.Properties?.SecretString !== undefined) out.push(`${id}: a secret value written into the template`);
   for (const [id, r] of Object.entries(t.Resources ?? {})) {
@@ -81,11 +87,13 @@ export function secretReadFindings(t: Template): string[] {
   type St = { Effect?: string; Action?: unknown; Resource?: unknown; Principal?: unknown; Condition?: unknown };
   const grants: { role: string; res: string[]; from: string }[] = [];
   const add = (roles: unknown[], doc: unknown, from: string) => {
+    for (const st of arr(g(doc, "Statement")) as St[] & { NotAction?: unknown }[]) if (st.Effect !== "Deny" && (st as { NotAction?: unknown }).NotAction !== undefined) out.push(`${from}: an Allow with NotAction (unreadable; re-break n2)`);
     for (const st of arr(g(doc, "Statement")) as St[]) if (st.Effect !== "Deny" && readsSecret(st.Action))
       for (const role of roles.map((r) => refId(r) ?? json(r))) grants.push({ role, res: arr(Array.isArray(st.Resource) ? st.Resource : [st.Resource]).map((x) => refId(x) ?? json(x)), from });
   };
-  for (const [id, p] of all(t, "AWS::IAM::Policy")) add(arr(p.Properties?.Roles), p.Properties?.PolicyDocument, id);
-  for (const [id, p] of all(t, "AWS::IAM::ManagedPolicy")) add(arr(p.Properties?.Roles), p.Properties?.PolicyDocument, id);
+  const holders = (p: Res) => [...arr(p.Properties?.Roles), ...arr(p.Properties?.Users).map((u) => `user ${json(u)}`), ...arr(p.Properties?.Groups).map((x) => `group ${json(x)}`)]; // re-break RM-2
+  for (const [id, p] of [...all(t, "AWS::IAM::Policy"), ...all(t, "AWS::IAM::ManagedPolicy")]) add(holders(p), p.Properties?.PolicyDocument, id);
+  for (const [id, p] of [...all(t, "AWS::IAM::RolePolicy"), ...all(t, "AWS::IAM::UserPolicy"), ...all(t, "AWS::IAM::GroupPolicy")]) add([p.Properties?.RoleName ?? `holder ${json(p.Properties?.UserName ?? p.Properties?.GroupName)}`], p.Properties?.PolicyDocument, id);
   for (const [id, r] of all(t, "AWS::IAM::Role")) {
     for (const ip of arr(r.Properties?.Policies)) add([{ Ref: id }], g(ip, "PolicyDocument"), `${id} inline`);
     for (const m of arr(r.Properties?.ManagedPolicyArns)) if (!MANAGED_OK.some((re) => re.test(json(m)))) out.push(`${id}: carries a managed policy not on the allow list (${json(m)})`);
@@ -97,6 +105,8 @@ export function secretReadFindings(t: Template): string[] {
     const wanted = new Set(containers(td).flatMap((c) => (c.Secrets ?? []).map((x) => refId(x.ValueFrom) ?? json(x.ValueFrom))));
     if (!exec) { if (wanted.size) out.push(`${id}: secrets but no execution role`); continue; }
     execs.set(exec, wanted);
+    const trust = g(t.Resources?.[exec], "Properties", "AssumeRolePolicyDocument");
+    if (json(trust) !== '{"Statement":[{"Action":"sts:AssumeRole","Effect":"Allow","Principal":{"Service":"ecs-tasks.amazonaws.com"}}],"Version":"2012-10-17"}') out.push(`${id}: execution role may be assumed by more than ECS tasks (${json(trust)})`);
     const got = new Set(grants.filter((x) => x.role === exec).flatMap((x) => x.res));
     for (const w of wanted) if (!got.has(w)) out.push(`${id}: execution role cannot read ${w}`);
   }
@@ -105,11 +115,10 @@ export function secretReadFindings(t: Template): string[] {
     if (!wanted) out.push(`${x.from}: ${x.role} may read secrets (${x.res.join(", ")}); only an execution role may`);
     else for (const r of x.res) if (!wanted.has(r)) out.push(`${x.from}: execution role ${x.role} reads ${r}, which its task does not use`);
   }
-  const ROOT = /^\{"AWS":\{"Fn::Join":\["",\["arn:",\{"Ref":"AWS::Partition"\}|^\{"AWS":\{"Fn::Join":\["",\["arn:aws:iam::",\{"Ref":"AWS::AccountId"\},":root"\]\]\}\}$/;
+  const ROOT = /^\{"AWS":\{"Fn::Join":\["",\["arn:(aws|",\{"Ref":"AWS::Partition"\},")?:iam::",\{"Ref":"AWS::AccountId"\},":root"\]\]\}\}$/; // this account only (re-review n3)
   for (const [id, k] of all(t, "AWS::KMS::Key")) for (const st of arr(g(k.Properties, "KeyPolicy", "Statement")) as St[]) {
     if (st.Effect === "Deny" || !decrypts(st.Action)) continue;
-    const root = ROOT.test(json(st.Principal)) && json(st.Principal).includes(":root");
-    if (!root && !/"kms:ViaService"/.test(json(st.Condition))) out.push(`${id}: key policy lets ${json(st.Principal)} decrypt outside a service (no kms:ViaService)`);
+    if (!ROOT.test(json(st.Principal)) && !/"kms:ViaService":"secretsmanager\.ca-central-1\.amazonaws\.com"/.test(json(st.Condition))) out.push(`${id}: key policy lets ${json(st.Principal)} decrypt outside a service (no kms:ViaService)`);
   }
   return out;
 }
@@ -141,6 +150,7 @@ export function roleFindings(t: Template, stage: string): string[] {
   if (m.get("DATABASE_URL") !== owner) out.push(`migration task's DATABASE_URL is ${json(m.get("DATABASE_URL"))}, not the owner's address`);
   if ([...m.values()].includes(app)) out.push("migration task holds the app role's address");
   // requests run as the app role (APP_DATABASE_URL, firm-scope.ts); DATABASE_URL is the job runner's (platform-jobs.ts)
+  if (s.get("DATABASE_URL") !== owner) out.push(`service's DATABASE_URL is ${json(s.get("DATABASE_URL"))}: the job runner needs the owner's address (re-review n1)`);
   if (s.get("APP_DATABASE_URL") !== app) out.push(`service's APP_DATABASE_URL is ${json(s.get("APP_DATABASE_URL"))}, not the app role's address`);
   for (const [n, v] of s) if (v === owner && n !== "DATABASE_URL") out.push(`service's ${n} holds the owner's address`);
   for (const [n, v] of s) if (v?.startsWith("(generated")) out.push(`service's ${n} holds the database admin's secret`);

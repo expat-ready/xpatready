@@ -93,8 +93,15 @@ test("PF-8b fail (break M-2): a managed or inline policy, a wildcard action, a r
   t.Resources!.RP = { Type: "AWS::SecretsManager::ResourcePolicy", Properties: {} };
   const key = of(t, "AWS::KMS::Key")[0][1].Properties!.KeyPolicy as { Statement: unknown[] };
   key.Statement.push({ Effect: "Allow", Principal: { AWS: { "Fn::GetAtt": [taskRole, "Arn"] } }, Action: "kms:Decrypt", Resource: "*" });
+  key.Statement.push({ Effect: "Allow", Principal: { AWS: "arn:aws:iam::999999999999:root" }, Action: "kms:Dec*", Resource: "*" }); // re-review n3
+  const secretRef = svcContainer(t).Secrets[0].ValueFrom;
+  t.Resources!.ToUser = { Type: "AWS::IAM::Policy", Properties: { Users: ["someone"], PolicyDocument: { Statement: [{ Effect: "Allow", Action: "secretsmanager:*SecretValue", Resource: secretRef }] } } }; // re-break RM-2, n2
+  t.Resources!.RolePol = { Type: "AWS::IAM::RolePolicy", Properties: { RoleName: { Ref: taskRole }, PolicyDocument: { Statement: [{ Effect: "Allow", Action: "secretsmanager:GetSecretValue", Resource: "*" }] } } };
+  t.Resources!.Not = { Type: "AWS::IAM::Policy", Properties: { Roles: [{ Ref: taskRole }], PolicyDocument: { Statement: [{ Effect: "Allow", NotAction: "iam:*", Resource: "*" }] } } };
+  const exec = td.ExecutionRoleArn["Fn::GetAtt"][0];
+  (t.Resources![exec].Properties!.AssumeRolePolicyDocument as { Statement: { Principal: unknown }[] }).Statement[0].Principal = { AWS: "*" };
   const f = secretReadFindings(t).join("\n");
-  for (const w of ["managed policy not on the allow list", `${taskRole} inline`, "resource policy, user or group", "decrypt outside a service"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  for (const w of ["managed policy not on the allow list", `${taskRole} inline`, "resource policy, user or group", "decrypt outside a service", "999999999999", 'ToUser: ', "RolePol:", "NotAction", "assumed by more than ECS tasks"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
 test("PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretString, an environment file, a sidecar's plain secret are caught", () => {
@@ -102,8 +109,9 @@ test("PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretSt
   c.Environment.push({ Name: "X", Value: "{{resolve:secretsmanager:xr/production/DATABASE_OWNER_URL}}" });
   (taskDefinitions(t).service![1].Properties!.ContainerDefinitions as unknown[]).push({ Name: "side", Environment: [{ Name: "PLATFORM_SECRET_BOX_KEYS", Value: "1:abc" }], EnvironmentFiles: [{ Type: "s3", Value: "arn:aws:s3:::b/x.env" }] });
   of(t, "AWS::SecretsManager::Secret")[0][1].Properties!.SecretString = "sk_live_x";
+  const mig = taskDefinitions(t).migration!; (mig[1].Properties!.ContainerDefinitions as C[])[0].Command = ["sh", "-c", "DATABASE_URL=postgresql://o:pw@db/x prisma migrate deploy"]; // re-break RM-1
   const f = taskSettingFindings(t, SETTINGS).join("\n");
-  for (const w of ["X holds what looks like a credential", "side: PLATFORM_SECRET_BOX_KEYS: a secret given", "an environment file", "a secret value written into the template"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  for (const w of ["X holds what looks like a credential", "side: PLATFORM_SECRET_BOX_KEYS: a secret given", "an environment file", "a secret value written into the template", `${mig[0]}: a credential outside the environment`]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
 test("PF-8b fail: one task, or both tasks in one zone, is caught", () => {
@@ -172,6 +180,8 @@ test("PF-8b fail: the service holding the owner's address, or the migration task
   m.Secrets[0].ValueFrom = appRef; s.Secrets.find((x) => x.Name === "APP_DATABASE_URL")!.ValueFrom = ownerRef;
   const f = roleFindings(t, "production").join("\n");
   assert.ok(f.includes("migration task's DATABASE_URL") && f.includes("service's APP_DATABASE_URL is") && f.includes("holds the owner's address"), f);
+  const t3 = clone(t0); svcContainer(t3).Secrets.find((x) => x.Name === "DATABASE_URL")!.ValueFrom = appRef; // re-review n1: the app role cannot start pg-boss
+  assert.ok(roleFindings(t3, "production").some((l) => l.includes("the job runner needs the owner's address")));
   void service;
   const t2 = clone(t0); // no migration task at all
   for (const [id] of of(t2, "AWS::ECS::TaskDefinition")) if (id !== taskDefinitions(t2).service![0]) delete t2.Resources![id];

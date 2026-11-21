@@ -44,3 +44,38 @@ Fix: collect statements from `AWS::IAM::Policy`, `AWS::IAM::ManagedPolicy`, `Rol
 - Cognito: three separate pools per stage, all `AllowAdminCreateUserOnly: true`. Both staff pools have `MfaConfiguration: ON` (TOTP only, no SMS). Clients are `OPTIONAL` (documented). Each pool has one public client (SRP only, `PreventUserExistenceErrors`), and deletion protection is on.
 - Mail: DKIM on with 3 CNAMEs. SPF `include:amazonses.com ~all` sits on `mail.<domain>`, never on the apex. Staging has its own zone, identity and DMARC. The wildcard does not hide the `mail.` record, which has no A record, and `mail` is a reserved firm address.
 - `cdk synth` needs no keys (test proves it). The image is pinned by digest (`^sha256:[a-f0-9]{64}$`), and ECR tags are immutable.
+
+## Re-break (afb1f3c)
+
+Verdict: 2 Major
+
+I read only `git diff efeb004..afb1f3c`. `npm test` passes (54/54); I re-ran `npm run synth` and no `cdk` or AWS CLI. I wrote 35 template mutations against the new checks (all nine check functions, production template; baseline `[]`): the original 17, re-keyed to the new logical ids, and 18 new attempts against `secretReadFindings`, `exposureFindings` and the KMS rule. **All 17 originals are now caught.** So are the reported M-1 and M-2 cases, Minors 1, 2, 3, 7 and 8, and the OAuth default (it is now `disableOAuth`, and a fail case covers it). The template itself is still clean. 18 of the new mutations get through, and these are the two Majors among them.
+
+**RM-1. A dynamic reference anywhere in a task definition except `Environment` is still missed** (`service-checks.ts:67`). That line skips task definitions with the comment "already read above", but the only part read above is `Environment`. These both return `[]`:
+- N1: the migration container's `Command` with `"--password", {"Fn::Join":["",["{{resolve:secretsmanager:",{"Ref":"xrproductionDatabaseSecret…"},":SecretString:password::}}"]]}` appended. The command still contains `"migrate","deploy"`, so the migration task is still found.
+- N2: the service container's `LogConfiguration.Options` with `{"splunk-token": <same reference>}`. PF-23c's log routing is a likely place for an `unsafeUnwrap()` token.
+Either way the plaintext ends up in the task definition, which is exactly what the Done-when forbids. Fix: run the `{{resolve:(secretsmanager|ssm-secure):` test on `json(td)` for every task definition, not only on environment values.
+
+**RM-2. `secretReadFindings` still misses grants made to IAM users** (`:87-88` read only `Roles`). N6 is `secret.grantRead(iam.User.fromUserName(this, "U", "ci-deployer"))`. I rendered it with this package's CDK: it produces `AWS::IAM::Policy {Users:["ci-deployer"], Action:["secretsmanager:DescribeSecret","secretsmanager:GetSecretValue"]}`, and every check returns `[]`. A one-line grant that a secrets-seeding runbook could well add gets past the claim "no principal else may read any secret, whatever form the grant takes". Two more paths are missed:
+- N8: the execution role's trust policy gains the account root as a principal, so anyone allowed to assume it reads all ten service secrets, the owner's address included. No check reads `AssumeRolePolicyDocument`.
+- N7: `AWS::IAM::RolePolicy` (the L1 resource type) is not scanned.
+Fix: treat any `Users` or `Groups` on a policy as a finding. Allow only `ecs-tasks.amazonaws.com` in the two execution roles' trust policies. Scan `AWS::IAM::RolePolicy`, `UserPolicy` and `GroupPolicy` as well.
+
+**Minor (new):**
+- N4 and N5: an `Allow` with `NotAction: ["iam:*"]`, or the action `secretsmanager:*SecretValue`, gets past `readsSecret` (`:20`). Fix: refuse any `NotAction` and match actions as globs.
+- KMS rule (`:21`, `:108-112`). Each of these returns `[]`:
+  - N9: a hand-written principal `{"AWS":{"Fn::Join":["",["arn:",{"Ref":"AWS::Partition"},":iam::999999999999:root"]]}}` passes as "root". The first `ROOT` alternative is only a prefix test, followed by `.includes(":root")`. CDK's own `AccountPrincipal("999…")` renders as a plain string and *is* caught.
+  - N10: `Principal: {"AWS":"*"}` passes as long as the condition mentions `kms:ViaService` with any value (`StringLike "*"`).
+  - N11 and N12: `kms:CreateGrant` (which lets a principal grant itself Decrypt) and `kms:Dec*` are not matched.
+  Fix: root means this account only (`AWS::AccountId` and `:root`, anchored). Require `StringEquals kms:ViaService = secretsmanager.ca-central-1.amazonaws.com` exactly. Count `CreateGrant` and `ReEncrypt*` with Decrypt, and match actions as globs.
+- `exposureFindings` (`:127`) checks only internet ranges, not who can reach the database:
+  - N14: DB ingress from the VPC CIDR (`connections.allowDefaultPortFrom(Peer.ipv4(vpc.vpcCidrBlock))`, a common pattern) is not flagged.
+  - N15: DB ingress from the load balancer's security group is not flagged.
+  - N13 and N17: `0.0.0.0/1` plus `128.0.0.0/1`, or a `SourcePrefixListId`, on the task security group are not flagged.
+  - N16: `PubliclyAccessible: true` is not flagged. It has no effect today because the subnets are isolated.
+  Fix: DB ingress only from `ServiceSg` and `MigrateSg`; task ingress only from the LB's security group; any non-security-group source is a finding unless it is the LB on 80/443.
+- N3 and N18: `CREDENTIAL` runs only on task definitions. `sk_live_…` in the custom-resource Lambda's `Environment.Variables` gets through. So does a `{{resolve:` that a hand-written `Fn::Join` splits into the parts `"{{resolve:","secretsmanager:"`.
+
+**The service now holds the owner's address** (`DATABASE_URL` = `xr/<stage>/DATABASE_OWNER_URL`, because pg-boss needs it). The service execution role reads that secret, and the running process holds DDL rights. This contradicts the row ("the service runs as the app role"), and the deviation is escalated correctly in `challenge.md`, so I do not count it here. My read: option 2 (an `xr_jobs` role) is what removes the owner credential from the internet-facing process, and it should not wait long. `roleFindings` holds: the owner secret under `APP_DATABASE_URL` or any other name is caught, and so are the RDS admin secret and the app role's secret in the migration task.
+
+**Still open as you noted (unchanged):** Minor 4 (Host header), 5 (staging delegation and the reserved address), 6 (DMARC `rua`) and 9 (egress, one key, CAA).
