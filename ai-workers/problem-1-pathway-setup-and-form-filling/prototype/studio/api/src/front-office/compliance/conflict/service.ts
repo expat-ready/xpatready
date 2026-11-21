@@ -21,7 +21,7 @@ import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../../duplicates/phone.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../../sales/corporate/match.ts";
 import { actorOf, visibilityOf } from "../../sales/common.ts";
-import { clean, lockParty, longTextOk, partyOf, termsOf, type Party, type Terms } from "./gate.ts";
+import { clean, clearance, lockParty, longTextOk, partyOf, termsOf, type Party, type Terms } from "./gate.ts";
 
 type Tx = Prisma.TransactionClient;
 type Clock = { now(): number };
@@ -31,10 +31,15 @@ type Result = (typeof RESULTS)[number];
  *  at most STORED visible matches are kept on a check, the strongest first (the table holds 500 and 256 KiB: R2-M3). */
 const LIMIT = 5001, STORED = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The result's refusal in plain words (FO-13s review M1: no internal codes on a screen). */
+export const CHOOSE_RESULT = "Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.";
 export const NOT_SEARCHED = "Other parties on cases are not searched yet (the case side's party search is not connected).";
 export const HIDDEN_LINE = "Matches with records you cannot open: a manager who may see them confirms this check.";
 const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const notFound = (what = "prospect"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
+/** A text as the audit line keeps it: AuditPort's values hold at most 4,000 UTF-16 units, so a longer disclosure (the table
+ *  takes 10,000) is cut at a whole character with "…" (FO-13s breaker M1: a 500 otherwise); the check row keeps it whole. */
+const auditText = (t: string | null) => { if (t === null || t.length <= 4000) return t; let out = ""; for (const ch of t) { if (out.length + ch.length > 3999) break; out += ch; } return `${out}…`; };
 const tooMany = (): never => problem(422, "Too many matches", "More than 5,000 records match this client: the check cannot be complete. Ask the tech lead.", { code: "TOO_MANY_MATCHES" });
 const forbidden = (detail: string): never => problem(403, "Not allowed", detail, { code: "FORBIDDEN" });
 /** Stored match, FO-13's shape (fo_compliance_matches_ok). */
@@ -126,8 +131,8 @@ export class ConflictChecks {
 
   /** The result and disclosure of a body: POTENTIAL_CONFLICT needs the disclosure the client reads (s. 24(3)(o)); no other result carries one. */
   private outcome(b: Record<string, unknown>, required: boolean): { result: Result | null; disclosureText: string | null } {
-    if (b.result === undefined || b.result === null) return required ? bad("result", `The result is one of ${RESULTS.join(", ")}.`) : { result: null, disclosureText: b.disclosureText ? bad("disclosureText", "A disclosure belongs to a POTENTIAL_CONFLICT result.") : null };
-    const result = typeof b.result === "string" && (RESULTS as readonly string[]).includes(b.result) ? (b.result as Result) : bad("result", `The result is one of ${RESULTS.join(", ")}.`);
+    if (b.result === undefined || b.result === null) return required ? bad("result", CHOOSE_RESULT) : { result: null, disclosureText: b.disclosureText ? bad("disclosureText", "A disclosure belongs to a POTENTIAL_CONFLICT result.") : null };
+    const result = typeof b.result === "string" && (RESULTS as readonly string[]).includes(b.result) ? (b.result as Result) : bad("result", CHOOSE_RESULT);
     const d = typeof b.disclosureText === "string" && b.disclosureText.trim() ? b.disclosureText.trim() : null;
     if (b.disclosureText !== undefined && b.disclosureText !== null && typeof b.disclosureText !== "string") bad("disclosureText", "The disclosure is text.");
     if (result === "POTENTIAL_CONFLICT" && !d) bad("disclosureText", "A potential conflict needs the disclosure text the client will read in the retainer (Code s. 15(1), 24(3)(o)).");
@@ -169,7 +174,7 @@ export class ConflictChecks {
           searchedName: t.name, searchedEmail: t.email, searchedPhone: t.phone, matches: s.matches as Prisma.InputJsonValue, hiddenCount: s.hidden, result: o.result, disclosureText: o.disclosureText, checkedBy: ctx.staffId, checkedAt: now } });
         await this.written(tx, ctx, "conflict.checked", id, `Conflict check recorded (${s.matches.length} match${s.matches.length === 1 ? "" : "es"} stored${s.notStored ? `, ${s.notStored} more found and not stored` : ""}${s.hidden ? ", some hidden" : ""}; ${o.result ?? "waiting for a confirmation"})`,
           { checkId: id, prospectId: prospect.id, partyKind: party.kind, personId: party.kind === "PERSON" ? party.id : null, companyId: party.kind === "COMPANY" ? party.id : null, result: o.result, hiddenMatches: s.hidden > 0, confirmed: false, clientAlready: prospect.wonVia !== null },
-          { before: null, after: { prospectId: prospect.id, partyKind: party.kind, result: o.result, disclosureText: o.disclosureText, hiddenCount: s.hidden, checkedBy: ctx.staffId } });
+          { before: null, after: { prospectId: prospect.id, partyKind: party.kind, result: o.result, disclosureText: auditText(o.disclosureText), hiddenCount: s.hidden, checkedBy: ctx.staffId } });
       });
     } catch (e) {
       if (e instanceof HttpException) throw e;
@@ -222,12 +227,26 @@ export class ConflictChecks {
     return { ...this.view(c, ctx, true), matchesNow: s.matches, hiddenNow: s.hidden };
   }
 
-  /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for). */
+  /** The prospect's party's checks, newest first (on the person or company, whichever engagement they were for), with the
+   *  checker's and confirmer's names (FO-13s challenge M1: "recorded with who") and the gate's own verdict for this
+   *  prospect (`clearance`: its 409 caught and answered, anything else thrown), so the screen works out no rule. */
   async list(ctx: StaffContext, prospectId: string) {
-    const { party } = await this.engagement(ctx, prospectId);
+    const { prospect, party } = await this.engagement(ctx, prospectId);
     const rows = await this.db.foConflictCheck.findMany({ where: firmScope(ctx.firmId, party.kind === "PERSON" ? { personId: party.id } : { companyId: party.id }), orderBy: [{ checkedAt: "desc" }, { id: "desc" }] });
     const every = (await visibilityOf(this.db, ctx)).seesAll;
-    return { checks: rows.map((r) => this.view(r, ctx, every)), scope: this.parties ? null : NOT_SEARCHED };
+    const ids = [...new Set(rows.flatMap((r) => [r.checkedBy, r.confirmedBy]).filter((x): x is string => !!x))];
+    const names = new Map((await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: ids } }), select: { id: true, displayName: true } })).map((x) => [x.id, x.displayName]));
+    let verdict: { ok: true } | { ok: false; code: string; detail: string };
+    try { await clearance(this.db, ctx.firmId, prospect.id); verdict = { ok: true }; }
+    catch (e) {
+      if (!(e instanceof HttpException) || e.getStatus() !== 409) throw e;
+      const r = e.getResponse() as { code?: unknown; detail?: unknown };
+      verdict = { ok: false, code: String(r.code ?? "CONFLICT"), detail: String(r.detail ?? "") };
+    }
+    return {
+      checks: rows.map((r) => ({ ...this.view(r, ctx, every), checkedByName: names.get(r.checkedBy) ?? null, confirmedByName: r.confirmedBy ? names.get(r.confirmedBy) ?? null : null })),
+      scope: this.parties ? null : NOT_SEARCHED, clearance: verdict,
+    };
   }
 
   /** One audit line (ids and the result, never a searched value), then `conflict.checked` last (contracts §0.5). */
