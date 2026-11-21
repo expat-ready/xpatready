@@ -19,7 +19,7 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 (3) **Lead 17 lines 20:3x-22:0x and Lead 16's (3)/(5)** (R1.4 #2845 labelled, QA-500 ruled, #2850 Lead read + shard (11) fail, #1959 round 21): word for word in `product/history/STATE-2026-11-21-2110-lead17s3-check-lines-5b-5e.md`.
 (5d) **22:2x-23:2x** (lanes Q7/Q8/Q9/DEMO-LINK/Lead 19, R1.10 + R1.3 Partial, forecast 11, #2860 read, #2845 labelled and queued ETA 00:28): word for word in the history file in (3).
 (5l) **00:4x: R1.4 Works → 10/15, 42/101.** R1.19 ruled Partial (billing period must be state) → PF-5 part 3 #2870; QA-703 → PF-12b part 5 #2871; AWS redeploy waits on the founder's sign-in (red line above). Lines 00:1x-00:2x in the history file in (3).
-(5q) **01:5x:** #2870 labelled + queued. #2871 merged (QA-703 closed in code). #2687 fix 06baf4dd2 (pf28 allow-list, booking-seed) → Lead's independent diff-only Opus review running.
+(5q) **01:5x:** #2870 labelled + queued. #2871 merged (QA-703 closed in code). #2687 fix 06baf4dd2 (pf28 allow-list, booking-seed) → independent diff-only Opus **Approve** posted (7068801379), round 7 allowed, /run full started; label when green.
 (6) **Owed records:** DECISIONS rows: QA-697 Major; Lead rulings from Lead 15 list. BACKLOG: image scan CRITICAL 5 / HIGH 12; RDS CA + verify-full; secret-refusal as one JSON line; QA-641-643 deploy row; QA-645 cloud check on main (after 22 Nov); plus Lead 15's owed list (in the history file).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
