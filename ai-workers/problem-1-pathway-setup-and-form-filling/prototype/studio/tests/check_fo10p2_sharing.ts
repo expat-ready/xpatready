@@ -187,6 +187,18 @@ try {
   const noSetup = sql(`select count(*) from fo_sales_setup where firm_id = '${fresh}'`);
   const freshSet = await rules.setSharing(freshCtx, { mode: "ONE_PERSON", onePersonStaffId: freshOwner }).then((x) => x, (e) => String(e));
   ok("FO-10p2 fail (review M1): a firm whose front office was never set up can choose its sharing setting (set up on the way, no 500)", noSetup === "0" && typeof freshSet === "object" && freshSet.mode === "ONE_PERSON" && sql(`select count(*) from fo_sales_setup where firm_id = '${fresh}'`) === "1", freshSet);
+
+  // ------------------------------------------------------------------------------- the rollback (the tech lead's read, P-601)
+  // Run, not only read, on this scratch database (its migrations were applied by psql, so the Prisma bookkeeping table
+  // is made here with the one column the rollback touches), then the migration is applied again.
+  const FOLDER = "20261121090000_fo10p2_least_recent_turns", RB = join(MIG, FOLDER, "rollback.sql");
+  sql(`create table if not exists "_prisma_migrations" (migration_name text); insert into "_prisma_migrations" (migration_name) values ('${FOLDER}')`);
+  const rolled = (() => { try { execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", RB], { stdio: ["ignore", "ignore", "pipe"] }); return true; } catch { return false; } })();
+  const cols = sql(`select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_name = 'fo_assignment_rule' and column_name in ('turns', 'turn_no', 'last_staff_id')`);
+  ok("FO-10p2 pass (P-601): the rollback runs in one transaction, drops turns, turn_no and their check, keeps part 1's last_staff_id and every rule, and clears its _prisma_migrations row",
+    rolled && cols === "last_staff_id" && sql(`select count(*) from pg_constraint where conname = 'fo_assignment_rule_turns_check'`) === "0" && Number(sql(`select count(*) from fo_assignment_rule`)) > 0 && sql(`select count(*) from "_prisma_migrations" where migration_name = '${FOLDER}'`) === "0", { rolled, cols });
+  const again = (() => { try { execFileSync(join(BIN, "psql"), [URL_, "-v", "ON_ERROR_STOP=1", "-q", "-1", "-f", join(MIG, FOLDER, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] }); return true; } catch { return false; } })();
+  ok("FO-10p2 fail (P-601): after the rollback the migration applies again (the rollback leaves nothing that blocks it)", again && sql(`select string_agg(column_name, ',' order by column_name) from information_schema.columns where table_name = 'fo_assignment_rule' and column_name in ('turns', 'turn_no')`) === "turn_no,turns");
 } catch (e) {
   fail++;
   console.log(`FAIL  FO-10p2: the check stopped — ${String((e as Error).stack ?? e).slice(0, 1200)}`);
