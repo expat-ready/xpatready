@@ -105,8 +105,18 @@ export class AppService extends Construct {
     const appSecrets: Record<string, sm.Secret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])) };
 
     // --- Cognito: three separate pools (PF-4b staff, PF-4s our own staff, PF-4p clients)
+    // QA-643 (PF-4b; AWS's cognito-idp API model 2016-04-18, botocore 1.44.9, read 21 Nov 2026): a staff member signs in
+    // with a password plus the authenticator app, or with a passkey that verifies the person, which replaces both
+    // (`FactorConfiguration` MULTI_FACTOR_WITH_USER_VERIFICATION: "passkey authentication with user verification satisfies
+    // MFA requirements"; never a second step to a password). Needs the Essentials tier (the API's default, made explicit)
+    // and the client's ALLOW_USER_AUTH ("covers username-password, secure remote password (SRP), passwordless, and passkey
+    // authentication"). The relying party is the stack's domain, so a passkey works at every `<firm>.<domain>`. No-domain
+    // staging has no domain to name: passkeys stay off there (password plus app only).
+    const passkeys = (staff: boolean) => staff && !noDomain;
     const pool = (name: (typeof POOLS)[number], staff: boolean) => {
       const p = new cognito.UserPool(this, `Pool-${name}`, {
+        featurePlan: cognito.FeaturePlan.ESSENTIALS,
+        ...(passkeys(staff) ? { signInPolicy: { allowedFirstAuthFactors: { password: true, passkey: true } }, passkeyRelyingPartyId: domain, passkeyUserVerification: cognito.PasskeyUserVerification.REQUIRED } : {}),
         userPoolName: `xr-${stage}-${name}`,
         selfSignUpEnabled: false, // staff are invited (PF-4b); our own staff added by us (PF-4s); clients invited by a firm (PF-4p)
         signInAliases: { email: true },
@@ -118,7 +128,8 @@ export class AppService extends Construct {
         deletionProtection: true,
         removalPolicy: RemovalPolicy.RETAIN,
       });
-      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true }, disableOAuth: true }); // no hosted UI yet: no OAuth flows or placeholder callbacks
+      if (passkeys(staff)) (p.node.defaultChild as cognito.CfnUserPool).webAuthnFactorConfiguration = "MULTI_FACTOR_WITH_USER_VERIFICATION"; // no L2 property in aws-cdk-lib 2.275.0
+      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true, user: passkeys(staff) }, disableOAuth: true }); // no hosted UI yet: no OAuth flows or placeholder callbacks
       return p;
     };
     const pools = { staff: pool("staff", true), "own-staff": pool("own-staff", true), clients: pool("clients", false) };

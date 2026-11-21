@@ -1,7 +1,7 @@
 // PF-8b's checks over a synthesized template: pure functions returning plain-words findings (empty = pass), run on the
 // real stacks (must pass) and on broken copies (must fail) by test/service.test.ts, as PF-8a's checks.ts does.
 import type { Template } from "./checks.ts";
-import { CERT_ARN_PATTERN } from "./service.ts";
+import { CERT_ARN_PATTERN, NO_DOMAIN } from "./service.ts";
 
 type Res = { Type: string; Properties?: Record<string, unknown> };
 /** A nested template value by path (unknown when any step is missing). */
@@ -234,8 +234,10 @@ export function mailFindings(t: Template, domain: string): string[] {
   return out;
 }
 
-/** Three separate Cognito pools (staff, own-staff, clients), each with its own app client; both staff pools need two-step. */
-export function poolFindings(t: Template, stage: string): string[] {
+/** Three separate Cognito pools (staff, own-staff, clients), each with its own app client; both staff pools need two-step.
+ *  QA-643: on a stack with a domain both staff pools also take a passkey with user verification in place of password plus
+ *  app (`domain` is the stack's domain, or NO_DOMAIN: then no staff pool may offer passkeys, having no relying party). */
+export function poolFindings(t: Template, stage: string, domain: string): string[] {
   const out: string[] = [];
   const pools = all(t, "AWS::Cognito::UserPool");
   const want = ["staff", "own-staff", "clients"].map((n) => `xr-${stage}-${n}`);
@@ -247,11 +249,34 @@ export function poolFindings(t: Template, stage: string): string[] {
     if (/-(own-)?staff$/.test(String(p.Properties?.UserPoolName)) && p.Properties?.MfaConfiguration !== "ON") out.push(`${id}: a staff pool without required two-step sign-in`);
     if (p.Properties?.DeletionProtection !== "ACTIVE") out.push(`${id}: deletion protection off`);
     if (g(p.Properties, "AdminCreateUserConfig", "AllowAdminCreateUserOnly") !== true) out.push(`${id}: anyone may sign up (break m2)`);
+    if (/-(own-)?staff$/.test(String(p.Properties?.UserPoolName))) out.push(...passkeyFindings(t, id, p, domain));
   }
   for (const [id, c] of all(t, "AWS::Cognito::UserPoolClient")) if (c.Properties?.AllowedOAuthFlowsUserPoolClient === true) out.push(`${id}: OAuth flows on with no hosted domain or real callback (break m3)`);
   const svc = taskDefinitions(t).service, poolEnv = svc && env(containers(svc[1])[0]).get("PLATFORM_COGNITO_USER_POOL_ID");
   const staffPool = pools.find(([, p]) => String(p.Properties?.UserPoolName) === `xr-${stage}-staff`)?.[0];
   if (!staffPool || refId(poolEnv) !== staffPool) out.push(`the service signs staff in against ${json(poolEnv)}, not the staff pool (break m2)`);
+  return out;
+}
+
+/** QA-643 (PF-4b): one staff pool's passkey settings. With a domain: passkeys a first factor beside the password,
+ *  user verification required, a verified passkey counting as both steps (MULTI_FACTOR_WITH_USER_VERIFICATION, never a
+ *  passkey as a second step to a password nor a passkey alone without verification), the relying party the stack's domain,
+ *  a tier that has these (Essentials or Plus), and its app client allowing USER_AUTH. With no domain: no passkey at all. */
+function passkeyFindings(t: Template, id: string, p: Res, domain: string): string[] {
+  const out: string[] = [], P = p.Properties ?? {};
+  const first = arr(g(P, "Policies", "SignInPolicy", "AllowedFirstAuthFactors")).map(String);
+  const client = all(t, "AWS::Cognito::UserPoolClient").find(([, c]) => refId(c.Properties?.UserPoolId) === id)?.[1];
+  const flows = arr(client?.Properties?.ExplicitAuthFlows).map(String);
+  if (domain === NO_DOMAIN) {
+    if (first.includes("WEB_AUTHN") || P.WebAuthnRelyingPartyID !== undefined || P.WebAuthnFactorConfiguration !== undefined) out.push(`${id}: passkeys on with no domain to be their relying party`);
+    return out;
+  }
+  if (!first.includes("WEB_AUTHN") || !first.includes("PASSWORD")) out.push(`${id}: first sign-in factors ${json(first)}, not a password and a passkey (QA-643)`);
+  if (P.WebAuthnUserVerification !== "required") out.push(`${id}: passkey user verification ${json(P.WebAuthnUserVerification)}, not required`);
+  if (P.WebAuthnFactorConfiguration !== "MULTI_FACTOR_WITH_USER_VERIFICATION") out.push(`${id}: a passkey is ${json(P.WebAuthnFactorConfiguration)}, not both steps with user verification (MULTI_FACTOR_WITH_USER_VERIFICATION)`);
+  if (P.WebAuthnRelyingPartyID !== domain) out.push(`${id}: passkey relying party ${json(P.WebAuthnRelyingPartyID)}, not ${domain}`);
+  if (!["ESSENTIALS", "PLUS"].includes(String(P.UserPoolTier))) out.push(`${id}: tier ${json(P.UserPoolTier)} has no passkey sign-in (Essentials or Plus)`);
+  if (!flows.includes("ALLOW_USER_AUTH")) out.push(`${id}: its app client does not allow USER_AUTH, so no passkey can sign in`);
   return out;
 }
 
