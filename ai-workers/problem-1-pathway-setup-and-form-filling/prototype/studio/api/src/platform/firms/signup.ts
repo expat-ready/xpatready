@@ -39,6 +39,8 @@ const LIMITS: Limits = { signupPerIp: 10, verifyPerIp: 30, windowMinutes: 10, mi
 export const PENDING_HOURS = 24;
 const WRONG_CODES = 5, MAILS_PER_EMAIL_HOUR = 3;
 export const PURGE_JOB = "platform.signup.purge";
+/** The new-email step's transaction holds the provider's register call (Sample: 15 s, as a slow identity provider). */
+const SIGNUP_TX_MS = 15_000;
 export const ACCEPTED = "If this email can be used, we have sent a message to it. Open it to confirm your sign-up.";
 export const ALREADY = "You already have an account. Sign in.";
 export const TAX_NOTE = "+ applicable taxes";
@@ -139,7 +141,27 @@ export class FirmSignUp {
 
   private async signUpWork(email: string, b: z.output<typeof Body>, planCode: string, termIds: string[]) {
     if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
-    const known = await this.knownAccount(email);
+    const token = randomBytes(32).toString("base64url");
+    // Lead 15 on #2814: the staff lookup and the pending row are one step with one firm-less platform.bypass line (the
+    // pending id, never the email), in one transaction: a line that cannot be written leaves no pending row (P-607). The
+    // provider call sits inside it, as the platform send's does (messages.ts sendPlatformRow), within SIGNUP_TX_MS.
+    const known = await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
+      const firm = await this.knownAccount(email, tx);
+      if (firm) return firm;
+      // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
+      // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
+      const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
+      const now = await dbNow(tx);
+      await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
+      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
+      const row = await tx.platformSignupPending.create({ data: {
+        email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
+        termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
+      }, select: { id: true } });
+      await touchPlatform(tx, { step: "signup.new-email", key: row.id });
+      return null;
+    }, { timeout: SIGNUP_TX_MS, maxWait: SIGNUP_TX_MS });
     if (known) {
       await touchFirms(this.db, [known]);   // PF-12b: the lookup read that firm's staff; its line before the email (P-607)
       // PF-5v part 2 (review M1 of #2456): our own platform account email (PF-19p), never the firm's: as the firm's it
@@ -147,20 +169,6 @@ export class FirmSignUp {
       await this.ports.mail.send({ platformAccount: true, to: email, replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: `${ALREADY}\n${this.ports.appUrl}/account`, class: "TRANSACTIONAL", templateKey: "platform.signup.already_have_account" });
       return;
     }
-    const token = randomBytes(32).toString("base64url");
-    // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
-    // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
-    const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
-    await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
-      const now = await dbNow(tx);
-      await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
-      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
-      await tx.platformSignupPending.create({ data: {
-        email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
-        termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
-      } });
-    });
   }
 
   /** Work started after an answer; its failure is logged without personal data. `settled()` waits for it (tests). */
@@ -177,11 +185,19 @@ export class FirmSignUp {
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
     const parsed = VerifyBody.safeParse(body ?? {});
     if (!parsed.success) throw notFound();
-    const now = await dbNow(this.db);
-    const pending = await this.db.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
+    // Lead 15 on #2814: a refused verify (an unknown, used or expired link, too many wrong codes, a wrong code, a plan that
+    // is gone) reads our pending register with no firm: one firm-less platform.bypass line (the pending id, else none)
+    // in a transaction with the read, before the answer; a line that cannot be written answers 500 and counts nothing.
+    const refused = (key: string | null, step = "signup.verify-refused") => this.db.$transaction(async (tx) => { await touchPlatform(tx, { step, key }); });
+    const { now, pending } = await this.db.$transaction(async (tx) => {
+      const at = await dbNow(tx), row = await tx.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
+      if (!row || row.usedAt || row.expiresAt <= at || (this.wrongCodes.get(row.id) ?? 0) >= WRONG_CODES) await touchPlatform(tx, { step: "signup.verify-refused", key: row?.id ?? null });   // 5 wrong codes end the link (break m5)
+      return { now: at, pending: row };
+    });
     if (!pending || pending.usedAt || pending.expiresAt <= now) throw notFound();
-    if ((this.wrongCodes.get(pending.id) ?? 0) >= WRONG_CODES) throw notFound();   // 5 wrong codes end the link (break m5)
+    if ((this.wrongCodes.get(pending.id) ?? 0) >= WRONG_CODES) throw notFound();
     if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) {
+      await refused(pending.id);
       if (this.wrongCodes.size > 50_000) this.wrongCodes.clear();   // links last 24 hours; the cap is per process
       this.wrongCodes.set(pending.id, (this.wrongCodes.get(pending.id) ?? 0) + 1);
       throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
@@ -189,7 +205,7 @@ export class FirmSignUp {
     const existing = await this.knownAccount(pending.email);
     if (existing) { await touchFirms(this.db, [existing]); throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY); }   // PF-12b: that firm's line, then the refusal
     const plan = await this.db.platformPlan.findFirst({ where: { code: pending.planCode, active: true } });
-    if (!plan) throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown.");   // break m7
+    if (!plan) { await refused(pending.id); throw problem(409, "PLAN_GONE", "Choose a plan again", "The plan you chose is no longer offered. Sign up again and choose one of the plans shown."); }   // break m7
     const made = await this.db.$transaction(async (tx) => {
       const used = await tx.platformSignupPending.updateMany({ where: { id: pending.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "VERIFIED" } });
       if (used.count !== 1) throw notFound();   // a double submit makes one firm (the row's lock orders the two)
@@ -234,10 +250,10 @@ export class FirmSignUp {
   }
 
   /** The firm of a staff member or firm contact with this email (an account exists), else null. */
-  private async knownAccount(email: string): Promise<string | null> {
-    const staff = await this.db.platformStaff.findFirst({ where: { email }, select: { firmId: true } });
+  private async knownAccount(email: string, db: Tx | PrismaClient = this.db): Promise<string | null> {
+    const staff = await db.platformStaff.findFirst({ where: { email }, select: { firmId: true } });
     if (staff) return staff.firmId;
-    return (await this.db.platformFirm.findUnique({ where: { contactEmail: email }, select: { id: true } }))?.id ?? null;
+    return (await db.platformFirm.findUnique({ where: { contactEmail: email }, select: { id: true } }))?.id ?? null;
   }
 
   private limit(key: string, max: number) {

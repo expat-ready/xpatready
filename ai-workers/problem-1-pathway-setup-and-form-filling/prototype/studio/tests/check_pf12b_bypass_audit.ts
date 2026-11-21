@@ -223,12 +223,30 @@ try {
   const s = new FirmSignUp(db, ports);
   const p = await s.plans(); await clock.advance({ seconds: 5 });
   const form = { email: "owner@pf12b.example.com", password: "correct horse battery staple 77", firmName: "PF12b Immigration", countryCode: "CA", acceptedTerms: p.terms.map((t) => t.id), formStamp: p.formStamp, planCode: p.defaultPlan };
+  // Lead 15 on #2814: sign-up's no-firm steps each write one firm-less line, with the pending id and never the email.
+  const stepLines = (step: string) => sql(`select coalesce(string_agg(coalesce(firm_id::text, 'null') || '|' || coalesce(detail->>'key', 'none') || '|' || (position('@' in detail::text || summary) > 0)::text, ',' order by at), '') from audit_event where action = 'platform.bypass' and detail->>'use' = 'platform.firms.signup' and detail->>'step' = '${step}'`);
+  const failAll = { record: async () => { throw new Error("audit store down (Sample)"); } };
+  const wasSN = onBypassAudit(failAll);
+  await s.signUp({ ...form, email: "blocked@pf12b3.example.com" }, "10.12.0.20"); await s.settled();
+  onBypassAudit(wasSN);
+  ok("PF-12b3 fail (sign-up, new email): when the line cannot be written, no pending sign-up is stored (lookup, provider call and pending row are one step)", sql(`select count(*) from platform_signup_pending where email = 'blocked@pf12b3.example.com'`) === "0" && stepLines("signup.new-email") === "");
   await s.signUp(form, "10.12.0.1"); await s.settled();
+  const pendingId = sql(`select id from platform_signup_pending where email = '${form.email}' and used_at is null`);
+  ok("PF-12b3 pass (sign-up, new email): the staff lookup and the pending row write one platform.bypass line with no firm, keyed by the pending id, with no email in it", stepLines("signup.new-email") === `null|${pendingId}|false`, stepLines("signup.new-email"));
   const link = identity.sent.find((m) => m.to === form.email)?.text ?? "";
   const token = /token=([A-Za-z0-9_-]{43})/.exec(link)?.[1] ?? "", code = /code=(\d{6})/.exec(link)?.[1] ?? "";
   const firmsBefore = sql(`select count(*) from platform_firm`), signupBefore = lines("platform.firms.signup");
   const badErr = await errOf(() => s.verify({ token: "x".repeat(43), code }, "10.12.0.2"));
-  ok("PF-12b DW4 fail: a refused verify (an unknown link) makes no firm and writes no line", badErr !== null && sql(`select count(*) from platform_firm`) === firmsBefore && lines("platform.firms.signup") === signupBefore, String(badErr));
+  ok("PF-12b DW4 fail: a refused verify (an unknown link) makes no firm and writes no firm's line", badErr !== null && sql(`select count(*) from platform_firm`) === firmsBefore && lines("platform.firms.signup") === signupBefore, String(badErr));
+  ok("PF-12b3 pass (verify, unknown link): one platform.bypass line with no firm and no key (no pending row), and the answer is the same 404", (badErr as { getStatus?: () => number })?.getStatus?.() === 404 && stepLines("signup.verify-refused") === "null|none|false", stepLines("signup.verify-refused"));
+  const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, "0");
+  const wrongErr = await errOf(() => s.verify({ token, code: wrong }, "10.12.0.21"));
+  ok("PF-12b3 pass (verify, wrong code): 400 CODE_WRONG and one more firm-less line, keyed by the pending id", (wrongErr as { getStatus?: () => number })?.getStatus?.() === 400 && stepLines("signup.verify-refused") === `null|none|false,null|${pendingId}|false`, stepLines("signup.verify-refused"));
+  const wasV = onBypassAudit(failAll);
+  const vUnknown = await errOf(() => s.verify({ token: "y".repeat(43), code }, "10.12.0.22")), vWrong = await errOf(() => s.verify({ token, code: wrong }, "10.12.0.23"));
+  onBypassAudit(wasV);
+  ok("PF-12b3 fail (verify): when the line cannot be written, an unknown link and a wrong code both answer 500 in plain words (BypassNotRecorded), and no line is written",
+    plain(vUnknown) && plain(vWrong) && stepLines("signup.verify-refused").split(",").length === 2, { vUnknown: String(vUnknown), vWrong: String(vWrong) });
   const was4 = onBypassAudit(refusing);
   const rolled = await errOf(() => s.verify({ token, code }, "10.12.0.3"));
   onBypassAudit(was4);
@@ -260,9 +278,9 @@ try {
   const purgeErr = await errOf(() => asJob("platform.signup.purge", () => s.purgeExpired()));
   onBypassAudit(wasF);
   ok("PF-12b3 fail (job:platform.signup.purge): when the line cannot be written the purge does not happen (BypassNotRecorded, nothing deleted)", plain(purgeErr) && sql(`select count(*) from platform_signup_pending`) === pendingBefore && Number(pendingBefore) > 0 && total() === before7 + 1, { purgeErr: String(purgeErr), pendingBefore });
-  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4, "job:platform.signup.purge": 1 };
+  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 5, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4, "job:platform.signup.purge": 1 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
-  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2, limit change 2 + its notices 2, the purge 1 with no firm: PF-12b part 3), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2 + its no-firm steps 3 (new email, an unknown link, a wrong code), catch-up 2, storage_daily 2, limit change 2 + its notices 2, the purge 1 with no firm: PF-12b part 3), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
 
   // ------------------------------------------------------------------------- brief PF-12b1m: PF-19p's two new uses
   // PF-12b part 3: both are "platform" uses (they read and write only PLATFORM_ACCOUNT rows, no firm) and each writes one

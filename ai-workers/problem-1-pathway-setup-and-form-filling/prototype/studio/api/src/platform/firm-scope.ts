@@ -224,9 +224,12 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
  *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
  *  entry is the tech lead's later row). That shape takes the request's or job's firm when one is in scope, so a "platform"
  *  use in a firm's scope is refused here (fail-closed) rather than land its line on that firm's trail (break m3). */
-export async function touchPlatform(tx: unknown): Promise<void> {
+/** `step` (Lead 15's ruling on #2814): a per-firm use's step that touches no firm (sign-up's new-email lookup and pending
+ *  row; a refused verify) names itself and writes the same firm-less line; `key` is a pending id, never a secret, code
+ *  or email. Without a step, only a "platform" use writes. */
+export async function touchPlatform(tx: unknown, at?: { step: string; key?: string | null }): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
-  if (!use || BYPASS_USES[use]?.audit !== "platform") return;
+  if (!use || (BYPASS_USES[use]?.audit !== "platform" && !at?.step)) return;
   if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchPlatform: give the caller's transaction, not the client");
   if (requestScope.getStore()?.firmId?.() || currentJobFirm()) throw new BypassNotRecorded(use, new FirmScopeError("touchPlatform: a platform use's line names no firm, but this request or job acts for one"));
   const seen = touched.get(tx) ?? new Set<string>();
@@ -238,7 +241,7 @@ export async function touchPlatform(tx: unknown): Promise<void> {
   try {
     const workspaceId = await platformAuditWorkspaceId(tx as Parameters<typeof platformAuditWorkspaceId>[0]);
     await recorder().record(tx, { workspaceId, actor: `system:${use}`, action: "platform.bypass", entity: "bypass use", entityKey: use,
-      summary: `Our platform used the bypass role for its own records, no firm's (${use}).`, detail: { use, method, correlationId } });
+      summary: `Our platform used the bypass role for its own records, no firm's (${use}${at ? `, ${at.step}` : ""}).`, detail: { use, method, correlationId, ...(at ? { step: at.step, key: at.key ?? null } : {}) } });
   } catch (e) { seen.delete(""); throw new BypassNotRecorded(use, e); }
 }
 /** For a use that only reads firms' rows (a sweep's read, a lookup): each firm's line in a transaction of its own. Returns
