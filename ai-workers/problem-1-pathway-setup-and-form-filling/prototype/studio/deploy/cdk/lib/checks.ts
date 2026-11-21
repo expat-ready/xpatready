@@ -115,9 +115,10 @@ export function regionFindings(stacks: SynthStack[], allow: RegionAllowance[] = 
       if (section !== "Rules") for (const why of opaque(s.template, s.template[section])) out.push(`${s.name} ${section}: ${why}, whose region the guard cannot read`);
     }
     for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
-      for (const why of opaque(s.template, withoutOnCallEmail(s.template, r))) out.push(`${s.name}/${id} (${r.Type}): ${why}, whose region the guard cannot read`);
+      const bare = withoutOnCallEmail(s.template, r); // PF-23c: both checks below read the same resource (review R2-M1)
+      for (const why of opaque(s.template, bare)) out.push(`${s.name}/${id} (${r.Type}): ${why}, whose region the guard cannot read`);
       // a dynamic reference split across Fn::Join parts is seen once the parts are joined (round 2, R2-3)
-      if (!opaque(s.template, r).length && /\{\{resolve:(?!secretsmanager:)/.test(json(flatten(r, d)))) out.push(`${s.name}/${id} (${r.Type}): a dynamic reference (joined from parts), whose region the guard cannot read`);
+      if (!opaque(s.template, bare).length && /\{\{resolve:(?!secretsmanager:)/.test(json(flatten(r, d)))) out.push(`${s.name}/${id} (${r.Type}): a dynamic reference (joined from parts), whose region the guard cannot read`);
       if (r.Type === "AWS::KMS::Key" && r.Properties?.MultiRegion !== undefined && r.Properties.MultiRegion !== false) out.push(`${s.name}/${id} (${r.Type}) is a multi-region key`);
       for (const region of regionsIn(r, d)) {
         if (region === HOME || here(region, r.Type)) continue;

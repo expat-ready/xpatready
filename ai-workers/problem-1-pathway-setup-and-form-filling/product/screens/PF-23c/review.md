@@ -62,3 +62,61 @@ Score: **N/A**. There is no screen, no running service and no person who uses th
 * The CDK feature-flag defaults, which are PF-8c's.
 
 Verdict: Changes requested
+
+---
+
+# Round 2: head `004d2bf5f1408026fb1676a5e0b91b10ca574910` (diff only)
+
+Read: `baf2fc6a6` (review fixes) and `004d2bf5f` (after PF-8rc). The merge commit `759eaa0a4` (main, with #2725) was not reviewed line by line. In `deploy/cdk` on this head, `npm test` passes **58 of 58** and `npm run synth` exits 0, both run by me.
+
+## Round 1 findings
+* **B1: closed in part.**
+  * The five types are added to `ESTATE_TYPES` (`checks.ts`, end of the list).
+  * The PF-23c region test now passes `REGION_ALLOW` and runs `typeFindings` (`test/observability.test.ts:49-50`).
+  * The estate.ts import is moved to the top.
+  * The combined tree with PF-8rc is green.
+  * The on-call email exemption is new code and has a hole: see R2-M1.
+* **M1: closed.** The page level is NFR5-15's "5xx<0.1%" (ADR line 201, checked) × 14.4, giving 1.44 % (`observability.ts:25-31`).
+  * The factor is labelled Sample, and its attribution and the "about two days" claim are correct: 30 / 14.4 ≈ 2.1 days.
+  * The test pins the threshold, the SLO and the description.
+  * The slow-burn gap is stated for the founder (README, `observability.ts:15-17`).
+* **m1: closed.** Alert-line alarms send no OK (`:99`, `ok = false` on the alert loop). `alarmFindings` refuses an OK action on an `alert-` alarm and has a fail case (the `noisy` copy).
+* **m2: closed.** Every alarm has a description with its rule and the log group, and no line content. The test checks all of them.
+* **m3: closed.** Every log group must be kept at least 90 days and not for ever, and the app's group exactly 90 (`:131-141`). The fail test covers a group kept for ever, a group kept 30 days, the app's group kept 365 days, a longer non-app group that is allowed, and a missing app group.
+* **m5 and m6: closed in the README.** Covered: the AUD-1c quiet-checker alarm (held), `mailLine` having no caller, the SNS confirmation link, and the retained fixed-name group.
+* **m4: left as noted.** Accepted.
+
+## Findings
+
+### Major
+**R2-M1. The on-call exemption also switches off the joined dynamic-reference check on that one subscription.** At `lib/checks.ts:118` the parameter check uses `withoutOnCallEmail(s.template, r)`. The next line, `:120` (the round 2 R2-3 check for a dynamic reference split across `Fn::Join` parts), still runs only when `!opaque(s.template, r).length` on the **unstripped** resource. On the on-call subscription that resource always has the `{Ref: OnCallEmail}` Endpoint, so the condition is always false and the joined check never runs there.
+
+Probe on this head (my own script, `regionFindings` with `REGION_ALLOW`):
+
+| Input | Result |
+|---|---|
+| The on-call subscription with `Region: {"Fn::Join": ["", ["{{resol", "ve:ssm:/xr/region}}"]]}`. `Region` sets a cross-region subscription. | `[]` (admitted) |
+| The same `Region` on a subscription with a literal Endpoint | refused ("a dynamic reference (joined from parts)") |
+| A plain `{{resolve:ssm:...}}` in Region | refused |
+| `{Ref: OnCallEmail}` in Region | refused |
+| Literal `us-east-1` in Region | refused |
+
+So the exemption admits more than "this one Endpoint": it reopens break R2-3 for any other property of that resource. Before this commit the resource was refused outright.
+
+Fix:
+* At `:118-120`, compute `const bare = withoutOnCallEmail(s.template, r)` once and use `bare` in both `opaque` calls. Keep `flatten(r, d)` or use `flatten(bare, d)`; the stripped Endpoint is a bare `Ref` and joins as nothing either way.
+* Add a sixth fail case to `test/observability.test.ts:58-65`: a joined dynamic reference in the on-call subscription's `Region`.
+
+### Checked and holding (the exemption otherwise)
+* **Strict match:** only an exact `{Ref: "OnCallEmail"}` Endpoint, on `AWS::SNS::Subscription`, with `Protocol: "email"`, a String parameter with no default and the exact pattern. A looser pattern, a default, another protocol, another resource and another parameter are each refused (the 5 fail cases, `:60-64`).
+* **Other properties still scanned:** only the Endpoint is removed, and only for `opaque`. `{Ref: OnCallEmail}` or `${OnCallEmail}` in any other property is still refused (probed in Region).
+* **Region scan unchanged:** `regionsIn(r, d)` still scans the whole unstripped resource, so a literal region in `Region` or `TopicArn` is caught.
+* **No import cycle:** `observability.ts` imports `ON_CALL_PARAMETER` from `checks.ts`, so the pattern lives in one place, and `checks.ts` does not import back.
+
+### Minor
+None new.
+
+## Journey test (reviewer role)
+Score: **N/A**, as in round 1. This is synth-only CDK and nothing can be walked.
+
+Verdict: Changes requested

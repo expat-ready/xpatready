@@ -64,6 +64,11 @@ test("PF-23c region guard: only the on-call email subscription may read a deploy
     ["another parameter", (t) => { t.Parameters.Other = { Type: "String" }; t.Resources[subId()].Properties.Endpoint = { Ref: "Other" }; }],
   ];
   for (const [why, mutate] of breaks) { const t = clone(home.template); mutate(t); assert.equal(run(t).length, 1, why); }
+  // the exemption never switches off the joined dynamic-reference check on that subscription (review R2-M1)
+  const joined = clone(home.template);
+  joined.Resources[subId()].Properties.Region = { "Fn::Join": ["", ["{{resol", "ve:ssm:/xr/region}}"]] };
+  const fj = regionFindings([{ ...home, template: joined }], REGION_ALLOW);
+  assert.ok(fj.some((l) => l.includes("a dynamic reference (joined from parts)")), fj.join("; "));
 });
 
 test("PF-23c retention fail: a log group kept for ever or 30 days, the app's kept 365, or no app group at all, is named", () => {
