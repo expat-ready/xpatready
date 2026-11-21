@@ -9,10 +9,9 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 
 
 ## Lead 14 since 12:44 IST (newest first)
-* 15:2x **#2748 PF-8b merged** (09:50Z) and #2717 (R1.42 FO-3st1 p2). AWS session asked for the Phase 2 plan, cost and founder needs (DNS delegation?) before any spend; R1.15/R1.24/R1.13 proofs after my go. R1.53 lane (FO-5s + J-53) waits for the founder's go.
+* 15:3x founder **go** (A264): lanes **r153-fo5s-j53** (task_85ab9933, R1.53 screens + J-53, by 04:00) and **pf8b-f1-f2** (task_72b23a4b, F1 awsLogs + F2 staging suffix, by 18:00). AWS preflight safe (49 add, 0 replace); deploy once after F1/F2; founder adds 4 NS records `staging` in Cloudflare during deploy; old zone kept until after proofs.
 * 15:1x merged #2706 R1.108 (**proven 36, +4 cycle**), #2727 (R1.42 FO-3a1e), #2720 (FO-5b), #2741, #2746. **R1.53 will score Partial** (qa Q4 + fresh reader): FO-5s (retainer screens) and J-53 not built, no PR → forecast 12/15 unless a lane builds FO-5s + J-53 tonight (**needs a founder-typed turn to start**). #2750 FO-3st3b can leave draft now (#2727 merged; Lead B).
-* 14:3x P-691 hand merge of #2780 (7a7a149); requeues with failure notes; conflicts to lanes; **owed: engineering-change-log line**: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
-* 12:4x-14:2x: labels, rulings, A256-A260, recovery plan, path to 15 (R1.15/R1.24 via #2748, reserve R1.10), lanes; **owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
+* 12:4x-15:2x (incl. P-691 hand merge of #2780, PF-8b merged, A259-A260; **owed: engineering-change-log line**): labels, rulings, A256-A260, recovery plan, path to 15 (R1.15/R1.24 via #2748, reserve R1.10), lanes; **owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
 * 13:2x: **walks** j_108 j_49 j_5 run 1 = actions run 44881942787 (dispatched in the browser; the shell's dispatch was refused); run 2 = re-run all jobs on it when attempt 1 ends, then post on #2706 #2762 #2765. **#2687** dequeued (shards 18, 4: axe contrast on FO-3st3 panel, target-size on PF-18h Home; hypothesis: its seeds) → Lead B (11) owns the fix and a green full run first (P-731). #2607 dirty (tooling-2 lane).
 
 
@@ -29,9 +28,8 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A264 | 21 Nov 15:3x (typed): go for the R1.53 lane and PF-8b fixes F1/F2 | Both lanes started 15:3x |
 | A261-A263 | 21 Nov 14:2x-14:3x (typed): enforce the Lead's prioritisation by scripts; stage table; capability board in every report | ENF-733b and ENF-783c lanes; board added to ENF-783c 14:3x; template in Start here |
-| A260 | 21 Nov 14:1x (typed): recover to 15 of 15; one consistent report look with his key figures; use non-product lanes for it | Path to 15 above; ENF-783c lane builds founder-report.py; template in Start here |
-| A259 | 21 Nov 13:5x (typed): recover diligently with proven methods and non-destructive exceptions; confirm AWS spends no waste; plan + timeline in the old format | Plan and timeline given 14:0x (Lead 14 block); #2780 hold, fix lane, swap R1.3/R1.10 → R1.109/R1.37; AWS idle |
 | A256-A258 | 21 Nov 13:0x-13:5x | ca-west-1 enabled; alarms to the founder's inbox (decided, deploy parameter); focus list #2777: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md` |
 | A255 | 21 Nov ~12:32 (typed): if proving is the constraint, why not more qa lanes; what limits it (tokens, load, other); industry practice; be proactive, never wait an hour | qa Q5 (R1.10, R1.42; task_3c69d860) and Q6 (ready proofer: R1.3, R1.4, R1.13/24/5, R1.90; task_f4454f0b) started ahead of merges; rule kept: one ready qa lane ahead. Measured: 10 of last 20 batches failed (50%, CI-SPEED-3), the real merge constraint |
 | A254 | 21 Nov ~12:15 (typed): why only 6 batches at once, drawbacks of more, two levels by situation, industry standard; improve speed and quality, never break the pipeline | Answered in chat: 12 via CI-SPEED-1, two levels by measured failed-batch rate (over 20% of the last 20 batches drops to 6, under 10% back to 12); owed row CI-SPEED-3: lead-watch ACT line on that rate |
