@@ -20,6 +20,8 @@ import type { FilesPort } from "../../../../ports/files.ts";
 import { auditEvent } from "../../platform/audit/audit-event.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { DUTY_KEYS, problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { parseInput, strict } from "../../platform/http/input.ts";
+import { z } from "zod";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 import { winProspect } from "../sales/prospects.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
@@ -64,6 +66,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const attempt = () => randomBytes(6).toString("hex");
 /** Text that looks blank, hides itself or turns the line around (B-13, B-14 of part 1): refused in names. */
 const HIDDEN = /[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u3164\ufe00-\ufe0f\ufeff]/;
+/** PF-28 (R1.10): the new-version form's own field (multipart text, or a number from a direct call); its rule is expectedVersionOf's. */
+export const TemplateVersionBody = strict({ expectedVersion: z.union([z.string().max(12), z.number()]).optional() });
 const uuidOf = (v: unknown, field: string): string | null => {
   if (v === undefined || v === null || v === "") return null;
   if (typeof v !== "string" || !UUID.test(v)) return unprocessable(`${field} is not an id.`, { [field]: "Not an id." });
@@ -272,6 +276,10 @@ export class Retainers {
   /** A new file for a template makes version n+1 (BR-1); retainers keep the version they were made from. */
   async newTemplateVersion(ctx: StaffContext, id: string, file: Upload | undefined, body: Record<string, unknown> = {}) {
     if (typeof id !== "string" || !UUID.test(id)) notFound("template");
+    // PF-28 (R1.10): the form's fields through the one input rule, and the file's presence, before the template is looked up
+    // (an unknown field or a wrong type 422 named; no file 422 on its field; a random id's 404 never hides them).
+    parseInput(TemplateVersionBody, body);
+    if (!file?.bytes?.length) unprocessable("Choose a .docx file.", { file: "Choose a .docx file." });
     const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id } }) ?? notFound("template");
     // FO-5s part 2 break M1: the version the page showed (multipart digits); a colleague's newer version is never replaced
     // silently. Optional, so earlier callers keep working.
