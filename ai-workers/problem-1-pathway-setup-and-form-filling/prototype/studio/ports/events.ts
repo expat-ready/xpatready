@@ -3,6 +3,7 @@
 // imports these from here and spells no event name itself. This folder imports only zod and its own files.
 // FO-1a adds the first name it consumes; each later row adds the names and payloads it writes or reads.
 import { z } from "zod";
+import { MatchReason, MAX_MATCHES } from "./matching.ts";
 
 /** Event names (module_event.type), one per line, owner module in the comment. */
 export const EVENT = {
@@ -240,6 +241,15 @@ export type ProspectWonSubject = z.infer<typeof ProspectWonSubject>;
 /** The payload of `prospect.won` (contracts §2.6, P-559 (4); written by Convert in FO-2 part 3, AG-2-47 rule 16): the
  *  contract's fields, with FO-2b's subject part beside them. The person's facts travel as canonical answer keys; a field
  *  the front office does not hold is null (`person.current_residence_country` is not stored yet), never guessed. */
+/** FO-9a (case-side contract v0.1 §4, F6; P-574 (2)): the front office's duplicate result for the won subject, so the case
+ *  side warns when it makes the client without calling back. Other records of the same firm whose email or E.164 phone
+ *  equals the subject's, or whose name is similar (ports/matching.ts's keys, threshold and score): people for a person,
+ *  companies for a company; never the subject itself; strongest first. Ids, score and reasons only (no names: the case
+ *  side reads a record it may open). Warn only: nothing is linked or merged. Absent on events written before FO-9a's part. */
+export const WonDuplicates = z.strictObject({
+  matches: z.array(z.strictObject({ kind: z.enum(["PERSON", "COMPANY"]), id: Uuid, score: z.number().int().min(0).max(100), reasons: z.array(MatchReason).min(1) })).max(MAX_MATCHES),
+});
+export type WonDuplicates = z.infer<typeof WonDuplicates>;
 export const ProspectWonPayload = z.strictObject({
   firm_id: Uuid, firm_key: z.string().min(1), prospect_id: Uuid, lead_id: Uuid, won_via: z.enum(["E_SIGNED", "SIGNED_OFFLINE", "CONVERTED"]),
   retainer_id: Uuid.nullable(), representative_staff_id: Uuid.nullable(), representative_actor_id: z.string().nullable(), owner_staff_id: Uuid.nullable(),
@@ -251,6 +261,8 @@ export const ProspectWonPayload = z.strictObject({
   consent_ids: z.array(Uuid), sealed_retainer_sha256: z.string().nullable(),
   /** FO-2 part 3 additions: the type, where it was won from, whether a retainer is signed ("Retainer not signed"), and FO-2b's subject part. */
   type: z.enum(["INDIVIDUAL", "CORPORATE"]), fromStageKey: z.string(), retainerSigned: z.boolean(), subject: ProspectWonSubject,
+  /** FO-9a: the duplicate result (WonDuplicates); every win since FO-9a's part carries it, an empty list when none. */
+  duplicates: WonDuplicates.optional(),
 });
 export type ProspectWonPayload = z.infer<typeof ProspectWonPayload>;
 
