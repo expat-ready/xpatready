@@ -59,3 +59,37 @@ PF-5 part 1 #1815 · PF-5v parts 1 and 2 · PF-5t · PF-5s part 1 #2608 · PF-5 
 
 ## Suggestions
 * *Later · Capability:* store `period` on `platform_subscription` at sign-up (one column, set from the pending row), so the billing page can show it before Stripe runs.
+
+## Update 22 Nov 02:3x IST: PF-5 part 3 (#2870, d0253335c) and the stored period
+**Row: Partial, held only on P-339.** No GitHub pack run is on main's head yet. On the evidence every clause is met, and question 1 above is answered by #2870.
+* **The change:** #2870 adds `platform_subscription.billing_period` (NOT NULL, default MONTHLY; backfilled from the audit line). Checkout's price follows the stored period.
+* **What j_19 checks now:**
+  * W2: after the Yearly sign-up on screen, `billing_period = 'YEARLY'`.
+  * New W2b: a public-door sign-up with no period stores `'MONTHLY'`.
+  * A missing column reads as a FAIL, not a crash.
+* **Fails on the fake:** on fc5c68d51 (main ee19b3730, before #2870), 22/24, exit 1. The two FAILs are exactly the billing_period checks.
+* **On 31e89ad2d** (main d0253335c + this PR), via walk.mjs + record.ts: **24/24 twice, exit 0**, by itself.
+* **Suites, twice each** on 31e89ad2d, every run exit 0:
+
+  | Suite | Result |
+  |---|---|
+  | `check_pf5_signup_billing` | 102/102 |
+  | `check_pf5t_terms` | 42/42 |
+  | `check_pf5v_signup_mail` | 13/13 |
+  | `check_pf5s1_signup_browser` | 48/48 |
+  | `check_pf5t_terms_browser` | 35/35 |
+
+  An earlier attempt went red in two checks with a Prisma validation error. Cause: the fail-on-fake worktree shared node_modules with this copy, and starting its copy regenerated the Prisma client from the old schema. That was the lane's own mistake. I regenerated the client and reran everything: all green.
+* **GitHub:**
+  * walks j_19 44950091079 on 31e89ad2d (Lead dispatch).
+  * #2870's item-proof 44949023938 ran while j_19 was not on main: not cited.
+* **Fresh Opus reader** on the period (ran nothing): **Works on substance, 90%.**
+  * The screen always sends the period.
+  * The pending row is replaced, never reused.
+  * Verify writes the period in the same transaction as the audit line.
+  * The webhook never writes billing_period.
+  * The backfill reads the audit line's `period`.
+  * Small gap: no check sends an explicit MONTHLY from the screen; the default covers it.
+  * Not R1.19's: a later plan or period change does not update billing_period.
+* **Next:** after #2857 merges, item-proof runs on its merge commit (pack + j_19) and the Lead dispatches walks j_19 on main. Then the one-line Works PR.
+* **Lesson:** a worktree for a fail-on-fake run must not share node_modules with the copy under test (Prisma generates into it). Use a separate install, or regenerate before the next run.
