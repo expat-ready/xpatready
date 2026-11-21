@@ -5,6 +5,8 @@
 // Inside the fee loop ({#fees} … {/fees}) the fields are named without the prefix ({label}); the list names them
 // `fees.label` etc. The licence number prints only in the document a person sends (AG-1-30, -31: never in a log or event).
 
+import { CODE_ITEMS } from "./code-checklist.ts";
+
 export type Placeholder = { name: string; label: string; mustFill?: boolean; loop?: boolean };
 
 export const PLACEHOLDERS: readonly Placeholder[] = [
@@ -28,6 +30,8 @@ export const PLACEHOLDERS: readonly Placeholder[] = [
   { name: "fees.total", label: "Total of the fee rows (CAD)" },
   // FO-13c: the s. 24(3)(o) item, the disclosure of a potential conflict (the party's latest conflict check); empty otherwise.
   { name: "conflict.disclosure", label: "Disclosure of a potential conflict of interest (Code s. 24(3)(o))" },
+  // FO-5b: one clause marker per Code s. 24(3) item ({code.s24_3_k}); it prints nothing and marks the item in the checklist.
+  ...CODE_ITEMS.map((i) => ({ name: i.marks.clauseMarker, label: `Clause marker for Code s. ${i.section} (prints nothing)` })),
 ];
 const KNOWN = new Set(PLACEHOLDERS.map((p) => p.name));
 
