@@ -8,6 +8,7 @@
 import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_backup as backup, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import { backupPlan } from "./backup.ts";
+import { Observability } from "./observability.ts";
 
 export const HOME_REGION = "ca-central-1";
 export const BACKUP_DAYS = 35; // the RDS maximum; SA-2-21's and SA-11-32's "backups 35 days"
@@ -21,6 +22,7 @@ export class EstateStack extends Stack {
   readonly vpc: ec2.Vpc;
   readonly database: rds.DatabaseInstance;
   readonly buckets: Record<(typeof BUCKETS)[number], s3.Bucket>;
+  readonly observability: Observability; // PF-23c: the app's log group (PF-8b's task logs here), filters and alarms
 
   constructor(scope: Construct, id: string, props: EstateProps) {
     // The region is fixed here, never taken from the caller's environment: a stray AWS_REGION cannot move the estate.
@@ -69,6 +71,9 @@ export class EstateStack extends Stack {
       copyTagsToSnapshot: true,
       autoMinorVersionUpgrade: true,
     });
+
+    // PF-23c: log group kept 90 days, metric filters and alarms to the on-call address (lib/observability.ts)
+    this.observability = new Observability(this, "Observability", { stage: props.stage });
 
     const bucket = (name: (typeof BUCKETS)[number]) => new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,

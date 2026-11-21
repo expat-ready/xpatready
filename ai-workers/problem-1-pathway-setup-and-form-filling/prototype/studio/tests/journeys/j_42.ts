@@ -2,6 +2,8 @@
 // Lead 7's ask, 20 Nov). It adds no feature: it walks FO-3w part 2's manage page (the booker's single-use link), FO-3st1
 // part 1's booking detail (attendance) and FO-3a part 2a's consult record route, on an isolated copy of the running app
 // (its own database and port, never :4400), on the real clock, at 1440 px.
+//   W0: an Admin adds the type on Settings → Booking types (FO-3st3 part 3a) and previews it as a booker; its timing
+//       overrides are written to the database with a HELD line (Timings, part 3b, has no route on main);
 //   W1: booker A books a time about 90 minutes ahead and booker B the next free time (minutes away), on the public page;
 //   W2: A's link reschedules inside the firm's notice rule (the 60-minute self-service limit): "Booking updated";
 //   W3: A's first link is refused once used (the single-use link): "This link is no longer valid. …";
@@ -23,7 +25,7 @@
 // The real clock, no seam: the test's own consultation type has Sample settings a firm may choose: no shortest notice
 // (default 240), times every 5 minutes, a 60-minute self-service limit (default 240), 5-minute meetings (the shortest),
 // and its one host works every hour of every day; so B's meeting starts and ends within about 15 minutes and the walk
-// waits for its end. Setup a person cannot do through the product yet (firm, host, hours, type) is written straight to the
+// waits for its end. Setup a person cannot do through the product yet (firm, host, hours, the type's timings) is written straight to the
 // copy's database (Sample rows). Sample values only; US$0, no model call. About 11 to 14 minutes.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j42 4442 start --ttl 40 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j42 4442 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_42.ts j42 4442
@@ -81,16 +83,20 @@ await writeSetting(db, { firmId: firm.id, key: CLOSED_DAYS.key, value: [], by: "
 const host = await db.platformStaff.create({ data: { firmId: firm.id, email: `host-${run}@j42-firm.example`, displayName: "Sample host", status: "ACTIVE" } });
 await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: host.id, role: "CASE_OFFICER", grantedBy: "test:j42" } });
 await db.foAvailability.createMany({ data: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ firmId: firm.id, staffId: host.id, weekday, startMinute: 0, endMinute: 1440, timeZone: ZONE })) });
-await db.foConsultationType.create({ data: { firmId: firm.id, slug: "free", name: "Free consultation", modes: ["VIDEO"], hostStaffIds: [host.id], minutes: 5,
-  minNoticeMinutes: 0, slotIntervalMinutes: 5, selfServiceLimitMinutes: 60 } });
-const signedIn = await call(null, "POST", "/platform/session/local", { firmKey: key, email: host.email, secondStep: true });
-const tok = signedIn.body?.token as string | undefined;
-if (!tok) throw new Error(`STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local): ${JSON.stringify(signedIn.body)}`);
-const pending = await call(tok, "GET", "/platform/me/terms");   // PF-5t: a new person accepts the privacy notice first
-const termIds = ((pending.body?.pending ?? pending.body?.terms ?? []) as { id?: string; versionId?: string }[]).map((t) => t.versionId ?? t.id).filter(Boolean);
-if (termIds.length) await call(tok, "POST", "/platform/me/terms/accept", { versionIds: termIds });
+const admin = await db.platformStaff.create({ data: { firmId: firm.id, email: `admin-${run}@j42-firm.example`, displayName: "Sample admin", status: "ACTIVE" } });
+await db.platformRoleGrant.create({ data: { firmId: firm.id, staffId: admin.id, role: "ADMIN", grantedBy: "test:j42" } });
+async function signIn(email: string): Promise<string> {
+  const signedIn = await call(null, "POST", "/platform/session/local", { firmKey: key, email, secondStep: true });
+  const t = signedIn.body?.token as string | undefined;
+  if (!t) throw new Error(`STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local): ${JSON.stringify(signedIn.body)}`);
+  const pending = await call(t, "GET", "/platform/me/terms");   // PF-5t: a new person accepts the privacy notice first
+  const termIds = ((pending.body?.pending ?? pending.body?.terms ?? []) as { id?: string; versionId?: string }[]).map((x) => x.versionId ?? x.id).filter(Boolean);
+  if (termIds.length) await call(t, "POST", "/platform/me/terms/accept", { versionIds: termIds });
+  return t;
+}
+const tok = await signIn(host.email), adminTok = await signIn(admin.email);
 const aEmail = `booker-a-${run}@j42-client.example`, bEmail = `booker-b-${run}@j42-client.example`;
-console.log(`setup (not through the product): firm ${key} in ${ZONE} (phone ${PHONE}), one host (Case Officer) on every hour, type "free" (no notice, 60 min self-service limit, 5 min)`);
+console.log(`setup (not through the product): firm ${key} in ${ZONE} (phone ${PHONE}), one host (Case Officer) on every hour, an Admin; the booking type is made in W0 on Settings → Booking types`);
 
 const errors: string[] = [];
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 150 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -132,6 +138,33 @@ async function book(p: Page, aim: number, given: string, email: string): Promise
 }
 
 try {
+  // ---------------------------------------------------------------------------------------------- W0: the type, by screens (FO-3st3 part 3a)
+  const pw = await pageAs(adminTok);
+  await pw.goto(`${BASE}/front-office/settings/booking-types`);
+  await pw.locator("[data-booking-types]").waitFor({ timeout: 30_000 });
+  await pw.getByRole("button", { name: "New booking type" }).click();
+  const tp = pw.locator("[data-type-panel]"); await tp.waitFor();
+  await tp.getByLabel("Name", { exact: true }).fill("Free consultation"); await tp.getByLabel("Length (minutes)", { exact: true }).fill("5");
+  await tp.getByLabel("Sample host").check();
+  await pw.getByRole("button", { name: "Save type" }).click();
+  await pw.locator('[data-type-row="Free consultation"]').waitFor({ timeout: 15_000 });
+  const typeRow = await db.foConsultationType.findFirst({ where: { firmId: firm.id, name: "Free consultation", deletedAt: null } });
+  await shot(pw, "W0-booking-types"); await axe(pw, "W0 Settings → Booking types");
+  ok("J-42 W0 pass (FO-3st3 part 3a): the Admin adds \"Free consultation\" (5 minutes, video, Sample host) on Settings → Booking types; it is on the firm's booking page",
+    !!typeRow && typeRow.minutes === 5 && typeRow.hostStaffIds.includes(host.id) && (await pw.locator('[data-type-row="Free consultation"] [data-on-page]').innerText()) === "Yes", typeRow);
+  await pw.getByRole("button", { name: "Free consultation", exact: true }).click(); await tp.waitFor();
+  await tp.getByRole("button", { name: "Preview as a booker" }).click();
+  const pv = pw.getByRole("dialog", { name: /Preview as a booker/ });
+  await pv.locator("[data-preview-day]").first().waitFor({ timeout: 20_000 });
+  let pvDays: string[] = [];   // today may be all inside the 4-hour notice; a later day has times (the dialog reads again once it knows the zone)
+  for (let i = 0; i < 40 && !pvDays.some((d) => /\d\d:\d\d/.test(d)); i++) { await pause(250); pvDays = await pv.locator("[data-preview-day]").allInnerTexts(); }
+  ok("J-42 W0 pass: Preview as a booker shows the type's times for the week without booking (no booking row)", pvDays.some((d) => /\d\d:\d\d/.test(d)) && (await db.foBooking.count({ where: { firmId: firm.id } })) === 0, pvDays.map((d) => d.slice(0, 60)));
+  await shot(pw, "W0-preview"); await pw.context().close();
+  // The type's timings (no shortest notice, a 5-minute interval, a 60-minute self-service limit) have no screen yet:
+  // Timings is FO-3st3 part 3b, whose routes (FO-3a part 1b-ii) are not on main. Written to the database, held.
+  console.log("HELD  J-42 W0 timings: the type's timing overrides have no screen (FO-3st3 part 3b; FO-3a part 1b-ii not built); written to the copy's database");
+  await db.foConsultationType.update({ where: { id: typeRow!.id }, data: { minNoticeMinutes: 0, slotIntervalMinutes: 5, selfServiceLimitMinutes: 60 } });
+
   // ---------------------------------------------------------------------------------------------- W1: two bookings
   const pa = await pageAs(null), pb = await pageAs(null);
   const bAt = await book(pb, mark(Date.now() + 4 * MIN), "Ben", bEmail);
