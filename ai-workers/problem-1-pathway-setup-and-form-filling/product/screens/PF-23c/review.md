@@ -120,3 +120,26 @@ None new.
 Score: **N/A**, as in round 1. This is synth-only CDK and nothing can be walked.
 
 Verdict: Changes requested
+
+---
+
+# Round 3: head `861646e827b8ed8efd1ea1f4acb4ee572f014281` (diff only)
+
+Read: `git show 861646e82 -- …/deploy/cdk` (`lib/checks.ts`, 5 lines; `test/observability.test.ts`, 5 lines).
+
+## R2-M1: closed
+* **The fix:** `lib/checks.ts:118-121` computes `const bare = withoutOnCallEmail(s.template, r)` once and uses it in both `opaque` calls. The joined dynamic-reference check now runs on the on-call subscription. `flatten(r, d)` still reads the whole resource: the stripped Endpoint is a bare `Ref`, which joins as nothing either way.
+* **The probe again:** I re-ran my round 2 probe on this head. A joined `{{resolve:ssm:…}}` in the on-call subscription's `Region` is now refused ("a dynamic reference (joined from parts)"). The other four probe cases are refused as before.
+* **The new assertion can fail:** it is at `test/observability.test.ts:67-71`. With `lib/checks.ts` swapped back to `004d2bf5f`, `npm test` gives 57 of 58, and only "PF-23c region guard" fails. With the fix restored, 58 of 58 pass. I ran both myself and restored the file afterwards (working tree clean).
+* **Tests and synth on this head:** `npm test` passes 58 of 58 and `npm run synth` exits 0, both run by me.
+
+## Findings
+No Blocker and no Major is open. Round 1 m4 stays as accepted (the filter test uses hand-written lines and a source-text contract, because the CI install covers the CDK package only). There are no new Minor findings.
+
+## Journey test (reviewer role)
+Score: **N/A**, as in rounds 1 and 2. This is synth-only CDK with nothing to walk. In its place: the synthesized templates were read, all 58 assertions were run, and the probe of the guard was re-run.
+
+## Still held, outside this PR
+The AWS proof (P-782): a test alarm reaching the on-call person in the founder's account, the SNS confirmation step, and CloudWatch accepting each pattern for real.
+
+Verdict: Approve 861646e827b8ed8efd1ea1f4acb4ee572f014281
