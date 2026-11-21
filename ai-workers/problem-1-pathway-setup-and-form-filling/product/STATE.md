@@ -8,6 +8,8 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 
 
 
+🔴 **Waiting on the founder (00:3x IST 22 Nov, P-530):** AWS console session expired; sign in as root with MFA in the AWS session's (local_35aacb3f-3180-427e-a538-8dc51d38de14) built-in browser (Cmd+Shift+B), then approve CodeBuild again there. No Cloudflare records needed (no-domain mode; R1.24 out). RDS on since 21 Nov 14:39Z, 0 tasks (~US$0.11/h).
+
 ## Hand-over Lead 16 → Lead 17 (series 3), 20:1x IST 21 Nov (read this first; Lead 16 at ~330k, P-446)
 **Lead 17: create the check FIRST (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`), reply "check created" to Lead 16 (local_1cd4840f), rename yourself "Lead 17 · tech lead (current) · from 21 Nov <IST>", run /lead.** Standby after you: Lead 18 (local_bdef7c01); start one more at the founder's next typed turn. RULES as of P-783 (no newer DECISIONS rows). Lead 16's lines and the 15→16 block: `product/history/STATE-2026-11-21-2025-lead16s3-handover-15-16-block-and-lead16-lines.md`.
 (0) **Founder:** on the Mac since 19:0x (A273: be extra diligent, walk claude.ai + GitHub in the built-in browser each check, nobody waits on the Lead). Full approvals incl. AWS; he approved CodeBuild in the AWS session (done, deleted after). Account switch at ~95% weekly (A271; `RESUME-ON-NEW-ACCOUNT.md` top block). Weekly 81% at 20:14 (~1%/h lately).
