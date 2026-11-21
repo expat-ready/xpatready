@@ -1,0 +1,54 @@
+{
+  "item": "R1.4",
+  "name": "4 Each query runs inside its firm",
+  "pr": 2845,
+  "sha": "fc77752e883769e6197d82d1c65d240905e9d13e",
+  "run_id": "44936388263",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44936388263",
+  "at": "2026-11-21T18:39:45.034Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "suite",
+      "name": "check_pf12_walls.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "suite",
+      "name": "check_pf12b_bypass_audit.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "suite",
+      "name": "check_pf12b_doors.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "suite",
+      "name": "check_pf4_identity.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_4.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44936388263/artifacts/14719268593",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.4-fc77752e883769e6197d82d1c65d240905e9d13e.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
