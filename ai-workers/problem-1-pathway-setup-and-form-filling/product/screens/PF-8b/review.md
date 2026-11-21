@@ -204,3 +204,20 @@ Each fix, the fail test in `test/service.test.ts` ("PF-8b's widening … stays n
 * Fix: add one `LambdaConfig` line to `b2`'s mutation and its expected string.
 
 Still open and accepted: n4.
+
+## Re-review (round 6, 23ef8fb)
+
+Verdict: Approve
+
+Scope: `git diff HEAD~1 HEAD` at 23ef8fb, product/screens excluded. Run in deploy/cdk with AWS keys unset; the cdk and aws CLIs were never called. `npm run synth` exits 0; `npm test` 83/83 pass.
+
+* **The template is unchanged.** I synthesized HEAD~1 in a temporary worktree and compared it with HEAD: all four templates (staging and production, home and copy) are byte-identical. Turning the five public fields of `service.ts` into locals is a refactor only.
+* **`imageFindings`** (`service-checks.ts:37-47`):
+  * It requires exactly two task definitions, the service's and the migration's. It also requires exactly one repository and one parameter with the sha256 pattern, and every container's `Image` must equal CDK's exact `repositoryUriForDigest` form.
+  * Its fail test ("re-break RC-1") must find exactly 4 problems: another registry on the migration task, a tagged sidecar image, a third task definition, and the count. Without the function the test cannot pass.
+  * The dropped inline image test, which checked the digest Ref and the pattern, is fully covered by `imageFindings`: the pattern is enforced by selecting the one digest parameter.
+* **s1 resolved.** `b2` now sets a Cognito `LambdaConfig` and expects `Cognito::UserPool): a Lambda trigger`. If that check were removed, the assertion would fail.
+* **The dropped domain-parameter test is not a Done-when line.** The row's nine Done-when lines do not include it. It only backed the row's description ("the domain name is a parameter"), which `service.ts` still implements through `xr:domain`.
+  * Minor **t1**: that sentence is now untested. If space allows later, one assertion that `buildApp({context:{"xr:domain":"example.org"}})` yields `*.example.org` would cover it again.
+
+Still open and accepted: n4.
