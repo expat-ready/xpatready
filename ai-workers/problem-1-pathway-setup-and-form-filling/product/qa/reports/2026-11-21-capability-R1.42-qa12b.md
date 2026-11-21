@@ -16,10 +16,17 @@ The parts J-42 lists:
 |---|---|---|
 | Walk: walks.yml `j_42` (dispatched by the Lead) | GitHub, [run 44899086096](https://github.com/expat-ready/xpatready/actions/runs/44899086096) on fdb3ba39e, job 136831103939 | **33 PASS, 0 FAIL, no HELD**, W0 to W9 (`2026-11-21-r142-qa12b/walk_j42_job136831103939.txt`) |
 | Pack: every R1.42 suite (merge batch, main 55a9aba2f + #2619) | GitHub, ci [run 44898035790](https://github.com/expat-ready/xpatready/actions/runs/44898035790), shards | fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3sr_routes 29: all PASS |
-| Pack re-run on main's head after #2818 | RERUN_PLACEHOLDER | RERUN_RESULT |
+| Independent re-run: walks.yml `j_42` on main's head (dispatched by the Lead) | GitHub, [run 44910722219](https://github.com/expat-ready/xpatready/actions/runs/44910722219) on bfd1b2de1, job 136865914912 | WALK2_RESULT |
+| Pack on main's head: full nightly | NIGHTLY_RESULT | NIGHTLY_COUNTS |
+| The 11 R1.42 suites, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/suites_bfd1b2de1.txt`) | all PASS: fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3st3_types 57/57 · fo3sr_routes 29 |
+| `tests/journeys/j_42.ts`, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/j42_2_bfd1b2de1.txt`) | **33/33**, no HELD |
 | `tests/journeys/j_42.ts`, fresh copy of main 55a9aba2f | here (`2026-11-21-r142-qa12b/j42_1.txt`) | **33/33**, no HELD |
 
-**Same app on every sha:** fdb3ba39e→55a9aba2f changes only `tests/check_fo3st3_types_browser.ts` and review notes. #2818 changes only `product/tools/run-suites.sh`.
+**The shas:**
+* fdb3ba39e→55a9aba2f changes only `tests/check_fo3st3_types_browser.ts` and review notes.
+* 55a9aba2f→bfd1b2de1 changes 32 app files. None is in booking. The second reader found two that touch the path indirectly: firm emails now read the firm's logo, and the prospect page W9 lands on shows the retainer card. Both pass in the local walk on bfd1b2de1.
+* #2818 changes only `product/tools/run-suites.sh`.
+* The merge-batch ci run above is evidence about a merge commit, not main's head. The pack on main's head is the nightly row.
 
 **The batch run's one red is not R1.42's.**
 * **What fails:** shard 22, `check_pf28_inputs.ts`.
@@ -50,10 +57,12 @@ The parts J-42 lists:
 * **SQL left in the setup:** the firm, staff, hours, the firm's settings and the 5-minute slot interval. All are declared, and none is a step of R1.42.
   * Host hours could now be set on My account → Availability (FO-3st2). That is outside R1.42 and is noted in QA-697.
 
-## The fresh reader (Opus, ran nothing)
-`2026-11-21-r142-qa12b/reader-verdict.md`.
-* **Verdict:** Works, about 85%, on condition of a second green run on main's head.
-* **Findings:** four Minors, no Blocker, Critical or Major.
+## The fresh readers (Opus, ran nothing)
+* **First reader, main 55a9aba2f** (`2026-11-21-r142-qa12b/reader-verdict.md`): Works, about 85%, on condition of a second green run on main's head.
+* **Second reader, main bfd1b2de1** (`reader-verdict-bfd1b2de1.md`, written before it read the first): Works, about 85%, on condition that run 44910722219 is green. Its Minors: W4's label, the undeclared API sign-in, a stale W9 note, the no-currency refusal checked in the browser only. All are folded into QA-697.
+
+**The first reader's findings:**
+* Four Minors, no Blocker, Critical or Major.
   * Two are covered by the packs: the No-show outcome (fo3a2 DW1, DW4) and the server refusal inside the limit (fo3_booking:311).
   * The rest is folded into QA-697.
 
