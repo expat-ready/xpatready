@@ -21,7 +21,7 @@ export const IdentityInput = {
   local: strict({ firmKey: str(100), email: str(320).optional(), actorId: str(200).optional(), secondStep: z.boolean().optional() }),
   invite: strict({ email: str(320), roles, reason, displayName: str(2000).nullable().optional() }),
   // Each row is checked and flagged on its own row by batchRowsOf (PF-4c), so a bad row is a row flag, not a refusal here.
-  batch: strict({ rows: z.unknown() }),
+  batch: strict({ rows: z.unknown().optional() }),
   resend: strict({ reason }),
   roles: strict({ roles, reason }),
   reason: strict({ reason: str(2000) }),
