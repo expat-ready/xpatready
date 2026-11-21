@@ -139,6 +139,7 @@ day="$STATE_DIR/works-$(TZ=Asia/Kolkata date +%Y%m%d).txt"; [ -f "$day" ] || ech
 hour=$(gh pr list --state merged --search "merged:>=$(date -u -v-60M '+%Y-%m-%dT%H:%M:%SZ')" --json number -q '.[].number' 2>/dev/null | bash "$TOOLS/app-code-prs.sh" | grep -c .)
 back=$(grep -cE '^ACT   #[0-9]+ (dequeued|red after approval)' "$STATE_DIR/q.txt")
 say "four  Works on main ${works}/${active} (${bym% }) (+$((works - $(cat "$day"))) today, target +10) · app-code merges last hour ${hour:-?} · Mac builders ${macb} · approved then red or dequeued ${back}"
+FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead 2>&1 | tee -a "$SEEN"   # 5b. ENF-782b (P-782 (3)): start→Proven, review rounds, first-time proof, reverse plan, queue bounces; answer cached 30 min
 
 # 6. Private backup (P-589 (1), P-590): the backup repository's last push, read from GitHub (read-only here). Over 24 h:
 # the Lead runs tools/backup-refresh.sh (needs allowed_domains github.com). Unreadable = said, never a silent pass.
