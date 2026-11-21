@@ -43,3 +43,30 @@ The Cognito path (no pool), a real screen reader, and an intended user's own wal
 **9/10, pass.** Details are in `journey-test-reviewer-2026-11-21-part-2a.md`: plain words ½ (m4), correct data ½ (m1).
 
 **Verdict: Approve** (no open Blocker or Major) for edc27006ec7e7e4144640c445c16cdda037f5790. m1–m4 should be fixed in this PR or in part 2b; m1 first.
+
+## Round 2 (head 85fa4cb94129567814ca6857bb0fe52127a7d8f1, diff `edc27006e..85fa4cb94` only)
+Scope: 5 code files (batch-invite.ts, routes.ts, session/routes.ts, session/service.ts, check_pf28_inputs.ts), plus my round-1 files as committed. Both committed files are byte-identical to what I wrote. Live AI off, US$0.
+
+**Checks.**
+- `check_pf28_inputs.ts` at 85fa4cb9 (run from a detached worktree, since removed) against the builder's `runtime_pf28` copy on :4431: **29/29**. 467 probes; 207 and 71 entries on the allow-list, unchanged; DW6 NOT TESTED as before.
+- Live probes on :4431:
+  - m1: a batch with rows `[{email, roles, nmae, __proto__}, {valid}]` gives 422 `ROWS_FLAGGED`, with row 1 flagged `UNKNOWN_FIELD` ("…not allowed here: nmae, __proto__. Use name, email and roles."). Row 2 is clean and nothing is sent. A non-object row still gives its email and roles flags.
+  - m2: `curl -X POST …/resend` with no body gives 404 "No such invitation." (a random id), no longer 422. A batch with no body gives 422 `ROWS_COUNT`.
+  - m3: `invitations/not-a-uuid/resend` with `{"x":1}` gives 404 before the body. A malformed id and a random uuid get byte-identical answers (md5 equal).
+  - m4: a 2001-character code gives 401 `SIGN_IN_CODE_REFUSED`, "This sign-in link has been used or has expired." `{}` or `{"code":null}` still gives 422 naming `code`; the callback page never posts without a code (`callback-page.tsx:36`), so a person never sees that.
+- Callers: `batchRowsOf` has one caller (service.ts:385). The pf4c rows (`row()` = email, roles, name) and the pf19r rows use only the allowed keys. No web code calls the batch door.
+- Would each new fail case fail if its fix were removed?
+  - m1: yes (the row would be sent, 201).
+  - m2: yes (no body would give 422, not 404).
+  - m3: yes (a bad body would give 422, not 404).
+  - m4: yes, for the schema change: putting `.max(2000)` back gives 422. The service's `length > 2000` guard is not proven on its own, because an unknown long code is refused 401 by `redeem` anyway. That guard is defence only.
+- The local `idOf` helper instead of `idParam` is accepted. It keeps the service's own not-found words, so a malformed id and another firm's id stay identical (DW4); that is a sound reason.
+
+**Round-2 findings.** No Blocker, no Major. m1–m4 are closed.
+- r2-n1 (nit): in `batch-invite.ts`, `const ROW_KEYS` now sits between the "Reads the form's rows" doc comment and `batchRowsOf`, so editors attach that comment to `ROW_KEYS`. Move the constant above the comment.
+- r2-n2 (nit): no test proves the service's `length > 2000` guard on its own (see m4 above). It is optional.
+- The round-1 nit m5 (local door off answers 422 before 403; the invite Name field has no maxLength) is listed in the PR and still open. It is a nit, so it does not block.
+
+**Journey score:** 9/10 stands; it is the round-1 walk, and I did not re-walk the screens, because the diff touches no web file. The two ½ criteria were plain words (m4) and correct data (m1). Both causes are fixed and checked by API above. They were not re-scored in a browser.
+
+**Verdict: Approve** for 85fa4cb94129567814ca6857bb0fe52127a7d8f1 (no open Blocker or Major).
