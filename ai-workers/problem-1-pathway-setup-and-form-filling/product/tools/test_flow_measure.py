@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for tools/flow-measure.py's ENF-782b measures (P-782 (3)): start to Proven, review rounds, first-time proof,
 the reverse plan and queue bounces, each on hand-made fixtures with hand-worked answers. No network.
-Run: python3 -I product/tools/test_flow_measure.py   (check-flow-measure.sh; guard 34 in check-guards.sh)"""
+Run: python3 -I product/tools/test_flow_measure.py   (in CI: .github/workflows/cockpit-tests.yml)"""
 import importlib.util, json, os, sys, unittest
 from datetime import datetime, timezone
 
@@ -148,6 +148,30 @@ class QueueBounces(unittest.TestCase):
         self.assertEqual(e["groups"], [("shard (10)", [2618])])
 
 
+class Kind(unittest.TestCase):
+    """The .md shortcut in kind() answers exactly as change-kind.sh (review on #2741: STAND-INS.md is read by a suite)."""
+    def setUp(self):
+        fm.NOTES_OK.clear(); fm._kind.cache_clear()
+
+    def test_md_a_suite_reads_goes_to_the_script(self):
+        calls = []
+        real = fm.selects_code
+        fm.selects_code = lambda files: calls.append(files) or any(f.endswith("STAND-INS.md") for f in files)
+        script = fm.subprocess.run
+        fm.subprocess.run = lambda *a, **k: type("R", (), {"stdout": "code\n", "returncode": 0})()
+        try:
+            stand, note = [f"{fm.P}/product/STAND-INS.md"], [f"{fm.P}/product/reports/x.md"]
+            fm.prime_kinds([stand, note])
+            self.assertEqual(len(calls), 1)                         # one select-suites call for the batch
+            self.assertEqual(fm.kind(stand, cached=False), "code")  # the script decides: not cleared
+            self.assertEqual(fm.kind(note, cached=False), "code")   # the batch was not cleared, so it asks the script too
+            fm.NOTES_OK.clear(); fm.prime_kinds([note])
+            fm.subprocess.run = lambda *a, **k: self.fail("cleared .md must not call the script")
+            self.assertEqual(fm.kind(note, cached=False), "notes")
+        finally:
+            fm.selects_code, fm.subprocess.run = real, script
+
+
 class LeadLines(unittest.TestCase):
     def test_five_lines_each_with_its_measure(self):
         h = fm.cap_history(LOG)
@@ -162,6 +186,14 @@ class LeadLines(unittest.TestCase):
         self.assertIn("2 of 3 R1 rows Works on their first qa score (66.7%)", L[2])
         self.assertIn("2 of 4 rows left, 2.0 d", L[3]); self.assertIn("no forecast: net 0 or less", L[3])
         self.assertIn("queue bounces 0 dequeues", L[4])
+        self.assertIn("0 with no verdict comment", L[1])
+
+    def test_empty_window_prints_n_a_never_none(self):
+        h = fm.cap_history(LOG)
+        m = {"start_to_proven": fm.start_to_proven({}, {}), "review_rounds": {**fm.rounds_summary({}), "sample": "0 code PRs"},
+             "first_proof": fm.first_proof({}), "reverse_plan": fm.reverse_plan(h, NOW, end=U("2026-11-20T00:00")),
+             "queue_bounces": fm.bounce_causes([], lambda j: [])}
+        self.assertFalse([l for l in fm.lead_lines(m) if "None" in l])
 
 
 if __name__ == "__main__":

@@ -94,6 +94,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 RISKY_MD = re.compile(rf"(^|/)(sources|code|archive|\.tools)/|^{P}/product/(DECISIONS\.md|decisions/|qa/CAPABILITIES\.md)|^{P}/prototype/(.*/)?prompts/|^{P}/prototype/studio/(api/src|tests/fixtures)/|^{P}/official-sources/")
+NOTES_OK = set()   # .md paths select-suites.mjs was asked about in one batch and chose no suite for (prime_kinds)
+
+
+def _md_only(files):
+    return bool(files) and all((f.endswith(".md") or f.startswith(f"{P}/product/reports/")) and not RISKY_MD.search(f) for f in files)
+
+
+def selects_code(files):
+    # select-suites.mjs on these paths: change-kind.sh's "code" test (ALL, or a suite chosen for a reason other than smoke).
+    r = subprocess.run(["node", os.path.join(HERE, "select-suites.mjs")], input="\n".join(files) + "\n", capture_output=True, text=True, cwd=os.path.join(HERE, "..", "..", "..", ".."))
+    if r.returncode:
+        return True   # unknown: let the script decide per PR
+    return any(c[0] == "ALL" or (c[0] and (len(c) < 2 or c[1] != "smoke")) for c in (l.split("\t") for l in r.stdout.splitlines()))
+
+
+def prime_kinds(filesets):
+    """One select-suites.mjs call for every .md-only PR's files together (it takes ~2 s a call). When it picks no suite, each
+    of those PRs is "notes" exactly as change-kind.sh would say; when it picks one (a .md a suite reads as data, such as
+    STAND-INS.md), every such PR goes to change-kind.sh itself."""
+    md = sorted({f for fs in filesets if _md_only(fs) for f in fs} - NOTES_OK)
+    if md and not selects_code(md):
+        NOTES_OK.update(md)
 
 
 @functools.lru_cache(maxsize=None)
@@ -105,9 +127,8 @@ def kind(files, cached=True):
     if cached:   # full mode asks twice per PR (records share, review rounds): one answer each
         return _kind(tuple(files))
     # tools/change-kind.sh --files on this checkout: notes, records or code (the same rule CI uses). Its "notes" case is
-    # answered here without the script (select-suites.mjs takes ~2 s a call): every file a *.md record or under
-    # product/reports/, none on change-kind.sh's risky list (the .md files a suite may read stay with the script).
-    if files and all((f.endswith(".md") or f.startswith(f"{P}/product/reports/")) and not RISKY_MD.search(f) for f in files):
+    # answered here only for .md-only PRs whose files prime_kinds() cleared with select-suites.mjs.
+    if _md_only(files) and all(f in NOTES_OK for f in files):
         return "notes"
     r = subprocess.run(["bash", os.path.join(HERE, "change-kind.sh"), "--files"], input="\n".join(files) + "\n", capture_output=True, text=True)
     return r.stdout.strip() or "code"
@@ -369,6 +390,7 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
             if merged is None:
                 ps = merged_prs(since, until)
                 merged = list(zip(ps, ex.map(lambda p: [f["filename"] for f in paged(f"{API}/pulls/{p['number']}/files")], ps)))
+            prime_kinds([f for _, f in merged])
             code = [p for (p, _), k in zip(merged, ex.map(lambda pf: kind(pf[1]), merged)) if k == "code"]
             per = dict(zip([p["number"] for p in code], ex.map(lambda p: verdicts(paged(f"{API}/issues/{p['number']}/comments")), code)))
         b = rounds_summary(per)
@@ -388,14 +410,14 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
         with ThreadPoolExecutor(8) as ex:
             logs = dict(ex.map(suites_of, jids))
         e = bounce_causes(deqs, lambda j: logs.get(j, []))
-        e["sample"] = f"Mergify queue comments that ended dequeued, left the queue {win}; suites from the failing shard's log"
+        e["sample"] = f"Mergify queue comments that ended dequeued, left the queue {win}; one per Mergify comment (Mergify starts a new comment on each requeue); suites from the failing shard's log"
         return e
 
     with ThreadPoolExecutor(3) as ex:
         fp, fb, fe = ex.submit(read_prs), ex.submit(read_rounds, merged), ex.submit(read_bounces)
         prs, b, e = fp.result(), fb.result(), fe.result()
     a = start_to_proven(hist, first_prs([p for p in prs if t(p["created_at"]) >= floor]))
-    a["sample"] = f"R1 rows Works on {ref} now; first PR naming the row since {r1_floor[:10]} (title, Item: or Completes: line; qa/lead records PRs left out)"
+    a["sample"] = f"R1 rows Works on {ref} now; first PR naming the row since {r1_floor[:10]} (title, Item: or Completes: line; qa/lead records PRs left out; a row started before then shows a later start)"
     c = first_proof(hist, since)
     c["sample"] = f"R1 rows with a qa score (Works, Partial or Broken) in {ref}'s qa/CAPABILITIES.md history"
     d = reverse_plan(hist, now)
@@ -403,15 +425,21 @@ def new_measures(since, until, now, merged=None, r1_floor="2026-11-14T00:00:00Z"
     return {"start_to_proven": a, "review_rounds": b, "first_proof": c, "reverse_plan": d, "queue_bounces": e}
 
 
+def _na(v):
+    return "n/a" if v is None else v
+
+
 def lead_lines(m):
-    a, b, c, d, e = (m[k] for k in ("start_to_proven", "review_rounds", "first_proof", "reverse_plan", "queue_bounces"))
+    a, b, c, d, e = ({k2: _na(v) for k2, v in m[k].items()} for k in ("start_to_proven", "review_rounds", "first_proof", "reverse_plan", "queue_bounces"))
+    e["groups"] = m["queue_bounces"]["groups"]; a["no_pr"] = m["start_to_proven"]["no_pr"]
+    d["forecast_ist"] = m["reverse_plan"]["forecast_ist"]; d["net_24h"] = m["reverse_plan"]["net_24h"]
     g = " · ".join(f"{k} {len(v)}" for k, v in e["groups"][:4]) or "none"
     fc = f"forecast {d['forecast_ist']} IST" if d["forecast_ist"] else ("no forecast: net 24 h not readable" if d["net_24h"] is None else "no forecast: net 0 or less in 24 h")
     return [
         f"flow  start→Proven median {a['median_days']} d over {a['n']} rows (first PR naming the row → last Works on main); {len(a['no_pr'])} Works rows name no PR",
-        f"flow  review rounds median {b['median']}, mean {b['mean']}; {b['over_2']} of {b['n']} over 2 ({b['over_2_share']}%, P-277 limit) ({b['sample']})",
+        f"flow  review rounds median {b['median']}, mean {b['mean']}; {b['over_2']} of {b['n']} over 2 ({b['over_2_share']}%, P-277 limit); {b['none']} with no verdict comment ({b['sample']})",
         f"flow  first-time proof {c['works_first']} of {c['n']} R1 rows Works on their first qa score ({c['share']}%); in window {c['in_window'][1]} of {c['in_window'][0]}",
-        f"flow  reverse plan {d['left']} of {d['total']} rows left, {d['days_left']} d to {d['release_ist']} → {d['need_per_day']} proofs/day needed; last 24 h net {d['net_24h']} (+{d['new_24h']} new, {d['reopened_24h']} reopened); {fc}",
+        f"flow  reverse plan {d['left']} of {d['total']} rows left, {d['days_left']} d to {d['release_ist']} → {d['need_per_day']} proofs/day needed; last 24 h net {_na(d['net_24h'])} (+{d['new_24h']} new, {d['reopened_24h']} reopened); {fc}",
         f"flow  queue bounces {e['n']} dequeues of {e['prs']} approved PRs in window: {g}",
     ]
 
@@ -485,6 +513,9 @@ def main():
     prs = merged_prs(since, until)
     with ThreadPoolExecutor(16) as ex:
         facts = list(ex.map(lambda p: pr_facts(p["number"]), prs))
+    prime_kinds([f for f, _ in facts])
+    with ThreadPoolExecutor(4) as ex:
+        list(ex.map(lambda fl: kind(fl[0]), facts))   # the script's ~2 s calls, 4 at a time; answers cached
     rec = notes = 0; waits = []
     for p, (files, labels) in zip(prs, facts):
         k = kind(files)
@@ -494,7 +525,10 @@ def main():
         if before:
             waits.append((m - before[-1]).total_seconds() / 60)
 
-    m = new_measures(since, until, now, merged=[(p, f) for p, (f, _) in zip(prs, facts)])
+    try:
+        m = new_measures(since, until, now, merged=[(p, f) for p, (f, _) in zip(prs, facts)])
+    except SystemExit as e:   # a GitHub read failed: the older measures still print; the new ones say why
+        m = {"new_measures_error": str(e)[:300]}
     thrown = h["pr_cancelled"] + h["pr_failed"] + h["pr_earlier_failed"]
     res = {
         "window": f"{a.since} .. {a.until or 'now'}", "runs_read": len(runs),
@@ -523,6 +557,8 @@ def main():
     print(f"| Merge-queue batches | {res['queue_runs']} runs, {res['queue_failed']} failed, {res['queue_cancelled']} cancelled; {res['queue_thrown_hours']} of {res['queue_hours']} h | (compass: 15% or less thrown) |")
     print(f"| Records share of merges | {res['records_merged']} of {res['merged']} ({res['records_share']}%) no code (change-kind.sh notes or records); notes only {res['notes_merged']} | under 20% |")
     print(f"| Approved to merged | median {w['median']} min, p90 {w['p90']} min, {w['under_1h_share']}% under 1 h (n={w['n']}) | under 1 hour |")
+    if "new_measures_error" in m:
+        print(f"\nRelease 1 flow (ENF-782b): not read: {m['new_measures_error']}"); return
     print("\nRelease 1 flow (ENF-782b, P-782 (3)); each line's sample in brackets:")
     for line, k in zip(lead_lines(m), ("start_to_proven", "review_rounds", "first_proof", "reverse_plan", "queue_bounces")):
         print(f"- {line[6:]} [{m[k]['sample']}]")
