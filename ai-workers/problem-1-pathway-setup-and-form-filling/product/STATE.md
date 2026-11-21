@@ -2,7 +2,7 @@
 
 current_lead: local_52cca488-d75f-4781-a9d4-4b8adb5bd53b Lead 9 · 21 Nov 06:5x IST (series 3; took over from Lead 8 (series 3, local_dbce8aee) at ~490k, P-446)
 
-updated: 2026-11-21 06:47 IST: Lead 8 handed over to Lead 9 (series 3) · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 07:1x IST: Lead 9 check (took over 06:48) · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -17,6 +17,7 @@ updated: 2026-11-21 06:47 IST: Lead 8 handed over to Lead 9 (series 3) · milest
 (4) **Owed to the R1.14/15 lane (session_01MXNda93W7JV4324jdp58X2):** #2638 PF-8a `.github` diff read (P-423) and a size ruling (856 lines, 304 a generated lockfile); recommend a pipeline row so CDK-only PRs skip the skeleton build; #2635 (R1.15 baton, sign-in change) needs a permissions read before merge.
 (5) **Building for tomorrow's proof (wave 2 leftovers + wave 3 J0):** #2626 R1.13, #2627 R1.5 (draft), #2624/#2633 PF-13 R1.47, #2619 R1.10, #2618 R1.49 migration (Lead read), #2622 R1.32 part 2 (stacked; FO-10c row for the rest), #2651 R1.108 B. Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93): `allow:` notes in waves.tsv **plus `waves.py gen`** (06:3x lesson: #2623 without gen turned guards red; fixed by #2671).
 (6) **Disk** 10 GB (Lead 8's scratch `git archive` copies were 3.3 GB: delete each right after use). Weekly plan 43%.
+**Lead 9 check 07:1x IST:** took over 06:48 (check e4cbf9ac; Mac kept awake by caffeinate to ~14:50). #2621 merged (R1.74's PF gaps closed). #2613 full run 44847290198 green → `@mergifyio requeue`, queued; #2648 in queue. **P-776** (lockfile size exception) records PR #2673 labelled; #2638 told to add `Size exception: P-776`, `.github` read done. #2635 merged before its permissions read; read after merge: fails closed, local sign-in still refused outside local. Fine. #2618 Lead read posted (indexes only). #2624 `/run full` posted on e492b78e4. #2619 ruled 422 for PF/FO, 400 for the case side; **owed: ask qa to reword R1.10's Done when**. #2627 R1.5: build now (#2623 merged); stays Partial until a live proof (C21). #2626/walks: `plan` fails with 22 journeys over the cap of 20 (not a queue condition); **owed tooling fix: on a PR, plan only the changed journeys**. R1.32 lane told (task LQ9A1) to move #2622's base to main; it needs the Lead's migration read. Walk j_27 + j_32 on main: run 44851612622 (R1.27 → qa when green). **CS-DL3 part 3:** no PR at 07:11; if none at the 07:23 check, type its start into the lane's prompt box (session_01MXNda6U7cU…). Tooling lanes' long-unanswered questions (P-734 freeze): not answered this check.
 Lead 7's block and Lead 8's check lines word for word: `product/history/STATE-2026-11-21-0650-lead8s3-handover-7-8-block-final.md`.
 
 
