@@ -183,3 +183,40 @@ All 30 outbox rows were written, and they were sending at the time of the check 
 No new issue.
 
 **Verdict: Approve 8700d0bf4f4aef4d7c2ae0c5d70d4e6dd5b9397f**
+
+---
+
+## Re-review 4, 21 Nov: head `0ed880066878dee17f8cd29c58c85f6415683b5b` (merge of main, and the branding door)
+- I read the diff only: `git show 0ed880066878dee17f8cd29c58c85f6415683b5b` (+11/-5 across `branding/images.ts`, `firm-scope.ts` and `check_pf12b_doors.ts`), plus the shape of the merge.
+- Shared tree at 0ed88006, clean. Postgres :54329. Never :4400.
+
+### The merge `80dddd007` brings in main and nothing else
+- Its parents are `46fb9970` (this branch) and `caee4edb1`, which is on `origin/main`.
+- `git merge-tree --write-tree 46fb9970 caee4edb1` gives tree `a7f3cd4a…`. That is exactly `80dddd007^{tree}`, so this is a clean automatic merge with nothing edited by hand.
+- `git diff caee4edb1 80dddd007 --stat` lists only this branch's ten files: the three PF-12b3 records, the MODULE card and row, `firm-scope.ts`, `signup.ts`, `send/mail.ts`, `send/messages.ts` and the suite.
+
+### The branding door moves off the bypass (`0ed88006`)
+- `publicFirm` (`branding/images.ts:80-87`) now calls `platform_firm_of_key(key)`, PF-12b2's definer lookup, which returns the firm id only. It then reads the firm row inside `withFirm(firmId)`.
+  - The status check (ACTIVE or TRIAL), the one 404, and `enterFirm` are unchanged.
+  - The header route and the image route both go through `publicFirm`.
+  - A direct call from a suite or tool still works: that EXECUTE grant includes `xr_staff_bypass`.
+- This is the same pattern as the booking page. It adds no new reach, and it needs no migration.
+- `"platform.branding.public"` (an entry classed `none:`) leaves `BYPASS_USES`. The registry stays 8 per-firm plus 3 platform with no `none:`, which is Lead 15's rule and what the type enforces.
+- `check_pf12b_doors` adds the door to `DOORS`, so it now covers:
+  - the door is not on the list;
+  - `asBypass` under its old name is refused;
+  - DW7: no bypass line from a door call;
+  - pass: branding answers 200 with the firm's name;
+  - fail: an unknown key answers 404.
+
+### Runs at 0ed88006
+- `check_pf12b_doors` **33/0**, `check_pf12b_bypass_audit` **67/0**, `check_pf13b_images` **32/0**.
+- `product/tools/typecheck.mjs`: **PASS**, no new type errors (15 known). This clears the CI `types` failure (TS2322 at `firm-scope.ts:108`).
+
+### Findings
+1. **Minor (Should): three comments still say the door uses the bypass.**
+   - Where: `branding/images.ts:8` and `branding/routes.ts:4` ("through the named PF-12 bypass use `platform.branding.public`"), and `MODULE.rows/PF-13b.md`.
+   - `MODULE.md:13` lists the doors that are "not bypass uses", and the branding door is not named there.
+   - Fix: reword the three comments and add the door to the card's list in the next push. This is documentation only, so it does not block.
+
+**Verdict: Approve 0ed880066878dee17f8cd29c58c85f6415683b5b**

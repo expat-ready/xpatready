@@ -5,7 +5,8 @@
 // (image-setting.ts). Images get a stable public link, not FilesPort's 5-minute signed one (front-office/files.ts
 // LINK_SECONDS), so a logo in an email opened later still loads: `?v=` names the image, a new image is a new link, and an
 // old link answers 404 cleanly, never another firm's or another image's bytes. The public reads find an ACTIVE or TRIAL
-// firm by its key through the named PF-12 bypass use `platform.branding.public` (its one read), then run as that firm;
+// firm by its key through the narrow definer lookup platform_firm_of_key (firm id only; PF-12b part 3: no bypass use),
+// then run as that firm;
 // they answer no firm id.
 import { HttpException } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
