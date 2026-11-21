@@ -5,7 +5,10 @@
 #   * Start (qa or the Lead): Actions › walks › Run workflow, journeys "j_6 j_9" (ids or numbers, space-separated, up to
 #     20; empty = every studio/tests/journeys/j_*.ts), ref = the branch to walk (main for gate A on main), or
 #     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or
-#     tests/journeys/ runs every journey on its head by itself, once it is ready (never a draft or a mergify/* batch).
+#     tests/journeys/ runs by itself on its head once it is ready (never a draft or a mergify/* batch), and walks only
+#     the journeys whose file or imports it changes plus those its "Completes: R1.n" line names (tools/walk-plan.mjs;
+#     A274, QA-702: no 20 cap on a PR); none → the walk job is skipped and the plan summary says why. The 20 cap stays
+#     for a dispatch. tests/check_walk_plan.ts checks the rule and this file's shape.
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
@@ -41,6 +44,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (!github.event.pull_request.draft && !startsWith(github.event.pull_request.head.ref, 'mergify/')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }   # the PR's file list (walk-plan.mjs)
     outputs:
       matrix: ${{ steps.p.outputs.matrix }}
       sha: ${{ steps.p.outputs.sha }}
@@ -53,29 +57,33 @@ jobs:
         uses: actions/checkout@v4
         with: { ref: "${{ github.event.pull_request.head.sha }}" }
       - id: p
-        name: which journeys (the input, checked; else every j_*.ts), plus the failing fixture
+        name: which journeys (walk-plan.mjs; a PR walks only what it touches), plus the failing fixtures
         env:
+          EVENT: ${{ github.event_name }}
           WANT: ${{ github.event.inputs.journeys }}
+          BODY: ${{ github.event.pull_request.body }}
+          PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
           J: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys
+          T: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
         run: |
-          export LC_ALL=C; set -f   # no glob expansion of the input (review of #2133: "*" must not list files)
-          [ "${#WANT}" -le 200 ] || { echo "journeys: at most 200 characters"; exit 1; }
-          if [ -z "${WANT// /}" ]; then ids=$(ls "$J" | sed -n 's/^\(j_[0-9][0-9]*\)\.ts$/\1/p' | sort -V)
-          else ids=""; for w in $WANT; do
-            [[ "$w" =~ ^(j_)?([1-9][0-9]{0,2})$ ]] || { echo "journeys: '$w' is not j_<n> or <n>"; exit 1; }
-            id="j_${BASH_REMATCH[2]}"; [ -f "$J/$id.ts" ] || { echo "journeys: no $J/$id.ts"; exit 1; }
-            ids="$ids $id"; done
-            ids=$(printf '%s\n' $ids | sort -uV)
+          set -o pipefail; export LC_ALL=C
+          node "$T/walk-plan.mjs" selftest
+          : > "$RUNNER_TEMP/changed.txt"; printf '%s\n' "$BODY" > "$RUNNER_TEMP/body.md"
+          if [ "$EVENT" = pull_request ]; then
+            # Both sides of a rename; a failed or partial list fails the step, never a smaller plan.
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
           fi
-          [ "$(printf '%s\n' $ids | grep -c .)" -le 20 ] || { echo "journeys: at most 20"; exit 1; }
-          m=$(for id in $ids; do printf '{"name":"%s","file":"%s","expect":"pass"},' "$id" "$id"; done)
-          for f in j_0_fails j_0_throws; do m="${m}{\"name\":\"$f\",\"file\":\"$J/fixtures/$f.ts\",\"expect\":\"fail\"},"; done
-          m="[${m%,}]"
+          node "$T/walk-plan.mjs" --event "$EVENT" --journeys "$J" --want "$WANT" --changed "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/plan.json"
+          m=$(node -p 'JSON.stringify(require(process.argv[1]).matrix)' "$RUNNER_TEMP/plan.json")
+          reason=$(node -p 'require(process.argv[1]).reason' "$RUNNER_TEMP/plan.json"); warn=$(node -p 'require(process.argv[1]).warn' "$RUNNER_TEMP/plan.json")
+          [ -z "$warn" ] || echo "::warning title=walks::$warn"
           echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "walks at $SHA: $m" | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo "walks at $SHA: $reason"; echo; echo "matrix: $m"; } | tee -a "$GITHUB_STEP_SUMMARY"
   walk:
     needs: plan
+    if: ${{ needs.plan.outputs.matrix != '[]' }}   # zero journeys: skipped, the plan summary says why (A274)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
