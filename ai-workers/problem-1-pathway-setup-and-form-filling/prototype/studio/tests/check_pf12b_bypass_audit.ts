@@ -251,7 +251,7 @@ try {
   ok("PF-12b3 pass (verify, unknown link): one platform.bypass line with no firm and no key (no pending row), and the answer is the same 404", (badErr as { getStatus?: () => number })?.getStatus?.() === 404 && stepLines("signup.verify-refused") === "null|none|false", stepLines("signup.verify-refused"));
   const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, "0");
   const wrongErr = await errOf(() => s.verify({ token, code: wrong }, "10.12.0.21"));
-  ok("PF-12b3 pass (verify, wrong code): 400 CODE_WRONG and one more firm-less line, keyed by the pending id", (wrongErr as { getStatus?: () => number })?.getStatus?.() === 400 && stepLines("signup.verify-refused") === `null|none|false,null|${pendingId}|false`, stepLines("signup.verify-refused"));
+  ok("PF-12b3 pass (verify, wrong code): 422 CODE_WRONG naming code (PF-28 part 2c) and one more firm-less line, keyed by the pending id", (wrongErr as { getStatus?: () => number })?.getStatus?.() === 422 && (wrongErr as { getResponse?: () => { fields?: Record<string, string> } })?.getResponse?.()?.fields?.code !== undefined && stepLines("signup.verify-refused") === `null|none|false,null|${pendingId}|false`, stepLines("signup.verify-refused"));
   const wasV = onBypassAudit(failAll);
   const vUnknown = await errOf(() => s.verify({ token: "y".repeat(43), code }, "10.12.0.22")), vWrong = await errOf(() => s.verify({ token, code: wrong }, "10.12.0.23"));
   onBypassAudit(wasV);
