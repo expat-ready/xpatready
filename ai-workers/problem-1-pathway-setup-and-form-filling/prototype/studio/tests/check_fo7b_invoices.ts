@@ -165,9 +165,9 @@ try {
 
   // ----------------------------------------------------------------- descriptions (break report 8a243502f, Major 1)
   n0 = linesNow();
-  const odd = ["\u200b", "Fee \u0085 x", "Fee \u0080", "Fee \u202e gnp.exe", "Fee \u2066x\u2069", "\u0301\u0301", "\u3164"];
+  const odd = ["\u200b", "Fee \u0085 x", "Fee \u0080", "Fee \u202e gnp.exe", "Fee \u2066x\u2069", "\u0301\u0301", "\u3164", "Fee \ud800 x", "\udc00"];   // the last two: a lone surrogate (break report on #2883, Major 1: was a 500 at the audit write)
   const oddAns = await Promise.all(odd.map((description) => line(d12.body.id, fee(100, 0, { description }))));
-  ok("FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler) → 422 at description, never 500, nothing written",
+  ok("FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler, a lone surrogate) → 422 at description, never 500, nothing written",
     oddAns.every((x) => x.status === 422 && x.body.errors?.[0]?.field === "description") && linesNow() === n0, oddAns.map((x) => [x.status, x.body?.errors?.[0]?.field]));
   const emoji = await line(d12.body.id, fee(100, 0, { description: "\u{1F4B8}".repeat(300) })), words = await line(d12.body.id, fee(100, 0, { description: "Frais de dossier — été, 申请费, رسوم" }));
   ok("FO-7b text pass: 300 emoji (600 UTF-16 units, 300 characters) and mixed-script words are stored as sent", emoji.status === 201 && words.status === 201 && linesNow() === String(Number(n0) + 2), [emoji.body?.errors, words.body?.errors]);
@@ -177,6 +177,12 @@ try {
   ok("FO-7b R13 pass: a client-sent taxMinor (1) and amountMinor (5) are ignored: the stored line is 850.00 and 110.50", r13.status === 201 && stored(d13.body.id) === "1:FEE:85000:130000:11050:CAD", r13.body);
   const unknown = await line(d13.body.id, fee(100, 0, { firmId: B }));
   ok("FO-7b R13 fail (stand-in): any other unknown field (a firm id from the request) → 422, nothing written", unknown.status === 422 && stored(d13.body.id).split(",").length === 1, unknown.body);
+  // PF-28 part 6 (break report on #2883, minors 1-2): a "__proto__" key is refused in the money shape (its errors list at
+  // the field); an unknown key's name is never echoed in full (a 10,000-character key → a small answer, the name cut).
+  const proto = await call(tA, "POST", `/front-office/money/invoices/${d13.body.id}/lines`, JSON.parse(`{"kind":"FEE","description":"Sample","unitMinor":1,"__proto__":{"x":1}}`));
+  const longKey = await line(d13.body.id, fee(100, 0, { ["k".repeat(10_000)]: 1 }));
+  ok("PF-28 part 6 fail: a __proto__ key → 422 with errors and fields at __proto__; a 10,000-character unknown key → 422 in under 4 KB, the name cut; nothing written",
+    proto.status === 422 && proto.body.errors?.[0]?.field === "__proto__" && Object.hasOwn(proto.body.fields ?? {}, "__proto__") && longKey.status === 422 && JSON.stringify(longKey.body).length < 4096 && stored(d13.body.id).split(",").length === 1, [proto.body, JSON.stringify(longKey.body).length]);
 
   // ---------------------------------------------------------------------------- R14: "Prices include tax" on
   sql(`update money_payment_settings set tax_registered = true, tax_number = '123456789RT0001', prices_include_tax = true where firm_id = '${A}'`);

@@ -12,7 +12,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { DraftIn, InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { taxForLine } from "./tax-round.ts";
@@ -26,10 +26,14 @@ const MONEY = (n: number) => { const s = String(n).padStart(3, "0"); return `${s
  *  the one rule's words (an unknown one included), the money schemas' own `errors` list and words kept. A body that is not
  *  an object (a list, a number) is refused by its shape, "body: This must be an object.", never read as {}. */
 const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
-  if (input !== null && typeof input === "object" && Object.hasOwn(input, "__proto__")) parseInput(schema, input);   // the one rule's own refusal (break m2)
   if (input === null || typeof input !== "object" || Array.isArray(input)) badField("body", "This must be an object.");
+  if (Object.hasOwn(input as object, "__proto__")) badField("__proto__", "This field is not allowed here.");   // never a field of ours (the one rule's break m2), in the money shape
   const r = schema.safeParse(input);
-  if (!r.success) throw new HttpException({ ...problemFromZod(r.error), status: FIELD_ERROR_STATUS, code: "INVALID", fields: fieldsOf(r.error) }, FIELD_ERROR_STATUS);
+  if (!r.success) {
+    // zod's own words name an unknown key in full: each message is cut, as the one rule cuts a name (its break m3).
+    const p = problemFromZod(r.error), errors = (p.errors ?? []).map((e) => ({ field: e.field.slice(0, 64), message: e.message.slice(0, 200) }));
+    throw new HttpException({ ...p, detail: errors.map((e) => e.message).join(" ").slice(0, 600), errors: errors.slice(0, 20), status: FIELD_ERROR_STATUS, code: "INVALID", fields: fieldsOf(r.error) }, FIELD_ERROR_STATUS);
+  }
   return r.data;
 };
 /** A field error naming one field (FIELD_ERROR_STATUS), in the same shape as a zod refusal. */
