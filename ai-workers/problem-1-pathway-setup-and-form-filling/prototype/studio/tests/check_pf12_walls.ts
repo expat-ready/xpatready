@@ -83,7 +83,7 @@ try {
   ok("PF-12 (brief): policies and roles only — no CREATE/DROP TABLE, no column, key or index change; every ALTER TABLE only enables or forces row-level security", altered.length > 0 && altered.every((a) => /^(ENABLE|FORCE) ROW LEVEL SECURITY$/.test(a)) && !/\b(CREATE|DROP)\s+(TABLE|INDEX|TYPE)\b|\bADD\s+COLUMN\b|^\s*(UPDATE|DELETE|INSERT|TRUNCATE)\b/im.test(code), altered.filter((a) => !/ROW LEVEL SECURITY/.test(a)));
   const fns = [...code.matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].map((m) => m[1]);
   ok("PF-12 (rows rev 15.2): every function the migration creates carries the area prefix platform_", fns.length >= 1 && fns.every((f) => f.startsWith("platform_")), fns);
-  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN", /'CREATE ROLE xr_case_lookup NOLOGIN'/.test(code) && /WHEN duplicate_object THEN EXIT/.test(code) && /'ALTER ROLE xr_case_lookup NOLOGIN/.test(code));
+  ok("PF-12 (rev 16.34): xr_case_lookup is created only when missing (CS-W1 part 1 may have created it), and NOLOGIN", /\('xr_case_lookup', false, false\)/.test(code) && /format\('CREATE ROLE %I %s%s', want\.name, CASE WHEN want\.login THEN 'LOGIN' ELSE 'NOLOGIN' END/.test(code) && /WHEN duplicate_object THEN EXIT/.test(code)); // PF-8b F4: the RDS-safe form (only differing attributes altered; the end state checked, line below and the role checks)
   // Right after its own migration (rows rev 16.7): bare gets every migration before it, then it, then is measured.
   for (const d of before) psql(urlOf(BARE), ["-f", join(MIG, d, "migration.sql")]);
   const bareUnwalled = unwalled(BARE);
