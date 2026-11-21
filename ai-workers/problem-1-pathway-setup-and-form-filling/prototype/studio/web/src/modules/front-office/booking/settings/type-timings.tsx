@@ -24,6 +24,18 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
   const [said, setSaid] = React.useState<string | null>(null), [busy, setBusy] = React.useState<TypeField | null>(null);
   const t = q.data;
 
+  // Escape in a row's field leaves that row only. The panel (Radix) listens for Escape on the document in the capture
+  // phase, so this listens on the window, which the capture phase reaches first.
+  React.useEffect(() => {
+    if (!editing) return;
+    const f = editing;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !(e.target instanceof HTMLElement) || !e.target.closest(`[data-type-timing="${f}"]`)) return;
+      e.stopPropagation(); e.preventDefault(); setEditing(null); setError(null); focus(`[data-type-timing="${f}"] button`);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [editing]);
   const focus = (sel: string) => setTimeout(() => document.querySelector<HTMLElement>(sel)?.focus(), 0);
   const send = async (f: TypeField, value: number | null) => {
     if (!t) return;
@@ -43,8 +55,8 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
     } finally { setBusy(null); }
   };
   const start = (f: TypeField) => { if (!t) return; setEditing(f); setError(null); setSaid(null); setText(toInput(f, t.effectiveTimings[f])); focus(`[data-type-timing-input="${f}"]`); };
-  const submit = (e: React.FormEvent, f: TypeField) => {
-    e.preventDefault();
+  /** Not a <form>: this sits inside the type panel's form, and forms do not nest (Enter saves this row only). */
+  const submit = (f: TypeField) => {
     const v = fromInput(f, text);
     if (v === null) { setError({ field: f, text: NOT_A_NUMBER(f) }); focus(`[data-type-timing-input="${f}"]`); return; }
     void send(f, v);
@@ -66,20 +78,20 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
                   <li key={f} className="flex flex-wrap items-center justify-between gap-2 py-2" data-type-timing={f}>
                     <span id={`${inputId}-name`} className="font-medium">{FIELDS[f].label}</span>
                     {editing === f ? (
-                      <form className="flex flex-wrap items-start gap-2" noValidate onSubmit={(e) => submit(e, f)}>
+                      <div className="flex flex-wrap items-start gap-2" role="group" aria-labelledby={`${inputId}-name`}>
                         <div className="flex flex-col gap-1">
                           <label htmlFor={inputId} className="sr-only">{`${FIELDS[f].label} (${FIELDS[f].unit}) for this type`}</label>
                           <div className="flex items-center gap-2">
                             <Input id={inputId} inputMode="decimal" className="w-24" value={text} onChange={(e) => setText(e.target.value)} data-type-timing-input={f}
                               aria-invalid={error?.field === f ? true : undefined} aria-describedby={error?.field === f ? noteId : undefined}
-                              onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setEditing(null); setError(null); focus(`[data-type-timing="${f}"] button`); } }} />
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(f); } }} />
                             <span className="text-text-muted">{FIELDS[f].unit}</span>
                           </div>
                           {error?.field === f ? <p id={noteId} role="alert" className="max-w-xs text-xs text-text-danger">{error.text}</p> : null}
                         </div>
-                        <Button type="submit" size="sm" busy={busy === f}>Save</Button>
+                        <Button type="button" size="sm" busy={busy === f} onClick={() => submit(f)}>Save</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(null); setError(null); focus(`[data-type-timing="${f}"] button`); }}>Cancel</Button>
-                      </form>
+                      </div>
                     ) : (
                       <span className="flex flex-wrap items-center gap-2">
                         <span data-type-timing-value>{own === null ? `Uses firm default (${words(f, firmValue ?? t.effectiveTimings[f])})` : `${words(f, own)} (this type)`}</span>
