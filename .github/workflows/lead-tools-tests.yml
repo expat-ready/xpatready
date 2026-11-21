@@ -9,6 +9,7 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test_review_rounds.py"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-pr.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-lead-pr.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/guard-test-lib.sh"
       - ".github/workflows/lead-tools-tests.yml"
       - ".github/workflows/review-rounds.yml"
 permissions:

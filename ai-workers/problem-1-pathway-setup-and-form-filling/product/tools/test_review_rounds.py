@@ -74,6 +74,42 @@ class ReviewRounds(unittest.TestCase):
     def test_one_comment_is_one_round(self):
         self.assertEqual(run([c("Reviewer: Changes\nReviewer: Changes\nReviewer: Approve x")])[0], 0)
 
+    def ci(self, comments, labels=()):
+        """--pr N --status against a stand-in curl: returns (exit, output, statuses posted)."""
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "comments.json"), "w") as f:
+            json.dump(comments, f)
+        with open(os.path.join(d, "pull.json"), "w") as f:
+            json.dump({"head": {"sha": SHA}, "labels": [{"name": l} for l in labels]}, f)
+        with open(os.path.join(d, "curl"), "w") as f:
+            f.write('#!/usr/bin/env bash\nm=GET; d=""; u=""\nwhile [ $# -gt 0 ]; do case "$1" in -X) m=$2; shift;; '
+                    '-d) d=$2; shift;; -H|--max-time) shift;; http*) u=$1;; esac; shift; done\ncase "$m $u" in\n'
+                    '  "GET "*/pulls/7) cat "$FX/pull.json";;\n  "GET "*comments*page=1) cat "$FX/comments.json";;\n'
+                    '  "GET "*comments*) echo "[]";;\n  "POST "*/statuses/*) echo "$u $d" >> "$FX/log"; echo "{}";;\n'
+                    '  *) exit 22;;\nesac\n')
+        os.chmod(os.path.join(d, "curl"), 0o755)
+        env = dict(os.environ, PATH=d + ":" + os.environ["PATH"], FX=d, GH_TOKEN="x", REPO="o/r")
+        r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "review-rounds.py"), "--pr", "7", "--status"],
+                           capture_output=True, text=True, env=env)
+        log = open(os.path.join(d, "log")).read() if os.path.exists(os.path.join(d, "log")) else ""
+        return r.returncode, r.stdout, log
+
+    def test_ci_sets_the_status_on_the_head(self):
+        rc, out, log = self.ci([R1, R2, R3])
+        self.assertEqual(rc, 1, out)
+        self.assertIn("/statuses/%s" % SHA, log)
+        self.assertIn('"state": "failure"', log)
+        self.assertIn('"context": "review-rounds"', log)
+        rc, out, log = self.ci([R1, R2])
+        self.assertEqual(rc, 0, out)
+        self.assertIn('"state": "success"', log)
+
+    def test_records_prs_are_exempt(self):
+        rc, out, log = self.ci([R1, R2, R3, c("Reviewer: Approve x", cid=5)], labels=["records"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("records PR: exempt", out)
+        self.assertIn('"state": "success"', log)
+
     def test_unreadable_comments_fail_closed(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             f.write("{not json")

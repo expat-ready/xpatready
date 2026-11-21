@@ -5,6 +5,7 @@
 # failure / error when comments cannot be read: fails closed); the job fails with it. Runs when a comment that names a
 # verdict or a Lead allowance is written, edited or deleted, and on each new head. issue_comment and
 # pull_request_target run main's copy of this file and the script; the PR's code is never checked out or run.
+# A PR carrying the `records` label is exempt (the Lead's own records approvals, P-385, are not review rounds).
 # Binding only once the Lead adds `status-success=review-rounds` to .mergify.yml (P-423); until then it shows red.
 # Test: product/tools/test_review_rounds.py (lead-tools-tests.yml). Read-only apart from the status, US$0.
 name: review-rounds
@@ -18,16 +19,19 @@ permissions:
   issues: read
   pull-requests: read
   statuses: write
-concurrency:
-  # every run reads the PR as it is now, so a newer run replaces an older one safely
-  group: review-rounds-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: true
 jobs:
   review-rounds:
+    # contains() ignores case; an edit is judged on its old body too (removing a verdict or an allowance re-judges)
     if: >-
       github.event_name == 'pull_request_target' ||
-      (github.event.issue.pull_request && (contains(github.event.comment.body, 'reviewer:') ||
-      contains(github.event.comment.body, 'lead allows round')))
+      (github.event.issue.pull_request && (contains(github.event.comment.body, 'reviewer') ||
+      contains(github.event.comment.body, 'allows round') || contains(github.event.changes.body.from, 'reviewer') ||
+      contains(github.event.changes.body.from, 'allows round')))
+    # On the job, not the workflow (#2749 review M1): a skipped run for an unrelated comment takes no slot, so it can
+    # never cancel a verdict's run. Every run reads the PR as it is now, so a newer run replacing an older one is safe.
+    concurrency:
+      group: review-rounds-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -36,6 +40,7 @@ jobs:
           ref: main
           sparse-checkout: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/review-rounds.py
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: at most two reviewer rounds without the Lead's line
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

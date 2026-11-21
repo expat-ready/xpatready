@@ -61,6 +61,8 @@ checks; { cm "Reviewer: Changes"; cm "Reviewer: Changes"; cm "Reviewer: Approve 
 ok "label: a third review round without the Lead's line → refused (P-293)" "$([ $rc = 1 ] && nothing && grep -q 'REFUSED: 3 reviewer rounds' <<<"$out" && echo 1)" "$rc $out"
 { cm "Reviewer: Changes"; cm "Reviewer: Changes"; cm "Lead allows round 3: one-line fix" OWNER lead; cm "Reviewer: Approve $HEAD"; } | comments; run label 7
 ok "label: a third round with \"Lead allows round 3:\" → labelled" "$([ $rc = 0 ] && posted LABEL && echo 1)" "$rc $out"
+{ cm "Reviewer: Approve $HEAD"; for i in $(seq 1 60); do cm "$(head -c 3000 /dev/zero | tr '\0' x)"; done; } | comments; run label 7
+ok "label: comments over 128 KiB (a busy PR) still read (#2749 review M2)" "$([ $rc = 0 ] && posted LABEL && [ "$(wc -c < "$FX/comments.json")" -gt 140000 ] && echo 1)" "$rc $out"
 FAIL_COMMENTS=1 run label 7
 ok "label: comments unreadable → refused (fails closed)" "$([ $rc = 1 ] && nothing && grep -q 'comments unreadable' <<<"$out" && echo 1)" "$rc $out"
 

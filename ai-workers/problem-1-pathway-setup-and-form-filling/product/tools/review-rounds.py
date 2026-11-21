@@ -6,7 +6,9 @@ A reviewer round is one PR comment, by someone with write access (OWNER, MEMBER,
 a public repository), with a line that starts "Reviewer: <verdict>" (Approve, Changes, Changes requested, Request
 changes, Block, Reject; markdown * _ ` ignored). Bots never count. Rounds 1 and 2 pass. Round k > 2 passes only when a
 write-access comment has a line starting "Lead allows round N:" with N >= k (so "Lead allows round 3:" allows a third
-round; a fourth needs "Lead allows round 4:").
+round; a fourth needs "Lead allows round 4:"). A PR with the `records` label is exempt (P-385: the Lead's records
+approvals are not review rounds). Limit, stated for the Lead (#2749 review M3): only rounds posted as such a line
+count; a round summarised in prose, or posted as "Verdict: ..." or "Block on <sha>", is not seen.
 
 Usage:
   python3 -I review-rounds.py --comments FILE          # a JSON array of issue comments (tests)
@@ -86,15 +88,17 @@ def main(argv=None):
     g.add_argument("--pr", type=int)
     ap.add_argument("--status", action="store_true", help="set the commit status on the PR's head (CI)")
     a = ap.parse_args(argv)
-    api, head = None, None
+    api, head, records = None, None, False
     try:
         if a.comments:
             with open(a.comments, encoding="utf-8") as f:
                 comments = json.load(f)
         else:
             api = API()
+            pull = api.call("pulls/%d" % a.pr)
+            records = "records" in [l["name"] for l in pull.get("labels", [])]
             if a.status:
-                head = api.call("pulls/%d" % a.pr)["head"]["sha"]
+                head = pull["head"]["sha"]
             comments = api.comments(a.pr)
     except (OSError, ValueError, KeyError, TypeError) as e:
         print("review-rounds: comments unreadable (%s): failing closed" % e)
@@ -106,6 +110,8 @@ def main(argv=None):
                 pass
         return 2
     ok, rounds, allowed, msg = judge(comments)
+    if records:
+        ok, msg = True, "records PR: exempt (P-385); " + msg
     print("review-rounds: %s: %s" % ("OK" if ok else "REFUSED", msg))
     if api and head:
         try:

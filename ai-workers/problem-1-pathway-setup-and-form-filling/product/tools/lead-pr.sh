@@ -22,24 +22,30 @@ pr() { curl "${H[@]}" "$API/pulls/$1"; }
 field() { python3 -c "import json,sys;d=json.load(sys.stdin);print($1)"; }
 USAGE="usage: lead-pr.sh reopen|approve-records|label|requeue <pr number>"
 n="${2:-}"; [[ "$n" =~ ^[0-9]+$ ]] || die "$USAGE"
-comments() {  # every comment of PR $1 as one JSON array (fails closed: an unreadable page stops the step)
-  local p=1 all='[]' b
+# Comments travel in files, never in environment variables: Linux refuses one over 128 KiB (#2749 review M2).
+W=$(mktemp -d "${TMPDIR:-/tmp}/lead-pr.XXXXXX"); trap 'rm -rf "$W"' EXIT
+comments() {  # every comment of PR $1 into the file $W/comments.json (fails closed: an unreadable page stops the step)
+  local p=1 n
+  echo '[]' > "$W/comments.json"
   while :; do
-    b=$(curl "${H[@]}" "$API/issues/$1/comments?per_page=100&page=$p") || die "#$1 comments unreadable"
-    all=$(A="$all" B="$b" python3 -I -c "import json,os;a=json.loads(os.environ['A']);b=json.loads(os.environ['B']);assert isinstance(b,list);print(json.dumps(a+b))") || die "#$1 comments unreadable"
-    [ "$(B="$b" python3 -I -c "import json,os;print(len(json.loads(os.environ['B'])))")" -lt 100 ] && break
+    curl "${H[@]}" "$API/issues/$1/comments?per_page=100&page=$p" > "$W/page.json" || die "#$1 comments unreadable"
+    n=$(python3 -I -c "
+import json, sys
+a = json.load(open(sys.argv[1])); b = json.load(open(sys.argv[2])); assert isinstance(b, list)
+json.dump(a + b, open(sys.argv[1], 'w')); print(len(b))" "$W/comments.json" "$W/page.json") || die "#$1 comments unreadable"
+    [ "$n" -lt 100 ] && break
     p=$((p + 1)); [ "$p" -le 20 ] || die "#$1 has 2000+ comments: read it by hand"
-  done; printf '%s' "$all"; }
-# team_line <comments json> <python regex>: login of the newest write-access, non-bot comment with a matching line
-team_line() { C="$1" RX="$2" python3 -I -c '
-import json, os, re
+  done; }
+# team_line <python regex>: login of the newest write-access, non-bot comment in $W/comments.json with a matching line
+team_line() { RX="$1" python3 -I -c '
+import json, os, re, sys
 rx = re.compile(os.environ["RX"], re.I | re.M); hit = ""
-for c in json.loads(os.environ["C"]):
+for c in json.load(open(sys.argv[1])):
     u = c.get("user") or {}
     if u.get("type") == "Bot" or u.get("login", "").endswith("[bot]"): continue
     if c.get("author_association") not in ("OWNER", "MEMBER", "COLLABORATOR"): continue
     if rx.search(re.sub(r"[*_`]", "", c.get("body") or "")): hit = u.get("login", "?")
-print(hit)'; }
+print(hit)' "$W/comments.json"; }
 case "${1:-}" in
   reopen)
     st=$(pr "$n" | field "d['state']+' '+str(d['merged'])")
@@ -66,13 +72,12 @@ case "${1:-}" in
     [ "$(echo "$j" | field "d['state']")" = open ] || die "#$n is not open"
     [ "$(echo "$j" | field "str(d.get('draft', False))")" = False ] || die "#$n is a draft: mark it ready first (the full check runs then, P-371)"
     [[ "$head" =~ ^[0-9a-f]{40}$ ]] || die "#$n head unreadable"
-    cj=$(comments "$n")
-    who=$(team_line "$cj" "^\s*(?:>\s*)?reviewer:\s*approve[sd]?\s+$head\b")
+    comments "$n"
+    who=$(team_line "^\s*(?:>\s*)?reviewer:\s*approve[sd]?\s+$head\b")
     [ -n "$who" ] || die "#$n has no \"Reviewer: Approve $head\" line from a reviewer (write access, not a bot) for the current head ${head:0:9}: re-review first (P-385, P-318)"
     red=$(curl "${H[@]}" "$API/commits/$head/check-runs?per_page=100" | field "' '.join(c['name'] for c in d['check_runs'] if c['conclusion'] in ('failure','timed_out'))")
     [ -z "$red" ] || die "#$n has red checks on $head: $red"
-    f=$(mktemp "${TMPDIR:-/tmp}/lead-pr.XXXXXX"); printf '%s' "$cj" > "$f"
-    rc=0; rr=$(python3 -I "$HERE/review-rounds.py" --comments "$f") || rc=$?; rm -f "$f"
+    rc=0; rr=$(python3 -I "$HERE/review-rounds.py" --comments "$W/comments.json") || rc=$?
     [ "$rc" = 0 ] || die "#$n: $rr"
     curl "${H[@]}" -X POST "$API/issues/$n/labels" -d '{"labels":["review: approved"]}' >/dev/null
     echo "lead-pr: #$n labelled on ${head:0:9} (Approve by $who; $rr)" ;;
@@ -82,8 +87,8 @@ case "${1:-}" in
     labels=$(echo "$j" | field "'|'.join(l['name'] for l in d.get('labels', []))")
     case "|$labels|" in *"|review: approved|"*) ;; *) die "#$n does not carry review: approved: label it first (lead-pr.sh label)" ;; esac
     case "|$labels|" in *"|queued|"*) die "#$n is queued: a requeue can reset a running batch, never in one (unblock playbook 2)" ;; esac
-    cj=$(comments "$n")
-    who=$(team_line "$cj" "^\s*(?:>\s*)?batch failures covered:")
+    comments "$n"
+    who=$(team_line "^\s*(?:>\s*)?batch failures covered:")
     [ -n "$who" ] || die "#$n has no \"Batch failures covered:\" line from someone with write access: list every failed suite of the batch run first (P-731 (2))"
     curl "${H[@]}" -X POST "$API/issues/$n/comments" -d '{"body":"@mergifyio requeue"}' >/dev/null
     echo "lead-pr: #$n requeue posted (Batch failures covered by $who)" ;;
