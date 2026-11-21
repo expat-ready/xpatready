@@ -9,6 +9,7 @@ updated: 2026-11-21 18:2x IST: Lead 16 (series 3) current since 18:04 IST (check
 
 
 ## Lead 16 since 18:04 IST (newest first)
+* 18:3x **Full report (A272).** Unblocked **#2834** PF-8b F3 (pr-rules red: no "Done when"; Lead added it from its Checks, accepted the absent-keeps-domain departure; pr-rules green 13:09Z). #2826 (R1.53 p2) + #2827 (F2b) merged: R1.53 re-proof asked on #2797. Queue: #2458, #2814 in batches; #2818, #1959, #2809 queued. Lead 18 standby start refused (Remote Control): founder to start it in the desktop app.
 * 18:2x **Proven 6/15 (38/101): R1.14 #2804 merged** (fresh Opus diff-only Approve a8f0ac8). **#2830 R1.47:** fresh Opus reviewer Request changes (pack run only on queue commit ca0db960a, no re-run on main); Q4 started nightly 44906078657 on main 4353a7e8b, cites it then asks re-review.
 
 ## Lead 15 since 15:47 IST (newest first)
@@ -29,6 +30,7 @@ updated: 2026-11-21 18:2x IST: Lead 16 (series 3) current since 18:04 IST (check
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A272 | 21 Nov 18:3x (typed): keep checking every angle, unblock stuck queues intelligently, full pipeline status | Full report 18:3x; #2834 unblocked |
 | A271 | 21 Nov 17:2x (typed): plan an account switch (not a reset) at ~95% or before he sleeps; keep everything synced and resumable as we go | RESUME-ON-NEW-ACCOUNT.md switch block written 17:2x; kept current each check |
 | A270 | 21 Nov 17:1x (typed): calm plan; commit to first 8 or 10; slow what should slow, fast-track what matters | Commitment line in Lead 15 block |
 | A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
