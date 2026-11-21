@@ -46,7 +46,7 @@ import { PlatformTermsController } from "../api/src/platform/terms/routes.ts"; i
 import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261115180000_pf5_signup_terms", P3 = "20261121190000_pf5p3_billing_period";
+const NEW = "20261115180000_pf5_signup_terms", P3 = "20261122000000_pf5p3_billing_period";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf5_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `pf5-check-${process.pid}`);
@@ -138,15 +138,17 @@ try {
   ok("PF-5 part 3 fail: before its migration the subscription has no billing period", p3Diff().length > 0, p3Diff());
   const p3Plan = sql(`select id from platform_plan where code = 'team'`), p3Firm = (k: string) => sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'pf5p3-${k}', 'P3 ${k}', 'CA', '${k}@pf5p3.example.com', now()) returning id`).split("\n")[0];
   const p3Sub = (f: string) => sql(`insert into platform_subscription (id, firm_id, plan_id, updated_at) values (gen_random_uuid(), '${f}', '${p3Plan}', now()) returning id`).split("\n")[0];
-  const yFirm = p3Firm("yearly"), ySub = p3Sub(yFirm), mFirm = p3Firm("plain"), mSub = p3Sub(mFirm);
+  const yFirm = p3Firm("yearly"), ySub = p3Sub(yFirm), mFirm = p3Firm("plain"), mSub = p3Sub(mFirm), moFirm = p3Firm("monthly"), moSub = p3Sub(moFirm);
+  // review m1: a Monthly sign-up's own creation line keeps MONTHLY (only a YEARLY line moves a row).
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${moSub}', 'Trial subscription on Team, monthly', '{"plan":"team","period":"MONTHLY"}', '${moFirm}')`);
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${ySub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
   // A line in another firm naming this subscription is not its own (break m2): it changes nothing.
   sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${mSub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
   apply(P3);
   ok("PF-5 part 3 pass: right after its own migration, migrate diff names no billing-period line", p3Diff().length === 0, p3Diff());
-  ok("PF-5 part 3 pass/fail: the backfill sets YEARLY from a Yearly sign-up's audit line, and a subscription with no line of its own firm (another firm's line naming it) keeps MONTHLY",
-    sql(`select billing_period::text from platform_subscription where id = '${ySub}'`) === "YEARLY" && sql(`select billing_period::text from platform_subscription where id = '${mSub}'`) === "MONTHLY");
-  sql(`delete from platform_subscription where firm_id in ('${yFirm}', '${mFirm}')`); sql(`delete from platform_firm where id in ('${yFirm}', '${mFirm}')`);
+  ok("PF-5 part 3 pass/fail: the backfill sets YEARLY from a Yearly sign-up's audit line, a Monthly sign-up's line keeps MONTHLY, and a subscription with no line of its own firm (another firm's line naming it) keeps MONTHLY",
+    sql(`select billing_period::text from platform_subscription where id = '${ySub}'`) === "YEARLY" && sql(`select billing_period::text from platform_subscription where id = '${mSub}'`) === "MONTHLY" && sql(`select billing_period::text from platform_subscription where id = '${moSub}'`) === "MONTHLY");
+  sql(`delete from platform_subscription where firm_id in ('${yFirm}', '${mFirm}', '${moFirm}')`); sql(`delete from platform_firm where id in ('${yFirm}', '${mFirm}', '${moFirm}')`);
   for (const d of all.filter((x) => x > P3)) apply(d);
   ok("PF-5 pass: three Sample terms versions, one of each kind", sql(`select string_agg(kind::text, ',' order by kind) from platform_terms_version`) === "TERMS_OF_SERVICE,PRIVACY_NOTICE,DATA_PROCESSING");
   ok("PF-5 fail: a terms version is never changed or removed", refused(`update platform_terms_version set url = '/x'`, /insert_only/) && refused(`delete from platform_terms_version`, /insert_only/));
