@@ -15,7 +15,7 @@ export const MINOR_MAX = 2_147_483_647;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id = (what: string) => z.string().regex(UUID, `${what} is not an id.`);
 const whole = (what: string, min: number, max: number) => z.number({ error: `${what} must be a whole number.` }).int(`${what} must be a whole number.`).min(min, `${what} is at least ${min}.`).max(max, `${what} is at most ${max}.`);
-/** Ignored on input: the server computes it (QA-482). Read so that sending it is never a 400. */
+/** Ignored on input: the server computes it (QA-482). Read so that sending it is never refused. */
 const ignored = z.unknown().optional().transform(() => undefined);
 
 /** POST /api/front-office/money/invoices: a draft for one client (a person or a company of the firm) in one currency; the
