@@ -29,6 +29,10 @@ export type ChangePreview = z.infer<typeof ChangePreview>;
 export const RenewalChange = z.strictObject({ subscriptionId: SubscriptionId, priceId: PriceId });
 export const IdempotencyKey = z.string().regex(/^[A-Za-z0-9:_-]{8,255}$/, "an idempotency key");
 
+/** Stripe refused the payment (a card error): nothing was charged and the subscription did not change. Any other failure
+ *  may or may not have reached Stripe, so the caller reads Stripe again before saying anything about money. */
+export class PaymentDeclined extends Error { constructor() { super("the payment was declined"); this.name = "PaymentDeclined"; } }
+
 export interface PlanChangePort {
   current(subscriptionId: string): Promise<PlanSubscription>;
   preview(change: PriceChange): Promise<ChangePreview>;
@@ -51,11 +55,13 @@ export type FakePlanChange = PlanChangePort & {
 
 /** The fake: deterministic proration (the price difference times the share of the period left, a fresh period credits
  *  the unused share), keyed like Stripe's idempotency, and `failOn` to make a call fail (a declined card). */
-export function fakePlanChange(opts: { prices: { id: string; unitAmount: number; interval: "month" | "year"; currency: string }[]; failOn?: (call: keyof PlanChangePort) => boolean }): FakePlanChange {
+export function fakePlanChange(opts: { prices: { id: string; unitAmount: number; interval: "month" | "year"; currency: string }[]; failOn?: (call: keyof PlanChangePort) => "fail" | "decline" | "lost" | null | boolean }): FakePlanChange {
   const subs = new Map<string, PlanSubscription>(), charges: FakePlanChange["charges"] = [], renewals = new Map<string, { priceId: string; at: Date | null }>(), done = new Map<string, unknown>();
   const price = (id: string) => { const p = opts.prices.find((x) => x.id === id); if (!p) throw new Error(`no such price: ${id}`); return p; };
   const sub = (id: string) => { const s = subs.get(SubscriptionId.parse(id)); if (!s) throw new Error(`no such subscription: ${id}`); return s; };
-  const gate = (c: keyof PlanChangePort) => { if (opts.failOn?.(c)) throw new Error(`forced plan-change failure: ${c}`); };
+  /** "fail" (or true): a refusal; "decline": a card error; "lost": Stripe made the change but the answer never came back. */
+  const mode = (c: keyof PlanChangePort) => { const m = opts.failOn?.(c); return m === true ? "fail" : m || null; };
+  const gate = (c: keyof PlanChangePort) => { const m = mode(c); if (m === "decline") throw new PaymentDeclined(); if (m === "fail") throw new Error(`forced plan-change failure: ${c}`); };
   const quote = (c: PriceChange): ChangePreview => {
     const s = sub(c.subscriptionId), to = price(c.priceId);
     if (!c.prorate) return { amountDueCents: 0, prorationCents: 0, currency: to.currency };
@@ -69,12 +75,15 @@ export function fakePlanChange(opts: { prices: { id: string; unitAmount: number;
     async preview(change) { gate("preview"); return quote(PriceChange.parse(change)); },
     async changeNow(change, key) {
       const c = PriceChange.parse(change), k = IdempotencyKey.parse(key);
+      if (done.get(k) === "declined") throw new PaymentDeclined();   // Stripe replays a stored decline under its key (break m6)
       if (done.has(k)) return;
+      if (mode("changeNow") === "decline") { done.set(k, "declined"); throw new PaymentDeclined(); }
       gate("changeNow");
       const q = quote(c), s = sub(c.subscriptionId), to = price(c.priceId);
       subs.set(s.id, { ...s, priceId: to.id, interval: to.interval, unitAmount: to.unitAmount, ...(c.anchorNow ? { periodEnd: new Date(c.prorationDate.getTime() + LENGTH[to.interval]) } : {}) });
       if (q.amountDueCents > 0) charges.push({ key: k, subscriptionId: s.id, cents: q.amountDueCents });
       done.set(k, true);
+      if (mode("changeNow") === "lost") throw new Error("forced plan-change failure: the answer was lost");
     },
     async scheduleAtRenewal(change, key) {
       const c = RenewalChange.parse(change), k = IdempotencyKey.parse(key);

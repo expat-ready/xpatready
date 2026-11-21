@@ -9,7 +9,7 @@
 //     the new price, end_behavior release (no proration, no refund). Unconfirmed on a live test-mode account (no lane
 //     reaches Stripe): to be run once on the Mac with test keys before the first real firm.
 import Stripe from "stripe";
-import { ChangePreview, IdempotencyKey, PlanSubscription, PriceChange, RenewalChange, type PlanChangePort } from "../../../../../ports/plan-change.ts";
+import { ChangePreview, IdempotencyKey, PaymentDeclined, PlanSubscription, PriceChange, RenewalChange, type PlanChangePort } from "../../../../../ports/plan-change.ts";
 import { SubscriptionId } from "../../../../../ports/billing.ts";
 
 const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "string" ? v : v?.id ?? null);
@@ -48,17 +48,23 @@ export class StripePlanChange implements PlanChangePort {
   async changeNow(change: PriceChange, idempotencyKey: string) {
     const c = PriceChange.parse(change), key = IdempotencyKey.parse(idempotencyKey), cur = await this.current(c.subscriptionId);
     const d = this.details(c, cur.itemId);
-    await this.stripe.subscriptions.update(c.subscriptionId, { ...d, payment_behavior: "error_if_incomplete" }, { idempotencyKey: key });
+    try { await this.stripe.subscriptions.update(c.subscriptionId, { ...d, payment_behavior: "error_if_incomplete" }, { idempotencyKey: key }); } catch (e) {
+      if ((e as { type?: string }).type === "StripeCardError") throw new PaymentDeclined();   // a card error: nothing charged, nothing changed
+      throw e;
+    }
   }
 
   async scheduleAtRenewal(change: { subscriptionId: string; priceId: string }, idempotencyKey: string) {
     const c = RenewalChange.parse(change), key = IdempotencyKey.parse(idempotencyKey), cur = await this.current(c.subscriptionId);
     const id = cur.scheduleId ?? (await this.stripe.subscriptionSchedules.create({ from_subscription: c.subscriptionId }, { idempotencyKey: `${key}-from` })).id;
     const sched = await this.stripe.subscriptionSchedules.retrieve(id);
-    const now = sched.current_phase;
+    const now = sched.current_phase, first = sched.phases?.[0];
     if (!now) throw new Error("the subscription schedule has no current phase");
+    // The current phase as Stripe made it from the subscription (its items' tax rates and its discounts kept; review m7).
+    const keep = first ? { items: first.items.map((i) => ({ price: idOf(i.price as string | { id: string })!, quantity: i.quantity ?? 1, ...(i.tax_rates?.length ? { tax_rates: i.tax_rates.map((t) => idOf(t as string | { id: string })!) } : {}) })),
+      ...(first.discounts?.length ? { discounts: first.discounts.map((x) => ({ discount: idOf(x.discount as string | { id: string } | null) ?? undefined, coupon: idOf(x.coupon as string | { id: string } | null) ?? undefined })) } : {}) } : { items: [{ price: cur.priceId, quantity: 1 }] };
     await this.stripe.subscriptionSchedules.update(id, { end_behavior: "release", proration_behavior: "none", phases: [
-      { items: [{ price: cur.priceId, quantity: 1 }], start_date: now.start_date, end_date: now.end_date },
+      { ...keep, start_date: now.start_date, end_date: now.end_date },
       { items: [{ price: c.priceId, quantity: 1 }], duration: { interval: cur.interval, interval_count: 1 } },
     ] }, { idempotencyKey: key });
     return { scheduleId: id };
