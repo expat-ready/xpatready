@@ -2,14 +2,14 @@
 
 current_lead: local_7ec53395-63c1-4bdc-accc-f9b33c17e33a Lead 12 · 21 Nov 10:2x IST (series 3; took over from Lead 11 (series 3, local_f172acc0) at ~370k, P-446)
 
-updated: 2026-11-21 10:2x IST: Lead 11 handed over to Lead 12 (series 3) · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-781**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 10:4x IST: Lead 12 (A248 full report; Lead 14 standby; J-49 card). Earlier: Lead 11 handed over to Lead 12 (series 3) · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-781**) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
 
 ## Hand-over Lead 11 → Lead 12 (series 3), 10:2x IST 21 Nov (read this first; Lead 11 at ~370k, P-446)
-**Lead 12: create the check FIRST (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`), reply "check created" to Lead 11 (local_f172acc0), rename yourself "Lead 12 · tech lead (current) · from 21 Nov <IST>", run /lead.** Standby after you: Lead 13 (local_369dd389). RULES as of **P-781** (on this branch; on main when #2708 merges). Lead 11's block and items word for word: `product/history/STATE-2026-11-21-1025-lead11s3-handover-10-11-block-final.md`.
+**Lead 12: create the check FIRST (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`), reply "check created" to Lead 11 (local_f172acc0), rename yourself "Lead 12 · tech lead (current) · from 21 Nov <IST>", run /lead.** Standbys: Lead 13 (local_369dd389), Lead 14 (local_c09f305e, 10:4x). RULES as of **P-781** (on this branch; on main when #2708 merges). Lead 11's block and items word for word: `product/history/STATE-2026-11-21-1025-lead11s3-handover-10-11-block-final.md`.
 (0) **🎯 Cycle 07→07 (A243), recovery swap P-780 (founder 09:5x):** proven **34** (+2: R1.27, R1.74). AWS-proof rows (R1.13, R1.14, R1.15, R1.24; R1.5's Cognito lines) still merge but count only after the founder's AWS. Constraint: build completeness before proof (3/3 proofs at 09:3x came back Partial), then the merge queue (batches #2711-#2715, #2721 running since 09:47; ETA #1959 ~12:12).
 (1) **In the queue:** #2694 (shard 10 fix) → then label #2618 (R1.49; Lead read 40d512a48; Lead B (10)'s watcher labels it) · #2638 R1.14 · #2626 R1.13 · #2627 R1.5 · #2633 R1.47 last part · #1959 R1.19 · #2687 DEMO-LINK (founder approved) · #2719 R1.32 QA-619 walk (labelled) · qa records #2710 (R1.42).
 (2) **Recovery builders (cloud, Opus high, started 09:5x/10:2x):** #2717 FO-3st1 p2 · #2718 FO-3st3a (booking types) · FO-3a1e timings API + migration (no PR yet; Lead reads the migration) · #2720 FO-5b (R1.53) · #2716 QA-621: **Lead 11 ruled Option C** (comment on #2716): prove the x-actor persona route is refused in production configuration; qa re-scores. Next: FO-3st3b after FO-3a1e + #2718; PF-5s and PF-16 (R1.90) when #1959 merges; PF-12b2 (R1.4) after #1959, #2633, #2626, #2627 (BACKLOG rows added). All new starts: **Opus 5.5 medium (P-781)**.
@@ -22,6 +22,7 @@ updated: 2026-11-21 10:2x IST: Lead 11 handed over to Lead 12 (series 3) · mile
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A248 | 21 Nov 10:3x (typed): agrees to the Lead's and desk 08's recommendations as long as speed and quality do not suffer; what is built must be usable though no human tests it; how the software factory handles verification; is our pipeline fine; do the flow measures cover what we care about (bottlenecks, recovery, reverse planning to the target); improve qa with more machines; full report | Full report 10:4x in chat; desk 08 draft 3 accepted; standby Lead 14 started (local_c09f305e); J-49 walk builder left as a card (cloud start refused by the classifier); measures gap and qa plan in the report |
 | A247 | 21 Nov 10:1x (typed): strategy desk to judge the Software Factory v2 video against our pipeline; brutally honest; market research; adopt parts or keep ours | Strategy desk 08 opened 10:2x (Fable 5.2 high from its second turn); its track file is in Lead 11's side notes folder; draft to the Lead by about 13:00 |
 | A245 | 21 Nov 09:2x (typed): #2687 approved to merge ahead of the proofs; label what waits yourself; what is the slowest stage and what to do; are lanes right for the next 7 by 07:00 | #2687 labelled 09:2x; #2626, #2638, #2694 queued; constraint = qa proof (3 qa lanes were idle with R1.32/R1.42/R1.108 merged) → all three given rows 09:3x; next 7: R1.13/R1.14/R1.15/R1.24 need the founder's AWS (PF-8, PF-23c), R1.3 and R1.10 have several parts missing → swap proposed to the founder |
 | A243, A244 | 21 Nov 07:3x and 08:1x | word for word in `product/history/STATE-2026-11-21-0945-lead11s3-ask-rows-A243-A244.md` (A244: the timeline goes in every report) |
