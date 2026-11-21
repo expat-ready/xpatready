@@ -152,3 +152,40 @@ A fresh reviewer read only `git diff b1737d7e1..0a9b2a011` (P-610). That diff co
 2. **Still open from the last re-review, Minor:** R2 (no line for focus after a failed Hide), R4 (copy beyond concept §5, for the Lead), R5 (a locked row's link looks unchanged) and R6 (no line for new-tab clicks).
 
 **Verdict: Approve** (for `0a9b2a0115aee5d92396d60036c77d8de7e8474d`).
+
+## Re-review at 52d9d5b527458a6fc4ccdb866b2e4074d42db4cb
+
+**Scope (P-610, diff only):** `git diff 65f56d5c 52d9d5b5`. 65f56d5c is records only on top of 0a9b2a01, which I approved above. The diff touches 22 files: two test files (+5/−3) and 20 re-taken PNGs (5 in `pf-18h-home/screenshots`, 15 in `pf-6-staff/screenshots`). It changes no product code, server code, contract or copy.
+
+**Shard 15 (usage line):** fixed. The line now reads `zsh studio/tools/isolated.sh pf18h 4718 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_pf18h_home_browser.ts 4718 xr_studio_pf18h`. I ran the usage regex from `run-suites.sh` (line 364) through bash on both versions:
+* The new line **matches**: name `pf18h`, port `4718`, env `AI_LIVE=off PLATFORM_IDENTITY=local`, tool `tsx`, args `4718 xr_studio_pf18h`.
+* The old `tsx --tsconfig …` line does **not** match, which explains the plain run against a database that did not exist.
+* `$TSX` (line 138) adds `--tsconfig $S/api/tsconfig.json` itself, so dropping it from the usage line loses nothing.
+* In my run the suite used its own copy: the log shows `http://localhost:15718/home` (prefix `screens_`, ports +11000), never :4400 or :4718.
+
+**Shard 13 (PF-6 hand-off):** fixed, and the check is not weakened. The new helper `landedAs(p, email)` does three things:
+1. It waits for the exact URL `${BASE}/home`.
+2. It opens My account from the menu (`nav[aria-label="My account"] [data-account-section="/account"]`).
+3. It waits for `[data-account]` to contain the email.
+
+`[data-account]` is rendered only by `account-page.tsx`, from `GET /api/platform/me/account` with the session token. So the email still comes from the server's view of who signed in, not from the address or the page that just closed. That is the same proof as before, plus one new condition: the landing must be Home, as PF-18h requires.
+* **DW5/BR-4 ("exactly once"):** the `ok` line is unchanged. It still requires `count(*) from platform_staff where email = W` = 1 and exactly one `POST …/accept` from that page. Opening My account sends no accept, so the count cannot be inflated or hidden.
+* **DW1 (second browser):** the old wait for X on My account is replaced by `landedAs(x, X)`. Team-shows-Active, the role change, and "Sign out everywhere then the next click shows the sign-in card" (line 111) all follow unchanged. Before this change, `x` also sat on `/account` at line 111, so that line tests the same situation as before.
+
+**Nothing else changed:** I checked the stat and the full text diff. Only the two test hunks above and the PNGs differ. No other suite, helper or app file is touched.
+
+**Re-run (CI's way, from `product/`):** `bash tools/run-suites.sh --only "check_pf18h_home_browser.ts check_pf6_staff_browser.ts check_pf6a_frame_browser.ts check_pf6f_callback_browser.ts"` exited 0:
+* `check_pf18h_home_browser.ts`: **25/25** (128 s).
+* `check_pf6_staff_browser.ts`: **90/90** (29 s).
+* `check_pf6a_frame_browser.ts`: **52/52** (19 s).
+* `check_pf6f_callback_browser.ts`: **11/11** (16 s).
+
+These match the builder's counts. The run re-took the screenshots, and I restored both screenshot folders with `git checkout --` afterwards.
+
+**Journey (reviewer, diff only):** no product code changed, so the journey I walked for 0a9b2a01 still applies. The one path the diff touches (accept an invitation, land on Home, open My account and see yourself) ran in a real browser in the PF-6 suite above. Score **9/10** (pass, no 0), unchanged. No new journey report was written; the 21 Nov report stands.
+
+**Issues (none Blocker or Major):**
+1. **R8 Minor:** `landedAs` waits for the exact URL `${BASE}/home`. If Home ever gains a query string or a trailing slash after sign-in, the check fails falsely. It cannot pass falsely. A glob or regex (`**/home*`) would be sturdier.
+2. **Still open, Minor:** R7 (the m3 focus read races the refetch), R2, R4, R5 and R6, as listed in the re-review at 0a9b2a01.
+
+**Verdict: Approve** (for `52d9d5b527458a6fc4ccdb866b2e4074d42db4cb`).
