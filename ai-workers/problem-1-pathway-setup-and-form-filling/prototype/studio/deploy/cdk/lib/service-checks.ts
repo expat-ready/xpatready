@@ -280,3 +280,16 @@ export function logFindings(t: Template, stage: string, region = "ca-central-1")
   }
   return out;
 }
+
+/** PF-8b F2b: the service's task tells the app which domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX), and it is
+ *  exactly this stack's domain: the hosted zone's name and the wildcard certificate's base, so the host the load balancer
+ *  is reached by is the host the app reads a firm from. */
+export function addressSuffixFindings(t: Template, domain: string): string[] {
+  const { service } = taskDefinitions(t);
+  if (!service) return ["no task definition run by the service"];
+  const v = env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX"), out: string[] = [];
+  if (v !== domain) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not this stack's domain "${domain}"`);
+  if (!all(t, "AWS::Route53::HostedZone").some(([, z]) => z.Properties?.Name === `${v}.`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} is no hosted zone of this stack`);
+  if (!all(t, "AWS::CertificateManager::Certificate").some(([, c]) => c.Properties?.DomainName === `*.${v}`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} has no wildcard certificate in this stack`);
+  return out;
+}

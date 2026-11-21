@@ -108,6 +108,7 @@ export class AppService extends Construct {
         PLATFORM_COGNITO_USER_POOL_ID: pools.staff.userPoolId,
         PLATFORM_COGNITO_CLIENT_ID: staffClient.userPoolClientId,
         PLATFORM_SES_REGION: region,
+        PLATFORM_ADDRESS_SUFFIX: domain, // PF-8b F2b: firm addresses under this stack's zone (staging.<domain> on staging)
       },
       secrets: Object.fromEntries(Object.entries(appSecrets).map(([n, s]) => [n, ecs.Secret.fromSecretsManager(s)])),
       readonlyRootFilesystem: false, // the image writes var/ (PF-7)
