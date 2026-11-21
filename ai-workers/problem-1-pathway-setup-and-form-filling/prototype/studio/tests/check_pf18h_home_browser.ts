@@ -18,7 +18,7 @@
 //       gives the firm's zone); BR-5/BR-8 26 items: the newest 20 shown, "26 items need you" in words, "of 26".
 // Sample rows only; the government step's name is Sample. US$0, no model call; live AI off.
 // Screenshots (deviceScaleFactor 1) in product/screens/pf-18h-home/screenshots/. Run from prototype/:
-//   zsh studio/tools/isolated.sh pf18h 4718 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf18h_home_browser.ts 4718 xr_studio_pf18h
+//   zsh studio/tools/isolated.sh pf18h 4718 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_pf18h_home_browser.ts 4718 xr_studio_pf18h
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
