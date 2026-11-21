@@ -36,7 +36,7 @@ function ConfirmBody({ id }: { id: string }) {
       if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Confirm again to retry."); setFocusTick((x) => x + 1); return; }
       // Confirmed meanwhile (another manager, or this page's own answer lost), or the result already fixed (m7): the
       // server's sentence is the end of the page; the check is not read again, since a confirmed check no longer waits (review M1).
-      if (e.problem.code === "ALREADY_CONFIRMED" || e.problem.code === "RESULT_FIXED") { setEnded(e.message); setFocusTick((x) => x + 1); return; }
+      if (e.problem.code === "ALREADY_CONFIRMED" || e.problem.code === "RESULT_FIXED" || e.problem.code === "SUPERSEDED") { setEnded(e.message); setFocusTick((x) => x + 1); return; }
       if (e.status === 403) void one.refetch();   // hidden from this manager too now: read again, so Confirm switches off (break r2-m5)
       const fields = e.problem.fields ?? {};
       setErrors(fields); setGeneral(Object.keys(fields).length ? null : e.message);
@@ -51,7 +51,7 @@ function ConfirmBody({ id }: { id: string }) {
     const e = one.error instanceof StaffApiError ? one.error : null;
     return <div data-confirm-refused={e?.problem.code ?? ""}><Notice tone={e?.status === 409 ? "warn" : "danger"} title={e ? e.message : "Could not load the check."}
       action={e ? undefined : <Button size="sm" variant="outline" onClick={() => void one.refetch()}>Try again</Button>} />
-      {e?.status === 404 ? <p className="mt-2 text-sm text-text-muted" data-checker-hint>If you recorded this check, send this page's address to a manager who may see every record, or to the firm's Owner or Admin: <span className="select-all font-mono [overflow-wrap:anywhere]">{window.location.href}</span></p> : null}</div>;   // break r2-m4
+      {e?.status === 404 ? <p className="mt-2 text-sm text-text-muted" data-checker-hint>If you recorded a check that waits for its confirmation, send this page's address to a manager who may see every record, or to the firm's Owner or Admin: <span className="select-all font-mono [overflow-wrap:anywhere]">{window.location.origin + window.location.pathname}</span></p> : null}</div>;   // break r2-m4
   }
   const c = one.data, fixed = c.result, stillHidden = c.hiddenNow > 0;
   const submit = (e: React.FormEvent) => {

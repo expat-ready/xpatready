@@ -197,9 +197,9 @@ export class ConflictChecks {
     const c = await this.db.foConflictCheck.findFirst({ where: firmScope(ctx.firmId, { id: id.toLowerCase() }) }) ?? notFound("check");
     const eligible = seesEveryMatch(ctx, await visibilityOf(this.db, ctx));
     if (!eligible && c.checkedBy !== ctx.staffId) notFound("check waiting for your confirmation");   // break R3-m5: its state is not told
+    if (c.checkedBy === ctx.staffId) forbidden("Another staff member who may see the hidden matches confirms a check, never its checker.");   // before any state (break r3-m3)
     if (c.hiddenCount === 0) problem(409, "Not possible now", "This check has no hidden matches: there is nothing to confirm.", { code: "NOTHING_TO_CONFIRM" });
     if (c.confirmedBy) await this.alreadyConfirmed(ctx, c);
-    if (c.checkedBy === ctx.staffId) forbidden("Another staff member who may see the hidden matches confirms a check, never its checker.");
     if (!eligible) forbidden("Only a staff member who may see every record, or the firm's Owner or Admin, confirms a check with hidden matches.");
     // M3: the confirmer sees the matches: the same terms searched again with their visibility hide nothing.
     const party = { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party;
@@ -210,6 +210,8 @@ export class ConflictChecks {
     if (c.result !== null && o.result !== null && o.result !== c.result) problem(409, "Not possible now", `This check already says ${LABEL[c.result] ?? c.result}; it never changes. Record a new check instead.`, { code: "RESULT_FIXED" });
     const now = new Date(this.clock.now()), won = c.prospectId ? (await this.db.foProspect.findFirst({ where: firmScope(ctx.firmId, { id: c.prospectId }), select: { wonVia: true } }))?.wonVia ?? null : null;
     await this.db.$transaction(async (tx) => {
+      await lockParty(tx, ctx.firmId, party);
+      await this.notSuperseded(c, ctx, tx);   // under the party lock: a newer check being recorded is seen (break r3-m1)
       const n = await tx.foConflictCheck.updateMany({ where: firmScope(ctx.firmId, { id: c.id, confirmedBy: null }), data: { confirmedBy: ctx.staffId, confirmedAt: now, ...(c.result === null ? { result: o.result, disclosureText: o.disclosureText } : {}) } });
       if (n.count !== 1) await this.alreadyConfirmed(ctx, await tx.foConflictCheck.findFirstOrThrow({ where: firmScope(ctx.firmId, { id: c.id }) }), tx);
       await this.written(tx, ctx, "conflict.confirmed", c.id, `Conflict check confirmed (${c.result ?? o.result})`,
@@ -226,8 +228,8 @@ export class ConflictChecks {
   }
 
   /** 409 when a newer check exists for the party: the gate reads only the latest, so an older one is never confirmed (break r2-m3). */
-  private async notSuperseded(c: { id: string; partyKind: string; personId: string | null; companyId: string | null }, ctx: StaffContext) {
-    const latest = await latestCheck(this.db, ctx.firmId, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party);
+  private async notSuperseded(c: { id: string; partyKind: string; personId: string | null; companyId: string | null }, ctx: StaffContext, db: Prisma.TransactionClient | PrismaClient = this.db) {
+    const latest = await latestCheck(db, ctx.firmId, { kind: c.partyKind, id: (c.personId ?? c.companyId)! } as Party);
     if (latest && latest.id !== c.id) problem(409, "Not possible now", "A newer conflict check was recorded for this client: it is the one that counts, so this one is not confirmed. Ask the checker for the newer check's link.", { code: "SUPERSEDED" });
   }
 

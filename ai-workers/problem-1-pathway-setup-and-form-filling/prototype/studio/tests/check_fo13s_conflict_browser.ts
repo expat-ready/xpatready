@@ -226,6 +226,8 @@ try {
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
   ok("FO-13s2 m7 fail (break r2-m1, r2-m6): the link once confirmed says it was, how and by whom, and offers no Confirm", (await ad.locator("[data-confirm-check]").count()) === 0
     && (await ad.locator('[data-confirm-refused="ALREADY_CONFIRMED"]').innerText()).includes("already confirmed: No conflict, by you"));
+  const byChecker = await fetch(`${BASE}/api${link}/confirm`, { method: "POST", headers: { authorization: `Bearer ${tok.T}`, "content-type": "application/json" }, body: "{}" });
+  ok("FO-13s2 break r3-m3 fail: the checker's Confirm on the confirmed check is refused as the checker's (403), never told its result", byChecker.status === 403 && !(await byChecker.text()).includes("already confirmed"), byChecker.status);
   // break m4: a hidden match appears after the result was chosen; Save is refused, the panel searches again, focus lands on the refusal
   const gus = prospect("Gus", T.id);
   await open(t, gus.id); await runCheck(t); await drawer(t).getByLabel("No conflict").check();
@@ -246,6 +248,15 @@ try {
   await ad.goto(`${BASE}/front-office/conflict-checks/${older}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
   ok("FO-13s2 break r2-m3 fail: a manager opening the older check's link is told a newer check counts; no Confirm, nothing confirmed",
     (await ad.locator('[data-confirm-refused="SUPERSEDED"]').count()) === 1 && (await ad.locator("[data-confirm-check]").count()) === 0 && sql(`select count(*) from fo_conflict_check where prospect_id = '${hal.id}' and confirmed_by is not null`) === "0");
+  // break r3-m2: a newer check lands while the manager has the page open; Confirm ends the page with the server's sentence
+  const newer = sql(`select id from fo_conflict_check where prospect_id = '${hal.id}' order by checked_at desc, id desc limit 1`);
+  await ad.goto(`${BASE}/front-office/conflict-checks/${newer}`); await ad.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
+  await open(t, hal.id); await runCheck(t); await drawer(t).getByRole("button", { name: "Record for confirmation" }).click(); await drawer(t).waitFor({ state: "hidden" });
+  await ad.getByLabel("No conflict").check(); await ad.locator("[data-confirm-check]").click();
+  await ad.locator("[data-confirm-ended]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 break r3-m2 fail: Confirm after a newer check was recorded ends the page on the newer-check sentence (focus on it, no Confirm), nothing confirmed",
+    /newer conflict check/.test(await ad.locator("[data-confirm-ended]").innerText()) && (await ad.locator("[data-confirm-check]").count()) === 0
+    && await ad.locator("[data-confirm-ended]").evaluate((el) => el === document.activeElement) && sql(`select count(*) from fo_conflict_check where prospect_id = '${hal.id}' and confirmed_by is not null`) === "0");
   await seesAll(true);
 
   // ---------------------------------------------------- BR-7 keys; keyboard; widths
