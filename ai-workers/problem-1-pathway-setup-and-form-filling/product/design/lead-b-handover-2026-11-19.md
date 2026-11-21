@@ -209,3 +209,14 @@ Merged: #2397 PF-19b part 3 (R1.48), #2313 (R1.38 2 of 4), **#2405 FO-9b** (R1.3
 * A new demo seed under `platform.demo.reset` must run inside the reset's per-firm transaction, or aud1a's "2 bypass lines per firm" fails.
 * Cloud lanes don't read PR comments while idle: a prompt-box nudge by the Lead (#2029 and #2322 both stalled for hours).
 * A green full run on a PR can still leave main red when a suite runs on the shared demo DB without a retry (check_fo1b after #2322); expect the batch to catch it.
+
+## Lead B (10) (local_85784f46), took over 09:3x IST 21 Nov (Opus 5.5 medium, same worktree)
+| Row | State 09:4x IST | Next |
+|---|---|---|
+| R1.49 #2618 | exact-head Approve 40d512a48 + Lead 11's P-423 read; label off (guard), waits on #2694 (shard 10 fix, queued) | label `review: approved` the moment #2694 merges (background watcher in this session) |
+| R1.47 #2633 | out of draft, labelled, in the queue (#2624 part 1a merged 08:59) | watch to merge |
+| R1.19 #1959 | latest pr-rules green 09:22; labelled, queued 09:30 (Mergify ETA 12:12 IST) | watch to merge |
+| R1.4 | QA-608: PF-12b part 2 shaped in `lead-b-briefs/PF-12b.md` (commit 020112959): row text, Duplicate check, Done when DW5-DW7, start after #1959, #2633, #2626, #2627 | the Lead adds the BACKLOG row; a cloud builder starts at the founder's next typed turn (Opus 5.5 high, breaker yes) |
+| R1.38, R1.110 | Works on main (records landed) | none |
+| #2687 DEMO-LINK | labelled, queued | watch; check_pf18h_home_browser runs in CI only |
+Worktree: the stale index equals origin commit e34ef4e44a and the two unstaged skill files are older GitHub versions, so `git reset --hard HEAD` loses nothing.
