@@ -1,8 +1,17 @@
-# qa 12 — R1.42 Reschedule or cancel by link; outcomes; consult record: VERDICT_PLACEHOLDER, 21 Nov
+# qa 12 — R1.42 Reschedule or cancel by link; outcomes; consult record: Works on main bfd1b2de1, 21 Nov
 
 qa 12 is a cloud session (Opus 5.5, effort medium), asked by the tech lead (Lead 15): re-score R1.42 once #2750 (FO-3st3b, Timings), #2782 (FO-3st3 suite fix) and #2818 (unhold `check_fo3st3_types_browser.ts`) are on main. Live AI off, US$0. Isolated copies only, never :4400.
 
 The Done when: "The client's single-use link reschedules or cancels inside the firm's notice rule (later refused in words); used or expired link refused; staff record the outcome and the note".
+
+## Verdict
+**Works (P-339).**
+* **Pack on main's head:** walks.yml run 44910722219 on bfd1b2de1, `j_42` 33/33.
+* **Independent re-run:** `j_42` on a fresh copy of bfd1b2de1, 33/33. Walks run 44899086096 on fdb3ba39e is also 33/33.
+* **Suites:** all 11 R1.42 suites green on a fresh copy of bfd1b2de1.
+* **Gate A:** by screens to row 53's first step.
+* **Readers:** two fresh Opus readers, Works about 85% each, on a condition now met.
+* **Open:** QA-697 (Minor).
 
 ## Parts (P-606): all merged
 The parts J-42 lists:
@@ -17,7 +26,7 @@ The parts J-42 lists:
 | Walk: walks.yml `j_42` (dispatched by the Lead) | GitHub, [run 44899086096](https://github.com/expat-ready/xpatready/actions/runs/44899086096) on fdb3ba39e, job 136831103939 | **33 PASS, 0 FAIL, no HELD**, W0 to W9 (`2026-11-21-r142-qa12b/walk_j42_job136831103939.txt`) |
 | Pack: every R1.42 suite (merge batch, main 55a9aba2f + #2619) | GitHub, ci [run 44898035790](https://github.com/expat-ready/xpatready/actions/runs/44898035790), shards | fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3sr_routes 29: all PASS |
 | Independent re-run: walks.yml `j_42` on main's head (dispatched by the Lead) | GitHub, [run 44910722219](https://github.com/expat-ready/xpatready/actions/runs/44910722219) on bfd1b2de1, job 136865914912 | **33 PASS, 0 FAIL, no HELD** (`2026-11-21-r142-qa12b/walk_j42_job136865914912.txt`) |
-| Pack on main's head: full nightly (dispatched by the Lead) | GitHub, [run 44912302675](https://github.com/expat-ready/xpatready/actions/runs/44912302675) on bfd1b2de1 | NIGHTLY_COUNTS |
+| Targeted nightly re-test `R1.47 R1.42 R1.4 R1.53` (dispatched by the Lead) | GitHub, [run 44912302675](https://github.com/expat-ready/xpatready/actions/runs/44912302675) on bfd1b2de1 | **ran nothing**: its plan job refuses R1 ids (`not a capability id: "R1.4" (want e.g. C11.10)`) |
 | The 11 R1.42 suites, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/suites_bfd1b2de1.txt`) | all PASS: fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3st3_types 57/57 · fo3sr_routes 29 |
 | `tests/journeys/j_42.ts`, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/j42_2_bfd1b2de1.txt`) | **33/33**, no HELD |
 | `tests/journeys/j_42.ts`, fresh copy of main 55a9aba2f | here (`2026-11-21-r142-qa12b/j42_1.txt`) | **33/33**, no HELD |
@@ -81,5 +90,6 @@ The parts J-42 lists:
 * The shared demo (:4400): this cloud copy has none.
 
 ## Questions for the tech lead
-1. **Please dispatch the pack re-run on main's head** after #2818, and start the independent reviewer on the records PR.
-2. **QA-697's number** is self-assigned. Open PRs use numbers up to QA-696.
+1. **Reviewer please:** start the independent reviewer on the records PR.
+2. **Nightly:** `nightly.yml` and `comment-run.yml` take C-ids only. An R1 row's packs cannot be re-tested there until the plan accepts `R1.n`. Is that a tooling row for you?
+3. **QA-697's number** is self-assigned. Open PRs use numbers up to QA-696.
