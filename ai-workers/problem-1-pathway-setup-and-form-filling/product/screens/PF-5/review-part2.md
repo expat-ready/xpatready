@@ -446,3 +446,43 @@ The open Minors are unchanged: rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 seco
 **Journey score: 8/10, unchanged** (a pass, no criterion at 0). The merge changes no behaviour of this PR's journeys. I wrote no new journey-test report, because there is no new screen or flow to walk.
 
 Verdict: Approve 41200fa120fda7b310afe6de016acfb2f2596437
+
+## Round 12 (diff-only, 182ef7bd): the two billing audit lines carry before and after (QA-594, batch #2724); head `182ef7bd161e0bd816a104c2f533040e87c94193`
+
+Approved before this: `41200fa12` (round 11). `803e6b0d0` adds only round 11's lines to this file (`git diff --stat 41200fa12 803e6b0d0`). Reviewed: `git diff 803e6b0d0 182ef7bd1`, two code files with 6 lines added and 2 removed. I checked it against Lead B's instructions in PR comment 7058078552.
+
+1. **`webhook.ts` refresh: meets the instructions word for word.**
+   * The line now carries `before: { status: row.status, firmStatus: firm.status }` and `after: { status: next, firmStatus: firmNext }`.
+   * `from`, `to`, `firmFrom` and `firmTo` are gone from `detail`. `reason`, `stripeStatus`, `trialEndsAt` and `periodEnd` stay. No `<field>_before`/`_after` key is written in `detail`.
+   * On a refused move, `next` and `firmNext` are reset to the kept values before the call, so `after` is what was kept.
+   * Nothing else read the dropped `detail` keys of these actions: a grep of `api/src`, `web/src` and `tests` finds `platform.subscription.synced`/`move_refused` only in check_pf5, which counts rows. The summary still names the whole move, including a refused target ("firm DELETED → ACTIVE refused").
+2. **`account.ts` setAddress: the deviation from the Lead's literal text is right, and I agree with it.**
+   * **Why the literal text cannot work:** the Lead wrote `before: { businessAddress: old }`, but `ports/audit.ts` `AuditValues` is a record of scalars or arrays of scalars (l. 37-41). A nested object fails its parse, so the audit write throws and the address change rolls back.
+   * **What `flatAddress()` does instead:** it writes each field as `address_<key>`.
+     * The key filter `^[A-Za-z][A-Za-z0-9_]{0,55}$` plus the 8-character prefix stays inside the port's 64-character field-name rule.
+     * Non-scalars become JSON strings. The Sample offices' `phone` object, for example, becomes one string, far below the 4,000-character limit; the `Address` schema caps the form's fields at 150 characters.
+     * A stored address that is not an object (null becomes `{}`, a string gives index keys) yields nothing rather than a crash.
+     * No key matches `SECRET_FIELD`.
+   * **Why field by field is the better record:** the adapter keeps only the fields that changed (`flattenValues`), so the activity log shows which part of the address changed. A single JSON string would show the whole address twice.
+   * `detail: { province }` stays. The full address is the firm's, not a secret (P-687, as the Lead says).
+   * **Still to do (builder, not this reviewer):** the PR must state this deviation for Lead B. The builder says they will. It is the same "never deviate silently" point as r10-1, and does not block.
+3. **What the lines hold (scratch probe, removed afterwards).**
+   * **The probe:** I ran check_pf5 with one temporary `console.log` reading these actions' `audit_event.detail` before its database is dropped. The file was restored with `cp`, and `git status` is clean. All 90 assertions passed.
+   * **A plain move:** a synced line reads `status_before: TRIAL, status_after: ACTIVE, firmStatus_before: TRIAL, firmStatus_after: ACTIVE` with `reason`, `stripeStatus` and the dates.
+   * **The address needed hold:** reads `status TRIAL → PAYMENT_HOLD, firmStatus ACTIVE → PAYMENT_HOLD`.
+   * **The DELETED firm's refused move:** the first line shows only the subscription's `TRIAL → ACTIVE`. The firm stays DELETED and is unchanged, so it is omitted. The second line has no before or after values, because all was kept.
+   * **The address:** the first address set (no address before) gives only `address_*_after` values, an addition. The Sample firm's change gives `address_unit 200 → 4` and `address_street_name Example Street → Main Street`, and leaves out the unchanged fields, the phone included.
+4. **Checks run here (head `182ef7bd1`, Postgres on 54329, live AI off, US$0, never :4400).**
+   * Suites, all exit 0: check_aud_values 14/14 (the batch's failing sweep now passes), check_pf5_signup_billing 90/90, check_pf5t_terms 42/42, check_pf12b_bypass_audit 56/56, check_aud1b_adapter 39/39.
+   * `tsc -p api/tsconfig.json --noEmit`: the same 24 lines as rounds 10 and 11, none in `billing/`. No new errors.
+   * Not repeated here: the builder's check_pf5v 13/13. P-423 (both files are money paths) still needs the Lead's own read before the label.
+
+**Blocker:** none. **Major:** none.
+
+**Minor r12-1 (test gap, does not block):** no committed check reads these values. check_aud_values only checks that `before` and `after` are passed, and check_pf5 counts rows. So a later change that, for example, wrote the refused target into `after`, or dropped the address fields, would pass every suite. The probe above shows the values are right today. Two assertions in check_pf5 would close it: the refused-move line's `firmStatus_after` absent or equal to before, and the Sample firm's `address_unit_before`/`_after`.
+
+The open Minors are unchanged: rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7), and r10-1 and r10-2.
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). This change touches only the audit trail. No screen or flow changes, so I wrote no new journey-test report.
+
+Verdict: Approve 182ef7bd161e0bd816a104c2f533040e87c94193
