@@ -8,6 +8,7 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FoldOut } from "@/components/fold-out";
 import { Button, Field, Input, Notice, Panel, Pill, Select } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
 import { can } from "../sales/contract";
@@ -164,7 +165,7 @@ function RetainerBody({ id }: { id: string }) {
             <h3 id="fo-code" className="font-medium">Regulator's Code</h3>
             <p className="mt-1" data-code-line>{r.codeChecklist.line}</p>
             <p className="mt-1 text-xs text-text-muted">Shown to help you check; it never stops a send. {r.codeChecklist.legalReading}</p>
-            <details className="mt-2"><summary className="cursor-pointer text-xs text-text-muted">Each item, marked or not</summary><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></details>
+            <FoldOut className="mt-2" summaryClassName="text-xs text-text-muted" summary="Each item, marked or not"><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></FoldOut>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
           {draft && r.mayChange && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
