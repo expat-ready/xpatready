@@ -72,7 +72,7 @@ async function open(tok: string, width = 1440, path = HOME, ready = "[data-booki
   return p;
 }
 /** CSS transitions still running on the page (finite ones; a spinner's endless turn is not counted). */
-const changing = (p: Page) => p.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => `${(a.effect as KeyframeEffect | null)?.target?.textContent?.trim().slice(0, 30)}: ${(a as CSSTransition).transitionProperty ?? a.animationName ?? "animation"}`));
+const changing = (p: Page) => p.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => `${(a.effect as KeyframeEffect | null)?.target?.textContent?.trim().slice(0, 30)}: ${(a as CSSTransition).transitionProperty ?? (a as CSSAnimation).animationName ?? "animation"}`));
 /** Wait for those transitions to end (each lasts 150 ms; 2 s is the cap). */
 const settle = (p: Page) => p.evaluate(() => Promise.race([new Promise((res) => setTimeout(res, 2_000)),
   Promise.all(document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => a.finished.catch(() => undefined)))]));
