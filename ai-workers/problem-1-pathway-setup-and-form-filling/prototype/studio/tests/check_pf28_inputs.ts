@@ -32,7 +32,12 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 
 // ------------------------------------------------------------------------------------------------- the allow-list
 /** "<file> <VERB> <path> <body|query>[(key)]" (code) or "<VERB> <path> <probe>" (running copy) → "PF-28 part N (area)". */
-export type AllowList = { unparsed: Record<string, string>; probes: Record<string, string> };
+export type AllowList = { unparsed: Record<string, string>; probes: Record<string, string>; exceptions?: { unparsed?: Record<string, string>; probes?: Record<string, string> } };
+/** PF-28 part 2c: a line that answers otherwise by design, with its written reason for the tech lead to accept ("except
+ *  lines with a written reason the Lead accepts"). It still must fail the way it says (a fixed or gone one fails, as on the
+ *  list); it counts in no fix ceiling. */
+export const REASON = /^By design \(awaiting the tech lead\): .{40,}$/;
+export const unreasoned = (l: AllowList) => [...Object.entries(l.exceptions?.unparsed ?? {}), ...Object.entries(l.exceptions?.probes ?? {})].filter(([, v]) => !REASON.test(String(v ?? ""))).map(([k]) => k);
 export const FIX_PART = /^PF-28 part [2-9] \((platform|front-office sales|booking|retainers|money)\)$/;
 /** DW7: every entry names its fix part. */
 export const unnamed = (l: AllowList) => [...Object.entries(l.unparsed), ...Object.entries(l.probes)].filter(([, v]) => !FIX_PART.test(String(v ?? ""))).map(([k]) => k);
@@ -63,7 +68,7 @@ export function inputs(dir: string): CodeInput[] {
 const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
 const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
-const jc = judge(unparsed, found.map((x) => x.key), allow.unparsed);
+const jc = judge(unparsed, found.map((x) => x.key), { ...allow.unparsed, ...allow.exceptions?.unparsed });
 ok("PF-28 (a) pass: every PF/FO body and query reaches a zod parse, or is on the allow-list", jc.unlisted.length === 0, jc.unlisted);
 ok("PF-28 (a) pass: the code list only shrinks (no entry parses now or is gone)", jc.fixedButListed.length === 0, jc.fixedButListed);
 
@@ -80,12 +85,29 @@ const dw1bad = judge(inputs(planted({ "front-office/things/routes.ts": thing("co
 const dw1good = inputs(planted({ "front-office/things/routes.ts": thing("const b = parseInput(Thing, body);") }));
 ok("PF-28 DW1 fail: a throwaway front-office route with an unparsed body fails the sweep", dw1bad.unlisted.join() === "front-office/things/routes.ts POST /api/front-office/things/:id body", dw1bad);
 ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict schema) passes", dw1good.length === 1 && dw1good[0].parsedAt === "Things.put", dw1good);
+// Part 2c (review m4): the code follower follows `extends`. A controller calling a method its service inherits is followed
+// into the parent class: parsed there → passes; the parent never parsing it → still fails.
+const heir = (line: string) => `import { Body, Controller, Inject, Injectable, Param, Post } from "@nestjs/common";
+import { parseInput, strict, text } from "../../platform/http/input.ts";
+const Thing = strict({ name: text(100) });
+export class BaseThings { async put(id: string, body: unknown) { ${line} return { id }; } }
+@Injectable() export class Things extends BaseThings {}
+@Controller("api/front-office") export class ThingsController {
+  constructor(@Inject(Things) private readonly t: Things) {}
+  @Post("things/:id") put(@Param("id") id: string, @Body() b: unknown) { return this.t.put(id, b); }
+}`;
+const inheritedGood = inputs(planted({ "front-office/things/routes.ts": heir("const b = parseInput(Thing, body);") })), inheritedBad = inputs(planted({ "front-office/things/routes.ts": heir("const b = body as { name?: string };") }));
+ok("PF-28 part 2c pass (review m4): a body parsed in the method a service inherits from its parent class counts as parsed", inheritedGood.length === 1 && inheritedGood[0].parsedAt === "BaseThings.put", inheritedGood);
+ok("PF-28 part 2c fail (review m4): the same inherited method without a parse still fails the sweep", inheritedBad.length === 1 && inheritedBad[0].parsedAt === null, inheritedBad);
 
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
+ok("PF-28 DW7 pass (part 2c): every by-design exception carries its written reason (at least 40 characters)", unreasoned(allow).length === 0, unreasoned(allow));
+ok("PF-28 DW7 fail (part 2c): an exception without a reason, or with a fix part instead, fails", unreasoned({ unparsed: {}, probes: {}, exceptions: { probes: { "GET /api/platform/x query-unknown": "PF-28 part 2 (platform)", "GET /api/platform/y query-unknown": "By design (awaiting the tech lead): short" } } }).length === 2);
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 212, UNPARSED_CEILING = 73;   // part 1 committed 244 and 83 (at its last merge of main: #2750's booking timings routes, owned by part 4); part 2a (identity doors) lowers them to 214 and 73 (the callback door's "missing" probe stays: no code is its own 401, batch 44935069729); each fix part lowers both. 212: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4)
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 161, UNPARSED_CEILING = 44, EXCEPTIONS_CEILING = 9;   // re-based at the merge of main after part 2a (#2787): part 1 as merged added 6 probe lines for part 4 (#2750's booking timings; their 2 code lines leave, the extends follow sees their parse) and part 2a's callback "missing" line moved to the exceptions; earlier: part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both 161: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4)
+const excepted = Object.keys(allow.exceptions?.unparsed ?? {}).length + Object.keys(allow.exceptions?.probes ?? {}).length;
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size (the by-design exceptions included)", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING && excepted <= EXCEPTIONS_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length, exceptions: excepted });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
@@ -208,7 +230,7 @@ for (const d of all) {
 if (process.env.PF28_DUMP) writeFileSync(process.env.PF28_DUMP, JSON.stringify(Object.fromEntries(answers), null, 1));   // every answer, for writing the allow-list
 const after = await rows(), changed = Object.keys({ ...before, ...after }).filter((t) => before[t] !== after[t]).map((t) => `${t} ${before[t]}→${after[t]}`);
 console.log(`probes: ${seen.length} on ${all.length - skipped.length} routes; ${failing.length} not as the rule says (allow-listed: ${Object.keys(allow.probes).length}); NOT TESTED (no Sample token holds the keys): ${skipped.length} ${skipped.join(", ")}`);
-const jp = judge(failing, seen, allow.probes);
+const jp = judge(failing, seen, { ...allow.probes, ...allow.exceptions?.probes });
 ok("PF-28 (b) pass: every probe answers as the rule says (unknown field 422 naming it, wrong type and missing 422, 1 MB 413, bad id 404), or is on the allow-list", jp.unlisted.length === 0, jp.unlisted.map((k) => `${k} → ${answers.get(k)?.status}`));
 ok("PF-28 (b) pass: the probe list only shrinks (no entry answers well now or is gone)", jp.fixedButListed.length === 0, jp.fixedButListed.map((k) => `${k} → ${answers.get(k)?.status ?? "gone"}`));
 ok("PF-28 (b) pass: no probe answered 500", ![...answers.values()].some((a) => a.status >= 500), [...answers].filter(([, a]) => a.status >= 500).map(([k]) => k));
@@ -217,8 +239,22 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const off = answers.get("POST /api/platform/offices unknown");
-ok("PF-28 DW2 fail: POST /api/platform/offices parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/platform/offices unknown"] === "PF-28 part 2 (platform)", off);
+const off = answers.get("POST /api/front-office/conflict-checks unknown");
+ok("PF-28 DW2 fail: POST /api/front-office/conflict-checks answers its own 400 today (the field not named), so its probe is on the allow-list for part 3", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/front-office/conflict-checks unknown"] === "PF-28 part 3 (front-office sales)", off);
+
+// PF-28 part 2c (sign-up): field errors are 422 with each field named in the page's own plain words; a verify body that
+// is not { token, code } is 422 by its shape alone.
+const su = await call("POST", "/api/public/signup", { body: JSON.stringify({ email: "", pf28Unknown: "x" }) });
+const vf = await call("POST", "/api/public/signup/verify", { body: JSON.stringify({ token: 7 }) });
+ok("PF-28 part 2c fail: a sign-up with an empty email and an unknown field → 422 CHECK_FIELDS, email in the page's words and the unknown field named; a verify body with a number token → 422 naming token", su.status === FIELD_ERROR_STATUS && su.body?.code === "CHECK_FIELDS" && (su.body?.fields as Record<string, string>)?.email === "Enter your work email." && Object.hasOwn((su.body?.fields as object) ?? {}, "pf28Unknown") && Array.isArray(su.body?.errors) && vf.status === FIELD_ERROR_STATUS && Object.hasOwn((vf.body?.fields as object) ?? {}, "token"), [su.body?.fields, vf.body?.fields]);
+
+// PF-28 part 2b (platform settings, complaints, logs): each body and query goes through the rule before any lookup.
+const cq = await call("GET", "/api/platform/complaints?vew=open", { token: tR });
+const cNoKey = await call("POST", "/api/platform/complaints", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2b fail: a misspelt query key on the complaints list (vew) → 422 naming it; a complaint body with an unknown field and no Idempotency-Key → 422 for the body first", cq.status === FIELD_ERROR_STATUS && (cq.body?.fields as Record<string, string>)?.vew === "This field is not allowed here." && cNoKey.status === FIELD_ERROR_STATUS, [cq.body?.fields, cNoKey.status]);
+const keep = await call("PUT", "/api/platform/keep-periods/closed-client-files", { token: tR, body: JSON.stringify({ years: "seven" }) });
+const ack = await call("POST", "/api/platform/complaints/not-a-uuid/acknowledge", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2b fail: keep period years as text → 422 naming years, nothing saved; a malformed complaint id → 404 before the body", keep.status === FIELD_ERROR_STATUS && Object.hasOwn((keep.body?.fields as object) ?? {}, "years") && ack.status === 404, [keep.body?.fields, ack.status]);
 
 // PF-28 part 2a (identity doors: sign-in, staff, invitations, licence records): each body goes through parseInput before
 // any record is read, and a staff id is checked before the body.
