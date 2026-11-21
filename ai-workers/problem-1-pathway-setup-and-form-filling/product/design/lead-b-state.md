@@ -23,6 +23,8 @@
 | #2029 PF-12b p1 | R1.4 (W1) | 63771158a | waiting reviewer's Approve | Approve → Lead 1's full run + cover line |
 | R1.33 | — | — | qa 12 re-proving | — |
 
+**Lead B (9) update (21 Nov 06:50 IST):** **#2621 (PF-18h) merged** (fed37c39f, batch #2667). Both of R1.74's PF gaps (QA-471: reminders reach a person, plus Needs you on Home) are on main. Lead C's CS-DL3 part 3 (the J-74 reminder walk) is unblocked. **No open Lead B PRs; watcher off.** Waiting on: qa Q2's proofs of R1.38 and R1.110 (walks 44818224820, 44818327469); Lead 9 follows them.
+
 **Lead B (9) update (21 Nov 06:48 IST):** the current Lead is **Lead 9 (series 3)** (`local_52cca488-d75f-4781-a9d4-4b8adb5bd53b`, from 06:48 IST); I've reported to it. #2621 is labelled and queued since 06:08 IST on fed37c39f.
 
 **Lead B (9) update (21 Nov 06:01 IST):** **#2621 approved head fed37c39f** (fixes in 52d9d5b52: pf18h usage line in run-suites' form; pf6_staff expects /home). The cover line is posted, and the head is sent to Lead 8 for /run full and the label. Correction to the lesson above: the CI runner sets up a suite's own DB only if its usage line is in run-suites' form (`tsx studio/tests/<file> <port> <db>`).
