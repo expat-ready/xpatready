@@ -2,7 +2,7 @@
 
 Reviewer: independent (P-303), Opus 5.5, did not build it. PR #2802, branch `claude/laughing-noether-tam1zn`, **commit 95ff4d2d97f3961006782387d49ac1dbea291659**, read 21 Nov 2026. Concept: approved r2 (`origin/lead-b-front-office:…/screens/fo-5s-retainer-signing/concept.md`). This part claims S2, S3/S5 (agreement, fees, Check before sending, FO-5b checklist, versions) and S4. S1, S6, S7 and Sign as the firm are deferred by the brief, so they are not findings here. Diff: 26 files, +708 / -0. Isolated copies only (:4571, :4572). Never used :4400.
 
-**Verdict: Rework (Block).** 2 Majors, 10 Minors. Journey score **7/10, fail** (`journey-test-reviewer-2026-11-21.md`).
+**Verdict at 95ff4d2: Rework (Block).** 2 Majors, 10 Minors. Journey score 7/10, fail. **Re-review at c20dae7 (§7): Approve**, journey score 8/10, pass (`journey-test-reviewer-2026-11-21.md`).
 
 ## 1. Runs (isolated copies, this commit)
 | Suite | Result |
@@ -55,3 +55,25 @@ Yes, in two ways. (1) **M1:** for Corporate prospects with no SIGNATORY contact,
 A real screen reader. D17/D20 with an intended user. Retrofit mapping (no build-notes in `screens/FO-5s/`, so nothing recorded). Cards for states only FO-6 can reach (Client signed, Declined, Signed). Mutation runs on the web code (I reasoned about the effect instead; rebuilding the bundle per mutation was not done). The breaker's `break-report.md` (untracked, not read).
 
 **Verdict: Block** (95ff4d2d97f3961006782387d49ac1dbea291659). Fix M1 and M2: `retainer-page.tsx:103/43` + `retainer-card.tsx:25` (no signer choice), and `retainer-page.tsx:23,150,154` (signer errors with no target or fix, contradicted by "You can send without it").
+
+## 7. Re-review (P-277: only the diff since 95ff4d2), 21 Nov 2026
+Head **c20dae766cae40f4b4bc50a17da2639d376fbe38**. Code diff `95ff4d2..c20dae7` without PNGs: service.ts +6, contract.ts, retainer-card.tsx, retainer-page.tsx, the browser check, j_53.ts (+1), and qa/built/R1.53.md deleted. The rest is records (review, break report). The PR no longer claims "Completes: R1.53". Part 2 (S1) carries it, which answers §5.
+**Runs (fresh isolated copies, :4571 and :4572):** browser check **40/40 twice on the same database**, so m6's re-run failure is gone. J-53 **20/20 twice**. Afterwards I put back the suite-written screenshots (git checkout) so that only the records changed.
+* **M1 fixed (walked live, through the card).** Corporate prospect with OTHER + HR contacts and no SIGNATORY → Prepare → the page shows "Who signs" with each contact, role and email → Check and send focuses the summary; the "Choose who signs." link focuses the select. Picking the HR contact (no email) saves v2 → "The signer needs an email." on the field and in the summary. Picking the contact with an email saves v3 → no blockers → Send panel "To corin.walk@example.com … CAD 1,500.50" → Sent. On Edit after Send, the pick keeps the signer. `read()` now returns `signerOptions` and the PATCH sends `signerPersonId` (`retainer-page.tsx:43`). Test: M1 fail and pass, and the pass asserts the DB signer, so it fails if `signerPersonId` is dropped.
+* **M2 fixed.** Summary links focus the field inside `#fo-signer` / `#fo-rep`. The Signer row is focusable and carries the blocker. Blocking values show "blocks Send", not "missing / You can send without it" (`retainer-page.tsx:68,154`). Walk: an Individual with no email shows "The signer needs an email. Add it on Olu Noemail's record, then save a new version here." Signer's email: "blocks Send".
+* **Breaker items (read and tested by the suite):**
+  - A decimal comma ("1500,50") is refused at the field. "1,500.50" is accepted as CAD 1,500.50 (live).
+  - 120-character labels wrap, with no sideways scroll at 375, 1024 and 1440 px.
+  - `mayChange` (from `visible(…, true)`) hides Edit, Save and Check and send from a representative who cannot see the prospect. The server already refused them.
+* **Minors from §4:**
+  - **Fixed:** m1 (crumbs Sales › P-xxxxx › Retainer; Back goes to the prospect), m6, m10.
+  - **Partly fixed:** m5 (any 409 reloads, but typed values are still replaced, as declared).
+  - **Declared deferred (accepted, not findings now):** m2, m4, m7.
+  - **Still open, Minor:** m3 (no source per value; "empty / Not in this template." on Total fees), m8, m9 (focus on BODY after Prepare). The BR-2 no-licensed refusal and Prepare-after-Withdrawn remain untested (the card worked live in round 1).
+* **New Minors (Should):**
+  - **n1** `service.ts:411,539`: draft and edit return `signerOptions: s.options` from `signerFor`, which has no `email`. This overrides `read()`'s list, so after any Save the page (`setQueryData`) labels **every** contact "no email" until reload. Seen live: "Corin Walkcontact · other · no email" right after a save, though Corin has one. That can steer the person away from the right signer. Fix: add `email` in `signerFor`'s options, or drop the override.
+  - **n2** `retainer-page.tsx:106`: "Add it on <client>'s record" links to the prospect page, but no screen on main can add an email to an existing person (the prospect and lead pages show it read-only). A phone-only lead therefore still cannot be sent. The gap is outside FO-5s (person editing). Fix: either soften the words to what is possible, or have the Lead file the person-edit row. Flagged, not new scope.
+  - **n3** `retainer-page.tsx:111`: contact roles read "other", "hr". Use words ("Other", "HR").
+* **Journey re-score: 8/10, pass** (journey report, re-test section).
+
+**Verdict: Approve** (c20dae766cae40f4b4bc50a17da2639d376fbe38). No open Blocker or Major. n1 is worth fixing in this PR, or in part 2 at the latest.

@@ -47,3 +47,23 @@ Fixes that would raise it, most valuable first: (1) Signer choice on S3 for Corp
 
 ## Could not test
 A real screen reader. A headed, person-paced walk (headless with screenshots instead). An intended user's unaided walk (D17/D20 stay with the founder). States only FO-6 reaches (Client signed, Declined, Signed e-signature). The client email (FO-6 not on main).
+
+## Re-test at c20dae7 (21 Nov 2026, the fixed journeys only)
+Fresh copies :4571 and :4572. J4 (Corporate) and J5 (no email) walked again through the card. Browser check 40/40 ×2, J-53 20/20 ×2.
+* **J4 now completes:** Who signs lists the company's contacts → the no-email contact gives "The signer needs an email." → the contact with an email clears it → Sent v3. Keyboard: Check and send focuses the summary, and Enter on a link focuses its field.
+* **J5:** the blocker sits on the Signer row with "Add it on Olu Noemail's record". The link opens the prospect page, which cannot add an email (no person edit on main; review n2). This screen-external gap is why J5 stays unfinished.
+* After a Save, every contact in Who signs reads "no email" until reload (review n1).
+
+| Criterion | Was | Now | Why |
+|---|---|---|---|
+| Task completed | ½ | 1 | J1, J2, J4 complete; J5 blocked outside this row (n2) |
+| Next step obvious | ½ | 1 | Every blocker has a field and a focus target |
+| Plain words | ½ | 1 | "blocks Send" replaces the contradictory "You can send without it" |
+| Feedback and state | 1 | 1 | Also: "Version n is not sent yet" notice after Edit |
+| Correct data | 1 | ½ | DB right; the Who signs list says "no email" wrongly after a save (n1) |
+| Error recovery | ½ | ½ | 409 reloads but replaces typed values; email fix link leads nowhere (n2) |
+| Accessibility and screen sizes | ½ | ½ | Field focus fixed; tooltips hover-only (deferred), focus on BODY after Prepare |
+| Speed | 1 | 1 | Unchanged; one request per view |
+| Visual quality | 1 | 1 | Long labels wrap |
+| Trust and sources | ½ | ½ | No source per value (m3) |
+| **Total** | 7 | **8/10** | **Pass** (no criterion at 0) |
