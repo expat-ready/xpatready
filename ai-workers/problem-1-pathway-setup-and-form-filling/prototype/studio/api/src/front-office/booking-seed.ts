@@ -11,6 +11,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { pathToFileURL } from "node:url";
 import { firmScope, touchFirm } from "../platform/firm-scope.ts";
 import { readSampleFirms } from "../platform/seed-sample-firms.ts";
+import { ensureBookingWording } from "./firm-seed.ts";
 import { BUSINESS_HOURS, readSetting, TIME_ZONE } from "../platform/settings.ts";
 import { logPort } from "../platform/observability/log.ts";
 
@@ -70,7 +71,7 @@ export const SAMPLE_TYPE = { firmKey: "sample-firm", hostActorId: "user-R", slug
  * Adds SAMPLE_TYPE to the Sample firm, hosted by its Owner, once, inside the caller's transaction. A type is matched by
  * its slug only: one with that slug, even one a person deleted (soft) or edited, is never touched again; a person who
  * changes the slug gets a fresh Sample type on the next seed. The host gets the firm's hours only when they have none
- * (copyFirmHoursTo), so the page offers times. The firm's platform.bypass line (touchFirm) is written only when the type
+ * (copyFirmHoursTo), so the page offers times, and the firm's booking wording when it has none (ensureBookingWording). The firm's platform.bypass line (touchFirm) is written only when the type
  * is added; on the demo reset it runs in the Sample seed's own transaction (seedSampleFirms' `then`), where that firm
  * is touched already, so the reset still writes one seed line per firm (check_aud1a_insert_only.ts). The answer says
  * whether it added the type and, when not, why (logged at info by the callers).
@@ -86,6 +87,9 @@ export async function addSampleConsultationType(tx: Tx): Promise<{ added: boolea
   await copyFirmHoursTo(tx, firm.id, [host.id]);
   await tx.foConsultationType.create({ data: { firmId: firm.id, slug: SAMPLE_TYPE.slug, name: SAMPLE_TYPE.name, description: SAMPLE_TYPE.description,
     purpose: "FREE_CONSULT", modes: ["VIDEO", "PHONE"], hostStaffIds: [host.id], minutes: SAMPLE_TYPE.minutes } });
+  // The booking tick's Sample wording with it (FO-2 part 3b; only when the firm has none), so the page's first read
+  // (GET …/book/:slug/slots) finds it and stores nothing: check_pf28_inputs' probes reach that door now (#2687, Lead 17).
+  await ensureBookingWording(tx, firm.id);
   return { added: true, why: "added" };
 }
 
