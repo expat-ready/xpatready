@@ -16,8 +16,8 @@ The parts J-42 lists:
 |---|---|---|
 | Walk: walks.yml `j_42` (dispatched by the Lead) | GitHub, [run 44899086096](https://github.com/expat-ready/xpatready/actions/runs/44899086096) on fdb3ba39e, job 136831103939 | **33 PASS, 0 FAIL, no HELD**, W0 to W9 (`2026-11-21-r142-qa12b/walk_j42_job136831103939.txt`) |
 | Pack: every R1.42 suite (merge batch, main 55a9aba2f + #2619) | GitHub, ci [run 44898035790](https://github.com/expat-ready/xpatready/actions/runs/44898035790), shards | fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3sr_routes 29: all PASS |
-| Independent re-run: walks.yml `j_42` on main's head (dispatched by the Lead) | GitHub, [run 44910722219](https://github.com/expat-ready/xpatready/actions/runs/44910722219) on bfd1b2de1, job 136865914912 | WALK2_RESULT |
-| Pack on main's head: full nightly | NIGHTLY_RESULT | NIGHTLY_COUNTS |
+| Independent re-run: walks.yml `j_42` on main's head (dispatched by the Lead) | GitHub, [run 44910722219](https://github.com/expat-ready/xpatready/actions/runs/44910722219) on bfd1b2de1, job 136865914912 | **33 PASS, 0 FAIL, no HELD** (`2026-11-21-r142-qa12b/walk_j42_job136865914912.txt`) |
+| Pack on main's head: full nightly (dispatched by the Lead) | GitHub, [run 44912302675](https://github.com/expat-ready/xpatready/actions/runs/44912302675) on bfd1b2de1 | NIGHTLY_COUNTS |
 | The 11 R1.42 suites, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/suites_bfd1b2de1.txt`) | all PASS: fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3st3_types 57/57 · fo3sr_routes 29 |
 | `tests/journeys/j_42.ts`, fresh copy of main bfd1b2de1 | here (`2026-11-21-r142-qa12b/j42_2_bfd1b2de1.txt`) | **33/33**, no HELD |
 | `tests/journeys/j_42.ts`, fresh copy of main 55a9aba2f | here (`2026-11-21-r142-qa12b/j42_1.txt`) | **33/33**, no HELD |
