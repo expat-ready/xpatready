@@ -394,6 +394,18 @@ try {
   const inv = await acct.invoices(who(firmId, ["BILLING_FINANCE"]));
   ok("PF-5 part 2 pass/fail: GET billing/invoices lists our invoices with Stripe's hosted links, never a draft", inv.invoices.length === 1 && inv.invoices[0].id === "in_p1" && !!inv.invoices[0].hostedUrl, inv);
 
+  // PF-12b part 3 (review Block 7063644895, Lead 15's ruling on #2814): the match read crosses the walls even when no firm
+  // matches, so that step writes one firm-less line (touchPlatform), keyed by Stripe's event id; a matched event writes the
+  // firm's line only.
+  const noFirm = (use: string, key: string) => sql(`select coalesce(string_agg(coalesce(firm_id::text, 'null'), ','), '') from audit_event where action = 'platform.bypass' and detail->>'use' = '${use}' and detail->>'step' = 'billing.no-firm-matched' and detail->>'key' = '${key}'`);
+  const nobody1 = subEv("sub_nobody1"), nobody1Id = JSON.parse(nobody1).id; await send(nobody1);
+  ok("PF-12b3 pass (PF-5 part 2, the door): an event for a customer we do not know writes one firm-less platform.bypass line, keyed by the event id", noFirm("platform.billing.stripe-webhook", nobody1Id) === "null", noFirm("platform.billing.stripe-webhook", nobody1Id));
+  const nobody2 = subEv("sub_nobody2"), nobody2Id = JSON.parse(nobody2).id; billing.events.set(nobody2Id, eventFacts(JSON.parse(nobody2)));
+  sql(`insert into webhook_receipt (id, service, event_id, received_at) values (gen_random_uuid(), 'stripe', '${nobody2Id}', now() - interval '1 hour')`);
+  await asBypass("job:platform.billing.webhook_sweep", () => hooks.sweep());
+  ok("PF-12b3 pass (PF-5 part 2, the sweep): a swept event for a customer we do not know writes one firm-less platform.bypass line, keyed by the event id", noFirm("job:platform.billing.webhook_sweep", nobody2Id) === "null", noFirm("job:platform.billing.webhook_sweep", nobody2Id));
+  ok("PF-12b3 fail (PF-5 part 2): a matched event writes no firm-less line (only those two events did)", sql(`select count(*) from audit_event where action = 'platform.bypass' and detail->>'step' = 'billing.no-firm-matched'`) === "2" && bypassLines(firmId) === "1");
+
   // ------------------------------------------------------------------------------- part 2: the breaker's Majors (8c21a1e8)
   const F8 = await mkFirm("f8"), p8 = subEv("sub_f8", "customer.subscription.paused");
   billing.subs.set("sub_f8", snap("sub_f8", { status: "paused" }));

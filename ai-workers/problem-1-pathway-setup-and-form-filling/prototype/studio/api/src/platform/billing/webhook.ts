@@ -13,7 +13,7 @@ import { BillingSignatureError, type BillingEvent, type BillingPort, type Billin
 import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
-import { asBypass, firmScope, touchFirms, withFirm } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirms, touchPlatform, withFirm } from "../firm-scope.ts";
 import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -72,8 +72,12 @@ export class BillingEvents {
 
   /** Handles one stored event; a failure leaves its receipt unhandled for the sweep. Returns the outcome. */
   async handle(ev: BillingEvent): Promise<string> {
-    const row = /^(customer\.subscription|invoice|checkout\.session)\./.test(ev.type) ? await this.findSubscription(ev) : null;   // other events change nothing here (review m2)
+    const reads = /^(customer\.subscription|invoice|checkout\.session)\./.test(ev.type);   // other events read no walled table and change nothing here (review m2)
+    const row = reads ? await this.findSubscription(ev) : null;
     let outcome = "no firm matched";
+    // PF-12b part 3 (Lead 15's ruling on #2814): the match read crossed the walls and found no firm, so the step writes one
+    // firm-less line, keyed by Stripe's event id (not a secret); a line that cannot be written leaves the receipt open.
+    if (reads && !row) await this.db.$transaction((tx) => touchPlatform(tx, { step: "billing.no-firm-matched", key: ev.id }));
     if (row) {
       // PF-12b: the match read crossed the walls; the firm's trail gets its platform.bypass line before anything changes
       // (a line that cannot be written stops here and leaves the receipt for the sweep).
