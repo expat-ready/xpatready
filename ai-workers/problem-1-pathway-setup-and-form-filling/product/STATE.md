@@ -21,6 +21,7 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 (5l) **00:4x: R1.4 Works → 10/15, 42/101.** R1.19 ruled Partial (billing period must be state) → PF-5 part 3 #2870; QA-703 → PF-12b part 5 #2871; AWS redeploy waits on the founder's sign-in (red line above). Lines 00:1x-00:2x in the history file in (3).
 (5q) **01:5x:** #2870 labelled + queued. #2871 merged (QA-703 closed in code). #2687 fix 06baf4dd2 (pf28 allow-list, booking-seed) → independent diff-only Opus **Approve** posted (7068801379), round 7 allowed, /run full started; label when green.
 (5r) **02:0x:** #2860 proof-route fixes: type fix ef448c1e (walk-plan.d.mts) approved, ci/types green, Lead read, **labelled**. #2870 R1.19 queued. #2687 full run going.
+(5s) **02:2x: #2870 merged (d0253335c)**, item-proof 44949023938 running (j_19 not on main → journey FAIL expected). qa Q9 told: merge main into #2857, j_19 reads billing_period, row stays Partial on P-339 only, reader, walks + reviewer please → after merge item-proof + Lead walks j_19 on main → one-line Works PR (→ 11/15, ETA ~04:30).
 (6) **Owed records:** DECISIONS rows: QA-697 Major; Lead rulings from Lead 15 list. BACKLOG: image scan CRITICAL 5 / HIGH 12; RDS CA + verify-full; secret-refusal as one JSON line; QA-641-643 deploy row; QA-645 cloud check on main (after 22 Nov); plus Lead 15's owed list (in the history file).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
