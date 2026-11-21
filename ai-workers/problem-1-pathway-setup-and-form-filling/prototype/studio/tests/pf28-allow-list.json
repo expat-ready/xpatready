@@ -2,21 +2,6 @@
  "unparsed": {
   "front-office/assignment/routes.ts POST /api/front-office/assignment-rules body": "PF-28 part 3 (front-office sales)",
   "front-office/assignment/routes.ts PUT /api/front-office/lead-sharing body": "PF-28 part 3 (front-office sales)",
-  "front-office/booking/consult/controller.ts PUT /api/front-office/bookings/:id/consult-record body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts PATCH /api/front-office/me/availability-sets/:id body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts PATCH /api/front-office/staff/:staffId/availability-sets/:id body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts POST /api/front-office/me/availability-sets body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts POST /api/front-office/me/time-off body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts POST /api/front-office/staff/:staffId/availability-sets body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts POST /api/front-office/staff/:staffId/time-off body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/availability.controller.ts PUT /api/front-office/booking-types/:id/hosts/:staffId/set body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/types.controller.ts GET /api/front-office/booking-types/:id/preview query": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/types.controller.ts PATCH /api/front-office/booking-types/:id body": "PF-28 part 4 (booking)",
-  "front-office/booking/settings/types.controller.ts POST /api/front-office/booking-types body": "PF-28 part 4 (booking)",
-  "front-office/booking/staff.controller.ts GET /api/front-office/bookings query": "PF-28 part 4 (booking)",
-  "front-office/booking/staff.controller.ts POST /api/front-office/bookings body": "PF-28 part 4 (booking)",
-  "front-office/booking/staff.controller.ts POST /api/front-office/bookings/:id/attendance body": "PF-28 part 4 (booking)",
-  "front-office/booking/staff.controller.ts POST /api/front-office/bookings/:id/reschedule body": "PF-28 part 4 (booking)",
   "front-office/compliance/conflict/routes.ts POST /api/front-office/conflict-checks body": "PF-28 part 3 (front-office sales)",
   "front-office/compliance/conflict/routes.ts POST /api/front-office/conflict-checks/:id/confirm body": "PF-28 part 3 (front-office sales)",
   "front-office/compliance/conflict/routes.ts POST /api/front-office/conflict-checks/preview body": "PF-28 part 3 (front-office sales)",
@@ -57,13 +42,9 @@
   "front-office/sales/routes.ts POST /api/front-office/prospects/:id/notes body": "PF-28 part 3 (front-office sales)",
   "front-office/sales/routes.ts POST /api/front-office/prospects/:id/undo-convert body": "PF-28 part 3 (front-office sales)",
   "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/allowed-sites body": "PF-28 part 3 (front-office sales)",
-  "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/enabled body": "PF-28 part 3 (front-office sales)",
-  "platform/firms/routes.ts POST /api/public/signup body": "PF-28 part 2 (platform)",
-  "platform/firms/routes.ts POST /api/public/signup/verify body": "PF-28 part 2 (platform)",
-  "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body": "PF-28 part 2 (platform)"
+  "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/enabled body": "PF-28 part 3 (front-office sales)"
  },
  "probes": {
-  "DELETE /api/platform/complaints/:id id:id": "PF-28 part 2 (platform)",
   "GET /api/front-office/booking-types/:id/preview query-unknown": "PF-28 part 4 (booking)",
   "GET /api/front-office/bookings query-unknown": "PF-28 part 4 (booking)",
   "GET /api/front-office/bookings/feed query-unknown": "PF-28 part 4 (booking)",
@@ -77,7 +58,6 @@
   "GET /api/public/bookings/:token/slots unreached": "PF-28 part 4 (booking)",
   "GET /api/public/firms/:firmKey/book/:slug/slots query-unknown": "PF-28 part 4 (booking)",
   "GET /api/public/firms/:firmKey/book/:slug/slots unreached": "PF-28 part 4 (booking)",
-  "GET /api/public/invitations/:token id:token": "PF-28 part 2 (platform)",
   "GET /api/public/web-address/availability query-unknown": "PF-28 part 4 (booking)",
   "PATCH /api/front-office/booking-types/:id id:id": "PF-28 part 4 (booking)",
   "PATCH /api/front-office/booking-types/:id missing": "PF-28 part 4 (booking)",
@@ -195,7 +175,6 @@
   "POST /api/front-office/staff/:staffId/time-off missing": "PF-28 part 4 (booking)",
   "POST /api/front-office/staff/:staffId/time-off unknown": "PF-28 part 4 (booking)",
   "POST /api/front-office/staff/:staffId/time-off wrong-type": "PF-28 part 4 (booking)",
-  "POST /api/platform/staff/invitations/:id/resend missing": "PF-28 part 2 (platform)",
   "POST /api/public/bookings/:token/cancel missing": "PF-28 part 4 (booking)",
   "POST /api/public/bookings/:token/cancel unknown": "PF-28 part 4 (booking)",
   "POST /api/public/bookings/:token/cancel unreached": "PF-28 part 4 (booking)",
@@ -213,17 +192,6 @@
   "POST /api/public/forms/:token/submissions unknown": "PF-28 part 3 (front-office sales)",
   "POST /api/public/forms/:token/submissions unreached": "PF-28 part 3 (front-office sales)",
   "POST /api/public/forms/:token/submissions wrong-type": "PF-28 part 3 (front-office sales)",
-  "POST /api/public/invitations/:token/accept id:token": "PF-28 part 2 (platform)",
-  "POST /api/public/messages/ses-notices 1mb": "PF-28 part 2 (platform)",
-  "POST /api/public/messages/ses-notices missing": "PF-28 part 2 (platform)",
-  "POST /api/public/messages/ses-notices unknown": "PF-28 part 2 (platform)",
-  "POST /api/public/messages/ses-notices wrong-type": "PF-28 part 2 (platform)",
-  "POST /api/public/signup missing": "PF-28 part 2 (platform)",
-  "POST /api/public/signup unknown": "PF-28 part 2 (platform)",
-  "POST /api/public/signup wrong-type": "PF-28 part 2 (platform)",
-  "POST /api/public/signup/verify missing": "PF-28 part 2 (platform)",
-  "POST /api/public/signup/verify unknown": "PF-28 part 2 (platform)",
-  "POST /api/public/signup/verify wrong-type": "PF-28 part 2 (platform)",
   "PUT /api/front-office/booking-types/:id/hosts/:staffId/set id:id": "PF-28 part 4 (booking)",
   "PUT /api/front-office/booking-types/:id/hosts/:staffId/set id:staffId": "PF-28 part 4 (booking)",
   "PUT /api/front-office/booking-types/:id/hosts/:staffId/set missing": "PF-28 part 4 (booking)",
@@ -234,5 +202,20 @@
   "PUT /api/front-office/bookings/:id/consult-record wrong-type": "PF-28 part 4 (booking)",
   "PUT /api/front-office/web-forms/:id/allowed-sites unknown": "PF-28 part 3 (front-office sales)",
   "PUT /api/front-office/web-forms/:id/enabled unknown": "PF-28 part 3 (front-office sales)"
+ },
+ "exceptions": {
+  "unparsed": {
+   "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body": "By design (awaiting the tech lead): AWS's signed SNS envelope is read only after its signature verifies, and bounces.ts checks its exact field set per Type (FIELDS) before reading; the SES message inside is read field by field with fallbacks (PF-19b part 2)."
+  },
+  "probes": {
+   "DELETE /api/platform/complaints/:id id:id": "By design (awaiting the tech lead): a complaint is never deleted, so DELETE answers 405 COMPLAINT_KEPT for every id, malformed or not; the same answer for any id says nothing about which ids exist (PF-21w).",
+   "GET /api/public/invitations/:token id:token": "By design (awaiting the tech lead): an invitation token is a 256-bit random string, not a uuid; any token that is not live answers 200 state NOT_VALID, so the accept page shows its own words and a bad token tells nothing (PF-4b).",
+   "POST /api/public/invitations/:token/accept id:token": "By design (awaiting the tech lead): accepting a token that is not live answers 410 INVITATION_NOT_VALID, the same for a malformed, unknown, used or expired token (PF-4b, PF-6m2).",
+   "POST /api/public/messages/ses-notices 1mb": "By design (awaiting the tech lead): the SNS door keeps AWS's own 300 KB limit and checks the signature first; an unsigned body is 400 'not signed by Amazon SNS' before anything is read (PF-19b part 2).",
+   "POST /api/public/messages/ses-notices missing": "By design (awaiting the tech lead): the SNS signature is checked before any field is read, so an unsigned body is 400 'not signed by Amazon SNS', never a field error (PF-19b part 2, AG-10-32).",
+   "POST /api/public/messages/ses-notices unknown": "By design (awaiting the tech lead): the SNS signature is checked before any field is read, so an unsigned body is 400 'not signed by Amazon SNS', never a field error (PF-19b part 2, AG-10-32).",
+   "POST /api/public/messages/ses-notices wrong-type": "By design (awaiting the tech lead): the SNS signature is checked before any field is read, so an unsigned body is 400 'not signed by Amazon SNS', never a field error (PF-19b part 2, AG-10-32).",
+   "POST /api/platform/staff/invitations/:id/resend missing": "By design (awaiting the tech lead): {} is a valid resend body (the reason is optional; the web sends {}), so with the sweep's random id the honest answer is 404; question on #2787."
+  }
  }
 }

@@ -13,6 +13,7 @@ import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../http/input.ts";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { BillingPort } from "../../../../ports/billing.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
@@ -47,7 +48,12 @@ const ACTOR = "system:sign-up";
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code, ...extra }, status);
 const notFound = () => problem(404, "NOT_FOUND", "Not found", "This link is not valid any more. Sign up again, or sign in.");
-const fields = (errors: string[]) => problem(400, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors });
+/** PF-28 part 2c (R1.10): a field error answers 422 with each field named in `fields`; `errors` ("field: words") stays, the
+ *  sign-up page reads it. */
+const fromErrors = (errors: string[]) => Object.fromEntries(errors.map((e) => { const i = e.indexOf(": "); return i > 0 ? [e.slice(0, i).slice(0, 64), e.slice(i + 2)] : ["form", e]; }));
+const fields = (errors: string[], named: Record<string, string> = fromErrors(errors)) => problem(FIELD_ERROR_STATUS, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors, fields: { ...named, ...fromErrors(errors) } });
+/** The door's body through its schema, or `refuse` (the one input rule's shape: never a value, every field named). */
+const parse = <S extends z.ZodType>(schema: S, value: unknown, refuse: (e: z.ZodError) => never): z.output<S> => { const r = schema.safeParse(value ?? {}); return r.success ? r.data : refuse(r.error); };
 
 /** QA-484: an empty field answers in plain words on its field, never the validator's. */
 export const EMPTY = { email: "email: Enter your work email.", password: "password: Choose a password.", firmName: "firmName: Enter your firm's name." } as const;
@@ -116,9 +122,7 @@ export class FirmSignUp {
   private async signUpDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`signup:${ip}`, this.limits.signupPerIp);
-    const parsed = Body.safeParse(body ?? {});
-    if (!parsed.success) throw fields([...new Set(parsed.error.issues.map(words))]);
-    const b = parsed.data;
+    const b = parse(Body, body, (e) => { throw fields([...new Set(e.issues.map(words))], fieldsOf(e)); });
     let email: string;
     try { email = emailOf(b.email); } catch { throw fields(["email: give your work email (name@example.com)"]); }
     const terms = await this.currentTerms();
@@ -175,8 +179,9 @@ export class FirmSignUp {
   private async verifyDoor(body: unknown, ip: string) {
     this.ready();
     this.limit(`verify:${ip}`, this.limits.verifyPerIp);
-    const parsed = VerifyBody.safeParse(body ?? {});
-    if (!parsed.success) throw notFound();
+    // PF-28 part 2c: a link's body that is not { token, code } is a field error (422, named), told by its shape alone (no
+    // lookup, so it says nothing about which links exist); the verify page shows its "link closed" words for it.
+    const parsed = { data: parse(VerifyBody, body, (e) => { throw problem(FIELD_ERROR_STATUS, "CHECK_FIELDS", "Check the link", "This link is not complete. Open it again from the email.", { fields: fieldsOf(e) }); }) };
     const now = await dbNow(this.db);
     const pending = await this.db.platformSignupPending.findUnique({ where: { tokenHash: sha(parsed.data.token) } });
     if (!pending || pending.usedAt || pending.expiresAt <= now) throw notFound();
@@ -184,7 +189,7 @@ export class FirmSignUp {
     if (!(await this.ports.identity.confirm({ subject: pending.identitySubject, code: parsed.data.code }))) {
       if (this.wrongCodes.size > 50_000) this.wrongCodes.clear();   // links last 24 hours; the cap is per process
       this.wrongCodes.set(pending.id, (this.wrongCodes.get(pending.id) ?? 0) + 1);
-      throw problem(400, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.");
+      throw problem(FIELD_ERROR_STATUS, "CODE_WRONG", "Check the code", "That code is not the one we sent. Type the 6 digits from the email.", { fields: { code: "That code is not the one we sent." } });
     }
     const existing = await this.knownAccount(pending.email);
     if (existing) { await touchFirms(this.db, [existing]); throw problem(409, "ACCOUNT_EXISTS", "Sign in instead", ALREADY); }   // PF-12b: that firm's line, then the refusal
