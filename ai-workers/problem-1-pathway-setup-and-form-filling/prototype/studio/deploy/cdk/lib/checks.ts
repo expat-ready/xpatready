@@ -43,6 +43,8 @@ const flatten = (v: unknown, defaults: Record<string, string> = {}): unknown => 
 const defaultsOf = (t: Template) => Object.fromEntries(Object.entries((t.Parameters ?? {}) as Record<string, { Default?: unknown }>).filter(([, p]) => p.Default !== undefined).map(([n, p]) => [n, String(p.Default)]));
 /** Values whose region the guard cannot read from the template (PF-8rc break B3): Fn::Sub with a variable map, an
  *  imported value, and a dynamic reference other than this stack's own Secrets Manager secret (the database password). */
+/** PF-8b: a parameter that can hold only an image digest (sha256 + 64 hex) cannot name a region: PF-8c's deploy sets it. */
+const digestOnly = (p: unknown) => json(p) === json({ Type: "String", AllowedPattern: "^sha256:[a-f0-9]{64}$", Description: (p as { Description?: string })?.Description });
 const opaque = (t: Template, v: unknown): string[] => {
   const out: string[] = [], params = (t.Parameters ?? {}) as Record<string, unknown>;
   const walk = (x: unknown): void => {
@@ -58,7 +60,7 @@ const opaque = (t: Template, v: unknown): string[] => {
     if (o["Fn::ImportValue"] !== undefined) out.push("Fn::ImportValue");
     if (o["Fn::FindInMap"] !== undefined) out.push("Fn::FindInMap"); // a mapping's halves joined (round 2, R2-3)
     // any template parameter: a deploy can override its default, so the default proves nothing (round 3, R3-3; N1)
-    if (typeof o.Ref === "string" && params[o.Ref]) out.push(`a parameter set at deploy time (${o.Ref})`);
+    if (typeof o.Ref === "string" && params[o.Ref] && !digestOnly(params[o.Ref])) out.push(`a parameter set at deploy time (${o.Ref})`);
     const j = o["Fn::Join"] as [string, unknown[]] | undefined;
     if (j !== undefined && typeof (j as unknown[])?.[0] !== "string") out.push("a Fn::Join whose delimiter is not a literal");
     if (Array.isArray(j) && Array.isArray(j[1])) {
@@ -281,7 +283,12 @@ export function resourcePolicyFindings(stacks: SynthStack[]): string[] {
     if (a.unreadable !== undefined) { out.push(`${at}: its policy cannot be read: ${a.unreadable}`); continue; }
     // a bucket policy only denies (the plain-HTTP deny); access comes from IAM in this account (round 3, R3-2)
     if (r.Type === "AWS::S3::BucketPolicy") { for (const st of a.st) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}; a bucket policy may only deny`); continue; }
-    for (const st of a.st) if (json(st.Principal) !== json({ AWS: JSON.parse(ROOT) })) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}`);
+    // PF-8b: an ECS execution role of this stack may decrypt the key only through Secrets Manager here (its own secrets)
+    const execIds = new Set(Object.values(s.template.Resources ?? {}).filter((x) => x.Type === "AWS::ECS::TaskDefinition").map((x) => (x.Properties?.ExecutionRoleArn as { "Fn::GetAtt"?: [string] })?.["Fn::GetAtt"]?.[0]));
+    const ecsExec = (st: Record<string, unknown>) => { const g = (st.Principal as { AWS?: { "Fn::GetAtt"?: [string] } | { "Fn::GetAtt"?: [string] }[] })?.AWS; if (Object.keys(st.Principal ?? {}).length !== 1) return false;
+      return r.Type === "AWS::KMS::Key" && json(st.Action) === json("kms:Decrypt") && json(st.Resource) === json("*") && json(st.Condition) === json({ StringEquals: { "kms:ViaService": `secretsmanager.${HOME}.amazonaws.com` } })
+        && (Array.isArray(g) ? g : [g]).every((x) => execIds.has(x?.["Fn::GetAtt"]?.[0])); }; // an execution role only (review r3)
+    for (const st of a.st) if (json(st.Principal) !== json({ AWS: JSON.parse(ROOT) }) && !ecsExec(st)) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}`);
   }
   return out;
 }
@@ -329,14 +336,29 @@ export function backupFindings(home: SynthStack, stacks: SynthStack[]): string[]
  *  not of what is guarded, so CloudFormation, IAM, Lambda or a cross-region copy job are refused unless listed here by a
  *  reviewed PR). Today: AWS Backup's role reading the data key. PF-8b adds the service's own actions. */
 export const ROLE_ACTIONS = ["kms:Decrypt"];
-/** The only principals that may assume a role: AWS Backup today (PF-8b adds the service's tasks). */
-export const TRUSTED_SERVICES = ["backup.amazonaws.com"];
+/** PF-8b: the actions a role trusted by ECS tasks may allow, and nothing else: pull its image, read its own secrets and
+ *  write its containers' lines to the app log group (the execution role; PF-8b F1; held to that group's ARN alone by
+ *  service-checks.ts logFindings), send mail (the task role). A role trusted by AWS Backup keeps ROLE_ACTIONS only. */
+export const ECS_EXEC_ACTIONS = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:GetAuthorizationToken", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "logs:CreateLogStream", "logs:PutLogEvents"];
+export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail"]; // an execution role pulls and reads; a task role only sends (review r1)
+const SERVICE_ACTIONS: Record<string, string[]> = { "backup.amazonaws.com": ROLE_ACTIONS, "ecs-tasks.amazonaws.com": [] };
+/** The only principals that may assume a role: AWS Backup, and ECS tasks (PF-8b). */
+export const TRUSTED_SERVICES = Object.keys(SERVICE_ACTIONS);
 /** AWS-managed policies a role may carry: AWS Backup's own service policies (Unconfirmed: their contents could not be
  *  read from the build lane; the vault policies' explicit deny holds whatever they contain), written plainly. */
 export const MANAGED_ALLOW = ["service-role/AWSBackupServiceRolePolicyForBackup", "AWSBackupServiceRolePolicyForS3Backup"];
 export function bypassFindings(stacks: SynthStack[]): string[] {
   const out: string[] = [];
-  for (const s of stacks) for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
+  for (const s of stacks) {
+  const R = s.template.Resources ?? {};
+  // which services trust a role of this stack (its trust policy's literal Service values)
+  const trusted = (roleId: string) => { const a = allows(R[roleId]?.Properties?.AssumeRolePolicyDocument); return "st" in a ? [...new Set(a.st.flatMap((x) => list((x.Principal as { Service?: unknown } | undefined)?.Service)))] : []; }; // every statement (re-break)
+  const tdRoles = (k: string) => new Set(Object.values(R).filter((x) => x.Type === "AWS::ECS::TaskDefinition").map((x) => (x.Properties?.[k] as { "Fn::GetAtt"?: [string] })?.["Fn::GetAtt"]?.[0] ?? ""));
+  const execs = tdRoles("ExecutionRoleArn"), tasks = tdRoles("TaskRoleArn");
+  const allowedFor = (ids: string[]) => !ids.length ? ROLE_ACTIONS : !ids.every((x) => trusted(x).length === 1) || new Set(ids.map((x) => trusted(x)[0])).size !== 1 ? [] // two services trusting one role: nothing
+    : trusted(ids[0])[0] !== "ecs-tasks.amazonaws.com" ? SERVICE_ACTIONS[trusted(ids[0])[0]] ?? ROLE_ACTIONS
+    : ids.every((x) => execs.has(x) && !tasks.has(x)) ? ECS_EXEC_ACTIONS : ids.every((x) => tasks.has(x) && !execs.has(x)) ? ECS_TASK_ACTIONS : [];
+  for (const [id, r] of Object.entries(R)) {
     const p = r.Properties ?? {}, at = `${s.name}/${id} (${r.Type})`;
     // a role may be assumed only by a listed AWS service, with sts:AssumeRole (break B4 (b), round 2 R2-1)
     if (r.Type === "AWS::IAM::Role") {
@@ -349,17 +371,34 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
       }
     }
     // Policies must be a literal list of literal entries (review M1: a whole list in Fn::If is refused, not skipped)
-    if (p.Policies !== undefined && !(Array.isArray(p.Policies) && p.Policies.every((x) => x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).every((k) => ["PolicyName", "PolicyDocument"].includes(k))))) out.push(`${at}: its Policies cannot be read (${json(p.Policies).slice(0, 80)})`);
+    if (r.Type.startsWith("AWS::IAM::") && p.Policies !== undefined && !(Array.isArray(p.Policies) && p.Policies.every((x) => x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).every((k) => ["PolicyName", "PolicyDocument"].includes(k))))) out.push(`${at}: its Policies cannot be read (${json(p.Policies).slice(0, 80)})`);
     const docs = ["AWS::IAM::Role", "AWS::IAM::User", "AWS::IAM::Group"].includes(r.Type) ? (Array.isArray(p.Policies) ? (p.Policies as { PolicyDocument?: unknown }[]).map((x) => x?.PolicyDocument) : [])
       : r.Type.startsWith("AWS::IAM::") && r.Type.endsWith("Policy") ? [p.PolicyDocument] : [];
+    // a role a resource names must be one this stack defines (re-break RB-1: a task run as an outside admin role); no
+    // Cognito Lambda triggers; an image repository has no resource policy (RB-2: public pull, outside push)
+    const named = (v: unknown): [string, unknown][] => Array.isArray(v) ? v.flatMap(named) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => (/RoleArn$|CallerArn$/.test(k) ? [[k, x] as [string, unknown]] : named(x))) : [];
+    for (const [k, v] of named(p)) if (R[(v as { "Fn::GetAtt"?: [string] })?.["Fn::GetAtt"]?.[0] ?? ""]?.Type !== "AWS::IAM::Role") out.push(`${at}: ${k} names ${json(v)}, not a role this stack defines`);
+    if (p.LambdaConfig !== undefined || (r.Type === "AWS::ECR::Repository" && p.RepositoryPolicyText !== undefined)) out.push(`${at}: a Lambda trigger or repository policy (none is expected)`);
+    const holders = r.Type === "AWS::IAM::Role" ? [id] : (Array.isArray(p.Roles) ? p.Roles : []).map((x: unknown) => (x as { Ref?: string })?.Ref ?? "");
+    const ACTIONS = allowedFor(holders);
     for (const doc of docs) {
       const a = allows(doc);
       if (a.unreadable !== undefined) { out.push(`${at}: a policy cannot be read: ${a.unreadable}`); continue; }
       for (const st of a.st) {
-        for (const act of list(st.Action)) if (!ROLE_ACTIONS.includes(act)) out.push(`${at}: allows ${act}, not on the allow list (${ROLE_ACTIONS.join(", ")})`);
-        // on a named resource of this stack, never on everything (round 3, R3-5; review M4)
+        for (const act of list(st.Action)) if (!ACTIONS.includes(act)) out.push(`${at}: allows ${act}, not on the allow list (${ACTIONS.join(", ")})`);
+        // on a named resource of this stack, never on everything (round 3, R3-5; review M4). PF-8b: a secret's Ref (its
+        // ARN), an ARN joined from literals, AWS pseudo parameters and this stack's resources (the SES identity), and "*"
+        // only for ecr:GetAuthorizationToken, which AWS grants on nothing narrower.
         const res = Array.isArray(st.Resource) ? st.Resource : [st.Resource];
-        if (!res.every((x) => !!x && typeof x === "object" && !!(x as { "Fn::GetAtt"?: [string] })["Fn::GetAtt"] && !!s.template.Resources?.[(x as { "Fn::GetAtt": [string] })["Fn::GetAtt"][0]])) out.push(`${at}: allows on ${json(st.Resource)}, not a resource this stack defines`);
+        const own = (x: unknown, inJoin = false): boolean => {
+          const o = x as { "Fn::GetAtt"?: [string]; Ref?: string; "Fn::Join"?: [string, unknown[]] } | undefined;
+          if (o?.["Fn::GetAtt"]) return !!R[o["Fn::GetAtt"][0]];
+          if (typeof o?.Ref === "string") return R[o.Ref]?.Type === "AWS::SecretsManager::Secret" || (inJoin && (!!R[o.Ref] || ["AWS::Partition", "AWS::AccountId", "AWS::Region", "AWS::URLSuffix"].includes(o.Ref)));
+          const j = o?.["Fn::Join"];
+          return Array.isArray(j) && j[0] === "" && Array.isArray(j[1]) && j[1].every((y) => typeof y === "string" ? !/[*?]|:\d{12}:/.test(y) : own(y, true)) && j[1].some((y) => typeof y === "object" && !(y as { Ref?: string }).Ref?.startsWith("AWS::"));
+        };
+        const tokenOnly = json(list(st.Action)) === json(["ecr:GetAuthorizationToken"]) && json(st.Resource) === json("*") && ACTIONS === ECS_EXEC_ACTIONS;
+        if (!tokenOnly && !res.every((x) => !!x && typeof x === "object" && own(x))) out.push(`${at}: allows on ${json(st.Resource)}, not a resource this stack defines`);
       }
     }
     // a policy is attached only to roles of this stack: never to users, groups or a role named from outside (review M4)
@@ -374,6 +413,7 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
       if (!MANAGED_ALLOW.some((m) => exact(m).includes(arn))) out.push(`${at}: managed policy ${/policy\/([^ "]+)/.exec(json(flatten(JSON.parse(arn))))?.[1] ?? arn} is not on the allow list (only ${MANAGED_ALLOW.join(", ")}, written plainly)`);
     }
   }
+  }
   return out;
 }
 
@@ -383,6 +423,10 @@ export const ESTATE_TYPES = ["AWS::Backup::BackupPlan", "AWS::Backup::BackupSele
   "AWS::EC2::NatGateway", "AWS::EC2::Route", "AWS::EC2::RouteTable", "AWS::EC2::SecurityGroup", "AWS::EC2::Subnet", "AWS::EC2::SubnetRouteTableAssociation",
   "AWS::EC2::VPC", "AWS::EC2::VPCGatewayAttachment", "AWS::IAM::Policy", "AWS::IAM::Role", "AWS::KMS::Alias", "AWS::KMS::Key", "AWS::RDS::DBInstance",
   "AWS::RDS::DBParameterGroup", "AWS::RDS::DBSubnetGroup", "AWS::S3::Bucket", "AWS::S3::BucketPolicy", "AWS::SecretsManager::Secret", "AWS::SecretsManager::SecretTargetAttachment",
+  // PF-8b: the service, its image, load balancer, firm addresses, mail and sign-in pools (each read by lib/service-checks.ts)
+  "AWS::CertificateManager::Certificate", "AWS::Cognito::UserPool", "AWS::Cognito::UserPoolClient", "AWS::EC2::SecurityGroupEgress", "AWS::EC2::SecurityGroupIngress",
+  "AWS::ECR::Repository", "AWS::ECS::Cluster", "AWS::ECS::Service", "AWS::ECS::TaskDefinition", "AWS::ElasticLoadBalancingV2::Listener",
+  "AWS::ElasticLoadBalancingV2::LoadBalancer", "AWS::ElasticLoadBalancingV2::TargetGroup", "AWS::Route53::HostedZone", "AWS::Route53::RecordSet", "AWS::SES::EmailIdentity",
   "AWS::Logs::LogGroup", "AWS::Logs::MetricFilter", "AWS::CloudWatch::Alarm", "AWS::SNS::Topic", "AWS::SNS::Subscription"]; // PF-23c: logs, alarms, the on-call topic
 export function typeFindings(stacks: SynthStack[]): string[] {
   return stacks.flatMap((s) => Object.entries(s.template.Resources ?? {}).filter(([, r]) => !ESTATE_TYPES.includes(r.Type)).map(([id, r]) => `${s.name}/${id}: ${r.Type} is not an estate type`));

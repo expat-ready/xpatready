@@ -11,12 +11,14 @@ import { auditEvent } from "../audit/audit-event.ts";
 import { publicFirmOf, sendPublicNotFound, webAddressHost } from "./host.ts";
 import { catchUpFirmAddresses, type CatchUpResult } from "./firm-created.ts";
 import { WebAddresses } from "./service.ts";
+import { addressHostSuffixes } from "./rules.ts";
+import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit } from "../firm-scope.ts";
 import { logPort } from "../observability/log.ts";
 import { dbRuleOf } from "../observability/redact.ts";
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
-export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock }), inject: [Db] };
+export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock, hostSuffixes: addressHostSuffixes(platformConfig().addressSuffix) }), inject: [Db] };
 
 /** Installs the host routing on the HTTP server when the app is built, so it runs before everything main.ts adds later
  *  (the body parser, the static files, the single-page app's catch-all) and before every controller. A provider rather

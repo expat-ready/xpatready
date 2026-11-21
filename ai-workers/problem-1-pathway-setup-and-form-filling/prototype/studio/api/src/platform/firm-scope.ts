@@ -48,7 +48,8 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 //     runs the handler in it again);
 //   * a job: its JobRun.firmId (withFirm);
 //   * anything else, a public door, a configuration or case request with no platform firm: no firm, so a walled table
-//     reads nothing and takes no write. A door resolves its firm first (asBypass, on the named list), then sets it.
+//     reads nothing and takes no write. A door resolves its firm first through a narrow definer lookup (PF-12b part 2,
+//     migration pf12b2_door_lookups: firm id only), reads its own row as that firm (withFirm), then sets it (enterFirm).
 // A query sets app.firm_id (and the role) on its pooled connection before it runs, so no firm can leak from one checkout
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -78,7 +79,7 @@ export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
 }
-/** A door (a sign-in, a public page, a link): the firm it resolved through asBypass, for the rest of its request.
+/** A door (a sign-in, a public page, a link): the firm it resolved through its narrow lookup, for the rest of its request.
  *  Refused inside a job's or a bypass's scope; on a direct call with no scope (a suite, a tool) there is nothing to set
  *  and the caller's own client decides what it reads. */
 export function enterFirm(firmId: string) {
@@ -97,21 +98,15 @@ export function enterFirm(firmId: string) {
  *  PF-12b part 1 (QA-499; R1.4 "every use writes an audit line"; P-607, P-571 (1), AG-1-45): `audit` says how each use
  *  is audited. "per-firm": the use calls touchFirm(tx, firmId) for each firm whose rows it reads or writes, in that
  *  firm's transaction, and touchFirm writes one `platform.bypass` line to that firm's trail (fail-closed). "none: …":
- *  why the use writes no line (it touches no firm's rows, or it is an own-firm door that PF-12b part 2 moves off the
- *  bypass). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
+ *  why the use writes no line (it touches no firm's rows). The seven own-firm doors left the list in PF-12b part 2: each
+ *  finds its firm through a narrow definer lookup and runs as it (tests/check_pf12b_doors.ts). A use added without `audit` does not compile, and tests/check_pf12b_bypass_audit.ts reads the list. */
 export type BypassAudit = "per-firm" | `none: ${string}`;
 /** `inside`: the only outer uses this use may run within (one bypass use at a time otherwise, break M1). Only a use that
  *  touches no firm's rows ("none: …") may name one: it then crosses under its own name, and the outer use's lines stand. */
 export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonly RegExp[]; outside?: boolean; direct?: boolean; audit: BypassAudit; inside?: readonly string[] }>> = Object.freeze({
-  "platform.identity.authenticate": { why: "PF-4's guard reads the session's staff member and firm before any firm is known, on every route that declares staff access (platform, front office, and the case routes that take a staff session)", routes: [/^[A-Z]+ \/api\//i], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "platform.identity.sign-in": { why: "the sign-in doors find the firm by its key, then run as it (PF-4, PF-4b)", routes: [/^POST \/api\/platform\/session\/(local|callback)$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "platform.identity.invitation": { why: "the invitation link: the token is the only key, and one sign-in account is one firm's staff member across all firms (PF-4b, BR-4)", routes: [/^(GET|POST) \/api\/public\/invitations\/[^/]+(\/accept)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "fo.sales.web-form": { why: "the public enquiry form finds its firm by the form's token, then runs as it (FO-2; FO-4b: the send's pre-flight reads its allowed sites)", routes: [/^(GET|POST) \/api\/public\/forms\/[^/]+(\/submissions)?$/i, /^OPTIONS \/api\/public\/forms\/[^/]+\/submissions$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "fo.booking.public-page": { why: "the public booking page finds its firm by key, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/firms\/[^/]+\/book(\/[^/]+\/(slots|bookings))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "fo.booking.self-service": { why: "the booker's own link finds its firm by the link's token, then runs as it (FO-3)", routes: [/^(GET|POST) \/api\/public\/bookings\/[^/]+(\/(slots|reschedule|cancel|ics))?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
-  "platform.web-address.host": { why: "the host routing finds the firm a firm address serves, on every request (PF-25)", routes: [/^[A-Z]+ \//], audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm; PF-12b part 2 moves it to a narrow lookup off the bypass" },
   "platform.web-address.catch-up": { why: "at start, every firm with no web address yet gets one (PF-25)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.inbox": { why: "the demo inbox lists every demo firm's mail by address; demo workspace only (PF-19b)", routes: [/^GET \/api\/demo\/platform-inbox$/i], direct: true, audit: "per-firm" },
+  "platform.branding.public": { why: "a client page's header and the firm's images find the firm by its key, then run as it (PF-13 part 1b)", routes: [/^GET \/api\/public\/firms\/[^/]+\/branding(\/[^/]+)?$/i], direct: true, audit: "none: an own-firm door: it reads only its key's row to choose one firm, then runs as that firm" },
   "platform.firms.signup": { why: "the sign-up door makes a firm that does not exist yet, checking the email across every firm (PF-5)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], direct: true, audit: "per-firm" },
   "job:platform.signup.purge": { why: "pending sign-ups past their 24 hours are deleted (PF-5; no firm yet)", routes: [], outside: true, audit: "none: it deletes expired pending sign-ups only, our own register with no firm_id (platform_signup_pending, forced with no policy); it reads no firm table" },
   "platform.entitlements.limit-change": { why: "our team lowers a plan's limit for every firm on the plan, and each firm's Owners are told (PF-15 part 2, SA-3-43); PF-4s's system routes once on main, and the service on a direct call", routes: [/^(POST|PATCH) \/api\/system\/plans\//i], direct: true, audit: "per-firm" },
