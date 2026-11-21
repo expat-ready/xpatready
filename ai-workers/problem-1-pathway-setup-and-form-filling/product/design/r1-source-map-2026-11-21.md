@@ -16,7 +16,8 @@ The tech lead folds this into the BACKLOG Source column and the DECISIONS rows (
 2. Four readers, each fresh, checked every id against its defining line in the snapshot. An id was kept only if the definition exists and its text supports the row. Where a row's sources gave nothing that fits, the reader searched the snapshot and added an id only when the text clearly matched.
 3. Every kept quote was then checked by script against its cited line, with markdown `*`, `_` and backticks ignored. Ids are written exactly as in the snapshot.
 4. Where an id is defined twice, the newer functional-requirement file (`02-functional-requirements/…`) is cited, not the older Doc text (see finding 2).
-5. A row heading such as "AG-6-1 – AG-6-8 — The invoice …" is quoted as the definition for the ids inside its range.
+5. Struck-through text in a source line is left out of a quote and marked "[struck-through text in the source omitted]".
+6. A row heading such as "AG-6-1 – AG-6-8 — The invoice …" is quoted as the definition for the ids inside its range.
 
 Nothing was guessed. Fit lines are the readers' judgement from the quoted text.
 
@@ -611,7 +612,7 @@ Partial · journey test: yes, `tests/journeys/j_27.ts`
 ### R1.28 28 Consent recorded per purpose
 Works · journey test: yes, `tests/journeys/j_28.ts`
 
-* **SA-11-29**, `02-functional-requirements/super-admin/SA-11-audit-compliance-and-data-governance_v2.16_2026-10-25.md:498`: "Consent records SHALL be recorded per purpose — built MARKETING_EMAIL, MARKETING_SMS, ANALYTICS_PROFILING, THIRD_PARTY_SHARING, plus the new WHATSAPP_OPT_IN (service only) and WHATSAPP_MARKETING (express WhatsApp marketing)"
+* **SA-11-29**, `02-functional-requirements/super-admin/SA-11-audit-compliance-and-data-governance_v2.16_2026-10-25.md:498`: "Consent records SHALL be recorded per purpose — built MARKETING_EMAIL, MARKETING_SMS, ANALYTICS_PROFILING, THIRD_PARTY_SHARING, plus [struck-through text in the source omitted] the new WHATSAPP_OPT_IN (service only) and WHATSAPP_MARKETING (express WhatsApp marketing)"
 * **AG-2-83**, `02-functional-requirements/agent/AG-02-prospect-lead-sales-crm_v2.6_2026-10-28.md:1032`: "Consent captured and evidenced at every door"
 * **AG-10-22**, `02-functional-requirements/agent/AG-10-communication-hub_v1.26_2026-10-27.md:611`: "Every outbound send (manual or automated) SHALL pass a consent/contactability gate that classifies the message transactional vs marketing; transactional SHALL be allowed to a reachable"
 * Dropped from the BACKLOG sources (23): AG-02 (in the snapshot it is about the AG-02 document name (the script matched the AG-01 document header), not a requirement id; not this row's capability); AG-10-1 (in the snapshot it is about the in-house Mailer and Messenger doers, not background jobs; not this row's capability); AG-10-20 (in the snapshot it is about the communication timeline; not this row's capability); AG-10-25 (in the snapshot it is about the suppression list after hard bounces; not this row's capability); AG-10-3 (in the snapshot it is about the Communication record; not this row's capability); AG-10-5 (in the snapshot it is about sending email from an entity; not this row's capability); AG-13-30 (in the snapshot it is about the unified per-entity timeline; not this row's capability); AG-16-17 (in the snapshot it is about email fallback for WhatsApp; not this row's capability); AG-2-13c (in the snapshot it is about assigning leads and the Unassigned queue; not this row's capability); AG-2-26 (in the snapshot it is about stage guards on prospects; not this row's capability); and 13 more.
