@@ -1,0 +1,28 @@
+PASS  PF-0a PA1 pass: auditStaff's line lands through the port (the spy sees it), with its firm, FIRM_STAFF, the platform's workspace, its summary and the firm's key and id in detail
+PASS  PF-0a PA1 fail: with the stand-in direct write the line lands but the spy sees nothing (the judge 'through the port' fails on it)
+PASS  PF-0a PA2 pass: auditInvitation's line lands through the port, entity platform_invitation, with its firm and FIRM_STAFF
+PASS  PF-0a PA2 fail: with the stand-in direct write the spy sees nothing
+PASS  PF-0a PA3 pass: a forced audit failure rolls the change back (the name is as before, no line)
+{"time":"2026-11-20T15:38:30.424Z","level":"error","event":"audit_write_failed","firmId":"6ab71ee4-7132-456f-85cc-5976fbf40ea0","entity":"platform_staff","entityKey":"pf0a-refused","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795189110424,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+PASS  PF-0a PA3 fail-closed: a line the port refuses (nested detail) rolls the change back too, with one audit_write_failed alert
+PASS  PF-0a PA3 pass: the same change with a good line commits both
+PASS  PF-0a PA4 pass: a reason with no email address is written
+{"time":"2026-11-20T15:38:30.475Z","level":"error","event":"audit_write_failed","firmId":"6ab71ee4-7132-456f-85cc-5976fbf40ea0","entity":"platform_staff","entityKey":"pf0a-reason-email","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795189110475,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+PASS  PF-0a PA4 fail: a reason holding an email address is refused and nothing is written (ids and facts only)
+PASS  PF-0a PS1 pass: writeSetting's line lands through the port (spy), on the platform's workspace, with its firm, SYSTEM-typed seed word, from and to
+PASS  PF-0a PS1 fail: with the stand-in direct write the spy sees nothing
+PASS  PF-0a PS2 pass: a forced audit failure rolls the setting back (still USD)
+PASS  PF-0a PS3 pass: the reset's bare "system" is written as system:demo-reset (SYSTEM), and user-R as staff:<their staff id> (FIRM_STAFF)
+PASS  PF-0a PS3 fail: a Sample id with no staff row (user-Z) or an untyped word (test) is refused, and nothing changes
+PASS  PF-0a PS4 pass (A1): 7-day business hours (330 characters) are kept as 2 pieces of at most 200 that join back exactly; from (the default) too
+PASS  PF-0a PS4 fail (A1): a stand-in that drops a piece is caught by the same round-trip judge
+PASS  PF-0a PS4 pass (A1, Lead 94's condition): the hours value (330 characters) comes back byte for byte
+PASS  PF-0a PS4 fail (A1, Lead 94's condition): a piece over 200 characters or more than 50 pieces is refused by the strict port, and a value needing more than 50 pieces is refused before any write (nothing stored)
+PASS  PF-0a PS4 pass (review 2c minor 2): a value of characters outside the basic plane is kept as pieces that each end on a whole character, stored and joined back byte for byte
+PASS  PF-0a PS4 pass (A1): the database joins the pieces back to the stored value (check_pf4_identity's trail query)
+PASS  PF-0a PS5 pass (A1): a long reason is cut to 200 characters in detail, and the summary keeps it (to 600 characters, as before)
+PASS  PF-0a PS5 fail: the line is never refused for the reason's length (the change committed: currency CAD)
+PASS  PF-0a PS6 pass (R1.88): firm A's setting lines carry firm A's id, so firm A's own audit view (firm_id = A) reads them (USD, then CAD with the long reason)
+{"time":"2026-11-20T15:38:30.641Z","level":"error","event":"audit_write_failed","correlationId":"pf0a-ps6","firmId":"1afce047-3783-4437-99be-5977fa8985ef","entity":"platform_firm_setting","entityKey":"6ab71ee4-7132-456f-85cc-5976fbf40ea0:platform.currency","attempts":1,"Service":"studio-api","AuditWriteFailures":1,"_aws":{"Timestamp":1795189110641,"CloudWatchMetrics":[{"Namespace":"ExpatReady/Studio","Dimensions":[["Service"]],"Metrics":[{"Name":"AuditWriteFailures","Unit":"Count"}]}]}}
+PASS  PF-0a PS6 fail (R1.88): firm B's view reads none of them, and firm A's setting written in firm B's request is refused (still CAD)
+24 passed, 0 failed
