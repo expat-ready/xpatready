@@ -9,12 +9,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Notice } from "@/components/ui/controls";
 import { usePlatformStaff } from "@/modules/platform/frame";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
-import { FIELDS, FirmTimings, fromInput, NOT_A_NUMBER, toInput, TYPE_FIELDS, TypeTimings, words, type TypeField } from "./timings-contract";
+import { FIELDS, FirmTimings, fromInput, inUnit, NOT_A_NUMBER, toInput, TYPE_FIELDS, TypeTimings, words, type TypeField } from "./timings-contract";
 
 const STALE = "STALE_VERSION";
 
-/** `onSaved` gets the type's new version, so the panel's own Save type sends the version that is now current. */
-export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSaved?: (version: number) => void }) {
+/** `onSaved(version, sent)`: the type's new version and the version this save sent. The panel takes the new version for
+ *  its own Save type only when it held `sent`; otherwise its form is stale and it reloads (review M1: no lost update). */
+export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSaved?: (version: number, sent: number) => void }) {
   const me = usePlatformStaff(), qc = useQueryClient();
   const key = ["fo", "booking-types", "timings", typeId];
   const q = useQuery({ queryKey: key, retry: false, queryFn: async () => TypeTimings.parse(await staffApi(`/front-office/booking-types/${typeId}`)) });
@@ -43,13 +44,13 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
     try {
       const next = TypeTimings.parse(await staffApi(`/front-office/booking-types/${typeId}/timings`, { method: "PATCH", json: { [f]: value, version: t.version } }));
       qc.setQueryData(key, next);
-      onSaved?.(next.version);
+      onSaved?.(next.version, t.version);
       setEditing(null);
       setSaid(value === null ? `${FIELDS[f].label} uses the firm default again (${words(f, next.effectiveTimings[f])}).` : `${FIELDS[f].label} for this type is ${words(f, value)}.`);
       focus(`[data-type-timing="${f}"] button`);
     } catch (x) {
       if (x instanceof StaffApiError && x.problem.code === STALE) setError({ field: null, text: x.message, stale: true });
-      else if (x instanceof StaffApiError) setError({ field: x.field(f) ? f : null, text: x.field(f) ?? x.message });
+      else if (x instanceof StaffApiError) setError({ field: x.field(f) ? f : null, text: x.field(f) ? inUnit(f, x.field(f)!) : x.message });
       else setError({ field: null, text: "Something went wrong. Please try again." });
       if (x instanceof StaffApiError && x.field(f)) focus(`[data-type-timing-input="${f}"]`);
     } finally { setBusy(null); }
@@ -66,7 +67,7 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
     <div className="flex flex-col gap-2" data-type-timings>
       <h4 className="text-xs font-medium text-text-muted">Timings for this type</h4>
       <div aria-live="polite">{said ? <p role="status" className="text-sm text-text-ok" data-timing-said>{said}</p> : null}</div>
-      {error && !error.field ? <Notice tone="danger" title={error.text} action={error.stale ? <Button size="sm" variant="outline" onClick={() => { setError(null); setEditing(null); void q.refetch(); }}>Reload</Button> : undefined} /> : null}
+      {error && !error.field ? <Notice tone="danger" title={error.text} action={error.stale ? <Button size="sm" variant="outline" onClick={() => { setError(null); setEditing(null); void qc.invalidateQueries({ queryKey: ["fo", "booking-types"] }); }}>Reload</Button> : undefined} /> : null}
       {q.isPending ? <p className="text-sm text-text-muted" role="status">Loading timings…</p>
         : q.isError ? <Notice tone="danger" title="Could not load this type's timings." action={<Button size="sm" variant="outline" onClick={() => void q.refetch()}>Try again</Button>} />
           : t ? (
@@ -89,7 +90,7 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
                           </div>
                           {error?.field === f ? <p id={noteId} role="alert" className="max-w-xs text-xs text-text-danger">{error.text}</p> : null}
                         </div>
-                        <Button type="button" size="sm" busy={busy === f} onClick={() => submit(f)}>Save</Button>
+                        <Button type="button" size="sm" variant="outline" busy={busy === f} onClick={() => submit(f)}>Save</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => { setEditing(null); setError(null); focus(`[data-type-timing="${f}"] button`); }}>Cancel</Button>
                       </div>
                     ) : (

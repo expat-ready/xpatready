@@ -61,3 +61,12 @@ export function fromInput(field: TypeField, text: string): number | null {
   return Number.isSafeInteger(Math.round(v * 1e6) / 1e6) ? Math.round(v) : null;
 }
 export const NOT_A_NUMBER = (field: TypeField) => (FIELDS[field].unit === "hours" ? "Enter a number of hours of 0 or more, in whole minutes (for example 1.5)." : "Enter a whole number of 0 or more.");
+/** The server's range words are in minutes; a field typed in hours says them in hours (review m1):
+ *  "Shortest notice must be a whole number of minutes from 0 to 525,600." → "Shortest notice must be from 0 to 8,760 hours." */
+export function inUnit(field: TypeField, message: string): string {
+  if (FIELDS[field].unit !== "hours") return message;
+  const m = /^(.*) must be a whole number of minutes from ([\d,]+) to ([\d,]+)\.$/.exec(message);
+  if (!m) return message;
+  const h = (s: string) => (Number(s.replace(/,/g, "")) / 60).toLocaleString("en-CA", { maximumFractionDigits: 2 });
+  return `${m[1]} must be from ${h(m[2])} to ${h(m[3])} hours.`;
+}

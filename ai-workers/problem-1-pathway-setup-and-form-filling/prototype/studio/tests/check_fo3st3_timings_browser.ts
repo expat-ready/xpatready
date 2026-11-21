@@ -50,7 +50,7 @@ const person = async (name: string, role: string) => {
 const A = await person("Sample Admin", "ADMIN"), F = await person("Client F", "CASE_OFFICER"), BF = await person("Sample billing", "BILLING_FINANCE");
 const T = await db.platformStaff.findFirstOrThrow({ where: { actorId: "user-T" } });   // the Sample firm's Case Manager
 const [aTok, bTok, tTok] = [await signIn(A.email), await signIn(BF.email), await signIn(T.email)];
-const NAME = `Timings check ${run}`;
+let NAME = `Timings check ${run}`;   // renamed by the M1 check
 const made = await call(aTok, "POST", "/front-office/booking-types", { name: NAME, minutes: 30, modes: ["VIDEO"], hostStaffIds: [F.id] });
 if (made.status !== 201 && made.status !== 200) throw new Error(`STOP  could not add the booking type: ${JSON.stringify(made.body)}`);
 const typeId = made.body.id as string;
@@ -116,6 +116,9 @@ try {
     (await note(pa, "Gap after (minutes)")) === "Gap after must be a whole number of minutes from 0 to 1,440." && afterRefusal.timings.gapAfterMinutes === 10 && afterRefusal.timings.minNoticeMinutes === 240, { note: await note(pa, "Gap after (minutes)"), t: afterRefusal.timings });
   await shot(pa, "timings-refused-1440");
   await fld(pa, "Gap after (minutes)").fill("10"); await fld(pa, "Shortest notice (hours)").fill("4");
+  await fld(pa, "Shortest notice (hours)").fill("10000"); await saveFirm(pa);
+  ok("FO-3st3b firm fail (range, review m1): a field typed in hours says the server's range in hours", (await note(pa, "Shortest notice (hours)")) === "Shortest notice must be from 0 to 8,760 hours." && (await firmApi()).timings.minNoticeMinutes === 240, await note(pa, "Shortest notice (hours)"));
+  await fld(pa, "Shortest notice (hours)").fill("4");
 
   // J-T5 step 1: the firm's self-service limit 6 hours
   await fld(pa, "Self-service limit (hours)").fill("6"); await saveFirm(pa);
@@ -190,6 +193,25 @@ try {
   const rst = await saveTiming(pa, "minNoticeMinutes", () => panel(pa).getByLabel("Shortest notice (hours) for this type", { exact: true }).press("Enter"));
   ok("FO-3st3b stale pass: after Reload, the other tab's 5 minutes shows and Enter saves the notice (1 hour)", rst === 200 && (await typeApi()).timings.minNoticeMinutes === 60 && (await timingValue(pa, "minNoticeMinutes")) === "1 hour (this type)");
   await pa.keyboard.press("Escape"); await panel(pa).waitFor({ state: "detached" }).catch(() => undefined);
+
+  // review M1 (no lost update): another tab renames the type; this panel's timing save is refused, Reload brings the
+  // rename into the panel too, and Save type afterwards keeps it
+  await pa.goto(`${BASE}${TYPES}`); await pa.locator(`[data-type-row="${NAME}"]`).waitFor({ timeout: 15_000 }); await openType(pa);
+  const RENAMED = `${NAME} renamed`;
+  ok("FO-3st3b M1 (set-up): another tab renames the type", (await call(aTok, "PATCH", `/front-office/booking-types/${typeId}`, { name: RENAMED, version: (await typeApi()).version })).status === 200);
+  await timingRow(pa, "gapAfterMinutes").getByRole("button", { name: "Change for this type" }).click();
+  await panel(pa).getByLabel("Gap after (minutes) for this type", { exact: true }).fill("20");
+  const m1a = await saveTiming(pa, "gapAfterMinutes", () => timingRow(pa, "gapAfterMinutes").getByRole("button", { name: "Save", exact: true }).click());
+  await panel(pa).locator("[data-type-timings]").getByRole("button", { name: "Reload" }).click();
+  for (let i = 0; i < 40 && (await panel(pa).getByLabel("Name", { exact: true }).inputValue()) !== RENAMED; i++) await pa.waitForTimeout(250);
+  ok("FO-3st3b M1 fail: the timing save is refused (409); Reload shows the other tab's name in the panel's Name field", m1a === 409 && (await panel(pa).getByLabel("Name", { exact: true }).inputValue()) === RENAMED, await panel(pa).getByLabel("Name", { exact: true }).inputValue());
+  await timingRow(pa, "gapAfterMinutes").getByRole("button", { name: "Change for this type" }).click();
+  await panel(pa).getByLabel("Gap after (minutes) for this type", { exact: true }).fill("20");
+  const m1b = await saveTiming(pa, "gapAfterMinutes", () => timingRow(pa, "gapAfterMinutes").getByRole("button", { name: "Save", exact: true }).click());
+  const m1Save = pa.waitForResponse((r) => r.url().endsWith(`/booking-types/${typeId}`) && r.request().method() === "PATCH", { timeout: 15_000 });
+  await pa.getByRole("button", { name: "Save type" }).click(); const m1s = (await m1Save).status(); const m1t = await typeApi();
+  ok("FO-3st3b M1 pass: the timing then saves, and Save type keeps the other tab's name (no lost update)", m1b === 200 && m1s === 200 && m1t.name === RENAMED && m1t.timings.gapAfterMinutes === 20, { m1b, m1s, name: m1t.name });
+  NAME = RENAMED;
   await pa.context().close();
 
   // ------------------------------------------------------------------------------------------- who sees what (§8, C5)

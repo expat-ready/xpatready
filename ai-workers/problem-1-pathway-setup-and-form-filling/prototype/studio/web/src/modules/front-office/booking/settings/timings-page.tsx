@@ -12,7 +12,7 @@ import { Loading } from "@/modules/front-office/sales/loading";
 import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
 import { BOOKINGS_AREA } from "../area";
-import { FIELDS, FirmTimings, fromInput, NOT_A_NUMBER, reminderWords, TIMINGS_HOME, toInput, TYPE_FIELDS, TypeOverrides, TYPES_LIST, words, type TypeField } from "./timings-contract";
+import { FIELDS, FirmTimings, fromInput, inUnit, NOT_A_NUMBER, reminderWords, TIMINGS_HOME, toInput, TYPE_FIELDS, TypeOverrides, TYPES_LIST, words, type TypeField } from "./timings-contract";
 
 const REFUSED = "You do not have permission to do this. Ask an Owner or Admin.";
 type Draft = Record<TypeField, string>;
@@ -38,7 +38,7 @@ function Timings() {
   React.useEffect(() => { if (t) setDraft(draftOf(t)); }, [t ? JSON.stringify(t) : null]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the form
   if (!views) return (<><h1 className="text-2xl font-semibold">Timings</h1><Notice tone="warn" className="mt-3" title={REFUSED} /></>);
 
-  const overridden = (types.data?.types ?? []).filter((x) => x.timings && TYPE_FIELDS.some((f) => x.timings?.[f] != null)).map((x) => x.name);
+  const overridden = (types.data?.types ?? []).filter((x) => x.active && x.timings && TYPE_FIELDS.some((f) => x.timings?.[f] != null)).map((x) => x.name);
   const dirty = !!t && !!draft && TYPE_FIELDS.some((f) => draft[f] !== toInput(f, t[f]));
 
   const save = async (e: React.FormEvent) => {
@@ -62,7 +62,7 @@ function Timings() {
     } catch (x) {
       if (x instanceof StaffApiError && x.problem.fields) {
         const fe: Partial<Record<TypeField | "form", string>> = {};
-        for (const [k, m] of Object.entries(x.problem.fields)) fe[(TYPE_FIELDS as readonly string[]).includes(k) ? (k as TypeField) : "form"] = m;
+        for (const [k, m] of Object.entries(x.problem.fields)) { if ((TYPE_FIELDS as readonly string[]).includes(k)) fe[k as TypeField] = inUnit(k as TypeField, m); else fe.form = m; }
         setErrors(fe); focusFirst(fe);
       } else setErrors({ form: x instanceof StaffApiError ? x.message : "Something went wrong. Please try again." });
     } finally { setBusy(false); }
