@@ -71,3 +71,39 @@ Breaker (Opus 5.5), 21 Nov 2026. Isolated copy `brk_pf5s2` on :4703 (`PLATFORM_I
 **m13 (Minor, screen readers, not checked with a real reader)** "Checking for changes from Stripe…" mounts as a new `role=status` that already holds its text, in place of the loading line, so many readers will not announce it. The status chip's explanation and the seats definition exist only as `title` attributes, which keyboard and touch users cannot reach. Where: `billing-page.tsx:100-101`, `:106`, `:112`.
 
 Verdict: Changes
+
+## Round 2 (head d93712f25, only `git diff c73b0f37d d93712f25`)
+Same copy and method (`brk_pf5s2` on :4703, fresh database, stopped at the end). Requests stayed on localhost (`--no-proxy-server`, host-resolver rules); no PNG was rewritten. m3, m4, m10, m11 and m12 are recorded in `challenge.md` and were not re-tested. **Blockers: none. Majors: none. Minors: 3.**
+
+**Held:**
+- **M1:** a save that comes back with a warning (`onStripe:false`) stays on the page. The warning shows, nothing goes to Stripe, and focus returns to Add a card.
+- **M2:**
+  - A firm on hold with a card on file, whose record never moves, keeps showing "Checking…" (3 reads in 7 s) and keeps `?card=saved`.
+  - When the record moves to Active on the third read, the page says "Card saved", the chip shows Active and the marker is removed.
+  - An overdue firm whose record stays Overdue gets the new slow words after 61 s, not "Card saved".
+- **M3:** a trial set to cancel (no card, a card, or card unknown) reads "…Your subscription is set to cancel then, so no payment will be taken." with "Cancels on 30 Nov 2026", including when `currentPeriodEnd` is null.
+- **M4:** a 503, a 409 or a forged hand-off URL moves focus to the error box, also after Save and continue with a fast 503. Shift+Tab goes back to the button. Each case has a single "Try again".
+- **m2:** the slow words no longer claim the card is saved.
+- **m5:** Escape and X now ask "Discard the address you typed?". Cancel keeps the panel; OK closes it and focus goes to Edit.
+- **m6:** a 150-character street, 100-character city and 80-character invoice number cause no sideways scroll at 375 or 1024.
+- **m7:** the empty line reads "No invoices yet.".
+- **m8:** currency `C$` shows "149.00 C$" and a bad date shows "date not known", with no page error. A null number reads "No number".
+- **m9:** confirmed by the M4 runs above.
+- **m13:** Tab reaches the status chip and the seats line, each opens its tooltip, and Escape hides it.
+- **422:** "Please check: Street name, Postal code." and focus lands on Street name. A 403 shows the server's words.
+- **axe** (WCAG 2.2 AA, 1440 and 375, with the error box and a tooltip open): 0 violations.
+
+**R2-m1 (Minor, round 1 m1 only partly fixed): a past trial end still gets future words.** The record is still TRIAL with the end 3 days past.
+- No card: "Free trial: ended on 18 Nov 2026. Add a card before then to keep access."
+- Card on file: "Card saved. Your first payment is on 18 Nov 2026."
+- `billing-contract.ts:52`, `:54` (only `left` at `:49` knows `past`).
+
+**R2-m2 (Minor, round 1 m5 only partly fixed): the footer's Close button throws away a typed address without asking.** It calls `onOpenChange(false)` directly, so it skips `confirmClose`; Escape and X do ask. `address-panel.tsx:49`.
+
+**R2-m3 (Minor, B1 after M1's fix): pressing the button again after the warning goes to Stripe without retrying the address update.** After the warned save, the second press of Add a card goes straight to Checkout. The address is now on our record, so the panel does not open, and the Stripe customer still has no address. The warning itself says "save it again in a few minutes", but nothing makes that happen before the hand-off. PF-5's webhook still holds a draft invoice that needs the address, so the page is no longer the only guard. `billing-page.tsx:89-101`.
+
+Not findings (design, recorded here):
+- A typed `?card=saved` on a trial firm whose record already shows a card says "Card saved. Stripe confirmed your card." on the first read. `confirmed()` treats a good first read as "the webhook was first".
+- An overdue firm that only changes its card (and is not charged yet) gets the slow words.
+
+Verdict: Approve

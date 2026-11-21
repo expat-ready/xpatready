@@ -84,3 +84,26 @@ Real Stripe pages (founder's keys, Mac only). A real screen reader. An intended 
 Verdict: Changes. Majors: 1 (BR-9, `billing-page.tsx:51,:100`), 2 (B1 warning, `billing-page.tsx:87-93`). Minors: 3–10. No Blocker.
 
 Reviewer: Changes c73b0f37d2329ac2637a40da4b7565d44b281bc9
+
+## Round 2 (21 Nov 2026): `git diff c73b0f37d d93712f25` and the new challenge.md section only (P-277)
+Ran the builder's check on my own copy at :4702: **48/48 pass**. I also ran my own targeted checks there. I stopped the copy and restored the two PNGs the test had rewritten.
+* **Major 1 (BR-9) holds.** `confirmed(first, now)` (`billing-contract.ts`) needs a card that keeps access (trial or active, firm not held), and either a first read that was already good or a record that has moved since that read. `billing-page.tsx` polls until then and removes the marker only once confirmed.
+  * New DW4 cases cover overdue with the old card moving to Active (Checking first, then Active) and a hold with a card (Checking stays, no "Card saved").
+  * Reverting the fix fails the overdue case.
+  * The slow line no longer claims anything about the card.
+* **Major 2 (B1) holds.** `saved()` goes on to Stripe only when the answer has no `next`. My check: a warned save stays on `/settings/billing`, shows the warning in a status notice, and focus returns to the button that opened the panel. DW3 now fails if the page navigates.
+* **Minor 3 holds.** The chip and seats are focusable Radix tooltips. Tabbing to the chip shows its words, and axe finds nothing with the tooltip open.
+* **Minor 5 holds** ("No invoices yet."). **Minor 6 holds:** focus moves to the first refused field and the summary names it ("Please check: Postal code."). **Minor 8 holds:** FO-3's PNGs match main again.
+* **Recorded and accepted as written in challenge.md:** Minor 4 (Trial label fixed; the other deviations kept, with reasons), Minor 9 (PF-5's seed and fake adapter), Minor 10 (loading text everywhere on platform pages), shared PF-28 field words, last save wins on `PUT billing/address` (PF-5's route takes no version).
+* **Minor 7 mostly holds.** Active, Next billing date, Cancels on (active and trial), Ended, overdue and hold now have tests.
+* The breaker's Majors also hold:
+  * **A trial set to cancel** asks for no card and shows "Cancels on" the trial end.
+  * **A refused hand-off** moves focus to its words.
+
+### New in round 2 (Minors, not blocking)
+* **R2-m1 (Should): a passed trial end still gives a future instruction.** `billing-contract.ts:48-55`, `:61`. Scenario: the trial end has passed but Stripe's pause has not landed, so our record still says TRIAL with no card. I reproduced it: "Free trial: ended on 21 Nov 2026. **Add a card before then to keep access.**", and the dates line says "Trial ends 21 Nov 2026". With a card, the line would read "Your first payment is on <past date>". The DW1 "ended on" test checks only the start of the line, so it misses this. Fix: when `past`, drop "before then" (for example "Add a card to keep access.") and write "Trial ended <date>".
+* **R2-m2 (Should): the footer Close button discards a typed address without asking.** `address-panel.tsx:49`. Its `onClick={() => onOpenChange(false)}` skips the new `confirmClose`. Escape, the X and the overlay ask "Discard the address you typed?", but Close does not. I reproduced it: typed a city, pressed Close, no question, and on reopening the typed city was gone. Fix: run the same `confirmClose` check in the footer button.
+
+Verdict: Approve. No Blocker or Major is open. Round 1's Majors 1 and 2 are fixed with failing tests. Minors R2-m1 and R2-m2 are new, small, and can go in the same PR or a follow-up.
+
+Reviewer: Approve d93712f25add4452dc49433790da75cb23ff738f
