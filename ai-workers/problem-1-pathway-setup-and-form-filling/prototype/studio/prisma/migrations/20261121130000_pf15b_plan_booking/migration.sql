@@ -9,7 +9,10 @@
 --     withdrawn_at or applied_at is set, once each, never both; never deleted. Applying it moves the live subscription to
 --     the target plan (still from the plan it was booked from, or nothing changes and the apply is refused).
 --   * platform_entitlement_limit: as before (PF-15 part 2), and while a move is open every metric uses the lower of the
---     current and the target plan's limit (SA-3-59; null = Unlimited, no row = 0).
+--     current and the target plan's limit (SA-3-59; null = Unlimited, no row = 0). Only a booking made on the live
+--     subscription, still on the plan it was booked from, counts (review m1: a booking left by an ended subscription or
+--     overtaken by another plan change lowers nothing; the daily job withdraws it).
+--   * Outside a trial a raise (by price, where both plans have one) is refused: it applies at once through Stripe (PF-16).
 -- Renewal (Unconfirmed, as PF-15 part 2): platform_subscription keeps no billing period on main, so the next renewal is
 -- current_period_end when it is still ahead (Stripe's own period end, a year or a month: PF-5 part 2 stores it), else
 -- monthly from current_period_end, else trial_ends_at, else created_at. Dates are worked out in UTC.
@@ -51,12 +54,13 @@ CREATE UNIQUE INDEX "platform_subscription_change_one_open" ON "platform_subscri
 ALTER TABLE "platform_subscription_change" ADD CONSTRAINT "platform_subscription_change_values_ok" CHECK (
   "from_plan_id" <> "to_plan_id" AND "effective_at" >= "booked_at" AND NOT ("withdrawn_at" IS NOT NULL AND "applied_at" IS NOT NULL)
   AND ("withdrawn_at" IS NULL OR "withdrawn_at" >= "booked_at") AND ("applied_at" IS NULL OR "applied_at" >= "effective_at")
+  AND isfinite("booked_at") AND isfinite("effective_at") AND ("withdrawn_at" IS NULL OR isfinite("withdrawn_at")) AND ("applied_at" IS NULL OR isfinite("applied_at"))
   AND "booked_by" ~ '^(staff|system|seed):');
 
 -- The booking itself: under the live subscription's row lock, stamp the time, the subscription, the plan it moves from
 -- and when it takes effect; during a trial apply it at once. Owned by xr_wall_reader (it writes the subscription).
 CREATE FUNCTION platform_subscription_change_book() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET TimeZone = 'UTC' AS $fn$
-DECLARE s record; anchor timestamptz; at timestamptz; n integer;
+DECLARE s record; anchor timestamptz; at timestamptz; n integer; cur_price integer; new_price integer;
 BEGIN
   SELECT id, plan_id, status, current_period_end AS pe, trial_ends_at AS te, created_at AS ca INTO s
     FROM platform_subscription WHERE firm_id = NEW.firm_id AND status <> 'ENDED' FOR UPDATE;
@@ -73,6 +77,13 @@ BEGIN
     RETURN NEW;
   END IF;
   NEW.applied_at := NULL;
+  -- A raise is never booked for the renewal (SA4-D28(a): it applies at once, charged, through Stripe: PF-16). Checked by
+  -- price where both plans carry one (on main the prices live in Stripe, so PF-16's route is the gate until then).
+  SELECT monthly_price_cents INTO cur_price FROM platform_plan WHERE id = s.plan_id;
+  SELECT monthly_price_cents INTO new_price FROM platform_plan WHERE id = NEW.to_plan_id;
+  IF cur_price IS NOT NULL AND new_price IS NOT NULL AND new_price > cur_price THEN
+    RAISE EXCEPTION 'platform_subscription_change: a raise applies at once, it is not booked' USING ERRCODE = '23514';
+  END IF;
   IF isfinite(s.pe) AND s.pe > NEW.booked_at THEN at := s.pe;   -- Stripe's period end, still ahead: the renewal
   ELSE
     anchor := CASE WHEN isfinite(s.pe) THEN s.pe WHEN isfinite(s.te) THEN s.te ELSE s.ca END;
@@ -128,7 +139,7 @@ CREATE OR REPLACE FUNCTION platform_entitlement_limit(p_firm text, p_metric text
               AND (platform_session_firm() IS NULL OR platform_session_firm() = f.id)   -- a firm's session reads only itself
             ORDER BY (f.id::text = lower(p_firm)) DESC LIMIT 1
           ), cur AS (
-            SELECT f.id, s.created_at AS since, p.id AS plan_id, p.code, p.name, p.seats_limit, l.limit_value, l.plan_id IS NOT NULL AS has_row
+            SELECT f.id, s.id AS sub_id, s.created_at AS since, p.id AS plan_id, p.code, p.name, p.seats_limit, l.limit_value, l.plan_id IS NOT NULL AS has_row
             FROM f LEFT JOIN platform_subscription s ON s.firm_id = f.id AND s.status <> 'ENDED'   -- one live row (index platform_subscription_one_live)
             LEFT JOIN platform_plan p ON p.id = s.plan_id
             LEFT JOIN platform_plan_limit l ON l.plan_id = p.id AND l.metric::text = p_metric
@@ -138,7 +149,7 @@ CREATE OR REPLACE FUNCTION platform_entitlement_limit(p_firm text, p_metric text
           ), kept AS (   -- the highest value it had before any of them (null: Unlimited)
             SELECT CASE WHEN bool_or(old_value IS NULL) THEN NULL ELSE max(old_value) END AS old_value FROM pending HAVING count(*) > 0
           ), base AS (
-            SELECT cur.id, cur.plan_id, cur.code, cur.name,
+            SELECT cur.id, cur.sub_id, cur.plan_id, cur.code, cur.name,
               CASE WHEN p_metric = 'SEATS' AND EXISTS (SELECT 1 FROM kept) THEN greatest(cur.seats_limit, (SELECT old_value FROM kept)) ELSE cur.seats_limit END AS seats,
               CASE WHEN p_metric <> 'SEATS' AND EXISTS (SELECT 1 FROM kept) THEN
                 CASE WHEN cur.limit_value IS NULL OR (SELECT old_value FROM kept) IS NULL THEN NULL ELSE greatest(cur.limit_value, (SELECT old_value FROM kept)) END
@@ -147,7 +158,7 @@ CREATE OR REPLACE FUNCTION platform_entitlement_limit(p_firm text, p_metric text
             FROM cur
           ), booked AS (   -- PF-15 part 1b, SA-3-59: the open booking's target plan (at most one: platform_subscription_change_one_open)
             SELECT t.seats_limit AS seats, tl.limit_value, tl.plan_id IS NOT NULL AS has_row
-            FROM base JOIN platform_subscription_change b ON b.firm_id = base.id AND b.withdrawn_at IS NULL AND b.applied_at IS NULL AND b.from_plan_id = base.plan_id
+            FROM base JOIN platform_subscription_change b ON b.firm_id = base.id AND b.subscription_id = base.sub_id AND b.withdrawn_at IS NULL AND b.applied_at IS NULL AND b.from_plan_id = base.plan_id
             JOIN platform_plan t ON t.id = b.to_plan_id
             LEFT JOIN platform_plan_limit tl ON tl.plan_id = t.id AND tl.metric::text = p_metric
           )

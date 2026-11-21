@@ -57,6 +57,9 @@ export class PlanBookings {
     return this.d.db.$transaction(async (tx) => {
       const firm = (await tx.$queryRaw<{ key: string }[]>`select key from platform_firm where id = ${id}::uuid for no key update`)[0];   // the staff changes' lock: no invite between the check and the booking
       if (!firm) problem(404, "NOT_FOUND", "Not found", "No such firm.");
+      // Review M2: a case opening serialises on its own lock (runtime.ts createCase), not the firm row; take it too, so no
+      // case is opened between the count below and the booking (SA-3-58). Same order as nothing else takes both.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`case-open:${firm.key}`}))`;
       const had = await tx.platformSubscriptionChange.findFirst({ where: firmScope(id, { withdrawnAt: null, appliedAt: null }), select: { id: true, effectiveAt: true } });
       if (had) problem(409, "PLAN_CHANGE_BOOKED", "A plan change is already booked", `A plan change is already booked for ${had.effectiveAt.toISOString().slice(0, 10)}. Withdraw it first.`, { bookingId: had.id });
       const check = await checkDowngrade(tx, { files: this.d.files, cases: bindTx(this.d.cases(firm.key), tx) }, id, plan);
@@ -75,7 +78,7 @@ export class PlanBookings {
       const atOnce = row.appliedAt !== null, when = row.effectiveAt.toISOString();
       await this.audit.record(tx, { firmId: id, actor: by, action: atOnce ? "plan.change.applied" : "plan.change.booked", entity: "platform_subscription_change", entityKey: row.id,
         summary: atOnce ? `The plan changed from ${row.from} to ${row.to} at once (trial: nothing charged, the trial end unchanged).` : `A move from ${row.from} to ${row.to} is booked for the renewal on ${when.slice(0, 10)}; until then every limit is the lower of the two plans'.`,
-        detail: { fromPlan: row.from, toPlan: row.to, effectiveAt: when }, before: { plan: row.from }, after: atOnce ? { plan: row.to } : { plan: row.from, bookedPlan: row.to, effectiveAt: when } });
+        detail: { fromPlan: row.from, toPlan: row.to, effectiveAt: when }, before: shape(row.from), after: atOnce ? shape(row.to) : shape(row.from, row.to, when) });
       return { id: row.id, fromPlan: row.from, toPlan: row.to, bookedAt: row.bookedAt.toISOString(), effectiveAt: when, appliedAt: row.appliedAt?.toISOString() ?? null, atOnce };
     }, { timeout: 30_000 });
   }
@@ -85,31 +88,42 @@ export class PlanBookings {
     const id = firmScope(firmId).firmId, by = Actor.parse(actor);
     return this.d.db.$transaction(async (tx) => {
       await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;
-      const r = (await tx.$queryRaw<{ id: string; to: string; from: string }[]>`
+      const r = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
         UPDATE platform_subscription_change c SET withdrawn_at = greatest(clock_timestamp(), c.booked_at) FROM platform_plan t, platform_plan f
         WHERE c.firm_id = ${id}::uuid AND c.withdrawn_at IS NULL AND c.applied_at IS NULL AND t.id = c.to_plan_id AND f.id = c.from_plan_id
-        RETURNING c.id::text AS id, t.code AS to, f.code AS from`)[0];
+        RETURNING c.id::text AS id, t.code AS to, f.code AS from, c.effective_at AS "effectiveAt"`)[0];
       if (!r) problem(404, "NO_PLAN_CHANGE_BOOKED", "No plan change is booked", "There is no booked plan change to withdraw.");
       await this.audit.record(tx, { firmId: id, actor: by, action: "plan.change.withdrawn", entity: "platform_subscription_change", entityKey: r.id,
-        summary: `The booked move from ${r.from} to ${r.to} was withdrawn; the limits are ${r.from}'s again.`, detail: { fromPlan: r.from, toPlan: r.to }, before: { bookedPlan: r.to }, after: { bookedPlan: null } });
+        summary: `The booked move from ${r.from} to ${r.to} was withdrawn; the limits are ${r.from}'s again.`, detail: { fromPlan: r.from, toPlan: r.to }, before: shape(r.from, r.to, r.effectiveAt.toISOString()), after: shape(r.from) });
       return { id: r.id, toPlan: r.to };
     });
   }
 
   /** Applies the firm's booking once its renewal has come (in the caller's firm scope). Once: a second call, or a
-   *  withdrawn booking, applies nothing. A subscription no longer on the plan it was booked from (or on hold) is refused
-   *  by the database and the booking stays open; its limits then no longer apply (platform_entitlement_limit). */
-  async applyDue(firmId: string): Promise<{ applied: boolean; toPlan?: string }> {
+   *  withdrawn booking, applies nothing. A booking that can no longer apply (its subscription ended, or the plan moved
+   *  another way meanwhile; review m1) is withdrawn by the job with its own line, so nothing stays stuck; it already
+   *  lowered nothing (platform_entitlement_limit). A firm on payment hold keeps it open: the database refuses the apply. */
+  async applyDue(firmId: string): Promise<{ applied: boolean; toPlan?: string; withdrawn?: boolean }> {
     const id = firmScope(firmId).firmId, now = new Date(this.d.now());
     return this.d.db.$transaction(async (tx) => {
       await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;
+      const stale = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
+        UPDATE platform_subscription_change c SET withdrawn_at = greatest(clock_timestamp(), c.booked_at) FROM platform_plan t, platform_plan f
+        WHERE c.firm_id = ${id}::uuid AND c.withdrawn_at IS NULL AND c.applied_at IS NULL AND c.effective_at <= ${now} AND t.id = c.to_plan_id AND f.id = c.from_plan_id
+          AND NOT EXISTS (SELECT 1 FROM platform_subscription s WHERE s.id = c.subscription_id AND s.status <> 'ENDED' AND s.plan_id = c.from_plan_id)
+        RETURNING c.id::text AS id, t.code AS to, f.code AS from, c.effective_at AS "effectiveAt"`)[0];
+      if (stale) {
+        await this.audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action: "plan.change.withdrawn", entity: "platform_subscription_change", entityKey: stale.id,
+          summary: `The booked move from ${stale.from} to ${stale.to} was withdrawn at its renewal: the subscription had ended or moved to another plan meanwhile.`, detail: { fromPlan: stale.from, toPlan: stale.to, reason: "STALE" }, before: shape(stale.from, stale.to, stale.effectiveAt.toISOString()), after: shape(stale.from) });
+        return { applied: false, withdrawn: true };
+      }
       const r = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
         UPDATE platform_subscription_change c SET applied_at = ${now} FROM platform_plan t, platform_plan f
         WHERE c.firm_id = ${id}::uuid AND c.withdrawn_at IS NULL AND c.applied_at IS NULL AND c.effective_at <= ${now} AND t.id = c.to_plan_id AND f.id = c.from_plan_id
         RETURNING c.id::text AS id, t.code AS to, f.code AS from, c.effective_at AS "effectiveAt"`)[0];
       if (!r) return { applied: false };
       await this.audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action: "plan.change.applied", entity: "platform_subscription_change", entityKey: r.id,
-        summary: `At the renewal on ${r.effectiveAt.toISOString().slice(0, 10)} the plan changed from ${r.from} to ${r.to}.`, detail: { fromPlan: r.from, toPlan: r.to, effectiveAt: r.effectiveAt.toISOString() }, before: { plan: r.from }, after: { plan: r.to } });
+        summary: `At the renewal on ${r.effectiveAt.toISOString().slice(0, 10)} the plan changed from ${r.from} to ${r.to}.`, detail: { fromPlan: r.from, toPlan: r.to, effectiveAt: r.effectiveAt.toISOString() }, before: shape(r.from, r.to, r.effectiveAt.toISOString()), after: shape(r.to) });
       return { applied: true, toPlan: r.to };
     });
   }
@@ -137,6 +151,9 @@ export class PlanBookings {
   }
 }
 
+/** One shape for every line's before and after (review m4): the plan, the booked plan and its date (null when none). */
+const shape = (plan: string, bookedPlan: string | null = null, effectiveAt: string | null = null) => ({ plan, bookedPlan, effectiveAt });
+
 /** The count read inside the booking's own transaction (contract §3.4). */
 const bindTx = (c: CaseCountPort, tx: Tx): CaseCountPort => ({ activeCounts: () => c.activeCounts(tx) });
 
@@ -150,6 +167,7 @@ function refusedBy(e: unknown): never {
   if (/no such active plan/.test(m)) problem(404, "PLAN_NOT_FOUND", "Not found", "No such plan.");
   if (/already on that plan/.test(m)) problem(409, "SAME_PLAN", "Already on that plan", "Your firm is already on that plan.");
   if (/payment hold/.test(m)) problem(409, "BILLING_NOT_ACTIVE", "Pay first", "Your firm is on payment hold: pay the open invoice before changing the plan.");
+  if (/a raise applies at once/.test(m)) problem(409, "PLAN_RAISE_NOT_BOOKED", "A raise applies at once", "A move to a more expensive plan applies at once, charged through billing; it is never booked for the renewal.");
   if (/no live subscription/.test(m)) problem(409, "NO_LIVE_SUBSCRIPTION", "No live subscription", "Your firm has no live subscription, so its plan cannot change.");
   if (/platform_subscription_change_one_open/.test(m)) problem(409, "PLAN_CHANGE_BOOKED", "A plan change is already booked", "A plan change is already booked. Withdraw it first.");
   throw e;

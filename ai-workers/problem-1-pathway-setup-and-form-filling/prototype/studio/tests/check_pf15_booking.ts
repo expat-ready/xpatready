@@ -116,6 +116,21 @@ try {
   cases.set({ individual: 3, corporate: 0 }); clearInvites();
   const pc = await problemOf(() => book("pf15b-low"));
   ok("PF-15 DW3 fail (booking): an over-limit case metric (3 active individual cases on a 2-case plan) also refuses it (every metric, part 2's check)", pc?.status === 409 && pc.body.conflicts.length === 1 && pc.body.conflicts[0].metric === "active_individual_cases" && pc.body.conflicts[0].reduce === 1, pc);
+  // Review M2: a case opening holds its own lock (runtime.ts createCase: case-open:<key>), not the firm row. Held from a
+  // second connection, the booking waits for it, and then counts the case opened meanwhile.
+  cases.set({ individual: 2, corporate: 0 });
+  {
+    const db2 = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB) }) });
+    let release!: () => void; const held = new Promise<void>((r) => { release = r; }); let locked!: () => void; const isLocked = new Promise<void>((r) => { locked = r; });
+    const opener = db2.$transaction(async (tx) => { await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('case-open:sample-firm'))`; locked(); await held; }, { timeout: 30_000 });
+    await isLocked;
+    let settled = false; const pending = problemOf(() => book("pf15b-low")).then((r) => { settled = true; return r; });
+    await new Promise((r) => setTimeout(r, 700));
+    const waited = !settled;
+    cases.set({ individual: 3, corporate: 0 }); release(); await opener; await db2.$disconnect();
+    const pm = await pending;
+    ok("PF-15 DW3 fail (review M2): a booking waits for a case opening in progress (its case-open lock) and then counts that case: 3 on a 2-case plan → 409, nothing booked", waited && pm?.body.code === "DOWNGRADE_CONFLICTS" && sql(`select count(*) from platform_subscription_change`) === "0", { waited, pm });
+  }
   cases.set({ individual: 2, corporate: 0 });
   const b1 = await book("pf15b-low");
   const pe = sql(`select to_char(current_period_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS') from platform_subscription where firm_id = '${FIRM_A}' and status <> 'ENDED'`);
@@ -127,16 +142,39 @@ try {
   ok("PF-15 DW4 fail: while the lower move is booked, an invitation on a plan that allows " + (u0 + 7) + " but books " + u0 + " is refused 409 PLAN_LIMIT_REACHED (SA-3-59) on the real invite route", inv4.status === 409 && inv4.body.code === "PLAN_LIMIT_REACHED" && inv4.body.limit === u0 && used() === u0, inv4);
   ok("PF-15 DW4 fail: every metric is the lower one while booked: individual cases 2 (not " + teamCases + "), corporate the current " + teamCorp + " (the target is Unlimited), storage 0 (the target has no row: fail closed)",
     (await limitA("active_individual_cases")) === 2 && (await limitA("active_corporate_cases")) === teamCorp && (await limitA("storage_mb")) === 0);
+  ok("PF-15 fail (review m3): an open booking cannot be applied at an infinite time (the check refuses it; the plan stays)", refused(`update platform_subscription_change set applied_at = 'infinity' where withdrawn_at is null and applied_at is null`, /platform_subscription_change_values_ok/) && planOf(FIRM_A) === CODE_A);
   const dup = await problemOf(() => book("solo"));
   ok("PF-15 fail (one open booking): a second booking while one is open → 409 PLAN_CHANGE_BOOKED, the first kept", dup?.status === 409 && dup.body.code === "PLAN_CHANGE_BOOKED" && sql(`select count(*) from platform_subscription_change where withdrawn_at is null and applied_at is null`) === "1", dup);
   ok("PF-15 fail (one open booking): a second open row written straight to the table is refused by the partial unique index", refused(`insert into platform_subscription_change (id, firm_id, subscription_id, from_plan_id, to_plan_id, booked_by, booked_at, effective_at) select gen_random_uuid(), firm_id, id, plan_id, (select id from platform_plan where code = 'solo'), 'system:t', now(), now() from platform_subscription where firm_id = '${FIRM_A}' and status <> 'ENDED'`, /platform_subscription_change_one_open/));
   const w = await withdraw();
   const inv4b = await invite();
   ok("PF-15 DW4 pass: withdrawn → the same invitation is allowed again (201), the limits are the firm's own plan's", w.toPlan === "pf15b-low" && inv4b.status === 201 && (await limitA("seats")) === u0 + 7 && (await limitA("active_individual_cases")) === teamCases && lines("plan.change.withdrawn") === 1, inv4b);
+  ok("PF-15 pass (review m4): the booking's after and the withdrawal's before are the same shape (plan, bookedPlan, effectiveAt)", sql(`select string_agg(action || '=' || coalesce(detail->>'bookedPlan_after', detail->>'bookedPlan_before', '-'), ',' order by at) from audit_event where action in ('plan.change.booked', 'plan.change.withdrawn') and detail->>'firmId' = '${FIRM_A}'`) === "plan.change.booked=pf15b-low,plan.change.withdrawn=pf15b-low");
   ok("PF-15 fail (breaker: a withdrawn booking still lowering a limit): no limit reads the withdrawn target; withdrawing again → 404", (await limitA("storage_mb")) > 0 && (await problemOf(() => withdraw()))?.status === 404);
   ok("PF-15 fail (records): a booking is never deleted, never re-opened, never changed in its plan or date", refused(`delete from platform_subscription_change`, /never removed/)
     && refused(`update platform_subscription_change set withdrawn_at = null`, /only an open booking/) && refused(`update platform_subscription_change set effective_at = now() + interval '1 year'`, /only an open booking/));
   clearInvites();
+
+  // ------------------------------------------------------------- review m5: Unlimited now, a pending lowering of seats
+  sql(`update platform_plan_limit set limit_value = null where plan_id = '${PLAN_A}' and metric = 'ACTIVE_CORPORATE_CASES'`);
+  sql(`update platform_plan_limit set limit_value = 4 where plan_id = '${LOW}' and metric = 'ACTIVE_CORPORATE_CASES'`);
+  sql(`insert into platform_limit_change (id, plan_id, metric, new_value, reason, approved_by, approved_at) values (gen_random_uuid(), '${PLAN_A}', 'SEATS', ${u0 + 2}, 'pf15b pending lowering', 'staff:pf15b', now())`);
+  const keptSeats = await limitA("seats");
+  const bm = await book("pf15b-low");
+  ok("PF-15 pass (review m5): while booked, an Unlimited current limit and a finite target give the target (corporate 4); seats with a part-2 lowering still pending give the lower of what the firm keeps (" + (u0 + 7) + ") and the target (" + u0 + ")",
+    keptSeats === u0 + 7 && (await limitA("active_corporate_cases")) === 4 && (await limitA("seats")) === u0, { keptSeats });
+  await withdraw();
+  ok("PF-15 fail (review m5): withdrawn, corporate is Unlimited again and seats are the kept " + (u0 + 7), bm.toPlan === "pf15b-low" && (await limitA("active_corporate_cases")) === null && (await limitA("seats")) === u0 + 7);
+  sql(`insert into platform_limit_change (id, plan_id, metric, new_value, reason, approved_by, approved_at) values (gen_random_uuid(), '${PLAN_A}', 'SEATS', ${u0 + 7}, 'pf15b raise back', 'staff:pf15b', now())`);
+  sql(`update platform_plan_limit set limit_value = ${teamCorp} where plan_id = '${PLAN_A}' and metric = 'ACTIVE_CORPORATE_CASES'`);
+
+  // ------------------------------------------------------------ review m2: a raise is never booked for the renewal
+  sql(`update platform_plan set monthly_price_cents = case code when '${CODE_A}' then 10000 when 'pf15b-low' then 5000 when 'firm' then 20000 end where code in ('${CODE_A}', 'pf15b-low', 'firm')`);
+  const raise = await problemOf(() => book("firm"));
+  const lower = await book("pf15b-low"); await withdraw();
+  sql(`update platform_plan set monthly_price_cents = null where code in ('${CODE_A}', 'pf15b-low', 'firm')`);
+  ok("PF-15 fail (review m2): outside a trial a move to a dearer plan is refused 409 PLAN_RAISE_NOT_BOOKED (it applies at once through billing, PF-16); a cheaper one books", raise?.body.code === "PLAN_RAISE_NOT_BOOKED" && lower.toPlan === "pf15b-low", raise);
+  const wd = lines("plan.change.withdrawn");
 
   // ------------------------------------------------------------------- the breaker: two bookings at the same moment
   const race = await Promise.allSettled([book("pf15b-low"), book("pf15b-low")]);
@@ -160,8 +198,15 @@ try {
   sql(`update platform_subscription set plan_id = '${PLAN_A}' where firm_id = '${FIRM_A}' and status <> 'ENDED'`);   // e.g. a raise through Stripe meanwhile
   ok("PF-15 fail (stale booking): once the subscription is on another plan than the one booked from, the booking no longer lowers any limit", !b2.atOnce && (await limitA("seats")) === u0 + 7);
   await fake.advance({ days: 40 });
-  ok("PF-15 fail (stale booking): the job does not apply it (the database refuses: not on the plan it was booked from); the plan is unchanged and the booking stays open", planOf(FIRM_A) === CODE_A && sql(`select count(*) from platform_subscription_change where id = '${b2.id}' and applied_at is null and withdrawn_at is null`) === "1");
-  await withdraw();
+  ok("PF-15 fail (stale booking, review m1): the job does not apply it; it withdraws it with its own line (reason STALE), so nothing stays stuck; the plan is unchanged", planOf(FIRM_A) === CODE_A && sql(`select count(*) from platform_subscription_change where id = '${b2.id}' and applied_at is null and withdrawn_at is not null`) === "1" && lines("plan.change.withdrawn") === wd + 1 && sql(`select count(*) from audit_event where action = 'plan.change.withdrawn' and detail->>'reason' = 'STALE'`) === "1");
+  // Review m1: a resubscription (the old subscription ended, a new one live on the same plan) leaves no booking lowering.
+  sql(`update platform_subscription set current_period_end = now() + interval '5 days' where firm_id = '${FIRM_A}' and status <> 'ENDED'`);
+  await book("pf15b-low");
+  sql(`update platform_subscription set status = 'ENDED' where firm_id = '${FIRM_A}' and status <> 'ENDED'`);
+  sql(`insert into platform_subscription (id, firm_id, plan_id, status, current_period_end, updated_at) values (gen_random_uuid(), '${FIRM_A}', '${PLAN_A}', 'ACTIVE', now() + interval '30 days', now())`);
+  ok("PF-15 fail (review m1): after a resubscription on the same plan the old subscription's booking lowers nothing", (await limitA("seats")) === u0 + 7 && (await limitA("active_individual_cases")) === teamCases);
+  await fake.advance({ days: 10 });
+  ok("PF-15 pass (review m1): and the daily job withdraws it (nothing stays open), the new subscription untouched", sql(`select count(*) from platform_subscription_change where withdrawn_at is null and applied_at is null`) === "0" && planOf(FIRM_A) === CODE_A);
 
   // ---------------------------------------------------------------------- DW5 during a trial: at once, end unchanged
   sql(`update platform_subscription set status = 'TRIAL', current_period_end = null, trial_ends_at = '2030-01-15T12:00:00Z' where firm_id = '${FIRM_A}' and status <> 'ENDED'`);
