@@ -26,12 +26,14 @@ import { systemClock, type ClockPort } from "../../../../../ports/clock.ts";
 import { normaliseAddress, type Channel, type ConsentPort } from "../../../../../ports/consent.ts";
 import { sha256Hex, type FilesPort } from "../../../../../ports/files.ts";
 import type { JobPort } from "../../../../../ports/jobs.ts";
-import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
+import { DAILY_CAP, HELD_DAILY_LIMIT, AnyMessageSend, MessageRefused, MessageRepeated, fillFields, gateReason, isPlatformAccount, PLATFORM_ACCOUNT_NAME, render, type MessageSend, type MessagePort, type PlatformAccountSend, type PlatformAccountSendInput, type Rendered, type SendResult } from "../../../../../ports/messages.ts";
 import type { z } from "zod";
 import { firmScope, touchEachFirm } from "../../firm-scope.ts";
 import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 import { logPort } from "../../observability/log.ts";
+import { emailBrandOf, NEUTRAL_COLOUR } from "../../branding/branding.ts";
+import { emailLayout } from "../layout/email-layout.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Queue names start "messages." (a short dotted head reads as a program key to B164's guard). */
@@ -109,7 +111,9 @@ export class Messages implements MessagePort<Tx> {
     } else words = m.content;
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
-    const id = randomUUID(), rendered = render(id, { ...m, firmId }, { name: firm.operatingName, replyTo: firm.contactEmail }, words);
+    // PF-13: the firm's branding (sender name, colour, footer; the logo from part 1b) drawn by the one react-email layout.
+    const brand = await emailBrandOf(tx, firmId, firm.operatingName), id = randomUUID();
+    const rendered = { ...render(id, { ...m, firmId }, { name: brand.name, replyTo: firm.contactEmail, brand }, words), html: await emailLayout(brand, words) };
     const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
     const state = decision.allowed ? "QUEUED" : "SUPPRESSED", reason = gateReason(decision);
     // A caller at REPEATABLE READ cannot see a row a concurrent send committed after its snapshot: its insert meets the
@@ -144,7 +148,8 @@ export class Messages implements MessagePort<Tx> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_outbox:platform:${m.idempotencyKey}`}))`;
     const had = await tx.msgOutbox.findFirst({ where, select: { id: true, state: true, stateReason: true } });
     if (had) return { outboxId: had.id, state: had.state, reason: had.stateReason, repeated: true };
-    const id = randomUUID(), rendered = render(id, m, ACCOUNT_MAIL_FROM.default, m.content);
+    const id = randomUUID(), plain = render(id, m, ACCOUNT_MAIL_FROM.default, m.content);
+    const rendered = { ...plain, html: await emailLayout({ name: PLATFORM_ACCOUNT_NAME, colour: NEUTRAL_COLOUR, footer: null, logoUrl: null }, m.content, false) };
     const put = await this.d.files.put(PLATFORM_FILES_SPACE, fileKeyOf(null, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
     await tx.msgOutbox.create({
       data: { id, firmId: null, audience: "PLATFORM_ACCOUNT", channel: "EMAIL", address, renderedHash: put.sha256, class: "TRANSACTIONAL", state: "QUEUED", idempotencyKey: m.idempotencyKey },
