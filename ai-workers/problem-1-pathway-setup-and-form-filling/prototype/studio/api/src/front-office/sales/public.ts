@@ -153,7 +153,7 @@ export class PublicForms {
   private async form(token: unknown) {
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{22,100}$/.test(token)) return unavailable();
     // PF-12b part 2: the form's firm through the narrow definer lookup (its id only), then the form is read as that firm.
-    const firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select fo_web_form_firm(${token}) as f`)[0]?.f;
+    const firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select fo_sales_web_form_firm(${token}) as f`)[0]?.f;
     const f = firmId ? await withFirm(firmId, () => this.db.foWebForm.findUnique({ where: { publicToken: token } })) : null;
     if (f) enterFirm(f.firmId);   // PF-12: the form's firm, for the rest of the request
     const firm = f?.enabled ? await this.db.platformFirm.findUnique({ where: { id: f.firmId }, select: { status: true } }) : null;

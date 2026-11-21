@@ -7,7 +7,7 @@
 -- already reads every firm, so that a suite or tool process (unscoped queries run on that role, firm-scope.ts) calls the
 -- same doors. Nothing is written.
 -- Rollback: DROP FUNCTION platform_firm_of_key(text), platform_staff_firm(uuid, text), platform_invitation_firm(text),
--- platform_staff_email_taken(text), fo_web_form_firm(text), fo_booking_token_firm(uuid), platform_web_address_firm(text, timestamptz);
+-- platform_staff_email_taken(text), fo_sales_web_form_firm(text), fo_booking_token_firm(uuid, text), platform_web_address_firm(text, timestamptz);
 
 -- platform.identity.sign-in and fo.booking.public-page: a firm key → that firm.
 CREATE FUNCTION platform_firm_of_key(firm_key text) RETURNS uuid
@@ -27,13 +27,15 @@ CREATE FUNCTION platform_staff_email_taken(email text) RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT EXISTS (SELECT 1 FROM platform_staff s WHERE s.email = $1) $fn$;
 -- fo.sales.web-form: the form's public token → its firm.
-CREATE FUNCTION fo_web_form_firm(public_token text) RETURNS uuid
+CREATE FUNCTION fo_sales_web_form_firm(public_token text) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT w.firm_id FROM fo_web_form w WHERE w.public_token = $1 $fn$;
--- fo.booking.self-service: the booker's link (its token row id; the secret part is checked as the firm) → its firm.
-CREATE FUNCTION fo_booking_token_firm(token_id uuid) RETURNS uuid
+-- fo.booking.self-service: the booker's link (its token row id and the SHA-256 of its secret part, as stored) → its
+-- firm, only when both match: an unknown id and a wrong secret are the same null in the same one query (review m4,
+-- break m1), and the link's live state (voided, expired) is then checked as the firm.
+CREATE FUNCTION fo_booking_token_firm(token_id uuid, token_hash text) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
-  AS $fn$ SELECT t.firm_id FROM fo_booking_token t WHERE t.id = $1 $fn$;
+  AS $fn$ SELECT t.firm_id FROM fo_booking_token t WHERE t.id = $1 AND t.token_hash = $2 $fn$;
 -- platform.web-address.host: a host's address → the firm it serves now, else the firm whose old address it still is at
 -- `at` (the newest change); the redirect and the firm's state are read as that firm (web-address/service.ts resolveHost).
 CREATE FUNCTION platform_web_address_firm(address text, at timestamptz) RETURNS uuid
@@ -45,7 +47,7 @@ DO $own$
 DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY['platform_firm_of_key(text)', 'platform_staff_firm(uuid, text)', 'platform_invitation_firm(text)', 'platform_staff_email_taken(text)',
-                           'fo_web_form_firm(text)', 'fo_booking_token_firm(uuid)', 'platform_web_address_firm(text, timestamptz)'] LOOP
+                           'fo_sales_web_form_firm(text)', 'fo_booking_token_firm(uuid, text)', 'platform_web_address_firm(text, timestamptz)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO xr_app, xr_staff_bypass', f);

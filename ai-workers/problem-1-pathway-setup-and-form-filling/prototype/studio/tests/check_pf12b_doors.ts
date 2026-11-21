@@ -1,7 +1,7 @@
 // PF-12b part 2 (QA-499 own-firm half, QA-608; R1.4 map row 4 "every use writes an audit line"; P-607, AG-1-45; brief
 // lead-b-front-office:product/design/lead-b-briefs/PF-12b.md "What to build, part 2"): the seven own-firm doors leave the
 // bypass. Each finds its firm through a narrow definer lookup (migration pf12b2_door_lookups: firm id only, owned by
-// xr_wall_reader, search_path pinned, EXECUTE for xr_app only) and runs as that firm.
+// xr_wall_reader, search_path pinned, EXECUTE for xr_app and the bypass role only) and runs as that firm.
 // DW5 each door still works as before (pass) and a wrong key or token answers as before (fail), through the real walled
 // API on a scratch database (xr_app); none of the seven is on BYPASS_USES or calls asBypass (neither). DW6 the seven
 // functions from the catalogue. DW7 the doors write no platform.bypass line and no bypass log line. Every value Sample;
@@ -36,7 +36,7 @@ const refused = (f: () => unknown, re: RegExp) => { try { f(); return false; } c
 const DOORS = ["platform.identity.authenticate", "platform.identity.sign-in", "platform.identity.invitation", "fo.sales.web-form", "fo.booking.public-page", "fo.booking.self-service", "platform.web-address.host"];
 /** The seven functions, what each returns, and the door it serves. */
 const FNS: [string, string][] = [["platform_firm_of_key(text)", "uuid"], ["platform_staff_firm(uuid, text)", "uuid"], ["platform_invitation_firm(text)", "uuid"], ["platform_staff_email_taken(text)", "boolean"],
-  ["fo_web_form_firm(text)", "uuid"], ["fo_booking_token_firm(uuid)", "uuid"], ["platform_web_address_firm(text, timestamp with time zone)", "uuid"]];
+  ["fo_sales_web_form_firm(text)", "uuid"], ["fo_booking_token_firm(uuid, text)", "uuid"], ["platform_web_address_firm(text, timestamp with time zone)", "uuid"]];
 
 // ------------------------------------------------------------------------------------------- neither: off the list
 ok("PF-12b DW5 neither: none of the seven doors is on BYPASS_USES", DOORS.every((d) => !(d in BYPASS_USES)), DOORS.filter((d) => d in BYPASS_USES));
@@ -50,7 +50,7 @@ execFileSync(join(BIN, "createdb"), [...PG, DB]);
 const clients: PrismaClient[] = [], pools: WalledPool[] = [];
 try {
   const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
-  ok(`PF-12b DW6: the migration has its own stamp, the newest and unique (rows rev 15.2; before it: ${all.filter((d) => d < NEW).at(-1)})`, all.at(-1) === NEW && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
+  ok(`PF-12b DW6: the migration has its own stamp, later than every migration before it and unique (rows rev 15.2, 16.7: never "the newest of all"; before it: ${all.filter((d) => d < NEW).at(-1)})`, all.includes(NEW) && (all.filter((d) => d < NEW).at(-1) ?? "") < NEW && all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1, all.slice(-3));
   const text = readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "");
   ok("PF-12b DW6: the migration only creates the seven functions and sets their owner and grants (no table, column, policy or row)", [...text.matchAll(/CREATE FUNCTION (\w+)/g)].length === 7 && !/\b(CREATE|ALTER|DROP)\s+(TABLE|INDEX|POLICY|TYPE|ROLE)\b|\b(INSERT|UPDATE|DELETE)\b/i.test(text));
   for (const d of all) execFileSync(join(BIN, "psql"), [urlOf(), "-X", "-q", "-v", "ON_ERROR_STOP=1", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
@@ -72,10 +72,10 @@ try {
   // As xr_app with no firm (a public door before it knows its firm): the walled tables read nothing, the lookups answer.
   const formToken = sql(`select public_token from fo_web_form where firm_id = '${A}' limit 1`);
   ok("PF-12b DW6 pass: as xr_app with no firm, the web form table reads nothing, but the lookup gives the form's firm id (and nothing else)",
-    sql(`select count(*) from fo_web_form`, "xr_app") === "0" && sql(`select fo_web_form_firm('${formToken}')`, "xr_app") === A, { n: sql(`select count(*) from fo_web_form`, "xr_app") });
+    sql(`select count(*) from fo_web_form`, "xr_app") === "0" && sql(`select fo_sales_web_form_firm('${formToken}')`, "xr_app") === A, { n: sql(`select count(*) from fo_web_form`, "xr_app") });
   ok("PF-12b DW6 fail (breaker: a guessed key or token): each lookup answers an unknown key with null, the same as not found",
     sql(`select coalesce(platform_firm_of_key('no-such-firm')::text, 'null') || coalesce(platform_staff_firm('${randomUUID()}', null)::text, 'null') || coalesce(platform_staff_firm(null, 'no-subject')::text, 'null')
-      || coalesce(platform_invitation_firm(repeat('0', 64))::text, 'null') || coalesce(fo_web_form_firm('${randomBytes(24).toString("base64url")}')::text, 'null') || coalesce(fo_booking_token_firm('${randomUUID()}')::text, 'null')
+      || coalesce(platform_invitation_firm(repeat('0', 64))::text, 'null') || coalesce(fo_sales_web_form_firm('${randomBytes(24).toString("base64url")}')::text, 'null') || coalesce(fo_booking_token_firm('${randomUUID()}', repeat('0', 64))::text, 'null')
       || coalesce(platform_web_address_firm('no-such-address', now())::text, 'null') || platform_staff_email_taken('nobody@pf12b2.example.com')::text`, "xr_app") === "nullnullnullnullnullnullnullfalse");
   ok("PF-12b DW6 fail (breaker: another firm's row through a lookup's return): a lookup returns one value only; a row's other columns are not reachable through it",
     sql(`select count(*) from (select platform_firm_of_key('${keyOf(B)}')) x`, "xr_app") === "1" && refused(() => sql(`select (platform_firm_of_key('${keyOf(B)}')).operating_name`, "xr_app"), /column notation|not a composite|operating_name/i));
@@ -83,7 +83,9 @@ try {
   // ---------------------------------------------------------------------------------------- data for the doors
   const wording = await owner.$transaction((tx) => new ConsentStore(auditEvent).publishWording(tx, { firmId: A, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Send me news and offers from the firm by email. I can stop at any time. (Sample)", by: "seed:PF-12b2-test" }));
   sql(`update fo_web_form set enabled = true, consent_wording_version_id = '${wording.id}' where firm_id = '${A}'`);
-  sql(`insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${A}', 'pf12b2-a', 'system:pf12b2-test', now()) on conflict do nothing`);
+  sql(`insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${A}', 'pf12b2-old', 'system:pf12b2-test', now()) on conflict do nothing`);
+  // A change by our staff: the old address redirects to the new one for 90 days (PF-25), read by the host door as the firm.
+  sql(`begin; insert into platform_firm_address_history (id, firm_id, old_address, new_address, until, reason, changed_by) values (gen_random_uuid(), '${A}', 'pf12b2-old', 'pf12b2-a', now() + interval '90 days', 'Sample reason', 'staff:t'); update platform_firm_web_address set address = 'pf12b2-a' where firm_id = '${A}'; commit;`);
   const ownerStaff = sql(`select s.id from platform_staff s join platform_role_grant g on g.staff_id = s.id and g.ended_at is null where s.firm_id = '${A}' and g.role = 'OWNER' and s.status = 'ACTIVE' limit 1`);
   const invite = (email: string) => { const tok = randomBytes(32).toString("base64url"); sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) values (gen_random_uuid(), '${A}', '${email}', '{OWNER}', '${createHash("sha256").update(tok).digest("hex")}', 'staff:${ownerStaff}', now() + interval '48 hours')`); return tok; };
   const inviteOk = invite("new.person@pf12b2.example.com");
@@ -114,7 +116,7 @@ try {
     const r = await fetch(`${BASE}${path}`, { method: o.body ? "POST" : "GET", headers: { "content-type": "application/json", ...(o.token ? { authorization: `Bearer ${o.token}` } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined });
     return { status: r.status, body: await r.json().catch(() => null) as any };
   };
-  const onHost = (path: string, host: string) => new Promise<{ status: number; body: any }>((res) => { request({ host: "127.0.0.1", port: PORT, path, headers: { host } }, (r) => { let d = ""; r.on("data", (c) => (d += c)); r.on("end", () => { let b: unknown = null; try { b = JSON.parse(d); } catch { /* not json */ } res({ status: r.statusCode ?? 0, body: b }); }); }).on("error", () => res({ status: 0, body: null })).end(); });
+  const onHost = (path: string, host: string) => new Promise<{ status: number; body: any; location?: string }>((res) => { request({ host: "127.0.0.1", port: PORT, path, headers: { host } }, (r) => { let d = ""; r.on("data", (c) => (d += c)); r.on("end", () => { let b: unknown = null; try { b = JSON.parse(d); } catch { /* not json */ } res({ status: r.statusCode ?? 0, body: b, location: r.headers.location }); }); }).on("error", () => res({ status: 0, body: null })).end(); });
   const bypassLines = () => Number(sql(`select count(*) from audit_event where action = 'platform.bypass'`));
   const seen: Record<string, any> = {};
   let out = "";
@@ -146,6 +148,7 @@ try {
       seen.selfBad = await http(`/api/public/bookings/${badVerifier}`);
       seen.selfUnknown = await http(`/api/public/bookings/${unknownId}`);
       seen.host = await onHost("/api/public/site", `pf12b2-a.localhost:${PORT}`);
+      seen.hostOld = await onHost("/api/public/site", `pf12b2-old.localhost:${PORT}`);
       seen.hostBad = await onHost("/api/public/site", `pf12b2-nobody.localhost:${PORT}`);
       seen.formOnA = await onHost(`/api/public/forms/${sql(`select public_token from fo_web_form where firm_id = '${B}' limit 1`)}`, `pf12b2-a.localhost:${PORT}`);
       seen.linesAfter = bypassLines();
@@ -168,6 +171,7 @@ try {
   ok("PF-12b DW5 pass (fo.booking.self-service): the booker's own link opens the booking", st("self") === 200 && seen.self.body?.status === "SCHEDULED", seen.self);
   ok("PF-12b DW5 fail (fo.booking.self-service): a wrong secret part and an unknown link both answer the same 404", st("selfBad") === 404 && st("selfUnknown") === 404 && JSON.stringify(seen.selfBad.body) === JSON.stringify(seen.selfUnknown.body), { selfBad: seen.selfBad, selfUnknown: seen.selfUnknown });
   ok("PF-12b DW5 pass (platform.web-address.host): a firm's own web address serves its public site", st("host") === 200 && seen.host.body?.webAddress === "pf12b2-a", seen.host);
+  ok("PF-12b DW5 pass (platform.web-address.host, review m5): the firm's old address (changed by our staff, within 90 days) redirects 301 to its current one", st("hostOld") === 301 && String(seen.hostOld.location ?? "").includes("pf12b2-a.localhost"), seen.hostOld);
   ok("PF-12b DW5 fail (platform.web-address.host): an unknown address is the one 404", st("hostBad") === 404, seen.hostBad);
 
   // ------------------------------------------------------------------------------------------------------ DW7

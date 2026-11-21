@@ -37,7 +37,7 @@ import { bookingIcs, type InviteMethod } from "./ics.ts";
 import { computeSlots, localDate, type HostWindow, type Range, type Slot } from "./slots.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
-import { issueToken, liveToken, parseToken } from "./tokens.ts";
+import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -830,10 +830,11 @@ export class BookingService {
   }
 
   private async byToken(db: Tx | PrismaClient, token: string) {
-    // PF-12b part 2: the link's firm through the narrow definer lookup (by the token row's id; firm id only), then the
-    // token itself, its secret part included, is checked as that firm.
-    const tokenId = parseToken(token)?.id;
-    const firmId = tokenId ? (await db.$queryRaw<{ f: string | null }[]>`select fo_booking_token_firm(${tokenId}::uuid) as f`)[0]?.f : null;
+    // PF-12b part 2: the link's firm through the narrow definer lookup (the token row's id and its secret's hash; firm id
+    // only, null unless both match, so an unknown id and a wrong secret take the same one query), then the token's live
+    // state is checked as that firm.
+    const parsed = parseToken(token);
+    const firmId = parsed ? (await db.$queryRaw<{ f: string | null }[]>`select fo_booking_token_firm(${parsed.id}::uuid, ${hashVerifier(parsed.verifier)}) as f`)[0]?.f : null;
     const t = firmId ? await withFirm(firmId, () => liveToken(db, token, this.ports.clock.now())) : null;
     if (!t) throw notFound();
     enterFirm(t.firmId);   // PF-12: the link's firm, for the rest of the request
