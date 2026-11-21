@@ -9,19 +9,21 @@ import { App, CfnParameter, NestedStack, RemovalPolicy, Stack, aws_s3 as s3 } fr
 import { Template as Assert } from "aws-cdk-lib/assertions";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { EstateStack } from "../lib/estate.ts";
-import { availabilityFindings, bucketFindings, databaseFindings, dataRouteFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
+import { HOME, REGION_ALLOW, availabilityFindings, bucketFindings, databaseFindings, dataRouteFindings, regionFindings, type SynthStack, type Template } from "../lib/checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const { app: estate } = buildApp();
 const tpl = (s: Stack): Template => Assert.fromStack(s).toJSON() as Template;
-const real: SynthStack[] = allStacks(estate); // every stack of the real app, nested ones included (review M2)
+const all: SynthStack[] = allStacks(estate); // every stack of the real app, nested ones included (review M2)
+const real = all.filter((s) => s.region === HOME); // the two home stacks (PF-8rc adds the two ca-west-1 copy stacks)
 const COMPOSE_PG = /image: postgres:(\d+\.\d+)/.exec(readFileSync(join(HERE, "..", "..", "compose.test.yml"), "utf8"))![1];
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const firstOf = (t: Template, type: string) => Object.values(t.Resources ?? {}).find((r) => r.Type === type)!;
 
-test("PF-8a region pass: the app's stacks (exactly the two) are in ca-central-1 and nothing names another region", () => {
-  assert.deepEqual(real.map((s) => [s.name, s.region]), [["xr-staging", "ca-central-1"], ["xr-production", "ca-central-1"]]);
-  assert.deepEqual(regionFindings(real), []);
+test("PF-8a region pass: the app's stacks are the two home stacks in ca-central-1 and the two PF-8rc copy stacks, and nothing else names another region", () => {
+  assert.deepEqual(all.map((s) => [s.name, s.region]), [["xr-staging-copy", "ca-west-1"], ["xr-production-copy", "ca-west-1"], ["xr-staging", "ca-central-1"], ["xr-production", "ca-central-1"]]);
+  assert.deepEqual(regionFindings(all, REGION_ALLOW), []);
+  assert.ok(regionFindings(all).some((l) => l.includes("xr-staging-copy: stack region ca-west-1"))); // without the allowance, flagged
 });
 
 test("PF-8a region pass: a stray AWS_REGION or a caller's region cannot move the estate", () => {
@@ -34,7 +36,7 @@ test("PF-8a region fail: a us-east-1 stack added to the app, or nested in a home
   const { app } = buildApp();
   const edge = new Stack(app, "xr-edge", { env: { region: "us-east-1" } }); // e.g. a CloudFront certificate stack
   new s3.Bucket(edge, "Stray", { removalPolicy: RemovalPolicy.DESTROY });
-  const f = regionFindings(allStacks(app));
+  const f = regionFindings(allStacks(app), REGION_ALLOW);
   assert.ok(f.some((l) => l.startsWith("xr-edge: stack region us-east-1")), f.join("; "));
   const { app: app2, stacks } = buildApp();
   const nested = new NestedStack(stacks.production, "Extra");
@@ -64,14 +66,14 @@ test("PF-8a region fail: newer region families (us-isof-south-1, eu-isoe-west-1,
   }
 });
 
-test("PF-8a region fail: an AZ name, an id after the region, capitals and a region split across Fn::Join are seen (break 4)", () => {
-  const cases: [unknown, string][] = [["us-east-1a", "us-east-1"], ["us-east-1_AbCdEf", "us-east-1"], ["US-WEST-2", "us-west-2"], [{ "Fn::Join": ["", ["arn:aws:sns:us-", "east-1", ":1:t"]] }, "us-east-1"], [{ "Fn::Join": ["-", ["eu", "west", "1"]] }, "eu-west-1"]];
+test("PF-8a region fail: an AZ name, an id after the region, capitals and a region split across Fn::Join, nested too, are seen (break 4, review R2)", () => {
+  const cases: [unknown, string][] = [["us-east-1a", "us-east-1"], [{ "Fn::Join": ["", ["arn:aws:sns:us-", { "Fn::Join": ["", ["east", "-1"]] }, ":1:t"]] }, "us-east-1"], ["us-east-1_AbCdEf", "us-east-1"], ["US-WEST-2", "us-west-2"], [{ "Fn::Join": ["", ["arn:aws:sns:us-", "east-1", ":1:t"]] }, "us-east-1"], [{ "Fn::Join": ["-", ["eu", "west", "1"]] }, "eu-west-1"]];
   for (const [value, region] of cases) {
     const t = clone(real[0].template);
     t.Resources!.X = { Type: "AWS::SSM::Parameter", Properties: { Value: value } };
     assert.ok(regionFindings([{ ...real[0], template: t }]).some((l) => l.endsWith(`names region ${region}`)), JSON.stringify(value));
   }
-  assert.deepEqual(regionFindings(real), []); // and the home region in those forms is still fine (no false finding)
+  assert.deepEqual(regionFindings(all, REGION_ALLOW), []); // and the home region in those forms is still fine (no false finding)
 });
 
 test("PF-8a region: an allowance admits a region only inside its resource types (PF-8rc's ca-west-1 backup copy)", () => {
@@ -171,6 +173,7 @@ test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only,
   assert.doesNotMatch(wf, /merge_group|pull_request_target|workflow_run|workflow_dispatch|schedule:|push:/);
   assert.doesNotMatch(wf, /secrets\s*[.[]|toJSON\(\s*secrets|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|id-token/i); // no secret, key or OIDC token
   assert.match(wf, /^permissions:\n {2}contents: read\n(?! )/m); // read-only, nothing else
+  assert.equal(wf.match(/permissions:/g)?.length, 1); // and no job widens it (PF-8a review R4)
   assert.match(wf, /persist-credentials: false/);
   assert.doesNotMatch(wf, /persist-credentials: true/);
   assert.match(wf, /npm ci --ignore-scripts/); // no install script runs
