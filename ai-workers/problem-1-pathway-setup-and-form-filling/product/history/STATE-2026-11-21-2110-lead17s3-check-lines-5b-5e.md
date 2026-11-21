@@ -36,3 +36,7 @@
 ## Moved at 01:3x IST 22 Nov
 (5m) **00:5x:** #2860 proof-route fixes: Lead read delta aa98962d (cap 20 as asked), marked ready, labelled. #2687 DEMO-LINK: lane's Approve comment refused by its classifier (self-approval) → Lead started an independent Opus reviewer subagent on 712f912c9; **Approve** (no Blocker/Major; 3 Minors) posted attributed (7068094995) + coverage line + /run full 44941497054 + Lead allows round 6; review-rounds green. Label after the full run is green (queue gate or Lead).
 (5n) **01:0x:** #2871 PF-12b5 (QA-703): Lead read 8af19ac9 (7068194043; Stripe door matched + unmatched tested by breaker), **labelled 01:1x**. #2860 (fix pushed ef448c1e7, awaiting Approve): CI types red (TS7016 check_walk_plan.ts imports walk-plan.mjs without types) → lane fixing; Lead allows round 3 posted. #2870 PF-5 part 3 still draft.
+
+## Moved at 02:0x IST 22 Nov
+(5o) **01:2x:** #2787 PF-28 2a merged. #2871 queued. #2870 (R1.19 PF-5 p3): round 2 approved, wider suite run 42 min in; lane context 73% → told to finish #2870 only and stop (P-565). #2687 full run 44941497054 **failed on its own change**: check_pf28_inputs (2 public booking doors now reachable via the Sample type; msg_consent_wording 0→1 on a probe) → DEMO-LINK lane fixing; Lead re-reviews independently after.
+(5p) **01:4x: #2870 (R1.19 PF-5 p3) ready; Lead read f14b0a07** (column + backfill, Checkout uses stored period); label when ci green → merge → qa Q9 flips #2857 to Works (→ 11/15).
