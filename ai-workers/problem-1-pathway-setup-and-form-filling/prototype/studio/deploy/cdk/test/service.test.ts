@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
-import type { Template } from "../lib/checks.ts";
+import { REGION_ALLOW, bypassFindings, regionFindings, resourcePolicyFindings, type Template } from "../lib/checks.ts";
 import { DEFAULT_DOMAIN } from "../lib/service.ts";
 import { exposureFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
@@ -31,7 +31,7 @@ test("PF-8b the loader is read: its secret and required settings are found (a gu
 for (const s of real) {
   const stage = stageOf(s.name), domain = domainOf(s.name);
   test(`PF-8b pass (${s.name}): the task holds no secret value, only Secrets Manager references, and sets the two settings`, () => {
-    assert.deepEqual(taskSettingFindings(s.template, SETTINGS), []);
+    assert.deepEqual(taskSettingFindings(s.template, SETTINGS, stage), []);
     assert.deepEqual(secretReadFindings(s.template), []);
   });
   test(`PF-8b pass (${s.name}): at least two Fargate tasks over two zones, nothing public but the load balancer`, () => assert.deepEqual([...spreadFindings(s.template), ...exposureFindings(s.template)], []));
@@ -228,4 +228,41 @@ test("PF-8b the domain is a parameter: -c xr:domain moves both zones, certificat
     const d = stageOf(s.name) === "production" ? "example.org" : "staging.example.org";
     assert.deepEqual([...wildcardFindings(s.template, d), ...mailFindings(s.template, d)], []);
   }
+});
+
+test("PF-8b staging never accepts a live Stripe key (Lead 13 ruling 3): staging runs as test, production as production, no Sample seed", () => {
+  const src = readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8");
+  assert.match(src, /\/\^\(sk\|rk\)_live_\/\.test\(stripeKey\) && environment !== "production"/); // the loader's rule this relies on
+  const staging = real.find((x) => x.name === "xr-staging")!.template;
+  assert.equal(svcContainer(staging).Environment.find((e) => e.Name === "PLATFORM_ENVIRONMENT")!.Value, "test");
+  const t = clone(staging); // staging set to production would accept a live key: caught
+  svcContainer(t).Environment.find((e) => e.Name === "PLATFORM_ENVIRONMENT")!.Value = "production";
+  svcContainer(t).Environment.push({ Name: "PLATFORM_SAMPLE_SEED", Value: "on" });
+  const f = taskSettingFindings(t, SETTINGS, "staging").join("\n");
+  assert.ok(f.includes('is "production", not "test"') && f.includes("PLATFORM_SAMPLE_SEED is set"), f);
+});
+
+test("PF-8b's widening of PF-8rc's guards stays narrow: actions per service, \"*\" for the token only, the digest parameter only, key grants via Secrets Manager only", () => {
+  const home = real.find((x) => x.name === "xr-production")!;
+  const swap = (fn: (t: Template) => void) => { const t = clone(home.template); fn(t); return [{ ...home, template: t }]; };
+  const roleOf = (t: Template, svc: string) => of(t, "AWS::IAM::Role").find(([, r]) => JSON.stringify(r.Properties!.AssumeRolePolicyDocument).includes(svc))![0];
+  const pol = (t: Template, role: string, Action: unknown, Resource: unknown) => { t.Resources![`X${Object.keys(t.Resources!).length}`] = { Type: "AWS::IAM::Policy", Properties: { Roles: [{ Ref: role }], PolicyDocument: { Statement: [{ Effect: "Allow", Action, Resource }], Version: "2012-10-17" } } }; };
+  const b = bypassFindings(swap((t) => {
+    const ecs = roleOf(t, "ecs-tasks"), bak = roleOf(t, "backup.amazonaws.com");
+    pol(t, ecs, "iam:PassRole", { "Fn::GetAtt": [ecs, "Arn"] });     // an ECS role may not pass roles
+    pol(t, bak, "ses:SendEmail", { "Fn::GetAtt": [bak, "Arn"] });     // the Backup role does not get ECS's actions
+    pol(t, ecs, "secretsmanager:GetSecretValue", "*");                // "*" for a secret read
+    pol(t, bak, "ecr:GetAuthorizationToken", "*");                    // "*" only for an ECS role's token
+  })).join("\n");
+  for (const w of ["allows iam:PassRole", "allows ses:SendEmail", 'allows on "*"']) assert.ok(b.includes(w), `missing "${w}" in:\n${b}`);
+  assert.equal(b.split("\n").filter((l) => l.includes('allows on "*"')).length, 2);
+  const r = regionFindings(swap((t) => { for (const p of Object.values(t.Parameters as Record<string, Record<string, unknown>>)) delete p.AllowedPattern; }), REGION_ALLOW);
+  assert.ok(r.some((l) => l.includes("a parameter set at deploy time (AppImageDigest")), r.join("\n")); // a free-text parameter is still refused
+  const k = resourcePolicyFindings(swap((t) => {
+    const st = (of(t, "AWS::KMS::Key")[0][1].Properties!.KeyPolicy as { Statement: Record<string, unknown>[] }).Statement;
+    const grant = st.find((x) => JSON.stringify(x.Principal).includes("ExecutionRole"))!;
+    st.push({ ...grant, Condition: undefined });                                                       // no ViaService
+    st.push({ ...grant, Principal: { AWS: { "Fn::GetAtt": [roleOf(t, "backup.amazonaws.com"), "Arn"] } } }); // not an ECS role
+  }));
+  assert.equal(k.length, 2, k.join("\n"));
 });

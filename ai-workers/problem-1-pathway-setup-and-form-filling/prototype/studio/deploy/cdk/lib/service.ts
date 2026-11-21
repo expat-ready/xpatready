@@ -49,6 +49,8 @@ export class AppService extends Construct {
     const region = Stack.of(this).region;
     const base = props.domain ?? DEFAULT_DOMAIN;
     const domain = stage === "production" ? base : `staging.${base}`;
+    // Lead 13 ruling (3): staging runs as `test`, which PF-24's loader holds to test-mode Stripe keys (a live key refused)
+    const platformEnv = stage === "production" ? "production" : "test";
 
     // --- the image: ECR, run by digest only
     this.repository = new ecr.Repository(this, "Images", {
@@ -103,7 +105,7 @@ export class AppService extends Construct {
       image,
       portMappings: [{ containerPort: CONTAINER_PORT }],
       environment: {
-        PLATFORM_ENVIRONMENT: "production", // rev 16.5: explicit, never defaulted
+        PLATFORM_ENVIRONMENT: platformEnv, // rev 16.5: explicit, never defaulted
         PLATFORM_IDENTITY: "cognito",
         PLATFORM_COGNITO_USER_POOL_ID: this.pools.staff.userPoolId,
         PLATFORM_COGNITO_CLIENT_ID: staffClient.userPoolClientId,
@@ -119,7 +121,7 @@ export class AppService extends Construct {
     this.migration.addContainer("migrate", {
       image,
       command: ["./node_modules/.bin/prisma", "migrate", "deploy"],
-      environment: { PLATFORM_ENVIRONMENT: "production" },
+      environment: { PLATFORM_ENVIRONMENT: platformEnv },
       secrets: { DATABASE_URL: ecs.Secret.fromSecretsManager(ownerUrl) },
     });
     this.repository.grantPull(this.migration.obtainExecutionRole());

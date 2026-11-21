@@ -21,8 +21,8 @@ const covers = (action: unknown, ...wanted: string[]) => arr(Array.isArray(actio
   && wanted.some((w) => new RegExp(`^${a.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i").test(w))); // IAM globs (re-break n2)
 const readsSecret = (action: unknown) => covers(action, "secretsmanager:GetSecretValue");
 const decrypts = (action: unknown) => covers(action, "kms:Decrypt", "kms:CreateGrant");
-/** Managed policies a role in this stack may carry: CDK's custom-resource Lambda logging only. */
-const MANAGED_OK = [/:iam::aws:policy\/service-role\/AWSLambdaBasicExecutionRole"/];
+/** Managed policies a role in this stack may carry: PF-8rc's AWS Backup role's two (checks.ts MANAGED_ALLOW). */
+const MANAGED_OK = [/:iam::aws:policy\/(service-role\/AWSBackupServiceRolePolicyForBackup|AWSBackupServiceRolePolicyForS3Backup)"/];
 
 /** The task definitions by job: the one the ECS service runs, and the one-off migration task (`prisma migrate deploy`). */
 export function taskDefinitions(t: Template): { service?: [string, Res]; migration?: [string, Res] } {
@@ -42,7 +42,7 @@ export function loaderSettings(source: string): { name: string; secret: boolean;
 /** The service's task: PLATFORM_ENVIRONMENT=production and PLATFORM_IDENTITY=cognito set explicitly; every required
  *  loader setting supplied; every secret one (and APP_DATABASE_URL) only as a Secrets Manager reference of this stack;
  *  no plain value of any task definition looks like a credential. */
-export function taskSettingFindings(t: Template, settings: { name: string; secret: boolean; required: boolean }[]): string[] {
+export function taskSettingFindings(t: Template, settings: { name: string; secret: boolean; required: boolean }[], stage: "staging" | "production" = "production"): string[] {
   const out: string[] = [];
   const { service } = taskDefinitions(t);
   if (!service) return ["no task definition run by the service"];
@@ -52,7 +52,9 @@ export function taskSettingFindings(t: Template, settings: { name: string; secre
     if (g(k, "EnvironmentFiles") !== undefined) out.push(`${id}/${k.Name}: an environment file (values from S3, unchecked)`); // review M1
     if (td === service[1] && k !== c) for (const x of k.Environment ?? []) if (settings.some((y) => y.secret && y.name === x.Name)) out.push(`${id}/${k.Name}: ${x.Name}: a secret given as a plain environment value`);
   }
-  if (e.get("PLATFORM_ENVIRONMENT") !== "production") out.push(`PLATFORM_ENVIRONMENT is ${json(e.get("PLATFORM_ENVIRONMENT"))}, not "production" (rev 16.5: set explicitly)`);
+  const want = stage === "production" ? "production" : "test"; // staging never accepts a live Stripe key (Lead 13 ruling 3)
+  if (e.get("PLATFORM_ENVIRONMENT") !== want) out.push(`PLATFORM_ENVIRONMENT is ${json(e.get("PLATFORM_ENVIRONMENT"))}, not "${want}" (rev 16.5: set explicitly)`);
+  if (e.has("PLATFORM_SAMPLE_SEED") || s.has("PLATFORM_SAMPLE_SEED")) out.push("PLATFORM_SAMPLE_SEED is set: no Sample firms on AWS");
   if (e.get("PLATFORM_IDENTITY") !== "cognito") out.push(`PLATFORM_IDENTITY is ${json(e.get("PLATFORM_IDENTITY"))}, not "cognito"`);
   for (const x of settings) if (x.required && !e.has(x.name) && !s.has(x.name)) out.push(`${x.name}: required by PF-24's loader, not supplied`);
   for (const name of [...settings.filter((x) => x.secret).map((x) => x.name), "APP_DATABASE_URL"]) {
