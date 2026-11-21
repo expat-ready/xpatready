@@ -118,6 +118,7 @@ export const BYPASS_USES: Readonly<Record<string, { why: string; routes: readonl
   "job:messages.send": { why: "a platform job (JobPort platform: true, no firm) sends one platform account message, a PLATFORM_ACCOUNT row with no firm; a firm's send job runs as its firm (PF-19p)", routes: [], outside: true, audit: "platform" },
   "platform.account.mail": { why: "a platform account email (sign-up's verification, before any firm exists) writes its PLATFORM_ACCOUNT outbox row, no firm's row (PF-19p)", routes: [/^POST \/api\/public\/signup(\/verify)?$/i], outside: true, direct: true, audit: "platform", inside: ["platform.firms.signup"] },
   "cases.prospect-won.catch-up": { why: "at start and every few seconds, every firm's won prospects with no client yet are listed (each is then made a client as its own firm, never on this use; the link jobs are queued after it) (FO-8, CS-K1 part 2)", routes: [], outside: true, audit: "per-firm" },
+  "job:platform.entitlements.booking_daily": { why: "the daily job lists every firm with a booked plan change now due, then applies each in its own firm scope (PF-15 part 1b, SA-3-60)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
@@ -289,8 +290,10 @@ const routeOf = (req: ScopedReq) => {
 };
 /** PF-4's guard, first thing in every request, before any await: a fresh scope (its route, and no firm unless the host
  *  routing found the firm whose address this is) for the rest of the
- *  request. PF-4's guard is reached synchronously from Nest's router (core.ts's ConfigReadGuard returns a boolean), so
- *  the handler, its pipes and every query it makes continue in this scope; nothing of an earlier request survives. */
+ *  request. Since CS-W3 part 1, the case side's door (features/case-firm-door.ts) runs before PF-4's guard and awaits a
+ *  lookup, so this guard is no longer reached synchronously: nothing may rely on the scope entered here. The handler's
+ *  scope is FirmWallsInterceptor's (inRequest, from the request's tag), opened after every guard; nothing of an earlier
+ *  request survives, because each request's own tag decides it. */
 export function enterRequest(req: object) {
   const firmId = (req as ScopedReq)[REQ_FIRM];   // a firm's own web address: the firm the host routing found (setRequestFirm)
   scope.enterWith({ route: routeOf(req as ScopedReq), firmId: typeof firmId === "string" ? firmId : undefined });
