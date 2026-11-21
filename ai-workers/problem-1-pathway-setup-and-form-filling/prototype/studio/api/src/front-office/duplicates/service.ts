@@ -73,30 +73,42 @@ export class Duplicates {
 }
 
 /** FO-9a (case-side contract v0.1 §4, F6): the duplicate result `prospect.won` carries, read in the win's own transaction.
- *  The same match as the check (the definer functions, the threshold, the score), for the won subject's stored keys: its
- *  email, its E.164 phone (an unreadable number has none and matches by name only) and its name key for a person; its
- *  normalised name for a company. Every record of the firm counts (a system read for the case side, not a staff answer, so
- *  no visibility filter, and no names travel); the subject itself is never its own match. Writes nothing. */
+ *  The check's rules (ports/matching.ts's keys, NAME_THRESHOLD and score; the definer function's name rule: a key with a
+ *  digit matches only exactly) for the won subject's stored keys: its email, its E.164 phone (an unreadable number has
+ *  none and matches by name only) and its name key for a person; its normalised name for a company. Plain queries under
+ *  the caller's own role, not the check's definer functions: a win also runs in a system scope (the bypass role, which
+ *  may not execute them and names no session firm), and one win is a single read, so the trigram index is not needed
+ *  (break B1). The test pins it equal to the definer function. Every record of the firm counts (a system result for the
+ *  case side, ids only, no visibility filter); the subject itself is never its own match. Writes nothing. */
 export async function wonDuplicates(tx: Tx | PrismaClient, firmId: string, subject: ProspectWonSubject): Promise<WonDuplicates> {
   if (subject.subject === "PERSON") {
     const p = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: subject.personId }), select: { email: true, phoneE164: true, givenNames: true, familyName: true } });
     if (!p) return { matches: [] };
     const email = normaliseEmail(p.email), phones = p.phoneE164 ? [p.phoneE164] : [], name = personNameKey(p.givenNames, p.familyName);
     if (!email && !phones.length && !name) return { matches: [] };
-    const rows = await tx.$queryRaw<PersonRow[]>`
-      select id::text, given_names, family_name, by_email, by_phone, sim, seen
-        from fo_sales_person_matches(${firmId}::uuid, ${email}::text, ${phones}::text[], ${name}::text, null::uuid, true, true, ${NAME_THRESHOLD}::real, ${MAX_MATCHES + 1})`;
-    const matches = rows.filter((r) => r.id !== subject.personId).map((r) => ({ kind: "PERSON" as const, id: r.id, reasons: personReasons(r) }))
-      .filter((m) => m.reasons.length).map((m) => ({ ...m, score: matchScore(m.reasons) }));
-    return { matches: matches.sort((x, y) => y.score - x.score).slice(0, MAX_MATCHES) };
+    const rows = await tx.$queryRaw<Pick<PersonRow, "id" | "by_email" | "by_phone" | "sim">[]>`
+      select id::text, by_email, by_phone, sim from (
+        select p."id", coalesce(p."email" = ${email}::text, false) as by_email, coalesce(p."phone_e164" = any(${phones}::text[]), false) as by_phone,
+               (case when ${name}::text = '' then 0 when ${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]' then (lower(p."name_key") = ${name}::text)::int
+                     else extensions.similarity(lower(p."name_key"), ${name}::text) end)::float8 as sim, p."created_at"
+          from "fo_person" p
+         where p."firm_id" = ${firmId}::uuid and p."id" <> ${subject.personId}::uuid
+           and ((${email}::text is not null and p."email" = ${email}::text) or (cardinality(${phones}::text[]) > 0 and p."phone_e164" = any(${phones}::text[]))
+             or (${name}::text <> '' and lower(coalesce(p."name_key", '')) <> '' and (${name}::text ~ '[0-9]' or p."name_key" ~ '[0-9]') and lower(p."name_key") = ${name}::text)
+             or (${name}::text <> '' and ${name}::text !~ '[0-9]' and p."name_key" !~ '[0-9]' and extensions.similarity(lower(p."name_key"), ${name}::text) >= ${NAME_THRESHOLD}::real))
+      ) m order by by_email desc, by_phone desc, sim desc, created_at, id limit ${MAX_MATCHES}`;
+    const matches = rows.map((r) => ({ kind: "PERSON" as const, id: r.id, reasons: personReasons(r) })).filter((m) => m.reasons.length).map((m) => ({ ...m, score: matchScore(m.reasons) }));
+    return { matches: matches.sort((x, y) => y.score - x.score) };
   }
   const c = await tx.foCompany.findFirst({ where: firmScope(firmId, { id: subject.company.id }), select: { normalisedName: true } });
   if (!c?.normalisedName) return { matches: [] };
-  const rows = await tx.$queryRaw<CompanyRow[]>`
-    select id::text, operating_name, sim from fo_sales_company_matches(${firmId}::uuid, ${c.normalisedName}::text, ${NAME_THRESHOLD}::real, ${MAX_MATCHES + 1})`;
-  const matches = rows.filter((r) => r.id !== subject.company.id && r.sim >= NAME_THRESHOLD).map((r) => {
+  const rows = await tx.$queryRaw<Pick<CompanyRow, "id" | "sim">[]>`
+    select id::text, sim from (
+      select c."id", (case when c."normalised_name" = ${c.normalisedName}::text then 1 else extensions.similarity(lower(c."normalised_name"), ${c.normalisedName}::text) end)::float8 as sim, c."created_at"
+        from "fo_company" c where c."firm_id" = ${firmId}::uuid and c."id" <> ${subject.company.id}::uuid
+    ) m where sim >= ${NAME_THRESHOLD}::real order by sim desc, created_at, id limit ${MAX_MATCHES}`;
+  return { matches: rows.map((r) => {
     const reasons: MatchReason[] = [{ key: "NAME", similarity: Math.min(1, Math.round(r.sim * 1000) / 1000) }];
     return { kind: "COMPANY" as const, id: r.id, score: matchScore(reasons), reasons };
-  });
-  return { matches: matches.slice(0, MAX_MATCHES) };
+  }) };
 }

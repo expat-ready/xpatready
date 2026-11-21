@@ -11,8 +11,10 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { EVENT, ProspectWonPayload, WonDuplicates } from "../ports/events.ts";
+import { EVENT, ProspectWonPayload, WonDuplicates, type ProspectWonSubject } from "../ports/events.ts";
+import { personNameKey } from "../ports/matching.ts";
 import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts";
+import { wonDuplicates } from "../api/src/front-office/duplicates/service.ts";
 import { normaliseCompanyName } from "../api/src/front-office/sales/corporate/match.ts";
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
@@ -124,6 +126,37 @@ try {
   ok("FO-9a won D6 pass: a Corporate win carries the similar company (Cedar Work Ltd, COMPANY, NAME, score 60-99)",
     w6?.subject.subject === "COMPANY" && m6.some((m) => m.id === CO && m.kind === "COMPANY" && m.reasons[0]?.key === "NAME" && m.score >= 60 && m.score < 100), { subject: w6?.subject, m6 });
   ok("FO-9a won D6 fail: the won company is never its own match, and no person is listed for a company", w6 !== null && !m6.some((m) => m.id === pc.company?.id || m.kind === "PERSON"), m6);
+
+  // ------------------------------------------------------------- D8: the roles a win runs under; the check's own rules
+  // A win runs as the app role in a staff request (the firm named) and as the bypass role in a system scope or a suite's
+  // direct mode (no firm named): FO-13c's suite stopped on "permission denied for function fo_sales_person_matches".
+  const subj: ProspectWonSubject = { subject: "PERSON", personId: lena2.person.id };
+  const asRole = (role: string, firm: string | null) => db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`select set_config('app.firm_id', '${firm ?? ""}', true), set_config('role', '${role}', true)`);
+    return wonDuplicates(tx, A, subj);
+  });
+  const viaBypass = await asRole("xr_staff_bypass", null).catch((e) => String(e));
+  ok("FO-9a won D8 pass: as the bypass role with no firm named (a system win, a suite's direct mode), the result still names Lena Park",
+    typeof viaBypass !== "string" && viaBypass.matches.some((m) => m.id === lena.person.id), viaBypass);
+  const viaApp = await asRole("xr_app", A).catch((e) => String(e));
+  ok("FO-9a won D8 pass: as the app role in firm A, the same result", typeof viaApp !== "string" && typeof viaBypass !== "string" && JSON.stringify(viaApp) === JSON.stringify(viaBypass), { viaApp, viaBypass });
+  const viaWrongFirm = await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`select set_config('app.firm_id', '${B}', true), set_config('role', 'xr_app', true)`);
+    return wonDuplicates(tx, A, subj);
+  }).catch((e) => String(e));
+  ok("FO-9a won D8 fail: the app role in firm B asking about firm A's person reads nothing (the walls hold)", typeof viaWrongFirm !== "string" && viaWrongFirm.matches.length === 0, viaWrongFirm);
+  // The same people as the check's definer function (as the owner, every record seen), for each person won above.
+  const fnIds = (pid: string) => {
+    const [e, ph, g, f] = sql(`select coalesce(lower(email), '') || '|' || coalesce(phone_e164, '') || '|' || coalesce(given_names, '') || '|' || coalesce(family_name, '') from fo_person where id = '${pid}'`).split("|");
+    const out = sql(`select string_agg(id::text, ',' order by id) from fo_sales_person_matches('${A}', ${e ? `'${e}'` : "null"}, ${ph ? `array['${ph}']` : "array[]::text[]"}, '${personNameKey(g, f).replace(/'/g, "''")}', null, true, true, 0.6, 50) where id <> '${pid}'
+      and (by_email or by_phone or sim >= 0.6)`);
+    return out;
+  };
+  const parity = await Promise.all([lena2, ivo, lenaS, omar2, u2, noor, zed2].map(async (l) => {
+    const mine = (await wonDuplicates(db, A, { subject: "PERSON", personId: l.person.id })).matches.map((m) => m.id).sort().join(",");
+    return { mine, fn: fnIds(l.person.id) };
+  }));
+  ok("FO-9a won D8 pass: for each of the seven people won above, the win's read finds exactly the people the check's definer function finds", parity.every((x) => x.mine === x.fn), parity);
 
   // ------------------------------------------------------------- D7: the contract: additive, bounded
   const base = w2!;
