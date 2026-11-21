@@ -3,7 +3,7 @@
 Lane: qa Q9 (cloud copy), Opus 5.5, medium effort. Live AI off, US$0. Main: ee19b3730 (#1959, PF-5 part 2, merged 23:33 IST), merged into this branch.
 
 ## Verdict
-**Works, pending the walks run on this PR's head and the Lead's answer on the period (question 1).** The fresh Opus reader scored it Partial at 70%, with one gap: the billing period is stored only in the audit line. If the audit line is accepted as the record, the reader scores Works at about 80%. j_19 now checks the period (below).
+**Works** (subject to the Lead's answer on the period, question 1). The fresh Opus reader scored it Partial at 70%, with one gap: the billing period is stored only in the audit line. If the audit line is accepted as the record, the reader scores Works at about 80%. j_19 now checks the period (below).
 
 Duplicate check: no new BUGS row. The firm-key clause is QA-483 (open, Ambiguity). QA-481 (the code reaching no inbox) is met by PF-5v part 2; its row is closed in BUGS history. I test QA-483's self-serve wording.
 
@@ -38,7 +38,7 @@ PF-5 part 1 #1815 · PF-5v parts 1 and 2 · PF-5t · PF-5s part 1 #2608 · PF-5 
   | `check_pf5t_terms_browser` | 35/35 |
 * **GitHub runs:**
   * walks 44934930791 (Lead dispatch) walked cc01e3548, the j_19 from before the reader: not the head that merges.
-  * The walks run on 4baff0b41: WALK_RUN.
+  * **walks 44936828314** (Lead dispatch, job 136945351490) on 017f5569f (same j_19 as 4baff0b41, main ee19b3730 merged in): j_19 **22/22, exit 0**, video, trace, 21 step shots.
   * item-proof runs on this PR's merge (`Completes: R1.19`).
   * item-proof 44933362062 (on #1959's merge) ran no suite: not cited.
 * **Fresh Opus reader** (ran nothing, P-303): Partial at 70%, for the period; Works at about 80% if the audit line counts. It also noted:
