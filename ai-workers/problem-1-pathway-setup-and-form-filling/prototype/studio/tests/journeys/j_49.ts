@@ -31,7 +31,7 @@ import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { copyFirmHoursTo } from "../../api/src/front-office/booking-seed.ts";
 import { LocalFiles } from "../../api/src/front-office/files.ts";
-import { seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
+import { SAMPLE_BOOKING_WORDING, seedSampleFirmsFrontOffice } from "../../api/src/front-office/firm-seed.ts";
 import { auditEvent } from "../../api/src/platform/audit/audit-event.ts";
 import { connectLocalNotices, localEmail } from "../../api/src/platform/messages/channels/email/local.ts";
 import { ConsentStore } from "../../api/src/platform/messages/consent/consent-store.ts";
@@ -111,7 +111,7 @@ try {
     await v.getByRole("heading", { name: "Your details" }).waitFor();
     await v.getByLabel("Given names").fill(who); await v.getByLabel("Family name").fill(`Sample ${run}`); await v.getByLabel("Email").fill(address);
     const box = v.getByRole("checkbox");
-    const offered = (await box.count()) === 1;
+    const offered = (await box.count()) === 1 && !(await box.isChecked()) && (await v.getByText(SAMPLE_BOOKING_WORDING).count()) === 1;
     if (offered && tick) await box.check();
     await shot(v, `W1-details-${tick ? "ticked" : "not-ticked"}-1440`);
     if (tick) await axeOf(v, "W1 Your details, with the firm's marketing tick");
@@ -124,7 +124,7 @@ try {
     return { address, person, lead, offered };
   };
   const A = await book("Visitor A", `j49.a.${run}@example.com`, true), B = await book("Visitor B", `j49.b.${run}@example.com`, false);
-  ok("J-49 W1 pass: the firm's public booking page offers the marketing tick (the firm's own wording), unticked by default", A.offered && B.offered);
+  ok("J-49 W1 pass: the firm's public booking page offers one marketing tick, unticked, beside the firm's own wording (its Sample booking wording)", A.offered && B.offered);
   const cA = consentRows(A.person), cB = consentRows(B.person);
   ok("J-49 W1 pass: visitor A's tick is stored as A's own email marketing consent (BOOKING_FORM, self-service, live)", cA.length === 1 && cA[0].source === "BOOKING_FORM" && cA[0].kind === "SELF_SERVICE" && !cA[0].withdrawn, cA);
   ok("J-49 W1 fail: visitor B, who left the box empty, has no marketing consent", !!B.person && cB.length === 0, cB);
@@ -153,8 +153,13 @@ try {
   const mA = await inbox(A.address, 2), mkt = mA.find((m) => m.id === g.a.id);
   ok("J-49 W2 fail: the same marketing email to visitor A (ticked) goes, and arrives with the one-click unsubscribe headers", g.a.row.state === "SENT" && !!mkt && /\/api\/public\/unsubscribe\/[A-Za-z0-9_-]+>$/.test(mkt.headers["List-Unsubscribe"] ?? "") && mkt.headers["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click", [g.a.row, mkt?.headers]);
   ok("J-49 DW1 pass: the gate reads the real consent store: A's booking tick (msg_consent) lets it through, B's empty box does not", g.holds, g);
-  const nr1 = await dw1(await wire(fakeConsent() as never));
-  ok("J-49 DW1 NR [fails on the stand-in]: with fakeConsent (no booking tick in it) the judge fails: A's marketing is SUPPRESSED too", !nr1.holds && nr1.a.row.state === "SUPPRESSED", [nr1.a.row, nr1.b.row]);
+  // The stand-in is judged on its answers, as the gate gives them to send(): rows written through it would sit on both
+  // lead pages as "Not sent" (review m2), and A, who ticked, would read "no consent".
+  const ask = (to: { address: string; person: string }) => ({ firmId, subject: { kind: "FO_PERSON" as const, id: to.person }, channel: "EMAIL" as const, address: to.address, class: "MARKETING" as const });
+  const stand = fakeConsent(), nrA = await stand.allows(null, ask(A)), nrB = await stand.allows(null, ask(B));
+  const dw1Answers = (a: { allowed: boolean }, b: { allowed: boolean; reason: string }) => a.allowed && !b.allowed && b.reason === "NO_CONSENT";
+  ok("J-49 DW1 pass (the gate's answers): the real consent store allows A and refuses B for NO_CONSENT", dw1Answers(await new ConsentStore(auditEvent).allows(db as never, ask(A)), await new ConsentStore(auditEvent).allows(db as never, ask(B))));
+  ok("J-49 DW1 NR [fails on the stand-in]: with fakeConsent (no booking tick in it) the judge fails because A is refused for NO_CONSENT too", !dw1Answers(nrA, nrB) && !nrA.allowed && nrA.reason === "NO_CONSENT", [nrA, nrB]);
   const owner = await pageAs(ownerToken);
   const messagesBox = async (lead: string) => {
     await owner.goto(`${BASE}/front-office/leads/${lead}`);
@@ -188,13 +193,13 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W4 after it
   /** The DW2 judge: after the copy's door wrote the withdrawal, the gate refuses marketing to A, WITHDRAWN: MARKETING. */
-  const askA = { firmId, subject: { kind: "FO_PERSON" as const, id: A.person }, channel: "EMAIL" as const, address: A.address, class: "MARKETING" as const };
+  const askA = ask(A);
   const dw2 = (d: { allowed: boolean; reason: string }) => !d.allowed && d.reason === "WITHDRAWN";
   const next = await send(real, A, "MARKETING");
   ok("J-49 W4 pass: the next marketing email to A is not sent (SUPPRESSED, WITHDRAWN: MARKETING) and is not in A's inbox",
     next.row.state === "SUPPRESSED" && next.row.reason === "WITHDRAWN: MARKETING" && !(await inboxNow(A.address)).some((m) => m.id === next.id), next.row);
   const realSays = await new ConsentStore(auditEvent).allows(db as never, askA);
-  ok("J-49 DW2 pass: the gate (ConsentStore.allows on the copy's database) reads the withdrawal the running copy's unsubscribe door wrote", dw2(realSays), realSays);
+  ok("J-49 DW2 pass: the gate's consent read (ConsentStore.allows, which MessagePort.send and its worker call) reads, on the copy's database, the withdrawal the running copy's unsubscribe door wrote", dw2(realSays), realSays);
   // The stand-in holds A's tick as the booking gave it; the door's withdrawal never reaches it. Judged on its answer: a
   // row written with its consent id would break the outbox's foreign key to msg_consent (the fake's id is not a real row).
   const fake = fakeConsent(), w0 = await fake.publishWording(null, { firmId, channel: "EMAIL", purpose: "MARKETING", locale: "en", text: "Sample: email news, yes", by: "seed:j49" });
@@ -210,7 +215,7 @@ try {
   const boxA = await messagesBox(A.lead), lNext = await line(boxA, next.id), lSvc = await line(boxA, svc.id), lSent = await line(boxA, g.a.id);
   await boxA.scrollIntoViewIfNeeded(); await shot(owner, "W4-lead-A-after-unsubscribe-1440");
   ok("J-49 W4 pass: A's lead page shows the marketing email after the unsubscribe as \"Not sent: the person withdrew consent\", the service email and the first marketing email as sent, the address masked",
-    lNext.word === "Not sent" && lNext.why === "Not sent: the person withdrew consent" && lSvc.word !== "Not sent" && lSent.word !== "Not sent" && !lNext.text.includes(A.address), [lNext, lSvc.word, lSent.word]);
+    lNext.word === "Not sent" && lNext.why === "Not sent: the person withdrew consent" && lSvc.word === "Sent" && lSent.word === "Sent" && !lNext.text.includes(A.address), [lNext, lSvc.word, lSent.word]);
   await axeOf(owner, "W4 A's lead page after the unsubscribe"); await noSideways(owner, "W4 A's lead page");
   ok("J-49: no script error on any page walked", errors.length === 0, errors);
 } finally {
