@@ -8,6 +8,8 @@ import { PROVINCES, SetAddressAnswer, WORDS, type AddressValue } from "./billing
 
 type Form = { unit: string; street_number: string; street_name: string; city: string; province_state: string; postal_code: string };
 const NAMES: [keyof Form, string, string][] = [["unit", "Unit (optional)", "address-line2"], ["street_number", "Street number", "address-line1"], ["street_name", "Street name", "address-line1"], ["city", "City", "address-level2"]];
+const LABEL: Record<string, string> = { unit: "Unit", street_number: "Street number", street_name: "Street name", city: "City", province_state: "Province or territory", postal_code: "Postal code" };
+const ORDER = ["unit", "street_number", "street_name", "city", "province_state", "postal_code"];
 const formOf = (a: AddressValue | null): Form => ({ unit: a?.unit ?? "", street_number: a?.street_number ?? "", street_name: a?.street_name ?? "", city: a?.city ?? "", province_state: a?.province_state ?? "", postal_code: a?.postal_code ?? "" });
 
 export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSaved, returnFocus }: {
@@ -19,6 +21,7 @@ export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSave
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<StaffApiError | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
+  const form = React.useRef<HTMLFormElement>(null);
   React.useEffect(() => { if (open) { setF(formOf(current)); setError(null); setFailed(null); } }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps -- reset on each opening only
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
   const save = async (e: React.FormEvent) => {
@@ -30,15 +33,21 @@ export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSave
       const r = SetAddressAnswer.parse(await staffApi("/platform/billing/address", { method: "PUT", json: body }));
       onSaved(r.next ?? null);
     } catch (x) {
-      if (x instanceof StaffApiError) { setError(x); setFailed(x.problem.fields ? "Please check the fields marked above." : x.message); } else setFailed("Could not save the address. Please try again.");
+      if (x instanceof StaffApiError) {
+        setError(x);
+        const bad = Object.keys(x.problem.fields ?? {}).filter((k) => k in LABEL);
+        setFailed(bad.length ? `Please check: ${bad.map((k) => LABEL[k]).join(", ")}.` : x.message);
+        // Review m6: focus moves to the first refused field, so a keyboard or screen-reader user lands on its words.
+        if (bad.length) window.setTimeout(() => form.current?.querySelector<HTMLElement>(`[data-address-field="${ORDER.find((k) => bad.includes(k))}"]`)?.focus(), 0);
+      } else setFailed("Could not save the address. Please try again.");
     } finally { setBusy(false); }
   };
   const fieldError = (k: string) => error?.field(k) ?? null;
   return (
-    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} title="Business address"
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => JSON.stringify(f) === JSON.stringify(formOf(current)) || window.confirm("Discard the address you typed?")} title="Business address"
       description={beforeStripe ? WORDS.beforeCard : WORDS.addressNeeded}
       footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="pf5s-address" busy={busy} data-address-save>{beforeStripe ? "Save and continue to Stripe" : "Save address"}</Button></>}>
-      <form id="pf5s-address" className="flex flex-col gap-3" onSubmit={save} noValidate data-address-form>
+      <form ref={form} id="pf5s-address" className="flex flex-col gap-3" onSubmit={save} noValidate data-address-form>
         {NAMES.map(([k, label, auto]) => <Field key={k} label={label} error={fieldError(k)}><Input value={f[k]} onChange={set(k)} autoComplete={auto} required={k !== "unit"} data-address-field={k} /></Field>)}
         <Field label="Province or territory" error={fieldError("province_state")}>
           <Select value={f.province_state} onChange={set("province_state")} required data-address-field="province_state">

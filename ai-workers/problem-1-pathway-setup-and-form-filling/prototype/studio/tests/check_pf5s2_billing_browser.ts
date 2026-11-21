@@ -84,7 +84,7 @@ trial("9 days - 1 hour");
   const p = await newPage(rTok); await open(p);
   const want = `Free trial: 9 days left (ends ${ends()}). Add a card before then to keep access.`;
   ok("PF-5s2 DW1 pass (BR-10): a trial ending in 9 days shows the days left, the end date and the Owner's next step", await text(p, "[data-trial-line]") === want, await text(p, "[data-trial-line]"));
-  ok("PF-5s2 DW1 pass (BR-8): status Free trial, the trial end date and the seats line come from our record", await text(p, "[data-billing-status]") === "Free trial" && (await text(p, "[data-billing-dates]"))?.startsWith("Trial ends ") === true && /^\d+ of \d+ seats used$|^\d+ seats? used$/.test(await text(p, "[data-billing-seats]") ?? ""), [await text(p, "[data-billing-dates]"), await text(p, "[data-billing-seats]")]);
+  ok("PF-5s2 DW1 pass (BR-8): status Trial, the trial end date and the seats line come from our record", await text(p, "[data-billing-status]") === "Trial" && (await text(p, "[data-billing-dates]"))?.startsWith("Trial ends ") === true && /^\d+ of \d+ seats used$|^\d+ seats? used$/.test(await text(p, "[data-billing-seats]") ?? ""), [await text(p, "[data-billing-dates]"), await text(p, "[data-billing-seats]")]);
   await axe("PF-5s2 DW5 Owner, trial (1440 px)", p); await shot(p, "owner-trial-1440");
   await p.context().close();
   trial("1 day - 1 hour");
@@ -98,6 +98,25 @@ trial("9 days - 1 hour");
   const d = await newPage(rTok); await rewriteBilling(d, () => ({ cardOnFile: null, billingAvailable: false })); await open(d);
   ok("PF-5s2 DW1 fail (card not known): Stripe unreachable → the days are shown but no claim about the card, and a warning says details may be out of date", (await text(d, "[data-trial-line]"))?.endsWith("Add a card before then to keep access.") === false && (await d.getByText("Stripe didn't answer").count()) === 1, await text(d, "[data-trial-line]"));
   await d.context().close();
+  const x = await newPage(rTok); await rewriteBilling(x, () => ({ cancelAtPeriodEnd: true })); await open(x);
+  ok("PF-5s2 DW1 fail (break M3): a trial set to cancel never asks for a card; it says no payment will be taken and shows Cancels on", (await text(x, "[data-trial-line]"))?.endsWith("Your subscription is set to cancel then, so no payment will be taken.") === true && !(await text(x, "[data-trial-line]"))?.includes("Add a card") && await text(x, "[data-billing-dates]") === `Cancels on ${ends()}`, [await text(x, "[data-trial-line]"), await text(x, "[data-billing-dates]")]);
+  await x.context().close();
+  trial("-3 days");
+  const past = await newPage(rTok); await open(past);
+  ok("PF-5s2 DW1 fail (break m1): a trial end already passed reads \"ended on\", never \"ends today\"", (await text(past, "[data-trial-line]"))?.startsWith(`Free trial: ended on ${ends()}.`) === true, await text(past, "[data-trial-line]"));
+  await past.context().close();
+  sql(`update platform_subscription set status = 'ACTIVE', trial_ends_at = null, current_period_end = now() + interval '20 days' where id = '${SUB}' returning id`);
+  const act = await newPage(rTok); await open(act);
+  const pe = day(sql(`select to_char(current_period_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from platform_subscription where id = '${SUB}'`));
+  ok("PF-5s2 DW1 pass (BR-8): an Active firm shows Active, the next billing date and no trial line", await text(act, "[data-billing-status]") === "Active" && await text(act, "[data-billing-dates]") === `Next billing date ${pe}` && (await act.locator("[data-trial-line]").count()) === 0, await text(act, "[data-billing-dates]"));
+  await act.context().close();
+  const cx = await newPage(rTok); await rewriteBilling(cx, () => ({ cancelAtPeriodEnd: true })); await open(cx);
+  ok("PF-5s2 DW1 pass (BR-8): an Active firm set to cancel shows \"Cancels on\" its period end", await text(cx, "[data-billing-dates]") === `Cancels on ${pe}`, await text(cx, "[data-billing-dates]"));
+  await cx.context().close();
+  const en = await newPage(rTok); await rewriteBilling(en, () => ({ status: "ENDED", cancelAtPeriodEnd: false })); await open(en);
+  ok("PF-5s2 DW1 pass (BR-8): an ended subscription shows Ended and no dates line", await text(en, "[data-billing-status]") === "Ended" && (await en.locator("[data-billing-dates]").count()) === 0);
+  await en.context().close();
+  trial("9 days - 1 hour");
   // A Case Officer: no menu entry, and the server's refusal by address.
   const o = await newPage(oTok); await open(o);
   const oKeys = (await (await fetch(`${BASE}/api/platform/me`, { headers: { authorization: `Bearer ${oTok}` } })).json() as { keys: string[] }).keys;
@@ -122,10 +141,12 @@ trial("9 days - 1 hour");
   const i = await newPage(rTok);
   await i.route("**/api/platform/billing/invoices", (rt) => rt.fulfill({ json: { invoices: [
     { id: "in_1", number: "PF5S2-0001", status: "paid", amountDueCents: 14900, currency: "CAD", createdAt: new Date().toISOString(), hostedUrl: "https://invoice.stripe.com/i/acct_x/test_1" },
-    { id: "in_2", number: "PF5S2-0002", status: "open", amountDueCents: 14900, currency: "CAD", createdAt: new Date().toISOString(), hostedUrl: "javascript:alert(1)" }] } }));
+    { id: "in_2", number: "PF5S2-0002", status: "open", amountDueCents: 14900, currency: "CAD", createdAt: new Date().toISOString(), hostedUrl: "javascript:alert(1)" },
+    { id: "in_3", number: null, status: "uncollectible", amountDueCents: 100, currency: "C$", createdAt: "not a date", hostedUrl: null }] } }));
   await open(i); await i.locator("[data-invoice]").first().waitFor({ timeout: 10_000 });
   ok("PF-5s2 DW2 pass (SA-4-54): an invoice shows its number, amount in CAD and a View link to Stripe's hosted page in a new tab", (await i.locator("[data-invoice=in_1] a").getAttribute("href"))?.startsWith("https://invoice.stripe.com/") === true && (await i.locator("[data-invoice=in_1] a").getAttribute("target")) === "_blank" && (await text(i, "[data-invoice=in_1]"))?.includes("149.00 CAD") === true, await text(i, "[data-invoice=in_1]"));
   ok("PF-5s2 DW2 fail: an invoice link that is not an https Stripe page is not shown as a link", (await i.locator("[data-invoice=in_2] a").count()) === 0);
+  ok("PF-5s2 DW2 fail (break m8): an invoice with an unknown currency and a bad date still shows (plain digits, \"date not known\", \"No number\"), the page stays up", (await text(i, "[data-invoice=in_3]"))?.includes("1.00 C$") === true && (await text(i, "[data-invoice=in_3]"))?.includes("date not known") === true && (await text(i, "[data-invoice=in_3]"))?.includes("No number") === true && (await i.locator("[data-billing-summary]").count()) === 1, await text(i, "[data-invoice=in_3]"));
   await i.context().close();
 }
 
@@ -148,10 +169,18 @@ sql(`update platform_firm set business_address = null where id = '${A}'`);
   const badRes = await bad; await p.locator("[data-address-error]").waitFor({ timeout: 10_000 });
   const postalNote = await p.locator("[data-address-field=postal_code]").evaluate((e) => document.getElementById(e.getAttribute("aria-describedby") ?? "")?.textContent ?? "");
   ok("PF-5s2 DW3 fail: a postal code in the wrong shape is refused on its field (422), nothing is saved and nothing goes to Stripe", badRes.status() === 422 && postalNote.length > 0 && postalNote !== "Like A1A 1A1" && audits() === n0 && posts.length === 0 && stripeHits.length === before, [badRes.status(), postalNote]);
+  ok("PF-5s2 DW3 pass (review m6): after the refusal, focus is on the refused field and the summary names it", await p.waitForFunction(() => document.activeElement?.getAttribute("data-address-field") === "postal_code", null, { timeout: 3_000 }).then(() => true, () => false) && await text(p, "[data-address-error]") === "Please check: Postal code.", await text(p, "[data-address-error]"));
   await fill("postal_code", "M5V 1A1");
+  // Review M2 / break M1: the server saves but warns (Stripe not updated): the page stays and shows the warning.
+  const WARN = "Saved here. We could not update our billing provider yet: save it again in a few minutes.";
+  await p.route("**/api/platform/billing/address", async (rt) => { const res = await rt.fetch(); return rt.fulfill({ response: res, json: { ...(await res.json()), onStripe: false, next: WARN } }); });
   await p.locator("[data-address-save]").click();
+  await p.locator("[data-address-saved]").waitFor({ timeout: 10_000 });
+  ok("PF-5s2 DW3 fail (review M2, break M1): a save that answers with a warning stays on the page, shows the warning and does not go to Stripe", await text(p, "[data-address-saved]") === WARN && p.url().startsWith(BASE) && posts.length === 0 && stripeHits.length === before, [await text(p, "[data-address-saved]"), posts]);
+  await p.unroute("**/api/platform/billing/address");
+  await p.locator("[data-stripe=card]").click();
   await p.waitForURL(/stripe\.com/, { timeout: 15_000 });
-  ok("PF-5s2 DW3 pass: a good address saves once (audited), then hands off to Stripe's card Checkout for this firm's customer", audits() === n0 + 1 && stripeHits.at(-1) === `https://checkout.stripe.com/c/pay/cs_setup_${CUS}` && posts.length === 1 && sql(`select business_address->>'postal_code' from platform_firm where id = '${A}'`) === "M5V 1A1", [stripeHits.at(-1), posts]);
+  ok("PF-5s2 DW3 pass: a good address saves (audited; the warned save above counted once), then the card button hands off to Stripe's card Checkout for this firm's customer", audits() === n0 + 1 && stripeHits.at(-1) === `https://checkout.stripe.com/c/pay/cs_setup_${CUS}` && posts.length === 1 && sql(`select business_address->>'postal_code' from platform_firm where id = '${A}'`) === "M5V 1A1", [stripeHits.at(-1), posts]);
   await p.context().close();
   // With the address kept, the Owner's portal goes straight to Stripe.
   const q = await newPage(rTok); await open(q);
@@ -170,12 +199,25 @@ sql(`update platform_firm set business_address = null where id = '${A}'`);
   await p.getByText("Stripe confirmed your card.").waitFor({ timeout: 15_000 });
   ok("PF-5s2 DW4 pass: once the record shows the card, the page says so and the return marker leaves the address (a reload never shows Checking again)", !p.url().includes("card=saved") && await text(p, "[data-trial-line]") === `Card saved. Your first payment is on ${ends()}.`, p.url());
   await p.context().close();
+  // Review M1: an overdue firm whose old card is on file comes back: Checking until the record moves to Active.
+  const ov = await newPage(adTok); await rewriteBilling(ov, (n) => n < 3 ? { status: "OVERDUE", cardOnFile: true } : { status: "ACTIVE", cardOnFile: true });
+  await open(ov, "?card=saved");
+  ok("PF-5s2 DW4 fail (review M1): back from Stripe with an old card on file and the record still overdue → Checking, never \"Card saved\"", await text(ov, "[data-billing-checking]") === WORDS.checking && (await ov.getByText("Stripe confirmed your card.").count()) === 0 && await text(ov, "[data-billing-status]") === "Payment overdue");
+  await ov.getByText("Stripe confirmed your card.").waitFor({ timeout: 15_000 });
+  ok("PF-5s2 DW4 pass (review M1): when the record moves to Active the page confirms and shows Active", await text(ov, "[data-billing-status]") === "Active" && !ov.url().includes("card=saved"));
+  await ov.context().close();
+  // Break M2: a held firm with a card on file comes back while the record is still on hold: no "Card saved", marker kept.
+  const hd = await newPage(adTok); await rewriteBilling(hd, () => ({ status: "PAYMENT_HOLD", firmStatus: "PAYMENT_HOLD", cardOnFile: true, hold: { reason: "payment needed", since: new Date(Date.now() - 86_400_000).toISOString(), deletionDate: new Date(Date.now() + 89 * 86_400_000).toISOString() } }));
+  await open(hd, "?card=saved"); await hd.waitForTimeout(7_000);
+  ok("PF-5s2 DW4 fail (break M2): on hold with a card on file, the page keeps checking and never says Card saved; the hold line names the deletion date", await text(hd, "[data-billing-checking]") === WORDS.checking && (await hd.getByText("Stripe confirmed your card.").count()) === 0 && hd.url().includes("card=saved") && (await text(hd, "[data-billing-hold]"))?.includes("Your firm's data is kept until") === true, hd.url());
+  await hd.context().close();
   const f = await newPage(rTok); await open(f);
-  ok("PF-5s2 DW4 fail: the return link alone sets nothing: without ?card=saved there is no Checking line and the status is the record's", (await f.locator("[data-billing-checking]").count()) === 0 && await text(f, "[data-billing-status]") === "Free trial");
+  ok("PF-5s2 DW4 fail: the return link alone sets nothing: without ?card=saved there is no Checking line and the status is the record's", (await f.locator("[data-billing-checking]").count()) === 0 && await text(f, "[data-billing-status]") === "Trial");
   await f.route("**/api/platform/billing/checkout", (rt) => rt.fulfill({ status: 503, contentType: "application/problem+json", json: { type: "https://expatready.local/problems/billing-unavailable", title: "Billing is unavailable", status: 503, detail: "We could not reach our billing provider. Try again in a few minutes.", code: "BILLING_UNAVAILABLE" } }));
   const before = stripeHits.length;
   await f.locator("[data-stripe=card]").click(); await f.locator("[data-stripe-error]").waitFor({ timeout: 10_000 });
-  ok("PF-5s2 DW4 fail: Stripe down (503) → \"We couldn't open Stripe. Try again.\" with the server's words; the page stays and the button works again", (await text(f, "[data-stripe-error]"))?.startsWith(WORDS.stripeDown) === true && stripeHits.length === before && await f.locator("[data-stripe=card]").isEnabled(), await text(f, "[data-stripe-error]"));
+  ok("PF-5s2 DW4 fail: Stripe down (503) → \"We couldn't open Stripe. Try again.\"; the page stays and the button works again", await text(f, "[data-stripe-error]") === WORDS.stripeDown && stripeHits.length === before && await f.locator("[data-stripe=card]").isEnabled(), await text(f, "[data-stripe-error]"));
+  ok("PF-5s2 DW4 pass (break M4): after the refusal, focus is on its words, not lost to the page", await f.waitForFunction(() => !!document.activeElement?.querySelector("[data-stripe-error]"), null, { timeout: 3_000 }).then(() => true, () => false));
   await f.route("**/api/platform/billing/portal", (rt) => rt.fulfill({ json: { url: "https://evil.example.com/steal" } }));
   await f.locator("[data-stripe=portal]").click(); await f.waitForTimeout(500);
   ok("PF-5s2 DW4 fail: a hand-off answer that is not a Stripe https page is never followed", f.url().startsWith(BASE) && (await text(f, "[data-stripe-error]")) === WORDS.stripeDown, f.url());

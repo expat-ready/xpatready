@@ -28,7 +28,7 @@ export const KEY = { view: "agent/subscription:pay", card: "agent/subscription:u
 
 /** Status in the requirement's words (contracts §7 l.76) and the chip's tone. */
 export const STATUS: Record<Billing["status"], { label: string; tone: "info" | "ok" | "warn" | "danger" | "neutral"; tip: string }> = {
-  TRIAL: { label: "Free trial", tone: "info", tip: "Your firm is trying Expat Ready. Nothing has been charged." },
+  TRIAL: { label: "Trial", tone: "info", tip: "Your firm is trying Expat Ready. Nothing has been charged." },
   ACTIVE: { label: "Active", tone: "ok", tip: "Your subscription is paid and running." },
   OVERDUE: { label: "Payment overdue", tone: "warn", tip: "The last payment didn't go through. Everything still works while you update your card." },
   PAYMENT_HOLD: { label: "Payment hold", tone: "danger", tip: "Most of the app is paused until a payment goes through." },
@@ -37,7 +37,7 @@ export const STATUS: Record<Billing["status"], { label: string; tone: "info" | "
 
 const DAY = 86_400_000;
 /** "28 Nov 2026" (the concept's form), in the reader's own day. */
-export const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+export const day = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "date not known" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
 /** Whole days left, counting a part day as a day; 0 on the last day and after. */
 export const daysLeft = (iso: string, now: number) => Math.max(0, Math.ceil((new Date(iso).getTime() - now) / DAY));
 
@@ -45,20 +45,30 @@ export const daysLeft = (iso: string, now: number) => Math.max(0, Math.ceil((new
  *  cardOnFile null with Stripe unreachable: the card is not known, so no claim either way. Null when not in a trial. */
 export function trialLine(b: Billing, now: number, canCard: boolean): { text: string; next: string | null; card: boolean } | null {
   if (b.status !== "TRIAL" || !b.trialEndsAt) return null;
-  const n = daysLeft(b.trialEndsAt, now), end = day(b.trialEndsAt);
+  const n = daysLeft(b.trialEndsAt, now), end = day(b.trialEndsAt), past = new Date(b.trialEndsAt).getTime() < now;
+  const left = past ? `Free trial: ended on ${end}.` : n === 0 ? `Free trial: ends today (${end}).` : `Free trial: ${n} ${n === 1 ? "day" : "days"} left (ends ${end}).`;
+  // Break M3: a trial set to cancel takes no payment and needs no card; it says so instead of asking for one.
+  if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription is set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
   if (b.cardOnFile === true) return { text: `Card saved. Your first payment is on ${end}.`, next: null, card: true };
-  const left = n === 0 ? `Free trial: ends today (${end}).` : `Free trial: ${n} ${n === 1 ? "day" : "days"} left (ends ${end}).`;
   const unknown = b.cardOnFile === null && !b.billingAvailable;
   return { text: left, next: canCard && !unknown ? "Add a card before then to keep access." : null, card: false };
 }
 
 /** The dates line under the plan (BR-8). */
 export function datesLine(b: Billing): string | null {
-  if (b.cancelAtPeriodEnd && b.currentPeriodEnd) return `Cancels on ${day(b.currentPeriodEnd)}`;
+  const endOf = b.status === "TRIAL" ? b.trialEndsAt ?? b.currentPeriodEnd : b.currentPeriodEnd;
+  if (b.cancelAtPeriodEnd && endOf) return `Cancels on ${day(endOf)}`;
   if (b.status === "TRIAL") return b.trialEndsAt ? `Trial ends ${day(b.trialEndsAt)}` : null;
   if ((b.status === "ACTIVE" || b.status === "OVERDUE") && b.currentPeriodEnd) return `Next billing date ${day(b.currentPeriodEnd)}`;
   return null;
 }
+
+/** BR-9 (review M1): after a return from Stripe, the record confirms the change when it shows a card that keeps access
+ *  (trial or active, not held) and either the first read after the return already did (the webhook was first) or the
+ *  record moved from that first read (an overdue firm whose old card was on file, now paid). */
+const good = (b: Billing) => b.cardOnFile === true && (b.status === "TRIAL" || b.status === "ACTIVE") && b.firmStatus !== "PAYMENT_HOLD";
+const moved = (a: Billing, b: Billing) => a.status !== b.status || a.firmStatus !== b.firmStatus || a.cardOnFile !== b.cardOnFile || a.currentPeriodEnd !== b.currentPeriodEnd;
+export const confirmed = (first: Billing, now: Billing) => good(now) && (good(first) || moved(first, now));
 
 export const seatsLine = (b: Billing) => b.seatsLimit === null ? `${b.seatsUsed} ${b.seatsUsed === 1 ? "seat" : "seats"} used` : `${b.seatsUsed} of ${b.seatsLimit} seats used`;
 
@@ -71,7 +81,8 @@ export function stripeUrl(raw: string): string | null {
 }
 /** An invoice's hosted link, https only. */
 export const invoiceUrl = (raw: string | null) => raw ? stripeUrl(raw) : null;
-export const money = (cents: number, currency: string) => `${(cents / 100).toLocaleString("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol" })} ${currency}`;
+/** Break m8: a currency code the browser does not know falls back to plain digits, never a blank page. */
+export const money = (cents: number, currency: string) => { try { return `${(cents / 100).toLocaleString("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol" })} ${currency}`; } catch { return `${(cents / 100).toFixed(2)} ${currency}`; } };
 
 export const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
 export const WORDS = {
@@ -81,6 +92,6 @@ export const WORDS = {
   beforeCard: "Before you add a card: your business address. We use it to work out tax.",
   stripeDown: "We couldn't open Stripe. Try again.",
   checking: "Checking for changes from Stripe…",
-  slow: "This is taking longer than usual. Your card is saved at Stripe; refresh in a minute.",
+  slow: "This is taking longer than usual. We haven't seen the change from Stripe yet; refresh in a minute.",
   noView: "Plan details are for the firm's Owner and Admin.",
 } as const;
