@@ -3,7 +3,7 @@
 Lane: qa Q9 (cloud copy), Opus 5.5, medium effort. Live AI off, US$0. Main: ee19b3730 (#1959, PF-5 part 2, merged 23:33 IST), merged into this branch.
 
 ## Verdict
-**Works** (subject to the Lead's answer on the period, question 1). The fresh Opus reader scored it Partial at 70%, with one gap: the billing period is stored only in the audit line. If the audit line is accepted as the record, the reader scores Works at about 80%. j_19 now checks the period (below).
+**Superseded 22 Nov: see the update at the end (Partial, held only on P-339).** Earlier: Works, subject to the period question (answered by #2870). The fresh Opus reader scored it Partial at 70%, with one gap: the billing period is stored only in the audit line. If the audit line is accepted as the record, the reader scores Works at about 80%. j_19 now checks the period (below).
 
 Duplicate check: no new BUGS row. The firm-key clause is QA-483 (open, Ambiguity). QA-481 (the code reaching no inbox) is met by PF-5v part 2; its row is closed in BUGS history. I test QA-483's self-serve wording.
 
@@ -81,7 +81,7 @@ PF-5 part 1 #1815 · PF-5v parts 1 and 2 · PF-5t · PF-5s part 1 #2608 · PF-5 
 
   An earlier attempt went red in two checks with a Prisma validation error. Cause: the fail-on-fake worktree shared node_modules with this copy, and starting its copy regenerated the Prisma client from the old schema. That was the lane's own mistake. I regenerated the client and reran everything: all green.
 * **GitHub:**
-  * walks j_19 44950091079 on 31e89ad2d (Lead dispatch).
+  * walks j_19 **44950091079** on 31e89ad2d (Lead dispatch, job 136986055611): **24/24, exit 0**, with video and trace.
   * #2870's item-proof 44949023938 ran while j_19 was not on main: not cited.
 * **Fresh Opus reader** on the period (ran nothing): **Works on substance, 90%.**
   * The screen always sends the period.
