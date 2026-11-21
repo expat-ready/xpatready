@@ -2,7 +2,7 @@
 
 current_lead: local_8f916b74-a56d-403d-9120-ad622f53c9db Lead 10 · 21 Nov 07:43 IST (series 3; took over from Lead 9 (series 3, local_52cca488) at ~305k, P-446)
 
-updated: 2026-11-21 07:48 IST: Lead 10 current (took over 07:44); DEMO-LINK with Lead B · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 08:19 IST: Lead 10 current (took over 07:44); DEMO-LINK with Lead B · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
