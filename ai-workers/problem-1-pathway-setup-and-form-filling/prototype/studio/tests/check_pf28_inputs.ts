@@ -81,14 +81,29 @@ const dw1bad = judge(inputs(planted({ "front-office/things/routes.ts": thing("co
 const dw1good = inputs(planted({ "front-office/things/routes.ts": thing("const b = parseInput(Thing, body);") }));
 ok("PF-28 DW1 fail: a throwaway front-office route with an unparsed body fails the sweep", dw1bad.unlisted.join() === "front-office/things/routes.ts POST /api/front-office/things/:id body", dw1bad);
 ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict schema) passes", dw1good.length === 1 && dw1good[0].parsedAt === "Things.put", dw1good);
+// Part 2c (review m4): the code follower follows `extends`. A controller calling a method its service inherits is followed
+// into the parent class: parsed there → passes; the parent never parsing it → still fails.
+const heir = (line: string) => `import { Body, Controller, Inject, Injectable, Param, Post } from "@nestjs/common";
+import { parseInput, strict, text } from "../../platform/http/input.ts";
+const Thing = strict({ name: text(100) });
+export class BaseThings { async put(id: string, body: unknown) { ${line} return { id }; } }
+@Injectable() export class Things extends BaseThings {}
+@Controller("api/front-office") export class ThingsController {
+  constructor(@Inject(Things) private readonly t: Things) {}
+  @Post("things/:id") put(@Param("id") id: string, @Body() b: unknown) { return this.t.put(id, b); }
+}`;
+const inheritedGood = inputs(planted({ "front-office/things/routes.ts": heir("const b = parseInput(Thing, body);") })), inheritedBad = inputs(planted({ "front-office/things/routes.ts": heir("const b = body as { name?: string };") }));
+ok("PF-28 part 2c pass (review m4): a body parsed in the method a service inherits from its parent class counts as parsed", inheritedGood.length === 1 && inheritedGood[0].parsedAt === "BaseThings.put", inheritedGood);
+ok("PF-28 part 2c fail (review m4): the same inherited method without a parse still fails the sweep", inheritedBad.length === 1 && inheritedBad[0].parsedAt === null, inheritedBad);
 
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 ok("PF-28 DW7 pass (part 2c): every by-design exception carries its written reason (at least 40 characters)", unreasoned(allow).length === 0, unreasoned(allow));
 ok("PF-28 DW7 fail (part 2c): an exception without a reason, or with a fix part instead, fails", unreasoned({ unparsed: {}, probes: {}, exceptions: { probes: { "GET /api/platform/x query-unknown": "PF-28 part 2 (platform)", "GET /api/platform/y query-unknown": "By design (awaiting the tech lead): short" } } }).length === 2);
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 157, UNPARSED_CEILING = 43;   // part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave) 157 and 43; each fix part lowers both
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 157, UNPARSED_CEILING = 44, EXCEPTIONS_CEILING = 8;   // part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both
+const excepted = Object.keys(allow.exceptions?.unparsed ?? {}).length + Object.keys(allow.exceptions?.probes ?? {}).length;
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size (the by-design exceptions included)", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING && excepted <= EXCEPTIONS_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length, exceptions: excepted });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like

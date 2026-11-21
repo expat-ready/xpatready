@@ -42,7 +42,8 @@
   "front-office/sales/routes.ts POST /api/front-office/prospects/:id/notes body": "PF-28 part 3 (front-office sales)",
   "front-office/sales/routes.ts POST /api/front-office/prospects/:id/undo-convert body": "PF-28 part 3 (front-office sales)",
   "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/allowed-sites body": "PF-28 part 3 (front-office sales)",
-  "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/enabled body": "PF-28 part 3 (front-office sales)"
+  "front-office/sales/routes.ts PUT /api/front-office/web-forms/:id/enabled body": "PF-28 part 3 (front-office sales)",
+  "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body": "PF-28 part 2 (platform)"
  },
  "probes": {
   "GET /api/front-office/booking-types/:id/preview query-unknown": "PF-28 part 4 (booking)",
@@ -204,12 +205,9 @@
   "PUT /api/front-office/web-forms/:id/enabled unknown": "PF-28 part 3 (front-office sales)"
  },
  "exceptions": {
-  "unparsed": {
-   "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body": "By design (awaiting the tech lead): AWS's signed SNS envelope is read only after its signature verifies, and bounces.ts checks its exact field set per Type (FIELDS) before reading; the SES message inside is read field by field with fallbacks (PF-19b part 2)."
-  },
   "probes": {
    "DELETE /api/platform/complaints/:id id:id": "By design (awaiting the tech lead): a complaint is never deleted, so DELETE answers 405 COMPLAINT_KEPT for every id, malformed or not; the same answer for any id says nothing about which ids exist (PF-21w).",
-   "GET /api/public/invitations/:token id:token": "By design (awaiting the tech lead): an invitation token is a 256-bit random string, not a uuid; any token that is not live answers 200 state NOT_VALID, so the accept page shows its own words and a bad token tells nothing (PF-4b).",
+   "GET /api/public/invitations/:token id:token": "By design (awaiting the tech lead): an invitation token is a 256-bit random string, not a uuid; a token that is not live answers 200 with its state (NOT_VALID for an unknown or malformed one, EXPIRED for an expired one), so the accept page shows its own words and a bad token tells nothing (PF-4b).",
    "POST /api/public/invitations/:token/accept id:token": "By design (awaiting the tech lead): accepting a token that is not live answers 410 INVITATION_NOT_VALID, the same for a malformed, unknown, used or expired token (PF-4b, PF-6m2).",
    "POST /api/public/messages/ses-notices 1mb": "By design (awaiting the tech lead): the SNS door keeps AWS's own 300 KB limit and checks the signature first; an unsigned body is 400 'not signed by Amazon SNS' before anything is read (PF-19b part 2).",
    "POST /api/public/messages/ses-notices missing": "By design (awaiting the tech lead): the SNS signature is checked before any field is read, so an unsigned body is 400 'not signed by Amazon SNS', never a field error (PF-19b part 2, AG-10-32).",
