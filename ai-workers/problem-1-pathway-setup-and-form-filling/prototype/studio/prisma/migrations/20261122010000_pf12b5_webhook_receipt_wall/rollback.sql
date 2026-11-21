@@ -3,3 +3,4 @@
 DROP TRIGGER "0_pf12_firm_first" ON "webhook_receipt";
 DROP POLICY "pf12_firm" ON "webhook_receipt";
 ALTER TABLE "webhook_receipt" NO FORCE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY;
+DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261122010000_pf12b5_webhook_receipt_wall';   -- so migrate deploy applies it again (break m4)
