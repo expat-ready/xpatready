@@ -20,3 +20,10 @@ The spike was reverted, and no case-side code is changed in this PR.
 * **C. Rule the `x-actor` door scaffolding (qa's question 2 on #2706).** The signed-in product already has no ungated way to a client (point 5). R1.108 moves to Works on the walks. QA-621 becomes a Later item: retire the persona door's new-client branch when the persona door goes.
 
 **Recommendation: C now. A when the persona door is retired.** B weakens the check's human judgement to save one step.
+
+## Ruling and what was built (21 Nov, after Lead 11's ruling on #2716, P-294 Option C)
+* CS-K1 §5 / P-588 (2) stands. Neither A nor B is built.
+* **Finding (fact):** nothing refused the persona door in a production configuration. `core.ts ConfigReadGuard` passes any non-GET request with no read scope, and `createCase` trusts `x-actor`. Demo routes check only the workspace key, so `POST /api/demo/sample-case` could also open a case and make a client in production. That was the real Major.
+* **Fix:** `Runtime.createCase` refuses every opening whose actor word is not `staff:<id>` when the loaded configuration is production: 403 `SIMULATED_PERSON_REFUSED`, before anything is read. The one way through is `openCaseFromOffer` (a staff session, on a client made by FO-13c's gated win). Local and test copies are unchanged.
+* **Proof:** `tests/check_qa621_persona_door_production.ts` (16 cases; boots one copy as local, the control, then production on the same database; a code sweep of who writes a client or a case). qa's check stays in qa's records (#2706) as the open-finding check for the persona door.
+* **Left open (judgement):** a `PLATFORM_ENVIRONMENT=test` deployment keeps the door open, as ruled ("production"). The rest of the persona-driven studio (configuration writes, other case routes) is not gated by environment either. Retiring the persona door is the X-row (P-582).
