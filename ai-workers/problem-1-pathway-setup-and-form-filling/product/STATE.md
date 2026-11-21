@@ -9,6 +9,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 ## Lead 15 since 15:47 IST (newest first)
+* 16:1x SHARDS=24 (founder entered the 2FA). #2750 answered (walks/plan not required; walks.yml cap row owed). Founder re-asked best staging domain option: Lead recommends B (Route 53 domain, no base change); waits on his purchase + name.
 * 16:1x AWS staging domain: founder chose **option B** (via Lead 14): he registers a cheap domain in Route 53 himself (~US$3-15/yr, card on file). No NS step (Route 53 delegates). Lane pf8b-f1-f2 briefed **F2b**: PLATFORM_ADDRESS_SUFFIX one setting from xr:domain, PR after #2800. Go Phase 2 = #2800 + F2b merged + domain live + name sent to AWS (local_35aacb3f). CloudFront rejected: R1.24 unprovable, bigger code row.
 * 16:0x check: SHARDS 18→24 set in the browser (founder yes, A265) but GitHub asked a 2FA code: **still 18, founder to confirm**. #2603 labelled after Lead read (1d934c9). R1.14 + R1.32 proofs → qa Q5 (no Q2 lane exists). #2782 brief: merge main, drop the #2780 hold line, fix types/pr-rules. #2633 already requeued by Lead 14. AWS: no Cloudflare access → asked AWS session for the CloudFront default-domain plan (one host value, switch later); no "go Phase 2" before #2800 merges and the plan is agreed.
 
