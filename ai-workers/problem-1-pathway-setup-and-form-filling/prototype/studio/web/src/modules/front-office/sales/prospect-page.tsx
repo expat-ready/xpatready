@@ -58,7 +58,7 @@ function ProspectBody({ id }: { id: string }) {
     },
     onSuccess: ({ a, p }) => { qc.setQueryData(key, p); start(null); toast.push({ tone: "ok", text: DONE[a](p) }); },
     onError: (e, a) => {
-      if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id] });   // FO-13s: the gate's verdict read again
+      if (e instanceof StaffApiError && (e.problem.code ?? "").startsWith("CONFLICT_")) void qc.invalidateQueries({ queryKey: ["fo", "conflict-checks", id], exact: true });   // FO-13s: the gate's verdict read again
       const stale = e instanceof StaffApiError && e.problem.code === "STALE";
       // Someone acted first (stale, or it is already lost or won): the panel closes, since its action no longer applies.
       if (e instanceof StaffApiError && ["STALE", "TERMINAL", "ALREADY_WON", "NOT_WON"].includes(e.problem.code ?? "")) { start(null); toast.push({ tone: "danger", text: stale ? `${e.message.replace(/ Reload it\.$/, "")} ${STALE_NOTE}` : e.message }); return; }
@@ -170,7 +170,7 @@ function ProspectBody({ id }: { id: string }) {
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as prospect</Button><Button busy={act.isPending} onClick={submit("convert")}>Yes, convert to client</Button></>}>
         {general}
         <ConvertConflictNote prospectId={p.id} onGo={() => { start(null); focusWhenClosed("fo-conflict"); }} />
-        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : conflictRefused ? null : <Notice tone="warn" title={NOT_SIGNED} />}
+        {p.retainerSigned ? <p className="text-sm">The retainer is signed.</p> : conflictRefused || error?.code?.startsWith("CONFLICT_") ? null : <Notice tone="warn" title={NOT_SIGNED} />}   {/* also when the list never loaded (break m) */}
       </Dialog>
       <Dialog open={open === "undo"} onOpenChange={(o) => start(o ? "undo" : null)} title={`Undo the Convert of ${name}?`} description={`${p.number} goes back to the stage it was in. Possible only while the client has no case, invoice or signed retainer.`}
         footer={<><Button variant="ghost" onClick={() => start(null)}>No, keep as client</Button><Button busy={act.isPending} onClick={submit("undo")}>Yes, undo convert</Button></>}>

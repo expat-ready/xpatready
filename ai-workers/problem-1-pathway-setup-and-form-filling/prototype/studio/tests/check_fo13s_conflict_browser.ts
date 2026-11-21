@@ -154,19 +154,24 @@ try {
   const convF = rf.getByRole("dialog", { name: /Convert .* to a client\?/ });
   await convF.getByRole("button", { name: "Yes, convert to client" }).click();
   await convF.getByText(/Record a conflict-of-interest check for this client first/).waitFor({ timeout: 10_000 }).catch(() => undefined);
-  ok("FO-13s2 break R1 fail: with the conflict list failing, a Convert refusal still shows the server's sentence once (never a silent dialog)",
-    (await convF.getByText(/Record a conflict-of-interest check for this client first/).count()) === 1 && sql(`select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${fin.id}'`) !== "WON");
+  ok("FO-13s2 break R1 fail: with the conflict list failing, a Convert refusal still shows the server's sentence once (never a silent dialog), and no \"Work can start\" (break r3 m)",
+    (await convF.getByText(/Record a conflict-of-interest check for this client first/).count()) === 1 && !(await convF.innerText()).includes("Work can start") && sql(`select s.kind from fo_prospect p join fo_stage s on s.id = p.stage_id where p.id = '${fin.id}'`) !== "WON");
   await rf.context().close();
 
   // ---------------------------------------------------- review M2: every opening searches afresh (never the last answer)
   const eve = prospect("Eve", R.id);
+  let previews = 0; const countPreview = (q: { method(): string; url(): string }) => { if (q.method() === "POST" && q.url().endsWith("/conflict-checks/preview")) previews++; };
+  r.on("request", countPreview);
   await open(r, eve.id); await runCheck(r);
   const before = await drawer(r).locator("[data-match]").count();
   await drawer(r).getByRole("button", { name: "Cancel" }).click(); await drawer(r).waitFor({ state: "hidden" });
   person(`Late${run}`, eve.email, R.id);   // a lead with the client's email arrives meanwhile
   await panel(r).getByRole("button", { name: "Run a check" }).click(); await drawer(r).locator("[data-searched]").waitFor({ timeout: 15_000 });
   ok("FO-13s2 M2 pass/fail: reopened at once, the panel searches again and lists the new match (it had none before)", before === 0 && (await drawer(r).getByText(`Late${run} Sample`).count()) === 1, before);
-  await drawer(r).getByRole("button", { name: "Cancel" }).click();
+  await drawer(r).getByLabel("No conflict").check(); await drawer(r).getByRole("button", { name: "Save check" }).click();
+  await r.locator('[data-conflict-status="CLEARED"]').waitFor({ timeout: 15_000 }); await r.waitForTimeout(1_000);
+  r.off("request", countPreview);
+  ok("FO-13s2 break r3 m: one search per opening, Save included (2 openings → 2 searches; Save reads the list, never the search again)", previews === 2, previews);
   // m6: a Corporate prospect is searched by its company's name only, and says so.
   const coP = person(`Corp${run}`, `fo13s2.corp.${run}@example.com`, R.id), CO = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${A}', 'Maple ${run} Ltd', 'maple ${run}', 'staff:${R.id}', now()) returning id`);
   sql(`update fo_lead set state = 'ENGAGED', engaged_at = now(), engaged_by = 'test' where person_id = '${coP}'; insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${CO}', '${coP}', 'PRIMARY', 'test')`);
@@ -219,6 +224,15 @@ try {
   ok("FO-13s2 BR-8 pass: the checker's page is Cleared, naming who confirmed", (await panel(t).locator("[data-counts]").first().innerText()).includes("confirmed by Sample admin"));
   await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
   ok("FO-13s2 m7 fail: the link once confirmed answers the server's sentence (nothing waits)", (await ad.locator("[data-confirm-check]").count()) === 0);
+  // break m4: a hidden match appears after the result was chosen; Save is refused, the panel searches again, focus lands on the refusal
+  const gus = prospect("Gus", T.id);
+  await open(t, gus.id); await runCheck(t); await drawer(t).getByLabel("No conflict").check();
+  person(`Hidden2${run}`, gus.email, O.id);
+  await drawer(t).getByRole("button", { name: "Save check" }).click();
+  await drawer(t).getByRole("button", { name: "Record for confirmation" }).waitFor({ timeout: 15_000 });
+  const onRefusal = await t.waitForFunction(() => (document.activeElement as HTMLElement | null)?.dataset?.refusal !== undefined, undefined, { timeout: 3_000 }).then(() => true, () => false);
+  ok("FO-13s2 break m4 fail: a hidden match that appears before Save → refused, searched again, focus on the refusal (not the dialog), nothing stored", onRefusal && checks(gus.id) === 0);
+  t.once("dialog", (d) => void d.accept()); await drawer(t).getByRole("button", { name: "Cancel" }).click();
   await seesAll(true);
 
   // ---------------------------------------------------- BR-7 keys; keyboard; widths
