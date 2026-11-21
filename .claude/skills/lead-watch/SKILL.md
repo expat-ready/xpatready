@@ -8,18 +8,18 @@ description: The tech lead's 30-minute check for the Pathway Configurator - reso
 The outcome, in this order (founder, 3 Nov): **quality first** (P-303), **complete** (every capability confirmed by an independent test, P-290), **on time** (the milestone dates), **tokens second only to those** (never a cheaper model or a skipped check to save them). Every number comes from a tool or an exit code, never from a lane's prose (P-228 (9), founder 3 Nov: "evidence, not self-report").
 
 ## Each check: three calls, then act
-1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed; exit = lines to act on) · `list_sessions` only when a lane looks quiet.
+1. `get_usage` (weekly plan %, extra usage, your context) · `bash product/tools/lead-watch.sh 30` (disk, test databases, merges, queue, questions, lanes that pushed, last the cycle timeline; exit = lines to act on) · `list_sessions` only when a lane looks quiet.
 2. Act on every `ACT` line in this check. Do not re-read STATE, BACKLOG or DECISIONS on a check; read them only when a ruling needs them.
-3. Tell the founder three to five plain lines in IST (P-302), only what changed, and only a decision, risk or spend unasked. **Open with "🔴 Needs you"** (what, where, what stops; "nothing" when empty), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478).
+3. Tell the founder three to five plain lines in IST (P-302), only what changed, and only a decision, risk or spend unasked. **Open with "🔴 Needs you"** (what, where, what stops; "nothing" when empty), then "🟡 Decide when you can"; every 🔴 item is also the end-of-turn box's question (P-478). Then the timeline (A244; keep `product/cycle-plan.json` current).
 
 ## The app view and the ETA board (founder, 4 Nov, P-338, P-339)
 * **App view, every check (P-326):** one script read of claude.ai/code statuses in the built-in browser (Awaiting input, Failed, Merge conflicts, quiet over 90 min), plus `list_sessions include_archived` for any lane archived with work left (restore and brief it). Open a lane only when flagged; confirm its URL and title before typing or clicking; the list re-sorts, so never click by an old position.
 * **Prompts in a lane:** the founder approves the Lead answering a lane's question or permission prompt in claude.ai only when the action is inside that lane's brief and the rules (no spend over the cap, no settings or permission change, no delete, no label the rules forbid). Anything else, or a product preference, goes to the founder at once.
 * **Escalate at once:** any lane blocked on the founder gets one line to him with a recommendation; when the 10-message cap is reached, ask him to type "go".
-* **ETA board in every report:** 3–6 capabilities next to reach Works (qa-confirmed), each with an IST time and the one step it waits on, and whether the last estimate was on time or late by N minutes and why; built only from this check's own data.
+* **ETA board:** the timeline; late rows: why, and slip vs the previous estimate (P-338).
 
-## Full report ("full report", "/lead-watch full", "how are we doing")
-Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-measure.py --since <00:00 IST as UTC>`, the app view ("Show more" expanded), open PRs, `mergify/` batches, runners (`gh.sh api .../actions/runners`). **Measure, name the constraint, act on it first (Unblock playbook), then reply in chat only** (no file). Every number from a tool, its sample named (P-500); a number no tool gives says "counted by hand from <source>". Codes carry their purpose: "R1.38 (staff Bookings calendar)". Business words.
+## Full report (minutes 03 and 33 IST, P-783 (2), or asked; else short; cron prompt unchanged)
+Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-measure.py --since <00:00 IST as UTC> --lead` (`--lead`: ENF-782b), the app view ("Show more" expanded), open PRs, `mergify/` batches, runners (`gh.sh api .../actions/runners`). **Measure, name the constraint, act on it first (Unblock playbook), then reply in chat only** (no file). Samples named (P-500); a number no tool gives says "counted by hand from <source>". Codes carry their purpose: "R1.38 (staff Bookings calendar)". Business words.
 **Counts:** Proven = R1 rows at Works in `qa/CAPABILITIES.md` on `origin/main` (not the "four" line: C rows). Proven today = now minus at 00:00 IST, net (a row that left Works subtracts). Rate = now minus 24 h ago; forecast = IST date all 101 are proven at that rate, with "(n rows in 24 h)". On track = the forecast is on or before the Release 1 date (P-609).
 1. **🔴 Needs you / 🟡 Decide when you can** (P-478), each with "Recommend: ..."; each also a card; spend red with US$.
 2. **Headline:** proven today N (target 10) · total T of 101 · forecast · on track yes/no.
@@ -28,6 +28,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 5. **Five whys** on the gap to 10, each step with evidence (PR, run, count, time), ending "Fix · Owner · by HH:MM IST". Skip at 10 or more proven today.
 6. **Risks and mitigations**, at most five, each with cost and owner.
 7. **Resources:** weekly %, burn per hour, IST times of 96% and 98%; your context and hand-over; disk; runners; standbys.
+8. **Timeline** (A244), and **recovery steps** per late row: step, owner, IST.
 **Appendix, only when asked or when it explains a 🔴 line**: waves item by item with WIP (`waves.py wip`: building + approve + merge queue against cap 8; built not proven against cap 12) · lanes (item, last push IST, waiting / failed / quiet / ok) · manual unblocks done (PR, time, rule).
 
 ## Unblock playbook (each line points to its rule; read the failed log or Mergify's summary first, P-502)
@@ -68,4 +69,4 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 * 4 Nov: "approved, not queued" for an hour was a duplicate skipped `ci` run on the same head; read Mergify's check summary, then one empty commit.
 
 ## Tokens without losing quality
-One script call instead of many `gh` calls; messages only when something changed; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, reading exit codes).
+One script call instead of many `gh` calls; no re-reading big files on checks; Sonnet only for mechanical work (finding files, running suites, reading exit codes).
