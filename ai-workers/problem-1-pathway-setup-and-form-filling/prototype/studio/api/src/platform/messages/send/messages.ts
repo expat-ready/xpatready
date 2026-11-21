@@ -308,17 +308,28 @@ export class Messages implements MessagePort<Tx> {
     let n = 0;
     for (const r of rows) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     for (const r of firmDue) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
-    const due = await this.d.db.msgOutbox.findMany({
-      where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
-      orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
-    });
-    // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
-    const platform = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
-      .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
+    // PF-12b part 4 (QA-697, Lead 16 on #2845): the platform rows are firm-less, read on this bypass use too. The read and
+    // its one firm-null platform.bypass line share a transaction; a line that cannot be written queues no platform send,
+    // and the sweep then fails (P-607), after the firms' work, as a firm whose line fails. The line is written when the read
+    // picks a due row (one per sweep at most); a read that picks nothing (an idle minute, rows still in their back-off)
+    // writes none, the firms' rule above. A row picked whose job key this hour already holds queues nothing new but is
+    // still lined: lines can only be added, never missed (break m1).
+    let platformError: unknown = null;
+    const platform = await this.d.db.$transaction(async (tx) => {
+      const due = await tx.msgOutbox.findMany({
+        where: { audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED", updatedAt: { lt: new Date(now.getTime() - SWEEP_AFTER_MS) } },
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, stateReason: true, updatedAt: true },
+      });
+      // A row never tried goes first, then the fewest tries, then the least recently tried (break F1: stuck rows never starve a new one).
+      const pick = due.filter((r) => r.updatedAt.getTime() <= now.getTime() - platformRetryAfterMs(triesOf(r.stateReason)))
+        .sort((x, y) => triesOf(x.stateReason) - triesOf(y.stateReason) || x.updatedAt.getTime() - y.updatedAt.getTime()).slice(0, SWEEP_PER_FIRM);
+      if (pick.length) await touchPlatform(tx, { step: "sweep.platform-rows", key: null });
+      return pick;
+    }).catch((e) => { if (!(e instanceof BypassNotRecorded)) throw e; platformError = e; logPort.warn("messages_sweep_platform_skipped", { reason: "bypass_not_recorded" }); return []; });
     // The hour is in the key (as the firm rows'), so a try that failed before it was counted is queued again next hour
     // instead of waiting on a key already used (break R2, review m-r2).
     for (const r of platform) if ((await this.d.jobs.enqueue(SEND_QUEUE, { outboxId: r.id, platform: true }, { key: `${platformJobKey(r.id, triesOf(r.stateReason))}:sweep:${hour}`, platform: true })).queued) n++;
-    if (error) throw error;
+    if (error ?? platformError) throw error ?? platformError;
     return n;
   }
 

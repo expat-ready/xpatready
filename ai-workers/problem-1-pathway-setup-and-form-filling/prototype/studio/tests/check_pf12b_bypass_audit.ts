@@ -369,12 +369,32 @@ try {
   onBypassAudit(wasSw); useLog(wasLog);
   const swJobs = pjobs.jobs.slice(sjBefore);
   const firmJobs = swJobs.filter((j) => j.firmId !== null).map((j) => j.firmId), platJobs = swJobs.filter((j) => j.firmId === null);
-  ok("PF-12b1m sweep: firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error",
+  ok("PF-12b1m sweep (its firm-less line: PF-12b4 below): firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error",
     swErr instanceof BypassNotRecorded && JSON.stringify(firmJobs) === JSON.stringify([A])
       && platJobs.length === 1 && (platJobs[0].payload as { outboxId?: string; platform?: boolean }).outboxId === platId && (platJobs[0].payload as { platform?: boolean }).platform === true && platJobs[0].name === "messages.send"
       && sweepRec.entries.map((e) => e.firmId).join(",") === A
       && logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId === B.toLowerCase()) && !logged.some((l) => l.event === "messages_sweep_firm_skipped" && l.firmId !== B.toLowerCase()),
     { swErr: String(swErr), firmJobs, platJobs, lines: sweepRec.entries.map((e) => e.firmId), logged: logged.filter((l) => String(l.event).startsWith("messages_sweep")) });
+  // PF-12b part 4 (QA-697): the platform branch's read writes one firm-null platform.bypass line in its transaction.
+  const platLines = sweepRec.caseEntries.filter((e) => e.action === "platform.bypass");
+  ok("PF-12b4 pass (QA-697): picking and queuing the firm-less send (one platform job) wrote exactly one platform.bypass line on the platform workspace (step sweep.platform-rows, actor system:job:messages.outbox_sweep)",
+    platJobs.length === 1 && platLines.length === 1 && typeof platLines[0].workspaceId === "string" && platLines[0].firmId === undefined && platLines[0].actor === "system:job:messages.outbox_sweep" && (platLines[0].detail as { step?: string })?.step === "sweep.platform-rows", sweepRec.caseEntries);
+  await clock.advance({ hours: 1 });
+  const ago4 = new Date(clock.now().getTime() - 3_600_000).toISOString();
+  sql(`update msg_outbox set state = 'SENT' where state = 'QUEUED'`);   // only the row below is due
+  const plat4 = sql(`insert into msg_outbox (id, firm_id, audience, channel, address, rendered_hash, class, state, idempotency_key, created_at, updated_at) values (gen_random_uuid(), null, 'PLATFORM_ACCOUNT', 'EMAIL', 'due4@pf12b4.example.com', repeat('e', 64), 'TRANSACTIONAL', 'QUEUED', 'signup:pf12b4-due', '${ago4}', '${ago4}') returning id`).split("\n")[0];
+  const firmOk = fakeAudit(), noPlatform = { record: async (tx: unknown, e: Parameters<typeof firmOk.record>[1]) => { if ("workspaceId" in e) throw new Error("audit store down (Sample)"); await firmOk.record(tx, e); } };
+  const logged4: Record<string, unknown>[] = [], wasLog4 = useLog(new JsonLog((l) => { try { logged4.push(JSON.parse(l) as Record<string, unknown>); } catch { /* not JSON */ } }));
+  const was4b = onBypassAudit(noPlatform), j4 = pjobs.jobs.length;
+  const err4 = await errOf(() => asJob("messages.outbox_sweep", () => pm.sweep()));
+  onBypassAudit(was4b); useLog(wasLog4);
+  ok("PF-12b4 fail (QA-697): when that line cannot be written, the sweep queues no firm-less send, logs the skip and fails (BypassNotRecorded)",
+    err4 instanceof BypassNotRecorded && !pjobs.jobs.slice(j4).some((j) => (j.payload as { outboxId?: string }).outboxId === plat4) && logged4.some((l) => l.event === "messages_sweep_platform_skipped"), { err4: String(err4), jobs: pjobs.jobs.slice(j4) });
+  sql(`update msg_outbox set state = 'SENT' where id = '${plat4}'`);
+  const idleRec = fakeAudit(), wasI = onBypassAudit(idleRec);
+  await asJob("messages.outbox_sweep", () => pm.sweep());
+  onBypassAudit(wasI);
+  ok("PF-12b4 pass: a sweep with no firm-less row due writes no platform line (an idle minute adds none)", idleRec.caseEntries.length === 0, idleRec.caseEntries);
 
   // Merge of main (QA-601, 20 Nov): a firm row the provider refused is queued again once its wait is over. That read crosses
   // firms too, so each firm with a due retry gets its line first, and a firm whose line fails gets no retry queued.
