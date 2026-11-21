@@ -34,6 +34,18 @@ export function taskDefinitions(t: Template): { service?: [string, Res]; migrati
   };
 }
 
+/** Exactly two task definitions (the service's, the migration's), and every container runs this stack's one repository
+ *  at the one digest parameter, in CDK's exact URI form: no other registry, tag or sidecar image (re-break RC-1). */
+export function imageFindings(t: Template): string[] {
+  const tds = all(t, "AWS::ECS::TaskDefinition"), { service, migration } = taskDefinitions(t);
+  const out = tds.length === 2 && service && migration ? [] : [`${tds.length} task definitions, not exactly the service's and the migration's`];
+  const repos = all(t, "AWS::ECR::Repository").map(([id]) => id), digests = Object.entries((t.Parameters ?? {}) as Record<string, { AllowedPattern?: string }>).filter(([, p]) => p.AllowedPattern === "^sha256:[a-f0-9]{64}$").map(([k]) => k);
+  const part = (i: number) => ({ "Fn::Select": [i, { "Fn::Split": [":", { "Fn::GetAtt": [repos[0], "Arn"] }] }] });
+  const want = json({ "Fn::Join": ["", [part(4), ".dkr.ecr.", part(3), ".", { Ref: "AWS::URLSuffix" }, "/", { Ref: repos[0] }, "@", { Ref: digests[0] }]] });
+  for (const [id, td] of tds) for (const c of containers(td)) if (repos.length !== 1 || digests.length !== 1 || json(g(c, "Image")) !== want) out.push(`${id}/${c.Name}: image ${json(g(c, "Image")).slice(0, 80)} is not this stack's repository at the digest`);
+  return out;
+}
+
 /** PF-24's loader (api/src/platform/config/settings.ts) as text: each setting's name, whether it is secret and required. */
 export function loaderSettings(source: string): { name: string; secret: boolean; required: boolean }[] {
   return [...source.matchAll(/\b(s|opt)\("[^"]+", "([A-Z0-9_]+)", (true|false)/g)].map((m) => ({ name: m[2], secret: m[3] === "true", required: m[1] === "s" }));

@@ -145,3 +145,24 @@ I read only `git diff b01a20d adaa846 -- …/deploy/cdk/lib/checks.ts`. `npm tes
 - Every digest-parameter variant: a `Default` (F1), `AllowedValues` (F2), a region in `Description` (F3), a widened pattern (F4). Each one fails `digestOnly` or the region scan of the `Parameters` section.
 - Key policy: a grant with no ViaService (G2), with ViaService widened to s3 (G3), or with `kms:*` (G4) is refused.
 - `Policies` on a non-IAM type: a SAM function is refused by `typeFindings` (H1). A `Statement` inside Cognito's `Policies` (H2) passes the checks, but CloudFormation's own schema refuses it.
+
+## Re-break (c99d79a)
+
+Verdict: 1 Major
+
+The range `0d0a5b2..c99d79a` did not resolve, so I read `git diff HEAD~1 HEAD` (c99d79a), leaving out `product/screens`. `npm test` passes (83/83); I re-ran `npm run synth` and no `cdk` or AWS CLI. I re-ran the round-4 set (40 cases, including A2c and B×5) through all four `checks.ts` guards and the nine `service-checks` functions. 36 are caught now, RB-1 (I1, I1b) and RB-2 (I2, I3, I4) among them, along with trust read across every statement (A2c, A3), separate execution and task action lists, `?` and account numbers in joined ARNs (E1, E4, E5), and execution-role-only key grants with a single principal key (G1, G5, G6). The 4 still missed are H2 (CloudFormation's schema refuses it) and I5, I6, I7 (Minor, as listed before). I added 10 new attempts, J1–J10.
+
+**RC-1 (Major). No check reads where any image other than the service's main container comes from.** J1: setting the **migration** container's `Image` to `docker.io/attacker/tools@sha256:bbbb…` returns 0 findings across every function. That container holds `DATABASE_URL` = `xr/<stage>/DATABASE_OWNER_URL`, the table owner, and PF-8c runs it automatically before every deploy. So one `ContainerImage.fromRegistry(…)` hands the owner credential to an outside image.
+- J1b: a sidecar on the service task pulled from docker.io also passes.
+- J2: a third task definition passes too. It has its own ecs-trusted execution role (trust written in CDK's key order), reads the owner secret, gets an SM-only key grant, and runs a docker.io image. It is never run by the service, but `roleFindings` looks only at the first task definition whose command contains `migrate deploy` (`service-checks.ts:33`). The only image check is a **test** on the service's first container (`test/service.test.ts:44`).
+The row says the image is PF-7's, by digest, and that migrations run under the owner role. This is the permission path that matters most, and nothing guards it. Fix: a check in `service-checks.ts` (not only a test) that every container `Image` in every task definition is exactly this stack's repository URI `@{Ref: <digest parameter>}`. Allow exactly two task definitions: the service's and the migration task.
+
+**Minor**
+- J3 and J4: the account test in joined ARNs (`checks.ts:383`, `:\d{12}:`) misses an account split across two literals (`"…:999999"`, `"999999:repository/"`) and an account that ends a literal (`"…:999999999999"`, `":repository/"`). Fix: test the joined literal text.
+- J6: an outside ARN in the ECS service's `Role` passes. The key is `Role`, so the `RoleArn$` pattern (`:364`) misses it.
+- J5: bucket `NotificationConfiguration.LambdaConfigurations` naming a foreign Lambda passes. Only `LambdaConfig` is refused, and the notification sends object keys, not object contents.
+- J9: the staff pool's `EmailConfiguration.SourceArn` set to a foreign SES identity passes. That is where invitations and reset codes are sent from.
+- J10: load balancer access logs sent to a bucket we don't own (`access_logs.s3.bucket`) pass, which would leak request metadata.
+- I5, I6 and I7 are unchanged.
+
+**Held:** every round-4 mutation except the four above. J8 is held too: a dummy task definition that makes the task role an "execution role" so the key grant passes is still caught, because the task role then falls into both lists and gets no actions.

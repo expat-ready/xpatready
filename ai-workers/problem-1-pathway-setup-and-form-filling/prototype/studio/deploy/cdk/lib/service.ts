@@ -34,14 +34,9 @@ export interface AppServiceProps {
 }
 
 export class AppService extends Construct {
-  readonly repository: ecr.Repository;
   readonly service: ecs.FargateService;
   readonly task: ecs.FargateTaskDefinition;
   readonly migration: ecs.FargateTaskDefinition;
-  readonly zone: route53.PublicHostedZone;
-  readonly certificate: acm.Certificate;
-  readonly pools: Record<(typeof POOLS)[number], cognito.UserPool>;
-  readonly loadBalancer: elbv2.ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props: AppServiceProps) {
     super(scope, id);
@@ -53,7 +48,7 @@ export class AppService extends Construct {
     const platformEnv = stage === "production" ? "production" : "test";
 
     // --- the image: ECR, run by digest only
-    this.repository = new ecr.Repository(this, "Images", {
+    const repository = new ecr.Repository(this, "Images", {
       repositoryName: `xr-${stage}-studio`,
       imageTagMutability: ecr.TagMutability.IMMUTABLE,
       imageScanOnPush: true,
@@ -66,7 +61,7 @@ export class AppService extends Construct {
       allowedPattern: "^sha256:[a-f0-9]{64}$",
       description: "The studio image's digest in this stack's repository (PF-8c's deploy fills it; never a tag)",
     });
-    const image = ecs.ContainerImage.fromRegistry(this.repository.repositoryUriForDigest(digest.valueAsString));
+    const image = ecs.ContainerImage.fromRegistry(repository.repositoryUriForDigest(digest.valueAsString));
 
     // --- secrets: names only here, values supplied at deploy (SA-8-1)
     const secret = (name: string) => new sm.Secret(this, `Secret${name}`, {
@@ -96,8 +91,8 @@ export class AppService extends Construct {
       p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true }, disableOAuth: true }); // no hosted UI yet: no OAuth flows or placeholder callbacks
       return p;
     };
-    this.pools = { staff: pool("staff", true), "own-staff": pool("own-staff", true), clients: pool("clients", false) };
-    const staffClient = this.pools.staff.node.findChild("App") as cognito.UserPoolClient;
+    const pools = { staff: pool("staff", true), "own-staff": pool("own-staff", true), clients: pool("clients", false) };
+    const staffClient = pools.staff.node.findChild("App") as cognito.UserPoolClient;
 
     // --- the service's task: settings explicit, secrets by reference
     this.task = new ecs.FargateTaskDefinition(this, "Task", { cpu: 1024, memoryLimitMiB: 2048, runtimePlatform: { cpuArchitecture: ecs.CpuArchitecture.X86_64, operatingSystemFamily: ecs.OperatingSystemFamily.LINUX } }); // Sample sizes
@@ -107,14 +102,14 @@ export class AppService extends Construct {
       environment: {
         PLATFORM_ENVIRONMENT: platformEnv, // rev 16.5: explicit, never defaulted
         PLATFORM_IDENTITY: "cognito",
-        PLATFORM_COGNITO_USER_POOL_ID: this.pools.staff.userPoolId,
+        PLATFORM_COGNITO_USER_POOL_ID: pools.staff.userPoolId,
         PLATFORM_COGNITO_CLIENT_ID: staffClient.userPoolClientId,
         PLATFORM_SES_REGION: region,
       },
       secrets: Object.fromEntries(Object.entries(appSecrets).map(([n, s]) => [n, ecs.Secret.fromSecretsManager(s)])),
       readonlyRootFilesystem: false, // the image writes var/ (PF-7)
     });
-    this.repository.grantPull(this.task.obtainExecutionRole());
+    repository.grantPull(this.task.obtainExecutionRole());
 
     // --- the migration task: the owner's address only, the same image, `prisma migrate deploy`
     this.migration = new ecs.FargateTaskDefinition(this, "Migrate", { cpu: 512, memoryLimitMiB: 1024 }); // Sample sizes
@@ -124,16 +119,16 @@ export class AppService extends Construct {
       environment: { PLATFORM_ENVIRONMENT: platformEnv },
       secrets: { DATABASE_URL: ecs.Secret.fromSecretsManager(ownerUrl) },
     });
-    this.repository.grantPull(this.migration.obtainExecutionRole());
+    repository.grantPull(this.migration.obtainExecutionRole());
 
     // --- mail: SES with DKIM, SPF on a MAIL FROM subdomain, DMARC (Sample policy)
-    this.zone = new route53.PublicHostedZone(this, "Zone", { zoneName: domain, comment: `Expat Ready ${stage}: firm addresses <firm>.${domain} (PF-25)` });
+    const zone = new route53.PublicHostedZone(this, "Zone", { zoneName: domain, comment: `Expat Ready ${stage}: firm addresses <firm>.${domain} (PF-25)` });
     const identity = new ses.EmailIdentity(this, "Mail", {
-      identity: ses.Identity.publicHostedZone(this.zone),
+      identity: ses.Identity.publicHostedZone(zone),
       dkimSigning: true,
       mailFromDomain: `mail.${domain}`,
     });
-    new route53.TxtRecord(this, "Dmarc", { zone: this.zone, recordName: `_dmarc.${domain}`, values: ["v=DMARC1; p=none; adkim=s; aspf=r"] }); // Sample: monitor first; SPF relaxed (MAIL FROM is mail.<domain>), DKIM strict
+    new route53.TxtRecord(this, "Dmarc", { zone: zone, recordName: `_dmarc.${domain}`, values: ["v=DMARC1; p=none; adkim=s; aspf=r"] }); // Sample: monitor first; SPF relaxed (MAIL FROM is mail.<domain>), DKIM strict
     identity.grantSendEmail(this.task.taskRole);
 
     // --- network: load balancer in the public subnets, tasks in the app subnets, the database reachable from both tasks
@@ -161,20 +156,20 @@ export class AppService extends Construct {
       circuitBreaker: { enable: true, rollback: true }, // PF-8c proves the rollback in the account
     });
 
-    this.certificate = new acm.Certificate(this, "Wildcard", { domainName: `*.${domain}`, validation: acm.CertificateValidation.fromDns(this.zone) });
-    this.loadBalancer = new elbv2.ApplicationLoadBalancer(this, "Lb", {
+    const certificate = new acm.Certificate(this, "Wildcard", { domainName: `*.${domain}`, validation: acm.CertificateValidation.fromDns(zone) });
+    const loadBalancer = new elbv2.ApplicationLoadBalancer(this, "Lb", {
       vpc, internetFacing: true, securityGroup: albSg, vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC }, dropInvalidHeaderFields: true,
     });
-    const https = this.loadBalancer.addListener("Https", { port: 443, protocol: elbv2.ApplicationProtocol.HTTPS, certificates: [this.certificate], sslPolicy: elbv2.SslPolicy.RECOMMENDED_TLS, open: false });
+    const https = loadBalancer.addListener("Https", { port: 443, protocol: elbv2.ApplicationProtocol.HTTPS, certificates: [certificate], sslPolicy: elbv2.SslPolicy.RECOMMENDED_TLS, open: false });
     https.addTargets("Studio", {
       port: CONTAINER_PORT, protocol: elbv2.ApplicationProtocol.HTTP, targets: [this.service],
       healthCheck: { path: "/api/health/live", healthyHttpCodes: "200", interval: Duration.seconds(15) }, // Sample timings
       deregistrationDelay: Duration.seconds(30),
     });
-    this.loadBalancer.addListener("Http", { port: 80, open: false, defaultAction: elbv2.ListenerAction.redirect({ protocol: "HTTPS", port: "443", permanent: true }) });
+    loadBalancer.addListener("Http", { port: 80, open: false, defaultAction: elbv2.ListenerAction.redirect({ protocol: "HTTPS", port: "443", permanent: true }) });
 
-    new route53.ARecord(this, "Firms", { zone: this.zone, recordName: `*.${domain}`, target: route53.RecordTarget.fromAlias(new targets.LoadBalancerTarget(this.loadBalancer)) });
+    new route53.ARecord(this, "Firms", { zone: zone, recordName: `*.${domain}`, target: route53.RecordTarget.fromAlias(new targets.LoadBalancerTarget(loadBalancer)) });
     // Delegation: these name servers go at the parent (the registrar for production, `base`'s zone for staging; README).
-    new CfnOutput(this, "NameServers", { value: Fn.join(",", this.zone.hostedZoneNameServers!), description: `NS records for ${domain} at its parent` });
+    new CfnOutput(this, "NameServers", { value: Fn.join(",", zone.hostedZoneNameServers!), description: `NS records for ${domain} at its parent` });
   }
 }

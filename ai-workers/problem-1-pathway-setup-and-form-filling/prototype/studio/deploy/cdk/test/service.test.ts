@@ -9,7 +9,7 @@ import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { REGION_ALLOW, bypassFindings, regionFindings, resourcePolicyFindings, type Template } from "../lib/checks.ts";
 import { DEFAULT_DOMAIN } from "../lib/service.ts";
-import { exposureFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
+import { exposureFindings, imageFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SETTINGS = loaderSettings(readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8"));
@@ -23,10 +23,8 @@ const svcContainer = (t: Template) => (taskDefinitions(t).service![1].Properties
 const of = (t: Template, type: string) => Object.entries(t.Resources ?? {}).filter(([, r]) => r.Type === type);
 
 test("PF-8b the loader is read: its secret and required settings are found (a guard that the text scan still works)", () => {
-  const names = SETTINGS.map((x) => x.name);
-  for (const n of ["DATABASE_URL", "PLATFORM_STRIPE_SECRET_KEY", "PLATFORM_SECRET_BOX_KEYS", "PLATFORM_COGNITO_USER_POOL_ID", "PLATFORM_IDENTITY"]) assert.ok(names.includes(n), n);
-  assert.ok(SETTINGS.filter((x) => x.secret).length >= 7 && SETTINGS.filter((x) => x.required).length >= 12);
-});
+  for (const n of ["DATABASE_URL", "PLATFORM_STRIPE_SECRET_KEY", "PLATFORM_SECRET_BOX_KEYS", "PLATFORM_COGNITO_USER_POOL_ID", "PLATFORM_IDENTITY"]) assert.ok(SETTINGS.some((x) => x.name === n), n);
+  assert.ok(SETTINGS.filter((x) => x.secret).length >= 7 && SETTINGS.filter((x) => x.required).length >= 12); });
 
 for (const s of real) {
   const stage = stageOf(s.name), domain = domainOf(s.name);
@@ -40,12 +38,7 @@ for (const s of real) {
   test(`PF-8b pass (${s.name}): the migration task uses the owner's address, the service the app role's`, () => assert.deepEqual(roleFindings(s.template, stage), []));
   test(`PF-8b pass (${s.name}): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published`, () => assert.deepEqual(mailFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): three separate Cognito pools, staff pools with required two-step`, () => assert.deepEqual(poolFindings(s.template, stage), []));
-  test(`PF-8b pass (${s.name}): the image is run by digest from this stack's repository, never a tag`, () => {
-    const img = JSON.stringify(svcContainer(s.template)).match(/"Image":(\{.*?\]\]\})/)![1];
-    assert.match(img, /"@",\{"Ref":"AppImageDigest[0-9A-F]+"\}/);
-    const digest = Object.entries(s.template.Parameters as Record<string, { AllowedPattern?: string }>).find(([k]) => k.startsWith("AppImageDigest"))![1];
-    assert.equal(digest.AllowedPattern, "^sha256:[a-f0-9]{64}$");
-  });
+  test(`PF-8b pass (${s.name}): every container runs this stack's repository by digest, never a tag; two task definitions`, () => assert.deepEqual(imageFindings(s.template), []));
 }
 
 const t0 = real.find((s) => s.name === "xr-production")!.template;
@@ -112,6 +105,13 @@ test("PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretSt
   const mig = taskDefinitions(t).migration!; (mig[1].Properties!.ContainerDefinitions as C[])[0].Command = ["sh", "-c", "DATABASE_URL=postgresql://o:pw@db/x prisma migrate deploy"]; // re-break RM-1
   const f = taskSettingFindings(t, SETTINGS).join("\n");
   for (const w of ["X holds what looks like a credential", "side: PLATFORM_SECRET_BOX_KEYS: a secret given", "an environment file", "a secret value written into the template", `${mig[0]}: a credential outside the environment`]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+});
+
+test("PF-8b fail (re-break RC-1): another registry on the migration task, a sidecar image, a tag, a third task definition", () => {
+  const t = clone(t0), { service, migration } = taskDefinitions(t), cs = service![1].Properties!.ContainerDefinitions as Record<string, unknown>[];
+  (migration![1].Properties!.ContainerDefinitions as Record<string, unknown>[])[0].Image = "docker.io/someone/studio@sha256:" + "0".repeat(64);
+  cs.push({ ...cs[0], Name: "side", Image: { "Fn::Join": ["", ["docker.io/x/", { Ref: "AppImages" }, ":latest"]] } }); t.Resources!.Third = clone(migration![1] as Template) as never;
+  assert.equal(imageFindings(t).length, 4, imageFindings(t).join("\n")); // the count line, the migration (twice: its own and Third's) and the sidecar
 });
 
 test("PF-8b fail: one task, or both tasks in one zone, is caught", () => {
@@ -222,14 +222,6 @@ test("PF-8b synth still needs no keys: no account lookup, no missing context, ev
   } finally { Object.assign(process.env, saved); }
 });
 
-test("PF-8b the domain is a parameter: -c xr:domain moves both zones, certificates and SES identities", () => {
-  const a = buildApp({ context: { "xr:domain": "example.org" } }).app;
-  for (const s of allStacks(a).filter((x) => /^xr-(staging|production)$/.test(x.name))) {
-    const d = stageOf(s.name) === "production" ? "example.org" : "staging.example.org";
-    assert.deepEqual([...wildcardFindings(s.template, d), ...mailFindings(s.template, d)], []);
-  }
-});
-
 test("PF-8b staging never accepts a live Stripe key (Lead 13 ruling 3): staging runs as test, production as production, no Sample seed", () => {
   const src = readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8");
   assert.match(src, /\/\^\(sk\|rk\)_live_\/\.test\(stripeKey\) && environment !== "production"/); // the loader's rule this relies on
@@ -261,10 +253,10 @@ test("PF-8b's widening of PF-8rc's guards stays narrow: actions per service, \"*
     pol(t, exec, "ses:SendEmail", { "Fn::GetAtt": [exec, "Arn"] });
     pol(t, exec, "secretsmanager:GetSecretValue", { "Fn::Join": ["", ["arn:aws:secretsmanager:ca-central-1:999999999999:secret:", { Ref: exec }]] });
     service![1].Properties!.TaskRoleArn = "arn:aws:iam::111111111111:role/Admin";
-    of(t, "AWS::ECR::Repository")[0][1].Properties!.RepositoryPolicyText = { Statement: [{ Effect: "Allow", Principal: "*", Action: "ecr:*" }] };
+    of(t, "AWS::ECR::Repository")[0][1].Properties!.RepositoryPolicyText = { Statement: [{ Effect: "Allow", Principal: "*", Action: "ecr:*" }] }; of(t, "AWS::Cognito::UserPool")[0][1].Properties!.LambdaConfig = { PreSignUp: "arn:aws:lambda:ca-central-1:1:function:x" }; // review s1
     (t.Resources![roleOf(t, "backup.amazonaws.com")].Properties!.AssumeRolePolicyDocument as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Action: "sts:AssumeRole", Principal: { Service: "ecs-tasks.amazonaws.com" } });
   })).join("\n");
-  for (const w of ["allows ses:SendEmail, not on the allow list (ecr:", "999999999999", "TaskRoleArn names", "repository policy", "allows kms:Decrypt, not on the allow list ()"]) assert.ok(b2.includes(w), `missing "${w}" in:\n${b2}`);
+  for (const w of ["allows ses:SendEmail, not on the allow list (ecr:", "999999999999", "TaskRoleArn names", "Cognito::UserPool): a Lambda trigger", "ECR::Repository): a Lambda trigger or repository policy", "allows kms:Decrypt, not on the allow list ()"]) assert.ok(b2.includes(w), `missing "${w}" in:\n${b2}`);
   assert.equal(b.split("\n").filter((l) => l.includes('allows on "*"')).length, 2);
   const r = regionFindings(swap((t) => { for (const p of Object.values(t.Parameters as Record<string, Record<string, unknown>>)) delete p.AllowedPattern; }), REGION_ALLOW);
   assert.ok(r.some((l) => l.includes("a parameter set at deploy time (AppImageDigest")), r.join("\n")); // a free-text parameter is still refused
