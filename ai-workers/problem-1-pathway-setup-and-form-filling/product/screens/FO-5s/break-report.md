@@ -85,20 +85,15 @@ page T cannot open. `retainer-page.tsx:65` (`mayEdit` checks only key + status),
 - Layout: card at 375 px and the page at 720 px (200 % of 1440) show no sideways scroll except M3. Prepare panel by keyboard:
   opens with focus on Template; Tab reaches Cancel / Prepare retainer; focus stays trapped. No page errors in any run.
 
-## Re-check at c20dae7 (Majors and the diff since 95ff4d2; copy `brk_fo5s` :4573, stopped afterwards)
-
-- **M1 fixed.** `1500,50`, `1,5`, `12,50`, `1,50`, `0,50`, `1,5000`, `1,000,000,000`, `100000000.01`, `999999999` are refused on the
-  field and nothing is saved. `1,500` → 150000, `1,500.50` → 150050, `1,000,000` and `100,000,000.00` (the cap) are saved. (m4 fixed too.)
-- **M3 fixed.** 120-character unbroken fee labels (Latin and `Ü`) and a 120-character template name: 0 px sideways scroll on the draft
-  and the sent page at 375, 720 and 1024 px, and while editing at 375 px.
-- **M4 fixed.** T, the representative, with the setting off: only Download and the Code items; no Edit/Save/Check and send, no
-  summary, and `P-…` is plain text. The send API is still 404 for T. The prospect's owner keeps every control.
-- **M2: no longer a Major for this screens PR; now Minor.** The warning before Save and the "Version n is not sent yet" notice after it
-  are shown (verified), so nobody loses the link unknowingly. The BR-9 gap ("together or not at all") is still open in FO-5 and belongs
-  with the tech-lead question. Remaining Minor: after such a Save the prospect card says only "Draft · Version 2 · Continue the draft",
-  with no word that the client cannot sign (`retainer-card.tsx:54`).
-- **New, company signer (Who signs):** held: a person who is not one of the company's contacts → 422 "The signer must be one of the
-  company's contacts."; a contact with no email saves and shows "blocks Send" with the summary; no sideways scroll at 375 px.
-  **Minor:** choosing "Choose who signs" (empty) enables Save, and Save makes an identical new version with the old signer kept;
-  the choice is silently ignored (`retainer-page.tsx:43` sends `signerPersonId` only when it is set, while `changed` at :68 counts
-  the empty pick as a change).
+## Re-check at c20dae7 (Majors + diff since 95ff4d2; copy `brk_fo5s` :4573, stopped)
+- **M1 fixed.** `1500,50`, `1,5`, `12,50`, `0,50`, `1,5000`, `1,000,000,000`, `100000000.01`, `999999999` are refused on the field,
+  nothing saved; `1,500` → 150000, `1,500.50` → 150050, `100,000,000.00` (the cap) saved. m4 fixed too.
+- **M3 fixed.** 120-character unbroken fee labels and template name: 0 px sideways scroll on draft and sent pages at 375/720/1024 px.
+- **M4 fixed.** T, the representative, with the setting off: only Download and the Code items, no summary, `P-…` is plain text; the
+  send API is still 404 for T; the owner keeps every control.
+- **M2 → Minor for this PR.** The warning before Save and the "Version n is not sent yet" notice after it show (verified). The BR-9
+  gap ("together or not at all") stays open in FO-5, with the tech lead. Still Minor: the card then says only "Draft · Continue the
+  draft", with no word that the client cannot sign (`retainer-card.tsx:54`).
+- **New, Who signs (company).** Held: a person who is not a contact → 422; a no-email contact saves and shows "blocks Send"; 375 px OK.
+  **Minor:** choosing the empty option enables Save, which makes an identical new version with the old signer kept
+  (`retainer-page.tsx:43` sends `signerPersonId` only when set; `changed` at :68 counts the empty pick as a change).
