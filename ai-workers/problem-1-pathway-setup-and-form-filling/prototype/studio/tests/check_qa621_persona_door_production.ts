@@ -43,7 +43,7 @@ const production = () => Object.entries({
   PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1",
 }).map(([k, v]) => `${k}=${v}`);
 
-// The Open a case dialog's body (web/src/runtime/cases.tsx): no clientId, so the opening would make a new client.
+// The Open a case dialog's body (the web app's runtime/cases.tsx): no clientId, so the opening would make a new client.
 const dialog = (combinationId: string) => ({ combinationId, clientActor: "user-P", principal: { displayName: `Persona ${rand(6)}` }, idempotencyKey: randomUUID() });
 let vv = "";
 try {
