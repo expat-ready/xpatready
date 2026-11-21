@@ -33,6 +33,7 @@ import { ACCOUNT_MAIL_FROM, readSetting, TIME_ZONE } from "../../settings.ts";
 import { ensureMessagesFirm } from "../consent/messages-firm.ts";
 import { logPort } from "../../observability/log.ts";
 import { emailBrandOf, NEUTRAL_COLOUR } from "../../branding/branding.ts";
+import { publicBaseUrl } from "../../branding/image-setting.ts";
 import { emailLayout } from "../layout/email-layout.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -66,7 +67,7 @@ const triesOf = (reason: string | null) => Number(/^send failed: try (\d+) of \d
 
 /** A channel's sending adapter: it gets the stored message and answers the provider's id (or throws: not sent). */
 export type ChannelAdapter = { provider: string; deliver(tx: Tx, r: Rendered): Promise<{ providerId: string }> };
-export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void };
+export type MessagesDeps = { db: PrismaClient; consent: ConsentPort<Tx>; files: FilesPort; jobs: JobPort; alerts: () => AlertPort; channels: Map<Channel, ChannelAdapter>; clock?: ClockPort; log?: (line: string) => void; /** PF-13: the base of the logo's public link (default: the app's public address). */ publicBase?: string };
 
 export const fileKeyOf = (firmId: string | null, outboxId: string) => `msg/${firmId ?? "platform"}/outbox/${outboxId}.json`;
 /** PF-19p: the file store space of platform account messages (FilesPort keys files by a uuid; this one is no firm's). */
@@ -90,7 +91,7 @@ export class Messages implements MessagePort<Tx> {
     if (isPlatformAccount(m)) return this.sendPlatform(tx, m);
     const { firmId } = firmScope(m.firmId);
     const address = normaliseAddress(m.channel, m.address);
-    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true } });
+    const firm = await tx.platformFirm.findUnique({ where: { id: firmId }, select: { operatingName: true, contactEmail: true, key: true } });
     if (!firm) throw new MessageRefused(`firm ${firmId} is not a platform firm`);
     await ensureMessagesFirm(tx, firmId);
     // One writer per firm and key: a second send with the key answers the first row (never a second message).
@@ -112,7 +113,7 @@ export class Messages implements MessagePort<Tx> {
     for (const k of m.attachments) if (k.startsWith("msg/") || !(await this.d.files.exists(firmId, k))) throw new MessageRefused(`attachment ${k} is not a file of this firm`);
     const decision = await this.d.consent.allows(tx, { firmId, subject: m.person, channel: m.channel, address, class: m.class });
     // PF-13: the firm's branding (sender name, colour, footer; the logo from part 1b) drawn by the one react-email layout.
-    const brand = await emailBrandOf(tx, firmId, firm.operatingName), id = randomUUID();
+    const brand = await emailBrandOf(tx, firmId, firm.operatingName, { base: this.d.publicBase ?? publicBaseUrl(), firmKey: firm.key }), id = randomUUID();
     const rendered = { ...render(id, { ...m, firmId }, { name: brand.name, replyTo: firm.contactEmail, brand }, words), html: await emailLayout(brand, words) };
     const put = await this.d.files.put(firmId, fileKeyOf(firmId, id), new TextEncoder().encode(JSON.stringify(rendered)), "application/json");
     const state = decision.allowed ? "QUEUED" : "SUPPRESSED", reason = gateReason(decision);
