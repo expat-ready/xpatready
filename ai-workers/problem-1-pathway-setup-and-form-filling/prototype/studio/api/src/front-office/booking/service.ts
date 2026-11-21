@@ -409,7 +409,7 @@ export class BookingService {
       if (b.status === o) return b;
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: o } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: staffActor(ctx).word, action: o === "COMPLETED" ? "booking.completed" : "booking.no_show", entity: "fo_booking", entityKey: b.id,
-        summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, from: b.status, to: o, sequence: after.sequence } });
+        summary: `Attendance recorded: ${o === "COMPLETED" ? "attended" : "did not attend"}.`, detail: { bookingId: b.id, sequence: after.sequence }, before: { status: b.status }, after: { status: o } });
       await this.outbox(tx, after, o === "COMPLETED" ? EVENT.BOOKING_COMPLETED : EVENT.BOOKING_NO_SHOW);
       return after;
     }, TX);
@@ -529,7 +529,8 @@ export class BookingService {
             const booking = await tx.foBooking.update({ where: { id: row.id }, data: { personId: who.personId, prospectId: who.prospectId ?? null } });
             const token = pub?.token ? await issueToken(tx, firmId, booking.id, booking.endsAt) : undefined;
             await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.scheduled", entity: "fo_booking", entityKey: booking.id,
-              summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) } });
+              summary: `Consultation booked (${type.name})${withWarnings(slot.warnings)}.`, detail: { bookingId: booking.id, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, startsAt: booking.startsAt.toISOString(), sequence: booking.sequence, ...warningDetail(slot.warnings, booking.overlapConfirmedByUserId) },
+              before: null, after: { status: booking.status, typeId: type.id, staffId: booking.staffId, personId: who.personId, prospectId: who.prospectId ?? null, mode: booking.mode, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString(), bookerTimeZone: booking.bookerTimeZone } });
             await this.outbox(tx, booking, EVENT.BOOKING_SCHEDULED);
             return { booking, token };
           } catch (e) { held?.release(); throw e; }   // given back before the rollback lets the firm's lock go
@@ -566,7 +567,7 @@ export class BookingService {
           if (startsAt.getTime() === b.startsAt.getTime()) {
             if (!zone || zone === b.bookerTimeZone) return { booking: b, type, token: undefined, oldSequence: undefined };
             const z2 = await tx.foBooking.update({ where: { id: b.id }, data: { bookerTimeZone: zone } });
-            await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence } });
+            await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.zone_changed", entity: "fo_booking", entityKey: b.id, summary: "The time zone for this booking's messages changed.", detail: { bookingId: b.id, sequence: z2.sequence }, before: { bookerTimeZone: b.bookerTimeZone }, after: { bookerTimeZone: z2.bookerTimeZone } });
             return { booking: z2, type, token: undefined, oldSequence: undefined };
           }
           const slot = any ? await this.place(tx, firmId, type, startsAt, { ...any, current: b.staffId }, b.id)
@@ -577,7 +578,9 @@ export class BookingService {
           // A new link for the self-service answer only; the emails issue their own (staff never get one, m7).
           const newToken = token ? await issueToken(tx, firmId, after.id, after.endsAt) : undefined;
           await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.rescheduled", entity: "fo_booking", entityKey: b.id,
-            summary: `Consultation moved to a new time${withWarnings(slot.warnings)}.`, detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence, ...warningDetail(slot.warnings, after.overlapConfirmedByUserId) } });
+            summary: `Consultation moved to a new time${withWarnings(slot.warnings)}.`, detail: { bookingId: b.id, fromStartsAt: b.startsAt.toISOString(), toStartsAt: after.startsAt.toISOString(), fromStaffId: b.staffId, toStaffId: staffId, sequence: after.sequence, ...warningDetail(slot.warnings, after.overlapConfirmedByUserId) },
+            before: { status: b.status, staffId: b.staffId, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), bookerTimeZone: b.bookerTimeZone },
+            after: { status: after.status, staffId: after.staffId, startsAt: after.startsAt.toISOString(), endsAt: after.endsAt.toISOString(), bookerTimeZone: after.bookerTimeZone } });
           await this.outbox(tx, after, EVENT.BOOKING_RESCHEDULED);
           return { booking: after, type, token: newToken, oldSequence: b.sequence };
         }, TX);
@@ -606,7 +609,8 @@ export class BookingService {
       // entry, which holds ids and facts (AuditPort's rule): it says only that a reason was given (FO-3pa DW7, DW10).
       const after = await tx.foBooking.update({ where: { id: b.id }, data: { status: "CANCELLED", ...(reason ? { cancelReason: reason } : {}) } });
       await this.ports.audit.record(tx, { firmId, actor: actor.word, action: "booking.cancelled", entity: "fo_booking", entityKey: b.id,
-        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, from: b.status, sequence: after.sequence } });
+        summary: token ? `Consultation cancelled by the booker.${reason ? " A reason was given." : ""}` : "Consultation cancelled.", detail: { bookingId: b.id, sequence: after.sequence },
+        before: { status: b.status }, after: { status: after.status } });
       await this.outbox(tx, after, EVENT.BOOKING_CANCELLED);
       return { booking: after, type, oldSequence: b.sequence };
     }, TX);
@@ -630,7 +634,7 @@ export class BookingService {
   private async afterCommit(a: AfterCommit) {
     const { booking: b } = a;
     const keys = (seq: number) => ({ r24: `booking:${b.id}:${seq}:reminder-24h`, r1: `booking:${b.id}:${seq}:reminder-1h`, ask: `booking:${b.id}:${seq}:attendance` });
-    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.message : String(e)}`); } };
+    const safe = async (what: string, f: () => Promise<unknown>) => { try { await f(); } catch (e) { this.warn(`${what} for booking ${b.id} failed after commit: ${e instanceof Error ? e.name : "error"}`);   /* PF-23m: never the message */ } };
     const opts = { firmId: b.firmId };
     if (a.oldSequence !== undefined) { const k = keys(a.oldSequence); for (const key of [k.r24, k.r1, k.ask]) await safe("cancel job", () => this.ports.jobs.cancel(key)); }
     if (a.kind !== "cancelled") {
@@ -687,7 +691,7 @@ export class BookingService {
    *  retry would only try again to mail someone we must not mail (Lead B, #1860). Any other failure is thrown and retried. */
   private refusedIsFinal(e: unknown, bookingId: string): void {
     if (!(e instanceof MessageRefused)) throw e;
-    this.warn(`email for booking ${bookingId} not sent, final: ${e.message}`);
+    this.warn(`email for booking ${bookingId} not sent, final (${e.name})`);   /* PF-23m: never the message */
   }
 
   /** A link for the email, issued under the booking's row lock while it is still active at `sequence`; else null. */

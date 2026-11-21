@@ -79,7 +79,7 @@ export class PlatformTerms implements TermsGate {
     const ids = [...new Set(parsed.data.versionIds.map((x) => x.toLowerCase()))].sort();
     const firmId = firmScope(s.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${firmId}::uuid for no key update`;   // as identity's inFirm: never deadlocks with the person's own sign-in (J-5 B1)
       // The person is checked again under the lock, as PlatformSession.inFirm does (Devin review on #1957): a deactivation,
       // a revoked session or a role change committed while this waited is never accepted past.
       const me = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: s.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
@@ -98,7 +98,7 @@ export class PlatformTerms implements TermsGate {
         await tx.platformTermsAcceptance.createMany({ data: fresh.map((r) => ({ firmId, staffId: s.staffId, versionId: r.id, acceptedAt })) });
         await auditEvent.record(tx, { firmId, actor: actorWord(s.staffId), action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: s.staffId,
           summary: `A staff member accepted ${fresh.map((r) => `${r.kind.toLowerCase().replace(/_/g, " ")} ${r.version}`).join(", ")}`.slice(0, 600),
-          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) } });
+          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) }, before: null, after: { versionIds: fresh.map((r) => r.id), acceptedAt: acceptedAt.toISOString() } });
       }
       return { accepted: rows.map(view), pending: (await this.pending(s, tx)).map(view), note: SAMPLE_NOTE };
     });

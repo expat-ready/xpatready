@@ -8,7 +8,8 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts";
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { conflict, notFound, written, type Tx } from "./common.ts";
+import { conflict, notFound, UUID, written, type Tx } from "./common.ts";
+import { eligible, NO_RULE, placeNewLead, type Placement } from "../assignment/place.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -31,6 +32,8 @@ export type ArrivalIn = {
   ipHash?: string | null;
   existingPersonId?: string;   // Add a lead for a person already on file (the known-person check): no new person
   ownerStaffId?: string | null;   // the adder (AG-2-4 rule 8); none for a form lead, except a one-user firm's one user (X-4)
+  /** FO-10 part 2 (AG-2-85 rule 1(b)): the host of the booking that brought the person; BOOKING door only. */
+  bookingHostStaffId?: string;
   actor: string;
   payloadHash: string;
 };
@@ -42,6 +45,15 @@ export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: Ar
   if (!or.length) return null;
   const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
   return m?.id ?? null;
+}
+
+/** How the owner was set, for the lead's arrival line (the timeline shows it). */
+function placedWords(p: Placement, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null, owner: string | null): string {
+  if (fact === "BOOKING_HOST") return `, owned by the booking's host, staff ${owner}`;
+  if (fact === "HOST_INACTIVE") return ", left in Unassigned leads: the booking's host is not active or cannot work leads";
+  if (!p.ruleId) return "";
+  if (p.ownerStaffId) return `, assigned to staff ${p.ownerStaffId} by ${p.strategy === "OWNER" ? "the default owner rule" : "round robin"}`;
+  return `, left in Unassigned leads: ${p.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : p.fallback === "POSSIBLE_MATCH" ? "a possible match waits for a person" : "no one in the rule's turn is active"}`;
 }
 
 export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>; consent: ConsentPort<Tx> }): Promise<ArrivalOut> {
@@ -70,7 +82,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     await recordConsent(personId);
     await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "ON_OPEN_PROSPECT", completedAt: new Date(), personId } });
     // The booking goes on the person's record (AG-2-84 rule 8): one audit line, ids only.
-    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent } });
+    await ports.audit.record(tx, { firmId, actor: a.actor, action: "booking.arrived", entity: "fo_person", entityKey: personId, summary: "A booking arrived for a person with an open prospect: no new lead.", detail: { door: a.door, receiptId: receipt.id, consent: !!a.consent },
+      before: null, after: { outcome: "ON_OPEN_PROSPECT", personId, door: a.door, consent: !!a.consent } });
     return { leadId: null, personId, created: true };
   }
 
@@ -84,11 +97,24 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     personId = randomUUID();
     await tx.foPerson.create({ data: { id: personId, firmId, givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null, phoneReadable: a.person.phone?.readable ?? true, createdBy: a.actor } });
   }
-  let owner = a.ownerStaffId ?? null;
+  let owner = a.ownerStaffId ?? null, fact: "BOOKING_HOST" | "HOST_INACTIVE" | null = null;
+  // FO-10 part 2 (AG-2-85 rules 1(b), 18): a lead born from a one-to-one booking is its host's, whatever any rule says;
+  // a host no longer active gives no owner and no rule applies (every booking has one host, fo_booking.staff_id).
+  if (owner === null && a.door === "BOOKING" && a.bookingHostStaffId) {
+    // The host must be able to work the lead (break M2 on FO-10 part 2): active with the sales key, as every rule asks;
+    // else no owner, and the lead waits in Unassigned leads where someone who can work it sees it.
+    const [host] = UUID.test(a.bookingHostStaffId) ? await eligible(tx, firmId, [a.bookingHostStaffId.toLowerCase()]) : [];
+    owner = host ?? null;
+    fact = host ? "BOOKING_HOST" : "HOST_INACTIVE";
+  }
   if (owner === null) {
     const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });
-    if (active.length === 1) owner = active[0].id;   // X-4: a one-user firm's one user owns every lead
+    if (active.length === 1) { owner = active[0].id; fact = null; }   // X-4: a one-user firm's one user owns every lead (and the line says so, review m1)
   }
+  // FO-10 (AG-2-13a): no owner yet → the firm's assignment rule, else Unassigned leads; the audit line names the rule.
+  // A possible match is placed by no rule (FO-10 part 2, AG-2-85 rule 10): it waits for a person.
+  const placed = owner === null && fact !== "HOST_INACTIVE" ? await placeNewLead(tx, firmId, a.door, a.interestedInServiceId ?? null, { possibleMatch: match !== null }) : NO_RULE;
+  owner ??= placed.ownerStaffId;
   const lead = await tx.foLead.create({
     data: { firmId, personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match, createdBy: a.actor },
     select: { id: true, number: true },
@@ -99,8 +125,11 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
   await written(tx, ports.audit, {
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
-    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
-    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
+    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}${placedWords(placed, fact, owner)}.`,
+    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent, ...(fact ? { ownerFact: fact } : {}), ...(placed.ruleId ? { assignmentRuleId: placed.ruleId, assignmentStrategy: placed.strategy, assignmentFallback: placed.fallback } : {}) },
+    // R1.8 (QA-594, P-687): the lead's values in full, its new person's name and contact included; the message stays in fo_note.
+    before: null, after: { personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match,
+      ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },
     event: { type: EVENT.LEAD_CREATED, subjectId: lead.id, payload: LeadEventPayload.parse({ leadId: lead.id, personId, door: a.door, state: "OPEN", ownerStaffId: owner, possibleMatchPersonId: match }) },
   });
   return { leadId: lead.id, personId, created: true };

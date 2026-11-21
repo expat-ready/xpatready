@@ -1,0 +1,18 @@
+PASS  J-26 setup: the Sample firm and its front office are seeded — []
+PASS  J-26 setup: the Sample firm's web form is on, with no allowed site yet; an Owner exists
+PASS  J-26 W1 fail: a site with a page is refused on its field; nothing saved
+PASS  J-26 W1: the Owner saves the firm's site by screens (stored once, one audit line) and copies the snippet
+PASS  J-26 W1 settings: axe finds no WCAG A/AA violation
+PASS  J-26 W2: the visitor sees only the firm's thank-you text
+PASS  J-26 W2: one lead by the web form door — ["9f0929ca-37a0-4667-8eea-53175df222ab","WEB_FORM"]
+PASS  J-26 W2: its attribution reads campaign spring, google / cpc, click id j26-click (GCLID), with the landing and referring page — ["spring","google","cpc","j26-click","GCLID","http://localhost:40025/contact?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=j26-click","http://localhost:40025/blog"]
+PASS  J-26 W2: no cookie or storage entry is left in the visitor's browser — {"cookie":"","local":0,"session":0,"idb":0}
+PASS  J-26 W3: the same send twice makes one lead — {"replay":201,"leads":1}
+PASS  J-26 W3 fail: a bot filling the hidden field is thanked the same, told nothing, and nothing is stored
+PASS  J-26 W4 fail: an empty send on the hosted form shows each field's message on its field; nothing stored
+PASS  J-26 W4: a good send on the hosted form makes one lead, with no campaign facts (none on the page; nothing guessed)
+PASS  J-26 W5: the Owner's Leads › Unassigned shows both new leads (R1.27's first step)
+PASS  J-26: no page error in the browser — []
+
+15/15 passed
+exit 0

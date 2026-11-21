@@ -1,0 +1,45 @@
+NOTICE:  database "xr_studio_fo10_2980" does not exist, skipping
+PASS  FO-10 setup: both Sample firms have a front office
+PASS  FO-10 fail (batch #2500): loading the public door or the person edit first never meets an import cycle (SALES_PORTS uninitialised)
+PASS  FO-10 fail: with no rule, a web-form lead and a booking lead land in Unassigned leads, and the audit line names no rule
+PASS  FO-10 pass: an Unassigned lead is in the Unassigned list
+PASS  FO-10 pass: list, save and switch off declare agent/prospect:configure-source, held by Owner and Admin
+PASS  FO-10 fail: a Case Officer and a Case Manager without Owner hold no key to keep rules (403 at the guard)
+PASS  FO-10 pass: PF-4's start-up rule accepts every rule route
+PASS  FO-10 fail: a rule for leads added by hand → refused at the field (the adder owns them, AG-2-4 rule 8)
+PASS  FO-10 fail: one person who is suspended → refused at the field
+PASS  FO-10 fail: a turn naming a Read-only person (no sales key) or someone of another firm → refused at the field
+PASS  FO-10 fail: another firm's service → refused at the field
+PASS  FO-10 fail: the database refuses an owner of another firm and an OWNER rule with a turn
+PASS  FO-10 pass: saving a rule writes one audit line, with its values after and none before (R1.8)
+PASS  FO-10 pass: three leads from the web form go to three people in turn
+PASS  FO-10 pass: the lead's audit line names the rule and round robin; the timeline shows it
+PASS  FO-10 fail: the web-form rule does not place a booking lead (it stays Unassigned)
+PASS  FO-10 pass: 20 parallel arrivals give each of three people 6 or 7, never 9
+PASS  FO-10 pass (AG-2-13d): the cursor is persisted on the rule and moved by the arrivals
+PASS  FO-10 fail: a forced audit failure rolls the arrival back and the cursor with it (no turn lost)
+PASS  FO-10 fail: a deactivated person is skipped; the others alternate
+PASS  FO-10 fail: nobody in the turn active → Unassigned, the audit line says why
+PASS  FO-10 pass: a program/service rule beats the web-form rule, on every door
+PASS  FO-10 fail: a lead with no service is not placed by the service rule (the web-form turn places it)
+PASS  FO-10 pass: saving the same criteria again replaces the rule (one row, the cursor kept); an empty turn means everyone active with the key
+PASS  FO-10 fail: the Read-only person is never in the open turn; each active sales person gets one
+PASS  FO-10 pass: a booking lead follows the booking rule
+PASS  FO-10 fail: a rule naming a person no longer active → Unassigned, and the timeline says the rule's person is not active
+PASS  FO-10 pass: the lead's timeline shows the rule's line
+PASS  FO-10 fail: a rule switched off places nothing (Unassigned again); its row stays
+PASS  FO-10 fail (break M2): one person who cannot work leads (Read-only) → refused at the field
+PASS  FO-10 fail (break m4): a field the strategy does not use → refused, never dropped silently
+PASS  FO-10 pass: a booking lead goes to the rule's person while they hold a sales role
+PASS  FO-10 fail (break M2): the rule's person whose sales role was ended → Unassigned with the reason, never a lead nobody sees
+PASS  FO-10 fail (break M1): a turn naming someone whose sales role was ended → refused at the field
+PASS  FO-10 fail (break M1): the open turn never gives a lead to someone whose sales role was ended
+PASS  FO-10 fail: a lead added by hand belongs to its adder, whatever the rules say
+PASS  FO-10 fail: firm A's rules never place firm B's leads
+PASS  FO-10 fail: firm B cannot see or switch off firm A's rule (404), and lists only its own
+PASS  FO-10 fail: Take it on a rule-placed lead by someone else → refused (409 naming the owner, or 404 when they may not see it)
+PASS  FO-10 pass: reassigning a rule-placed lead stores who and when (actor, previous and new owner, time) on an audit line
+PASS  FO-10 fail: a person without agent/prospect:assign cannot reassign (the route needs the key; a Case Officer lacks it)
+PASS  FO-10 pass: Take it on an Unassigned lead stores who and when
+
+FO-10 assignment rules: 42 passed, 0 failed

@@ -26,6 +26,8 @@ const VV = comboId("vv.single")!;
 const { Db, Workspace, Audit } = await import("../api/src/core.ts");
 const { Programs } = await import("../api/src/programs.ts");
 const { Runtime, RuntimeController } = await import("../api/src/runtime.ts");
+const { FO_PERSON_PORT } = await import("../ports/fo-person.ts");
+const { foPersonPort } = await import("../api/src/front-office/people/fo-person-port.ts");   // CS-K1 part 2: an opening links its client
 const { CaseClose } = await import("../api/src/case-close.ts");
 const { PgCaseCount } = await import("../api/src/case-count.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -38,7 +40,7 @@ type Harness = import("../ports/contracts/case-count-port.contract.ts").CaseCoun
 
 // Programs' only use in Runtime is the startable check (S4); its own providers (Studio, the library) are not this check's.
 // The copy's own server opens a case on the same combination below, so it is startable; the stand-in says so.
-@Module({ controllers: [RuntimeController], providers: [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime] }) class CountApp {}
+@Module({ controllers: [RuntimeController], providers: [Db, Workspace, Audit, { provide: Programs, useValue: { startableMissing: async () => [] } }, Runtime, { provide: FO_PERSON_PORT, useValue: foPersonPort }] }) class CountApp {}
 const app = await NestFactory.create(CountApp, { logger: false, abortOnError: false });
 await app.listen(0, "127.0.0.1");
 const BASE = `http://127.0.0.1:${(app.getHttpServer().address() as { port: number }).port}/api`;

@@ -30,6 +30,8 @@ export const NOT_FOLD_OUTS: { file: string; on: string; why: string }[] = [
   { file: "pages/job.tsx", on: "data-accept", why: "an action: Accept, or opens the reason form for a near match" },
   { file: "pages/job.tsx", on: ">Decide<", why: "an action: opens the decision form for one form field" },
   { file: "runtime/release-update.tsx", on: "Show the first", why: "a longer list (show all n / show the first n), like the other show-all buttons, not a fold-out section" },
+  { file: "modules/front-office/booking/calendar/detail-panel.tsx", on: "data-more-menu", why: "a menu button: aria-expanded tells that its menu of actions is open" },
+  { file: "modules/front-office/booking/calendar/new-booking.tsx", on: "data-zone-change", why: "an action: opens the time-zone picker" },
 ];
 
 /** Code on one line, comments left out. */
