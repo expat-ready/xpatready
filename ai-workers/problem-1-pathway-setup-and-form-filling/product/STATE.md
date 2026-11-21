@@ -2,13 +2,13 @@
 
 current_lead: local_bdef7c01-a968-4dd8-9ee0-12c35aa45752 Lead 18 · 22 Nov 03:2x IST (series 3; took over from Lead 17 (series 3, local_74cdbff7) at ~490k, P-446)
 
-updated: 2026-11-22 03:2x IST: Lead 17 handed over to Lead 18 (series 3) · milestone: Release 1 proven 42 of 101 on main (10/15 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 04:0x IST: Lead 18 (series 3) current since 03:21 IST (check 28212e5f) · milestone: Release 1 proven 42 of 101 on main (10/15 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
 
-🔴 **Waiting on the founder (00:3x IST 22 Nov, P-530):** AWS console session expired; sign in as root with MFA in the AWS session's (local_35aacb3f-3180-427e-a538-8dc51d38de14) built-in browser (Cmd+Shift+B), then approve CodeBuild again there. No Cloudflare records needed (no-domain mode; R1.24 out). RDS on since 21 Nov 14:39Z, 0 tasks (~US$0.11/h).
+🔴 **Waiting on the founder (00:3x IST 22 Nov, P-530; founder 03:5x: tomorrow, ask him then):** AWS console session expired; sign in as root with MFA in the AWS session's (local_35aacb3f-3180-427e-a538-8dc51d38de14) built-in browser (Cmd+Shift+B), then approve CodeBuild again there. No Cloudflare records needed (no-domain mode; R1.24 out). RDS on since 21 Nov 14:39Z, 0 tasks (~US$0.11/h).
 
 ## Hand-over Lead 17 → Lead 18 (series 3), 03:2x IST 22 Nov (read this first; Lead 17 at ~490k, P-446)
 **Lead 18: create the check FIRST (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`), reply "check created" to Lead 17 (local_74cdbff7-84a4-4452-8dd5-e849f49abedc), rename yourself "Lead 18 · tech lead (current) · from 22 Nov <IST>", run /lead.** Standby after you: Lead 19 (local_69eeb2bd-5add-46f8-820b-8e6366f0eede); start one more at the founder's next typed turn. RULES as of P-783 (no newer DECISIONS rows; several rulings owed as rows, see (6)). Lead 16→17 block and Lead 17's lines: `product/history/STATE-2026-11-22-0320-lead17s3-handover-16-17-block-and-lead17-lines.md` and `product/history/STATE-2026-11-21-2110-lead17s3-check-lines-5b-5e.md`.
@@ -18,18 +18,20 @@ updated: 2026-11-22 03:2x IST: Lead 17 handed over to Lead 18 (series 3) · mile
 (3) **R1.19 next (→ 11):** **#2857** (qa Q9, session_01MXNda4hZgzXj4GgJnHZh5a; j_19 checks billing_period) independent Opus Approve + labelled, **in the merge queue**. On merge: check item-proof on its merge commit, dispatch `walks.yml` journeys=j_19 on main, tell Q9 to open the Works PR (close QA-483 in it; ruled closed 02:5x). #2870 PF-5 part 3 (billing_period column; Checkout uses the stored period) merged 02:2x.
 (4) **AWS (local_35aacb3f-3180-427e-a538-8dc51d38de14):** #2850 PF-8b F4 merged 00:2x; "redeploy" sent; **blocked on the founder's AWS sign-in** (red line above; push sent 00:3x). Its plan after sign-in: check log_error_verbosity=terse, migrate resolve --rolled-back pf12, CodeBuild main (founder approves CodeBuild again), deploy 0 tasks → migrate → xr_app password → 2 tasks → R1.13. RDS on, 0 tasks (~US$0.11/h). Note on #2870: its backfill relies on the RDS migration role holding BYPASSRLS.
 (5) **Open PRs and lanes:** **#2687 DEMO-LINK** (lane session_01MXNda77VALMtKJQoBfkmS4): merge c3962469b, Lead P-277 carry-over Approve + round 8, **/run full 44951016174 running** → label when green (it failed twice before on its own check_pf28_inputs interaction, fixed). **#2794** R1.10 PF-28 2b-2c queued (Lead B (11), local_3a725fd1). **#2871** PF-12b5 (QA-703 webhook_receipt RLS) merged 01:5x. R1.19 build lane (session_01MXNda7vUuZ1C9LJ8ySRdxn) at 73% context: told to stop after #2870 (done) — archive when idle. PF-16 lane (session_01MXNda5c7Yfq9rSkTjNf8eL) building PF-16 part 1 (#2866, R1.90; Lead B reads). qa Q7/Q8 done (records merged); qa Q6 (R1.4) done. proof-route lane done (#2860 merged).
-(6b) **Owed (Lead 17):** DECISIONS rows: R1.19 billing period must be state (#2857 7067556246); QA-483 closed + J-19 invite form enough (#2857 7069419717); QA-500 wording + PF-12b4 "picks" (#2845 7065582186; #2846 7064558286); R1.3 off this cycle; R1.10 row 422/400 wording; P-277 carry-over on a pure main merge (#2687 7069400906). BACKLOG: PF-28 parts 2-6 (QA-507 into part 2), CS-W2/CS-W3 p2-3/CS-W4, **hot files: split qa/CAPABILITIES.md per row and tests/check_pf12b_bypass_audit.ts / check_pf28_inputs.ts (conflicted every merge tonight)**, Minors from #2687's reviews (fo3st3 empty-state, heading order), check_fo2pv DW5 digits-in-ids flake row. `claim --strict on` for the Completes warning after a day. A gh-fallback.py fix sits only on this lead branch (c084fecda): give it its own PR.
-(6) **Lead 16's owed records** (QA-697 Major row, Lead 15 rulings, BACKLOG image scan, RDS CA, QA-641-645): word for word in the 03:20 history file above.
+(6b)/(6) **Owed records (Lead 17, Lead 16):** word for word in `product/history/STATE-2026-11-22-0400-lead18s3-owed-6b-6-lines.md` (DECISIONS rows owed, BACKLOG rows, hot-file splits, gh-fallback.py own PR).
+
+## Lead 18 since 03:21 IST (newest first)
+* 04:0x **Night plan (A275).** Founder asleep; AWS sign-in moved to tomorrow (AWS session confirmed not signed in, 03:4x). 11 by 07:00 only via R1.19 (#2857: batch #2877 failed on shard 24 `check_s5_slice3_browser.cjs` C11.15 click timeout, outside its code; /run full 44955768170 on 2f4e76405 → relabel with Batch failures covered if green, else a main fix row). 15 by 07:00 is not reachable (every other Partial has 2+ unbuilt parts). Build for the next cycle: cloud lanes started 03:5x (Opus 5.5 medium): R1.29 FO-9a next part (task_d7a6fff3), R1.102 CS-S1 p2 (task_1b1ef7d6), R1.105 AUD-5 p2 (task_775af100), R1.92 PF-18a p2 (task_d4382526; Lead B reads), rescue #2038 FO-6 p1 R1.54 (task_9f59c078). Standby Lead 20 local_29230626 (after Lead 19 local_69eeb2bd). #2687 merged main (b8ecf6717), Lead B labels.
+* 03:2x took over (check 28212e5f).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A275 | 22 Nov 03:5x (typed): work all night on other capabilities; AWS tomorrow (bring it back to him); clean up browser, claude.ai, GitHub; drain the queue; standbys as needed; plan to reach the goal (15 by 07:00) | Night plan 04:0x (Lead 18 line above); AWS waits for him |
 | A273-A274 | 21 Nov | word for word in `product/history/STATE-2026-11-22-0320-lead17s3-asks-A273-A274.md` (diligence walk; pipeline answer, proof lanes, proof-route fixes) | |
 | A272 | 21 Nov 18:3x (typed): keep checking every angle, unblock stuck queues intelligently, full pipeline status | Full report 18:3x; #2834 unblocked |
-| A268-A271 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1925-lead16s3-asks-A268-A272.md` (account switch plan, commitment 8/10/13, recovery, full walk) | |
-| A265-A267 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1730-lead15s3-asks-A265-A267.md` (domain parked, AWS case, SHARDS) | |
-| A242-A264 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1655-lead15s3-asks-A242-A264.md` (pointers inside lead to older files) | |
+| A242-A271 | 21 Nov | pointer rows word for word in `product/history/STATE-2026-11-22-0400-lead18s3-owed-6b-6-lines.md` | |
 
 
 ## Start here (next Lead)
