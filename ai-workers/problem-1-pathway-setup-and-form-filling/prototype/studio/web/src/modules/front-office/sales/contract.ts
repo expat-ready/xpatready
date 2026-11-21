@@ -1,13 +1,13 @@
 // FO-4 part 1: the shapes the sales screens read, mirroring FO-2 part 1's answers (api/src/front-office/sales/leads.ts,
 // public.ts) and PF-4's `GET /api/platform/me`. Parsed at the edge, so a changed answer fails loudly, not on a screen.
 import { z } from "zod";
-export type Problem = { status?: number; title?: string; detail?: string; code?: string; fields?: Record<string, string>; ownerStaffId?: string; matches?: unknown[] };
+export type Problem = { status?: number; title?: string; detail?: string; code?: string; fields?: Record<string, string>; ownerStaffId?: string; matches?: unknown[]; issues?: string[] };
 /** A refused answer as Problem Details, or a plain one when the body is not (a proxy page, an empty 502). */
 export function problemOf(data: unknown, status: number): Problem {
   if (data && typeof data === "object" && !Array.isArray(data)) {
     const d = data as Record<string, unknown>;
     const fields = d.fields && typeof d.fields === "object" ? Object.fromEntries(Object.entries(d.fields as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> : undefined;
-    return { status, title: typeof d.title === "string" ? d.title : undefined, detail: typeof d.detail === "string" ? d.detail : undefined, code: typeof d.code === "string" ? d.code : undefined, fields, ownerStaffId: typeof d.ownerStaffId === "string" ? d.ownerStaffId : undefined, matches: Array.isArray(d.matches) ? d.matches : undefined };
+    return { status, title: typeof d.title === "string" ? d.title : undefined, detail: typeof d.detail === "string" ? d.detail : undefined, code: typeof d.code === "string" ? d.code : undefined, fields, ownerStaffId: typeof d.ownerStaffId === "string" ? d.ownerStaffId : undefined, matches: Array.isArray(d.matches) ? d.matches : undefined, issues: Array.isArray(d.issues) ? d.issues.filter((i): i is string => typeof i === "string") : undefined };   // FO-3st1 part 2: "<field>: <words>" (review M3)
   }
   return { status, detail: status >= 500 ? "Something went wrong on our side. Please try again." : `The request was refused (${status}).` };
 }
