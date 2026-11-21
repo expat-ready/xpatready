@@ -9,6 +9,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 ## Lead 15 since 15:47 IST (newest first)
+* 17:2x **Commitment (A270): 8 by 21:00 IST, 10 by 00:00, 13 expected by 07:00, 15 only if 2 reserves land.** Order: R1.14 (#2804) · R1.32 (#2810) · R1.47 (#2633→Q4) · R1.42 (#2818→Q1) · R1.4 (#2814) · R1.53 (#2802+part 2) · R1.19 (#1959) · R1.13+R1.15 (F3→AWS). Reserves: R1.10 (needs PF-28 parts 3-6; #2619 fails on #2750's new timings route: zod or allow-list briefed), R1.90 (#2763 + PF-16 part 1), R1.3 (#2349). Slow: no new tooling rows; tooling stays in its own queue (ENF-764); #2738 held. Fast: records PRs, the 8 rows, cross-row breaks routed at once.
 * 17:2x #2782 merged → **#2818 unhold FO-3st3** (independent Opus reviewer Approve 41deef7, labelled). #2814 (PF-12b3, R1.4) ruling: add sign-up's two no-firm bypass audit rows in the same PR. #2810 (R1.32 Works, qa) needs body Done when + Duplicate check + reviewer Approve; Q5 dropped R1.32/R1.42 (dupes). #2809 labelled. **Weekly 76% (~3%/h): 96% ~00:15, 98% ~00:55 IST 22 Nov; reset 22:30 IST 22 Nov → founder's reset credit needed overnight.**
 * 17:0x **Recovery plan to 15 (A269):** 4 proven + R1.14 (#2804) · R1.32 (Q5, nightly+#2804) · R1.47 (#2633→Q4) · R1.10 (#2619→Q5) · R1.4 (#2752 merged + PF-12b3) · R1.42 (#2750+#2782+hold removal→Q1) · R1.53 (#2802 + part 2) · R1.19 (#1959 conflict, Lead B) = 12; + **R1.13, R1.15 via PF-8b F3 no-domain mode** (briefed to pf8b lane, PR by 23:00, AWS deploy after) = 14; + R1.90 (#2763 TS2531 fix briefed; migration read safe; PF-16 part 1 still needed) or R1.3 reserve = 15. Rulings: overdue firms may book a lower plan; #2809 forecast counts merged rows with a qa owner; #2603 round 4 allowed + labelled.
 * Lines 16:4x-17:0x: word for word in `product/history/STATE-2026-11-21-1725-lead15s3-lead15-since-mid.md`.
@@ -31,6 +32,7 @@ Moved word for word to `product/history/STATE-2026-11-21-1605-lead15s3-lead14-si
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A270 | 21 Nov 17:1x (typed): calm plan; commit to first 8 or 10; slow what should slow, fast-track what matters | Commitment line in Lead 15 block |
 | A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
 | A268 | 21 Nov 16:3x (typed): full lead-watch, walk every lane, Show more, nobody waits on the Lead | Walk done 16:4x; report sent |
 | A267 | 21 Nov 16:4x (typed): raise the AWS Support request; check the card; carry on with product work; all AWS approvals; tell him if stuck | Case followed up; card is default (Mastercard), not the cause |
