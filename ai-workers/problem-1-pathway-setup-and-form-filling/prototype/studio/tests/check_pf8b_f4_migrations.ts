@@ -4,7 +4,7 @@
 // Pure: reads files only, no database (the RDS-shaped proof is tools/rds-shape-check.sh). US$0.
 //   tsx studio/tests/check_pf8b_f4_migrations.ts
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MIG = join(import.meta.dirname, "..", "prisma", "migrations");
@@ -31,6 +31,25 @@ check("pf12: the end state is checked for every role (NOSUPERUSER, NOREPLICATION
 check("pf12: only xr_staff_bypass and xr_wall_reader are BYPASSRLS; xr_app is LOGIN",
   /\('xr_data', false, false\), \('xr_app', true, false\), \('xr_staff_bypass', false, true\),\s+\('xr_wall_reader', false, true\), \('xr_case_lookup', false, false\)/.test(pf12));
 check("F4: the reader's CREATE on public is taken back", /REVOKE CREATE ON SCHEMA public FROM xr_wall_reader/.test(F4));
+
+// review M1: on RDS a later migration may hand xr_wall_reader a function only while the reader holds CREATE on its schema;
+// every migration after F4 that does so grants it first and takes it back after (the order is checked in the text).
+const F4_STAMP = "20261121230000";
+const later = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d) && d.slice(0, 14) > F4_STAMP);
+const unpairedText = (text: string): boolean => {
+  const sql = text.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+  const hand = sql.search(/OWNER TO xr_wall_reader/);
+  if (hand < 0) return false;
+  const grant = sql.search(/GRANT CREATE ON SCHEMA public TO xr_wall_reader/), revoke = sql.lastIndexOf("REVOKE CREATE ON SCHEMA public FROM xr_wall_reader");
+  return !(grant >= 0 && grant < hand && revoke > sql.lastIndexOf("OWNER TO xr_wall_reader"));
+};
+const unpaired = later.filter((d) => unpairedText(read(d)));
+check(`every migration after F4 that hands xr_wall_reader a function grants it CREATE on public first and revokes it after (${later.length} later)`, unpaired.length === 0, unpaired);
+// the rule itself, on made-up migrations: a bare hand-over and a revoke before it are caught; the pair passes
+const hand = "ALTER FUNCTION f() OWNER TO xr_wall_reader;";
+check("the pairing rule catches a hand-over without the grant, or with the revoke before it, and passes the pair",
+  unpairedText(hand) && unpairedText(`GRANT CREATE ON SCHEMA public TO xr_wall_reader;\nREVOKE CREATE ON SCHEMA public FROM xr_wall_reader;\n${hand}`)
+  && !unpairedText(`GRANT CREATE ON SCHEMA public TO xr_wall_reader;\n${hand}\nREVOKE CREATE ON SCHEMA public FROM xr_wall_reader;`) && !unpairedText("SELECT 1;"));
 
 console.log(failed ? `${failed} failed` : `${total}/${total} passed`);
 process.exit(failed ? 1 : 0);

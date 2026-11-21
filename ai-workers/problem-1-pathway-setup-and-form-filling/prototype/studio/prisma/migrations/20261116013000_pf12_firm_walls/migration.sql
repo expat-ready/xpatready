@@ -66,18 +66,26 @@ BEGIN
   -- parameter group sets log_error_verbosity=terse, deploy/cdk/lib/estate.ts); otherwise it stops.
   IF NOT EXISTS (SELECT 1 FROM pg_db_role_setting d JOIN pg_roles a ON a.oid = d.setrole
                  WHERE a.rolname = 'xr_app' AND d.setdatabase = 0 AND 'log_error_verbosity=terse' = ANY (d.setconfig)) THEN
-    BEGIN EXECUTE 'ALTER ROLE xr_app SET log_error_verbosity = ''terse''';
-    EXCEPTION WHEN insufficient_privilege THEN
-      IF (SELECT reset_val FROM pg_settings WHERE name = 'log_error_verbosity') <> 'terse' THEN
+    n := 0; LOOP
+    BEGIN EXECUTE 'ALTER ROLE xr_app SET log_error_verbosity = ''terse'''; EXIT;
+    EXCEPTION WHEN internal_error OR unique_violation THEN n := n + 1; IF n > 200 THEN RAISE; END IF; PERFORM pg_sleep(0.02 + random() * 0.1);
+      WHEN insufficient_privilege THEN
+      -- the value xr_app gets: the server's (or this database's), never one set on the migration role alone
+      IF (SELECT reset_val FROM pg_settings WHERE name = 'log_error_verbosity') <> 'terse'
+         OR EXISTS (SELECT 1 FROM pg_db_role_setting d WHERE d.setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                    AND EXISTS (SELECT 1 FROM unnest(d.setconfig) c WHERE c LIKE 'log_error_verbosity=%')) THEN
         RAISE EXCEPTION 'PF-12 stopped: % may not set log_error_verbosity for xr_app, and the server does not log tersely', current_user
           USING ERRCODE = 'insufficient_privilege', HINT = 'Set log_error_verbosity = terse in the server''s configuration (the RDS parameter group), or run this as a superuser.';
       END IF;
-    END;
+      EXIT;
+    END; END LOOP;
   END IF;
   -- The reader holds the migration role's rights by membership. A non-superuser has no ADMIN OPTION on its own role
-  -- (PostgreSQL 16+), so where that grant is refused (RDS) the reader gets the narrower part it uses instead: EXECUTE on the
-  -- migration role's functions in public, now and (default privileges) for every later one; its table rights come from
-  -- xr_data either way. The reader logs in to nothing and nobody may become it: it acts only inside its own definer functions.
+  -- (PostgreSQL 16+), so where that grant is refused (RDS) the reader gets the part of the owner's rights its functions use
+  -- instead, now and (default privileges) for every later object: EXECUTE on the functions, and SELECT, INSERT, UPDATE,
+  -- DELETE on every table and USAGE, SELECT on sequences in public. Not xr_data's rights alone: later migrations take
+  -- rights away from xr_data on tables reader functions write (pf15's limit tables). Never ownership (no ALTER, DROP,
+  -- TRUNCATE). The reader logs in to nothing and nobody may become it: it acts only inside its own definer functions.
   FOREACH s IN ARRAY ARRAY[
     'GRANT xr_data TO xr_app WITH INHERIT TRUE, SET FALSE', 'GRANT xr_data TO xr_staff_bypass WITH INHERIT TRUE, SET FALSE',
     'GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user),
@@ -88,8 +96,12 @@ BEGIN
         WHEN internal_error OR unique_violation THEN n := n + 1; IF n > 200 THEN RAISE; END IF; PERFORM pg_sleep(0.02 + random() * 0.1);
         WHEN insufficient_privilege THEN
           IF s <> format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user) THEN RAISE; END IF;
-          EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO xr_wall_reader');
+          EXECUTE 'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO xr_wall_reader';
+          EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO xr_wall_reader';
+          EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO xr_wall_reader';
           EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO xr_wall_reader', current_user);
+          EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO xr_wall_reader', current_user);
+          EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO xr_wall_reader', current_user);
           EXIT;
       END; END LOOP;
   END LOOP;
@@ -105,6 +117,15 @@ BEGIN
   -- 20261121230000_pf8b_f4_reader_create takes it back after the last of them.
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AND NOT has_schema_privilege('xr_wall_reader', 'public', 'CREATE') THEN
     EXECUTE 'GRANT CREATE ON SCHEMA public TO xr_wall_reader';
+  END IF;
+  -- The memberships' end state: xr_app inherits xr_data, may SET ROLE to the bypass role without inheriting it (from any
+  -- grantor), can never become the reader, and belongs to no other role (a membership made outside this migration, such
+  -- as in the migration role, stops it).
+  IF NOT pg_has_role('xr_app', 'xr_data', 'USAGE') OR NOT pg_has_role('xr_app', 'xr_staff_bypass', 'SET') OR pg_has_role('xr_app', 'xr_staff_bypass', 'USAGE')
+     OR pg_has_role('xr_app', 'xr_wall_reader', 'SET') OR pg_has_role('xr_app', 'xr_wall_reader', 'USAGE')
+     OR EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
+                WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = 'xr_app') AND g.rolname NOT IN ('xr_data', 'xr_staff_bypass')) THEN
+    RAISE EXCEPTION 'PF-12 stopped: xr_app''s role memberships are not as required' USING ERRCODE = 'insufficient_privilege';
   END IF;
 END $$;
 

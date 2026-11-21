@@ -5,7 +5,7 @@
 # BYPASSRLS and a server that does not log tersely must stop at PF-12 with its message, leaving no role behind.
 # A throwaway cluster on its own port (initdb as the postgres user: a cloud lane or a Linux machine with postgresql-18),
 # removed at the end; the lane's own cluster on 54329 is never touched. Exit 0 only when every line passes. US$0.
-#   bash studio/tools/rds-shape-check.sh [port]      (default 54401; uses ports port..port+2)
+#   bash studio/tools/rds-shape-check.sh [port]      (default 54401; uses ports port..port+3)
 set -uo pipefail
 STUDIO=$(cd "$(dirname "$0")/.." && pwd); PORT=${1:-54401}
 PGBIN=${PGBIN:-$(dirname "$(readlink -f "$(command -v initdb 2>/dev/null || echo /usr/lib/postgresql/18/bin/initdb)")")}
@@ -21,7 +21,7 @@ start() { # port bypass|nobypass terse|verbose
 }
 stop() { "${AS_PG[@]}" "$PGBIN/pg_ctl" -D "/tmp/rds-shape-$1/data" stop -m fast >/dev/null 2>&1; rm -rf "/tmp/rds-shape-$1"; }
 migrate() { (cd "$STUDIO" && DATABASE_URL="postgresql://xr_admin@127.0.0.1:$1/xr_rds" timeout 600 ./node_modules/.bin/prisma migrate deploy 2>&1); }
-trap 'stop $PORT; stop $((PORT + 1)); stop $((PORT + 2))' EXIT
+trap 'stop $PORT; stop $((PORT + 1)); stop $((PORT + 2)); stop $((PORT + 3))' EXIT
 a() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_admin -c "$1" 2>&1 | tail -1; }
 u() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_app -c "$1" 2>&1 | tail -1; }
 uall() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_app -c "$1" 2>&1; }   # every line (an error's first line is the message)
@@ -44,6 +44,15 @@ ok "walls: xr_app as firm A changes none of firm B's rows" "$(u "select set_conf
 ok "walls: xr_app cannot turn row security off for itself" "$(uall 'set row_security = off; select count(*) from platform_firm' | has 'would be affected by row-level security')" "1"
 ok "walls: xr_app cannot disable a wall, create a table or skip triggers" \
   "$(uall 'alter table platform_firm disable row level security' | has 'must be owner'),$(uall 'create table x_probe (i int)' | has 'permission denied for schema public'),$(uall 'set session_replication_role = replica' | has 'permission denied')" "1,1,1"
+# review B1: the reader's functions keep the owner's table rights they used by membership (pf15's limit tables lost them
+# on xr_data): every table in public readable and writable by the reader, and the two calls that failed work.
+ok "the reader may read and write every table in public (what its membership gave; never ownership)" \
+  "$(a "select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p') and not has_table_privilege('xr_wall_reader', c.oid, 'SELECT,INSERT,UPDATE,DELETE')")" "0"
+ok "the reader owns no table" "$(a "select count(*) from pg_tables where tableowner = 'xr_wall_reader'")" "0"
+ok "a limit check (platform_entitlement_limit) runs as xr_app" \
+  "$(uall "select set_config('app.firm_id','11111111-1111-1111-1111-111111111111',false); select count(*) from platform_entitlement_limit('walls-a', 'ACTIVE_INDIVIDUAL_CASES', now(), now())" | has 'ERROR'),$(uall "select set_config('app.firm_id','11111111-1111-1111-1111-111111111111',false); select count(*) from platform_entitlement_limit('walls-a', 'ACTIVE_INDIVIDUAL_CASES', now(), now())" | tail -1 | grep -cE '^[0-9]+$')" "0,1"
+ok "a staff limit change (platform_limit_change insert as the bypass role) applies through the reader's triggers" \
+  "$(uall "set role xr_staff_bypass; insert into platform_limit_change (id, plan_id, metric, new_value, reason, approved_by, approved_at) select gen_random_uuid(), id, 'ACTIVE_INDIVIDUAL_CASES', 4242, 'rds-shape check', 'staff:rds-shape-check', now() from platform_plan limit 1" | tail -1),$(a "select count(*) from platform_plan_limit where limit_value = 4242")" "INSERT 0 1,1"
 ok "terse error logs: the server's setting stands for xr_app" "$(u 'show log_error_verbosity')" "terse"
 ok "the F4 checksums are the files' (prisma migrate status)" "$( (cd "$STUDIO" && DATABASE_URL="postgresql://xr_admin@127.0.0.1:$PORT/xr_rds" ./node_modules/.bin/prisma migrate status 2>&1) | has 'Database schema is up to date')" "1"
 
@@ -55,6 +64,12 @@ ok "…and leaves no role behind (the block is one statement)" "$(psql -h 127.0.
 start $((PORT + 2)) bypass verbose || { echo "FAIL the third cluster did not start"; exit 1; }
 out=$(migrate $((PORT + 2)))
 ok "a server that does not log tersely stops at PF-12 (xr_app's terse logs cannot be set by a non-superuser)" "$(echo "$out" | has 'PF-12 stopped: xr_admin may not set log_error_verbosity')" "1"
+
+# review M2 (break): a membership made outside the migration that gives xr_app more (here: in the admin role) stops PF-12
+start $((PORT + 3)) bypass terse || { echo "FAIL the fourth cluster did not start"; exit 1; }
+psql -h 127.0.0.1 -p $((PORT + 3)) -U postgres -d postgres -qc "CREATE ROLE xr_app LOGIN" -c "GRANT xr_admin TO xr_app" >/dev/null
+out=$(migrate $((PORT + 3)))
+ok "a pre-existing extra membership of xr_app (in the admin role) stops PF-12" "$(echo "$out" | has "PF-12 stopped: xr_app's role memberships are not as required")" "1"
 
 echo "$([ "$fails" = 0 ] && echo "all passed" || echo "$fails failed")"
 exit $((fails > 0))
