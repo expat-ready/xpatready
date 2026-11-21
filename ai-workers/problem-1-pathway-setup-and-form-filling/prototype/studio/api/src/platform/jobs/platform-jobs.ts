@@ -18,6 +18,7 @@ import { observeJob } from "../observability/jobs.ts";
 import { asJob, withFirm } from "../firm-scope.ts";
 import { PgBossJobs, type DeadLetter } from "./pgboss-jobs.ts";
 import { STUCK_CHECK_CRON, STUCK_CHECK_QUEUE, StuckCheck } from "./stuck-check.ts";
+import { logPort } from "../observability/log.ts";
 
 const SIGNALS = ["SIGTERM", "SIGINT"] as const;
 /** Optional: pg-boss options for this runner (a test passes pg-boss's TestClock as `clock`; the app passes none). */
@@ -37,7 +38,7 @@ export class PlatformJobs implements JobPort, JobQueueProbe, OnApplicationBootst
   readonly stuck: StuckCheck;
   #onSignal = (signal: NodeJS.Signals) => {
     for (const s of SIGNALS) process.removeListener(s, this.#onSignal);
-    void this.runner.stop().catch((e) => console.error(`jobs: stop: ${(e as Error).message}`)).finally(() => process.kill(process.pid, signal));
+    void this.runner.stop().catch((e) => logPort.error("jobs_stop_failed", e)).finally(() => process.kill(process.pid, signal));
   };
 
   constructor(boss?: Partial<ConstructorOptions> | null) {
