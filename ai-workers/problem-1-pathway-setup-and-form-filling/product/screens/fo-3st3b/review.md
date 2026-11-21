@@ -131,3 +131,24 @@ Read: `git diff b4b67150a 4053db1f2 -- '*.ts' '*.tsx'` and the wiring `git diff 
 Journey re-score: journey 8 now holds, so correct data and error recovery rise to 1 each. Plain words stays at ½: the range words are now in hours, but the "0.1667" refusal is puzzling and the m2 words are not in §5. New score **9.5/10**.
 
 **Verdict: Approve** at 4053db1f2cc7834465b91e11090f524960f66af2 (wiring as in local-int-fo3st3b 4e779778e). Blockers: none. Majors: none open. Should: m2, m4, m5 (tech lead), n1.
+
+---
+
+# Re-review 2: diff `ec0c243b2..720e03a52` only (head 720e03a52ba8fa16fb6181df53074bbe80a62384)
+Read: `git diff ec0c243b2 720e03a52 -- '*.ts' '*.tsx'`. ec0c243b2 is a merge of main only (#2718 and #2727 are now on main). 2f1512f09 adds the wiring, and 720e03a52 adds screenshots.
+- **Wiring:** `routes.tsx`, `booking/area.tsx` and `types-page.tsx` at 720e03a52 are byte-identical to the approved local-int-fo3st3b 4e779778e (`git diff 4e779778e 720e03a52` is empty for these three files). That includes the M1 `onSaved(version, sent)` guard.
+- **New web files:** `timings-contract.ts`, `timings-page.tsx` and `type-timings.tsx` are unchanged since 4053db1f2.
+- **`j_42.ts`:** the W0 hunk is the one approved in 5ddd560b3: timings set by screens, the HELD line removed, and only the 5-minute slot interval left as labelled setup. The file's other differences from local-int come from main.
+- **Suite (`check_fo3st3_timings_browser.ts`):** test code only.
+  - `settle()` waits up to 2 s for running finite CSS transitions to end before axe and before each screenshot.
+  - A new check fails if any transition is still running when axe starts. This is the same pattern as #2782.
+  - It is sound: axe now reads the settled screen, and a run that does not settle fails visibly instead of being hidden.
+- **Smoke test on the fresh copy :4574 (Owner):**
+  - M1 holds: B renames → A's timing save gets 409 → Reload shows B's name → the timing saves → Save type gets 200, and the server keeps B's name.
+  - The range words are in hours: "Self-service limit must be from 0 to 8,760 hours."
+  - Settings → Timings loads.
+- **Builder's results, not re-run by me:** timings suite 52/52, types suite 48/48, j_42 33/33 with no HELD line, web tsc clean, graph G1/G2/G4/G5 0.
+
+No new findings. Still open, all Should, none blocking: m2 (added strings not listed), m4 (error summary, as in part 3a), m5 (firm PUT takes no version; asked of the tech lead on the PR), n1 (extra reads), n3 (note).
+
+**Verdict: Approve** at 720e03a52ba8fa16fb6181df53074bbe80a62384. Blockers: none. Majors: none open. Journey score 9.5/10 (unchanged).
