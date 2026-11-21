@@ -77,33 +77,21 @@ Same copy and method (`brk_pf5s2` on :4703, fresh database, stopped at the end).
 
 **Held:**
 - **M1:** a save that comes back with a warning (`onStripe:false`) stays on the page. The warning shows, nothing goes to Stripe, and focus returns to Add a card.
-- **M2:**
-  - A firm on hold with a card on file, whose record never moves, keeps showing "Checking…" (3 reads in 7 s) and keeps `?card=saved`.
-  - When the record moves to Active on the third read, the page says "Card saved", the chip shows Active and the marker is removed.
-  - An overdue firm whose record stays Overdue gets the new slow words after 61 s, not "Card saved".
-- **M3:** a trial set to cancel (no card, a card, or card unknown) reads "…Your subscription is set to cancel then, so no payment will be taken." with "Cancels on 30 Nov 2026", including when `currentPeriodEnd` is null.
-- **M4:** a 503, a 409 or a forged hand-off URL moves focus to the error box, also after Save and continue with a fast 503. Shift+Tab goes back to the button. Each case has a single "Try again".
-- **m2:** the slow words no longer claim the card is saved.
+- **M2:** a firm on hold with a card on file and a record that never moves keeps "Checking…" (3 reads in 7 s) and `?card=saved`. When the record moves to Active on the third read: "Card saved", Active chip, marker removed. An overdue firm whose record stays Overdue gets the new slow words after 61 s.
+- **M3:** a trial set to cancel (no card, a card, or card unknown) reads "…set to cancel then, so no payment will be taken." with "Cancels on 30 Nov 2026", including when `currentPeriodEnd` is null.
+- **M4:** a 503, a 409, a forged hand-off URL, and Save and continue with a fast 503 all move focus to the error box; Shift+Tab goes back to the button. One "Try again" each (m9).
+- **m2, m7:** the slow words no longer claim the card is saved; the empty line reads "No invoices yet.".
 - **m5:** Escape and X now ask "Discard the address you typed?". Cancel keeps the panel; OK closes it and focus goes to Edit.
-- **m6:** a 150-character street, 100-character city and 80-character invoice number cause no sideways scroll at 375 or 1024.
-- **m7:** the empty line reads "No invoices yet.".
-- **m8:** currency `C$` shows "149.00 C$" and a bad date shows "date not known", with no page error. A null number reads "No number".
-- **m9:** confirmed by the M4 runs above.
+- **m6, m8:** a 150-character street, 100-character city and 80-character invoice number cause no sideways scroll at 375 or 1024. Currency `C$` shows "149.00 C$", a bad date "date not known", a null number "No number"; no page error.
 - **m13:** Tab reaches the status chip and the seats line, each opens its tooltip, and Escape hides it.
-- **422:** "Please check: Street name, Postal code." and focus lands on Street name. A 403 shows the server's words.
-- **axe** (WCAG 2.2 AA, 1440 and 375, with the error box and a tooltip open): 0 violations.
+- **422 and axe:** the panel says "Please check: Street name, Postal code." and focus lands on Street name; a 403 shows the server's words. axe (WCAG 2.2 AA, 1440 and 375, error box and a tooltip open): 0 violations.
 
-**R2-m1 (Minor, round 1 m1 only partly fixed): a past trial end still gets future words.** The record is still TRIAL with the end 3 days past.
-- No card: "Free trial: ended on 18 Nov 2026. Add a card before then to keep access."
-- Card on file: "Card saved. Your first payment is on 18 Nov 2026."
-- `billing-contract.ts:52`, `:54` (only `left` at `:49` knows `past`).
+**R2-m1 (Minor, round 1 m1 only partly fixed): a past trial end still gets future words.** With the record still TRIAL and the end 3 days past: no card reads "Free trial: ended on 18 Nov 2026. Add a card before then to keep access."; a card on file reads "Card saved. Your first payment is on 18 Nov 2026." `billing-contract.ts:52`, `:54` (only `left` at `:49` knows `past`).
 
 **R2-m2 (Minor, round 1 m5 only partly fixed): the footer's Close button throws away a typed address without asking.** It calls `onOpenChange(false)` directly, so it skips `confirmClose`; Escape and X do ask. `address-panel.tsx:49`.
 
-**R2-m3 (Minor, B1 after M1's fix): pressing the button again after the warning goes to Stripe without retrying the address update.** After the warned save, the second press of Add a card goes straight to Checkout. The address is now on our record, so the panel does not open, and the Stripe customer still has no address. The warning itself says "save it again in a few minutes", but nothing makes that happen before the hand-off. PF-5's webhook still holds a draft invoice that needs the address, so the page is no longer the only guard. `billing-page.tsx:89-101`.
+**R2-m3 (Minor, B1 after M1's fix): pressing the button again after the warning goes to Stripe without retrying the address update.** The address is on our record now, so the panel does not open, and the Stripe customer still has no address. The warning says "save it again in a few minutes", but nothing makes that happen first. PF-5's webhook still holds a draft invoice that needs the address. `billing-page.tsx:89-101`.
 
-Not findings (design, recorded here):
-- A typed `?card=saved` on a trial firm whose record already shows a card says "Card saved. Stripe confirmed your card." on the first read. `confirmed()` treats a good first read as "the webhook was first".
-- An overdue firm that only changes its card (and is not charged yet) gets the slow words.
+Not findings (design): a typed `?card=saved` on a trial whose record already shows a card says "Card saved. Stripe confirmed your card." at once (`confirmed()` treats a good first read as "the webhook was first"); an overdue firm that only changes its card gets the slow words.
 
 Verdict: Approve
