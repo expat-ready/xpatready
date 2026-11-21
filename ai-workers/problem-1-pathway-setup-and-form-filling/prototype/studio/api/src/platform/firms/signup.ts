@@ -19,7 +19,7 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { asBypass, firmScope, touchFirm, touchFirms } from "../firm-scope.ts";
+import { asBypass, firmScope, touchFirm, touchFirms, touchPlatform } from "../firm-scope.ts";
 import { writeMoneyKeysGranted } from "../identity/money-line.ts";
 import { emailOf } from "../identity/service.ts";
 import type { SignUpIdentity } from "./signup-identity.ts";
@@ -229,7 +229,8 @@ export class FirmSignUp {
 
   /** Removes the expired pending sign-ups (used or not). */
   async purgeExpired(): Promise<number> {
-    return (await this.db.platformSignupPending.deleteMany({ where: { expiresAt: { lte: await dbNow(this.db) } } })).count;
+    // PF-12b part 3: on its bypass use, the purge's one platform.bypass line is written in the same transaction (fail-closed).
+    return this.db.$transaction(async (tx) => { await touchPlatform(tx); return (await tx.platformSignupPending.deleteMany({ where: { expiresAt: { lte: await dbNow(tx) } } })).count; });
   }
 
   /** The firm of a staff member or firm contact with this email (an account exists), else null. */
