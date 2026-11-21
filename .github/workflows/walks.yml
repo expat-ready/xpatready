@@ -4,11 +4,13 @@
 # Merge-flow tooling (P-214): no gate reads this workflow's result; Mergify's required check is still ci's job "ci".
 #   * Start (qa or the Lead): Actions › walks › Run workflow, journeys "j_6 j_9" (ids or numbers, space-separated, up to
 #     20; empty = every studio/tests/journeys/j_*.ts), ref = the branch to walk (main for gate A on main), or
-#     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or
-#     tests/journeys/ runs by itself on its head once it is ready (never a draft or a mergify/* batch), and walks only
+#     gh workflow run walks.yml --ref main -f journeys="j_6 j_9". A pull request that changes this file or anything
+#     a journey can import (studio/, contracts/, p2/, p5/) runs by itself on its head once it is ready (never a draft
+#     or a mergify/* batch), and walks only
 #     the journeys whose file or imports it changes plus those its "Completes: R1.n" line names (tools/walk-plan.mjs;
 #     A274, QA-702: no 20 cap on a PR); none → the walk job is skipped and the plan summary says why. The 20 cap stays
-#     for a dispatch. tests/check_walk_plan.ts checks the rule and this file's shape.
+#     for a dispatch. A Completes line added by editing the body is read at the next push (no "edited": an edit
+#     would walk the same journeys again). tests/check_walk_plan.ts checks the rule and this file's shape.
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
@@ -31,8 +33,13 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - .github/workflows/walks.yml
-      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys/**
-      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_journey_recording.ts
+      # Every folder a journey imports from (studio's api/src, ports, acceptance, tests/runtime; prototype's contracts, p2,
+      # p5; check_walk_plan.ts W8 keeps this list complete): the plan job is cheap, walk-plan.mjs keeps only the
+      # journeys the PR touches, and an empty plan skips the walk job (A274).
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/contracts/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p2/**
+      - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p5/**
 permissions: { contents: read }
 concurrency:
   group: walks-${{ github.event.pull_request.number || github.run_id }}
@@ -74,6 +81,9 @@ jobs:
           if [ "$EVENT" = pull_request ]; then
             # Both sides of a rename; a failed or partial list fails the step, never a smaller plan.
             gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+            # GitHub lists at most 3000 files of a PR, silently: a list that long may be cut, so say so.
+            n=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename' | wc -l)
+            [ "$n" -lt 3000 ] || echo "::warning title=walks::this PR lists $n files, GitHub's limit: journeys reading a file past it may be missed"
           fi
           node "$T/walk-plan.mjs" --event "$EVENT" --journeys "$J" --want "$WANT" --changed "$RUNNER_TEMP/changed.txt" --body-file "$RUNNER_TEMP/body.md" > "$RUNNER_TEMP/plan.json"
           m=$(node -p 'JSON.stringify(require(process.argv[1]).matrix)' "$RUNNER_TEMP/plan.json")

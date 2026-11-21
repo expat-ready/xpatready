@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { walkPlan, CAP } from "../tools/walk-plan.mjs";
+import { walkPlan, CAP, importsOf } from "../tools/walk-plan.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..", "..", "..");
 const J = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/journeys";
@@ -34,6 +34,13 @@ ok("W6 on a pull_request the changed files come from the PR's file list under pi
   /pulls\/\$PR\/files/.test(plan) && /previous_filename/.test(plan) && /set -o pipefail/.test(plan) && /BODY: \$\{\{ github\.event\.pull_request\.body \}\}/.test(plan) && /--body-file/.test(plan) && /pull-requests: read/.test(plan) && !/run:[^\n]*github\.event\.pull_request\.body/.test(code));
 ok("W7 an empty matrix skips the walk job (the check passes) and the reason goes to the summary",
   /needs: plan\s*\n\s*if: \$\{\{ needs\.plan\.outputs\.matrix != '\[\]' \}\}/.test(walk) && /reason[\s\S]*GITHUB_STEP_SUMMARY/.test(plan));
+
+// Review round 1 (Major): the trigger must start walks for every file a journey reads, or the import rule never runs.
+const STUDIO = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/";
+const paths = [...y.slice(y.indexOf("    paths:"), y.indexOf("permissions:")).matchAll(/^\s*- (\S+)$/gm)].map((m) => m[1]);
+const covers = (f: string) => paths.some((g) => g === f || (g.endsWith("/**") && f.startsWith(g.slice(0, -2))));
+const read = [...new Set(real.flatMap((f) => [...importsOf(`${J}/${f}`, ROOT)]))], missed = read.filter((f) => !covers(f));
+ok(`W8 walks.yml's pull_request paths cover every file the ${real.length} journeys read (${read.length} files): a PR changing any of them starts the plan`, read.length > real.length && !missed.length && covers(`${STUDIO}api/src/front-office/firm-seed.ts`), { paths, missed: missed.slice(0, 5) });
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

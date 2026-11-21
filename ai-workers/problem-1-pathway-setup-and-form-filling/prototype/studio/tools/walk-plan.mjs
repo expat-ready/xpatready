@@ -38,7 +38,7 @@ export function importsOf(file, root) {
     const text = readFileSync(f, "utf8");
     for (const m of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
       const base = resolve(dirname(f), m[1]);
-      const hit = [base, `${base}.ts`, `${base}.tsx`, `${base}.mjs`, `${base}.js`, join(base, "index.ts")].find((c) => existsSync(c) && statSync(c).isFile());
+      const hit = [base, base.replace(/\.(m?)js$/, ".$1ts"), `${base}.ts`, `${base}.tsx`, `${base}.mjs`, `${base}.js`, join(base, "index.ts")].find((c) => existsSync(c) && statSync(c).isFile());
       if (hit) todo.push(hit);
     }
   }
@@ -101,7 +101,7 @@ export function selftest() {
   const put = (f, t) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), t); };
   try {
     put(`${J}/j_1.ts`, `import { a } from "../../lib/a.ts";\nimport { r } from "./record.ts";\n`);
-    put("s/lib/a.ts", `export { b } from "./b";\n`); put("s/lib/b.ts", "export const b = 1;\n");
+    put("s/lib/a.ts", `export { b } from "./b";\nconst c = await import("./c.js");\n`); put("s/lib/b.ts", "export const b = 1;\n"); put("s/lib/c.ts", "export const c = 1;\n");
     put(`${J}/record.ts`, "export const r = 1;\n"); put(`${J}/walk.mjs`, ""); put(`${J}/fixtures/j_0_fails.ts`, "");
     for (let n = 2; n <= 25; n++) put(`${J}/j_${n}.ts`, `import { r } from "./record.ts";\n`);
     const names = (p) => p.matrix.map((m) => m.name).join(" "), t = (name, c, got) => { if (!c) out.push(`${name}: ${JSON.stringify(got).slice(0, 300)}`); };
@@ -109,6 +109,10 @@ export function selftest() {
     const refused = (f) => { try { f(); return ""; } catch (e) { return e.message; } };
     let p = pr(["s/lib/b.ts"]);
     t("T1 a PR changing a file a journey imports (through a second file) walks that journey and the fixtures", names(p) === "j_1 j_0_fails j_0_throws", p);
+    p = pr(["s/lib/c.ts"]);
+    t("T1b a dynamic import(\"./c.js\") of a TypeScript file c.ts is followed", names(p) === "j_1 j_0_fails j_0_throws", p);
+    const r0 = refused(() => walkPlan({ event: "workflow_dispatch", jdir: J, want: "1 ".repeat(101), root }));
+    t("T9b a dispatch input over 200 characters is refused", /at most 200 characters/.test(r0), r0);
     p = pr([`${J}/j_2.ts`], "Done when: x\nCompletes: R1.3\n```\nCompletes: R1.4\n```\n");
     t("T2 a changed journey plus the Completes line's journey; a fenced Completes line is no claim", names(p) === "j_2 j_3 j_0_fails j_0_throws", p);
     p = pr(["s/README.md", "s/web/x.tsx"]);
@@ -133,7 +137,7 @@ export function selftest() {
 function main(argv) {
   const [cmd] = argv, opt = {};
   for (let i = cmd === "selftest" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
-  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T9 hold"); return f.length ? 1 : 0; }
+  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T9 hold (with T1b, T9b)"); return f.length ? 1 : 0; }
   try {
     const p = walkPlan({ event: opt.event, jdir: opt.journeys, want: opt.want ?? "", changed: opt.changed ? readFileSync(opt.changed, "utf8").split("\n") : [], body: opt["body-file"] && existsSync(opt["body-file"]) ? readFileSync(opt["body-file"], "utf8") : "" });
     console.log(JSON.stringify(p)); return 0;
