@@ -1,0 +1,14 @@
+| Suite | Result | Time | Last line |
+|---|---|---|---|
+| check_fo3_booking.ts | PASS | 14 s | 133 passed, 0 failed |
+| check_fo3a2_consult_record.ts | PASS | 9 s | 39 passed, 0 failed |
+| check_fo3a_booking_types.ts | PASS | 14 s | 48 passed, 0 failed |
+| check_fo3a_hours_timings.ts | PASS | 20 s | 46 passed, 0 failed |
+| check_fo3sr_routes.ts | PASS | 8 s | 29 passed, 0 failed |
+| check_fo3st1_calendar_browser.ts | PASS | 63 s | 27/27 passed |
+| check_fo3st1_consult_browser.ts | PASS | 8 s | 21/21 passed |
+| check_fo3st3_timings_browser.ts | PASS | 34 s | 52/52 passed |
+| check_fo3st3_types_browser.ts | PASS | 36 s | 57/57 passed |
+| check_fo3w_booking_browser.ts | PASS | 69 s | 67/67 passed |
+| check_fo3w_manage_browser.ts | PASS | 28 s | 50/50 passed |
+commit f9892a44d · only the chosen suites ran (--changed ) · logs in ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var/suites · copies named qa_*, ports +16000
