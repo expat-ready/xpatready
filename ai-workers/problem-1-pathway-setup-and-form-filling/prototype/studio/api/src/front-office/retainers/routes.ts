@@ -55,6 +55,10 @@ export class RetainersController {
   @Post("prospects/:id/retainers") @PermissionKeys("agent/retainer:draft")
   draft(@Req() r: R, @Param("id") prospectId: string, @Body() b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
 
+  /** FO-5s: the prospect's retainers (its card on the prospect page). */
+  @Get("prospects/:id/retainers") @PermissionKeys("agent/retainer:list")
+  listForProspect(@Req() r: R, @Param("id") prospectId: string) { return this.svc.listForProspect(staffOf(r), prospectId); }
+
   @Get("retainers/:id") @PermissionKeys("agent/retainer:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }
 

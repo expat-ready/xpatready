@@ -430,6 +430,19 @@ export class Retainers {
     return v;
   }
 
+  /** FO-5s (S2): a prospect's retainers for its card, newest first. The prospect's own visibility shows them all; the
+   *  representative of one sees that one (BR-3); anyone else gets the one not-found. */
+  async listForProspect(ctx: StaffContext, prospectId: string) {
+    const id = uuidOf(prospectId, "prospectId") ?? notFound("prospect");
+    const p = await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id }, select: { id: true, ownerStaffId: true } });
+    if (!p) return notFound("prospect");
+    const all = p.ownerStaffId === ctx.staffId || (await this.seesAll(ctx));
+    const rows = await this.db.foRetainer.findMany({ where: { firmId: ctx.firmId, prospectId: p.id, ...(all ? {} : { representativeStaffId: ctx.staffId }) }, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      select: { id: true, kind: true, status: true, currentVersion: true, representativeStaffId: true, updatedAt: true } });
+    if (!all && !rows.length) return notFound("prospect");
+    return rows.map((r) => ({ ...r, mine: r.representativeStaffId === ctx.staffId }));
+  }
+
   /** The retainer page (BR-6): the current version, its fees, what blocks Send and what is missing, the versions. */
   async read(ctx: StaffContext, id: string) {
     const r = await this.visible(ctx, id);
