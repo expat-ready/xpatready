@@ -74,7 +74,11 @@ const open = async (p: Page, id: string) => { await p.goto(`${BASE}/front-office
 const drawer = (p: Page) => p.getByRole("dialog", { name: "Run a conflict check" });
 const runCheck = async (p: Page) => { await panel(p).getByRole("button", { name: "Run a check" }).click(); await drawer(p).waitFor(); await drawer(p).locator("[data-searched]").waitFor({ timeout: 15_000 }); };
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-const axe = async (p: Page, where: string) => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).include("[data-conflict-panel], [role=dialog]").analyze(); const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+// Colours are read once running CSS transitions end: the Save button fades from its disabled look to the primary one as the
+// search ends, and axe sampling mid-fade reported a contrast fault (merge batch #2681, run 44855242436). Transitions only:
+// a spinner's animation never ends.
+const settled = (p: Page) => p.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => undefined))));
+const axe = async (p: Page, where: string) => { await settled(p); const r = await new AxeBuilder({ page: p }).withTags(TAGS).include("[data-conflict-panel], [role=dialog]").analyze(); const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok(`FO-13s2 axe-core (WCAG 2.2 AA): no serious or critical finding — ${where}`, bad.length === 0, bad.map((v) => `${v.id}: ${v.nodes.map((x) => x.target.join(" ")).join(", ")}`)); };
 
 try {
