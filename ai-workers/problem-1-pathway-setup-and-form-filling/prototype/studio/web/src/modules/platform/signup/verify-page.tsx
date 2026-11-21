@@ -49,7 +49,7 @@ export function VerifyPage() {
       if (done.current) return;
       const p = x as Problem;
       if (p.code === "CODE_WRONG") setError(p.detail ?? "That code is not the one we sent.");
-      else if (p.status === 404) { held = null; setView({ step: "closed", words: EXPIRED, signUpAgain: true }); }
+      else if (p.status === 404 || p.status === 422) { held = null; setView({ step: "closed", words: EXPIRED, signUpAgain: true }); }   // 422: a link not { token, code } (PF-28 part 2c)
       else if (p.code === "ACCOUNT_EXISTS" || p.code === "PLAN_GONE") { held = null; setView({ step: "closed", words: p.detail ?? EXPIRED, signUpAgain: p.code === "PLAN_GONE" }); }
       else setError(p.detail ?? "Not confirmed. Please try again.");
     } finally { inFlight.current = false; setBusy(false); }

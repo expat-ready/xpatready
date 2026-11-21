@@ -201,7 +201,7 @@ try {
 
   const noTerms = await problemOf(async () => up(await form({ acceptedTerms: terms.slice(0, 2) }), "10.0.0.1"));
   ok("PF-5 fail: a sign-up without accepting every current terms version is refused at the field, nothing stored",
-    noTerms?.status === 400 && JSON.stringify(noTerms.body.errors).includes("acceptedTerms") && pendingCount("owner@maple.example.com") === "0", noTerms);
+    noTerms?.status === 422 && JSON.stringify(noTerms.body.errors).includes("acceptedTerms") && pendingCount("owner@maple.example.com") === "0", noTerms);
   const bot = await up(await form({ email: "bot@maple.example.com", website: "http://spam.example.com" }), "10.0.0.2");
   const fastForm = await form({ email: "fast@maple.example.com" });
   const fast = await up({ ...fastForm, formStamp: (await s.plans()).formStamp }, "10.0.0.3");   // sent at once: too fast
@@ -223,7 +223,7 @@ try {
   const link = verifyMails("owner@maple.example.com")[1].text;
   const token = /token=([A-Za-z0-9_-]{43})/.exec(link)?.[1] ?? "", code = /code=(\d{6})/.exec(link)?.[1] ?? "";
   const wrong = await problemOf(() => s.verify({ token, code: code === "000000" ? "111111" : "000000" }, "10.0.1.1"));
-  ok("PF-5 fail: a wrong code is refused and makes no firm", wrong?.status === 400 && sql(`select count(*) from platform_firm where contact_email = 'owner@maple.example.com'`) === "0", wrong);
+  ok("PF-5 fail: a wrong code is refused (422 CODE_WRONG, PF-28 part 2c) and makes no firm", wrong?.status === 422 && sql(`select count(*) from platform_firm where contact_email = 'owner@maple.example.com'`) === "0", wrong);
   failAudit = "platform.terms.accepted";
   const rolled = await problemOf(() => s.verify({ token, code }, "10.0.1.2"));
   failAudit = null;
@@ -304,7 +304,7 @@ try {
   ok("PF-5 fail (break M3): a form older than 2 hours or stamped by another server asks for a reload (never a silent drop)", stale?.status === 400 && stale.body.code === "RELOAD" && foreign?.status === 400 && foreign.body.code === "RELOAD", [stale, foreign]);
   const spaces = await problemOf(async () => s.signUp(await form({ email: "sp@firm.example.com", password: " ".repeat(14) }), "10.8.0.3"));
   const missing = await problemOf(async () => s.signUp({ ...(await form()), firmName: undefined }, "10.8.0.4"));
-  ok("PF-5 fail (break m1, m8): a password of spaces is refused, and each field error names its field", spaces?.status === 400 && JSON.stringify(spaces.body.errors).includes("password:") && JSON.stringify(missing?.body.errors).includes("firmName:"), [spaces, missing]);
+  ok("PF-5 fail (break m1, m8): a password of spaces is refused, and each field error names its field", spaces?.status === 422 && JSON.stringify(spaces.body.errors).includes("password:") && JSON.stringify(missing?.body.errors).includes("firmName:"), [spaces, missing]);
   await up(await form({ email: "guess@firm.example.com" }), "10.8.0.5");
   const g = verifyMails("guess@firm.example.com")[0].text, gTok = /token=([A-Za-z0-9_-]{43})/.exec(g)?.[1], gCode = /code=(\d{6})/.exec(g)?.[1] ?? "";
   for (let i = 0; i < 5; i++) await problemOf(() => s.verify({ token: gTok, code: String((Number(gCode) + 1 + i) % 1_000_000).padStart(6, "0") }, "10.8.1.1"));

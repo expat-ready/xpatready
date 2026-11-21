@@ -141,6 +141,12 @@ export function follows(dir: string, cls: string, fn: ts.MethodDeclaration, name
           const k = fieldClass(here.node, e.expression.name.text);
           if (k) target = [k, e.name.text];
         }
+        // PF-28 part 2c: a method a class inherits is followed into the class that declares it (PlatformSignUp extends FirmSignUp).
+        if (target) for (let k = 0, c = all.get(target[0]); c && !method(c.node, target[1]) && k < 4; k++) {
+          const base = c.node.heritageClauses?.find((h) => h.token === ts.SyntaxKind.ExtendsKeyword)?.types[0]?.expression;
+          c = base && ts.isIdentifier(base) ? all.get(base.text) : undefined;
+          if (c && method(c.node, target[1])) target = [(c.node.name as ts.Identifier).text, target[1]];
+        }
         const into = target && all.get(target[0]) && method(all.get(target[0])!.node, target[1]);
         if (into) n.arguments.forEach((arg, i) => {
           const p = into.parameters[i];
