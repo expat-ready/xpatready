@@ -74,7 +74,7 @@ ok("PF-12b DW3 fail: a use added without `audit`, or with an empty none, is name
 const PER_FIRM = ["cases.prospect-won.catch-up", "job:messages.outbox_sweep", "job:platform.entitlements.storage_daily", "platform.demo.inbox", "platform.demo.reset", "platform.entitlements.limit-change", "platform.firms.signup", "platform.web-address.catch-up"];
 const DOORS = ["fo.booking.public-page", "fo.booking.self-service", "fo.sales.web-form", "platform.identity.authenticate", "platform.identity.invitation", "platform.identity.sign-in", "platform.web-address.host"];
 const perFirm = Object.entries(BYPASS_USES).filter(([, e]) => e.audit === "per-firm").map(([k]) => k).sort();
-ok("PF-12b DW3 pass: the eight cross-firm uses audit per firm; the seven own-firm doors say why not yet (part 2 moves them)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => /^none: an own-firm door/.test(BYPASS_USES[d].audit)), perFirm);
+ok("PF-12b DW3 pass: the eight cross-firm uses audit per firm; the seven own-firm doors are off the list (PF-12b part 2: narrow lookups, tests/check_pf12b_doors.ts)", JSON.stringify(perFirm) === JSON.stringify(PER_FIRM) && DOORS.every((d) => !(d in BYPASS_USES)), perFirm);
 ok("PF-12b DW3 pass: the two uses that touch no firm say why (the purge: our own register; re-encrypt: every job runs as its firm)", /platform_signup_pending/.test(BYPASS_USES["job:platform.signup.purge"].audit) && /runs as that firm/.test(BYPASS_USES["job:platform.secret_box.reencrypt"].audit));
 
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]);
@@ -133,17 +133,18 @@ try {
   ok("PF-12b fail (AUD-1m's case line): the wrapping port refuses a case-side line on a bypass use (it names no firm to write the line for), passes it through outside one, and still passes a firm's line", caseErr instanceof FirmScopeError && inner.caseEntries.length === 1 && inner.entries.length === 1 && inner.entries[0]?.firmId === A, { caseErr: String(caseErr), cases: inner.caseEntries.length, entries: inner.entries.length });
 
   // Break M1, M2, m3, m4 (the breaker's report, screens/PF-12b/break-report.md).
-  const nested = await errOf(() => inRequest(inboxRoute, () => asBypass("platform.demo.inbox", () => asBypass("platform.identity.authenticate", () => db.platformStaff.findMany()))));
-  ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused, String(nested));
+  // PF-12b part 2: the doors left the list, so two uses that may both run outside a request stand in (each allowed alone).
+  const nested = await errOf(() => asBypass("platform.demo.reset", () => asBypass("job:messages.outbox_sweep", () => db.platformStaff.findMany())));
+  ok("PF-12b fail (break M1): a bypass use inside another is refused before any query (it would cross under the outer use's lines)", nested instanceof BypassRefused && /may not run inside/.test(String(nested)), String(nested));
   const signupRoute = { method: "POST", path: "/api/public/signup" };
   let pair: unknown;
   try { pair = await inRequest(signupRoute, () => asBypass("platform.firms.signup", async () => { const inner = await asBypass("platform.account.mail", () => currentBypass()); return [inner, currentBypass()]; })); } catch (e) { pair = String(e); }   // review n1: a regression prints FAIL
   ok("PF-12b pass (the one named exception, PF-19p): platform.account.mail (touches no firm's rows) runs inside platform.firms.signup under its own name, and sign-up's use comes back after it", JSON.stringify(pair) === JSON.stringify(["platform.account.mail", "platform.firms.signup"]), pair);
-  const notNamed = await errOf(() => inRequest(signupRoute, () => asBypass("platform.firms.signup", () => asBypass("platform.identity.authenticate", () => 1))));
+  const notNamed = await errOf(() => asBypass("platform.firms.signup", () => asBypass("job:messages.outbox_sweep", () => 1)));   // PF-12b part 2: a use allowed here alone
   const reversed = await errOf(() => inRequest(signupRoute, () => asBypass("platform.account.mail", () => asBypass("platform.firms.signup", () => 1))));
   const named = Object.entries(BYPASS_USES).filter(([, e]) => e.inside?.length).map(([k, e]) => `${k}<${e.inside!.join("|")}`);
   ok("PF-12b fail (the exception stays narrow): another use inside sign-up, and sign-up inside platform.account.mail, are both refused; only that one pair is named, on a none use",
-    notNamed instanceof BypassRefused && reversed instanceof BypassRefused && JSON.stringify(named) === JSON.stringify(["platform.account.mail<platform.firms.signup"]) && BYPASS_USES["platform.account.mail"].audit.startsWith("none: "), { notNamed: String(notNamed), reversed: String(reversed), named });
+    notNamed instanceof BypassRefused && /may not run inside/.test(String(notNamed)) && reversed instanceof BypassRefused && JSON.stringify(named) === JSON.stringify(["platform.account.mail<platform.firms.signup"]) && BYPASS_USES["platform.account.mail"].audit.startsWith("none: "), { notNamed: String(notNamed), reversed: String(reversed), named });
   const mail = BYPASS_USES["platform.account.mail"];
   ok("PF-12b fail (review m1): a per-firm use that names an outer use may still not run inside it; nor may a none use inside a use it does not name",
     mayRunInside(mail, "platform.firms.signup") && !mayRunInside({ ...mail, audit: "per-firm" }, "platform.firms.signup") && !mayRunInside(mail, "platform.demo.inbox") && !mayRunInside({ audit: mail.audit }, "platform.firms.signup"));
@@ -248,9 +249,8 @@ try {
 
   // ---------------------------------------------------------------------------------------------------------- DW7
   const before7 = total();
-  await inRequest({ method: "GET", path: "/api/public/forms/abc" }, () => asBypass("fo.sales.web-form", () => db.foWebForm.findMany({ take: 1 })));
-  await asJob("platform.signup.purge", () => s.purgeExpired());
-  ok("PF-12b DW7 pass: an own-firm door (the web form's lookup) and the purge (no firm) add no line", total() === before7, { before7, after: total() });
+  await asJob("platform.signup.purge", () => s.purgeExpired());   // the own-firm doors left the bypass (PF-12b part 2): their DW7 is in check_pf12b_doors.ts
+  ok("PF-12b DW7 pass: the purge (no firm) adds no line", total() === before7, { before7, after: total() });
   const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 2, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
   ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2, catch-up 2, storage_daily 2, limit change 2 + its notices 2), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
