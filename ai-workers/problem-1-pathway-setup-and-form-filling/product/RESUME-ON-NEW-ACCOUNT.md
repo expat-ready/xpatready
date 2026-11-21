@@ -2,6 +2,13 @@
 
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
+## Switch of 22 Nov (Lead 18, series 3 → the new account's Lead), prepared 04:1x IST 22 Nov: read this block first
+**When:** at ~95% weekly (89% at 03:2x, ~1.5%/h with 9 cloud lanes: ~08:00 IST); hard stop 98% (~10:00). The weekly meter resets 22:30 IST 22 Nov, so the new account carries ~10:00-22:30.
+**At 95%:** the Lead messages every running lane "finish this step, push, stop" (prompt box for cloud lanes), pushes STATE, then switches.
+**Truth:** `product/STATE.md` on `lead/2026-11-07-lead31`: the "Lead 18 since 03:21" lines, A275-A276, P-784 (cap 12 to 07:00 23 Nov).
+**Cloud lanes on the OLD account to re-brief from their PRs (one fresh cloud session per open row, same brief, Opus 5.5 medium):** R1.29 FO-9a next part · R1.102 CS-S1 part 2 · R1.105 AUD-5 part 2 · R1.92 PF-18a part 2 · rescue #2038 FO-6 part 1 (R1.54) · R1.24 PF-25w+QA-642 · R1.5 PF-4b+QA-643 · PF-5s screens (R1.90/R1.92) · PF-18s screens (R1.92/R1.93). Plus qa Q9 (R1.19 Works PR after #2857 merges) and the #2687 DEMO-LINK lane.
+**Local sessions that survive:** Lead B (11) `local_3a725fd1`; AWS proof session `local_35aacb3f` (waits on the founder's root sign-in in ITS browser pane); standbys Lead 19 `local_69eeb2bd`, Lead 20 `local_29230626`.
+
 ## Switch of 21-22 Nov (Lead 15, series 3 → the new account's Lead), prepared 17:2x IST 21 Nov: read this block first
 **When:** at ~95% weekly or before the founder sleeps, whichever comes first (founder, A271). Weekly was 76% at 17:2x IST, ~3%/h.
 **Where the truth is:** `product/STATE.md` on branch `lead/2026-11-07-lead31` (pushed after every step): "Start here", the newest hand-over block, the "Lead 15 since" lines and the A-rows. RULES as of P-783.
