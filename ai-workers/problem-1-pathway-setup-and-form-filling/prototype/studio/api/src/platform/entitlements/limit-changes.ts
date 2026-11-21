@@ -13,7 +13,7 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import { EntitlementMetric } from "../../../../ports/entitlement.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { asBypass } from "../firm-scope.ts";
+import { asBypass, touchEachFirm, touchFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -63,11 +63,14 @@ export class PlanLimitChanges {
       }
       const firms = await tx.$queryRaw<{ firmId: string; effectiveAt: Date }[]>`SELECT firm_id::text AS "firmId", effective_at AS "effectiveAt" FROM platform_limit_change_firm WHERE change_id = ${row.id}::uuid ORDER BY firm_id`;
       const live = row.lowered ? firms : (await tx.$queryRaw<{ firmId: string }[]>`SELECT firm_id::text AS "firmId" FROM platform_subscription WHERE plan_id = ${planRow.id}::uuid AND status <> 'ENDED' ORDER BY firm_id`).map((f) => ({ firmId: f.firmId, effectiveAt: row.approvedAt }));
-      for (const f of live) await this.d.audit.record(tx, { firmId: f.firmId, actor, action: row.lowered ? "plan.limit.lowered" : "plan.limit.raised", entity: "platform_limit_change", entityKey: row.id,
+      for (const f of live) {
+        await touchFirm(tx, f.firmId);   // PF-12b: the firm's platform.bypass line, in this transaction, before its own line
+        await this.d.audit.record(tx, { firmId: f.firmId, actor, action: row.lowered ? "plan.limit.lowered" : "plan.limit.raised", entity: "platform_limit_change", entityKey: row.id,
         summary: row.lowered
           ? `${planRow.name}'s limit on ${WORD[metric]} lowered from ${shown(row.old)} to ${shown(value)}; it applies to this firm from ${f.effectiveAt.toISOString().slice(0, 10)}. Nothing is deleted.`
           : `${planRow.name}'s limit on ${WORD[metric]} raised from ${shown(row.old)} to ${shown(value)}; it applies to this firm now.`,
-        detail: { plan, metric, oldValue: row.old, newValue: value, effectiveAt: f.effectiveAt.toISOString() } });
+        detail: { plan, metric, oldValue: row.old, newValue: value, effectiveAt: f.effectiveAt.toISOString() }, before: { [metric]: row.old }, after: { [metric]: value } });
+      }
       return { row, firms };
     }));
     const notices = out.row.lowered ? await this.sendNotices(out.row.id) : { sent: 0, failed: [] };
@@ -77,17 +80,25 @@ export class PlanLimitChanges {
 
   /** The "Live-plan removal notice" to every active Owner of each firm a lowering reaches (SA-3-43), after the commit. One
    *  idempotency key per change and Owner, so calling it again (a retry after a failed send) sends each once. A failed
-   *  send never stops the others: it is listed by Owner id. A service email naming the Owner (PF-19r). */
+   *  send never stops the others: it is listed by Owner id. A service email naming the Owner (PF-19r).
+   *  PF-12b: each firm whose Owners were read gets its platform.bypass line first. A firm whose line cannot be written
+   *  is sent nothing and its Owners are listed as failed (the change itself is already committed, so this never throws
+   *  "nothing was done"); calling it again sends them. */
   async sendNotices(changeId: string): Promise<{ sent: number; failed: string[] }> {
     if (!this.d.mail) return { sent: 0, failed: [] };
-    const rows = await asBypass("platform.entitlements.limit-change", () => this.d.db.$queryRaw<{ firmId: string; id: string; email: string; effectiveAt: Date; planName: string; metric: string; old: number | null; value: number | null }[]>`
+    const { rows, unrecorded } = await asBypass("platform.entitlements.limit-change", async () => {
+      const read = await this.d.db.$queryRaw<{ firmId: string; id: string; email: string; effectiveAt: Date; planName: string; metric: string; old: number | null; value: number | null }[]>`
       SELECT s.firm_id::text AS "firmId", s.id::text AS id, s.email, r.effective_at AS "effectiveAt", p.name AS "planName", c.metric, c.old_value AS old, c.new_value AS value
       FROM platform_limit_change c JOIN platform_plan p ON p.id = c.plan_id JOIN platform_limit_change_firm r ON r.change_id = c.id
       JOIN platform_staff s ON s.firm_id = r.firm_id AND s.status = 'ACTIVE'
       JOIN platform_role_grant g ON g.staff_id = s.id AND g.firm_id = s.firm_id AND g.role = 'OWNER' AND g.ended_at IS NULL
-      WHERE c.id = ${changeId}::uuid ORDER BY s.firm_id, s.id`);
+      WHERE c.id = ${changeId}::uuid ORDER BY s.firm_id, s.id`;
+      const { failed } = await touchEachFirm(this.d.db, read.map((r) => r.firmId));   // inside the use: outside it a touch writes nothing
+      return { rows: read, unrecorded: failed };
+    });
     const out = { sent: 0, failed: [] as string[] };
     for (const o of rows) {
+      if (unrecorded.has(o.firmId)) { out.failed.push(o.id); continue; }
       const m = (Object.keys(COLUMN) as EntitlementMetric[]).find((k) => COLUMN[k] === o.metric)!;
       try {
         await this.d.mail.send({ firmId: o.firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "platform.live_plan_removal_notice", idempotencyKey: `limit-change:${changeId}:owner:${o.id}`,

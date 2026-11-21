@@ -12,12 +12,13 @@
 // the Sample Owner, for a firm with no acceptance yet of the terms of service or the data-processing terms, accepts their
 // current versions (Sample acceptances, also for people a database kept from before PF-5 already holds: break M1). Only a
 // first acceptance of each kind: a later new version stays pending for the person to accept (PF-5t). Unconfirmed: no
-// counsel. Run: tsx api/src/platform/seed-sample-firms.ts
+// counsel. Run: PLATFORM_ENVIRONMENT=local tsx api/src/platform/seed-sample-firms.ts
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registeredSettings, syncSettingDefinitions } from "./settings.ts";
+import { touchFirm } from "./firm-scope.ts";
 
 type Office = { country?: string | null } & Record<string, unknown>;
 type SampleUser = { id: string; name: string; family_name?: string; given_names?: string; email?: string; duties: string[]; licence: { body: string; category: string; number: string } | null };
@@ -73,6 +74,9 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "ACTIVE" } });
         r.subscriptionsAdded++;
       }
+      // PF-12b: on the demo's bypass use (demo.ts, "platform.demo.reset") this firm's platform.bypass line, in the seed's
+      // transaction; outside a bypass use (start-up, suites) touchFirm writes nothing.
+      await touchFirm(tx, firm.id);
       for (const u of f.users) {
         // There (by its actor id, or by its email in the firm when a person cleared the actor id): never changed by the seed.
         const there = await tx.platformStaff.findFirst({ where: { OR: [{ actorId: u.id }, { firmId: firm.id, email: emailOf(u, f.key) }] } });
