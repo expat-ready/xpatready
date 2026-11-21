@@ -27,8 +27,11 @@ export const IdentityInput = {
   reason: strict({ reason: str(2000) }),
   credential: strict({ representativeType: str(400), licensingBody: str(400), licenceNumber: str(400) }),
 };
-/** A staff id in the path: a uuid, or the one not-found, before the body is read (PF-28: a bad id is 404, never 422). */
-const staffId = (id: string) => (UUID.test(id) ? id : notInFirm("staff member"));
+/** A staff or invitation id in the path: a uuid, or the one not-found, before the body is read (PF-28: a bad id is 404,
+ *  never 422). Not http/input.ts's idParam: these keep the service's own not-found words ("No such staff member."), so a
+ *  malformed id and another firm's id answer byte for byte the same (DW4). */
+const idOf = (what: "staff member" | "invitation") => (id: string) => (UUID.test(id) ? id : notInFirm(what));
+const staffId = idOf("staff member"), invitationId = idOf("invitation");
 
 @Controller("api/platform")
 export class PlatformIdentityController {
@@ -47,13 +50,13 @@ export class PlatformIdentityController {
 
   /** PF-4c part 1 (AG-1-69): one form of 1-20 rows, one invitation per row; flagged rows or too few seats send nothing. */
   @Post("staff/invitations/batch") @PermissionKeys("agent/staff:manage")
-  inviteBatch(@Req() r: R, @Body() b: B) { return this.id.inviteBatch(staffOf(r), parseInput(IdentityInput.batch, b)); }
+  inviteBatch(@Req() r: R, @Body() b: B) { return this.id.inviteBatch(staffOf(r), parseInput(IdentityInput.batch, b ?? {})); }
 
   @Get("staff/invitations") @PermissionKeys("agent/staff:manage")
   invitations(@Req() r: R) { return this.id.invitations(staffOf(r)); }
 
   @Post("staff/invitations/:id/resend") @HttpCode(200) @PermissionKeys("agent/staff:manage")
-  resend(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.id.resend(staffOf(r), id, parseInput(IdentityInput.resend, b)); }
+  resend(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.id.resend(staffOf(r), invitationId(id), parseInput(IdentityInput.resend, b ?? {})); }   // no body at all is {} (review m2)
 
   @Post("staff/invitations/:id/revoke") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   revoke(@Req() r: R, @Param("id") id: string) { return this.id.revoke(staffOf(r), id); }

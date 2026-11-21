@@ -9,7 +9,7 @@ import { PlatformSession } from "./service.ts";
 
 type R = { platform?: StaffContext };
 /** PF-28 part 2a (R1.10): the sign-in code, through the one input rule (an unknown field, a wrong type or no code: 422). */
-export const CallbackInput = strict({ code: z.string().max(2000) });
+export const CallbackInput = strict({ code: z.string() });   // its length is the service's check: an over-long code is "used or expired" (review m4); the body limit bounds it
 
 @Controller("api/platform")
 export class PlatformSessionController {

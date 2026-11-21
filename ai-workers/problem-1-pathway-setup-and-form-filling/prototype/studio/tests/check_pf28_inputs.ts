@@ -209,6 +209,16 @@ ok("PF-28 part 2a fail: an invitation with a misspelt field (emial) → 422 nami
 const badId = await call("POST", "/api/platform/staff/not-a-uuid/deactivate", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
 const noFirm = await call("POST", "/api/platform/session/local", { body: JSON.stringify({ email: "owner@example.com", secondStep: true }) });
 ok("PF-28 part 2a fail: a malformed staff id → 404 before the body is read; a sign-in without a firm key → 422 naming firmKey", badId.status === 404 && noFirm.status === FIELD_ERROR_STATUS && (noFirm.body?.fields as Record<string, string>)?.firmKey === "This is required.", [badId.status, noFirm.body?.fields]);
+// Review of part 2a (m1-m4): a misspelt row field is flagged on its row; a body-less resend is {}; a malformed invitation id
+// is 404 before the body; an over-long sign-in code is the "used or expired" 401, not a field error.
+const nmae = await call("POST", "/api/platform/staff/invitations/batch", { token: tR, body: JSON.stringify({ rows: [{ email: "pf28.row@example.com", roles: ["CASE_OFFICER"], nmae: "Client B" }] }) });
+const rowFlags = ((nmae.body?.rows as { flags: { code: string }[] }[] | undefined)?.[0]?.flags ?? []).map((f) => f.code);
+ok("PF-28 part 2a fail (review m1): a batch row with a misspelt field (nmae) → 422 ROWS_FLAGGED with UNKNOWN_FIELD on that row, nothing stored", nmae.status === 422 && nmae.body?.code === "ROWS_FLAGGED" && rowFlags.includes("UNKNOWN_FIELD") && sql(`select count(*) from platform_invitation where email = 'pf28.row@example.com'`) === "0", nmae.body);
+const bodyless = await fetch(`${BASE}/api/platform/staff/invitations/${randomUUID()}/resend`, { method: "POST", headers: { authorization: `Bearer ${tR}` } }).then((r) => r.status);
+const badInv = await call("POST", "/api/platform/staff/invitations/not-a-uuid/resend", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2a fail (review m2, m3): a resend with no body at all reads as {} (a random id → 404, never 422); a malformed invitation id → 404 before the body", bodyless === 404 && badInv.status === 404, [bodyless, badInv.status]);
+const longCode = await call("POST", "/api/platform/session/callback", { body: JSON.stringify({ code: "c".repeat(2001) }) });
+ok("PF-28 part 2a fail (review m4): a sign-in code over 2,000 characters → 401 SIGN_IN_CODE_REFUSED (the \"used or expired\" words), not a field error", longCode.status === 401 && longCode.body?.code === "SIGN_IN_CODE_REFUSED", longCode.body);
 
 // DW3: a 1 MB string → 413 (the body limit), never 500; a 200 KB valid body on a long-text route still succeeds.
 const big = await call("POST", "/api/platform/offices", { token: tR, body: JSON.stringify({ name: MB }) });
