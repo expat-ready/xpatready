@@ -24,6 +24,7 @@ import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
 import { heldOf } from "../messages/send/mail.ts";
 import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
+import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -99,7 +100,7 @@ export class PlatformIdentity implements OnModuleInit {
 
   async onModuleInit() {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
-    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => console.warn(`platform identity: Cognito keys not fetched at start (${String((e as Error)?.message ?? e).slice(0, 120)}); they are fetched on the first sign-in`));
+    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => logPort.error("cognito_keys_not_warmed", e));   /* they are fetched on the first sign-in */
   }
 
   /** PF-6b: the permission-key catalogue (the guard reads its LICENCE keys and checks the bundles once). */
