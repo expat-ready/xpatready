@@ -69,3 +69,21 @@ I found no app path that can store such a value. writeSetting runs zod (settings
 - **Out of scope.** No role has only one of `:edit` and `:configure-availability`, so the per-field split (`timingKey`) cannot be exercised with stock roles. The `changePermission` stored for the gap keys is `:edit` (as the brief orders) while the service enforces `:configure-availability`. No generic setting writer exists that would use the stored key.
 
 Verdict: Changes requested
+
+## Re-break 18b828e (P-277: only `git diff 7ccd544db 18b828efa`)
+Same set-up: scratch databases `xr_studio_brk_*` (dropped), the walled Nest harness, US$0, :4400 not touched. **Blockers:** none. **Majors:** none (M1 is fixed: fo1b 80/0).
+**Fixes that held**
+- **m1:** `constructor`, `toString`, `hasOwnProperty`, `valueOf` and `__defineGetter__` now give a 400 naming the field on `PUT booking-timings` (also as READ_ONLY with a bad value: both fields named), `PATCH booking-types/:id/timings` and `POST booking-types`. `__proto__` is ignored.
+- **m2:** rollback.sql runs first. With a 10.5 or window-0 firm value it aborts in its one transaction and leaves the columns nullable (fails safe). With `"45"` stored it fills the default, as the trigger does.
+- **m3:** the firm PUT/GET warning names the stranded type both ways round (type notice vs firm window, type window vs firm notice), and `GET booking-types/:id` (READ_ONLY) warns.
+  - Deleted types drop out; firm A's and firm B's warnings never name each other's types.
+  - Cost: one query per read; with 600 affected types GET took 14 ms (then 8), PUT 26 ms; capped at 10 names (~800 characters).
+- **m5 (strings, arrays, objects, null):** now read as unset (pad 10), checked as xr_app; `-0` pads 0; `1e3` and `3e1` read as 1000 and 30. Still SECURITY DEFINER, owned by xr_wall_reader, search_path pinned.
+- **Suites at 18b828e:** fo1b 80/0 · fo3_booking 133/0 · fo3a_hours_timings 46/0 · fo3a_booking_types 48/0 · fo3a2_feed 26/0 · fo3a1c_set_names 20/0.
+
+**Minor left (not blocking)**
+- **m5 is closed only for non-numbers:** `jsonb_typeof = 'number'` still passes numbers that are not whole or not in range (migration.sql:61, rollback.sql:7-11). `10.5`/`30.0` give 22P02 on every booking write for that firm, `1e10` gives 22003, `-600` gives the range-bound error.
+  - No app path stores these (writeSetting runs zod `.int().min().max()`; JSON `30.0` arrives as 30, stored `30`), so this is defence in depth. Possible guard: `AND (s.value #>> '{}') ~ '^[0-9]{1,4}$'`.
+- **m4** stays with Lead B, as stated.
+
+Verdict: Approve 18b828efac544e60f8927ae6dba2214bc8c1288b
