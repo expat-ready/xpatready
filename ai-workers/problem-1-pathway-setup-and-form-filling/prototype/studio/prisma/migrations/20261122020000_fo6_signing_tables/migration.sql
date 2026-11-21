@@ -366,6 +366,9 @@ CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signature_requ
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signer" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signing_evidence" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
 CREATE TRIGGER "0_pf12_firm_first" BEFORE INSERT OR UPDATE ON "fo_signing_hook_receipt" FOR EACH ROW EXECUTE FUNCTION platform_firm_first('firm_id');
+-- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public; grant it
+-- for the hand-over and take it back after (a no-op pair on a superuser cluster; tests/check_pf8b_f4_migrations.ts).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $readers$
 DECLARE f text;
 BEGIN
@@ -375,3 +378,4 @@ BEGIN
   END LOOP;
 END
 $readers$;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
