@@ -301,6 +301,7 @@ jobs:
           python3 ai-workers/problem-1-pathway-setup-and-form-filling/official-sources/fetch_official_sources.py
           node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"
           bash "$P/tools/check-select-suites.sh"
+          bash "$P/tools/check-select-graph.sh"   # E3: the coverage graph narrows a covered app file, never anything it cannot speak for
           bash "$P/tools/check-merge-guard.sh"
           bash "$P/tools/check-lane-bind.sh"
           bash "$P/tools/check-new-machine.sh"   # B168: the any-Mac setup script's own logic
