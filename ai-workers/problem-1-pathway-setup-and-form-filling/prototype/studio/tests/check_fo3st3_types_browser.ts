@@ -71,7 +71,15 @@ async function open(tok: string, width = 1440, path = HOME, ready = "[data-booki
   await p.goto(`${BASE}${path}`); await p.locator(ready).first().waitFor({ timeout: 30_000 });
   return p;
 }
-const axe = async (name: string, p: Page) => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
+/** CSS transitions still running on the page (finite ones; a spinner's endless turn is not counted). */
+const changing = (p: Page) => p.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => `${(a.effect as KeyframeEffect | null)?.target?.textContent?.trim().slice(0, 30)}: ${(a as CSSTransition).transitionProperty ?? a.animationName ?? "animation"}`));
+/** Wait for those transitions to end (each lasts 150 ms; 2 s is the cap). */
+const settle = (p: Page) => p.evaluate(() => Promise.race([new Promise((res) => setTimeout(res, 2_000)),
+  Promise.all(document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => a.finished.catch(() => undefined)))]));
+const axe = async (name: string, p: Page) => {
+  await settle(p); const still = await changing(p);   // main fix FO-3st3: axe met Save type halfway from its disabled grey to blue (bg rgb(137,179,224), text rgb(165,165,165))
+  ok(`${name}: nothing is still changing colour when axe runs (settled state)`, still.length === 0, still);
+  const r = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok(`${name}: axe finds no serious or critical WCAG A/AA violation`, bad.length === 0, bad.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined); };
 const noSideways = async (name: string, p: Page) => ok(`${name}: no sideways page scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
@@ -209,11 +217,15 @@ try {
   await field(pa, "Name").fill(SETNAME); await panel(pa).getByLabel(F.displayName).check();
   await panel(pa).getByLabel(`Uses set for ${F.displayName}`).selectOption({ label: `Evening calls ${run}` });
   await call(fTok, "DELETE", `/front-office/me/availability-sets/${evening.body?.id}`);   // someone deletes the chosen set before Save
+  const isList = (u: URL) => /\/api\/front-office\/booking-types$/.test(u.pathname);   // main fix FO-3st3: the list's reload after Save is held 1 s, so a check that reads the list before it lands fails every time, not now and then
+  await pa.route(isList, async (r) => { if (r.request().method() === "GET") await new Promise((res) => setTimeout(res, 1_000)); await r.fallback().catch(() => undefined); });
   await pa.getByRole("button", { name: "Save type" }).click();
   await panel(pa).waitFor({ state: "detached", timeout: 15_000 });
+  await row(pa, SETNAME).waitFor({ timeout: 15_000 }).catch(() => undefined);   // the list's reload lands, then the screen is read
   const warned = await pa.locator("[data-booking-types]").innerText();
   ok("FO-3st3 break M1 fail: a set of hours that fails after the type saved is said in words (the type is saved; the set was not) and the list shows the type",
     warned.includes(`Added ${SETNAME}.`) && warned.includes(`The set of hours for ${F.displayName} was not saved`) && (await row(pa, SETNAME).count()) === 1, warned.slice(0, 400));
+  await pa.unroute(isList);
   ok("FO-3st3 break M2 pass: the type exists once (no second create on a retry)", (await db.foConsultationType.count({ where: { firmId: firm.id, name: SETNAME, deletedAt: null } })) === 1);
 
   // ------------------------------------------------------------------------------------------- break M3: a suspended host stays visible and removable
