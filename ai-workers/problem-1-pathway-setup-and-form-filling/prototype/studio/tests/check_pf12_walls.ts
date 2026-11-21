@@ -38,12 +38,12 @@ const EXCEPTIONS = [...CATALOGUES, ...LATER_CATALOGUES, ...OWN];
  *  with why it is not under the platform firm's policy. A new firm_id table therefore fails the guard until it ships its
  *  forced policy or is added here on purpose (the next webhook_receipt cannot slip). */
 const FIRM_ID_ELSEWHERE: Record<string, string> = {
-  audit_event: "the one trail: append-only at the database (AUD-1a); a firm reads its own lines through AUD-4's firmScope",
-  module_event: "the event bus between modules: written in each change's transaction, read by the module jobs (PF-3)",
-  runtime_case: "case side: case requests run with no platform firm (CS-W3 owns the case-side walls)",
-  case_client: "case side (CS-W3)", case_decision: "case side (CS-W3)", case_milestone: "case side (CS-W3)",
-  case_party_index: "case side (CS-W3)", case_stage: "case side (CS-W3)", firm_case_counter: "case side: a firm's case numbers (CS-W3)",
-  case_client_counter: "case side: a firm's client numbers, by firm_key (CS-W3)",
+  audit_event: "the one trail: append-only at the database (AUD-1a); written with no platform firm by the case side too; a firm reads its own lines through AUD-4's own firm filter (audit/firm-read/service.ts)",
+  module_event: "the event bus: written in each change's transaction and read across firms, and by the case side with no platform firm (case-count.ts, prospect-won.ts); walled with the case side (CS-W4)",
+  runtime_case: "case side: case requests run with no platform firm until CS-W4 walls them",
+  case_client: "case side (CS-W4)", case_decision: "case side (CS-W4)", case_milestone: "case side (CS-W4)",
+  case_party_index: "case side (CS-W4)", case_stage: "case side (CS-W4)", firm_case_counter: "case side: a firm's case numbers (CS-W4)",
+  case_client_counter: "case side: a firm's client numbers, by firm_key (CS-W4)",
 };
 const elsewhere = (t: string) => Object.hasOwn(FIRM_ID_ELSEWHERE, t);   // never a prototype name (break m1)
 /** The tables with a firm column: firm_id, or the case side's firm_key (break M2). */
@@ -96,8 +96,8 @@ function unguarded(db: string): string[] {
       and f.proname <> 'platform_firm_first' and (not f.prosecdef or pg_get_userbyid(f.proowner) <> 'xr_wall_reader' or not coalesce(f.proconfig::text, '') ~ 'search_path=pg_catalog, public, pg_temp')`).split("\n").filter(Boolean);
   const gate = sql(db, `select c.relname || ' has no first gate' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relforcerowsecurity
     and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first' and t.tgname = (select min(u.tgname) from pg_trigger u where u.tgrelid = c.oid and not u.tgisinternal))`).split("\n").filter(Boolean);
-  const scoped = walledScope(db);
-  return [...pol, ...trg, ...gate].filter((l) => scoped(l.split(" ")[0]));
+  const scoped = walledScope(db);   // review m1: the family tables on EXCEPTIONS stay checked here, as before PF-12b part 5
+  return [...pol, ...trg, ...gate].filter((l) => { const t = l.split(" ")[0]; return FAMILIES.test(t) || scoped(t); });
 }
 const familyTables = (db: string) => sql(db, `select tablename from pg_tables where schemaname = 'public' order by 1`).split("\n").filter((t) => FAMILIES.test(t));
 const count = (db: string, t: string) => Number(sql(db, `select count(*) from "${t}"`));
@@ -130,7 +130,7 @@ try {
   // The guard for every later row: the newest database (every migration) still has no unwalled firm table.
   ok("PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table, and no other table with a firm_id column (PF-12b part 5, QA-703), is without its forced policy", unwalled(EMPTY).length === 0, unwalled(EMPTY));
   const fid = firmIdTables(EMPTY), elsewhereList = Object.keys(FIRM_ID_ELSEWHERE);
-  ok("PF-12b5 guard: the firm tables kept outside the platform policy are exactly the named list, each still a firm table and none a family table (no stale or silent entry)", elsewhereList.every((t) => fid.has(t) && !FAMILIES.test(t)) && [...fid].filter((t) => !FAMILIES.test(t) && !EXCEPTIONS.includes(t) && !elsewhereList.includes(t)).every((t) => !unwalled(EMPTY).includes(t)), { missing: elsewhereList.filter((t) => !fid.has(t)) });
+  ok("PF-12b5 guard: the firm tables kept outside the platform policy are exactly the named list, each still a firm table, none a family table, and none walled yet (a table walled later must leave the list; review m2)", elsewhereList.every((t) => fid.has(t) && !FAMILIES.test(t)) && sql(EMPTY, `select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname = any('{${elsewhereList.join(",")}}') and relforcerowsecurity`) === "0" && [...fid].filter((t) => !FAMILIES.test(t) && !EXCEPTIONS.includes(t) && !elsewhereList.includes(t)).every((t) => !unwalled(EMPTY).includes(t)), { missing: elsewhereList.filter((t) => !fid.has(t)) });
   ok("PF-12b5 guard pass (break M1, M2): no view reads past the walls (both views on main are security_invoker), no materialized view, nothing outside the public schema", sideDoors(EMPTY).length === 0, sideDoors(EMPTY));
   ok("PF-12b5 pass (QA-703): webhook_receipt has its forced firm policy (platform_session_firm()) and the first gate", sql(EMPTY, `select c.relrowsecurity and c.relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and pg_get_expr(p.polqual, p.polrelid) ~ 'platform_session_firm') and exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first') from pg_class c where c.relname = 'webhook_receipt'`) === "t");
   ok("PF-12 guard pass: every firm table's policy for the app names the session's firm, and every trigger function on a firm table runs as xr_wall_reader", unguarded(EMPTY).length === 0, unguarded(EMPTY));
