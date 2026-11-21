@@ -20,6 +20,9 @@ import { PLACEHOLDERS } from "../api/src/front-office/retainers/placeholders.ts"
 import { RetainersController } from "../api/src/front-office/retainers/routes.ts";
 import { Retainers } from "../api/src/front-office/retainers/service.ts";
 import { PLATFORM_ACCESS, type StaffContext } from "../api/src/platform/identity/keys.ts";
+import { Reflector } from "@nestjs/core";
+import { readCatalogue } from "../api/src/platform/identity/catalogue.ts";
+import { PlatformGuard } from "../api/src/platform/identity/guard.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { clearingConflicts } from "./lib/conflict-clear.ts";
 
@@ -73,7 +76,9 @@ const AS_READ: Record<string, string> = {
 };
 ok("FO-5b DW1 pass: (k), (o) and (z) are the Code's words as read, and the source is SOR/2022-128 s. 24(3), current to 2026-10-29",
   Object.entries(AS_READ).every(([l, t]) => CODE_ITEMS.find((i) => i.letter === l)?.text === t) && file.source.instrument === "SOR/2022-128" && file.source.section === "24(3)" && file.source.currentTo === "2026-10-29");
-ok("FO-5b DW1 fail: a paraphrase of (k) is not the Code's text", CODE_ITEMS.find((i) => i.letter === "k")?.text !== "any taxes charged to the client;");
+const asRead = (items: { letter: string; text: string }[]) => Object.entries(AS_READ).every(([l, t]) => items.find((i) => i.letter === l)?.text === t);
+const para = structuredClone(file); para.items[10].text = "any taxes charged to the client;";
+ok("FO-5b DW1 fail: a copy of the file with (k) paraphrased fails the as-read comparison", asRead(file.items) && !asRead(para.items));
 
 // ------------------------------------------------------------------------------------------------- the service
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
@@ -135,7 +140,7 @@ try {
   ok("FO-5b DW3 pass: a clause marker prints nothing in the agreement (\"Clause a. \" then nothing), the client's name prints", /Clause a\.\s+Clause b\./.test(txt) && !/code\.s24_3|\{|\}/.test(txt) && /Client A Sample/.test(txt), txt.slice(0, 300));
   const dPlain = await svc.draft(R, client(2, "Client B"), { templateId: plain.id, fees: FEE });
   const txtPlain = textOf((await store.get(A, (await db.foRetainerVersion.findFirstOrThrow({ where: { retainerId: dPlain.id, n: 1 } })).fileKey))!.bytes);
-  ok("FO-5b DW3 fail: a template with no markers renders as before (no marker text, no stray value)", /Client: Client B Sample/.test(txtPlain) && !/code|undefined|\[object/.test(txtPlain), txtPlain);
+  ok("FO-5b DW3 pass: a template with no markers renders as before (no marker text, no stray value)", /Client: Client B Sample/.test(txtPlain) && !/code|undefined|\[object/.test(txtPlain), txtPlain);
 
   // ----------------------------------------------------------------------------- DW4: never blocking a send
   const sent = await svc.send(R, dPlain.id, { expectedVersion: 1 });
@@ -157,7 +162,8 @@ try {
   await svc.newTemplateVersion(R, plain.id, docx([...BASE, ...markers()]));   // the template now marks all 26
   const after = await svc.read(R, dPlain.id);
   ok("FO-5b DW6 pass: after its template gains every marker, the sent retainer still shows its own list (1 of 26) and the same file hash, while the template shows 26",
-    JSON.stringify(after.codeChecklist) === JSON.stringify(before.codeChecklist) && after.codeChecklist?.marked === 1 && after.version.sha256 === before.version.sha256 && (await svc.templateChecklist(R, plain.id)).marked === 26, after.codeChecklist);
+    JSON.stringify(after.codeChecklist?.items) === JSON.stringify(before.codeChecklist?.items) && after.codeChecklist?.marked === 1 && after.version.sha256 === before.version.sha256
+    && JSON.stringify(after.versions[0].codeMarked) === '["i"]' && after.codeChecklist?.templateChanged === true && after.codeChecklist.templateVersion === 1 && after.codeChecklist.templateCurrentVersion === 2 && (await svc.templateChecklist(R, plain.id)).marked === 26, after.codeChecklist);
   const sentV = await db.foRetainerVersion.findFirstOrThrow({ where: { retainerId: dPlain.id, n: 1 } });
   ok("FO-5b DW6 fail: the sent version's list cannot be changed in the database", refused(`update fo_retainer_version set merge_values = jsonb_set(merge_values, '{code.marked}', '["k"]') where id = '${sentV.id}'`, /a version never changes/));
 
@@ -174,6 +180,27 @@ try {
     await fails(() => svc.templateChecklist(S, full.id), 404, /NOT_FOUND/) && await fails(() => svc.templateChecklist(R, "x"), 404, /NOT_FOUND/));
   const keys = (Reflect.getMetadata(PLATFORM_ACCESS, (RetainersController.prototype as unknown as Record<string, object>).checklist) as { keys?: string[] } | undefined)?.keys;
   ok("FO-5b DW8 pass: GET retainer-templates/:id/checklist declares agent/retainer:list (default deny for anyone without it)", JSON.stringify(keys) === JSON.stringify(["agent/retainer:list"]), keys);
+  // Review m2: PF-4's guard on the route itself: a person without agent/retainer:list gets 403, one with it passes.
+  const guard = new PlatformGuard(new Reflector(), {} as never, { authenticate: async (t?: string) => ({ ...R, keys: t === "with" ? ["agent/retainer:list"] : ["agent/retainer:show"] }), catalogue: () => readCatalogue(db), isLicensed: async () => true } as never);
+  const call = async (token: string) => {
+    const req = { method: "GET", path: `/api/front-office/retainer-templates/${full.id}/checklist`, headers: { authorization: `Bearer ${token}` } };
+    const ctx = { switchToHttp: () => ({ getRequest: () => req }), getHandler: () => RetainersController.prototype.checklist, getClass: () => RetainersController };
+    try { return (await guard.canActivate(ctx as never)) ? 200 : 0; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? String(e); }
+  };
+  const [without, withKey] = [await call("without"), await call("with")];
+  ok("FO-5b DW8 fail/pass: through PF-4's guard, a person without agent/retainer:list gets 403 on the checklist; with it, the route opens", without === 403 && withKey === 200, { without, withKey });
+  // Review m5: a version made before FO-5b (no kept list) shows the list of the template version it was made from.
+  const mvOf = svc as unknown as { mergeValues: (...a: unknown[]) => Promise<Record<string, unknown>> }, realMv = mvOf.mergeValues;
+  mvOf.mergeValues = async function (this: unknown, ...a: unknown[]) { const v = await realMv.apply(this, a); delete v["code.marked"]; return v; };
+  const old = await svc.draft(R, client(5, "Client E"), { templateId: noK.id, fees: FEE });
+  mvOf.mergeValues = realMv;
+  ok("FO-5b DW5 pass: a version with no kept list (made before FO-5b) shows its template version's items ((k) missing) and codeMarked null",
+    old.codeChecklist?.marked === 25 && old.codeChecklist.items.filter((i) => !i.present).map((i) => i.letter).join("") === "k" && old.versions[0].codeMarked === null, old.codeChecklist);
+  // Review m3: a consultation template's answer says s. 24(3) does not apply; the retainer's says it does.
+  const consult = await svc.uploadTemplate(R, { name: "Consultation", kind: "CONSULTATION" }, docx(BASE));
+  const cc = await svc.templateChecklist(R, consult.id);
+  ok("FO-5b DW8 pass/fail: a retainer template's checklist applies (applies true), a consultation template's does not (applies false, appliesTo RETAINER)",
+    cc.applies === false && cc.appliesTo === "RETAINER" && (await svc.templateChecklist(R, full.id)).applies === true, cc);
   await db.$disconnect();
 } catch (e) {
   fail++;

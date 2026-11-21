@@ -49,12 +49,14 @@ export function checklistFor(placeholders: readonly string[]) {
 }
 
 /** The draft's one quiet line: each item present or missing in the version's template, and the link to the checklist. */
-export function draftChecklist(letters: readonly string[], templateId: string) {
+export function draftChecklist(letters: readonly string[], template: { id: string; version: number; currentVersion: number | null }) {
   const has = new Set(letters);
   return {
     marked: has.size, total: CODE_ITEMS.length,
+    // The template version this list came from, and the template's version now: the link shows the newest (review m1).
+    templateVersion: template.version, templateCurrentVersion: template.currentVersion, templateChanged: template.currentVersion !== null && template.currentVersion !== template.version,
     line: `Code s. ${CODE_SOURCE.section}: ${has.size} of ${CODE_ITEMS.length} items marked in this agreement's template.`,
-    link: `/api/front-office/retainer-templates/${templateId}/checklist`,
+    link: `/api/front-office/retainer-templates/${template.id}/checklist`,
     items: CODE_ITEMS.map((i) => ({ letter: i.letter, section: i.section, present: has.has(i.letter) })),
     source: { section: `s. ${CODE_SOURCE.section}`, url: CODE_SOURCE.url, currentTo: CODE_SOURCE.currentTo },
     blocksSend: false, legalReading: LEGAL_READING,

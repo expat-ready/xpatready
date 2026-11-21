@@ -305,7 +305,8 @@ export class Retainers {
   async templateChecklist(ctx: StaffContext, id: string) {
     if (typeof id !== "string" || !UUID.test(id)) notFound("template");
     const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id }, select: { id: true, name: true, kind: true, version: true, placeholders: true } }) ?? notFound("template");
-    return { templateId: t.id, name: t.name, kind: t.kind, version: t.version, ...checklistFor(t.placeholders) };
+    // s. 24(3) is the service agreement's list: a consultation template's answer says it does not apply (review m3).
+    return { templateId: t.id, name: t.name, kind: t.kind, version: t.version, appliesTo: "RETAINER", applies: t.kind === "RETAINER", ...checklistFor(t.placeholders) };
   }
 
   // ----------------------------------------------------------------------------------------------- retainers
@@ -451,7 +452,7 @@ export class Retainers {
       // break r2-m3: what blocks Send is shown only while the agreement can still be edited (never "Edit to choose another" on a signed one).
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: EDITABLE.includes(r.status) ? c.blockers : {}, missing: c.missing,
       // FO-5b: one quiet line, each Code s. 24(3) item present or missing in this version's template; never a blocker.
-      codeChecklist: r.kind === "RETAINER" ? draftChecklist(lettersOf(values) ?? markedLetters(madeFrom), r.templateId) : null,
+      codeChecklist: r.kind === "RETAINER" ? draftChecklist(lettersOf(values) ?? markedLetters(madeFrom), { id: r.templateId, version: r.templateVersion, currentVersion: tpl?.version ?? null }) : null,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
       // FO-5f item 3: each version's fees (the Signed offline panel shows the chosen version's), whether it is the signed
       // one, and the version a Signed offline copy was made from.
