@@ -53,6 +53,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_POOL_MFA_REQUIRED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms, readSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -129,7 +130,7 @@ try {
   ok("PF-4 fail: PLATFORM_IDENTITY=local is refused in the test environment and in production",
     await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "test" }), (e) => /never runs in the test environment or production/.test(String(e)))
     && await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "production" }), (e) => /never runs/.test(String(e))));
-  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local" }).identity === "local");
+  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "local" }).identity === "local");
   // QA-476 (UX · Minor, R1.5; words agreed by Lead 61 on #1857): the form asks for a firm key and a work email, so a
   // refusal names those two, never a "name"; one combined message, so it does not tell which half was wrong.
   const QA476 = "No staff member signs in with that firm key and work email.";
@@ -493,10 +494,13 @@ try {
 
   // ---------------------------------------------------------------------------- the seed line (P-571 (2))
   let seedRuns = 0; const spy = async () => { seedRuns++; return {} as never; };
-  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }).run && (await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({}).run && (await seedSampleOnStart({}, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name", await throwsLike(() => sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED "yes"/.test(String(e))));
-  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
+  // PF-24w: the seed reads PF-24's loader, so a production configuration is a complete one (every value made by this run).
+  const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+  const PROD = { PLATFORM_ENVIRONMENT: "production", DATABASE_URL: urlOf(DB), PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${hex(9)}`, PLATFORM_COGNITO_CLIENT_ID: hex(26), PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", hex(32)].join("_"), PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", hex(32)].join("_"), PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: hex(40), PLATFORM_ZOOM_CLIENT_ID: hex(22), PLATFORM_ZOOM_CLIENT_SECRET: hex(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: hex(22), PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" };
+  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }).run && (await seedSampleOnStart({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local" }).run && (await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name (never the value, PF-24w)", await throwsLike(() => sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED is set but not valid/.test(String(e)) && !/yes/.test(String(e))));
+  await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
   ok("PF-4 pass: PLATFORM_SAMPLE_SEED=on (outside production) runs it", seedRuns === 1);
   const main = readFileSync(join(STUDIO, "api", "src", "main.ts"), "utf8");
   ok("PF-4 pass: main.ts runs it in one line after the features register (migrations ran before the API starts) and before the app is made",

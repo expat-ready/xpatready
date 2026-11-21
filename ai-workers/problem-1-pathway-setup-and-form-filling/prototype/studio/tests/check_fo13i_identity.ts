@@ -41,6 +41,7 @@ const { platformAuditWorkspaceId } = await import("../api/src/platform/audit/aud
 const { JsonLog, useLog } = await import("../api/src/platform/observability/log.ts");
 const { buildDocx } = await import("../api/src/front-office/retainers/docx.ts");
 const { Retainers } = await import("../api/src/front-office/retainers/service.ts");
+const { clearingConflicts } = await import("./lib/conflict-clear.ts");
 const { EVENT } = await import("../ports/events.ts");
 const { fakeAudit } = await import("../ports/audit.ts");
 const { LocalFiles } = await import("../api/src/front-office/files.ts");
@@ -63,13 +64,14 @@ try {
   const counts = () => sql(`select (select count(*) from platform_role_permission) || ':' || (select count(*) from platform_permission_key) || ':' || (select count(*) from platform_staff) || ':' || (select count(*) from platform_role_grant)`);
   const before = counts().split(":").map(Number);
   ok("FO-13i DW6 fail: before the migration the key is not seeded", sql(`select count(*) from platform_role_permission where permission_key = '${KEY}'`) === "0");
-  for (const d of all.filter((x) => x >= NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
+  psql(["-f", join(MIG, NEW, "migration.sql")]);   // its own rows counted alone (a later key migration adds rows too, FO-13c)
   const after = counts().split(":").map(Number);
   ok(`FO-13i DW6 pass: the migration (own stamp, later than ${all.filter((x) => x < NEW).at(-1)}) adds the key for OWNER, ADMIN, CASE_MANAGER, CASE_OFFICER and its catalogue row (NONE, GENERAL), on demo data, changing no other row`,
     all.filter((d) => d.slice(0, 14) === NEW.slice(0, 14)).length === 1 && after[0] === before[0] + 4 && after[1] === before[1] + 1 && after[2] === before[2] && after[3] === before[3]
     && sql(`select string_agg(role::text, ',' order by role) from platform_role_permission where permission_key = '${KEY}'`) === "OWNER,ADMIN,CASE_MANAGER,CASE_OFFICER"
     && sql(`select scope || ':' || class from platform_permission_key where key = '${KEY}'`) === "NONE:GENERAL", { before, after });
   ok("FO-13i DW6 fail: the migration does not apply twice", (() => { try { psql(["-f", join(MIG, NEW, "migration.sql")]); return false; } catch (e) { return /duplicate key/.test(String((e as { stderr?: string }).stderr)); } })());
+  for (const d of all.filter((x) => x > NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
   await seedSampleFirmsFrontOffice(db);
 
   const A = sql(`select id from platform_firm where key='sample-firm'`), B = sql(`select id from platform_firm where key='sample-solo'`);
@@ -212,6 +214,7 @@ try {
     iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iBytes.status === 409 && iBytes.body.code === "REQUEST_REUSED" && iBad.status === 400 && iNone.status === 400 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iBytes.status, iBad.status, iNone.status, iB.status]);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
+  clearingConflicts(db, { retainers: Retainers.prototype });   // FO-13c: the conflict check first
   const svc = app.get(Retainers), ctxR = { staffId: R.id, firmId: A, firmKey: "sample-firm", roles: [], keys: [], duties: [], authTime: 0, via: "local" as const };
   const tpl = await svc.uploadTemplate(ctxR, { name: "FO-13i retainer" }, { bytes: buildDocx(["Client {client.name}", "{#fees}", "{label}: {amount}", "{/fees}"]), size: 1000 });
   const prospectOf = (p: string) => {
