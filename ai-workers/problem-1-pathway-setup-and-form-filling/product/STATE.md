@@ -25,9 +25,8 @@ Lead 9 → Lead 10 block word for word: `product/history/STATE-2026-11-21-0900-l
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| A243 | 21 Nov 07:3x: full night review; clean-up (disk, names, lanes, stale PRs); next 24 h 07→07 = 15 (8 + 7); qa and machines; CI and private repo; requirements quality and why :4400 looks like the POC; team project comparison (P-464); visual; all approvals | in progress: plan, clean-up, answers done; reviews running |
 | A245 | 21 Nov 09:2x (typed): #2687 approved to merge ahead of the proofs; label what waits yourself; what is the slowest stage and what to do; are lanes right for the next 7 by 07:00 | #2687 labelled 09:2x; #2626, #2638, #2694 queued; constraint = qa proof (3 qa lanes were idle with R1.32/R1.42/R1.108 merged) → all three given rows 09:3x; next 7: R1.13/R1.14/R1.15/R1.24 need the founder's AWS (PF-8, PF-23c), R1.3 and R1.10 have several parts missing → swap proposed to the founder |
-| A244 | 21 Nov 08:1x, corrected 08:2x (via Lead 9): plan view **in chat** in every status report (no board change); Lead-confirmed quality (sources, test coverage, production grade); who owns requirements quality; pending asks answered point by point | PLAN-VIEW/CAP-CARDS dropped; timeline in each report (Start here); REQ-QUALITY: Lead C's #2695 (Approve 3346f537b; 97/101 traced, NO SOURCE R1.64/108/109/110, 18 Source cells to fix, ~380 of 589 AG/SA ids mean different things in Doc vs functional files) → Lead 10 owes: Source cells + 5 narrowing rows; trace script to check ids against 02-functional-requirements only (tooling row); founder Q queued: R1.107 five provinces vs SA-1B-200's eleven + RCIP |
+| A243, A244 | 21 Nov 07:3x and 08:1x | word for word in `product/history/STATE-2026-11-21-0945-lead11s3-ask-rows-A243-A244.md` (A244: the timeline goes in every report) |
 | A242 | 21 Nov 01:5x | word for word in `product/history/STATE-2026-11-21-0820-lead10s3-ask-A242-row.md` |
 
 
