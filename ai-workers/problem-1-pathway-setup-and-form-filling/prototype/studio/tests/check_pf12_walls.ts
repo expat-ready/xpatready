@@ -34,6 +34,21 @@ const OWN = ["platform_signup_pending", "plat_breach", "plat_data_request", "pla
 /** Catalogues made after PF-12 (no firm_id; read by every firm and the case side): PF-15's plan limits. */
 const LATER_CATALOGUES = ["platform_plan_limit", "platform_limit_change"];
 const EXCEPTIONS = [...CATALOGUES, ...LATER_CATALOGUES, ...OWN];
+/** PF-12b part 5 (QA-703): beyond the families, every table with a firm_id column is walled too, unless it is named here
+ *  with why it is not under the platform firm's policy. A new firm_id table therefore fails the guard until it ships its
+ *  forced policy or is added here on purpose (the next webhook_receipt cannot slip). */
+const FIRM_ID_ELSEWHERE: Record<string, string> = {
+  audit_event: "the one trail: append-only at the database (AUD-1a); a firm reads its own lines through AUD-4's firmScope",
+  module_event: "the event bus between modules: written in each change's transaction, read by the module jobs (PF-3)",
+  runtime_case: "case side: case requests run with no platform firm (CS-W3 owns the case-side walls)",
+  case_client: "case side (CS-W3)", case_decision: "case side (CS-W3)", case_milestone: "case side (CS-W3)",
+  case_party_index: "case side (CS-W3)", case_stage: "case side (CS-W3)", firm_case_counter: "case side: a firm's case numbers (CS-W3)",
+};
+/** The tables with a firm_id column. */
+const firmIdTables = (db: string) => new Set(sql(db, `select c.relname from pg_class c join pg_attribute a on a.attrelid = c.oid and a.attname = 'firm_id' and not a.attisdropped
+  where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')`).split("\n").filter(Boolean));
+/** In the walls' scope: a family table, or any table with a firm_id column, less the named exceptions. */
+const walledScope = (db: string) => { const f = firmIdTables(db); return (t: string) => (FAMILIES.test(t) || f.has(t)) && !EXCEPTIONS.includes(t) && !(t in FIRM_ID_ELSEWHERE); };
 
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ""}`); };
@@ -44,13 +59,14 @@ const asApp = (db: string, firm: string | null, q: string) => sql(db, `begin; ${
 const refused = (fn: () => unknown, re: RegExp) => { try { fn(); return false; } catch (e) { return re.test(String((e as { stderr?: string }).stderr ?? (e as Error).message ?? e)); } };
 
 /** The tables of the families with no forced firm policy, not on the exception list: the guard every later row runs. */
-function unwalled(db: string): string[] {
+function unwalled(db: string, families = false): string[] {
   const rows = sql(db, `select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')
     and (not c.relrowsecurity or not c.relforcerowsecurity or not exists (select 1 from pg_policy p where p.polrelid = c.oid))
     order by 1`).split("\n").filter(Boolean);
   const own = sql(db, `select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')
     and c.relname = any('{${OWN.join(",")}}') and (not c.relrowsecurity or not c.relforcerowsecurity or exists (select 1 from pg_policy p where p.polrelid = c.oid))`).split("\n").filter(Boolean);
-  return [...rows.filter((t) => FAMILIES.test(t) && !EXCEPTIONS.includes(t)), ...own.map((t) => `${t} (own register: must be forced with no policy)`)];
+  const scoped = families ? (t: string) => FAMILIES.test(t) && !EXCEPTIONS.includes(t) : walledScope(db);   // families: PF-12's own scope, measured right after its migration
+  return [...rows.filter(scoped), ...own.map((t) => `${t} (own register: must be forced with no policy)`)];
 }
 /** The rest of the guard (breaker m5, M1): every policy a firm table gives the app's roles names the session's firm (a
  *  policy only for xr_case_lookup, CS-W1's, is its own), and every trigger function on a firm table runs as xr_wall_reader
@@ -66,7 +82,8 @@ function unguarded(db: string): string[] {
       and f.proname <> 'platform_firm_first' and (not f.prosecdef or pg_get_userbyid(f.proowner) <> 'xr_wall_reader' or not coalesce(f.proconfig::text, '') ~ 'search_path=pg_catalog, public, pg_temp')`).split("\n").filter(Boolean);
   const gate = sql(db, `select c.relname || ' has no first gate' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relforcerowsecurity
     and not exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first' and t.tgname = (select min(u.tgname) from pg_trigger u where u.tgrelid = c.oid and not u.tgisinternal))`).split("\n").filter(Boolean);
-  return [...pol, ...trg, ...gate].filter((l) => FAMILIES.test(l));
+  const scoped = walledScope(db);
+  return [...pol, ...trg, ...gate].filter((l) => scoped(l.split(" ")[0]));
 }
 const familyTables = (db: string) => sql(db, `select tablename from pg_tables where schemaname = 'public' order by 1`).split("\n").filter((t) => FAMILIES.test(t));
 const count = (db: string, t: string) => Number(sql(db, `select count(*) from "${t}"`));
@@ -90,14 +107,17 @@ try {
   ok("PF-12 fail: before the migration the firm tables have no wall (the guard lists them)", bareUnwalled.length >= 50 && bareUnwalled.includes("fo_lead") && bareUnwalled.includes("money_invoice"), bareUnwalled.length);
   psql(urlOf(BARE), ["-f", join(MIG, NEW, "migration.sql")]);
   const walled = familyTables(BARE).filter((t) => !EXCEPTIONS.includes(t));
-  ok(`PF-12 pass: right after the migration every table of the families has its forced policy (${walled.length} tables; exceptions ${EXCEPTIONS.filter((t) => familyTables(BARE).includes(t)).join(", ")})`, unwalled(BARE).length === 0 && walled.length >= 60, unwalled(BARE));
+  ok(`PF-12 pass: right after the migration every table of the families has its forced policy (${walled.length} tables; exceptions ${EXCEPTIONS.filter((t) => familyTables(BARE).includes(t)).join(", ")})`, unwalled(BARE, true).length === 0 && walled.length >= 60, unwalled(BARE, true));
   ok(`PF-12: the catalogues on the exception list stay outside the walls (no firm_id: ${CATALOGUES.join(", ")})`, sql(BARE, `select count(*) from pg_class where relname = any('{${CATALOGUES.join(",")}}') and not relrowsecurity`) === String(CATALOGUES.length));
   ok("PF-12 pass: a pending sign-up (no firm yet) is forced with no policy: xr_app reads none even naming no firm, the bypass role reads them", sql(BARE, `select relforcerowsecurity and not exists (select 1 from pg_policy where polrelid = 'platform_signup_pending'::regclass) from pg_class where relname = 'platform_signup_pending'`) === "t");
 
   for (const d of all) psql(urlOf(EMPTY), ["-f", join(MIG, d, "migration.sql")]);
   ok("PF-12 pass: every migration applies in order to an empty database", sql(EMPTY, `select count(*) from pg_policy where polname = 'pf12_firm'`) !== "0");
   // The guard for every later row: the newest database (every migration) still has no unwalled firm table.
-  ok("PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table is without its forced policy", unwalled(EMPTY).length === 0, unwalled(EMPTY));
+  ok("PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table, and no other table with a firm_id column (PF-12b part 5, QA-703), is without its forced policy", unwalled(EMPTY).length === 0, unwalled(EMPTY));
+  const fid = firmIdTables(EMPTY), elsewhere = Object.keys(FIRM_ID_ELSEWHERE);
+  ok("PF-12b5 guard: the firm_id tables kept outside the platform policy are exactly the named list, each still a firm_id table (no stale or silent entry)", elsewhere.every((t) => fid.has(t)) && [...fid].filter((t) => !FAMILIES.test(t) && !EXCEPTIONS.includes(t) && !elsewhere.includes(t)).every((t) => !unwalled(EMPTY).includes(t)), { missing: elsewhere.filter((t) => !fid.has(t)) });
+  ok("PF-12b5 pass (QA-703): webhook_receipt has its forced firm policy (platform_session_firm()) and the first gate", sql(EMPTY, `select c.relrowsecurity and c.relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and pg_get_expr(p.polqual, p.polrelid) ~ 'platform_session_firm') and exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first') from pg_class c where c.relname = 'webhook_receipt'`) === "t");
   ok("PF-12 guard pass: every firm table's policy for the app names the session's firm, and every trigger function on a firm table runs as xr_wall_reader", unguarded(EMPTY).length === 0, unguarded(EMPTY));
   sql(EMPTY, `create policy pf12_probe_open on fo_lead for select using (true);
     create function fo_pf12_probe_fn() returns trigger language plpgsql as $$ begin return new; end $$;
@@ -106,14 +126,15 @@ try {
   ok("PF-12 guard fail: an open policy added to a walled table, and a plain trigger function on a firm table, are each named", ung.some((l) => /fo_lead policy pf12_probe_open/.test(l)) && ung.some((l) => /fo_note trigger function fo_pf12_probe_fn/.test(l)), ung);
   sql(EMPTY, "drop policy pf12_probe_open on fo_lead; drop trigger fo_pf12_probe_trg on fo_note; drop function fo_pf12_probe_fn()");
   // ... and it fails for a table that forgot (the probes are dropped again).
-  sql(EMPTY, `create table fo_pf12_probe (id uuid primary key, firm_id uuid not null); create table auto_pf12_probe (id uuid primary key, firm_id uuid not null); create table plat_complaint_pf12_probe (id uuid primary key, firm_id uuid not null);
+  sql(EMPTY, `create table widget_pf12_probe (id uuid primary key, firm_id uuid); create table fo_pf12_probe (id uuid primary key, firm_id uuid not null); create table auto_pf12_probe (id uuid primary key, firm_id uuid not null); create table plat_complaint_pf12_probe (id uuid primary key, firm_id uuid not null);
     create table money_pf12_probe (id uuid primary key, firm_id uuid not null); alter table money_pf12_probe enable row level security; create policy p on money_pf12_probe using (firm_id = platform_session_firm());
     create policy pf12_probe_open on platform_signup_pending using (true);`);
   const probes = unwalled(EMPTY);
+  ok("PF-12b5 guard fail (QA-703): a new table outside the families with a firm_id column and no policy (as webhook_receipt was) is named", probes.includes("widget_pf12_probe"), probes);
   ok("PF-12 guard fail: a new fo_, auto_ or plat_complaint table with no policy, a money_ table whose policy is not forced, and our own register given a policy, are each named", ["fo_pf12_probe", "auto_pf12_probe", "plat_complaint_pf12_probe", "money_pf12_probe"].every((t) => probes.includes(t)) && probes.some((p) => p.startsWith("platform_signup_pending (own register")), probes);
   // Default privileges: a later migration's table is open to the app's role (a grant) but walled once it has its policy.
   ok("PF-12: a later migration's table gets the app's table rights by default privileges (xr_app may read it, so the policy is what walls it)", asApp(EMPTY, null, "select count(*) from fo_pf12_probe") === "0");
-  sql(EMPTY, "drop table fo_pf12_probe, auto_pf12_probe, plat_complaint_pf12_probe, money_pf12_probe; drop policy pf12_probe_open on platform_signup_pending");
+  sql(EMPTY, "drop table widget_pf12_probe, fo_pf12_probe, auto_pf12_probe, plat_complaint_pf12_probe, money_pf12_probe; drop policy pf12_probe_open on platform_signup_pending");
 
   // ------------------------------------------------------------------------------------------------------ the roles
   const role = (r: string) => sql(EMPTY, `select rolsuper, rolbypassrls, rolcanlogin, rolcreaterole, rolcreatedb, rolreplication from pg_roles where rolname = '${r}'`);
@@ -226,6 +247,16 @@ try {
   ok("PF-12 fail (breaker R2-1): firm A's row naming firm B's invoice gets the wall's refusal only, never B's currency from its trigger (the bypass role still gets the trigger's)", refused(() => asApp(DEMO, A, line(B, otherCur)), /^(?![\s\S]*currency)[\s\S]*row-level security policy for table "money_invoice_line"/) && refused(() => sql(DEMO, `begin; set local role xr_staff_bypass; ${line(B, otherCur)}; commit;`, "xr_app"), /currency/i));
   ok("PF-12 fail (breaker R3-1): with no firm set, a row with no firm is refused by the gate before any other trigger", refused(() => asApp(DEMO, null, `insert into msg_template_version (id, firm_id, template_id, version, subject, body, published_by) values (gen_random_uuid(), null, '00000000-0000-4000-8000-0000000b0012', 2, 's', 'b', 'system:pf12-test')`), /^(?![\s\S]*template's firm)[\s\S]*row-level security policy for table "msg_template_version"/));
   ok("PF-12 pass: the address lookup tells a firm which addresses another firm has or holds, never a firm id, and not its own", asApp(DEMO, B, `select string_agg(a, ',' order by a) from platform_web_address_taken(array['${aAddr}', '${bAddr}', 'pf12-free'], now(), '${B}') a`) === aAddr && sql(DEMO, `select pg_get_function_result('platform_web_address_taken(text[], timestamptz, uuid)'::regprocedure)`) === "SETOF text");
+  // PF-12b5 (QA-703): webhook receipts behind the wall. As the owner: one receipt per firm and one matched to no firm.
+  sql(DEMO, `insert into webhook_receipt (id, firm_id, service, event_id) values (gen_random_uuid(), '${A}', 'stripe', 'evt_pf12b5_a'), (gen_random_uuid(), '${B}', 'stripe', 'evt_pf12b5_b'), (gen_random_uuid(), null, 'stripe', 'evt_pf12b5_none')`);
+  ok("PF-12b5 pass: as firm A the app reads only firm A's receipt; with no firm it reads none (the unmatched one included); the bypass role reads all three",
+    asApp(DEMO, A, "select string_agg(event_id, ',') from webhook_receipt where event_id like 'evt_pf12b5_%'") === "evt_pf12b5_a" && asApp(DEMO, null, "select count(*) from webhook_receipt") === "0"
+      && sql(DEMO, `begin; set local role xr_staff_bypass; select count(*) from webhook_receipt where event_id like 'evt_pf12b5_%'; commit;`, "xr_app") === "3");
+  ok("PF-12b5 fail: as firm A the app cannot write a receipt for firm B or for no firm, nor move one (the wall and its first gate)",
+    refused(() => asApp(DEMO, A, `insert into webhook_receipt (id, firm_id, service, event_id) values (gen_random_uuid(), '${B}', 'stripe', 'evt_pf12b5_x')`), /row-level security/)
+      && refused(() => asApp(DEMO, A, `insert into webhook_receipt (id, firm_id, service, event_id) values (gen_random_uuid(), null, 'stripe', 'evt_pf12b5_y')`), /row-level security/)
+      && asApp(DEMO, A, `update webhook_receipt set outcome = 'x' where event_id = 'evt_pf12b5_b' returning 1`) === "");
+  ok("PF-12b5 pass: the bypass role (the Stripe door's own use) still writes an unmatched receipt and records its outcome", sql(DEMO, `begin; set local role xr_staff_bypass; insert into webhook_receipt (id, firm_id, service, event_id) values (gen_random_uuid(), null, 'stripe', 'evt_pf12b5_z'); update webhook_receipt set handled_at = now(), outcome = 'no firm matched' where event_id = 'evt_pf12b5_z' returning outcome; commit;`, "xr_app") === "no firm matched");
   ok("PF-12 pass: the bypass role reads both firms' rows", Number(sql(DEMO, `begin; set local role xr_staff_bypass; select count(distinct firm_id) from platform_staff where firm_id in ('${A}','${B}'); commit;`, "xr_app")) === 2);
 
   // ------------------------------------------------------------------- the app's pool, the named list and the request
