@@ -207,3 +207,36 @@ The cap is re-based once, at this merge, to the committed size (79/235). From th
 Round 2's other Minors (r2-m2 to r2-m4) and the PR-body items for before the label (m6, m8, m9, and DW8's browser results) are unchanged.
 
 Verdict: Approve 1f65eb8cc9c403db14b4666f8ee676579886eb9c
+
+---
+
+## Round 5: diff only (P-277), 1f65eb8cc to 2abea49e80897e6c87fedd62af3cbef3c378fc9b
+
+Commits since my last Approve:
+- 886615f9: my round-4 record.
+- dfab0af6: a merge of origin/main.
+- 82a25fe4: `check_cost_override.ts`.
+- 2abea49e: the allow-list and the caps.
+
+I did not change any code.
+
+### Checks
+- **Only the three named files changed, besides the merge.**
+  - The merge's first parent is 886615f9 and its second is origin/main 0b277c33. `git diff dfab0af6^2 dfab0af6 --name-only` lists only the PR's 11 earlier files, so the merge brought in nothing but main.
+  - `git diff dfab0af6 2abea49e` touches exactly `check_cost_override.ts` (1 line), `check_pf28_inputs.ts` (the caps, 2 lines) and `pf28-allow-list.json` (+5 entries).
+  - origin/main is an ancestor of HEAD. `git diff --name-only origin/main...HEAD` lists 12 files: the 11 from before plus `check_cost_override.ts`.
+  - The branding and assignment route files are not in the PR.
+- **`check_cost_override.ts:238`.** C11.8 break m6 now expects `code === "BODY_TOO_LARGE"` and the size-neutral words, in place of `/5 MB/`.
+  - This follows from the word change this PR makes on purpose in `ProblemErrors`, which the release holder OK'd. `/api/ai/overrides` keeps the app-wide 5 MB limit, so only the words changed.
+  - The new assertion is stricter than the old one, because it adds the code.
+  - The file is outside the brief's touch list, but it is the brief's own word change carried into one more suite. I accept it.
+  - I did not run this suite myself: it starts its copy with `STUDIO_AI_LIVE=approved` and a fake launcher. I rely on the builder's 72/72 and on reading the diff.
+- **The sweep** on the copy `rev2619` (:4591, started and stopped in one command): **24/24**. 187 routes, 467 probes, 238 allow-listed, 81 code entries, 0 NOT TESTED by keys, no 5xx.
+- **Main's two newer doors:**
+  - `PUT /api/platform/branding`: unknown, wrong type and missing each answer **400**. They are listed for part 2.
+  - `PUT /api/front-office/lead-sharing`: its probes answer **422** naming the field, so they pass. Only its code-half entry is listed, under part 3: the static finder cannot follow that parse to a zod schema. This is a false positive the fix part clears, either by teaching `tests/lib/routes.ts` or by calling `parseInput`. Listing it is the honest choice, because the code half would otherwise fail.
+- **The caps** go from 79/235 to 81/238. That matches the 2 code entries and 3 probe entries added. This is the same re-base at a merge that I accepted in round 4, and r4-m1 applies: after this PR merges, any rise belongs to the lane that adds the route.
+
+Round 2's Minors (r2-m1 to r2-m4), r4-m1, and the PR-body items for before the label (m6, m8, m9, and DW8's browser results) are unchanged.
+
+Verdict: Approve 2abea49e80897e6c87fedd62af3cbef3c378fc9b
