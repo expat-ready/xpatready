@@ -93,7 +93,7 @@ export function GovernmentSteps({ caseId }: { caseId: string }) {
               )}
               <p className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2 text-xs text-text-muted" data-gov-foot>
                 <Pill tone="warn" title="The list of steps is Sample: the configurator will define it per program">Sample</Pill> step names. The due date is the one on IRCC's letter; the app never works one out.
-                <span data-gov-not-sent>Reminders are planned here; none is sent to anyone until the firm's notifications are connected.</span>
+                {v!.caseOpen ? <span data-gov-reminded>The case officer and the lead representative are reminded on their Home, under Needs you, when in-app reminders are on.</span> : null}
                 {!v!.caseOpen ? <span data-gov-closed> The case is closed: reopen it to record a step.</span> : !(me.data?.keys ?? []).includes(EDIT) ? <span data-gov-no-key> Your role does not record government steps.</span> : null}
               </p>
             </>}
