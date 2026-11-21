@@ -9,6 +9,7 @@ updated: 2026-11-21 19:2x IST: Lead 16 (series 3) current since 18:04 IST (check
 
 
 ## Lead 16 since 18:04 IST (newest first)
+* 20:1x **R1.4 Partial (#2845):** Lead ruled **QA-697 Major** (bypass read without audit line = QA-499 class; F-12Nov). Row **PF-12b part 4** to the PF-12b lane (session_01MXNda5EF9y1GaNpEkPPK5U), `Completes: R1.4`. Reviewer started for #2845. Records PRs #2840/#2797/#2830 are batched behind #2619 (R1.10) in the queue. **Owed DECISIONS row: QA-697 Major ruling.** Lead 16 context 301k: hand over near 340k (P-446).
 * 20:0x **AWS blocker:** migration pf12_firm_walls fails on RDS PG18 (42501: ALTER ROLE NOSUPERUSER/NOREPLICATION needs SUPERUSER). Row **PF-8b F4** given to the warm PF-8b lane (session_01MXNda6Ns6qkaQqkZh4dHcJ): RDS-safe role statements, walls unchanged, breaker, Lead reads migration. AWS session holds (0 tasks, RDS on), proves no-app R1.15 parts; "redeploy" after F4 merges (migrate resolve --rolled-back first).
 * 19:4x-19:5x: **R1.42 #2840, R1.53 #2797, R1.47 #2830 labelled** (records queue, fresh Opus Approves); AWS image in ECR; owed rows: image scan CRITICAL 5/HIGH 12, RDS CA verify-full. Word for word in `product/history/STATE-2026-11-21-2005-lead16s3-1940-bullets.md`.
 * 19:0x-19:3x: walk (A273), R1.3 rounds, R1.42 walk, AWS go, Lead 18 standby (local_bdef7c01), fix-r130-flake lane: word for word in `product/history/STATE-2026-11-21-1950-lead16s3-1900-bullets.md`.
