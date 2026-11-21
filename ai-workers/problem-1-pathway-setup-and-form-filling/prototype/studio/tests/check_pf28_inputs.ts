@@ -80,8 +80,8 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 238;   // part 1 commits 238 probe entries (81 code entries; main at its last merge, batch #2702); a fix part lowers both
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 81 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 207, UNPARSED_CEILING = 71;   // part 1 committed 238 and 81; part 2a (identity doors) lowers them to 207 and 71; each fix part lowers both
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
@@ -198,8 +198,17 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const inv = answers.get("POST /api/platform/staff/invitations unknown");
-ok("PF-28 DW2 fail: POST /api/platform/staff/invitations parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", inv !== undefined && !fine("unknown", false, inv) && allow.probes["POST /api/platform/staff/invitations unknown"] === "PF-28 part 2 (platform)", inv);
+const off = answers.get("POST /api/platform/offices unknown");
+ok("PF-28 DW2 fail: POST /api/platform/offices parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/platform/offices unknown"] === "PF-28 part 2 (platform)", off);
+
+// PF-28 part 2a (identity doors: sign-in, staff, invitations, licence records): each body goes through parseInput before
+// any record is read, and a staff id is checked before the body.
+const inv = answers.get("POST /api/platform/staff/invitations unknown"), invites = () => sql(`select count(*) from platform_invitation`);
+const n0 = invites(), typo = await call("POST", "/api/platform/staff/invitations", { token: tR, body: JSON.stringify({ email: "pf28.sample@example.com", roles: ["CASE_OFFICER"], emial: "x" }) });
+ok("PF-28 part 2a fail: an invitation with a misspelt field (emial) → 422 naming it in plain words, and no invitation stored", typo.status === FIELD_ERROR_STATUS && (typo.body?.fields as Record<string, string>)?.emial === "This field is not allowed here." && /Nothing was saved/.test(String(typo.body?.detail)) && invites() === n0 && inv?.status === FIELD_ERROR_STATUS, typo.body);
+const badId = await call("POST", "/api/platform/staff/not-a-uuid/deactivate", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+const noFirm = await call("POST", "/api/platform/session/local", { body: JSON.stringify({ email: "owner@example.com", secondStep: true }) });
+ok("PF-28 part 2a fail: a malformed staff id → 404 before the body is read; a sign-in without a firm key → 422 naming firmKey", badId.status === 404 && noFirm.status === FIELD_ERROR_STATUS && (noFirm.body?.fields as Record<string, string>)?.firmKey === "This is required.", [badId.status, noFirm.body?.fields]);
 
 // DW3: a 1 MB string → 413 (the body limit), never 500; a 200 KB valid body on a long-text route still succeeds.
 const big = await call("POST", "/api/platform/offices", { token: tR, body: JSON.stringify({ name: MB }) });
