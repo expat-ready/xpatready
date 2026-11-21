@@ -1,0 +1,2 @@
+Entry points: `GET /api/front-office/retainer-templates/:id/checklist` (key `agent/retainer:list`; the template's Code s. 24(3) items marked or not, never a refusal); `GET retainers/:id` answers `codeChecklist` (each item present or missing in the version's template; `versions[].codeMarked`); `retainers/code-checklist.ts` (data: the studio's samples/cicc-code-s24-items.json); clause markers `{code.s24_3_<letter>}` print nothing (FO-5b)
+Tests: tests/check_fo5b_retainer_checklist.ts

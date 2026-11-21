@@ -80,7 +80,7 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 207, UNPARSED_CEILING = 71;   // part 1 committed 238 and 81; part 2a (identity doors) lowers them to 207 and 71; each fix part lowers both
+const PROBES_CEILING = 213, UNPARSED_CEILING = 73;   // part 1 committed 244 and 83 (at its last merge of main: #2750's booking timings routes, owned by part 4); part 2a (identity doors) lowers them to 213 and 73; each fix part lowers both
 ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
@@ -162,7 +162,8 @@ export function fine(probe: string, withIds: boolean, a: { status: number; body:
  *  Sample firm's real key, form token and a public consultation type's slug are used. A door whose key has no real value
  *  here (a booking link's or an invitation's token) is "unreached": on the allow-list until its fix part reaches it. */
 const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
-const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
+const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo",   // :kind: the public branding image door's enum (logo, favicon, banner)
+  ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
 if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
 const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");

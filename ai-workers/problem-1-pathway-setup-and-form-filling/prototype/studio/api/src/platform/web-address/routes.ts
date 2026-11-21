@@ -11,10 +11,14 @@ import { auditEvent } from "../audit/audit-event.ts";
 import { publicFirmOf, sendPublicNotFound, webAddressHost } from "./host.ts";
 import { catchUpFirmAddresses, type CatchUpResult } from "./firm-created.ts";
 import { WebAddresses } from "./service.ts";
+import { addressHostSuffixes } from "./rules.ts";
+import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit } from "../firm-scope.ts";
+import { logPort } from "../observability/log.ts";
+import { dbRuleOf } from "../observability/redact.ts";
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
-export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock }), inject: [Db] };
+export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock, hostSuffixes: addressHostSuffixes(platformConfig().addressSuffix) }), inject: [Db] };
 
 /** Installs the host routing on the HTTP server when the app is built, so it runs before everything main.ts adds later
  *  (the body parser, the static files, the single-page app's catch-all) and before every controller. A provider rather
@@ -39,7 +43,7 @@ export class WebAddressCatchUp {
     this.done = asBypass("platform.web-address.catch-up", () => catchUpFirmAddresses(this.db, touchingAudit(auditEvent))).then((r) => {   // PF-12: every firm at once
       if (r.failed.length) console.warn(`PF-25: ${r.failed.length} firm(s) got no web address at start: ${r.failed.map((f) => f.firmId).join(", ")}`);
       return r;
-    }, (e) => { console.warn(`PF-25: the web-address catch-up did not run: ${String(e).slice(0, 200)}`); return null; });
+    }, (e) => { logPort.error("web_address_catch_up_failed", e, { rule: dbRuleOf(e) }); return null; });
   }
 }
 
