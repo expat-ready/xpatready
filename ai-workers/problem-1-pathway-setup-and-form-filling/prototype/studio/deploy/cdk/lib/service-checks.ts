@@ -253,3 +253,30 @@ export function poolFindings(t: Template, stage: string): string[] {
   if (!staffPool || refId(poolEnv) !== staffPool) out.push(`the service signs staff in against ${json(poolEnv)}, not the staff pool (break m2)`);
   return out;
 }
+
+/** PF-8b F1 (AWS preflight, 21 Nov): the service's and the migration's containers each send their output with the awslogs
+ *  driver to this stack's app log group (`/xr/<stage>/app`, PF-23c), in this stack's region, so R1.13's alarms and R1.15's
+ *  log checks see the app's lines. No driver, another driver or another group is a finding. */
+export function logFindings(t: Template, stage: string, region = "ca-central-1"): string[] {
+  const groups = all(t, "AWS::Logs::LogGroup").filter(([, r]) => g(r, "Properties", "LogGroupName") === `/xr/${stage}/app`).map(([id]) => id);
+  const { service, migration } = taskDefinitions(t), out: string[] = [];
+  if (groups.length !== 1) out.push(`${groups.length} log groups named /xr/${stage}/app, not one`);
+  for (const [what, td] of [["service", service], ["migration", migration]] as const) {
+    if (!td) { out.push(`no ${what} task definition`); continue; }
+    for (const c of containers(td[1])) {
+      const lc = g(c, "LogConfiguration");
+      if (g(lc, "LogDriver") !== "awslogs") out.push(`${what}/${c.Name}: log driver ${json(g(lc, "LogDriver"))}, not awslogs`);
+      else if (refId(g(lc, "Options", "awslogs-group")) !== groups[0] || groups.length !== 1) out.push(`${what}/${c.Name}: logs to ${json(g(lc, "Options", "awslogs-group"))}, not /xr/${stage}/app`);
+      else if (g(lc, "Options", "awslogs-region") !== region) out.push(`${what}/${c.Name}: logs in ${json(g(lc, "Options", "awslogs-region"))}, not ${region}`);
+    }
+  }
+  // and the log actions CDK grants the execution roles name that one group's ARN and nothing else (review m1: the
+  // bypass check only holds them to some resource of this stack)
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) for (const st of arr(g(r, "Properties", "PolicyDocument", "Statement"))) {
+    const acts = arr(g(st, "Action")).concat(typeof g(st, "Action") === "string" ? [g(st, "Action")] : []);
+    if (!acts.some((a) => typeof a === "string" && a.startsWith("logs:"))) continue;
+    const res = g(st, "Resource"), want = json({ "Fn::GetAtt": [groups[0], "Arn"] });
+    if (groups.length !== 1 || json(res) !== want) out.push(`${id}: allows ${acts.filter((a) => String(a).startsWith("logs:")).join(", ")} on ${json(res).slice(0, 80)}, not the /xr/${stage}/app group's ARN alone`);
+  }
+  return out;
+}
