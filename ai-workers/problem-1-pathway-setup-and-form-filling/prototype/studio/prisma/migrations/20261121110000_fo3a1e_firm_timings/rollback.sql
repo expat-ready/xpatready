@@ -1,14 +1,15 @@
 -- FO-3a1e rollback (not a migration: Prisma reads only migration.sql). Run in one transaction:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261121110000_fo3a1e_firm_timings/rollback.sql
--- Roll the code back first (the readers of the empty timings, timings.ts and its routes). Each empty timing is filled
--- with the value the type used: the firm's Timings value, else the default, so no slot or self-service limit changes.
--- The firm values (platform_firm_setting front_office.booking_*) are left as data; nothing reads them after the code
--- rollback. fo_booking_write goes back to FO-1b's text.
-UPDATE "fo_consultation_type" t SET "gap_before_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND s.key = 'front_office.booking_gap_before_minutes'), 0) WHERE t."gap_before_minutes" IS NULL;
-UPDATE "fo_consultation_type" t SET "gap_after_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND s.key = 'front_office.booking_gap_after_minutes'), 10) WHERE t."gap_after_minutes" IS NULL;
-UPDATE "fo_consultation_type" t SET "min_notice_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND s.key = 'front_office.booking_min_notice_minutes'), 240) WHERE t."min_notice_minutes" IS NULL;
-UPDATE "fo_consultation_type" t SET "window_days" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND s.key = 'front_office.booking_window_days'), 60) WHERE t."window_days" IS NULL;
-UPDATE "fo_consultation_type" t SET "self_service_limit_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND s.key = 'front_office.booking_self_service_minutes'), 240) WHERE t."self_service_limit_minutes" IS NULL;
+-- Run this BEFORE rolling the code back (review and break m5/m2): this PR's code reads filled timings as the type's own,
+-- while the older code reads an empty timing as 0 (no times offered). Each empty timing is filled with the value the
+-- type used: the firm's Timings value, else the default, so no slot or self-service limit changes. The firm values
+-- (platform_firm_setting front_office.booking_*) are left as data; nothing reads them after the code rollback.
+-- fo_booking_write goes back to FO-1b's text.
+UPDATE "fo_consultation_type" t SET "gap_before_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND jsonb_typeof(s.value) = 'number' AND s.key = 'front_office.booking_gap_before_minutes'), 0) WHERE t."gap_before_minutes" IS NULL;
+UPDATE "fo_consultation_type" t SET "gap_after_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND jsonb_typeof(s.value) = 'number' AND s.key = 'front_office.booking_gap_after_minutes'), 10) WHERE t."gap_after_minutes" IS NULL;
+UPDATE "fo_consultation_type" t SET "min_notice_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND jsonb_typeof(s.value) = 'number' AND s.key = 'front_office.booking_min_notice_minutes'), 240) WHERE t."min_notice_minutes" IS NULL;
+UPDATE "fo_consultation_type" t SET "window_days" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND jsonb_typeof(s.value) = 'number' AND s.key = 'front_office.booking_window_days'), 60) WHERE t."window_days" IS NULL;
+UPDATE "fo_consultation_type" t SET "self_service_limit_minutes" = COALESCE((SELECT (s.value #>> '{}')::int FROM "platform_firm_setting" s WHERE s.firm_id = t.firm_id AND jsonb_typeof(s.value) = 'number' AND s.key = 'front_office.booking_self_service_minutes'), 240) WHERE t."self_service_limit_minutes" IS NULL;
 ALTER TABLE "fo_consultation_type" ALTER COLUMN "gap_before_minutes" SET DEFAULT 0, ALTER COLUMN "gap_before_minutes" SET NOT NULL;
 ALTER TABLE "fo_consultation_type" ALTER COLUMN "gap_after_minutes" SET DEFAULT 10, ALTER COLUMN "gap_after_minutes" SET NOT NULL;
 ALTER TABLE "fo_consultation_type" ALTER COLUMN "min_notice_minutes" SET DEFAULT 240, ALTER COLUMN "min_notice_minutes" SET NOT NULL;

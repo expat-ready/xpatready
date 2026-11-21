@@ -122,7 +122,15 @@ export class FirmTimingsService {
   /** GET booking-timings: the firm's six values (the default where it has none), the defaults, and the warning. */
   async read(ctx: StaffContext) {
     const timings = await firmTimings(this.db, ctx.firmId);
-    return { timings, defaults: DEFAULT_TIMINGS, warnings: timingWarnings(timings) };
+    return { timings, defaults: DEFAULT_TIMINGS, warnings: [...timingWarnings(timings), ...await this.unbookable(timings, ctx.firmId)] };
+  }
+
+  /** §12, firm side (review m2): the types the firm's values leave with no times (a type's own notice past the firm's
+   *  window, or the reverse), named so the screen can say which. */
+  private async unbookable(firm: FirmTimings, firmId: string): Promise<string[]> {
+    const types = await this.db.foConsultationType.findMany({ where: firmScope(firmId, { deletedAt: null }), select: { name: true, minNoticeMinutes: true, windowDays: true } });
+    const hit = types.filter((t) => (t.minNoticeMinutes !== null || t.windowDays !== null) && timingWarnings(resolveTimings(t, firm)).length).map((t) => t.name);
+    return hit.length ? [`With these values ${hit.length === 1 ? "this type has" : "these types have"} no times to offer (its shortest notice is longer than its booking window): ${hit.slice(0, 10).join(", ")}${hit.length > 10 ? " …" : ""}.`] : [];
   }
 
   /** PUT booking-timings: any of the six; the fields that change are checked against §8's keys; each change goes through
@@ -131,7 +139,7 @@ export class FirmTimingsService {
   async write(ctx: StaffContext, body: unknown) {
     const r = FirmTimingsBody.safeParse(body ?? {});
     if (!r.success) {
-      const fields: Record<string, string> = {};
+      const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (break m1)
       for (const i of r.error.issues) { const f = String(i.path[0] ?? (i as { keys?: string[] }).keys?.[0] ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a booking timing." : i.message; }
       throw invalid(fields);
     }

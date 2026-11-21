@@ -105,7 +105,7 @@ function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
   if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(400, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
   const r = schema.safeParse(b);
   if (r.success) return r.data;
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (FO-3a1e break m1)
   for (const i of r.error.issues) { const f = String(i.path[0] ?? (i.code === "unrecognized_keys" ? (i as { keys?: string[] }).keys?.[0] : "body") ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a field of a booking type." : i.message; }
   const [first] = Object.entries(fields);
   throw problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
@@ -174,7 +174,8 @@ export class BookingTypesService {
     const t = await this.find(this.db, ctx.firmId, id);
     // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
     const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
-    return { ...view(t), effectiveTimings: resolveTimings(t, await firmTimings(this.db, ctx.firmId)), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
+    const effectiveTimings = resolveTimings(t, await firmTimings(this.db, ctx.firmId));
+    return { ...view(t), effectiveTimings, warnings: timingWarnings(effectiveTimings), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {

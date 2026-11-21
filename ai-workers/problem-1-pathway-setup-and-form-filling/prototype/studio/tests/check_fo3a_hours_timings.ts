@@ -245,33 +245,6 @@ try {
   const auditRefused = (lines.match(/,/g) ?? []).length + 1;
   ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
 
-  // -------------------------------------------------------------------- DW21 (migration half): a copy of main's schema
-  migrate(OLD, migrations.filter((m) => m < THIS));
-  const of = psql(OLD, "insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'old-firm', 'Sample Old', 'CA', 'ACTIVE', 'old@firm.example', now()) returning id").split("\n")[0];
-  const os = (n: string) => psql(OLD, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${of}', '${n}@old.example', 'Old ${n}', now()) returning id`).split("\n")[0];
-  const [o1, o2] = [os("one"), os("two")];
-  psql(OLD, `insert into fo_availability (id, firm_id, staff_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', 1, 540, 1020, 'America/Toronto'), (gen_random_uuid(), '${of}', '${o1}', 2, 540, 1020, 'America/Toronto'), (gen_random_uuid(), '${of}', '${o2}', 3, 600, 660, 'Asia/Kolkata')`);
-  let up = ""; try { migrate(OLD, [THIS]); up = "ok"; } catch (e) { up = String((e as { stderr?: Buffer }).stderr ?? e); }
-  const sets = psql(OLD, `select string_agg(s.staff_id || ':' || s.name || ':' || s.is_default || ':' || s.time_zone || ':' || (select count(*) from fo_availability a where a.set_id = s.id), ',' order by s.staff_id = '${o1}' desc) from fo_availability_set s`);
-  ok("FO-3a DW21 pass: the migration runs on a copy of main's schema with hours in it; each person gets one default \"Normal hours\" set in their own zone holding all their windows",
-    up === "ok" && sets === `${o1}:Normal hours:true:America/Toronto:2,${o2}:Normal hours:true:Asia/Kolkata:1` && psql(OLD, "select count(*) from fo_availability where set_id is null") === "0", [up, sets]);
-  psql(OLD, `insert into fo_availability (id, firm_id, staff_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', 4, 540, 600, 'America/Toronto')`);
-  const o1Default = psql(OLD, `select id from fo_availability_set where staff_id = '${o1}'`);
-  const other = psql(OLD, `insert into fo_availability_set (firm_id, staff_id, name, time_zone) values ('${of}', '${o1}', 'Evening', 'America/Toronto') returning id`).split("\n")[0];
-  ok("FO-3a DW21 pass: a window written without a set lands in the default set; another set may cover the same hours",
-    psql(OLD, `select count(*) from fo_availability where set_id = '${o1Default}'`) === "3"
-    && psql(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${other}', 1, 600, 700, 'America/Toronto') returning 1`).startsWith("1"));
-  ok("FO-3a DW21 fail: the database refuses a second default, two overlapping windows in one set, a window in another person's set, a second zone in one set and a zone not in IANA's capitals",
-    refused(OLD, `insert into fo_availability_set (firm_id, staff_id, name, is_default, time_zone) values ('${of}', '${o1}', 'Two', true, 'UTC')`, /fo_availability_set_one_default/)
-    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${o1Default}', 1, 600, 700, 'America/Toronto')`, /fo_availability_no_overlap/)
-    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o2}', '${o1Default}', 5, 600, 700, 'America/Toronto')`, /fo_availability_firm_id_staff_id_set_id_fkey/)
-    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${o1Default}', 6, 600, 700, 'Asia/Kolkata')`, /fo_availability_one_zone/)
-    && refused(OLD, `insert into fo_availability_set (firm_id, staff_id, name, time_zone) values ('${of}', '${o2}', 'Bad', 'asia/kolkata')`, /not an IANA time zone/));
-  ok("FO-3a DW21: both new tables are walled (forced row-level security with the firm policy) and their trigger functions run as the wall reader",
-    psql(DB, "select string_agg(relname || ':' || relforcerowsecurity, ',' order by relname) from pg_class where relname in ('fo_availability_set', 'fo_type_host_set')") === "fo_availability_set:true,fo_type_host_set:true"
-    && psql(DB, "select count(*) from pg_policy where polname = 'pf12_firm' and polrelid in ('fo_availability_set'::regclass, 'fo_type_host_set'::regclass)") === "2"
-    && psql(DB, "select string_agg(pg_get_userbyid(proowner) || ':' || prosecdef, ',') from pg_proc where proname like 'fo\\_booking\\_set\\_%'") === "xr_wall_reader:true,xr_wall_reader:true,xr_wall_reader:true");
-
   // ==================================================================== FO-3a1e (part 1b-ii): the firm's booking timings
   const CONF = "agent/booking-event-type:configure-availability", EDITK = "agent/booking-event-type:edit";
   ok("FO-3a1e routes: the feature file lists the timings controller and its service",
@@ -358,6 +331,47 @@ try {
   ok("FO-3a DW21 fail: the refused timing changes above (403s, 404) wrote no line: two type timings lines for the Admin's last change and none for the Case Manager or Officer",
     psql(DB, `select count(*) from audit_event where action in ('booking_type.timings_changed', 'platform.setting.change') and actor in ('staff:${P.CASE_MANAGER.id}', 'staff:${P.CASE_OFFICER.id}', 'staff:${BO.id}')`) === "0");
 
+  // Review and break minors: a key named like an Object member is a 400, never a 500; the §12 warning on the firm's
+  // answer names a type its values leave with no times, and the type's own read carries its warning.
+  const proto = await F("PUT", "booking-timings", P.ADMIN, { constructor: 1 }), protoT = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, toString: 1 });
+  const protoC = await F("POST", "booking-types", P.OWNER, { name: "Proto", minutes: 30, modes: ["VIDEO"], valueOf: 1 });
+  ok("FO-3a1e fail (break m1): a body key such as constructor, toString or valueOf → 400 on that field, nothing saved",
+    proto.status === 400 && proto.body.fields?.constructor === "Not a booking timing." && protoT.status === 400 && protoC.status === 400, [proto.status, protoT.status, protoC.status]);
+  await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, minNoticeMinutes: 2880 });
+  const narrow = await F("PUT", "booking-timings", P.ADMIN, { windowDays: 1 }), t5w = await v5() as unknown as { warnings: string[] };
+  await F("PUT", "booking-timings", P.ADMIN, { windowDays: 60 });
+  await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, minNoticeMinutes: null });
+  ok("FO-3a1e (review m2, §12): the firm's window of 1 day with a type's own notice of 2 days saves with a warning naming the type; the type's read warns too",
+    narrow.status === 200 && narrow.body.warnings.length === 1 && narrow.body.warnings[0].includes("Strategy session") && t5w.warnings?.length === 1
+    && (await F("GET", "booking-timings", P.OWNER)).body.warnings.length === 0, [narrow.body.warnings, t5w.warnings]);
+
+  // -------------------------------------------------------------------- DW21 (migration half): a copy of main's schema
+  migrate(OLD, migrations.filter((m) => m < THIS));
+  const of = psql(OLD, "insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'old-firm', 'Sample Old', 'CA', 'ACTIVE', 'old@firm.example', now()) returning id").split("\n")[0];
+  const os = (n: string) => psql(OLD, `insert into platform_staff (id, firm_id, email, display_name, updated_at) values (gen_random_uuid(), '${of}', '${n}@old.example', 'Old ${n}', now()) returning id`).split("\n")[0];
+  const [o1, o2] = [os("one"), os("two")];
+  psql(OLD, `insert into fo_availability (id, firm_id, staff_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', 1, 540, 1020, 'America/Toronto'), (gen_random_uuid(), '${of}', '${o1}', 2, 540, 1020, 'America/Toronto'), (gen_random_uuid(), '${of}', '${o2}', 3, 600, 660, 'Asia/Kolkata')`);
+  let up = ""; try { migrate(OLD, [THIS]); up = "ok"; } catch (e) { up = String((e as { stderr?: Buffer }).stderr ?? e); }
+  const sets = psql(OLD, `select string_agg(s.staff_id || ':' || s.name || ':' || s.is_default || ':' || s.time_zone || ':' || (select count(*) from fo_availability a where a.set_id = s.id), ',' order by s.staff_id = '${o1}' desc) from fo_availability_set s`);
+  ok("FO-3a DW21 pass: the migration runs on a copy of main's schema with hours in it; each person gets one default \"Normal hours\" set in their own zone holding all their windows",
+    up === "ok" && sets === `${o1}:Normal hours:true:America/Toronto:2,${o2}:Normal hours:true:Asia/Kolkata:1` && psql(OLD, "select count(*) from fo_availability where set_id is null") === "0", [up, sets]);
+  psql(OLD, `insert into fo_availability (id, firm_id, staff_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', 4, 540, 600, 'America/Toronto')`);
+  const o1Default = psql(OLD, `select id from fo_availability_set where staff_id = '${o1}'`);
+  const other = psql(OLD, `insert into fo_availability_set (firm_id, staff_id, name, time_zone) values ('${of}', '${o1}', 'Evening', 'America/Toronto') returning id`).split("\n")[0];
+  ok("FO-3a DW21 pass: a window written without a set lands in the default set; another set may cover the same hours",
+    psql(OLD, `select count(*) from fo_availability where set_id = '${o1Default}'`) === "3"
+    && psql(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${other}', 1, 600, 700, 'America/Toronto') returning 1`).startsWith("1"));
+  ok("FO-3a DW21 fail: the database refuses a second default, two overlapping windows in one set, a window in another person's set, a second zone in one set and a zone not in IANA's capitals",
+    refused(OLD, `insert into fo_availability_set (firm_id, staff_id, name, is_default, time_zone) values ('${of}', '${o1}', 'Two', true, 'UTC')`, /fo_availability_set_one_default/)
+    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${o1Default}', 1, 600, 700, 'America/Toronto')`, /fo_availability_no_overlap/)
+    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o2}', '${o1Default}', 5, 600, 700, 'America/Toronto')`, /fo_availability_firm_id_staff_id_set_id_fkey/)
+    && refused(OLD, `insert into fo_availability (id, firm_id, staff_id, set_id, weekday, start_minute, end_minute, time_zone) values (gen_random_uuid(), '${of}', '${o1}', '${o1Default}', 6, 600, 700, 'Asia/Kolkata')`, /fo_availability_one_zone/)
+    && refused(OLD, `insert into fo_availability_set (firm_id, staff_id, name, time_zone) values ('${of}', '${o2}', 'Bad', 'asia/kolkata')`, /not an IANA time zone/));
+  ok("FO-3a DW21: both new tables are walled (forced row-level security with the firm policy) and their trigger functions run as the wall reader",
+    psql(DB, "select string_agg(relname || ':' || relforcerowsecurity, ',' order by relname) from pg_class where relname in ('fo_availability_set', 'fo_type_host_set')") === "fo_availability_set:true,fo_type_host_set:true"
+    && psql(DB, "select count(*) from pg_policy where polname = 'pf12_firm' and polrelid in ('fo_availability_set'::regclass, 'fo_type_host_set'::regclass)") === "2"
+    && psql(DB, "select string_agg(pg_get_userbyid(proowner) || ':' || prosecdef, ',') from pg_proc where proname like 'fo\\_booking\\_set\\_%'") === "xr_wall_reader:true,xr_wall_reader:true,xr_wall_reader:true");
+
   // ------------------------------------------------------------- DW21 (timings migration): a copy of main's schema
   migrate(OLD2, migrations.filter((m) => m < TIMINGS_MIG));
   const f2 = psql(OLD2, "insert into platform_firm (id, key, operating_name, country_code, status, contact_email, updated_at) values (gen_random_uuid(), 'old2-firm', 'Sample Old', 'CA', 'ACTIVE', 'old2@firm.example', now()) returning id").split("\n")[0];
@@ -380,6 +394,10 @@ try {
     && psql(OLD2, "select string_agg(column_name || ':' || is_nullable || ':' || coalesce(column_default, '-'), ',' order by column_name) from information_schema.columns where table_name = 'fo_consultation_type' and column_name in ('gap_before_minutes', 'gap_after_minutes', 'min_notice_minutes', 'window_days', 'self_service_limit_minutes')")
       === "gap_after_minutes:YES:-,gap_before_minutes:YES:-,min_notice_minutes:YES:-,self_service_limit_minutes:YES:-,window_days:YES:-"
     && psql(OLD2, "select pg_get_userbyid(proowner) || ':' || prosecdef || ':' || coalesce(proconfig::text, '') from pg_proc where proname = 'fo_booking_write'") === "xr_wall_reader:true:{\"search_path=pg_catalog, public, pg_temp\"}", [padOf(new3)]);
+  psql(OLD2, `update platform_firm_setting set value = '"abc"' where firm_id = '${f2}' and key = 'front_office.booking_gap_after_minutes'`);
+  const new5 = book(dflt, 7);
+  ok("FO-3a1e (break m5): a stored firm value that is not a number never breaks a booking write; the database reads it as unset (default 10)", padOf(new5) === "0/10", padOf(new5));
+  psql(OLD2, `update platform_firm_setting set value = '25' where firm_id = '${f2}' and key = 'front_office.booking_gap_after_minutes'`);
   ok("FO-3a DW21 fail (migration): a negative type timing is still refused by FO-1b's checks", refused(OLD2, `update fo_consultation_type set gap_after_minutes = -1 where id = '${dflt}'`, /fo_consultation_type_gaps_check/));
   psql(OLD2, `create table if not exists "_prisma_migrations" (migration_name text)`);
   let down = ""; try { execFileSync(bin("psql"), [urlOf(OLD2), "-v", "ON_ERROR_STOP=1", "-1", "-q", "-f", join(MIG, TIMINGS_MIG, "rollback.sql")], { stdio: ["ignore", "ignore", "pipe"] }); down = "ok"; } catch (e) { down = String((e as { stderr?: Buffer }).stderr ?? e); }
