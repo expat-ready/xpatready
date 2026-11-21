@@ -179,3 +179,28 @@ Scope: merge commit b01a20d, then `git diff b01a20d adaa846`. Run in deploy/cdk 
 * **r3** `checks.ts` `ecsExec`: a Secrets-Manager-scoped decrypt grant to the task role passes (probe p3). It is harmless today, because the task role cannot call `GetSecretValue`.
   * Fix: require the grantee to be some task definition's `ExecutionRoleArn`.
 * **n4** (the lookup test passes on any synth error) is still open. It was already accepted.
+
+## Re-review (c99d79a)
+
+Verdict: Approve
+
+Scope: `git diff HEAD~1 HEAD` at c99d79a, product/screens excluded. Run in deploy/cdk with AWS keys unset; the cdk and aws CLIs were never called. `npm run synth` exits 0; `npm test` 83/83 pass. I also probed the guards with my own scratchpad script.
+
+Each fix, the fail test in `test/service.test.ts` ("PF-8b's widening … stays narrow", `b2` and `k`), and the probe I ran:
+
+| Fix | Fail test | Probe |
+|---|---|---|
+| **r1:** separate lists, `ECS_EXEC_ACTIONS` and `ECS_TASK_ACTIONS`. A role used as both, or by neither, gets nothing. | `ses:SendEmail` on the execution role | p1 caught |
+| **r2:** a joined ARN may not contain `*`, `?` or a literal 12-digit account. | the `999999999999` secret ARN | p2 (foreign ECR repository) caught |
+| **r3:** key grants only to an `ExecutionRoleArn` of this stack, and only with a single principal key. | the task role as grantee; an extra `Service` key (`k` length 4) | p3 caught |
+| **RB-1:** every `*RoleArn` and `*CallerArn` must be a role this stack defines. | the service's `TaskRoleArn` set to an outside Admin role | the migration task's outside `TaskRoleArn` is caught too |
+| **RB-2:** no ECR repository policy and no Cognito `LambdaConfig`. | the repository policy (`RepositoryPolicyText`) | my probe: a Cognito trigger is caught |
+| **Two-service trust:** reads every trust statement; a role trusted by two services gets no actions. | a second `ecs-tasks` statement on the Backup role (`allows kms:Decrypt, not on the allow list ()`) | none |
+
+**PF-8rc's tests still bite.** All of them pass unchanged in this commit. Their assertions require findings to be present, and the narrowing only removes allowances.
+
+**New minor (does not block):**
+* **s1** The Cognito `LambdaConfig` half of RB-2 has no fail test in the suite. My probe shows the check works.
+* Fix: add one `LambdaConfig` line to `b2`'s mutation and its expected string.
+
+Still open and accepted: n4.
