@@ -110,11 +110,11 @@ export class PlanBookings {
       const stale = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
         UPDATE platform_subscription_change c SET withdrawn_at = greatest(clock_timestamp(), c.booked_at) FROM platform_plan t, platform_plan f
         WHERE c.firm_id = ${id}::uuid AND c.withdrawn_at IS NULL AND c.applied_at IS NULL AND c.effective_at <= ${now} AND t.id = c.to_plan_id AND f.id = c.from_plan_id
-          AND NOT EXISTS (SELECT 1 FROM platform_subscription s WHERE s.id = c.subscription_id AND s.status <> 'ENDED' AND s.plan_id = c.from_plan_id)
+          AND (NOT EXISTS (SELECT 1 FROM platform_subscription s WHERE s.id = c.subscription_id AND s.status <> 'ENDED' AND s.plan_id = c.from_plan_id) OR NOT t.active)
         RETURNING c.id::text AS id, t.code AS to, f.code AS from, c.effective_at AS "effectiveAt"`)[0];
       if (stale) {
         await this.audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action: "plan.change.withdrawn", entity: "platform_subscription_change", entityKey: stale.id,
-          summary: `The booked move from ${stale.from} to ${stale.to} was withdrawn at its renewal: the subscription had ended or moved to another plan meanwhile.`, detail: { fromPlan: stale.from, toPlan: stale.to, reason: "STALE" }, before: shape(stale.from, stale.to, stale.effectiveAt.toISOString()), after: shape(stale.from) });
+          summary: `The booked move from ${stale.from} to ${stale.to} was withdrawn at its renewal: the subscription had ended or moved to another plan meanwhile, or the plan is no longer offered.`, detail: { fromPlan: stale.from, toPlan: stale.to, reason: "STALE" }, before: shape(stale.from, stale.to, stale.effectiveAt.toISOString()), after: shape(stale.from) });
         return { applied: false, withdrawn: true };
       }
       const r = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
@@ -167,7 +167,7 @@ function refusedBy(e: unknown): never {
   if (/no such active plan/.test(m)) problem(404, "PLAN_NOT_FOUND", "Not found", "No such plan.");
   if (/already on that plan/.test(m)) problem(409, "SAME_PLAN", "Already on that plan", "Your firm is already on that plan.");
   if (/payment hold/.test(m)) problem(409, "BILLING_NOT_ACTIVE", "Pay first", "Your firm is on payment hold: pay the open invoice before changing the plan.");
-  if (/a raise applies at once/.test(m)) problem(409, "PLAN_RAISE_NOT_BOOKED", "A raise applies at once", "A move to a more expensive plan applies at once, charged through billing; it is never booked for the renewal.");
+  if (/a raise applies at once/.test(m)) problem(409, "PLAN_RAISE_NOT_BOOKED", "A raise applies at once", "A move to a larger or more expensive plan applies at once, charged through billing; it is never booked for the renewal.");
   if (/no live subscription/.test(m)) problem(409, "NO_LIVE_SUBSCRIPTION", "No live subscription", "Your firm has no live subscription, so its plan cannot change.");
   if (/platform_subscription_change_one_open/.test(m)) problem(409, "PLAN_CHANGE_BOOKED", "A plan change is already booked", "A plan change is already booked. Withdraw it first.");
   throw e;

@@ -71,17 +71,27 @@ BEGIN
   IF s.plan_id = NEW.to_plan_id THEN RAISE EXCEPTION 'platform_subscription_change: the firm is already on that plan' USING ERRCODE = '23514'; END IF;
   NEW.subscription_id := s.id; NEW.from_plan_id := s.plan_id;
   NEW.booked_at := date_trunc('milliseconds', clock_timestamp()); NEW.withdrawn_at := NULL;
-  IF s.status = 'TRIAL' THEN   -- SA-3-61, SA-4-56: at once, nothing charged, the trial end stays
+  -- A trial whose end has passed is no longer a trial for this rule (break m3: free switches only while it runs).
+  IF s.status = 'TRIAL' AND (s.te IS NULL OR s.te > NEW.booked_at) THEN   -- SA-3-61, SA-4-56: at once, nothing charged, the trial end stays
     NEW.effective_at := NEW.booked_at; NEW.applied_at := NEW.booked_at;
     UPDATE platform_subscription SET plan_id = NEW.to_plan_id, updated_at = NEW.booked_at WHERE id = s.id;
     RETURN NEW;
   END IF;
   NEW.applied_at := NULL;
-  -- A raise is never booked for the renewal (SA4-D28(a): it applies at once, charged, through Stripe: PF-16). Checked by
-  -- price where both plans carry one (on main the prices live in Stripe, so PF-16's route is the gate until then).
+  -- A raise is never booked for the renewal (SA4-D28(a): it applies at once, charged, through Stripe: PF-16), so a
+  -- booking can never give a firm more than it pays for (break B1). A raise: a dearer price where both plans carry one
+  -- (prices live in Stripe on main), or a target allowing more on any metric (seats, or a limit higher or Unlimited
+  -- where today's is finite; no row = 0).
   SELECT monthly_price_cents INTO cur_price FROM platform_plan WHERE id = s.plan_id;
   SELECT monthly_price_cents INTO new_price FROM platform_plan WHERE id = NEW.to_plan_id;
-  IF cur_price IS NOT NULL AND new_price IS NOT NULL AND new_price > cur_price THEN
+  IF (cur_price IS NOT NULL AND new_price IS NOT NULL AND new_price > cur_price)
+     OR (SELECT t.seats_limit > c.seats_limit FROM platform_plan t, platform_plan c WHERE t.id = NEW.to_plan_id AND c.id = s.plan_id)
+     OR EXISTS (SELECT 1 FROM (
+          SELECT CASE WHEN cl.plan_id IS NULL THEN 0 ELSE cl.limit_value END AS c_eff, CASE WHEN tl.plan_id IS NULL THEN 0 ELSE tl.limit_value END AS t_eff
+          FROM unnest(enum_range(NULL::platform_limit_metric)) AS m(metric)
+          LEFT JOIN platform_plan_limit cl ON cl.plan_id = s.plan_id AND cl.metric = m.metric
+          LEFT JOIN platform_plan_limit tl ON tl.plan_id = NEW.to_plan_id AND tl.metric = m.metric) v
+        WHERE v.c_eff IS NOT NULL AND (v.t_eff IS NULL OR v.t_eff > v.c_eff)) THEN
     RAISE EXCEPTION 'platform_subscription_change: a raise applies at once, it is not booked' USING ERRCODE = '23514';
   END IF;
   IF isfinite(s.pe) AND s.pe > NEW.booked_at THEN at := s.pe;   -- Stripe's period end, still ahead: the renewal
@@ -106,7 +116,10 @@ BEGIN
      OR OLD.withdrawn_at IS NOT NULL OR OLD.applied_at IS NOT NULL THEN
     RAISE EXCEPTION 'platform_subscription_change: only an open booking is withdrawn or applied, once' USING ERRCODE = '23514';
   END IF;
+  IF NEW.withdrawn_at IS NOT NULL THEN NEW.withdrawn_at := greatest(clock_timestamp(), NEW.booked_at); END IF;   -- the database's time (break m4)
   IF NEW.applied_at IS NOT NULL THEN
+    PERFORM 1 FROM platform_plan WHERE id = NEW.to_plan_id AND active;   -- break m2: never onto a plan switched off since
+    IF NOT FOUND THEN RAISE EXCEPTION 'platform_subscription_change: the plan it moves to is no longer offered' USING ERRCODE = '23514'; END IF;
     UPDATE platform_subscription SET plan_id = NEW.to_plan_id, updated_at = NEW.applied_at
       WHERE id = NEW.subscription_id AND status NOT IN ('ENDED', 'PAYMENT_HOLD') AND plan_id = NEW.from_plan_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'platform_subscription_change: the subscription is no longer live on the plan it was booked from' USING ERRCODE = '23514'; END IF;
