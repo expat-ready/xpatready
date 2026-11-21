@@ -106,12 +106,16 @@ export class AppService extends Construct {
 
     // --- Cognito: three separate pools (PF-4b staff, PF-4s our own staff, PF-4p clients)
     // QA-643 (PF-4b; AWS's cognito-idp API model 2016-04-18, botocore 1.44.9, read 21 Nov 2026): a staff member signs in
-    // with a password plus the authenticator app, or with a passkey that verifies the person, which replaces both
+    // with a password plus the authenticator app, or with a passkey that verifies the person as the first factor
     // (`FactorConfiguration` MULTI_FACTOR_WITH_USER_VERIFICATION: "passkey authentication with user verification satisfies
-    // MFA requirements"; never a second step to a password). Needs the Essentials tier (the API's default, made explicit)
-    // and the client's ALLOW_USER_AUTH ("covers username-password, secure remote password (SRP), passwordless, and passkey
-    // authentication"). The relying party is the stack's domain, so a passkey works at every `<firm>.<domain>`. No-domain
-    // staging has no domain to name: passkeys stay off there (password plus app only).
+    // MFA requirements"; a passkey is never a second step to a password: EnabledMfas has no passkey). This is the pool's
+    // half only: AWS also needs each person's passkey MFA switch on (`WebAuthnMfaSettings.Enabled`, SetUserMFAPreference),
+    // and "the user must also have at least one other MFA method ... activated to prevent account lockout", so staff
+    // still enrol the authenticator app first. Needs the Essentials tier (the API's default, made explicit) and the
+    // client's ALLOW_USER_AUTH ("covers username-password, secure remote password (SRP), passwordless, and passkey
+    // authentication"; so a client may also send the password itself, not only SRP). The relying party is the stack's
+    // domain, so a passkey works at every `<firm>.<domain>`. No-domain staging has no domain to name: passkeys stay off
+    // there (password plus app only).
     const passkeys = (staff: boolean) => staff && !noDomain;
     const pool = (name: (typeof POOLS)[number], staff: boolean) => {
       const p = new cognito.UserPool(this, `Pool-${name}`, {

@@ -414,10 +414,16 @@ test("QA-643 pass: each staff pool takes a passkey with user verification as bot
   }
 });
 
-test("QA-643 fail: a passkey off, one without user verification, a passkey as one factor only, another relying party, the Lite tier, a client without USER_AUTH are caught", () => {
+test("QA-643 fail: a passkey off, an extra first factor, an email or SMS second step, a remembered device, one without user verification, a passkey as one factor only, another relying party, the Lite tier, a client without USER_AUTH or with more flows are caught", () => {
   const cases: [string, (P: Record<string, any>, c: Record<string, any>) => void][] = [
-    ["not a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD"]; }],
-    ["not a password and a passkey", (P) => { delete P.Policies.SignInPolicy; }],
+    ["not exactly a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD"]; }],
+    ["not exactly a password and a passkey", (P) => { delete P.Policies.SignInPolicy; }],
+    ["not exactly a password and a passkey", (P) => { P.Policies.SignInPolicy.AllowedFirstAuthFactors = ["PASSWORD", "WEB_AUTHN", "EMAIL_OTP"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["SOFTWARE_TOKEN_MFA", "SMS_MFA"]; }],
+    ["could skip the second step", (P) => { P.DeviceConfiguration = { ChallengeRequiredOnNewDevice: false, DeviceOnlyRememberedOnUserPrompt: false }; }],
+    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_PASSWORD_AUTH"]; }],
+    ["not SRP, USER_AUTH and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_CUSTOM_AUTH"]; }],
     ["user verification \"preferred\", not required", (P) => { P.WebAuthnUserVerification = "preferred"; }],
     ["a passkey is \"SINGLE_FACTOR\"", (P) => { P.WebAuthnFactorConfiguration = "SINGLE_FACTOR"; }],
     ["a passkey is null", (P) => { delete P.WebAuthnFactorConfiguration; }],
@@ -433,9 +439,28 @@ test("QA-643 fail: a passkey off, one without user verification, a passkey as on
     const f = poolFindings(t, "production", DEFAULT_DOMAIN).join("\n");
     assert.ok(f.includes(`${id}: `) && f.includes(want), `${name}: missing "${want}" in:\n${f}`);
   }
-  // no domain: a staff pool offering passkeys with nothing to be their relying party is caught
-  const t = clone(ndStaging);
-  const [, p] = of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === "xr-staging-staff")!;
-  (p.Properties as Record<string, any>).Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "WEB_AUTHN"] };
-  assert.ok(poolFindings(t, "staging", NO_DOMAIN).join("\n").includes("passkeys on with no domain"));
+  // no domain: each passkey setting on its own, another first factor, a wider client, an email second step are caught
+  const nd: [string, (P: Record<string, any>, c: Record<string, any>) => void][] = [
+    ["not a password only (no domain)", (P) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "WEB_AUTHN"] }; }],
+    ["not a password only (no domain)", (P) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "EMAIL_OTP"] }; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnRelyingPartyID = "example.com"; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnFactorConfiguration = "MULTI_FACTOR_WITH_USER_VERIFICATION"; }],
+    ["passkeys on with no domain", (P) => { P.WebAuthnUserVerification = "required"; }],
+    ["not SRP and refresh only", (_P, c) => { c.ExplicitAuthFlows = [...c.ExplicitAuthFlows, "ALLOW_USER_AUTH"]; }],
+    ["not the authenticator app only", (P) => { P.EnabledMfas = ["EMAIL_OTP"]; }],
+  ];
+  for (const [want, breakIt] of nd) {
+    const t = clone(ndStaging);
+    const [id, p] = of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === "xr-staging-staff")!;
+    const c = of(t, "AWS::Cognito::UserPoolClient").find(([, x]) => (x.Properties!.UserPoolId as { Ref: string }).Ref === id)![1];
+    breakIt(p.Properties as Record<string, any>, c.Properties as Record<string, any>);
+    const f = poolFindings(t, "staging", NO_DOMAIN).join("\n");
+    assert.ok(f.includes(want), `no domain: missing "${want}" in:\n${f}`);
+  }
+  // the clients' pool: passkeys or sign-in factors there are PF-4p's decision, caught until then
+  for (const breakIt of [(P: Record<string, any>) => { P.WebAuthnRelyingPartyID = "evil.example"; }, (P: Record<string, any>) => { P.Policies.SignInPolicy = { AllowedFirstAuthFactors: ["PASSWORD", "EMAIL_OTP"] }; }]) {
+    const t = clone(t0);
+    breakIt(of(t, "AWS::Cognito::UserPool").find(([, x]) => String(x.Properties!.UserPoolName) === "xr-production-clients")![1].Properties as Record<string, any>);
+    assert.ok(poolFindings(t, "production", DEFAULT_DOMAIN).join("\n").includes("PF-4p has not decided"));
+  }
 });
