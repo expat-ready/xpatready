@@ -4,7 +4,8 @@
 # Report-only (P-717 (b), P-772 (a), Lead 8 21 Nov): this check is in no Mergify queue or merge condition and no required
 # check in the ruleset, and it has no merge_group trigger, until it has run clean for 24 h or 10 PR runs; then the tech
 # lead makes it required by its own PR. When: a ready pull request that changes the CDK package, compose.test.yml
-# (the database version the tests compare against) or this file (P-371 (1)).
+# (the database version the tests compare against), PF-24's settings.ts (the settings PF-8b's task must supply) or this
+# file (P-371 (1)).
 # US$0 (public repository), no model spend.
 name: deploy-synth
 on:
@@ -13,6 +14,7 @@ on:
     paths:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/config/settings.ts"
       - ".github/workflows/deploy-synth.yml"
 permissions:
   contents: read

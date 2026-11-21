@@ -164,7 +164,7 @@ test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only,
   const raw = readFileSync(join(HERE, "..", "..", "..", "..", "..", "..", "..", ".github", "workflows", "deploy-synth.yml"), "utf8");
   const wf = raw.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n"); // the header comment names merge_group in words
   const paths = [...wf.matchAll(/^ {6}- "([^"]+)"$/gm)].map((m) => m[1]);
-  assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml", ".github/workflows/deploy-synth.yml"]);
+  assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/platform/config/settings.ts", ".github/workflows/deploy-synth.yml"]);
   // the only trigger is pull_request (break 6: pull_request_target, workflow_dispatch, workflow_run, push, merge_group, schedule)
   const on = /^on:\n((?: {2}.*\n)+)/m.exec(wf)?.[1] ?? "";
   assert.deepEqual([...on.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]), ["pull_request"]);
