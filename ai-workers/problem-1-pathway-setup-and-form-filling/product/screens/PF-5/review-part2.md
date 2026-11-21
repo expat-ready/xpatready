@@ -621,3 +621,36 @@ Approved before this: `12cc086df` (round 14). `380bdb802` adds only round 14's l
 **To fix before Approve:** Major r15-1 (narrow the `/api/hooks/` exemption to the Stripe route, and add a DW6 schema-fail case: a signed, malformed envelope gets 422 with nothing stored).
 
 Verdict: Changes requested
+
+## Round 16 (diff-only, a45f14ce1): r15-1 fixed in the two test files; head `a45f14ce119335cb1c80fbdb9adc3f08e2f1a607`
+
+Changes requested before this: `fa32cb925` (round 15, Major r15-1). `git diff fa32cb925 HEAD`:
+* `0a8a272d9` changes `tests/check_pf28_inputs.ts` (7 lines added, 4 removed) and `tests/check_pf5_signup_billing.ts` (2 lines added). It changes no code file, and `webhook.ts` is unchanged since `fa32cb925`.
+* `a45f14ce119335cb1c80fbdb9adc3f08e2f1a607` (HEAD) is `0a8a272d9` plus round 15's lines in this file only (`git diff --stat 0a8a272d9 HEAD`).
+
+1. **The exemption is now one route.** `HOOK` is a `Set` holding exactly `platform/billing/routes.ts POST /api/hooks/stripe body`, matched by `has()`, not by a pattern.
+   * The key matches what `inputs()` produces. If it did not, the route would show up as unlisted and rule (a) would fail; it passes.
+   * Any other `/api/hooks/` route is judged statically like every door. This is the narrowing r15-1 asked for.
+2. **The schema now has a pass and a fail, in both suites.**
+   * **DW6 (check_pf28, over HTTP):** a body signed with the fake's own signature, with only `"object":"event"` changed to `"object":"not-event"`, gets 422 `INVALID`. The receipt count does not change. The pass case still gives 200 and stores the event once.
+   * **check_pf5 (through `hooks.receive`):** the same change on `done1` gets 422, and `webhook_receipt` stays at 0.
+   * **Why 422 proves the schema:** the fake's `readEvent` accepts the body (otherwise the answer would be 400 `NOT_AN_EVENT`), so the 422 can only come from `parseInput(SignedEvent, raw)` after the signature.
+   * `replace` changes only the first `"object":"event"`, which is the envelope's. The inner `data.object` is `"checkout.session"` or `"subscription"`.
+3. **Checks run here (Postgres on 54329, isolated copy on 4487, live AI off, US$0, never :4400).**
+   * **Suites:** check_pf28_inputs 27/27 and check_pf5_signup_billing 94/94, both exit 0.
+   * **Mutant:** with `parseInput(SignedEvent, raw)` removed, both suites now **FAIL**.
+     * check_pf28 fails on the new DW6 line.
+     * check_pf5 fails on the new 422 line. Three later assertions also fail, because the not-event body is then stored and handled; they fail as a consequence, not by chance.
+
+     `webhook.ts` was restored with `git checkout` and the tree is clean.
+   * **Not re-run:** the other suites, the typecheck and the card check. No code changed since round 15, which ran them.
+
+**Blocker:** none. **Major:** none. **r15-1 is closed.**
+
+**On the 422 against 400 `NOT_AN_EVENT`:** keeping PF-28's one field-error shape is a fair choice. Flagging it to the tech lead in the PR is the right handling; it is not a finding.
+
+**Open Minors:** rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7), r10-1, r12-1, round 13's nit, and r14-1, all unchanged.
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). Only tests changed. I wrote no new journey-test report.
+
+Verdict: Approve a45f14ce119335cb1c80fbdb9adc3f08e2f1a607
