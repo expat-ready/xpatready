@@ -35,11 +35,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A267 | 21 Nov 16:4x (typed): raise the AWS Support request; check the card; carry on with product work; all AWS approvals; tell him if stuck | Case followed up; card is default (Mastercard), not the cause |
 | A266 | 21 Nov 16:3x (typed): park the domain; he gets Cloudflare/AWS domain details from the team and nudges; focus back on work | Parked; #2800 + F2b continue |
 | A265 | 21 Nov 16:0x (typed): no Cloudflare access for expatready.com: free, solid workaround now, easy switch later; raise serious concerns; SHARDS: use the browser | AWS plan asked (CloudFront default domain); SHARDS waits on a GitHub 2FA code |
-| A264 | 21 Nov 15:3x (typed): go for the R1.53 lane and PF-8b fixes F1/F2 | Both lanes started 15:3x |
-| A261-A263 | 21 Nov 14:2x-14:3x (typed): enforce the Lead's prioritisation by scripts; stage table; capability board in every report | ENF-733b and ENF-783c lanes; board added to ENF-783c 14:3x; template in Start here |
-| A252-A258 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1635-lead15s3-asks-A252-A258.md` | |
-| A251 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1213-lead13s3-A251-and-5b.md` |
-| A242-A250 | 21 Nov 01:5x-11:2x | word for word in `product/history/STATE-2026-11-21-1225-lead13s3-ask-rows-A248-A250.md` and `product/history/STATE-2026-11-21-1125-lead12s3-ask-rows-A242-A247.md` |
+| A242-A264 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1655-lead15s3-asks-A242-A264.md` (pointers inside lead to older files) | |
 
 
 ## Start here (next Lead)
