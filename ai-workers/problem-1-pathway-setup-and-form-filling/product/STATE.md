@@ -10,9 +10,8 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 
 ## Lead 14 since 12:44 IST (newest first)
 * 13:4x: **R1.14 part 2 PASS** on AWS (PITR 845 s, ≤4 min 21 s lost; ca-west-1 copy 3½ min, own key, locked 35 days governance) → evidence #2638 comment 7059673372 (account masked); locked vaults outlive teardown ~35 days (~US$2/month). **#2687:** own fault (release-one-menu.tsx links 20 px); founder A258 allowed **#2777** (focus list: DEMO-LINK under R1.38, records, labelled); Lead B (11) starts the fix lane when it merges. Lead B ruling #2763 (PF-15 1b): an OVERDUE firm may book a lower plan for renewal, PAYMENT_HOLD refuses (Unconfirmed: no counsel); #2763 ci red (TS2531).
-* 13:3x app view (63 rows, 9 flagged): CI-SPEED-2 told done (no /run full; first 24-part batch gives times); ENF-782b part 2 OK on its own branch; PF-23c merged #2743, my rulings posted (no page on send cap; AUD-1c adds chain alarm; KMS + TLS-only SNS and slow-burn email alarm in PF-8c). Context: Lead 14 21%, Lead B 19%, AWS 34%; weekly 67%.
 * 13:2x: **walks** j_108 j_49 j_5 run 1 = actions run 44881942787 (dispatched in the browser; the shell's dispatch was refused); run 2 = re-run all jobs on it when attempt 1 ends, then post on #2706 #2762 #2765. **#2687** dequeued (shards 18, 4: axe contrast on FO-3st3 panel, target-size on PF-18h Home; hypothesis: its seeds) → Lead B (11) owns the fix and a green full run first (P-731). #2607 dirty (tooling-2 lane).
-* 12:4x-13:1x (labels after P-423 reads, R1.3/R1.10/R1.5 rulings with **records owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**, A256): word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
+* 12:4x-13:1x (13:3x app view; labels after P-423 reads, R1.3/R1.10/R1.5 rulings with **records owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**, A256): word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
 
 
 ## Hand-over Lead 13 → Lead 14 (series 3), 12:40 IST 21 Nov (read this first; Lead 13 at ~360k, P-446)
