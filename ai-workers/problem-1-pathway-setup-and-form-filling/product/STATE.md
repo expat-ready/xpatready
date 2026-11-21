@@ -2,7 +2,7 @@
 
 current_lead: local_f172acc0-277a-4ea1-b739-4fa274ba3c9b Lead 11 · 21 Nov 08:54 IST (series 3; took over from Lead 10 (series 3, local_8f916b74) at ~315k, P-446)
 
-updated: 2026-11-21 08:54 IST: Lead 10 handed over to Lead 11 (series 3) · milestone: Release 1 proven 33 of 101 on main (+1 this cycle: R1.27) · rules: **`RULES.md`** (as of **P-778**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 08:59 IST: Lead 11 took over 08:54 (series 3; check f3eafc24); #2696 labelled · milestone: Release 1 proven 33 of 101 on main (+1 this cycle: R1.27) · rules: **`RULES.md`** (as of **P-778**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,7 +15,7 @@ updated: 2026-11-21 08:54 IST: Lead 10 handed over to Lead 11 (series 3) · mile
 (2) **Owed at his next typed turn (cards refused over Remote Control):** cloud lanes ENF-778a and ENF-778g (briefs in Lead 8's group side notes, "lead10 enf-778 briefs"; drop the PLAN-VIEW/CAP-CARDS sections there); two standbys; lanes for R1.3 and R1.24. ENF-778b held (nine open lead-watch.sh PRs).
 (3) **REQ-QUALITY (#2695 merged):** 97/101 traced; NO SOURCE R1.64/108/109/110; 18 Source cells to fix; ~380 of 589 AG/SA ids differ between Doc and functional files → owed by the Lead: Source cells, the five narrowing rows (wordings in the map), a tooling row so the trace script reads 02-functional-requirements only. Measured: 24/101 rows have a journey; line coverage not measured by any tool (say so).
 (4) **Records/tooling:** #2696 (P-779) needs green pr-rules (body fixed 08:5x, re-run) then `lead-pr.sh approve-records 2696`. #2678 left open (superseded). #2433 labelled; #2607 told merge main; #2590/#2599 dirty (lanes merge main). Tooling merge order: #2431 → #2598 → #2605 → #2483.
-(5) **Resources:** disk **5 GB** (Lead B asked 08:5x to delete its 4 GB scratch under /private/tmp/claude-501/…build-lead-c-647b40); weekly 49%. Context: Lead B 46% → **told to write its hand-over** (P-565); Lead C idle (no row: give it R1.3 or the Source-cell drafts). Demo green (runs 08:4x); demo smoke times out when Mac load ~10.
+(5) **Resources:** disk **7.9 GB** (Lead B deleted its scratch clone, 08:5x). Weekly 49%. **Lead B (9) is handing over at ~46%** (hand-over: `lead-b-handover-2026-11-19.md` › "Lead B (9) final hand-over" on lead-b-front-office 0b1ed1d22); **start Lead B (10) at the founder's next typed turn.** **Lead C (local_b3247af3) is archived** (Lead 10's message bounced 08:55), so R1.3 and the Source-cell drafts need a new lane at the founder's next typed turn. #2687: Lead 11's P-423 read is OK (08:5x); `fast` is red (check-select-suites line 47: history.tsx selects 30 suites), so Lead B fixes it, then it labels on green. **Founder clean-up (the sandbox can't do it):** `lsof -ti tcp:4660 -sTCP:LISTEN | xargs kill`, then prune-test-dbs.sh, drop xr_studio_demolink_seed, and `git reset --hard HEAD` in worktree build-lead-c-647b40. Demo green (runs 08:4x); demo smoke times out when the Mac load is ~10.
 Lead 9 → Lead 10 block word for word: `product/history/STATE-2026-11-21-0900-lead10s3-handover-9-10-block-final.md`.
 
 
