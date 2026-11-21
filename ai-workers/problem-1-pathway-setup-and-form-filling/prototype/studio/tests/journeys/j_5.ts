@@ -119,11 +119,14 @@ try {
   const dev1 = await fresh();
   await dev1.goto(`${BASE}${link}`);
   await dev1.locator("[data-accept-continue]").click();
-  await dev1.locator("[data-account]", { hasText: NEW }).waitFor({ timeout: 30_000 });
+  // PF-18h (#2635): a sign-in through the link lands on the staff Home; the walk then opens My account by its address.
+  await dev1.waitForURL(/\/home$/, { timeout: 30_000 }); await dev1.locator("[data-staff-name]").waitFor({ timeout: 30_000 });
+  const landedHome = new URL(dev1.url()).pathname === "/home";
+  await dev1.goto(`${BASE}/account`); await dev1.locator("[data-account]", { hasText: NEW }).waitFor({ timeout: 30_000 });
   newId = sql(`select coalesce((select id::text from platform_staff where email = '${NEW}'), '')`);
   await shot(dev1, "W1-invitee-signed-in-1440");
   const shownName = (await dev1.locator("[data-staff-name]").innerText()).trim(), storedName = sql(`select coalesce(display_name, '') from platform_staff where id = '${newId}'`);
-  ok("J-5 W1 step 4: the invitee accepts in a second browser and is signed in (My account shows them; the header shows their name as stored)", !!newId && !!shownName && shownName === storedName, { shownName, storedName });
+  ok("J-5 W1 step 4: the invitee accepts in a second browser and is signed in: they land on Home, My account shows them, the header shows their name as stored", !!newId && landedHome && !!shownName && shownName === storedName, { landedHome, shownName, storedName });
 
   // ------------------------------------------------------------------- W2: one session; sign out everywhere
   const dev2 = await fresh();
