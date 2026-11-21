@@ -29,6 +29,13 @@ Telemetry is off in three places: `CDK_DISABLE_CLI_TELEMETRY=true` for the CLI, 
 * **Availability:** production is Multi-AZ; staging is single-zone (cost, P-562).
 * **CI job:** `.github/workflows/deploy-synth.yml` runs on pull requests that change this folder, and never in a merge-queue batch. It is report-only until measured green (P-717 (b), P-772 (a)).
 
+## Logs and alarms (PF-23c, `lib/observability.ts`, `test/observability.test.ts`)
+* **Log group:** `/xr/<stage>/app` in each stack (so in ca-central-1), kept **90 days** (NFR5-14), retained if the stack goes. PF-8b's task definition sends the service's output here (`stack.observability.appLogs`).
+* **Metric filters, not embedded metric format:** CloudWatch reads PF-23's EMF lines only through an EMF-aware shipper; the plain `awslogs` driver is not one. A metric filter reads the same JSON line whatever ships it. The filters read PF-23's field names; a test fails if `metrics.ts`, `log.ts` or the alert port renames them.
+* **Alarms (thresholds Sample):** 5xx rate over 5 % for 10 minutes (at least 20 requests); 3 job failures in 15 minutes; a job older than the app's `STUCK_JOB_MS`; mail bounce rate over 5 % in an hour (at least 20 sent); and the first alert line of each kind: audit-write failure, chain break, stuck job, privacy clock, breach clock. No data counts as no incident.
+* **Routing:** every alarm (and its recovery) goes to the SNS topic `xr-<stage>-on-call`, whose one subscription is the email in the deploy parameter `OnCallEmail`. That parameter has no default: the founder names the address, and a deploy without it fails.
+* **Held for the AWS proof (P-782):** a test alarm reaching the on-call person. That needs the founder's account.
+
 ## Not decided yet
 * **CDK feature flags:** synth reports 81 that are not configured. They must be set before the first deploy, because flipping one later can replace resources. That choice is PF-8c's (review m5).
 
