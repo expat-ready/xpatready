@@ -193,3 +193,130 @@
 The Minors can go in this PR or a recorded follow-up.
 
 Verdict: Changes requested
+
+---
+
+## Round 2: re-review of `9d8d093396cb7674e263f7d30ada76e706bde143` (diff only, P-277)
+
+* **Read:** `git diff 0f65522bd 9d8d09339 -- …/prototype` (3879bd070 and 9d8d09339) and `product/screens/PF-16/break-report-part1a.md`.
+* **Size:** 773 lines added and 10 removed from `origin/main`, so 783 changed. Under 800.
+* **`check_pf16_billing_rules`:** 37 passed, 0 failed, run here at this commit.
+* **Reviewer probes:** a scratch copy of the new check, outside the repo, with its own scratch database (dropped afterwards). Output:
+  ```
+  PROBE P1 {"refused":null,"stripeRenewal":null,"scheduleId":"sub_sched_partial000001","openBooking":"1"}
+  PROBE P4 {"kind":"repair","conflicts":[],"refused":null,"plan":"pf16-lite"}
+  ```
+* **Correction to round 1:** I wrote that `billing_cycle_anchor: "now"` was valid on update and preview. It is not valid in 23.1.0 on API 2026-10-28. `SubscriptionUpdateParams.BillingCycleAnchor` (`Subscriptions.d.ts:2101`) and `InvoiceCreatePreviewParams.SubscriptionDetails.BillingCycleAnchor` (`Invoices.d.ts:3835`) are objects `{ type }`. 3879bd070 fixes it correctly.
+
+### Round 1 findings
+| # | Status | Evidence |
+|---|---|---|
+| B1 | **Fixed** | `service.ts:58-60` refuses while `cur.scheduleId` or our booking is open. Tested both ways: a raise, and a period change while a plan is booked. But see R2-M2: the guard is too wide. |
+| M1 | **Fixed** | One transaction per change holding `plan-change:<firm>` (`:92-93`); `withdraw` takes the same lock (`:165`); the `updateMany` count is checked (`:129-130`). Tested with a parallel double click: one charge, one line, one event. |
+| M2 | **Fixed for the now and trial paths**; **open for the renewal path** (R2-M1) | Now: Stripe is read back (`:112-116`); 402 only for `PaymentDeclined`; otherwise 503 `BILLING_UNCONFIRMED`; `repair` (`:62-64`, `:95`). Trial undo uses a fresh key (`:118`), and a replay is caught by the read-back. Tested: lost answer, unconfirmed, repair, decline replay. |
+| M3 | **Fixed** | `proration_date` only with proration (`stripe-plan-change.ts:36-39`); the adapter's sent form is asserted. But see R2-M3, which follows from this fix. |
+| M4 | **Fixed** | The preview's kind and amount are carried and re-checked at the same proration date (`:96`, `:107-108`); trial is decided on the server clock (`:68`). Tested: amount mismatch, and a trial that ended before confirming. |
+| M5 | **Fixed** | Real fail tests for monthly → yearly and the trial switch; Stripe's trial end checked; a parallel double click; adapter parameters asserted. |
+| m1 | Fixed | A fresh UUID per renewal key; tested. |
+| m2 | Fixed | The period-withdraw line is written; `scheduleReleased` is true only when a schedule existed. See R2-M2 for a false line. |
+| m3 | Fixed | `chargedCents` is in before, after and detail. |
+| m4 | Fixed | `ownFirm`. |
+| m5 | Fixed | A "now" move's conflicts are read under the firm-row and case-open locks, inside the locked transaction (`:98-104`). |
+| m6 | Not changed (accepted for part 1a) | Still to be settled before the PF-5s screen calls these routes on the demo. |
+| m7 | Fixed, with a new risk | See R2-m2. |
+| m8 | Fixed | "preview the change again". |
+
+The breaker's report also holds on the points it raises against `0f65522bd`:
+* B2 and B3 are covered by M1 and M2.
+* Its M3, M4, M5 and M6 are covered by m1, B1, its own M5 fix and M4.
+
+### New findings (round 2)
+
+#### Major
+
+**R2-M1. A renewal schedule that Stripe created but whose phases it refused is reported as booked: the price never changes at the renewal.**
+* **Where:** `service.ts:146-153` reads Stripe back after a failed `scheduleAtRenewal` and treats "a schedule exists" as success. The adapter makes the schedule in two calls, `create from_subscription` (`stripe-plan-change.ts:59`) and then `update` with the phases (`:66-68`).
+* **Failing scenario (probe P1):**
+  1. `create` succeeds and `update` is refused. Plausible causes: a validation error on the phases, which the PR itself marks "unconfirmed live", or R2-m2's discounts.
+  2. The read-back finds `scheduleId`, so our booking is kept and the Owner gets **200** `kind: renewal`.
+  3. Stripe's schedule is only the current phase copied from the subscription, so it releases at the period end on the **old** price.
+  4. Our job applies Lite at the renewal. The firm keeps paying Team with Lite's limits. For a period change, Stripe bills another full year after the Owner was told "monthly from the renewal".
+* **This is a regression:** at `0f65522bd` this path withdrew the booking and answered 503.
+* **Fix:** success only when Stripe shows the target price in the schedule's next phase.
+  * The adapter returns or exposes the scheduled price, for example `PlanSubscription.scheduledPriceId`, read from `schedule.phases`.
+  * On a mismatch, release the schedule we created, withdraw our booking, and answer 503.
+  * Make the fake able to fail between create and update, and add a test.
+
+**R2-M2. B1's guard treats a schedule that has already done its job as "booked", so the plan cannot change for a whole period after every renewal change.**
+* **Where:** `service.ts:60` (`cur.scheduleId`). The schedule's second phase lasts one full interval with `end_behavior: release` (`stripe-plan-change.ts:68`), so Stripe keeps `subscription.schedule` set until that phase ends: one month, or **one year** for a yearly price.
+* **Failing scenario:**
+  1. Team monthly books Lite. At the renewal Stripe moves to Lite and our job applies the booking (no open booking left).
+  2. For the following month every preview and change, including a raise, answers 409 `PLAN_CHANGE_BOOKED` "A change is booked for the renewal. Withdraw it first". Nothing is booked from the Owner's point of view.
+  3. A yearly firm that moved to a cheaper plan cannot upgrade for a year.
+  4. The way out, `withdraw` (`:169-174`), releases the schedule but writes `platform.plan.period_withdrawn` "The booked change of billing period was withdrawn" for a change that already happened. The audit line is false.
+* **Not tested:** nothing models the schedule's phase 2.
+* **Fix:** "booked" means a schedule phase still to start.
+  * Expose the next phase's start (and price) from the adapter.
+  * A schedule in its last phase is released quietly, either by `plan()` before the change or by the booking job when it applies, with no "withdrawn" line.
+  * Test both.
+
+**R2-M3. On real Stripe, a trial switch's preview shows the next renewal's full price as "amount due now".**
+* **Where:** `service.ts:83` and `:107` call `plans.preview` for `kind: trial`. The adapter (`stripe-plan-change.ts:41-46`) now sends `proration_behavior: none` with no proration date. With nothing invoiced now, Stripe's preview is the **upcoming** invoice. The library's own doc says so: `Invoices.d.ts:104`, "preview the upcoming invoice … all the charges that are pending, including subscription renewal charges". That is the invoice at the trial end, at the new price.
+* **Failing scenario:**
+  1. A trialing firm previews Firm.
+  2. The answer carries `amountDueNowCents` equal to Firm's full monthly price.
+  3. The screen shows a charge for SA-4-56's free switch. The change then charges nothing, because both previews agree, so the stale check passes.
+* **Why the tests miss it:** the fake returns 0 for `prorate: false` (`ports/plan-change.ts`, `quote`).
+* **Status:** unconfirmed live, but this is the library's documented behaviour.
+* **Fix:** a trial's amount due now is 0 by rule. Skip Stripe for `kind: trial` in both preview and change, as `renewal` already does. Add the "now" preview's `always_invoice` amount (the immediate invoice only) to the PR's Mac test-key run.
+
+#### Minor
+
+**R2-m1. `repair` writes a lower plan with no `checkDowngrade` (probe P4).**
+* **Where:** `service.ts:62-64` and `:95`.
+* **Scenario:**
+  * Stripe bills Lite while our plan is Team. This can follow M2's lost write, an undo that failed after `book()` refused for conflicts (`:118`), or a dashboard edit.
+  * The firm has 5 more seats in use than Lite allows.
+  * The preview answers `kind: repair, conflicts: []`, and the change writes Lite (SA-3-58: no override).
+* Matching billing may be right, but the conflicts should at least be listed, with an alert, rather than silently passed.
+
+**R2-m2. The phase discounts may send both `discount` and `coupon`.**
+* **Where:** `stripe-plan-change.ts:65` sends `{ discount, coupon }` from the retrieved phase. Phase discounts take one of `coupon`, `discount` or `promotion_code` (`SubscriptionSchedules.d.ts:573-585`).
+* A schedule retrieved from a discounted subscription can carry both, which may be refused. Today that refusal turns into R2-M1's silent success.
+* Send `discount` when present, otherwise `coupon`. Add this to the Mac run.
+
+**R2-m3. One change holds two connections and keeps locks during Stripe calls.**
+* **Where:** `service.ts:92-122`.
+* `plan()`, `bookings.open/book` and the trial conflicts use `this.d.db` while the outer transaction holds a connection.
+* A "now" change holds the firm-row and case-open locks across up to four Stripe calls (10 s timeout, 2 retries each), which can exceed the 60 s transaction timeout after Stripe has charged. `repair` recovers it, but the Owner sees a 500 first.
+* Rare at this scale. Read through `tx` where possible, and take the locks only after Stripe's answer, with the conflicts re-read then.
+
+**R2-m4. The new words point to a path that may not exist (breaker m4).**
+* **Where:** `service.ts:143`.
+* For yearly Team → Firm monthly, the words say "move to it at the same billing period first", but Firm has no yearly price in the Sample catalogue (409 `PLAN_NOT_PURCHASABLE`). A yearly firm still cannot reach Firm.
+* Either name the actual route, or keep this as a catalogue rule for the founder.
+
+### Checklist (round 2)
+| Check | Result |
+|---|---|
+| One charge per confirmation | Yes (lock, read-back, tested in parallel) |
+| Charged = previewed | Yes for "now". Trial preview amount wrong on real Stripe (R2-M3) |
+| Idempotency keys | Yes; fresh keys for undo and renewal; decline replay handled |
+| Failure ordering and compensation | Now and trial: yes. Renewal: partial schedule counted as success (R2-M1) |
+| Trial detection | Server clock, plus the kind re-check |
+| Stripe parameters (23.1.0) | Valid; anchor object right; phase discounts risk (R2-m2) |
+| Owner only, hold, overdue, PF-28, PF-12 | Unchanged and right; `ownFirm` used |
+| Two changes at once | Serialised per firm |
+| Booked guard | Right idea; too wide after a renewal (R2-M2) |
+| Audit before/after | Amounts present; a false `period_withdrawn` line possible (R2-M2) |
+| Pass and fail per Done-when line | Yes for the part-1a lines; R2-M1 and R2-M2 have no test |
+| Size < 800 | 783 |
+
+### To fix before Approve (round 2)
+1. **R2-M1:** count a renewal change as booked only when Stripe's schedule shows the target price in its next phase; otherwise release it, withdraw ours, and answer 503. Add a test with create succeeding and update failing.
+2. **R2-M2:** a schedule in its last phase is not "booked". Release it without a "withdrawn" line, and test the month after a renewal.
+3. **R2-M3:** no Stripe preview for a trial (amount due now 0 by rule).
+
+The round-2 Minors can go in this PR or a recorded follow-up.
+
+Verdict: Changes requested

@@ -6,11 +6,8 @@
 //   * same or cheaper (same period) or yearly → monthly: at the next renewal (a Stripe schedule), no refund, and our booking
 //     (PF-15 part 1b: every limit the lower of the two plans' until then) only once checkDowngrade passes;
 //   * a held firm pays first (409; its routes answer 402 anyway); while a renewal change is booked, withdraw it first.
-// The change sends back the preview's proration date, kind and amount: the kind is decided again and the amount previewed
-// again at that date, and a difference refuses (409 PREVIEW_STALE), so nothing is charged that was not shown. One change
-// per firm at a time (a lock held for the whole change: review M1). Our side is written only once Stripe shows the new
-// price (read back); a failure that may have reached Stripe is never answered "not charged", and a retry finds Stripe
-// already changed and completes our side (review M2).
+// The change sends back the preview's date, kind and amount, all checked again (409 PREVIEW_STALE otherwise); one change per
+// firm at a time (review M1); ours is written only once Stripe, read back, shows the new price, and a retry repairs ours (M2).
 import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -57,7 +54,7 @@ export class PlanChanges {
     const cur = await this.d.plans.current(sub.stripeSubscriptionId).catch(() => { throw unavailable(); });
     const open = await this.d.bookings.open(s.firmId);
     // Review B1: a change while a renewal change is booked (in Stripe or ours) would leave the two disagreeing at the renewal.
-    if (cur.scheduleId || open) throw problem(409, "PLAN_CHANGE_BOOKED", "A plan change is already booked", `A change${open ? ` to ${open.toPlan} on ${open.effectiveAt.slice(0, 10)}` : ""} is booked for the renewal. Withdraw it first.`);
+    if (cur.pendingPriceId || open) throw problem(409, "PLAN_CHANGE_BOOKED", "A plan change is already booked", `A change${open ? ` to ${open.toPlan} on ${open.effectiveAt.slice(0, 10)}` : ""} is booked for the renewal. Withdraw it first.`);
     const samePlan = to.id === sub.planId;
     if (cur.priceId === priceId) {
       if (samePlan) throw problem(409, "SAME_PLAN", "Already on that plan", `Your firm is already on ${to.name}, ${words(target.period)}.`);
@@ -80,7 +77,8 @@ export class PlanChanges {
     const base = { plan: { code: p.to.code, name: p.to.name }, period: input.period, prorationDate: at.toISOString(), refund: false, taxNote: "Prices are shown before applicable taxes." };
     if (p.kind === "repair") return { ...base, kind: p.kind, effectiveAt: at, amountDueNowCents: 0, prorationCents: 0, nextPriceCents: p.cur.unitAmount, currency: "CAD", conflicts: [] };
     const conflicts = p.samePlan ? [] : (await this.d.db.$transaction((tx) => this.d.bookings.conflicts(tx, s.firmId, p.firm.key, p.to.code))).conflicts;
-    const now = p.kind !== "renewal" ? await this.d.plans.preview(this.priceChange(p, input.period, at)).catch(() => { throw unavailable(); }) : null;
+    // A trial switch is free: Stripe's preview with no proration is the upcoming (trial-end) invoice, not a charge now (review R2-M3).
+    const now = p.kind === "now" ? await this.d.plans.preview(this.priceChange(p, input.period, at)).catch(() => { throw unavailable(); }) : null;
     return { ...base, kind: p.kind, effectiveAt: p.kind === "renewal" ? p.cur.periodEnd : at, amountDueNowCents: now?.amountDueCents ?? 0, prorationCents: now?.prorationCents ?? 0,
       nextPriceCents: p.price.unitAmount, currency: (now?.currency ?? p.price.currency).toUpperCase(), conflicts };
   }
@@ -94,6 +92,7 @@ export class PlanChanges {
       const p = await this.plan(s, input), actor = `staff:${s.staffId}`;
       if (p.kind === "repair") return this.writeOurs(tx, s, p, input.period, actor, "repair", 0, at);
       if (p.kind !== input.kind) throw stale("The change is no longer the same kind (the trial may have ended).");
+      if (p.cur.scheduleId) await this.d.plans.releaseSchedule(p.cur.id).catch(() => { throw unavailable(); });   // one left in its last phase: nothing ahead (R2-M2), released quietly
       if (p.kind === "renewal") return this.atRenewal(tx, s, p, actor);
       if (!p.samePlan) {   // an immediate move's conflicts; a "now" move also under the staff changes' and case openings' locks (review m5)
         if (p.kind === "now") {
@@ -104,7 +103,7 @@ export class PlanChanges {
         if (c.length) throw problem(409, "DOWNGRADE_CONFLICTS", "Reduce the usage first", `${c.map((x) => x.words).join(" ")} Nothing was changed.`, { conflicts: c });
       }
       const change = this.priceChange(p, input.period, at);
-      const shown = await this.d.plans.preview(change).catch(() => { throw unavailable(); });
+      const shown = p.kind === "trial" ? { amountDueCents: 0 } : await this.d.plans.preview(change).catch(() => { throw unavailable(); });
       if (shown.amountDueCents !== input.amountDueNowCents) throw stale(`The amount due now is ${shown.amountDueCents} cents, not the ${input.amountDueNowCents} shown.`);
       const key = `pf16-${s.firmId}-${p.cur.id}-${p.priceId}-${Math.floor(at.getTime() / 1000)}`;
       try { await this.d.plans.changeNow(change, key); } catch (e) {
@@ -140,15 +139,17 @@ export class PlanChanges {
   private async atRenewal(tx: Tx, s: StaffContext, p: Awaited<ReturnType<PlanChanges["plan"]>>, actor: string) {
     const b = p.samePlan ? null : await this.d.bookings.book(s.firmId, p.to.code, actor).catch((e) => {
       const code = (e as { getResponse?: () => { code?: string } }).getResponse?.()?.code;
-      if (code === "PLAN_RAISE_NOT_BOOKED") throw problem(409, "PLAN_RAISE_NOT_BOOKED", "Not as one change", `${p.to.name} is a larger plan: move to it at the same billing period first (it applies at once), then change the period.`);   // break m4
+      if (code === "PLAN_RAISE_NOT_BOOKED") throw problem(409, "PLAN_RAISE_NOT_BOOKED", "Not as one change", `${p.to.name} is a larger plan: it cannot start at the renewal. Choose it at your current billing period if it offers one (it applies at once), or ask us.`);   // break m4, review R2-m4
       throw e;
     });
     try { await this.d.plans.scheduleAtRenewal({ subscriptionId: p.cur.id, priceId: p.priceId }, `pf16-${s.firmId}-${p.cur.id}-renewal-${randomUUID()}`); } catch {
-      // Break M2: the schedule may have been made and the answer lost; read Stripe back before undoing ours.
+      // Break M2, review R2-M1: booked only if a phase ahead moves to the target; anything else (a half-made schedule
+      // included) is released and ours withdrawn, or the answer says it could not be confirmed.
       const back = await this.d.plans.current(p.cur.id).catch(() => null);
-      if (!back) throw problem(503, "BILLING_UNCONFIRMED", "We could not confirm the change", "Our billing provider did not confirm the change. Check Billing in a minute before trying again.");
-      if (!back.scheduleId) {
-        if (b && !(await this.d.bookings.withdraw(s.firmId, "system:platform.billing.plan-change").then(() => true, () => false))) throw problem(503, "BILLING_UNCONFIRMED", "We could not confirm the change", "The change could not be completed and our booking could not be undone yet. Check Billing in a minute; withdraw the change there if it shows.");
+      if (back?.pendingPriceId !== p.priceId) {
+        const undone = !!back && (!back.scheduleId || await this.d.plans.releaseSchedule(p.cur.id).then(() => true, () => false))
+          && (!b || await this.d.bookings.withdraw(s.firmId, "system:platform.billing.plan-change").then(() => true, () => false));
+        if (!undone) throw problem(503, "BILLING_UNCONFIRMED", "We could not confirm the change", "The change could not be completed or undone yet. Check Billing in a minute; withdraw the change there if it shows.");
         throw unavailable();
       }
     }
@@ -166,12 +167,12 @@ export class PlanChanges {
       const sub = await this.d.db.platformSubscription.findFirst({ where: firmScope(s.firmId, { status: { not: "ENDED" as const } }) });
       const cur = sub?.stripeSubscriptionId ? await this.d.plans.current(sub.stripeSubscriptionId).catch(() => { throw unavailable(); }) : null;
       const open = await this.d.bookings.open(s.firmId);
-      if (!open && !cur?.scheduleId) return { withdrawn: false, toPlan: null, scheduleReleased: false };   // nothing booked: changes nothing (PF-28: an empty body that changes nothing passes)
-      if (cur?.scheduleId) await this.d.plans.releaseSchedule(cur.id).catch(() => { throw unavailable(); });
+      if (cur?.scheduleId) await this.d.plans.releaseSchedule(cur.id).catch(() => { throw unavailable(); });   // a pending one, or one left in its last phase (quietly)
+      if (!open && !cur?.pendingPriceId) return { withdrawn: false, toPlan: null, scheduleReleased: false };   // nothing booked: changes nothing (PF-28: an empty body that changes nothing passes)
       if (open) await this.d.bookings.withdraw(s.firmId, `staff:${s.staffId}`);
       else if (sub) await this.d.audit.record(tx, { firmId: s.firmId, actor: `staff:${s.staffId}`, action: "platform.plan.period_withdrawn", entity: "platform_subscription", entityKey: sub.id,
         summary: "The booked change of billing period was withdrawn; the subscription stays as it is.", detail: { scheduleReleased: true }, before: { bookedPeriod: "booked" }, after: { bookedPeriod: null } });   // review m2
-      return { withdrawn: true, toPlan: open?.toPlan ?? null, scheduleReleased: !!cur?.scheduleId };
+      return { withdrawn: true, toPlan: open?.toPlan ?? null, scheduleReleased: !!cur?.pendingPriceId };
     }, { timeout: 60_000, maxWait: 30_000 });
   }
 }

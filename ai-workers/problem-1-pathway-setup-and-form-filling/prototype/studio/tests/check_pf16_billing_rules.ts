@@ -64,7 +64,8 @@ function recordedStripe(StripePlanChange: typeof import("../api/src/platform/bil
       if (form.get("proration_behavior") === "always_invoice") charges++;
       out = sub();
     } else if (method === "POST" && url.pathname === "/v1/subscription_schedules") { schedule = "sub_sched_r1"; out = { id: schedule, object: "subscription_schedule" }; }
-    else if (method === "GET" && url.pathname === "/v1/subscription_schedules/sub_sched_r1") out = { id: "sub_sched_r1", object: "subscription_schedule", current_phase: { start_date: end - 30 * 86_400, end_date: end } };
+    else if (method === "GET" && url.pathname === "/v1/subscription_schedules/sub_sched_r1") out = { id: "sub_sched_r1", object: "subscription_schedule", current_phase: { start_date: end - 30 * 86_400, end_date: end },
+      phases: [{ start_date: end - 30 * 86_400, end_date: end, items: [{ price: price.id, quantity: 1 }] }, ...(scheduled ? [{ start_date: end, items: [{ price: scheduled, quantity: 1 }] }] : [])] };
     else if (method === "POST" && url.pathname === "/v1/subscription_schedules/sub_sched_r1") { scheduled = form.get("phases[1][items][0][price]"); out = { id: "sub_sched_r1", object: "subscription_schedule" }; }
     else if (method === "POST" && url.pathname === "/v1/subscription_schedules/sub_sched_r1/release") { schedule = null; scheduled = null; out = { id: "sub_sched_r1", object: "subscription_schedule", status: "released" }; }
     else return answer({ error: { type: "invalid_request_error", message: `unrecorded ${method} ${url.pathname}` } }, 404);
@@ -102,7 +103,7 @@ const local = new LocalIdentity("pf16-check-signing-key-0123456789abcdef", () =>
 const billing = fakeBilling({ prices: PRICES.map((p) => ({ ...p, active: true })) });
 let failOn: string | null = null;
 /** "decline", "lost" or "fail" act on the change now; a call's own name makes that call fail. */
-const stripe = fakePlanChange({ prices: PRICES, failOn: (c) => (failOn === c ? "fail" : c === "changeNow" && (failOn === "decline" || failOn === "lost" || failOn === "fail") ? failOn : null) });
+const stripe = fakePlanChange({ prices: PRICES, failOn: (c) => (failOn === c ? "fail" : c === "scheduleAtRenewal" && failOn === "half" ? "lost" : c === "changeNow" && (failOn === "decline" || failOn === "lost" || failOn === "fail") ? failOn : null) });
 const cases = fakeCaseCount();
 const bookings = new PlanBookings({ db, now: () => clock.now(), files: { usedBytes: async () => 0 }, cases: () => cases });
 const changes = new PlanChanges({ db, billing, plans: stripe, bookings, audit: auditEvent, clock: fake });
@@ -112,7 +113,7 @@ try {
   // ---------------------------------------------------------------------------- PlanChangePort: fake and recorded
   await runContract(planChangePortContract, "fakePlanChange", () => {
     const f = fakePlanChange({ prices: PRICES });
-    f.subs.set("sub_c1", { id: "sub_c1", itemId: "si_c1", priceId: PRICES[0].id, interval: "month", unitAmount: PRICES[0].unitAmount, status: "active", periodEnd: new Date(Date.now() + 15 * DAY), trialEnd: null, scheduleId: null });
+    f.subs.set("sub_c1", { id: "sub_c1", itemId: "si_c1", priceId: PRICES[0].id, interval: "month", unitAmount: PRICES[0].unitAmount, status: "active", periodEnd: new Date(Date.now() + 15 * DAY), trialEnd: null, scheduleId: null, pendingPriceId: null });
     return { port: f, subscriptionId: "sub_c1", fromPrice: PRICES[0].id, raisePrice: "price_firmMonth", charges: () => f.charges.length, scheduled: () => f.renewals.get("sub_c1")?.priceId ?? null };
   }, ok);
   await runContract(planChangePortContract, "StripePlanChange (recorded)", () => recordedStripe(StripePlanChange), ok);
@@ -152,7 +153,7 @@ try {
   const setSub = async (status: string, periodDays: number, trialEnd: string | null = null) => {
     await fake.advance({ seconds: 5 });   // each case previews at its own second (a preview's date is in Stripe's key)
     sql(`update platform_subscription set status = '${status}', stripe_subscription_id = 'sub_f1', stripe_customer_id = 'cus_f1', current_period_end = now() + interval '${periodDays} days', trial_ends_at = ${trialEnd ? `'${trialEnd}'` : "null"}, plan_id = '${TEAM}' where firm_id = '${FIRM}' and status <> 'ENDED'`);
-    stripe.subs.set("sub_f1", { id: "sub_f1", itemId: "si_f1", priceId: "price_teamMonth", interval: "month", unitAmount: 10_000, status: status === "TRIAL" ? "trialing" : "active", periodEnd: new Date(clock.now() + periodDays * DAY), trialEnd: trialEnd ? new Date(trialEnd) : null, scheduleId: null });
+    stripe.subs.set("sub_f1", { id: "sub_f1", itemId: "si_f1", priceId: "price_teamMonth", interval: "month", unitAmount: 10_000, status: status === "TRIAL" ? "trialing" : "active", periodEnd: new Date(clock.now() + periodDays * DAY), trialEnd: trialEnd ? new Date(trialEnd) : null, scheduleId: null, pendingPriceId: null });
     stripe.renewals.clear();
     sql(`update platform_subscription_change set withdrawn_at = now() where withdrawn_at is null and applied_at is null`);   // each case starts with nothing booked
   };
@@ -226,6 +227,13 @@ try {
   failOn = "scheduleAtRenewal";
   const sf = await problemOf(() => confirm("pf16-lite")); failOn = null;
   ok("PF-16 fail (lower): Stripe refusing the schedule (none made, read back) → 503, and our booking is withdrawn (nothing left lowering the limits)", sf?.status === 503 && open() === "0" && stripe.renewals.size === 0, sf);
+
+  failOn = "half";
+  const half = await problemOf(() => confirm("pf16-lite")); failOn = null;
+  ok("PF-16 fail (review R2-M1): a schedule Stripe made but whose phases it refused is not \"booked\": 503, the half schedule released, our booking withdrawn", half?.status === 503 && open() === "0" && !stripe.subs.get("sub_f1")!.scheduleId, half);
+  stripe.subs.set("sub_f1", { ...stripe.subs.get("sub_f1")!, scheduleId: "sub_sched_lastphase" });   // a booked change already applied: its schedule stays in its last phase
+  const after = await confirm("firm");
+  ok("PF-16 pass (review R2-M2): a schedule left in its last phase blocks nothing: a raise goes through, the schedule is released quietly (no withdrawal line)", after.kind === "now" && planOf() === "firm" && !stripe.subs.get("sub_f1")!.scheduleId && sql(`select count(*) from audit_event where action = 'platform.plan.period_withdrawn'`) === "0", after);
 
   // --------------------------------------------------------------------------------- the period: month ↔ year
   await setSub("ACTIVE", 10);

@@ -16,6 +16,9 @@ export const ScheduleId = z.string().regex(/^sub_sched_[A-Za-z0-9]{1,200}$/, "a 
 export const PlanSubscription = z.strictObject({
   id: SubscriptionId, itemId: ItemId, priceId: PriceId, interval: z.enum(["month", "year"]), unitAmount: z.number().int().min(0),
   status: z.enum(STRIPE_STATUSES), periodEnd: z.date().nullable(), trialEnd: z.date().nullable(), scheduleId: ScheduleId.nullable(),
+  /** The price a schedule moves to at a phase still ahead; null when none is ahead (no schedule, or one left in its last
+   *  phase after it applied, which Stripe keeps attached until that phase ends: review R2-M2). */
+  pendingPriceId: PriceId.nullable(),
 });
 export type PlanSubscription = z.infer<typeof PlanSubscription>;
 
@@ -71,7 +74,7 @@ export function fakePlanChange(opts: { prices: { id: string; unitAmount: number;
   };
   return {
     subs, charges, renewals,
-    async current(id) { gate("current"); return PlanSubscription.parse(sub(id)); },
+    async current(id) { gate("current"); return PlanSubscription.parse({ ...sub(id), pendingPriceId: renewals.get(id)?.priceId ?? null }); },
     async preview(change) { gate("preview"); return quote(PriceChange.parse(change)); },
     async changeNow(change, key) {
       const c = PriceChange.parse(change), k = IdempotencyKey.parse(key);
@@ -88,8 +91,10 @@ export function fakePlanChange(opts: { prices: { id: string; unitAmount: number;
     async scheduleAtRenewal(change, key) {
       const c = RenewalChange.parse(change), k = IdempotencyKey.parse(key);
       if (done.has(k)) return done.get(k) as { scheduleId: string };
+      const s = sub(c.subscriptionId), half = mode("scheduleAtRenewal") === "lost";
+      if (half) { subs.set(s.id, { ...s, scheduleId: s.scheduleId ?? "sub_sched_fakehalf" }); throw new Error("forced plan-change failure: the schedule was made, its phases refused"); }
       gate("scheduleAtRenewal"); price(c.priceId);
-      const s = sub(c.subscriptionId), scheduleId = s.scheduleId ?? `sub_sched_fake${String(renewals.size + 1).padStart(6, "0")}`;
+      const scheduleId = s.scheduleId ?? `sub_sched_fake${String(renewals.size + 1).padStart(6, "0")}`;
       subs.set(s.id, { ...s, scheduleId }); renewals.set(s.id, { priceId: c.priceId, at: s.periodEnd });
       done.set(k, { scheduleId }); return { scheduleId };
     },

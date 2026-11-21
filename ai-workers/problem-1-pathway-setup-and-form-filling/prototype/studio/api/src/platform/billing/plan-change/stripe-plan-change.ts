@@ -24,8 +24,10 @@ export class StripePlanChange implements PlanChangePort {
 
   async current(id: string) {
     const s = await this.stripe.subscriptions.retrieve(SubscriptionId.parse(id), { expand: ["items.data.price"] });
-    const item = s.items.data[0], price = item?.price;
-    return PlanSubscription.parse({
+    const item = s.items.data[0], price = item?.price, schedId = idOf(s.schedule as string | { id: string } | null);
+    // The price a phase still ahead moves to (review R2-M1, R2-M2): a schedule only half made, or left in its last phase, has none.
+    const ahead = schedId ? (await this.stripe.subscriptionSchedules.retrieve(schedId)).phases.find((p) => p.start_date > Math.floor(Date.now() / 1000)) : undefined;
+    return PlanSubscription.parse({ pendingPriceId: ahead?.items[0] ? idOf(ahead.items[0].price as string | { id: string }) : null,
       id: s.id, itemId: item?.id, priceId: idOf(price), interval: price?.recurring?.interval, unitAmount: price?.unit_amount, status: s.status,
       periodEnd: at(item?.current_period_end), trialEnd: at(s.trial_end), scheduleId: idOf(s.schedule as string | { id: string } | null),
     });
@@ -62,7 +64,7 @@ export class StripePlanChange implements PlanChangePort {
     if (!now) throw new Error("the subscription schedule has no current phase");
     // The current phase as Stripe made it from the subscription (its items' tax rates and its discounts kept; review m7).
     const keep = first ? { items: first.items.map((i) => ({ price: idOf(i.price as string | { id: string })!, quantity: i.quantity ?? 1, ...(i.tax_rates?.length ? { tax_rates: i.tax_rates.map((t) => idOf(t as string | { id: string })!) } : {}) })),
-      ...(first.discounts?.length ? { discounts: first.discounts.map((x) => ({ discount: idOf(x.discount as string | { id: string } | null) ?? undefined, coupon: idOf(x.coupon as string | { id: string } | null) ?? undefined })) } : {}) } : { items: [{ price: cur.priceId, quantity: 1 }] };
+      ...(first.discounts?.length ? { discounts: first.discounts.map((x) => { const d = idOf(x.discount as string | { id: string } | null); return d ? { discount: d } : { coupon: idOf(x.coupon as string | { id: string } | null) ?? undefined }; }) } : {}) } : { items: [{ price: cur.priceId, quantity: 1 }] };
     await this.stripe.subscriptionSchedules.update(id, { end_behavior: "release", proration_behavior: "none", phases: [
       { ...keep, start_date: now.start_date, end_date: now.end_date },
       { items: [{ price: c.priceId, quantity: 1 }], duration: { interval: cur.interval, interval_count: 1 } },
