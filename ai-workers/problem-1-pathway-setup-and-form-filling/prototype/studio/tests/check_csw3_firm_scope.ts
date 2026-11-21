@@ -125,8 +125,12 @@ async function decisions() {
   ok("CS-W3 DW3 pass (door): a client with a case in the path gets that case's firm; without one, the firm of their cases",
     (await status(client)) === 0 && tag(client) === A && (await status(clientOther)) === 0 && tag(clientOther) === A && calls.includes(`case:${u(11)}`) && calls.includes("client:user-P"));
   const two = look({ ofClient: async () => { throw new TwoFirms(); } });
-  ok("CS-W3 DW3 fail (door, ruling 1): a client whose cases are in two firms gets 409, on the list and on a route with no case",
-    (await status(req("GET", "/api/runtime/cases", { "x-actor": "user-P" }), two)) === 409 && (await status(req("GET", "/api/runtime/openable", { "x-actor": "user-P" }), two)) === 409);
+  ok("CS-W3 DW3 fail (door, ruling 1): a client whose cases are in two firms gets 409 on a route with no case in its path",
+    (await status(req("GET", "/api/runtime/openable", { "x-actor": "user-P" }), two)) === 409);
+  const before = calls.length, clientList = { ...req("GET", "/api/runtime/cases", { "x-actor": "user-P" }), url: "/api/runtime/cases?client=user-Q" };
+  const clientListTwo = req("GET", "/api/runtime/cases", { "x-actor": "user-P" });
+  ok("CS-W3 DW3 fail (door, bk3 BR-1): on the case list a client is never looked up, tagged or refused by the door (never 409 or NO_FIRM), even with cases in two firms: the handler's own 403 answers",
+    (await status(clientList)) === 0 && tag(clientList) === undefined && calls.length === before && (await status(clientListTwo, two)) === 0 && tag(clientListTwo) === undefined);
   const forged = req("GET", "/api/runtime/cases", { "x-actor": "user-O", "x-firm-id": B }, { firmId: B });
   ok("CS-W3 DW1 fail (door): a firm id the caller typed (a header, a body field) is never read: the tag is the person's own firm", (await status(forged)) === 0 && tag(forged) === A);
   const unknown = req("GET", "/api/runtime/cases", { "x-actor": "nobody" }), outside = req("GET", "/api/combinations", { "x-actor": "user-O" }), demo = req("POST", "/api/demo/reset", { "x-actor": "user-A" });
@@ -245,8 +249,17 @@ async function api() {
   // DW3 (ruling 1): Client A with a case at each firm.
   const k3 = await open("user-S", "user-P", "k3");
   const pList = await call("GET", "/runtime/cases", undefined, "user-P"), pNoCase2 = await call("GET", "/runtime/openable", undefined, "user-P"), pOwn2 = await call("GET", `/runtime/cases/${k1.id}`, undefined, "user-P");
-  ok("CS-W3 DW3 fail (ruling 1): a client whose cases are in two firms gets 409 on a route with no case in its path and on the list, never an empty or mixed 200",
-    k3.status === 201 && pNoCase2.status === 409 && pNoCase2.body?.code === "CLIENT_IN_TWO_FIRMS" && pList.status === 409, { k3: k3.status, noCase: pNoCase2.status, list: pList.status });
+  ok("CS-W3 DW3 fail (ruling 1): a client whose cases are in two firms gets 409 on a route with no case in its path, never an empty or mixed 200",
+    k3.status === 201 && pNoCase2.status === 409 && pNoCase2.body?.code === "CLIENT_IN_TWO_FIRMS", { k3: k3.status, noCase: pNoCase2.status });
+  // bk3 BR-1 (Lead 15, run 44898779984): a client asking the case list for anyone's cases (their own, another client's,
+  // or a client with none) is refused 403 "not allowed", never 409, and the answer is the same whatever exists.
+  const lOwn = await call("GET", "/runtime/cases?client=user-P", undefined, "user-P"), lOther = await call("GET", "/runtime/cases?client=user-Q", undefined, "user-P");
+  const lNobody = await call("GET", "/runtime/cases?client=nobody-at-all", undefined, "user-P");
+  const same = (r: Res) => JSON.stringify({ s: r.status, b: r.body });
+  ok("CS-W3 DW3 fail (bk3 BR-1): a client with cases in two firms asking the case list for their own, another client's or no one's cases gets 403 each time, never 409, never a list",
+    [pList, lOwn, lOther, lNobody].every((r) => r.status === 403 && !Array.isArray(r.body?.cases) && !["CLIENT_IN_TWO_FIRMS", "NO_FIRM"].includes(r.body?.code)), [pList, lOwn, lOther, lNobody].map((r) => r.status));
+  ok("CS-W3 DW3 fail (bk3 BR-1): the refusal is word for word the same whether or not the cases asked for exist or are the client's (no hint)",
+    same(lOwn) === same(lOther) && same(lOther) === same(lNobody) && same(pList) === same(lOwn), [lOwn, lOther, lNobody].map((r) => r.body));
   ok("CS-W3 DW3 pass (ruling 1): that client still opens each of their cases by its own address", pOwn2.status === 200 && (await call("GET", `/runtime/cases/${k3.id}`, undefined, "user-P")).status === 200);
 }
 

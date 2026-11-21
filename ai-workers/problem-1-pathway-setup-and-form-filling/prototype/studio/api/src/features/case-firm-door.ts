@@ -6,7 +6,8 @@
 // query in it then run as that firm. No middleware, no second AsyncLocalStorage, no Db factory.
 //   * /api/runtime/* with x-actor (the prototype's stand-in sign-in): staff → their firm in samples/firms.json, through
 //     CS-W1's lookup (firmIdOfActor); a simulated client → the firm of the case in the path (case_firm_of_case), else of
-//     their cases (case_firm_of_client; cases in more than one firm → 409, Build Lead C's ruling 1). A firm id is never
+//     their cases (case_firm_of_client; cases in more than one firm → 409, Build Lead C's ruling 1); never on the case
+//     list, which the handler refuses a client (403, the same whatever the cases asked for). A firm id is never
 //     taken from a value the caller typed: x-actor names a person, and the firm comes from that person's membership.
 //   * /api/link/*: open, code/send and code by the body token's case (case_firm_of_link), as those handlers act on it;
 //     every other link route by the Bearer session's case (case_firm_of_link_session).
@@ -65,7 +66,12 @@ export async function doorFirm(req: DoorReq, look: DoorLookups): Promise<string 
   if (!RUNTIME.test(path)) return undefined;
   const actor = actorNamed(first(req.headers["x-actor"]));
   if (!actor) return undefined;   // nobody or an unknown name: the route answers 401 as today
-  if ((actor.duties as readonly string[]).includes("answer")) {
+  const duties = actor.duties as readonly string[];
+  if (duties.includes("answer")) {
+    // The case list is a staff read: a client without the case duty is refused there by the handler's own 403 (need),
+    // the same answer whether or not the cases asked for exist or are theirs. The door looks nothing up for it, so it
+    // can never answer 409 (two firms) or 403 NO_FIRM there and so hint at someone's cases (check_bk3_client_browser BR-1).
+    if (CASE_LIST.test(path) && String(req.method ?? "GET").toUpperCase() !== "POST" && !duties.includes("case")) return undefined;
     const inPath = CASE_IN_PATH.exec(path);
     return inPath ? look.ofCase(inPath[1].toLowerCase()) : look.ofClient(actor.id);
   }
