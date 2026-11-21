@@ -8,6 +8,12 @@ import { z } from "zod";
 export const EVENT = {
   /** A firm was created (platform, contracts §1.1). Front office seeds the firm's pipelines on it (FO-1a). */
   FIRM_CREATED: "firm.created",
+  /** A firm became Active (Stripe `active`: after a paid invoice, or at trial end with a card while the first invoice is due; PF-5 part 2). */
+  FIRM_ACTIVATED: "firm.activated",
+  /** A firm's subscription status changed; payload old, new, reason (platform, PF-5 part 2). */
+  FIRM_SUBSCRIPTION_CHANGED: "firm.subscription_changed",
+  /** A firm went on payment hold: billing and the data download only (platform, PF-5 part 2; SA-4-25). */
+  FIRM_PAYMENT_HOLD: "firm.payment_hold",
   /** A staff member's roles changed (platform, PF-4; contracts §1.2 events out). */
   STAFF_ROLES_CHANGED: "staff.roles_changed",
   /** A staff member was deactivated: their sessions ended at once (platform, PF-4; contracts §1.2 events out). */
@@ -46,6 +52,9 @@ export const EVENT = {
 
   /** A client identity check was recorded (front office, FO-13i; Code s. 24(2)(a)). Ids, the method and the detail names only. */
   IDENTITY_CHECKED: "identity.checked",
+  /** A conflict-of-interest check was recorded or confirmed (front office, FO-13c; Code s. 15, 16). Ids and the result
+   *  kind only, never a searched name, email or phone. The case side shows a conflict found on an existing client (s. 35(1)(c)). */
+  CONFLICT_CHECKED: "conflict.checked",
   /** A lead arrived: by the web form or added by hand (front office, FO-2; AG-2-84). */
   LEAD_CREATED: "lead.created",
   /** A lead got an owner: Take it or Assign to (FO-2; AG-2-13c, AG-2-86). */
@@ -75,6 +84,10 @@ export const EVENT = {
   CASE_CLOSED: "case.closed",
   /** A closed case was reopened with a reason, back at the stage it closed from (case side, CS-C1a; AG-7-13). */
   CASE_REOPENED: "case.reopened",
+  /** A government step (an IRCC letter: biometrics, medical, ...) was recorded on a case (CS-DL3 part 1). Ids only. */
+  CASE_MILESTONE_RECORDED: "case.milestone_recorded",
+  /** A recorded government step was cancelled (a wrong due date is cancelled and recorded again; CS-DL3 part 1). Ids only. */
+  CASE_MILESTONE_CANCELLED: "case.milestone_cancelled",
   /** The case side made a client from a won prospect (FO-8; P-560; case-side contract v0.1 §4). Written last in the
    *  transaction that makes the client; module_event.subject_id is the client id. */
   CLIENT_CREATED: "client.created",
@@ -158,6 +171,14 @@ export const IdentityCheckedPayload = z.strictObject({
   copyKept: z.boolean(),
 });
 export type IdentityCheckedPayload = z.infer<typeof IdentityCheckedPayload>;
+/** `conflict.checked` (FO-13c): written when a check is recorded and again when one with hidden matches is confirmed.
+ *  `result` is null while hidden matches wait for a confirmation; `clientAlready` is true when the prospect was already
+ *  won (a conflict found after signing, s. 35(1)(c): the case side shows it, nothing ends by itself). */
+export const ConflictCheckedPayload = z.strictObject({
+  checkId: Uuid, prospectId: Uuid, partyKind: z.enum(["PERSON", "COMPANY"]), personId: Uuid.nullable(), companyId: Uuid.nullable(),
+  result: z.enum(["NO_CONFLICT", "POTENTIAL_CONFLICT", "CONFLICT_CANNOT_ACT"]).nullable(), hiddenMatches: z.boolean(), confirmed: z.boolean(), clientAlready: z.boolean(),
+});
+export type ConflictCheckedPayload = z.infer<typeof ConflictCheckedPayload>;
 /** The payload FO-2 writes for every lead.* event: ids and facts only (no name, email or phone; a consumer reads the lead
  *  itself). The firm is the outbox row's firm_id; module_event.subject_id is the lead's id. */
 export const LeadEventPayload = z.object({
@@ -251,6 +272,10 @@ export const CaseReopenedPayload = z.strictObject({
   reopenedAt: z.iso.datetime({ offset: true }),
 });
 export type CaseReopenedPayload = z.infer<typeof CaseReopenedPayload>;
+/** `case.milestone_recorded` and `case.milestone_cancelled` (CS-DL3 part 1): the case and the step, ids only (never the
+ *  note, the reference or a reason: a consumer reads the step). */
+export const CaseMilestonePayload = z.strictObject({ caseId: Uuid, milestoneId: Uuid });
+export type CaseMilestonePayload = z.infer<typeof CaseMilestonePayload>;
 
 // FO-8 (P-560; case-side contract v0.1 §4, front-office contracts §2.6): what the case side writes back, ids and codes only
 // (never a name: a consumer reads the client or the case). The firm is also the outbox row's firm_id.

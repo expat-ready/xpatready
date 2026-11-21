@@ -32,6 +32,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of all.filter((x) => x < NEW)) psql(["-f", join(MIG, d, "migration.sql")]);
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -84,6 +85,7 @@ try {
   const owner = await person(firmA, "owner", "OWNER");
   const manager = await person(firmA, "manager", "CASE_MANAGER");
   const officer = await person(firmA, "officer", "CASE_OFFICER");
+  const caseManager = await person(firmA, "handler", "CASE_MANAGER");   // PF-21j: a handler holds agent/complaint:record (a Case Officer cannot be one)
   const ownerB = await person(firmB, "owner-b", "OWNER");
 
   // ---------------------------------------------------------------------------------------------------------- DW6
@@ -128,7 +130,7 @@ try {
 
   const ago = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
   const AT = ago(6);   // one received time: a repeat sends the very same body
-  const complaint = (summary = "Called about a delay (Sample)", handler = officer.id) => ({ subjectKind: "OTHER_PERSON", complainantName: "Client A", receivedAt: AT, channel: "PHONE", category: "SERVICE", summary, handlerStaffId: handler });
+  const complaint = (summary = "Called about a delay (Sample)", handler = caseManager.id) => ({ subjectKind: "OTHER_PERSON", complainantName: "Client A", receivedAt: AT, channel: "PHONE", category: "SERVICE", summary, handlerStaffId: handler });
   /** What one complaint wrote: its rows, RECEIVED events, complaint.record audit lines, complaint.received outbox rows. */
   const counts = (firm: string) => ({
     complaints: Number(sql(`select count(*) from plat_complaint where firm_id = '${firm}'`)),
@@ -178,15 +180,15 @@ try {
     const first = await post(manager.token, body, key);
     const id = first.body.id as string, at = (h: number) => new Date(Date.parse(AT) + h * 3_600_000).toISOString();
     const steps = [
-      await fetch(`${BASE}/api/platform/complaints/${id}/acknowledge`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body: JSON.stringify({ at: at(1) }) }),
-      await fetch(`${BASE}/api/platform/complaints/${id}/response-sent`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${officer.token}` }, body: JSON.stringify({ at: at(2) }) }),
+      await fetch(`${BASE}/api/platform/complaints/${id}/acknowledge`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${caseManager.token}` }, body: JSON.stringify({ at: at(1) }) }),
+      await fetch(`${BASE}/api/platform/complaints/${id}/response-sent`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${caseManager.token}` }, body: JSON.stringify({ at: at(2) }) }),
       await fetch(`${BASE}/api/platform/complaints/${id}/handler`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` }, body: JSON.stringify({ handlerStaffId: owner.id }) }),
       await fetch(`${BASE}/api/platform/complaints/${id}/close`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` }, body: JSON.stringify({ at: at(3), outcome: "RESOLVED", note: "Resolved (Sample)" }) }),
     ];
     const cannotRead = (await fetch(`${BASE}/api/platform/complaints/${id}`, { headers: { authorization: `Bearer ${manager.token}` } })).status;
     const again = await post(manager.token, body, key);
     const asRecorded = again.status === 200 && again.body.id === id && again.body.status === "OPEN" && again.body.acknowledgedAt === null && again.body.responseSentAt === null
-      && again.body.outcome === null && again.body.closedAt === null && again.body.handlerStaffId === officer.id && again.body.updatedAt === again.body.createdAt;
+      && again.body.outcome === null && again.body.closedAt === null && again.body.handlerStaffId === caseManager.id && again.body.updatedAt === again.body.createdAt;
     ok(`PF-21i DW2b ${asRecorded ? "pass" : "fail"}: a repeat by a recorder who cannot read the complaint (404 on GET) answers it as recorded: open, not acknowledged, no response, no outcome, the first handler`,
       steps.every((x) => x.status === 200) && first.status === 201 && cannotRead === 404 && asRecorded, { steps: steps.map((x) => x.status), cannotRead, again: again.body });
     ok("PF-21i DW2b: the repeat's answer is the first answer (apart from reminderScheduled), field by field", JSON.stringify({ ...first.body, reminderScheduled: undefined, updatedAt: undefined }) === JSON.stringify({ ...again.body, reminderScheduled: undefined, updatedAt: undefined, overdue: first.body.overdue, businessDaysLeft: first.body.businessDaysLeft }), { first: first.body, again: again.body });

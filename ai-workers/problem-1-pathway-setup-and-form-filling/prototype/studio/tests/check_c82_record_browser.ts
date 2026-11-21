@@ -13,6 +13,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { DB, PORT, answer, fillEverything, firms, inDays, needVisitorVisa, openCase, prepare, readyToFile, sql, yearsAgo } from "../acceptance/lib/m3.ts";
+import { textPdf } from "../acceptance/lib/fixtures.ts";
 
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "C8.2", "screenshots"); mkdirSync(SHOTS, { recursive: true });
@@ -91,10 +92,10 @@ try {
   await filingBox(fP).getByText(/not a PDF, JPEG or PNG/).waitFor({ timeout: 10_000 });
   await press(dialog().getByRole("button", { name: "Record the submission", exact: true }));
   ok("B149 C8.2 fail (screen, review M2): a chosen file that is not a page is refused on its field before anything is saved", /not a PDF, JPEG or PNG/.test(await filingBox(fP).innerText()) && (await dialog().count()) === 1 && sql(`select count(*) from filing_record where case_id='${c.id}'`) === "0" && await p.evaluate(() => !!document.activeElement?.matches("[data-receipt-input]")));
-  await filingBox(fP).locator("[data-receipt-input]").setInputFiles({ name: "transaction-approved-E.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% SYNTHETIC SPECIMEN: IRCC Transaction Approved page (Sample)\n%%EOF\n", "latin1") });
+  await filingBox(fP).locator("[data-receipt-input]").setInputFiles({ name: "transaction-approved-E.pdf", mimeType: "application/pdf", buffer: textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "IRCC Transaction Approved page (Sample)"]) });
   // Review M2: a page refused by the server after the record is saved (here a refusal put in place by the walk) is named in
   // a notice that stays, never only a toast.
-  await filingBox(fS).locator("[data-receipt-input]").setInputFiles({ name: "spouse-page.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% SYNTHETIC SPECIMEN (Sample)\n%%EOF\n", "latin1") });
+  await filingBox(fS).locator("[data-receipt-input]").setInputFiles({ name: "spouse-page.pdf", mimeType: "application/pdf", buffer: textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample page (Sample)"]) });
   await p.route(`**/api/runtime/filings/${fS}/record/fee-receipt`, (r) => r.fulfill({ status: 409, contentType: "application/problem+json", body: JSON.stringify({ title: "Refused", status: 409, detail: "The page could not be stored just now. Nothing was stored." }) }), { times: 1 });
   await type(dialog().getByLabel("Sample Client E’s UCI"), "1111-2222");
   await press(dialog().getByRole("button", { name: "Record the submission", exact: true }));
@@ -128,7 +129,7 @@ try {
   await p.waitForTimeout(10_000); // longer than a toast stays
   ok("B149 C8.2 (screen): the notice is still there after the toasts have gone", (await panel().locator("[data-receipt-missed]").count()) === 1);
   // Review M1 (WCAG 2.4.3): an upload from the filing leaves focus on its button.
-  await panel().locator(`[data-submission-filing="${fS}"] input[type=file]`).setInputFiles({ name: "spouse-page-2.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% SYNTHETIC SPECIMEN (Sample)\n%%EOF\n", "latin1") });
+  await panel().locator(`[data-submission-filing="${fS}"] input[type=file]`).setInputFiles({ name: "spouse-page-2.pdf", mimeType: "application/pdf", buffer: textPdf(["SYNTHETIC SPECIMEN - MADE-UP TEST DOCUMENT - NOT VALID", "Sample page (Sample)"]) });
   await panel().locator(`[data-submission-filing="${fS}"] [data-receipt-file]`).waitFor({ timeout: 15_000 });
   await p.waitForTimeout(300);
   ok("B149 C8.2 pass (screen, review M1): after an upload from the filing, the page is listed and focus is on its upload button", sql(`select count(*) from fee_receipt_file where filing_id='${fS}'`) === "1" && await p.evaluate((id) => !!document.activeElement?.closest(`[data-submission-filing="${id}"]`) && !!document.activeElement?.matches("[data-receipt-upload]"), fS));

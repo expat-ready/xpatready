@@ -1,9 +1,10 @@
 // FO-2 (contracts §2.1, §7; AG-02): what the sales files share: the answers, the text and contact rules, who sees what,
 // and how a change is written down (one audit line through AuditPort, then the outbox row last: §0.5, PF-3 m8).
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { AuditPort } from "../../../../ports/audit.ts";
+import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { phoneE164Exact } from "../duplicates/phone.ts";
 import { EVERYONE_SEES_ALL, readSetting } from "../../platform/settings.ts";
 
 export type Tx = Prisma.TransactionClient;
@@ -39,15 +40,14 @@ export function email(v: unknown, field = "email"): string | null {
   return e;
 }
 
-/** E.164 when readable (+country, or a 10-digit North American number: Sample rule, FD-68), else kept as typed and
- *  flagged unreadable, never dropped (AG-2-84 rule 5, "Fix number"). */
+/** A typed phone at an arrival door (FO-9b, P-747): E.164 and readable when FO-9a's exact normaliser reads it
+ *  (duplicates/phone.ts phoneE164Exact: libphonenumber-js, default region CA, nothing typed lost), else kept as typed
+ *  and flagged unreadable, never refused and never dropped (AG-2-84 rule 5, "Fix number"). */
 export function phone(v: unknown, field = "phone"): { phone: string; readable: boolean } | null {
   const t = text(v, { field, what: "Phone", max: 40 });
   if (t === null) return null;
-  const digits = t.replace(/[\s().-]/g, "");
-  if (/^\+[1-9][0-9]{6,14}$/.test(digits)) return { phone: digits, readable: true };
-  if (/^1?[2-9][0-9]{9}$/.test(digits)) return { phone: `+1${digits.slice(-10)}`, readable: true };
-  return { phone: t, readable: false };
+  const e = phoneE164Exact(t);
+  return e ? { phone: e, readable: true } : { phone: t, readable: false };
 }
 
 export const actorOf = (ctx: StaffContext) => `staff:${ctx.staffId}`;
@@ -67,11 +67,13 @@ export type Visibility = Awaited<ReturnType<typeof visibilityOf>>;
 export const sees = (v: Visibility, ctx: StaffContext, ownerStaffId: string | null) =>
   v.seesAll || ownerStaffId === ctx.staffId || (ownerStaffId === null && v.seesUnassigned);
 
-/** One lead change written down (entity fo_lead, named literally for check_case_feed's sweep): the audit line (fail-closed) and then the outbox row, last in the transaction. */
+/** One lead change written down (entity fo_lead, named literally for check_case_feed's sweep): the audit line (fail-closed) and then the outbox row, last in the transaction.
+ *  R1.8 (QA-594): before and after are required (null for a side that does not exist). */
 export async function written(tx: Tx, audit: AuditPort<Tx>, c: {
   firmId: string; actor: string; action: string; entityKey: string; summary: string;
   detail?: Record<string, string | number | boolean | null>; event?: { type: EventName; subjectId: string; payload: object };
+  before: AuditValues | null; after: AuditValues | null;
 }) {
-  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: "fo_lead", entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {} });
+  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: "fo_lead", entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {}, before: c.before, after: c.after });
   if (c.event) await tx.moduleEvent.create({ data: { firmId: c.firmId, type: c.event.type, subjectId: c.event.subjectId, payload: c.event.payload as Prisma.InputJsonValue } });
 }

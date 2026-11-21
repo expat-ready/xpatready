@@ -129,6 +129,18 @@ export const arrivalPortContract = defineContract("ArrivalPort", (make: () => Pr
     },
   },
   {
+    name: "FO-9b (P-747): a phone the booking door could not read arrives as typed with phoneReadable false; it is never the contact phone, and an unflagged phone that is not E.164 is refused",
+    async run() {
+      const h = await make(), b = booker("Unread");
+      const r = await h.tx((t) => h.port.bookingArrived(t, { firmId: h.firmId, person: { ...b, phone: "555 0101", phoneReadable: false }, bookingId: uuid() }));
+      const c = await h.tx((t) => h.port.contactOf(t, h.firmId, r.personId));
+      expect(c?.email === b.email.toLowerCase() && c.phone === undefined, "the person arrived; the unreadable number is no contact phone", c);
+      let refused = false;
+      try { await h.tx((t) => h.port.bookingArrived(t, { firmId: h.firmId, person: { ...booker("Raw"), phone: "555 0101" }, bookingId: uuid() })); } catch { refused = true; }
+      expect(refused, "an unflagged phone that is not E.164 is refused by the port's input");
+    },
+  },
+  {
     name: "an arrival in a transaction that rolls back leaves no person and no lead",
     async run() {
       const h = await make(), before = await h.counts(h.firmId);

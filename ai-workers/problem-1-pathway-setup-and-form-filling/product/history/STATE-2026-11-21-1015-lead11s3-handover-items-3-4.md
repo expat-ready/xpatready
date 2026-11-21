@@ -1,0 +1,4 @@
+# Lead 10 → Lead 11 hand-over items (3) and (4), word for word (moved by Lead 11 (series 3), 10:1x IST 21 Nov, P-336 size)
+
+(3) **REQ-QUALITY (#2695 merged):** 97/101 traced; NO SOURCE R1.64/108/109/110; 18 Source cells to fix; ~380 of 589 AG/SA ids differ between Doc and functional files → owed by the Lead: Source cells, the five narrowing rows (wordings in the map), a tooling row so the trace script reads 02-functional-requirements only. Measured: 24/101 rows have a journey; line coverage not measured by any tool (say so).
+(4) **Records/tooling:** #2696 (P-779) needs green pr-rules (body fixed 08:5x, re-run) then `lead-pr.sh approve-records 2696`. #2678 left open (superseded). #2433 labelled; #2607 told merge main; #2590/#2599 dirty (lanes merge main). Tooling merge order: #2431 → #2598 → #2605 → #2483.

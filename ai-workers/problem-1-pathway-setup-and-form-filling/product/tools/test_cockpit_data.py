@@ -1732,6 +1732,23 @@ class WhatsNew(unittest.TestCase):
             self.assertIn('"whats_new.box"', f.read())
 
 
+class ReviewRounds(unittest.TestCase):
+    """ENF-782b (P-782 (3)): the review-rounds slot is filled from flow-measure.py's cached answer, never guessed."""
+    def test_slot_reads_flow_measure(self):
+        out = tempfile.mkdtemp(); os.makedirs(os.path.join(out, "cache"))
+        with open(os.path.join(out, "cache", "flow-measure.json"), "w") as f:
+            json.dump({"_as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                       "review_rounds": {"n": 31, "median": 1, "mean": 2.03, "over_2": 9, "over_2_share": 29.0}}, f)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "cockpit-data.py"), "--out", os.path.join(out, "data.json"),
+                            "--from-snapshot", FIX, "--offline", "--no-history-write"], capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = jread(os.path.join(out, "data.json"))
+        q = d["quality"]["review_rounds"]
+        self.assertEqual((q["v"], q["n"], q["over_2_share"]), (1, 31, 29.0))
+        self.assertIn("review_rounds.median", q["src"])
+        self.assertEqual(d["explain"]["quality.review_rounds"]["n"], 31)
+
+
 BROWSER_CHECK = r"""// board v61 scripted check: click-only info buttons on every tab, 375 px, axe light and dark
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -2457,6 +2474,16 @@ class StuckNow(unittest.TestCase):
         self.assertEqual((c2["keys"]["stuck_main_gap_min"], c2["keys"]["stuck_approved_over_60"]), (None, None))
         self.assertEqual((o2["numbers"]["stuck_main_gap_min"]["value"], o2["numbers"]["stuck_approved_over_60"]["value"]), (None, None))
         self.assertFalse([x for x in c2["trust"]["diffs"] if x["name"].startswith("stuck_")], c2["trust"]["diffs"])
+
+
+class MainChecks(unittest.TestCase):
+    """CI-PRE (P-731): a PR's full run is a workflow_dispatch run of ci.yml on main's head; its checks are not main's."""
+    def test_a_full_runs_checks_are_left_out_of_mains(self):
+        runs = [{"name": "ci", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/55/job/1"},     # a PR's red full run
+                {"name": "nightly", "conclusion": "failure", "details_url": "https://github.com/o/r/actions/runs/66/job/2"},  # main's own run
+                {"name": "mergify", "conclusion": "success", "details_url": None}]                                             # not an Actions run
+        self.assertEqual([c["name"] for c in cd.main_checks(runs, {"55"})], ["nightly", "mergify"])   # 3 - 1 full-run check
+        self.assertEqual(len(cd.main_checks(runs, set())), 3)                                         # no full run: all 3 kept
 
 
 if __name__ == "__main__":

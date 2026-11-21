@@ -28,6 +28,8 @@ import { CLOSED_DAYS, readSetting, TIME_ZONE } from "../../../platform/settings.
 import { type BookingService, SlotsQuery, wallLabel } from "../service.ts";
 import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
 import { windowsFor } from "./hours.ts";
+import { forbidden } from "../../../platform/identity/keys.ts";
+import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -94,12 +96,16 @@ const CreateBody = z.strictObject({ ...Fields, description: Fields.description.o
 const PatchBody = z.strictObject({ ...Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) as { [K in keyof typeof Fields]: z.ZodOptional<(typeof Fields)[K]> },
   version: z.number({ error: "Send the version you read." }).int().min(1) });
 
+/** FO-3a1e: a type's five timings, each a value in its range or null (the firm's). */
+const TimingsBody = z.strictObject({ ...Object.fromEntries(TIMING_FIELDS.map((f) => [f, TIMING_RANGES[f].nullable().optional()])) as { [K in TimingField]: z.ZodOptional<z.ZodNullable<(typeof TIMING_RANGES)[K]>> },
+  version: z.number({ error: "Send the version you read." }).int().min(1) });
+
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
   const b = (body ?? {}) as Record<string, unknown>;
   if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(400, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
   const r = schema.safeParse(b);
   if (r.success) return r.data;
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string> = Object.create(null);   // a key such as "constructor" is a field like any other (FO-3a1e break m1)
   for (const i of r.error.issues) { const f = String(i.path[0] ?? (i.code === "unrecognized_keys" ? (i as { keys?: string[] }).keys?.[0] : "body") ?? "body"); fields[f] ??= i.code === "unrecognized_keys" ? "Not a field of a booking type." : i.message; }
   const [first] = Object.entries(fields);
   throw problem(400, "invalid", "Please check the highlighted details", first[1], { code: "INVALID", fields, issues: Object.entries(fields).map(([f, m]) => `${f}: ${m}`) });
@@ -138,17 +144,18 @@ const auditValue = (k: string, v: unknown): Scalar => {
   if (typeof v === "string" && EMAILISH.test(v)) return "(not kept: shaped like an email address)";   // the audit port refuses those
   return (Array.isArray(v) ? v.map(String) : v ?? null) as Scalar;
 };
-function diff(before: Row | null, after: Row | null): Record<string, Scalar> {
-  const out: Record<string, Scalar> = {}, changed: string[] = [];
+/** R1.8 (QA-594): the changed fields (detail.fields) and their values before and after, for the line's before and after. */
+function diff(before: Row | null, after: Row | null): { detail: { fields: string[] }; before: Record<string, Scalar> | null; after: Record<string, Scalar> | null } {
+  const b0: Record<string, Scalar> = {}, a0: Record<string, Scalar> = {}, changed: string[] = [];
   for (const k of AUDITED) {
     const b = before ? auditValue(k, before[k]) : null, a = after ? auditValue(k, after[k]) : null;
     if (before && after && JSON.stringify(b) === JSON.stringify(a) && !(FREE_TEXT.has(k) && before[k] !== after[k])) continue;
     if (!before && a === null) continue;
     changed.push(k);
-    if (before) out[`${k}_before`] = b;
-    if (after) out[`${k}_after`] = a;
+    if (before) b0[k] = b;
+    if (after) a0[k] = a;
   }
-  return { fields: changed, ...out };
+  return { detail: { fields: changed }, before: before ? b0 : null, after: after ? a0 : null };
 }
 
 /** The per-firm transaction lock that slug choices take (the same firm's other types are read after it). */
@@ -167,7 +174,8 @@ export class BookingTypesService {
     const t = await this.find(this.db, ctx.firmId, id);
     // Each host's chosen set of hours, null = the host's default (FO-3a 1b-i; Devin review on #2103).
     const chosen = new Map((await this.db.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: t.id }) })).map((h) => [h.staffId, h.setId]));
-    return { ...view(t), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
+    const effectiveTimings = resolveTimings(t, await firmTimings(this.db, ctx.firmId));
+    return { ...view(t), effectiveTimings, warnings: timingWarnings(effectiveTimings), futureBookings: await this.futureBookings(this.db, ctx.firmId, t.id), hostSets: t.hostStaffIds.map((staffId) => ({ staffId, setId: chosen.get(staffId) ?? null })) };
   }
 
   async create(ctx: StaffContext, body: unknown) {
@@ -180,6 +188,20 @@ export class BookingTypesService {
     const { version, ...b } = parse(PatchBody, body);
     if (b.slug !== undefined && RESERVED.has(b.slug)) throw fieldError(400, "slug", WORDS.slugReserved, "SLUG_RESERVED");
     return view(await this.change(ctx, id, version, b, "booking_type.updated", "edited"));
+  }
+
+  /** FO-3a1e (AG-4-66 rules 2-3, §8): a type's own timings; null = "Reset to firm default". Gaps, notice and window need
+   *  …:configure-availability, the self-service limit …:edit; only the fields that change are checked. Needs the version
+   *  read (rule 7); one audit line with before and after; a booking keeps its own times (AG-4-4 rule 8). */
+  async updateTimings(ctx: StaffContext, id: string, body: unknown) {
+    const { version, ...b } = parse(TimingsBody, body);
+    const t = await this.find(this.db, ctx.firmId, id);
+    const changed = (Object.keys(b) as TimingField[]).filter((k) => b[k] !== t[k]);
+    const missing = [...new Set(changed.map(timingKey))].filter((k) => !ctx.keys.includes(k));
+    if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
+    const after = await this.change(ctx, id, version, b, "booking_type.timings_changed", "timings changed");
+    const effectiveTimings = resolveTimings(after, await firmTimings(this.db, ctx.firmId));
+    return { ...view(after), effectiveTimings, warnings: timingWarnings(effectiveTimings) };
   }
 
   async switchTo(ctx: StaffContext, id: string, active: boolean) {
@@ -202,7 +224,7 @@ export class BookingTypesService {
 
   /** AG-4-8: the slots a visitor would see, in `tz` (the firm's zone by default), and per empty day one reason. Reads only. */
   async preview(ctx: StaffContext, id: string, query: unknown) {
-    const t = await this.find(this.db, ctx.firmId, id);
+    const t = await withTimings(this.db, ctx.firmId, await this.find(this.db, ctx.firmId, id));   // FO-3a1e: as the door resolves them
     const r = SlotsQuery.safeParse(query ?? {});
     if (!r.success) throw problem(400, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const [firmZone, closedDays] = await Promise.all([readSetting<string>(this.db, ctx.firmId, TIME_ZONE.key), readSetting<string[]>(this.db, ctx.firmId, CLOSED_DAYS.key)]);
@@ -275,8 +297,9 @@ export class BookingTypesService {
           const row = await tx.foConsultationType.create({ data: { ...data, firmId: firmScope(ctx.firmId).firmId, slug, createdByStaffId: ctx.staffId } });
           // A copy keeps the source's set of hours per host, a child row (AG-4-9 rule 3; FO-3a 1b-i review M1).
           if (fromId) await tx.foTypeHostSet.createMany({ data: (await tx.foTypeHostSet.findMany({ where: firmScope(ctx.firmId, { typeId: fromId }) })).map((h) => ({ firmId: h.firmId, typeId: row.id, staffId: h.staffId, setId: h.setId })) });
+          const d = diff(null, row);
           await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: row.id, summary,
-            detail: { ...diff(null, row), ...(fromId ? { copiedFrom: fromId } : {}) } });
+            detail: { ...d.detail, ...(fromId ? { copiedFrom: fromId } : {}) }, before: d.before, after: d.after });
           return row;
         });
       } catch (e) {
@@ -305,8 +328,9 @@ export class BookingTypesService {
         const asked = Object.entries(data).filter(([k]) => k !== "deletedAt");
         if (!("deletedAt" in data) && asked.every(([k, v]) => JSON.stringify(v) === JSON.stringify(before[k as keyof Row]))) return before;   // nothing to change (break m5)
         const after = await tx.foConsultationType.update({ where: { id: before.id }, data: { ...data, version: { increment: 1 } } });
+        const d = diff(before, after);
         await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action, entity: "fo_consultation_type", entityKey: after.id,
-          summary: `Booking type ${said(after.name)} ${word}.`, detail: diff(before, after) });
+          summary: `Booking type ${said(after.name)} ${word}.`, detail: d.detail, before: d.before, after: d.after });
         return after;
       });
     } catch (e) {

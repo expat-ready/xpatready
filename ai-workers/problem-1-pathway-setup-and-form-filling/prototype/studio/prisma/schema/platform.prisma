@@ -86,6 +86,7 @@ model PlatformFirm {
 
   // back-relation slot: messages (PF-19a)
   messages MsgFirm? // platform-messages.prisma (the slot's comment stays: check_pf0p_ports keeps every slot line)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma
 
   // back-relation slot: money (FO-7a)
   moneySettings MoneyPaymentSettings? // client-money.prisma (FO-7a; Lead B's OK on #1758)
@@ -114,9 +115,12 @@ model PlatformFirm {
   // back-relation slot: entitlements (PF-15)
   storageOver PlatformStorageOver? // platform-entitlements.prisma
   limitChanges PlatformLimitChangeFirm[] // platform-entitlements.prisma (PF-15 part 2)
+  subscriptionChanges PlatformSubscriptionChange[] // platform-entitlements.prisma (PF-15 part 1b)
 
   // back-relation slot: offices (PF-18a)
   offices PlatformOffice[] // platform-offices.prisma
+  supportTickets  PlatformSupportTicket[] // platform-support.prisma (PF-18bk)
+  supportMessages PlatformSupportMessage[] // platform-support.prisma (PF-18bk)
 
   @@map("platform_firm")
 }
@@ -175,6 +179,8 @@ model PlatformPlan {
   // back-relation slot: entitlements (PF-15)
   limits PlatformPlanLimit[] // platform-entitlements.prisma
   limitChanges PlatformLimitChange[] // platform-entitlements.prisma (PF-15 part 2)
+  changesFrom PlatformSubscriptionChange[] @relation("changeFrom") // platform-entitlements.prisma (PF-15 part 1b)
+  changesTo   PlatformSubscriptionChange[] @relation("changeTo")
 
   @@map("platform_plan")
 }
@@ -192,9 +198,11 @@ model PlatformSubscription {
   currentPeriodEnd     DateTime?                  @map("current_period_end") @db.Timestamptz
   createdAt            DateTime                   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
+  billingPeriod        PlatformBillingPeriod      @default(MONTHLY) @map("billing_period") // PF-5 part 3 (R1.19): the period chosen at sign-up; the trial Checkout's price
 
   firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict)
   plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  changes PlatformSubscriptionChange[] // platform-entitlements.prisma (PF-15 part 1b)
 
   @@index([firmId, status])
   @@map("platform_subscription")
@@ -247,6 +255,7 @@ model PlatformStaff {
   foBookings     FoBooking[]
 
   // back-relation slot: messages (PF-19a)
+  msgNotifications MsgNotification[] // PF-18n: platform-messages.prisma (the person's own in-app notifications)
 
   // back-relation slot: money (FO-7a)
 
@@ -272,6 +281,8 @@ model PlatformStaff {
 
   // back-relation slot: offices (PF-18a)
   office PlatformStaffOffice? // platform-offices.prisma (the person's office)
+  notificationPrefs PlatformNotificationPreference[] // platform-offices.prisma (PF-18a part 2: the person's notification switches)
+  supportTicketsRaised PlatformSupportTicket[] // platform-support.prisma (PF-18bk: the raiser)
 
   @@unique([firmId, email])
   /// The target of the (firm_id, staff_id) keys below: a row of firm A can never point at firm B's staff (break B-2).
@@ -344,6 +355,8 @@ model PlatformInvitation {
   expiresAt  DateTime       @map("expires_at") @db.Timestamptz
   acceptedAt DateTime?      @map("accepted_at") @db.Timestamptz
   revokedAt  DateTime?      @map("revoked_at") @db.Timestamptz
+  /// PF-4dn: the name the inviter typed (1-120 characters, trimmed); accept uses it, else the email's part before the @.
+  displayName String?       @map("display_name")
 
   firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict)
 

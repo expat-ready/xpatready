@@ -50,7 +50,7 @@ export type SupportDeps = { db: PrismaClient; files: FilesPort; audit: AuditPort
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_"), ...extra }, status as HttpStatus);
 };
-const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
+export const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
 const fieldErrors = (fields: Record<string, string>): never => problem(422, "support-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
 const closedRefused = (): never => problem(409, "support-closed", "This ticket is closed", "A closed ticket takes no new message: raise a new ticket instead.");
 
@@ -75,7 +75,7 @@ const Raise = z.object({ body: Body, page: Page }).strict();
 const Message = z.object({ body: Body }).strict();
 
 const UUID_SHAPE = z.string().uuid();
-const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+export const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});
@@ -152,7 +152,8 @@ export class SupportService {
       const ticket = await tx.platformSupportTicket.create({ data: { id: ticketId, firmId, raisedBy: staffId, page: v.page } });
       const m = await tx.platformSupportMessage.create({ data: { firmId, ticketId, authorKind: "FIRM_STAFF", authorId: staffId, body: v.body, fileKeys: keys } });
       await this.d.audit.record(tx, { firmId, actor: this.actor(ctx), action: "support.ticket.raised", entity: "platform_support_ticket", entityKey: ticketId,
-        summary: `Support ticket raised with ${keys.length} attachment(s)`, detail: { ticketId, messageId: m.id, fields: ["body", "page", ...(keys.length ? ["files"] : [])], files: keys.length } });
+        summary: `Support ticket raised with ${keys.length} attachment(s)`, detail: { ticketId, messageId: m.id, fields: ["body", "page", ...(keys.length ? ["files"] : [])], files: keys.length },
+        before: null, after: { status: ticket.status, files: keys.length } });   // the ticket's words never reach an audit line (PF-18b, AG-16-63)
       const e = SupportTicketRaised.parse({ type: EVENT.SUPPORT_TICKET_RAISED, firmId, ticketId, raisedBy: staffId, files: keys.length, createdAt: ticket.createdAt.toISOString() });
       await tx.moduleEvent.create({ data: { firmId, type: e.type, subjectId: ticketId, payload: e } });
       return { ticket, m };
@@ -191,7 +192,8 @@ export class SupportService {
       const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "FIRM_STAFF", authorId: ctx.staffId.toLowerCase(), body: v.body } });
       const u = await tx.platformSupportTicket.update({ where: { firmId_id: { firmId: t.firmId, id: t.id } }, data: { status: "WAITING_ON_SUPPORT" } });
       await this.d.audit.record(tx, { firmId: t.firmId, actor: this.actor(ctx), action: "support.ticket.message_added", entity: "platform_support_ticket", entityKey: t.id,
-        summary: "Message added to a support ticket; waiting on support", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] } });
+        summary: "Message added to a support ticket; waiting on support", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] },
+        before: { status: t.status }, after: { status: u.status } });
       return view(u, [m]);
     });
   }
@@ -206,7 +208,8 @@ export class SupportService {
     const m = await tx.platformSupportMessage.create({ data: { firmId: t.firmId, ticketId: t.id, authorKind: "SUPPORT", authorId: "support", body: v.body } });
     const u = await tx.platformSupportTicket.update({ where: { firmId_id: { firmId: t.firmId, id: t.id } }, data: { status: "WAITING_ON_FIRM" } });
     await this.d.audit.record(tx, { firmId: t.firmId, actor: "system:support", action: "support.ticket.replied", entity: "platform_support_ticket", entityKey: t.id,
-      summary: "Support replied to a ticket; waiting on the firm", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] } });
+      summary: "Support replied to a ticket; waiting on the firm", detail: { ticketId: t.id, messageId: m.id, fields: ["body"] },
+      before: { status: t.status }, after: { status: u.status } });
     return view(u, [m]);
   }
 

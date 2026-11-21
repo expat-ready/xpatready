@@ -8,7 +8,7 @@ import type { LibraryChange, Origin, Prisma } from "@prisma/client";
 import type { Use, UsesView } from "../../contracts/structure.ts";
 import { WHY } from "../../contracts/lifecycle.ts";
 import { normalizeLabel } from "../../contracts/programs.ts";
-import { ACTORS, actorWordOf, type Db } from "./core.ts";
+import { ACTORS, actorWordOf, Audit, type Db } from "./core.ts";
 import { current } from "../../engine/where-used.ts";
 import { combinationTrails, documentTypeUseKinds, itemCombinations, itemReleases } from "./where-used.ts";
 
@@ -171,7 +171,7 @@ export async function applyItem(tx: Prisma.TransactionClient, c: LibraryChange):
   if (no) {
     const back = `Not applied: ${no}`.slice(0, 600);
     await tx.libraryChange.update({ where: { id: c.id }, data: { status: "RETURNED", decisionNote: back } });
-    await tx.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: "system", action: "returned", entity: kind === "field" ? "field" : "document type", entityKey: c.key, summary: `The approval did not ${c.action.toLowerCase()} ${c.key}: ${no}`.slice(0, 600) } });
+    await new Audit(tx as never).log(c.workspaceId, "system", "returned", kind === "field" ? "field" : "document type", c.key, `The approval did not ${c.action.toLowerCase()} ${c.key}: ${no}`.slice(0, 600));
     return false;
   }
   const v = await versionsOf(tx, kind, c.workspaceId, c.key);
@@ -326,6 +326,6 @@ export async function reorderForms(db: Db, actor: { id: string; name: string; du
   const missing = now.filter((k) => !given.includes(k)), extra = given.filter((k) => !now.includes(k));
   if (missing.length || extra.length || new Set(given).size !== given.length) throw problem(400, "Every form once", `The filing order lists every form of "${c.label}" once.${missing.length ? ` Missing: ${missing.join(", ")}.` : ""}${extra.length ? ` Not its forms: ${extra.join(", ")}.` : ""}${new Set(given).size !== given.length ? " One is listed twice." : ""} Nothing changed.`);
   await db.combination.update({ where: { id: combinationId }, data: { formOrder: given } });
-  await db.auditEvent.create({ data: { workspaceId: c.workspaceId, actor: actor.id, action: "reordered", entity: "form", entityKey: combinationId, combinationId, summary: `${actor.name} set the filing order of "${c.label}"'s forms (draft): ${given.join(", ")}`.slice(0, 600) } });
+  await new Audit(db).log(c.workspaceId, actor.id, "reordered", "form", combinationId, `${actor.name} set the filing order of "${c.label}"'s forms (draft): ${given.join(", ")}`.slice(0, 600), undefined, combinationId);
   return { lines: given };
 }

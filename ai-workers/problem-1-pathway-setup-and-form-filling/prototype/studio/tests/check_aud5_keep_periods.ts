@@ -63,6 +63,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms, seedSampleSettings, SAMPLE_SETTING_VALUES } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -121,18 +122,18 @@ try {
   before = lines();
   const bad = await Promise.all([0, 51, -1, 1000, 6.5, "6.5", "6", null, true].map((years) => put(tR, { years })));
   ok("AUD-5 DW2 fail: 0, 51, -1, 1000, 6.5, \"6.5\", \"6\", null and true → 400 in words, nothing saved",
-    bad.every((b) => b.status === 400 && b.body.code === "INVALID_YEARS" && /whole number of years from 1 to 50/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, bad.map((b) => b.status));
+    bad.every((b) => b.status === 422 && b.body.code === "INVALID_YEARS" && /whole number of years from 1 to 50/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, bad.map((b) => b.status));
   const odd = await Promise.all([put(tR, { years: 9, firmId: FIRM_B }), put(tR, {}), put(tR, { years: 4, reason: 42 })]);
   ok("AUD-5 DW2 fail: a body naming a firm, a body without years, a reason that is not text → 400, nothing saved anywhere",
-    odd.every((b) => b.status === 400) && await readSetting(db, FIRM_A, KEY) === 8 && await readSetting(db, FIRM_B, KEY) === 6 && lines() === before, odd.map((b) => b.body.code));
+    odd.every((b) => b.status === 422) && await readSetting(db, FIRM_A, KEY) === 8 && await readSetting(db, FIRM_B, KEY) === 6 && lines() === before, odd.map((b) => b.body.code));
   // The below-6 warning (Build Lead C's ruling: allowed with a warning that names s. 7.2 and a typed reason).
   const noReason = await Promise.all([put(tR, { years: 5 }), put(tR, { years: 5, reason: "   " })]);
   ok("AUD-5 DW2 fail: saving 5 without a reason (or with an empty one) is refused in words naming s. 7.2; nothing saved",
-    noReason.every((b) => b.status === 400 && b.body.code === "REASON_NEEDED" && /s\. 7\.2/.test(b.body.detail) && /Give a reason/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, noReason.map((b) => b.body));
-  ok("AUD-5 DW2 fail: a reason over 500 characters is refused", (await put(tR, { years: 5, reason: "x".repeat(501) })).status === 400 && lines() === before);
+    noReason.every((b) => b.status === 422 && b.body.code === "REASON_NEEDED" && /s\. 7\.2/.test(b.body.detail) && /Give a reason/.test(b.body.detail)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, noReason.map((b) => b.body));
+  ok("AUD-5 DW2 fail: a reason over 500 characters is refused", (await put(tR, { years: 5, reason: "x".repeat(501) })).status === 422 && lines() === before);
   const oddReasons = await Promise.all(["\u200b", "\u00ad\u2060", "\u3164", "a\u0000b", "bell\u0007", "\ud800", "x\udc00"].map((reason) => put(tR, { years: 5, reason })));
   ok("AUD-5 DW2 fail (break m1, m2): a reason of invisible characters only, or with a control character or broken text, is refused 400 (never 404/500), nothing saved",
-    oddReasons.every((b) => b.status === 400 && ["REASON_NEEDED", "INVALID_REASON"].includes(b.body.code)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, oddReasons.map((b) => [b.status, b.body.code]));
+    oddReasons.every((b) => b.status === 422 && ["REASON_NEEDED", "INVALID_REASON"].includes(b.body.code)) && await readSetting(db, FIRM_A, KEY) === 8 && lines() === before, oddReasons.map((b) => [b.status, b.body.code]));
   const multi = await put(tR, { years: 7, reason: "\tFirst line.\nSecond line. \n" });
   ok("AUD-5 DW2 pass (re-review n2): a reason on several lines (line breaks, tabs) is trimmed and kept", multi.status === 200 && JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`)).reason === "Reason given: First line.\nSecond line.", multi.body);
   before = lines();
@@ -142,7 +143,9 @@ try {
   const last = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass: saving 5 with a reason is saved, and the warning (s. 7.2) and the reason are on its one audit line",
     withReason.status === 200 && withReason.body.years === 5 && /s\. 7\.2/.test(withReason.body.warning ?? "") && await readSetting(db, FIRM_A, KEY) === 5 && lines() === before + 1
-    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2.* Reason given: /.test(last.reason) && /Reason given: Files are also kept by our parent firm's records office\./.test(last.reason), [withReason.body, last]);
+    // AUD-1m part 2c (Lead 94's (A1) on #2289): detail keeps the reason cut to 200 characters; the line's summary keeps it whole.
+    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2/.test(last.reason) && last.reason.length <= 200
+    && /Below the College's rule: .*s\. 7\.2.* Reason given: Files are also kept by our parent firm's records office\./.test(sql(`select summary from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`)), [withReason.body, last]);
   before = lines();
   const six = await put(tR, { years: 6 });
   const sixLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
@@ -195,7 +198,7 @@ try {
   ok("AUD-5 fail (demo reset): a second reset changes nothing", (await resetSampleFirmSettings(db)).changed.length === 0);
 
   sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
-  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
+  await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
   ok("AUD-5 pass (start-up seed): PLATFORM_SAMPLE_SEED=on writes the Sample value a Sample firm lacks (6), keeping firm B's", await readSetting(db, FIRM_A, KEY) === 6 && await readSetting(db, FIRM_B, KEY) === 6);
 
   // The real adapter on the API's own walled Db (xr_app, PF-12), as a request runs it (review m2).

@@ -1,0 +1,13 @@
+135744274032 | check_fo3sr_routes.ts | PASS | 5 s | 29 passed, 0 failed |
+135744274060 | check_fo3a1c_set_names.ts | PASS | 8 s | 20 passed, 0 failed |
+135744274094 | check_fo3pa_public_answers.ts | PASS | 4 s | 45 passed, 0 failed |
+135744274118 | check_fo3a2_consult_record.ts | PASS | 6 s | 39 passed, 0 failed |
+135744274224 | check_fo3w_manage_browser.ts | PASS | 20 s | 50/50 passed |
+135744274241 | check_fo3w_booking_browser.ts | PASS | 64 s | 67/67 passed |
+135744274284 | check_fo3sa_any_time.ts | PASS | 3 s | 39 passed, 0 failed |
+135744274298 | check_fo1b_booking_schema.ts | PASS | 23 s | 80 passed, 0 failed |
+135744274422 | check_fo3_booking.ts | PASS | 9 s | 133 passed, 0 failed |
+135744274422 | check_fo3a_booking_types.ts | PASS | 10 s | 48 passed, 0 failed |
+135744274692 | check_fo3m_answers.ts | PASS | 4 s | 14 passed, 0 failed |
+135744275351 | check_fo3a_hours_timings.ts | PASS | 8 s | 26 passed, 0 failed |
+135744276358 | check_fo3st2_availability_browser.ts | PASS | 22 s | 53/53 passed |

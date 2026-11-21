@@ -64,15 +64,17 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
       wording = { wordingId: w.id, ...WORDING, locale: w.locale, givenAt: a.consent.givenAt };
     }
     const p = a.person;
+    // FO-10 part 2 (AG-2-85 rule 1(b)): the booking row is written before its arrival, in this transaction; its one host owns the lead.
+    const host = (await tx.$queryRaw<{ staff_id: string }[]>`select staff_id::text from fo_booking where firm_id = ${firmId}::uuid and id = ${a.bookingId}::uuid`)[0]?.staff_id;
     const out = await arrive(tx, {
-      firmId, door: "BOOKING", intakeKey: key, source: BOOKING_SOURCE,
-      person: { givenNames: p.givenNames, familyName: p.familyName, email: p.email, phone: p.phone ? { phone: p.phone, readable: true } : null },
+      firmId, door: "BOOKING", intakeKey: key, source: BOOKING_SOURCE, ...(host ? { bookingHostStaffId: host } : {}),
+      person: { givenNames: p.givenNames, familyName: p.familyName, email: p.email, phone: p.phone ? { phone: p.phone, readable: p.phoneReadable !== false } : null },
       consent: wording, actor: ACTOR, ...(holders.length === 1 ? { onOpenProspectPersonId: holders[0].person_id } : {}),
       payloadHash: createHash("sha256").update(JSON.stringify([p, a.consent?.wordingId ?? null])).digest("hex"),
     }, this.ports);
     if (!out.created) return (await repeat())!;   // a repeat that raced in on the receipt's key
     const prospectId = holders.length === 1 ? await this.moveToConsult(tx, firmId, holders[0].person_id) : undefined;
-    if (holders.length === 1 && p.phone) await this.keepPhone(tx, firmId, holders[0].person_id, p.phone, prospectId);
+    if (holders.length === 1 && p.phone) await this.keepPhone(tx, firmId, holders[0].person_id, p.phone, p.phoneReadable !== false, prospectId);
     return ArrivalResult.parse({ personId: out.personId!, ...(prospectId ? { prospectId } : {}) });
   }
 
@@ -118,10 +120,11 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
   /** The phone a booker on file typed (AG-2-10 rule 3; break M1): an empty phone on the person is filled with it; one
    *  on file that differs is never overwritten, the typed number is kept as an INTERNAL note on the prospect instead,
    *  so the host calls the number given. The number is personal data: it stays in fo_person / fo_note, never an audit line. */
-  private async keepPhone(tx: Tx, firmId: string, personId: string, phone: string, prospectId?: string) {
+  private async keepPhone(tx: Tx, firmId: string, personId: string, phone: string, readable: boolean, prospectId?: string) {
     const f = await tx.foPerson.findFirst({ where: firmScope(firmId, { id: personId }), select: { phone: true, phoneE164: true } });
     if (!f) return;
-    if (!f.phone) { await tx.foPerson.update({ where: { id: personId }, data: { phone, phoneReadable: true } }); return; }
+    // FO-9b: an unreadable number fills an empty phone flagged "Fix number" (P-747), as the other doors keep it.
+    if (!f.phone) { await tx.foPerson.update({ where: { id: personId }, data: { phone, phoneReadable: readable } }); return; }
     if ((f.phoneE164 ?? f.phone) === phone) return;
     await tx.foNote.create({ data: { firmId, personId, prospectId: prospectId ?? null, visibility: "INTERNAL", text: `The booking gave the phone number ${phone} (the one on file was kept).`, byActor: ACTOR } });
   }
@@ -162,7 +165,8 @@ export class PrismaArrival implements ArrivalPort<Tx | PrismaClient> {
     const last = await tx.foStageMove.findFirst({ where: firmScope(firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
     await tx.foProspect.update({ where: { id: p.id }, data: { stageId: consult.id } });
     await tx.foStageMove.create({ data: { firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: consult.id, cause: "BOOKING", byActor: actor } });
-    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" } });
+    await this.ports.audit.record(tx, { firmId, actor, action: EVENT.PROSPECT_STAGE_MOVED, entity: "fo_prospect", entityKey: p.id, summary: `Consult booked: ${p.number} moved from ${p.key} to ${consult.key}.`, detail: { fromStageKey: p.key, toStageKey: consult.key, cause: "BOOKING" },
+      before: { stage: p.key }, after: { stage: consult.key } });
     await tx.moduleEvent.create({ data: { firmId, type: EVENT.PROSPECT_STAGE_MOVED, subjectId: p.id, payload: ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: consult.key, ownerStaffId: p.owner_staff_id, cause: "BOOKING" }) } });
     return p.id;
   }
