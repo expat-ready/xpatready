@@ -143,3 +143,19 @@ Also:
 * Ask questions in a PR comment headed "Question for the tech lead".
 * Report to the current Lead (`tools/current-lead.sh`) and to **Build Lead A** (Lead B, branch `lead-b-front-office`, hand-over `product/design/lead-b-state.md`).
 * Read only the files named here and the code you change (P-556).
+
+---
+## Part 2 shaped (Lead B (10), 09:35 IST 21 Nov; closes QA-608, which holds R1.4 Partial)
+QA-608 (qa 12, 20 Nov: "PF-12b part 2 ... has no backlog row, no owner and no PR") asks for a shaped row with an owner. This is it. The tech lead writes the BACKLOG row (P-314); the text to paste is below.
+
+**Proposed BACKLOG row:** `PF-12b part 2 | runtime | R1.4 (map row 4: "every use writes an audit line"); QA-499 (own-firm half), QA-608 | the seven own-firm doors move off the bypass to narrow xr_wall_reader SECURITY DEFINER lookups and leave BYPASS_USES (brief: lead-b-front-office:product/design/lead-b-briefs/PF-12b.md, "What to build, part 2") | waits on: #1959, #2633 (firm-scope.ts) and #2626, #2627 (identity/) merged | owner: Lead B; builder: cloud lane, Opus 5.5 high; breaker: yes (walls, permissions, schema); the Lead reads the migration (P-423, P-600) | Done when: PF-12b DW5, DW6, DW7 green in tests/check_pf12b_doors.ts, then qa re-scores R1.4`
+
+**Scope today (re-read on main a6604469, 09:3x IST 21 Nov):** `firm-scope.ts` lines 106-112 still hold exactly the seven doors the brief lists, each with `audit: "none: an own-firm door ... PF-12b part 2 moves it ..."`: `platform.identity.authenticate`, `platform.identity.sign-in`, `platform.identity.invitation`, `fo.sales.web-form`, `fo.booking.public-page`, `fo.booking.self-service`, `platform.web-address.host`. Part 1 (#2029) is on main. Every other entry is a cross-firm use already writing `per-firm` lines, or a reasoned `none` (signup purge, messages.send, account.mail, secret_box.reencrypt). The reader's "decision on the four no-firm uses" (QA-608 Expected) is therefore already recorded in those four `none:` reasons on main; part 2 leaves them as they are, and the PR body quotes them.
+
+**Duplicate check:** BACKLOG on the Lead's branch (dcbc83e8f): no PF-12b row (grep: 0). Open PRs (45, read 09:3x IST): none names PF-12b or moves a door; firm-scope.ts is touched by #1959 (PF-5 part 2, queued), #2633 (PF-13 part 1b, queued) and #2349 (CS-W3 part 1, dirty, no lane), each adding its own uses, not doors; identity/ is touched by #2626 (R1.13, queued: log text) and #2627 (R1.5, lock-out: identity/service.ts and session/service.ts). qa/BUGS.md: QA-499 (narrowed to this half), QA-608 (this row), F2 below. No AUD-3 line duplicates it (P-698 (1): PF-12b holds the bypass audit line).
+
+**Start condition (P-526b):** #1959, #2633, #2626 and #2627 merged (the first three are in the queue now). #2349 does not block: it is idle, and it merges main after this part lands.
+
+**Size (P-610, P-775):** about 650 changed lines with tests. If the count passes 800, split before building: 2a (`authenticate`, `sign-in`, `invitation`, `host`) and 2b (the three front-office doors), and name the split in the PR title.
+
+**Not in this part (kept apart, each its own row when shaped):** reader F2 (Gap · Minor: a `per-firm` use that writes no line is not caught at run time, only by the suite; firm-scope.ts:162-180) and F3 (Proof · Minor: gate A reports the audit count as a NOTE). Neither blocks Works (P-305 counts Major and Critical only).
