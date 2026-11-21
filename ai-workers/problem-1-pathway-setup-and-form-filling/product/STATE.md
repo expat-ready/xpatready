@@ -9,11 +9,10 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 
 
 ## Lead 14 since 12:44 IST (newest first)
+* 13:4x: **R1.14 part 2 PASS** on AWS (PITR 845 s, ≤4 min 21 s lost; ca-west-1 copy 3½ min, own key, locked 35 days governance) → evidence #2638 comment 7059673372 (account masked); locked vaults outlive teardown ~35 days (~US$2/month). **#2687:** own fault (release-one-menu.tsx links 20 px); founder A258 allowed **#2777** (focus list: DEMO-LINK under R1.38, records, labelled); Lead B (11) starts the fix lane when it merges. Lead B ruling #2763 (PF-15 1b): an OVERDUE firm may book a lower plan for renewal, PAYMENT_HOLD refuses (Unconfirmed: no counsel); #2763 ci red (TS2531).
 * 13:3x app view (63 rows, 9 flagged): CI-SPEED-2 told done (no /run full; first 24-part batch gives times); ENF-782b part 2 OK on its own branch; PF-23c merged #2743, my rulings posted (no page on send cap; AUD-1c adds chain alarm; KMS + TLS-only SNS and slow-burn email alarm in PF-8c). Context: Lead 14 21%, Lead B 19%, AWS 34%; weekly 67%.
 * 13:2x: **walks** j_108 j_49 j_5 run 1 = actions run 44881942787 (dispatched in the browser; the shell's dispatch was refused); run 2 = re-run all jobs on it when attempt 1 ends, then post on #2706 #2762 #2765. **#2687** dequeued (shards 18, 4: axe contrast on FO-3st3 panel, target-size on PF-18h Home; hypothesis: its seeds) → Lead B (11) owns the fix and a green full run first (P-731). #2607 dirty (tooling-2 lane).
-* 13:1x rulings: #2349 R1.3 Partial when it merges (CS-W2, CS-W3 rest, CS-W4 missing; no proof) · #2619 R1.10 Partial, parts missing PF-28 parts 2-6 → **records owed: BACKLOG rows PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273** · #2762 R1.5: Deactivate covers "removed"; QA-622 belongs to the Q2 row (linked open Major on R1.5).
-* 13:0x **AWS (A256):** founder yes to enabling ca-west-1 (free account setting) for R1.14 part 2's copy vault; RDS point-in-time drill PASS (845 s, ≤4 min 21 s lost; S3 version restore PASS), evidence on #2638 comment 7059421511; spend ~US$1, credit-covered.
-* 12:4x-13:1x labelled after P-423 reads: #2603 E2, #2738 ENF-782a p1, #2741 ENF-782b p1, #2746 ENF-782a p2, #2749 ENF-783a (round 3 allowed), #2756 CI-SPEED-3, #2757 CI-SPEED-2 (**set SHARDS=24 when it merges**), #2744 ENF-783b (body "Done when" fixed). #2754 CI-SPEED-1: draft, no Approve on head yet.
+* 12:4x-13:1x (labels after P-423 reads, R1.3/R1.10/R1.5 rulings with **records owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**, A256): word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
 
 
 ## Hand-over Lead 13 → Lead 14 (series 3), 12:40 IST 21 Nov (read this first; Lead 13 at ~360k, P-446)
@@ -30,6 +29,7 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A258 | 21 Nov ~13:4x (answered my question): allow the records commit adding DEMO-LINK to the focus list | Done: #2777 labelled (the direct API commit was refused; built with git and pushed) |
 | A257 | 21 Nov ~13:3x (answered my question): on-call address for PF-23c alarms (R1.13 proof) | **Waiting on the founder:** a new ops alias on the company domain (founder creates it, P-551) and its exact text to the Lead; then the AWS session deploys with it |
 | A256 | 21 Nov ~13:0x (answered my question): enable AWS region ca-west-1 for the R1.14 backup copy | Yes; sent to the AWS session 13:0x; deploy from #2725's merge 191d1d8d2 |
 | A255 | 21 Nov ~12:32 (typed): if proving is the constraint, why not more qa lanes; what limits it (tokens, load, other); industry practice; be proactive, never wait an hour | qa Q5 (R1.10, R1.42; task_3c69d860) and Q6 (ready proofer: R1.3, R1.4, R1.13/24/5, R1.90; task_f4454f0b) started ahead of merges; rule kept: one ready qa lane ahead. Measured: 10 of last 20 batches failed (50%, CI-SPEED-3), the real merge constraint |

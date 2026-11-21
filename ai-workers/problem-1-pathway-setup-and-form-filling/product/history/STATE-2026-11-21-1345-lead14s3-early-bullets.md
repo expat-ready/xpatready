@@ -1,0 +1,5 @@
+# STATE, Lead 14's first bullets, word for word (moved by Lead 14 at 13:4x IST 21 Nov for the 12 KB limit)
+
+* 13:1x rulings: #2349 R1.3 Partial when it merges (CS-W2, CS-W3 rest, CS-W4 missing; no proof) · #2619 R1.10 Partial, parts missing PF-28 parts 2-6 → **records owed: BACKLOG rows PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273** · #2762 R1.5: Deactivate covers "removed"; QA-622 belongs to the Q2 row (linked open Major on R1.5).
+* 13:0x **AWS (A256):** founder yes to enabling ca-west-1 (free account setting) for R1.14 part 2's copy vault; RDS point-in-time drill PASS (845 s, ≤4 min 21 s lost; S3 version restore PASS), evidence on #2638 comment 7059421511; spend ~US$1, credit-covered.
+* 12:4x-13:1x labelled after P-423 reads: #2603 E2, #2738 ENF-782a p1, #2741 ENF-782b p1, #2746 ENF-782a p2, #2749 ENF-783a (round 3 allowed), #2756 CI-SPEED-3, #2757 CI-SPEED-2 (**set SHARDS=24 when it merges**), #2744 ENF-783b (body "Done when" fixed). #2754 CI-SPEED-1: draft, no Approve on head yet.
