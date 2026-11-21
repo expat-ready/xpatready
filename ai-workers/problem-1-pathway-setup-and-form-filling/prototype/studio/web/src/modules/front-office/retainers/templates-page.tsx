@@ -98,8 +98,8 @@ function TemplatesBody() {
           {fileField}
           <p className="text-sm">No template yet? <Button type="button" variant="link" size="sm" onClick={starter}>Download a starter template</Button> (Sample wording; Unconfirmed: no counsel) and edit it in Word.</p>
           <FoldOut summary="Placeholders you can use" summaryClassName="text-sm font-medium" data-known-placeholders>
-            {known.isError ? <Notice tone="danger" title="Could not load the list." /> : <ul className="mt-2 flex flex-col gap-1 text-sm">{(known.data ?? []).map((x) => <li key={x.name} className="[overflow-wrap:anywhere]"><code className="text-xs">{braces(x.name, x.loop)}</code> {x.label}{x.mustFill ? " (needed before sending)" : ""}</li>)}
-              {known.data ? <li className="text-xs text-text-muted">Inside the fee loop: {"{label}"}, {"{amount}"}, {"{when}"}, {"{due_on}"}. Any other placeholder is refused and named.</li> : null}</ul>}
+            {known.isError ? <Notice tone="danger" title="Could not load the list." /> : <ul className="mt-2 flex flex-col gap-1 text-sm">{(known.data ?? []).map((x) => <li key={x.name} className="[overflow-wrap:anywhere]"><code className="text-xs">{braces(x.name, x.loop)}</code> {x.loop ? "Fee rows" : x.label}{x.mustFill ? " (needed before sending)" : ""}</li>)}
+              {known.data ? <li className="text-xs text-text-muted">Inside the fee loop: {"{label}"}, {"{amount}"}, {"{when}"}, {"{due_on}"}. The Code checklist's clause markers ({"{code.s24_3_a}"} to {"{code.s24_3_z}"}) print nothing and mark an item. Any other placeholder is refused and named.</li> : null}</ul>}
           </FoldOut>
         </form>
       </Panel>
@@ -109,7 +109,7 @@ function TemplatesBody() {
           {open.warnings.map((w) => <Notice key={w} tone="warn" title={w} />)}
           <section aria-labelledby="fo-tpl-found" data-placeholders-found>
             <h3 id="fo-tpl-found" className="font-medium">Placeholders found ({open.placeholders.length})</h3>
-            <ul className="mt-1 flex flex-wrap gap-1">{open.placeholders.map((x) => <li key={x}><code className="rounded bg-text/5 px-1 text-xs">{braces(x, x === "fees")}</code></li>)}</ul>
+            <ul className="mt-1 flex flex-wrap gap-1">{open.placeholders.map((x) => <li key={x}><code className="rounded bg-text/5 px-1 text-xs">{x.startsWith("fees.") && x !== "fees.total" ? `{${x.slice(5)}} (fee loop)` : braces(x, x === "fees")}</code></li>)}</ul>
           </section>
           <section aria-labelledby="fo-tpl-code" data-template-checklist>
             <h3 id="fo-tpl-code" className="font-medium">Regulator's Code, s. 24(3)</h3>

@@ -97,7 +97,8 @@ try {
   await up.getByRole("button", { name: "Upload template" }).click(); await up.getByText("A template with this name already exists.").waitFor({ timeout: 10_000 });
   ok("R1.53 FO-5s2 BR-1 fail (review m7): a name already used (any case) is refused on the Name field", (await up.getByLabel("Name").getAttribute("aria-invalid")) === "true");
   await r.keyboard.press("Escape"); await up.waitFor({ state: "detached" });
-  ok("R1.53 FO-5s2 (break M5): closing the panel gives focus back to Upload template", await r.evaluate(() => document.activeElement?.textContent === "Upload template"));
+  const focusBack = await r.waitForFunction(() => document.activeElement?.textContent === "Upload template", undefined, { timeout: 3_000 }).then(() => true, () => false);   // the dialog hands focus back after its close (review n4)
+  ok("R1.53 FO-5s2 (break M5): closing the panel gives focus back to Upload template", focusBack);
   ok("R1.53 FO-5s2 BR-1 pass: the starter uploads: listed Retainer, version 1, Active", /Retainer\s*1\s*\d+\s*Active/.test((await row.innerText()).replace(/\n/g, " ")), await row.innerText());
 
   // ------------------------------------------------------------------------------- BR-17 checklist, new version

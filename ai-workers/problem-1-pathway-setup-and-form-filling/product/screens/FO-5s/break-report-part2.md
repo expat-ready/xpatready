@@ -90,3 +90,43 @@ n" or "Make inactive", focus moves to the dialog container because the busy butt
   89 ms with one request.
 - Keyboard: every control can be reached; both panels open on their first field and trap focus; the table region is focusable.
   At 375, 720 (1440 at 200 %) and 1024 px the page has no sideways scroll with ordinary names.
+
+## Re-check at 24a1ed3d8 (breaker, 21 Nov 2026)
+
+Fresh copy `brk2_fo5s` on :4573, re-seeded the same way, then stopped. No suite was run, so no committed screenshot changed.
+**Now: 0 Blocker · 0 Major · 7 Minor** (m4, m5, m6 stand; four new minors n1-n4 below). M3 remains an open gap that the
+tech lead holds.
+
+- **M1: closed.** I repeated the two-tab steps. A's "Upload version 2" (expected 1) gets a 409: "This template is now at
+  version 2, not version 1. Open it again." The panel refreshes to "Version 2 / Upload version 3", the chosen file is kept,
+  and only a second, deliberate click makes v3. API: expectedVersion 1 against v2 → 409. Four concurrent uploads with the same
+  expectedVersion → one 201 and three 409s. Without expectedVersion (older callers) the upload still works.
+- **M2: closed.** The template panel lists "Placeholders found (n)". The Upload panel has "Placeholders you can use" (from
+  `GET …/placeholders`) and the starter link. Accepted as built: "found" sits on the template panel, not the upload panel; the
+  upload panel closes on success and names unknown placeholders on refusal.
+- **M3: no longer a Major against this screens PR.** The screen now says "Earlier versions cannot be downloaded here yet."
+  (`templates-page.tsx:127`). FO-5 has no route for it, and the gap has gone to the tech lead. It stays open against
+  concept S1 until FO-5 adds the route. Note that the wording covers earlier versions only, but the *current* file cannot be
+  downloaded either.
+- **M4: the table is fixed; the panel title is not (now Minor n1).** At 1024 and 1440 px the 120-character name wraps inside
+  24 rem and Status stays visible (`re-page-1024.png`). At 375 px the table scrolls inside its focusable region, as it does for
+  ordinary names. But the template panel's title is still 2252 px wide in a 374-559 px dialog at 375, 1024 and 1440 px.
+  About 15 of the 120 characters show, and the text runs under the X, which still works. `controls.tsx:122` (no wrap on
+  `DialogPrimitive.Title`). Screenshot `re-panel-1024.png`.
+- **M5: closed.** Focus returns to the row's name button after Escape or Close (even after the row moved down on Make
+  inactive), and to "Upload template" after Escape, Cancel or a successful upload. After a keyboard Make inactive, focus stays
+  on the footer button.
+- **m1: closed.** Enter ×3 in Name → one POST (201). **m2: closed.** The file input is empty after each upload. **m3:
+  closed.** A duplicate name gets `aria-invalid` and the message on the Name field.
+- **m4, m5, m6: unchanged**, as declared. After a colleague makes the template inactive, A's panel still says "Version 3 ·
+  Active".
+- **n2 (new, Minor): "Placeholders found" shows the fee-loop names as stored, not as written.** It lists `{fees.amount}`,
+  `{fees.label}`, `{fees.due_on}`, `{fees.when}`. The Upload panel says to write `{label}`, `{amount}` … inside the loop, so the
+  two lists disagree. `templates-page.tsx:112` (`braces(x, x === "fees")`).
+- **n3 (new, Minor): "Placeholders you can use" leaves out the Code clause markers, yet says "Any other placeholder is refused
+  and named".** A file with `{code.s24_3_a}` uploads fine (201), and the checklist on the template panel tells the Owner to add
+  exactly those markers. `templates-page.tsx:47` (filter drops `code.`).
+- **n4 (new, Minor): expectedVersion is parsed loosely and echoed raw.** "abc", "5,5" (the field sent twice) and a
+  3000-character value all get 409 CHANGED rather than 422, and the whole value is echoed into the message ("…not version
+  AAAA…"). "0x4", " 3 " and "2.0" are accepted as numbers, although the comment says "multipart digits". `service.ts:278-279`;
+  the same file already has a strict helper that answers 422 for these inputs, `expectedVersionOf` (`service.ts:75-78`), used by the retainer routes.

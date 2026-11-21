@@ -93,3 +93,55 @@ M1 is an S1 / BR-1 gap, not a Done-when gap. "Completes: R1.53" is justified onc
 A real screen reader. D17/D20 with an intended user. A browser other than Chromium (m9 is reasoned). Consultation-kind templates (no screen makes one). Retrofit mapping (no build-notes for part 2).
 
 **Verdict: Block** (94658d9e7a5e05759bc90f7da059de8b5ff3b407). Fix **M1** (`templates-page.tsx:86-112`: placeholders you can use and placeholders found, with a pass and a fail test). Fix the Minors or list them in the PR.
+
+## 8. Re-review (P-277: only the diff since 94658d9), 21 Nov 2026
+Head **24a1ed3d89690f474b89e5091e09a806a817a6b7**. Code diff without PNGs and records:
+* `templates-page.tsx` +38/-12
+* `service.ts` +6 (`expectedVersion`)
+* `routes.ts` +1
+* `check_fo5s2…` +25
+* `check_fo5s…` (a comment)
+* `j_53.ts` (the DW2 text now comes from the `<w:t>` runs instead of the tag-strip regex CodeQL flagged)
+
+The DW2 judge still passes, and its stand-in still fails.
+
+**Runs (fresh copies rev3_fo5s :4571 and rev3_j53 :4572):**
+* `check_fo5s2_templates_browser.ts` run 1: **22/23**. FAIL "break M5: closing the panel gives focus back to Upload template". Runs 2 and 3 on the same copy: **23/23**.
+* `check_fo5s_retainer_screens_browser.ts`: 41/41.
+* `j_53.ts`: 21/21.
+* `graph.mjs`: exit 0.
+
+I put back the screenshots the suites rewrote and deleted my walk scripts.
+
+**Walked live:**
+* **M1 fixed.**
+  - The Upload panel has a "Placeholders you can use" fold-out, filled from `GET /placeholders`: 16 entries with labels, "(needed before sending)" on client name and the fee loop, `{#fees} … {/fees}` and the loop fields `{label} {amount} {when} {due_on}`.
+  - The template panel shows "Placeholders found (17)" with each name. The pass test checks the list and the fail test (unknown refused and named) still holds.
+* **m8 fixed.** The panel says "No template yet? Download a starter template (Sample wording; Unconfirmed: no counsel)".
+* **m1 declared.** On screen: "Earlier versions cannot be downloaded here yet." It goes to the tech lead as an FO-5 gap. Accepted.
+* **m2 fixed.** The file input is empty after a version upload.
+* **m3 fixed (feature).**
+  - Upload panel: focus returns to "Upload template" after Escape (5 of 5 after 300 ms), Cancel (3 of 3) and a successful upload.
+  - Template panel: Close returns focus to the template's name.
+  - Read immediately after the panel detaches, 1 of 5 Escapes still showed the page body. That timing is what makes the suite's check at `check_fo5s2…:100` flaky (n4).
+* **m4 fixed.**
+  - A tab still at v2 gets "This template is now at version 3, not version 2. Open it again." The panel refreshes to "Version 3 · Active / Upload version 4" and nothing is stored.
+  - API: `expectedVersion` "abc" gives 409, a stale number gives 409, empty or absent gives 201 (as declared, optional).
+  - The guard on `updateMany` still covers true races.
+* **m5 fixed.** A 106-character English name and a 118-character unbroken name both wrap. Status stays visible at 1024 and 1440 (`templates-1024` walk).
+* **m7 fixed.** A name already taken, in any case, is shown on the Name field with `aria-invalid`.
+* **m9 fixed.** The revoke is delayed 30 s.
+* **m6 partly.** The stale comment is fixed. The four part-1 minor fixes still have no tests. **That does not block:** they are display fixes, I walked all four live at 94658d9, and the diff since then does not touch them. List them in the PR.
+
+**New, Minor (Should):**
+* **n4** `check_fo5s2_templates_browser.ts:100` reads `document.activeElement` straight after the panel detaches, so it failed 1 of 3 runs. Wait for the focus to land (poll up to ~1 s). Otherwise CI can go red at random on a working page.
+* **n5** `templates-page.tsx` "Placeholders you can use":
+  - The fee loop's label repeats its own syntax: "{#fees} … {/fees} Fee rows (loop: {#fees} … {/fees})".
+  - "Any other placeholder is refused" is not quite true: the hidden `{code.s24_3_x}` clause markers are accepted. The Code checklist names them.
+  - "Placeholders found" shows `{fees.amount}` while the help says to write `{amount}` inside the loop.
+
+  None of this is wrong data. Align the words.
+
+**Journey re-score: 9/10, pass** (journey report, re-test section). No open Blocker or Major.
+
+**Verdict: Approve 24a1ed3d89690f474b89e5091e09a806a817a6b7.** Fix n4 (flaky focus check), n5 and the untested part-1 fixes, or list them in the PR.

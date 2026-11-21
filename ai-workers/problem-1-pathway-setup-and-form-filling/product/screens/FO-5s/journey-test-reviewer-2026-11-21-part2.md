@@ -63,3 +63,28 @@ Walk screenshots (evidence, not committed): `/tmp/claude-0/-home-user-xpatready/
 To raise the score, most valuable first: the placeholder lists (M1); `returnFocus` on both panels; reset the file input after upload; wrap long names; send the expected version.
 
 **Not tested:** a real screen reader, a non-Chromium browser, an intended user's unaided walk (D17/D20 stay with the founder), consultation-kind templates (no screen makes one).
+
+## Re-test at 24a1ed3d89690f474b89e5091e09a806a817a6b7 (diff since 94658d9 only)
+Fresh copy rev3_fo5s :4571; J-53 on rev3_j53 :4572 (21/21). Suites: templates 22/23 then 23/23 twice (flaky focus check, n4 in the review); retainer screens 41/41.
+* **Journey 2 (own template) now has its help:** "Placeholders you can use" lists every allowed name with its meaning, the fee loop and its fields. The starter is offered inside the panel. The template panel lists "Placeholders found (17)".
+* **Journeys 1 and 6:**
+  - Focus returns to "Upload template" after Escape, Cancel and upload, and to the template's name after Close.
+  - The file input is empty after a version upload.
+  - A stale tab is refused in words ("now at version 3, not version 2. Open it again.") and the panel refreshes. Nothing is stored.
+* **Journey 4:** a duplicate name is shown on the Name field.
+* **Break:** 106- and 118-character names wrap, and Status stays visible at 1024 and 1440 px.
+* **Still open (Minor):** the help's wording around the fee loop and the clause markers (n5); a flaky focus check (n4); the part-1 minor fixes have no test.
+
+| Criterion | Before | Now | Evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | Own-template path now guided |
+| Next step obvious | ½ | 1 | Placeholder list and starter in the panel; a fresh file input |
+| Plain words | 1 | 1 | Unchanged; small wording overlap in the fee loop (n5) |
+| Feedback and state | ½ | 1 | Stale version refused in words; the panel refreshes |
+| Correct data | 1 | 1 | 409 leaves the version unchanged; one row per upload |
+| Error recovery | 1 | 1 | Duplicate name on the field |
+| Accessibility and screen sizes | ½ | 1 | Focus returns on both panels; long names wrap |
+| Speed | 1 | 1 | Unchanged |
+| Visual quality | ½ | ½ | The starter link in the panel sits off the text baseline; the name link padding remains |
+| Trust and sources | 1 | 1 | Unchanged |
+| **Total** | **8** | **9/10** | **Pass** |
