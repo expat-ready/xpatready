@@ -1,0 +1,76 @@
+# qa 12 — R1.42 Reschedule or cancel by link; outcomes; consult record: VERDICT_PLACEHOLDER, 21 Nov
+
+qa 12 is a cloud session (Opus 5.5, effort medium), asked by the tech lead (Lead 15): re-score R1.42 once #2750 (FO-3st3b, Timings), #2782 (FO-3st3 suite fix) and #2818 (unhold `check_fo3st3_types_browser.ts`) are on main. Live AI off, US$0. Isolated copies only, never :4400.
+
+The Done when: "The client's single-use link reschedules or cancels inside the firm's notice rule (later refused in words); used or expired link refused; staff record the outcome and the note".
+
+## Parts (P-606): all merged
+The parts J-42 lists:
+* FO-3sr, FO-3a parts 2a and 2b: on main before the first score.
+* FO-3st1 (calendar and booking detail; part 2, the consult record panel and its next-step button): #2717.
+* FO-3st3, booking types: #2718. Timings: #2750.
+* The types suite fix: #2782. Its unhold: #2818.
+
+## The runs
+| Run | Where | Result |
+|---|---|---|
+| Walk: walks.yml `j_42` (dispatched by the Lead) | GitHub, [run 44899086096](https://github.com/expat-ready/xpatready/actions/runs/44899086096) on fdb3ba39e, job 136831103939 | **33 PASS, 0 FAIL, no HELD**, W0 to W9 (`2026-11-21-r142-qa12b/walk_j42_job136831103939.txt`) |
+| Pack: every R1.42 suite (merge batch, main 55a9aba2f + #2619) | GitHub, ci [run 44898035790](https://github.com/expat-ready/xpatready/actions/runs/44898035790), shards | fo3_booking 133 · fo3w_manage 50/50 · fo3w_booking 67/67 · fo3a2_consult_record 39 · fo3st1_consult 21/21 · fo3st1_calendar 27/27 · fo3a_hours_timings 46 · fo3a_booking_types 48 · fo3st3_timings 52/52 · fo3sr_routes 29: all PASS |
+| Pack re-run on main's head after #2818 | RERUN_PLACEHOLDER | RERUN_RESULT |
+| `tests/journeys/j_42.ts`, fresh copy of main 55a9aba2f | here (`2026-11-21-r142-qa12b/j42_1.txt`) | **33/33**, no HELD |
+
+**Same app on every sha:** fdb3ba39e→55a9aba2f changes only `tests/check_fo3st3_types_browser.ts` and review notes. #2818 changes only `product/tools/run-suites.sh`.
+
+**The batch run's one red is not R1.42's.**
+* **What fails:** shard 22, `check_pf28_inputs.ts`.
+* **Where it comes from:** #2619 (PF-28 part 1, R1.10). The suite is not on main.
+* **Why it fails:** its sweep meets the Timings routes #2727 added (`timings.controller.ts`: PUT `/booking-timings`, PATCH `/booking-types/:id/timings`). They do not reach a zod parse, and they answer 400, not 422, to an unknown field or a wrong type.
+* **Whose it is:** #2619's to fix, by moving the two routes onto the input rule or onto its allow-list. R1.42's Done when does not cover how input errors are coded.
+
+## Each Done-when clause (j_42; the fresh reader read the code)
+* **Reschedule by the link:** W2, by screens (`j_42.ts:196-212`).
+* **Cancel by the link:** W4, by screens (`:226-231`).
+* **Inside the firm's notice rule, later refused in words:** W5. B's link inside the 1-hour limit shows "It is less than 1 hour before your meeting. Please reply to this email or call us…" and no Reschedule or Cancel (`:240-246`).
+  * The server refuses as well: 409 `SELF_SERVICE_CLOSED` for a cancel and a reschedule inside the limit (`check_fo3_booking.ts:311`).
+  * The 1-hour limit is the type's own override, set by screens in W0 on FO-3st3b's Advanced → Timings.
+* **Used link refused:** W3 and W4 (`:220-223`, `:233-237`). One link reschedules, and the same link is then refused.
+* **Expired link refused:** W6, after a real wait for B's meeting to end. There is no fake clock.
+* **Staff record the outcome:** W7, Attended, on the booking detail, by screens, with one audit line.
+  * No-show is covered by API: `check_fo3a2_consult_record.ts` DW1 and DW4. A No-show booking refuses a record with 409, and a later No-show keeps the record with no next step.
+* **And the note:** W8, the consult record panel, by screens (`:273-298`).
+
+**Server side (the reader):**
+* tokens are stored hashed and refused once voided or past the meeting's end (`tokens.ts:31-39`);
+* a database trigger voids every live token on any change to the booking;
+* every change re-checks the token and the time limit while the booking row is locked (`service.ts:836-862`).
+
+## Gate A: met
+* **Start:** Settings → Booking types and the type's Timings (W0, by screens), then the public booking (W1).
+* **End:** W9. "Engage and prepare retainer" opens the Engage panel and creates the prospect: row 53's first step (`:303-317`).
+* **SQL left in the setup:** the firm, staff, hours, the firm's settings and the 5-minute slot interval. All are declared, and none is a step of R1.42.
+  * Host hours could now be set on My account → Availability (FO-3st2). That is outside R1.42 and is noted in QA-697.
+
+## The fresh reader (Opus, ran nothing)
+`2026-11-21-r142-qa12b/reader-verdict.md`.
+* **Verdict:** Works, about 85%, on condition of a second green run on main's head.
+* **Findings:** four Minors, no Blocker, Critical or Major.
+  * Two are covered by the packs: the No-show outcome (fo3a2 DW1, DW4) and the server refusal inside the limit (fo3_booking:311).
+  * The rest is folded into QA-697.
+
+## Findings
+* **QA-697, new** · Bug · Minor · test honesty (J-42). The walk:
+  * walks Attended only, with No-show on API only;
+  * says host hours "cannot be set through the product yet" (`j_42.ts:29`), though FO-3st2's Availability screen exists;
+  * sets the type's notice override, not the firm-wide default, and does not say so in its header.
+
+  **Fix:** a No-show branch by screens, the comment corrected (or the hours set on the screen), and one header line. It does not hold Works.
+* **Other open rows naming R1.42:** none.
+
+## Not tested
+* Coverage (c8).
+* 200% zoom.
+* The shared demo (:4400): this cloud copy has none.
+
+## Questions for the tech lead
+1. **Please dispatch the pack re-run on main's head** after #2818, and start the independent reviewer on the records PR.
+2. **QA-697's number** is self-assigned. Open PRs use numbers up to QA-696.
