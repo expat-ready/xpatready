@@ -58,12 +58,12 @@ function pathAndQuery(req: Req): { pathname: string; tail: string } {
 }
 
 /** The middleware. A failed lookup is a 500 through `next(err)`, never a page of the wrong firm. */
-export function webAddressHost(addresses: Pick<WebAddresses, "resolveHost">) {
+export function webAddressHost(addresses: Pick<WebAddresses, "resolveHost"> & Partial<Pick<WebAddresses, "hostSuffixes">>) {
   return (req: Req, res: Res, next: Next) => {
     req.publicFirm = undefined;
     // Two Host headers, either naming a firm's address: refused, never routed by the first (break N6).
     const hosts = (req.rawHeaders ?? []).filter((_, i, a) => i % 2 === 1 && a[i - 1].toLowerCase() === "host");
-    if (hosts.length > 1 && hosts.some((h) => readHost(h).kind !== "main")) return sendPublicNotFound(req, res);
+    if (hosts.length > 1 && hosts.some((h) => readHost(h, addresses.hostSuffixes).kind !== "main")) return sendPublicNotFound(req, res);
     inRequest(req, () => asBypass("platform.web-address.host", () => addresses.resolveHost(first(req.headers.host)))).then((r) => {   // PF-12: before any firm is known
       if (r.kind === "main") return next();
       if (r.kind === "firm") {

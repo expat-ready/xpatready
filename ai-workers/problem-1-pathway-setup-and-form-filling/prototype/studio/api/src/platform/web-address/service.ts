@@ -16,10 +16,15 @@ import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
 import { firmScope } from "../firm-scope.ts";
-import { addressBaseFromName, candidate, checkAddressChoice, readHost, type AddressRefusal } from "./rules.ts";
+import { addressBaseFromName, candidate, checkAddressChoice, DEFAULT_HOST_SUFFIXES, readHost, type AddressRefusal } from "./rules.ts";
 
 type Tx = Prisma.TransactionClient;
-export type WebAddressDeps = { db: PrismaClient; audit: AuditPort<Tx>; clock: ClockPort };
+export type WebAddressDeps = {
+  db: PrismaClient; audit: AuditPort<Tx>; clock: ClockPort;
+  /** PF-8b F2b: the host suffixes firm addresses live under (unset: expatready.com and localhost); the app passes
+   *  PLATFORM_ADDRESS_SUFFIX's from PF-24's loader (routes.ts). */
+  hostSuffixes?: readonly string[];
+};
 
 /** ExpatReady staff's key for changing a firm's address after sign-up (SA-2-27; SA-06 system/* keys, PF-4s). A firm's
  *  own staff hold agent/* keys only (SA-6-4), so they never have it. */
@@ -70,7 +75,9 @@ const isTakenRefusal = (e: unknown) => {
 };
 
 export class WebAddresses {
-  constructor(private readonly deps: WebAddressDeps) {}
+  /** The host suffixes this server reads a firm from (PF-8b F2b). */
+  readonly hostSuffixes: readonly string[];
+  constructor(private readonly deps: WebAddressDeps) { this.hostSuffixes = deps.hostSuffixes ?? DEFAULT_HOST_SUFFIXES; }
 
   /** Of `addresses`, those another firm has now or held less than 90 days ago on the clock (`forFirmId`'s own count as
    *  free). Two lookups whatever the number. */
@@ -175,7 +182,7 @@ export class WebAddresses {
    *  address the firm gave up less than 90 days ago (on the clock) → a redirect to its current one; anything else under
    *  a firm suffix → unknown; ExpatReady's own hosts → main. */
   async resolveHost(hostHeader: unknown): Promise<HostAnswer> {
-    const host = readHost(hostHeader);
+    const host = readHost(hostHeader, this.hostSuffixes);
     if (host.kind === "main") return host;
     if (host.kind === "none") return { kind: "unknown" };
     const own = await this.deps.db.platformFirmWebAddress.findUnique({ where: { address: host.address }, select: { firmId: true, firm: { select: { status: true } } } });
