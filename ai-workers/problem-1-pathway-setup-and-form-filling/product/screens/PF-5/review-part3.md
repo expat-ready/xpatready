@@ -62,3 +62,28 @@ Journey: a firm owner on Pricing picks Team, Yearly, signs up, confirms the emai
 Not checked: a live Stripe test-mode Checkout (CI has no network; fakes only); the full suite set (a wider run is in progress on the worktree).
 
 Verdict: Changes requested
+
+## Round 2 (diff only, P-277), head `ced0787e8a0183aec841d814069f7de82a4b255c`
+Reviewed `git diff 99663a52c ced0787e8`, the builder's commits `0fdcd9a84` (the breaker's m1 and m2) and `ced0787e8` (this review's M1 and m1).
+* **The merge of main is clean.** `git show --remerge-diff 85097b8dc` shows no hand edits. The head contains `origin/main` (`1ea5ac772`), and main's newest migration is still `20261121230000_pf8b_f4_reader_create`.
+* **The PR's own diff against main is the same 6 studio files** (+70/-6).
+
+| Item | Status | Evidence |
+|---|---|---|
+| **M1** stamp after main's newest (P-600 (d)) | **Closed** | The folder is now `20261122000000_pf5p3_billing_period`, after `20261121230000`. `migration.sql` was renamed at 100% similarity, so its content is unchanged. `P3` (test:49) and the rollback's row name follow the new stamp. |
+| **m1** backfill period condition guarded | **Closed** | The fixture now has a Monthly sign-up's own line (`period: MONTHLY`, test:142-143), asserted MONTHLY (test:149-150). I ran the mutant myself: without `detail->>'period' = 'YEARLY'`, 101/102 fail. |
+| **n2 / breaker m2** firm condition | **Closed** | `migration.sql:16` adds `a.firm_id = s.firm_id`. Another firm's YEARLY line names the plain subscription, which stays MONTHLY. My mutant without the condition: 101/102 fail. |
+| **Breaker m1** rollback | **Fine** | The rollback drops the column, then deletes its own `_prisma_migrations` row by the new name, and says to run it only with the code from before PF-5 part 3. 7 other rollbacks in the folder do the same. |
+| **m2** stamp check cannot fail | **Accepted as is** | It has the same form as PF-12's check. P-600 (e)'s read by the Lead covers the order, so no change is needed. |
+| **n1** test:253 restates other checks | **Accepted as is** | It does no harm. |
+
+**Checks run at `ced0787e8` (in `/home/user/pf28`):**
+* check_pf5_signup_billing 102/102 and check_pf8b_f4_migrations 9/9.
+* Two backfill mutants in a scratch copy (`git archive` of the head, since deleted): both were caught.
+* I did not run walls, pf3, pf12b or pf15 again. The builder reports them green at this head, and my round 1 merge simulation already ran walls on this exact stamp.
+
+**New findings:** none. **Open Blocker or Major:** none.
+
+**Journey score:** 8/10, unchanged (no screen, no change to the flow).
+
+Verdict: Approve ced0787e8a0183aec841d814069f7de82a4b255c
