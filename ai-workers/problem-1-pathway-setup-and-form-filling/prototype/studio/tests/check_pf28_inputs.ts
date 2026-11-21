@@ -57,7 +57,11 @@ export function inputs(dir: string): CodeInput[] {
   return codeRoutes(dir).filter((r) => DOORS.test(r.path)).flatMap((r) => r.inputs.filter((i) => i.kind !== "param")
     .map((i) => ({ key: `${r.file} ${r.verb} ${r.path} ${i.kind}${i.key ? `(${i.key})` : ""}`, parsedAt: follows(dir, r.controller, r.node, i.name) })));
 }
-const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt).map((x) => x.key);
+/** The Stripe door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
+ *  judges it over HTTP (signature and schema, each a pass and a fail) rather than the static follower, which never reads
+ *  a raw body off @Req() as parsed. Only this one door: any other webhook route is judged like every door (review r15-1). */
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
+const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), allow.unparsed);
 ok("PF-28 (a) pass: every PF/FO body and query reaches a zod parse, or is on the allow-list", jc.unlisted.length === 0, jc.unlisted);
@@ -80,8 +84,8 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 242;   // part 1 commits 244 probe entries (83 code entries; main at its last merge, after batch 44898035790: #2750's booking timings routes, owned by part 4); a fix part lowers both. 242: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4)
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 83 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 212, UNPARSED_CEILING = 73;   // part 1 committed 244 and 83 (at its last merge of main: #2750's booking timings routes, owned by part 4); part 2a (identity doors) lowers them to 214 and 73 (the callback door's "missing" probe stays: no code is its own 401, batch 44935069729); each fix part lowers both. 212: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4)
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
@@ -92,6 +96,20 @@ const [missing, wrong, ctor, proto, long, good] = [{}, { name: 7 }, { name: "a",
 ok("PF-28 rule pass: a missing field says it is required; a wrong type says what it must be", missing?.fields.name === "This is required." && wrong?.fields.name === "This must be text.", [missing?.fields, wrong?.fields]);
 ok("PF-28 rule fail (break m2): \"constructor\" and \"__proto__\" are refused and named, never accepted or \"0 fields\"", Object.hasOwn(ctor?.fields ?? {}, "constructor") && Object.hasOwn(proto?.fields ?? {}, "__proto__") && !/^0 fields/.test(ctor?.detail ?? "0"), [ctor?.detail, proto?.detail]);
 ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters and the value is never repeated; a good body passes", Object.keys(long?.fields ?? {}).every((k) => k.length <= 64) && !JSON.stringify(long).includes("secret value") && good === null && long?.status === 422, long?.fields);
+
+// PF-28 part 2a (batch 44935069729: check_forms_qa53, check_qa621): the local sign-in door's own gate comes before its body
+// is read. Closed (PLATFORM_IDENTITY not local, as in production) → 403 LOCAL_SIGN_IN_OFF whatever the body; open → a bad
+// body is 422 naming the field. Through the route's own controller with stand-in ports: the gate and the parse run before any query.
+{
+  const { PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
+  const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
+  const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
+  const answer = async (port: unknown, body: unknown) => { try { await new PlatformIdentityController(new PlatformIdentity(null as never, port as never, { now: () => Date.now() } as never)).local(body as never); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string; fields?: Record<string, string> } }; return { status: x.getStatus?.(), ...x.getResponse?.() }; } };
+  const closed = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, { pf28Unknown: "x" }), closedEmpty = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, {});
+  const open = await answer(new LocalIdentity("pf28-test-secret", () => Date.now()), { pf28Unknown: "x" });
+  ok("PF-28 part 2a fail (batch 44935069729): the closed local sign-in door answers 403 LOCAL_SIGN_IN_OFF before reading the body (an unknown field or {} is never a 422 there)", closed?.status === 403 && closed.code === "LOCAL_SIGN_IN_OFF" && closedEmpty?.status === 403 && closedEmpty.code === "LOCAL_SIGN_IN_OFF", [closed, closedEmpty]);
+  ok("PF-28 part 2a pass: the open door still reads its body through the one rule (an unknown field → 422 naming it)", open?.status === 422 && Object.hasOwn(open.fields ?? {}, "pf28Unknown"), open);
+}
 
 // ------------------------------------------------------------------------------------- (b) a running copy: the probes
 process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
@@ -199,8 +217,27 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const inv = answers.get("POST /api/platform/staff/invitations unknown");
-ok("PF-28 DW2 fail: POST /api/platform/staff/invitations parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", inv !== undefined && !fine("unknown", false, inv) && allow.probes["POST /api/platform/staff/invitations unknown"] === "PF-28 part 2 (platform)", inv);
+const off = answers.get("POST /api/platform/offices unknown");
+ok("PF-28 DW2 fail: POST /api/platform/offices parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/platform/offices unknown"] === "PF-28 part 2 (platform)", off);
+
+// PF-28 part 2a (identity doors: sign-in, staff, invitations, licence records): each body goes through parseInput before
+// any record is read, and a staff id is checked before the body.
+const inv = answers.get("POST /api/platform/staff/invitations unknown"), invites = () => sql(`select count(*) from platform_invitation`);
+const n0 = invites(), typo = await call("POST", "/api/platform/staff/invitations", { token: tR, body: JSON.stringify({ email: "pf28.sample@example.com", roles: ["CASE_OFFICER"], emial: "x" }) });
+ok("PF-28 part 2a fail: an invitation with a misspelt field (emial) → 422 naming it in plain words, and no invitation stored", typo.status === FIELD_ERROR_STATUS && (typo.body?.fields as Record<string, string>)?.emial === "This field is not allowed here." && /Nothing was saved/.test(String(typo.body?.detail)) && invites() === n0 && inv?.status === FIELD_ERROR_STATUS, typo.body);
+const badId = await call("POST", "/api/platform/staff/not-a-uuid/deactivate", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+const noFirm = await call("POST", "/api/platform/session/local", { body: JSON.stringify({ email: "owner@example.com", secondStep: true }) });
+ok("PF-28 part 2a fail: a malformed staff id → 404 before the body is read; a sign-in without a firm key → 422 naming firmKey", badId.status === 404 && noFirm.status === FIELD_ERROR_STATUS && (noFirm.body?.fields as Record<string, string>)?.firmKey === "This is required.", [badId.status, noFirm.body?.fields]);
+// Review of part 2a (m1-m4): a misspelt row field is flagged on its row; a body-less resend is {}; a malformed invitation id
+// is 404 before the body; an over-long sign-in code is the "used or expired" 401, not a field error.
+const nmae = await call("POST", "/api/platform/staff/invitations/batch", { token: tR, body: JSON.stringify({ rows: [{ email: "pf28.row@example.com", roles: ["CASE_OFFICER"], nmae: "Client B" }] }) });
+const rowFlags = ((nmae.body?.rows as { flags: { code: string }[] }[] | undefined)?.[0]?.flags ?? []).map((f) => f.code);
+ok("PF-28 part 2a fail (review m1): a batch row with a misspelt field (nmae) → 422 ROWS_FLAGGED with UNKNOWN_FIELD on that row, nothing stored", nmae.status === 422 && nmae.body?.code === "ROWS_FLAGGED" && rowFlags.includes("UNKNOWN_FIELD") && sql(`select count(*) from platform_invitation where email = 'pf28.row@example.com'`) === "0", nmae.body);
+const bodyless = await fetch(`${BASE}/api/platform/staff/invitations/${randomUUID()}/resend`, { method: "POST", headers: { authorization: `Bearer ${tR}` } }).then((r) => r.status);
+const badInv = await call("POST", "/api/platform/staff/invitations/not-a-uuid/resend", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2a fail (review m2, m3): a resend with no body at all reads as {} (a random id → 404, never 422); a malformed invitation id → 404 before the body", bodyless === 404 && badInv.status === 404, [bodyless, badInv.status]);
+const longCode = await call("POST", "/api/platform/session/callback", { body: JSON.stringify({ code: "c".repeat(2001) }) });
+ok("PF-28 part 2a fail (review m4): a sign-in code over 2,000 characters → 401 SIGN_IN_CODE_REFUSED (the \"used or expired\" words), not a field error", longCode.status === 401 && longCode.body?.code === "SIGN_IN_CODE_REFUSED", longCode.body);
 
 // DW3: a 1 MB string → 413 (the body limit), never 500; a 200 KB valid body on a long-text route still succeeds.
 const big = await call("POST", "/api/platform/offices", { token: tR, body: JSON.stringify({ name: MB }) });
@@ -220,10 +257,23 @@ ok(`PF-28 DW5 pass: the public doors were probed with no token (${publicKeys.len
 const form = await call("POST", "/api/public/forms/not-a-token/submissions", { body: JSON.stringify({ message: "x".repeat(33 * 1024) }) });
 ok("PF-28 DW5 fail: FO-2's 33 KB web-form body still answers FO-2's own 413 words, not the platform limit's", form.status === 413 && form.body?.code === "TOO_LARGE", form);
 
-// DW6 (AG-10-32, amendment 1): the Stripe webhook is PF-5 part 2 (#1959), not on main yet.
+// DW6 (AG-10-32, amendment 1): a signed Stripe test event verifies; a one-byte change is refused 400 with nothing stored.
+// The copy runs the fake billing (local, no key), whose signature is the fake's own (ports/billing.ts sign).
 const hook = all.some((d) => d.path === "/api/hooks/stripe");
-if (hook) ok("PF-28 DW6: /api/hooks/stripe is on main: write DW6 (signed event verifies; one byte changed → 400, nothing stored)", false);
-else console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not on main (PF-5 part 2, #1959); a signed event and a one-byte change are tested once it lands (P-405: never green)");
+if (!hook) console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not served (P-405: never green)");
+else {
+  const { fakeBilling } = await import("../ports/billing.ts");
+  const evId = `evt_pf28${Date.now()}`, ev = JSON.stringify({ id: evId, object: "event", type: "customer.subscription.updated", created: Math.floor(Date.now() / 1000), data: { object: { object: "subscription", id: "sub_pf28nobody", customer: "cus_pf28nobody", metadata: {} } } });
+  const post = async (body: string, sig: string) => { const r = await fetch(`${BASE}/api/hooks/stripe`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": sig }, body }); return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null }; };
+  const receipts = () => sql(`select count(*) from webhook_receipt where event_id like 'evt_pf28%'`);
+  const sig = fakeBilling().sign(ev), before6 = receipts();
+  const changed = await post(ev.replace('"customer.subscription.updated"', '"customer.subscription.updatee"'), sig), afterChanged = receipts();
+  const badEnvelope = ev.replace('"object":"event"', '"object":"not-event"'), afterBad0 = receipts(), bad = await post(badEnvelope, fakeBilling().sign(badEnvelope)), afterBad = receipts();
+  const signed = await post(ev, sig);
+  ok("PF-28 DW6 fail: a signed Stripe event with one byte changed is refused 400 (the signature), and nothing is stored", changed.status === 400 && changed.body?.code === "SIGNATURE" && afterChanged === before6, { changed, before6, afterChanged });
+  ok("PF-28 DW6 fail: a correctly signed body that is not an event envelope is refused 422 by the schema after the signature, and nothing is stored", bad.status === 422 && bad.body?.code === "INVALID" && afterBad === afterBad0, { bad, afterBad0, afterBad });
+  ok("PF-28 DW6 pass: the same event, as signed, verifies and is stored once (the schema runs after the signature)", signed.status === 200 && signed.body?.received === true && receipts() === String(Number(before6) + 1), { signed, receipts: receipts() });
+}
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);
