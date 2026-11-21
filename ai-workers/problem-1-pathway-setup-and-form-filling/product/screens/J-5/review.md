@@ -193,3 +193,7 @@ Verdict: Approve 6a71adf57bec32998ffca60ada390187099bbb61
 ## Re-review e0d6d891 (diff `6a71adf5..e0d6d891 -- '*.ts'`)
 `endSessions` is called only inside session `inFirm` (signOut, signOutEverywhere, resetTwoStep). Its order is firm `NO KEY UPDATE`, then person `FOR UPDATE`. A sign-in takes person `FOR UPDATE`, then firm `KEY SHARE`, which `NO KEY UPDATE` never blocks, so only the staff change waits (on the person's row) and there is no cycle; nothing takes person then firm. Terms accept now takes `NO KEY UPDATE` and still queues with the other staff changes. Both Minors from 6a71adf5 are closed; the race suite's usage line is a test-only change. No runs: nothing here gives cause to doubt your results.
 Verdict: Approve e0d6d891b4d12c40dfc4e280e340b922a20e9e39
+
+## Re-review 9c5ec72e (diff only; the merge of origin/main, a817de42 and 9c5ec72e)
+The three service files are unchanged since e0d6d891: `git diff e0d6d891 9c5ec72e` on them is empty. The builder's side of the diff is the `R1.5.md` → `J-5.md` rename (content identical) and `j_5.ts` W1 step 4. The other `MODULE.rows` files in that diff come from main through the merge. W1 step 4 now waits for `/home` (PF-18h) with a `waitForURL` that throws on timeout, then opens `/account` by its address and compares the shown name with the stored one. `landedHome` is always true once that wait has passed; the wait itself is the real check, and it fails loudly. No runs: nothing in the diff gives cause to doubt your 28/28 and the suites.
+Verdict: Approve 9c5ec72e93fc397579d9771f6c262fd713512640
