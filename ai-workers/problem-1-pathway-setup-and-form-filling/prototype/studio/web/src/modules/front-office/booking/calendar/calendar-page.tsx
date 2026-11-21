@@ -6,12 +6,13 @@
 // whose, day, host and hour are kept in the address, so Back returns to them. A person without the list key has no
 // Bookings menu and opens their own booking by its link (Q4). Every rule shown is the feed's answer (STANDARDS §7).
 import * as React from "react";
-import { NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Notice, Pill, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { Loading } from "@/modules/front-office/sales/loading";
-import { PlatformFrame, usePlatformStaff, type Area } from "@/modules/platform/frame";
+import { PlatformFrame, usePlatformStaff } from "@/modules/platform/frame";
+import { BOOKINGS_AREA } from "../area";
 import { staffApi } from "@/modules/platform/session";
 import { addDays, CREATE_KEY, dayOf, Feed, hhmm, hourOf, LIST_KEY, longWhen, MODE_WORDS, mondayOf, personOf, shortDay, STATUS, type FeedItem } from "./contract";
 import { AttendanceButtons, BookingPanel } from "./detail-panel";
@@ -19,15 +20,6 @@ import { NewBookingDialog } from "./new-booking";
 
 type View = "day" | "week" | "list";
 const HOME = "/front-office/bookings";
-const AREA: Area = {
-  label: "Bookings", home: HOME,
-  menu: (me) => me.keys.includes(LIST_KEY) ? (
-    <nav aria-label="Bookings" className="hidden w-52 shrink-0 border-r border-border bg-surface-raised p-3 md:block">
-      <p className="px-3 pb-2 text-xs font-medium text-text-muted">Bookings</p>
-      <NavLink to={HOME} end className={({ isActive }) => cn("flex min-h-9 items-center rounded-lg px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", isActive ? "bg-primary/10 font-medium text-text-link" : "text-text hover:bg-text/5")}>Calendar</NavLink>
-    </nav>
-  ) : null,
-};
 /** A real calendar date ("2027-02-30" and "2027-13-45" are not; break M1), else null. */
 const realDate = (s: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s) ? s : null);
 /** Below 768 px the week becomes a day (concept §4). */
@@ -44,7 +36,7 @@ export function useFeed(whose: "mine" | "team", from: string, to: string, enable
 
 export function BookingsPage() {
   const { id } = useParams();
-  return <PlatformFrame area={AREA} crumbs={[{ label: "Calendar", to: HOME }]}><Calendar openId={id ?? null} /></PlatformFrame>;
+  return <PlatformFrame area={BOOKINGS_AREA} crumbs={[{ label: "Calendar", to: HOME }]}><Calendar openId={id ?? null} /></PlatformFrame>;
 }
 
 function Calendar({ openId }: { openId: string | null }) {

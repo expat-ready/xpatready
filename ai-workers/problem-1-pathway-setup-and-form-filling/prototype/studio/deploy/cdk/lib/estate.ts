@@ -3,11 +3,14 @@
 // KMS key per environment, RDS PostgreSQL (the version deploy/compose.test.yml runs) with 35-day automated backups and
 // point-in-time restore (SA-2-21, SA-11-32), and three private buckets. Nothing here is deployed: there is no AWS
 // account (P-551); `cdk synth` and the assertion tests in ../test prove the template. PF-8b adds the service and its
-// secrets, PF-8c the deploy, PF-8rc the backup copy in ca-west-1.
+// secrets, PF-8c the deploy; PF-8rc's backup plan and ca-west-1 copy are in backup.ts.
 // Instance sizes are Sample (no load measured yet); ASSUMPTIONS-style values are marked Sample where they appear.
-import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
+import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_backup as backup, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
 import type { Construct } from "constructs";
+import { backupPlan } from "./backup.ts";
+import { Observability } from "./observability.ts";
 
+import { AppService } from "./service.ts"; // PF-8b
 export const HOME_REGION = "ca-central-1";
 export const BACKUP_DAYS = 35; // the RDS maximum; SA-2-21's and SA-11-32's "backups 35 days"
 export type Stage = "staging" | "production";
@@ -19,7 +22,9 @@ export class EstateStack extends Stack {
   readonly key: kms.Key;
   readonly vpc: ec2.Vpc;
   readonly database: rds.DatabaseInstance;
+  readonly service: AppService;
   readonly buckets: Record<(typeof BUCKETS)[number], s3.Bucket>;
+  readonly observability: Observability; // PF-23c: the app's log group (PF-8b's task logs here), filters and alarms
 
   constructor(scope: Construct, id: string, props: EstateProps) {
     // The region is fixed here, never taken from the caller's environment: a stray AWS_REGION cannot move the estate.
@@ -68,6 +73,11 @@ export class EstateStack extends Stack {
       copyTagsToSnapshot: true,
       autoMinorVersionUpgrade: true,
     });
+    // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts)
+    this.service = new AppService(this, "App", { stage: props.stage, vpc: this.vpc, key: this.key, database: this.database, domain: this.node.tryGetContext("xr:domain") });
+
+    // PF-23c: log group kept 90 days, metric filters and alarms to the on-call address (lib/observability.ts)
+    this.observability = new Observability(this, "Observability", { stage: props.stage });
 
     const bucket = (name: (typeof BUCKETS)[number]) => new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -78,7 +88,11 @@ export class EstateStack extends Stack {
       enforceSSL: true, // a bucket policy refusing any request without TLS
       objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
       removalPolicy: RemovalPolicy.RETAIN,
+      // PF-8rc: an overwritten or deleted file's old version is kept 35 days, then expires (the backups keep their own)
+      lifecycleRules: [{ id: "old-versions", noncurrentVersionExpiration: Duration.days(BACKUP_DAYS) }],
     });
     this.buckets = { documents: bucket("documents"), exports: bucket("exports"), imports: bucket("imports") };
+    // PF-8rc: the daily AWS Backup plan over the database and every bucket, copied to ca-west-1 (lib/backup.ts)
+    backupPlan(this, props.stage, [backup.BackupResource.fromRdsDatabaseInstance(this.database), ...Object.values(this.buckets).map((b) => backup.BackupResource.fromArn(b.bucketArn))], this.key);
   }
 }

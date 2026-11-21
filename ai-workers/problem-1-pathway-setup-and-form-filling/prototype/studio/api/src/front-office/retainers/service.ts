@@ -25,6 +25,7 @@ import { winProspect } from "../sales/prospects.ts";
 import { assertDisclosurePrinted, clearance, disclosureFor, lockParty, partyOf } from "../compliance/conflict/gate.ts";
 import { DOCX, DocxRender, STARTER_KEY, UnreadableDocx, buildStarter, placeholdersOf, renderDocx, starterFrame } from "./docx.ts";
 import { PLACEHOLDERS, WHEN_WORDS, cad, checkPlaceholders } from "./placeholders.ts";
+import { CODE_MARKED, checklistFor, draftChecklist, lettersOf, markedLetters } from "./code-checklist.ts";
 
 type Tx = Prisma.TransactionClient;
 const STUDIO = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -300,6 +301,14 @@ export class Retainers {
     return { id, ...data };
   }
 
+  /** FO-5b: the template's Code s. 24(3) checklist (its newest version): each item marked or not, never a refusal. */
+  async templateChecklist(ctx: StaffContext, id: string) {
+    if (typeof id !== "string" || !UUID.test(id)) notFound("template");
+    const t = await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id }, select: { id: true, name: true, kind: true, version: true, placeholders: true } }) ?? notFound("template");
+    // s. 24(3) is the service agreement's list: a consultation template's answer says it does not apply (review m3).
+    return { templateId: t.id, name: t.name, kind: t.kind, version: t.version, appliesTo: "RETAINER", applies: t.kind === "RETAINER", ...checklistFor(t.placeholders) };
+  }
+
   // ----------------------------------------------------------------------------------------------- retainers
   /** The signer (BR-4): the prospect's person; for Corporate, its SIGNATORY contact, else a warning and the company's other
    *  contacts to pick from (AG-5-50: never a block). A given signer must be one of those people. */
@@ -321,7 +330,8 @@ export class Retainers {
   }
 
   /** The merge values bound into a version (AG-5-3): copied, so a later change to the person never alters it. */
-  private async mergeValues(firmId: string, p: { id: string; type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[], printsDisclosure = false) {
+  private async mergeValues(firmId: string, p: { id: string; type: string; subjectPerson: Person | null; subjectCompany: { operatingName: string } | null }, signer: Person | null, repId: string, n: number, fees: FeeIn[], templatePlaceholders: readonly string[] = []) {
+    const printsDisclosure = templatePlaceholders.includes("conflict.disclosure");
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: firmId }, select: { operatingName: true } });
     const rep = await this.db.platformStaff.findFirst({ where: { firmId, id: repId }, include: { credential: true } });
     const client = p.type === "CORPORATE" ? p.subjectCompany?.operatingName ?? null : (p.subjectPerson ? nameOf(p.subjectPerson) || null : null);
@@ -340,6 +350,8 @@ export class Retainers {
       // Who signs and who represents, by id (FO-5f review M-2: a Signed offline copy of this version restores them). Not
       // placeholders: a template naming them is refused.
       [SIGNER_ID]: signer?.id ?? null, [REPRESENTATIVE_ID]: repId,
+      // FO-5b: the Code s. 24(3) items this version's template marks, kept with the version (write-once). Not a placeholder.
+      [CODE_MARKED]: markedLetters(templatePlaceholders),
     };
   }
 
@@ -387,7 +399,7 @@ export class Retainers {
     if (!reps.some((r) => r.staffId === repId)) unprocessable("The representative must be an active person with a licence and the case-manager permissions.", { representativeStaffId: "Not eligible to represent." });
     const s = this.signerFor(p, uuidOf(body.signerPersonId, "signerPersonId"));
     const fees = body.fees === undefined ? [{ label: "Deposit on signing", amountMinor: null, when: "ON_SIGNING" as const, dueOn: null }] : feesOf(body.fees);
-    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees, t.placeholders.includes("conflict.disclosure"));
+    const id = randomUUID(), values = await this.mergeValues(ctx.firmId, p, s.signer, repId!, 1, fees, t.placeholders);
     const file = await this.renderVersion(ctx.firmId, id, 1, t.fileKey, values);
     await this.tx(async (tx) => {
       await tx.foRetainer.create({ data: { id, firmId: ctx.firmId, kind, prospectId: p.id, subject: p.type === "CORPORATE" ? "COMPANY" : "PERSON", companyId: p.type === "CORPORATE" ? p.subjectCompanyId : null, signerPersonId: s.signer?.id ?? null, representativeStaffId: repId!, templateId: t.id, templateVersion: t.version, templateFileKey: t.fileKey, createdBy: `staff:${ctx.staffId}` } });
@@ -428,7 +440,8 @@ export class Retainers {
     // The prospect's header (BR-3: the retainer's representative reads it whatever the visibility setting).
     const ph = r.prospectId ? await this.db.foProspect.findFirst({ where: { firmId: ctx.firmId, id: r.prospectId }, select: { id: true, number: true, type: true, stage: { select: { label: true, kind: true } } } }) : null;
     const repOk = (await this.representatives(ctx.firmId)).some((x) => x.staffId === r.representativeStaffId);
-    const c = this.completeness(values, r.signerPersonId, await this.placeholdersMadeFrom(ctx.firmId, r, tpl), repOk);
+    const madeFrom = await this.placeholdersMadeFrom(ctx.firmId, r, tpl);
+    const c = this.completeness(values, r.signerPersonId, madeFrom, repOk);
     const signed = r.status === "SIGNED" || r.status === "SIGNED_OFFLINE";
     const filedFrom = signed ? (versions.find((v) => v.n === r.currentVersion)?.mergeValues as Record<string, unknown> | undefined)?.[COPIED_FROM] : undefined;
     return {
@@ -438,13 +451,15 @@ export class Retainers {
         fees: cur.fees.map((f) => ({ position: f.position, label: f.label, amountMinor: f.amountMinor === null ? null : f.amountMinor.toString(), currency: f.currency, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null })) },
       // break r2-m3: what blocks Send is shown only while the agreement can still be edited (never "Edit to choose another" on a signed one).
       canSend: r.status === "DRAFT" && !Object.keys(c.blockers).length, blockers: EDITABLE.includes(r.status) ? c.blockers : {}, missing: c.missing,
+      // FO-5b: one quiet line, each Code s. 24(3) item present or missing in this version's template; never a blocker.
+      codeChecklist: r.kind === "RETAINER" ? draftChecklist(lettersOf(values) ?? markedLetters(madeFrom), { id: r.templateId, version: r.templateVersion, currentVersion: tpl?.version ?? null }) : null,
       withdrawn: r.withdrawnAt ? { at: r.withdrawnAt, reason: r.withdrawnReason } : null, signedOffline: r.offlineAt ? { at: r.offlineAt, reason: r.offlineReason, filed: "Signed on paper" } : null,
       // FO-5f item 3: each version's fees (the Signed offline panel shows the chosen version's), whether it is the signed
       // one, and the version a Signed offline copy was made from.
       versions: versions.map((v) => {
         const from = (v.mergeValues as Record<string, unknown>)[COPIED_FROM], copiedFrom = typeof from === "number" ? from : null;
         return {
-          n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256, copiedFrom,
+          n: v.n, sentAt: v.sentAt, endedAt: v.endedAt, endReason: v.endReason, sha256: v.originalSha256, copiedFrom, codeMarked: lettersOf(v.mergeValues as Record<string, unknown>),
           signed: signed ? v.n === r.currentVersion : null,
           note: copiedFrom !== null ? `Copied from version ${copiedFrom}, signed on paper` : !signed || v.n === r.currentVersion ? null
             : v.n === filedFrom ? `Signed on paper; filed as version ${r.currentVersion}` : "Not signed",   // review m-2
@@ -485,9 +500,9 @@ export class Retainers {
     }
     const s = this.signerFor(p, body.signerPersonId !== undefined ? uuidOf(body.signerPersonId, "signerPersonId") : r.signerPersonId);
     const fees = body.fees !== undefined ? feesOf(body.fees) : cur.fees.map((f) => ({ label: f.label, amountMinor: f.amountMinor, when: f.when, dueOn: f.dueOn?.toISOString().slice(0, 10) ?? null }));
-    const prints = chosen ? chosen.placeholders.includes("conflict.disclosure")
-      : (await this.placeholdersMadeFrom(ctx.firmId, r, await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } }))).includes("conflict.disclosure");
-    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, prints);
+    const usedPh = chosen ? chosen.placeholders
+      : await this.placeholdersMadeFrom(ctx.firmId, r, await this.db.foRetainerTemplate.findFirst({ where: { firmId: ctx.firmId, id: r.templateId }, select: { placeholders: true, version: true } }));
+    const n = r.currentVersion + 1, values = await this.mergeValues(ctx.firmId, p, s.signer, repId, n, fees, usedPh);
     const file = await this.renderVersion(ctx.firmId, r.id, n, t.fileKey, values);
     await this.tx(async (tx) => {
       const locked = await tx.$queryRaw<{ status: string; current_version: number }[]>(Prisma.sql`select status::text, current_version from fo_retainer where firm_id = ${ctx.firmId}::uuid and id = ${r.id}::uuid for update`);
