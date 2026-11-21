@@ -96,3 +96,55 @@ PR #2717 · reviewed head **dc96c99e26a5bfbf219e13498494a64913c60e43** against o
 A real screen reader. An intended user's unaided walk (D17, D20). FO-5's retainer step (not on main). j_42 itself: I did not re-run it, because a run takes about 15 minutes of real clock and rewrites the committed screenshots in the shared copy. The builder's 29/29 log was read.
 
 **Verdict: Block** at dc96c99e26a5bfbf219e13498494a64913c60e43. Fix M1 (or get the tech lead's written acceptance on the PR), M2, M3 and M4. The minors can be fixed or listed with a follow-up.
+
+## Re-review (diff only), 21 Nov 2026, head e9c0389cb114f261552d902a0d2f68a1358fc76b
+**Scope.**
+* Read: `git diff dc96c99e..e9c0389c -- prototype` (consult-record.tsx, sales/contract.ts, lead-page.tsx, the new `tests/check_fo3st1_consult_browser.ts`, MODULE.rows/FO-3st1.md).
+* Re-ran the new check myself on a fresh copy at :4444: **21/21**, matching the builder's log. I then restored the one screenshot it rewrites.
+* Walked the fixes on the same copy (reviewer scratchpad `rv/walk3.ts`, `rv/shots/rr-saved-1440.png`). No page errors. Copy stopped.
+
+**My Majors**
+* **M1: fixed.**
+  * consult-record.tsx:83-96 reads the lead once, only while there is no record, through the lead page's own query key and parser.
+  * It pre-fills "Interested in" as one removable item, trimmed the way the route's Item is. A lead the viewer may not read leaves the list empty.
+  * Walked: "Sample: Express Entry assessment" pre-filled; removed by keyboard.
+  * Test C1 pass.
+* **M2: fixed.** Each rule has a pass and a fail case:
+  * J-S5 pass/fail and Read-only (C1);
+  * J-S6 and decimal-comma fees (C2);
+  * field issues (C3);
+  * J-S7 Engage cancelled, prospect and case (C4);
+  * J-S8 (C5);
+  * stale save and Reload (C6);
+  * `?engage=1` for Read-only, a closed lead and the host (C7).
+  * Removing the No-show branch, the `can(me, KEY.edit)` check or the pre-fill now fails C5, C7 and C1.
+* **M3: fixed.**
+  * `problemOf` keeps `issues` (additive; other callers ignore it). `errorsOf` puts each issue at its field: notes, recommended.N as "Item n: …", minutes, fee, currency.
+  * Walked: a 10,001-character note → "at most 10,000 characters" at Notes; C3 checks U+0001 at Notes with `aria-invalid`.
+  * Its side point is not fixed: :76 and :107 still work out `bookedMinutes` from the feed (now m-b below). Same value as the route. Not blocking.
+* **M4: fixed.** Next step is outline (:246), so Save record is the panel's one primary (`rr-saved-1440.png`). C4 checks it.
+
+**My minors**
+* m1 fixed: a typed item is saved with the rest. Walked: "Typed not added" was stored.
+* m2 fixed: focus goes to the item input after a removal, and the × has a tooltip.
+* m3 fixed: the fee words give the limit.
+* m4 fixed: the fee is shown grouped (en-CA).
+* Breaker M1 fixed: the fee regex reads a comma only as a thousands mark.
+* Breaker M2 fixed: `?engage=1` says why the panel did not open (lead-page.tsx:100).
+
+**Open minors.** Fix later or list with a follow-up.
+* m-a **Unsaved edits are dropped by Next step without a warning.** The builder lists this one. *Fix:* disable Next step while the form has changes, or ask first.
+* m-b **The booked length is worked out in the browser** (:76, :107), although the 404 carries it. *Fix:* `problemOf` can keep `bookedMinutes` the same way it now keeps `issues`.
+* m-c **The route's issue words reach the field as lowercase fragments with no fix** ("no control characters", "at most 10,000 characters"). EXPERIENCE §2.10 asks for the fix. *Fix:* word them as sentences in the route (for example "Remove the special characters pasted with the text."), or map them in the form.
+* m-d **"Interested in" is pre-filled only for a booking on a lead,** not for one on a prospect, whose lead has it too. *Fix:* read the prospect's lead.
+* m-e Also open: Engage on an ENGAGED lead (the panel warns), and the declared Close lead and retainer questions on the PR, which the tech lead still needs to answer.
+
+**Journey score now 9.5/10.**
+* 1 each for task, words, feedback, data, recovery, accessibility, speed, visual and trust.
+* ½ for next step obvious: m-a, and the "prepare retainer" step is not there yet (declared).
+
+**D16 is now 4.** A new suite with 21 named pass and fail cases, re-run by the reviewer. j_42 was not re-run by me.
+
+**Open:** no Blocker and no Major.
+
+**Verdict: Approve** at e9c0389cb114f261552d902a0d2f68a1358fc76b.
