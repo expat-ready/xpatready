@@ -51,6 +51,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
               <Pill tone={s.tone} title={s.tip}><span data-retainer-status>{s.label}</span></Pill>
               <span className="text-text-muted">Version {live.currentVersion}</span>
               {live.status === "SENT" || live.status === "VIEWED" ? <span data-waiting>Waiting for {name} to sign.</span> : null}
+              {live.status === "DRAFT" && live.currentVersion > 1 && live.sentBefore ? <span data-not-sent className="text-text-warn">Version {live.currentVersion} is not sent yet: {name} cannot sign until it is.</span> : null}
               <Link to={`/front-office/retainers/${live.id}`} className="font-medium text-text-link hover:underline">{live.status === "DRAFT" && can(me, R_KEY.draft) ? "Continue the draft" : "Open the retainer"}</Link>
             </div>
           ) : (
@@ -65,7 +66,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
         <form onSubmit={submit} className="flex flex-col gap-4">
           {error && !error.field ? <Notice tone="danger" title={error.text} /> : null}
           {noReps ? <Notice tone="warn" title="No active licensed consultant — add one." >A retainer names a licensed representative. Ask your firm's Owner or Admin to add one in Team.</Notice> : null}
-          {noTemplates ? <Notice tone="warn" title="No active retainer template yet.">Ask your firm's Owner or Admin to upload the firm's retainer template.</Notice> : null}
+          {noTemplates ? <Notice tone="warn" title="No active retainer template yet.">{can(me, "agent/retainer:configure-template") ? <Link to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Upload one in Settings › Retainer templates</Link> : "Ask your firm's Owner or Admin to upload the firm's retainer template."}</Notice> : null}
           <Field label="Template" error={error?.field === "templateId" ? error.text : null}>
             <Select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setError(null); }}>
               <option value="">{templates.isPending ? "Loading…" : "Choose a template"}</option>
