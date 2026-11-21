@@ -2,13 +2,14 @@
 
 current_lead: local_1cd4840f-cfa2-4ad6-b9e1-9ab5a6116cdc Lead 16 · 21 Nov 18:0x IST (series 3; took over from Lead 15 (series 3, local_666bcb32) at ~416k, P-446)
 
-updated: 2026-11-21 18:2x IST: Lead 16 (series 3) current since 18:04 IST (check 37f0a5a9) · milestone: Release 1 proven 38 of 101 on main (+6 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 19:2x IST: Lead 16 (series 3) current since 18:04 IST (check 37f0a5a9) · milestone: Release 1 proven 38 of 101 on main (+6 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
 
 ## Lead 16 since 18:04 IST (newest first)
+* 19:0x-19:2x **Founder on Mac (A273): walk every lane, unblock.** Lead 18 standby started (local_bdef7c01). **#2349 R1.3** labelled (Lead read ea7953468, rounds 3+4 allowed). **#2814 R1.4 merged** → Q6 told to prove now (main-head pack + re-run); QA-641-643 one deploy follow-up row + QA-645 tooling row owed. **#2763 R1.90**: lane corrected (not labelled, #1959 not merged): merge main, re-review, Lead reads migration. **#2809** requeued (R1.30 suite race). New cloud lane **fix-r130-flake** (task_040ea99f). App view 19:1x: 70 rows, awaiting input only R1.3 (done) + Clean-up stage 1 (held, P-734).
 * 18:3x **Full report (A272).** Unblocked **#2834** PF-8b F3 (pr-rules red: no "Done when"; Lead added it from its Checks, accepted the absent-keeps-domain departure; pr-rules green 13:09Z). #2826 (R1.53 p2) + #2827 (F2b) merged: R1.53 re-proof asked on #2797. Queue: #2458, #2814 in batches; #2818, #1959, #2809 queued. Lead 18 standby start refused (Remote Control): founder to start it in the desktop app.
 * 18:2x **Proven 6/15 (38/101): R1.14 #2804 merged** (fresh Opus diff-only Approve a8f0ac8). **#2830 R1.47:** fresh Opus reviewer Request changes (pack run only on queue commit ca0db960a, no re-run on main); Q4 started nightly 44906078657 on main 4353a7e8b, cites it then asks re-review.
 
@@ -29,11 +30,9 @@ Word for word in `product/history/STATE-2026-11-21-1835-lead16s3-lead15-since-fi
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A273 | 21 Nov 19:0x (typed, Mac): be extra diligent, walk claude.ai + GitHub in the browser, nobody waits on the Lead, explain phases/focus/waves, ask for resources | Walk + unblocks 19:1x; phases in chat |
 | A272 | 21 Nov 18:3x (typed): keep checking every angle, unblock stuck queues intelligently, full pipeline status | Full report 18:3x; #2834 unblocked |
-| A271 | 21 Nov 17:2x (typed): plan an account switch (not a reset) at ~95% or before he sleeps; keep everything synced and resumable as we go | RESUME-ON-NEW-ACCOUNT.md switch block written 17:2x; kept current each check |
-| A270 | 21 Nov 17:1x (typed): calm plan; commit to first 8 or 10; slow what should slow, fast-track what matters | Commitment line in Lead 15 block |
-| A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
-| A268 | 21 Nov 16:3x (typed): full lead-watch, walk every lane, Show more, nobody waits on the Lead | Walk done 16:4x; report sent |
+| A268-A271 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1925-lead16s3-asks-A268-A272.md` (account switch plan, commitment 8/10/13, recovery, full walk) | |
 | A265-A267 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1730-lead15s3-asks-A265-A267.md` (domain parked, AWS case, SHARDS) | |
 | A242-A264 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1655-lead15s3-asks-A242-A264.md` (pointers inside lead to older files) | |
 
