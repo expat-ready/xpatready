@@ -6,17 +6,19 @@
 // Done when (CAPABILITIES R1.19, QA-483's wording): self-serve sign-up makes exactly one firm with plan, trial end and
 // one Owner; the same verified email again is refused in words; firm, subscription and Owner stored as entered, with
 // audit lines.
-//   W1 (screens): Pricing → Start free trial on a plan → Sign up (plan line carried) → Check your email → the link from
+//   W1 (screens): Pricing → Yearly → Start free trial on a plan → Sign up (plan line carried) → Check your email → the link from
 //       the inbox → Confirm my email: the firm key is shown.
 //   W2 (underneath): exactly one firm for that email, as typed (name, country), one Owner (ACTIVE, role OWNER), one
 //       TRIAL subscription on the chosen plan and period, trial end = confirmation time + the plan's trial days (± 2 min),
 //       and the audit lines firm.created, platform.staff.owner_created, platform.terms.accepted,
-//       platform.subscription.created (its after-value carries the same trial end).
+//       platform.subscription.created (its after-values carry the plan, the period chosen (Yearly) and the same trial end).
+//       The period has no column on platform_subscription (it goes to Stripe as the price at Checkout); the audit line is
+//       where this copy keeps it, so a dropped or swapped period fails here (fresh reader, 21 Nov).
 //   W3 (once): signing up again with the same, now verified, email answers the same "check your email" (no account
 //       enumeration) and the person's inbox gets "You already have an ExpatReady account"; no second pending sign-up,
 //       no second firm. A Confirm link used twice makes no second firm.
-//   W4 (trial, on screen): the Owner signs in with the firm key; the billing read shows the plan, TRIAL and the stored
-//       trial end (US$0: Stripe is not set up on the copy, so Stripe's own trial end, card and Checkout are not shown).
+//   W4 (trial): the Owner signs in on screen with the firm key; the billing read (GET /api/platform/billing, by API with
+//       the Owner's session; no billing screen is in Release 1's parts here) shows the plan, TRIAL and the stored trial end (US$0: Stripe is not set up on the copy, so Stripe's own trial end, card and Checkout are not shown).
 //   W5: the walk ends at R1.5's first step: Team → Invite people opens the invite form for the new firm's Owner.
 // Fails on the fake (P-606): each W2 judge is read before Confirm (no firm, no subscription, no audit line), and the W3
 // inbox is read before the second sign-up (no "already" mail).
@@ -60,11 +62,13 @@ try {
   const trialDays = Number(sql(`select trial_days from platform_plan where code = '${plan}'`));
   ok(`R1.19 W1: Pricing lists the active plans; the chosen plan '${plan}' has a trial (${trialDays} days)`, plans.length > 0 && trialDays > 0, plans);
   await shot(p, "w1-pricing-1440");
+  await p.getByRole("radio", { name: "Yearly" }).check({ force: true });
   await p.locator(`[data-start="${plan}"]`).click();
   await p.locator("[data-signup]").waitFor({ timeout: 20_000 });
   const planLine = (await p.locator("[data-signup-plan-line]").innerText()).toLowerCase();
   ok("R1.19 W1: Start free trial opens Sign up with that plan carried", planLine.includes(plan), planLine);
-  const period = planLine.includes("yearly") ? "YEARLY" : "MONTHLY";
+  const period = "YEARLY";
+  ok("R1.19 W1: the period chosen on Pricing (Yearly) is carried to Sign up", planLine.includes("yearly"), planLine);
   await p.getByLabel("Work email").fill(email); await p.getByLabel("Password").fill("Correct-horse-9!"); await p.getByLabel("Firm name").fill(firmName);
   await p.locator("[data-signup-agree]").check();
   await wait(3300);   // the door's minimum fill time is 3 s; a person takes longer
@@ -95,15 +99,15 @@ try {
     sql(`select operating_name || ' | ' || country_code || ' | ' || status from platform_firm where key = '${firmKey}'`));
   ok("R1.19 W2: exactly one Owner, active, with the email as typed", sql(`select count(*) from platform_staff where firm_id = ${F}`) === "1" && sql(`select count(*) from platform_staff where firm_id = ${F} and email = '${email}' and status = 'ACTIVE'`) === "1" && sql(`select string_agg(g.role::text, ',') from platform_role_grant g join platform_staff s on s.id = g.staff_id where g.firm_id = ${F} and g.ended_at is null and s.email = '${email}'`) === "OWNER",
     sql(`select string_agg(s.email || ':' || s.status || ':' || g.role::text, ',') from platform_staff s left join platform_role_grant g on g.staff_id = s.id and g.ended_at is null where s.firm_id = ${F}`));
-  ok(`R1.19 W2: exactly one subscription, TRIAL on '${plan}', ${period.toLowerCase()}`, sql(`select count(*) from platform_subscription where firm_id = ${F}`) === "1" && sql(`select s.status || ':' || p.code from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = ${F}`) === `TRIAL:${plan}`,
+  ok(`R1.19 W2: exactly one subscription, TRIAL on '${plan}'`, sql(`select count(*) from platform_subscription where firm_id = ${F}`) === "1" && sql(`select s.status || ':' || p.code from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = ${F}`) === `TRIAL:${plan}`,
     sql(`select s.status || ':' || p.code from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = ${F}`));
   const trialEnd = sql(`select coalesce((extract(epoch from trial_ends_at) * 1000)::bigint::text, '') from platform_subscription where firm_id = ${F}`);
   const expected = confirmedAt + trialDays * 86_400_000;
   ok(`R1.19 W2 (PF-5 part 2): the trial end is stored: confirmation + ${trialDays} days (± 2 min)`, !!trialEnd && Math.abs(Number(trialEnd) - expected) < 120_000, { trialEnd: trialEnd ? new Date(Number(trialEnd)).toISOString() : null, expected: new Date(expected).toISOString() });
   const actions = sql(`select string_agg(action, ',' order by action) from audit_event where firm_id = ${F} and action in ('firm.created','platform.staff.owner_created','platform.terms.accepted','platform.subscription.created')`);
   ok("R1.19 W2: one audit line each: firm.created, platform.staff.owner_created, platform.terms.accepted, platform.subscription.created", actions === "firm.created,platform.staff.owner_created,platform.subscription.created,platform.terms.accepted", actions);
-  const subAfter = sql(`select coalesce(detail->>'trialEndsAt_after', '') || '|' || coalesce(detail->>'plan_after', '') from audit_event where firm_id = ${F} and action = 'platform.subscription.created'`);
-  ok("R1.19 W2: the subscription's audit line carries the plan and the same trial end", !!trialEnd && subAfter === `${new Date(Number(trialEnd)).toISOString()}|${plan}`, subAfter);
+  const subAfter = sql(`select coalesce(detail->>'trialEndsAt_after', '') || '|' || coalesce(detail->>'plan_after', '') || '|' || coalesce(detail->>'period_after', '') from audit_event where firm_id = ${F} and action = 'platform.subscription.created'`);
+  ok("R1.19 W2: the subscription's audit line carries the plan, the period chosen (YEARLY) and the same trial end", !!trialEnd && subAfter === `${new Date(Number(trialEnd)).toISOString()}|${plan}|${period}`, subAfter);
 
   // ------------------------------------------------------------------------------------------ W3: the same email again
   const again = await j("POST", `/api/public/signup/verify`, { token: link.match(/token=([A-Za-z0-9_-]{43})/)?.[1], code: link.match(/code=(\d{6})/)?.[1] });
