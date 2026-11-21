@@ -12,8 +12,7 @@ export const ScheduleId = z.string().regex(/^sub_sched_[A-Za-z0-9]{1,200}$/, "a 
 export const PlanSubscription = z.strictObject({
   id: SubscriptionId, itemId: ItemId, priceId: PriceId, interval: z.enum(["month", "year"]), unitAmount: z.number().int().min(0),
   status: z.enum(STRIPE_STATUSES), periodEnd: z.date().nullable(), trialEnd: z.date().nullable(), scheduleId: ScheduleId.nullable(),
-  /** The price a schedule moves to at a phase still ahead; null when none is ahead (no schedule, or one left in its last
-   *  phase after it applied, which Stripe keeps attached until that phase ends: review R2-M2). */
+  /** The price of a schedule phase still ahead; null if none (no schedule, or one left in its last phase: review R2-M2). */
   pendingPriceId: PriceId.nullable(),
 });
 export type PlanSubscription = z.infer<typeof PlanSubscription>;
@@ -28,8 +27,7 @@ export type ChangePreview = z.infer<typeof ChangePreview>;
 export const RenewalChange = z.strictObject({ subscriptionId: SubscriptionId, priceId: PriceId });
 export const IdempotencyKey = z.string().regex(/^[A-Za-z0-9:_-]{8,255}$/, "an idempotency key");
 
-/** Stripe refused the payment (a card error): nothing was charged and the subscription did not change. Any other failure
- *  may or may not have reached Stripe, so the caller reads Stripe again before saying anything about money. */
+/** A card error: nothing charged or changed. Any other failure may have reached Stripe: the caller reads Stripe back. */
 export class PaymentDeclined extends Error { constructor() { super("the payment was declined"); this.name = "PaymentDeclined"; } }
 
 export interface PlanChangePort {
