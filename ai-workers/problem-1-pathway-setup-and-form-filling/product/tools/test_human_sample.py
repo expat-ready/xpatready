@@ -10,6 +10,16 @@ spec = importlib.util.spec_from_file_location("hs", os.path.join(HERE, "human-sa
 hs = importlib.util.module_from_spec(spec); spec.loader.exec_module(hs)
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def write(f, text):
+    with open(f, "w", encoding="utf-8") as h:
+        h.write(text)
+
+
+def read(f):
+    with open(f, encoding="utf-8") as h:
+        return h.read()
 I = lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=IST)
 ROW = lambda r, st: f"+| {r} | {r[3:]} Thing {r[3:]} | Platform | {st} | x 1 Nov | — | Done when for {r} | note |"
 LOG = "\n".join([
@@ -102,6 +112,28 @@ class Answered(Base):
         self.assertIn("not aligned: R1.5", lines[1])
         self.assertEqual(self.run_check("2026-11-24 09:00", self.NO, status={"R1_5": "Partial"})[0][0][:3], "hum")   # reopened: the ACT stops
 
+    def test_a_no_stops_once_the_row_is_re_proven_after_the_answer(self):
+        log = LOG + "\n@@C e 2026-11-24T00:00:00+00:00\n" + ROW("R1.5", "Partial") + "\n@@C f 2026-11-25T00:00:00+00:00\n" + ROW("R1.5", "Works")
+        self.proven = hs.proven_since(log)   # reopened 24 Nov, Works again 25 Nov, after the 23 Nov "no"
+        lines, _ = self.run_check("2026-11-26 09:00", self.NO)
+        self.assertFalse([l for l in lines if "reopen" in l])
+
+    def test_answer_lines_parse_lowercase_rows_and_bullets(self):
+        a = hs.read_asks(ASKED + "answer: r1.4 YES (2026-11-23 12:00 IST)\n- answer: R1.5 no (2026-11-23 12:01 IST) — x\n")[-1]["answers"]
+        self.assertEqual(sorted((r, v[0]) for r, v in a.items()), [("R1.4", "yes"), ("R1.5", "no")])
+
+    def test_rows_proven_since_the_last_ask_count_as_new(self):
+        # Ask on 30 Nov; the last ask was 19 Nov. R1.4 (Proven 20 Nov) is new since then; R1.5 was asked; R1.2/R1.3 (18 Nov) are older.
+        self.assertEqual(hs.pick(self.proven, {"R1.5"}, I("2026-11-30 10:00"), "s", since=I("2026-11-19 10:05"))[1], 1)
+        self.assertIn("R1.4", hs.pick(self.proven, {"R1.5"}, I("2026-11-30 10:00"), "s", since=I("2026-11-19 10:05"))[0])
+        self.assertEqual(hs.pick(self.proven, {"R1.5"}, I("2026-11-30 10:00"), "s")[1], 0)   # a rolling 7 days would miss R1.4
+
+    def test_nothing_left_to_sample_is_a_quiet_line(self):
+        every = "".join(ASKED.replace("2026-11-23 10:05", f"2026-11-{d} 10:05").replace("R1.4", r1).replace("R1.5", r2) + f"answer: {r1} yes (2026-11-{d} 12:00 IST)\nanswer: {r2} yes (2026-11-{d} 12:00 IST)\n"
+                        for d, r1, r2 in (("10", "R1.1", "R1.2"), ("16", "R1.3", "R1.4"), ("17", "R1.5", "R1.5")))
+        lines, new = self.run_check("2026-11-30 10:00", every)
+        self.assertIsNone(new); self.assertTrue(lines[0].startswith("warn  human sample due, but no Proven row is left"))
+
     def test_next_monday_ten_ist_is_due_again(self):
         self.assertEqual(len(self.run_check("2026-11-30 09:59", self.YES)[0]), 1)
         lines, new = self.run_check("2026-11-30 10:00", self.YES)
@@ -116,16 +148,16 @@ class Answered(Base):
 
 class Cli(Base):
     def test_answer_appends_a_line_and_refuses_a_row_not_asked(self):
-        d = tempfile.mkdtemp(); f = os.path.join(d, "hs.md"); open(f, "w").write(ASKED)
+        d = tempfile.mkdtemp(); f = os.path.join(d, "hs.md"); write(f, ASKED)
         tool = [sys.executable, "-I", os.path.join(HERE, "human-sample.py")]
-        r = subprocess.run(tool + ["answer", "R1.5", "no", "filter", "missing", "--file", f, "--now", "2026-11-23T08:00:00Z"], capture_output=True, text=True)
+        r = subprocess.run(tool + ["answer", "R1.5", "no", "filter", "missing", "--file", f, "--now", "2026-11-23T08:00:00"], capture_output=True, text=True)   # no zone = UTC
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(open(f).read().endswith("answer: R1.5 no (2026-11-23 13:30 IST) — filter missing\n"))
+        self.assertTrue(read(f).endswith("answer: R1.5 no (2026-11-23 13:30 IST) — filter missing\n"))
         self.assertNotEqual(subprocess.run(tool + ["answer", "R1.9", "yes", "--file", f], capture_output=True, text=True).returncode, 0)
 
     def test_check_exit_code_counts_act_lines(self):
         d = tempfile.mkdtemp(); f, lg, cp = (os.path.join(d, x) for x in ("hs.md", "log", "caps"))
-        open(f, "w").write(ASKED); open(lg, "w").write(LOG); open(cp, "w").write(caps())
+        write(f, ASKED); write(lg, LOG); write(cp, caps())
         r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "human-sample.py"), "check", "--file", f, "--caps-log", lg, "--caps", cp,
                             "--journeys", self.j, "--now", "2026-11-30T04:35:00Z"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)   # due + Needs you

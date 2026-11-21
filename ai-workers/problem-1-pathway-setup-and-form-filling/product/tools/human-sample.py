@@ -30,7 +30,7 @@ WEEK = timedelta(days=7)
 ROW = re.compile(r"^\+\| (R1\.\d+) \|[^|]*\|[^|]*\| ([^|]+?) \|")
 LINE = re.compile(r"^\| (R1\.\d+) \| ([^|]*)\|[^|]*\| ([^|]+?) \|[^|]*\|[^|]*\| ([^|]*)\|")
 ASK = re.compile(r"^## Ask (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) IST")
-ANSWER = re.compile(r"^answer: (R1\.\d+) (yes|no)\b(?: \((\d{4}-\d{2}-\d{2} \d{2}:\d{2}) IST\))?(.*)$", re.I)
+ANSWER = re.compile(r"^(?:[-*]\s+)?answer: (R1\.\d+) (yes|no)\b(?: \((\d{4}-\d{2}-\d{2} \d{2}:\d{2}) IST\))?(.*)$", re.I)
 HEAD = ("# Human sample: the founder walks 2 newly Proven capabilities a week (P-782 (1))\n\n"
         "Written by `tools/human-sample.py` (lead-watch.sh). The Lead records the founder's answer for each row under its ask with "
         "`python3 -I product/tools/human-sample.py answer R1.n yes|no \"note\"` and commits. A \"no\" reopens the row as Partial "
@@ -97,7 +97,7 @@ def read_asks(text):
             continue
         a = ANSWER.match(line.strip())
         if a:
-            asks[-1]["answers"][a.group(1)] = (a.group(2).lower(), parse_ist(a.group(3)) if a.group(3) else None, a.group(4).strip(" —-"))
+            asks[-1]["answers"][a.group(1).upper()] = (a.group(2).lower(), parse_ist(a.group(3)) if a.group(3) else None, a.group(4).strip(" —-"))
             continue
         r = re.match(r"^\| (R1\.\d+)\b", line)
         if r and r.group(1) not in asks[-1]["rows"]:
@@ -110,8 +110,10 @@ def monday_10(now):
     return (d - timedelta(days=d.weekday())).replace(hour=10, minute=0, second=0, microsecond=0)
 
 
-def pick(proven, asked, now, seed):
-    fresh = sorted(r for r, t in proven.items() if now - WEEK <= t <= now and r not in asked)
+def pick(proven, asked, now, seed, since=None):
+    # "newly Proven that week": since the last ask (or 7 days, whichever reaches further back), never asked before
+    lo = min(now - WEEK, since) if since else now - WEEK
+    fresh = sorted(r for r, t in proven.items() if lo <= t <= now and r not in asked)
     rnd = random.Random(seed)
     got = rnd.sample(fresh, 2) if len(fresh) > 2 else fresh
     older = sorted((r for r in proven if r not in asked and r not in got and proven[r] <= now), key=lambda r: proven[r], reverse=True)
@@ -120,7 +122,7 @@ def pick(proven, asked, now, seed):
 
 def ask_block(now, picked, info, jdir, n_fresh):
     out = [f"\n## Ask {ist(now)} IST", "",
-           f"Rows Proven on main in the 7 days to this ask: {n_fresh} of 2 picked from them" + ("" if n_fresh == 2 else "; the rest are the most recently Proven rows not asked before") + ".",
+           f"Rows newly Proven on main (since the last ask, at least 7 days back): {n_fresh} of 2 picked from them" + ("" if n_fresh == 2 else "; the rest are the most recently Proven rows not asked before") + ".",
            "Walk each on the demo like a person; is everything aligned with what the row promises?", "",
            "| Row | On the demo (:4400) | What to look for | Aligned? |", "|---|---|---|---|"]
     for r in picked:
@@ -134,9 +136,9 @@ def ask_block(now, picked, info, jdir, n_fresh):
 def check(now, text, proven, info, jdir, write):
     """→ (lines, new_text or None)."""
     lines, asks = [], read_asks(text)
-    for a in asks:   # a "no" stays an ACT until main no longer says Works
-        for r, (ans, _, note) in a["answers"].items():
-            if ans == "no" and info.get(r, (None, None))[1] == "Works":
+    for a in asks:   # a "no" stays an ACT while main says Works from before the answer (re-proven after it: done)
+        for r, (ans, at, note) in a["answers"].items():
+            if ans == "no" and info.get(r, (None, None))[1] == "Works" and (r not in proven or proven[r] <= (at or a["at"])):
                 lines.append(f"ACT   reopen {r} as Partial and log a qa bug (founder said not aligned on the {ist(a['at'])[:10]} human sample{': ' + note if note else ''}; P-782 (1))")
     last = asks[-1] if asks else None
     if last and any(r not in last["answers"] for r in last["rows"]):
@@ -153,12 +155,12 @@ def check(now, text, proven, info, jdir, write):
         lines.append(f"human sample answered for the {ist(last['at'])[:10]} ask: " + (f"not aligned: {', '.join(nos)}" if nos else "all aligned") + f"; next due {ist(monday_10(now) + WEEK)} IST")
         return lines, None
     asked = {r for a in asks for r in a["rows"]}
-    picked, n_fresh = pick(proven, asked, now, ist(now)[:10])
+    picked, n_fresh = pick(proven, asked, now, ist(now)[:10], last["at"] if last else None)
     if not picked:
-        lines.append("ACT   founder: human sample due, but no Proven row is left to sample (qa/CAPABILITIES.md on main)")
+        lines.append("warn  human sample due, but no Proven row is left to sample (every Works row on main was asked before); nothing written")
         return lines, None
     new = (text if text.strip() else HEAD) + ask_block(now, picked, info, jdir, n_fresh)
-    lines.append(f"ACT   founder: human sample due ({', '.join(picked)}; written to product/qa/human-sample.md{'' if write else ' (not written: --no-write)'}: commit it, then ask the founder, card and push)")
+    lines.append(f"ACT   founder: human sample due ({', '.join(picked)}; written to product/qa/human-sample.md{'' if write else ' (not written: --no-write)'}: commit and push it now so no other copy writes a second ask, then ask the founder, card and push)")
     return lines, new
 
 
@@ -181,6 +183,8 @@ def main():
     ap.add_argument("--caps-log"); ap.add_argument("--caps"); ap.add_argument("--no-write", action="store_true")
     a = ap.parse_args()
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)   # a --now with no zone is UTC
     text = open(a.file, encoding="utf-8").read() if os.path.exists(a.file) else ""
     if a.cmd == "answer":
         if len(a.args) < 2 or a.args[1].lower() not in ("yes", "no") or not re.fullmatch(r"R1\.\d+", a.args[0]):
