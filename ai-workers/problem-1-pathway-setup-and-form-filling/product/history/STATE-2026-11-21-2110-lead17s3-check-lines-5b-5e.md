@@ -40,3 +40,7 @@
 ## Moved at 02:0x IST 22 Nov
 (5o) **01:2x:** #2787 PF-28 2a merged. #2871 queued. #2870 (R1.19 PF-5 p3): round 2 approved, wider suite run 42 min in; lane context 73% → told to finish #2870 only and stop (P-565). #2687 full run 44941497054 **failed on its own change**: check_pf28_inputs (2 public booking doors now reachable via the Sample type; msg_consent_wording 0→1 on a probe) → DEMO-LINK lane fixing; Lead re-reviews independently after.
 (5p) **01:4x: #2870 (R1.19 PF-5 p3) ready; Lead read f14b0a07** (column + backfill, Checkout uses stored period); label when ci green → merge → qa Q9 flips #2857 to Works (→ 11/15).
+
+## Moved at 02:3x IST 22 Nov
+(5q) **01:5x:** #2870 labelled + queued. #2871 merged (QA-703 closed in code). #2687 fix 06baf4dd2 (pf28 allow-list, booking-seed) → independent diff-only Opus **Approve** posted (7068801379), round 7 allowed, /run full started; label when green.
+(5r) **02:0x:** #2860 proof-route fixes: type fix ef448c1e (walk-plan.d.mts) approved, ci/types green, Lead read, **labelled**. #2870 R1.19 queued. #2687 full run going.
