@@ -2,10 +2,17 @@
 
 current_lead: local_c09f305e-9ffc-4d7f-96fb-51841affa27d Lead 14 · 21 Nov 12:40 IST (series 3; took over from Lead 13 (series 3, local_369dd389) at ~360k, P-446)
 
-updated: 2026-11-21 12:40 IST: Lead 13 handed over to Lead 14 (series 3). Earlier: Lead 13 (A251-A255: lanes, CI-SPEED-1/2/3, qa Q5/Q6, AWS credit) · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check 9fdbbd40). Earlier: Lead 13 handed over at 12:40 · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
 
 
 
+
+
+## Lead 14 since 12:44 IST (newest first)
+* 13:2x: **walks** j_108 j_49 j_5 run 1 = actions run 44881942787 (dispatched in the browser; the shell's dispatch was refused); run 2 = re-run all jobs on it when attempt 1 ends, then post on #2706 #2762 #2765. **#2687** dequeued (shards 18, 4: axe contrast on FO-3st3 panel, target-size on PF-18h Home; hypothesis: its seeds) → Lead B (11) owns the fix and a green full run first (P-731). #2607 dirty (tooling-2 lane).
+* 13:1x rulings: #2349 R1.3 Partial when it merges (CS-W2, CS-W3 rest, CS-W4 missing; no proof) · #2619 R1.10 Partial, parts missing PF-28 parts 2-6 → **records owed: BACKLOG rows PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273** · #2762 R1.5: Deactivate covers "removed"; QA-622 belongs to the Q2 row (linked open Major on R1.5).
+* 13:0x **AWS (A256):** founder yes to enabling ca-west-1 (free account setting) for R1.14 part 2's copy vault; RDS point-in-time drill PASS (845 s, ≤4 min 21 s lost; S3 version restore PASS), evidence on #2638 comment 7059421511; spend ~US$1, credit-covered.
+* 12:4x-13:1x labelled after P-423 reads: #2603 E2, #2738 ENF-782a p1, #2741 ENF-782b p1, #2746 ENF-782a p2, #2749 ENF-783a (round 3 allowed), #2756 CI-SPEED-3, #2757 CI-SPEED-2 (**set SHARDS=24 when it merges**), #2744 ENF-783b (body "Done when" fixed). #2754 CI-SPEED-1: draft, no Approve on head yet.
 
 
 ## Hand-over Lead 13 → Lead 14 (series 3), 12:40 IST 21 Nov (read this first; Lead 13 at ~360k, P-446)
@@ -14,8 +21,7 @@ updated: 2026-11-21 12:40 IST: Lead 13 handed over to Lead 14 (series 3). Earlie
 (1) **Constraint (measured 12:3x):** 10 of the last 20 merge batches failed (50%, CI-SPEED-3 #2756), not machines (74 jobs at once at 12:10). qa proof is the stage behind it: 6 qa lanes (cloud): Q1 R1.32 then R1.10 · Q3 R1.5 (claude/qa-r15), R1.108 re-score (#2706), R1.49 · Q4 R1.53, R1.47, R1.19 · Q5 R1.10, R1.42 · Q6 ready: R1.3, R1.4, R1.13/24/5, R1.90 · Q2 free. Keep one ready qa lane ahead (A255).
 (2) **Questions open at 12:39 (answer first):** #2603 (E2, its rescue lane), #2749 (ENF-783a round 2), plus re-flags on #2757 #2756 #2754 #2752 #2633 (answered 12:3x: 2757 accept 24 parts ~21 min; 2756 merge both, retries count; 2754 Mergify valid at 12; 2752 Lead B read done, labels on green; 2633 requeued).
 (3) **Lead to do:** label #2754 (CI-SPEED-1), #2756 (CI-SPEED-3), #2757 (CI-SPEED-2), #2741/#2744/#2746/#2738/#2749 (ENF-782/783) after each exact-head Approve + green, with the P-423 read; set repo variable SHARDS=24 when #2757 merges; row CI-SPEED-4 (48 parts). Rescue lanes running (cloud): E2 #2603; tooling #2595 #2431 #2434 #2445; tooling-2 #2599 #2590. #2610 #2458 #2461 labelled by Lead 13. #2742 records labelled.
-(4) **Rulings in force (12:0x-12:3x):** #2748 PF-8b keeps main's 4 CDK flags (row PF-8c-flags before production), staging refuses live Stripe keys, no aws/cdk account command from cloud lanes; PF-16 lane builds PF-15 part 1b first (migration, Lead reads); R1.14/15 backups governance mode (compliance = production decision with the founder); B164 `code` exemption on #2720 OK (full run posted); #1959 R1.19 two Lead reads done.
-(5) **AWS (local_35aacb3f):** xr-staging up, R1.14 part 1 PASSED (evidence #2638 comment 7058691108); kept until proofs end or the founder says; Activate Founders credit US$1,000 active, unused, to 30 Nov 2028; spend line 08:53 IST daily (one-offs in that session); send "go" when the ca-west-1 drill can run. Cloud env check: no AWS variable in our 3 environments (platform-set); founder kept the Anthropic key in "Default Xpat Cloud Environment".
+(4)-(5) Rulings in force 12:0x-12:3x (PF-8b flags, staging refuses live Stripe, no aws/cdk from cloud lanes, PF-16 builds PF-15 1b first, backups governance mode, #2720 B164 exemption, #1959 reads) and the AWS line: word for word in `product/history/STATE-2026-11-21-1325-lead14s3-handover-13-14-items-4-5.md`.
 (6) **Lead B (11)** (local_3a725fd1) holds PF/FO rows: R1.42 #2717 (label on green), #2727 red, #2750 draft; R1.4 #2752. **Weekly plan 64% at 12:29, ~4%/h**: 95% ~20:15 IST, then account switch (P-458, RESUME-ON-NEW-ACCOUNT.md). Desk 08 (local_01915f6f) still owed the founder's words "I'm okay with it, but you have to enforce this as a code".
 
 
@@ -23,6 +29,7 @@ updated: 2026-11-21 12:40 IST: Lead 13 handed over to Lead 14 (series 3). Earlie
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A256 | 21 Nov ~13:0x (answered my question): enable AWS region ca-west-1 for the R1.14 backup copy | Yes; sent to the AWS session 13:0x; deploy from #2725's merge 191d1d8d2 |
 | A255 | 21 Nov ~12:32 (typed): if proving is the constraint, why not more qa lanes; what limits it (tokens, load, other); industry practice; be proactive, never wait an hour | qa Q5 (R1.10, R1.42; task_3c69d860) and Q6 (ready proofer: R1.3, R1.4, R1.13/24/5, R1.90; task_f4454f0b) started ahead of merges; rule kept: one ready qa lane ahead. Measured: 10 of last 20 batches failed (50%, CI-SPEED-3), the real merge constraint |
 | A254 | 21 Nov ~12:15 (typed): why only 6 batches at once, drawbacks of more, two levels by situation, industry standard; improve speed and quality, never break the pipeline | Answered in chat: 12 via CI-SPEED-1, two levels by measured failed-batch rate (over 20% of the last 20 batches drops to 6, under 10% back to 12); owed row CI-SPEED-3: lead-watch ACT line on that rate |
 | A252-A253 | 21 Nov ~12:00-12:10 | word for word in `product/history/STATE-2026-11-21-1235-lead13s3-A252-A253.md` |
