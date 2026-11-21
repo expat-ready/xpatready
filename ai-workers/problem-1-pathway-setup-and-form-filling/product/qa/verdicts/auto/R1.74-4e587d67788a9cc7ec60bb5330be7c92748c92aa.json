@@ -1,0 +1,39 @@
+{
+  "item": "R1.74",
+  "name": "74 Government deadlines that remind; working days with holidays",
+  "pr": 2677,
+  "sha": "4e587d67788a9cc7ec60bb5330be7c92748c92aa",
+  "run_id": "44856642317",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44856642317",
+  "at": "2026-11-21T02:41:45.696Z",
+  "overall": "FAIL",
+  "why": [
+    "C6.17: not tested (ran on its own fixture only, not on the demo data (Not tested, P-405))"
+  ],
+  "suites": [
+    {
+      "kind": "pack",
+      "name": "C6.17",
+      "result": "not tested",
+      "exit": 0,
+      "note": "ran on its own fixture only, not on the demo data (Not tested, P-405)"
+    },
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_74.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": null,
+  "trace": "https://github.com/expat-ready/xpatready/actions/runs/44856642317/artifacts/14687887589",
+  "file": "product/qa/verdicts/auto/R1.74-4e587d67788a9cc7ec60bb5330be7c92748c92aa.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
