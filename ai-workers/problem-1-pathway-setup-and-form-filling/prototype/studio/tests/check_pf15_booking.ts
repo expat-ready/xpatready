@@ -105,7 +105,7 @@ try {
   const LOW = sql(`insert into platform_plan (id, code, name, seats_limit) values (gen_random_uuid(), 'pf15b-low', 'Low (Sample)', ${u0}) returning id`).split("\n")[0];
   sql(`insert into platform_plan_limit (plan_id, metric, limit_value) values ('${LOW}', 'ACTIVE_INDIVIDUAL_CASES', 2), ('${LOW}', 'ACTIVE_CORPORATE_CASES', 10)`);
   const limitA = async (m: "seats" | "active_individual_cases" | "active_corporate_cases" | "storage_mb") => (await new PgEntitlements(db, () => clock.now()).limitOf(FIRM_A, m)).limit;
-  const teamCases = await limitA("active_individual_cases"), teamCorp = await limitA("active_corporate_cases");
+  const teamCases = await limitA("active_individual_cases"), teamCorp = await limitA("active_corporate_cases"), teamStorage = await limitA("storage_mb");
 
   // ------------------------------------------------------------------------------------- DW3: refused, then booked
   addInvites(5);
@@ -150,7 +150,7 @@ try {
   const inv4b = await invite();
   ok("PF-15 DW4 pass: withdrawn → the same invitation is allowed again (201), the limits are the firm's own plan's", w.toPlan === "pf15b-low" && inv4b.status === 201 && (await limitA("seats")) === u0 + 7 && (await limitA("active_individual_cases")) === teamCases && lines("plan.change.withdrawn") === 1, inv4b);
   ok("PF-15 pass (review m4): the booking's after and the withdrawal's before are the same shape (plan, bookedPlan, effectiveAt)", sql(`select string_agg(action || '=' || coalesce(detail->>'bookedPlan_after', detail->>'bookedPlan_before', '-'), ',' order by at) from audit_event where action in ('plan.change.booked', 'plan.change.withdrawn') and detail->>'firmId' = '${FIRM_A}'`) === "plan.change.booked=pf15b-low,plan.change.withdrawn=pf15b-low");
-  ok("PF-15 fail (breaker: a withdrawn booking still lowering a limit): no limit reads the withdrawn target; withdrawing again → 404", (await limitA("storage_mb")) > 0 && (await problemOf(() => withdraw()))?.status === 404);
+  ok("PF-15 fail (breaker: a withdrawn booking still lowering a limit): no limit reads the withdrawn target (storage is the firm's own plan's again, not the target's 0); withdrawing again → 404", teamStorage !== null && teamStorage > 0 && (await limitA("storage_mb")) === teamStorage && (await problemOf(() => withdraw()))?.status === 404, { teamStorage });
   ok("PF-15 fail (records): a booking is never deleted, never re-opened, never changed in its plan or date", refused(`delete from platform_subscription_change`, /never removed/)
     && refused(`update platform_subscription_change set withdrawn_at = null`, /only an open booking/) && refused(`update platform_subscription_change set effective_at = now() + interval '1 year'`, /only an open booking/));
   clearInvites();
