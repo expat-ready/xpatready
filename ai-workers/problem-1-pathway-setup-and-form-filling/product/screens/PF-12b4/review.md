@@ -77,3 +77,19 @@ I am a fresh session that did not build this row. Postgres was on :54329. The is
 **Verdict: Approve deb5389090c1cac4eaabd17cd70791b794e85581.** No Blocker or Major is open. m1 to m3 are recommended in the next push, or can be recorded for later.
 
 Reviewer: Approve deb5389090c1cac4eaabd17cd70791b794e85581
+
+## Re-review: 6d3471166f67b7d3605e1582e47a9a3b0d69d149 (diff `deb53890..6d347116` only)
+What changed: f9df4575 adds the breaker's report (records only). 6d347116 changes a comment, the tests, one `why` string and the MODULE card, and commits my two reports unchanged (both byte-identical to what I wrote). No behaviour change: the sweep's code at `send/messages.ts:316-332` is the same as at deb53890.
+- **m1 (and the breaker's m1): closed.** The comment (`messages.ts:313-316`) now says the line is written when the read picks a due row; a picked row whose hour key is already used is still lined ("added, never missed"). The test title says "picking and queuing", and MODULE.md says "when its read picks one due". These now describe the code.
+- **m2: closed.** The PF-12b4 pass (test:380) now asserts `platJobs.length === 1` and `typeof workspaceId === "string"` itself. The `firmId === undefined` check stays, but it no longer carries the meaning.
+- **m3: closed.** The PF-12b1m title says "(its firm-less line: PF-12b4 below)".
+- **m4: closed.** `firm-scope.ts:115`'s `why` names "the firm-less PLATFORM_ACCOUNT rows due a retry (PF-19p; their firm-less line: PF-12b part 4)".
+
+Runs at 6d347116 (a scratch worktree, since removed):
+- `check_pf12b_bypass_audit` **70/0**.
+- Mutation A again (line removed at `:326`): **68/2**. The PF-12b4 pass (now also via its own job assertion) and the PF-12b4 fail both go red.
+- `typecheck.mjs` in that worktree: 8 "new" errors, all `ajv` and `@anthropic-ai/sdk` imports not found under `prototype/p2` and `contracts/portal-capture.ts`. The cause is my scratch worktree, which linked only the studio's node_modules. None is in a touched file, and at deb53890 in the shared tree it was PASS.
+
+Still open: none from this review. The correlation-id note stays for qa (not this row). Lead 16 should still confirm the "picks" reading (now stated in the code and the MODULE card) against "each firm-less read".
+
+Verdict: Approve 6d3471166f67b7d3605e1582e47a9a3b0d69d149
