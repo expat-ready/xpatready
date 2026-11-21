@@ -121,13 +121,7 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
 # merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
 # pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
-# check_fo3st3_types_browser.ts (FO-3st3 booking types, screens) held 21 Nov by the founder's standing exception (13:5x IST,
-# "break rules that are non-destructive"; Lead 14): since #2718 it failed both tries in two unrelated merge batches
-# (#2687's, run 44877065003 shard 18; draft #2766 with #2619, job 136773685790 shard 1): axe "color-contrast:
-# button[type=submit]" at 375 px, and on the 2nd try "break M1 fail". 8 of the last 16 batches failed (50%). The nightly
-# full set still runs it. The fix lane ("FO-3st3 suite red on main: fix (R1.42)") fixes the cause and removes this hold in
-# the same PR; R1.42 is not proven while it is held.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts check_fo3st3_types_browser.ts"
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
@@ -225,7 +219,7 @@ if [ "$SHARDS" -gt 1 ] || [ "$LIST" = 1 ]; then
   RT0="$S/tests/runtime"; [ -n "${SUITES_TESTS_DIR:-}" ] && RT0=/nonexistent
   [ -f "$RT0/check_case_engine.ts" ] && picked check_case_engine.ts && units+=(check_case_engine.ts)
   [ -f "$RT0/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked check_runtime_r1c.cjs || picked check_runtime_r1d.ts; } && units+=(check_runtime_r1a.ts)
-  for t in check_p2_guard check_p2_launch; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
+  for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && units+=("$t.ts"); done
   TURN=${#units[@]}
   MINE=" $(printf '%s\n' "${units[@]}" | awk -v n="$SHARDS" -v me="$SHARD" -v q="$QW" -v tf="$P/product/tools/suite-times.tsv" '
     BEGIN { while ((getline l < tf) > 0) { if (l ~ /^#/) continue; split(l, a, "\t"); t[a[1]] = a[2] } }
@@ -403,7 +397,7 @@ if [ -f "$RT/check_runtime_r1a.ts" ] && { picked check_runtime_r1a.ts || picked 
   else rows+=("| check_runtime_r1a.ts | FAIL | | isolated copy runtime_r1 or setup_visitor_visa.ts failed (see setup_visitor_visa.log) |"); fail=1; fi
   zsh "$S/tools/isolated.sh" "$RN" "$RP" stop >/dev/null 2>&1
 fi
-for t in check_p2_guard check_p2_launch; do
+for t in check_p2_guard check_p2_launch check_p2_shared_ledger; do
   [ -z "${SUITES_TESTS_DIR:-}" ] && [ -f "$P/prototype/tests/$t.ts" ] && picked "$t.ts" && myturn "$t.ts" && run "$t.ts" plain "$S/node_modules/.bin/tsx" "$P/prototype/tests/$t.ts"
 done
 # Every unit dealt to this shard leaves a row: ran, quarantined or skipped (#1660, 12 Nov). One that left none is a

@@ -1,6 +1,7 @@
 // PF-8b's checks over a synthesized template: pure functions returning plain-words findings (empty = pass), run on the
 // real stacks (must pass) and on broken copies (must fail) by test/service.test.ts, as PF-8a's checks.ts does.
 import type { Template } from "./checks.ts";
+import { CERT_ARN_PATTERN } from "./service.ts";
 
 type Res = { Type: string; Properties?: Record<string, unknown> };
 /** A nested template value by path (unknown when any step is missing). */
@@ -251,5 +252,70 @@ export function poolFindings(t: Template, stage: string): string[] {
   const svc = taskDefinitions(t).service, poolEnv = svc && env(containers(svc[1])[0]).get("PLATFORM_COGNITO_USER_POOL_ID");
   const staffPool = pools.find(([, p]) => String(p.Properties?.UserPoolName) === `xr-${stage}-staff`)?.[0];
   if (!staffPool || refId(poolEnv) !== staffPool) out.push(`the service signs staff in against ${json(poolEnv)}, not the staff pool (break m2)`);
+  return out;
+}
+
+/** PF-8b F1 (AWS preflight, 21 Nov): the service's and the migration's containers each send their output with the awslogs
+ *  driver to this stack's app log group (`/xr/<stage>/app`, PF-23c), in this stack's region, so R1.13's alarms and R1.15's
+ *  log checks see the app's lines. No driver, another driver or another group is a finding. */
+export function logFindings(t: Template, stage: string, region = "ca-central-1"): string[] {
+  const groups = all(t, "AWS::Logs::LogGroup").filter(([, r]) => g(r, "Properties", "LogGroupName") === `/xr/${stage}/app`).map(([id]) => id);
+  const { service, migration } = taskDefinitions(t), out: string[] = [];
+  if (groups.length !== 1) out.push(`${groups.length} log groups named /xr/${stage}/app, not one`);
+  for (const [what, td] of [["service", service], ["migration", migration]] as const) {
+    if (!td) { out.push(`no ${what} task definition`); continue; }
+    for (const c of containers(td[1])) {
+      const lc = g(c, "LogConfiguration");
+      if (g(lc, "LogDriver") !== "awslogs") out.push(`${what}/${c.Name}: log driver ${json(g(lc, "LogDriver"))}, not awslogs`);
+      else if (refId(g(lc, "Options", "awslogs-group")) !== groups[0] || groups.length !== 1) out.push(`${what}/${c.Name}: logs to ${json(g(lc, "Options", "awslogs-group"))}, not /xr/${stage}/app`);
+      else if (g(lc, "Options", "awslogs-region") !== region) out.push(`${what}/${c.Name}: logs in ${json(g(lc, "Options", "awslogs-region"))}, not ${region}`);
+    }
+  }
+  // and the log actions CDK grants the execution roles name that one group's ARN and nothing else (review m1: the
+  // bypass check only holds them to some resource of this stack)
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) for (const st of arr(g(r, "Properties", "PolicyDocument", "Statement"))) {
+    const acts = arr(g(st, "Action")).concat(typeof g(st, "Action") === "string" ? [g(st, "Action")] : []);
+    if (!acts.some((a) => typeof a === "string" && a.startsWith("logs:"))) continue;
+    const res = g(st, "Resource"), want = json({ "Fn::GetAtt": [groups[0], "Arn"] });
+    if (groups.length !== 1 || json(res) !== want) out.push(`${id}: allows ${acts.filter((a) => String(a).startsWith("logs:")).join(", ")} on ${json(res).slice(0, 80)}, not the /xr/${stage}/app group's ARN alone`);
+  }
+  return out;
+}
+
+/** PF-8b F2b: the service's task tells the app which domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX), and it is
+ *  exactly this stack's domain: the hosted zone's name and the wildcard certificate's base, so the host the load balancer
+ *  is reached by is the host the app reads a firm from. */
+export function addressSuffixFindings(t: Template, domain: string): string[] {
+  const { service } = taskDefinitions(t);
+  if (!service) return ["no task definition run by the service"];
+  const v = env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX"), out: string[] = [];
+  if (v !== domain) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not this stack's domain "${domain}"`);
+  if (!all(t, "AWS::Route53::HostedZone").some(([, z]) => z.Properties?.Name === `${v}.`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} is no hosted zone of this stack`);
+  if (!all(t, "AWS::CertificateManager::Certificate").some(([, c]) => c.Properties?.DomainName === `*.${v}`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} has no wildcard certificate in this stack`);
+  return out;
+}
+
+/** PF-8b F3, no-domain mode (`-c xr:domain=none`, staging only): no hosted zone, DNS record, ACM-issued certificate or SES
+ *  identity, and no SES grant; every HTTPS listener serves the one imported certificate (xr:certArn, an ACM ARN in
+ *  ca-central-1, written into the template; no parameter); the app's PLATFORM_ADDRESS_SUFFIX is the load balancer's AWS name, and the load
+ *  balancer's fixed name is lower case (the loader refuses capitals). */
+export function noDomainFindings(t: Template): string[] {
+  const out: string[] = [];
+  for (const type of ["AWS::Route53::HostedZone", "AWS::Route53::RecordSet", "AWS::CertificateManager::Certificate", "AWS::SES::EmailIdentity"])
+    for (const [id] of all(t, type)) out.push(`${id}: ${type} in no-domain mode`);
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) if (json(g(r, "Properties", "PolicyDocument")).includes('"ses:')) out.push(`${id}: an SES grant in no-domain mode`);
+  const https = all(t, "AWS::ElasticLoadBalancingV2::Listener").filter(([, l]) => l.Properties?.Protocol === "HTTPS");
+  if (!https.length) out.push("no HTTPS listener");
+  for (const [id, l] of https) {
+    const certs = arr(l.Properties?.Certificates), arn = g(certs[0], "CertificateArn");
+    if (certs.length !== 1 || typeof arn !== "string" || !CERT_ARN_PATTERN.test(arn)) out.push(`${id}: serves ${json(l.Properties?.Certificates)}, not one imported ACM certificate in ca-central-1`);
+  }
+  // port 80 still answers only with the HTTPS redirect (break 5: the listener sits beside the early return)
+  const http = all(t, "AWS::ElasticLoadBalancingV2::Listener").filter(([, l]) => l.Properties?.Port === 80);
+  if (http.length !== 1 || g(arr(http[0][1].Properties?.DefaultActions)[0], "RedirectConfig", "Protocol") !== "HTTPS") out.push("port 80 does not redirect to HTTPS");
+  const lbs = all(t, "AWS::ElasticLoadBalancingV2::LoadBalancer"), { service } = taskDefinitions(t);
+  const v = service ? env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX") : undefined;
+  if (lbs.length !== 1 || json(v) !== json({ "Fn::GetAtt": [lbs[0][0], "DNSName"] })) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not the load balancer's AWS name`);
+  for (const [id, lb] of lbs) if (typeof lb.Properties?.Name !== "string" || !/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(lb.Properties.Name as string)) out.push(`${id}: name ${json(lb.Properties?.Name)} is not fixed lower case`);
   return out;
 }
