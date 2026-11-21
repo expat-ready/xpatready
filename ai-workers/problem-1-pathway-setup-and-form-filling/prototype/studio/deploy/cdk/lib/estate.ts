@@ -73,11 +73,12 @@ export class EstateStack extends Stack {
       copyTagsToSnapshot: true,
       autoMinorVersionUpgrade: true,
     });
-    // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts)
-    this.service = new AppService(this, "App", { stage: props.stage, vpc: this.vpc, key: this.key, database: this.database, domain: this.node.tryGetContext("xr:domain") });
-
-    // PF-23c: log group kept 90 days, metric filters and alarms to the on-call address (lib/observability.ts)
+    // PF-23c: log group kept 90 days, metric filters and alarms to the on-call address (lib/observability.ts). Built
+    // before the app service, whose containers log to its group (PF-8b F1).
     this.observability = new Observability(this, "Observability", { stage: props.stage });
+
+    // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts)
+    this.service = new AppService(this, "App", { stage: props.stage, vpc: this.vpc, key: this.key, database: this.database, domain: this.node.tryGetContext("xr:domain"), appLogs: this.observability.appLogs });
 
     const bucket = (name: (typeof BUCKETS)[number]) => new s3.Bucket(this, `${name[0].toUpperCase()}${name.slice(1)}Bucket`, {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,

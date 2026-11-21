@@ -9,7 +9,7 @@ import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { REGION_ALLOW, bypassFindings, regionFindings, resourcePolicyFindings, type Template } from "../lib/checks.ts";
 import { DEFAULT_DOMAIN } from "../lib/service.ts";
-import { exposureFindings, imageFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
+import { exposureFindings, imageFindings, listenerFindings, loaderSettings, logFindings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SETTINGS = loaderSettings(readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8"));
@@ -39,6 +39,7 @@ for (const s of real) {
   test(`PF-8b pass (${s.name}): SES signs with DKIM, SPF on the MAIL FROM domain, DMARC published`, () => assert.deepEqual(mailFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): three separate Cognito pools, staff pools with required two-step`, () => assert.deepEqual(poolFindings(s.template, stage), []));
   test(`PF-8b pass (${s.name}): every container runs this stack's repository by digest, never a tag; two task definitions`, () => assert.deepEqual(imageFindings(s.template), []));
+  test(`PF-8b F1 pass (${s.name}): the service's and the migration's containers log with awslogs to /xr/${stage}/app`, () => assert.deepEqual(logFindings(s.template, stage), []));
 }
 
 const t0 = real.find((s) => s.name === "xr-production")!.template;
@@ -272,4 +273,19 @@ test("PF-8b's widening of PF-8rc's guards stays narrow: actions per service, \"*
     st.push({ ...grant, Principal: { ...(grant.Principal as object), Service: "s3.amazonaws.com" } }); // an extra principal key
   }));
   assert.equal(k.length, 4, k.join("\n"));
+});
+
+test("PF-8b F1 fail: a container with no log driver, another driver, another group or another region is caught", () => {
+  const t = clone(t0); const { service, migration } = taskDefinitions(t);
+  type L = { LogConfiguration?: { LogDriver: string; Options: Record<string, unknown> } };
+  const svc = (service![1].Properties!.ContainerDefinitions as L[])[0], mig = (migration![1].Properties!.ContainerDefinitions as L[])[0];
+  delete svc.LogConfiguration;                                           // main b04f84f1e: logs nowhere
+  mig.LogConfiguration!.Options["awslogs-group"] = "/some/other/group";
+  assert.deepEqual(logFindings(t, "production"), ["service/studio: log driver null, not awslogs", 'migration/migrate: logs to "/some/other/group", not /xr/production/app']);
+  const t2 = clone(t0); const { service: s2, migration: m2 } = taskDefinitions(t2);
+  (s2![1].Properties!.ContainerDefinitions as L[])[0].LogConfiguration!.LogDriver = "json-file";
+  (m2![1].Properties!.ContainerDefinitions as L[])[0].LogConfiguration!.Options["awslogs-region"] = "us-east-1";
+  assert.deepEqual(logFindings(t2, "production"), ['service/studio: log driver "json-file", not awslogs', 'migration/migrate: logs in "us-east-1", not ca-central-1']);
+  const wrong = logFindings(t0, "staging");                              // the production group is not staging's
+  assert.equal(wrong[0], "0 log groups named /xr/staging/app, not one"); assert.equal(wrong.length, 3, wrong.join("\n"));
 });
