@@ -221,7 +221,7 @@ try {
   await pa.route(isList, async (r) => { if (r.request().method() === "GET") await new Promise((res) => setTimeout(res, 1_000)); await r.fallback().catch(() => undefined); });
   await pa.getByRole("button", { name: "Save type" }).click();
   await panel(pa).waitFor({ state: "detached", timeout: 15_000 });
-  await row(pa, SETNAME).waitFor({ timeout: 15_000 }).catch(() => undefined);   // the list's reload lands, then the screen is read
+  await row(pa, SETNAME).waitFor({ timeout: 15_000 });   // the list's reload lands, then the screen is read
   const warned = await pa.locator("[data-booking-types]").innerText();
   ok("FO-3st3 break M1 fail: a set of hours that fails after the type saved is said in words (the type is saved; the set was not) and the list shows the type",
     warned.includes(`Added ${SETNAME}.`) && warned.includes(`The set of hours for ${F.displayName} was not saved`) && (await row(pa, SETNAME).count()) === 1, warned.slice(0, 400));
