@@ -270,5 +270,13 @@ export function logFindings(t: Template, stage: string, region = "ca-central-1")
       else if (g(lc, "Options", "awslogs-region") !== region) out.push(`${what}/${c.Name}: logs in ${json(g(lc, "Options", "awslogs-region"))}, not ${region}`);
     }
   }
+  // and the log actions CDK grants the execution roles name that one group's ARN and nothing else (review m1: the
+  // bypass check only holds them to some resource of this stack)
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) for (const st of arr(g(r, "Properties", "PolicyDocument", "Statement"))) {
+    const acts = arr(g(st, "Action")).concat(typeof g(st, "Action") === "string" ? [g(st, "Action")] : []);
+    if (!acts.some((a) => typeof a === "string" && a.startsWith("logs:"))) continue;
+    const res = g(st, "Resource"), want = json({ "Fn::GetAtt": [groups[0], "Arn"] });
+    if (groups.length !== 1 || json(res) !== want) out.push(`${id}: allows ${acts.filter((a) => String(a).startsWith("logs:")).join(", ")} on ${json(res).slice(0, 80)}, not the /xr/${stage}/app group's ARN alone`);
+  }
   return out;
 }

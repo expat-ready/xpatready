@@ -337,8 +337,8 @@ export function backupFindings(home: SynthStack, stacks: SynthStack[]): string[]
  *  reviewed PR). Today: AWS Backup's role reading the data key. PF-8b adds the service's own actions. */
 export const ROLE_ACTIONS = ["kms:Decrypt"];
 /** PF-8b: the actions a role trusted by ECS tasks may allow, and nothing else: pull its image, read its own secrets and
- *  write its containers' lines to the app log group (the execution role; PF-8b F1, on that group's ARN only: the
- *  resource rule below), send mail (the task role). A role trusted by AWS Backup keeps ROLE_ACTIONS only. */
+ *  write its containers' lines to the app log group (the execution role; PF-8b F1; held to that group's ARN alone by
+ *  service-checks.ts logFindings), send mail (the task role). A role trusted by AWS Backup keeps ROLE_ACTIONS only. */
 export const ECS_EXEC_ACTIONS = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:GetAuthorizationToken", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "logs:CreateLogStream", "logs:PutLogEvents"];
 export const ECS_TASK_ACTIONS = ["ses:SendEmail", "ses:SendRawEmail"]; // an execution role pulls and reads; a task role only sends (review r1)
 const SERVICE_ACTIONS: Record<string, string[]> = { "backup.amazonaws.com": ROLE_ACTIONS, "ecs-tasks.amazonaws.com": [] };

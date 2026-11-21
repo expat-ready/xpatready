@@ -286,6 +286,12 @@ test("PF-8b F1 fail: a container with no log driver, another driver, another gro
   (s2![1].Properties!.ContainerDefinitions as L[])[0].LogConfiguration!.LogDriver = "json-file";
   (m2![1].Properties!.ContainerDefinitions as L[])[0].LogConfiguration!.Options["awslogs-region"] = "us-east-1";
   assert.deepEqual(logFindings(t2, "production"), ['service/studio: log driver "json-file", not awslogs', 'migration/migrate: logs in "us-east-1", not ca-central-1']);
-  const wrong = logFindings(t0, "staging");                              // the production group is not staging's
-  assert.equal(wrong[0], "0 log groups named /xr/staging/app, not one"); assert.equal(wrong.length, 3, wrong.join("\n"));
+  const t3 = clone(t0);                                                  // review m1: a log grant on another resource
+  const pols = of(t3, "AWS::IAM::Policy").map(([, r]) => r.Properties!.PolicyDocument as { Statement: { Action: unknown; Resource: unknown }[] });
+  const logSt = pols.flatMap((d) => d.Statement).filter((x) => JSON.stringify(x.Action).includes("logs:"));
+  assert.equal(logSt.length, 2); logSt[0].Resource = "*"; logSt[1].Resource = { "Fn::GetAtt": [of(t3, "AWS::S3::Bucket")[0][0], "Arn"] };
+  const m1 = logFindings(t3, "production");
+  assert.equal(m1.length, 2, m1.join("\n")); assert.ok(m1.every((l) => / allows logs:CreateLogStream, logs:PutLogEvents on .*, not the \/xr\/production\/app group's ARN alone$/.test(l)), m1.join("\n"));
+  const wrong = logFindings(t0, "staging");                              // the production group is not staging's (2 containers, 2 grants)
+  assert.equal(wrong[0], "0 log groups named /xr/staging/app, not one"); assert.equal(wrong.length, 5, wrong.join("\n"));
 });
