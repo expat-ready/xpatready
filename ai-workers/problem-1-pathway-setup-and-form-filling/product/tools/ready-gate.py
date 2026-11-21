@@ -13,7 +13,13 @@ item-proof.yml uses), the PR fails unless
           "map row <n>"); "FO-3a parts 2a and 2b" means FO-3a2a and FO-3a2b; a (parenthesis) is a note;
         * the acceptance packs (C ids) and studio/tests suites its qa/CAPABILITIES.md row names (item-proof.mjs plan,
           the plan item-proof.yml proves at the merge): each must exist on main or in this PR.
-      "Merged" = a "Merge pull request #N" commit on main whose PR title names the id ("FO-13s part 2" names FO-13s2).
+      "Merged" = a "Merge pull request #N" commit on main whose PR title leads with the id: the first " — " segment of
+      the title that names an id ("migration — runtime: FO-3a part 2a — the consult record" leads with FO-3a2a;
+      "FO-13s part 2" is FO-13s2). Records, lead and qa PRs (title "records:", "lead:", "qa:") never count: a concept or
+      brief is not the part (review M2). "This PR" = this PR's title leads with the id, read the same way. A part merged
+      under a title that does not lead with it is named in the body, one line each: "Part FO-3st3 merged in #2650"; the
+      gate checks that #2650's merge is on main and prints the line (review m1).
+      The item's own J-row part (J-<n> of its journey) counts when the journey file exists.
   (2) its journey tests/journeys/j_<n>.ts (item-proof.mjs journeyOf, so R1.40 -> j_38.ts) exists on main or in this
       PR (the run checks out GitHub's merge of the PR into main, so both count).
 An item already Works on CAPABILITIES.md is a fix re-proof: checked the same way. An item with no focus-list line and no
@@ -44,6 +50,8 @@ REPORT_HOURS = 2
 _spec = importlib.util.spec_from_file_location("waves", os.path.join(HERE, "waves.py"))
 waves = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(waves)
 ROW = waves.ROW
+OVERRIDE = re.compile(r"^[\s>*-]*Part\s+(" + ROW.pattern + r")\s+merged in\s+#([0-9]{1,7})\b", re.M)
+NOT_A_PART = re.compile(r"^\s*(records|lead|qa)\s*:", re.I)
 PARTS = re.compile(r"(" + ROW.pattern + r")\s+parts?\s+([0-9][0-9a-z-]*(?:\s*(?:,|and|&)\s*[0-9][0-9a-z-]*)*)")
 MAP_ROW = re.compile(r"map rows? ([0-9]+(?:\s*(?:,|and)\s*[0-9]+)*)")
 
@@ -62,6 +70,17 @@ def ids(text, expand_only=False):
         if not (expand_only and r in whole):
             out.add(r)
     return out
+
+
+def leading(title):
+    """The ids a PR title leads with: its first " — " (or " - ") segment that names one; nothing for records, lead, qa."""
+    if NOT_A_PART.match(title or ""):
+        return set()
+    for seg in re.split(r"\s+[—–]\s+|\s+-\s+", title or ""):
+        got = ids(seg)
+        if got:
+            return got
+    return set()
 
 
 def jrow_parts():
@@ -86,21 +105,23 @@ def jrow_parts():
 
 
 def merged_titles(base):
-    """{id: [PR numbers]} from main's "Merge pull request #N" commits: the ids their PR titles name."""
+    """{id: [PR numbers]} from main's "Merge pull request #N" commits (the PR title is the message's next line), and
+    the set of every PR number merged so."""
     try:
         out = subprocess.run(["git", "-C", ROOT, "log", base, "--merges", "--format=%x1e%B"], capture_output=True,
                              text=True, check=True).stdout
     except (subprocess.CalledProcessError, OSError) as e:
         print(f"ready-gate: cannot read main's history at {base}: {getattr(e, 'stderr', e)}"); sys.exit(2)
-    got = {}
+    got, prs = {}, set()
     for msg in out.split("\x1e"):
         lines = msg.strip().split("\n")
         mm = re.match(r"Merge pull request #([0-9]+) from ", lines[0]) if lines else None
         if not mm:
             continue
-        for r in ids(" ".join(lines[1:])):
+        prs.add(int(mm.group(1)))
+        for r in leading(next((l for l in lines[1:] if l.strip()), "")):
             got.setdefault(r, []).append(int(mm.group(1)))
-    return got
+    return got, prs
 
 
 def node(*args, stdin=None):
@@ -114,7 +135,8 @@ def mode(base):
         return m, f"READY_GATE={m}"
     now = datetime.fromisoformat(os.environ["READY_NOW"].replace("Z", "+00:00")) if os.environ.get("READY_NOW") \
         else datetime.now(timezone.utc)
-    p = subprocess.run(["git", "-C", ROOT, "log", base, "--diff-filter=A", "--format=%cI", "--", SELF],
+    # --first-parent -m: the date main took the file (its merge commit), never the branch commit's own date (review M1)
+    p = subprocess.run(["git", "-C", ROOT, "log", base, "--first-parent", "-m", "--diff-filter=A", "--format=%cI", "--", SELF],
                        capture_output=True, text=True)
     first = [l for l in p.stdout.split("\n") if l.strip()]
     if p.returncode or not first:
@@ -143,7 +165,10 @@ def main():
     for r, its in waves.focus_rows().items():
         for i in its:
             focus.setdefault(i, set()).add(r)
-    jparts, merged, mine = jrow_parts(), merged_titles(base), ids(title)
+    (merged, prs), jparts, mine = merged_titles(base), jrow_parts(), leading(title)
+    said = {}
+    for r, n in OVERRIDE.findall(body):
+        said[r] = int(n)
     missing_all = 0
     for item in items:
         rc, out, err = node("plan", item, "--caps", CAPS, "--studio", STUDIO)
@@ -152,6 +177,8 @@ def main():
         except ValueError:
             print(f"FAIL  {item}: item-proof.mjs plan failed: {err.strip()}"); missing_all += 1; continue
         parts = sorted(focus.get(item, set()) | jparts.get(item, set()))
+        jm = re.search(r"j_([0-9]+)\.ts$", pl.get("journey") or "")
+        jid = f"J-{jm.group(1)}" if jm else None   # the J-row part is the journey file itself
         miss = []
         if not focus.get(item) and not jparts.get(item):
             print(f"::warning title=ready-gate {item}::{item} has no line in focus-list.md and no J-row with \"Parts it joins:\" "
@@ -161,10 +188,14 @@ def main():
                 print(f"ok    {item}: part {p} is this PR")
             elif p in merged:
                 print(f"ok    {item}: part {p} merged in #{max(merged[p])}")
+            elif p == jid and pl.get("journeyExists"):
+                print(f"ok    {item}: part {p} is its journey {pl.get('journey')}, on main or in this PR")
+            elif p in said and said[p] in prs:
+                print(f"ok    {item}: part {p} merged in #{said[p]} (the body says so; #{said[p]}'s merge is on main)")
             else:
                 src = " and ".join(s for s, d in (("focus-list.md", focus), ("its J-row", jparts)) if p in d.get(item, set()))
                 miss.append(f"part {p} (listed in {src}) has not merged on main and is not this PR (no merged PR title names it; "
-                            f"if this PR is that part, name {p} in its title)")
+                            f"if this PR is that part, lead its title with {p}; if a PR merged it under another name, add a line \"Part {p} merged in #<n>\")")
         for c in pl.get("packsMissing", []):
             miss.append(f"acceptance pack {c} (named on its qa/CAPABILITIES.md row) has no file under studio/acceptance on main or in this PR")
         for s in pl.get("suitesMissing", []):

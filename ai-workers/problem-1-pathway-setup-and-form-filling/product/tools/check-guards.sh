@@ -218,7 +218,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 34 pr|product/tools/ready-gate.py|s/        mm = re.match(r"Merge pull request #(\[0-9\]+) from ", lines\[0\]) if lines else None/        mm = re.match(r"(.*)", lines[0]) if lines else None/|check-ready-gate.sh
 34 journey|product/tools/ready-gate.py|s/        if not pl.get("journeyExists"):/        if False:/|check-ready-gate.sh
 34 switch|product/tools/ready-gate.py|s/    if now < until:/    if True:/|check-ready-gate.sh
-34 queue|../../.mergify.yml|/-check-failure = completes-ready/d|check-ready-gate.sh'
+34 queue|../../.mergify.yml|/-check-failure = completes-ready/d|check-ready-gate.sh
+34 records|product/tools/ready-gate.py|s/    if NOT_A_PART.match(title or \"\"):/    if False:/|check-ready-gate.sh
+34 landed|product/tools/ready-gate.py|s/ \"--first-parent\", \"-m\",//|check-ready-gate.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'
 E16 line|product/tools/deps-line-check.sh|s/^  exit 1$/  exit 0/|check-deps-line.sh
