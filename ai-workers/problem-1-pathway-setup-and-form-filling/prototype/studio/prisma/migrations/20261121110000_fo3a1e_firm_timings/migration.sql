@@ -7,7 +7,7 @@
 --     each firm's value is the default and nothing a booker sees changes). Any other value is the type's own and stays.
 --   * fo_booking_write (FO-1b) padded block_range by the type's gaps; an empty gap would make the padding NULL (an
 --     unbounded range), so it now takes the firm's value, else the default (0 before, 10 after: the same defaults as the
---     registered settings; tests/check_fo3a_timings.ts DW21 compares the two). Only that one SELECT changes; the rest of
+--     registered settings; tests/check_fo3a_hours_timings.ts DW21 checks both). Only that one SELECT changes; the rest of
 --     the function is FO-1b's text. A booking's block_range is still computed when it is written and never follows a
 --     later change of the type's or the firm's gaps (AG-4-4 rule 8). PF-12: CREATE OR REPLACE resets SECURITY DEFINER
 --     and search_path, so both are set again and the wall reader owns it (as 20261118200000_fo7ts_money_settings does).
