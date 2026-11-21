@@ -1,0 +1,128 @@
+PASS  FO-7b rule: JavaScript's Math.round(6.5) is 7 (half up), the reason taxForLine never uses it
+PASS  FO-7b rule pass: taxForLine is whole-number only: a float amount or rate, a negative, or a rate past 1,000,000 throws
+NOTICE:  database "xr_studio_fo7b_scratch_26426" does not exist, skipping
+PASS  setup: the feature registers the invoice controller and its service
+{"time":"2026-11-20T17:02:26.054Z","level":"info","event":"platform_bypass","use":"platform.identity.sign-in","method":"POST"}
+{"time":"2026-11-20T17:02:26.077Z","level":"info","event":"platform_bypass","use":"platform.identity.sign-in","method":"POST"}
+{"time":"2026-11-20T17:02:26.087Z","level":"info","event":"platform_bypass","use":"platform.identity.sign-in","method":"POST"}
+{"time":"2026-11-20T17:02:26.111Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b setup fail: before the firm's payment settings exist, a draft is refused in words (409 PAYMENTS_NOT_SET_UP), nothing written
+{"time":"2026-11-20T17:02:26.181Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b W1 pass: a draft in CAD for the firm's client (201, DRAFT, no number), one audit line by the staff member
+{"time":"2026-11-20T17:02:26.217Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R1 pass (AG-06's example): CAD 850.00 FEE at 13 % → tax 110.50 stored, total 960.50 (money_invoice_total), one audit line
+{"time":"2026-11-20T17:02:26.276Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-7b R1 pass: GET reads the draft back with its stored line and totals (850.00 + 110.50 = 960.50)
+{"time":"2026-11-20T17:02:26.289Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.305Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R2 pass: 0.50 at 13 % (exact 6.5 cents) → 0.06 stored (a half goes to even, down)
+{"time":"2026-11-20T17:02:26.339Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R2 fail (planted): the service with half up (Math.round) stores 0.07, and the case catches it
+{"time":"2026-11-20T17:02:26.377Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.402Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R3 (a half goes to even, up): 1.50 at 13 % (exact 19.5) → 0.20 stored
+{"time":"2026-11-20T17:02:26.430Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.445Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R4 (HST 15 %): 0.30 at 15 % (exact 4.5) → 0.04 stored
+{"time":"2026-11-20T17:02:26.475Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.492Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R4 (HST 15 %): 0.10 at 15 % (exact 1.5) → 0.02 stored
+{"time":"2026-11-20T17:02:26.530Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.550Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R4b (14 %, Sample): 0.25 at 14 % (exact 3.5) → 0.04 stored
+{"time":"2026-11-20T17:02:26.591Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.607Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R4b (14 %, Sample): 0.75 at 14 % (exact 10.5) → 0.10 stored
+{"time":"2026-11-20T17:02:26.640Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.653Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R5 (GST 5 %): 0.10 at 5 % (exact 0.5) → 0.00 stored
+{"time":"2026-11-20T17:02:26.683Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.696Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R5 (GST 5 %): 0.30 at 5 % (exact 1.5) → 0.02 stored
+{"time":"2026-11-20T17:02:26.726Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.741Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R6 (not a half): 0.51 at 13 % (6.63) → 0.07 stored
+{"time":"2026-11-20T17:02:26.774Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.791Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R6 (not a half): 0.49 at 13 % (6.37) → 0.06 stored
+PASS  FO-7b R3-R5 fail (planted): half up would store 0.05 for R4's 0.30 at 15 % and 0.01 for R5's 0.10 at 5 % (each case catches it)
+{"time":"2026-11-20T17:02:26.826Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.839Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.853Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R7 pass: two lines of 0.50 at 13 % → tax 0.06 + 0.06 = 0.12, total 1.12
+{"time":"2026-11-20T17:02:26.885Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.902Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R7 fail (planted): tax on the subtotal, as the route itself taxes one 1.00 line (0.13), is caught
+{"time":"2026-11-20T17:02:26.918Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:26.933Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R8 pass: unit 21,474,836.47 at 15 % → 3,221,225.47 exactly (exact 322,122,547.05 cents, down); the total past 2^31 is exact (24,696,061.94)
+{"time":"2026-11-20T17:02:26.983Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R8 fail: a line whose quantity × unit passes 21,474,836.47 → 400 at unitMinor, in words, nothing written
+{"time":"2026-11-20T17:02:27.010Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.027Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.038Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R10 pass: a 255.00 GOVERNMENT_FEE line (13 % sent) beside 1,000.00 FEE at 13 % → tax only on the fee (130.00); the fee line's rate and tax are 0
+{"time":"2026-11-20T17:02:27.076Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R11 pass: a USD line on the CAD draft → 400 (not 500) at currency, in plain words, and no row written
+{"time":"2026-11-20T17:02:27.100Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R11 fail (stand-in): a CAD line, sent with its currency, on the same draft is added (201)
+{"time":"2026-11-20T17:02:27.114Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.130Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R11 pass: a USD draft takes its own lines in USD (the line's currency is the invoice's)
+{"time":"2026-11-20T17:02:27.161Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.177Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R12 pass: ratePpm 1300 (13 % typed in basis points) is stored as 1300 ppm, not corrected: 1,000.00 → tax 1.30
+{"time":"2026-11-20T17:02:27.219Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.221Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.223Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.225Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R12 fail: ratePpm −1, 1,000,001, 1.5 and the text "130000" → 400 at ratePpm, nothing written
+{"time":"2026-11-20T17:02:27.255Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.256Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.257Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R12 fail: a unit amount of −1, 0.5 cents or text → 400 at unitMinor (never a float total), nothing written
+{"time":"2026-11-20T17:02:27.297Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.298Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.299Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.300Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.303Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.304Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.310Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler) → 400 at description, never 500, nothing written
+{"time":"2026-11-20T17:02:27.364Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.387Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b text pass: 300 emoji (600 UTF-16 units, 300 characters) and mixed-script words are stored as sent
+{"time":"2026-11-20T17:02:27.418Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.429Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R13 pass: a client-sent taxMinor (1) and amountMinor (5) are ignored: the stored line is 850.00 and 110.50
+{"time":"2026-11-20T17:02:27.453Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R13 fail (stand-in): any other unknown field (a firm id from the request) → 400, nothing written
+{"time":"2026-11-20T17:02:27.497Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.503Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R14 pass: with "Prices include tax" on, a new draft and a new line are refused in words (409 PRICES_INCLUDE_TAX), nothing written
+{"time":"2026-11-20T17:02:27.540Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b R14 fail (stand-in): with it off again, the same draft is made (201)
+{"time":"2026-11-20T17:02:27.551Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+{"time":"2026-11-20T17:02:27.557Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.561Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b walls pass: firm B gets 404 on firm A's draft (read and add a line) and on a draft for firm A's client; nothing written
+{"time":"2026-11-20T17:02:27.578Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b walls fail (stand-in): firm B's own draft for its own client is 201, in firm B
+{"time":"2026-11-20T17:02:27.597Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+{"time":"2026-11-20T17:02:27.602Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+{"time":"2026-11-20T17:02:27.605Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b inputs: no session → 401; a malformed id → 404, never 500
+{"time":"2026-11-20T17:02:27.619Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b keys fail: a Case Officer (agent/invoice:create, no :edit) adding to the Owner's draft → 403 MISSING_PERMISSION, nothing written
+{"time":"2026-11-20T17:02:27.635Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.645Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.654Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+PASS  FO-7b keys pass (stand-in): the Case Officer adds a line to the draft they started (201); the Owner (:edit) adds to it too
+{"time":"2026-11-20T17:02:27.664Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.672Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.672Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"POST"}
+{"time":"2026-11-20T17:02:27.700Z","level":"info","event":"platform_bypass","use":"platform.identity.authenticate","method":"GET"}
+PASS  FO-7b race pass: two lines added at once both land (positions 1 and 2) and the total is the sum of both (0.50 + 0.06 + 1.50 + 0.20 = 2.26)
+PASS  FO-7b audit pass: one line per write (every draft and every line written above), each by a typed staff actor
+
+43 passed, 0 failed

@@ -63,6 +63,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms, seedSampleSettings, SAMPLE_SETTING_VALUES } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -142,7 +143,9 @@ try {
   const last = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
   ok("AUD-5 DW2 pass: saving 5 with a reason is saved, and the warning (s. 7.2) and the reason are on its one audit line",
     withReason.status === 200 && withReason.body.years === 5 && /s\. 7\.2/.test(withReason.body.warning ?? "") && await readSetting(db, FIRM_A, KEY) === 5 && lines() === before + 1
-    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2.* Reason given: /.test(last.reason) && /Reason given: Files are also kept by our parent firm's records office\./.test(last.reason), [withReason.body, last]);
+    // AUD-1m part 2c (Lead 94's (A1) on #2289): detail keeps the reason cut to 200 characters; the line's summary keeps it whole.
+    && last.to === 5 && /^Below the College's rule: .*s\. 7\.2/.test(last.reason) && last.reason.length <= 200
+    && /Below the College's rule: .*s\. 7\.2.* Reason given: Files are also kept by our parent firm's records office\./.test(sql(`select summary from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`)), [withReason.body, last]);
   before = lines();
   const six = await put(tR, { years: 6 });
   const sixLine = JSON.parse(sql(`select detail::text from audit_event where entity_key = '${FIRM_A}:${KEY}' order by at desc, id desc limit 1`));
@@ -195,7 +198,7 @@ try {
   ok("AUD-5 fail (demo reset): a second reset changes nothing", (await resetSampleFirmSettings(db)).changed.length === 0);
 
   sql(`delete from platform_firm_setting where firm_id = '${FIRM_A}' and key = '${KEY}'`);
-  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
+  await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) });
   ok("AUD-5 pass (start-up seed): PLATFORM_SAMPLE_SEED=on writes the Sample value a Sample firm lacks (6), keeping firm B's", await readSetting(db, FIRM_A, KEY) === 6 && await readSetting(db, FIRM_B, KEY) === 6);
 
   // The real adapter on the API's own walled Db (xr_app, PF-12), as a request runs it (review m2).

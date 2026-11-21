@@ -11,7 +11,9 @@ import { auditEvent } from "../audit/audit-event.ts";
 import { publicFirmOf, sendPublicNotFound, webAddressHost } from "./host.ts";
 import { catchUpFirmAddresses, type CatchUpResult } from "./firm-created.ts";
 import { WebAddresses } from "./service.ts";
-import { asBypass } from "../firm-scope.ts";
+import { asBypass, touchingAudit } from "../firm-scope.ts";
+import { logPort } from "../observability/log.ts";
+import { dbRuleOf } from "../observability/redact.ts";
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
 export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock }), inject: [Db] };
@@ -34,10 +36,12 @@ export class WebAddressCatchUp {
   done: Promise<CatchUpResult | null> = Promise.resolve(null);
   constructor(private readonly db: Db) {}
   onApplicationBootstrap() {
-    this.done = asBypass("platform.web-address.catch-up", () => catchUpFirmAddresses(this.db, auditEvent)).then((r) => {   // PF-12: every firm at once
+    // PF-12b: each firm's address is set in its own transaction with its own audit line; its platform.bypass line goes first
+    // in that transaction (a line that cannot be written rolls that firm back; it is listed as failed).
+    this.done = asBypass("platform.web-address.catch-up", () => catchUpFirmAddresses(this.db, touchingAudit(auditEvent))).then((r) => {   // PF-12: every firm at once
       if (r.failed.length) console.warn(`PF-25: ${r.failed.length} firm(s) got no web address at start: ${r.failed.map((f) => f.firmId).join(", ")}`);
       return r;
-    }, (e) => { console.warn(`PF-25: the web-address catch-up did not run: ${String(e).slice(0, 200)}`); return null; });
+    }, (e) => { logPort.error("web_address_catch_up_failed", e, { rule: dbRuleOf(e) }); return null; });
   }
 }
 

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Stop hook (P-189): before a session stops, (1) a builder or qa copy has not changed the tech lead's files (rules,
 # skills, agents, settings, decisions, the backlog), (2) rules files pass check-docs, (3) explicit any in live code does
-# not rise (skipped when studio packages are not installed). Uncommitted or unpushed work is a note, never a block:
+# not rise (skipped when studio packages are not installed), (4) in the Lead's copy, the last message does not ask the founder
+# to click on GitHub, claude.ai or a console (founder-click-guard.sh, ENF-763). Uncommitted or unpushed work is a note, never a block:
 # the pull request is the record (no state file to update on every reply).
 input=$(cat); [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ] && exit 0
 # The session's own copy comes from the hook input (in builder sessions $CLAUDE_PROJECT_DIR is the main copy).
@@ -33,6 +34,8 @@ if [ -f "$APP/node_modules/typescript/lib/typescript.js" ]; then
 else
   echo "stop-check: no studio packages ($APP/node_modules/typescript missing) — skipping the any-count (run npm ci)" >&2
 fi
+# (4) ENF-763 (P-752/P-763): the Lead's turn does not end asking the founder to click on GitHub, claude.ai or a console.
+[ "$LANE" = lead ] && { fc=$(printf '%s' "$input" | bash "$PH/tools/founder-click-guard.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null); [ -n "$fc" ] && reasons="$reasons$fc"$'\n'; }
 # Notes only: uncommitted app or product changes, unpushed commits.
 git status --porcelain -- "$PH" "$APP" 2>/dev/null | grep -q . && notes="uncommitted changes in this copy: commit and push when the piece is done"
 ahead=$(git rev-list --count @{upstream}..HEAD 2>/dev/null) && [ "$ahead" -gt 0 ] && notes="${notes:+$notes; }$ahead unpushed commit(s) on $(git branch --show-current 2>/dev/null)"

@@ -94,14 +94,14 @@ ok("R1.4 5: R1.5's first step (/me after sign-in) answers firm A for firm A's pe
 
 // 7 underneath: every walled table (platform_*, fo_*, money_*, msg_*, auto_*, plat_complaint*) forces row-level security,
 // and every one but the catalogues and our own registers has a policy firm_id (platform_firm: id) = platform_session_firm() for read and write (the function reads app.firm_id) (the list as PF-12's pack keeps it)
-const EXCEPT = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "platform_terms_version", "platform_signup_pending", "plat_breach", "plat_data_request", "plat_legal_hold"];
+const EXCEPT = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "platform_terms_version", "platform_plan_limit", "platform_limit_change", "platform_signup_pending", "plat_breach", "plat_data_request", "plat_legal_hold"];
 const walled = owner(`select string_agg(relname, ',' order by relname) from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname ~ '^(platform_|fo_|money_|msg_|auto_|plat_complaint)'`).split(",").filter(Boolean);
-const notForced = owner(`select coalesce(string_agg(relname, ','), '') from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname ~ '^(platform_|fo_|money_|msg_|auto_|plat_complaint)' and not (relrowsecurity and relforcerowsecurity) and relname <> all(array['${EXCEPT.slice(0, 5).join("','")}'])`);
+const notForced = owner(`select coalesce(string_agg(relname, ','), '') from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname ~ '^(platform_|fo_|money_|msg_|auto_|plat_complaint)' and not (relrowsecurity and relforcerowsecurity) and relname <> all(array['${EXCEPT.slice(0, 7).join("','")}'])`);
 // The firm column is firm_id, or id on platform_firm itself; read and write both name it (matched here, not in SQL).
 const WALL = /\((firm_id|id) = platform_session_firm\(\)\)/;
 const noPolicy = walled.filter((t) => !EXCEPT.includes(t)).filter((t) => !owner(`select coalesce(pg_get_expr(p.polqual, p.polrelid), '') || ' | ' || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') from pg_policy p join pg_class c on c.oid = p.polrelid where c.relname = '${t}'`)
   .split("\n").some((l) => { const [read, write] = l.split(" | "); return WALL.test(read ?? "") && WALL.test(write ?? ""); }));
-ok(`R1.4 7: every walled table (${walled.length}) forces row-level security (the 5 catalogues aside)`, walled.length > 30 && notForced === "", notForced);
+ok(`R1.4 7: every walled table (${walled.length}) forces row-level security (the 7 catalogues aside: PF-15's plan_limit and limit_change, no firm_id, as PF-12's pack's LATER_CATALOGUES)`, walled.length > 30 && notForced === "", notForced);
 ok("R1.4 7: every walled table but the catalogues and our own registers has a policy firm_id (platform_firm: id) = platform_session_firm() for read and write (the function reads app.firm_id)", noPolicy.length === 0, noPolicy);
 
 // 6 the bypass record (reported)

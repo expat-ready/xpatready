@@ -28,6 +28,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (features/platform-messages.ts reads the loader at import)
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -96,9 +97,10 @@ try {
   const as = {} as Record<Role, { id: string; name: string; token: string }>;
   for (const r of ROLES) as[r] = await person(firmA, r.toLowerCase().replace(/_/g, "-"), r);
   const ownerB = await person(firmB, "owner-b", "OWNER");
-  const suspended = await person(firmA, "suspended", "CASE_OFFICER", "SUSPENDED");
-  const leaver = await person(firmA, "leaver", "CASE_OFFICER");          // handles one, then is deactivated (DW3)
-  const elsewhere = await person(firmA, "elsewhere", "CASE_MANAGER");    // appears only in complaints the case officer cannot see
+  const suspended = await person(firmA, "suspended", "CASE_MANAGER", "SUSPENDED");   // PF-21j review m3: a role that may record, so only the status leaves them out
+  const leaver = await person(firmA, "leaver", "CASE_MANAGER");          // handles one, then is deactivated (DW3)
+  const elsewhere = await person(firmA, "elsewhere", "CASE_MANAGER");    // appears only in complaints the handler cannot see
+  const handlerP = await person(firmA, "handler", "CASE_MANAGER");     // PF-21j: the handler holds agent/complaint:record (a Case Officer cannot be one)
 
   // ---------------------------------------------------------------------------------------------------------- DW1
   // Received Friday 13 Nov 2026, 10:00 in Toronto; Monday 16 Nov is a closed day; Mon-Fri 09:00-17:00.
@@ -136,7 +138,7 @@ try {
   const svc = new ComplaintsService({ db: counted, audit: fakeAudit(), jobs: fakeJobs(clock), clock, mail: fakeMail() });
   const BOTH = [COMPLAINT_KEYS.record, COMPLAINT_KEYS.read];
   const owner = fakeStaff({ staffId: as.OWNER.id, firmId: firmA, firmKey: "sample-firm", roles: ["OWNER"], keys: BOTH });
-  const rec = (receivedAt: string, handler = as.CASE_OFFICER.id) => svc.record(owner, { subjectKind: "OTHER_PERSON", complainantName: "Client A", receivedAt, channel: "PHONE", category: "SERVICE", summary: "A delay (Sample)", handlerStaffId: handler });
+  const rec = (receivedAt: string, handler = handlerP.id) => svc.record(owner, { subjectKind: "OTHER_PERSON", complainantName: "Client A", receivedAt, channel: "PHONE", category: "SERVICE", summary: "A delay (Sample)", handlerStaffId: handler });
   const a = await rec("2026-11-13T15:00:00Z"), b = await rec("2026-11-13T15:00:00Z"), c = await rec("2026-11-13T15:00:00Z");
   await svc.acknowledge(owner, b.id, { at: "2026-11-13T16:00:00Z" });
   await svc.close(owner, c.id, { at: "2026-11-13T17:00:00Z", outcome: "RESOLVED", note: "Sorted (Sample)" });
@@ -186,10 +188,10 @@ try {
   // ---------------------------------------------------------------------------------------------------------- DW3
   const byLeaver = (await call("POST", "", as.OWNER.token, complaint(leaver.id))).body.id as string;
   const byElsewhere = (await call("POST", "", elsewhere.token, complaint(as.ADMIN.id))).body.id as string;
-  const officers = (await call("POST", "", as.OWNER.token, complaint(as.CASE_OFFICER.id))).body.id as string;
+  const officers = (await call("POST", "", as.OWNER.token, complaint(handlerP.id))).body.id as string;
   const moved = (await call("POST", "", as.CASE_MANAGER.token, complaint(as.ADMIN.id))).body.id as string;
-  await call("POST", `/${moved}/handler`, as.OWNER.token, { handlerStaffId: as.CASE_OFFICER.id });
-  await call("POST", `/${moved}/steps`, as.CASE_OFFICER.token, { kind: "NOTE", note: "Called (Sample)" });
+  await call("POST", `/${moved}/handler`, as.OWNER.token, { handlerStaffId: handlerP.id });
+  await call("POST", `/${moved}/steps`, handlerP.token, { kind: "NOTE", note: "Called (Sample)" });
   await db.platformStaff.update({ where: { id: leaver.id }, data: { status: "DEACTIVATED" } });
   const all = await call("GET", "?view=all&limit=100", as.OWNER.token);
   const named = new Set<string>();
@@ -199,16 +201,16 @@ try {
   ok("PF-21v DW3 pass: names only, keyed by the bare staff id (no email, no roles)", Object.entries(all.body.people ?? {}).every(([k, v]) => /^[0-9a-f-]{36}$/.test(k) && typeof v === "string" && !String(v).includes("@")), all.body.people);
   const one = await call("GET", `/${moved}`, as.OWNER.token);
   const actors = (one.body.events ?? []).map((e: { actor: string }) => e.actor.replace(/^staff:/, ""));
-  ok("PF-21v DW3 pass: GET /:id names every event actor and the handler change's from and to", one.status === 200 && [...actors, as.CASE_MANAGER.id, as.ADMIN.id, as.CASE_OFFICER.id, as.OWNER.id].every((id: string) => one.body.people?.[id]), one.body.people);
+  ok("PF-21v DW3 pass: GET /:id names every event actor and the handler change's from and to", one.status === 200 && [...actors, as.CASE_MANAGER.id, as.ADMIN.id, handlerP.id, as.OWNER.id].every((id: string) => one.body.people?.[id]), one.body.people);
   const sys = await db.platComplaintEvent.create({ data: { firmId: firmA, complaintId: moved, kind: "REMINDER_SENT", at: new Date(), actor: "system:complaint-ack-reminder", detail: {} } });
   const oneSys = await call("GET", `/${moved}`, as.OWNER.token);
   ok("PF-21v DW3 fail: a system actor is not staff, so it is not in people", oneSys.body.events?.some((e: { id: string }) => e.id === sys.id) && !Object.keys(oneSys.body.people ?? {}).some((k) => k.startsWith("system")), oneSys.body.people);
-  const mine = await call("GET", "?view=all&limit=100", as.CASE_OFFICER.token);
+  const mine = await call("GET", "?view=all&limit=100", handlerP.token);
   const mineItems: { id: string; handlerStaffId: string }[] = mine.body.items ?? [];
-  ok("PF-21v DW3: the CASE_OFFICER handler lists only their own (the list is not widened)", mineItems.length > 0 && mineItems.every((v) => v.handlerStaffId === as.CASE_OFFICER.id) && !mineItems.some((v) => v.id === byElsewhere || v.id === byLeaver), mineItems.length);
+  ok("PF-21v DW3: the handler (a CASE_MANAGER: record key, no read key) lists only their own (the list is not widened)", mineItems.length > 0 && mineItems.every((v) => v.handlerStaffId === handlerP.id) && !mineItems.some((v) => v.id === byElsewhere || v.id === byLeaver), mineItems.length);
   const peopleIds = Object.keys(mine.body.people ?? {});
-  ok("PF-21v DW3 fail: the CASE_OFFICER's list carries no name of staff who appear only in complaints they cannot see", mine.status === 200 && !peopleIds.includes(elsewhere.id) && !peopleIds.includes(leaver.id) && !JSON.stringify(mine.body).includes(elsewhere.name) && !JSON.stringify(mine.body).includes(leaver.name), mine.body.people);
-  const notTheirs = await call("GET", `/${byElsewhere}`, as.CASE_OFFICER.token);
+  ok("PF-21v DW3 fail: the handler's list carries no name of staff who appear only in complaints they cannot see", mine.status === 200 && !peopleIds.includes(elsewhere.id) && !peopleIds.includes(leaver.id) && !JSON.stringify(mine.body).includes(elsewhere.name) && !JSON.stringify(mine.body).includes(leaver.name), mine.body.people);
+  const notTheirs = await call("GET", `/${byElsewhere}`, handlerP.token);
   ok("PF-21v DW3 fail: opening one they cannot see → the same 404, with no people", notTheirs.status === 404 && notTheirs.body.people === undefined, notTheirs);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
@@ -223,13 +225,15 @@ try {
   await set(firmA, BUSINESS_HOURS.key, HOURS);
 
   // ---------------------------------------------------------------------------------------------------------- DW5
-  const active = (await db.platformStaff.findMany({ where: { firmId: firmA, status: "ACTIVE" }, select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }));
+  // PF-21j: the handler list holds only active staff who may record complaints (Owner, Admin, Case Manager).
+  const active = (await db.platformStaff.findMany({ where: { firmId: firmA, status: "ACTIVE", grants: { some: { endedAt: null, role: { in: ["OWNER", "ADMIN", "CASE_MANAGER"] } } } }, select: { id: true, displayName: true }, orderBy: [{ displayName: "asc" }, { id: "asc" }] }));
   for (const r of ["OWNER", "ADMIN", "CASE_MANAGER"] as const) {
     const h = await call("GET", "/handlers", as[r].token);
-    ok(`PF-21v DW5 pass: ${r} → 200, the firm's active staff by name, each exactly { id, displayName }`, h.status === 200 && JSON.stringify(h.body) === JSON.stringify({ items: active }) && h.body.items.every((i: object) => JSON.stringify(Object.keys(i)) === '["id","displayName"]'), h);
+    ok(`PF-21v DW5 pass: ${r} → 200, the firm's active staff who may record complaints (PF-21j), by name, each exactly { id, displayName }`, h.status === 200 && JSON.stringify(h.body) === JSON.stringify({ items: active }) && h.body.items.every((i: object) => JSON.stringify(Object.keys(i)) === '["id","displayName"]'), h);
   }
   const h = (await call("GET", "/handlers", as.OWNER.token)).body.items.map((i: { id: string }) => i.id);
-  ok("PF-21v DW5 fail: a suspended and a deactivated staff member are absent", !h.includes(suspended.id) && !h.includes(leaver.id) && h.includes(as.READ_ONLY.id), h);
+  ok("PF-21v DW5 fail: a suspended and a deactivated staff member are absent", !h.includes(suspended.id) && !h.includes(leaver.id) && h.includes(as.CASE_MANAGER.id), h);
+  ok("PF-21j fail: a Read-only person, a Case Officer and a Billing / Finance person (no agent/complaint:record) are absent", ![as.READ_ONLY.id, as.CASE_OFFICER.id, as.BILLING_FINANCE.id].some((id) => h.includes(id)), h);
   ok("PF-21v DW5 fail: another firm's staff are absent", !h.includes(ownerB.id));
   for (const r of ["CASE_OFFICER", "BILLING_FINANCE", "READ_ONLY"] as const) {
     const x = await call("GET", "/handlers", as[r].token);

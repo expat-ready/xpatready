@@ -93,7 +93,7 @@ export async function passDoor(req: DoorReq, look: DoorLookups): Promise<void> {
   });
 }
 
-/** The lookups through the database's narrow functions (migration 20261119164311_csw3_case_door; CS-W1's for staff). */
+/** The lookups through the database's narrow functions (migration 20261121100000_csw3_case_door; CS-W1's for staff). */
 export function dbLookups(db: Db): DoorLookups {
   const one = async (rows: Promise<{ id: string | null }[]>) => (await rows)[0]?.id ?? null;
   return {

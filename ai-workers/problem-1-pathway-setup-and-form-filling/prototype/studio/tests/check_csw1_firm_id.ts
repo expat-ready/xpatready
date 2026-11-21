@@ -132,7 +132,7 @@ try {
     sql(`select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind in ('r', 'p', 'v') and n.nspname not in ('pg_catalog', 'information_schema')
       and (has_table_privilege('${R}', c.oid, 'INSERT') or has_table_privilege('${R}', c.oid, 'UPDATE') or has_table_privilege('${R}', c.oid, 'DELETE') or has_table_privilege('${R}', c.oid, 'TRUNCATE') or has_table_privilege('${R}', c.oid, 'REFERENCES') or has_table_privilege('${R}', c.oid, 'SELECT'))`) === "0"
     && sql(`select count(*) from information_schema.role_table_grants where grantee = '${R}'`) === "0");
-  // CS-W3 part 1 (migration 20261119164311_csw3_case_door, applied above as a later migration) adds the columns its own
+  // CS-W3 part 1 (migration 20261121100000_csw3_case_door, applied above as a later migration) adds the columns its own
   // lookups read; its check_csw3_firm_scope.ts DW8 asserts the role's whole list. This line keeps CS-W1's own grant exact.
   ok("CS-W1 DW10 pass: its only column SELECT on platform_firm is (id, key)",
     sql(`select string_agg(table_name || '.' || column_name || ':' || privilege_type, ',' order by column_name) from information_schema.column_privileges where grantee = '${R}' and table_name = 'platform_firm'`) === "platform_firm.id:SELECT,platform_firm.key:SELECT");
