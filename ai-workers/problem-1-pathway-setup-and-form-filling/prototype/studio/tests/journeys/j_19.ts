@@ -12,8 +12,9 @@
 //       TRIAL subscription on the chosen plan and period, trial end = confirmation time + the plan's trial days (± 2 min),
 //       and the audit lines firm.created, platform.staff.owner_created, platform.terms.accepted,
 //       platform.subscription.created (its after-values carry the plan, the period chosen (Yearly) and the same trial end).
-//       The period has no column on platform_subscription (it goes to Stripe as the price at Checkout); the audit line is
-//       where this copy keeps it, so a dropped or swapped period fails here (fresh reader, 21 Nov).
+//       PF-5 part 3 (#2870): the period is stored on platform_subscription.billing_period ('YEARLY' here), and a sign-up
+//       that names no period stores the default 'MONTHLY' (W2b, by the public door).
+//   W2b: a second sign-up by the public door with no period: its subscription's billing_period is 'MONTHLY'.
 //   W3 (once): signing up again with the same, now verified, email answers the same "check your email" (no account
 //       enumeration) and the person's inbox gets "You already have an ExpatReady account"; no second pending sign-up,
 //       no second firm. A Confirm link used twice makes no second firm.
@@ -50,6 +51,7 @@ const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: p
 const errors: string[] = [];
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
 const email = `owner.j19.${run}@example.com`, firmName = `Sample Évora Firm 移民 ${run}`;
+const safeSql = (q: string) => { try { return sql(q); } catch (e) { return `ERROR ${String(e).split("\n")[0].slice(0, 120)}`; } };   // a missing column (before #2870) is a FAIL, not a crash
 const firmsOf = () => sql(`select count(*) from platform_firm where owner_email = '${email}'`);
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
@@ -108,6 +110,23 @@ try {
   ok("R1.19 W2: one audit line each: firm.created, platform.staff.owner_created, platform.terms.accepted, platform.subscription.created", actions === "firm.created,platform.staff.owner_created,platform.subscription.created,platform.terms.accepted", actions);
   const subAfter = sql(`select coalesce(detail->>'trialEndsAt_after', '') || '|' || coalesce(detail->>'plan_after', '') || '|' || coalesce(detail->>'period_after', '') from audit_event where firm_id = ${F} and action = 'platform.subscription.created'`);
   ok("R1.19 W2: the subscription's audit line carries the plan, the period chosen (YEARLY) and the same trial end", !!trialEnd && subAfter === `${new Date(Number(trialEnd)).toISOString()}|${plan}|${period}`, subAfter);
+
+  const storedPeriod = safeSql(`select billing_period::text from platform_subscription where firm_id = ${F}`);
+  ok("R1.19 W2 (PF-5 part 3): the period chosen is stored on the subscription: billing_period = 'YEARLY'", storedPeriod === "YEARLY", storedPeriod);
+
+  // ------------------------------------------------------------------------------------------ W2b: the Monthly default
+  {
+    const e2 = `monthly.j19.${run}@example.com`;
+    const pub0 = await j("GET", "/api/public/plans");
+    await wait(3300);
+    const s2 = await j("POST", "/api/public/signup", { email: e2, password: "Correct-horse-9!", firmName: `Sample Monthly Firm ${run}`, countryCode: "CA", planCode: plan, acceptedTerms: (pub0.body.terms ?? []).map((t: { id: string }) => t.id), formStamp: pub0.body.formStamp });
+    let m2: { subject: string; body: string } | undefined;
+    for (let i = 0; i < 75 && !m2; i++) { await wait(200); m2 = (await inbox(e2)).find((m) => m.subject === VERIFY); }
+    const l2 = m2?.body.match(/sign-up\/verify#token=([A-Za-z0-9_-]{43})&code=(\d{6})/);
+    const v2 = l2 ? await j("POST", "/api/public/signup/verify", { token: l2[1], code: l2[2] }) : { status: 0, body: {} };
+    const p2 = safeSql(`select coalesce(string_agg(s.billing_period::text, ','), '') from platform_subscription s join platform_firm f on f.id = s.firm_id where f.owner_email = '${e2}'`);
+    ok("R1.19 W2b (PF-5 part 3): a sign-up that names no period stores the default: billing_period = 'MONTHLY'", s2.status === 202 && !!v2.body.firmKey && p2 === "MONTHLY", { signup: s2.status, verify: v2.status, period: p2 });
+  }
 
   // ------------------------------------------------------------------------------------------ W3: the same email again
   const again = await j("POST", `/api/public/signup/verify`, { token: link.match(/token=([A-Za-z0-9_-]{43})/)?.[1], code: link.match(/code=(\d{6})/)?.[1] });
