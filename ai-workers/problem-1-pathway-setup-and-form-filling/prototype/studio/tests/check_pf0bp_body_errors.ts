@@ -36,7 +36,7 @@ const post = (path: string, body: string | Buffer, token?: string, extra: Record
 let log = "";
 const p = spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", join(STUDIO, "api", "tsconfig.json"), join(STUDIO, "api", "src", "main.ts")], {
   cwd: STUDIO, stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, DATABASE_URL: urlOf(DB), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf0bp-check-${process.pid}`), PLATFORM_IDENTITY: "local", PLATFORM_SAMPLE_SEED: "on" },
+  env: { ...process.env, PLATFORM_ENVIRONMENT: "local", DATABASE_URL: urlOf(DB), STUDIO_PORT: String(PORT), STUDIO_VAR: join(STUDIO, "var", `pf0bp-check-${process.pid}`), PLATFORM_IDENTITY: "local", PLATFORM_SAMPLE_SEED: "on" },
 });
 p.stdout.on("data", (b: Buffer) => (log += b.toString())); p.stderr.on("data", (b: Buffer) => (log += b.toString()));
 try {

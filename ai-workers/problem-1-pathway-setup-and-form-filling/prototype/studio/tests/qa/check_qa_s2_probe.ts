@@ -45,7 +45,7 @@ const iso = (action: string) => {
   if (action === "start") return execFileSync("zsh", [join(STUDIO, "tools", "isolated.sh"), NAME, String(PORT), "start", ...SETTINGS], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   killServer(); if (action === "stop") return "";
   const ROOT = join(SOLUTION, "..", ".."), VARDIR = join(STUDIO, "var", `isolated-${NAME}`);
-  const env = { ...process.env, PATH: `${join(ROOT, ".tools", "node-v24.21.0", "bin")}:${process.env.PATH}`, DATABASE_URL: `postgresql://xr_studio@127.0.0.1:54329/${DB}`, STUDIO_PORT: String(PORT), STUDIO_VAR: VARDIR, ...Object.fromEntries(SETTINGS.map((x) => x.split("="))) };
+  const env = { ...process.env, PLATFORM_ENVIRONMENT: "local", PATH: `${join(ROOT, ".tools", "node-v24.21.0", "bin")}:${process.env.PATH}`, DATABASE_URL: `postgresql://xr_studio@127.0.0.1:54329/${DB}`, STUDIO_PORT: String(PORT), STUDIO_VAR: VARDIR, ...Object.fromEntries(SETTINGS.map((x) => x.split("="))) };
   const out = openSync(join(VARDIR, "api.log"), "a");
   spawn(join(STUDIO, "node_modules", ".bin", "tsx"), ["--tsconfig", "api/tsconfig.json", "api/src/main.ts"], { cwd: STUDIO, env, detached: true, stdio: ["ignore", out, out] }).unref();
   for (let i = 0; i < 120; i++) { try { execFileSync("curl", ["-s", "-o", "/dev/null", `localhost:${PORT}/api/session`]); return "restarted"; } catch { execFileSync("sleep", ["0.5"]); } }

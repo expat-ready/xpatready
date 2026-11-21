@@ -333,6 +333,7 @@ try {
   ok("DW13 pass: staff and system mail sent through MailPort lands in the outbox as TRANSACTIONAL and is sent", row13.class === "TRANSACTIONAL" && row13.address === x13 && row13.state === "SENT", row13);
   // Was held (review M1): staff mail carries invitation links and codes. PF-19r (Build Lead C's approved brief, 18 Nov:
   // "the rendered message under msg/<firm>/outbox/ holds the link and the code") binds the app's MAIL_PORT to MESSAGES_MAIL.
+  process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: the features below read the loader at import (required, no default)
   const staffRead = (await import("../api/src/features/platform-staff-read.ts")).default, { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
   const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
   const bound = (staffRead.providers as { provide?: unknown; useExisting?: unknown; useFactory?: unknown }[]).find((p) => p.provide === MAIL_PORT);
