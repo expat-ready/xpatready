@@ -486,3 +486,52 @@ The open Minors are unchanged: rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 seco
 **Journey score: 8/10, unchanged** (a pass, no criterion at 0). This change touches only the audit trail. No screen or flow changes, so I wrote no new journey-test report.
 
 Verdict: Approve 182ef7bd161e0bd816a104c2f533040e87c94193
+
+## Round 13 (diff-only, 16b7486d): two merges of main (PF-12b parts 2 and 3) and the firm-less line for a Stripe event that matches no firm; head `16b7486de822ff7e654283f901d90738b16501f5`
+
+Approved before this: `182ef7bd1` (round 12). I reviewed four commits on the first-parent chain:
+
+| Commit | What it is |
+|---|---|
+| `c0287225f` | Round 12's record only (this file, 40 lines added). |
+| `bfc930847` | Lead B's merge of main after #2752 (PF-12b part 2). The coordinator's note did not list it, so I reviewed it here. |
+| `3c9471fda` | Lead B's merge of main after #2814 (PF-12b part 3). |
+| `16b7486de` | The builder's fix for the review Block in comment 7063644895, following Lead B's instructions in PR comment 7063655242. |
+
+1. **Merge `bfc930847` (PF-12b part 2): one conflict, resolved correctly.** `--remerge-diff` shows a hand resolution in `tests/check_pf12b_bypass_audit.ts` only.
+   * The DW3 line keeps main's new check, that the seven own-firm doors are off `BYPASS_USES` (`check_pf12b_doors.ts`), with "ten" per-firm uses. `PER_FIRM` auto-merged to the ten that include this PR's two.
+   * No code file needed a hand resolution. This PR's code never used the doors main removed (the guard's `platform.identity.authenticate` and the others).
+2. **Merge `3c9471fda` (PF-12b part 3): two conflicts, both resolved correctly.**
+   * **`firm-scope.ts`:** this PR's `platform.billing.stripe-webhook` and `job:platform.billing.webhook_sweep` stay `audit: "per-firm"`, next to main's `job:platform.signup.purge` now `"platform"`. `BypassAudit` is now `"per-firm" | "platform"`, so no "none" is left.
+   * **`check_pf12b_bypass_audit.ts`:** it takes main's part-3 checks with `PER_FIRM` at ten. The registry check reads "10 per-firm + 3 platform", which equals `firm-scope.ts`; check_pf12b gives 67/67.
+   * **Main's other changes:** main changed four other files this PR also changes (`MODULE.md`, `firms/signup.ts`, `check_forms_qa53.ts`, `check_pf12b_bypass_audit.ts`), all merged by git. `signup.ts` still stores `trialEndsAt` (l. 227-229) next to main's part-3 step lines. The card is 39 lines and `module-cards.py tree` passes (15 cards).
+   * The other reviewer's view in 7063644895 that the resolutions are right matches mine.
+3. **The fix `16b7486de`: meets Lead B's three points.**
+   * **Point 1 (the line):** `handle()` computes `reads`, which is true for subscription, invoice and checkout events. When `findSubscription` ran and found no row, it writes `await this.db.$transaction((tx) => touchPlatform(tx, { step: "billing.no-firm-matched", key: ev.id }))`. That comes before the receipt update, so it is fail-closed: a line that cannot be written throws, `later()` or the sweep's `catch` keeps the receipt open, and the sweep retries.
+     * The key is Stripe's event id, not a secret.
+     * Other event types read no walled table and write nothing, as the new comment says. The matched branch is unchanged (`touchFirms` before anything applies, round 10).
+     * `touchPlatform` refuses a request or job that acts for a firm. The webhook route has no firm and the sweep is a platform job with no firm, so neither is refused in normal running. If Stripe were ever pointed at a firm's own web address, the door's line would be refused fail-closed and the sweep, which has no firm, would handle the event: nothing is lost.
+   * **Point 2 (tests written first):** three new assertions in check_pf5.
+     * **The door:** an event for an unknown customer writes exactly one `platform.bypass` line with no firm, the step and the event id (`string_agg` = `"null"`, one row).
+     * **The sweep:** a receipt aged one hour, swept under `asBypass("job:platform.billing.webhook_sweep")`, gives the same, under the sweep's use.
+     * **The fail half:** after every matched event in the suite, exactly 2 step lines exist, and the matched firm still has its one line.
+     * This also closes round 10's **r10-2**: a signed event that matches no firm is now asserted, and its line is the firm-less one required under part 3, not none.
+   * **Point 3 (suites green):** see the checks below.
+4. **Checks run here (head `16b7486de`, Postgres on 54329, live AI off, US$0, never :4400).**
+   * **Suites, all exit 0:** check_pf5_signup_billing 93/93, check_pf12b_bypass_audit 67/67, check_pf12b_doors 33/33, check_pf12_walls 100/100, check_aud_values 14/14.
+   * **Mutant:** with the `touchPlatform` call disabled (`if (false)`), check_pf5 FAILS all three new assertions (door `""`, sweep `""`, count). The file was restored with `git checkout` and the tree is clean.
+   * **Typecheck:** `tsc -p api/tsconfig.json --noEmit` gives the same 24 lines as rounds 10 to 12, all in five test files outside this PR's diff. No new errors.
+   * The builder's check_pf5t 42/42 and check_pf5v 13/13 are not repeated here.
+
+**Blocker:** none. **Major:** none.
+
+**Nit (does not block):** no assertion that a non-reading event type, for example `customer.created`, writes no step line. The code's `reads` test makes it plain, and the step count of 2 holds only because the suite sends no such event.
+
+**Open Minors:** r10-2 is closed by point 3. Still open, none blocking:
+* Rounds 1 to 9: m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7.
+* r10-1: the PR should say why the matched firm's line is written in its own transaction.
+* r12-1: no committed check reads the before/after values.
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). This change touches only the audit trail and the bypass registry. No screen or flow changes, so I wrote no new journey-test report.
+
+Verdict: Approve 16b7486de822ff7e654283f901d90738b16501f5
