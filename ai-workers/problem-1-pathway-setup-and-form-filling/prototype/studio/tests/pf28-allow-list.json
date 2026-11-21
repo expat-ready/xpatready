@@ -237,6 +237,7 @@
   "POST /api/platform/offices missing": "PF-28 part 2 (platform)",
   "POST /api/platform/offices unknown": "PF-28 part 2 (platform)",
   "POST /api/platform/offices wrong-type": "PF-28 part 2 (platform)",
+  "POST /api/platform/session/callback missing": "PF-28 part 2 (platform)",
   "POST /api/platform/staff/invitations/:id/resend missing": "PF-28 part 2 (platform)",
   "POST /api/platform/support/tickets/:id/messages id:id": "PF-28 part 2 (platform)",
   "POST /api/public/bookings/:token/cancel missing": "PF-28 part 4 (booking)",

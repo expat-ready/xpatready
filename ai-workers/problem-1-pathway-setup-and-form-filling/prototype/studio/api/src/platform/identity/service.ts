@@ -11,7 +11,8 @@ import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
 import { enterFirm, firmScope, notInFirm, withFirm } from "../firm-scope.ts";
-import { FIELD_ERROR_STATUS } from "../http/input.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
+import { z } from "zod";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { batchRowsOf, flagOf, seatWords } from "./batch-invite.ts";
 import { readCatalogue } from "./catalogue.ts";
@@ -37,6 +38,8 @@ export const ANOTHER_DEVICE = "You signed in on another device";
 const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
+/** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
+export const LocalSignInBody = strict({ firmKey: z.string().max(100), email: z.string().max(320).optional(), actorId: z.string().max(200).optional(), secondStep: z.boolean().optional() });
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The port this server's configuration names (PLATFORM_IDENTITY). Unset: an adapter that refuses every token. */
@@ -171,8 +174,11 @@ export class PlatformIdentity implements OnModuleInit {
   }
 
   /** The local stand-in's sign-in (POST /api/platform/session/local). */
-  async localSignIn(body: { firmKey?: unknown; email?: unknown; actorId?: unknown; secondStep?: unknown }) {
+  async localSignIn(input: unknown) {
     if (!(this.port instanceof LocalIdentity)) return problem(403, "Not available", "The local sign-in stand-in is off on this server (PLATFORM_IDENTITY is not local).", { code: "LOCAL_SIGN_IN_OFF" });
+    // PF-28 part 2a: the door's own gate first (closed in production: 403 whatever the body; check_forms_qa53, QA-621), then
+    // the body through the one input rule (batch 44935069729).
+    const body = parseInput(LocalSignInBody, input);
     if (typeof body.firmKey !== "string" || !body.firmKey) return problem(FIELD_ERROR_STATUS, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
     // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
     const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;

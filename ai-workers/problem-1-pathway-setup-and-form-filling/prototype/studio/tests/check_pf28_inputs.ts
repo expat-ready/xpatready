@@ -80,7 +80,7 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 213, UNPARSED_CEILING = 73;   // part 1 committed 244 and 83 (at its last merge of main: #2750's booking timings routes, owned by part 4); part 2a (identity doors) lowers them to 213 and 73; each fix part lowers both
+const PROBES_CEILING = 214, UNPARSED_CEILING = 73;   // part 1 committed 244 and 83 (at its last merge of main: #2750's booking timings routes, owned by part 4); part 2a (identity doors) lowers them to 214 and 73 (the callback door's "missing" probe stays: no code is its own 401, batch 44935069729); each fix part lowers both
 ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
@@ -92,6 +92,20 @@ const [missing, wrong, ctor, proto, long, good] = [{}, { name: 7 }, { name: "a",
 ok("PF-28 rule pass: a missing field says it is required; a wrong type says what it must be", missing?.fields.name === "This is required." && wrong?.fields.name === "This must be text.", [missing?.fields, wrong?.fields]);
 ok("PF-28 rule fail (break m2): \"constructor\" and \"__proto__\" are refused and named, never accepted or \"0 fields\"", Object.hasOwn(ctor?.fields ?? {}, "constructor") && Object.hasOwn(proto?.fields ?? {}, "__proto__") && !/^0 fields/.test(ctor?.detail ?? "0"), [ctor?.detail, proto?.detail]);
 ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters and the value is never repeated; a good body passes", Object.keys(long?.fields ?? {}).every((k) => k.length <= 64) && !JSON.stringify(long).includes("secret value") && good === null && long?.status === 422, long?.fields);
+
+// PF-28 part 2a (batch 44935069729: check_forms_qa53, check_qa621): the local sign-in door's own gate comes before its body
+// is read. Closed (PLATFORM_IDENTITY not local, as in production) → 403 LOCAL_SIGN_IN_OFF whatever the body; open → a bad
+// body is 422 naming the field. Through the route's own controller with stand-in ports: the gate and the parse run before any query.
+{
+  const { PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
+  const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
+  const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
+  const answer = async (port: unknown, body: unknown) => { try { await new PlatformIdentityController(new PlatformIdentity(null as never, port as never, { now: () => Date.now() } as never)).local(body as never); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string; fields?: Record<string, string> } }; return { status: x.getStatus?.(), ...x.getResponse?.() }; } };
+  const closed = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, { pf28Unknown: "x" }), closedEmpty = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, {});
+  const open = await answer(new LocalIdentity("pf28-test-secret", () => Date.now()), { pf28Unknown: "x" });
+  ok("PF-28 part 2a fail (batch 44935069729): the closed local sign-in door answers 403 LOCAL_SIGN_IN_OFF before reading the body (an unknown field or {} is never a 422 there)", closed?.status === 403 && closed.code === "LOCAL_SIGN_IN_OFF" && closedEmpty?.status === 403 && closedEmpty.code === "LOCAL_SIGN_IN_OFF", [closed, closedEmpty]);
+  ok("PF-28 part 2a pass: the open door still reads its body through the one rule (an unknown field → 422 naming it)", open?.status === 422 && Object.hasOwn(open.fields ?? {}, "pf28Unknown"), open);
+}
 
 // ------------------------------------------------------------------------------------- (b) a running copy: the probes
 process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
