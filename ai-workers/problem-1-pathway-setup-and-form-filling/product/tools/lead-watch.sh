@@ -222,4 +222,8 @@ qd=$(python3 -I "$TOOLS/queue-depth.py" ${QUEUE_DEPTH_RUNS:+--runs "$QUEUE_DEPTH
 fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
 
 tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(grep -c '^ACT' <<<"$tl")))   # 14. Cycle timeline (A244, ENF-783b, P-783 (2)): every check
+
+# 15. The focus list stays true (ENF-733b, founder A261): main's focus-list.md against qa's file on main (step 11's copy).
+git show origin/main:ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md > "$STATE_DIR/focus-main.md" 2>/dev/null; ft=$(python3 -I "$TOOLS/focus-truth.py" --list "$STATE_DIR/focus-main.md" --caps "$STATE_DIR/caps-main.md" 2>&1); ftrc=$?; [ "$ftrc" = 1 ] && ACT "focus list: $(grep -c '^drop:' <<<"$ft") proven lines, $(grep -c '^missing:' <<<"$ft") Partial items missing (focus-truth.py --md)"; [ "$ftrc" -gt 1 ] && ACT "focus list not checked: $(tail -1 <<<"$ft")"
+
 exit "$act"
