@@ -3,7 +3,7 @@
 // the founder to "page not found"; the Studio's menu links to /home; the Home page shows the list. Pure: reads the
 // source files, no server, no database; US$0.
 //   tsx studio/tests/check_demo_link.ts
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { recorder } from "./runtime/api.ts";
 
@@ -11,15 +11,13 @@ const { ok, summary } = recorder();
 const WEB = join(import.meta.dirname, "..", "web", "src"), MODS = join(WEB, "modules");
 const read = (p: string) => readFileSync(p, "utf8");
 
-/** Every routes file under a module folder (fixtures, "_…", left out), including spread-in ones (complaints/routes.tsx). */
-const routeFiles = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
-  const p = join(dir, n);
-  if (n.startsWith("_")) return [];
-  return statSync(p).isDirectory() ? routeFiles(p) : n === "routes.tsx" ? [p] : [];
-});
+/** The routes files that answer the list's addresses, named one by one (not a folder walk, so a change to any other web
+ *  page does not pick this suite: select-suites.mjs treats a suite that lists web/src as reading all of it). A list address
+ *  outside these files and APP_ROUTES fails the "none invented" line below, which names it. */
+const routeFiles = ["front-office/routes.tsx", "platform/routes.tsx", "platform/complaints/routes.tsx"].map((f) => join(MODS, f));
 // Routes are read by regex (`path: "…"` literals): a route built from a variable or a template shows as missing here,
 // never as a false pass.
-const modulePaths = routeFiles(MODS).flatMap((f) => [...read(f).matchAll(/\bpath:\s*"([^"]+)"/g)].map((m) => m[1]));
+const modulePaths = routeFiles.flatMap((f) => [...read(f).matchAll(/\bpath:\s*"([^"]+)"/g)].map((m) => m[1]));
 const appBlock = read(join(WEB, "modules.tsx")).match(/APP_ROUTES = \[([\s\S]*?)\] as const/)?.[1] ?? "";
 const appPaths = [...appBlock.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 const routes = [...modulePaths, ...appPaths];
