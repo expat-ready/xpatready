@@ -21,7 +21,7 @@ ok("W1 walk-plan.mjs selftest (T1-T9: imports followed, Completes read, machiner
 const real = readdirSync(join(ROOT, J)).filter((f) => /^j_[1-9]\d*\.ts$/.test(f));
 const p = walkPlan({ event: "pull_request", jdir: J, changed: [`${J}/j_6.ts`], body: "Done when: x\n", root: ROOT });
 ok(`W2 QA-702 on this tree (${real.length} journeys, over ${CAP}): a PR changing j_6.ts walks j_6 and the two fixtures, no refusal`, real.length > CAP && p.matrix.map((m: { name: string }) => m.name).join(" ") === "j_6 j_0_fails j_0_throws", p);
-const z = walkPlan({ event: "pull_request", jdir: J, changed: ["ai-workers/problem-1-pathway-setup-and-form-filling/product/STATE.md"], root: ROOT });
+const z = walkPlan({ event: "pull_request", jdir: J, changed: ["somewhere/else/not-read-by-a-journey.txt"], root: ROOT });
 ok("W3 a PR touching no journey and nothing one imports: empty matrix, a \"skipped:\" reason", z.matrix.length === 0 && /^skipped: /.test(z.reason), z);
 let refused = ""; try { walkPlan({ event: "workflow_dispatch", jdir: J, want: "", root: ROOT }); } catch (e) { refused = (e as Error).message; }
 ok("W4 a dispatch of every journey on this tree is still refused at 20", /at most 20/.test(refused), refused);
