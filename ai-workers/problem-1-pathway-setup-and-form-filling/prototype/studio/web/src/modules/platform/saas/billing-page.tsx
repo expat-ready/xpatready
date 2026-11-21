@@ -43,7 +43,8 @@ function InvoiceList() {
 function Summary() {
   const me = usePlatformStaff(), token = useStaffToken(), qc = useQueryClient();
   const [params, setParams] = useSearchParams();
-  const returning = params.get("card") === "saved";
+  // Kept for the page's life: the marker leaves the address once the record moves, the confirmation stays on screen.
+  const [returning] = React.useState(() => params.get("card") === "saved");
   const [since] = React.useState(() => Date.now());
   const [slow, setSlow] = React.useState(false);
   const q = useQuery({ queryKey: ["pf", "billing", token], enabled: !!token, retry: false, queryFn: async () => Billing.parse(await staffApi("/platform/billing")),
@@ -51,7 +52,7 @@ function Summary() {
   const b = q.data;
   React.useEffect(() => { if (!returning) return; const t = window.setTimeout(() => setSlow(true), SLOW_MS); return () => window.clearTimeout(t); }, [returning]);
   // The record moved: the return marker leaves the address, so a reload never shows "Checking…" again.
-  React.useEffect(() => { if (returning && b?.cardOnFile === true) setParams((p) => { p.delete("card"); return p; }, { replace: true }); }, [returning, b?.cardOnFile, setParams]);
+  React.useEffect(() => { if (returning && b?.cardOnFile === true && params.has("card")) setParams((p) => { p.delete("card"); return p; }, { replace: true }); }, [returning, b?.cardOnFile, params, setParams]);
 
   const canCard = me.keys.includes(KEY.card), canPortal = me.keys.includes(KEY.portal);
   const [panel, setPanel] = React.useState<null | { then: "card" | "portal" | null }>(null);
