@@ -19,7 +19,7 @@ import { client, recorder } from "./runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 const PORT = Number(process.argv[2] ?? 4700), DBNAME = process.argv[3] ?? "xr_studio_screens_pf5s2";
 const BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..");
-const SHOTS = join(STUDIO, "..", "..", "product", "screens", "pf-5s-saas", "screenshots-part2"); mkdirSync(SHOTS, { recursive: true });
+const SHOTS = join(STUDIO, "..", "..", "product", "screens", "PF-5s", "screenshots-part2"); mkdirSync(SHOTS, { recursive: true });
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 const { ok, summary } = recorder();
 const { sql: rawSql } = client(PORT, DBNAME);
