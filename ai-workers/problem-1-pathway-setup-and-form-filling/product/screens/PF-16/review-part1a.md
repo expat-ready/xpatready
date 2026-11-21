@@ -320,3 +320,84 @@ The breaker's report also holds on the points it raises against `0f65522bd`:
 The round-2 Minors can go in this PR or a recorded follow-up.
 
 Verdict: Changes requested
+
+---
+
+## Round 3: re-review of `412b37b42b20cc7217fb1a02b267e384558c2b03` (diff only, P-277)
+
+* **Read:**
+  * `git diff 9d8d09339 d53df7f76 -- …/prototype`, the round-3 fixes.
+  * `git diff d53df7f76 412b37b42`: layout and comments only. I checked it with `-w --word-diff`: three doc comments are shorter and the contract's `} },` braces are joined. No code changed.
+  * The breaker's round-2 section.
+* **`check_pf16_billing_rules` at 412b37b42:** 41 passed, 0 failed, run here.
+* **Size:**
+  * Code and tests: 778 lines added and 17 removed from `origin/main`, so **795 changed**. Under P-610's 800.
+  * The whole PR is 1,250 by GitHub's count, because it includes this review (≈320 lines) and the break report (133). That is P-775's case. See R3-m2.
+* **Reviewer probe** (scratch copy of the check, its own scratch database, dropped afterwards):
+  ```
+  PROBE R3 {"first":{"status":0,"code":"Error: db write failed"},"stripePending":"price_teamMonth","nextPreview":{"status":409,"code":"PLAN_CHANGE_BOOKED","detail":"A change is booked for the renewal. Withdraw it first."}}
+  ```
+
+### Round 2 findings
+| # | Status | Evidence |
+|---|---|---|
+| R2-M1 | **Fixed** | `PlanSubscription.pendingPriceId` is the first item of a phase that starts later (`stripe-plan-change.ts`, `current`). After a failed schedule call, the change counts as booked only if `pendingPriceId` is the target. Otherwise the schedule is released and our booking withdrawn (503), or the answer is 503 `BILLING_UNCONFIRMED` if the undo fails (`service.ts:154-163`). Tested with the fake's half-made schedule. |
+| R2-M2 | **Fixed** | The guard uses `pendingPriceId` (`service.ts:53`). A schedule in its last phase is released quietly before a change (`:97`), and `withdraw` releases it with no audit line (`:179-184`). Tested: a raise after a schedule has done its job. |
+| R2-M3 | **Fixed** | No Stripe preview for a trial (`:79`). The change requires 0 (`:108-109`). |
+| R2-m1 | Fixed | `repair` runs `checkDowngrade` (409 on conflicts) and is refused when two active plans share the price (409 `PLAN_PRICE_SHARED`). Both tested. |
+| R2-m2 | Fixed | One of `discount` or `coupon`. |
+| R2-m3 | Partly fixed | Every query of a change and of `withdraw` now runs on the one transaction: `plan(…, tx)`, and PlanBookings `open/book/withdraw` take the outer transaction through `run()`. The 60 s timeout stays (see R3-m1). |
+| R2-m4 | Fixed | "Ask us". |
+| Breaker round 2, the pool freeze | **Fixed** | `pg_try_advisory_xact_lock`: a second change gets 409 `PLAN_CHANGE_IN_PROGRESS` and never waits. Tested: 12 changes at once end within 15 s with one charge, and an unrelated read answers. The builder reports that a mutant with the waiting lock fails at 60 s. |
+
+**Round 1 status:** every Blocker and Major is fixed and tested. m6 (locally, with no Stripe key, the plan routes answer 503) is still open and still has to be settled before the PF-5s screen calls these routes.
+
+### New findings (round 3)
+There is no Blocker and no Major.
+
+**R3-m1. With one transaction, a failure after Stripe's call rolls back our side while Stripe keeps its change.**
+* **Where:** `service.ts:88-123` and `:148-168` (renewal), and `:172-186` (`withdraw`). This follows from the pool fix: the booking used to commit before Stripe was called.
+* **Renewal scenario (probe R3, shown on a period change):**
+  1. The schedule is made at Stripe.
+  2. Our write fails afterwards (here the audit write). The same happens if the commit fails, or if the 60 s timeout runs out over about 7 Stripe calls at up to 10 s each, with 2 retries.
+  3. Result: the Owner gets 500, Stripe has a pending phase, and our booking or audit line is rolled back.
+  4. The next preview says "A change is booked for the renewal. Withdraw it first", so a way out is shown.
+  5. For a plan booking where the Owner does nothing, Stripe moves to Lite at the renewal while we stay on Team. The firm pays Lite with Team's limits, and unlike the now path, nothing repairs it.
+* **`withdraw` scenario:** the schedule is released at Stripe, then `bookings.withdraw(tx)` or the commit fails. Our booking stays and lowers the limits, and the job applies it at the renewal while Stripe stays on the old price. Retrying `withdraw` fixes it, and the booked guard keeps pointing there.
+* **Why only Minor:**
+  * It needs a database failure or timeout after Stripe has succeeded.
+  * There is a visible way out in both cases.
+  * No amount is charged that was not shown.
+* **Suggestions, for this PR or a follow-up:**
+  * Treat "Stripe has a phase ahead and we have no booking" as a renewal repair: book ours under `checkDowngrade` with no Stripe call, or show the Owner the exact state.
+  * Have the booking job compare Stripe's price before it applies.
+
+**R3-m2. The PR body's size line is out of date and lacks P-775's line.**
+* The body says "Size: 675 changed lines".
+* GitHub counts 1,250 for the PR, which `tools/pr-size.sh` refuses without a size-exception line.
+* P-775 covers this case: code and tests 795, plus this row's own `product/screens/PF-16/` records. The body needs "Size exception: P-775" and the split (code and tests 795, records about 455).
+* This is a body edit. It changes no commit, so it does not block this commit's Approve.
+
+**R3-m3. A renewal change holds the firm's staff and case locks during the Stripe calls.**
+* `book(…, tx)` takes the firm row lock (`for no key update`) and the `case-open` advisory lock inside the outer transaction. They are held across `scheduleAtRenewal` until commit.
+* For that firm only, invites and case openings wait up to the Stripe time (60 s at most).
+* Acceptable at this scale; noted with R2-m3.
+
+### Checklist (round 3)
+| Check | Result |
+|---|---|
+| One charge per confirmation | Yes: try-lock, read-back, 12 in parallel give one charge |
+| Charged = previewed | Yes: "now" re-previewed at the same date; trial 0 by rule |
+| Idempotency keys | Yes: fresh keys for undo and renewal; decline replay handled |
+| Failure ordering and compensation | Now and trial: yes, with repair. Renewal: half schedule undone. Stripe-ok then DB-fail on the renewal and withdraw paths can still split (R3-m1, recoverable) |
+| Trial detection | Server clock, plus the kind re-check |
+| Stripe parameters (23.1.0) | Valid; anchor object; one discount key; schedule phases read for `pendingPriceId` |
+| Owner only, hold, overdue, PF-28, PF-12 | Unchanged and right |
+| Two changes at once | One at a time per firm, no waiting (409) |
+| Audit before/after | Amounts present; no false withdrawal line |
+| Pass and fail per Done-when line | Yes; plus repair, pool, half schedule, last phase |
+| Size < 800 (P-610) | Code and tests 795; records under P-775 (body line owed, R3-m2) |
+
+No Blocker or Major is open. The three round-3 Minors can be fixed in a follow-up. R3-m2 is a PR-body edit and needs no new commit.
+
+Verdict: Approve 412b37b42b20cc7217fb1a02b267e384558c2b03
