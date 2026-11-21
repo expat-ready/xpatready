@@ -1,6 +1,6 @@
 # CI Pipeline Strategy
-Version: 1.0
-Updated 17 Nov 2026 · owner: the tech lead · status: living master
+Version: 1.1
+Updated 20 Nov 2026 · owner: the tech lead · status: living master
 
 Why CI is jammed, where the machine time goes, and the measured plan for capacity, tests, delivery order and long unattended runs. Board Library row: "CI pipeline strategy".
 
@@ -8,6 +8,7 @@ Why CI is jammed, where the machine time goes, and the measured plan for capacit
 | Version | Date (IST) | Change |
 |---|---|---|
 | 1.0 | 17 Nov 2026 | First master, assembled from the CI pipeline and delivery strategy research of 17 Nov 2026 (branch research/ci-pipeline-2026-11-17) |
+| 1.1 | 20 Nov 2026 | Refresh from `.github/workflows` and `.mergify.yml` on main (diff 9bbdbb899..origin/main, 17-20 Nov): new section 3a lists every change to jobs, triggers, runners, parts, queues, batch sizes, timeouts, gates and quarantine, each with its PR or commit; stage rows in section 3 and the proposals in sections 4, 5, 13 and 14 carry a dated "Changed" note. The 17 Nov measurements are kept as measured. |
 
 **About the source.** Research session for the Lead, started at the founder's request (07:4x IST 17 Nov). Read-only: nothing in the app, CI, `.github`, Mergify, labels or settings was changed; no run was cancelled, re-run or started; no spend. Times are IST from `TZ=Asia/Kolkata date`. Every number names its source.
 
@@ -75,17 +76,17 @@ Known gaps are tracked privately by the tech lead.
 | 2 | Reviewer (Opus, high) | reads the diff against the brief and the standards; posts `Reviewer: Approve <sha>` | none on GitHub | - | at most 2 rounds (P-277) | P-303, P-385 |
 | 3 | Breaker (money, schema, permissions, new screen) | tries to break it | none on GitHub | - | - | P-303 |
 | 4 | Draft PR | push guard only (paths, PDFs, secrets, names) | `guard`, 1 job | 0.6 / 6.6 min | 0% | [R7] |
-| 5a | PR check: `kind` | what changed; test merge on today's main; memory of green suites; picks shards | 1 | 1.9 / 3.5 min | 1% | [R7] |
-| 5b | PR check: `shard` 1-8 | part 1: rules files, graph, official PDFs, gate B, port contracts; every part: the suites this change can affect (`--changed`) | up to 8 | 30.3 / 46.5 min | 11% of jobs | [R7] |
-| 5c | PR check: `packs` | gate B's acceptance packs of the capabilities the diff touches | 1-5 | 11.5 / 17.2 min | 7% | [R7] |
+| 5a | PR check: `kind` | what changed; test merge on today's main; memory of green suites; picks shards (**changed 18 Nov, #2151:** on a PR it plans no part; per-suite memory removed, see 3a) | 1 | 1.9 / 3.5 min | 1% | [R7] |
+| 5b | PR check: `shard` 1-8 | part 1: rules files, graph, official PDFs, gate B, port contracts; every part: the suites this change can affect (`--changed`) (**changed 18 Nov, #2151, P-651 (2):** a PR runs no suite; part 1's checks are now job `fast`, see 3a) | up to 8 | 30.3 / 46.5 min | 11% of jobs | [R7] |
+| 5c | PR check: `packs` | gate B's acceptance packs of the capabilities the diff touches (**changed 18 Nov, #2151:** batch and full run only, see 3a) | 1-5 | 11.5 / 17.2 min | 7% | [R7] |
 | 5d | PR check: `types` | type check, api and web | 1 | 2.5 / 3.3 min | 6% | [R7] |
-| 5e | PR check: `ci` | joins the parts' results | 1 | 0.1 min | - | [R7] |
-| 5f | Other PR workflows | pr-rules, module-cards, skeleton (container proof), trace, guards, cockpit-tests, records-label | 1 each, by path | 1-5 min | - | `.github/workflows/*.yml` on main |
-| 6 | Label and queue gate | `review: approved` only on Approve + green (label-guard, queue-gate.sh auto-label, P-637); `queue-fresh` re-runs a stale PR on today's main (B194) | small jobs, also on a timer | under 1 min | - | `.mergify.yml`, queue-gate.yml |
-| 7a | Merge batch (Mergify, up to 6 PRs, 3 batches checked at once) `shard` 1-8 | every suite except the quarantined ones (11 suites in the newest logs) | 8 | 38.5 / 48.6 min | 3% of jobs | [R7], [LOG] |
+| 5e | PR check: `ci` | joins the parts' results (since #2151 also job `fast`'s) | 1 | 0.1 min | - | [R7] |
+| 5f | Other PR workflows | pr-rules, module-cards, skeleton (container proof), trace, guards, cockpit-tests, records-label (since 18 Nov also walks, #2133; see 3a for pr-rules, guards, module-cards changes) | 1 each, by path | 1-5 min | - | `.github/workflows/*.yml` on main |
+| 6 | Label and queue gate | `review: approved` only on Approve + green (label-guard, queue-gate.sh auto-label, P-637); `queue-fresh` re-runs a stale PR on today's main (B194) (**changed 18-19 Nov:** queue-gate on the Mac runner, #2145; label also needs a green full run, #2249, P-731; see 3a) | small jobs, also on a timer | under 1 min | - | `.mergify.yml`, queue-gate.yml |
+| 7a | Merge batch (Mergify, up to 6 PRs, 3 batches checked at once) `shard` 1-8 (**changed 19 Nov:** up to 2 PRs, 6 batches at once in parallel mode by scope, 18 parts; #2207, #2290, #2282; see 3a) | every suite except the quarantined ones (11 suites in the newest logs) | 8 | 38.5 / 48.6 min | 3% of jobs | [R7], [LOG] |
 | 7b | Merge batch `regression` 1-5 | every Works capability's pack (the protected set) | 5 | 14.5 / 19.2 min | 1% | [R7] |
 | 7c | Merge batch `types`, `kind`, `ci` | as in the PR | 3 | 2-3 min | 0% | [R7] |
-| 8 | Main | demo update on the Mac; nightly full set including quarantined suites (20:23 UTC); XFA engine nightly | 1 + nightly | - | - | demo-update.yml, nightly.yml |
+| 8 | Main | demo update on the Mac; nightly full set including quarantined suites (20:23 UTC); XFA engine nightly (**added 17-19 Nov:** nightly restore drill, #2014; item-proof on each push to main, #2233; see 3a) | 1 + nightly | - | - | demo-update.yml, nightly.yml |
 | 9 | qa gate B | the capability's pack green on main's head on GitHub's machines, run id in qa's row, an independent re-run | uses stage 7's run or a nightly dispatch | - | - | P-339 |
 | 10 | qa gate A | qa walks the capability by screens to the next one's first step; a fresh Opus reader gives the verdict | none on GitHub | median ~35 h from last part to Works (n=4) | - | P-348c, release1-forecast-2026-11-16 §4 |
 | 11 | Proven | the row says Works in `qa/CAPABILITIES.md` | - | - | 11 of 101 | [CAP] |
@@ -93,6 +94,66 @@ Known gaps are tracked privately by the tech lead.
 **Per merged code PR** (7 days): 205,461 machine-minutes / 160 app-code PRs merged (GitHub search, merged 10-17 Nov: 160 app-code, 102 records or qa, 11 tooling) = **about 1,280 machine-minutes per merged code PR**, all stages together.
 
 **Lanes the line can carry today.** 40 machines × 60 = 2,400 machine-minutes an hour; at 80% use (the point where waits start to grow fast), 1,920. Divided by 1,280: **about 1.5 merged code PRs an hour, about 36 a day.** The best measured days merged 31 code PRs (12 and 15 Nov, IST, GitHub search); 16 Nov merged 26 while using 45,500 machine-minutes. Above about 30 a day, more lanes bring more waiting, not more merges.
+
+### 3a. What changed in the pipeline, 17-20 Nov 2026 (refresh of 20 Nov)
+
+Source: `git diff 9bbdbb899 origin/main -- .github/workflows .mergify.yml`, read 20 Nov 2026; each line names the PR (merge on main) and, where useful, the commit. The measurements in sections 2-3 above are from before these changes and are kept as measured; none of the changes below has been re-measured on this page.
+
+**Tests on a PR and in the batch (run tests once)**
+
+| What | Was (17 Nov) | Now (20 Nov) | Source |
+|---|---|---|---|
+| Suites on a builder's PR | the suites the change can affect (`--changed`), on up to 8 parts | **none**: a PR runs job `fast` and job `types` only; `shard`, `packs`, `regression` run only on a merge-queue batch of code or a full run | #2151 (3911fa145, b178310b7, 4691bb94b), P-651 (2) |
+| Fast checks | part 1 of job `shard` | own job `fast` (push guard, route-has-screen, test databases, records rules, graph, official PDFs, explicit-any count, tools' checks, port contracts, gate B); records and code, PR and batch; skipped for notes and for an "already green" head | #2151 |
+| Gate B on a PR | bug check and named packs, on part 1 | bug check only (`gate-b.mjs --no-packs`); on a batch every row a member PR names runs with its steps, held rows too (`GATE_B_ONCE`, P-488) | #2151 |
+| Packs by diff (`packs`) | on a PR of code | on a batch: each member's packs by diff minus the rows its PR names, at most 5 groups | #2151 |
+| Per-suite memory (`ci-memory.mjs` reuse/record, P-371 (3)) | a later PR run skipped suites remembered green | removed (a PR runs no suite); "already green" head verdict kept | #2151 |
+| `PR_SUITES=direct` | switch for PR suite selection | idle (still part of the memory context) | #2151 |
+| Quarantine (`flaky.mjs`, B122) and `retry-comment` | worked out and posted for every code run | only when suites run (batch or full run); `retry-comment` on batches only; rule unchanged (2 retry passes in 7 days); records read from up to 24 parts | #2151, #2282 |
+| Records rules (`check-docs.sh`, `decision-impact.sh`) | in every code and notes run | on a pull request only; a merge-queue batch (or `merge_group` event) skips them; every code check still runs there. Reason in the file: they failed 8 of 13 failed batches on 20 Nov. New self-check `check-queue-run-scope.sh` | #2410 (831731b07), ENF-746c, labelled P-746 in the workflow |
+
+**Full run before the label (CI-PRE)**
+
+| What | Now | Source |
+|---|---|---|
+| Trigger | `ci.yml` gains `workflow_dispatch` (inputs: PR number, head sha), run name `full-run PR #<n> <head>`; started by the PR comment `/run full` (comment-run.yml), always on ref main; refused for a fork, a closed PR or a head without a "Reviewer: Approve <head>" line by the owner's account or a known reviewer; a red full run of the same head re-runs only its failed parts | #2249 (207619aca, 02375c6e2), P-731 |
+| What it runs | everything a batch runs (parts, packs by diff as a PR ran them before P-651, protected set, gate B's named packs) on the head merged with main's head; gate B's NOT TESTED is a warning there; no npm cache (a run of main saves nothing to main's cache) | #2249 |
+| Gate | label-guard and queue-gate accept `review: approved` only with a green full run on the head; after a failed batch a relabel needs a "Batch failures covered:" comment naming the failed parts; repository variable `FULL_RUN_FROM`: heads approved before it keep the earlier rule | #2249 (02375c6e2, 68d640230), P-731 (4) |
+
+**Merge queue (`.mergify.yml`)**
+
+| What | Was (17 Nov) | Now (20 Nov) | Source |
+|---|---|---|---|
+| Queue mode | serial (each batch assumes those ahead pass) | `mode: parallel` with file scopes: platform, front-office, money, case-side, forms-engine, migrations, pipeline; barrier files (package files, `.nvmrc`, tsconfigs, base/links/extension/audit schema, migration lock, `main.ts`, `core.ts`, `studio.ts`) conflict with every scope; capacity 1 for money, migrations, pipeline. Undo: `mode: serial` | #2207 (4867163e3, 1330e8e03), P-715, P-717 |
+| Case-side scope | - | adds `api/src/clients.ts` (238dd0e67) and `api/src/case-clients/*.ts` | #2207, #2255 (0f1a6ad1a) |
+| Batches checked at once (`max_parallel_checks`) | 3 | 6 (8 in commit 0008d68f9, then 6 in f530f7732, "P-728's number"); the file notes P-730's hold | #2290, P-728 (2), P-730 (1) |
+| Batch size | 6 (product, records) | 2 in every queue ("a failed batch bounces at most one other PR"); failure resolution at most 2 rounds (`batch_max_failure_resolution_attempts: 2`) | #2207, P-715 |
+| Queues, in order | product, records | **verdicts** (records PR titled `qa:` changing `qa/CAPABILITIES.md`; 2 min wait), product (5 min wait; now excludes a PR whose every file is pipeline work), **pipeline** (every file a pipeline path; 2 min wait; XFA engine rule applies), records (2 min wait) | verdicts: #2073 (1b2f181bc), P-664; pipeline: #2207, P-717 (a) |
+| New blocking checks | - | start report-only (no queue or merge condition) until clean for 24 h or 10 PR runs; the tech lead adds them in their own PR | #2207, P-717 (2) |
+
+**Parts, runners, timeouts, schedules**
+
+| What | Was (17 Nov) | Now (20 Nov) | Source |
+|---|---|---|---|
+| Parts (`SHARDS`) | default 8, allowed 1-9 | default 18, allowed 1-24 (20 in 845543d4a, then 18 in f84f09524: "the longest suite sets the floor", `check_b78` about 20 min; 8 parts ran 43-60 min with no machine wait, Lead 94 measurement in the file); merged by hand under P-691 | #2282 |
+| `fast` timeout | (part 1 of `shard`, 75 min) | 90 min when suites run, else 45 | #2151 |
+| `shard` timeout | 75 min | unchanged, 75 min | - |
+| Type check (`types`) | node default heap | `NODE_OPTIONS=--max-old-space-size=8192`: tsc for api ran out of memory in batches #2245 and #2246 | #2250 (873ffcae3) |
+| `guards` workflow timeout | 10 min | 30 min (about 150 mutation rows); now also runs on `design/waves.tsv` and `waves.md` changes (guard 28) | #2249 (43a238b44); #2363 (0fa3482e2) |
+| queue-gate runner | `ubuntu-latest` | the Mac's self-hosted runner `xr-mac` (repository variable `GATE_RUNNER` sends it back); reason in the file: about 50 hosted jobs ran and 52 waited 15-35 min at 21:13 IST 18 Nov, so the seconds-long gate waited up to an hour; it checks out main only and reads the PR's files as names | #2145 (628742f00), P-214, P-691 |
+| Schedules | as before | label-guard, queue-gate, nightly, xfa-engine and pipeline-heartbeat schedules re-registered 19 Nov (GitHub dropped scheduled runs from 18 Nov 10:00 UTC after the move to an organisation); label-guard sweep and queue-gate can also be run by hand (`workflow_dispatch`) | #2176 (479ed84b6, b36bef847) |
+| Label sweep | - | passes `REVIEWERS`: since the move the owner is the organisation, so without it the sweep took off every label queue-gate put on (#2197, #2199, 19 Nov) | #2209 (1a79efda5) |
+
+**New and changed workflows besides `ci`**
+
+| Workflow | What it does | Runner, timeout | Gate? | Source |
+|---|---|---|---|---|
+| `walks.yml` (new) | qa's gate A walk by screens as a recorded journey (video, trace, a screenshot per step), one job a journey; by hand or on a ready PR that changes journeys; never a draft or a `mergify/*` batch; no npm cache; self-test fixtures that must fail | GitHub hosted; plan 5 min, walk 60 min | no (Mergify still reads only `ci`) | #2133 (d09c8f6cd … 33098061c), P-700 |
+| `item-proof.yml` (new) | on each push to main (and by hand): a merged PR with a `Completes: R1.n` line gets the item's packs, named suites and journey run; verdict commented on the PR and committed to branch `auto-verdicts`, never main; never marks Works | GitHub hosted; detect 5, prove 150, report 10 min | no | #2233 (9c5345ce3, ba13b567c, 2d9b87acf, 4f645f17a), P-728 (3), P-729 (1) |
+| `pipeline-heartbeat.yml` (new) | set-up conformance (CK-1) and pipeline-moving check every 30 min (cron `11,41`); red mails the owner | GitHub hosted; 5 min; never cancelled | no | #2081 (eba17a283, 93798b221) |
+| `nightly.yml` | new job `restore-drill` (PF-8r): dump, restore, check, time, on the pinned PostgreSQL image; evidence kept 90 days | GitHub hosted; 30 min | no | #2014 (eaaa74fd5) |
+| `pr-rules.yml` | a records-only PR is not size-limited (P-686); a `Completes:` line must name R1 items only | - | not a queue condition (unchanged) | #2086 (85834b6f7); #2233 |
+| `module-cards.yml` | frozen Tests./Tables./Entry points. lines compared with the base | - | - | #2195 (3470cbe3d), P-712 |
 
 ---
 
@@ -119,14 +180,14 @@ Suite time on main's `suite-times.tsv` (15 Nov, 498 suites, 339 min) by family: 
 
 | Suites | Today | Proposed | Evidence | Quality guard that stays |
 |---|---|---|---|---|
-| Fast checks (rules files, graph, PDFs, gate B, port contracts) | inside shard 1 | **own first job, about 3 min; shards start only when it is green** | 109 attempts failed here while other shards used 6,555 min [R7] | same checks, same order of strictness |
-| Suites the change can affect (`--changed`), on the PR | every push of a ready PR | **once per PR, after the reviewer's Approve** (drafts until then, P-646) | 57% of PR time is 2nd and later runs [R7] | the full PR check still runs on the exact head that is labelled; label-guard refuses a label without it |
+| Fast checks (rules files, graph, PDFs, gate B, port contracts) | inside shard 1 | **own first job, about 3 min; shards start only when it is green** (**changed 18 Nov:** done as job `fast`, #2151; it runs beside the parts on a batch, not before them) | 109 attempts failed here while other shards used 6,555 min [R7] | same checks, same order of strictness |
+| Suites the change can affect (`--changed`), on the PR | every push of a ready PR | **once per PR, after the reviewer's Approve** (drafts until then, P-646) (**changed 18-19 Nov:** a PR now runs no suite, #2151, P-651 (2); one full run of every batch suite on the approved head is required before the label, #2249, P-731) | 57% of PR time is 2nd and later runs [R7] | the full PR check still runs on the exact head that is labelled; label-guard refuses a label without it |
 | `--direct` instead of `--changed` on the PR | off (`vars.PR_SUITES` unset) | **not now** | it would run 27% of the suite time [SIM a], but 6 of 19 red PR checks would have gone green and broken in the queue instead [SIM b] (32% × 32% of PRs ≈ 10% leak; at 6 per batch, ~47% of batches would fail) | - |
 | Every suite in the merge batch | yes | **stays** | it finds the clashes: 73% of failed batches [MQ], 16 Nov's pf12 and fo3w catches [LOG] | - |
 | Works packs (regression) in the batch | yes | **stays** | caught the only "real break" roots in [MQ] (#1691) | - |
 | Container proof (skeleton.yml) | PR only, skipped on batches | **add to the merge batch** | QA-449 (Major): the container proof never runs on what reaches main; holds R1.16 | a gate added, not removed |
 | Configurator suites in a batch with no configurator file | yes | stays until a week of data shows no batch clash from Platform/Front office into the configurator | not measured: needs the per-batch file list; the PF-5 example shows shared files do connect them | nightly full set |
-| Quarantined suites (11 now) | nightly only | stays (B122); fix the top flaky (bk5 start, c95) | 17 flaky events in 7 days [LOG] | nightly full run |
+| Quarantined suites (11 now) | nightly only | stays (B122); fix the top flaky (bk5 start, c95) (rule unchanged on 20 Nov; worked out only when suites run, #2151) | 17 flaky events in 7 days [LOG] | nightly full run |
 
 ---
 
@@ -137,12 +198,12 @@ Ordered by measured gain per unit of risk. "Quality" means: every merge still pa
 | # | Change | Measured gain | Quality effect | Effort |
 |---|---|---|---|---|
 | Q1 | **One PR check per PR, at the end:** a PR stays draft until the reviewer approves its head; then one full PR check runs; a red result means a fix and a diff-only re-review (P-277), then one more check | Up to 63,000 machine-min a week (the 2nd and later runs, 57% of PR time) [R7]; a realistic half of that, ~30,000 (30% of all CI) | none: the same check runs on the head that gets the label | rule exists (P-646); needs a hook or the label-guard to refuse a ready push without a recorded Approve |
-| Q2 | **Fast checks first** (part-1 rules job before shards) | 6,555 min a week and a 3-minute answer instead of 40 [R7] | none: same checks | one CI PR (Lead reads the diff, P-423) |
+| Q2 | **Fast checks first** (part-1 rules job before shards) | 6,555 min a week and a 3-minute answer instead of 40 [R7] | none: same checks | one CI PR (Lead reads the diff, P-423). **Done 18 Nov** as job `fast`, #2151 |
 | Q3 | **GitHub organization on Team: 60 machines** | +50% capacity (40 → 60, docs.github.com limits) | none | about 1 hour plus the checklist (P-652) |
 | Q4 | **Container proof in the merge batch** | 1 job a batch | **better**: closes QA-449, lets R1.16 be proven | one CI PR |
-| Q5 | **Lower cascades while batches fail often**: `max_parallel_checks` 3 → 2 when the last 24 h failure rate is above 15% | [MQ]: 10 of 30 failed batches were cascades (about 4,000 min) | none: fewer guesses, same checks | a Mergify change (Lead reads it) |
-| Q6 | **Shards sized to the work left** (kind already counts units) and balance from each night's times | [AUD]: 15 of 43 PR checks used 8 shards under 12 min each; slowest shard ~20% over the mean | none | one CI PR |
-| Q7 | **Gate jobs off the long line** (queue-gate, label-guard, records-label run on a timer and on comments) | small minutes; gate waits up to 61 min [AUD] | none | low |
+| Q5 | **Lower cascades while batches fail often**: `max_parallel_checks` 3 → 2 when the last 24 h failure rate is above 15% | [MQ]: 10 of 30 failed batches were cascades (about 4,000 min) | none: fewer guesses, same checks | a Mergify change (Lead reads it). **Changed 19 Nov, not as proposed:** parallel mode by scope with batches of 2 and `max_parallel_checks` 6 instead (#2207, #2290; P-715, P-728 (2)) |
+| Q6 | **Shards sized to the work left** (kind already counts units) and balance from each night's times | [AUD]: 15 of 43 PR checks used 8 shards under 12 min each; slowest shard ~20% over the mean | none | one CI PR. **Changed 19 Nov:** default parts 8 → 18 (#2282); sizing to work left not done |
+| Q7 | **Gate jobs off the long line** (queue-gate, label-guard, records-label run on a timer and on comments) | small minutes; gate waits up to 61 min [AUD] | none | low. **Changed 18 Nov:** queue-gate moved to the Mac's self-hosted runner `xr-mac` (#2145) |
 
 Not proposed: dropping suites from the PR (section 4: 32% of PRs went red there); `--direct` on PRs (it lets about a third of those breaks through); self-hosted machines on this public repository (section 6).
 
@@ -363,11 +424,11 @@ Every step is reversible, none lowers a gate, and each has one measure taken bef
 | # | Decision | Recommendation | Time | Cost | Quality |
 |---|---|---|---|---|---|
 | D1 | Move the repository into a GitHub organization on the Team plan (the 09:00 IST step, P-652) | **Yes, today** | about 1 h plus the checklist; jobs start at once again in busy hours (projection) | about US$4 a month (1 seat; github.com/pricing) | none |
-| D2 | What "run the full tests once" (P-651 (2)) means | **One PR check per PR, run once after the reviewer's Approve, plus every suite once in the merge batch.** Not "no suites on the PR". | saves up to 63,000 machine-min a week; realistic ~30,000 | US$0 | none; dropping PR suites instead would let 32% of PRs' breaks into batches |
+| D2 | What "run the full tests once" (P-651 (2)) means | **One PR check per PR, run once after the reviewer's Approve, plus every suite once in the merge batch.** Not "no suites on the PR". (**Built differently, 18-19 Nov:** no suites on the PR, #2151; then one full run on the approved head before the label, #2249, P-731.) | saves up to 63,000 machine-min a week; realistic ~30,000 | US$0 | none; dropping PR suites instead would let 32% of PRs' breaks into batches |
 | D3 | #2032 (CI-RUN part 1) while `vars.CI_SHARD_RUNNER` is set | **Unset the variable before #2032 merges**, or narrow #2032 to one job group; keep the switch | avoids dropping from 40 free machines to 8 trial machines | US$0 | none |
 | D4 | Paid overflow (Namespace Business, Blacksmith after the org move) | **Not yet.** Decide 48 h after D1-D2 with fresh numbers; apply to Namespace's open-source program meanwhile | - | US$1,600-2,400 a month if bought for batch-only load (section 6) | none |
-| D5 | Self-hosted machines on a rented server | **No** while the repository is public (GitHub's own security guidance) | - | - | security risk |
-| D6 | Fast checks first, container proof in the batch, cascades 3 → 2 while failures are high (Q2, Q4, Q5) | **Yes**, one small CI PR each; the Lead reads each .github diff (P-423) | small | US$0 | Q4 raises quality (closes QA-449) |
+| D5 | Self-hosted machines on a rented server | **No** while the repository is public (GitHub's own security guidance) (Since 18 Nov the queue-gate job alone runs on the Mac's self-hosted runner; it checks out main only, never the PR's code, #2145) | - | - | security risk |
+| D6 | Fast checks first, container proof in the batch, cascades 3 → 2 while failures are high (Q2, Q4, Q5) (20 Nov: Q2 done, #2151; Q5 replaced by parallel scopes, #2207, #2290; container proof in the batch not in `.github/workflows` on main) | **Yes**, one small CI PR each; the Lead reads each .github diff (P-423) | small | US$0 | Q4 raises quality (closes QA-449) |
 | D7 | Delivery order: unjam the approved near-Proven PRs first, then whole journey groups, no new capability while a started one waits (P-606) | **Yes** | the 5 nearest rows can be proven as soon as their PRs merge | US$0 | none |
 | D8 | Lane cap from CI capacity (section 8c) | **Yes**: about 10-12 code lanes today, about 15 on Team | fewer waits | US$0 | none |
 | D9 | Ultracode | **Off as a standing setting; `workflowSizeGuideline: small`; on only for a named, read-only, wide task** | - | 3-8 times the tokens of one session on the tasks that use it (estimate) | none when read-only |

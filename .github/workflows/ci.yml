@@ -300,6 +300,7 @@ jobs:
         run: |
           # One command per line: bash -e passes over a failed command before the last && of a list (P-376 (3), ci-and-lists.mjs).
           bash "$P/tools/check-queue-run-scope.sh"   # ENF-746c: records rules skipped in a batch, every code step still runs
+          bash "$P/tools/check-skeleton-scope.sh"   # QA-449: the container proof runs on merge batches, PRs on its paths and dispatch
           node "$P/tools/graph.mjs" --check
           python3 ai-workers/problem-1-pathway-setup-and-form-filling/official-sources/fetch_official_sources.py
           node "$S/tools/count-any.mjs" --against "${RANGE%%..*}"

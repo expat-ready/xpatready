@@ -10,6 +10,12 @@ qa/CAPABILITIES.md (Works = Proven). Stdlib only, US$0, no network except `wip`,
   waves.py allow R1.x ...   exit 0 only when every item may start a lane: wave 0 (already Proven: fixes, P-214), the
                             active wave, the next one, a wave below the active one (finishing its last 3 or fewer
                             items), or a note "allow: <reason>"; else one "OUTSIDE WAVE" line
+  waves.py pr               stdin: a PR's title (first line) and body; one "OUTSIDE WAVE" line per item it names
+                            (title R1.x, body "Item:" or "Completes:" lines) outside the open waves; exit 1 when any
+                            (pr-rules.yml flags it with the label outside-wave and a warning, never a failure, P-214)
+  waves.py none-ok          stdin: a lane brief whose Item line says "none"; exit 0 when the row it is for (after
+                            "/next <area>" or "Row") has a tooling, qa, records or Lead area in BACKLOG*.md, or it
+                            names no row; else exit 1 with the reason (brief-check.sh --brief; focus-check.py's rule)
   waves.py active           print the active wave and the waves open for lane starts
   waves.py wip [--prs F] [--lanes F]   building (an open non-draft PR or a lane naming the item) against cap 8 and
                             Built-not-Proven (status "Built...") against cap 12; one ACT line per breach and per item
@@ -27,6 +33,7 @@ TSV = os.environ.get("WAVES_TSV") or os.path.join(PH, "design", "waves.tsv")
 MD = os.environ.get("WAVES_MD") or os.path.join(PH, "design", "waves.md")
 CAPS = os.environ.get("WAVES_CAPS") or os.path.join(PH, "qa", "CAPABILITIES.md")
 FOCUS = os.environ.get("WAVES_FOCUS") or os.path.join(PH, "focus-list.md")
+BACKLOG_DIR = os.environ.get("FOCUS_BACKLOG_DIR") or PH
 APP_VIEW = os.environ.get("WAVES_APP_VIEW") or os.path.join(PH, "state", "app-view-latest.txt")
 CAP_BUILDING, CAP_BUILT = 8, 12
 OPEN_AFTER = 3   # a wave stays active while it has more than 3 unproven items
@@ -34,6 +41,8 @@ START = "<!-- waves.py gen: start (generated from design/waves.tsv and qa/CAPABI
 END = "<!-- waves.py gen: end -->"
 ITEM = re.compile(r"(?<![A-Za-z0-9.])R1\.[0-9]+(?![0-9])")
 ROW = re.compile(r"(?<![A-Za-z0-9/-])(?:[A-Z]{1,4}-[0-9A-Za-z]+|B[0-9]+[a-z]?)(?![A-Za-z0-9])")
+OWN = re.compile(r"(?:/next [a-z]+|(?<![A-Za-z])[Rr]ow) (" + ROW.pattern + ")")
+EXEMPT_AREA = re.compile(r"^\s*(tooling|qa|records|tech lead|lead)\s*([(;,:./]|$)", re.I)   # as focus-check.py
 NAMES = {0: "Proven before the waves (fixes only)", 1: "Finish", 2: "Next", 3: "Rest of Partial", 4: "Not built"}
 num = lambda i: int(i[3:])
 
@@ -207,6 +216,23 @@ def main(argv):
     cmd = argv[0] if argv else ""
     if cmd == "wip":
         return wip(argv[1:])
+    if cmd == "none-ok":
+        import glob
+        own = OWN.search(sys.stdin.read().replace("\r", ""))
+        if not own:
+            return 0
+        area = {}
+        for f in sorted(glob.glob(os.path.join(BACKLOG_DIR, "BACKLOG*.md"))):
+            for l in open(f, encoding="utf-8").read().split("\n"):
+                c = l.split("|")
+                if len(c) > 3 and ROW.fullmatch(c[1].strip()):
+                    area.setdefault(c[1].strip(), c[2].strip())
+        r = own.group(1)
+        if r in area and EXEMPT_AREA.match(area[r]):
+            return 0
+        print(f"row {r} is " + (f"a build row (area: {area[r][:40]})" if r in area else "not a BACKLOG row")
+              + ", so its brief names its R1 item (Item: R1.x), not none (B204)")
+        return 1
     rows, st = read_tsv(), read_caps()
     if cmd == "gen":
         block = gen_block(rows, st)
@@ -235,6 +261,15 @@ def main(argv):
         if norm(old) != norm(gen_block(rows, st)):
             print(f"WAVES PAGE: the generated block of {MD} differs from design/waves.tsv; run tools/waves.py gen and commit"); return 1
         return 0
+    if cmd == "pr":
+        title, _, body = sys.stdin.read().replace("\r", "").partition("\n")
+        wave = {i: (w, note) for i, w, _, note in rows}
+        active, ok = open_waves(rows, st)
+        out = [f"OUTSIDE WAVE: {i} is in wave {wave[i][0]}; open waves {', '.join(map(str, sorted(ok)))} (P-745). A fix still merges (P-214); new work on it waits for its wave."
+               for i in sorted(pr_items({"title": title, "body": body}, {}), key=num)
+               if i in wave and wave[i][0] not in ok and not wave[i][1].startswith("allow:")]
+        print("\n".join(out)) if out else None
+        return 1 if out else 0
     if cmd == "active":
         active, ok = open_waves(rows, st)
         print(f"active wave {active or 'none'}; lane starts open for waves {', '.join(map(str, sorted(ok)))}"); return 0
@@ -252,7 +287,7 @@ def main(argv):
                 bad.append(f"{i} is in wave {wave[i][0]}")
         if bad:
             print(f"OUTSIDE WAVE: {'; '.join(bad)}; lane starts are open for waves {', '.join(map(str, sorted(ok)))} only "
-                  f"(active wave {active}, and the next; wave 0 = Proven, fixes) (P-745: at most 8 items building, one wave "
+                  f"(active wave {active}, the waves below it finishing, the next one; wave 0 = Proven, fixes) (P-745: at most 8 items building, one wave "
                   "built while the previous is proved). Brief an item of an open wave, or the Lead changes design/waves.tsv with a DECISIONS row first.")
             return 1
         return 0

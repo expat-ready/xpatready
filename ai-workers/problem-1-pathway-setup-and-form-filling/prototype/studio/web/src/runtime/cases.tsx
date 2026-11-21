@@ -25,11 +25,13 @@ import { EligibilityCard, EligibilityPage } from "./eligibility";
 import { clientOf, PeopleAndFilings } from "./filing-changes"; // C6.13, A24-3
 import { ReleaseNotice } from "./release-update"; // C9.5
 import { EarlierStages, earlierOf, StageStrip } from "./stages"; // C6.17
+import { GovernmentSteps } from "./milestones"; // CS-DL3 part 2
 import { OfficerPeoplePanel } from "./privacy"; // C6.16
 import { RepresentativeReviewLatest, RepresentativeReviewPage } from "./representative-review"; // C8.3
 import { CaseReadinessPill } from "./readiness-figure"; // C7.10
 import { HandOff, handedFrom } from "./hand-off"; // BK-4c
 import { clientCardState } from "./client-card"; // QA-427
+import { CaseAreaNav } from "./clients"; // CS-K1s
 import type { CaseListRow, OpenableRelease } from "../../../contracts/runtime";
 
 /** Simulated case people (the firm and the clients of lib/simulated-people.ts, BK-4a); the picker is demo chrome. */
@@ -60,7 +62,7 @@ export function RuntimeApp() {
   const client = isClient(actor);
   return (
     <Frame area={client ? "client" : "cases"} title={client ? "Your application" : "Cases"} home={client ? undefined : "/cases"} staff={!client}
-      controls={<PersonPicker area={client ? "client" : "cases"} />}>
+      controls={<>{client ? null : <CaseAreaNav />}<PersonPicker area={client ? "client" : "cases"} /></>}>
       <Routes>
         <Route index element={<CaseList />} />
         <Route path="clients" element={<Navigate to="/cases" replace />} />
@@ -392,6 +394,8 @@ function CasePage() {
         </div>
       </div>
       <StageStrip caseId={c.id} />
+      {/* CS-DL3 part 2 (R1.74, QA-591): IRCC's steps with the due date on its letter, under the stage deadline. */}
+      <GovernmentSteps caseId={c.id} />
       <ReleaseNotice caseId={c.id} />
       {/* C6.13 (B135): people with their filings, Make principal, Remove filing and Add filing back. */}
       <PeopleAndFilings caseId={c.id} people={c.people} canAdd={c.can_add ?? []} onAdd={setAdding} roleOf={roleOf} nameOf={nameOf} />

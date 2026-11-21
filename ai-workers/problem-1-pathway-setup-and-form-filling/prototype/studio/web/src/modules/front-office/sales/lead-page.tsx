@@ -14,10 +14,12 @@ import { useToast } from "@/lib/api";
 import { MessagesPanel } from "@/modules/platform/messages/messages-panel";
 import { can, KEY, Lead, Prospect, READ_ONLY_REASON, words } from "./contract";
 import { Loading } from "./loading";
-import { useLock, useReturnFocus } from "./prospect-actions";
+import { AssignPanel, OwnerHistory } from "./lead-owner";
+import { useLock, useOwners, useReturnFocus } from "./prospect-actions";
 import { SalesFrame, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 import { useTakeIt } from "./take-it";
+import { IdentityCheckPanel } from "../compliance/identity/identity-panel";
 import { arrivedLabel, sinceLabel } from "./time";
 const ATTRIBUTION: Record<string, string> = { utmSource: "Campaign source", utmMedium: "Medium", utmCampaign: "Campaign", utmTerm: "Term", utmContent: "Content", clickId: "Click id", clickIdKind: "Click id kind", landingPage: "Landing page", referrerUrl: "Referring page" };
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -76,6 +78,9 @@ function LeadBody({ id }: { id: string }) {
   const take = useTakeIt();
   const go = useNavigate(), toast = useToast(), qc = useQueryClient();
   const [engaging, setEngaging] = React.useState(false), lock = useLock(), focus = useReturnFocus();
+  // R1.32 (AG-2-13c, X-4): Assign or Reassign for people who may assign; a one-user firm sees no owner, Take it or Assign.
+  const owners = useOwners(), [assigning, setAssigning] = React.useState(false);
+  const assignPanel = (o: boolean) => setAssigning(o);   // focus returns to Assign/Reassign as the panel closes (Panel returnFocus)
   const panel = (o: boolean) => { if (o) { focus.mark(); engage.reset(); } else focus.back(); setEngaging(o); };
   const engage = useMutation({
     mutationFn: async () => Prospect.parse(await staffApi(`/front-office/leads/${id}/engage`, { method: "POST" })),
@@ -83,7 +88,8 @@ function LeadBody({ id }: { id: string }) {
     onSettled: () => lock.free(),
   });
   const lead = useQuery({ queryKey: ["fo", "leads", "one", id], retry: false, queryFn: async () => Lead.parse(await staffApi(`/front-office/leads/${encodeURIComponent(id)}`)) });
-  if (lead.isPending) return <Loading label="Loading the lead" rows={2} />;
+  // The rail waits for who may own what (review m2), so its buttons never rearrange under the person.
+  if (lead.isPending || !owners.settled) return <Loading label="Loading the lead" rows={2} />;
   if (lead.isError) {
     const gone = lead.error instanceof StaffApiError && lead.error.status === 404;
     return (
@@ -97,7 +103,8 @@ function LeadBody({ id }: { id: string }) {
   const l = lead.data;
   const name = [l.person.givenNames, l.person.familyName].filter(Boolean).join(" ") || "(no name)";
   const ownerActive = l.ownerStaffId !== null && !(l.owner ?? "").startsWith("(Inactive) ");
-  const mayTake = can(me, KEY.edit) && l.state === "OPEN" && !ownerActive;
+  const mayTake = can(me, KEY.edit) && l.state === "OPEN" && !ownerActive && !owners.oneUser;
+  const mayAssign = can(me, KEY.assign) && l.state === "OPEN" && !owners.oneUser;
   const mayEngage = can(me, KEY.edit) && l.state !== "CLOSED";
   const attribution = Object.entries(l.attribution ?? {}).filter(([k, v]) => k in ATTRIBUTION && typeof v === "string");
   return (
@@ -122,6 +129,7 @@ function LeadBody({ id }: { id: string }) {
               <Row label="Phone"><PhoneRow person={l.person} mayEdit={can(me, KEY.edit)} /></Row>
             </dl>
           </section>
+          <IdentityCheckPanel personId={l.person.id} name={[l.person.givenNames, l.person.familyName].filter((x) => x && x.trim()).join(" ")} />
           <section aria-labelledby="fo-enquiry" className="rounded-xl border border-border bg-surface-raised p-4">
             <h2 id="fo-enquiry" className="text-sm font-semibold">Enquiry</h2>
             <dl className="mt-2">
@@ -131,18 +139,22 @@ function LeadBody({ id }: { id: string }) {
               {attribution.map(([k, v]) => <Row key={k} label={ATTRIBUTION[k]}>{String(v)}</Row>)}
             </dl>
           </section>
+          {owners.oneUser ? null : <OwnerHistory lead={l} />}
           <MessagesPanel subject={{ kind: "LEAD", id: l.id }} />
         </div>
         <aside aria-label="Owner and actions" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4">
-          <div>
+          {owners.oneUser ? null : <div>
             <p className="text-xs font-medium text-text-muted">Owner</p>
             <p data-owner className="mt-0.5 text-sm">{l.owner ?? "Nobody yet"}</p>
-          </div>
+          </div>}
           {mayTake ? <Button busy={take.isPending} onClick={() => take.mutate(l)}>Take it</Button>
-            : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+            : !can(me, KEY.edit) && l.state === "OPEN" && !ownerActive && !owners.oneUser ? <p data-why-no-take className="text-xs text-text-muted">{READ_ONLY_REASON}</p> : null}
+          {mayAssign ? <Button variant="outline" data-assign-open onClick={() => assignPanel(true)}>{ownerActive ? "Reassign" : "Assign"}</Button> : null}
           {mayEngage ? <Button variant={mayTake ? "outline" : "default"} onClick={() => panel(true)}>Engage</Button> : null}
         </aside>
       </div>
+      {/* Kept mounted while open, so a refusal (someone closed the lead meanwhile) is read in the panel (break 6). */}
+      {can(me, KEY.assign) && !owners.oneUser ? <AssignPanel lead={l} open={assigning} onOpenChange={assignPanel} /> : null}
       <Panel open={engaging} onOpenChange={panel} title="Engage" description={`${name}, ${l.number}`}
         footer={<><Button variant="ghost" onClick={() => panel(false)}>Cancel</Button><Button busy={engage.isPending} onClick={() => { if (lock.take()) engage.mutate(); }}>Engage as Individual</Button></>}>
         {engage.isError ? <Notice tone="danger" className="mb-3" title={engage.error instanceof StaffApiError ? engage.error.message : "Could not engage the lead. Please try again."} /> : null}

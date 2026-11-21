@@ -53,6 +53,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_POOL_MFA_REQUIRED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms, readSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -129,7 +130,7 @@ try {
   ok("PF-4 fail: PLATFORM_IDENTITY=local is refused in the test environment and in production",
     await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "test" }), (e) => /never runs in the test environment or production/.test(String(e)))
     && await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "production" }), (e) => /never runs/.test(String(e))));
-  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local" }).identity === "local");
+  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "local" }).identity === "local");
   // QA-476 (UX · Minor, R1.5; words agreed by Lead 61 on #1857): the form asks for a firm key and a work email, so a
   // refusal names those two, never a "name"; one combined message, so it does not tell which half was wrong.
   const QA476 = "No staff member signs in with that firm key and work email.";
@@ -467,6 +468,9 @@ try {
   ok("PF-4 fail (m4): a value the stored pattern refuses is refused by the code too (Mars/Olympus fits the pattern but no zone: code refuses)", !(await zone("Mars/Olympus")));
   await writeSetting(db, { firmId: FIRM_A, key: "platform.language", value: "fr", by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
   await writeSetting(db, { firmId: FIRM_B, key: "platform.currency", value: "USD", by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
+  // AUD-1m part 2c (Lead B on #2289): one value over 200 characters, so the trail check below proves the joined pieces: the
+  // reset writes firm A's business hours back to the Mon-Fri default (about 230 characters of JSON, kept as toJson pieces).
+  await writeSetting(db, { firmId: FIRM_A, key: "platform.business_hours", value: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => ({ day, opens: "08:00", closes: "18:00" })), by: "staff:check", workspaceId: await platformAuditWorkspaceId(db) });
   const platformLines = () => Number(sql(DB, `select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
   const linesBefore = platformLines();
   // The demo reset's own rule, played here on the scratch database: the demo workspace's lines go (Demo.wipe), then the
@@ -478,20 +482,25 @@ try {
   ok("PF-4 pass (P-571 (1)): the reset returns the Sample firms' settings to their seed values through the settings write path (a value already at its seed value is left alone)",
     reset.changed.length >= 2 && await readSetting(db, FIRM_A, "platform.language") === "en" && await readSetting(db, FIRM_B, "platform.currency") === "CAD" && await readSetting(db, FIRM_A, "platform.time_zone") === "America/Toronto", reset);
   ok("PF-4 pass (B-6): each reset change has one audit line (actor system, reason \"demo reset\"), and no platform line was deleted",
-    Number(sql(DB, `select count(*) from audit_event where entity = 'platform_firm_setting' and actor = 'system' and detail->>'reason' = 'demo reset'`)) === reset.changed.length && platformLines() === linesBefore + reset.changed.length);
+    Number(sql(DB, `select count(*) from audit_event where entity = 'platform_firm_setting' and actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`)) === reset.changed.length && platformLines() === linesBefore + reset.changed.length);
   // The fail test: every stored setting value has its trail — the newest audit line of each firm and key says it was set
   // to exactly the stored value.
   const untrailed = sql(DB, `select coalesce(string_agg(s.key, ','), '') from platform_firm_setting s where not exists (select 1 from audit_event a where a.entity = 'platform_firm_setting' and a.entity_key = s.firm_id || ':' || s.key
-    and a.detail->'to' = s.value and a.at = (select max(b.at) from audit_event b where b.entity = 'platform_firm_setting' and b.entity_key = a.entity_key))`);
+    and coalesce(a.detail->'to', (select string_agg(p, '' order by n) from jsonb_array_elements_text(a.detail->'toJson') with ordinality as t(p, n))::jsonb) = s.value and a.at = (select max(b.at) from audit_event b where b.entity = 'platform_firm_setting' and b.entity_key = a.entity_key))`);
   ok("PF-4 fail (B-6): after the reset no setting value is without its trail (each value's newest audit line names it)", untrailed === "", untrailed);
+  ok("PF-4 pass (B-6, AUD-1m part 2c): that check covers a value over 200 characters: firm A's business hours' newest line keeps it as toJson pieces (more than one)",
+    Number(sql(DB, `select jsonb_array_length(detail->'toJson') from audit_event where entity = 'platform_firm_setting' and entity_key = '${FIRM_A}:platform.business_hours' order by at desc limit 1`)) > 1);
   ok("PF-4 fail (B-6): a second reset changes nothing and writes no line", (await resetSampleFirmSettings(db)).changed.length === 0 && platformLines() === linesBefore + reset.changed.length);
 
   // ---------------------------------------------------------------------------- the seed line (P-571 (2))
   let seedRuns = 0; const spy = async () => { seedRuns++; return {} as never; };
-  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }).run && (await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({}).run && (await seedSampleOnStart({}, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name", await throwsLike(() => sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED "yes"/.test(String(e))));
-  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
+  // PF-24w: the seed reads PF-24's loader, so a production configuration is a complete one (every value made by this run).
+  const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+  const PROD = { PLATFORM_ENVIRONMENT: "production", DATABASE_URL: urlOf(DB), PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${hex(9)}`, PLATFORM_COGNITO_CLIENT_ID: hex(26), PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", hex(32)].join("_"), PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", hex(32)].join("_"), PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: hex(40), PLATFORM_ZOOM_CLIENT_ID: hex(22), PLATFORM_ZOOM_CLIENT_SECRET: hex(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: hex(22), PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" };
+  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }).run && (await seedSampleOnStart({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local" }).run && (await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name (never the value, PF-24w)", await throwsLike(() => sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED is set but not valid/.test(String(e)) && !/yes/.test(String(e))));
+  await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
   ok("PF-4 pass: PLATFORM_SAMPLE_SEED=on (outside production) runs it", seedRuns === 1);
   const main = readFileSync(join(STUDIO, "api", "src", "main.ts"), "utf8");
   ok("PF-4 pass: main.ts runs it in one line after the features register (migrations ran before the API starts) and before the app is made",
@@ -541,12 +550,12 @@ else {
     const firmA = copy(`select id from platform_firm where key = 'sample-firm'`);
     await ws2(copyDb, { firmId: firmA, key: "platform.language", value: "fr", by: "staff:check", workspaceId: await platformAuditWorkspaceId(copyDb) });
     const linesBefore = Number(copy(`select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
-    const systemBefore = Number(copy(`select count(*) from audit_event where actor = 'system' and detail->>'reason' = 'demo reset'`));
+    const systemBefore = Number(copy(`select count(*) from audit_event where actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`));
     const r = await call(BASE, "POST", "/api/demo/reset", { actor: "user-A", body: { confirm: "RESET" } });
     const linesAfter = Number(copy(`select count(*) from audit_event where entity in ('platform_firm_setting','platform_staff','platform_invitation')`));
     ok("PF-4 pass (P-571 (1), B-6): the real demo reset keeps every platform audit line, returns the setting to its seed value and leaves one line (system, \"demo reset\")",
       r.status < 300 && linesAfter === linesBefore + 1 && copy(`select value::text from platform_firm_setting where firm_id = '${firmA}' and key = 'platform.language'`) === `"en"`
-      && Number(copy(`select count(*) from audit_event where actor = 'system' and detail->>'reason' = 'demo reset'`)) === systemBefore + 1, { status: r.status, linesBefore, linesAfter });
+      && Number(copy(`select count(*) from audit_event where actor = 'system:demo-reset' and detail->>'reason' = 'demo reset'`)) === systemBefore + 1, { status: r.status, linesBefore, linesAfter });
   } finally { await copyDb.$disconnect(); }
 }
 
