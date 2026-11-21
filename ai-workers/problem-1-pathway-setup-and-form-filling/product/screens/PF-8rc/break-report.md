@@ -149,3 +149,52 @@ Fix: never allow a guarded action to a service, and require a source-account con
   * a RAM share of a standard vault in the home stack (Unconfirmed that RAM can share one);
   * a fake service name ending in `.amazonaws.com` (IAM rejects it);
   * a second selection of `"*"` on the same plan (it moves nothing out).
+
+## Round 3 at 2a41fd9ac
+
+I tested a clean copy of 2a41fd9ac's package in my scratchpad, outside the worktree (the reviewer mutation-tests its own copy). `npm run synth` ran offline, then cdk.out was deleted. The backup tests pass. In my copy `test/estate.test.ts` fails only because `compose.test.yml` sits outside the copied folder. No secret or real account id in the diff or in cdk.out.
+
+**Round-2 breaks now caught:** R2-1 (Action as `Fn::If`/`Fn::Split`, a statement in `Fn::If`, a JSON-string document, a trust statement or Service in `Fn::If`, a key-policy statement in `Fn::If`). R2-2 (cloudformation, IAM, lambda and copy-job actions, now refused by `ROLE_ACTIONS`). R2-3 (a split dynamic reference, a parameter with no default or typed SSM, `Fn::FindInMap`, a non-literal delimiter, a custom resource by `ESTATE_TYPES`). R2-4 (`"true"`, `Fn::If` for MultiRegion and the lock maximum). R2-5 (a service principal in a key policy). All of round 1 is still caught.
+
+**R3-1 Major: a whole policy document wrapped in `Fn::If` reads as empty.**
+`statementsOf` (checks.ts:236-238) takes `doc.Statement`. On `{"Fn::If":[…]}` that is undefined, which it treats as no statements, so nothing is flagged. With `Conditions.Yes = Fn::Equals["a","a"]` and `ifDoc(d) = {"Fn::If":["Yes",d,{"Ref":"AWS::NoValue"}]}`, each of these passes all seven checks:
+* the backup role's `Policies: [{PolicyName:"p", PolicyDocument: ifDoc({Statement:[{Effect:"Allow",Action:"*",Resource:"*"}]})}]`;
+* `Policies: ifDoc([...])` (line 329 wraps a non-array as one document);
+* `AWS::IAM::Policy.PolicyDocument: ifDoc(admin)`;
+* `AssumeRolePolicyDocument: ifDoc({Statement:[{Effect:"Allow",Principal:{AWS:"*"},Action:"sts:AssumeRole"}]})`;
+* the data key's `KeyPolicy: ifDoc({…Allow kms:* to AWS *…})`.
+
+On a vault key or vault policy, the missing deny is still caught.
+Fix: a document is readable only if its own keys are a subset of `Version`, `Id` and `Statement`, and `Statement` is present. Each `Policies` element must be a literal object.
+
+**R3-2 Major: a bucket policy can grant another account `s3:*` on the buckets.**
+No check reads `AWS::S3::BucketPolicy` Allow statements: `resourcePolicyFindings` covers keys and vaults only, and `bucketFindings` (checks.ts:162) only looks for the TLS deny.
+Repro: push `{Effect:"Allow",Principal:{AWS:"arn:aws:iam::999999999999:root"},Action:"s3:*",Resource:[<bucket arn>,<bucket arn>/*]}` onto the documents bucket's policy. It passes, and also passes inside `Fn::If`. Reading the content stays blocked, because the data key's policy admits only this account (that key policy is checked). But that account can list keys, write objects, permanently delete versions (`s3:DeleteObjectVersion`), and change the bucket's lifecycle or versioning.
+Fix: run bucket policies through `statementsOf` and allow no Allow at all (the estate needs none), or root only.
+
+**R3-3 Minor: a region set at deploy time still passes on estate types.**
+* `AutomaticBackupReplicationRegion: {"Fn::Sub":"${Dest}"}` on the database, or `ReplicaRegions:[{Region:{"Fn::Sub":"${Dest}"}}]` on the secret, with `Dest` having no default, passes. `opaque` checks `Ref` (checks.ts:58) but not `${Dest}` inside an `Fn::Sub` string.
+* `Ref Dest` with `Default:"ca-central-1"` passes, but `--parameters Dest=us-east-1` overrides it. So does `Fn::Select [0, Ref Dest]` over a `CommaDelimitedList`.
+
+The copy rule is still safe (exact shape).
+Fix: treat any `${Name}` in an `Fn::Sub` string that names a parameter like a `Ref`. Refuse parameters in resource values unless `AllowedValues` lists only Canadian regions.
+
+**R3-4 Minor: `ManagedPolicyArns: {"Fn::If":[…]}` crashes `bypassFindings` (checks.ts:338).**
+The error is `TypeError: … .map is not a function`. It fails loudly rather than passing, but there is no finding.
+Fix: a non-array `ManagedPolicyArns` should be a finding.
+
+**R3-5 Minor: the allow lists cover types and actions, not properties or resources.** These pass:
+* bucket `InventoryConfigurations` to `arn:aws:s3:::someone-elses` with `BucketAccountId 999999999999` (object keys leave the account);
+* copy-vault `Notifications` to `arn:aws:sns:ca-west-1:999999999999:t`;
+* database `AssociatedRoles` `s3Export` with a role in another account (Unconfirmed that RDS accepts it);
+* the backup role's `kms:Decrypt` on `Resource:"*"`, meaning every key.
+
+Fix:
+* refuse `InventoryConfigurations`, `AnalyticsConfigurations`, `NotificationConfiguration`, vault `Notifications` and `AssociatedRoles`, or require own-account targets;
+* require `ROLE_ACTIONS` statements to name a key this stack defines.
+
+**Held in round 3:**
+* `NotResource` is refused.
+* A trust Service list with an extra service is caught.
+* A literal us-east-1 in a database property is caught.
+* Round 2's control cases still behave: the ROOT shape cannot be spoofed, and a parameter default that names a region is caught.

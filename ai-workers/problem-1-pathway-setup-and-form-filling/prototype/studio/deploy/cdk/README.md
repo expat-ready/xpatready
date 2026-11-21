@@ -34,7 +34,12 @@ Never run `npx cdk synth`: the CLI looks up the account through STS when it find
   * only AWS Backup's own managed policies may be attached, written plainly;
   * key and vault policies may allow only this account's root;
   * every resource type must be in `ESTATE_TYPES`;
-  * a policy built from template functions (`Fn::If`, `Fn::Split`, a JSON string, `NotAction`) cannot be read, and is refused.
+  * an allowed action must name a resource this stack defines, and a policy attaches only to this stack's roles;
+  * bucket policies may only deny;
+  * a policy built from template functions (`Fn::If` around a value, a statement or the whole document, `Fn::Split`, a JSON string, `NotAction`) cannot be read, and is refused;
+  * a resource may not refer to a template parameter, because a deploy can override its value.
+
+  **Not checked** (known limits, PR review covers them): properties that send data or notices to another account, such as bucket inventory, vault notifications or a database's associated roles.
 
   Widening any list takes a reviewed PR. The copy target must be exactly this account's copy vault. Values whose region cannot be read from the template (Fn::Sub with variables, imports, SSM references) are refused, and a multi-region or replica key is refused.
 * **Unconfirmed** (the AWS documentation site is unreachable from the build lane): the contents of AWS Backup's managed policies; that a vault access policy can deny each listed action, binds the root user, and leaves AWS Backup's own 35-day expiry working; and the S3 policy's path. The cloud drill proves these.

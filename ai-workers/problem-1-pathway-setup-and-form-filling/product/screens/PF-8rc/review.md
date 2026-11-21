@@ -100,3 +100,60 @@ B1 is stated as a limit in `backup.ts`, the README and the RUNBOOK, and is left 
 Reviewed commit: 6e5569b0d (no Blocker or Major open; N1–N3 are Minor).
 
 Verdict: Approve
+
+## Re-review (diff-only) at 2a41fd9ac
+**Scope:** I read only `git diff 6e5569b0d 2a41fd9ac`.
+
+**Runs in the worktree:** `npm test` gave **44 passed, 0 failed**. `npm run synth` exited 0 with 4 templates; I deleted `cdk.out` afterwards and did not run the cdk CLI.
+
+**Mutation and probes:** these ran on **my own copy of the package in the scratchpad**, not in the shared worktree. I deleted the copy afterwards; `deploy/` in the worktree is untouched.
+
+**No false findings on the real app:** `regionFindings`, `vaultFindings`, `bypassFindings`, `resourcePolicyFindings`, `typeFindings` and both homes' `backupFindings` each return 0.
+
+**The allow lists fit the real design:**
+- CDK's `AWS::IAM::Policy` for the backup role allows only `kms:Decrypt` on the data key, which is in `ROLE_ACTIONS`.
+- The role's trust is the plain `{"Service":"backup.amazonaws.com"}` with `sts:AssumeRole`.
+- The data key's Secrets Manager statements name the root, as CDK writes it, so the key and vault policies pass the root-only rule.
+- `ESTATE_TYPES` matches the four templates exactly.
+- `Rules` is exempt from `opaque`, so CDK's bootstrap-version rule, which reads an SSM parameter, is not reported. Removing that exemption makes the pass test fail.
+- `PF-8b` will have to widen `ROLE_ACTIONS`, `TRUSTED_SERVICES` and `ESTATE_TYPES` by a reviewed PR, as the code says. That is intended.
+
+| Finding | Fix | Test fails without it |
+|---|---|---|
+| R2-2, N2: block list → allow list | `ROLE_ACTIONS = ["kms:Decrypt"]` | killed (both removing it and widening it) |
+| R2-1, B4(b): trust | Only `TRUSTED_SERVICES`, as one literal `Service` | killed |
+| R2-1: policies built from intrinsics | `statementsOf`: extra statement keys, a non-literal `Action`, or a non-object document → "cannot be read" | killed (extra keys, Action, document); **survives:** the `Effect` literal check, the unreadable-trust branch, non-array `Policies` (see M2) |
+| R2-5: resource policies | Key and vault Allows may name exactly the root | killed (root-only, unreadable) |
+| New: `ESTATE_TYPES` | `typeFindings` | killed |
+| R2-3, N1, N3: regions set at deploy | A `Ref` to a parameter with no default or typed SSM; `Fn::FindInMap`; a non-literal `Fn::Join` delimiter; a dynamic reference joined from parts; `Fn::Sub ${Param}` substitution | killed (each) |
+| R2-4: non-literal values | `MultiRegion` must be absent or `false`; `MaxRetentionDays` a number of at least 35 | killed (each) |
+| (all IAM `*Policy` types read) | `startsWith("AWS::IAM::") && endsWith("Policy")` | killed |
+
+**Open (Minor; none blocking in my judgement).** M1 matches the breaker's R3-1, which it rates Major.
+- **M1. A whole policy document wrapped in `Fn::If` reads as empty and passes.** At `checks.ts:236-249`, `statementsOf` takes `doc.Statement`, which is `undefined` on `{"Fn::If":[…]}`, and treats that as no statements.
+  - My probe passed each of these with 0 findings:
+    - an `AWS::IAM::Policy` whose `PolicyDocument` is `Fn::If[C, {Allow backup:*}, …]`;
+    - a role whose `AssumeRolePolicyDocument` is `Fn::If[C, {Allow AWS:* sts:AssumeRole}, {}]`;
+    - a vault key whose `KeyPolicy` is an `Fn::If` adding another account's `kms:PutKeyPolicy` (for a vault key, `vaultFindings` still catches the lost deny; for the data key nothing would).
+  - The same applies to `Policies` given as a whole `Fn::If`. This contradicts the README's "a policy built from template functions … cannot be read, and is refused".
+  - *Fix:* a document is readable only if it is a plain object whose keys are a subset of `Version`, `Id` and `Statement`, with `Statement` present. Every `Policies` entry must be a literal object, and `Policies` an array. Add one failing case each for a policy, a trust document and a key policy.
+- **M2. Four branches are not pinned by any test.**
+  - The `Effect` literal check: removing it would let `Effect: Fn::If[…,"Allow",…]` hide an allow, because `allows` filters on `=== "Allow"`. My probe shows it is caught today.
+  - The unreadable-trust branch.
+  - Non-array `Policies`.
+  - The trust `Action === "sts:AssumeRole"` check.
+
+  *Fix:* one failing case each.
+- **M3. `ManagedPolicyArns` given as a whole `Fn::If` makes `bypassFindings` throw** (`checks.ts:338`, `.map is not a function`). That breaks the run loudly rather than passing, but it produces no finding. *Fix:* a non-array `ManagedPolicyArns` should be a finding.
+- **M4. The allow list covers actions only.**
+  - A `kms:Decrypt` on `Resource: "*"` (every key in the account, vault keys included) passes.
+  - So does the same policy attached to an outside role by name (`Roles: ["OrganizationAccountAccessRole"]`) or to `Users`.
+
+  *Fix:* an allowed statement must name a key this stack defines, and an `AWS::IAM::Policy` may attach only to roles this stack defines.
+- **The breaker's other round-3 items.**
+  - **R3-2 (a bucket policy Allow to another account)** is a real gap, but it predates this PR and belongs to PF-8a's `bucketFindings`. The bucket contents stay unreadable to that account because the data key's policy (root only) is checked, and the locked vaults keep copies. I rate it Minor. The cheap fix is to run bucket policies through `statementsOf` and allow no Allow statement.
+  - **R3-3 to R3-5** are Minor, as the breaker rates them.
+
+Reviewed commit: 2a41fd9ac (no Blocker or Major open in my judgement; M1–M4 are Minor, and M1 is the one to fix first).
+
+Verdict: Approve

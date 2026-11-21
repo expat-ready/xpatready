@@ -273,3 +273,50 @@ test("PF-8rc round 3: a parameter with no default or from SSM, Fn::FindInMap, a 
     assert.ok(regionFindings(b, REGION_ALLOW).some((l) => l.includes("xr-staging/X") && l.includes(word)), word);
   }
 });
+
+// ---- Round 4: the breaker's round 3 (R3-1..R3-5) and the reviewer's M1–M4 at 2a41fd9ac ----
+test("PF-8rc round 4: a whole policy document, trust document, key policy or Policies list in Fn::If is refused, not read as empty (R3-1, M1)", () => {
+  const wrap = (d: unknown) => ({ "Fn::If": ["C", { Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: "*", Resource: "*" }] }, d] });
+  const b = swap("xr-staging", (t) => {
+    policyOf(t).PolicyDocument = wrap(policyOf(t).PolicyDocument);
+    roleOf(t).AssumeRolePolicyDocument = wrap(roleOf(t).AssumeRolePolicyDocument);
+    roleOf(t).Policies = { "Fn::If": ["C", [{ PolicyName: "p", PolicyDocument: { Statement: [{ Effect: "Allow", Action: "*", Resource: "*" }] } }], { Ref: "AWS::NoValue" }] };
+    of(t, "AWS::KMS::Key")[0].Properties!.KeyPolicy = wrap(of(t, "AWS::KMS::Key")[0].Properties!.KeyPolicy);
+  });
+  const f = [...bypassFindings(b), ...resourcePolicyFindings(b)].join("\n");
+  for (const w of ["(AWS::IAM::Policy): a policy cannot be read: the policy document has keys Fn::If", "its trust policy cannot be read", "its Policies cannot be read", "(AWS::KMS::Key): its policy cannot be read"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+});
+
+test("PF-8rc round 4: a bucket policy may only deny; an Allow to another account, or a policy in Fn::If, is caught (R3-2)", () => {
+  const b = swap("xr-staging", (t) => { (of(t, "AWS::S3::BucketPolicy")[0].Properties!.PolicyDocument as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Principal: { AWS: "arn:aws:iam::999999999999:root" }, Action: "s3:*", Resource: "*" }); });
+  assert.ok(resourcePolicyFindings(b).some((l) => l.includes("a bucket policy may only deny")));
+  const w = swap("xr-staging", (t) => { const p = of(t, "AWS::S3::BucketPolicy")[0].Properties!; p.PolicyDocument = { "Fn::If": ["C", p.PolicyDocument, p.PolicyDocument] }; });
+  assert.ok(resourcePolicyFindings(w).some((l) => l.includes("(AWS::S3::BucketPolicy): its policy cannot be read")));
+});
+
+test("PF-8rc round 4: any parameter in a resource, by Ref or by ${} in Fn::Sub, is refused, even with a home-region default (R3-3)", () => {
+  for (const value of [{ "Fn::Sub": "${Dest}" }, { Ref: "Home" }]) {
+    const b = swap("xr-staging", (t) => {
+      t.Parameters = { ...(t.Parameters as object), Dest: { Type: "String" }, Home: { Type: "String", Default: "ca-central-1" } };
+      of(t, "AWS::RDS::DBInstance")[0].Properties!.AutomaticBackupReplicationRegion = value;
+    });
+    assert.ok(regionFindings(b, REGION_ALLOW).some((l) => l.includes("a parameter set at deploy time")), JSON.stringify(value));
+  }
+});
+
+test("PF-8rc round 4: managed policies in Fn::If are a finding, not a crash (R3-4)", () => {
+  const b = swap("xr-staging", (t) => { roleOf(t).ManagedPolicyArns = { "Fn::If": ["C", ["arn:aws:iam::aws:policy/AdministratorAccess"], []] }; });
+  assert.ok(bypassFindings(b).some((l) => l.includes("its managed policies cannot be read")));
+});
+
+test("PF-8rc round 4: an allowed action on everything, a policy attached to users or an outside role, a non-literal Effect and a trust action other than sts:AssumeRole are caught (R3-5, M2, M4)", () => {
+  const f = bypassFindings(swap("xr-staging", (t) => {
+    const p = policyOf(t), st = (p.PolicyDocument as { Statement: Record<string, unknown>[] }).Statement;
+    st[0].Resource = "*";
+    p.Users = ["someone"]; p.Roles = ["outside-role"];
+    (roleOf(t).AssumeRolePolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Action = "sts:AssumeRoleWithWebIdentity";
+  })).join("\n");
+  for (const w of ['allows on "*", not a resource this stack defines', "attached to users or groups", 'attached to "outside-role"', "may be assumed by"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  const e = bypassFindings(swap("xr-staging", (t) => { (policyOf(t).PolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Effect = { "Fn::If": ["C", "Allow", "Deny"] }; }));
+  assert.ok(e.some((l) => l.includes("is not a literal")));
+});

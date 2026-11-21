@@ -44,18 +44,21 @@ const defaultsOf = (t: Template) => Object.fromEntries(Object.entries((t.Paramet
 /** Values whose region the guard cannot read from the template (PF-8rc break B3): Fn::Sub with a variable map, an
  *  imported value, and a dynamic reference other than this stack's own Secrets Manager secret (the database password). */
 const opaque = (t: Template, v: unknown): string[] => {
-  const out: string[] = [];
+  const out: string[] = [], params = (t.Parameters ?? {}) as Record<string, unknown>;
   const walk = (x: unknown): void => {
     if (Array.isArray(x)) return x.forEach(walk);
-    if (typeof x === "string") { if (x.includes("{{resolve:")) out.push(`a dynamic reference (${x.slice(0, 60)})`); return; }
+    if (typeof x === "string") {
+      if (x.includes("{{resolve:")) out.push(`a dynamic reference (${x.slice(0, 60)})`);
+      for (const [, n] of x.matchAll(/\$\{([A-Za-z0-9_]+)\}/g)) if (params[n]) out.push(`a parameter set at deploy time (${n})`); // Fn::Sub's ${Param} (round 3, R3-3)
+      return;
+    }
     if (!x || typeof x !== "object") return;
     const o = x as Record<string, unknown>;
     if (Array.isArray(o["Fn::Sub"]) && Object.keys((o["Fn::Sub"] as unknown[])[1] ?? {}).length > 0) out.push("Fn::Sub with a variable map");
     if (o["Fn::ImportValue"] !== undefined) out.push("Fn::ImportValue");
     if (o["Fn::FindInMap"] !== undefined) out.push("Fn::FindInMap"); // a mapping's halves joined (round 2, R2-3)
-    // a parameter with no default, or one whose value comes from SSM at deploy time (round 2, R2-3; review N1)
-    const param = typeof o.Ref === "string" ? (t.Parameters as Record<string, { Default?: unknown; Type?: string }> | undefined)?.[o.Ref] : undefined;
-    if (param && (param.Default === undefined || String(param.Type).startsWith("AWS::SSM::"))) out.push(`a parameter set at deploy time (${o.Ref})`);
+    // any template parameter: a deploy can override its default, so the default proves nothing (round 3, R3-3; N1)
+    if (typeof o.Ref === "string" && params[o.Ref]) out.push(`a parameter set at deploy time (${o.Ref})`);
     const j = o["Fn::Join"] as [string, unknown[]] | undefined;
     if (j !== undefined && typeof (j as unknown[])?.[0] !== "string") out.push("a Fn::Join whose delimiter is not a literal");
     if (Array.isArray(j) && Array.isArray(j[1])) {
@@ -235,6 +238,9 @@ const STATEMENT_KEYS = ["Sid", "Effect", "Principal", "Action", "Resource", "Con
  *  unreadable policy is a finding: the checks prove only what they can read. */
 const statementsOf = (doc: unknown): { st: Record<string, unknown>[]; unreadable?: undefined } | { unreadable: string } => {
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) return { unreadable: "the policy document is not a literal object" };
+  // a document wrapped whole in Fn::If (or anything else) has no Statement to read: refused, not read as empty (round 3, R3-1)
+  const keys = Object.keys(doc);
+  if (!keys.includes("Statement") || keys.some((k) => !["Version", "Id", "Statement"].includes(k))) return { unreadable: `the policy document has keys ${keys.join(", ") || "none"}, not Version, Id and Statement` };
   const raw = (doc as { Statement?: unknown }).Statement;
   const sts = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
   for (const x of sts) {
@@ -250,15 +256,17 @@ const allows = (doc: unknown) => { const r = statementsOf(doc); return r.unreada
 
 /** PF-8rc break B4 (c), round 2 R2-1/R2-5: every KMS key policy and vault access policy is readable, and every Allow in
  *  it names exactly this account's root (as CDK writes it), never a service, another account or everyone. The account
- *  root's own reach is the governance-mode limit (B1). */
+ *  root's own reach is the governance-mode limit (B1). Every bucket policy is readable and only denies (round 3, R3-2). */
 export function resourcePolicyFindings(stacks: SynthStack[]): string[] {
   const out: string[] = [];
   for (const s of stacks) for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
-    if (r.Type !== "AWS::KMS::Key" && r.Type !== "AWS::Backup::BackupVault") continue;
-    const doc = r.Type === "AWS::KMS::Key" ? r.Properties?.KeyPolicy : r.Properties?.AccessPolicy;
-    if (doc === undefined) continue;
+    if (!["AWS::KMS::Key", "AWS::Backup::BackupVault", "AWS::S3::BucketPolicy"].includes(r.Type)) continue;
+    const doc = r.Type === "AWS::KMS::Key" ? r.Properties?.KeyPolicy : r.Type === "AWS::S3::BucketPolicy" ? r.Properties?.PolicyDocument : r.Properties?.AccessPolicy;
+    if (doc === undefined && r.Type !== "AWS::S3::BucketPolicy") continue;
     const a = allows(doc), at = `${s.name}/${id} (${r.Type})`;
     if (a.unreadable !== undefined) { out.push(`${at}: its policy cannot be read: ${a.unreadable}`); continue; }
+    // a bucket policy only denies (the plain-HTTP deny); access comes from IAM in this account (round 3, R3-2)
+    if (r.Type === "AWS::S3::BucketPolicy") { for (const st of a.st) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}; a bucket policy may only deny`); continue; }
     for (const st of a.st) if (json(st.Principal) !== json({ AWS: JSON.parse(ROOT) })) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}`);
   }
   return out;
@@ -326,16 +334,29 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
         if (!ok) out.push(`${at}: may be assumed by ${json(st.Principal)}, not only ${TRUSTED_SERVICES.join(", ")}`);
       }
     }
-    const docs = ["AWS::IAM::Role", "AWS::IAM::User", "AWS::IAM::Group"].includes(r.Type) ? (Array.isArray(p.Policies) ? (p.Policies as { PolicyDocument?: unknown }[]).map((x) => x?.PolicyDocument) : p.Policies === undefined ? [] : [p.Policies])
+    // Policies must be a literal list of literal entries (review M1: a whole list in Fn::If is refused, not skipped)
+    if (p.Policies !== undefined && !(Array.isArray(p.Policies) && p.Policies.every((x) => x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).every((k) => ["PolicyName", "PolicyDocument"].includes(k))))) out.push(`${at}: its Policies cannot be read (${json(p.Policies).slice(0, 80)})`);
+    const docs = ["AWS::IAM::Role", "AWS::IAM::User", "AWS::IAM::Group"].includes(r.Type) ? (Array.isArray(p.Policies) ? (p.Policies as { PolicyDocument?: unknown }[]).map((x) => x?.PolicyDocument) : [])
       : r.Type.startsWith("AWS::IAM::") && r.Type.endsWith("Policy") ? [p.PolicyDocument] : [];
     for (const doc of docs) {
       const a = allows(doc);
       if (a.unreadable !== undefined) { out.push(`${at}: a policy cannot be read: ${a.unreadable}`); continue; }
-      for (const st of a.st) for (const act of list(st.Action)) if (!ROLE_ACTIONS.includes(act)) out.push(`${at}: allows ${act}, not on the allow list (${ROLE_ACTIONS.join(", ")})`);
+      for (const st of a.st) {
+        for (const act of list(st.Action)) if (!ROLE_ACTIONS.includes(act)) out.push(`${at}: allows ${act}, not on the allow list (${ROLE_ACTIONS.join(", ")})`);
+        // on a named resource of this stack, never on everything (round 3, R3-5; review M4)
+        const res = Array.isArray(st.Resource) ? st.Resource : [st.Resource];
+        if (!res.every((x) => !!x && typeof x === "object" && !!(x as { "Fn::GetAtt"?: [string] })["Fn::GetAtt"] && !!s.template.Resources?.[(x as { "Fn::GetAtt": [string] })["Fn::GetAtt"][0]])) out.push(`${at}: allows on ${json(st.Resource)}, not a resource this stack defines`);
+      }
+    }
+    // a policy is attached only to roles of this stack: never to users, groups or a role named from outside (review M4)
+    if (r.Type === "AWS::IAM::Policy" || r.Type === "AWS::IAM::ManagedPolicy") {
+      if (p.Users !== undefined || p.Groups !== undefined) out.push(`${at}: attached to users or groups`);
+      for (const x of Array.isArray(p.Roles) ? p.Roles : [p.Roles]) if (p.Roles !== undefined && !(x && typeof x === "object" && s.template.Resources?.[(x as { Ref?: string }).Ref ?? ""]?.Type === "AWS::IAM::Role")) out.push(`${at}: attached to ${json(x)}, not a role this stack defines`);
     }
     // exactly an allowed policy's ARN, as a plain string or CDK's Fn::Join (break B5, review R5: no Fn::Select or Fn::If around it)
     const exact = (m: string) => [json(`arn:aws:iam::aws:policy/${m}`), json({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, `:iam::aws:policy/${m}`]] })];
-    for (const arn of ((p.ManagedPolicyArns as unknown[] | undefined) ?? []).map(json)) {
+    if (p.ManagedPolicyArns !== undefined && !Array.isArray(p.ManagedPolicyArns)) out.push(`${at}: its managed policies cannot be read (${json(p.ManagedPolicyArns).slice(0, 80)})`); // round 3, R3-4
+    for (const arn of (Array.isArray(p.ManagedPolicyArns) ? p.ManagedPolicyArns : []).map(json)) {
       if (!MANAGED_ALLOW.some((m) => exact(m).includes(arn))) out.push(`${at}: managed policy ${/policy\/([^ "]+)/.exec(json(flatten(JSON.parse(arn))))?.[1] ?? arn} is not on the allow list (only ${MANAGED_ALLOW.join(", ")}, written plainly)`);
     }
   }
