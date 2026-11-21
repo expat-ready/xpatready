@@ -1,0 +1,1 @@
+Entry points: `identity/sample-seed.ts` start-up seed also adds the Sample consultation type (front-office/booking-seed.ts `seedSampleConsultationType`; a failure is logged, never stops start-up) (DEMO-LINK)

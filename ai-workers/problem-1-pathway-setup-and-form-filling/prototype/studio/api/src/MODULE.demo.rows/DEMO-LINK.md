@@ -1,0 +1,1 @@
+Entry points: `seedSampleFirmsAsDemo` (load and reset) also adds the Sample consultation type on the demo's bypass use (front-office/booking-seed.ts `seedSampleConsultationType`; a failure is logged, never stops a reset) (DEMO-LINK)

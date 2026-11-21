@@ -9,7 +9,7 @@
 // Run: tsx api/src/front-office/booking-seed.ts   (after tsx api/src/platform/seed-sample-firms.ts)
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { pathToFileURL } from "node:url";
-import { firmScope } from "../platform/firm-scope.ts";
+import { firmScope, touchFirm } from "../platform/firm-scope.ts";
 import { readSampleFirms } from "../platform/seed-sample-firms.ts";
 import { BUSINESS_HOURS, readSetting, TIME_ZONE } from "../platform/settings.ts";
 
@@ -58,6 +58,33 @@ export async function seedSampleStaffHours(db: PrismaClient): Promise<Record<str
     out[f.key] = await copyFirmHoursTo(db, firm.id, staff.map((s) => s.id));
   }
   return out;
+}
+
+/** DEMO-LINK: the one Sample consultation type, so the Sample firm's public booking page (/book/sample-firm) is not empty.
+ *  Every value is Sample: no fee, no official value; AG-4-66's Sample defaults for the timings. */
+export const SAMPLE_TYPE = { firmKey: "sample-firm", hostActorId: "user-R", slug: "sample-free-consultation", name: "Free consultation (Sample)",
+  description: "A first conversation about your plans. Sample consultation type for the demo.", minutes: 30 } as const;
+
+/**
+ * Adds SAMPLE_TYPE to the Sample firm, hosted by its Owner, once: a type with that slug, even one a person deleted (soft)
+ * or changed, is never touched again (idempotent, as seedSampleFirms). The host gets the firm's hours when they have
+ * none (copyFirmHoursTo), so the page offers times. Returns whether it added the type; false when the firm or its Owner
+ * is not there yet (PF-3's seed runs first).
+ */
+export async function seedSampleConsultationType(db: PrismaClient): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    const firm = await tx.platformFirm.findUnique({ where: { key: SAMPLE_TYPE.firmKey }, select: { id: true } });
+    if (!firm) return false;
+    await touchFirm(tx, firm.id);   // PF-12b: the demo's bypass line for this firm (nothing outside a bypass use)
+    const host = await tx.platformStaff.findFirst({ where: firmScope(firm.id, { actorId: SAMPLE_TYPE.hostActorId }), select: { id: true } });
+    if (!host) return false;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fo-sample-type:${firm.id}`}))`;
+    if (await tx.foConsultationType.findFirst({ where: firmScope(firm.id, { slug: SAMPLE_TYPE.slug }), select: { id: true } })) return false;
+    await copyFirmHoursTo(tx, firm.id, [host.id]);
+    await tx.foConsultationType.create({ data: { firmId: firm.id, slug: SAMPLE_TYPE.slug, name: SAMPLE_TYPE.name, description: SAMPLE_TYPE.description,
+      purpose: "FREE_CONSULT", modes: ["VIDEO", "PHONE"], hostStaffIds: [host.id], minutes: SAMPLE_TYPE.minutes } });
+    return true;
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

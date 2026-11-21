@@ -33,11 +33,14 @@ import { fillCaseFirmIds, forgetFirmIds, whyNot } from "./firms.ts";
 import { asBypass } from "./platform/firm-scope.ts";
 import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
 import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
+import { seedSampleConsultationType } from "./front-office/booking-seed.ts";
 /** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform
  *  rows), then the cases' platform firm. Never in a production configuration (sampleSeedDecision's refusal; breaker m1). */
 const seedSampleFirmsAsDemo = async (db: Db) => {
   if (!sampleSeedDecision(process.env, { forceOn: true }).run) return;   // the loaded configuration (PF-24w break M1)
   await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  // DEMO-LINK: the Sample firm's one Sample consultation type (once; never blocks a reset or a load).
+  await asBypass("platform.demo.reset", () => seedSampleConsultationType(db)).catch((e) => console.warn(`demo: could not add the Sample consultation type (DEMO-LINK): ${whyNot(e)}`));
   // One case written past the database's rules must not block a reset or a load (breaker R2-m3): said in the log, in its words.
   await fillCaseFirmIds(db).catch((e) => console.warn(`demo: could not fill the cases' platform firm (CS-W1): ${whyNot(e)}`));
 };

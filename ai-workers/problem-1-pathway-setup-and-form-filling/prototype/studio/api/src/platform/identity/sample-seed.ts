@@ -7,6 +7,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { seedSampleFirms, seedSampleSettings, type SeedResult } from "../seed-sample-firms.ts";
+import { seedSampleConsultationType } from "../../front-office/booking-seed.ts";
 import { loadPlatformConfig, platformConfig, type PlatformConfig } from "../config/settings.ts";
 
 export type SeedDecision = { run: boolean; why: string };
@@ -25,8 +26,13 @@ export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env, opts: {
   return { run: true, why: `PLATFORM_SAMPLE_SEED=on (${environment})` };
 }
 
-/** PF-3's seed, then AUD-5's Sample setting values (6 years for closed client files, Sample). */
-const seedFirmsAndValues = async (db: PrismaClient): Promise<SeedResult> => { const r = await seedSampleFirms(db); await seedSampleSettings(db); return r; };
+/** PF-3's seed, then AUD-5's Sample setting values (6 years for closed client files, Sample), then DEMO-LINK's Sample
+ *  consultation type (a failure there is said in the log and never stops the start-up). */
+const seedFirmsAndValues = async (db: PrismaClient): Promise<SeedResult> => {
+  const r = await seedSampleFirms(db); await seedSampleSettings(db);
+  await seedSampleConsultationType(db).catch((e) => console.warn(`platform: could not add the Sample consultation type (DEMO-LINK): ${String(e).slice(0, 300)}`));
+  return r;
+};
 
 /** Runs the Sample seed when the configuration asks for it; returns what it did (null when it did not run). */
 export async function seedSampleOnStart(env: NodeJS.ProcessEnv = process.env, seed: (db: PrismaClient) => Promise<SeedResult> = seedFirmsAndValues): Promise<SeedResult | null> {
