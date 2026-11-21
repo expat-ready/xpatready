@@ -15,12 +15,14 @@ import { can } from "../sales/contract";
 import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
-import { cad, centsIn, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
+import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
 
 type Row = { label: string; amount: string; when: string; dueOn: string };
 const rowsOf = (r: Retainer): Row[] => r.version.fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? "" : (Number(f.amountMinor) / 100).toFixed(2), when: f.when, dueOn: f.dueOn ?? "" }));
 const when = (code: string) => WHEN.find(([k]) => k === code)?.[1] ?? code;
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }) : "");
+/** A company contact's role in words (review n3). */
+const ROLE: Record<string, string> = { SIGNATORY: "Signatory", PRIMARY: "Primary contact", HR: "HR", BILLING: "Billing", OTHER: "Other" };
 const BLOCKER_FIELD: Record<string, string> = { fees: "fo-fees", representativeStaffId: "fo-rep", "client.name": "fo-values", signerPersonId: "fo-signer" };
 
 function RetainerBody({ id }: { id: string }) {
@@ -65,7 +67,7 @@ function RetainerBody({ id }: { id: string }) {
   const client = String(v["client.name"] ?? "") || "the client", to = String(v["signer.email"] ?? v["client.email"] ?? "");
   const mayEdit = r.mayChange && can(me, R_KEY.draft) && EDITABLE.includes(r.status), draft = r.status === "DRAFT";
   const form = mayEdit && (draft || editing), next = r.version.n + 1;
-  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && signerId !== (r.signerPersonId ?? ""));
+  const changed = JSON.stringify(rows) !== JSON.stringify(rowsOf(r)) || repId !== r.representativeStaffId || (r.subject === "COMPANY" && !!signerId && signerId !== (r.signerPersonId ?? ""));   // an empty pick is no change (break re-check)
   const company = r.subject === "COMPANY", blocked = new Set([...(r.blockers["client.name"] ? ["client.name"] : []), ...(r.blockers.signerPersonId ? ["signer.name", "signer.email"] : [])]);
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -108,7 +110,7 @@ function RetainerBody({ id }: { id: string }) {
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
               {form && company ? <div id="fo-signer"><Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
-                <Select value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {o.role === "SIGNATORY" ? "Signatory" : o.role.toLowerCase()}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
+                <Select value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {ROLE[o.role] ?? o.role}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
               </Field></div> : null}
               {form ? <div id="fo-rep"><Field label="Representative" hint="Only active people with a licence and the case-manager permissions." error={fieldError("representativeStaffId") ?? r.blockers.representativeStaffId ?? null}>
                 <Select value={repId} onChange={(e) => { setRepId(e.target.value); setError(null); }}>{(reps.data ?? [{ staffId: r.representativeStaffId, name: repName(r.representativeStaffId) }]).map((x) => <option key={x.staffId} value={x.staffId}>{x.name}</option>)}</Select>
@@ -158,7 +160,7 @@ function RetainerBody({ id }: { id: string }) {
           </div> : null}
           <dl id="fo-values" tabIndex={-1} className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-2 gap-y-1 text-sm" data-values>
             {VALUE_LABELS.filter(([k]) => k in v && (r.subject === "COMPANY" || k !== "company.name")).map(([k, l]) => (
-              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{v[k] ? String(v[k]) : blocked.has(k) && mayEdit ? <Pill tone="danger">blocks Send</Pill> : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
+              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{k === "fees.total" && isNoFee(v[k]) ? NO_FEE : v[k] ? String(v[k]) : blocked.has(k) && mayEdit ? <Pill tone="danger">blocks Send</Pill> : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
             ))}
           </dl>
           {r.codeChecklist ? <section aria-labelledby="fo-code" data-code-checklist className="rounded-lg border border-border p-3 text-sm">
@@ -173,7 +175,7 @@ function RetainerBody({ id }: { id: string }) {
       </div>
       <Panel open={sending} onOpenChange={setSending} title={`Send to ${client} to sign`} description={`Version ${r.version.n}. Once sent, this version never changes.`}
         footer={<><Button variant="ghost" onClick={() => setSending(false)}>Cancel</Button><Button busy={send.isPending} onClick={() => send.mutate()}>Send to {client}</Button></>}>
-        <dl className="grid grid-cols-[6rem_1fr] gap-1 text-sm"><dt className="text-text-muted">To</dt><dd className="[overflow-wrap:anywhere]">{to}</dd><dt className="text-text-muted">Version</dt><dd>{r.version.n}</dd><dt className="text-text-muted">Fees</dt><dd>{String(v["fees.total"] ?? "") || "No amount"}</dd></dl>
+        <dl className="grid grid-cols-[6rem_1fr] gap-1 text-sm"><dt className="text-text-muted">To</dt><dd className="[overflow-wrap:anywhere]">{to}</dd><dt className="text-text-muted">Version</dt><dd>{r.version.n}</dd><dt className="text-text-muted">Fees</dt><dd>{isNoFee(v["fees.total"]) ? NO_FEE : String(v["fees.total"] ?? "") || "No amount"}</dd></dl>
         <p className="mt-3 text-sm">{client} is asked to sign this version. After {client} signs, {repName(r.representativeStaffId)} signs for the firm.</p>
         {r.missing.length ? <p className="mt-2 text-sm text-text-muted">{r.missing.length} value{r.missing.length === 1 ? " is" : "s are"} missing. You can send without {r.missing.length === 1 ? "it" : "them"}.</p> : null}
       </Panel>
