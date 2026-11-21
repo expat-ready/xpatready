@@ -127,3 +127,55 @@ Each fix and the fail test that proves it:
 * **n4 left as is (Minor, accepted).** The lookup test still passes on any synth error. It does not block.
 
 No new findings.
+
+## Re-review (adaa846)
+
+Verdict: Approve
+
+Scope: merge commit b01a20d, then `git diff b01a20d adaa846`. Run in deploy/cdk with AWS keys unset; the cdk and aws CLIs were never called. `npm run synth` exits 0 and writes 4 stacks (home and copy, per stage). `npm test` 83/83 pass, PF-8a's and PF-8rc's tests included.
+
+**(a) The merge.**
+* `git diff origin/main b01a20d` on `lib/app.ts` and `cdk.json` is empty, and so is the diff against the merge's main parent 19fdf28. So main's four flags are back and `buildApp` no longer reads `cdk.json` (Lead 13 ruling 1).
+* No conflict markers anywhere in the package.
+* The README keeps PF-8rc's text and adds PF-8b's section. "Feature flags (not set yet)" hands the flags finding to PF-8c-flags.
+* The synthesized templates contain no Lambda or custom resource.
+
+**(b) Each widening: is it the narrowest that admits PF-8b, and does it have a fail test?**
+* **Per-service actions** (`checks.ts:324-330`, `allowedFor`):
+  * A role trusted only by `ecs-tasks` gets the 8 ECS actions (ECR pull, secret read, SES send). The Backup role keeps `kms:Decrypt` only. A role trusted by mixed or several services falls back to `ROLE_ACTIONS`.
+  * Fail tests: `iam:PassRole` on an ECS role; `ses:SendEmail` on the Backup role.
+  * Narrow per trusting service, but not per role (r1).
+* **Resource forms** (`own`, `tokenOnly`):
+  * Allowed: a secret's Ref; a GetAtt to this stack's resources; a Join of literals with no `*` plus pseudo parameters, which must contain at least one Ref to a stack resource. `"*"` is allowed only for `ecr:GetAuthorizationToken`, and only on an ECS role.
+  * Fail test: `"*"` for a secret read and for the token on the Backup role (exactly 2 findings).
+  * The Join form does not pin the account (r2).
+* **Digest-only parameter** (`digestOnly`):
+  * Exempt only when the parameter is exactly `{Type: String, AllowedPattern: ^sha256:[a-f0-9]{64}$, Description}`.
+  * Fail tests: removing the pattern is refused. My probe adds a `Default`, and that is refused as well.
+  * This is the narrowest possible.
+* **KMS grant to an ECS role** (`ecsExec`):
+  * Admits exactly `kms:Decrypt`, `Resource: *`, and `kms:ViaService = secretsmanager.ca-central-1`, granted only to roles trusted by `ecs-tasks`.
+  * Fail tests: no ViaService; the Backup role as grantee (exactly 2).
+  * It admits the task role as well as the execution role (r3).
+* **Types:** 15 types added, each one used by PF-8b and read by `service-checks.ts`. No Lambda, custom resource or IAM user or group type is added.
+* **The Policies rule now applies to IAM types only.** This is needed because Cognito `UserPool.Policies` is a password policy. Any other type that carries `Policies` must first be added to `ESTATE_TYPES` by a reviewed PR, so nothing is lost.
+
+**PF-8rc's existing fail tests still bite:**
+* The two `backup.test.ts` edits are exact. The role count is `[1 backup, 4 ecs, 5 total]` rather than "1". The admin-policy mutation now targets the Backup role, because the first role found may be an ECS role with no `ManagedPolicyArns`.
+* The "Escalate" role (`ecs-tasks` with `iam:*`) is still refused, because `iam:*` is not in `ECS_ACTIONS`.
+* `lambda.amazonaws.com` trust is still refused.
+
+**Staging runs as `test` (ruling 3):**
+* `service.ts` gives both staging tasks `PLATFORM_ENVIRONMENT=test`, confirmed in `cdk.out`.
+* The test checks the loader's live-key rule by text, then shows that staging set to `production` fails. It also refuses `PLATFORM_SAMPLE_SEED`.
+
+**New minors (none blocks):**
+* **r1** `checks.ts:327`: execution and task roles share `ECS_ACTIONS`.
+  * Probe p1: `ses:SendEmail` on the execution role gives no finding in either check file. A task role reading a secret is still caught by `secretReadFindings`.
+  * Fix: split the list into execution actions (ECR and secrets) and task actions (SES), keyed by the role's place in a task definition.
+* **r2** `checks.ts` `own()`: a Join may carry a literal foreign account.
+  * Probe p2: `ecr:BatchGetImage` on `arn:aws:ecr:ca-central-1:999999999999:repository/` plus a Ref passes `bypassFindings`, and the region guard does too.
+  * Fix: require `{Ref: AWS::AccountId}` in the account position of a joined ARN.
+* **r3** `checks.ts` `ecsExec`: a Secrets-Manager-scoped decrypt grant to the task role passes (probe p3). It is harmless today, because the task role cannot call `GetSecretValue`.
+  * Fix: require the grantee to be some task definition's `ExecutionRoleArn`.
+* **n4** (the lookup test passes on any synth error) is still open. It was already accepted.
