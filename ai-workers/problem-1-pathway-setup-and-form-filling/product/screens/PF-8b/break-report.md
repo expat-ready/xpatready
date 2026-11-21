@@ -79,3 +79,31 @@ Fix: treat any `Users` or `Groups` on a policy as a finding. Allow only `ecs-tas
 **The service now holds the owner's address** (`DATABASE_URL` = `xr/<stage>/DATABASE_OWNER_URL`, because pg-boss needs it). The service execution role reads that secret, and the running process holds DDL rights. This contradicts the row ("the service runs as the app role"), and the deviation is escalated correctly in `challenge.md`, so I do not count it here. My read: option 2 (an `xr_jobs` role) is what removes the owner credential from the internet-facing process, and it should not wait long. `roleFindings` holds: the owner secret under `APP_DATABASE_URL` or any other name is caught, and so are the RDS admin secret and the app role's secret in the migration task.
 
 **Still open as you noted (unchanged):** Minor 4 (Host header), 5 (staging delegation and the reserved address), 6 (DMARC `rua`) and 9 (egress, one key, CAA).
+
+## Re-break (bd5a1ce)
+
+Verdict: no Major
+
+I read only `git diff afb1f3c..bd5a1ce`, leaving out `product/screens`. `npm test` passes (54/54); I re-ran `npm run synth` and no `cdk` or AWS CLI. I ran 46 mutations against all nine checks on the production template (baseline `[]`): O1–O16, N1–N18, and 11 new ones (R1–R11).
+
+**Closed:**
+- RM-1. N1 (`Command`) and N2 (`LogConfiguration.Options`) are now caught. So are R10 (a sidecar container's env) and R11 (a dynamic reference in `Volumes`).
+- RM-2. These are all caught now: N6 (`User.fromUserName` grant), N7 (`RolePolicy`), N8 (execution-role trust widened), N4 (`NotAction`) and N5 (`secretsmanager:*SecretValue`).
+- The KMS rule. Caught: N9 (another account's root behind `AWS::Partition`), N10 (`*` with a `StringLike *` ViaService), N11 (`CreateGrant`), N12 (`kms:Dec*`), R5 (ViaService list including s3) and R8 (another account through `Fn::Sub`).
+- Every earlier case O1–O16 is still caught.
+
+**Still missed, all Minor.** None comes from a CDK grant method; each needs a hand-written L1 resource.
+- **R3 and R4: the ViaService rule reads only the text, not the condition operator** (`service-checks.ts:121`). These both return `[]`:
+  - `Principal {"AWS":"*"}` with `StringNotEquals {"kms:ViaService":"secretsmanager.ca-central-1.amazonaws.com"}`, which means "any direct call";
+  - the task role with `StringEqualsIfExists` on the same value. A direct `kms:Decrypt` call carries no ViaService key, so it passes.
+  Fix: accept only `StringEquals` (or `ForAllValues:StringEquals` with that single value). Treat any other operator on `kms:ViaService` as a missing condition.
+- **R1 and R7: a `Statement` written as one object instead of an array is skipped.** IAM and KMS both accept that form; `arr()` turns it into `[]`. This gets through for a role policy with `GetSecretValue` on `*`, and even for a key policy of `kms:*` to `Principal *`. Fix: wrap a single object in an array before reading.
+- **R2: an `Action` built from an intrinsic** (`Fn::Join` → `secretsmanager:GetSecretValue`) is skipped, because only plain strings are read. Fix: treat a non-string action as a finding.
+- **R6: `kms:ReEncrypt*` granted to another account with no ViaService is not counted.** It moves this key's ciphertext under a key that account owns. Fix: add `kms:ReEncryptFrom` to `decrypts`.
+- **R9: `iam:PassRole` on an execution role, granted to the task role, is not flagged.** Together with `ecs:RunTask` and `ecs:RegisterTaskDefinition`, the running app could start a task that reads every service secret. Fix: flag any grant of `iam:PassRole` on an execution role.
+- **Unchanged from the last round:**
+  - N3: `sk_live_…` in a Lambda's environment; the credential scan covers task definitions only.
+  - N18: a `{{resolve:` split across `Fn::Join` parts.
+  - N13 to N17: the database's and the tasks' allowed sources (VPC range, the LB's security group, `/1` halves, a prefix list, `PubliclyAccessible`). Left Minor by choice.
+
+**Holds:** the trust check compares the whole trust document exactly, so nothing else can be added to it. The managed-policy allow list matches only `arn:…:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole`, so a policy of the same name in our own account does not pass. Users, groups, and `UserPolicy`/`GroupPolicy` grants all count as non-execution holders. The template is unchanged apart from the shorter header comment.
