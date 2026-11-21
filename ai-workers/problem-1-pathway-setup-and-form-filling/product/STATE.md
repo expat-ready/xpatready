@@ -2,11 +2,14 @@
 
 current_lead: local_1cd4840f-cfa2-4ad6-b9e1-9ab5a6116cdc Lead 16 · 21 Nov 18:0x IST (series 3; took over from Lead 15 (series 3, local_666bcb32) at ~416k, P-446)
 
-updated: 2026-11-21 18:0x IST: Lead 15 handed over to Lead 16 (series 3) · milestone: Release 1 proven 37 of 101 on main (+5 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 18:2x IST: Lead 16 (series 3) current since 18:04 IST (check 37f0a5a9) · milestone: Release 1 proven 38 of 101 on main (+6 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
 
 
 
 
+
+## Lead 16 since 18:04 IST (newest first)
+* 18:2x **Proven 6/15 (38/101): R1.14 #2804 merged** (fresh Opus diff-only Approve a8f0ac8). **#2830 R1.47:** fresh Opus reviewer Request changes (pack run only on queue commit ca0db960a, no re-run on main); Q4 started nightly 44906078657 on main 4353a7e8b, cites it then asks re-review.
 
 ## Lead 15 since 15:47 IST (newest first)
 * 17:5x **Proven 5/15 (37/101): R1.32 records #2810 merged.** Merged: #2633 (R1.47 → Q4 proving now), #2802 (R1.53 part 1; part 2 lane pushes), #2800 (PF-8b F1+F2; F2b next). #2804 (R1.14) independent Opus Approve fc390a0 + labelled (records queue). #2818 + #1959 queued; #2814 labelled. Nightly 44893988642: 4 of 8 shards cancelled at 59 min (log; fix after the cycle). Q4's #2797 (R1.53 Partial) parked, folds into Works.
