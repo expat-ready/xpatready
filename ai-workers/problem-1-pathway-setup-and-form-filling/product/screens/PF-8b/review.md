@@ -73,3 +73,37 @@ None.
 * No conflict with PF-8a's tests. Region stays `ca-central-1` everywhere.
 * The open PR #2725 conflict (question 1) is correctly left for the lead.
 * Not checked: anything only a real deploy can show (PF-8c).
+
+## Re-review (afb1f3c)
+
+Verdict: Approve
+
+Scope: the new commits only, `git diff efeb004..afb1f3c`. 28bc3e1 reverts the workflow line; afb1f3c fixes M1, M2 and the breaker's findings. Run in deploy/cdk with AWS keys unset and the CDK CLI never called: `npm run synth` exits 0, `npm test` 54/54 pass. I re-ran my first-round mutation probes (scratchpad script) against the new checks.
+
+**M1: resolved.** Every gap I listed is now found on the production template:
+* a managed policy on the task role;
+* an inline role policy;
+* a secret resource policy;
+* a literal `SecretString`;
+* an environment file;
+* a sidecar's plain secret.
+
+Dynamic `{{resolve:…}}` references and key grants without `kms:ViaService` are caught as well. Each has a fail case in `test/service.test.ts` (the "break M-2" and "break M-1, review M1" tests). The previous checks would not produce any of the strings those tests assert, so each test fails without its fix.
+
+**M2: resolved, and escalated correctly.** The service now has `APP_DATABASE_URL` set to `xr/<stage>/APP_DATABASE_URL` (requests run walled as `xr_app`). Its `DATABASE_URL` is the owner's address, which pg-boss needs. The migration task holds only the owner's address.
+* `roleFindings` fails on swapped secrets.
+* `challenge.md` puts the conflict with the row's wording, the trade-off (the service process holds the owner credential) and the `xr_jobs` option to the tech lead, as AGENTS.md rule 2 requires.
+
+**First-round minors:**
+* m1 is reverted.
+* m2 is fixed: the placeholder is now JSON.
+* m3 now has a fail case.
+* m4: values are labelled Sample.
+* m5: README is corrected.
+
+**New minors (none blocks):**
+* **n1** `lib/service-checks.ts:133-147`: nothing asserts that the service's `DATABASE_URL` is the owner's. If it is set back to the app secret (the configuration that cannot start), the tests still pass (probe k). Fix: `if (s.get("DATABASE_URL") !== owner) out.push(…)`, plus a fail case.
+* **n2** `lib/service-checks.ts:20,84`, `readsSecret`: the check reads `Action` only. On the task role, an `Allow` with `NotAction: "iam:*"` gives no finding (probe i), and neither does a glob such as `secretsmanager:*Value` (probe j). Fix: treat any `NotAction` Allow as a read, and match globs by turning them into a regex tested against `GetSecretValue`.
+* **n3** `lib/service-checks.ts:108-112`, the `ROOT` pattern: its first alternative accepts any `arn:${Partition}…:root`. A key-policy decrypt grant to another account's root therefore passes (probe l). Fix: anchor it to `{"Ref":"AWS::AccountId"}`.
+* **n4** `test/service.test.ts:208-211`: the m3 lookup proof counts any exception at synth as a pass. Fix: assert that the missing context is a hosted-zone lookup.
+* Note: the extra test "the construct alone" was removed. It was not a Done-when line, so this is not a finding.
