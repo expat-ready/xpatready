@@ -85,6 +85,31 @@ check() { local max=$1 kb=$2; shift 2; for f in "$@"; do [ -f "$f" ] || continue
         if (c[4] !~ /^((hook|CI|script): [^ ]|prose( |$))/) print "RULES REGISTER: " c[2] " has no enforced-by (hook: <name>, CI: <name>, script: <name> or prose), found \"" c[4] "\""
         if (c[5] == "") print "RULES REGISTER: " c[2] " has no as-of"; next }
       { t = 0 }' "$R"
+    # E7 (P-772, P-611a): an enforcer file the "Enforced by" cell names (a word ending .sh, .py, .mjs, .cjs, .js, .ts, .yml
+    # or .yaml, bare or with a path) is a file on this branch, tracked or new and not ignored, by that path or ending in
+    # "/<it>", so the register never claims a check that is not there (the audit of 21 Nov found 5 stale cells). A cell
+    # that says "owed" claims nothing yet. KNOWN_STALE: the cells stale when this check landed; the tech lead fixes them
+    # in RULES.md (the proposed patch is on the E7 PR), then deletes the ID here: P-690 (plan-watch.py, never built);
+    # IDX-23 on the Lead's branch (resource-claim-guard.sh arrives with #2590). Test: check-rule-register.sh.
+    KNOWN_STALE=" P-690 IDX-23 "
+    git -C "$ROOT" ls-files -z --cached --others --exclude-standard 2>/dev/null | python3 -I -c '
+import re, sys
+files = [f for f in sys.stdin.buffer.read().decode("utf-8", "replace").split("\0") if f]
+if not files: print("RULES REGISTER: git could not list this copy'"'"'s files, so no enforcer file was checked (E7)"); sys.exit()
+have = set(files) | {f[i + 1:] for f in files for i, c in enumerate(f) if c == "/"}   # every path and every "/"-suffix
+stale = set(sys.argv[2].split()); t = False
+for line in open(sys.argv[1], encoding="utf-8"):
+    if re.match(r"^\| ID \| Rule \| Enforced by \| As of \|", line): t = True; continue
+    if t and line.startswith("|-"): continue
+    if not (t and line.startswith("|")): t = False; continue
+    c = line.split("|")
+    if len(c) != 6: continue
+    rid, cell = c[1].strip(), c[3]
+    if rid in stale or re.search(r"\bowed\b", cell, re.I): continue
+    for f in sorted(set(re.findall(r"[A-Za-z0-9_./-]+\.(?:sh|py|mjs|cjs|js|ts|yml|yaml)\b", cell))):
+        if f.removeprefix("./") not in have:
+            print(f"RULES REGISTER: {rid} is enforced by {f}, but no such file is on this branch: fix the Enforced by cell (prose, or the real file), or write \"owed\" if it is not built yet (E7, P-611a)")
+' "$R" "$KNOWN_STALE" || echo "RULES REGISTER: the enforcer-file check stopped with an error, so no enforcer file was checked (E7)"
   fi
   # E14 (P-772; IDX-1, -2, -4, -5): an index row stands for DECISIONS rows, so every P-ID an IDX row lists (one by one,
   # or "P-a to P-b", every number between) is a row of DECISIONS.md or of a side file in decisions/ (struck-through

@@ -11,7 +11,7 @@ docs_copy "$T/c"; P="$T/c/$PRODREL"; CD="$P/tools/check-docs.sh"; mkdir -p "$P/r
 run() { out=$(bash "$CD" 2>/dev/null); r=$?; }
 sha() { printf '%s' "$1" | sha256sum | cut -c1-16; }
 printf '| # | Date | Decision |\n|---|---|---|\n| P-1 | 16 Nov | test |\n| P-9 | 16 Nov | test |\n' > "$P/DECISIONS.md"
-L1='| P-1 | A kept rule. | hook: a.sh | 16 Nov |'; L2='| P-2 | The same as P-1, said again. | prose | 16 Nov |'; L3='| P-3 | A one-time step, done. | prose | 16 Nov |'
+L1='| P-1 | A kept rule. | hook: check-docs.sh | 16 Nov |'; L2='| P-2 | The same as P-1, said again. | prose | 16 Nov |'; L3='| P-3 | A one-time step, done. | prose | 16 Nov |'
 reg() { { echo '# Rule register (as of **P-9**, test)'; echo; echo '| ID | Rule | Enforced by | As of |'; echo '|---|---|---|---|'; printf '%s\n' "$@"; } > "$P/RULES.md"; }
 side() { { echo '# Moved rows'; echo; echo '| ID | Rule | Enforced by | As of |'; echo '|---|---|---|---|'; printf '%s\n' "$@"
   echo; echo '| ID | Outcome | Into | Was in section | Why |'; echo '|---|---|---|---|---|'; echo '| P-2 | merged | P-1 | Test | same |'; } > "$P/rules/merged-and-retired-t.md"; }
