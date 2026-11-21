@@ -39,7 +39,7 @@ const EXCEPTIONS = [...CATALOGUES, ...LATER_CATALOGUES, ...OWN];
  *  forced policy or is added here on purpose (the next webhook_receipt cannot slip). */
 const FIRM_ID_ELSEWHERE: Record<string, string> = {
   audit_event: "the one trail: append-only at the database (AUD-1a); written with no platform firm by the case side too; a firm reads its own lines through AUD-4's own firm filter (audit/firm-read/service.ts)",
-  module_event: "the event bus: written in each change's transaction and read across firms, and by the case side with no platform firm (case-count.ts, prospect-won.ts); walled with the case side (CS-W4)",
+  module_event: "the event bus: written in each change's transaction and read across firms, and by the case side with no platform firm (case-count.ts, prospect-won.ts); its wall has no owner row yet (the tech lead's)",
   runtime_case: "case side: case requests run with no platform firm until CS-W4 walls them",
   case_client: "case side (CS-W4)", case_decision: "case side (CS-W4)", case_milestone: "case side (CS-W4)",
   case_party_index: "case side (CS-W4)", case_stage: "case side (CS-W4)", firm_case_counter: "case side: a firm's case numbers (CS-W4)",
@@ -53,8 +53,12 @@ const firmIdTables = (db: string) => new Set(sql(db, `select distinct c.relname 
 const walledScope = (db: string) => { const f = firmIdTables(db); return (t: string) => (FAMILIES.test(t) || f.has(t)) && !EXCEPTIONS.includes(t) && !elsewhere(t); };
 /** The policy shapes that wall (break M2: a policy that only mentions the session's firm does not): all commands on the
  *  firm column (platform_firm: its id), or the platform templates' read of firm-less rows by a firm session. */
-const WALLING = new Set(["* (firm_id = platform_session_firm()) | (firm_id = platform_session_firm())", "* (id = platform_session_firm()) | (id = platform_session_firm())",
-  "r ((firm_id IS NULL) AND (platform_session_firm() IS NOT NULL)) | -"]);
+const WALLING: Record<string, readonly string[] | "any"> = {
+  "* (firm_id = platform_session_firm()) | (firm_id = platform_session_firm())": "any",
+  "* (id = platform_session_firm()) | (id = platform_session_firm())": ["platform_firm"],   // its id is the firm id
+  "r ((firm_id IS NULL) AND (platform_session_firm() IS NOT NULL)) | -": ["msg_template", "msg_template_version"],   // platform-owned templates only (review r2)
+};
+const walls = (table: string, shape: string) => { const on = Object.hasOwn(WALLING, shape) ? WALLING[shape] : null; return on === "any" || (on ?? []).includes(table); };
 /** What else could hold a firm's rows past the guard (break M1, M2): a view that is not security_invoker (it reads as its
  *  owner, past every policy), any materialized view, and any table or view outside the public schema. */
 function sideDoors(db: string): string[] {
@@ -90,7 +94,7 @@ function unguarded(db: string): string[] {
     from pg_policy p join pg_class c on c.oid = p.polrelid
     where c.relnamespace = 'public'::regnamespace and p.polpermissive
       and (0 = any(p.polroles) or exists (select 1 from pg_roles r where r.oid = any(p.polroles) and r.rolname in ('xr_app', 'xr_data')))`).split("\n").filter(Boolean)
-    .filter((l) => !WALLING.has(l.split("\t")[1])).map((l) => l.split("\t")[0]);
+    .filter((l) => !walls(l.split(" ")[0], l.split("\t")[1])).map((l) => l.split("\t")[0]);
   const trg = sql(db, `select distinct c.relname || ' trigger function ' || f.proname from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc f on f.oid = t.tgfoid
     where not t.tgisinternal and c.relnamespace = 'public'::regnamespace
       and f.proname <> 'platform_firm_first' and (not f.prosecdef or pg_get_userbyid(f.proowner) <> 'xr_wall_reader' or not coalesce(f.proconfig::text, '') ~ 'search_path=pg_catalog, public, pg_temp')`).split("\n").filter(Boolean);
@@ -130,7 +134,11 @@ try {
   // The guard for every later row: the newest database (every migration) still has no unwalled firm table.
   ok("PF-12 guard pass: with every migration on main, no platform_*, fo_*, money_*, msg_*, auto_* or plat_complaint* table, and no other table with a firm_id column (PF-12b part 5, QA-703), is without its forced policy", unwalled(EMPTY).length === 0, unwalled(EMPTY));
   const fid = firmIdTables(EMPTY), elsewhereList = Object.keys(FIRM_ID_ELSEWHERE);
-  ok("PF-12b5 guard: the firm tables kept outside the platform policy are exactly the named list, each still a firm table, none a family table, and none walled yet (a table walled later must leave the list; review m2)", elsewhereList.every((t) => fid.has(t) && !FAMILIES.test(t)) && sql(EMPTY, `select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname = any('{${elsewhereList.join(",")}}') and relforcerowsecurity`) === "0" && [...fid].filter((t) => !FAMILIES.test(t) && !EXCEPTIONS.includes(t) && !elsewhereList.includes(t)).every((t) => !unwalled(EMPTY).includes(t)), { missing: elsewhereList.filter((t) => !fid.has(t)) });
+  const listHolds = () => elsewhereList.every((t) => fid.has(t) && !FAMILIES.test(t)) && sql(EMPTY, `select count(*) from pg_class where relnamespace = 'public'::regnamespace and relname = any('{${elsewhereList.join(",")}}') and relforcerowsecurity`) === "0" && [...fid].filter((t) => !FAMILIES.test(t) && !EXCEPTIONS.includes(t) && !elsewhereList.includes(t)).every((t) => !unwalled(EMPTY).includes(t));
+  ok("PF-12b5 guard: the firm tables kept outside the platform policy are exactly the named list, each still a firm table, none a family table, and none walled yet (a table walled later must leave the list; review m2)", listHolds(), { missing: elsewhereList.filter((t) => !fid.has(t)) });
+  sql(EMPTY, "alter table case_stage enable row level security, force row level security");
+  ok("PF-12b5 guard fail (review r1): a listed table that gets walled (case_stage forced here) fails the list check until it leaves the list", !listHolds());
+  sql(EMPTY, "alter table case_stage no force row level security, disable row level security");
   ok("PF-12b5 guard pass (break M1, M2): no view reads past the walls (both views on main are security_invoker), no materialized view, nothing outside the public schema", sideDoors(EMPTY).length === 0, sideDoors(EMPTY));
   ok("PF-12b5 pass (QA-703): webhook_receipt has its forced firm policy (platform_session_firm()) and the first gate", sql(EMPTY, `select c.relrowsecurity and c.relforcerowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid and pg_get_expr(p.polqual, p.polrelid) ~ 'platform_session_firm') and exists (select 1 from pg_trigger t where t.tgrelid = c.oid and t.tgname = '0_pf12_firm_first') from pg_class c where c.relname = 'webhook_receipt'`) === "t");
   ok("PF-12 guard pass: every firm table's policy for the app names the session's firm, and every trigger function on a firm table runs as xr_wall_reader", unguarded(EMPTY).length === 0, unguarded(EMPTY));
@@ -140,6 +148,13 @@ try {
   const ung = unguarded(EMPTY);
   ok("PF-12 guard fail: an open policy added to a walled table, and a plain trigger function on a firm table, are each named", ung.some((l) => /fo_lead policy pf12_probe_open/.test(l)) && ung.some((l) => /fo_note trigger function fo_pf12_probe_fn/.test(l)), ung);
   sql(EMPTY, "drop policy pf12_probe_open on fo_lead; drop trigger fo_pf12_probe_trg on fo_note; drop function fo_pf12_probe_fn()");
+  sql(EMPTY, `create function platform_pf12_probe_fn() returns trigger language plpgsql as $$ begin return new; end $$;
+    create trigger platform_pf12_probe_trg before insert on platform_signup_pending for each row execute function platform_pf12_probe_fn();
+    create policy pf12_probe_tpl on platform_staff for select using ((firm_id IS NULL) AND (platform_session_firm() IS NOT NULL));`);
+  const ungX = unguarded(EMPTY);
+  ok("PF-12b5 guard fail (review r1, r2): a plain trigger function on an excepted family table (platform_signup_pending), and the templates' firm-less read given to another table, are each named",
+    ungX.some((l) => /^platform_signup_pending trigger function platform_pf12_probe_fn$/.test(l)) && ungX.some((l) => /^platform_staff policy pf12_probe_tpl$/.test(l)), ungX);
+  sql(EMPTY, "drop trigger platform_pf12_probe_trg on platform_signup_pending; drop function platform_pf12_probe_fn(); drop policy pf12_probe_tpl on platform_staff");
   // ... and it fails for a table that forgot (the probes are dropped again).
   sql(EMPTY, `create table widget_pf12_probe (id uuid primary key, firm_id uuid); create table fo_pf12_probe (id uuid primary key, firm_id uuid not null); create table auto_pf12_probe (id uuid primary key, firm_id uuid not null); create table plat_complaint_pf12_probe (id uuid primary key, firm_id uuid not null);
     create table money_pf12_probe (id uuid primary key, firm_id uuid not null); alter table money_pf12_probe enable row level security; create policy p on money_pf12_probe using (firm_id = platform_session_firm());

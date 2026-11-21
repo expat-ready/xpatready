@@ -66,3 +66,41 @@ I am a fresh session that did not build this row. Postgres was on :54329. The is
 **Verdict: Approve d67f746d74ca89fd4e5c23ef615ce97b0d5815fa.** No Blocker or Major is open. m1 to m3 are recommended in the next push (they still stand at `da611793b`).
 
 Reviewer: Approve d67f746d74ca89fd4e5c23ef615ce97b0d5815fa
+
+---
+## Re-review: head `6a6f14c305c22f6378aca0b1a259e48c86d6025a` (22 Nov 01:2x IST)
+I read only `git diff d67f746d 6a6f14c3`, which has two commits: `da611793b` (the breaker's fixes) and `6a6f14c3` (my Minors). `migration.sql` has not changed since d67f746d. The reports were committed unchanged.
+
+**What I ran:**
+- `check_pf12_walls` **108/0** at 6a6f14c3 (shared tree, clean).
+- **Mutation A:** I put `unguarded` back to `scoped(t)` only (m1 undone).
+- **Mutation B:** I dropped the `relforcerowsecurity` clause (m2 undone).
+- Both mutants ran **103/5**. The 5 reds are the server-start checks that my `git archive` copies cannot run, as in round 1. No guard check went red.
+
+**The breaker's fixes (`da611793b`): accepted.**
+- **M1:** `sideDoors()` names any public view that is not `security_invoker`, any materialized view, and any table or view outside public. Each has a probe at `check_pf12_walls.ts:149-155`. It is measured on the database built from migrations only. pg-boss's own schema, which the job runner creates at run time, is outside that database, so it is correctly not named.
+- **M2:** the firm-column scan includes `firm_key`, and `case_client_counter` is listed as case side. The `pol` check now requires one of three exact `WALLING` shapes rather than a regex match. All policies on main match a shape, and the probe policy `... or true` is named.
+- **The breaker's m1 and m4:** `Object.hasOwn` is used, and `rollback.sql` now deletes its `_prisma_migrations` row, as csk1's and csdl3's do.
+- **The breaker's m2 left unchanged:** a firm session may write its own receipts. Agreed: this is the same policy as every walled table, and no path uses it.
+
+**My Minors (`6a6f14c3`): all three fixed.**
+- **m1:** `unguarded` filters by `FAMILIES.test(t) || scoped(t)` again (`:99-100`).
+- **m2:** a listed table must be unforced (`:133`).
+- **m3:** the reasons now name CS-W4, AUD-4's own filter, and module_event's cross-firm and case-side readers.
+
+**New Minors (no Blocker, no Major):**
+- **r1 (Minor, Should): the m1 and m2 fixes have no failing test.** Mutations A and B above both stay green. Fix:
+  - add a probe trigger with a plain function on `platform_signup_pending` and expect `unguarded` to name it;
+  - force one listed table in the scratch database, for example `case_party_index`, and expect the list check to fail.
+- **r2 (Minor, optional): `WALLING` does not care which table a shape is on** (`:56-57`).
+  - The `id = platform_session_firm()` shape walls only `platform_firm`.
+  - The templates' read of firm-less rows, `r (firm_id IS NULL AND platform_session_firm() IS NOT NULL)`, would be accepted on any table. Given to `webhook_receipt`, it would let every firm read the unmatched receipts.
+  - Fix: tie those two shapes to their tables (`platform_firm`, the `msg_template*` tables).
+- **r3 (Minor, wording):** module_event's reason says "walled with the case side (CS-W4)". Neither the CS-W4 row nor its brief names module_event (the brief names only AuditEvent, for the audit rows). Say "owner not yet named", or have the tech lead give it to CS-W4.
+- **For the tech lead in the PR:** the FO-7c note above. `briefs/FO-7c.md:42` stores into `webhook_receipt` before the firm is known, so it needs a named bypass use or must store after the firm is resolved.
+
+Journey score unchanged: **9.5/10**. The app code and the migration are identical to the round-1 walk.
+
+Verdict: Approve 6a6f14c305c22f6378aca0b1a259e48c86d6025a
+
+Reviewer: Approve 6a6f14c305c22f6378aca0b1a259e48c86d6025a
