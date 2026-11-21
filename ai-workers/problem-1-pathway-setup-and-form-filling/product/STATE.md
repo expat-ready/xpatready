@@ -20,6 +20,7 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 (5d) **22:2x-23:2x** (lanes Q7/Q8/Q9/DEMO-LINK/Lead 19, R1.10 + R1.3 Partial, forecast 11, #2860 read, #2845 labelled and queued ETA 00:28): word for word in the history file in (3).
 (5l) **00:4x: R1.4 Works → 10/15, 42/101.** R1.19 ruled Partial (billing period must be state) → PF-5 part 3 #2870; QA-703 → PF-12b part 5 #2871; AWS redeploy waits on the founder's sign-in (red line above). Lines 00:1x-00:2x in the history file in (3).
 (5s) **02:2x: #2870 merged (d0253335c)**, item-proof 44949023938 running (j_19 not on main → journey FAIL expected). qa Q9 told: merge main into #2857, j_19 reads billing_period, row stays Partial on P-339 only, reader, walks + reviewer please → after merge item-proof + Lead walks j_19 on main → one-line Works PR (→ 11/15, ETA ~04:30).
+(5t) **02:3x:** walks j_19 dispatched on #2857 head 31e89ad2d (44950091079; j_19 reads billing_period). #2687 /run full 44946651958 stopped: check_pf28_inputs conflict after #2787 → DEMO-LINK lane merging main; independent re-review + full run again after. #2794 (PF-28 2b-2c, Lead B's) approved on 4046afdd.
 (6) **Owed records:** DECISIONS rows: QA-697 Major; Lead rulings from Lead 15 list. BACKLOG: image scan CRITICAL 5 / HIGH 12; RDS CA + verify-full; secret-refusal as one JSON line; QA-641-643 deploy row; QA-645 cloud check on main (after 22 Nov); plus Lead 15's owed list (in the history file).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
