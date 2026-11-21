@@ -31,10 +31,12 @@ export const MIN_TASKS = 2;
 
 /** The values PF-24's loader requires in production that are unknown at synth: each one a Secrets Manager secret named
  *  `xr/<stage>/<NAME>`, supplied at deploy (deploy/RUNBOOK-secrets.md). The Cognito ids and the SES region are known
- *  here, so they are plain settings. DATABASE_URL and APP_DATABASE_URL both carry the app role's address: the service
- *  never holds the owner's (firm-scope.ts appDatabaseUrl reads APP_DATABASE_URL first). */
+ *  here, so they are plain settings. PF-12 as the team's code has it: every request's query runs as the app role xr_app
+ *  (APP_DATABASE_URL, firm-scope.ts appDatabaseUrl); the job runner (pg-boss, platform-jobs.ts) connects with DATABASE_URL
+ *  and creates its own schema, so the service's DATABASE_URL is the owner's address, as the migration task's (review M2;
+ *  a separate jobs role is a question for the tech lead, PF-8b/challenge.md). */
 export const SERVICE_SECRETS = [
-  "DATABASE_URL", "APP_DATABASE_URL", "PLATFORM_STRIPE_SECRET_KEY", "PLATFORM_STRIPE_WEBHOOK_SECRET", "PLATFORM_BOLDSIGN_API_KEY",
+  "APP_DATABASE_URL", "PLATFORM_STRIPE_SECRET_KEY", "PLATFORM_STRIPE_WEBHOOK_SECRET", "PLATFORM_BOLDSIGN_API_KEY",
   "PLATFORM_ZOOM_CLIENT_ID", "PLATFORM_ZOOM_CLIENT_SECRET", "PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN", "PLATFORM_SECRET_BOX_KEYS", "PLATFORM_SECRET_BOX_KEY_VERSION",
 ] as const;
 export const POOLS = ["staff", "own-staff", "clients"] as const;
@@ -84,13 +86,13 @@ export class AppService extends Construct {
     // --- secrets: names only here, values supplied at deploy (SA-8-1)
     const secret = (name: string) => new sm.Secret(this, `Secret${name}`, {
       secretName: `xr/${stage}/${name}`,
-      description: `Expat Ready ${stage}: ${name} (supplied at deploy; deploy/RUNBOOK-secrets.md). Created holding a random placeholder, which the app refuses.`,
+      description: `Expat Ready ${stage}: ${name} (supplied at deploy; deploy/RUNBOOK-secrets.md). Created holding a JSON placeholder, which every loader rule refuses.`,
+      generateSecretString: { secretStringTemplate: JSON.stringify({ placeholder: "supplied at deploy" }), generateStringKey: "random", passwordLength: 16 }, // review m2
       encryptionKey: key,
       removalPolicy: RemovalPolicy.RETAIN,
     });
-    const appSecrets = Object.fromEntries(SERVICE_SECRETS.filter((n) => n !== "APP_DATABASE_URL").map((n) => [n, secret(n)]));
-    appSecrets.APP_DATABASE_URL = appSecrets.DATABASE_URL; // one secret, the app role's address, under both names
-    const ownerUrl = secret("DATABASE_OWNER_URL"); // the table owner's address: the migration task's only
+    const ownerUrl = secret("DATABASE_OWNER_URL"); // the table owner's address: migrations and the job runner
+    const appSecrets: Record<string, sm.Secret> = { DATABASE_URL: ownerUrl, ...Object.fromEntries(SERVICE_SECRETS.map((n) => [n, secret(n)])) };
 
     // --- Cognito: three separate pools (PF-4b staff, PF-4s our own staff, PF-4p clients)
     const pool = (name: (typeof POOLS)[number], staff: boolean) => {
@@ -100,13 +102,13 @@ export class AppService extends Construct {
         signInAliases: { email: true },
         signInCaseSensitive: false,
         mfa: staff ? cognito.Mfa.REQUIRED : cognito.Mfa.OPTIONAL, // P-567: two-step for every staff member; clients: not known (PF-4p)
-        mfaSecondFactor: { otp: true, sms: false },
+        mfaSecondFactor: { otp: true, sms: false }, // Sample: an authenticator app only, no SMS
         passwordPolicy: { minLength: 12, requireDigits: true, requireLowercase: true, requireUppercase: true, requireSymbols: false }, // Sample
         accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
         deletionProtection: true,
         removalPolicy: RemovalPolicy.RETAIN,
       });
-      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true } });
+      p.addClient("App", { generateSecret: false, preventUserExistenceErrors: true, authFlows: { userSrp: true }, disableOAuth: true }); // no hosted UI yet: no OAuth flows or placeholder callbacks
       return p;
     };
     this.pools = { staff: pool("staff", true), "own-staff": pool("own-staff", true), clients: pool("clients", false) };
@@ -166,7 +168,7 @@ export class AppService extends Construct {
       cluster: new ecs.Cluster(this, "Cluster", { vpc, containerInsightsV2: ecs.ContainerInsights.ENABLED }),
       taskDefinition: this.task,
       desiredCount: MIN_TASKS,
-      minHealthyPercent: 100,
+      minHealthyPercent: 100, // Sample: never below two serving tasks during a deploy
       maxHealthyPercent: 200,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [svcSg],
@@ -181,7 +183,7 @@ export class AppService extends Construct {
     const https = this.loadBalancer.addListener("Https", { port: 443, protocol: elbv2.ApplicationProtocol.HTTPS, certificates: [this.certificate], sslPolicy: elbv2.SslPolicy.RECOMMENDED_TLS, open: false });
     https.addTargets("Studio", {
       port: CONTAINER_PORT, protocol: elbv2.ApplicationProtocol.HTTP, targets: [this.service],
-      healthCheck: { path: "/api/health/live", healthyHttpCodes: "200", interval: Duration.seconds(15) },
+      healthCheck: { path: "/api/health/live", healthyHttpCodes: "200", interval: Duration.seconds(15) }, // Sample timings
       deregistrationDelay: Duration.seconds(30),
     });
     this.loadBalancer.addListener("Http", { port: 80, open: false, defaultAction: elbv2.ListenerAction.redirect({ protocol: "HTTPS", port: "443", permanent: true }) });

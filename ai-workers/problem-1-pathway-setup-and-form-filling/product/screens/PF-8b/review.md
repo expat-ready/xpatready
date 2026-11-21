@@ -1,0 +1,75 @@
+# PF-8b review: the app service on Fargate, secrets, mail, firm addresses, Cognito (PR #2748)
+
+Verdict: Changes requested
+
+Reviewed commit: `efeb00451cdbb88fbb99774ea477f83d0328923d` (branch `claude/cool-bell-2acxlh`). While I was reviewing, the branch moved to `28bc3e195`, which only reverts the `deploy-synth.yml` path line and adjusts README and `estate.test.ts` to match. `lib/` and `test/service.test.ts` are the same in both commits, so every finding below still applies to `28bc3e195` except m1, which that commit resolves.
+Reviewer role. Infrastructure only, so there is no screen to walk: the screen-review walk, D1–D20 scores and BIC table do not apply. **Journey score: N/A.** There is no screen, route or app change, and the brief said to skip UI walking, so I wrote no journey-test report. I did not read the breaker's `break-report.md`, so this review is independent of it.
+
+## What I ran (deploy/cdk, AWS keys unset, CDK CLI never called)
+* `npm test`: 51 passed, 0 failed (PF-8a's 21 tests included). `npm run synth`: exit 0, both templates written, validation report empty.
+* I inspected `cdk.out/xr-production.template.json` by hand:
+  * Service task: 5 plain settings (`PLATFORM_ENVIRONMENT=production`, `PLATFORM_IDENTITY=cognito`, the pool and client ids as Refs, SES region) and 10 Secrets Manager Refs. `APP_DATABASE_URL` and `DATABASE_URL` point to the same secret.
+  * Migration task: only `xr/production/DATABASE_OWNER_URL`.
+  * Execution policies are scoped to each task's own secret ARNs. The task role can only call `ses:SendEmail`/`SendRawEmail` on its identity. The KMS key policy grants decrypt via Secrets Manager to the two execution roles only.
+  * Listeners: HTTPS uses `ELBSecurityPolicy-TLS13-1-2-2021-06` and the wildcard certificate; port 80 is a 301 redirect only. The wildcard ACM certificate is DNS-validated, and the `*.expatready.com.` A alias points at the ALB.
+  * SES: DKIM on with 3 CNAMEs, MAIL FROM `mail.` with SPF, `_dmarc` set to `p=none` (labelled Sample).
+  * Cognito: 3 pools, one client each. Both staff pools have MFA `ON`. Admin-create only.
+* Loader parsing (`service-checks.ts:30-32`) on the real `settings.ts` finds 16 settings: 12 required (`s(`) and 8 secret. That matches the file exactly.
+* Feature flags: all 89 keys in `aws-cdk-lib/recommended-feature-flags.json` (2.275.0) are set to exactly the recommended value. The 16 extra keys in `cdk.json` are each at their recommended value, which is also their v2 default, so they change nothing. Reading `cdk.json` in `buildApp` (`app.ts:13,16`) is correct. CLI and env context still override it, because App loads constructor context first.
+* Mutation probes against the checks (my own script, in the scratchpad, not committed): results listed under M1.
+
+## Blockers
+None.
+
+## Majors
+**M1. The secret guards miss common ways to widen access, so "the task role reads none / no secret value" can regress unseen.**
+* Where: `lib/service-checks.ts:57-79` (`secretReadFindings`), `:41` and `:46-51` (`taskSettingFindings`); `test/service.test.ts:63-84`.
+* Each change below to the real production template still gives **no finding**:
+  * (a) `ManagedPolicyArns: [SecretsManagerReadWrite]` on the task role.
+  * (b) An inline `Policies` entry on the task role allowing `secretsmanager:GetSecretValue` on `*`.
+  * (c) An `AWS::SecretsManager::ResourcePolicy` granting the task role the owner secret.
+  * (d) A referenced secret with a literal `SecretString: "sk_live_…"`. The value sits in the template while the task holds only a Ref.
+  * (e) `EnvironmentFiles` (S3) on the service container.
+  * (f) A second container with plain `PLATFORM_ZOOM_CLIENT_SECRET`.
+* Also, `:76` only catches "another policy" when the logical id contains `AppSecret`.
+* Scenario: PF-4b's or FilesPort's adapter row calls `taskRole.addManagedPolicy(...)` or adds a sidecar, and the CI check stays green. The row is marked breaker on secrets.
+* Fix: in `secretReadFindings`, read the role's own `Policies` and `ManagedPolicyArns` (refuse any AWS-managed policy with secretsmanager read, or simply any managed policy on a task role) and any `SecretsManager::ResourcePolicy`. Match by the secret resources' ids, not by a name pattern. In `taskSettingFindings`, apply the name rules to every container of every task definition, refuse `EnvironmentFiles`, and require each referenced secret to have no `SecretString`. Add one fail case per gap in `service.test.ts`.
+
+**M2. The service runs pg-boss as `xr_app`, which cannot create pg-boss's schema, so the service as defined will not start. Question 4 calls this "not known", but the code answers it.**
+* Where: `lib/service.ts:32-35, 91-92, 127`; `lib/service-checks.ts:90`.
+* Evidence:
+  * `api/src/platform/jobs/platform-jobs.ts:45` starts pg-boss on `DATABASE_URL`.
+  * `api/src/platform/jobs/pgboss-jobs.ts:1-2,111` says "pg-boss creates and migrates that schema itself at start". `node_modules/pg-boss/dist/plans.js:205` runs `CREATE SCHEMA IF NOT EXISTS`.
+  * PF-12's migration gives `xr_data`/`xr_app` table rights on `public` only, with no CREATE on the database (`prisma/migrations/20261116013000_pf12_firm_walls/migration.sql:26-46`).
+  * `firm-scope.ts:291-292` ("production gives the app role its own secret" = `APP_DATABASE_URL`) and `firms.ts:41-43` ("on the owner's address") both show that PF-12/PF-14's code expects `DATABASE_URL` to stay the owner's address inside the API process.
+* Scenario: on PF-8c's first deploy, `onApplicationBootstrap` throws with permission denied for the database. The circuit breaker then rolls back, every time.
+* The cause is a conflict between the row's wording ("the service runs as the app role that owns no table") and the team's code. Under AGENTS.md rule 2 that conflict goes to the lead or founder; the PR should not settle it, and should not leave it as "not known".
+* Fix (no new scope here): write `screens/PF-8b/challenge.md`, or update the PR's question 4, with this evidence and the two options:
+  * (1) Owner address in `DATABASE_URL`, app role in `APP_DATABASE_URL`. The walled connection is still `xr_app`. Change `roleFindings` to assert `APP_DATABASE_URL` is the app's secret and the owner's secret appears only in the migration task and that single slot.
+  * (2) Keep app-only, and name a row before PF-8c that gives the jobs schema an owner or connection of its own.
+* Also add it to README's "Not here" list (`README.md:42`) so PF-8c does not find it at deploy.
+
+## Minors
+* **m1** `.github/workflows/deploy-synth.yml:17`, `test/estate.test.ts:167`. The new path is outside the row's "Touch: deploy/cdk/** only" and changes PF-8a's Done-when ("runs only when deploy/ changes"). **Already resolved in `28bc3e195`**, which reverts the line and proposes it to the lead.
+* **m2** `lib/service.ts:85-90`, README:36. "A random placeholder, which the app refuses" is not guaranteed:
+  * The default generated string is 32 printable characters with at least one punctuation mark.
+  * It can pass `PLATFORM_BOLDSIGN_API_KEY` (`[A-Za-z0-9+/=_-]{16,512}`) or `PLATFORM_ZOOM_CLIENT_ID` (`[A-Za-z0-9_-]{8,128}`) when the punctuation drawn is only `+/=_-` (unlikely, but possible).
+  * Fix: `generateSecretString: { secretStringTemplate: '{"placeholder":"supply at deploy"}', generateStringKey: "nonce" }`. JSON fails every loader rule.
+* **m3** `test/service.test.ts:153-161`. "Synth still needs no keys" has a pass but no fail case, so it is unproven that `manifest.missing` lists a lookup. Fix: synth a throwaway stack with `HostedZone.fromLookup` and assert `missing` is non-empty.
+* **m4** `lib/service.ts:103, 169, 184-185`. Some values are neither sourced nor labelled Sample: OTP-only second factor (`sms: false`), `minHealthyPercent: 100`, health-check interval 15 s, deregistration delay 30 s. Fix: label them Sample (README too).
+* **m5** README:39. "`-c xr:domain=<name>` changes the base", but `npm run synth` is `node bin/app.ts` and takes no `-c`, and the CLI is deliberately never run. Fix: name the way it actually works (`CDK_CONTEXT_JSON='{"xr:domain":"…"}' npm run synth`), or read an env var in `bin/app.ts`.
+
+## Checked and holding
+* Each Done-when line has a passing test on both stacks and a failing broken copy:
+  * PLATFORM_ENVIRONMENT missing or set to `local`.
+  * Two tasks over two zones (1 task fails; one zone fails; unresolvable subnets fail closed).
+  * HTTP redirect only (forwarding default action fails, as does a forwarding listener rule, a TLS 1.0 policy, or no certificate).
+  * Wildcard (apex-only certificate fails; record pointing elsewhere fails).
+  * Owner vs app (swapped secrets fail; missing migration task fails).
+  * DKIM, SPF, DMARC.
+  * Three separate pools.
+* Except for M1, none of these checks is trivially satisfiable.
+* Synth needs no keys or lookups, and every account stays `unknown-account`.
+* No conflict with PF-8a's tests. Region stays `ca-central-1` everywhere.
+* The open PR #2725 conflict (question 1) is correctly left for the lead.
+* Not checked: anything only a real deploy can show (PF-8c).

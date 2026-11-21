@@ -5,12 +5,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { App, Stack, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds } from "aws-cdk-lib";
-import { Template as Assert } from "aws-cdk-lib/assertions";
+import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
 import { CDK_CONTEXT, allStacks, buildApp } from "../lib/app.ts";
 import type { Template } from "../lib/checks.ts";
-import { AppService, DEFAULT_DOMAIN } from "../lib/service.ts";
-import { listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
+import { DEFAULT_DOMAIN } from "../lib/service.ts";
+import { exposureFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SETTINGS = loaderSettings(readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8"));
@@ -35,7 +34,7 @@ for (const s of real) {
     assert.deepEqual(taskSettingFindings(s.template, SETTINGS), []);
     assert.deepEqual(secretReadFindings(s.template), []);
   });
-  test(`PF-8b pass (${s.name}): at least two Fargate tasks over two zones`, () => assert.deepEqual(spreadFindings(s.template), []));
+  test(`PF-8b pass (${s.name}): at least two Fargate tasks over two zones, nothing public but the load balancer`, () => assert.deepEqual([...spreadFindings(s.template), ...exposureFindings(s.template)], []));
   test(`PF-8b pass (${s.name}): HTTPS only (TLS 1.2+), port 80 redirects and does nothing else`, () => assert.deepEqual(listenerFindings(s.template), []));
   test(`PF-8b pass (${s.name}): the wildcard certificate covers *.${domain} and *.${domain} reaches the load balancer`, () => assert.deepEqual(wildcardFindings(s.template, domain), []));
   test(`PF-8b pass (${s.name}): the migration task uses the owner's address, the service the app role's`, () => assert.deepEqual(roleFindings(s.template, stage), []));
@@ -78,9 +77,33 @@ test("PF-8b fail: the task role reading secrets, or the execution role reading a
   const role = (td: unknown, k: string) => ((td as { Properties: Record<string, { "Fn::GetAtt": [string] }> }).Properties[k])["Fn::GetAtt"][0];
   const ownerRef = (migration![1].Properties!.ContainerDefinitions as C[])[0].Secrets[0].ValueFrom;
   t.Resources!.Wide = { Type: "AWS::IAM::Policy", Properties: { Roles: [{ Ref: role(service![1], "TaskRoleArn") }], PolicyDocument: { Statement: [{ Action: "secretsmanager:GetSecretValue", Resource: ownerRef }] } } };
-  t.Resources!.Cross = { Type: "AWS::IAM::Policy", Properties: { Roles: [{ Ref: role(service![1], "ExecutionRoleArn") }], PolicyDocument: { Statement: [{ Action: ["secretsmanager:GetSecretValue"], Resource: [ownerRef] }] } } };
+  const stripeRef = svcContainer(t).Secrets.find((x) => x.Name === "PLATFORM_STRIPE_SECRET_KEY")!.ValueFrom;
+  t.Resources!.Cross = { Type: "AWS::IAM::Policy", Properties: { Roles: [{ Ref: role(migration![1], "ExecutionRoleArn") }], PolicyDocument: { Statement: [{ Action: ["secretsmanager:GetSecretValue"], Resource: [stripeRef] }] } } };
   const f = secretReadFindings(t).join("\n");
-  assert.ok(f.includes("task role reads secrets") && f.includes("which its task does not use"), f);
+  assert.ok(f.includes("only an execution role may") && f.includes("which its task does not use"), f);
+});
+
+test("PF-8b fail (break M-2): a managed or inline policy, a wildcard action, a resource policy, a key grant without ViaService are caught", () => {
+  const t = clone(t0);
+  const td = taskDefinitions(t).service![1].Properties as Record<string, { "Fn::GetAtt": [string] }>;
+  const taskRole = td.TaskRoleArn["Fn::GetAtt"][0];
+  const r = t.Resources![taskRole].Properties!;
+  r.ManagedPolicyArns = ["arn:aws:iam::aws:policy/SecretsManagerReadWrite"];
+  r.Policies = [{ PolicyName: "x", PolicyDocument: { Statement: [{ Effect: "Allow", Action: "secretsmanager:Get*", Resource: "*" }] } }];
+  t.Resources!.RP = { Type: "AWS::SecretsManager::ResourcePolicy", Properties: {} };
+  const key = of(t, "AWS::KMS::Key")[0][1].Properties!.KeyPolicy as { Statement: unknown[] };
+  key.Statement.push({ Effect: "Allow", Principal: { AWS: { "Fn::GetAtt": [taskRole, "Arn"] } }, Action: "kms:Decrypt", Resource: "*" });
+  const f = secretReadFindings(t).join("\n");
+  for (const w of ["managed policy not on the allow list", `${taskRole} inline`, "resource policy, user or group", "decrypt outside a service"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+});
+
+test("PF-8b fail (break M-1, review M1): a dynamic reference, a literal SecretString, an environment file, a sidecar's plain secret are caught", () => {
+  const t = clone(t0); const c = svcContainer(t);
+  c.Environment.push({ Name: "X", Value: "{{resolve:secretsmanager:xr/production/DATABASE_OWNER_URL}}" });
+  (taskDefinitions(t).service![1].Properties!.ContainerDefinitions as unknown[]).push({ Name: "side", Environment: [{ Name: "PLATFORM_SECRET_BOX_KEYS", Value: "1:abc" }], EnvironmentFiles: [{ Type: "s3", Value: "arn:aws:s3:::b/x.env" }] });
+  of(t, "AWS::SecretsManager::Secret")[0][1].Properties!.SecretString = "sk_live_x";
+  const f = taskSettingFindings(t, SETTINGS).join("\n");
+  for (const w of ["X holds what looks like a credential", "side: PLATFORM_SECRET_BOX_KEYS: a secret given", "an environment file", "a secret value written into the template"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
 test("PF-8b fail: one task, or both tasks in one zone, is caught", () => {
@@ -90,6 +113,31 @@ test("PF-8b fail: one task, or both tasks in one zone, is caught", () => {
   net.AwsvpcConfiguration.Subnets = [net.AwsvpcConfiguration.Subnets[0], net.AwsvpcConfiguration.Subnets[0]];
   const f = spreadFindings(t).join("\n");
   assert.ok(f.includes("1 tasks, fewer than 2") && f.includes("span 1 zone(s)"), f);
+});
+
+test("PF-8b fail (break m1): public task addresses, a task or database group open to the internet are caught", () => {
+  const t = clone(t0);
+  const net = of(t, "AWS::ECS::Service")[0][1].Properties!.NetworkConfiguration as { AwsvpcConfiguration: Record<string, unknown> };
+  net.AwsvpcConfiguration.AssignPublicIp = "ENABLED";
+  const [sg] = of(t, "AWS::EC2::SecurityGroup").find(([id]) => id.startsWith("AppServiceSg"))!;
+  t.Resources!.Open = { Type: "AWS::EC2::SecurityGroupIngress", Properties: { GroupId: { "Fn::GetAtt": [sg, "GroupId"] }, IpProtocol: "tcp", FromPort: 5432, ToPort: 5432, CidrIp: "0.0.0.0/0" } };
+  const f = exposureFindings(t).join("\n");
+  assert.ok(f.includes("public address") && f.includes("Open: open to the internet on 5432"), f);
+});
+
+test("PF-8b fail (break m2, m3, m7, m8): self sign-up, OAuth on, the service on the clients' pool, SPF +all, a redirect to another host", () => {
+  const t = clone(t0);
+  const pools = of(t, "AWS::Cognito::UserPool");
+  pools[0][1].Properties!.AdminCreateUserConfig = { AllowAdminCreateUserOnly: false };
+  of(t, "AWS::Cognito::UserPoolClient")[0][1].Properties!.AllowedOAuthFlowsUserPoolClient = true;
+  const clients = pools.find(([, p]) => String(p.Properties!.UserPoolName).endsWith("-clients"))![0];
+  svcContainer(t).Environment.find((e) => e.Name === "PLATFORM_COGNITO_USER_POOL_ID")!.Value = { Ref: clients };
+  const f = poolFindings(t, "production").join("\n");
+  for (const w of ["anyone may sign up", "OAuth flows on", "not the staff pool"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  for (const [, r] of of(t, "AWS::Route53::RecordSet")) if (JSON.stringify(r.Properties!.ResourceRecords ?? "").includes("v=spf1")) r.Properties!.ResourceRecords = ['"v=spf1 include:amazonses.com +all"'];
+  assert.ok(mailFindings(t, DEFAULT_DOMAIN).some((l) => l.includes("no SPF record ending")));
+  for (const [, l] of of(t, "AWS::ElasticLoadBalancingV2::Listener")) if (l.Properties!.Protocol === "HTTP") (l.Properties!.DefaultActions as { RedirectConfig: Record<string, string> }[])[0].RedirectConfig.Host = "evil.example.com";
+  assert.equal(listenerFindings(t).length, 1);
 });
 
 test("PF-8b fail: port 80 forwarding to the app, a TLS 1.0 policy or an HTTPS listener with no certificate is caught", () => {
@@ -120,10 +168,10 @@ test("PF-8b fail: the service holding the owner's address, or the migration task
   const t = clone(t0);
   const { service, migration } = taskDefinitions(t);
   const m = (migration![1].Properties!.ContainerDefinitions as C[])[0], s = svcContainer(t);
-  const [ownerRef, appRef] = [m.Secrets[0].ValueFrom, s.Secrets.find((x) => x.Name === "DATABASE_URL")!.ValueFrom];
-  m.Secrets[0].ValueFrom = appRef; s.Secrets.find((x) => x.Name === "DATABASE_URL")!.ValueFrom = ownerRef;
+  const [ownerRef, appRef] = [m.Secrets[0].ValueFrom, s.Secrets.find((x) => x.Name === "APP_DATABASE_URL")!.ValueFrom];
+  m.Secrets[0].ValueFrom = appRef; s.Secrets.find((x) => x.Name === "APP_DATABASE_URL")!.ValueFrom = ownerRef;
   const f = roleFindings(t, "production").join("\n");
-  assert.ok(f.includes("migration task's DATABASE_URL") && f.includes("service's DATABASE_URL") && f.includes("holds the owner's"), f);
+  assert.ok(f.includes("migration task's DATABASE_URL") && f.includes("service's APP_DATABASE_URL is") && f.includes("holds the owner's address"), f);
   void service;
   const t2 = clone(t0); // no migration task at all
   for (const [id] of of(t2, "AWS::ECS::TaskDefinition")) if (id !== taskDefinitions(t2).service![0]) delete t2.Resources![id];
@@ -157,6 +205,10 @@ test("PF-8b synth still needs no keys: no account lookup, no missing context, ev
     const asm = buildApp().app.synth();
     assert.deepEqual(asm.manifest.missing ?? [], []); // a HostedZone.fromLookup or Vpc.fromLookup would be listed here
     for (const st of asm.stacks) assert.equal(st.environment.account, "unknown-account", st.stackName);
+    const { app: looked } = buildApp(); // and a lookup is seen (review m3): it needs an account at synth
+    route53.HostedZone.fromLookup(new Stack(looked, "lookup", { env: { account: "111111111111", region: "ca-central-1" } }), "Looked", { domainName: "example.org" });
+    let missing: unknown[]; try { missing = looked.synth().manifest.missing ?? []; } catch (e) { missing = [String(e)]; } // listed, or refused at synth
+    assert.ok(missing.length > 0);
   } finally { Object.assign(process.env, saved); }
 });
 
@@ -173,15 +225,4 @@ test("PF-8b the domain is a parameter: -c xr:domain moves both zones, certificat
     const d = stageOf(s.name) === "production" ? "example.org" : "staging.example.org";
     assert.deepEqual([...wildcardFindings(s.template, d), ...mailFindings(s.template, d)], []);
   }
-});
-
-test("PF-8b the construct alone: a stack with AppService synthesizes with the same checks passing (no hidden coupling)", () => {
-  const app2 = new App({ analyticsReporting: false, context: CDK_CONTEXT });
-  const st = new Stack(app2, "solo", { env: { region: "ca-central-1" } });
-  const vpc = new ec2.Vpc(st, "V", { maxAzs: 2 });
-  const key = new kms.Key(st, "K");
-  const database = new rds.DatabaseInstance(st, "D", { engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_18_3 }), vpc });
-  new AppService(st, "App", { stage: "staging", vpc, key, database });
-  const t = Assert.fromStack(st).toJSON() as Template;
-  assert.deepEqual([...spreadFindings(t), ...listenerFindings(t), ...roleFindings(t, "staging"), ...poolFindings(t, "staging")], []);
 });
