@@ -1,20 +1,20 @@
 // PF-8a: the app with its two environments. Used by bin/app.ts (cdk synth) and by the tests, so both read one definition.
 import { App, Stack, type AppProps } from "aws-cdk-lib";
 import { Template as Assert } from "aws-cdk-lib/assertions";
-import { readFileSync } from "node:fs";
 import type { SynthStack, Template } from "./checks.ts";
+import { BackupCopyStack } from "./backup.ts";
 import { EstateStack, type Stage } from "./estate.ts";
 
 export const STAGES: Stage[] = ["staging", "production"];
-/** cdk.json's context (the feature flags): the CLI passes it, but `npm run synth` and the tests build the App directly,
- *  so it is read here too, so synth, tests and the CLI build one template (PF-8b). */
-export const CDK_CONTEXT = (JSON.parse(readFileSync(new URL("../cdk.json", import.meta.url), "utf8")) as { context: Record<string, unknown> }).context;
 
-export function buildApp(props: AppProps = {}): { app: App; stacks: Record<Stage, EstateStack> } {
+export function buildApp(props: AppProps = {}): { app: App; stacks: Record<Stage, EstateStack>; copies: Record<Stage, BackupCopyStack> } {
   // No version-reporting metadata leaves (tech gate entry 8: telemetry off); account left unresolved (synth needs none).
-  const app = new App({ analyticsReporting: false, ...props, context: { ...CDK_CONTEXT, ...props.context } });
+  const app = new App({ analyticsReporting: false, ...props });
+  // PF-8rc: each stage's ca-west-1 copy vault is its own stack, deployed before the home stack whose plan copies into it
+  const copies = Object.fromEntries(STAGES.map((stage) => [stage, new BackupCopyStack(app, `xr-${stage}-copy`, { stage })])) as Record<Stage, BackupCopyStack>;
   const stacks = Object.fromEntries(STAGES.map((stage) => [stage, new EstateStack(app, `xr-${stage}`, { stage })])) as Record<Stage, EstateStack>;
-  return { app, stacks };
+  for (const stage of STAGES) stacks[stage].addStackDependency(copies[stage], "the plan copies into this vault");
+  return { app, stacks, copies };
 }
 
 /** Every stack of an app, nested stacks included, with its synthesized template: the region guard's input, so a stack

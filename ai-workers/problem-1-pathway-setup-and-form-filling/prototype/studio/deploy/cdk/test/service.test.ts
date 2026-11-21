@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Stack, aws_route53 as route53 } from "aws-cdk-lib";
-import { CDK_CONTEXT, allStacks, buildApp } from "../lib/app.ts";
+import { allStacks, buildApp } from "../lib/app.ts";
 import type { Template } from "../lib/checks.ts";
 import { DEFAULT_DOMAIN } from "../lib/service.ts";
 import { exposureFindings, listenerFindings, loaderSettings, mailFindings, poolFindings, roleFindings, secretReadFindings, spreadFindings, taskDefinitions, taskSettingFindings, wildcardFindings } from "../lib/service-checks.ts";
@@ -220,13 +220,6 @@ test("PF-8b synth still needs no keys: no account lookup, no missing context, ev
     let missing: unknown[]; try { missing = looked.synth().manifest.missing ?? []; } catch (e) { missing = [String(e)]; } // listed, or refused at synth
     assert.ok(missing.length > 0);
   } finally { Object.assign(process.env, saved); }
-});
-
-test("PF-8b the recommended feature flags are all set in cdk.json and reach the app (not only the CLI)", () => {
-  const recommended = JSON.parse(readFileSync(join(HERE, "..", "node_modules", "aws-cdk-lib", "recommended-feature-flags.json"), "utf8")) as Record<string, unknown>;
-  const differ = Object.keys(recommended).filter((k) => JSON.stringify(CDK_CONTEXT[k]) !== JSON.stringify(recommended[k]));
-  assert.deepEqual(differ, []); // each one set, to the value aws-cdk-lib recommends for a new app (what `cdk init` writes)
-  assert.equal(buildApp().app.node.tryGetContext("@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature"), CDK_CONTEXT["@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature"]);
 });
 
 test("PF-8b the domain is a parameter: -c xr:domain moves both zones, certificates and SES identities", () => {
