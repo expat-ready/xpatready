@@ -74,30 +74,37 @@ function RunPanel({ open, onOpenChange, prospectId, corporate, run }: { open: bo
   const [result, setResult] = React.useState(""), [disclosure, setDisclosure] = React.useState(""), [errors, setErrors] = React.useState<Record<string, string>>({}), [general, setGeneral] = React.useState<string | null>(null);
   // Mounted afresh for each opening (its key is the opening's number): one requestId and one search per opening (BR-6; review M2, r2-mn2).
   const requestId = React.useRef<string>(crypto.randomUUID()), body = React.useRef<HTMLFormElement>(null);
-  const [focusTick, setFocusTick] = React.useState(0);   // after a refusal has rendered, the first field in error takes focus (BIC-13)
-  React.useEffect(() => { if (focusTick) body.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); }, [focusTick]);
+  // After a refusal has rendered, and once any search it started has ended, the first field in error takes focus, else the
+  // error summary (BIC-13; break m4: Save was disabled, or the fields replaced by Loading, when the focus ran).
+  const [focusTick, setFocusTick] = React.useState(0), wantsFocus = React.useRef(false), summary = React.useRef<HTMLDivElement>(null);
+  const focusError = () => { wantsFocus.current = true; setFocusTick((x) => x + 1); };
   const preview = useQuery({ queryKey: [...conflictKey(prospectId), "preview", run], enabled: open, retry: false, gcTime: 0, staleTime: 0,
     queryFn: async () => Preview.parse(await staffApi("/front-office/conflict-checks/preview", { method: "POST", json: { prospectId } })) });
   const hidden = (preview.data?.hiddenCount ?? 0) > 0;
   const save = useMutation({
     mutationFn: () => staffApi("/front-office/conflict-checks", { method: "POST", json: { requestId: requestId.current, prospectId, ...(hidden ? {} : { result: result || undefined, disclosureText: result === "POTENTIAL_CONFLICT" ? disclosure : undefined }) } }),
-    onSuccess: () => { toast.push({ tone: "ok", text: "Conflict check recorded." }); void qc.invalidateQueries({ queryKey: conflictKey(prospectId) }); onOpenChange(false); },
+    onSuccess: () => { toast.push({ tone: "ok", text: "Conflict check recorded." }); void qc.invalidateQueries({ queryKey: conflictKey(prospectId), exact: true }); onOpenChange(false); },   // the list only, not this opening's search (break m: one extra preview)
     onError: (e) => {
       if (!(e instanceof StaffApiError)) { setGeneral("Could not reach the server. Save again to retry the same check."); return; }
-      if (e.problem.code === "REQUEST_REUSED") { requestId.current = crypto.randomUUID(); void qc.invalidateQueries({ queryKey: conflictKey(prospectId) }); }   // the first Save may have landed (breaker m2)
+      if (e.problem.code === "REQUEST_REUSED") { requestId.current = crypto.randomUUID(); void qc.invalidateQueries({ queryKey: conflictKey(prospectId), exact: true }); }   // the first Save may have landed (breaker m2)
       // The search changed since the panel opened (break m2): search again and say the server's words.
       if (e.problem.code === "NEEDS_CONFIRMATION" || e.problem.fields?.result) void preview.refetch();
       const fields = e.problem.fields ?? {};
       setErrors(fields); setGeneral(Object.keys(fields).length ? null : e.message);
-      if (Object.keys(fields).length) setFocusTick((x) => x + 1);
+      focusError();
     },
     onSettled: () => lock.free(),
   });
   const searching = preview.isFetching || !preview.data;
+  React.useEffect(() => {
+    if (!wantsFocus.current || searching) return;
+    wantsFocus.current = false;
+    ((!hidden && body.current?.querySelector<HTMLElement>('[aria-invalid="true"]')) || summary.current)?.focus();
+  }, [focusTick, searching, hidden]);
   const submit = (ev?: React.FormEvent) => {
     ev?.preventDefault();
     if (searching) return;
-    if (!hidden && !result) { setErrors({ result: CHOOSE_RESULT }); setFocusTick((x) => x + 1); return; }   // stopped on screen first (EXPERIENCE §2.8; review M1)
+    if (!hidden && !result) { setErrors({ result: CHOOSE_RESULT }); focusError(); return; }   // stopped on screen first (EXPERIENCE §2.8; review M1)
     if (lock.take()) save.mutate();
   };
   const dirty = !!result || !!disclosure.trim();
@@ -107,8 +114,10 @@ function RunPanel({ open, onOpenChange, prospectId, corporate, run }: { open: bo
       footer={<><Button variant="ghost" disabled={save.isPending} onClick={() => { if (!dirty || window.confirm("Discard the result you chose?")) onOpenChange(false); }}>Cancel</Button>
         <Button busy={save.isPending} disabled={searching} type="submit" form="fo-conflict-form" data-save-check>{hidden ? "Record for confirmation" : "Save check"}</Button></>}>
       <form id="fo-conflict-form" ref={body} onSubmit={submit} noValidate className="flex flex-col gap-4">
-        {general ? <Notice tone="danger" title={general} /> : null}
-        {Object.keys(errors).length ? <div data-error-summary><Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{({ result: "Result", disclosureText: "Disclosure" } as Record<string, string>)[k] ?? k}: {v}</li>)}</ul></Notice></div> : null}
+        {general || Object.keys(errors).length ? <div ref={summary} tabIndex={-1} data-refusal className="flex flex-col gap-2 outline-none">
+          {general ? <Notice tone="danger" title={general} /> : null}
+          {Object.keys(errors).length ? <div data-error-summary><Notice tone="danger" title="There is a problem"><ul className="list-disc pl-4">{Object.entries(errors).map(([k, v]) => <li key={k}>{({ result: "Result", disclosureText: "Disclosure" } as Record<string, string>)[k] ?? k}: {v}</li>)}</ul></Notice></div> : null}
+        </div> : null}
         {preview.isFetching || preview.isPending ? <Loading label="Searching" rows={2} />
           : preview.isError ? <Notice tone="danger" title={preview.error instanceof StaffApiError ? preview.error.message : "Could not search."} action={<Button size="sm" variant="outline" onClick={() => void preview.refetch()}>Try again</Button>} />
           : (<>
