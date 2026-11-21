@@ -1,0 +1,27 @@
+{
+  "item": "R1.4",
+  "name": "4 Each query runs inside its firm",
+  "pr": 2846,
+  "sha": "4e2bcbf318c36a3a8a1e3f136a2d96ecd7a9a969",
+  "run_id": "44921268206",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44921268206",
+  "at": "2026-11-21T15:52:16.459Z",
+  "overall": "FAIL",
+  "why": [
+    "tests/journeys/j_4.ts: fail (no J-test file on main)"
+  ],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_4.ts",
+      "result": "fail",
+      "exit": null,
+      "note": "no J-test file on main"
+    }
+  ],
+  "video": null,
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.4-4e2bcbf318c36a3a8a1e3f136a2d96ecd7a9a969.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
