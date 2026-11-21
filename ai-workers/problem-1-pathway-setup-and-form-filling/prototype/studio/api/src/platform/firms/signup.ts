@@ -39,8 +39,6 @@ const LIMITS: Limits = { signupPerIp: 10, verifyPerIp: 30, windowMinutes: 10, mi
 export const PENDING_HOURS = 24;
 const WRONG_CODES = 5, MAILS_PER_EMAIL_HOUR = 3;
 export const PURGE_JOB = "platform.signup.purge";
-/** The new-email step's transaction holds the provider's register call (Sample: 15 s, as a slow identity provider). */
-const SIGNUP_TX_MS = 15_000;
 export const ACCEPTED = "If this email can be used, we have sent a message to it. Open it to confirm your sign-up.";
 export const ALREADY = "You already have an account. Sign in.";
 export const TAX_NOTE = "+ applicable taxes";
@@ -143,25 +141,29 @@ export class FirmSignUp {
     if (!this.perEmail(email)) return;   // at most 3 emails to one address an hour (break m3)
     const token = randomBytes(32).toString("base64url");
     // Lead 15 on #2814: the staff lookup and the pending row are one step with one firm-less platform.bypass line (the
-    // pending id, never the email), in one transaction: a line that cannot be written leaves no pending row (P-607). The
-    // provider call sits inside it, as the platform send's does (messages.ts sendPlatformRow), within SIGNUP_TX_MS.
-    const known = await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
-      const firm = await this.knownAccount(email, tx);
-      if (firm) return firm;
+    // pending id, never the email). The provider call stays outside any transaction (re-review 2 M1 of #2814: inside, a
+    // burst of sign-ups held the pool); the lookup is checked again under the email's lock in the pending row's
+    // transaction, which writes the line last: a line that cannot be written leaves no pending row (P-607).
+    let known = await this.knownAccount(email);
+    if (!known) {
       // The newest sign-up for an email replaces a live one (its link ends), so nobody can hold another person's address
       // for 24 hours, and a mistyped password is mended by signing up again (break M2). Still one live pending sign-up.
       const { subject } = await this.ports.identity.register({ email, password: b.password, firmName: b.firmName, link: (code) => `${this.ports.appUrl}/sign-up/verify#token=${token}&code=${code}` });
-      const now = await dbNow(tx);
-      await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
-      await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
-      const row = await tx.platformSignupPending.create({ data: {
-        email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
-        termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
-      }, select: { id: true } });
-      await touchPlatform(tx, { step: "signup.new-email", key: row.id });
-      return null;
-    }, { timeout: SIGNUP_TX_MS, maxWait: SIGNUP_TX_MS });
+      known = await this.db.$transaction(async (tx) => {
+        await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`platform_signup:${email}`}))`;
+        const firm = await this.knownAccount(email, tx);
+        if (firm) return firm;
+        const now = await dbNow(tx);
+        await tx.platformSignupPending.updateMany({ where: { email, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now, outcome: "REPLACED" } });
+        await tx.platformSignupPending.deleteMany({ where: { email, usedAt: null, expiresAt: { lte: now } } });
+        const row = await tx.platformSignupPending.create({ data: {
+          email, firmName: b.firmName, countryCode: b.countryCode, planCode, period: b.period, identitySubject: subject,
+          termsVersionIds: termIds, termsAcceptedAt: now, tokenHash: sha(token), createdAt: now, expiresAt: new Date(now.getTime() + PENDING_HOURS * 3600_000),
+        }, select: { id: true } });
+        await touchPlatform(tx, { step: "signup.new-email", key: row.id });
+        return null;
+      });
+    }
     if (known) {
       await touchFirms(this.db, [known]);   // PF-12b: the lookup read that firm's staff; its line before the email (P-607)
       // PF-5v part 2 (review M1 of #2456): our own platform account email (PF-19p), never the firm's: as the firm's it

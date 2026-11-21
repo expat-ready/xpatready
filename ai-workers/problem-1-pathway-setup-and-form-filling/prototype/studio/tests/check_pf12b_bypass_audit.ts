@@ -233,6 +233,16 @@ try {
   await s.signUp(form, "10.12.0.1"); await s.settled();
   const pendingId = sql(`select id from platform_signup_pending where email = '${form.email}' and used_at is null`);
   ok("PF-12b3 pass (sign-up, new email): the staff lookup and the pending row write one platform.bypass line with no firm, keyed by the pending id, with no email in it", stepLines("signup.new-email") === `null|${pendingId}|false`, stepLines("signup.new-email"));
+  // Re-review 2 M1 of #2814: the provider call stays outside the transaction, so a burst larger than the pool (10) is stored whole.
+  // A provider that, like the local one sending its email through MessagesMail, needs a pooled connection of its own while
+  // it works: a sign-up transaction held across it would hold the pool (10) while 16 such calls wait for an 11th.
+  const slowIdentity = Object.assign(Object.create(identity), { register: async (r: Parameters<LocalSignUp["register"]>[0]) => { await db.$transaction(async (tx) => { await tx.$queryRaw`select 1 as ok from pg_sleep(0.3)`; }); return identity.register(r); } }) as LocalSignUp;
+  const sSlow = new FirmSignUp(db, { ...ports, identity: slowIdentity });
+  const pBurst = await sSlow.plans(); await clock.advance({ seconds: 5 });
+  const burst = Array.from({ length: 16 }, (_, i) => `burst${i}@pf12b3.example.com`);
+  await Promise.all(burst.map((email, i) => sSlow.signUp({ ...form, email, formStamp: pBurst.formStamp }, `10.13.${i}.1`))); await sSlow.settled();
+  ok("PF-12b3 pass (re-review 2 M1): 16 new-email sign-ups at once, more than the pool, are all stored, each with its one firm-less line",
+    sql(`select count(*) from platform_signup_pending where email like 'burst%@pf12b3.example.com' and used_at is null`) === "16" && stepLines("signup.new-email").split(",").length === 17, { stored: sql(`select count(*) from platform_signup_pending where email like 'burst%@pf12b3.example.com'`) });
   const link = identity.sent.find((m) => m.to === form.email)?.text ?? "";
   const token = /token=([A-Za-z0-9_-]{43})/.exec(link)?.[1] ?? "", code = /code=(\d{6})/.exec(link)?.[1] ?? "";
   const firmsBefore = sql(`select count(*) from platform_firm`), signupBefore = lines("platform.firms.signup");
@@ -278,9 +288,9 @@ try {
   const purgeErr = await errOf(() => asJob("platform.signup.purge", () => s.purgeExpired()));
   onBypassAudit(wasF);
   ok("PF-12b3 fail (job:platform.signup.purge): when the line cannot be written the purge does not happen (BypassNotRecorded, nothing deleted)", plain(purgeErr) && sql(`select count(*) from platform_signup_pending`) === pendingBefore && Number(pendingBefore) > 0 && total() === before7 + 1, { purgeErr: String(purgeErr), pendingBefore });
-  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 5, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4, "job:platform.signup.purge": 1 };
+  const expected = { "job:messages.outbox_sweep": 2, "platform.demo.reset": 6, "platform.demo.inbox": 2, "platform.firms.signup": 21, "platform.web-address.catch-up": 2, "job:platform.entitlements.storage_daily": 2, "platform.entitlements.limit-change": 4, "job:platform.signup.purge": 1 };
   const byUse = Object.fromEntries(sql(`select detail->>'use' || '=' || count(*) from audit_event where action = 'platform.bypass' group by detail->>'use' order by 1`).split("\n").filter(Boolean).map((l) => l.split("=")).map(([k, v]) => [k, Number(v)]));
-  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2 + its no-firm steps 3 (new email, an unknown link, a wrong code), catch-up 2, storage_daily 2, limit change 2 + its notices 2, the purge 1 with no firm: PF-12b part 3), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
+  ok("PF-12b DW7 pass: QA-499's count equals the uses × firms touched (sweep 2, reset 2 × 2 + the demo seed 2, inbox 2, sign-up 2 + its no-firm steps 19 (new email 1 + the burst 16, an unknown link, a wrong code), catch-up 2, storage_daily 2, limit change 2 + its notices 2, the purge 1 with no firm: PF-12b part 3), no door among them", JSON.stringify(byUse) === JSON.stringify(Object.fromEntries(Object.entries(expected).sort())) && !DOORS.some((d) => d in byUse), byUse);
 
   // ------------------------------------------------------------------------- brief PF-12b1m: PF-19p's two new uses
   // PF-12b part 3: both are "platform" uses (they read and write only PLATFORM_ACCOUNT rows, no firm) and each writes one
