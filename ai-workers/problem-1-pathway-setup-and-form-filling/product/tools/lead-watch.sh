@@ -1,7 +1,7 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
-# Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
+# Exit code = number of ACT lines; step 14 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 set -uo pipefail
 SINCE="${1:-30}"
@@ -216,5 +216,12 @@ kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json"
 # 13. Founder asks that are clicks (ENF-763, P-752/P-763): STATE's "For the founder", "Founder asks open" and "Needs you"
 # entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
 fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
+
+# 14. The constraint (ENF-738, P-738; B206 part 4, P-751): the flow measured from tools each check (batch wall time and its
+# longest part, runs waiting for a machine from step 2c, failed batches with culprit PRs, approved to merged, merges per hour,
+# Proven today from the board), then the one current constraint with its measure and one action, as an ACT line. Last, so it
+# reads what the steps above saved.
+cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
+  --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
 
 exit "$act"
