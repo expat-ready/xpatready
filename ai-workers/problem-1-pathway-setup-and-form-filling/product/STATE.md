@@ -9,9 +9,9 @@ updated: 2026-11-21 13:2x IST: Lead 14 (series 3) current since 12:44 IST (check
 
 
 ## Lead 14 since 12:44 IST (newest first)
+* 15:1x merged #2706 R1.108 (**proven 36, +4 cycle**), #2727 (R1.42 FO-3a1e), #2720 (FO-5b), #2741, #2746. **R1.53 will score Partial** (qa Q4 + fresh reader): FO-5s (retainer screens) and J-53 not built, no PR → forecast 12/15 unless a lane builds FO-5s + J-53 tonight (**needs a founder-typed turn to start**). #2750 FO-3st3b can leave draft now (#2727 merged; Lead B).
 * 14:3x **P-691 emergency hand merge of #2780** in the browser (7a7a149; ci, fast, types, guards green; reviewer Approve 05b62ae; Mergify ETA was 16:56 IST behind tooling; not in a running batch). Requeued #2633 (R1.47), #2717 (R1.42), #2619 (R1.10) with "Batch failures covered". Conflicts sent to lanes: #2748 PF-8b (critical: R1.15/R1.24), #2738, #2603. Merged: #2765 R1.49 (Works, 35), #2762 R1.5 (Partial). **Owed: engineering-change-log line for the hand merge.**
-* 14:2x Path to 15 (A260): R1.15/R1.24 via #2748 replace R1.3; reserve R1.10; lanes r110-pf28-parts, enf783c-report-template, enf733b-focus-true, standby Lead 16: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
-* 12:4x-14:0x: labels, rulings, A256-A259, recovery plan (hold #2780, FO-3st3 fix lane), R1.14 part 2 PASS; **owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
+* 12:4x-14:2x: labels, rulings, A256-A260, recovery plan, path to 15 (R1.15/R1.24 via #2748, reserve R1.10), lanes; **owed: BACKLOG PF-28 parts 2-6, CS-W2, CS-W4; MVP-CHECKLIST line 273; SHARDS=24 when #2757 merges**: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md`.
 * 13:2x: **walks** j_108 j_49 j_5 run 1 = actions run 44881942787 (dispatched in the browser; the shell's dispatch was refused); run 2 = re-run all jobs on it when attempt 1 ends, then post on #2706 #2762 #2765. **#2687** dequeued (shards 18, 4: axe contrast on FO-3st3 panel, target-size on PF-18h Home; hypothesis: its seeds) → Lead B (11) owns the fix and a green full run first (P-731). #2607 dirty (tooling-2 lane).
 
 
