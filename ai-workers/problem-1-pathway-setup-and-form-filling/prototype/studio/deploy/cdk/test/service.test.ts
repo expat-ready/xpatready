@@ -222,6 +222,8 @@ test("PF-8b synth still needs no keys: no account lookup, no missing context, ev
   } finally { Object.assign(process.env, saved); }
 });
 
+test("PF-8b the domain is a parameter (review t1): -c xr:domain moves production's zone, certificate and SES identity", () => { const p = allStacks(buildApp({ context: { "xr:domain": "example.org" } }).app).find((x) => x.name === "xr-production")!;
+  assert.deepEqual([...wildcardFindings(p.template, "example.org"), ...mailFindings(p.template, "example.org")], []); assert.ok(wildcardFindings(t0, "example.org").length > 0); }); // and the default domain does not pass for it
 test("PF-8b staging never accepts a live Stripe key (Lead 13 ruling 3): staging runs as test, production as production, no Sample seed", () => {
   const src = readFileSync(join(HERE, "..", "..", "..", "api", "src", "platform", "config", "settings.ts"), "utf8");
   assert.match(src, /\/\^\(sk\|rk\)_live_\/\.test\(stripeKey\) && environment !== "production"/); // the loader's rule this relies on
