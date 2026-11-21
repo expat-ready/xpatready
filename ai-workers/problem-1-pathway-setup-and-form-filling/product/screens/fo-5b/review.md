@@ -51,3 +51,16 @@ Graph (P-86): `GET /front-office/retainer-templates/:id/checklist` has `testedBy
 A visible-browser walk (no screen until FO-5s). Screen-reader, 1024 px and 200 % zoom (N/A). D17 and D20 with an intended user. check_fo8_prospect_won.ts (environment). The PR body's "Checks and results" section was still being filled by the builder.
 
 **Verdict: Approve** (3060c388dba4e1164c4a52c8f10ccdbcf94a3876). No open Blocker or Major.
+
+## Re-review (P-277: the new diff only), 21 Nov 2026
+Head **576ba4ec69e70371371c2f43e9851d7d910d74fb**. Code diff `3060c388..9ee8ef9c`: 3 files, +37 / -7 (code-checklist.ts, service.ts, the suite). 576ba4ec only adds this review and the journey report (checked: `git diff --stat 9ee8ef9c..576ba4ec` lists those 2 files only).
+* **m1 fixed.** `draftChecklist` gains `templateVersion` (`r.templateVersion`), `templateCurrentVersion` (the firm-scoped template row's `version`) and `templateChanged`. Edit writes `templateVersion` on each new version (`service.ts:512`), so the flag follows edits. DW6 asserts 1 / 2 / true.
+* **m2 fixed.** The suite now calls PF-4's real `PlatformGuard` on `RetainersController.checklist`: 403 without `agent/retainer:list`, 200 with it.
+* **m3 fixed.** The template answer gains `appliesTo: "RETAINER"`. `applies` is `kind === "RETAINER"` (false for CONSULTATION). Tested both ways.
+* **m4 fixed.** DW6 asserts `versions[0].codeMarked` is `["i"]` and `templateChanged`.
+* **m5 fixed.** A version with no `code.marked` uses the fallback (25, k missing) with `codeMarked: null`. Tested.
+* **m6 fixed** (except the wording). DW1's fail case runs the as-read comparison on a paraphrased copy. The :138 case is relabelled "pass". The section-refusal wording is kept as FO-13c's existing pattern, which is accepted (Minor, no change needed).
+* No new issue found. `send` is still untouched, and no new route or write was added.
+* Suite at 9ee8ef9c (same code as 576ba4ec), detached worktree: `check_fo5b_retainer_checklist.ts` gave **28 passed, 0 failed, exit 0**. FO-5 and the other suites were not re-run, at the coordinator's request.
+
+**Verdict: Approve** (576ba4ec69e70371371c2f43e9851d7d910d74fb). No open Blocker or Major.
