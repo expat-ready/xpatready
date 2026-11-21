@@ -21,14 +21,12 @@ Lead 8 → Lead 9 block and Lead 9's lines word for word: `product/history/STATE
 
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
-**For the founder (open):** (a) R1.20 vs PF-4c invite rule: done, P-727; (b) close #2088; owed isolated.sh `stop` timer row. Full earlier line word for word in `ai-workers/problem-1-pathway-setup-and-form-filling/product/history/STATE-2026-11-19-1110-lead87s2-for-founder-line.md`.
+Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
-| S10-A239 | 10-21 Nov asks, pointer rows | word for word in `product/history/STATE-2026-11-21-0205-lead7s3-asks-pointer-rows-2.md` |
 | A243 | 21 Nov 07:3x: full night review; clean-up (disk, names, lanes, stale PRs); next 24 h 07→07 = 15 (8 + 7); qa and machines; CI and private repo; requirements quality and why :4400 looks like the POC; team project comparison (P-464); visual; all approvals | in progress: plan, clean-up, answers done; reviews running |
 | A244 | 21 Nov 08:1x, corrected 08:2x (via Lead 9): plan view **in chat** in every status report (no board change); Lead-confirmed quality (sources, test coverage, production grade); who owns requirements quality; pending asks answered point by point | PLAN-VIEW/CAP-CARDS dropped; timeline in each report (Start here); REQ-QUALITY: Lead C's #2695 (Approve 3346f537b; 97/101 traced, NO SOURCE R1.64/108/109/110, 18 Source cells to fix, ~380 of 589 AG/SA ids mean different things in Doc vs functional files) → Lead 10 owes: Source cells + 5 narrowing rows; trace script to check ids against 02-functional-requirements only (tooling row); founder Q queued: R1.107 five provinces vs SA-1B-200's eleven + RCIP |
 | A242 | 21 Nov 01:5x | word for word in `product/history/STATE-2026-11-21-0820-lead10s3-ask-A242-row.md` |
-| A240-A241 | 21 Nov 01:2x asks | word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md` |
 
 
 ## Start here (next Lead)
