@@ -1,13 +1,19 @@
 // J-32 (R1.32, assign, take, reassign; Unassigned): the screen part's walk on an isolated copy of the running app (its own
 // database and port; never :4400), by screens at 1440 px, with the data read underneath. A new web enquiry lands in
-// Unassigned leads (no assignment rule yet: FO-10, #2476, adds "follows the rule"); the walk ends on the lead's page, where
-// the next capability starts (R1.33: its phone number).
+// Unassigned leads when no rule matches it, and with the rule's person when one does (FO-10, QA-619); the walk ends on the
+// lead's page, where the next capability starts (R1.33: its phone number).
 //   W1: a visitor sends the web form → the Case Manager's Unassigned leads list shows the lead, owner Nobody;
 //   W2: the Case Manager opens it and assigns it to the Case Officer (the picker: every active person of the firm);
 //       the owner history says who assigned it to whom and when, and so does the audit line underneath;
 //   W3: the Case Officer finds it under Mine; they see no Assign or Reassign, and the server refuses theirs (403);
 //   W4: the Case Manager reassigns it to the Owner; the Owner reads both lines in the history, oldest first;
 //   W5: a second enquiry: the Case Officer takes it from Unassigned leads; its history reads "<Case Officer> took it".
+//   W6: the Owner sets an assignment rule: web-form enquiries interested in one service go to the Case Officer (through
+//       the API with the Owner's session: no rules screen yet, FO-12s / PF-20s); an enquiry for no service matches no
+//       rule and still lands in Unassigned leads, owner Nobody;
+//   W7: an enquiry for that service follows the rule: it is on the Case Officer's Mine list as theirs, not in the Case
+//       Manager's Unassigned leads, and its lead.created audit line names the rule; the Case Officer opens it from Mine
+//       and the walk ends on the lead's page (R1.33's first step).
 // The firm's web form is switched on by SQL, as an Owner does in Settings (QA-605; #2556 adds the switch by screens).
 // Sample rows only; US$0, no model call. Repeatable on a kept copy (names carry a run stamp).
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
@@ -59,12 +65,13 @@ try {
     p.on("pageerror", (e) => errors.push(String(e))); return p;
   }
   const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-  const send = async (given: string) => {
+  const send = async (given: string, service?: string) => {
     const v = await pageAs(null);
     await v.goto(`${BASE}/front-office/web-form/${token}`);
     await v.getByLabel("First name", { exact: true }).waitFor({ timeout: 30_000 });
     await v.getByLabel("First name", { exact: true }).fill(given); await v.getByLabel("Last name (optional)").fill("Sample");
     await v.getByLabel("Email", { exact: true }).fill(`${given.toLowerCase()}@j32.example`);
+    if (service) await v.getByLabel("Interested in (optional)").selectOption({ label: service });
     await v.waitForTimeout(2_500);   // the form's minimum fill time
     await v.getByRole("button", { name: "Send my enquiry" }).click();
     await v.locator('[data-form-state="thanks"]').waitFor({ timeout: 20_000 }); await v.context().close();
@@ -122,6 +129,38 @@ try {
   await o.locator("[data-owner-history] li", { hasText: "took it" }).waitFor({ timeout: 20_000 });
   await shot(o, "w5-taken-ends-on-lead-1440");
   ok("J-32 W5: the Case Officer takes the second enquiry from Unassigned leads; its history reads \"<Case Officer> took it\"", ownerOf(lead2) === O.id && (await history(o)).includes(`${O.name} took it`), await history(o));
+
+  // ---------------------------------------------------------------- W6: a rule is set; an enquiry it does not match waits
+  // A service for the rule: the firm's first active one, else one Sample service written by SQL as setup (a fresh copy has
+  // no released combination, so the seed gives the firm none; services come from releases, as in J-72's setup).
+  const svcId = sql(`select id from fo_service where firm_id = '${A}' and active order by sort_order, id limit 1`)
+    || sql(`insert into fo_service (firm_id, label, sort_order, created_by) values ('${A}', 'Sample service (J-32)', 900, 'seed:J-32-test') returning id`);
+  const svcLabel = sql(`select label from fo_service where id = '${svcId}'`);
+  const saved = await fetch(`${BASE}/api/front-office/assignment-rules`, { method: "POST", headers: { authorization: `Bearer ${tok.R}`, "content-type": "application/json" }, body: JSON.stringify({ door: "WEB_FORM", serviceId: svcId, strategy: "OWNER", ownerStaffId: O.id }) });
+  const rule = (await saved.json()) as { id?: string; ownerStaffId?: string; active?: boolean; detail?: string; fields?: unknown };
+  const ruleCreated = (id: string) => sql(`select coalesce(detail->>'assignmentRuleId', '-') from audit_event where entity = 'fo_lead' and entity_key = '${id}' and action = 'lead.created'`);
+  const given3 = `Ines${run}`, lead3 = await send(given3);
+  await t.goto(`${BASE}/front-office/leads?view=unassigned`);
+  const row3 = t.locator("tr[data-lead-row]", { hasText: given3 }).first(); await row3.waitFor({ timeout: 30_000 });
+  await shot(t, "w6-no-rule-match-unassigned-1440");
+  ok("J-32 W6: the Owner sets a web-form rule for one service (the Case Officer); an enquiry for no service matches no rule and waits in Unassigned leads, owner Nobody",
+    saved.status === 200 && !!rule.id && rule.ownerStaffId === O.id && rule.active === true && ownerOf(lead3) === "-" && ruleCreated(lead3) === "-" && (await row3.locator("[data-owner]").innerText()).includes("Nobody"), { status: saved.status, detail: rule.detail, fields: rule.fields, svcLabel });
+
+  // ---------------------------------------------------------------- W7: an enquiry for that service follows the rule
+  const given4 = `Ravi${run}`, lead4 = await send(given4, svcLabel);
+  await t.reload(); await t.locator("tr[data-lead-row]", { hasText: given3 }).first().waitFor({ timeout: 30_000 });
+  const inUnassigned = await t.locator("tr[data-lead-row]", { hasText: given4 }).count();
+  await o.goto(`${BASE}/front-office/leads?view=unassigned`);
+  await o.locator('[data-chip="mine"]').click();
+  const row4 = o.locator("tr[data-lead-row]", { hasText: given4 }).first(); await row4.waitFor({ timeout: 30_000 });
+  await shot(o, "w7-rule-lead-on-mine-1440");
+  ok("J-32 W7: an enquiry for that service follows the rule: on the Case Officer's Mine list as theirs, not in Unassigned leads, its lead.created line naming the rule",
+    ownerOf(lead4) === O.id && inUnassigned === 0 && ruleCreated(lead4) === rule.id && (await row4.locator("[data-owner]").innerText()).includes(O.name), { inUnassigned, row: await row4.innerText() });
+  await row4.getByRole("link").first().click();
+  await o.getByRole("heading", { level: 1, name: new RegExp(given4) }).waitFor({ timeout: 20_000 });
+  await o.locator("[data-owner-history]").waitFor({ timeout: 20_000 });
+  await shot(o, "w7-rule-lead-page-ends-1440");
+  ok("J-32 W7: the Case Officer opens it from Mine; the walk ends on the lead's page (R1.33's first step)", o.url().endsWith(`/front-office/leads/${lead4}`) && (await o.locator("[data-assign-open]").count()) === 0, o.url());
   ok("J-32: no page error in the walk", errors.length === 0, errors);
 } finally {
   await browser.close();
