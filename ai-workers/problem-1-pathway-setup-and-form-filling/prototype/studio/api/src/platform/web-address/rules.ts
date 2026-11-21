@@ -11,9 +11,11 @@ export const ADDRESS_MAX = 63;
 export const RESERVED_ADDRESSES: readonly string[] = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal"];
 /** How long an old address keeps redirecting to the firm's new one and stays held from every other firm (SA2-D8). */
 export const REDIRECT_DAYS = 90;
-/** The host names firm addresses live under: `<address>.expatready.com`, and `<address>.localhost` on a person's own
- *  machine (browsers send *.localhost to this machine). No custom domain in Release 1 (AG-4-16 r13, AG-15-27; X-28). */
-export const ADDRESS_HOST_SUFFIXES: readonly string[] = ["expatready.com", "localhost"];
+/** The host names firm addresses live under: `<address>.expatready.com`, `<address>.staging.expatready.com` on the
+ *  staging estate (PF-8b: its wildcard zone and certificate, P-607 (2)), and `<address>.localhost` on a person's own
+ *  machine (browsers send *.localhost to this machine). No custom domain in Release 1 (AG-4-16 r13, AG-15-27; X-28).
+ *  Matched longest first, so `x.staging.expatready.com` is firm `x` under staging, never label `x.staging` (PF-8b F2). */
+export const ADDRESS_HOST_SUFFIXES: readonly string[] = ["staging.expatready.com", "expatready.com", "localhost"].sort((a, b) => b.length - a.length);
 
 export type AddressRefusal = "empty" | "uppercase" | "characters" | "short" | "long" | "hyphen-edge" | "xn" | "reserved" | "sample";
 export type AddressShape = { ok: true; address: string } | { ok: false; reason: AddressRefusal; message: string };

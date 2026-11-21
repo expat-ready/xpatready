@@ -3,7 +3,7 @@
 // does and why (ECR by digest, 2 tasks over two zones, HTTPS-only ALB, secrets supplied at deploy, the migration task,
 // SES, the wildcard zone and certificate, three Cognito pools): ../README.md "The service". Log groups and alarms are
 // PF-23c's; deploy, rollback and smoke test PF-8c's. Sizes, timings, DMARC and password policy are Sample.
-import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_kms as kms, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
+import { CfnOutput, CfnParameter, Duration, Fn, RemovalPolicy, Stack, aws_certificatemanager as acm, aws_cognito as cognito, aws_ec2 as ec2, aws_ecr as ecr, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_kms as kms, aws_logs as logs, aws_rds as rds, aws_route53 as route53, aws_route53_targets as targets, aws_secretsmanager as sm, aws_ses as ses } from "aws-cdk-lib";
 import { Construct } from "constructs";
 
 export type Stage = "staging" | "production";
@@ -31,6 +31,9 @@ export interface AppServiceProps {
   database: rds.DatabaseInstance;
   /** Overrides the domain (default `expatready.com`; staging uses `staging.<domain>`). */
   domain?: string;
+  /** PF-23c's app log group (`/xr/<stage>/app`): both containers send stdout and stderr here (PF-8b F1). Required, so a
+   *  service can never be built that logs nowhere. */
+  appLogs: logs.ILogGroup;
 }
 
 export class AppService extends Construct {
@@ -108,6 +111,7 @@ export class AppService extends Construct {
       },
       secrets: Object.fromEntries(Object.entries(appSecrets).map(([n, s]) => [n, ecs.Secret.fromSecretsManager(s)])),
       readonlyRootFilesystem: false, // the image writes var/ (PF-7)
+      logging: ecs.LogDrivers.awsLogs({ logGroup: props.appLogs, streamPrefix: "studio" }), // PF-8b F1: to PF-23c's group
     });
     repository.grantPull(this.task.obtainExecutionRole());
 
@@ -118,6 +122,7 @@ export class AppService extends Construct {
       command: ["./node_modules/.bin/prisma", "migrate", "deploy"],
       environment: { PLATFORM_ENVIRONMENT: platformEnv },
       secrets: { DATABASE_URL: ecs.Secret.fromSecretsManager(ownerUrl) },
+      logging: ecs.LogDrivers.awsLogs({ logGroup: props.appLogs, streamPrefix: "migrate" }), // PF-8b F1
     });
     repository.grantPull(this.migration.obtainExecutionRole());
 
