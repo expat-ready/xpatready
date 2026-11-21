@@ -162,7 +162,8 @@ export function fine(probe: string, withIds: boolean, a: { status: number; body:
  *  Sample firm's real key, form token and a public consultation type's slug are used. A door whose key has no real value
  *  here (a booking link's or an invitation's token) is "unreached": on the allow-list until its fix part reaches it. */
 const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
-const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
+const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo",   // :kind: the public branding image door's enum (logo, favicon, banner)
+  ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
 if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
 const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
