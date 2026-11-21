@@ -91,7 +91,7 @@ const hit = (src, key, t) => {
 // The suites run-suites.sh runs, by the name its summary uses (file names are unique across the three folders).
 const suites = new Map();   // name -> path
 for (const f of [...ls(`${S}/tests`, /^check_.*\.(ts|cjs)$/), ...ls(`${S}/tests/runtime`, /^check_.*\.(ts|cjs)$/),
-  ...["check_p2_guard.ts", "check_p2_launch.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
+  ...["check_p2_guard.ts", "check_p2_launch.ts", "check_p2_shared_ledger.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
   if (!SKIP.has(basename(f))) suites.set(basename(f), f);
 }
 const text = new Map([...suites].map(([n, f]) => [n, read(f)]));
