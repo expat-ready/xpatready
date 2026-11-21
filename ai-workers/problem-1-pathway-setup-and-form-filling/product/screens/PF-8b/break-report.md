@@ -107,3 +107,41 @@ I read only `git diff afb1f3c..bd5a1ce`, leaving out `product/screens`. `npm tes
   - N13 to N17: the database's and the tasks' allowed sources (VPC range, the LB's security group, `/1` halves, a prefix list, `PubliclyAccessible`). Left Minor by choice.
 
 **Holds:** the trust check compares the whole trust document exactly, so nothing else can be added to it. The managed-policy allow list matches only `arn:…:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole`, so a policy of the same name in our own account does not pass. Users, groups, and `UserPolicy`/`GroupPolicy` grants all count as non-execution holders. The template is unchanged apart from the shorter header comment.
+
+## Re-break (adaa846)
+
+Verdict: 2 Major
+
+I read only `git diff b01a20d adaa846 -- …/deploy/cdk/lib/checks.ts`. `npm test` passes (83/83); I re-ran `npm run synth` and no `cdk` or AWS CLI. I wrote 42 mutations on `xr-production` inside the real `allStacks(buildApp())`, each run through `regionFindings(…, REGION_ALLOW)`, `bypassFindings`, `resourcePolicyFindings`, `typeFindings` and all nine `service-checks` functions. The baseline is 0 findings.
+
+**Majors.** Both come from `ESTATE_TYPES` (`checks.ts:397`) admitting resource types whose own permission fields no check reads.
+- **RB-1. A task definition can run under any role from outside the stack.** I1: setting the service's `TaskRoleArn` to `{"Fn::Join":["",["arn:aws:iam::",{"Ref":"AWS::AccountId"},":role/OrganizationAccountAccessRole"]]}` passes every check (`taskRole: iam.Role.fromRoleArn(…)` renders it that way). PF-8rc refuses a policy "attached to a role named from outside" (`:379`). With `AWS::ECS::TaskDefinition` admitted, the internet-facing app can simply use such a role, admin included, and none of the role, action or secret guards ever sees it. (I1b, an outside `ExecutionRoleArn`, is caught, but only because the secrets lose their reader.) Fix: in `bypassFindings`, both `TaskRoleArn` and `ExecutionRoleArn` must be `Fn::GetAtt [<an AWS::IAM::Role of this stack>, Arn]`.
+- **RB-2. The ECR repository's resource policy is not read.** I2: `RepositoryPolicyText` allowing `Principal:"*"` to `ecr:BatchGetImage`, and account `999999999999` to `ecr:PutImage`/`UploadLayerPart`, passes every check. That is a public pull of the app image plus a foreign push into the production repository; with `repository.grantPull(new AnyPrincipal())` or `grantPullPush(new AccountPrincipal(…))` it is a one-liner. `resourcePolicyFindings` (`:262`) still reads only KMS keys, vaults and bucket policies, so PF-8rc's rule "every Allow names this account's root" stops at the new type. Fix: add `AWS::ECR::Repository` (`RepositoryPolicyText`) to `resourcePolicyFindings`, allowing nothing but root (or, simpler, refuse the property).
+
+**Minor**
+- **Trust by two services through two statements** (`trusted()`, `:339`, reads only the first Allow statement). This guard is a role trusted by both services. A2c: a new role trusted by `[{Service:ecs-tasks},{Service:backup}]` holding `ecr:BatchGetImage` and `ses:SendRawEmail` passes. A3: the task role's trust widened the same way also passes. (A4 on the execution role is caught by `service-checks`' exact-trust rule; A2 on the Backup role is caught only because its existing `kms:Decrypt` is not on the ECS list.) Fix: every Allow statement must name exactly one listed service, and only one statement is allowed.
+- **Joined ARNs:** `own()` (`:368`) refuses `*` but not `?`, and does not check the account in literal parts.
+  - E1: `arn:aws:ecr:ca-central-1:999999999999:repository/` + `{Ref:Images}` passes.
+  - E5: account `????????????` (any account) passes.
+  - E4: a `??????????` suffix passes.
+  - A secret ARN built this way is still caught by `secretReadFindings` (an exact compare), and the image is pinned to our own repository by test, so these are Minor.
+  Fix: in a joined ARN the account part must be `{Ref: AWS::AccountId}`, and no literal may contain `?`.
+- **Key policy, `ecsExec`** (`:273`):
+  - G5: a Principal of `{AWS: <exec role>, Service: "backup.amazonaws.com"}` passes, because keys other than `AWS` are ignored.
+  - G6: a Backup role whose trust has a **Deny** statement naming ecs-tasks passes the `.includes(…ecs-tasks…)` test. Harmless, since that role has no secrets read.
+  - G1: SM-only decrypt for the task role passes. Harmless, because the task role has no secrets read.
+  Fix: require `Object.keys(Principal) == ["AWS"]` and read the trust through `allows()`.
+- **Other admitted types with outside references that nothing reads:**
+  - I3: the staff pool's `LambdaConfig.PreTokenGeneration` pointing at an outside Lambda, which could add claims to staff tokens;
+  - I4: `SmsConfiguration.SnsCallerArn` naming an outside role;
+  - I5: the HTTPS listener forwarding to a foreign target group ARN (CloudFormation would likely refuse it);
+  - I6: database ingress from `SourceSecurityGroupOwnerId: 999999999999`, which belongs with the database's allowed sources, Minor by choice.
+
+**Held**
+- A Backup role gaining ECS actions (A1, A2b, D2), and an ECS role with `iam:*`, `iam:PassRole`, `sts:AssumeRole`, `kms:*` or `secretsmanager:PutSecretValue` (B×5): action lists are matched exactly.
+- An ECS principal plus an AWS principal, in one statement or two (A5, A6).
+- `*` riding along with `GetAuthorizationToken` (D1).
+- A joined ARN naming another region (E2), or using the digest parameter (E3).
+- Every digest-parameter variant: a `Default` (F1), `AllowedValues` (F2), a region in `Description` (F3), a widened pattern (F4). Each one fails `digestOnly` or the region scan of the `Parameters` section.
+- Key policy: a grant with no ViaService (G2), with ViaService widened to s3 (G3), or with `kms:*` (G4) is refused.
+- `Policies` on a non-IAM type: a SAM function is refused by `typeFindings` (H1). A `Statement` inside Cognito's `Policies` (H2) passes the checks, but CloudFormation's own schema refuses it.

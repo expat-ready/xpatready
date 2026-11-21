@@ -255,6 +255,16 @@ test("PF-8b's widening of PF-8rc's guards stays narrow: actions per service, \"*
     pol(t, bak, "ecr:GetAuthorizationToken", "*");                    // "*" only for an ECS role's token
   })).join("\n");
   for (const w of ["allows iam:PassRole", "allows ses:SendEmail", 'allows on "*"']) assert.ok(b.includes(w), `missing "${w}" in:\n${b}`);
+  const b2 = bypassFindings(swap((t) => { // re-break RB-1, RB-2, review r1, r2, a second trust statement
+    const { service } = taskDefinitions(t); const td = service![1].Properties as Record<string, { "Fn::GetAtt": [string] }>;
+    const exec = td.ExecutionRoleArn["Fn::GetAtt"][0];
+    pol(t, exec, "ses:SendEmail", { "Fn::GetAtt": [exec, "Arn"] });
+    pol(t, exec, "secretsmanager:GetSecretValue", { "Fn::Join": ["", ["arn:aws:secretsmanager:ca-central-1:999999999999:secret:", { Ref: exec }]] });
+    service![1].Properties!.TaskRoleArn = "arn:aws:iam::111111111111:role/Admin";
+    of(t, "AWS::ECR::Repository")[0][1].Properties!.RepositoryPolicyText = { Statement: [{ Effect: "Allow", Principal: "*", Action: "ecr:*" }] };
+    (t.Resources![roleOf(t, "backup.amazonaws.com")].Properties!.AssumeRolePolicyDocument as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Action: "sts:AssumeRole", Principal: { Service: "ecs-tasks.amazonaws.com" } });
+  })).join("\n");
+  for (const w of ["allows ses:SendEmail, not on the allow list (ecr:", "999999999999", "TaskRoleArn names", "repository policy", "allows kms:Decrypt, not on the allow list ()"]) assert.ok(b2.includes(w), `missing "${w}" in:\n${b2}`);
   assert.equal(b.split("\n").filter((l) => l.includes('allows on "*"')).length, 2);
   const r = regionFindings(swap((t) => { for (const p of Object.values(t.Parameters as Record<string, Record<string, unknown>>)) delete p.AllowedPattern; }), REGION_ALLOW);
   assert.ok(r.some((l) => l.includes("a parameter set at deploy time (AppImageDigest")), r.join("\n")); // a free-text parameter is still refused
@@ -263,6 +273,9 @@ test("PF-8b's widening of PF-8rc's guards stays narrow: actions per service, \"*
     const grant = st.find((x) => JSON.stringify(x.Principal).includes("ExecutionRole"))!;
     st.push({ ...grant, Condition: undefined });                                                       // no ViaService
     st.push({ ...grant, Principal: { AWS: { "Fn::GetAtt": [roleOf(t, "backup.amazonaws.com"), "Arn"] } } }); // not an ECS role
+    const task = (taskDefinitions(t).service![1].Properties!.TaskRoleArn as { "Fn::GetAtt": [string] })["Fn::GetAtt"][0];
+    st.push({ ...grant, Principal: { AWS: { "Fn::GetAtt": [task, "Arn"] } } });                     // a task role (review r3)
+    st.push({ ...grant, Principal: { ...(grant.Principal as object), Service: "s3.amazonaws.com" } }); // an extra principal key
   }));
-  assert.equal(k.length, 2, k.join("\n"));
+  assert.equal(k.length, 4, k.join("\n"));
 });
