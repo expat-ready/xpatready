@@ -17,6 +17,8 @@ const routeFiles = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
   if (n.startsWith("_")) return [];
   return statSync(p).isDirectory() ? routeFiles(p) : n === "routes.tsx" ? [p] : [];
 });
+// Routes are read by regex (`path: "…"` literals): a route built from a variable or a template shows as missing here,
+// never as a false pass.
 const modulePaths = routeFiles(MODS).flatMap((f) => [...read(f).matchAll(/\bpath:\s*"([^"]+)"/g)].map((m) => m[1]));
 const appBlock = read(join(WEB, "modules.tsx")).match(/APP_ROUTES = \[([\s\S]*?)\] as const/)?.[1] ?? "";
 const appPaths = [...appBlock.matchAll(/"([^"]+)"/g)].map((m) => m[1]);

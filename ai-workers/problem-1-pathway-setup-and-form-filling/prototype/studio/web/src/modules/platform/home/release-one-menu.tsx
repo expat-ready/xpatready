@@ -51,7 +51,7 @@ export function ReleaseOneMenu() {
             <ul className="mt-1 flex flex-col gap-0.5">
               {g.links.map((l) => (
                 <li key={l.to} className="text-sm">
-                  <Link to={l.to} className="text-text-link underline-offset-2 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50">{l.label}</Link>
+                  <Link to={l.to} className="text-text-link underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{l.label}</Link>
                   {l.hint ? <span className="text-text-muted"> · {l.hint}</span> : null}
                 </li>
               ))}

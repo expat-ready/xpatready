@@ -30,7 +30,7 @@ export function sampleSeedDecision(env: NodeJS.ProcessEnv = process.env, opts: {
  *  consultation type (a failure there is said in the log and never stops the start-up). */
 const seedFirmsAndValues = async (db: PrismaClient): Promise<SeedResult> => {
   const r = await seedSampleFirms(db); await seedSampleSettings(db);
-  await seedSampleConsultationType(db).catch((e) => console.warn(`platform: could not add the Sample consultation type (DEMO-LINK): ${String(e).slice(0, 300)}`));
+  await seedSampleConsultationType(db, "platform").catch((e) => console.warn(`platform: could not add the Sample consultation type (DEMO-LINK): ${String(e).slice(0, 300)}`));
   return r;
 };
 
