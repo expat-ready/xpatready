@@ -157,3 +157,41 @@ Verdict: Approve
 Reviewed commit: 2a41fd9ac (no Blocker or Major open in my judgement; M1–M4 are Minor, and M1 is the one to fix first).
 
 Verdict: Approve
+
+## Re-review (diff-only) at da3911bec
+**Scope:** I read only `git diff 2a41fd9ac da3911bec`.
+
+**Runs in the worktree:** `npm test` gave **49 passed, 0 failed**. `npm run synth` exited 0 with 4 templates; I deleted `cdk.out` afterwards and did not run the cdk CLI.
+
+**Mutation testing:** this ran only on my own copy in the scratchpad, now deleted. `deploy/` in the worktree is identical to `da3911bec`.
+
+**No false findings on the real app:** all six checks return 0 on the real stacks.
+
+**Size:** CI's counter (`pr-rules.yml`) leaves out `product/screens|qa`. Counted that way, `origin/main...da3911bec` is 708 added + 33 deleted = **741 changed lines**, under the 800 limit (P-610).
+
+**The new resource rule fits CDK's backup role:** CDK's `AWS::IAM::Policy` for the role is `kms:Decrypt` on `{"Fn::GetAtt":["DataKey…","Arn"]}`, attached through `Roles: [{Ref: <the stack's role>}]`. It passes the GetAtt rule and the own-role rule. A later row should know one thing: CDK's bucket grants write the object resource as `Fn::Join [GetAtt Arn, "/*"]`, which this rule refuses. PF-8b will have to widen the rule by a reviewed PR when it adds such grants. That is intended.
+
+| Finding | Fix | Test fails without it |
+|---|---|---|
+| M1, R3-1: a whole document in `Fn::If` | A document must have only `Version`, `Id` and `Statement` keys, with `Statement` present. `Policies` must be a literal list of `{PolicyName, PolicyDocument}` | killed (document keys; Policies as a list) |
+| R3-2: bucket policies | `AWS::S3::BucketPolicy` must be readable and may only deny | killed (read; only-deny) |
+| R3-3, N1: parameters | Any `Ref` to a template parameter, and any `${Param}` in a string, is refused, defaults included | killed (each) |
+| R3-4: `ManagedPolicyArns` in `Fn::If` | A non-array value is a finding, not a crash | killed |
+| M4, R3-5 (part): allows on everything or attached elsewhere | An allowed action must name a `GetAtt` of a resource in the stack. `Policy` and `ManagedPolicy` may attach only to this stack's roles, never to users or groups | killed (GetAtt; users and groups; own roles) |
+| M2: unpinned branches | Tests added for a non-literal `Effect`, a trust action other than `sts:AssumeRole`, and unreadable trust | killed (each) |
+
+**Mutants that survive, all harmless:**
+- "`Statement` must be present": a document with no `Statement` grants nothing.
+- The `Policies` entry-key check: an entry with other keys has no readable `PolicyDocument`, so it is already a finding.
+- A `BucketPolicy` with no document, or a `GetAtt` to a logical id that does not exist: CloudFormation would reject either at deploy.
+
+None of these is a hole.
+
+**Open (Minor; not blocking):**
+- **R3-5's remainder** (bucket inventory, vault notifications and a database's associated roles to another account) is now named in the README as **Not checked**. It is property-level, would need its own allow list per type, and is not one of this row's Done-when lines. Recording it as a known limit is the narrow fix (P-610). A follow-up row should take it if the tech lead wants it guarded.
+- The GetAtt rule accepts any resource in the stack, so `kms:Decrypt` on a vault key would also pass. That is not a bypass: decryption cannot delete or shorten anything.
+- B1 (governance mode, PR question 1) stays with the tech lead, as before.
+
+Reviewed commit: da3911bec (no Blocker or Major open; every round-3 fix has a test that fails without it).
+
+Verdict: Approve

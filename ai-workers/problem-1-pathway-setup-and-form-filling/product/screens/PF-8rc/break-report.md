@@ -198,3 +198,43 @@ Fix:
 * A trust Service list with an extra service is caught.
 * A literal us-east-1 in a database property is caught.
 * Round 2's control cases still behave: the ROOT shape cannot be spoofed, and a parameter default that names a region is caught.
+
+## Round 4 at da3911bec (final pass)
+
+I tested a fresh copy of da3911bec's package in my scratchpad, outside the worktree. `test/backup.test.ts` passes 28/28. `npm run synth` ran offline, then cdk.out was deleted. No secret or real account id in the diff or in cdk.out. Severity rule for this pass: Major only if CDK code in this package could plausibly break a Done-when claim; a hand-crafted template trick is Minor.
+
+**Round-3 breaks now caught:**
+* R3-1: a whole document in `Fn::If` (inline, the `Policies` list, `AWS::IAM::Policy`, the trust policy, the data key's policy).
+* R3-2: a bucket policy `Allow`, including inside `Fn::If`.
+* R3-3: `${Dest}` in an `Fn::Sub` string on the database or the secret, a `Ref` to a parameter with a default, and `Fn::Select` over a list parameter.
+* R3-4: `ManagedPolicyArns` in `Fn::If` is now a finding, not a crash.
+* R3-5, in part: `kms:Decrypt` on `Resource:"*"` is caught, and so is a policy attached to an outside role, a user or a group.
+
+**Still open from R3-5 (Minor, as stated in the PR):** these still pass:
+* bucket `InventoryConfigurations` to another account's bucket;
+* copy-vault `Notifications` to another account's SNS topic;
+* database `AssociatedRoles` with an outside role.
+
+None of them breaks a Done-when claim. Inventory and notifications carry metadata, not backups.
+
+**R4-1 Minor (older than round 4; not opened by it): a region spelled through `Fn::Split` gets past the region guard.**
+Repro: on the database, `AutomaticBackupReplicationRegion: {"Fn::Join":["",{"Fn::Split":["|","us|-east-1"]}]}` passes all seven checks. So does the `"_"`/`"u_s-east-1"` variant.
+Why: `flatten` only joins when the second argument is a literal list (checks.ts:38), and `opaque` only checks the delimiter (checks.ts:63).
+CDK never writes this shape; it is a hand-crafted template trick. The backup copy rule stays safe (exact shape).
+One-line fix: in `opaque`, treat an `Fn::Join` whose second argument is not a literal list as unreadable, or treat any `Fn::Split` as unreadable.
+
+**No Major found.** Every round-4 change makes a check stricter:
+* any parameter `Ref` or `${}` is refused;
+* a document must have exactly `Version`/`Id`/`Statement`;
+* `Policies` entries must be literal;
+* bucket policies may only deny;
+* role statements must name a `GetAtt` of this stack;
+* a policy attaches only to this stack's roles.
+
+**Controls that behaved as expected:**
+* `${AWS::Region}` in `Fn::Sub` passes (it resolves to the home region).
+* `kms:Decrypt` on the home vault key's `GetAtt` passes (still a key this stack defines).
+* An extra `Deny` in a bucket policy passes.
+* `Roles` in `Fn::If` is caught.
+
+**B1 (governance mode) is unchanged.** It is stated as a limit and left with the tech lead (question 1).
