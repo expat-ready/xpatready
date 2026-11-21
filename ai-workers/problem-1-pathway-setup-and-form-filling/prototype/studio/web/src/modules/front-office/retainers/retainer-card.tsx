@@ -51,6 +51,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
               <Pill tone={s.tone} title={s.tip}><span data-retainer-status>{s.label}</span></Pill>
               <span className="text-text-muted">Version {live.currentVersion}</span>
               {live.status === "SENT" || live.status === "VIEWED" ? <span data-waiting>Waiting for {name} to sign.</span> : null}
+              {live.status === "DRAFT" && live.currentVersion > 1 && live.sentBefore ? <span data-not-sent className="text-text-warn">Version {live.currentVersion} is not sent yet: {name} cannot sign until it is.</span> : null}
               <Link to={`/front-office/retainers/${live.id}`} className="font-medium text-text-link hover:underline">{live.status === "DRAFT" && can(me, R_KEY.draft) ? "Continue the draft" : "Open the retainer"}</Link>
             </div>
           ) : (

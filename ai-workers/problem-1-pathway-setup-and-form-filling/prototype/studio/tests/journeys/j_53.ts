@@ -3,6 +3,8 @@
 // retainer screens) and walks them like a person on an isolated copy of the running app (own database and port, never
 // :4400), in a real browser against the real routes: no fake API, no stubbed request. It starts where J-42 ends (j_42.ts W9:
 // an Engaged prospect).
+//   W0 the firm's Owner sets up the firm's retainer: Settings › Retainer templates, Download a starter template, Upload it
+//      (FO-5s part 2, S1); the template's Code line says how many of the 26 items it marks;
 //   W1 the firm's Owner (a licensed representative) opens the prospect: the Retainer card says "No retainer yet."; the
 //      conflict check is recorded on the prospect's own panel (FO-13s; Send needs it, FO-13c);
 //   W2 Prepare retainer from the card makes version 1 in Draft and opens it: the Code line ("n of 26 items marked"), each
@@ -15,8 +17,7 @@
 //   are what the page shows) · DW2 the version a person downloads is the real rendered agreement: its SHA-256 is the
 //   stored original_sha256 and its text holds the client's name and the fee. Each DW judge is run again on a stand-in
 //   (a list with one item fewer; bytes not from the renderer) and must fail there (the "NR" lines, P-606).
-// Setup a person cannot do by screens yet (Retainer templates is FO-5s part 2): the Sample starter template, uploaded
-// through FO-5's real route. Sample values only; US$0, no model call. Run from prototype/ (HEADED=1 opens a visible browser):
+// No setup by API: the template is uploaded by screens (W0). Sample values only; US$0, no model call. Run from prototype/ (HEADED=1 opens a visible browser):
 //   zsh studio/tools/isolated.sh j53 4593 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j53 4593 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_53.ts j53 4593
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -58,11 +59,6 @@ const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST
 const tok = ((await signIn.json()) as { token?: string }).token;
 if (!tok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
 sql(`update fo_retainer_template set active = false where firm_id = '${firmId}'`);   // re-runnable: one active template
-const starter = await fetch(`${BASE}/api/front-office/retainer-templates/starter`, { headers: { authorization: `Bearer ${tok}` } });
-const up = new FormData(); up.set("name", `Standard retainer ${run}`); up.set("file", new Blob([await starter.arrayBuffer()]), "starter.docx");
-const tplRes = await fetch(`${BASE}/api/front-office/retainer-templates`, { method: "POST", headers: { authorization: `Bearer ${tok}` }, body: up });
-ok("J-53 setup: the Sample starter template is uploaded through FO-5's route (the Retainer templates screen is FO-5s part 2)", tplRes.status === 201, tplRes.status);
-
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce", acceptDownloads: true });
@@ -75,6 +71,21 @@ const ret = () => db.foRetainer.findFirstOrThrow({ where: { firmId, prospectId }
 const sendNow = async () => { await p.locator("[data-check-and-send]").click(); const s = p.getByRole("dialog", { name: /^Send to .* to sign$/ }); await s.waitFor(); await s.getByRole("button", { name: /^Send to / }).click(); await status.filter({ hasText: "Sent" }).waitFor({ timeout: 15_000 }); };
 
 try {
+  // ---------------------------------------------------------------------------------------------- W0 the firm's template, by screens
+  await p.goto(`${BASE}/front-office/pipeline`); await p.getByRole("navigation", { name: "Sales" }).getByRole("link", { name: "Retainer templates" }).click();
+  await p.getByRole("heading", { name: "Retainer templates" }).waitFor({ timeout: 30_000 });
+  const dlS = p.waitForEvent("download"); await p.getByRole("button", { name: "Download a starter template" }).click();
+  const starterFile = await (await dlS).path();
+  await p.getByRole("button", { name: "Upload template" }).click();
+  const up = p.getByRole("dialog", { name: "Upload template" });
+  await up.getByLabel("Name").fill(`Standard retainer ${run}`); await up.getByLabel("Template file (.docx)").setInputFiles(starterFile);
+  await up.getByRole("button", { name: "Upload template" }).click(); await up.waitFor({ state: "detached", timeout: 15_000 });
+  await p.locator(`[data-template-row="Standard retainer ${run}"]`).getByRole("button").click();
+  const tplSummary = await p.locator("[data-template-summary]").innerText({ timeout: 15_000 });
+  ok(`J-53 W0: the Owner downloads the starter and uploads it in Settings › Retainer templates; its panel says "${tplSummary}"`, /^\d+ of 26 items marked in this template$/.test(tplSummary) && sql(`select count(*) from fo_retainer_template where firm_id = '${firmId}' and active`) === "1");
+  await shot("W0-template"); await axe("W0 the template panel");
+  await p.keyboard.press("Escape");
+
   // ---------------------------------------------------------------------------------------------- W1 the prospect, the conflict check
   await p.goto(`${BASE}/front-office/prospects/${prospectId}`);
   await card.locator("[data-no-retainer]").waitFor({ timeout: 30_000 });

@@ -20,7 +20,7 @@ export const Retainer = z.object({
   warnings: z.array(z.string()).optional(),
 });
 export type Retainer = z.infer<typeof Retainer>;
-export const RetainerRows = z.array(z.object({ id: z.string(), kind: z.string(), status: z.string(), currentVersion: z.number(), mine: z.boolean() }));
+export const RetainerRows = z.array(z.object({ id: z.string(), kind: z.string(), status: z.string(), currentVersion: z.number(), mine: z.boolean(), sentBefore: z.boolean().optional() }));
 export const Templates = z.array(z.object({ id: z.string(), name: z.string(), kind: z.string(), version: z.number(), active: z.boolean() }));
 export const Representatives = z.array(z.object({ staffId: z.string(), name: z.string() }));
 export const TemplateChecklist = z.object({

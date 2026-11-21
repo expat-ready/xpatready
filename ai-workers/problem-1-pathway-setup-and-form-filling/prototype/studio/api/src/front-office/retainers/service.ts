@@ -315,10 +315,10 @@ export class Retainers {
   private signerFor(p: Awaited<ReturnType<Retainers["prospectFor"]>>, given: string | null) {
     if (p.type === "INDIVIDUAL") {
       if (given && given !== p.subjectPersonId) unprocessable("The signer of an Individual prospect is the prospect's person.", { signerPersonId: "Not this prospect's person." });
-      return { signer: p.subjectPerson, warnings: [] as string[], options: [] as { personId: string; name: string; role: string }[] };
+      return { signer: p.subjectPerson, warnings: [] as string[], options: [] as { personId: string; name: string; role: string; email: string | null }[] };
     }
     const contacts = p.subjectCompany?.contacts ?? [];
-    const options = contacts.map((c) => ({ personId: c.personId, name: nameOf(c.person), role: c.role }));
+    const options = contacts.map((c) => ({ personId: c.personId, name: nameOf(c.person), role: c.role, email: c.person.email }));   // FO-5s review n1: with the email, as read() lists them
     if (given) {
       const c = contacts.find((x) => x.personId === given);
       if (!c) unprocessable("The signer must be one of the company's contacts.", { signerPersonId: "Not one of the company's contacts." });
@@ -438,9 +438,10 @@ export class Retainers {
     if (!p) return notFound("prospect");
     const all = p.ownerStaffId === ctx.staffId || (await this.seesAll(ctx));
     const rows = await this.db.foRetainer.findMany({ where: { firmId: ctx.firmId, prospectId: p.id, ...(all ? {} : { representativeStaffId: ctx.staffId }) }, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-      select: { id: true, kind: true, status: true, currentVersion: true, representativeStaffId: true, updatedAt: true } });
+      select: { id: true, kind: true, status: true, currentVersion: true, representativeStaffId: true, updatedAt: true, versions: { where: { sentAt: { not: null } }, select: { n: true }, take: 1 } } });
     if (!all && !rows.length) return notFound("prospect");
-    return rows.map((r) => ({ ...r, mine: r.representativeStaffId === ctx.staffId }));
+    // sentBefore: an earlier version was sent, so a Draft means the client cannot sign until the new one is sent (break re-check).
+    return rows.map(({ versions, ...r }) => ({ ...r, mine: r.representativeStaffId === ctx.staffId, sentBefore: versions.length > 0 }));
   }
 
   /** The retainer page (BR-6): the current version, its fees, what blocks Send and what is missing, the versions. */
