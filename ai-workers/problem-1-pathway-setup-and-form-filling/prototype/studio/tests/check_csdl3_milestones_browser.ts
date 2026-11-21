@@ -121,6 +121,10 @@ try {
   ok("CS-DL3 DW8 pass: underneath, one line with that due date; the reminders the API plans are the ones listed on the case",
     rows() === 1 && sql(`select due_on from case_milestone where case_id = '${CASE}'`) === due && listed?.reminders?.length > 0
       && listed.reminders.every((r: { day: string }) => firstText.includes(words(r.day))) && (await first.locator("[data-gov-reminders]").innerText()).startsWith("Reminders planned:"), { rows: rows(), reminders: listed?.reminders });
+  const reminded = await section(page).locator("[data-gov-reminded]").innerText().catch(() => "");
+  ok("CS-DL3 DW8 (part 3): the section says who is reminded and where: the case officer and the lead representative, on their Home under Needs you",
+    reminded === "The case officer and the lead representative are reminded on their Home, under Needs you, when in-app reminders are on.", reminded);
+  ok("CS-DL3 DW8 (part 3) fail: the stale \"none is sent\" sentence is gone", await section(page).locator("[data-gov-not-sent]").count() === 0 && !(await section(page).innerText()).includes("none is sent"));
   await axe(page, "the Government steps section with one step", "[data-gov-steps]");
   await shot(page, "1-recorded");
 

@@ -201,3 +201,9 @@ Moved by Lead 99, 20 Nov, word for word:
 
 ## IDX-21 (moved word for word from RULES.md, 21 Nov 01:1x IST, Lead 6 series 3, P-611)
 | IDX-21 | 20 Nov P-757 to P-765 (browser merges and authority, clean-up window, QA-542 Sample, 10-min check, tooling fast path, agents do outside steps, tooling apart from product, lock exceptions) stand: word for word in DECISIONS; earlier row in `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
+
+## IDX-23 (moved from RULES.md by Lead 10 (series 3), 21 Nov 08:2x IST, word for word)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| IDX-23 | P-766 to P-777 stand as in DECISIONS (P-770 Lead does every GitHub step; P-771 measured numbers only; P-772 enforce in code, tooling queue apart; P-773 R1.32 = P-574 + AG-02, FO-10c; P-774 wave 3 tonight, 32 first; P-775 a PR's own screens records and P-776 a generated lockfile sit outside the 800-line count, body says the split; P-777 P-752 and P-775 stay, R1.108 Works only after #2651). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5) | 21 Nov |
+| P-778 | No browser-doable ask to the founder (shell refusal → built-in browser, P-752 widened to close, archive, Run workflow); product questions answered at the next check (gate 20 min, tooling 60 min); app view read within 35 min; enforcer PRs apart, full checks (E-a to E-g). | owed: ENF-778a (stop-check E-a/E-b, founder-click-guard E-c), ENF-778g (walks), ENF-778b held | 21 Nov |
