@@ -36,8 +36,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A254 | 21 Nov ~12:15 (typed): why only 6 batches at once, drawbacks of more, two levels by situation, industry standard; improve speed and quality, never break the pipeline | Answered in chat: 12 via CI-SPEED-1, two levels by measured failed-batch rate (over 20% of the last 20 batches drops to 6, under 10% back to 12); owed row CI-SPEED-3: lead-watch ACT line on that rate |
 | A252-A253 | 21 Nov ~12:00-12:10 | word for word in `product/history/STATE-2026-11-21-1235-lead13s3-A252-A253.md` |
 | A251 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1213-lead13s3-A251-and-5b.md` |
-| A248-A250 | 21 Nov 10:3x-11:2x | word for word in `product/history/STATE-2026-11-21-1225-lead13s3-ask-rows-A248-A250.md` |
-| A242-A247 | 21 Nov 01:5x-10:1x | word for word in `product/history/STATE-2026-11-21-1125-lead12s3-ask-rows-A242-A247.md` |
+| A242-A250 | 21 Nov 01:5x-11:2x | word for word in `product/history/STATE-2026-11-21-1225-lead13s3-ask-rows-A248-A250.md` and `product/history/STATE-2026-11-21-1125-lead12s3-ask-rows-A242-A247.md` |
 
 
 ## Start here (next Lead)
