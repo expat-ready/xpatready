@@ -63,6 +63,20 @@ sed -i.bak 's/^| R1.1 | a | P | Works/| R1.1 | a | P | Partial/' "$T/caps.md"
 printf 'x\tbroken\n' >> "$T/waves.tsv"; wv allow R1.1; ok "a malformed waves.tsv line stops allow (exit 2), never a pass" "$([ $r = 2 ] && echo 1)" "rc=$r $out"
 sed -i.bak '$d' "$T/waves.tsv"
 
+# pr (pr-rules.yml): the items a PR names, outside the open waves.
+pr() { out=$(printf '%s' "$1" | python3 -I "$W" pr 2>&1); r=$?; }
+pr $'runtime: X-9 — R1.6 part 1\nDuplicate check: none'; ok "pr: a title naming a wave 4 item is flagged (exit 1)" "$([ $r = 1 ] && grep -q '^OUTSIDE WAVE: R1.6 is in wave 4; open waves 0, 1, 2' <<<"$out" && echo 1)" "rc=$r $out"
+pr $'runtime: X-1\nItem: R1.1\nClash: R1.6 is next door'; ok "pr: an Item line in an open wave passes; R1.x in free body text is not read" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "rc=$r $out"
+pr $'runtime: X-1\n- Completes: R1.6'; ok "pr: a Completes line outside the open waves is flagged" "$([ $r = 1 ] && echo 1)" "rc=$r $out"
+pr $'records: notes\n'; ok "pr: a PR naming no item passes" "$([ $r = 0 ] && echo 1)" "rc=$r $out"
+ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; PRW="$ROOTD/.github/workflows/pr-rules.yml"
+grep -qF 'base/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/waves.py pr' "$PRW" && grep -qF 'labels[]=outside-wave' "$PRW" && grep -q '::warning' "$PRW" && grep -q 'pull-requests: write' "$PRW"
+ok "pr-rules.yml runs the base commit's waves.py pr, adds the label outside-wave and a warning" "$([ $? = 0 ] && echo 1)"
+awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -q 'exit 0$' && ! awk '/name: an item outside the open waves/,/^      - name: [^a]/' "$PRW" | grep -qE 'exit 1|exit "\$'
+ok "pr-rules.yml's waves step always exits 0 (flag, never fail: P-214)" "$([ $? = 0 ] && echo 1)"
+grep -q 'waves.py" wip' "$TOOLS/lead-watch.sh" && grep -q "grep -c '^ACT' <<<\"\$wp\"" "$TOOLS/lead-watch.sh"
+ok "lead-watch.sh runs waves.py wip each check and counts its ACT lines" "$([ $? = 0 ] && echo 1)"
+
 # 3. wip: an open PR naming R1.1 in its title, one with "Item: R1.6" (wave 4), a draft (not counted), a lane naming R1.2.
 jq -n '[{number:1,title:"runtime: X-1 — R1.1 part",body:"",isDraft:false,headRefName:"a"},{number:2,title:"runtime: Y",body:"Item: R1.6\nDuplicate check: none",isDraft:false,headRefName:"b"},
   {number:3,title:"runtime: R1.4 draft",body:"",isDraft:true,headRefName:"c"},{number:4,title:"merge",body:"R1.5",isDraft:false,headRefName:"mergify/x"}]' > "$T/prs.json"
