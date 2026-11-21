@@ -66,11 +66,19 @@ async function open(tok: string, width = 1440, path = TIMINGS, ready = "[data-ti
   await p.goto(`${BASE}${path}`); await p.locator(ready).first().waitFor({ timeout: 30_000 });
   return p;
 }
-const axe = async (name: string, p: Page) => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
+/** CSS transitions still running (finite ones), and a wait for them to end (2 s cap): axe reads the settled screen, not a
+ *  button halfway through its 150 ms colour fade (the cause of the FO-3st3 suite's red batches, main fix #2782). */
+const changing = (p: Page) => p.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => `${(a.effect as KeyframeEffect | null)?.target?.textContent?.trim().slice(0, 30)}: ${(a as CSSTransition).transitionProperty ?? "animation"}`));
+const settle = (p: Page) => p.evaluate(() => Promise.race([new Promise((res) => setTimeout(res, 2_000)),
+  Promise.all(document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(Number(a.effect?.getComputedTiming().endTime))).map((a) => a.finished.catch(() => undefined)))]));
+const axe = async (name: string, p: Page) => {
+  await settle(p); const still = await changing(p);
+  ok(`${name}: nothing is still animating when axe runs (settled state)`, still.length === 0, still);
+  const r = await new AxeBuilder({ page: p }).withTags(TAGS).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok(`${name}: axe finds no serious or critical WCAG A/AA violation`, bad.length === 0, bad.map((v) => `${v.id}: ${v.nodes[0]?.target?.join(" ")}`).join(" | ") || undefined); };
 const noSideways = async (name: string, p: Page) => ok(`${name}: no sideways page scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `fo3st3b-${name}.png`), fullPage: true });
+const shot = async (p: Page, name: string) => { await settle(p); return p.screenshot({ path: join(SHOTS, `fo3st3b-${name}.png`), fullPage: true }); };
 const form = (p: Page) => p.locator("[data-timings-form]");
 const fld = (p: Page, label: string) => form(p).getByLabel(label, { exact: true });
 const note = async (p: Page, label: string) => { const id = await fld(p, label).getAttribute("aria-describedby"); return id ? (await p.locator(`[id="${id}"]`).innerText()) : ""; };
