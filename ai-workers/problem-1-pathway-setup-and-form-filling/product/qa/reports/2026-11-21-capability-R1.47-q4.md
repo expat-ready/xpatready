@@ -1,4 +1,28 @@
-# qa capability R1.47 (Q4) — 21 Nov 2026, main caee4edb1
+# qa capability R1.47 (Q4) — 21 Nov 2026, main caee4edb1, re-proved on main bfd1b2de1
+
+## Re-proof on main's head bfd1b2de1 (after review, Lead 16)
+The reviewer's Request changes: the only pack run, 44900458199, was on a merge-queue commit, not on main. Fixed:
+* **GitHub, main's head:** walks.yml run **44912442984**, j_48 41/41 (job 136871084825).
+  * R1.47 has no "Completes:" PR, so item-proof cannot start for it.
+  * Nightly 44912302675 refused R1 ids, and nightly 44906078657 had three suite parts cancelled, so neither is cited.
+* **Independent re-run (qa, fresh isolated copies of bfd1b2de1):**
+  * Gate A walk `check_qa_r147_brand_walk.ts`: 9/9 twice (qa_m1 :4475, qa_m2 :4476).
+  * Through `run-suites.sh --only`, each twice:
+
+    | Suite | Result |
+    |---|---|
+    | check_pf13b_images | 32/32 |
+    | check_pf13_branding | 30/30 |
+    | check_pf19b_sending | 42/42 |
+    | check_pf19b2_ses | 44/44 |
+    | check_pf19p_platform_mail | 68/68 |
+    | check_pf19r_every_sender | 21/21 |
+    | check_pf19r_senders | 27/27 |
+    | check_pf12_walls | 100/100 |
+    | check_pf12b_bypass_audit | 67/67 |
+* **Why re-run at all:** the email code changed after caee4edb1. `messages.ts`, `mail.ts`, branding `images.ts` and `routes.ts` all differ in bfd1b2de1. That is why the walk and the suites were run again there.
+* **Verdict unchanged: Works.** The sections below are the first round, on caee4edb1.
+
 
 Lane: qa Q4, cloud copy, asked by Lead 15. Opus 5.5, medium effort (P-781). Live AI off, US$0.
 Trigger: PF-13 part 1b (#2633, merged 08df1b37f), the last part of R1.47 (STATE). Fresh reader: `2026-11-21-r147-q4/reader-verdict.md` (Opus, ran nothing, P-303): Works, high.
