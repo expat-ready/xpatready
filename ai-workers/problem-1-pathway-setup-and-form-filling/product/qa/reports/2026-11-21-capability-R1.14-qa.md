@@ -2,7 +2,7 @@
 
 Main: **2821fb787**. Asked by Lead 15 (local_17a286ef), 15:4x IST. Opus 5.5, medium. Live AI off, US$0. No AWS access from this lane (P-551): the cloud drill was run by the AWS proof side session the Lead drives (P-782 (5)); qa reads its record and re-runs everything that runs on GitHub.
 
-## Verdict: **Works**. Open findings are Minor only (QA-655, QA-656, QA-657)
+## Verdict: **Works**. Open findings are Minor only (QA-656, QA-657); QA-655 closed in this PR
 Done when: "Point-in-time restore and a ca-west-1 copy on (read from the account); one drill restores a named moment into a fresh database within 4 h with at most 15 min lost, times recorded".
 Parts: PF-8r (#2014), PF-8a (#2638), PF-8rc (#2725), all merged.
 
@@ -20,15 +20,15 @@ Parts: PF-8r (#2014), PF-8a (#2638), PF-8rc (#2725), all merged.
 2. **ca-west-1 copy on (read from the account): met** (part 2: plan, vault, a completed copy job).
 3. **A named moment restored into a fresh database within 4 h: met** (845 s).
 4. **At most 15 min lost: met by AWS's restorable-time lag** (≤ 4 min 21 s), not by PF-8r's marker row (QA-657).
-5. **Times recorded: met on GitHub** (#2638 comment 08:05Z, every start and end time), not in the repository file PF-8rc names (QA-655).
+5. **Times recorded: met**: #2638 comment 08:05Z, and now in the repository as `qa/evidence/2026-11-21-R1.14-drill.txt` (Lead 15's transcription of the CloudShell output, ids redacted; it closes QA-655).
 
 **Judgment (qa's, with the reader):** PF-8rc's own extra items (the evidence file, the quarterly reminder, PF-8r's checks on the cloud copy) are not R1.14's Done when, so they are logged as Minor rather than holding the row. The reader would rather the evidence file were committed before the row is called proven. qa scores Works because GitHub holds the times, and QA-655 tracks the file.
 
 ## Bugs
-* New **QA-655** (Gap · Minor): the cloud drill's evidence is not in the repository (no `deploy/evidence/`), and RUNBOOK-restore.md still says the drill has not run.
+* **QA-655** (Gap · Minor): opened and closed in this PR. The drill evidence is committed at Lead 15's ruling. Still open as a note: RUNBOOK-restore.md says the drill has not run.
 * New **QA-656** (Gap · Minor): no quarterly restore-drill reminder; it needs a BACKLOG row (PF-8rc's Done when, NFR5-04).
 * New **QA-657** (Gap · Minor): the cloud restore was timed to "available", not checked by PF-8r; no restore from the ca-west-1 copy.
-* 0 Blocker · 0 Critical · 0 Major · 3 Minor.
+* 0 Blocker · 0 Critical · 0 Major · 2 Minor open (QA-656, QA-657; Lead 15 adds their BACKLOG rows).
 
 ## Not tested / limits
 * qa cannot reach AWS: gate A rests on the Lead-posted read-backs. The raw files are in the Lead's notes folder, not readable here.
