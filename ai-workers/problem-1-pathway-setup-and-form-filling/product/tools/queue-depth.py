@@ -137,7 +137,7 @@ def main():
         want, why = cur, "%d of %d batches failed, inside the %d-%d%% band: hold" % (bad, N, LOW, HIGH)
     why += "" if want == cur else ": set %d" % want
     print("rate=%s%% current=%d want=%d reason=%s" % (rate, cur, want, why))
-    print("source %s; batches %s to %s (UTC)" % (src, last[-1][0][:16] or "?", last[0][0][:16] or "?"))
+    print("source %s; batches %s to %s (UTC); a split retry counts as a batch (its own run)" % (src, last[-1][0][:16] or "?", last[0][0][:16] or "?"))
     return 0 if want == cur else 3
 
 

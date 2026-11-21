@@ -23,7 +23,7 @@ run "$(runs 5)" "$(mg 12)";  ok "5 of 20 failed (25%), at 12: want 6, exit 3" "$
 run "$(runs 10)" "$(mg 6)";  ok "10 of 20 failed, at 6: no change, exit 0" "$(has 0 '^rate=50% current=6 want=6 ')" "exit $rc: $out"
 for f in 2 3 4; do for c in 6 12; do run "$(runs $f)" "$(mg $c)"
   ok "$f of 20 failed ($((f * 5))%, inside the band), at $c: holds $c, exit 0" "$(has 0 "^rate=$((f * 5))% current=$c want=$c reason=.*band: hold$")" "exit $rc: $out"; done; done
-ok "the source is named" "$(grep -q '^source file ' <<< "$out" && echo 1)" "$out"
+ok "the source is named, and split retries are said to count as batches" "$(grep -qE '^source file .*; a split retry counts as a batch \(its own run\)$' <<< "$out" && echo 1)" "$out"
 # what counts as a batch outcome
 X='[{"head_branch":"mergify/merge-queue/zz","status":"completed","conclusion":"cancelled","run_started_at":"2026-11-21T11:00:00Z"},
     {"head_branch":"claude/runtime-x","status":"completed","conclusion":"failure","run_started_at":"2026-11-21T11:01:00Z"},
