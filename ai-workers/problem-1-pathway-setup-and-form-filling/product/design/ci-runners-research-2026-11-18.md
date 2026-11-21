@@ -1,0 +1,11 @@
+# CI runners, cost and review tools: research of 18 Nov 2026 (Lead 81's research agent, 23:3x IST)
+
+Sources as cited in the agent's report, fetched 18 Nov 2026; summary, not quotes.
+
+- **Cause (first research, 22:5x):** the Enterprise trial page says a trial excludes increased job concurrency; 180 was Enterprise's limit before 9 Mar 2023 (now 500, docs.github.com/en/actions/reference/limits). Paying did not lift it on our account; only GitHub Support can ("GitHub Support can increase job concurrency limits").
+- **Our CI:** every job is ubuntu-latest (4 vCPU on public repos); no service containers, Docker or macOS; PostgreSQL installed in the job (cloud-setup.sh); Chromium via Playwright in shard and packs. Any Linux VM runner works with a label change.
+- **Measured, last 300 ci runs (17 Nov 01:44Z to 18 Nov 17:30Z):** shard median 41.1 min (PR) / 45.5 (batch); packs 11.1; regression 15.7; wait to start PR median 16 min, p90 69; batch median 7, p90 66, max 230. Full PR run about 210 job-minutes, batch about 445.
+- **Per day (40 PR heads, 15 batches):** full set 15,100 job-min; with run tests once 6,950. Cost: Blacksmith or WarpBuild (4 vCPU, $0.008/min, no concurrency limit) $121 / $56; Ubicloud $38 / $17 (no limit stated); GitHub 4-core larger runner $181 / $83 (own pool of 1,000; trial limit unknown); GitHub standard $0 if Support lifts the cap to 500. Namespace Business caps at 160 vCPU (40 jobs). BuildJet shut down 31 Mar 2026. Shard is ~92% of minutes.
+- **Security:** third-party runners register as self-hosted; on a public repo keep fork PRs on GitHub: `runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || '<vendor label>' }}`, and require approval for outside contributors' workflow runs.
+- **Greptile:** an AI PR reviewer ($1 a credit). Its own July 2025 benchmark: 82% of 50 bugs; a competitor's re-score found 233 of 283 comments matched no real bug. No measurable benefit here (bottleneck is machines and sequential parts); revisit only if qa shows the Opus reviewer missing bugs.
+- **Ranked:** (1) Support lifts the cap to 500; (2) run tests once (#2151, about -54% minutes); (3) heavy jobs on Blacksmith with the fork guard ($56-121/day) while waiting; (4) trial fewer, bigger shards (unmeasured); caching and path selection add little; cancel-in-progress conflicts with P-371.

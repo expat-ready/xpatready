@@ -126,7 +126,7 @@ export class WebAddresses {
     try {
       await tx.platformFirmWebAddress.create({ data: { firmId: id, address, setBy: actor } });
     } catch (e) { if (isTakenRefusal(e)) await this.taken409(address, id); throw e; }
-    await this.deps.audit.record(tx, { firmId: id, actor, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} at sign-up.`, detail: { address } });
+    await this.deps.audit.record(tx, { firmId: id, actor, action: "firm.web_address.set", entity: "platform_firm", entityKey: id, summary: `Web address set to ${address} at sign-up.`, detail: { address }, before: null, after: { address } });
   }
 
   /** ExpatReady staff change (or first set) a firm's address (SA-2-27): their key, a reason, one transaction with the
@@ -161,6 +161,7 @@ export class WebAddresses {
           firmId: id, actor, action: "firm.web_address.changed", entity: "platform_firm", entityKey: id,
           summary: old ? `Web address changed from ${old} to ${address}; ${old} redirects to it until ${until!.slice(0, 10)}.` : `Web address set to ${address} by ExpatReady staff.`,
           detail: { historyId: history.id, oldAddress: old, newAddress: address, until },
+          before: old ? { address: old } : null, after: { address, ...(old ? { redirectUntil: until } : {}) },
         });
         return { firmId: id, address, oldAddress: old, redirectUntil: until, historyId: history.id };
       });

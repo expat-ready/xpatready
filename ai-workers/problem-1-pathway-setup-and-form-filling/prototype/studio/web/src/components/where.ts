@@ -25,6 +25,8 @@ export function whereFromAddress(area: Area, path: string): Where {
     return s[2] === "questionnaire" || !mine ? { crumbs: [{ label: s[1] ? "Client questionnaire" : "Your application" }], back: null } : { crumbs: [{ label: mine.label, to: mine.to }, { label: s[2] ? CASE_PAGE[s[2]] ?? "No such page" : "Case" }], back: mine };
   }
   if (area === "cases") {
+    // CS-K1s: /clients is the case area's other first page (no Back); a client's page names the client with useWhere.
+    if (s[0] === "clients") return !s[1] ? { crumbs: [{ label: "Clients" }], back: null } : !s[2] ? { crumbs: [{ label: "Clients", to: "/clients" }, { label: "Client" }] } : { crumbs: [{ label: "Clients", to: "/clients" }, { label: "No such page" }] };
     if (!s[1]) return { crumbs: [{ label: "Cases" }], back: null };
     // BK-3 PR 3 (challenge M2): /cases/clients/<login> is a client page, never a case (case ids are UUIDs); the page names
     // the client with useWhere. A bare /cases/clients goes to Cases.

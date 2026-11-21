@@ -191,3 +191,13 @@ Moved by Lead 99, 20 Nov, word for word:
 
 ### IDX-9 row, moved word for word from RULES.md (Lead 100, 20 Nov, size limit)
 | IDX-9 | 18-19 Nov rows stand as recorded: P-703 to P-715 and P-716 (freeze to Proven 30), P-717 (records and pipeline in their own lane), P-718 (queue first, staging at Proven 30), P-721 to P-723, P-725 to P-727, P-729, P-730 (19 Nov proof sprint, tracks, hold); word for word in `rules/tech-lead.md`. | prose | 19 Nov |
+
+### IDX-20 row, moved word for word from RULES.md (Lead 2 (series 3), 14:4x IST 20 Nov, size limit)
+| IDX-20 | 20 Nov rows P-749 (titles; Lead 1 series 3), P-750 (staging at Proven 30), P-751 (self-adjusting pipeline, B206), P-752 (blocked label/ready/reopen: browser), P-753 (#2427 size), P-754 (FO-3st2 hold), P-755 (scale 50-100 firms), P-756 (guard tunes 1-2): word for word in DECISIONS. | script: lead-pr.sh | 20 Nov |
+
+## IDX-14 (moved from RULES.md word for word by Lead 3 (series 3), 20 Nov 16:2x IST, size)
+| IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule), P-741 (R1.31 includes FO-2pv, not QA-531) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
+
+
+## IDX-21 (moved word for word from RULES.md, 21 Nov 01:1x IST, Lead 6 series 3, P-611)
+| IDX-21 | 20 Nov P-757 to P-765 (browser merges and authority, clean-up window, QA-542 Sample, 10-min check, tooling fast path, agents do outside steps, tooling apart from product, lock exceptions) stand: word for word in DECISIONS; earlier row in `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
