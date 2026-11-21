@@ -15,7 +15,7 @@ export const caseType = (purpose: string) => purpose === "FOLLOW_UP" || purpose 
 
 export const BookingType = z.object({
   id: z.string(), slug: z.string(), name: z.string(), description: z.string().nullable(), purpose: z.string(), minutes: z.number(),
-  modes: z.array(z.string()), hostStaffIds: z.array(z.string()), active: z.boolean(), showOnBookingPage: z.boolean(),
+  modes: z.array(z.string()), hostStaffIds: z.array(z.string()), active: z.boolean(), showOnBookingPage: z.boolean(), allowReschedule: z.boolean(), allowCancel: z.boolean(),
   onBookingPage: z.boolean(), version: z.number(),
 });
 export type BookingType = z.infer<typeof BookingType>;

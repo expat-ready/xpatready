@@ -156,7 +156,8 @@ try {
   await tp.getByRole("button", { name: "Preview as a booker" }).click();
   const pv = pw.getByRole("dialog", { name: /Preview as a booker/ });
   await pv.locator("[data-preview-day]").first().waitFor({ timeout: 20_000 });
-  const pvDays = await pv.locator("[data-preview-day]").allInnerTexts();   // today may be all inside the 4-hour notice; a later day has times
+  let pvDays: string[] = [];   // today may be all inside the 4-hour notice; a later day has times (the dialog reads again once it knows the zone)
+  for (let i = 0; i < 40 && !pvDays.some((d) => /\d\d:\d\d/.test(d)); i++) { await pause(250); pvDays = await pv.locator("[data-preview-day]").allInnerTexts(); }
   ok("J-42 W0 pass: Preview as a booker shows the type's times for the week without booking (no booking row)", pvDays.some((d) => /\d\d:\d\d/.test(d)) && (await db.foBooking.count({ where: { firmId: firm.id } })) === 0, pvDays.map((d) => d.slice(0, 60)));
   await shot(pw, "W0-preview"); await pw.context().close();
   // The type's timings (no shortest notice, a 5-minute interval, a 60-minute self-service limit) have no screen yet:

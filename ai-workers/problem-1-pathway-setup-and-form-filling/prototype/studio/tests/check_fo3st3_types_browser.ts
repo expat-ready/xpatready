@@ -93,6 +93,11 @@ try {
   // ------------------------------------------------------------------------------------------- create (Admin, 1440)
   const pa = await open(aTok);
   ok("FO-3st3 menu: the Bookings area lists Settings → Booking types for an Admin", (await pa.locator("[data-menu-booking-types]").count()) === 1);
+  await pa.locator('[data-type-row], [data-booking-types] [role="alert"], [data-booking-types] :text("No booking types yet")').first().waitFor({ timeout: 15_000 });
+  if ((await db.foConsultationType.count({ where: { firmId: firm.id, deletedAt: null } })) === 0) {   // a fresh copy: the empty state (review m4)
+    ok("FO-3st3 empty state: \"No booking types yet. Add one so visitors can book.\" with one New booking type button", (await pa.getByText("No booking types yet. Add one so visitors can book.").count()) === 1 && (await pa.getByRole("button", { name: "New booking type" }).count()) === 1);
+    await shot(pa, "empty-1440");
+  }
   await shot(pa, "list-1440"); await axe("FO-3st3 list (Admin, 1440)", pa);
   await pa.getByRole("button", { name: "New booking type" }).click(); await panel(pa).waitFor();
   await field(pa, "Name").fill(NAME); await field(pa, "Length (minutes)").fill("4");
@@ -189,7 +194,72 @@ try {
   await dlg.locator(`[data-preview-day="${MON}"]`).waitFor({ timeout: 20_000 });
   ok("FO-3st3 J-T3 pass: in Asia/Dubai the same Monday starts at 18:00 (09:00 Toronto)", (await dlg.locator(`[data-preview-day="${MON}"]`).innerText()).includes("18:00"));
   await shot(pa, "preview-closed-day-1440");
-  await pa.keyboard.press("Escape"); await dlg.waitFor({ state: "detached" }); await pa.keyboard.press("Escape"); await panel(pa).waitFor({ state: "detached" });
+  await dlg.getByLabel("Date").fill("9999-12-31"); await pa.waitForTimeout(500);
+  ok("FO-3st3 break M4 fail: the date 9999-12-31 is not taken (the preview stays, no page error)", (await dlg.count()) === 1 && (await dlg.getByLabel("Date").inputValue()) !== "" && errors.length === 0, errors.slice(0, 2));
+  await pa.keyboard.press("Escape"); await dlg.waitFor({ state: "detached" });
+  ok("FO-3st3 break m5: closing the preview puts the keyboard back on \"Preview as a booker\"", (await pa.evaluate(() => document.activeElement?.textContent?.trim())) === "Preview as a booker");
+  await pa.keyboard.press("Escape"); await panel(pa).waitFor({ state: "detached" });
+
+  // ------------------------------------------------------------------------------------------- break M1, M2: a set save that fails after the type saved
+  const evening = await call(fTok, "POST", "/front-office/me/availability-sets", { name: `Evening calls ${run}` });
+  const SETNAME = `Set check ${run}`;
+  await pa.getByRole("button", { name: "New booking type" }).click(); await panel(pa).waitFor();
+  await field(pa, "Name").fill(SETNAME); await panel(pa).getByLabel(F.displayName).check();
+  await panel(pa).getByLabel(`Uses set for ${F.displayName}`).selectOption({ label: `Evening calls ${run}` });
+  await call(fTok, "DELETE", `/front-office/me/availability-sets/${evening.body?.id}`);   // someone deletes the chosen set before Save
+  await pa.getByRole("button", { name: "Save type" }).click();
+  await panel(pa).waitFor({ state: "detached", timeout: 15_000 });
+  const warned = await pa.locator("[data-booking-types]").innerText();
+  ok("FO-3st3 break M1 fail: a set of hours that fails after the type saved is said in words (the type is saved; the set was not) and the list shows the type",
+    warned.includes(`Added ${SETNAME}.`) && warned.includes(`The set of hours for ${F.displayName} was not saved`) && (await row(pa, SETNAME).count()) === 1, warned.slice(0, 400));
+  ok("FO-3st3 break M2 pass: the type exists once (no second create on a retry)", (await db.foConsultationType.count({ where: { firmId: firm.id, name: SETNAME, deletedAt: null } })) === 1);
+
+  // ------------------------------------------------------------------------------------------- break M3: a suspended host stays visible and removable
+  const G = await person("Client G", "CASE_OFFICER");
+  const SUS = `Suspended host check ${run}`;
+  const susType = await call(aTok, "POST", "/front-office/booking-types", { name: SUS, minutes: 30, modes: ["VIDEO"], hostStaffIds: [F.id, G.id] });
+  await db.platformStaff.update({ where: { id: G.id }, data: { status: "SUSPENDED" } });
+  await pa.reload(); await row(pa, SUS).waitFor({ timeout: 15_000 });
+  await openType(pa, SUS);
+  const gBox = panel(pa).getByLabel(`${G.displayName} (suspended: offers no times)`);
+  ok("FO-3st3 break M3 pass: a suspended host on the type is shown, ticked and named as suspended", susType.status === 201 && (await gBox.count()) === 1 && (await gBox.isChecked()), susType.body);
+  await gBox.uncheck(); await saveAndWait(pa);
+  ok("FO-3st3 break M3 fail: unticking the suspended host and saving removes them from the type", JSON.stringify((await typeRow(SUS))?.hostStaffIds) === JSON.stringify([F.id]), (await typeRow(SUS))?.hostStaffIds);
+
+  // ------------------------------------------------------------------------------------------- Uses set (AG-4-62 rule 1b) and the allow flags (review M1)
+  const morning = await call(fTok, "POST", "/front-office/me/availability-sets", { name: `Morning calls ${run}` });
+  ok("FO-3st3 Uses set setup: Client F adds a second set \"Morning calls\"", morning.status === 201, morning.body);
+  await openType(pa, SUS);
+  await panel(pa).getByLabel(`Uses set for ${F.displayName}`).selectOption({ label: `Morning calls ${run}` });
+  await saveAndWait(pa);
+  const chosen = await db.foTypeHostSet.findFirst({ where: { firmId: firm.id, typeId: susType.body.id, staffId: F.id } });
+  ok("FO-3st3 Uses set pass: choosing Client F's \"Morning calls\" for the type saves that set for her on this type", morning.status === 201 && chosen?.setId === morning.body.id, { morning: morning.status, chosen });
+  await openType(pa, SUS);
+  await panel(pa).getByLabel(`Uses set for ${F.displayName}`).waitFor();
+  for (let i = 0; i < 40 && (await panel(pa).getByLabel(`Uses set for ${F.displayName}`).inputValue()) !== morning.body.id; i++) await pa.waitForTimeout(250);
+  await panel(pa).getByLabel(`Uses set for ${F.displayName}`).selectOption({ value: "" });   // back to her default set (Morning calls has no hours)
+  await saveAndWait(pa);
+  ok("FO-3st3 Uses set pass: \"(default)\" puts the type back on her default set", !(await db.foTypeHostSet.findFirst({ where: { firmId: firm.id, typeId: susType.body.id, staffId: F.id } }))?.setId);
+  const susSlug = (await typeRow(SUS))!.slug, mail = `client.c.${run}@example.org`;
+  const s2 = await call(null, "GET", `/public/firms/sample-firm/book/${susSlug}/slots?from=${encodeURIComponent(at(MON, "00:00").toISOString())}&to=${encodeURIComponent(at(plusDays(MON, 1), "00:00").toISOString())}`);
+  await new Promise((res) => setTimeout(res, 3_200));
+  const b2 = await call(null, "POST", `/public/firms/sample-firm/book/${susSlug}/bookings`, { givenNames: "Client C", familyName: "Sample", email: mail, mode: "VIDEO", startsAt: at(MON, "11:00").toISOString(), timeZone: TZ, formStamp: s2.body?.formStamp });
+  let link = "";
+  for (let i = 0; i < 45 && !link; i++) {
+    const inbox = await call(null, "GET", `/demo/platform-inbox?address=${encodeURIComponent(mail)}`);
+    link = /To reschedule or cancel: (\S+)/.exec(((inbox.body?.messages ?? []) as { body: string }[]).map((m) => m.body).join("\n"))?.[1] ?? "";
+    if (!link) await new Promise((res) => setTimeout(res, 2_000));
+  }
+  const manage = async () => { const p = await open(fTok, 1440, new URL(link).pathname + new URL(link).hash, "[data-public-state]"); await p.waitForLoadState("networkidle"); return p; };
+  let pm = await manage();
+  ok("FO-3st3 allow flags pass: with Allow reschedule ticked, the booker's manage page offers Reschedule and Cancel", b2.status === 201 && !!link && (await pm.getByRole("button", { name: "Reschedule" }).count()) === 1 && (await pm.getByRole("button", { name: /^Cancel/ }).count()) >= 1, { b2: b2.status, link: !!link });
+  await pm.context().close();
+  await openType(pa, SUS);
+  await panel(pa).getByLabel("Allow reschedule", { exact: true }).uncheck();
+  await saveAndWait(pa);
+  pm = await manage();
+  ok("FO-3st3 allow flags fail: Allow reschedule unticked on the screen → the manage page offers no Reschedule (Cancel stays)", (await typeRow(SUS))?.allowReschedule === false && (await pm.getByRole("button", { name: "Reschedule" }).count()) === 0 && (await pm.getByRole("button", { name: /^Cancel/ }).count()) >= 1, (await pm.locator("main").innerText()).slice(0, 300));
+  await shot(pa, "allow-flags-1440"); await pm.context().close();
 
   // ------------------------------------------------------------------------------------------- J-T4: read-only and no entry
   const pt = await open(tTok);
