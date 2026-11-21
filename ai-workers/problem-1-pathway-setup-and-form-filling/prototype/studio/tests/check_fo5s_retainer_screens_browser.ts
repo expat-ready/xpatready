@@ -209,7 +209,8 @@ try {
   const cr = await call(tok.R, "POST", `/front-office/prospects/${coX}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Fee", amountMinor: 90000, when: "ON_SIGNING" }] });
   await r.goto(`${BASE}/front-office/retainers/${cr.body.id}`); await r.locator("[data-error-summary]").waitFor({ timeout: 30_000 });
   ok("R1.53 FO-5s review M1 fail: a company with no signatory contact: Send is blocked with \"Choose who signs.\" and the summary link focuses the Who signs pick",
-    (await r.locator("[data-error-summary]").innerText()).includes("Choose who signs.") && await r.locator("[data-error-summary] a").first().click().then(() => r.getByLabel("Who signs").evaluate((e) => e === document.activeElement)));
+    (await r.locator("[data-error-summary]").innerText()).includes("Choose who signs.") && await r.locator("[data-error-summary] a").first().click().then(() => r.getByLabel("Who signs").evaluate((e) => e === document.activeElement)), { draft: cr.status, summary: await r.locator("[data-error-summary]").innerText(), focus: await r.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)) });
+  await shot(r, "company-signer-1440");
   await r.getByLabel("Who signs").selectOption(coP);
   await r.getByRole("button", { name: "Save as version 2" }).click();
   await r.locator("[data-version]", { hasText: "Version 2" }).waitFor({ timeout: 15_000 });

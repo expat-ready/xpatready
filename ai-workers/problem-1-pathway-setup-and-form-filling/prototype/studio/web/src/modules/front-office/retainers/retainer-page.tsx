@@ -106,12 +106,12 @@ function RetainerBody({ id }: { id: string }) {
                   {r.blockers.signerPersonId && EDITABLE.includes(r.status) ? <span className="block text-text-danger" data-blocker="signer">{r.blockers.signerPersonId}{!company && r.prospect && r.mayChange ? <> <Link to={`/front-office/prospects/${r.prospect.id}`} className="text-text-link hover:underline">Add it on {client}'s record</Link>, then save a new version here.</> : null}</span> : null}</dd></> : null}
                 {!form ? <><dt className="text-text-muted">Representative</dt><dd>{repName(r.representativeStaffId)}</dd></> : null}
               </dl>
-              {form && company ? <Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
-                <Select id="fo-signer" value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {o.role === "SIGNATORY" ? "Signatory" : o.role.toLowerCase()}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
-              </Field> : null}
-              {form ? <Field label="Representative" hint="Only active people with a licence and the case-manager permissions." error={fieldError("representativeStaffId") ?? r.blockers.representativeStaffId ?? null}>
-                <Select id="fo-rep" value={repId} onChange={(e) => { setRepId(e.target.value); setError(null); }}>{(reps.data ?? [{ staffId: r.representativeStaffId, name: repName(r.representativeStaffId) }]).map((x) => <option key={x.staffId} value={x.staffId}>{x.name}</option>)}</Select>
-              </Field> : null}
+              {form && company ? <div id="fo-signer"><Field label="Who signs" hint="One of the company's contacts. A signatory contact is chosen first; any contact may sign." error={fieldError("signerPersonId") ?? r.blockers.signerPersonId ?? null}>
+                <Select value={signerId} onChange={(e) => { setSignerId(e.target.value); setError(null); }}><option value="">Choose who signs</option>{r.signerOptions.map((o) => <option key={o.personId} value={o.personId}>{o.name} · {o.role === "SIGNATORY" ? "Signatory" : o.role.toLowerCase()}{o.email ? ` · ${o.email}` : " · no email"}</option>)}</Select>
+              </Field></div> : null}
+              {form ? <div id="fo-rep"><Field label="Representative" hint="Only active people with a licence and the case-manager permissions." error={fieldError("representativeStaffId") ?? r.blockers.representativeStaffId ?? null}>
+                <Select value={repId} onChange={(e) => { setRepId(e.target.value); setError(null); }}>{(reps.data ?? [{ staffId: r.representativeStaffId, name: repName(r.representativeStaffId) }]).map((x) => <option key={x.staffId} value={x.staffId}>{x.name}</option>)}</Select>
+              </Field></div> : null}
               <fieldset id="fo-fees" tabIndex={-1} className="flex flex-col gap-2">
                 <legend className="mb-1 text-sm font-medium">Fees (CAD)</legend>
                 {r.blockers.fees ? <p className="text-sm text-text-danger" data-blocker="fees">{r.blockers.fees}</p> : null}
@@ -153,7 +153,7 @@ function RetainerBody({ id }: { id: string }) {
           <h2 id="fo-check" className="text-sm font-semibold">Check before sending</h2>
           {blockers.length && mayEdit ? <div role="alert" data-error-summary className="rounded-lg border border-danger/40 bg-danger/5 p-3 text-sm">
             <p className="font-medium">Before sending:</p>
-            <ul className="mt-1 list-disc pl-5">{blockers.map(([f, t]) => <li key={f}><a href={`#${BLOCKER_FIELD[f] ?? "fo-values"}`} className="text-text-link hover:underline" onClick={(e) => { e.preventDefault(); document.getElementById(BLOCKER_FIELD[f] ?? "fo-values")?.focus(); }}>{t}</a></li>)}</ul>
+            <ul className="mt-1 list-disc pl-5">{blockers.map(([f, t]) => <li key={f}><a href={`#${BLOCKER_FIELD[f] ?? "fo-values"}`} className="text-text-link hover:underline" onClick={(e) => { e.preventDefault(); const el = document.getElementById(BLOCKER_FIELD[f] ?? "fo-values"); (el?.querySelector<HTMLElement>("select, input") ?? el)?.focus(); }}>{t}</a></li>)}</ul>
           </div> : null}
           <dl id="fo-values" tabIndex={-1} className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-2 gap-y-1 text-sm" data-values>
             {VALUE_LABELS.filter(([k]) => k in v && (r.subject === "COMPANY" || k !== "company.name")).map(([k, l]) => (

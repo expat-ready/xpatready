@@ -15,7 +15,7 @@ export const Retainer = z.object({
   prospect: z.object({ id: z.string(), number: z.string(), type: z.string(), stage: z.string(), stageKind: z.string() }).nullable(),
   template: z.object({ id: z.string(), name: z.string().nullable(), version: z.number() }),
   version: z.object({ n: z.number(), sha256: z.string(), sentAt: z.string().nullable(), values: z.record(z.string(), z.unknown()), fees: z.array(Fee) }),
-  mayChange: z.boolean(), canSend: z.boolean(), signerOptions: z.array(z.object({ personId: z.string(), name: z.string(), role: z.string(), email: z.string().nullable() })), blockers: z.record(z.string(), z.string()), missing: z.array(z.string()), codeChecklist: DraftChecklist.nullable(),
+  mayChange: z.boolean(), canSend: z.boolean(), signerOptions: z.array(z.object({ personId: z.string(), name: z.string(), role: z.string(), email: z.string().nullable().optional() })), blockers: z.record(z.string(), z.string()), missing: z.array(z.string()), codeChecklist: DraftChecklist.nullable(),
   versions: z.array(z.object({ n: z.number(), sentAt: z.string().nullable(), endedAt: z.string().nullable(), endReason: z.string().nullable(), note: z.string().nullable() })),
   warnings: z.array(z.string()).optional(),
 });
