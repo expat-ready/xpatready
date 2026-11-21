@@ -7,7 +7,7 @@
 //     reads exactly firm A's rows;
 //   3 the firm comes from the session only: a header, ?firmId= or body firmId naming firm B never reaches firm B;
 //   4 the app's role owns no table, and the running server's connections are the app's role;
-//   5 the next capability's first step (R1.5: staff sign-in, /me) answers for the right firm on each side;
+//   5 (run last, so the walk ends there) the next capability's first step (R1.5: staff sign-in, /me) answers for the right firm on each side;
 //   6 the seven own-firm doors left the bypass (PF-12b2): the run's sign-ins and staff routes make 0 bypass uses;
 //   7 every walled table forces row-level security with the firm policy (the catalogues aside, as PF-12's pack);
 //   W6 (PF-12b3, Lead 15's ruling on #2752: every bypass use writes an audit_event row): a visitor signs up through the
@@ -91,10 +91,6 @@ const serverRoles = owner(`select string_agg(distinct usename, ',') from pg_stat
 // absence from the server's pool cannot be told apart (the pf12 pack proves main.ts refuses to start as the owner).
 ok("R1.4 4: the running server's pooled connections include the app's role (xr_app)", /\bxr_app\b/.test(serverRoles ?? ""), serverRoles);
 
-// 5 the next capability's first step answers for the right firm
-const meA = await call("GET", "/api/platform/me", tA), meB = await call("GET", "/api/platform/me", tB);
-ok("R1.4 5: R1.5's first step (/me after sign-in) answers firm A for firm A's person and firm B for firm B's", meA.body?.firmId === firmA && meB.body?.firmId === firmB, { a: meA.body?.firmId === firmA, b: meB.body?.firmId === firmB });
-
 // 7 underneath: every walled table (platform_*, fo_*, money_*, msg_*, auto_*, plat_complaint*) forces row-level security,
 // and every one but the catalogues and our own registers has a policy firm_id (platform_firm: id) = platform_session_firm() for read and write (the function reads app.firm_id) (the list as PF-12's pack keeps it)
 const EXCEPT = ["platform_plan", "platform_role_permission", "platform_setting_definition", "platform_permission_key", "platform_terms_version", "platform_plan_limit", "platform_limit_change", "platform_signup_pending", "plat_breach", "plat_data_request", "plat_legal_hold"];
@@ -130,5 +126,9 @@ ok("R1.4 W6 (PF-12b3): sign-up's no-firm steps write platform.bypass lines with 
 ok("R1.4 W6 (PF-12b3): the verification email writes one platform.bypass line with no firm, naming platform.account.mail", after6.mail === before6.mail + 1, { before: before6.mail, after: after6.mail });
 ok("R1.4 W6 (fail case): no line of either platform use names a firm", after6.named === before6.named && after6.named === 0, after6.named);
 
+// last: the walk ends at the next capability's first step (P-348 (3))
+// 5 the next capability's first step answers for the right firm
+const meA = await call("GET", "/api/platform/me", tA), meB = await call("GET", "/api/platform/me", tB);
+ok("R1.4 5: R1.5's first step (/me after sign-in) answers firm A for firm A's person and firm B for firm B's", meA.body?.firmId === firmA && meB.body?.firmId === firmB, { a: meA.body?.firmId === firmA, b: meB.body?.firmId === firmB });
 await db.$disconnect();
 process.exitCode = summary() ? 1 : 0;
