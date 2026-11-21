@@ -69,3 +69,14 @@ Not applicable: migrations, routes, concurrency writes, AI, uploads.
 A real screen reader. An intended user's unaided walk (D17/D20 stay with the founder). The full `ci` run. The PR body lines ("Completes: R1.74", "Fixes: QA-471 (part: seen on screen)", "Duplicate check:"), because there is no PR yet. A reminder delivered by the running app's own pg-boss runner on real time: J-74 runs the handler in-process by design.
 
 **Verdict: Approve 539fe821eee26c9296b99902315344897e9a7126**. There is no open Blocker or Major. m1–m3 should be fixed or listed in the PR.
+
+## Re-review, diff only: 539fe821e → 16d9d24de (P-277)
+I read only `git diff 539fe821e 16d9d24de -- …/prototype/studio`, which touches `milestones.tsx` and `j_74.ts`. Commit 16d9d24de also adds my two review files. I ran on a fresh copy, rv3_csdl3 on :4663, and stopped it afterwards. Results: J-74 **25/25**, exit 0, and `tsc -p web` clean. No screenshot was rewritten.
+| Finding | Now |
+|---|---|
+| m1 | **Fixed.** `milestones.tsx:96` renders the sentence only when `v.caseOpen`. I checked it in the browser as the representative on J-74's step case. While open, the foot has `data-gov-reminded` and no `data-gov-closed`. After a withdraw (200), the foot has no `data-gov-reminded`, has `data-gov-closed`, and reads "The case is closed: reopen it to record a step." No test pins the closed-case condition (DW8 checks only the open case). That is Minor, not blocking. |
+| m2 | **Fixed.** `j_74.ts:30-33` says W1–W4 tell fakeNotifications and W5–W7b tell PF-18n's `PrismaNotificationPort`. It says Home's "Reminder came in" therefore shows the walk's clock time, ahead of today, and that the running app's own runner on real time is not walked. |
+| m3 | **Fixed.** The officer's tab and the `home`/`item` helpers now open before the 7-day walk. W6b NR (`j_74.ts:197-203`) also checks that, an hour before the reminder, the officer's Home has no `data-needs-you-item` carrying this case's number. My run gave `{"before7":0,"rowsBefore":"0","onHomeBefore":0}`, and W6b and W6c pass after it. The header's NR claim now matches the code. |
+Nothing else changed in the studio. W6b, W6c, W7 and W7b keep their judges, and only their order moved.
+
+**Verdict: Approve 16d9d24de8ce05f0650d9d28a0246323f90f2690**
