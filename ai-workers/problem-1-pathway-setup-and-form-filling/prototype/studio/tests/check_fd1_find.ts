@@ -125,6 +125,11 @@ try {
   const li = await add(R, { givenNames: "李", familyName: "明", email: "li.ming@example.com" });
   ok("PF-30a pass: an accented name typed with its accent (\"José\") finds José García by prefix; a non-Latin full name (李 明) by FO-9a's exact key", ids(await find(R, "José")).includes(jose.person.id) && ids(await find(R, "李 明")).includes(li.person.id));
   ok("PF-30a fail: a non-Latin letter is never read as a prefix of another (王 does not find 李明)", !ids(await find(R, "王芳")).includes(li.person.id));
+  const olga = await add(R, { givenNames: "Ольга", familyName: "Петрова", email: "olga@example.com" });
+  const dana = await add(R, { givenNames: "דנה", familyName: "כהן", email: "dana@example.com" });
+  const digits = [await find(R, "04"), await find(R, "05"), await find(R, "0674")].map((r) => ids(r));
+  ok("PF-30a fail (round 2 M1): typed digits (\"04\", \"05\", \"0674\") never prefix-match the hex keys of Cyrillic, Hebrew or Chinese names", digits.every((d) => !d.includes(olga.person.id) && !d.includes(dana.person.id) && !d.includes(li.person.id)), digits);
+  ok("PF-30a pass (round 2 M1): those people are still found by their own full names", ids(await find(R, "Ольга Петрова")).includes(olga.person.id) && ids(await find(R, "דנה כהן")).includes(dana.person.id));
   ok("PF-30a pass: 2 characters are enough (\"An\" through the route)", ids(await route.find({ platform: R }, { q: "An" })).includes(anna.person.id));
 
   // ------------------------------------------------------------------------------------- own versus all

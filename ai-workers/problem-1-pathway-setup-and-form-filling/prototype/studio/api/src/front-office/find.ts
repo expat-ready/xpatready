@@ -72,7 +72,9 @@ export class FrontOfficeFinder implements OnModuleInit {
         ${ctx.staffId}::uuid, ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, 50)` : [];
     // A prefix is read only for text that is ASCII once accents are folded (José → jose, as the name key folds them): a non-Latin letter's key is hex (FO-9a), where a prefix could meet
     // an unrelated letter; those match by FO-9a's exact key. "zelda5" is ASCII, so its digit is a digit (breaker m4).
-    const prefix = name && /^[\x20-\x7e]+$/.test(q.text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")) ? await this.db.foPerson.findMany({
+    // A typed key needs a letter and no "0" (round 2 M1): a stored non-Latin letter is "0" + hex, so "04" or "0674" would
+    // otherwise be a prefix of Cyrillic or Chinese names; those keep FO-9a's exact match.
+    const prefix = name && /[a-z]/.test(name) && !name.includes("0") && /^[\x20-\x7e]+$/.test(q.text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")) ? await this.db.foPerson.findMany({
       where: firmScope(firmId, { AND: [{ OR: [{ nameKey: { startsWith: name } }, { nameKey: { contains: ` ${name}` } }] }, personWhere] }), select: { id: true }, take: 50, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }) : [];
     const prefixIds = new Set(prefix.map((p) => p.id));
