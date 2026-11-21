@@ -16,7 +16,8 @@ const lines = (t: string, style: Record<string, string>) => t.split(/\n{2,}/).ma
 export async function emailLayout(brand: EmailBrand, words: { subject: string; text: string; html?: string }, replyable = true): Promise<string> {
   const p = { margin: "0 0 16px", fontSize: "15px", lineHeight: "22px", color: "#1f2933", fontFamily: FONT };
   const header: ReactNode[] = [];
-  if (brand.logoUrl) header.push(h(Img, { key: "logo", src: brand.logoUrl, alt: brand.name, height: "48", style: { display: "block", height: "48px", width: "auto", margin: "0 0 8px" } }));
+  // Width and height as attributes too: Outlook ignores CSS sizes (review m8 on #2624).
+  if (brand.logoUrl) { const w = brand.logoWidth ?? 48, ht = brand.logoHeight ?? 48; header.push(h(Img, { key: "logo", src: brand.logoUrl, alt: brand.name, width: String(w), height: String(ht), style: { display: "block", width: `${w}px`, height: `${ht}px`, margin: "0 0 8px" } })); }
   header.push(h(Text, { key: "name", style: { margin: "0", fontSize: "18px", fontWeight: "bold", color: "#1f2933", fontFamily: FONT } }, brand.name));
   const body = words.html !== undefined ? h("div", { style: p, dangerouslySetInnerHTML: { __html: words.html } }) : lines(words.text, p);
   const small = { margin: "0 0 8px", fontSize: "12px", lineHeight: "18px", color: "#52606d", fontFamily: FONT };
