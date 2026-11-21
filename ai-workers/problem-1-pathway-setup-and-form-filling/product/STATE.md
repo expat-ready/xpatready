@@ -36,9 +36,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 | A270 | 21 Nov 17:1x (typed): calm plan; commit to first 8 or 10; slow what should slow, fast-track what matters | Commitment line in Lead 15 block |
 | A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
 | A268 | 21 Nov 16:3x (typed): full lead-watch, walk every lane, Show more, nobody waits on the Lead | Walk done 16:4x; report sent |
-| A267 | 21 Nov 16:4x (typed): raise the AWS Support request; check the card; carry on with product work; all AWS approvals; tell him if stuck | Case followed up; card is default (Mastercard), not the cause |
-| A266 | 21 Nov 16:3x (typed): park the domain; he gets Cloudflare/AWS domain details from the team and nudges; focus back on work | Parked; #2800 + F2b continue |
-| A265 | 21 Nov 16:0x (typed): no Cloudflare access for expatready.com: free, solid workaround now, easy switch later; raise serious concerns; SHARDS: use the browser | AWS plan asked (CloudFront default domain); SHARDS waits on a GitHub 2FA code |
+| A265-A267 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1730-lead15s3-asks-A265-A267.md` (domain parked, AWS case, SHARDS) | |
 | A242-A264 | 21 Nov | word for word in `product/history/STATE-2026-11-21-1655-lead15s3-asks-A242-A264.md` (pointers inside lead to older files) | |
 
 
