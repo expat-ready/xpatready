@@ -225,12 +225,12 @@ export class FirmSignUp {
       // The trial's end is stored from the start (QA-481): the plan's days from now; Stripe's own end replaces it when the
       // trial's Checkout completes (billing/webhook.ts).
       const trialEndsAt = new Date(now.getTime() + plan.trialDays * 86_400_000);
-      const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL", trialEndsAt } });
+      const sub = await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "TRIAL", trialEndsAt, billingPeriod: pending.period } });   // PF-5 part 3: the period is stored, not only audited
       await this.ports.audit.record(tx, { firmId: firm.id, actor: ACTOR, action: "platform.subscription.created", entity: "platform_subscription", entityKey: sub.id, summary: `Trial subscription on ${plan.name}, ${pending.period.toLowerCase()}`, detail: { plan: plan.code, period: pending.period, trialEndsAt: trialEndsAt.toISOString() }, before: null, after: { plan: plan.code, period: pending.period, status: sub.status, trialEndsAt: trialEndsAt.toISOString() } });
       await tx.moduleEvent.create({ data: { firmId: firm.id, type: EVENT.FIRM_CREATED, subjectId: firm.id, payload: { firmId: firm.id } } });   // last (m8)
       return { firm, owner, sub };
     });
-    const checkout = await this.startTrial(made.firm, made.sub.id, plan, pending.period).catch(() => null);
+    const checkout = await this.startTrial(made.firm, made.sub.id, plan, made.sub.billingPeriod).catch(() => null);   // PF-5 part 3: the stored period picks the price
     return { firmKey: made.firm.key, status: "PROVISIONING", ownerStaffId: made.owner.id, checkoutUrl: checkout?.url ?? null, ...(checkout ? {} : { next: "Sign in to finish starting your free trial." }) };
   }
 
