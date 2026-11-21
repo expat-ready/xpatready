@@ -60,7 +60,7 @@ async function call(t: string, method: string, path: string, body?: unknown): Pr
   const x = await r.text(); let b: unknown = x; try { b = JSON.parse(x); } catch { /* file or text */ } return { status: r.status, body: b };
 }
 sql(`update fo_retainer_template set active = false where firm_id = '${A}'`);   // re-runnable: one active template (review m6)
-// Setup a person cannot do by screens yet (Retainer templates is FO-5s part 2): the firm's template, the Sample starter.
+// The firm's template, the Sample starter, through FO-5's route (the Retainer templates screen has its own check: check_fo5s2_templates_browser.ts).
 const starter = await fetch(`${BASE}/api/front-office/retainer-templates/starter`, { headers: { authorization: `Bearer ${tok.R}` } });
 const up = new FormData(); up.set("name", `Standard retainer ${run}`); up.set("file", new Blob([await starter.arrayBuffer()]), "starter.docx");
 const tpl = await call(tok.R, "POST", "/front-office/retainer-templates", up);
@@ -222,6 +222,14 @@ try {
   ok("R1.53 FO-5s review M2: a signer with no email blocks Send with a fix (a link to the client's record), and the values say \"blocks Send\", never \"You can send without it\"",
     (await r.locator('[data-blocker="signer"]').innerText()).includes("The signer needs an email.") && (await r.locator('[data-blocker="signer"]').getByRole("link").count()) === 1
     && ((await signerEmail.count()) === 0 || (await signerEmail.innerText()).includes("blocks Send")));
+  // Lead 15 ruling on #2802 (P-628, reversible): CAD 0.00 means no fee is due; shown "No fee"; Send is not blocked.
+  const fay = prospect("Fay", R.id), fr = await call(tok.R, "POST", `/front-office/prospects/${fay.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Consultation credit", amountMinor: 0, when: "ON_SIGNING" }] });
+  await r.goto(`${BASE}/front-office/retainers/${fr.body.id}`); await r.locator("[data-check-and-send]").waitFor({ timeout: 30_000 });
+  const noFeeValues = (await r.locator("[data-values]").innerText()).includes("No fee"), noSummary = (await r.locator("[data-error-summary]").count()) === 0;
+  await r.locator("[data-check-and-send]").click(); const fs = r.getByRole("dialog", { name: /^Send to .* to sign$/ }); await fs.waitFor();
+  ok("R1.53 FO-5s (Lead ruling) pass: a CAD 0.00 fee reads \"No fee\" in Check before sending and the Send panel, and does not block Send",
+    noFeeValues && noSummary && (await fs.innerText()).includes("No fee") && !(await fs.innerText()).includes("CAD 0.00"), { noFeeValues, noSummary });
+  await r.keyboard.press("Escape");
 
   // ------------------------------------------------------------------------------- widths
   for (const w of [375, 1024, 1440]) {
