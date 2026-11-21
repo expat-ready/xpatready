@@ -195,6 +195,7 @@ model PlatformSubscription {
   currentPeriodEnd     DateTime?                  @map("current_period_end") @db.Timestamptz
   createdAt            DateTime                   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt            DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
+  billingPeriod        PlatformBillingPeriod      @default(MONTHLY) @map("billing_period") // PF-5 part 3 (R1.19): the period chosen at sign-up; the trial Checkout's price
 
   firm PlatformFirm @relation(fields: [firmId], references: [id], onDelete: Restrict)
   plan PlatformPlan @relation(fields: [planId], references: [id], onDelete: Restrict)

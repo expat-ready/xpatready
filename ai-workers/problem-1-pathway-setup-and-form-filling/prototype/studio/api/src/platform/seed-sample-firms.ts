@@ -71,7 +71,9 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         // The subscription comes with the firm, once: an ended one is a person's change and is kept (break B-3).
         const plan = await tx.platformPlan.findUnique({ where: { code: f.solo ? "solo" : "team" } });
         if (!plan) throw new Error("seed-sample-firms: the Sample plans are missing (the PF-3 migration adds them)");
-        await tx.platformSubscription.create({ data: { firmId: firm.id, planId: plan.id, status: "ACTIVE" } });
+        // Named columns only, so the seed also runs on an earlier schema (PF-12's check seeds one before later columns such as
+        // PF-5 part 3's billing_period, whose default the database gives); same transaction, same walls.
+        await tx.$executeRaw`INSERT INTO platform_subscription (id, firm_id, plan_id, status, updated_at) VALUES (gen_random_uuid(), ${firm.id}::uuid, ${plan.id}::uuid, 'ACTIVE'::"PlatformSubscriptionStatus", now())`;
         r.subscriptionsAdded++;
       }
       // PF-12b: on the demo's bypass use (demo.ts, "platform.demo.reset") this firm's platform.bypass line, in the seed's

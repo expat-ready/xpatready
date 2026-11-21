@@ -46,7 +46,7 @@ import { PlatformTermsController } from "../api/src/platform/terms/routes.ts"; i
 import { ACCEPTED, ALREADY, FirmSignUp, PURGE_JOB, TAX_NOTE, type SignUpPorts } from "../api/src/platform/firms/signup.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261115180000_pf5_signup_terms";
+const NEW = "20261115180000_pf5_signup_terms", P3 = "20261122000000_pf5p3_billing_period";
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf5_${process.pid}`, URL = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
 const WORK = join(STUDIO, "var", `pf5-check-${process.pid}`);
@@ -107,7 +107,16 @@ function pf5Diff(): string[] {
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
   const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--script"], { cwd: STUDIO, encoding: "utf8" });
   if (r.status !== 0) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
-  return r.stdout.split("\n").filter((l) => /terms|signup_pending|PlatformBillingPeriod/i.test(l));
+  return r.stdout.split("\n").filter((l) => /terms|signup_pending|PlatformBillingPeriod/i.test(l) && !/billing_period/.test(l));   // part 3's column has its own measure (P3)
+}
+/** PF-5 part 3's migration (the billing period on the subscription): the diff lines that name its column. */
+function p3Diff(): string[] {
+  mkdirSync(WORK, { recursive: true });
+  const cfg = join(WORK, "prisma.config.ts");
+  writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(URL)} } });\n`);
+  const r = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--script"], { cwd: STUDIO, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`migrate diff: ${r.stdout}${r.stderr}`);
+  return r.stdout.split("\n").filter((l) => /billing_period/.test(l));
 }
 
 const all = readdirSync(MIG).filter((d) => /^\d{14}_/.test(d)).sort();
@@ -121,7 +130,26 @@ try {
   ok("PF-5 fail: before PF-5's migration the schema differs on its tables", pf5Diff().length > 0);
   execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, NEW, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
   ok("PF-5 pass: right after its own migration, migrate diff names none of its tables (measured before any later one)", pf5Diff().length === 0, pf5Diff());
-  for (const d of all.filter((x) => x > NEW)) execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  const apply = (d: string) => execFileSync(join(BIN, "psql"), [URL, "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+  for (const d of all.filter((x) => x > NEW && x < P3)) apply(d);
+  // PF-5 part 3 (P-600, rows rev 16.7): measured right after its own migration; the backfill reads each subscription's
+  // creation audit line (YEARLY from a Yearly sign-up; anything else keeps MONTHLY).
+  ok(`PF-5 part 3: its migration's stamp is later than every one before it and unique (newest before it: ${all.filter((d) => d < P3).at(-1)})`, all.includes(P3) && all.filter((d) => d.slice(0, 14) === P3.slice(0, 14)).length === 1);
+  ok("PF-5 part 3 fail: before its migration the subscription has no billing period", p3Diff().length > 0, p3Diff());
+  const p3Plan = sql(`select id from platform_plan where code = 'team'`), p3Firm = (k: string) => sql(`insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'pf5p3-${k}', 'P3 ${k}', 'CA', '${k}@pf5p3.example.com', now()) returning id`).split("\n")[0];
+  const p3Sub = (f: string) => sql(`insert into platform_subscription (id, firm_id, plan_id, updated_at) values (gen_random_uuid(), '${f}', '${p3Plan}', now()) returning id`).split("\n")[0];
+  const yFirm = p3Firm("yearly"), ySub = p3Sub(yFirm), mFirm = p3Firm("plain"), mSub = p3Sub(mFirm), moFirm = p3Firm("monthly"), moSub = p3Sub(moFirm);
+  // review m1: a Monthly sign-up's own creation line keeps MONTHLY (only a YEARLY line moves a row).
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${moSub}', 'Trial subscription on Team, monthly', '{"plan":"team","period":"MONTHLY"}', '${moFirm}')`);
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${ySub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
+  // A line in another firm naming this subscription is not its own (break m2): it changes nothing.
+  sql(`insert into audit_event (id, workspace_id, actor, action, entity, entity_key, summary, detail, firm_id) values (gen_random_uuid(), gen_random_uuid(), 'system:signup', 'platform.subscription.created', 'platform_subscription', '${mSub}', 'Trial subscription on Team, yearly', '{"plan":"team","period":"YEARLY"}', '${yFirm}')`);
+  apply(P3);
+  ok("PF-5 part 3 pass: right after its own migration, migrate diff names no billing-period line", p3Diff().length === 0, p3Diff());
+  ok("PF-5 part 3 pass/fail: the backfill sets YEARLY from a Yearly sign-up's audit line, a Monthly sign-up's line keeps MONTHLY, and a subscription with no line of its own firm (another firm's line naming it) keeps MONTHLY",
+    sql(`select billing_period::text from platform_subscription where id = '${ySub}'`) === "YEARLY" && sql(`select billing_period::text from platform_subscription where id = '${mSub}'`) === "MONTHLY" && sql(`select billing_period::text from platform_subscription where id = '${moSub}'`) === "MONTHLY");
+  sql(`delete from platform_subscription where firm_id in ('${yFirm}', '${mFirm}', '${moFirm}')`); sql(`delete from platform_firm where id in ('${yFirm}', '${mFirm}', '${moFirm}')`);
+  for (const d of all.filter((x) => x > P3)) apply(d);
   ok("PF-5 pass: three Sample terms versions, one of each kind", sql(`select string_agg(kind::text, ',' order by kind) from platform_terms_version`) === "TERMS_OF_SERVICE,PRIVACY_NOTICE,DATA_PROCESSING");
   ok("PF-5 fail: a terms version is never changed or removed", refused(`update platform_terms_version set url = '/x'`, /insert_only/) && refused(`delete from platform_terms_version`, /insert_only/));
   const tv = sql(`select id from platform_terms_version limit 1`);
@@ -215,6 +243,18 @@ try {
   ok("PF-5 pass (A46's weak point, tested): the trial starts through Checkout with no card (if_required), pause at trial end, the plan's 14 days and price, on the firm's own customer",
     !!made?.checkoutUrl && co?.paymentMethodCollection === "if_required" && co.missingPaymentMethod === "pause" && co.input.trialDays === 14 && co.input.priceId === "price_teamMonthly" && co.input.firmId === firmId
     && sql(`select status::text || ':' || coalesce(stripe_customer_id, '-') from platform_subscription where firm_id = '${firmId}'`) === `TRIAL:${co.input.customerId}`, { made, co });
+  // PF-5 part 3 (R1.19; qa Q9, ruling on #2857 7067556246): the subscription stores the period chosen at sign-up, and the
+  // trial's Checkout takes its Stripe price from that stored period.
+  const periodOf = (f: string) => sql(`select billing_period::text from platform_subscription where firm_id = '${f}'`);
+  ok("PF-5 part 3 pass: a sign-up with the default (Monthly) stores MONTHLY on its subscription", periodOf(firmId) === "MONTHLY", periodOf(firmId));
+  await up(await form({ email: "owner@birch.example.com", firmName: "Birch Immigration", period: "YEARLY" }), "10.9.0.1");
+  const birchLink = verifyMails("owner@birch.example.com").at(-1)?.text ?? "";
+  const birch = await s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(birchLink)?.[1] ?? "", code: /code=(\d{6})/.exec(birchLink)?.[1] ?? "" }, "10.9.0.2");
+  const birchId = sql(`select id from platform_firm where contact_email = 'owner@birch.example.com'`), coY = billing.checkouts.at(-1);
+  ok("PF-5 part 3 pass: a sign-up choosing Yearly stores YEARLY, and its trial Checkout uses the plan's yearly Stripe price", !!birch?.checkoutUrl && periodOf(birchId) === "YEARLY" && coY?.input.firmId === birchId && coY.input.priceId === "price_teamYearly", { period: periodOf(birchId), price: coY?.input.priceId });
+  ok("PF-5 part 3 fail: the periods never swap: the Yearly firm is not MONTHLY and is never sent the monthly price; the Monthly firm was sent the monthly price", periodOf(birchId) !== "MONTHLY" && coY?.input.priceId !== "price_teamMonthly" && co?.input.priceId === "price_teamMonthly" && periodOf(firmId) !== "YEARLY");
+  const weekly = await problemOf(async () => up(await form({ email: "weekly@firm.example.com", period: "WEEKLY" }), "10.9.0.3"));
+  ok("PF-5 part 3 fail: a period that is not Monthly or Yearly is refused at the field, and nothing is stored", weekly !== null && weekly.status < 500 && JSON.stringify(weekly.body).includes("period") && pendingCount("weekly@firm.example.com") === "0", weekly);
   ok("PF-5 pass: each change has its audit line in its transaction (PF-12b: the sign-up use's platform.bypass line too), and firm.created is in the outbox once (written last)",
     sql(`select string_agg(action, ',' order by action) from audit_event where detail->>'firmId' = '${firmId}'`) === "firm.created,platform.bypass,platform.staff.money_keys_granted,platform.staff.owner_created,platform.subscription.created,platform.subscription.customer_linked,platform.terms.accepted"
     && sql(`select count(*) from module_event where firm_id = '${firmId}' and type = '${EVENT.FIRM_CREATED}'`) === "1");
