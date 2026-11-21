@@ -11,6 +11,11 @@ import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts"
 import { BrandingService } from "./branding.ts";
 import { isImageKind } from "./image-setting.ts";
 import { BrandingImages, IMAGE_UPLOAD_CAP, tooLarge } from "./images.ts";
+import { z } from "zod";
+import { parseInput, strict } from "../http/input.ts";
+
+/** PF-28 (R1.10): the public image link's one query key, the version (`?v=`); a repeated key is "This must be text.". */
+const IMAGE_QUERY = strict({ v: z.string().max(200).optional() });
 
 /** The upload layer's own refusals (a file past its cap, a second file or field) in the kind's words: a 413 naming its
  *  limit, or "Send one file" (review M1 on #2633: the app's shared words name no limit). */
@@ -54,7 +59,8 @@ export class BrandingPublicController {
   constructor(@Inject(BrandingImages) private readonly images: BrandingImages) {}
   // The open mark and the route sit on the method's own line: QA-53's scan reads them there (check_forms_qa53.ts).
   @OpenRead("PF-13: a client page's header, the firm's name, colours, tagline and image links, no id") @Get("") read(@Param("firmKey") firmKey: string) { return this.images.publicBranding(firmKey); }
-  @OpenRead("PF-13: the firm's logo, favicon or banner by its stable link") @Get(":kind") async image(@Param("firmKey") firmKey: string, @Param("kind") kind: string, @Query("v") v: unknown, @Res() res: Response) {
+  @OpenRead("PF-13: the firm's logo, favicon or banner by its stable link") @Get(":kind") async image(@Param("firmKey") firmKey: string, @Param("kind") kind: string, @Query() q: unknown, @Res() res: Response) {
+    const { v } = parseInput(IMAGE_QUERY, q);   // PF-28 (R1.10): the one query key, refused 422 named if unknown, before any lookup
     const img = await this.images.publicImage(firmKey, kind, v);
     res.setHeader("Content-Type", img.mediaType);
     res.setHeader("X-Content-Type-Options", "nosniff");
