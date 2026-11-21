@@ -104,3 +104,26 @@ Journey score unchanged: **9.5/10**. The app code and the migration are identica
 Verdict: Approve 6a6f14c305c22f6378aca0b1a259e48c86d6025a
 
 Reviewer: Approve 6a6f14c305c22f6378aca0b1a259e48c86d6025a
+
+---
+## Re-review: head `7fa9cf464bdd0ac7ec20369d693d43820c5f2b2d` (22 Nov 01:4x IST)
+I read only `git diff 6a6f14c3 7fa9cf46`. Only `tests/check_pf12_walls.ts` changed, plus my round-2 note, committed unchanged. The migration and the app code are unchanged.
+
+**What I ran:**
+- `check_pf12_walls` **110/0** at 7fa9cf46 (run alone, shared tree clean).
+- Three mutants from `git archive` copies. Each turned its own probe red:
+  - **A** (undo `FAMILIES.test(t) ||` in `unguarded`): the r1/r2 probe went red, because the trigger on `platform_signup_pending` was not named.
+  - **B** (drop the `relforcerowsecurity` clause): the case_stage probe went red.
+  - **C** (`walls` accepts any known shape on any table): the r1/r2 probe went red, because the template read on `platform_staff` was not named.
+- **A slip on my side, already fixed:** I ran the mutants in parallel, so they clashed on the cluster-wide probe role `xr_pf12_probe_owner` later in the suite. That left the role behind. I dropped it and re-ran the head alone: 110/0, with no role or database left over. The probes above run before that point, so the mutant results stand. **Do not run this suite in parallel on one cluster.**
+
+**My round-2 Minors, all fixed:**
+- **r1:** the two probes fail when their rule is removed, as the mutants show. `listHolds()` is checked before and after forcing case_stage, and the table is put back.
+- **r2:** `WALLING` now maps each shape to its tables. The id shape counts only on platform_firm, and the template read only on msg_template and msg_template_version. Unknown shapes are rejected through `Object.hasOwn`.
+- **r3:** module_event's reason now says its wall has no owner row yet (the tech lead's).
+
+No new findings. The FO-7c note stays with the tech lead in the PR. Journey score unchanged: **9.5/10**.
+
+Verdict: Approve 7fa9cf464bdd0ac7ec20369d693d43820c5f2b2d
+
+Reviewer: Approve 7fa9cf464bdd0ac7ec20369d693d43820c5f2b2d
