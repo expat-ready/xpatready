@@ -67,8 +67,10 @@ const tpl = await api(rTok, "POST", "/retainer-templates", tplForm);
 async function sendRetainer() {
   const p = await api(oTok, "POST", `/leads/${lead.id}/engage`);
   const d = await api(rTok, "POST", `/prospects/${p.body?.id}/retainers`, { templateId: tpl.body?.id, fees: [{ label: "Fee (Sample)", amountMinor: 100000, when: "ON_SIGNING" }] });
+  // FO-13c: no retainer is sent without a recorded conflict check; recorded through its API (the panel is FO-13s).
+  const c = await api(rTok, "POST", "/conflict-checks", { prospectId: p.body?.id, requestId: crypto.randomUUID(), result: "NO_CONFLICT" });
   const s = await api(rTok, "POST", `/retainers/${d.body?.id}/send`, { expectedVersion: 1 });
-  return { steps: [p.status, d.status, s.status], warnings: s.body?.warnings as string[] | undefined, status: s.body?.status, prospectId: p.body?.id as string };
+  return { steps: [p.status, d.status, c.status, s.status], warnings: s.body?.warnings as string[] | undefined, status: s.body?.status, prospectId: p.body?.id as string };
 }
 ok("J-110 setup: the Sample firm, a person with a lead owned by the Case Officer, and a retainer template", tpl.status === 201 || tpl.status === 200, tpl);
 
