@@ -17,6 +17,7 @@ import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } 
 import { wonSubjectOf } from "./corporate/service.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { sourcesChecked } from "./source-filter.ts";
+import { clearForWin, lockPartyOf } from "../compliance/conflict/gate.ts";
 
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 /** A retainer counts as signed once the client signed it, on screen or on paper (AG-2-47 rules 17-18). */
@@ -83,9 +84,10 @@ const CAUSE = { CONVERTED: "CONVERT", SIGNED_OFFLINE: "SIGNED_OFFLINE", E_SIGNED
 export async function winProspect(tx: Tx, ctx: StaffContext, prospectId: string, w: { via: WonVia; at: Date; retainerId?: string | null; audit: (p: Locked, retainerSigned: boolean) => Promise<unknown> }) {
   const p = await lockProspect(tx, ctx.firmId, prospectId);
   if (!p || p.kind === "WON") return null;
+  const signed = await signedRetainer(tx, ctx.firmId, p.id);
+  await clearForWin(tx, ctx.firmId, p.id, w.retainerId ?? null, signed);   // FO-13c: no client without a recorded conflict check
   const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "WON" as const }) });
   const last = await tx.foStageMove.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
-  const signed = await signedRetainer(tx, ctx.firmId, p.id);
   await tx.foProspect.update({ where: { id: p.id }, data: { stageId: to.id, wonVia: w.via, wonAt: w.at, lostReasonId: null, lostReasonKind: null, lostNote: null } });
   await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: to.id, cause: CAUSE[w.via], byActor: actorOf(ctx) } });
   await w.audit(p, signed);
@@ -311,6 +313,7 @@ export class Prospects {
     const pid = this.idOf(id);
     const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
+      await lockPartyOf(tx, ctx.firmId, pid);   // FO-13c (review r4): the party's lock before the prospect's row, as Send and Signed offline take them
       const { p } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind === "WON") return conflict("This prospect is already a client.", "ALREADY_WON");
       if (p.kind === "LOST") return conflict("A lost prospect cannot be converted. Start a new prospect.", "TERMINAL");

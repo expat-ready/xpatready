@@ -1,0 +1,9 @@
+ci full run 44759585301 on main 7df8b3229 (app tree = main 90535a94e: the 14 files between are qa records), conclusion success
+job 136370545398: | check_pf12b_bypass_audit.ts | PASS | 5 s | 56 passed, 0 failed |
+job 136370545360: | check_pf12_walls.ts | PASS | 23 s | 100 passed, 0 failed |
+job 136370545397: | check_pf19b_sending.ts | PASS | 3 s | 42 passed, 0 failed |
+job 136370545356: | check_pf19b_mail.ts | PASS | 7 s | 29 passed, 0 failed |
+job 136370545435: | check_pf5_signup_billing.ts | PASS | 9 s | 54 passed, 0 failed |
+job 136370545403: | check_pf25_web_address.ts | PASS | 15 s | 68 passed, 0 failed |
+job 136370545356: | check_pf5v_signup_mail.ts | PASS | 1 s | 13 passed, 0 failed |
+job 136370545407: | check_pf0a_audit_port.ts | PASS | 2 s | 24 passed, 0 failed |

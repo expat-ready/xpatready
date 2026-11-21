@@ -84,7 +84,9 @@ DATABASE_URL="$URL" ./node_modules/.bin/prisma migrate deploy >/dev/null
 # changed since (an area file added with an old date, or deleted: the folder's own time moves), regenerates it.
 [[ ! -e node_modules/.prisma/client/index.js || -n "$(find prisma \( -name '*.prisma' -o -type d \) -newer node_modules/.prisma/client/index.js 2>/dev/null)" ]] && ./node_modules/.bin/prisma generate >/dev/null
 # CS-W1 (Lead 61, #1872): the Sample firms exist on every copy (an argument PLATFORM_SAMPLE_SEED=off still wins).
-env DATABASE_URL="$URL" STUDIO_PORT="$PORT" STUDIO_VAR="$VARDIR" PLATFORM_SAMPLE_SEED="${PLATFORM_SAMPLE_SEED:-on}" "$@" nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts >> "$VARDIR/api.log" 2>&1 &
+# PF-24w: PLATFORM_ENVIRONMENT is required (no default in the app): a lane copy is local unless the caller's exported or
+# passed value says otherwise (break m1, #2635: an exported test or production is never silently turned into local).
+env DATABASE_URL="$URL" PLATFORM_ENVIRONMENT="${PLATFORM_ENVIRONMENT:-local}" STUDIO_PORT="$PORT" STUDIO_VAR="$VARDIR" PLATFORM_SAMPLE_SEED="${PLATFORM_SAMPLE_SEED:-on}" "$@" nohup ./node_modules/.bin/tsx --tsconfig api/tsconfig.json api/src/main.ts >> "$VARDIR/api.log" 2>&1 &
 # Who serves this database (#745 review M1): prune-test-dbs.sh keeps a database whose recorded server is alive, since an
 # idle server holds no connection (its pool closes them after 10 s); stop ends it. Never fails the start.
 SPID=$!
