@@ -9,6 +9,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 ## Lead 15 since 15:47 IST (newest first)
+* 16:5x (A267 founder typed: all AWS approvals, product first): AWS Support case **179475587900349** (unassigned since 15 Nov) followed up with all 3 failed operation ids; bill Nov US$0.72, no domain charge. Rulings: **#2752 option 1** → **PF-12b3** to the PF-12b2 lane (3 platform audit rows, reencrypt out); #2782 merges as is, **Lead removes the FO-3st3 hold from run-suites.sh after it merges**; #2800 m2 later row; #2738 Q1 warn, unlabelled until 07:00 22 Nov (would block R1.4/R1.80/R1.37/R1.72 mid-cycle). #2779 (qa records) labelled. #2746 closed (seen, not acted).
 * 16:3x **AWS staging domain PARKED (founder, A266):** Route 53 registration fails on this account (xpatready.dev 16:23 IST; expatready-staging.com twice 16 Nov; card on file is the default, so not a card issue; needs AWS Support). Founder gets the expatready.com Cloudflare details from the team; then the team (or Lead with access) adds 4 NS records `staging` from AWS at deploy. #2800 + F2b still go ahead. Founder will nudge.
 * 16:1x SHARDS=24 (founder entered the 2FA). #2750 answered (walks/plan not required; walks.yml cap row owed). Founder re-asked best staging domain option: Lead recommends B (Route 53 domain, no base change); waits on his purchase + name.
 * 16:1x AWS staging domain: founder chose **option B** (via Lead 14): he registers a cheap domain in Route 53 himself (~US$3-15/yr, card on file). No NS step (Route 53 delegates). Lane pf8b-f1-f2 briefed **F2b**: PLATFORM_ADDRESS_SUFFIX one setting from xr:domain, PR after #2800. Go Phase 2 = #2800 + F2b merged + domain live + name sent to AWS (local_35aacb3f). CloudFront rejected: R1.24 unprovable, bigger code row.
@@ -31,6 +32,7 @@ Moved word for word to `product/history/STATE-2026-11-21-1605-lead15s3-lead14-si
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A267 | 21 Nov 16:4x (typed): raise the AWS Support request; check the card; carry on with product work; all AWS approvals; tell him if stuck | Case followed up; card is default (Mastercard), not the cause |
 | A266 | 21 Nov 16:3x (typed): park the domain; he gets Cloudflare/AWS domain details from the team and nudges; focus back on work | Parked; #2800 + F2b continue |
 | A265 | 21 Nov 16:0x (typed): no Cloudflare access for expatready.com: free, solid workaround now, easy switch later; raise serious concerns; SHARDS: use the browser | AWS plan asked (CloudFront default domain); SHARDS waits on a GitHub 2FA code |
 | A264 | 21 Nov 15:3x (typed): go for the R1.53 lane and PF-8b fixes F1/F2 | Both lanes started 15:3x |
