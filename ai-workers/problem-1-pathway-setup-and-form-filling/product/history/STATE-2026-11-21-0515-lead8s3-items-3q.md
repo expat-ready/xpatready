@@ -12,3 +12,10 @@
 (3w) **05:5x IST:** #2478 (R1.108 FO-13c) MERGED. **#2637 now carries R1.110 Works + R1.38 Works** (J-38 W9 55/55 twice, fresh reader) → Lead approved + labelled at 3acb79c6f; **on merge: 32 on main**. #2621 PF-18h fix pushed (52d9d5b52), waits on a diff-only Approve, then the Lead posts /run full.
 (3x) **06:0x IST:** disk fell to 7 GB: Lead 8's own scratch archive copies (3.3 GB in $TMPDIR: rc, di, cd) deleted → 10 GB. Lesson: scratch check copies via `git archive` are ~1 GB each; delete right after the check. #2637 (32) queued. #2621 /run full posted on fed37c39f (diff-only Approve + batch failures covered); label on green.
 (3y) **06:1x IST: TARGET MET: 32 of 101 Works on main** (counted from qa/CAPABILITIES.md on origin/main: the 32 include R1.8, R1.100, R1.26, R1.110, R1.38). #2637 merged. #2621 PF-18h full run nearly done (15 green, 1 running) and queued.
+(3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
+(3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
+(3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
+(3j) 03:2x check (R1.26, R1.100 merged; R1.110 Works; R1.38 QA-616): word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
+(3h) 02:47 check: word for word in `product/history/STATE-2026-11-21-0320-lead8s3-item-3h.md`.
+(3f/3g) 02:3x-02:4x: R1.38 and R1.110 merged, walks started in the browser, duplicates archived, #2596 migration read: word for word in `product/history/STATE-2026-11-21-0250-lead8s3-items-3f-3g.md`.
+(3c/3e/4a) Lead 8's 02:1x-02:2x checks (duplicate lanes, #2556 run, app view answers, old lane copies list): word for word in `product/history/STATE-2026-11-21-0240-lead8s3-items-3c-3e-4a.md`.
