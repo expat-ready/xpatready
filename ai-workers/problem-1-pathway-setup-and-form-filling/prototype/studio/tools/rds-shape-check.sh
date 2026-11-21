@@ -5,9 +5,9 @@
 # BYPASSRLS and a server that does not log tersely must stop at PF-12 with its message, leaving no role behind.
 # A throwaway cluster on its own port (initdb as the postgres user: a cloud lane or a Linux machine with postgresql-18),
 # removed at the end; the lane's own cluster on 54329 is never touched. Exit 0 only when every line passes. US$0.
-#   bash studio/tools/rds-shape-check.sh [port]      (default 54401; uses ports port..port+4)
+#   bash studio/tools/rds-shape-check.sh [port]      (default 15401, below the ephemeral port range; uses ports port..port+4)
 set -uo pipefail
-STUDIO=$(cd "$(dirname "$0")/.." && pwd); PORT=${1:-54401}
+STUDIO=$(cd "$(dirname "$0")/.." && pwd); PORT=${1:-15401}   # below the ephemeral range (32768+): a client socket never holds it
 PGBIN=${PGBIN:-$(dirname "$(readlink -f "$(command -v initdb 2>/dev/null || echo /usr/lib/postgresql/18/bin/initdb)")")}
 AS_PG=(); [ "$(id -u)" = 0 ] && AS_PG=(runuser -u postgres --)
 fails=0; ok() { if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1: got [$2], want [$3]"; fails=$((fails + 1)); fi; }
@@ -15,7 +15,11 @@ start() { # port bypass|nobypass terse|verbose
   local d=/tmp/rds-shape-$1 attr="LOGIN CREATEROLE CREATEDB NOSUPERUSER"; [ "$2" = bypass ] && attr="$attr BYPASSRLS"
   rm -rf "$d"; mkdir -p "$d"; [ "$(id -u)" = 0 ] && chown postgres "$d"
   "${AS_PG[@]}" "$PGBIN/initdb" -D "$d/data" -U postgres -A trust -E UTF8 --locale=C.UTF-8 >/dev/null || return 1
-  "${AS_PG[@]}" "$PGBIN/pg_ctl" -D "$d/data" -o "-p $1 -k $d -c listen_addresses=127.0.0.1 -c log_error_verbosity=$3" -l "$d/log" -w start >/dev/null || return 1
+  # small, so several throwaway clusters fit beside the lane's own; one retry (a port or shared memory still being freed)
+  local o="-p $1 -k $d -c listen_addresses=127.0.0.1 -c log_error_verbosity=$3 -c shared_buffers=16MB -c max_connections=40"
+  "${AS_PG[@]}" "$PGBIN/pg_ctl" -D "$d/data" -o "$o" -l "$d/log" -w start >/dev/null \
+    || { sleep 3; "${AS_PG[@]}" "$PGBIN/pg_ctl" -D "$d/data" -o "$o" -l "$d/log" -w start >/dev/null; } \
+    || { tail -5 "$d/log" >&2; return 1; }
   for q in "CREATE ROLE rds_superuser NOLOGIN" "CREATE ROLE xr_admin $attr" "GRANT rds_superuser TO xr_admin WITH ADMIN OPTION" "CREATE DATABASE xr_rds OWNER xr_admin"; do
     psql -h 127.0.0.1 -p "$1" -U postgres -d postgres -qc "$q" || return 1; done
 }
