@@ -19,8 +19,8 @@ export const FIND_MAX_HITS = 20;
 /** The words when a finder was dropped (BACKLOG PF-30a). */
 export const PARTIAL_LINE = "Some results could not be loaded";
 
-/** The text typed: trimmed, 2-100 characters (BACKLOG PF-30a); shorter or longer is refused (the route answers 400). */
-export const FindText = z.string().trim().min(2).max(100);
+/** The text typed: trimmed, 2-100 characters counted as characters, not UTF-16 units (BACKLOG PF-30a); shorter or longer is refused (the route answers 400). */
+export const FindText = z.string().trim().refine((v) => [...v].length >= 2 && [...v].length <= 100, "2 to 100 characters");
 
 /** The query as every finder reads it, made once by `findQueryOf`. */
 export type FindQuery = {
@@ -48,7 +48,8 @@ export function findQueryOf(raw: unknown): FindQuery {
   return {
     text,
     email: normaliseEmail(text),
-    nameKey: text.includes("@") ? "" : personNameKey(text, ""),
+    // at least 2 letters or digits, so "a." or "a%" is no 1-letter search (breaker m1)
+    nameKey: text.includes("@") ? "" : ((k) => (k.replace(/ /g, "").length >= 2 ? k : ""))(personNameKey(text, "")),
     phone: PHONE_LIKE.test(text) && digits.length >= 7 && digits.length <= 15 ? text : null,
     number,
   };
@@ -89,15 +90,19 @@ export interface FindPort<C extends FindCaller = FindCaller> {
 /** The run rule both the registry and the fake use: every finder at once, each within `budgetMs`; a slow, failing or
  *  ill-shaped finder is dropped (never its error's words: they could quote the query); at most FINDER_MAX_HITS from
  *  each, at most FIND_MAX_HITS in all, in registration order, grouped by kind. */
-export async function runFinders<C extends FindCaller>(finders: ReadonlyArray<readonly [string, Finder<C>]>, ctx: C, text: unknown, budgetMs = FIND_BUDGET_MS): Promise<FindResult> {
+/** Why a finder was dropped: the module and a reason word only, never the error's words (they could quote the query). */
+export type FindDrop = { module: string; reason: "TIMEOUT" | "ERROR" | "SHAPE" };
+export async function runFinders<C extends FindCaller>(finders: ReadonlyArray<readonly [string, Finder<C>]>, ctx: C, text: unknown, budgetMs = FIND_BUDGET_MS, onDrop?: (d: FindDrop) => void): Promise<FindResult> {
   const query = findQueryOf(text);
-  const runs = await Promise.all(finders.map(async ([, finder]) => {
+  const runs = await Promise.all(finders.map(async ([module, finder]) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), budgetMs); });
     try {
-      const got = await Promise.race([finder(ctx, query).then((h) => z.array(FindHit).parse(h)), late]);
+      const got = await Promise.race([finder(ctx, query).then((h) => { const r = z.array(FindHit).safeParse(h); if (!r.success) throw new ShapeError(); return r.data; }), late]);
+      if (got === null) onDrop?.({ module, reason: "TIMEOUT" });
       return got;
-    } catch {
+    } catch (e) {
+      onDrop?.({ module, reason: e instanceof ShapeError ? "SHAPE" : "ERROR" });
       return null;
     } finally { clearTimeout(timer); }
   }));
@@ -110,6 +115,8 @@ export async function runFinders<C extends FindCaller>(finders: ReadonlyArray<re
   const partial = runs.some((r) => r === null);
   return { groups, partial, message: partial ? PARTIAL_LINE : null };
 }
+
+class ShapeError extends Error {}
 
 /** The module name a finder registers under. */
 export const FindModule = z.string().regex(/^[a-z][a-z0-9-]{1,39}$/);

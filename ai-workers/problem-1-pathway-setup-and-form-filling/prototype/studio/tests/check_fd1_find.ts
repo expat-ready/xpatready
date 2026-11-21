@@ -58,6 +58,7 @@ await runContract(findPortContract, "FindRegistry", () => new FindRegistry() as 
   const e = findQueryOf(" ANNA@EXAMPLE.COM "), p = findQueryOf("+1 416 555 0100"), n = findQueryOf("p-00012"), w = findQueryOf("Ann");
   ok("PF-30a pass (query read once): an email lower-cased, a phone kept for the firm's reader, a file number upper-cased, a name as its key",
     e.email === "anna@example.com" && e.nameKey === "" && p.phone === "+1 416 555 0100" && n.number === "P-00012" && w.nameKey === "ann" && w.email === null && w.phone === null && w.number === null, { e, p, n, w });
+  ok("PF-30a fail (breaker m1): \"a.\", \"a%\" and a lone emoji are no 2-character name search", findQueryOf("a.").nameKey === "" && findQueryOf("a%").nameKey === "" && (await refusal(() => findQueryOf("😀"))) !== null);
   ok("PF-30a fail (query read once): a short number is no phone, words are no email, a name is no file number",
     findQueryOf("12345").phone === null && findQueryOf("anna at example").email === null && findQueryOf("Anna Smith").number === null);
   ok("PF-30a pass: the firm's country is the phone's default (CA reads 4165550100; GB reads 020 7946 0958)", phoneForFirm("4165550100", "CA") === "+14165550100" && phoneForFirm("020 7946 0958", "GB") === "+442079460958");
@@ -116,6 +117,14 @@ try {
   const misspelt = await refusal(() => route.find({ platform: R }, { query: "Anna" }));
   ok("PF-30a fail (PF-28): a misspelt query key (query=) → 422 naming it", misspelt?.status === 422 && JSON.stringify(misspelt.body).includes("query"), misspelt);
   ok("PF-30a fail: a 1-character query, no query or 101 characters → 400, the refusal not repeating it", one?.status === 400 && none?.status === 400 && long?.status === 400 && !JSON.stringify(long).includes("xxxx"), { one, none, long });
+  const veryLong = await refusal(() => route.find({ platform: R }, { q: "x".repeat(600) }));
+  ok("PF-30a fail (breaker m2): 600 characters → the same 400 QUERY_LENGTH as 101", veryLong?.status === 400 && JSON.stringify(veryLong.body).includes("QUERY_LENGTH"), veryLong);
+  const zelda = await add(R, { givenNames: "Zelda5", familyName: "Sample", email: "zelda5@example.com" });
+  ok("PF-30a pass (breaker m4): a name shaped like a file number (\"zelda5\") is still searched as a name", ids(await find(R, "zelda5")).includes(zelda.person.id));
+  const jose = await add(R, { givenNames: "José", familyName: "García", email: "jose.garcia@example.com" });
+  const li = await add(R, { givenNames: "李", familyName: "明", email: "li.ming@example.com" });
+  ok("PF-30a pass: an accented name typed with its accent (\"José\") finds José García by prefix; a non-Latin full name (李 明) by FO-9a's exact key", ids(await find(R, "José")).includes(jose.person.id) && ids(await find(R, "李 明")).includes(li.person.id));
+  ok("PF-30a fail: a non-Latin letter is never read as a prefix of another (王 does not find 李明)", !ids(await find(R, "王芳")).includes(li.person.id));
   ok("PF-30a pass: 2 characters are enough (\"An\" through the route)", ids(await route.find({ platform: R }, { q: "An" })).includes(anna.person.id));
 
   // ------------------------------------------------------------------------------------- own versus all
@@ -149,6 +158,22 @@ try {
   ok("PF-30a fail: a person with no lead or prospect (a company contact only) is not found", zed.contacts.some((c) => c.name === "Zed Contactonly") && all(await find(R, "zed@pinebakery.example")).length === 0);
   ok("PF-30a pass: one finder answers at most 8 hits", await (async () => { for (let i = 0; i < 10; i++) await add(R, { givenNames: `Annalise${i}`, familyName: "Sample", email: `annalise${i}@example.com` }); return all(await find(R, "Ann")).length === 8; })());
 
+  // ------------------------------------------------------------------------------------- review M1: the cap never hides the caller's own
+  sql(`insert into fo_person (firm_id, given_names, family_name, created_by, created_at, updated_at) select '${A}', 'Ann' || g, 'Crowd', 'test', now() - interval '1 day', now() from generate_series(1, 57) g;
+       insert into fo_lead (firm_id, person_id, door, source, owner_staff_id, created_by, updated_at) select firm_id, id, 'MANUAL', 'Phone call', '${R.staffId}', 'test', now() from fo_person where family_name = 'Crowd'`);
+  const mine = await add(T, { givenNames: "Anneliese", familyName: "Mine", email: "anneliese@example.com" });
+  const tProspect = await pros.engage(T, mine.id) as { id: string; number: string };
+  await everyone(false);
+  const crowded = await find(T, "Ann"), crowdedNumber = await find(T, "P-0");
+  await everyone(true);
+  ok("PF-30a pass (review M1): with 57 older \"Ann…\" people of another owner, a view.own caller (T) still finds T's own Anneliese, and T's prospect by a number prefix",
+    ids(crowded).includes(mine.person.id) && ids(crowdedNumber, "prospect").includes(tProspect.id), { crowded, crowdedNumber });
+  ok("PF-30a fail (review M1): none of the 57 other-owner people, nor R's prospects, is named to T", !all(crowded).some((h) => h.title.endsWith("Crowd")) && !ids(crowdedNumber, "prospect").includes(pa.id));
+  sql(`insert into fo_person (firm_id, given_names, family_name, created_by, created_at, updated_at) select '${A}', 'Anna' || g, 'Nolead', 'test', now() - interval '2 days', now() from generate_series(1, 80) g`);
+  ok("PF-30a pass (breaker M1): 80 older \"Anna…\" people with no lead or prospect never crowd out R's own (view all)", ids(await find(R, "Anna")).includes(anna.person.id) && !all(await find(R, "Anna")).some((h) => h.title.endsWith("Nolead")));
+  const noShow = { ...R, keys: R.keys.filter((k) => k !== "agent/prospect:show") };
+  ok("PF-30a fail (review m3): a person without agent/prospect:show finds nothing in the front office", all(await find(noShow, "Anna")).length === 0 && ids(await find(R, "Anna")).includes(anna.person.id));
+
   // ------------------------------------------------------------------------------------- a slow module is dropped
   registry.register("slow-sample", async () => { await sleep(2000); return [{ kind: "case", id: randomUUID(), title: "Sample slow case", subtitle: null, matched_on: ["NAME"], url: "/cases" } satisfies FindHit]; });
   const t0 = Date.now(), slow = await find(R, "Anna"), took = Date.now() - t0;
@@ -165,6 +190,7 @@ try {
   ok("PF-30a pass: firm B finds its own people (Annika) and only them", JSON.stringify(ids(await fresh.find(SOLO, "Ann"))) === JSON.stringify([bPerson.person.id]));
 
   // ------------------------------------------------------------------------------------- the query is never logged (PF-23's scanner)
+  fresh.register("broken-sample", async (_c, q) => { throw new Error(`no record for ${q.text}`); });
   class ProbeModule {}
   Module({ controllers: [FindController], providers: [{ provide: FindRegistry, useValue: fresh }] })(ProbeModule);
   const lines: string[] = [];
@@ -184,6 +210,7 @@ try {
     statuses.join(",") === "200,200,200,200,400" && lines.some((l) => l.includes("/api/platform/find")) && findings.length === 0 && queries.every((q) => !lines.join("\n").includes(q)) && JSON.parse(body).groups.length >= 1, { statuses, findings, lines: lines.length });
   const control = scanText(JSON.stringify({ event: "log", message: "find Annabel Sample" }), "planted.log", queries);
   ok("PF-30a fail (logs): a line that does hold a query (planted) is caught by the same scanner", control.length === 1, control);
+  ok("PF-30a pass (review m4): a dropped finder is logged by its module and a reason word only, never its error's words", lines.some((l) => l.includes("finder broken-sample dropped (ERROR)")) && !lines.join("\n").includes("no record for"));
 } finally {
   await db.$disconnect();
   execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB]);

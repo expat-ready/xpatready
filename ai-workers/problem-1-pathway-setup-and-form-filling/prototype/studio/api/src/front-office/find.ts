@@ -24,6 +24,7 @@ import type { StaffContext } from "../platform/identity/keys.ts";
 import { DEFAULT_REGION, phoneE164Exact } from "./duplicates/phone.ts";
 import { normaliseCompanyName, seesCompany } from "./sales/corporate/match.ts";
 import { actorOf, sees, visibilityOf } from "./sales/common.ts";
+import { inactiveStaff, leadsSeenWhere } from "./sales/source-filter.ts";
 
 type Matched = FindHit["matched_on"][number];
 type Ranked = FindHit & { rank: number };
@@ -36,7 +37,8 @@ const prospectWord = (kind: string) => (kind === "LOST" ? "Lost" : kind === "WON
 export function phoneForFirm(text: string, country: string): string | null {
   if (country === DEFAULT_REGION) return phoneE164Exact(text);
   const n = parsePhoneNumberFromString(text, country as CountryCode);
-  return n && n.isPossible() && !n.ext && /^\+[1-9][0-9]{6,14}$/.test(n.number) ? n.number : null;
+  // as FO-9a's reader: a whole number, possible with its country code alone (not a local-only length), no extension
+  return n && n.isPossible() && !n.ext && /^\+[1-9][0-9]{6,14}$/.test(n.number) && parsePhoneNumberFromString(n.number)?.isPossible() ? n.number : null;
 }
 
 @Injectable()
@@ -46,21 +48,32 @@ export class FrontOfficeFinder implements OnModuleInit {
   onModuleInit() { this.registry.register("front-office", (ctx, q) => this.find(ctx, q)); }
 
   async find(ctx: StaffContext, q: FindQuery): Promise<FindHit[]> {
+    // Every lead and prospect read route needs agent/prospect:show; without it the front office finds nothing (review m3).
+    if (!ctx.keys.includes("agent/prospect:show")) return [];
     const firmId = ctx.firmId;
     const vis = await visibilityOf(this.db, ctx);
-    const seeLead = (owner: string | null) => sees(vis, ctx, owner);
+    const inactive = vis.seesAll ? [] : await inactiveStaff(this.db, firmId);
+    // A deactivated owner's lead is Unassigned (leads.ts, review m1); the prospects' rule is all or the caller's own.
+    const seeLead = (owner: string | null) => sees(vis, ctx, owner && inactive.includes(owner) ? null : owner);
     const seeProspect = (owner: string | null) => vis.seesAll || owner === ctx.staffId;
+    // The same rules as query filters, so a capped read never fills with records the caller cannot open (review M1).
+    const prospectWhere = vis.seesAll ? {} : { ownerStaffId: ctx.staffId };
+    // A person must hold a front-office role (a lead or a prospect) the caller may open, even for whoever sees all, so
+    // people with no lead (contacts, merged records) never fill the cap either (breaker M1).
+    const personWhere = { OR: [{ leads: { some: leadsSeenWhere(ctx, vis, inactive) } }, { subjectOf: { some: prospectWhere } }, { primaryContactOf: { some: prospectWhere } }] };
     const out: Ranked[] = [];
 
     // ------------------------------------------------------------------ people
     const firm = q.phone ? await this.db.platformFirm.findUnique({ where: { id: firmId }, select: { countryCode: true } }) : null;
     const phone = q.phone && firm ? phoneForFirm(q.phone, firm.countryCode) : null;
-    const name = q.number || q.phone ? "" : q.nameKey;
+    const name = q.phone ? "" : q.nameKey;   // "zelda5" is a name as well as a number shape (breaker m4)
     const similar = q.email || phone || name ? await this.db.$queryRaw<SimRow[]>`
       select id::text, by_email, by_phone, sim from fo_sales_person_matches(${firmId}::uuid, ${q.email}::text, ${phone ? [phone] : []}::text[], ${name}::text,
         ${ctx.staffId}::uuid, ${vis.seesAll}, ${vis.seesUnassigned}, ${NAME_THRESHOLD}::real, 50)` : [];
-    const prefix = name && !/[0-9]/.test(name) ? await this.db.foPerson.findMany({
-      where: firmScope(firmId, { OR: [{ nameKey: { startsWith: name } }, { nameKey: { contains: ` ${name}` } }] }), select: { id: true }, take: 50, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    // A prefix is read only for text that is ASCII once accents are folded (José → jose, as the name key folds them): a non-Latin letter's key is hex (FO-9a), where a prefix could meet
+    // an unrelated letter; those match by FO-9a's exact key. "zelda5" is ASCII, so its digit is a digit (breaker m4).
+    const prefix = name && /^[\x20-\x7e]+$/.test(q.text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")) ? await this.db.foPerson.findMany({
+      where: firmScope(firmId, { AND: [{ OR: [{ nameKey: { startsWith: name } }, { nameKey: { contains: ` ${name}` } }] }, personWhere] }), select: { id: true }, take: 50, orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }) : [];
     const prefixIds = new Set(prefix.map((p) => p.id));
     const simOf = new Map(similar.map((s) => [s.id, s]));
@@ -94,7 +107,7 @@ export class FrontOfficeFinder implements OnModuleInit {
     // ------------------------------------------------------------------ prospects by number
     if (q.number && /^P-[0-9]+$/.test(q.number)) {
       const rows = await this.db.foProspect.findMany({
-        where: firmScope(firmId, { number: { startsWith: q.number } }), take: 50, orderBy: [{ number: "asc" }],
+        where: firmScope(firmId, { number: { startsWith: q.number }, ...prospectWhere }), take: 50, orderBy: [{ number: "asc" }],
         select: { id: true, number: true, ownerStaffId: true, stage: { select: { kind: true } }, subjectPerson: { select: { givenNames: true, familyName: true } }, subjectCompany: { select: { operatingName: true } } },
       });
       for (const r of rows.filter((x) => seeProspect(x.ownerStaffId))) {
@@ -104,10 +117,11 @@ export class FrontOfficeFinder implements OnModuleInit {
     }
 
     // ------------------------------------------------------------------ companies by name
-    const company = !q.email && !q.phone && !q.number ? normaliseCompanyName(q.text) : "";
-    if (company) {
+    const company = !q.email && !q.phone ? normaliseCompanyName(q.text) : "";
+    if ([...company.replace(/\s/g, "")].length >= 2) {   // at least 2 letters or digits: "a." is no 2-character search (breaker m1)
       const sim = await this.db.$queryRaw<{ id: string; sim: number }[]>`select id::text, sim from fo_sales_company_matches(${firmId}::uuid, ${company}::text, ${NAME_THRESHOLD}::real, 50)`;
-      const pre = await this.db.foCompany.findMany({ where: firmScope(firmId, { OR: [{ normalisedName: { startsWith: company } }, { normalisedName: { contains: ` ${company}` } }] }), select: { id: true }, take: 50 });
+      // Only companies with a prospect the caller may open (no page to go to otherwise), in the capped read itself.
+      const pre = await this.db.foCompany.findMany({ where: firmScope(firmId, { OR: [{ normalisedName: { startsWith: company } }, { normalisedName: { contains: ` ${company}` } }], prospects: { some: prospectWhere } }), select: { id: true }, take: 50, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
       const preIds = new Set(pre.map((c) => c.id)), simC = new Map(sim.map((c) => [c.id, c.sim]));
       const rows = await this.db.foCompany.findMany({
         where: firmScope(firmId, { id: { in: [...new Set([...preIds, ...simC.keys()])] } }),

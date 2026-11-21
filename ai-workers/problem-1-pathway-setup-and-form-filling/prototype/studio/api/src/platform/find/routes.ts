@@ -4,13 +4,14 @@
 // logged: the request line names the route pattern only (PF-23 hook.ts), and nothing here writes it.
 import { Controller, Get, Inject, Query, Req } from "@nestjs/common";
 import { FindText, type FindResult } from "../../../../ports/find.ts";
-import { parseInput, query } from "../http/input.ts";
+import { parseInput, strict } from "../http/input.ts";
+import { z } from "zod";
 import { AnyStaff, problem, staffOf, type StaffContext } from "../identity/keys.ts";
 import { FindRegistry } from "./registry.ts";
 
 type R = { platform?: StaffContext };
 /** The one query key the door reads. */
-export const FindQueryKeys = query("q");
+export const FindQueryKeys = strict({ q: z.string().optional() });   // any length here: FindText answers 400 for every bad length (breaker m2)
 
 @Controller("api/platform")
 export class FindController {
