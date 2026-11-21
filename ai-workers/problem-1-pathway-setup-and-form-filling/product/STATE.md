@@ -9,6 +9,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 ## Lead 15 since 15:47 IST (newest first)
+* 17:0x **Recovery plan to 15 (A269):** 4 proven + R1.14 (#2804) · R1.32 (Q5, nightly+#2804) · R1.47 (#2633→Q4) · R1.10 (#2619→Q5) · R1.4 (#2752 merged + PF-12b3) · R1.42 (#2750+#2782+hold removal→Q1) · R1.53 (#2802 + part 2) · R1.19 (#1959 conflict, Lead B) = 12; + **R1.13, R1.15 via PF-8b F3 no-domain mode** (briefed to pf8b lane, PR by 23:00, AWS deploy after) = 14; + R1.90 (#2763 TS2531 fix briefed; migration read safe; PF-16 part 1 still needed) or R1.3 reserve = 15. Rulings: overdue firms may book a lower plan; #2809 forecast counts merged rows with a qa owner; #2603 round 4 allowed + labelled.
 * 16:4x full walk (A268): R1.53 lane: 2nd branch allowed for part 2 (stacked on #2802), rulings FO-5 old link ends at Send, J-53 ends at row 54, **CAD 0.00 = no fee due, shows "No fee" (Lead ruling P-628, founder to review)**; owed BACKLOG: FO-5s split, edit-person-email X-row, QA-656 drill reminder, QA-657 cloud restore checks, walks.yml 20-journey cap tooling row. R1.14 Works in #2804; redacted drill evidence sent to Q5 to commit (QA-655). Q1 → R1.42 (stale Lead 13 R1.32 draft cleared; Q5 keeps R1.32/R1.14/R1.10). #2776 Lead-read + labelled; #2458 requeued. #2752 merged (R1.4 now waits PF-12b3).
 * 16:5x (A267 founder typed: all AWS approvals, product first): AWS Support case **179475587900349** (unassigned since 15 Nov) followed up with all 3 failed operation ids; bill Nov US$0.72, no domain charge. Rulings: **#2752 option 1** → **PF-12b3** to the PF-12b2 lane (3 platform audit rows, reencrypt out); #2782 merges as is, **Lead removes the FO-3st3 hold from run-suites.sh after it merges**; #2800 m2 later row; #2738 Q1 warn, unlabelled until 07:00 22 Nov (would block R1.4/R1.80/R1.37/R1.72 mid-cycle). #2779 (qa records) labelled. #2746 closed (seen, not acted).
 * Earlier lines (15:47-16:3x): word for word in `product/history/STATE-2026-11-21-1650-lead15s3-lead15-since-early.md`.
@@ -30,6 +31,7 @@ Moved word for word to `product/history/STATE-2026-11-21-1605-lead15s3-lead14-si
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
 | A268 | 21 Nov 16:3x (typed): full lead-watch, walk every lane, Show more, nobody waits on the Lead | Walk done 16:4x; report sent |
 | A267 | 21 Nov 16:4x (typed): raise the AWS Support request; check the card; carry on with product work; all AWS approvals; tell him if stuck | Case followed up; card is default (Mastercard), not the cause |
 | A266 | 21 Nov 16:3x (typed): park the domain; he gets Cloudflare/AWS domain details from the team and nudges; focus back on work | Parked; #2800 + F2b continue |
