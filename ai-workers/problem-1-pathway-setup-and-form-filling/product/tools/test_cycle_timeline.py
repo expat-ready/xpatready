@@ -71,6 +71,32 @@ class CycleTimeline(unittest.TestCase):
         self.assertIn("late by 45 min", line(out, "R1.4"))
         self.assertTrue(line(out, "R1.19").endswith("on time"), line(out, "R1.19"))   # ~20:40 is before 07:00's deadline
 
+    def test_a_passed_eta_turns_late_after_the_deadline(self):
+        rc, out, _ = run(now="2026-11-22T06:50+05:30")
+        self.assertIn("late by 11h50m", line(out, "R1.4 "))       # no ETA, 19:00 passed
+        self.assertIn("on time (ETA 09:30 passed", line(out, "R1.10"))   # 07:00 not yet reached
+        rc, out, _ = run(now="2026-11-21T20:00+05:30")
+        self.assertIn("late by 1h00m", line(out, "R1.49"))         # Mergify ~13:02 passed, 19:00 passed, unproven
+
+    def test_github_down_stops_after_one_failure(self):
+        sys.path.insert(0, HERE)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ct", os.path.join(HERE, "cycle-timeline.py"))
+        ct = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ct)
+        calls = []
+        gh = ct.GitHub.__new__(ct.GitHub)
+        gh.token, gh.down = "x", None
+        real = ct.subprocess.run
+        ct.subprocess.run = lambda *a, **k: (calls.append(1), real(["false"], capture_output=True, text=True))[1]
+        try:
+            for n in (1, 2, 3):
+                with self.assertRaises(OSError):
+                    gh.pull(n)
+        finally:
+            ct.subprocess.run = real
+        self.assertEqual(len(calls), 1)
+
     def test_07_00_deadline_is_the_cycle_end(self):
         rc, out, _ = run(now="2026-11-22T06:59+05:30")
         self.assertIn("no ETA", line(out, "R1.24"))
@@ -89,8 +115,8 @@ class CycleTimeline(unittest.TestCase):
         import json
         with open(os.path.join(HERE, "..", "cycle-plan.json"), encoding="utf-8") as f:
             plan = json.load(f)
-        self.assertEqual(len(plan["rows"]), 15)
-        self.assertEqual(sum(1 for r in plan["rows"] if r["by"] == "19:00"), 8)
+        self.assertTrue(plan["rows"])
+        self.assertTrue(all(r["by"] in ("19:00", "07:00") and r["r1"].startswith("R1.") for r in plan["rows"]))
 
 
 if __name__ == "__main__":

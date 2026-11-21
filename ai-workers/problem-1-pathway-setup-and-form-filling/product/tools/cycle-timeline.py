@@ -22,7 +22,8 @@ Plan schema (product/cycle-plan.json):
 Usage:
   python3 -I product/tools/cycle-timeline.py [--plan FILE] [--now ISO] [--fixture FILE] [--capabilities FILE]
   --fixture answers GitHub from a JSON file ({"pulls": {"2618": {...}}}) and is what the CI test uses; --now fixes the
-  clock. Exit 0 always when the plan reads (a timeline is information, not a gate); 2 when the plan is unreadable.
+  clock. Exit 0 always when the plan reads (a timeline is information, not a gate); 2 when the plan or CAPABILITIES.md
+  is unreadable. After one network failure the remaining rows say "GitHub not answering" without waiting again.
 """
 import argparse
 import json
@@ -94,15 +95,21 @@ class GitHub:
     def __init__(self):
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         if not self.token:
-            r = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
-            self.token = r.stdout.strip()
+            try:
+                self.token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True).stdout.strip()
+            except OSError:
+                self.token = ""
+        self.down = None                                 # after one network failure, stop asking (lead-watch must not stall)
 
     def get(self, path):
+        if self.down:
+            raise OSError(self.down)
         r = subprocess.run(["curl", "-s", "--max-time", "20", "-H", "Authorization: Bearer " + self.token,
                             "-H", "Accept: application/vnd.github+json", "https://api.github.com/repos/%s/%s" % (REPO, path)],
                            capture_output=True, text=True)
         if r.returncode != 0:
-            raise OSError("curl exit %d" % r.returncode)
+            self.down = "GitHub not answering (curl exit %d)" % r.returncode
+            raise OSError(self.down)
         return json.loads(r.stdout)
 
     def pull(self, n):
@@ -189,7 +196,7 @@ def row_view(row, caps, gh, now, proof_minutes):
 def lateness(eta, deadline, now, proven):
     if proven:
         return "proven"
-    when = eta or (now if now > deadline else None)
+    when = max(eta, now) if eta else (now if now > deadline else None)   # a passed ETA cannot keep a row on time
     if when is None:
         return "no ETA"
     stale = " (ETA %s passed: re-estimate)" % eta.strftime("%H:%M") if eta and eta < now else ""
@@ -248,7 +255,11 @@ def main(argv=None):
     now = datetime.fromisoformat(a.now) if a.now else datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=IST)
-    text, src = read_capabilities(a.capabilities)
+    try:
+        text, src = read_capabilities(a.capabilities)
+    except OSError as e:
+        print("cycle-timeline: CAPABILITIES.md unreadable: %s" % e, file=sys.stderr)
+        return 2
     gh = Fixture(a.fixture) if a.fixture else GitHub()
     print(render(plan, parse_capabilities(text), src, gh, now))
     return 0
