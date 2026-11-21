@@ -28,8 +28,9 @@
 //   the cancel the clock reaches 2 working days before: the cancelled step reminds nobody and no data-needs-you-item for
 //   it comes back on Home, while the step recorded again does (NR: the same walk is not simply silent).
 // What stays a stand-in (said, not hidden): the reminders run in this process on the copy's own database with PF-0p's
-// fakeJobs on a FakeClock (PF-14's runner is the same JobPort) and fakeNotifications (PF-18n's real adapter is not on main;
-// the app arms nothing until it is bound, features/case-deadlines.ts). The route is marked CITED here: labelled test data,
+// fakeJobs on a FakeClock (PF-14's runner is the same JobPort). W1-W4 tell fakeNotifications; W5-W7b tell PF-18n's real
+// store (PrismaNotificationPort), so Home's "Reminder came in" shows the walk's clock time, a date ahead of today. The
+// running app's own job runner on real time is not walked here. The route is marked CITED here: labelled test data,
 // no immigration value (every real route is Sample). The firm's closed days are test data. US$0, no model call, live AI off.
 // Run from prototype/ (HEADED=1 opens a visible browser, slowed; on Linux under xvfb-run):
 //   zsh studio/tools/isolated.sh j74 4474 start AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on && trap 'zsh studio/tools/isolated.sh j74 4474 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_74.ts j74 4474
@@ -183,14 +184,6 @@ try {
   const va = (await new AxeBuilder({ page: p }).include("[data-gov-steps]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
   ok("J-74 W6 axe: Government steps has no WCAG 2.2 A/AA violation", va.length === 0, va.map((x) => x.id));
   const runAt = (id: string, offset: number) => mjobs(id).find((j) => j.payload.offset === offset)!.runAt.getTime();
-  await walk2(runAt(m1, 7) - 3_600_000);
-  const before7 = toldStep(m1).length, rowsBefore = one(`select count(*) from msg_notification where item_id = '${m1}'`);
-  await walk2(runAt(m1, 7) + 60_000);
-  const at7 = toldStep(m1);
-  ok("J-74 W6b NR: an hour before the 7-working-day reminder, the step has told nobody and has no row in the store (so Home can list none)", before7 === 0 && rowsBefore === "0", { before7, rowsBefore });
-  ok(`J-74 W6b: at 7 working days before the due date (${armed[0]}, 09:00 in the firm's zone) the step's reminder reaches the representative and the officer once each, as a case-milestone deadline`,
-    at7.length === 2 && new Set(at7.map((t) => t.staffId)).size === 2 && at7.every((t) => [REP, OFF].includes(t.staffId) && t.kind === "case-milestone-deadline")
-      && one(`select count(*) from msg_notification where item_id = '${m1}' and read_at is null`) === "2", at7);
   // W6c: the officer, signed in as firm staff, on Home. An item is found only by its data-needs-you-item hook, whose value
   // is the officer's own notification row for this step (never a class or a position).
   const TO = (await staffApi(null, "POST", "/platform/session/local", { firmKey: "sample-firm", actorId: "user-O", secondStep: true })).body?.token as string;
@@ -201,6 +194,16 @@ try {
   const noteOf = (step: string) => one(`select id from msg_notification where staff_id = '${OFF}' and item_id = '${step}'`);
   const home = async () => { await po.goto(`${BASE}/home`); await po.locator("[data-needs-you-item], [data-needs-you-empty]").first().waitFor({ timeout: 30_000 }); };
   const item = (step: string) => po.locator(`[data-needs-you-item="${noteOf(step)}"]`);
+  await walk2(runAt(m1, 7) - 3_600_000);
+  const before7 = toldStep(m1).length, rowsBefore = one(`select count(*) from msg_notification where item_id = '${m1}'`);
+  await home();
+  const onHomeBefore = await po.locator("[data-needs-you-item]", { hasText: `case ${NUMBER}` }).count();
+  await walk2(runAt(m1, 7) + 60_000);
+  const at7 = toldStep(m1);
+  ok("J-74 W6b NR: an hour before the 7-working-day reminder, the step has told nobody, has no row in the store, and the officer's Home has no data-needs-you-item for this case", before7 === 0 && rowsBefore === "0" && onHomeBefore === 0, { before7, rowsBefore, onHomeBefore });
+  ok(`J-74 W6b: at 7 working days before the due date (${armed[0]}, 09:00 in the firm's zone) the step's reminder reaches the representative and the officer once each, as a case-milestone deadline`,
+    at7.length === 2 && new Set(at7.map((t) => t.staffId)).size === 2 && at7.every((t) => [REP, OFF].includes(t.staffId) && t.kind === "case-milestone-deadline")
+      && one(`select count(*) from msg_notification where item_id = '${m1}' and read_at is null`) === "2", at7);
   await home();
   const itemText = await item(m1).innerText().catch(() => "");
   ok("J-74 W6c: the officer signs in and opens Home: under \"Needs you\" one item (by its data-needs-you-item hook) says \"A government step on case " + NUMBER + "\"",
