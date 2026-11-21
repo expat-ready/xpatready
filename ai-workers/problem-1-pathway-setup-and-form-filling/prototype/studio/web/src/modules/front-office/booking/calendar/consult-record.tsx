@@ -58,7 +58,7 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
     },
   });
   // The form mounts once per Reload, never on its own save's refresh: a remount would drop "Saved" and the focus.
-  const [loads, setLoads] = React.useState(0);
+  const [loads, setLoads] = React.useState(0), [justSaved, setJustSaved] = React.useState(false);
   if (q.isPending) return <Loading label="Loading the consult record" rows={2} />;
   if (q.isError) return <Notice tone="danger" title="Could not load the consult record.">{q.error instanceof StaffApiError && q.error.status === 403 ? WORDS.refused : q.error.message}</Notice>;
   const { record, bookedMinutes } = q.data;
@@ -66,8 +66,8 @@ export function ConsultRecordSection({ booking }: { booking: FeedItem }) {
   if (booking.attendance !== "COMPLETED") return null;
   return (
     <>
-      <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} onReload={() => void q.refetch().then(() => setLoads((n) => n + 1))} />
-      {record ? <NextStep booking={booking} record={record} /> : null}
+      <RecordForm key={loads} booking={booking} record={record} bookedMinutes={bookedMinutes} onSaved={() => setJustSaved(true)} onReload={() => void q.refetch().then(() => setLoads((n) => n + 1))} />
+      {record ? <NextStep booking={booking} record={record} reveal={justSaved} /> : null}
     </>
   );
 }
@@ -86,7 +86,7 @@ function RecordReadOnly({ r }: { r: ConsultRecord }) {
   );
 }
 
-function RecordForm({ booking, record, bookedMinutes, onReload }: { booking: FeedItem; record: ConsultRecord | null; bookedMinutes: number; onReload: () => void }) {
+function RecordForm({ booking, record, bookedMinutes, onSaved, onReload }: { booking: FeedItem; record: ConsultRecord | null; bookedMinutes: number; onSaved: () => void; onReload: () => void }) {
   const qc = useQueryClient();
   const [minutes, setMinutes] = React.useState(String(record?.timeSpentMinutes ?? bookedMinutes));
   const [notes, setNotes] = React.useState(record?.notes ?? "");
@@ -124,7 +124,7 @@ function RecordForm({ booking, record, bookedMinutes, onReload }: { booking: Fee
         timeSpentMinutes: m, notes: notes.trim() ? notes : null, recommended: items, quotedFeeMinor: amount, quotedFeeCurrency: amount === null ? null : currency,
         ...(version.current !== null ? { version: version.current } : {}),
       } }));
-      version.current = out.version;
+      version.current = out.version; onSaved();
       await qc.invalidateQueries({ queryKey: ["fo", "bookings"] });
       setSaved(true);
     } catch (err) {
@@ -180,8 +180,10 @@ function RecordForm({ booking, record, bookedMinutes, onReload }: { booking: Fee
 const STEP_WORDS = { ENGAGE_AND_PREPARE_RETAINER: "Engage and prepare retainer", PREPARE_RETAINER: "Prepare retainer", CLOSE_LEAD: "Close lead" } as const;
 
 /** BR-16: one button per next step the server lists for this viewer that has a screen to open on main. */
-function NextStep({ booking, record }: { booking: FeedItem; record: ConsultRecord }) {
-  const go = useNavigate();
+/** reveal: just saved here, so the section is scrolled into the panel's view (it is often below the fold); focus stays. */
+function NextStep({ booking, record, reveal }: { booking: FeedItem; record: ConsultRecord; reveal: boolean }) {
+  const go = useNavigate(), box = React.useRef<HTMLElement>(null);
+  React.useEffect(() => { if (reveal) box.current?.scrollIntoView({ block: "nearest" }); }, [reveal]);
   const on = booking.hangsOn;
   const target = (s: ConsultRecord["nextSteps"][number]) =>
     s === "ENGAGE_AND_PREPARE_RETAINER" && on?.kind === "lead" ? `/front-office/leads/${on.id}?engage=1`
@@ -189,7 +191,7 @@ function NextStep({ booking, record }: { booking: FeedItem; record: ConsultRecor
   const steps = record.nextSteps.map((s) => ({ s, to: target(s) })).filter((x): x is { s: typeof x.s; to: string } => x.to !== null);
   if (!steps.length) return null;
   return (
-    <section aria-labelledby="fo-next" className="mt-4 border-t border-border pt-3" data-next-step>
+    <section ref={box} aria-labelledby="fo-next" className="mt-4 border-t border-border pt-3" data-next-step>
       <h3 id="fo-next" className="font-semibold">Next step</h3>
       <p className="mb-2 text-text-muted">Opens the next screen. Nothing is sent to {booking.person?.name || "the person"} from here.</p>
       <div className="flex flex-wrap gap-2">{steps.map(({ s, to }) => <Button key={s} variant="default" onClick={() => go(to)}>{STEP_WORDS[s]}</Button>)}</div>
