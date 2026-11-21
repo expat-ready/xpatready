@@ -3,8 +3,9 @@
 Rule: .mergify.yml max_parallel_checks is 12 while the failed-batch rate over the last 20 merge-queue batches is under
 10%, and 6 when it is over 20%; from 10% to 20% it holds its current value (a band, so it never flaps).
 A batch = one Mergify batch PR branch (mergify/merge-queue/*); its outcome = the newest finished `ci` run on it.
-Cancelled or skipped runs are no outcome (a batch reset because one under it failed). failure, timed_out and
-startup_failure count as failed. Read-only: prints the change, never makes it (the Lead lands it as a one-line PR,
+Only success and failure, timed_out, startup_failure (failed) are outcomes; cancelled, skipped, neutral, stale,
+action_required are none (a batch reset because one under it failed). A split retry is its own batch (its own branch):
+the measure counts runs wasted, which is what the depth costs. A re-run of a batch older than the pages read is missed. Read-only: prints the change, never makes it (the Lead lands it as a one-line PR,
 together with design/engineering-approved-setup.json, which conformance-check.py compares).
 Source: GitHub REST /actions/workflows/ci.yml/runs with curl and `gh auth token` (P-363); GH_TOKEN or GITHUB_TOKEN first.
   python3 -I product/tools/queue-depth.py [--runs FILE] [--mergify FILE] [--repo OWNER/NAME]
@@ -71,10 +72,10 @@ def batches(runs):
     """Newest finished outcome per batch branch, newest batch first."""
     best = {}
     for r in runs:
-        b, c = r.get("head_branch") or "", r.get("conclusion")
-        if not b.startswith(PREFIX) or r.get("status", "completed") != "completed" or c in (None, "cancelled", "skipped", "neutral"):
+        b, c = r.get("head_branch"), r.get("conclusion")
+        if not isinstance(b, str) or not b.startswith(PREFIX) or r.get("status", "completed") != "completed" or c not in ("success",) + FAILED:
             continue
-        at = r.get("run_started_at") or r.get("created_at") or ""
+        at = str(r.get("run_started_at") or r.get("created_at") or "")
         if b not in best or at > best[b][0]:
             best[b] = (at, c)
     return sorted(((at, b, c) for b, (at, c) in best.items()), reverse=True)
@@ -122,7 +123,7 @@ def main():
                     break
         if len(found) < N:
             raise Unreadable("only %d finished batch(es) found, %d needed" % (len(found), N))
-    except Unreadable as e:
+    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:   # a missing gh or curl, an odd field: never a traceback
         print("rate=? current=%s want=%s reason=unreadable, no change: %s" % (cur if cur is not None else "?", cur if cur is not None else "?", e))
         return 2
     last = found[:N]

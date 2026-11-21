@@ -224,7 +224,8 @@ CS3 low|product/tools/queue-depth.py|s/^    if bad \* 100 < LOW \* N:/    if Fal
 CS3 high|product/tools/queue-depth.py|s/^    elif bad \* 100 > HIGH \* N:/    elif False:/|check-queue-depth.sh
 CS3 band|product/tools/queue-depth.py|s/^        want, why = cur, /        want, why = DEEP, /|check-queue-depth.sh
 CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if not found:/|check-queue-depth.sh
-CS3 cancel|product/tools/queue-depth.py|s/c in (None, "cancelled", "skipped", "neutral")/c is None/|check-queue-depth.sh
+CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
+CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
 CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

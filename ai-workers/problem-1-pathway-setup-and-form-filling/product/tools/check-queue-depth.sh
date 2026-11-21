@@ -30,6 +30,19 @@ X='[{"head_branch":"mergify/merge-queue/zz","status":"completed","conclusion":"c
     {"head_branch":"mergify/merge-queue/b00","status":"completed","conclusion":"success","run_started_at":"2026-11-21T11:02:00Z"}]'
 run "$(runs 1 20 "$X")" "$(mg 12)"
 ok "cancelled batch runs and non-batch branches are no outcome; a re-run's newest result wins" "$(has 0 '^rate=0% current=12 want=12 ')" "exit $rc: $out"
+X='[{"head_branch":"mergify/merge-queue/c1","status":"completed","conclusion":"cancelled","run_started_at":"2026-11-21T11:00:00Z"},
+    {"head_branch":"mergify/merge-queue/c2","status":"completed","conclusion":"skipped","run_started_at":"2026-11-21T11:01:00Z"},
+    {"head_branch":"mergify/merge-queue/c3","status":"completed","conclusion":"neutral","run_started_at":"2026-11-21T11:02:00Z"},
+    {"head_branch":"mergify/merge-queue/c4","status":"completed","conclusion":"stale","run_started_at":"2026-11-21T11:03:00Z"},
+    {"head_branch":"mergify/merge-queue/c5","status":"completed","conclusion":"action_required","run_started_at":"2026-11-21T11:04:00Z"}]'
+run "$(runs 0 19 "$X")" "$(mg 6)"
+ok "19 batches plus branches with only cancelled, skipped, neutral, stale or action_required runs: still 19, exit 2" "$(has 2 'unreadable, no change: only 19 finished batch')" "exit $rc: $out"
+X='[{"head_branch":"mergify/merge-queue/b00","status":"completed","conclusion":"cancelled","run_started_at":"2026-11-21T11:02:00Z"}]'
+run "$(runs 1 20 "$X")" "$(mg 6)"; ok "a newer cancelled run does not hide the batch's failure" "$(has 3 '^rate=5% current=6 want=12 ')" "exit $rc: $out"
+X='[{"head_branch":7,"status":"completed","conclusion":"failure","run_started_at":"2026-11-21T11:02:00Z"}]'
+run "$(runs 0 20 "$X")" "$(mg 12)"; ok "a branch that is not text is no batch, no traceback" "$(has 0 '^rate=0% current=12 want=12 ')" "exit $rc: $out"
+echo '{"workflow_runs":[{"head_branch":"mergify/merge-queue/a","status":"completed","conclusion":"success","run_started_at":"x"},{"head_branch":"mergify/merge-queue/a","status":"completed","conclusion":"failure","run_started_at":5}]}' > "$T/odd.json"
+run "$T/odd.json" "$(mg 12)"; ok "odd field types: exit 2 or a clean answer, never a traceback" "$([ "$rc" != 1 ] && ! grep -q Traceback <<< "$out" && echo 1)" "exit $rc: $out"
 X='[{"head_branch":"mergify/merge-queue/b00","status":"completed","conclusion":"timed_out","run_started_at":"2026-11-21T11:02:00Z"}]'
 run "$(runs 0 20 "$X")" "$(mg 6)"; ok "timed_out counts as failed" "$(has 3 '^rate=5% current=6 want=12 ')" "exit $rc: $out"
 run "$(runs 0 30 "$(python3 -I -c 'import json; print(json.dumps([{"head_branch":"mergify/merge-queue/old%d" % i,"status":"completed","conclusion":"failure","run_started_at":"2026-11-20T00:%02d:00Z" % i} for i in range(9)]))')")" "$(mg 6)"
@@ -41,6 +54,8 @@ echo '{"message":"API rate limit exceeded"}' > "$T/err.json"; run "$T/err.json" 
 ok "an error body from GitHub: exit 2, no change" "$(has 2 'want=6 reason=unreadable, no change: no workflow_runs in the answer: API rate limit')" "exit $rc: $out"
 run "$(runs 0 19)" "$(mg 6)"; ok "fewer than 20 batches: exit 2, no change" "$(has 2 'want=6 reason=unreadable, no change: only 19 finished batch')" "exit $rc: $out"
 run "$T/missing.json" "$(mg 6)"; ok "runs file missing: exit 2" "$(has 2 'unreadable, no change: cannot read ')" "exit $rc: $out"
+PY=$(command -v python3); out=$(env -u GH_TOKEN -u GITHUB_TOKEN PATH="$T/none" GH_REPO=o/r "$PY" -I "$Q" --mergify "$(mg 12)" 2>&1); rc=$?
+ok "gh and curl missing (live read): exit 2, no change, no traceback" "$([ $rc = 2 ] && grep -q '^rate=? current=12 want=12 reason=unreadable, no change: ' <<< "$out" && ! grep -q Traceback <<< "$out" && echo 1)" "exit $rc: $out"
 printf 'merge_queue:\n  mode: parallel\n' > "$T/nomg.yml"; run "$(runs 5)" "$T/nomg.yml"
 ok "max_parallel_checks unreadable: exit 2, no change" "$(has 2 '^rate=\? current=\? want=\? reason=unreadable, no change: max_parallel_checks not found')" "exit $rc: $out"
 ok "no traceback in any answer" "$(! grep -q Traceback <<< "$out" && echo 1)" "$out"
