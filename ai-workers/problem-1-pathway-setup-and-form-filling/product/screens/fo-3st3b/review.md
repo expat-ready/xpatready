@@ -99,3 +99,35 @@ D1 4: J-T5, keys, reminders ruling met · D2 3: correct values and server refusa
 My walks left Sample rows on the copy: four "Review walk …" types (one retired, two with timing overrides). Firm notice and gap after are back to 4 h and 10 min; gap before 15 and self-service 6 h are the suite's.
 
 **Verdict: Block** at b4b67150a (+ a0401088e, 5ddd560b3). Fix: **M1**. Blockers: none. Majors: M1. Minors: m1-m5, n1, n2.
+
+---
+
+# Re-review: diff `b4b67150a..4053db1f2` only (head 4053db1f2cc7834465b91e11090f524960f66af2)
+Read: `git diff b4b67150a 4053db1f2 -- '*.ts' '*.tsx'` and the wiring `git diff 875c444e7 4e779778e -- '*types-page.tsx'`. The three new web files and the suite on `local-int-fo3st3b` are identical to 4053db1f2. I walked the fresh copy on :4574 (Owner), re-ran my `lost.mjs`, and checked the hours words and the row Save. I did not re-run the suite: the builder reports 45/45, and the breaker re-tested M1 (`break-report.md`).
+
+**M1: fixed.**
+- The section's Reload now invalidates `["fo","booking-types"]` (`type-timings.tsx`), so the panel refetches and its form takes the other tab's values.
+- `onSaved(version, sent)` adopts the version only when `sent === t.version`, and otherwise invalidates the panel's query (`types-page.tsx:200`).
+- **Re-walk:** tab B renames → A's timing save gets 409 → Reload: the Name field now shows B's name → the timing saves → Save type gets 200, and the server keeps **B's name**.
+- **New suite check:** it fails if the Reload stays section-only, because the Name field would not show B's name. The `sent` guard is a second safety net and has no test of its own; that is acceptable.
+
+**Other review findings:**
+- **m1 fixed:** `inUnit()` gives the range in hours ("Self-service limit must be from 0 to 8,760 hours." under 9000; walked). Range words for fields typed in minutes or days pass through unchanged.
+- **m3 fixed:** the row's Save is an outline button, so "Save type" is the only filled button in the panel (`shots/rr-edit-1024.png`).
+- **n2 fixed:** "Overridden on" counts active types only.
+- **Still open, all Should:**
+  - **m2:** the added strings are still not listed in the PR or in a challenge note. Not blocking.
+  - **m4** (error summary): the same as part 3a.
+  - **m5:** asked of the tech lead on the PR as an API follow-up.
+  - **n1:** the panel's extra reads.
+
+**Breaker fixes:**
+- `fromInput` takes an exact whole number of minutes only: at most 9 digits, plus at most 4 decimals for hours. `toInput` shows at most 4 decimals, and an own value that has not changed is not sent. All sound.
+- One consequence, **n3 (note, outside the concept, not a finding):**
+  - Sub-hour values that are not multiples of 3 minutes cannot be typed in an hours field. 10, 20 and 40 minutes are 0.1667 h and so on; "0.1667" is refused with the hours hint (walked).
+  - An existing 10-minute value shows as "0.1667" and cannot be saved back once changed.
+  - Concept §5 asks for whole hours, so this is beyond the bar. If minute-level notice is ever wanted, it needs a minutes unit.
+
+Journey re-score: journey 8 now holds, so correct data and error recovery rise to 1 each. Plain words stays at ½: the range words are now in hours, but the "0.1667" refusal is puzzling and the m2 words are not in §5. New score **9.5/10**.
+
+**Verdict: Approve** at 4053db1f2cc7834465b91e11090f524960f66af2 (wiring as in local-int-fo3st3b 4e779778e). Blockers: none. Majors: none open. Should: m2, m4, m5 (tech lead), n1.

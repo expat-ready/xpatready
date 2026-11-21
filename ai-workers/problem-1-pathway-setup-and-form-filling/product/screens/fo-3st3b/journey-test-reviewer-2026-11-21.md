@@ -55,3 +55,9 @@ Method: headless Playwright scripts that act like a person (click, type, Enter, 
 2. **m1:** range words in hours. This raises plain words.
 
 Not tested: a real screen reader, a visible-browser walk watched live, an intended user's unaided walk (D17, D20 stay with the founder).
+
+## Re-test at 4053db1f2 (same day, fresh copy :4574)
+- **Journey 8 now holds:** after the stale save and Reload, the panel shows tab B's name, and Save type keeps it on the server.
+- **Journey 4's range words** are in hours ("must be from 0 to 8,760 hours").
+- **The row Save is an outline button,** so the panel has one filled button.
+- **Re-score:** correct data 1, error recovery 1; plain words stays ½ ("0.1667" hours is refused with the whole-minutes hint; the m2 words are not in §5). **9.5/10, pass.**
