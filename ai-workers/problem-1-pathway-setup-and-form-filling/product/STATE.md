@@ -20,6 +20,7 @@ updated: 2026-11-21 20:1x IST: Lead 16 handed over to Lead 17 (series 3) · mile
 (5d) **22:2x-23:2x** (lanes Q7/Q8/Q9/DEMO-LINK/Lead 19, R1.10 + R1.3 Partial, forecast 11, #2860 read, #2845 labelled and queued ETA 00:28): word for word in the history file in (3).
 (5l) **00:4x: R1.4 Works → 10/15, 42/101.** R1.19 ruled Partial (billing period must be state) → PF-5 part 3 #2870; QA-703 → PF-12b part 5 #2871; AWS redeploy waits on the founder's sign-in (red line above). Lines 00:1x-00:2x in the history file in (3).
 (5o) **01:2x:** #2787 PF-28 2a merged. #2871 queued. #2870 (R1.19 PF-5 p3): round 2 approved, wider suite run 42 min in; lane context 73% → told to finish #2870 only and stop (P-565). #2687 full run 44941497054 **failed on its own change**: check_pf28_inputs (2 public booking doors now reachable via the Sample type; msg_consent_wording 0→1 on a probe) → DEMO-LINK lane fixing; Lead re-reviews independently after.
+(5p) **01:4x: #2870 (R1.19 PF-5 p3) ready; Lead read f14b0a07** (column + backfill, Checkout uses stored period); label when ci green → merge → qa Q9 flips #2857 to Works (→ 11/15).
 (6) **Owed records:** DECISIONS rows: QA-697 Major; Lead rulings from Lead 15 list. BACKLOG: image scan CRITICAL 5 / HIGH 12; RDS CA + verify-full; secret-refusal as one JSON line; QA-641-643 deploy row; QA-645 cloud check on main (after 22 Nov); plus Lead 15's owed list (in the history file).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
