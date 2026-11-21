@@ -1,0 +1,30 @@
+{
+  "item": "R1.108",
+  "name": "108 Conflict-of-interest check",
+  "pr": 2651,
+  "sha": "f10305588bda3923dba0d04eb36cbfd64e9ef0e9",
+  "run_id": "44861005525",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44861005525",
+  "at": "2026-11-21T03:28:11.960Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_108.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44861005525/artifacts/14689128671",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.108-f10305588bda3923dba0d04eb36cbfd64e9ef0e9.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
