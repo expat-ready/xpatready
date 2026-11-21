@@ -2,7 +2,8 @@
 // of links to every Release 1 screen on main, plus the way back to the Product Studio and to Sign in. Shown whether or
 // not someone is signed in (PlatformFrame's `intro`), so the list is the first thing a visitor sees here. Only addresses
 // that exist (modules/*/routes.tsx and App.tsx's own routes; tests/check_demo_link.ts checks each against them). The
-// public booking page names the Sample firm's key (samples/firms.json, Sample).
+// public booking page names the Sample firm's key (samples/firms.json, Sample). Each link is at least 24 px tall
+// (WCAG 2.2 2.5.8 target size; tests/check_pf18h_home_browser.ts runs axe on Home).
 import { Link } from "react-router-dom";
 
 export type MenuLink = { label: string; to: string; hint?: string };
@@ -51,7 +52,7 @@ export function ReleaseOneMenu() {
             <ul className="mt-1 flex flex-col gap-0.5">
               {g.links.map((l) => (
                 <li key={l.to} className="text-sm">
-                  <Link to={l.to} className="text-text-link underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{l.label}</Link>
+                  <Link to={l.to} className="inline-flex min-h-6 items-center text-text-link underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{l.label}</Link>
                   {l.hint ? <span className="text-text-muted"> · {l.hint}</span> : null}
                 </li>
               ))}
