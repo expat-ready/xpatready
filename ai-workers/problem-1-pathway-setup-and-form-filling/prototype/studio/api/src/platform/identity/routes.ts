@@ -5,7 +5,7 @@ import { z } from "zod";
 import { notInFirm } from "../firm-scope.ts";
 import { list, parseInput, strict } from "../http/input.ts";
 import { AnyStaff, PermissionKeys, StaffSignIn, staffOf, type StaffContext } from "./keys.ts";
-import { PlatformIdentity, UUID } from "./service.ts";
+import { LocalSignInBody, PlatformIdentity, UUID } from "./service.ts";
 
 type R = { platform?: StaffContext };
 type B = Record<string, unknown>;
@@ -18,7 +18,7 @@ const str = (max: number) => z.string().max(max);
 const reason = str(2000).nullable().optional();
 const roles = list(str(40), 12);
 export const IdentityInput = {
-  local: strict({ firmKey: str(100), email: str(320).optional(), actorId: str(200).optional(), secondStep: z.boolean().optional() }),
+  local: LocalSignInBody,   // read by the service after the door's gate (batch 44935069729)
   invite: strict({ email: str(320), roles, reason, displayName: str(2000).nullable().optional() }),
   // Each row is checked and flagged on its own row by batchRowsOf (PF-4c), so a bad row is a row flag, not a refusal here.
   batch: strict({ rows: z.unknown().optional() }),
@@ -39,7 +39,7 @@ export class PlatformIdentityController {
 
   /** The local stand-in's sign-in: refused unless PLATFORM_IDENTITY=local (which is refused in test and production). */
   @Post("session/local") @HttpCode(200) @StaffSignIn("the sign-in door: there is no session yet")
-  local(@Body() b: B) { return this.id.localSignIn(parseInput(IdentityInput.local, b)); }
+  local(@Body() b: unknown) { return this.id.localSignIn(b); }   // the gate, then the one input rule, in the service
 
   /** Who am I: roles, permission keys and the duties derived from them (represent, case, firm_admin). */
   @Get("me") @AnyStaff("a person's own identity")

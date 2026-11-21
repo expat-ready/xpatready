@@ -87,3 +87,35 @@ A real screen reader, and an intended user's own walk (D17/D20 stay with the fou
 **9.5/10, pass.** Plain words is ½, for the cut-short verify link. Details are in `journey-test-reviewer-2026-11-21-part-2b.md`.
 
 **Verdict: Block** (Changes requested) for 0c6608fd81793897b626a75db1923920cc88e34b. To fix: M1 (j_100 and the qa walk to 422) and M2 (the SNS body line back on the fix list, or a schema after `verify()`). m1–m4 should be fixed in this PR if cheap, or carried to part 3.
+
+## Round 2 (head fc6a5dea37b82608c8bedc0e83951eddf8fee2dd, diff `0c6608fd8..fc6a5dea3` only)
+Scope: 7 code and test files: audit `service.ts`, `notifications/routes.ts`, `check_pf18n`, `check_pf28_inputs`, `j_100`, the allow-list and the qa walk. The commit also adds my two round-1 reports unchanged. I ran everything on a fresh copy, `rv_pf28b2` on :4438. Live AI was off; cost US$0.
+
+**Checks**
+- `check_pf28_inputs` gives **36/36**: 44 code entries listed out of 44 unparsed, 157 probes, 8 exceptions. All three are at their ceilings, and the DW7 size check now counts the exceptions.
+- `j_100` gives **27/27**.
+- The qa walk gives **30/37**:
+  - All 5 sign-up refusals (lines 42–50) pass at 422.
+  - The 7 failures are gap probes outside this diff: the sign-up pages "not on main", the Stripe trial end, `billing/invoices` 404, and the lead filters and FO-7b checks (`/api/front-office/leads`). None touches a door this PR changed.
+- Both runs overwrote checked-in screenshots, which I restored with `git checkout`.
+- Live probes, all as stated:
+  - m2: `cursor=bad` gives 422 BAD_CURSOR `fields: {cursor}`; a range over one year gives 422 RANGE_TOO_LONG `fields: {to}`.
+  - m3: `read-all?seen=yesterday` gives 422 INVALID `fields: {seen}`. `:id/read` with the same bad value gives the same answer, because the query is still read before the id.
+  - The `BadRequestException` import is gone, and no other 400 is left in these two files.
+
+**Fixes**
+- **M1 closed.** `j_100.ts:93`, `:95` and `:113`, and `check_qa_r1_platform_fo_walk.ts:42-50`, now expect 422, and their `errors`/`code` checks are kept.
+- **M2 closed.** The SNS body is back on `unparsed` as "PF-28 part 2 (platform)", and `UNPARSED_CEILING` is 44. The untrue exception text is gone, and the four probe exceptions (400 "not signed" before any field) stay. The schema after `verify()` remains part 2's open fix, as amendment (1) asks.
+- **m1 closed.** `EXCEPTIONS_CEILING = 8`.
+- **m2 and m3 closed** (probes above). `check_pf18n:271` now asserts 422 with `fields.seen`.
+- **m4 closed for the case asked.** There are two planted cases:
+  - an inherited method that parses gives `BaseThings.put`;
+  - the same method without a parse gives `null`.
+  - The pass case would fail without the `extends` follow (`Things` has no `put` of its own), so it proves the change. The derived-class override limit is written down as known; no route has it today.
+- **n1:** the invitation reason now names EXPIRED. The raw `fields` texts on sign-up and the verify page's closed-link words are left as they are. Nobody sees them; they are listed in the PR and accepted as a nit.
+
+**Round-2 findings:** no Blocker, no Major, and no new Minor.
+
+**Journey score:** 9.5/10 stands. This round changes no screen, and the round-1 walk covers these screens. Plain words stays ½, for the verify page's words on a cut-short link (n1, left as it is).
+
+**Verdict: Approve** for fc6a5dea37b82608c8bedc0e83951eddf8fee2dd (no open Blocker or Major).

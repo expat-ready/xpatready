@@ -62,7 +62,11 @@ export function inputs(dir: string): CodeInput[] {
   return codeRoutes(dir).filter((r) => DOORS.test(r.path)).flatMap((r) => r.inputs.filter((i) => i.kind !== "param")
     .map((i) => ({ key: `${r.file} ${r.verb} ${r.path} ${i.kind}${i.key ? `(${i.key})` : ""}`, parsedAt: follows(dir, r.controller, r.node, i.name) })));
 }
-const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt).map((x) => x.key);
+/** The Stripe door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
+ *  judges it over HTTP (signature and schema, each a pass and a fail) rather than the static follower, which never reads
+ *  a raw body off @Req() as parsed. Only this one door: any other webhook route is judged like every door (review r15-1). */
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
+const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), { ...allow.unparsed, ...allow.exceptions?.unparsed });
 ok("PF-28 (a) pass: every PF/FO body and query reaches a zod parse, or is on the allow-list", jc.unlisted.length === 0, jc.unlisted);
@@ -101,7 +105,7 @@ ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, b
 ok("PF-28 DW7 pass (part 2c): every by-design exception carries its written reason (at least 40 characters)", unreasoned(allow).length === 0, unreasoned(allow));
 ok("PF-28 DW7 fail (part 2c): an exception without a reason, or with a fix part instead, fails", unreasoned({ unparsed: {}, probes: {}, exceptions: { probes: { "GET /api/platform/x query-unknown": "PF-28 part 2 (platform)", "GET /api/platform/y query-unknown": "By design (awaiting the tech lead): short" } } }).length === 2);
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 157, UNPARSED_CEILING = 44, EXCEPTIONS_CEILING = 8;   // part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both
+const PROBES_CEILING = 163, UNPARSED_CEILING = 44, EXCEPTIONS_CEILING = 9;   // re-based at the merge of main after part 2a (#2787): part 1 as merged added 6 probe lines for part 4 (#2750's booking timings; their 2 code lines leave, the extends follow sees their parse) and part 2a's callback "missing" line moved to the exceptions; earlier: part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both
 const excepted = Object.keys(allow.exceptions?.unparsed ?? {}).length + Object.keys(allow.exceptions?.probes ?? {}).length;
 ok("PF-28 DW7 fail: the allow-list never grows past its committed size (the by-design exceptions included)", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING && excepted <= EXCEPTIONS_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length, exceptions: excepted });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
@@ -114,6 +118,20 @@ const [missing, wrong, ctor, proto, long, good] = [{}, { name: 7 }, { name: "a",
 ok("PF-28 rule pass: a missing field says it is required; a wrong type says what it must be", missing?.fields.name === "This is required." && wrong?.fields.name === "This must be text.", [missing?.fields, wrong?.fields]);
 ok("PF-28 rule fail (break m2): \"constructor\" and \"__proto__\" are refused and named, never accepted or \"0 fields\"", Object.hasOwn(ctor?.fields ?? {}, "constructor") && Object.hasOwn(proto?.fields ?? {}, "__proto__") && !/^0 fields/.test(ctor?.detail ?? "0"), [ctor?.detail, proto?.detail]);
 ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters and the value is never repeated; a good body passes", Object.keys(long?.fields ?? {}).every((k) => k.length <= 64) && !JSON.stringify(long).includes("secret value") && good === null && long?.status === 422, long?.fields);
+
+// PF-28 part 2a (batch 44935069729: check_forms_qa53, check_qa621): the local sign-in door's own gate comes before its body
+// is read. Closed (PLATFORM_IDENTITY not local, as in production) → 403 LOCAL_SIGN_IN_OFF whatever the body; open → a bad
+// body is 422 naming the field. Through the route's own controller with stand-in ports: the gate and the parse run before any query.
+{
+  const { PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
+  const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
+  const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
+  const answer = async (port: unknown, body: unknown) => { try { await new PlatformIdentityController(new PlatformIdentity(null as never, port as never, { now: () => Date.now() } as never)).local(body as never); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => { code?: string; fields?: Record<string, string> } }; return { status: x.getStatus?.(), ...x.getResponse?.() }; } };
+  const closed = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, { pf28Unknown: "x" }), closedEmpty = await answer({ via: "cognito", verify: async () => { throw new Error("not used"); } }, {});
+  const open = await answer(new LocalIdentity("pf28-test-secret", () => Date.now()), { pf28Unknown: "x" });
+  ok("PF-28 part 2a fail (batch 44935069729): the closed local sign-in door answers 403 LOCAL_SIGN_IN_OFF before reading the body (an unknown field or {} is never a 422 there)", closed?.status === 403 && closed.code === "LOCAL_SIGN_IN_OFF" && closedEmpty?.status === 403 && closedEmpty.code === "LOCAL_SIGN_IN_OFF", [closed, closedEmpty]);
+  ok("PF-28 part 2a pass: the open door still reads its body through the one rule (an unknown field → 422 naming it)", open?.status === 422 && Object.hasOwn(open.fields ?? {}, "pf28Unknown"), open);
+}
 
 // ------------------------------------------------------------------------------------- (b) a running copy: the probes
 process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
@@ -184,7 +202,8 @@ export function fine(probe: string, withIds: boolean, a: { status: number; body:
  *  Sample firm's real key, form token and a public consultation type's slug are used. A door whose key has no real value
  *  here (a booking link's or an invitation's token) is "unreached": on the allow-list until its fix part reaches it. */
 const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
-const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
+const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo",   // :kind: the public branding image door's enum (logo, favicon, banner)
+  ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
 if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
 const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
@@ -274,10 +293,23 @@ ok(`PF-28 DW5 pass: the public doors were probed with no token (${publicKeys.len
 const form = await call("POST", "/api/public/forms/not-a-token/submissions", { body: JSON.stringify({ message: "x".repeat(33 * 1024) }) });
 ok("PF-28 DW5 fail: FO-2's 33 KB web-form body still answers FO-2's own 413 words, not the platform limit's", form.status === 413 && form.body?.code === "TOO_LARGE", form);
 
-// DW6 (AG-10-32, amendment 1): the Stripe webhook is PF-5 part 2 (#1959), not on main yet.
+// DW6 (AG-10-32, amendment 1): a signed Stripe test event verifies; a one-byte change is refused 400 with nothing stored.
+// The copy runs the fake billing (local, no key), whose signature is the fake's own (ports/billing.ts sign).
 const hook = all.some((d) => d.path === "/api/hooks/stripe");
-if (hook) ok("PF-28 DW6: /api/hooks/stripe is on main: write DW6 (signed event verifies; one byte changed → 400, nothing stored)", false);
-else console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not on main (PF-5 part 2, #1959); a signed event and a one-byte change are tested once it lands (P-405: never green)");
+if (!hook) console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not served (P-405: never green)");
+else {
+  const { fakeBilling } = await import("../ports/billing.ts");
+  const evId = `evt_pf28${Date.now()}`, ev = JSON.stringify({ id: evId, object: "event", type: "customer.subscription.updated", created: Math.floor(Date.now() / 1000), data: { object: { object: "subscription", id: "sub_pf28nobody", customer: "cus_pf28nobody", metadata: {} } } });
+  const post = async (body: string, sig: string) => { const r = await fetch(`${BASE}/api/hooks/stripe`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": sig }, body }); return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null }; };
+  const receipts = () => sql(`select count(*) from webhook_receipt where event_id like 'evt_pf28%'`);
+  const sig = fakeBilling().sign(ev), before6 = receipts();
+  const changed = await post(ev.replace('"customer.subscription.updated"', '"customer.subscription.updatee"'), sig), afterChanged = receipts();
+  const badEnvelope = ev.replace('"object":"event"', '"object":"not-event"'), afterBad0 = receipts(), bad = await post(badEnvelope, fakeBilling().sign(badEnvelope)), afterBad = receipts();
+  const signed = await post(ev, sig);
+  ok("PF-28 DW6 fail: a signed Stripe event with one byte changed is refused 400 (the signature), and nothing is stored", changed.status === 400 && changed.body?.code === "SIGNATURE" && afterChanged === before6, { changed, before6, afterChanged });
+  ok("PF-28 DW6 fail: a correctly signed body that is not an event envelope is refused 422 by the schema after the signature, and nothing is stored", bad.status === 422 && bad.body?.code === "INVALID" && afterBad === afterBad0, { bad, afterBad0, afterBad });
+  ok("PF-28 DW6 pass: the same event, as signed, verifies and is stored once (the schema runs after the signature)", signed.status === 200 && signed.body?.received === true && receipts() === String(Number(before6) + 1), { signed, receipts: receipts() });
+}
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

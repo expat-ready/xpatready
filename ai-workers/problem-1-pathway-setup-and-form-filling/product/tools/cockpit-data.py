@@ -3849,7 +3849,10 @@ def build_explain(d):
     fl = val(Q["flaky"]) or {}
     put("quality.flaky", "Flaky ledger", "Lines of tools/flaky-ledger.tsv: release or hand lines (big) and rule lines.", now_w,
         (fl.get("rule_lines") or 0) + (fl.get("release_or_hand_lines") or 0) if fl else None, "ledger lines", down, Q["flaky"])
-    put("quality.review_rounds", "Review rounds", "Reviewer rounds per PR.", "not read", None, "PRs", down, Q["review_rounds"])
+    rr = Q["review_rounds"] if isinstance(Q["review_rounds"], dict) else {}
+    put("quality.review_rounds", "Review rounds", "Median \"Reviewer:\" verdict comments per code PR merged (tools/flow-measure.py); the small "
+        "line is the share over 2 rounds.", "flow-measure's 7 days", rr.get("n"), "code PRs merged", down, Q["review_rounds"],
+        band="at most 2 rounds a PR (P-277)", n_reason=rr.get("src"))
     pl = d["pipeline"]
     w7 = "the 7 days to " + t_ist
     put("pipeline.deploy_freq", pl["deploy_freq"]["label"], "PRs merged to main ÷ 7; the small line counts app-code PRs only (P-500).", w7,
@@ -4530,7 +4533,7 @@ def main():
     fm = json.load(open(fm_path)) if os.path.exists(fm_path) else None
     fm_age = hours(ts(fm["_as_of"]), NOW) if fm else None
     if not gh.offline and (fm is None or fm_age > a.flow_max_age_h):
-        if remaining >= 3500:
+        if remaining >= 4200:   # ~3,500 for runs and PRs + ~700 for ENF-782b (verdict comments, queue comments, shard logs)
             since7 = (NOW - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
             env = dict(os.environ, FLOW_TOKEN=gh.token)
             r = subprocess.run(["python3", "-I", os.path.join(HERE, "flow-measure.py"), "--since", since7, "--json"],
@@ -4543,7 +4546,7 @@ def main():
             else:
                 ERRORS.append(f"flow-measure.py exit {r.returncode}: {r.stderr[-200:]}")
         else:
-            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs ~3,500); last answer kept")
+            ERRORS.append(f"flow-measure.py skipped: {remaining} API calls left this hour (needs ~4,200); last answer kept")
     fm_src = (f"tools/flow-measure.py --json, 7 days, run {ist(ts(fm['_as_of']))}" if fm else "tools/flow-measure.py not run yet")
     if fm and (fm.get("runs_read") or 0) >= 1000:
         fm_src += " (its run figures cover only the newest 1,000 runs: the runs API cap; PR figures cover all 7 days)"
@@ -4929,7 +4932,9 @@ def main():
                     "closed_7d": V(closed7, "qa/BUGS-CLOSED.md: Closed on date within 7 days (best effort)"),
                     "demotions": V(demotions, "Works fell from one day's end to the next (main's qa/CAPABILITIES.md, 14 days)"),
                     "flaky": V(flaky(), f"tools/flaky-ledger.tsv in {copy}"),
-                    "review_rounds": V(None, "not measured: needs every PR's review comments (costly)")},
+                    "review_rounds": (lambda rr: V(rr.get("median"), fm_src + ": review_rounds.median (\"Reviewer:\" verdict comments per code PR merged, ENF-782b)",
+                                                   n=rr.get("n"), mean=rr.get("mean"), over_2_share=rr.get("over_2_share"))
+                                      if fm and rr.get("n") else V(None, fm_src + ": no review_rounds in its answer" if fm else "not measured: tools/flow-measure.py not run yet"))(fmv.get("review_rounds") or {})},
         "pipeline": pipeline,
         "merges_per_day": V(None if not merged_ok else {"days": series["days"], "all": series["merges"], "app": series["app_merges"], "partial": series["app_partial"]},
                             "GitHub merged PRs per IST day; app = tools/app-code-prs.sh" + (f"; {unclassified} PRs not yet classified" if unclassified else ""),

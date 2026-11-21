@@ -12,6 +12,7 @@ import { FIELD_ERROR_STATUS, parseInput } from "../http/input.ts";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 import { firmScope } from "../firm-scope.ts";
+import { imageLink, readImage } from "./image-setting.ts";
 import { registerSetting, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -76,10 +77,15 @@ export async function readBranding(db: DbOrTx, firmId: string, only: readonly Fi
 
 /** What the one email layout draws for a firm: its sender name, colour, footer (and from part 1b its logo link). Never
  *  the tagline, banner or favicon (P-629). */
-export type EmailBrand = { name: string; colour: string; footer: string | null; logoUrl: string | null };
-export async function emailBrandOf(db: DbOrTx, firmId: string, operatingName: string): Promise<EmailBrand> {
+export type EmailBrand = { name: string; colour: string; footer: string | null; logoUrl: string | null; logoWidth?: number; logoHeight?: number };
+/** Part 1b: the logo's stable public link (never FilesPort's 5-minute one) and its size at the layout's 48 px height. */
+export async function emailBrandOf(db: DbOrTx, firmId: string, operatingName: string, logo?: { base: string; firmKey: string }): Promise<EmailBrand> {
   const b = await readBranding(db, firmId, ["senderName", "colour", "footer"]);
-  return { name: b.senderName ?? operatingName, colour: b.colour ?? NEUTRAL_COLOUR, footer: b.footer, logoUrl: null };
+  const img = logo ? await readImage(db, firmId, "logo") : null;
+  // 48 px high; a very wide logo is capped at 300 px wide and keeps its shape (review m4 on #2633).
+  const w48 = img ? Math.round((48 * img.width) / img.height) : 0;
+  const size = img ? (w48 > 300 ? { logoWidth: 300, logoHeight: Math.max(1, Math.round((300 * img.height) / img.width)) } : { logoWidth: Math.max(1, w48), logoHeight: 48 }) : {};
+  return { name: b.senderName ?? operatingName, colour: b.colour ?? NEUTRAL_COLOUR, footer: b.footer, logoUrl: img && logo ? imageLink(logo.base, logo.firmKey, "logo", img) : null, ...size };
 }
 
 export const BrandingBody = z.strictObject(Object.fromEntries(Object.keys(FIELDS).map((f) => [f, z.unknown().optional()])) as Record<Field, z.ZodOptional<z.ZodUnknown>>);
