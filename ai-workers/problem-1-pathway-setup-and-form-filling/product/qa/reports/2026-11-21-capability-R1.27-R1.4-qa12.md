@@ -38,7 +38,7 @@ The Done when, with import dropped by the tech lead's ruling on QA-494: "Every l
 
 ## R1.4 Each query runs inside its firm: Partial, unchanged
 Nothing for R1.4 has merged since qa scored it after #2029 (20 Nov, `2026-11-20-r14-qa12.md`):
-* no change to `platform/firm-scope.ts`'s bypass audit;
+* one change to `platform/firm-scope.ts`'s bypass audit: d412bfe80 (via #2527, for R1.8). `touchingAudit` now touches the firm a case audit line names and writes its bypass line; a line naming no firm is still refused. It changes neither QA-499's 11 own-firm uses nor QA-608, and pf12b 56/56 on 2d036c65c covers it;
 * no PF-12b part 2.
 
 | Run (here, main 2d036c65c) | Result |
