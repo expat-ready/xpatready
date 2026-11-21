@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 06:28 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 06:38 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 32 of 101 on main (target met 06:1x) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,8 +15,8 @@ updated: 2026-11-21 06:28 IST: Lead 8 (series 3) current; checks every 10 min ·
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
 (3d) **02:18 IST:** wave 3 J0 lanes started (cloud, Opus high): R1.5 (task_337374e9), R1.13 (task_6d28c109), R1.14+R1.15 (task_de89f0f8). Allow notes moved to their own PR **#2623** (waves.tsv is not a record); fresh Opus reviewer subagent reviewing; Lead labels on its Approve + green. Records PR #2591 relabelled on d8c2a79e8 (P-773, P-774, STATE). Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93) once #2608 merges (same sign-up area, P-774 (c)). Owed at next check: app view in the browser with Show more; #2596 migration read + NotificationPort ruling; #2594 question; 13 tooling PR diff reads.
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
+(4b) **06:3x IST: main's guards red** since #2623 (Lead 8's miss: waves.tsv changed, waves.md not regenerated) → **#2671** (waves.py gen output, records) approved + labelled; rule: any waves.tsv edit ships with `waves.py gen`. Owed to R1.14/15 lane: #2638 .github read + size ruling (856 lines, 304 lockfile), CDK-only PRs out of skeleton build (pipeline row), #2635 sign-in change = permissions read before merge.
 (3z) **06:2x IST:** #2621 PF-18h queued after green full run. Records #2645 (FO-13s concept) and #2562 (R1.4 Partial re-dated) approved + labelled. #2613 (R1.42 J-42) dequeued 03:39 on shard (12), lane says flake (different checks, local 26/26) → Lead posted /run full on 9e29f32, requeue on green. Open for tomorrow: #2648 FO-13s A (queued), #2651 B (draft), #2638 R1.14 PF-8a (.github: Lead read owed), #2626 R1.13, #2627 R1.5 (draft), #2624/#2633 PF-13 R1.47, #2619 R1.10, #2618 R1.49 migration, #2622 R1.32 p2. Waiting lanes: R1.14+15, R1.27+32, tooling alarms, R1.32.
-(3y) **06:1x IST: TARGET MET: 32 of 101 Works on main** (counted from qa/CAPABILITIES.md on origin/main: the 32 include R1.8, R1.100, R1.26, R1.110, R1.38). #2637 merged. #2621 PF-18h full run nearly done (15 green, 1 running) and queued.
 (3m)-(3r) earlier check pointers: word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
 (3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
 (3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
