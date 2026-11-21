@@ -73,14 +73,17 @@ def ids(text, expand_only=False):
 
 
 def leading(title):
-    """The ids a PR title leads with: its first " — " (or " - ") segment that names one; nothing for records, lead, qa."""
+    """The ids a PR title leads with: its first " — " (or " - ") segment that names one, plus every QA-<n> bug id it
+    names anywhere, brackets too ("FO-13i part 2 — an expired document is refused (QA-510)" fixes QA-510: builders
+    write fixed bug ids that way, review m6); nothing for records, lead, qa."""
     if NOT_A_PART.match(title or ""):
         return set()
+    bugs = set(re.findall(r"(?<![A-Za-z0-9-])QA-[0-9]+(?![0-9])", title or ""))
     for seg in re.split(r"\s+[—–]\s+|\s+-\s+", title or ""):
         got = ids(seg)
         if got:
-            return got
-    return set()
+            return got | bugs
+    return bugs
 
 
 def jrow_parts():

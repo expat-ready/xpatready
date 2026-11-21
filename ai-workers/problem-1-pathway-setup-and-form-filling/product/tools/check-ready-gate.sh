@@ -25,6 +25,8 @@ mpr 106 "records: FO-3st3 concept and challenge"            # a concept is not t
 mpr 107 "screens: FO-9q — the panel, after FO-3st3 lands"     # a mention past the leading segment is not the part
 mpr 108 "migration — runtime: FO-7k part 1 — the table"       # the first segment naming an id leads (FO-7k1)
 mpr 109 "runtime: FO-3st3x renamed work"                       # merged under another name: the body may say so
+mpr 111 "runtime: FO-13i part 2 — an expired document is refused (QA-510)"   # a fixed bug id in brackets counts (m6)
+mpr 112 "qa: capability R1.9 — Partial (QA-511 found)"                         # a qa verdict naming a bug is no fix
 # A branch merge (not a PR merge on main) naming FO-3st3 must not count:
 g checkout -q -b side; g commit -q --allow-empty -m x; g checkout -q main; g checkout -q -b b105; g merge -q --no-ff side -m "Merge FO-3st3 into b105"
 g checkout -q main; g merge -q --no-ff b105 -m "Merge pull request #105 from o/b105" -m "runtime: FO-9z unrelated"
@@ -33,7 +35,7 @@ cat > "$F/bl/BACKLOG.md" <<'B'
 |---|---|---|---|
 | J-42 | join and walk (map row 42; P-606) | **Join and walk.** Parts it joins: FO-3sr · FO-3a parts 2a and 2b · FO-3st3 (QA-999). Walk: x. **Touch:** `tests/journeys/j_42.ts` | y |
 | J-38 | join and walk (map row 38, 40; P-606) | **Join.** Parts it joins: FO-3sr. Walk: x. | y |
-| J-9 | join and walk (map row 9; P-606) | **Join.** Parts it joins: FO-7k part 1. Walk: x. | y |
+| J-9 | join and walk (map row 9; P-606) | **Join.** Parts it joins: FO-7k part 1 · QA-510. Walk: x. | y |
 B
 cat > "$F/focus.md" <<'B'
 | Item | Rows a brief may name | Lead | Parts left |
@@ -94,6 +96,9 @@ ok "R1.40 is walked by j_38.ts (item-proof's SHARED_JOURNEY) and J-38's parts (m
 
 run "x" "Completes: R1.9"
 ok "\"migration — runtime: FO-7k part 1 — ...\" leads with FO-7k1" "$([ $rc = 0 ] && echo 1 || echo 0)$(has 'part FO-7k1 merged in #108')" "rc=$rc $out"
+ok "a fixed bug id in a title's brackets counts (QA-510 in #111, review m6)" "$(has 'part QA-510 merged in #111')" "$out"
+sed -i 's/QA-510\. Walk/QA-511. Walk/' "$F/bl/BACKLOG.md"; run "x" "Completes: R1.9"
+ok "...a bug id named only by a qa: verdict PR does not" "$([ $rc = 1 ] && echo 1 || echo 0)$(has 'part QA-511 (listed in its J-row)')" "rc=$rc $out"
 run "x" "Completes: R1.7"
 ok "no part list: a warning names the gap, journey present passes" "$([ $rc = 0 ] && echo 1 || echo 0)$(has 'R1.7 has no line in focus-list.md and no J-row')" "$out"
 run "x" "Done when: no claim"
