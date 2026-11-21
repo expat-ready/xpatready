@@ -3,7 +3,9 @@
 -- PF-12's walls (firm-scope.ts withFirm, enterFirm). Each function takes the door's key or token and returns the firm id
 -- only (a boolean for the one cross-firm email check), never a row's other columns; an unknown key returns null. Owned
 -- by xr_wall_reader (as PF-12's platform_web_address_taken), SECURITY DEFINER, search_path pinned with pg_temp last;
--- EXECUTE for xr_app only (PUBLIC revoked), so xr_app can call them but cannot alter them. Nothing is written.
+-- EXECUTE for xr_app (PUBLIC revoked), so xr_app can call them but cannot alter them; and for xr_staff_bypass, which
+-- already reads every firm, so that a suite or tool process (unscoped queries run on that role, firm-scope.ts) calls the
+-- same doors. Nothing is written.
 -- Rollback: DROP FUNCTION platform_firm_of_key(text), platform_staff_firm(uuid, text), platform_invitation_firm(text),
 -- platform_staff_email_taken(text), fo_web_form_firm(text), fo_booking_token_firm(uuid), platform_web_address_firm(text, timestamptz);
 
@@ -46,7 +48,7 @@ BEGIN
                            'fo_web_form_firm(text)', 'fo_booking_token_firm(uuid)', 'platform_web_address_firm(text, timestamptz)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
-    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO xr_app', f);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO xr_app, xr_staff_bypass', f);
   END LOOP;
 END
 $own$;
