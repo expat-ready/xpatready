@@ -98,7 +98,7 @@ export class PlatformTerms implements TermsGate {
         await tx.platformTermsAcceptance.createMany({ data: fresh.map((r) => ({ firmId, staffId: s.staffId, versionId: r.id, acceptedAt })) });
         await auditEvent.record(tx, { firmId, actor: actorWord(s.staffId), action: "platform.terms.accepted", entity: "platform_terms_acceptance", entityKey: s.staffId,
           summary: `A staff member accepted ${fresh.map((r) => `${r.kind.toLowerCase().replace(/_/g, " ")} ${r.version}`).join(", ")}`.slice(0, 600),
-          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) } });
+          detail: { staffId: s.staffId, versionIds: fresh.map((r) => r.id) }, before: null, after: { versionIds: fresh.map((r) => r.id), acceptedAt: acceptedAt.toISOString() } });
       }
       return { accepted: rows.map(view), pending: (await this.pending(s, tx)).map(view), note: SAMPLE_NOTE };
     });

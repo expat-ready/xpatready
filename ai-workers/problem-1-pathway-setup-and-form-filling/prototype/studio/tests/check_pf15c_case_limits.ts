@@ -76,7 +76,7 @@ try {
   ok("DW3 fail: the sentence is only for no live plan: live again at 10 of 10, the refusal says the plan's limit", back.status === 409 && /plan allows 10/.test(back.body?.detail ?? "") && !/no live subscription/.test(back.body?.detail ?? ""), [back.status, back.body?.detail]);
 
   // DW4: a Runtime with nothing bound (an app without features/platform-entitlements.ts) refuses to guess.
-  const bare = new Runtime(db, null as never, null as never, null as never) as unknown as { entitlements: (tx: unknown) => unknown };
+  const bare = new Runtime(db, null as never, null as never, null as never, null as never) as unknown as { entitlements: (tx: unknown) => unknown };
   let threw = "";
   try { bare.entitlements(null); } catch (e) { threw = String((e as Error).message); }
   ok("DW4 fail: an unbound Runtime throws (no EntitlementPort bound), never a silent allow-all", /no EntitlementPort bound/.test(threw), threw);

@@ -1,0 +1,20 @@
+PASS  J-26 setup: the Sample firm and its front office are seeded — []
+PASS  J-26 setup: the Sample firm's web form is off, with no allowed site and no consent wording linked; the firm has its set-up wording; an Owner exists
+PASS  J-26 W1 fail: while the form is off the page says so and the public door, read and send, answers "not available" — {"read":404,"send":404}
+PASS  J-26 W1: the Owner switches the form on by screens (stored on; one audit line, before false, after true)
+PASS  J-26 W1 (QA-617): the switch linked the firm's current consent wording (its set-up one), never a database edit; the audit line names the link
+PASS  J-26 W1 fail: a site with a page is refused on its field; nothing saved
+PASS  J-26 W1: the Owner saves the firm's site by screens (stored once, one audit line) and copies the snippet
+PASS  J-26 W1 settings: axe finds no WCAG A/AA violation
+PASS  J-26 W2: the visitor sees only the firm's thank-you text
+PASS  J-26 W2: one lead by the web form door — ["f43c066c-588b-4836-9552-62202af94eb2","WEB_FORM"]
+PASS  J-26 W2: its attribution reads campaign spring, google / cpc, click id j26-click (GCLID), with the landing and referring page — ["spring","google","cpc","j26-click","GCLID","http://localhost:42773/contact?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=j26-click","http://localhost:42773/blog"]
+PASS  J-26 W2: no cookie or storage entry is left in the visitor's browser — {"cookie":"","local":0,"session":0,"idb":0}
+PASS  J-26 W3: the same send twice makes one lead — {"replay":201,"leads":1}
+PASS  J-26 W3 fail: a bot filling the hidden field is thanked the same, told nothing, and nothing is stored
+PASS  J-26 W4 fail: an empty send on the hosted form shows each field's message on its field; nothing stored
+PASS  J-26 W4: a good send on the hosted form makes one lead, with no campaign facts (none on the page; nothing guessed)
+PASS  J-26 W5: the Owner's Leads › Unassigned shows both new leads (R1.27's first step)
+PASS  J-26: no page error in the browser — []
+18/18 passed
+walk j_26: 18 PASS, 0 FAIL; 5 video, 4 trace, 38 step screenshots → /home/runner/work/_temp/walk
