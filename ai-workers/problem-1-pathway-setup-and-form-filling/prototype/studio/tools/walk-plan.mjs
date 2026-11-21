@@ -5,7 +5,9 @@
 //     (a refusal, exit 1, as before).
 //   * pull_request: only the journeys whose own file, or a file it imports (relative imports, followed through), the PR
 //     changes, plus each journey of an item on the body's "Completes: R1.n" line (item-proof.mjs detect and journeyOf).
-//     No cap (each PR walks only what it touches; over 20 prints a warning). The walk machinery (walk.mjs, record.ts,
+//     At most 20 (tech lead, Lead 17 on #2860): past 20, only the journeys whose own file changed or that a Completes
+//     line names are walked (all of them, even past 20), the rest skipped by name in a warning; the count never fails
+//     the plan. The walk machinery (walk.mjs, record.ts,
 //     video-size.ts, fixtures/, walks.yml, this file, check_journey_recording.ts) is proved by the two failing
 //     fixtures, so a change to it walks the fixtures, not every journey that imports it.
 //   * The fixtures j_0_fails and j_0_throws join every non-empty matrix (the workflow's own self-test). Zero journeys
@@ -72,8 +74,9 @@ export function walkPlan({ event, jdir, want = "", changed = [], body = "", root
     }
     if (ids.length > CAP) throw new Error(`journeys: at most ${CAP} on a dispatch (${ids.length} asked; name them, e.g. "j_6 j_9")`);
   } else if (event === "pull_request") {
-    const ch = new Set(changed.map((f) => f.trim()).filter(Boolean)), isMach = machinery(d);
+    const ch = new Set(changed.map((f) => f.trim()).filter(Boolean)), isMach = machinery(d), keep = new Set();
     for (const id of all) {
+      if (ch.has(`${d}/${id}.ts`)) keep.add(id);
       const hit = [...importsOf(`${d}/${id}.ts`, root)].filter((f) => ch.has(f) && !isMach(f));
       if (hit.length) { ids.push(id); why.push(`${id}: the PR changes ${hit.slice(0, 3).join(", ")}${hit.length > 3 ? ` and ${hit.length - 3} more` : ""}`); }
     }
@@ -82,13 +85,18 @@ export function walkPlan({ event, jdir, want = "", changed = [], body = "", root
       const id = journeyOf(item).replace(/^tests\/journeys\/|\.ts$/g, "");
       if (!all.includes(id)) { why.push(`${item} (Completes line): no ${id}.ts on this head, nothing to walk (item-proof fails it at the merge)`); continue; }
       if (!ids.includes(id)) ids.push(id);
-      why.push(`${id}: Completes: ${item}`);
+      keep.add(id); why.push(`${id}: Completes: ${item}`);
     }
     ids.sort(byNum);
     const mach = [...ch].filter(isMach);
     if (!ids.length && !mach.length) return { matrix: [], reason: `skipped: this PR changes no journey file and nothing a journey imports, and its body completes no R1 item with a journey (${ch.size} file(s) changed)${why.length ? `; ${why.join("; ")}` : ""}`, warn };
     if (mach.length) why.push(`the walk machinery changed (${mach.slice(0, 3).join(", ")}${mach.length > 3 ? " …" : ""}): the failing fixtures prove it`);
-    warn = ids.length > CAP ? `${ids.length} journeys on this PR (over ${CAP}): each is walked; a smaller PR walks fewer` : "";
+    if (ids.length > CAP) {
+      const skipped = ids.filter((id) => !keep.has(id));
+      ids = ids.filter((id) => keep.has(id));
+      warn = `${ids.length + skipped.length} journeys touched (over ${CAP}): walking only the ${ids.length} whose own file changed or that a Completes line names; skipped (reached through imports only): ${skipped.join(" ")}`;
+      why.push(`over ${CAP}: ${skipped.length} import-only journey(s) skipped (see the warning)`);
+    }
   } else throw new Error(`event: ${event} is neither pull_request nor workflow_dispatch`);
   const matrix = ids.map((id) => ({ name: id, file: id, expect: "pass" }));
   for (const f of ["j_0_fails", "j_0_throws"]) matrix.push({ name: f, file: `${d}/fixtures/${f}.ts`, expect: "fail" });
@@ -103,7 +111,8 @@ export function selftest() {
     put(`${J}/j_1.ts`, `import { a } from "../../lib/a.ts";\nimport { r } from "./record.ts";\n`);
     put("s/lib/a.ts", `export { b } from "./b";\nconst c = await import("./c.js");\n`); put("s/lib/b.ts", "export const b = 1;\n"); put("s/lib/c.ts", "export const c = 1;\n");
     put(`${J}/record.ts`, "export const r = 1;\n"); put(`${J}/walk.mjs`, ""); put(`${J}/fixtures/j_0_fails.ts`, "");
-    for (let n = 2; n <= 25; n++) put(`${J}/j_${n}.ts`, `import { r } from "./record.ts";\n`);
+    put("s/lib/shared.ts", "export const s = 1;\n");
+    for (let n = 2; n <= 25; n++) put(`${J}/j_${n}.ts`, `import { r } from "./record.ts";\nimport { s } from "../../lib/shared.ts";\n`);
     const names = (p) => p.matrix.map((m) => m.name).join(" "), t = (name, c, got) => { if (!c) out.push(`${name}: ${JSON.stringify(got).slice(0, 300)}`); };
     const pr = (changed, body = "") => walkPlan({ event: "pull_request", jdir: J, changed, body, root });
     const refused = (f) => { try { f(); return ""; } catch (e) { return e.message; } };
@@ -121,7 +130,12 @@ export function selftest() {
     t("T4 the walk machinery changed (record.ts is imported by all 25): the fixtures only", names(p) === "j_0_fails j_0_throws" && /machinery/.test(p.reason), p);
     const many = Array.from({ length: 24 }, (_, i) => `${J}/j_${i + 2}.ts`);
     p = pr(many);
-    t("T5 a PR changing 24 journeys walks all 24 (no 20 cap on a PR, QA-702), with a warning", p.matrix.length === 26 && /over 20/.test(p.warn), { n: p.matrix.length, warn: p.warn });
+    t("T5 a PR changing 24 journeys' own files walks all 24 (own files are never skipped; the count never fails), with a warning", p.matrix.length === 26 && /over 20/.test(p.warn) && /skipped \(reached through imports only\): $/.test(p.warn), { n: p.matrix.length, warn: p.warn });
+    p = pr(["s/lib/shared.ts", `${J}/j_5.ts`], "Completes: R1.7\n");
+    const skip = Array.from({ length: 24 }, (_, i) => `j_${i + 2}`).filter((j) => j !== "j_5" && j !== "j_7").join(" ");
+    t("T5b over 20 through a shared import (24): only the own-file journey and the Completes one walk; the 22 others are listed as skipped", names(p) === "j_5 j_7 j_0_fails j_0_throws" && p.warn.endsWith(`skipped (reached through imports only): ${skip}`) && /24 journeys touched \(over 20\): walking only the 2/.test(p.warn), p);
+    p = pr(["s/lib/shared.ts"]);
+    t("T5c 24 through a shared import alone: none of them walks (all skipped by name), the fixtures still do, the plan does not fail", names(p) === "j_0_fails j_0_throws" && /walking only the 0/.test(p.warn), p);
     p = pr([], "Completes: R1.99\n");
     t("T6 a Completes item with no journey file is named in the reason, nothing walked", p.matrix.length === 0 && /^skipped: /.test(p.reason) && /R1\.99 \(Completes line\): no j_99\.ts/.test(p.reason), p);
     const r1 = refused(() => walkPlan({ event: "workflow_dispatch", jdir: J, want: "", root }));
@@ -137,7 +151,7 @@ export function selftest() {
 function main(argv) {
   const [cmd] = argv, opt = {};
   for (let i = cmd === "selftest" ? 1 : 0; i < argv.length; i++) if (argv[i].startsWith("--")) opt[argv[i].slice(2)] = argv[++i] ?? "";
-  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T9 hold (with T1b, T9b)"); return f.length ? 1 : 0; }
+  if (cmd === "selftest") { const f = selftest(); for (const l of f) console.log(`FAIL  walk-plan ${l}`); console.log(f.length ? `walk-plan self-test: ${f.length} failed` : "PASS  walk-plan self-test: T1-T9 hold (with T1b, T5b, T5c, T9b)"); return f.length ? 1 : 0; }
   try {
     const p = walkPlan({ event: opt.event, jdir: opt.journeys, want: opt.want ?? "", changed: opt.changed ? readFileSync(opt.changed, "utf8").split("\n") : [], body: opt["body-file"] && existsSync(opt["body-file"]) ? readFileSync(opt["body-file"], "utf8") : "" });
     console.log(JSON.stringify(p)); return 0;

@@ -42,5 +42,15 @@ const covers = (f: string) => paths.some((g) => g === f || (g.endsWith("/**") &&
 const read = [...new Set(real.flatMap((f) => [...importsOf(`${J}/${f}`, ROOT)]))], missed = read.filter((f) => !covers(f));
 ok(`W8 walks.yml's pull_request paths cover every file the ${real.length} journeys read (${read.length} files): a PR changing any of them starts the plan`, read.length > real.length && !missed.length && covers(`${STUDIO}api/src/front-office/firm-seed.ts`), { paths, missed: missed.slice(0, 5) });
 
+// Lead 17 on #2860: at most 20 on a PR. Past 20, only own-file and Completes journeys walk; the rest are skipped by name
+// in a warning; the count never fails the plan. Real tree: tests/runtime/api.ts and front-office/firm-seed.ts reach
+// more than 20 journeys through imports; j_6's own file changes; Completes: R1.40 names j_38.
+const shared = [`${STUDIO}tests/runtime/api.ts`, `${STUDIO}api/src/front-office/firm-seed.ts`];
+const touched = real.filter((f) => [...importsOf(`${J}/${f}`, ROOT)].some((x) => shared.includes(x))).length;
+let big: { matrix: { name: string }[]; warn: string } | null = null, bigErr = "";
+try { big = walkPlan({ event: "pull_request", jdir: J, changed: [...shared, `${J}/j_6.ts`], body: "Done when: x\nCompletes: R1.40\n", root: ROOT }); } catch (e) { bigErr = (e as Error).message; }
+ok(`W9 over 20 on a PR (${touched} journeys reached through two shared files): walks j_6 (own file) and j_38 (Completes: R1.40) only, warns naming the skipped ones, never fails`,
+  touched > CAP && !bigErr && big?.matrix.map((m) => m.name).join(" ") === "j_6 j_38 j_0_fails j_0_throws" && /over 20\): walking only the 2 /.test(big.warn) && /skipped \(reached through imports only\): j_\d/.test(big.warn) && !/\bj_6\b|\bj_38\b/.test(big.warn.split("skipped")[1] ?? ""), bigErr || big);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -8,9 +8,11 @@
 #     a journey can import (studio/, contracts/, p2/, p5/) runs by itself on its head once it is ready (never a draft
 #     or a mergify/* batch), and walks only
 #     the journeys whose file or imports it changes plus those its "Completes: R1.n" line names (tools/walk-plan.mjs;
-#     A274, QA-702: no 20 cap on a PR); none → the walk job is skipped and the plan summary says why. The 20 cap stays
-#     for a dispatch. A Completes line added by editing the body is read at the next push (no "edited": an edit
-#     would walk the same journeys again). tests/check_walk_plan.ts checks the rule and this file's shape.
+#     A274, QA-702); at most 20 on a PR: past 20 only the journeys whose own file changed or that a Completes line names
+#     walk, the rest are skipped by name in a warning, never a failure (Lead 17 on #2860); none → the walk job is
+#     skipped and the plan summary says why. A dispatch over 20 is refused. A Completes line added by editing the
+#     body is read at the next push (no "edited": an edit would walk the same journeys again).
+#     tests/check_walk_plan.ts checks the rule and this file's shape.
 #   * One job a journey, all at once (fail-fast off): the app starts as the packs job starts it (cloud-setup.sh, then
 #     the journey header's own isolated.sh line: own database, own port, never :4400), the journey runs in Playwright's
 #     Chromium with video, trace and a screenshot per step (tests/journeys/walk.mjs + record.ts), and its recording is
