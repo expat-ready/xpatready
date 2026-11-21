@@ -39,6 +39,9 @@ const R = staffOf("user-R"), T = staffOf("user-T"), O = staffOf("user-O");   // 
 const roEmail = `fo13s2-reader-${run}@sample-firm.example.com`;
 const RO = { id: sql(`insert into platform_staff (id, firm_id, email, display_name, actor_id, updated_at) values (gen_random_uuid(), '${A}', '${roEmail}', 'Sample reader ${run}', 'fo13s2-reader-${run}', now()) returning id`), email: roEmail };
 sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${RO.id}', 'READ_ONLY', 'seed:FO-13s2-test')`);
+const adEmail = `fo13s2-admin-${run}@sample-firm.example.com`;   // PR B: the firm's Admin confirms
+const AD = { id: sql(`insert into platform_staff (id, firm_id, email, display_name, actor_id, updated_at) values (gen_random_uuid(), '${A}', '${adEmail}', 'Sample admin ${run}', 'fo13s2-admin-${run}', now()) returning id`), email: adEmail };
+sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${AD.id}', 'ADMIN', 'seed:FO-13s2-test')`);
 let n = 0;
 /** A person with a lead (owned by `leadOwner`), and an Individual prospect owned by `owner` (Engaged). */
 const person = (given: string, email: string, leadOwner: string) => {
@@ -60,7 +63,7 @@ async function signIn(email: string): Promise<string> {
   const b = await r.json() as { token?: string; detail?: string }; if (b.token) return b.token;
   console.error(`STOP  local sign-in refused for ${email} (start the copy with PLATFORM_IDENTITY=local): ${b.detail}`); process.exit(2);
 }
-const tok = { R: await signIn(R.email), T: await signIn(T.email), RO: await signIn(RO.email) };
+const tok = { R: await signIn(R.email), T: await signIn(T.email), RO: await signIn(RO.email), AD: await signIn(AD.email) };
 const browser = await chromium.launch({ headless: true, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
 async function pageAs(t: string, width = 1440): Promise<Page> {
@@ -74,7 +77,7 @@ const open = async (p: Page, id: string) => { await p.goto(`${BASE}/front-office
 const drawer = (p: Page) => p.getByRole("dialog", { name: "Run a conflict check" });
 const runCheck = async (p: Page) => { await panel(p).getByRole("button", { name: "Run a check" }).click(); await drawer(p).waitFor(); await drawer(p).locator("[data-searched]").waitFor({ timeout: 15_000 }); };
 const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
-const axe = async (p: Page, where: string) => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).include("[data-conflict-panel], [role=dialog]").analyze(); const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+const axe = async (p: Page, where: string, scope = "[data-conflict-panel], [role=dialog]") => { const r = await new AxeBuilder({ page: p }).withTags(TAGS).include(scope).analyze(); const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   ok(`FO-13s2 axe-core (WCAG 2.2 AA): no serious or critical finding — ${where}`, bad.length === 0, bad.map((v) => `${v.id}: ${v.nodes.map((x) => x.target.join(" ")).join(", ")}`)); };
 
 try {
@@ -193,6 +196,38 @@ try {
   await drawer(t).getByRole("button", { name: "Record for confirmation" }).click();
   await t.locator('[data-conflict-status="CONFLICT_CHECK_UNCONFIRMED"]').waitFor({ timeout: 15_000 });
   ok("FO-13s2 BR-3 fail: the check is stored with no result and the status waits for a manager's confirmation", sql(`select coalesce(result::text, 'none') from fo_conflict_check where prospect_id = '${dee.id}'`) === "none");
+
+  // ---------------------------------------------------- BR-8 / m7 (PR B): the confirm page by link
+  const link = await panel(t).locator("[data-waiting-link] a").getAttribute("href");
+  ok("FO-13s2 BR-8 pass: the waiting check shows the link to send to a manager", !!link && /^\/front-office\/conflict-checks\/[0-9a-f-]{36}$/.test(link ?? ""), link);
+  await t.goto(`${BASE}${link}`); await t.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
+  ok("FO-13s2 m7 fail: the checker opening the link gets the server's sentence, and no Confirm; it says to send the address, shown as text (break r2-m4)", /waiting for your confirmation/.test(await t.locator("[data-confirm-refused]").innerText()) && (await t.locator("[data-confirm-check]").count()) === 0
+    && (await t.locator("[data-checker-hint]").innerText()).includes(`${BASE}${link}`));
+  const ad = await pageAs(tok.AD), ad2 = await pageAs(tok.AD);   // two tabs of the Admin's (review M1)
+  await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
+  await ad2.goto(`${BASE}${link}`); await ad2.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
+  ok("FO-13s2 BR-8 pass: the Admin sees the check (who and when, by name) and the hidden match by name, searched again", (await ad.locator("[data-checked-by]").innerText()).includes(T.name) && (await ad.getByText(`Hidden${run} Sample`).count()) >= 1);
+  await shot(ad, "confirm-1440"); await axe(ad, "the confirm page", "main");
+  await ad.locator("[data-confirm-check]").click();
+  await ad.locator("#fo-confirm-result-error").waitFor({ timeout: 10_000 });
+  ok("FO-13s2 m7 fail: Confirm with no result says so in plain words on Result (summary, focus), nothing confirmed",
+    (await ad.locator("#fo-confirm-result-error").innerText()).includes("Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.") && await ad.locator("[data-error-summary]").isVisible()
+    && await ad.locator('fieldset[aria-invalid="true"]').evaluate((el) => el === document.activeElement) && sql(`select coalesce(confirmed_by::text, 'none') from fo_conflict_check where prospect_id = '${dee.id}'`) === "none");
+  await ad.getByLabel("No conflict").check(); await ad.locator("[data-confirm-check]").click();
+  await ad.locator("[data-confirmed]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 m7 pass: after Confirm the page says so (focus on it), with no link to the prospect the Admin may not open",
+    /Check confirmed: No conflict/.test(await ad.locator("[data-confirmed]").innerText()) && (await ad.locator(`a[href*="/front-office/prospects/"]`).count()) === 0 && await ad.locator("[data-confirmed]").evaluate((el) => el === document.activeElement));
+  await ad2.getByLabel("Conflict: the firm cannot act").check(); await ad2.locator("[data-confirm-check]").click();
+  await ad2.locator("[data-confirm-ended]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 M1 fail (review): the second tab's Confirm, after the first confirmed, says the check is already confirmed (never \"no such check\"); one confirmation, the first result kept",
+    /already confirmed/.test(await ad2.locator("[data-confirm-ended]").innerText()) && sql(`select result::text from fo_conflict_check where prospect_id = '${dee.id}'`) === "NO_CONFLICT");
+  await t.goto(`${BASE}/front-office/prospects/${dee.id}`); await t.locator('[data-conflict-status="CLEARED"]').waitFor({ timeout: 30_000 });
+  ok("FO-13s2 BR-8 pass: the checker's page is Cleared, naming who confirmed", (await panel(t).locator("[data-counts]").first().innerText()).includes("confirmed by Sample admin"));
+  await ad.goto(`${BASE}${link}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
+  ok("FO-13s2 m7 fail (break r2-m1, r2-m6): the link once confirmed says it was, how and by whom, and offers no Confirm", (await ad.locator("[data-confirm-check]").count()) === 0
+    && (await ad.locator('[data-confirm-refused="ALREADY_CONFIRMED"]').innerText()).includes("already confirmed: No conflict, by you"));
+  const byChecker = await fetch(`${BASE}/api${link}/confirm`, { method: "POST", headers: { authorization: `Bearer ${tok.T}`, "content-type": "application/json" }, body: "{}" });
+  ok("FO-13s2 break r3-m3 fail: the checker's Confirm on the confirmed check is refused as the checker's (403), never told its result", byChecker.status === 403 && !(await byChecker.text()).includes("already confirmed"), byChecker.status);
   // break m4: a hidden match appears after the result was chosen; Save is refused, the panel searches again, focus lands on the refusal
   const gus = prospect("Gus", T.id);
   await open(t, gus.id); await runCheck(t); await drawer(t).getByLabel("No conflict").check();
@@ -202,6 +237,26 @@ try {
   const onRefusal = await t.waitForFunction(() => (document.activeElement as HTMLElement | null)?.dataset?.refusal !== undefined, undefined, { timeout: 3_000 }).then(() => true, () => false);
   ok("FO-13s2 break m4 fail: a hidden match that appears before Save → refused, searched again, focus on the refusal (not the dialog), nothing stored", onRefusal && checks(gus.id) === 0);
   t.once("dialog", (d) => void d.accept()); await drawer(t).getByRole("button", { name: "Cancel" }).click();
+  // break r2-m3: a link to a check a newer one replaced is refused, never confirmed
+  const hal = prospect("Hal", T.id);
+  person(`Hidden3${run}`, hal.email, O.id);
+  for (let i = 0; i < 2; i++) {
+    await open(t, hal.id); await runCheck(t); await drawer(t).getByRole("button", { name: "Record for confirmation" }).click(); await drawer(t).waitFor({ state: "hidden" });
+    await t.locator('[data-conflict-status="CONFLICT_CHECK_UNCONFIRMED"]').waitFor({ timeout: 15_000 });
+  }
+  const older = sql(`select id from fo_conflict_check where prospect_id = '${hal.id}' order by checked_at, id limit 1`);
+  await ad.goto(`${BASE}/front-office/conflict-checks/${older}`); await ad.locator("[data-confirm-refused]").waitFor({ timeout: 30_000 });
+  ok("FO-13s2 break r2-m3 fail: a manager opening the older check's link is told a newer check counts; no Confirm, nothing confirmed",
+    (await ad.locator('[data-confirm-refused="SUPERSEDED"]').count()) === 1 && (await ad.locator("[data-confirm-check]").count()) === 0 && sql(`select count(*) from fo_conflict_check where prospect_id = '${hal.id}' and confirmed_by is not null`) === "0");
+  // break r3-m2: a newer check lands while the manager has the page open; Confirm ends the page with the server's sentence
+  const newer = sql(`select id from fo_conflict_check where prospect_id = '${hal.id}' order by checked_at desc, id desc limit 1`);
+  await ad.goto(`${BASE}/front-office/conflict-checks/${newer}`); await ad.locator("[data-confirm-check]").waitFor({ timeout: 30_000 });
+  await open(t, hal.id); await runCheck(t); await drawer(t).getByRole("button", { name: "Record for confirmation" }).click(); await drawer(t).waitFor({ state: "hidden" });
+  await ad.getByLabel("No conflict").check(); await ad.locator("[data-confirm-check]").click();
+  await ad.locator("[data-confirm-ended]").waitFor({ timeout: 15_000 });
+  ok("FO-13s2 break r3-m2 fail: Confirm after a newer check was recorded ends the page on the newer-check sentence (focus on it, no Confirm), nothing confirmed",
+    /newer conflict check/.test(await ad.locator("[data-confirm-ended]").innerText()) && (await ad.locator("[data-confirm-check]").count()) === 0
+    && await ad.locator("[data-confirm-ended]").evaluate((el) => el === document.activeElement) && sql(`select count(*) from fo_conflict_check where prospect_id = '${hal.id}' and confirmed_by is not null`) === "0");
   await seesAll(true);
 
   // ---------------------------------------------------- BR-7 keys; keyboard; widths
