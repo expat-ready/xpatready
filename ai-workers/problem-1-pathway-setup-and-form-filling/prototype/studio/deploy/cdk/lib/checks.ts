@@ -74,6 +74,19 @@ const opaque = (t: Template, v: unknown): string[] => {
   walk(v);
   return out;
 };
+/** PF-23c: the one deploy parameter a resource may read is the on-call address, as an email subscription's Endpoint
+ *  and nothing else: `{ Ref: "OnCallEmail" }` on an AWS::SNS::Subscription with Protocol email, the parameter a String
+ *  with no default and the email-only AllowedPattern. An email address moves no data to a region; any other parameter
+ *  Ref, property, protocol or pattern is still refused. Returns the resource with that one Endpoint left out. */
+export const ON_CALL_PARAMETER = { name: "OnCallEmail", allowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" } as const;
+const withoutOnCallEmail = (t: Template, r: Resource): Resource => {
+  const p = r.Properties ?? {}, param = ((t.Parameters ?? {}) as Record<string, Record<string, unknown>>)[ON_CALL_PARAMETER.name];
+  const ok = r.Type === "AWS::SNS::Subscription" && p.Protocol === "email" && json(p.Endpoint) === json({ Ref: ON_CALL_PARAMETER.name })
+    && param?.Type === "String" && param.Default === undefined && param.AllowedPattern === ON_CALL_PARAMETER.allowedPattern;
+  if (!ok) return r;
+  const { Endpoint: _, ...rest } = p;
+  return { ...r, Properties: rest };
+};
 const regionsIn = (v: unknown, defaults: Record<string, string> = {}) => new Set((json(flatten(v, defaults)).match(REGION_RE) ?? []).map((r) => r.toLowerCase().replace(/^(.*-\d+).*$/, "$1")));
 /** True when a KMS key reference points at an AWS::KMS::Key defined in this template (not an alias such as aws/rds). */
 const ownKey = (t: Template, ref: unknown) => {
@@ -102,7 +115,7 @@ export function regionFindings(stacks: SynthStack[], allow: RegionAllowance[] = 
       if (section !== "Rules") for (const why of opaque(s.template, s.template[section])) out.push(`${s.name} ${section}: ${why}, whose region the guard cannot read`);
     }
     for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
-      for (const why of opaque(s.template, r)) out.push(`${s.name}/${id} (${r.Type}): ${why}, whose region the guard cannot read`);
+      for (const why of opaque(s.template, withoutOnCallEmail(s.template, r))) out.push(`${s.name}/${id} (${r.Type}): ${why}, whose region the guard cannot read`);
       // a dynamic reference split across Fn::Join parts is seen once the parts are joined (round 2, R2-3)
       if (!opaque(s.template, r).length && /\{\{resolve:(?!secretsmanager:)/.test(json(flatten(r, d)))) out.push(`${s.name}/${id} (${r.Type}): a dynamic reference (joined from parts), whose region the guard cannot read`);
       if (r.Type === "AWS::KMS::Key" && r.Properties?.MultiRegion !== undefined && r.Properties.MultiRegion !== false) out.push(`${s.name}/${id} (${r.Type}) is a multi-region key`);
@@ -368,7 +381,8 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
 export const ESTATE_TYPES = ["AWS::Backup::BackupPlan", "AWS::Backup::BackupSelection", "AWS::Backup::BackupVault", "AWS::EC2::EIP", "AWS::EC2::InternetGateway",
   "AWS::EC2::NatGateway", "AWS::EC2::Route", "AWS::EC2::RouteTable", "AWS::EC2::SecurityGroup", "AWS::EC2::Subnet", "AWS::EC2::SubnetRouteTableAssociation",
   "AWS::EC2::VPC", "AWS::EC2::VPCGatewayAttachment", "AWS::IAM::Policy", "AWS::IAM::Role", "AWS::KMS::Alias", "AWS::KMS::Key", "AWS::RDS::DBInstance",
-  "AWS::RDS::DBParameterGroup", "AWS::RDS::DBSubnetGroup", "AWS::S3::Bucket", "AWS::S3::BucketPolicy", "AWS::SecretsManager::Secret", "AWS::SecretsManager::SecretTargetAttachment"];
+  "AWS::RDS::DBParameterGroup", "AWS::RDS::DBSubnetGroup", "AWS::S3::Bucket", "AWS::S3::BucketPolicy", "AWS::SecretsManager::Secret", "AWS::SecretsManager::SecretTargetAttachment",
+  "AWS::Logs::LogGroup", "AWS::Logs::MetricFilter", "AWS::CloudWatch::Alarm", "AWS::SNS::Topic", "AWS::SNS::Subscription"]; // PF-23c: logs, alarms, the on-call topic
 export function typeFindings(stacks: SynthStack[]): string[] {
   return stacks.flatMap((s) => Object.entries(s.template.Resources ?? {}).filter(([, r]) => !ESTATE_TYPES.includes(r.Type)).map(([id, r]) => `${s.name}/${id}: ${r.Type} is not an estate type`));
 }

@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Template as Assert } from "aws-cdk-lib/assertions";
 import { allStacks, buildApp, STAGES } from "../lib/app.ts";
-import { regionFindings } from "../lib/checks.ts";
+import { ON_CALL_PARAMETER, REGION_ALLOW, regionFindings, typeFindings } from "../lib/checks.ts";
 import { ALARMED_ALERT_KINDS, ALARMS, FAST_BURN, FILTERS, LOG_RETENTION_DAYS, SAMPLE, SLO_5XX_PCT, alarmFindings, alertMetric, matchesFilter, retentionFindings } from "../lib/observability.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,7 +46,24 @@ test("PF-23c retention pass: each stage has its app log group in ca-central-1, k
     assert.equal(LOG_RETENTION_DAYS, 90);
     assert.deepEqual(retentionFindings(tpl[s], s), []);
   }
-  assert.deepEqual(regionFindings(allStacks(app)), []);
+  assert.deepEqual(regionFindings(allStacks(app), REGION_ALLOW), []);
+  assert.deepEqual(typeFindings(allStacks(app)), []); // the five PF-23c types are estate types
+});
+
+test("PF-23c region guard: only the on-call email subscription may read a deploy parameter; any other use is still refused", () => {
+  const home = allStacks(app).find((s) => s.name === "xr-production")!;
+  const run = (t: any) => regionFindings([{ ...home, template: t }], REGION_ALLOW).filter((l) => l.includes("parameter set at deploy time"));
+  assert.deepEqual(run(home.template), []);
+  assert.equal(home.template.Parameters && (home.template.Parameters as any).OnCallEmail.AllowedPattern, ON_CALL_PARAMETER.allowedPattern);
+  const subId = () => Object.keys(home.template.Resources!).find((k) => home.template.Resources![k].Type === "AWS::SNS::Subscription")!;
+  const breaks: [string, (t: any) => void][] = [
+    ["a default", (t) => { t.Parameters.OnCallEmail.Default = "someone@example.com"; }],
+    ["a looser pattern", (t) => { t.Parameters.OnCallEmail.AllowedPattern = ".*"; }],
+    ["another protocol", (t) => { t.Resources[subId()].Properties.Protocol = "https"; }],
+    ["another resource", (t) => { t.Resources.Stray = { Type: "AWS::SNS::Topic", Properties: { DisplayName: { Ref: "OnCallEmail" } } }; }],
+    ["another parameter", (t) => { t.Parameters.Other = { Type: "String" }; t.Resources[subId()].Properties.Endpoint = { Ref: "Other" }; }],
+  ];
+  for (const [why, mutate] of breaks) { const t = clone(home.template); mutate(t); assert.equal(run(t).length, 1, why); }
 });
 
 test("PF-23c retention fail: a log group kept for ever or 30 days, the app's kept 365, or no app group at all, is named", () => {

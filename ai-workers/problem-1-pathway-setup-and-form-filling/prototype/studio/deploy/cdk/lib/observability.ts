@@ -17,6 +17,7 @@
 // what level; the job-age limit is the app's STUCK_JOB_MS. A slow burn (just over 0.1% for days) does not page here.
 import { CfnParameter, RemovalPolicy, Stack, Duration, aws_cloudwatch as cw, aws_cloudwatch_actions as actions, aws_logs as logs, aws_sns as sns, aws_sns_subscriptions as subs } from "aws-cdk-lib";
 import { Construct } from "constructs";
+import { ON_CALL_PARAMETER } from "./checks.ts";
 
 export const LOG_RETENTION_DAYS = 90;
 export const NAMESPACE = "ExpatReady/Alarms";
@@ -69,10 +70,10 @@ export class Observability extends Construct {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const email = new CfnParameter(stack, "OnCallEmail", {
+    const email = new CfnParameter(stack, ON_CALL_PARAMETER.name, {
       type: "String",
       description: "PF-23c: the on-call address every alarm emails (the founder names it; no default)",
-      allowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+      allowedPattern: ON_CALL_PARAMETER.allowedPattern, // the region guard admits this parameter only with this pattern
       constraintDescription: "one email address",
     });
     this.onCall = new sns.Topic(this, "OnCall", { topicName: `xr-${props.stage}-on-call`, displayName: `Expat Ready ${props.stage} alarms` });

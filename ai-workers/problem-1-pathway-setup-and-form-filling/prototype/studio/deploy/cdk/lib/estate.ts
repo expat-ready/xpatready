@@ -8,6 +8,7 @@
 import { Duration, RemovalPolicy, Stack, Tags, type StackProps, aws_backup as backup, aws_ec2 as ec2, aws_kms as kms, aws_rds as rds, aws_s3 as s3 } from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import { backupPlan } from "./backup.ts";
+import { Observability } from "./observability.ts";
 
 export const HOME_REGION = "ca-central-1";
 export const BACKUP_DAYS = 35; // the RDS maximum; SA-2-21's and SA-11-32's "backups 35 days"
@@ -15,8 +16,6 @@ export type Stage = "staging" | "production";
 export const BUCKETS = ["documents", "exports", "imports"] as const;
 
 export interface EstateProps extends StackProps { stage: Stage }
-
-import { Observability } from "./observability.ts"; // PF-23c (kept here, apart from the other imports, so parallel rows' edits do not meet)
 
 export class EstateStack extends Stack {
   readonly key: kms.Key;
