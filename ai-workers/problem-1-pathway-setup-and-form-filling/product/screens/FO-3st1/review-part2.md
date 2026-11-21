@@ -148,3 +148,5 @@ A real screen reader. An intended user's unaided walk (D17, D20). FO-5's retaine
 **Open:** no Blocker and no Major.
 
 **Verdict: Approve** at e9c0389cb114f261552d902a0d2f68a1358fc76b.
+
+Verdict: Approve 36a1cb058e46d42eecf9eb996bd1fe15e3b9ef8b (records-only delta on e9c0389c)
