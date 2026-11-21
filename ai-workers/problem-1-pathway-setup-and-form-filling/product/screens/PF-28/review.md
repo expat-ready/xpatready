@@ -162,3 +162,48 @@ The facts on the card are unchanged: the 422 status, the 256 KB Sample limit, th
 Round 2's Minors (r2-m1 to r2-m4) and the PR-body items for before the label (m6–m9, DW8) are unchanged.
 
 Verdict: Approve 4f73b7e0905d206db4e7be5a6528365d70855356
+
+---
+
+## Round 4: diff only (P-277), 530add5d to 1f65eb8cc9c403db14b4666f8ee676579886eb9c
+
+Three commits:
+- **38335bf97:** puts back 49 screenshots that suite runs had rewritten.
+- **c275fe7e3:** merges origin/main.
+- **1f65eb8cc:** sets the sweep's `PLATFORM_ENVIRONMENT`, and lists main's new routes.
+
+I checked this against the fetched origin/main. I did not change any code.
+
+### Checks
+- **The PR's files.** origin/main is an ancestor of HEAD. `git diff --name-only origin/main...HEAD` lists exactly the 11 PR files:
+  - the 4 PF-28 records;
+  - `main.ts`, `MODULE.rows/PF-28.md` and `http/input.ts`;
+  - `check_pf0bp_body_errors.ts`, `check_pf28_inputs.ts`, `tests/lib/routes.ts` and `pf28-allow-list.json`.
+  No screenshot and no other code is left.
+- **The screenshots.** Each of the 49 files restored in 38335bf97 is byte-identical to the earlier merge base.
+- **The merge.** It brings in only main's changes. In `check_pf0bp_body_errors.ts`, main's own `PLATFORM_ENVIRONMENT: "local"` comes through, and against main the PR still changes only the DW2 words line.
+- **1f65eb8cc changes two test files and nothing else.**
+  - `check_pf28_inputs.ts`: the `PLATFORM_ENVIRONMENT ??= "local"` line before the feature list loads (the same line as `check_r16_deny_sweep.ts`), and the caps 71/220 raised to 79/235.
+  - `pf28-allow-list.json`: +8 code entries and +15 probe entries, every one labelled part 2 (platform) or part 3 (front-office sales). `input.ts` and `main.ts` did not change.
+- **The sweep** on the copy `rev2619` (:4591, started and stopped in one command): **24/24**.
+  - 183 routes, 459 probes, 235 allow-listed, 0 NOT TESTED by keys, no 5xx.
+  - All-table counts changed only through sign-in and the first read, as in rounds 1 and 2.
+- **What main's new routes answer:**
+  - conflict checks: 400 or 404 where the rule wants 422;
+  - the assignment-rules POST and the web form on/off switch: 422 without naming `pf28Unknown`;
+  - the notification list and read-all: 200 on an unknown query field.
+  Every one of those failing probes is on the list.
+- **The Lead's comment 7056094303** (release holder): OK on both `main.ts` lines, and 422 confirmed for PF/FO field errors. That closes the open question in `challenge.md` and the `main.ts` part of m7.
+
+### Is listing main's new routes, rather than fixing them, right for part 1?
+**Yes.** The brief's "a lane whose new route fails must fix it in its own PR (the allow-list may not grow)" binds lanes once the sweep is on `main`. FO-10, FO-13c, the web form switch and PF-18n merged before the sweep existed, so their lanes could not see it.
+
+Part 1 is defined as "the rule and the sweep (no route fixed yet)", and fixing these routes here would edit area files that belong to the fix parts. Their entries sit under the same fix parts as their areas' other entries.
+
+The cap is re-based once, at this merge, to the committed size (79/235). From the moment part 1 is on `main` it can only fall (r2-m1's `<=` still applies).
+
+**One Minor (r4-m1):** if `main` moves again before this PR merges, each new route will raise the cap again. Re-basing is fine only up to the merge, and any later rise belongs to the lane that adds the route.
+
+Round 2's other Minors (r2-m2 to r2-m4) and the PR-body items for before the label (m6, m8, m9, and DW8's browser results) are unchanged.
+
+Verdict: Approve 1f65eb8cc9c403db14b4666f8ee676579886eb9c
