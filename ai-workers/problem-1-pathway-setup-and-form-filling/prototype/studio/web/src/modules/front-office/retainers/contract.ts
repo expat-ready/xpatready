@@ -52,7 +52,10 @@ export const VALUE_LABELS: [string, string][] = [["client.name", "Client name"],
   ["signer.name", "Person who signs"], ["signer.email", "Signer's email"], ["representative.name", "Representative"], ["representative.licensing_body", "Licensing body"],
   ["firm.name", "Firm name"], ["agreement.date", "Date of this version"], ["agreement.version", "Version number"], ["fees.total", "Total fees"]];
 /** Cents as typed money, CAD ("1500.00" → "CAD 1,500.00"); the server keeps the cents. */
-export const cad = (minor: string | null) => (minor === null ? "No amount" : `CAD ${(Number(minor) / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+/** CAD 0.00 means no fee is due: shown "No fee", and the retainer can still be sent (Lead 15 ruling on #2802, P-628, reversible). */
+export const NO_FEE = "No fee";
+export const isNoFee = (total: unknown) => total === "CAD 0.00";
+export const cad = (minor: string | null) => (minor === null ? "No amount" : minor === "0" ? NO_FEE : `CAD ${(Number(minor) / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 /** A typed amount ("1500", "1,500" or "1500.50") as cents for the server, or a refusal in words. A comma only groups
  *  thousands ("1,500.50"); "1500,50" or "1,5" is refused, never read as a hundred times the fee (break M1). At most CAD
  *  100 million, the server's limit (FEE_MAX_MINOR; break m4). */

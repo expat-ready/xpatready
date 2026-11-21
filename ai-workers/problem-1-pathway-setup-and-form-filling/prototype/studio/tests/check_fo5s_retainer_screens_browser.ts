@@ -222,6 +222,14 @@ try {
   ok("R1.53 FO-5s review M2: a signer with no email blocks Send with a fix (a link to the client's record), and the values say \"blocks Send\", never \"You can send without it\"",
     (await r.locator('[data-blocker="signer"]').innerText()).includes("The signer needs an email.") && (await r.locator('[data-blocker="signer"]').getByRole("link").count()) === 1
     && ((await signerEmail.count()) === 0 || (await signerEmail.innerText()).includes("blocks Send")));
+  // Lead 15 ruling on #2802 (P-628, reversible): CAD 0.00 means no fee is due; shown "No fee"; Send is not blocked.
+  const fay = prospect("Fay", R.id), fr = await call(tok.R, "POST", `/front-office/prospects/${fay.id}/retainers`, { templateId: tpl.body.id, fees: [{ label: "Consultation credit", amountMinor: 0, when: "ON_SIGNING" }] });
+  await r.goto(`${BASE}/front-office/retainers/${fr.body.id}`); await r.locator("[data-check-and-send]").waitFor({ timeout: 30_000 });
+  const noFeeValues = (await r.locator("[data-values]").innerText()).includes("No fee"), noSummary = (await r.locator("[data-error-summary]").count()) === 0;
+  await r.locator("[data-check-and-send]").click(); const fs = r.getByRole("dialog", { name: /^Send to .* to sign$/ }); await fs.waitFor();
+  ok("R1.53 FO-5s (Lead ruling) pass: a CAD 0.00 fee reads \"No fee\" in Check before sending and the Send panel, and does not block Send",
+    noFeeValues && noSummary && (await fs.innerText()).includes("No fee") && !(await fs.innerText()).includes("CAD 0.00"), { noFeeValues, noSummary });
+  await r.keyboard.press("Escape");
 
   // ------------------------------------------------------------------------------- widths
   for (const w of [375, 1024, 1440]) {

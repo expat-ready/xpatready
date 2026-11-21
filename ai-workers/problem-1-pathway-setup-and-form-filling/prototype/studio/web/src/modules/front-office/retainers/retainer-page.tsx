@@ -15,7 +15,7 @@ import { can } from "../sales/contract";
 import { Loading } from "../sales/loading";
 import { SalesFrame, useStaff } from "../sales/sales-frame";
 import { staffApi, StaffApiError, staffToken } from "../sales/session";
-import { cad, centsIn, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
+import { cad, centsIn, isNoFee, NO_FEE, EDITABLE, R_KEY, Representatives, Retainer, STATUS, TemplateChecklist, VALUE_LABELS, WHEN } from "./contract";
 
 type Row = { label: string; amount: string; when: string; dueOn: string };
 const rowsOf = (r: Retainer): Row[] => r.version.fees.map((f) => ({ label: f.label, amount: f.amountMinor === null ? "" : (Number(f.amountMinor) / 100).toFixed(2), when: f.when, dueOn: f.dueOn ?? "" }));
@@ -160,7 +160,7 @@ function RetainerBody({ id }: { id: string }) {
           </div> : null}
           <dl id="fo-values" tabIndex={-1} className="grid grid-cols-[minmax(0,8rem)_1fr] gap-x-2 gap-y-1 text-sm" data-values>
             {VALUE_LABELS.filter(([k]) => k in v && (r.subject === "COMPANY" || k !== "company.name")).map(([k, l]) => (
-              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{v[k] ? String(v[k]) : blocked.has(k) && mayEdit ? <Pill tone="danger">blocks Send</Pill> : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
+              <React.Fragment key={k}><dt className="text-text-muted">{l}</dt><dd className="min-w-0 [overflow-wrap:anywhere]">{k === "fees.total" && isNoFee(v[k]) ? NO_FEE : v[k] ? String(v[k]) : blocked.has(k) && mayEdit ? <Pill tone="danger">blocks Send</Pill> : <span title={missing.has(k) ? `Not on ${client}'s record yet. You can send without it.` : "Not in this template."}><Pill tone={missing.has(k) ? "warn" : "neutral"}>{missing.has(k) ? "missing" : "empty"}</Pill></span>}</dd></React.Fragment>
             ))}
           </dl>
           {r.codeChecklist ? <section aria-labelledby="fo-code" data-code-checklist className="rounded-lg border border-border p-3 text-sm">
@@ -175,7 +175,7 @@ function RetainerBody({ id }: { id: string }) {
       </div>
       <Panel open={sending} onOpenChange={setSending} title={`Send to ${client} to sign`} description={`Version ${r.version.n}. Once sent, this version never changes.`}
         footer={<><Button variant="ghost" onClick={() => setSending(false)}>Cancel</Button><Button busy={send.isPending} onClick={() => send.mutate()}>Send to {client}</Button></>}>
-        <dl className="grid grid-cols-[6rem_1fr] gap-1 text-sm"><dt className="text-text-muted">To</dt><dd className="[overflow-wrap:anywhere]">{to}</dd><dt className="text-text-muted">Version</dt><dd>{r.version.n}</dd><dt className="text-text-muted">Fees</dt><dd>{String(v["fees.total"] ?? "") || "No amount"}</dd></dl>
+        <dl className="grid grid-cols-[6rem_1fr] gap-1 text-sm"><dt className="text-text-muted">To</dt><dd className="[overflow-wrap:anywhere]">{to}</dd><dt className="text-text-muted">Version</dt><dd>{r.version.n}</dd><dt className="text-text-muted">Fees</dt><dd>{isNoFee(v["fees.total"]) ? NO_FEE : String(v["fees.total"] ?? "") || "No amount"}</dd></dl>
         <p className="mt-3 text-sm">{client} is asked to sign this version. After {client} signs, {repName(r.representativeStaffId)} signs for the firm.</p>
         {r.missing.length ? <p className="mt-2 text-sm text-text-muted">{r.missing.length} value{r.missing.length === 1 ? " is" : "s are"} missing. You can send without {r.missing.length === 1 ? "it" : "them"}.</p> : null}
       </Panel>
