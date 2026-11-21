@@ -8,6 +8,9 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 
+## Lead 15 since 15:47 IST (newest first)
+* 16:0x check: SHARDS 18→24 set in the browser (founder yes, A265) but GitHub asked a 2FA code: **still 18, founder to confirm**. #2603 labelled after Lead read (1d934c9). R1.14 + R1.32 proofs → qa Q5 (no Q2 lane exists). #2782 brief: merge main, drop the #2780 hold line, fix types/pr-rules. #2633 already requeued by Lead 14. AWS: no Cloudflare access → asked AWS session for the CloudFront default-domain plan (one host value, switch later); no "go Phase 2" before #2800 merges and the plan is agreed.
+
 ## Lead 14 since 12:44 IST (newest first)
 * 15:3x founder **go** (A264): lanes **r153-fo5s-j53** (task_85ab9933, R1.53 screens + J-53, by 04:00) and **pf8b-f1-f2** (task_72b23a4b, F1 awsLogs + F2 staging suffix, by 18:00). AWS preflight safe (49 add, 0 replace); deploy once after F1/F2; founder adds 4 NS records `staging` in Cloudflare during deploy; old zone kept until after proofs.
 * 15:1x merged #2706 R1.108 (**proven 36, +4 cycle**), #2727 (R1.42 FO-3a1e), #2720 (FO-5b), #2741, #2746. **R1.53 will score Partial** (qa Q4 + fresh reader): FO-5s (retainer screens) and J-53 not built, no PR → forecast 12/15 unless a lane builds FO-5s + J-53 tonight (**needs a founder-typed turn to start**). #2750 FO-3st3b can leave draft now (#2727 merged; Lead B).
@@ -29,6 +32,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A265 | 21 Nov 16:0x (typed): no Cloudflare access for expatready.com: free, solid workaround now, easy switch later; raise serious concerns; SHARDS: use the browser | AWS plan asked (CloudFront default domain); SHARDS waits on a GitHub 2FA code |
 | A264 | 21 Nov 15:3x (typed): go for the R1.53 lane and PF-8b fixes F1/F2 | Both lanes started 15:3x |
 | A261-A263 | 21 Nov 14:2x-14:3x (typed): enforce the Lead's prioritisation by scripts; stage table; capability board in every report | ENF-733b and ENF-783c lanes; board added to ENF-783c 14:3x; template in Start here |
 | A256-A258 | 21 Nov 13:0x-13:5x | ca-west-1 enabled; alarms to the founder's inbox (decided, deploy parameter); focus list #2777: word for word in `product/history/STATE-2026-11-21-1345-lead14s3-early-bullets.md` |
