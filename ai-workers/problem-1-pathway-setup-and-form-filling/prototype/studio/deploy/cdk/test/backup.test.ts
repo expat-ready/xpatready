@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { App, Stack, aws_iam as iam } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { BYPASS_ACTIONS, copyVaultName } from "../lib/backup.ts";
-import { HOME, REGION_ALLOW, backupFindings, bucketFindings, bypassFindings, regionFindings, vaultFindings, type SynthStack, type Template } from "../lib/checks.ts";
+import { HOME, REGION_ALLOW, backupFindings, bucketFindings, bypassFindings, regionFindings, resourcePolicyFindings, vaultFindings, type SynthStack, type Template } from "../lib/checks.ts";
 
 const all: SynthStack[] = allStacks(buildApp().app);
 const homes = all.filter((s) => s.region === HOME);
@@ -89,6 +89,7 @@ test("PF-8rc vaults fail: compliance mode, a shorter lock, no lock, a narrowed d
 
 test("PF-8rc no role can bypass, pass: the only role is AWS Backup's, with its own managed policies and kms:Decrypt on the data key", () => {
   assert.deepEqual(bypassFindings(all), []);
+  assert.deepEqual(resourcePolicyFindings(all), []); // key and vault policies allow only this account's root
   for (const h of homes) assert.equal(of(h.template, "AWS::IAM::Role").length, 1);
 });
 
@@ -116,4 +117,96 @@ test("PF-8rc buckets pass and fail: old versions expire after 35 days; a TLS den
   const f = bucketFindings(t);
   assert.equal(f.filter((l) => l.includes("old versions do not expire after 35 days")).length, 3);
   assert.equal(f.filter((l) => l.includes("plain HTTP")).length, 3);
+});
+
+// ---- Round 2: the breaker's B2–B8 and the reviewer's R1–R6 at 0ab64811e, each now caught ----
+const home = (stacks: SynthStack[], name = "xr-production") => stacks.find((s) => s.name === name)!;
+const copyFails = (dest: unknown) => {
+  const b = swap("xr-production", (t) => { rule(t).CopyActions[0].DestinationBackupVaultArn = dest; });
+  return [...backupFindings(home(b), b), ...regionFindings(b, REGION_ALLOW)];
+};
+
+test("PF-8rc round 2: a copy into another account, the other stage's vault, or a target hidden in Fn::Sub, SSM or Fn::ImportValue is caught (B2, B3, R3)", () => {
+  const join = (acct: unknown, name: string) => ({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":backup:ca-west-1:", acct, `:backup-vault:${name}`]] });
+  for (const dest of [
+    "arn:aws:backup:ca-west-1:999999999999:backup-vault:xr-production-copy",
+    join("999999999999", "xr-production-copy"),
+    join({ Ref: "AWS::AccountId" }, "xr-staging-copy"),
+    { "Fn::Sub": ["arn:aws:backup:us-${D}-1:${AWS::AccountId}:backup-vault:xr-production-copy", { D: "east", Note: "ca-west-1" }] },
+    "{{resolve:ssm:/ca-west-1/backup-vault:xr-production-copy}}",
+    { "Fn::Select": [1, ["arn:aws:backup:ca-west-1:1:backup-vault:xr-production-copy", { "Fn::ImportValue": "elsewhere-vault-arn" }]] },
+  ]) assert.ok(copyFails(dest).some((l) => l.includes("copy target is not this account's xr-production-copy vault")), JSON.stringify(dest));
+});
+
+test("PF-8rc round 2: anywhere in a template, Fn::Sub with variables, an import, an SSM reference or a region in a parameter default joined in is caught (B3)", () => {
+  const cases: [Record<string, unknown>, string][] = [
+    [{ Value: { "Fn::Sub": ["arn:aws:events:us-${D}-1:1:event-bus/default", { D: "east" }] } }, "Fn::Sub with a variable map"],
+    [{ Value: { "Fn::ImportValue": "x" } }, "Fn::ImportValue"],
+    [{ Value: "{{resolve:ssm:/x}}" }, "a dynamic reference"],
+    [{ Value: { "Fn::Join": ["", ["arn:aws:sqs:us-ea", { Ref: "Tail" }, ":1:q"]] } }, "names region us-east-1"],
+  ];
+  for (const [props, word] of cases) {
+    const b = swap("xr-staging", (t) => { t.Parameters = { ...(t.Parameters as object), Tail: { Type: "String", Default: "st-1" } }; t.Resources!.X = { Type: "AWS::SSM::Parameter", Properties: props }; });
+    assert.ok(regionFindings(b, REGION_ALLOW).some((l) => l.includes("xr-staging/X") && l.includes(word)), word);
+  }
+});
+
+test("PF-8rc round 2: a multi-region key, a replica key and a backup report plan are refused (B8)", () => {
+  const b = swap("xr-staging", (t) => {
+    Object.values(t.Resources!).find((r) => r.Type === "AWS::KMS::Key")!.Properties!.MultiRegion = true;
+    t.Resources!.Replica = { Type: "AWS::KMS::ReplicaKey", Properties: { PrimaryKeyArn: "x", KeyPolicy: {} } };
+    t.Resources!.Report = { Type: "AWS::Backup::ReportPlan", Properties: { ReportDeliveryChannel: { S3BucketName: "anywhere" } } };
+  });
+  const f = regionFindings(b, REGION_ALLOW).join("\n");
+  for (const w of ["is a multi-region key", "Replica (AWS::KMS::ReplicaKey) is a multi-region resource", "Report (AWS::Backup::ReportPlan) is a multi-region resource"]) assert.ok(f.includes(w), w);
+});
+
+test("PF-8rc round 2: user and group inline policies, IAM writes, role assumption, trust in anyone and a customer managed policy are caught (B4 a/b, R1, R2, R6)", () => {
+  const app = new App({ analyticsReporting: false });
+  const bad = new Stack(app, "bad", { env: { region: HOME } });
+  const doc = (Action: string[]) => ({ Statement: [{ Effect: "Allow", Action, Resource: "*" }] });
+  new iam.CfnUser(bad, "U", { policies: [{ policyName: "p", policyDocument: doc(["backup:DeleteBackupVaultAccessPolicy"]) }] });
+  new iam.CfnGroup(bad, "G", { policies: [{ policyName: "p", policyDocument: doc(["backup:*"]) }] });
+  new iam.Role(bad, "Anyone", { assumedBy: new iam.AnyPrincipal() });
+  new iam.Role(bad, "Escalate", { assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"), inlinePolicies: { p: new iam.PolicyDocument({ statements: [new iam.PolicyStatement({ actions: ["iam:*", "sts:AssumeRole"], resources: ["*"] })] }) } });
+  new iam.ManagedPolicy(bad, "Mine", { statements: [new iam.PolicyStatement({ actions: ["backup:PutBackupVaultLockConfiguration"], resources: ["*"] })] });
+  const f = bypassFindings(allStacks(app)).join("\n");
+  for (const w of ["bad/U", "allows backup:DeleteBackupVaultAccessPolicy", "bad/G", "may be assumed by", "allows iam:PutRolePolicy", "allows sts:AssumeRole", "Mine", "allows backup:PutBackupVaultLockConfiguration"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+});
+
+test("PF-8rc round 2: AdministratorAccess hidden in Fn::Select or Fn::If beside an allowed policy is caught (B5, R5)", () => {
+  const allowed = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup", admin = "arn:aws:iam::aws:policy/AdministratorAccess";
+  for (const arn of [{ "Fn::Select": [0, [admin, allowed]] }, { "Fn::If": ["C", admin, allowed] }]) {
+    const b = swap("xr-staging", (t) => { (Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Role")!.Properties!.ManagedPolicyArns as unknown[]).push(arn); });
+    assert.ok(bypassFindings(b).some((l) => l.includes("AdministratorAccess is not on the allow list")), JSON.stringify(arn));
+  }
+});
+
+test("PF-8rc round 2: a key or vault policy allowing another account, a too-short lock maximum and a narrowed deny Resource are caught (B4 c, B6, R6)", () => {
+  const other = { AWS: "arn:aws:iam::999999999999:root" };
+  const b = swap("xr-production-copy", (t) => {
+    (of(t, "AWS::KMS::Key")[0].Properties!.KeyPolicy as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Principal: other, Action: "kms:PutKeyPolicy", Resource: "*" });
+    const v = of(t, "AWS::Backup::BackupVault")[0].Properties!;
+    (v.AccessPolicy as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Principal: other, Action: "backup:DeleteBackupVaultAccessPolicy", Resource: "*" });
+    v.LockConfiguration = { MinRetentionDays: 35, MaxRetentionDays: 7 };
+  });
+  const f = resourcePolicyFindings(b).join("\n");
+  assert.ok(f.includes("AWS::KMS::Key): allows \"kms:PutKeyPolicy\"") && f.includes("AWS::Backup::BackupVault): allows \"backup:DeleteBackupVaultAccessPolicy\""), f);
+  assert.ok(vaultFindings(b).some((l) => l.includes("vault lock maximum 7 days")));
+  const narrow = swap("xr-staging", (t) => { (of(t, "AWS::Backup::BackupVault")[0].Properties!.AccessPolicy as { Statement: Record<string, unknown>[] }).Statement[0].Resource = "arn:aws:backup:ca-central-1:1:recovery-point:x"; });
+  assert.ok(vaultFindings(narrow).some((l) => l.includes("does not deny backup:DeleteRecoveryPoint")));
+});
+
+test("PF-8rc round 2: a selection narrowed by NotResources, Conditions or tags, or tied to another plan, a second plan and a disabled lifecycle rule are caught (B7, R4, R6)", () => {
+  for (const [k, v] of [["NotResources", ["*"]], ["Conditions", { StringEquals: [{ ConditionKey: "aws:ResourceTag/x", ConditionValue: "never" }] }], ["ListOfTags", [{ ConditionType: "STRINGEQUALS", ConditionKey: "x", ConditionValue: "y" }]]] as const) {
+    const b = swap("xr-production", (t) => { (of(t, "AWS::Backup::BackupSelection")[0].Properties!.BackupSelection as Record<string, unknown>)[k] = v; });
+    assert.ok(backupFindings(home(b), b).some((l) => l.includes(`the selection has ${k}`)), k);
+  }
+  const other = swap("xr-production", (t) => { of(t, "AWS::Backup::BackupSelection")[0].Properties!.BackupPlanId = "someone-elses-plan"; });
+  assert.ok(backupFindings(home(other), other).some((l) => l.includes("not this stack's plan's")));
+  const two = swap("xr-production", (t) => { t.Resources!.Second = clone(of(t, "AWS::Backup::BackupPlan")[0]); });
+  assert.ok(backupFindings(home(two), two).some((l) => l.includes("2 backup plans, not 1")));
+  const off = clone(homes[0].template);
+  for (const bk of of(off, "AWS::S3::Bucket")) (bk.Properties!.LifecycleConfiguration as { Rules: Record<string, unknown>[] }).Rules[0].Status = "Disabled";
+  assert.equal(bucketFindings(off).filter((l) => l.includes("old versions do not expire")).length, 3);
 });

@@ -4,7 +4,9 @@
 // governance mode (a minimum retention and no ChangeableForDays, so no compliance-mode cooling-off ever starts) and an
 // access policy that denies, to every principal, the actions that would bypass the lock: removing or loosening it,
 // deleting a recovery point early, shortening its lifecycle or deleting the vault (`BYPASS_ACTIONS`). An explicit deny
-// wins over any allow, so the claim "no role can bypass" rests on the template, not on what AWS's managed policies hold.
+// wins over any allow, so no role defined here can bypass, whatever AWS's managed policies hold. Limit (governance mode,
+// break B1): an account admin, the root user or a deploy can replace the vault policy and then lift the lock in two
+// steps; compliance mode or an organisation SCP would close that (question 1 on PR #2725).
 // Unconfirmed (docs.aws.amazon.com unreachable from the build lane, 21 Nov): that a vault access policy can deny each of
 // these actions, that it binds the account's root user too, and that it does not stop AWS Backup's own expiry at 35
 // days. The cloud drill (held, P-251) proves them in the founder's account.
@@ -17,11 +19,13 @@ export const RETENTION_DAYS = 35; // both vaults: the same 35 days as the databa
 /** The actions that would bypass the vault lock in governance mode; every vault policy denies them to every principal. */
 export const BYPASS_ACTIONS = [
   "backup:DeleteBackupVaultLockConfiguration",
-  "backup:PutBackupVaultLockConfiguration", // in governance mode a new lock may lower the minimum: denied too
-  "backup:DeleteRecoveryPoint",
+  "backup:DeleteRecoveryPoint", // with this and the next denied, a lowered lock minimum cannot shorten any backup's life
   "backup:UpdateRecoveryPointLifecycle",
   "backup:DeleteBackupVault",
 ];
+/** Not denied in the vault policy (review R7: CloudFormation may apply the policy before the lock on the first deploy,
+ *  and a denied lock would leave a retained vault no deploy can finish), but no role in the template may hold it. */
+export const LOCK_ACTIONS = ["backup:PutBackupVaultLockConfiguration"];
 /** Destroying a vault's key destroys its backups: denied to every principal in the key's own policy. */
 export const KEY_DESTROY_ACTIONS = ["kms:ScheduleKeyDeletion", "kms:DisableKey"];
 /** Changing the vault policy would lift the deny: no role in the template may hold these either (checked, not denied, so
