@@ -12,7 +12,7 @@ import { FIELD_ERROR_STATUS, parseInput } from "../http/input.ts";
 import { actorWord, platformAuditWorkspaceId } from "../identity/audit.ts";
 import { problem, type StaffContext } from "../identity/keys.ts";
 import { firmScope } from "../firm-scope.ts";
-import { registerSetting, SettingRefused, writeSetting } from "../settings.ts";
+import { registerSetting, writeSetting } from "../settings.ts";
 
 type Tx = Prisma.TransactionClient;
 type DbOrTx = PrismaClient | Tx;
@@ -116,7 +116,8 @@ export class BrandingService {
     if (!Object.keys(b.data).length) problem(FIELD_ERROR_STATUS, "Not saved", `Send one or more of: ${Object.keys(FIELDS).join(", ")}.`, { code: "INVALID_BODY", fields: { body: `Send one or more of: ${Object.keys(FIELDS).join(", ")}.` } });
     const given = Object.entries(b.data).filter(([, v]) => v !== undefined) as [Field, unknown][];
     const issues = given.map(([f, v]) => refusal(f, v)).filter((x): x is string => !!x);
-    if (issues.length) throw new SettingRefused(issues[0], issues);
+    // PF-28 part 2b: a refused value is a field error (422), each field named; the words and the issues list are SettingRefused's.
+    if (issues.length) problem(FIELD_ERROR_STATUS, "Setting not saved", issues[0], { code: "INVALID", issues, fields: Object.fromEntries(given.map(([f, v]) => [f, refusal(f, v)]).filter(([, w]) => !!w)) });
     const now = await readBranding(this.db, s.firmId);
     const changes = given.map(([f, v]) => [f, v === null ? null : clean(f, v as string)] as const).filter(([f, v]) => now[f] !== v);
     // Only a changed key is written and audited (review m5): a panel that sends every field adds no "unchanged" lines.

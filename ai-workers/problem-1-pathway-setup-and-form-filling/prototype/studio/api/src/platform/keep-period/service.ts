@@ -61,7 +61,7 @@ function reasonOf(raw: unknown): string {
   const reason = raw.trim();
   // Line breaks and tabs inside a reason are kept (a reason box may have several lines: re-review n2); any other control
   // character, or broken text (a lone surrogate), cannot be stored and is refused in words (break m2).
-  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(400, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON" });
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(reason) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(reason)) problem(FIELD_ERROR_STATUS, "Not saved", "The reason has characters that cannot be saved: write it as ordinary text.", { code: "INVALID_REASON", fields: { reason: "This has a control character or broken text. Type it again." } });
   if ([...reason].length > REASON_MAX) problem(FIELD_ERROR_STATUS, "Not saved", `Keep the reason to ${REASON_MAX} characters.`, { code: "INVALID_REASON", fields: { reason: `This is too long: at most ${REASON_MAX} characters.` } });
   return /[\p{L}\p{N}]/u.test(reason.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, "")) ? reason : "";   // fillers that draw nothing are not letters
 }
