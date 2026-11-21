@@ -140,7 +140,9 @@ export type ConsentDecision =
   | { allowed: true; reason: "TRANSACTIONAL" | "SERVICE_EMAIL"; consentId?: undefined }
   | { allowed: true; reason: "CONSENT"; consentId: string; purpose: Purpose }
   | { allowed: false; reason: "SUPPRESSED"; suppression: SuppressionReason; consentId?: undefined }
-  | { allowed: false; reason: "NO_CONSENT" | "WITHDRAWN"; purpose: Purpose; consentId?: undefined };
+  | { allowed: false; reason: "NO_CONSENT" | "WITHDRAWN"; purpose: Purpose; consentId?: undefined }
+  /** QA-518: someone at this address used one-click unsubscribe; this person has no fresh public-page consent since. */
+  | { allowed: false; reason: "ADDRESS_UNSUBSCRIBED"; purpose: "MARKETING"; consentId?: undefined };
 
 /** publishWording(): a new version of the firm's wording for a channel, purpose and language (SA-11-29: never edited,
  *  only added to). The version is the next number for that key; the hash is the SHA-256 of the text. */
@@ -221,6 +223,18 @@ export function decide(q: { class: MessageClass; channel: Channel }, suppression
   return { allowed: false, reason: rows.length || withdrawals.length ? "WITHDRAWN" : "NO_CONSENT", purpose };
 }
 
+/** QA-518 (row 49; tech lead's ruling, Lead 96, P-294, 19 Nov; Unconfirmed: no counsel): a one-click unsubscribe stops
+ *  marketing email to every person of the firm at that address, not only the person the mail went to (same-email persons
+ *  are never linked, AG-2-84). Only a fresh express consent the person gave themselves on a public page (a web form or a
+ *  booking tick) with its own wording, given after the unsubscribe, lifts it; a staff-recorded, imported, copied or older
+ *  consent (on any person record) never does; nor does a row a staff member typed with a public source (only a
+ *  self-service row: review m3). The adapter finds the unsubscribe's time from the address. The fake (fakeConsent) does
+ *  not model this rule: it has no outbox (review m2); tests/check_qa518_unsubscribe_address.ts proves it on the adapter. */
+export const LIFTS_ADDRESS_OPT_OUT: ReadonlyArray<z.output<typeof ConsentSource>> = ["WEB_FORM", "BOOKING_FORM"];
+export function liftsAddressOptOut(optOutAt: Date, c: { givenAt: Date; basis: string; source: string; wordingId: string | null; copiedFromId: string | null; recordedKind: string }): boolean {
+  return c.givenAt.getTime() > optOutAt.getTime() && c.basis === "EXPRESS" && (LIFTS_ADDRESS_OPT_OUT as readonly string[]).includes(c.source) && !!c.wordingId && !c.copiedFromId && c.recordedKind === "SELF_SERVICE";
+}
+
 /** sha256 of a text's UTF-8 bytes, lower-case hex (the same as the migration's text_hash check). */
 export async function sha256Hex(text: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -240,7 +254,8 @@ export type FakeConsent = ConsentPort<unknown> & {
 
 /** The fake: the same inputs, rules and refusals as the adapter, in memory, for rows that only need the port (FO-2's
  *  capture tests, PF-19b's gate before its database). `now` is the clock (FakeClock.now works). It audits nothing: the
- *  adapter's audit is proved by its own test. */
+ *  adapter's audit is proved by its own test. One rule it lacks: QA-518's address stop after an unsubscribe
+ *  (liftsAddressOptOut), which needs the outbox. */
 export function fakeConsent(opts: { now?: () => Date } = {}): FakeConsent {
   const now = opts.now ?? (() => new Date());
   const consents: FakeConsentRow[] = [], wordings: FakeWording[] = [], withdrawals: FakeWithdrawal[] = [];

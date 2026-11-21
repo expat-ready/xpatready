@@ -7,6 +7,7 @@
 // moves a prospect to WON and raises `prospect.won`, once per prospect, in the caller's transaction.
 import { Inject, Injectable } from "@nestjs/common";
 import type { FoPipeline, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
+import type { AuditValues } from "../../../../ports/audit.ts";
 import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, ProspectWonPayload, type EventName } from "../../../../ports/events.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
@@ -16,6 +17,7 @@ import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } 
 import { wonSubjectOf } from "./corporate/service.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { sourcesChecked } from "./source-filter.ts";
+import { clearForWin, lockPartyOf } from "../compliance/conflict/gate.ts";
 
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 /** A retainer counts as signed once the client signed it, on screen or on paper (AG-2-47 rules 17-18). */
@@ -82,9 +84,10 @@ const CAUSE = { CONVERTED: "CONVERT", SIGNED_OFFLINE: "SIGNED_OFFLINE", E_SIGNED
 export async function winProspect(tx: Tx, ctx: StaffContext, prospectId: string, w: { via: WonVia; at: Date; retainerId?: string | null; audit: (p: Locked, retainerSigned: boolean) => Promise<unknown> }) {
   const p = await lockProspect(tx, ctx.firmId, prospectId);
   if (!p || p.kind === "WON") return null;
+  const signed = await signedRetainer(tx, ctx.firmId, p.id);
+  await clearForWin(tx, ctx.firmId, p.id, w.retainerId ?? null, signed);   // FO-13c: no client without a recorded conflict check
   const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "WON" as const }) });
   const last = await tx.foStageMove.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
-  const signed = await signedRetainer(tx, ctx.firmId, p.id);
   await tx.foProspect.update({ where: { id: p.id }, data: { stageId: to.id, wonVia: w.via, wonAt: w.at, lostReasonId: null, lostReasonKind: null, lostNote: null } });
   await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: to.id, cause: CAUSE[w.via], byActor: actorOf(ctx) } });
   await w.audit(p, signed);
@@ -125,8 +128,9 @@ export class Prospects {
     return { vis, see: (owner: string | null) => vis.seesAll || owner === ctx.staffId };
   }
 
-  private audit(tx: Tx, ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Record<string, string | number | boolean | null>) {
-    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_prospect", entityKey, summary, detail });
+  /** R1.8 (QA-594): `v` is the prospect's before and after (null for a side that does not exist), required. */
+  private audit(tx: Tx, ctx: StaffContext, action: string, entityKey: string, summary: string, detail: Record<string, string | number | boolean | null>, v: { before: AuditValues | null; after: AuditValues | null }) {
+    return this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action, entity: "fo_prospect", entityKey, summary, detail, before: v.before, after: v.after });
   }
   private event(tx: Tx, firmId: string, type: EventName, subjectId: string, payload: object) {
     return tx.moduleEvent.create({ data: { firmId, type, subjectId, payload: payload as Prisma.InputJsonValue } });
@@ -161,10 +165,13 @@ export class Prospects {
       const stage = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: "INDIVIDUAL" as const, kind: "ACTIVE" as const, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
       const p = await tx.foProspect.create({ data: { firmId: ctx.firmId, leadId: l.id, type: "INDIVIDUAL", stageId: stage.id, subjectPersonId: l.person_id, primaryContactPersonId: l.person_id, ownerStaffId: owner, createdBy: actorOf(ctx) } });
       await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, toStageId: stage.id, cause: "PERSON", byActor: actorOf(ctx) } });
-      await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Individual${earlier.length ? ` (prospect ${earlier.length + 1} of this lead)` : ""}.`, { leadId: l.id, type: "INDIVIDUAL", ownerStaffId: owner, ownerFilled: active === null, earlierProspects: earlier.length });
-      await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_ENGAGED, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} engaged lead ${l.number} as Individual.`, detail: { prospectId: p.id, type: "INDIVIDUAL", fromState: l.state } });
+      await this.audit(tx, ctx, EVENT.LEAD_ENGAGED, p.id, `Staff ${ctx.staffId} engaged lead ${l.number} as Individual${earlier.length ? ` (prospect ${earlier.length + 1} of this lead)` : ""}.`, { leadId: l.id, type: "INDIVIDUAL", ownerStaffId: owner, ownerFilled: active === null, earlierProspects: earlier.length },
+        { before: null, after: { leadId: l.id, type: "INDIVIDUAL", stage: stage.key, subjectPersonId: l.person_id, primaryContactPersonId: l.person_id, ownerStaffId: owner } });
+      await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_ENGAGED, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} engaged lead ${l.number} as Individual.`, detail: { prospectId: p.id, type: "INDIVIDUAL", fromState: l.state },
+        before: { state: l.state, ownerStaffId: l.owner_staff_id }, after: { state: "ENGAGED", ownerStaffId: owner } });
       // An owner filled by Engage is a take (AG-2-75 rule 5c), written as Take it writes it, so FO-2v's race answer reads it.
-      if (active === null) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_TAKEN, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} took lead ${l.number} by engaging it.`, detail: { ownerStaffId: owner, previousOwnerStaffId: l.owner_staff_id, fromUnassigned: true, via: "ENGAGE" } });
+      if (active === null) await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: EVENT.LEAD_TAKEN, entity: "fo_lead", entityKey: l.id, summary: `Staff ${ctx.staffId} took lead ${l.number} by engaging it.`, detail: { ownerStaffId: owner, previousOwnerStaffId: l.owner_staff_id, fromUnassigned: true, via: "ENGAGE" },
+        before: { ownerStaffId: l.owner_staff_id }, after: { ownerStaffId: owner } });
       if (active === null) await this.event(tx, ctx.firmId, EVENT.LEAD_TAKEN, l.id, LeadEventPayload.parse({ leadId: l.id, personId: l.person_id, door: l.door, state: "ENGAGED", ownerStaffId: owner }));
       await this.event(tx, ctx.firmId, EVENT.LEAD_ENGAGED, p.id, ProspectEventPayload.parse({ prospectId: p.id, leadId: l.id, type: "INDIVIDUAL", stageKey: stage.key, subjectPersonId: l.person_id, subjectCompanyId: null, primaryContactPersonId: l.person_id, ownerStaffId: owner }));
       return { id: p.id, earlier };
@@ -270,7 +277,8 @@ export class Prospects {
       if (to.kind === "NURTURE") return problem(422, "Not a person's move", "A prospect is parked through Park, which asks for a date (AG-2-45).", { code: "USE_PARK" });
       if (to.id === p.stage_id) return conflict(`This prospect is already in ${to.label}.`, "SAME_STAGE");
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", {});
-      await this.audit(tx, ctx, EVENT.PROSPECT_STAGE_MOVED, p.id, `Staff ${ctx.staffId} moved ${p.number} from ${p.key} to ${to.key}.`, { fromStageKey: p.key, toStageKey: to.key, cause: "PERSON" });
+      await this.audit(tx, ctx, EVENT.PROSPECT_STAGE_MOVED, p.id, `Staff ${ctx.staffId} moved ${p.number} from ${p.key} to ${to.key}.`, { fromStageKey: p.key, toStageKey: to.key, cause: "PERSON" },
+        { before: { stage: p.key }, after: { stage: to.key } });
       await this.event(tx, ctx.firmId, EVENT.PROSPECT_STAGE_MOVED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON" }));
     });
     return this.read(ctx, pid);
@@ -291,7 +299,8 @@ export class Prospects {
       if (p.kind === "LOST") return conflict("This prospect is already lost.", "TERMINAL");
       const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "LOST" as const }) });
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", { lostReasonId: reason.id, lostReasonKind: "PROSPECT_LOST", lostNote: note });
-      await this.audit(tx, ctx, EVENT.PROSPECT_LOST, p.id, `Staff ${ctx.staffId} marked ${p.number} lost (${reason.key}).`, { fromStageKey: p.key, reasonKey: reason.key, withNote: note !== null });
+      await this.audit(tx, ctx, EVENT.PROSPECT_LOST, p.id, `Staff ${ctx.staffId} marked ${p.number} lost (${reason.key}).`, { fromStageKey: p.key, reasonKey: reason.key, withNote: note !== null },
+        { before: { stage: p.key }, after: { stage: to.key, lostReasonKey: reason.key, lostNote: note } });
       await this.event(tx, ctx.firmId, EVENT.PROSPECT_LOST, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON", lostReasonKey: reason.key }));
     });
     return this.read(ctx, pid);
@@ -304,12 +313,14 @@ export class Prospects {
     const pid = this.idOf(id);
     const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
+      await lockPartyOf(tx, ctx.firmId, pid);   // FO-13c (review r4): the party's lock before the prospect's row, as Send and Signed offline take them
       const { p } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind === "WON") return conflict("This prospect is already a client.", "ALREADY_WON");
       if (p.kind === "LOST") return conflict("A lost prospect cannot be converted. Start a new prospect.", "TERMINAL");
       // The lock above is held, so the helper's own lock is a re-read; it finds the prospect not yet won.
       await winProspect(tx, ctx, p.id, { via: "CONVERTED", at: new Date(), audit: (w, signed) =>
-        this.audit(tx, ctx, EVENT.PROSPECT_WON, w.id, `Staff ${ctx.staffId} converted ${w.number} to a client${signed ? "" : " (retainer not signed)"}.`, { wonVia: "CONVERTED", fromStageKey: w.key, retainerSigned: signed }) });
+        this.audit(tx, ctx, EVENT.PROSPECT_WON, w.id, `Staff ${ctx.staffId} converted ${w.number} to a client${signed ? "" : " (retainer not signed)"}.`, { wonVia: "CONVERTED", fromStageKey: w.key, retainerSigned: signed },
+          { before: { stage: w.key, wonVia: null }, after: { stage: "WON", wonVia: "CONVERTED" } }) });
     });
     return this.read(ctx, pid);
   }
@@ -332,7 +343,8 @@ export class Prospects {
       const to = before ?? (await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "ACTIVE" as const, active: true }), orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }));
       await this.moveRow(tx, ctx, p, last?.toStageId ?? null, to.id, "PERSON", { wonVia: null, wonAt: null });
       await tx.foNote.create({ data: { firmId: ctx.firmId, personId: p.subject_person_id ?? p.primary_contact_person_id, prospectId: p.id, visibility: "INTERNAL", text: `Convert undone: ${why}`, byActor: actorOf(ctx) } });
-      await this.audit(tx, ctx, EVENT.PROSPECT_UNCONVERTED, p.id, `Staff ${ctx.staffId} undid the Convert of ${p.number}; back in ${to.key}.`, { toStageKey: to.key, earlierStage: before !== null });
+      await this.audit(tx, ctx, EVENT.PROSPECT_UNCONVERTED, p.id, `Staff ${ctx.staffId} undid the Convert of ${p.number}; back in ${to.key}.`, { toStageKey: to.key, earlierStage: before !== null },
+        { before: { stage: p.key, wonVia: p.won_via }, after: { stage: to.key, wonVia: null } });
       await this.event(tx, ctx.firmId, EVENT.PROSPECT_UNCONVERTED, p.id, ProspectMovePayload.parse({ prospectId: p.id, leadId: p.lead_id, type: p.type, fromStageKey: p.key, stageKey: to.key, ownerStaffId: p.owner_staff_id, cause: "PERSON" }));
     });
     return this.read(ctx, pid);

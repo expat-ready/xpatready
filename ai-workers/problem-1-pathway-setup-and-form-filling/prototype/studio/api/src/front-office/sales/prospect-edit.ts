@@ -47,7 +47,8 @@ export class ProspectEdit {
       await tx.foProspect.update({ where: { id: pid }, data: { valueCents: amount.cents, currency } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: actorOf(ctx), action: VALUE_SET, entity: "fo_prospect", entityKey: pid,
         summary: `Staff ${ctx.staffId} ${amount.cents === null ? "cleared" : p.value_cents === null ? "set" : "changed"} the value of ${p.number}.`,
-        detail: { currency, previousCurrency: p.currency, hasValue: amount.cents !== null, hadValue: p.value_cents !== null } });
+        detail: { currency, previousCurrency: p.currency, hasValue: amount.cents !== null, hadValue: p.value_cents !== null },
+        before: { valueCents: p.value_cents, currency: p.currency }, after: { valueCents: amount.cents, currency } });
     });
     return this.prospects.read(ctx, pid);
   }

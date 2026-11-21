@@ -15,6 +15,7 @@ import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
 import { TEAM_INBOX_SAMPLE } from "../config/settings.ts";
 import { PgEntitlements, mbOf, planLimitReached } from "./limits.ts";
+import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 
@@ -40,11 +41,13 @@ export class StorageWatch {
       const plan = await new PgEntitlements(tx, this.d.now).limitOf(id, "storage_mb");
       const limitMb = plan.limit, over = limitMb !== null && usedBytes > limitMb * MIB;
       const had = await tx.platformStorageOver.findFirst({ where: firmScope(id) }), open = !!had && had.backUnderAt === null;
-      const facts = { usedMb: mbOf(usedBytes), limitMb, plan: plan.planCode }, line = (action: string, summary: string) => audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action, entity: "platform_storage_over", entityKey: id, summary, detail: facts });
+      const facts = { usedMb: mbOf(usedBytes), limitMb, plan: plan.planCode }, line = (action: string, summary: string, after: { firstOverAt: string | null; backUnderAt: string | null }) => audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action, entity: "platform_storage_over", entityKey: id, summary, detail: facts,
+        // R1.8 (QA-594): the over-the-limit mark before and after (the row's dates; usage and limit stay in detail).
+        before: had ? { firstOverAt: had.firstOverAt?.toISOString() ?? null, backUnderAt: had.backUnderAt?.toISOString() ?? null } : null, after });
       if (!over) {
         if (!open) return { r: { over, usedBytes, limitMb, mark: "none" as const, alerted: false }, alert: null };
         await tx.platformStorageOver.update({ where: { firmId: id }, data: { backUnderAt: now, usedBytes: BigInt(usedBytes), limitMb, updatedAt: now } });
-        await line("storage.back_under", "Storage is back under the plan's limit; uploads are allowed again.");
+        await line("storage.back_under", "Storage is back under the plan's limit; uploads are allowed again.", { firstOverAt: had!.firstOverAt?.toISOString() ?? null, backUnderAt: now.toISOString() });
         return { r: { over, usedBytes, limitMb, mark: "cleared" as const, alerted: false }, alert: null };
       }
       let firstOverAt = had?.firstOverAt ?? now, alertedAt = had?.alertedAt ?? null, mark: Measured["mark"] = "kept";
@@ -52,7 +55,7 @@ export class StorageWatch {
         firstOverAt = now; alertedAt = null; mark = "set";
         const data = { firstOverAt: now, alertedAt: null, backUnderAt: null, usedBytes: BigInt(usedBytes), limitMb, updatedAt: now };
         if (had) await tx.platformStorageOver.update({ where: { firmId: id }, data }); else await tx.platformStorageOver.create({ data: { firmId: id, ...data } });
-        await line("storage.over", `Storage went over the plan's limit; uploads stay allowed for ${STORAGE_HARD_AFTER_DAYS} days.`);
+        await line("storage.over", `Storage went over the plan's limit; uploads stay allowed for ${STORAGE_HARD_AFTER_DAYS} days.`, { firstOverAt: now.toISOString(), backUnderAt: null });
       } else await tx.platformStorageOver.update({ where: { firmId: id }, data: { usedBytes: BigInt(usedBytes), limitMb, updatedAt: now } });
       if (alertedAt !== null || !this.d.mail) return { r: { over, usedBytes, limitMb, mark, alerted: false }, alert: null };
       const firm = await tx.platformFirm.findFirst({ where: { id }, select: { key: true } });
@@ -63,7 +66,7 @@ export class StorageWatch {
     await this.alert(id, out.alert.firstOverAt, out.alert.firmKey, out.alert.owners, out.r.usedBytes, out.r.limitMb!, out.alert.planName);
     const done = await this.d.db.$transaction(async (tx) => {
       const n = await tx.platformStorageOver.updateMany({ where: firmScope(id, { firstOverAt: out.alert!.firstOverAt, alertedAt: null }), data: { alertedAt: new Date(this.d.now()) } });
-      if (n.count) await audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action: "storage.alerted", entity: "platform_storage_over", entityKey: id, summary: "The team inbox and the firm's Owners were told the firm is over its storage limit.", detail: out.alert!.facts });
+      if (n.count) await audit.record(tx, { firmId: id, actor: "system:platform.entitlements", action: "storage.alerted", entity: "platform_storage_over", entityKey: id, summary: "The team inbox and the firm's Owners were told the firm is over its storage limit.", detail: out.alert!.facts, before: { alertedAt: null }, after: { alertedAt: new Date(this.d.now()).toISOString() } });
       return n.count > 0;
     });
     return { ...out.r, alerted: done };
@@ -93,7 +96,7 @@ export class StorageWatch {
     });
     let measured = 0, failed = unrecorded;
     for (const f of firms) {
-      try { await withFirm(f.id, () => this.measure(f.id)); measured++; } catch (e) { failed++; console.warn(`storage daily: firm ${f.id}: ${String((e as Error)?.message ?? e).slice(0, 200)}`); }
+      try { await withFirm(f.id, () => this.measure(f.id)); measured++; } catch (e) { failed++; logPort.error("storage_daily_failed", e, { firmId: f.id }); }
     }
     return { measured, failed };
   }
@@ -116,7 +119,7 @@ export class EntitledFiles extends LocalFiles {
       if (!r.allowed) planLimitReached(r, `Your firm has been over its storage limit (${r.limit} MB; ${r.used} MB used) for ${STORAGE_HARD_AFTER_DAYS} days or more, so new uploads are refused. Nothing was saved. Every existing document keeps working; remove documents you no longer need or change the plan.`);
     }
     const out = await super.put(firmId, key, bytes, contentType);
-    if (this.watch) await this.watch.measure(firmId).catch((e) => console.warn(`storage measure after upload: ${String((e as Error)?.message ?? e).slice(0, 200)}`));   // the daily job measures again
+    if (this.watch) await this.watch.measure(firmId).catch((e) => logPort.error("storage_measure_failed", e, { firmId }));   // the daily job measures again
     return out;
   }
 }

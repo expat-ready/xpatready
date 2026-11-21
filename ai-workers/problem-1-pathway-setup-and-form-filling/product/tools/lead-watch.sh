@@ -57,9 +57,19 @@ for p in deq: print("ACT   #%d dequeued: owner merges main or fixes (%s)" % (p["
 for p in rl:  print("ACT   #%d red after approval (%s)" % (p["number"],p["title"][:50]))
 ' | tee "$STATE_DIR/q.txt"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "$SEEN"
+# 2b. WIP against the caps (B204, P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the
+# hooks"): items building (an open non-draft PR or a lane naming the item; lanes from the saved app view) against 8 and
+# Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
+gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName > "$STATE_DIR/prs-body.json" 2>/dev/null
+wp=$(python3 -I "$TOOLS/waves.py" wip --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$wp"; act=$((act + $(grep -c '^ACT' <<<"$wp"))); seen "$wp"
+grep -qE '^(wip   |ACT   wip:)' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
 # 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
 # on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
 python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
+# 2d. Proof and Lead-read waits (founder 20 Nov 23:1x IST, typed: "make them as a enforced rules and make them live"; STATE
+# hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
+# <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
+pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(grep -c '^ACT' <<<"$pw"))); seen "$pw"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)

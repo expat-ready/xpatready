@@ -34,7 +34,7 @@ try {
   // DW4: the contract guard passes on this tree and fails when the fake runs no contract; ports/ imports only zod and its own files.
   const guard = (root: string) => spawnSync(process.execPath, [join(root, "tools/check-port-contracts.mjs")], { encoding: "utf8" });
   const here = guard(STUDIO);
-  ok("PF-18np DW4 pass: tools/check-port-contracts.mjs exits 0 and lists NotificationPort", here.status === 0 && /NotificationPort ×1/.test(here.stdout), here.stdout);
+  ok("PF-18np DW4 pass: tools/check-port-contracts.mjs exits 0 and lists NotificationPort with its two adapters (the fake and, since PF-18n, PrismaNotificationPort)", here.status === 0 && /NotificationPort ×2/.test(here.stdout), here.stdout);
   const copy = join(WORK, "tree");
   for (const d of ["ports", "tools"]) cpSync(join(STUDIO, d), join(copy, d), { recursive: true });
   const there = guard(copy);
