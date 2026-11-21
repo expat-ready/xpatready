@@ -107,3 +107,23 @@ Dynamic `{{resolve:…}}` references and key grants without `kms:ViaService` are
 * **n3** `lib/service-checks.ts:108-112`, the `ROOT` pattern: its first alternative accepts any `arn:${Partition}…:root`. A key-policy decrypt grant to another account's root therefore passes (probe l). Fix: anchor it to `{"Ref":"AWS::AccountId"}`.
 * **n4** `test/service.test.ts:208-211`: the m3 lookup proof counts any exception at synth as a pass. Fix: assert that the missing context is a hosted-zone lookup.
 * Note: the extra test "the construct alone" was removed. It was not a Done-when line, so this is not a finding.
+
+## Re-review (bd5a1ce)
+
+Verdict: Approve
+
+Scope: the new commits only, `git diff afb1f3c..bd5a1ce` (product/screens excluded). The `lib/service.ts` changes touch comments only (the header now points to the README). Run in deploy/cdk with AWS keys unset and the CDK CLI never called: `npm run synth` exits 0, `npm test` 54/54 pass. My mutation probes a–l (scratchpad script) all produce a finding now.
+
+Each fix and the fail test that proves it:
+* **n1 fixed.** `roleFindings` now requires the service's `DATABASE_URL` to be the owner's. Fail case: `t3` in the owner/app test. Probe k is now caught.
+* **n2 fixed.**
+  * IAM globs are matched as globs against `GetSecretValue`, and any Allow with `NotAction` is a finding.
+  * Fail cases: `secretsmanager:*SecretValue` and `NotAction: "iam:*"` in the "break M-2" test. Probes i and j are now caught.
+* **n3 fixed.**
+  * `ROOT` is anchored to this account's `AWS::AccountId`, and `kms:ViaService` must name Secrets Manager in ca-central-1.
+  * Fail case: a `999999999999:root` principal with `kms:Dec*`. Probe l is now caught.
+* **Breaker RM-1 closed.** A credential in a command, the log settings or any other task-definition field is a finding. Fail case: the migration `Command` holding `postgresql://o:pw@…`.
+* **Breaker RM-2 closed.** Policies attached to users or groups, `AWS::IAM::RolePolicy`/`UserPolicy`/`GroupPolicy`, and an execution role that more than `ecs-tasks.amazonaws.com` can assume are all findings. Fail cases: `ToUser`, `RolePol`, and a trust principal of `{AWS: "*"}`.
+* **n4 left as is (Minor, accepted).** The lookup test still passes on any synth error. It does not block.
+
+No new findings.
