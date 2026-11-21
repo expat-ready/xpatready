@@ -248,6 +248,16 @@ const su = await call("POST", "/api/public/signup", { body: JSON.stringify({ ema
 const vf = await call("POST", "/api/public/signup/verify", { body: JSON.stringify({ token: 7 }) });
 ok("PF-28 part 2c fail: a sign-up with an empty email and an unknown field → 422 CHECK_FIELDS, email in the page's words and the unknown field named; a verify body with a number token → 422 naming token", su.status === FIELD_ERROR_STATUS && su.body?.code === "CHECK_FIELDS" && (su.body?.fields as Record<string, string>)?.email === "Enter your work email." && Object.hasOwn((su.body?.fields as object) ?? {}, "pf28Unknown") && Array.isArray(su.body?.errors) && vf.status === FIELD_ERROR_STATUS && Object.hasOwn((vf.body?.fields as object) ?? {}, "token"), [su.body?.fields, vf.body?.fields]);
 
+// PF-28 part 6 (money: draft invoices and their lines): a field error is 422 with each field named (the money schemas'
+// own `errors` list kept), the body read before any lookup, and an invoice id checked before the body.
+const invoices = () => sql(`select count(*) from money_invoice`) + "/" + sql(`select count(*) from money_invoice_line`), m0 = invoices();
+const mTypo = await call("POST", "/api/front-office/money/invoices", { token: tR, body: JSON.stringify({ personId: randomUUID(), curency: "CAD" }) });
+const mList = await call("POST", "/api/front-office/money/invoices", { token: tR, body: "[1]" });
+ok("PF-28 part 6 fail: a draft with a misspelt key (curency) → 422 naming it; a body that is a list → 422 naming body; nothing stored", mTypo.status === FIELD_ERROR_STATUS && (mTypo.body?.fields as Record<string, string>)?.curency === "This field is not allowed here." && mList.status === FIELD_ERROR_STATUS && Object.hasOwn((mList.body?.fields as object) ?? {}, "body") && invoices() === m0, [mTypo.body?.fields, mList.body?.fields]);
+const mLine = await call("POST", `/api/front-office/money/invoices/${randomUUID()}/lines`, { token: tR, body: JSON.stringify({ kind: "FEE", description: "Sample fee", unitMinor: "100" }) });
+const mBadId = await call("POST", "/api/front-office/money/invoices/not-a-uuid/lines", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 6 fail: a line with unitMinor as text → 422 naming unitMinor before any invoice is looked up (its errors list kept); a malformed invoice id → 404 before the body; nothing stored", mLine.status === FIELD_ERROR_STATUS && Object.hasOwn((mLine.body?.fields as object) ?? {}, "unitMinor") && (mLine.body?.errors as { field: string }[])?.[0]?.field === "unitMinor" && mBadId.status === 404 && invoices() === m0, [mLine.body?.fields, mBadId.status]);
+
 // PF-28 part 2b (platform settings, complaints, logs): each body and query goes through the rule before any lookup.
 const cq = await call("GET", "/api/platform/complaints?vew=open", { token: tR });
 const cNoKey = await call("POST", "/api/platform/complaints", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
