@@ -2,7 +2,7 @@
 
 current_lead: local_dbce8aee-7d76-45f3-958d-84ec68333321 Lead 8 · 21 Nov 02:0x IST (series 3; took over from Lead 7 (series 3, local_a8acec34) at ~285k, P-446)
 
-updated: 2026-11-21 05:47 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 30 of 101 on main (R1.110 and R1.38 next) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 05:57 IST: Lead 8 (series 3) current; checks every 10 min · milestone: Release 1 proven 30 of 101 on main (R1.110 and R1.38 next) · rules: **`RULES.md`** (as of **P-774**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,8 +15,8 @@ updated: 2026-11-21 05:47 IST: Lead 8 (series 3) current; checks every 10 min ·
 (3) **Next 15 after 07:00 (A242):** lanes on R1.47+R1.49, R1.19+R1.10, R1.27+R1.32 screens, R1.108, R1.42 (J-42), R1.74, R1.4 (qa Q2); five more from wave 3 at the 07:00 founder turn (`allow:` notes in waves.tsv, then lanes).
 (3d) **02:18 IST:** wave 3 J0 lanes started (cloud, Opus high): R1.5 (task_337374e9), R1.13 (task_6d28c109), R1.14+R1.15 (task_de89f0f8). Allow notes moved to their own PR **#2623** (waves.tsv is not a record); fresh Opus reviewer subagent reviewing; Lead labels on its Approve + green. Records PR #2591 relabelled on d8c2a79e8 (P-773, P-774, STATE). Next journey after J0: J2 (R1.24, R1.90, R1.92, R1.93) once #2608 merges (same sign-up area, P-774 (c)). Owed at next check: app view in the browser with Show more; #2596 migration read + NotificationPort ruling; #2594 question; 13 tooling PR diff reads.
 (3a/3b) Lead 8's 02:2x starts and Lead B's owed starts (done): word for word in `product/history/STATE-2026-11-21-0250-lead8s3-asks-A240-A241-and-3a-3b.md`.
+(3w) **05:5x IST:** #2478 (R1.108 FO-13c) MERGED. **#2637 now carries R1.110 Works + R1.38 Works** (J-38 W9 55/55 twice, fresh reader) → Lead approved + labelled at 3acb79c6f; **on merge: 32 on main**. #2621 PF-18h fix pushed (52d9d5b52), waits on a diff-only Approve, then the Lead posts /run full.
 (3v) **05:4x IST:** j_38 walks GREEN (44841739167, 44841813322) → qa Q2 scoring R1.38 (ZS38). #2637 main-merged again → re-approved + labelled. #2621 PF-18h DEQUEUED: ci shard (13) failed alone on main (run 44838643676) → Lead B told: fix, diff-only re-review, 'Batch failures covered', Lead posts /run full. #2478 queued.
-(3u) **05:3x IST:** MERGED #2661 → **R1.26 Works on main (30)**; #2660 (P-775) and #2658 (J-38 W9) merged. Walks j_38 twice in the browser (44841739167, 44841813322); qa Q2 told (ZS38, delivered) to score R1.38 and to merge main into #2637 (conflict again, dirty). Queued: #2478, #2621.
 (3m)-(3r) earlier check pointers: word for word in `product/history/STATE-2026-11-21-0515-lead8s3-items-3q.md`.
 (3l) 03:4x check (R1.100 scored Works; R1.26 QA-617 ruled in scope, fix to the warm lane): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
 (3k) 03:3x check (#2478 relabel, FO-13s concept approved, #2476 restamp asked, host-beats-rule ruling): word for word in `product/history/STATE-2026-11-21-0345-lead8s3-item-3k.md`.
