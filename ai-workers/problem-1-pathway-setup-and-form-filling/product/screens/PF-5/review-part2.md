@@ -574,3 +574,50 @@ This is the same family as n5 and round 9's `observe()` note.
 **Journey score: 8/10, unchanged** (a pass, no criterion at 0). The merge changes no behaviour of this PR's journeys. I wrote no new journey-test report, because there is no new screen or flow to walk.
 
 Verdict: Approve 12cc086dff82f87c2f0cea40eebf25631a3fa55d
+
+## Round 15 (diff-only, fa32cb92): merge of origin/main (PF-28 part 1) and this PR's routes under PF-28's input rule; head `fa32cb925d69b99b75c6c2b01b8e2ba680ed4b86`
+
+Approved before this: `12cc086df` (round 14). `380bdb802` adds only round 14's lines to this file. Reviewed:
+* `1057c2026`, the merge of origin/main `b6daec801` after #2619, PF-28 part 1;
+* `fa32cb925`, which moves this PR's two routes under PF-28's input rule.
+
+1. **The merge is resolved correctly.** `git show --remerge-diff 1057c2026` shows a hand resolution in `api/src/main.ts` only.
+   * The order is now `observe`, `publicFormBodyLimit`, then main's `inputBodyLimit(app)`, then `stripeRawBody(app)`, then `useBodyParser("json", 5mb)`.
+   * The order of the middle two does not matter. `INPUT_PATHS` is `/api/platform`, `/api/front-office`, `/api/system` and `/api/public`, with `/api/hooks` left out on purpose (`http/input.ts` l. 17-20). `stripeRawBody` mounts only on `/api/hooks/stripe`.
+   * Main also changed `MODULE.md`, `firm-scope.ts` (the outbox sweep's `why` text, PF-12b part 4) and `check_pf12b_bypass_audit.ts`; git merged all three. check_pf12b gives 70/70, and the card passes `module-cards.py tree`.
+2. **`PUT billing/address` under `parseInput`: right.**
+   * The controller parses with `parseInput(Address, b ?? {})` and `setAddress` parses again. That is safe: `Address`'s transforms (trim, upper case, `unit` default null, strict keys) give the same result on a second pass.
+   * A bad field now answers 422 `INVALID` with `fields.postal_code`, replacing 400 `CHECK_FIELDS` with `errors`. No web screen or journey reads the old shape (grep of `web/src` and `tests/journeys`).
+   * Both check_pf5 lines were updated to the new shape.
+   * The reason for parsing in the controller holds: PF-28's static follower does not enter an inherited method. The direct-call path (suites, tools) is parsed by `setAddress` itself.
+3. **The Stripe door's envelope schema: placed correctly, but its fail half is untested and its static exemption is too wide (Major r15-1 below).**
+   * `parseInput(SignedEvent, raw)` runs after `readEvent` (the signature) and before `webhookReceipt.createMany`. So nothing is stored before both checks, which matches AG-10-32 and amendment 1.
+   * The schema is a Buffer or string of at most 1 MB that parses as JSON, with `id` `evt_…`, `object: "event"` and `type` of 1 to 100 characters. It is not strict, which is right, because Stripe adds fields.
+   * Zod's messages do not repeat the received value, so a 422 echoes nothing of the body.
+   * DW6 in check_pf28 ran here over HTTP on an isolated copy (port 4487): 200 signed, 400 `SIGNATURE` with one byte changed, and no receipt stored.
+4. **Checks run here (head `fa32cb925`, Postgres on 54329, live AI off, US$0, never :4400).**
+   * **Suites, all exit 0:** check_pf28_inputs 26/26 (492 probes on 202 routes; 244 allow-listed; DW6's two lines PASS), check_pf5_signup_billing 93/93, check_pf12b_bypass_audit 70/70, check_pf12_walls 100/100, check_pf0bp_body_errors 13/13.
+   * **Mutant:** with `parseInput(SignedEvent, raw)` removed from `webhook.ts`, **check_pf28_inputs stays 26/26 and check_pf5 stays 93/93**. The file was restored with `git checkout` and the tree is clean.
+   * **Typecheck:** `tsc -p api/tsconfig.json --noEmit` gives the same 24 lines as rounds 10 to 14, all in five test files outside this PR's diff. No new errors.
+   * **Cards:** `module-cards.py tree` PASS.
+
+**Blocker:** none.
+
+**Major r15-1: the `/api/hooks/` exemption in check_pf28 is too wide, and nothing it hands to DW6 checks the schema.** You asked whether the exemption is too wide; it is.
+* **What the exemption does:** the new `HOOK = / \/api\/hooks\//` drops every input under `/api/hooks/` from PF-28's static half (rule (a): "every PF/FO body and query reaches a zod parse, or is on the allow-list"). It is not on `pf28-allow-list.json` and has no cap. It gives as its reason that "DW6 below judges it over HTTP".
+* **Why that reason fails:** DW6 checks only the signature. Its fail case is a one-byte change (400 `SIGNATURE`) and its pass case is a valid event. No case sends a signed body that fails the schema, so the schema itself is never run against bad input. The mutant above shows it: the door's only zod parse can be deleted and every suite stays green.
+* **What that means:** the rule the static half enforced for this route is now enforced by nothing. Any future route under `/api/hooks/` (Zoom's secret token is already in the loader, for example) would also be exempt, with no HTTP check at all. A CI check edited to exempt this PR's own route has to keep its coverage some other way. Here it does not.
+* **The fix is small and stays inside this PR's own scope:**
+  1. Narrow the exemption to this one route, keyed on `POST /api/hooks/stripe`, so a new hook route is judged statically again or must be listed.
+  2. Add one DW6 line: a body signed with the fake's signature but failing the schema (for example `object: "not-event"`, or an `id` without `evt_`) answers 422 with nothing stored. Check_pf5 could carry the same pair through `hooks.receive`.
+* That makes the mutant above fail, and gives amendment 1's "schema after the signature" both a pass and a fail.
+
+**Not a finding:** a schema failure answers 422 to a correctly signed body, and Stripe retries it for up to 3 days and may then disable the endpoint. Stripe's real events always match the envelope, so this is theory only, and failing closed is right. If the Lead prefers, the door could answer 400 `NOT_AN_EVENT` there, consistent with `readEvent`'s own refusal. Either is fine.
+
+**Open Minors:** rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7), r10-1, r12-1, round 13's nit, and r14-1, all unchanged.
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). A bad business address now answers in PF-28's shared shape (422 with the field named). No screen reads it yet, so no journey changes, and I wrote no new journey-test report.
+
+**To fix before Approve:** Major r15-1 (narrow the `/api/hooks/` exemption to the Stripe route, and add a DW6 schema-fail case: a signed, malformed envelope gets 422 with nothing stored).
+
+Verdict: Changes requested
