@@ -310,8 +310,10 @@ export class Messages implements MessagePort<Tx> {
     for (const r of firmDue) if (!failed.has(r.firmId.toLowerCase()) && (await this.d.jobs.enqueue(SEND_QUEUE, { firmId: r.firmId, outboxId: r.id }, { key: `msg.send:${r.id}:try:${triesOf(r.reason)}:sweep:${hour}`, firmId: r.firmId })).queued) n++;
     // PF-12b part 4 (QA-697, Lead 16 on #2845): the platform rows are firm-less, read on this bypass use too. The read and
     // its one firm-null platform.bypass line share a transaction; a line that cannot be written queues no platform send,
-    // and the sweep then fails (P-607), after the firms' work, as a firm whose line fails. A read that queues nothing
-    // writes no line (the firms' rule above), so an idle minute adds none.
+    // and the sweep then fails (P-607), after the firms' work, as a firm whose line fails. The line is written when the read
+    // picks a due row (one per sweep at most); a read that picks nothing (an idle minute, rows still in their back-off)
+    // writes none, the firms' rule above. A row picked whose job key this hour already holds queues nothing new but is
+    // still lined: lines can only be added, never missed (break m1).
     let platformError: unknown = null;
     const platform = await this.d.db.$transaction(async (tx) => {
       const due = await tx.msgOutbox.findMany({

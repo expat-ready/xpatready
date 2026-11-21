@@ -369,7 +369,7 @@ try {
   onBypassAudit(wasSw); useLog(wasLog);
   const swJobs = pjobs.jobs.slice(sjBefore);
   const firmJobs = swJobs.filter((j) => j.firmId !== null).map((j) => j.firmId), platJobs = swJobs.filter((j) => j.firmId === null);
-  ok("PF-12b1m sweep: firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error",
+  ok("PF-12b1m sweep (its firm-less line: PF-12b4 below): firm B's line fails, so B is skipped and logged; firm A's row still queues (with A's one line); the PLATFORM_ACCOUNT row is retried as a platform job with no touchFirm; then the sweep throws the first error",
     swErr instanceof BypassNotRecorded && JSON.stringify(firmJobs) === JSON.stringify([A])
       && platJobs.length === 1 && (platJobs[0].payload as { outboxId?: string; platform?: boolean }).outboxId === platId && (platJobs[0].payload as { platform?: boolean }).platform === true && platJobs[0].name === "messages.send"
       && sweepRec.entries.map((e) => e.firmId).join(",") === A
@@ -377,8 +377,8 @@ try {
     { swErr: String(swErr), firmJobs, platJobs, lines: sweepRec.entries.map((e) => e.firmId), logged: logged.filter((l) => String(l.event).startsWith("messages_sweep")) });
   // PF-12b part 4 (QA-697): the platform branch's read writes one firm-null platform.bypass line in its transaction.
   const platLines = sweepRec.caseEntries.filter((e) => e.action === "platform.bypass");
-  ok("PF-12b4 pass (QA-697): queuing the firm-less send wrote exactly one platform.bypass line with no firm (step sweep.platform-rows, actor system:job:messages.outbox_sweep)",
-    platLines.length === 1 && platLines[0].firmId === undefined && platLines[0].actor === "system:job:messages.outbox_sweep" && (platLines[0].detail as { step?: string })?.step === "sweep.platform-rows", sweepRec.caseEntries);
+  ok("PF-12b4 pass (QA-697): picking and queuing the firm-less send (one platform job) wrote exactly one platform.bypass line on the platform workspace (step sweep.platform-rows, actor system:job:messages.outbox_sweep)",
+    platJobs.length === 1 && platLines.length === 1 && typeof platLines[0].workspaceId === "string" && platLines[0].firmId === undefined && platLines[0].actor === "system:job:messages.outbox_sweep" && (platLines[0].detail as { step?: string })?.step === "sweep.platform-rows", sweepRec.caseEntries);
   await clock.advance({ hours: 1 });
   const ago4 = new Date(clock.now().getTime() - 3_600_000).toISOString();
   sql(`update msg_outbox set state = 'SENT' where state = 'QUEUED'`);   // only the row below is due
