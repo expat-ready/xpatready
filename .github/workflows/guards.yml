@@ -1,6 +1,6 @@
 # The eight guards of 6 Nov and B134's label sweep (founder, ~03:00 IST: "make them hard rules"): every test passes, and each test fails with
 # its guard switched off (product/tools/check-guards.sh --mutate). Runs only when a guard, its test or a file it reads
-# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. About 20 minutes with the mutation rows (it was about 1 minute on 6 Nov), US$0.
+# changes; separate from ci.yml (owned by the flow-fix lane) and not a merge condition. About 20-35 minutes with the mutation rows (it was about 1 minute on 6 Nov), US$0.
 name: guards
 on:
   pull_request:
@@ -27,7 +27,8 @@ concurrency:
 jobs:
   guards:
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10
+    timeout-minutes: 45   # CI-PRE (19 Nov): about 150 mutation rows, each re-running a test file; the run reached the old limit of 10.
+                          # ENF-758 (20 Nov): runs took 20-27 min before its 25 rows (~25 s each on a runner); at 30 the run was cancelled mid-way
     steps:
       - uses: actions/checkout@v4
       - name: zsh (isolated.sh is a zsh script)
