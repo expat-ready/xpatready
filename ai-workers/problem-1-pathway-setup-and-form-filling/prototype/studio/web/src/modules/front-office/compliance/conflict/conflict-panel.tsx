@@ -9,6 +9,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Field, Notice, Panel, Pill, Textarea } from "@/components/ui/controls";
+import { FoldOut } from "@/components/fold-out";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/lib/api";
 import { staffApi, StaffApiError } from "@/modules/platform/session";
@@ -76,10 +77,10 @@ function CheckRow({ c, latest }: { c: ConflictCheck; latest: boolean }) {   // o
       {c.disclosureText ? <p className="mt-1 whitespace-pre-line [overflow-wrap:anywhere]" data-disclosure>{c.disclosureText}</p> : null}
       {c.needsConfirmation && latest ? <WaitingLink id={c.id} /> : null}
       {c.matches.length || c.hiddenCount ? (
-        <details className="mt-2"><summary className="cursor-pointer text-xs text-text-link">Matches</summary>
+        <FoldOut className="mt-2" summaryClassName="text-xs text-text-link" summary="Matches">   {/* BK-2: the app's one fold-out */}
           <div className="mt-2 flex flex-col gap-2"><Matches matches={c.matches} label="Matches of this check" />
             {c.hiddenCount ? <p className="text-xs text-text-muted">{c.needsConfirmation && c.hiddenLine ? c.hiddenLine : `${c.hiddenCount} match${c.hiddenCount === 1 ? "" : "es"} with records you may not open.`}</p> : null}</div>
-        </details>
+        </FoldOut>
       ) : null}
     </li>
   );
