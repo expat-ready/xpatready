@@ -119,12 +119,15 @@ BEGIN
     EXECUTE 'GRANT CREATE ON SCHEMA public TO xr_wall_reader';
   END IF;
   -- The memberships' end state: xr_app inherits xr_data, may SET ROLE to the bypass role without inheriting it (from any
-  -- grantor), can never become the reader, and belongs to no other role (a membership made outside this migration, such
-  -- as in the migration role, stops it).
+  -- grantor), can never become the reader, and reaches no other role through any chain of memberships (its own, xr_data's
+  -- or the bypass role's: a grant made outside this migration, such as a superuser role or pg_execute_server_program, stops
+  -- it). 20261121230000_pf8b_f4_reader_create checks the same after every later migration.
   IF NOT pg_has_role('xr_app', 'xr_data', 'USAGE') OR NOT pg_has_role('xr_app', 'xr_staff_bypass', 'SET') OR pg_has_role('xr_app', 'xr_staff_bypass', 'USAGE')
      OR pg_has_role('xr_app', 'xr_wall_reader', 'SET') OR pg_has_role('xr_app', 'xr_wall_reader', 'USAGE')
-     OR EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid
-                WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = 'xr_app') AND g.rolname NOT IN ('xr_data', 'xr_staff_bypass')) THEN
+     OR EXISTS (WITH RECURSIVE up(oid) AS (
+                  SELECT m.roleid FROM pg_auth_members m WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = 'xr_app')
+                  UNION SELECT m.roleid FROM pg_auth_members m JOIN up ON m.member = up.oid)
+                SELECT 1 FROM up JOIN pg_roles g ON g.oid = up.oid WHERE g.rolname NOT IN ('xr_data', 'xr_staff_bypass')) THEN
     RAISE EXCEPTION 'PF-12 stopped: xr_app''s role memberships are not as required' USING ERRCODE = 'insufficient_privilege';
   END IF;
 END $$;

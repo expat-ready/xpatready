@@ -5,7 +5,7 @@
 # BYPASSRLS and a server that does not log tersely must stop at PF-12 with its message, leaving no role behind.
 # A throwaway cluster on its own port (initdb as the postgres user: a cloud lane or a Linux machine with postgresql-18),
 # removed at the end; the lane's own cluster on 54329 is never touched. Exit 0 only when every line passes. US$0.
-#   bash studio/tools/rds-shape-check.sh [port]      (default 54401; uses ports port..port+3)
+#   bash studio/tools/rds-shape-check.sh [port]      (default 54401; uses ports port..port+4)
 set -uo pipefail
 STUDIO=$(cd "$(dirname "$0")/.." && pwd); PORT=${1:-54401}
 PGBIN=${PGBIN:-$(dirname "$(readlink -f "$(command -v initdb 2>/dev/null || echo /usr/lib/postgresql/18/bin/initdb)")")}
@@ -21,7 +21,7 @@ start() { # port bypass|nobypass terse|verbose
 }
 stop() { "${AS_PG[@]}" "$PGBIN/pg_ctl" -D "/tmp/rds-shape-$1/data" stop -m fast >/dev/null 2>&1; rm -rf "/tmp/rds-shape-$1"; }
 migrate() { (cd "$STUDIO" && DATABASE_URL="postgresql://xr_admin@127.0.0.1:$1/xr_rds" timeout 600 ./node_modules/.bin/prisma migrate deploy 2>&1); }
-trap 'stop $PORT; stop $((PORT + 1)); stop $((PORT + 2)); stop $((PORT + 3))' EXIT
+trap 'stop $PORT; stop $((PORT + 1)); stop $((PORT + 2)); stop $((PORT + 3)); stop $((PORT + 4))' EXIT
 a() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_admin -c "$1" 2>&1 | tail -1; }
 u() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_app -c "$1" 2>&1 | tail -1; }
 uall() { psql -h 127.0.0.1 -p "$PORT" -d xr_rds -At -U xr_app -c "$1" 2>&1; }   # every line (an error's first line is the message)
@@ -70,6 +70,12 @@ start $((PORT + 3)) bypass terse || { echo "FAIL the fourth cluster did not star
 psql -h 127.0.0.1 -p $((PORT + 3)) -U postgres -d postgres -qc "CREATE ROLE xr_app LOGIN" -c "GRANT xr_admin TO xr_app" >/dev/null
 out=$(migrate $((PORT + 3)))
 ok "a pre-existing extra membership of xr_app (in the admin role) stops PF-12" "$(echo "$out" | has "PF-12 stopped: xr_app's role memberships are not as required")" "1"
+
+# break N1: a chain through the bypass role (made before the migration) to rds_superuser stops PF-12 too
+start $((PORT + 4)) bypass terse || { echo "FAIL the fifth cluster did not start"; exit 1; }
+psql -h 127.0.0.1 -p $((PORT + 4)) -U xr_admin -d postgres -qc "CREATE ROLE xr_staff_bypass NOLOGIN BYPASSRLS" -c "GRANT rds_superuser TO xr_staff_bypass WITH SET TRUE" >/dev/null
+out=$(migrate $((PORT + 4)))
+ok "a pre-existing chain from xr_app's bypass role to rds_superuser stops PF-12" "$(echo "$out" | has "PF-12 stopped: xr_app's role memberships are not as required")" "1"
 
 echo "$([ "$fails" = 0 ] && echo "all passed" || echo "$fails failed")"
 exit $((fails > 0))
