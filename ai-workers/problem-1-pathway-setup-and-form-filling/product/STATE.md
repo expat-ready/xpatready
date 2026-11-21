@@ -9,6 +9,7 @@ updated: 2026-11-21 15:5x IST: Lead 14 handed over to Lead 15 (series 3) · mile
 
 
 ## Lead 15 since 15:47 IST (newest first)
+* 16:3x **AWS staging domain PARKED (founder, A266):** Route 53 registration fails on this account (xpatready.dev 16:23 IST; expatready-staging.com twice 16 Nov; card on file is the default, so not a card issue; needs AWS Support). Founder gets the expatready.com Cloudflare details from the team; then the team (or Lead with access) adds 4 NS records `staging` from AWS at deploy. #2800 + F2b still go ahead. Founder will nudge.
 * 16:1x SHARDS=24 (founder entered the 2FA). #2750 answered (walks/plan not required; walks.yml cap row owed). Founder re-asked best staging domain option: Lead recommends B (Route 53 domain, no base change); waits on his purchase + name.
 * 16:1x AWS staging domain: founder chose **option B** (via Lead 14): he registers a cheap domain in Route 53 himself (~US$3-15/yr, card on file). No NS step (Route 53 delegates). Lane pf8b-f1-f2 briefed **F2b**: PLATFORM_ADDRESS_SUFFIX one setting from xr:domain, PR after #2800. Go Phase 2 = #2800 + F2b merged + domain live + name sent to AWS (local_35aacb3f). CloudFront rejected: R1.24 unprovable, bigger code row.
 * 16:0x check: SHARDS 18→24 set in the browser (founder yes, A265) but GitHub asked a 2FA code: **still 18, founder to confirm**. #2603 labelled after Lead read (1d934c9). R1.14 + R1.32 proofs → qa Q5 (no Q2 lane exists). #2782 brief: merge main, drop the #2780 hold line, fix types/pr-rules. #2633 already requeued by Lead 14. AWS: no Cloudflare access → asked AWS session for the CloudFront default-domain plan (one host value, switch later); no "go Phase 2" before #2800 merges and the plan is agreed.
@@ -30,6 +31,7 @@ Moved word for word to `product/history/STATE-2026-11-21-1605-lead15s3-lead14-si
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A266 | 21 Nov 16:3x (typed): park the domain; he gets Cloudflare/AWS domain details from the team and nudges; focus back on work | Parked; #2800 + F2b continue |
 | A265 | 21 Nov 16:0x (typed): no Cloudflare access for expatready.com: free, solid workaround now, easy switch later; raise serious concerns; SHARDS: use the browser | AWS plan asked (CloudFront default domain); SHARDS waits on a GitHub 2FA code |
 | A264 | 21 Nov 15:3x (typed): go for the R1.53 lane and PF-8b fixes F1/F2 | Both lanes started 15:3x |
 | A261-A263 | 21 Nov 14:2x-14:3x (typed): enforce the Lead's prioritisation by scripts; stage table; capability board in every report | ENF-733b and ENF-783c lanes; board added to ENF-783c 14:3x; template in Start here |
