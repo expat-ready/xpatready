@@ -139,3 +139,20 @@ Breaker fixes, read and run:
 **n4.** No suite check covers the list-focus returns or the unsaved guard (my walk covers both). Add them with M3 if cheap.
 
 Verdict: Changes needed. Blockers: none. Majors: M3 (flaky focus check, test-only fix). Minors: m3 (follow-up listed), n1, n3, n4.
+
+---
+
+# Re-review 2: diff `a50ac3c38..792937f69` without PNGs (head 792937f69ed18004e0f06367347d479d770aec31)
+
+Same reviewer, 21 Nov 2026 ~12:10 IST. I read the diff only; I ran nothing (the builder asked that no suite run in the main checkout). The code changes are all in 15dfdfa4f. 95b87eaf8, df65f1690 and 792937f69 change only PNGs (and this file).
+
+| Finding | Now | Evidence |
+|---|---|---|
+| M3 flaky focus check | **Fixed** | `check_fo3st3_types_browser.ts:200-202` polls focus up to 20 × 50 ms (1 s) before asserting, the same way the stale-save check does. My probe measured focus arriving within 150 ms in 8 of 8 closes, so 1 s is ample. It still fails if focus never returns. Builder: 49/49 twice on fresh copies (fo3st3_f1, fo3st3_f2) |
+| n3 Advanced order | **Fixed** | A pure move of the unchanged block to after Hosts and before Share, in concept §4's order (Definition · Hosts · Advanced · Share). Read-only still shows the flags as text in the Definition list |
+| m3 error summary, n1 strings, read-only "<n> hosts" | Open (Shoulds) | Going into the PR as follow-ups, which is acceptable for Shoulds |
+| n4 list-focus and unsaved-guard checks | Open (nit) | Covered by my walk on a50ac3c38; this diff does not change either behaviour |
+
+No new issue: the diff touches no other line of behaviour. J-42 is 25/25 twice by the builder; its 3 HELD lines (W0 timings, W8, W9) are outside this PR. My own J-42 W0 run on a50ac3c38 passed, and this diff does not touch W0.
+
+Verdict: Approve 792937f69ed18004e0f06367347d479d770aec31
