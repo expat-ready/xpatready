@@ -311,9 +311,10 @@ try {
   const cmGap = await F("PATCH", `booking-types/${T5.id}/timings`, P.CASE_MANAGER, { version: (await v5()).version, gapAfterMinutes: 0 });
   const cmFirm = await F("PUT", "booking-timings", P.CASE_MANAGER, { gapBeforeMinutes: 5 });
   const coSelf = await F("PATCH", `booking-types/${T5.id}/timings`, P.CASE_OFFICER, { version: (await v5()).version, selfServiceLimitMinutes: 60 });
+  const cmResolved = await F("PATCH", `booking-types/${T5.id}/timings`, P.CASE_MANAGER, { version: (await v5()).version, gapAfterMinutes: 10, minNoticeMinutes: null });   // Lead B (P-423 read, point 4)
   const billing = await F("GET", "booking-timings", P.BILLING_FINANCE), otherT = await F("PATCH", `booking-types/${T5.id}/timings`, BO, { version: 1, gapAfterMinutes: 0 });
-  ok("FO-3a DW20 fail: a Case Manager changing a type's gaps or the firm's → 403 MISSING_PERMISSION; a Case Officer changing the self-service limit → 403; Billing/Finance reading → 403; another firm's owner → 404",
-    cmGap.status === 403 && cmGap.body.code === "MISSING_PERMISSION" && cmFirm.status === 403 && cmFirm.body.code === "MISSING_PERMISSION" && coSelf.status === 403 && billing.status === 403 && otherT.status === 404
+  ok("FO-3a DW20 fail: a Case Manager changing a type's gaps or the firm's → 403 MISSING_PERMISSION; sending the resolved value (10) for an empty gap is a change (an override) → 403, while an empty field sent empty is none; a Case Officer changing the self-service limit → 403; Billing/Finance reading → 403; another firm's owner → 404",
+    cmGap.status === 403 && cmGap.body.code === "MISSING_PERMISSION" && cmResolved.status === 403 && /configure-availability/.test(cmResolved.body.detail ?? "") && cmFirm.status === 403 && cmFirm.body.code === "MISSING_PERMISSION" && coSelf.status === 403 && billing.status === 403 && otherT.status === 404
     && (await v5()).timings.gapAfterMinutes === null, [cmGap.status, cmFirm.status, coSelf.status, billing.status, otherT.status]);
   const adGap = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, gapAfterMinutes: 0, selfServiceLimitMinutes: 60 });
   const ownFirm = await F("PUT", "booking-timings", P.OWNER, { reminderOffsetsMinutes: [2880, 120], selfServiceLimitMinutes: 480 });
