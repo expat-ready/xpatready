@@ -25,6 +25,7 @@ export function reasonWords(reason: string | null): string | null {
   if (code === "SUPPRESSED") return SUPPRESSED_WHY[detail] ? `Not sent: ${SUPPRESSED_WHY[detail]}` : null;
   if (code === "NO_CONSENT") return detail === "MARKETING" ? "Not sent: no consent to marketing on this channel" : "Not sent: no consent on this channel";
   if (code === "WITHDRAWN") return "Not sent: the person withdrew consent";
+  if (code === "ADDRESS_UNSUBSCRIBED") return "Not sent: someone at this email address unsubscribed from marketing";
   const plain: Record<string, string> = { "hard bounce": "The address does not exist or refuses email", complaint: "The person marked it as spam", "daily limit": "Waiting: the firm's daily sending limit is reached", "content changed": "Not sent: the stored message changed", "send failed": "The email provider did not take it" };
   if (plain[reason]) return plain[reason];
   if (/^send failed: try \d+ of \d+$/.test(reason)) return "Trying again: the email provider did not take it yet";

@@ -15,6 +15,7 @@ import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
 import { TEAM_INBOX_SAMPLE } from "../config/settings.ts";
 import { PgEntitlements, mbOf, planLimitReached } from "./limits.ts";
+import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 
@@ -95,7 +96,7 @@ export class StorageWatch {
     });
     let measured = 0, failed = unrecorded;
     for (const f of firms) {
-      try { await withFirm(f.id, () => this.measure(f.id)); measured++; } catch (e) { failed++; console.warn(`storage daily: firm ${f.id}: ${String((e as Error)?.message ?? e).slice(0, 200)}`); }
+      try { await withFirm(f.id, () => this.measure(f.id)); measured++; } catch (e) { failed++; logPort.error("storage_daily_failed", e, { firmId: f.id }); }
     }
     return { measured, failed };
   }
@@ -118,7 +119,7 @@ export class EntitledFiles extends LocalFiles {
       if (!r.allowed) planLimitReached(r, `Your firm has been over its storage limit (${r.limit} MB; ${r.used} MB used) for ${STORAGE_HARD_AFTER_DAYS} days or more, so new uploads are refused. Nothing was saved. Every existing document keeps working; remove documents you no longer need or change the plan.`);
     }
     const out = await super.put(firmId, key, bytes, contentType);
-    if (this.watch) await this.watch.measure(firmId).catch((e) => console.warn(`storage measure after upload: ${String((e as Error)?.message ?? e).slice(0, 200)}`));   // the daily job measures again
+    if (this.watch) await this.watch.measure(firmId).catch((e) => logPort.error("storage_measure_failed", e, { firmId }));   // the daily job measures again
     return out;
   }
 }
