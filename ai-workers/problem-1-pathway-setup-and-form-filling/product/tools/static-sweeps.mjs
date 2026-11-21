@@ -44,7 +44,7 @@ function run(studio, name) {
   const cfg = join(studio, "api", "tsconfig.json");
   const r = spawnSync(tsx[0], [...tsx.slice(1), ...(existsSync(cfg) ? ["--tsconfig", cfg] : []), join("tests", name)],
     { cwd: studio, encoding: "utf8", timeout: TIMEOUT_MS, env: { ...process.env, NO_COLOR: "1" } });
-  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}${r.error ? `\n${r.error.message}` : ""}`;
   return { exit: r.status ?? (r.error ? 124 : 1), fails: out.split("\n").filter((l) => l.startsWith("FAIL")), tail: out.trim().split("\n").slice(-6) };
 }
 
@@ -53,9 +53,9 @@ function modulesDirs(top, rel = "", depth = 0, out = []) {
   if (depth > 6) return out;
   let es; try { es = readdirSync(join(top, rel), { withFileTypes: true }); } catch { return out; }
   for (const e of es) {
-    if (!e.isDirectory() || e.name === ".git") continue;
     const r = rel ? join(rel, e.name) : e.name;
-    if (e.name === "node_modules") out.push(r); else modulesDirs(top, r, depth + 1, out);
+    if (e.name === "node_modules" && (e.isDirectory() || e.isSymbolicLink())) out.push(r);   // a linked one counts too
+    else if (e.isDirectory() && e.name !== ".git") modulesDirs(top, r, depth + 1, out);
   }
   return out;
 }
@@ -67,9 +67,13 @@ function onBase(base, name) {
   try {
     execFileSync("git", ["-C", top, "worktree", "add", "--detach", "--force", w, base], { stdio: "ignore" });
     // every node_modules of the checkout (studio, prototype/p2, the root ...), linked at the same place (a sweep may import any)
-    for (const d of modulesDirs(top)) if (existsSync(dirname(join(w, d))) && !existsSync(join(w, d))) symlinkSync(join(top, d), join(w, d));
+    for (const d of new Set(modulesDirs(top))) {
+      try { if (existsSync(dirname(join(w, d)))) symlinkSync(join(top, d), join(w, d)); } catch { /* already there (tracked or linked) */ }
+    }
     if (!existsSync(join(w, rel, "tests", name))) return { exit: 0, fails: [], tail: ["(not on the base: new with this change)"] };
     return run(join(w, rel), name);
+  } catch (e) {
+    return { exit: 125, fails: [], tail: [`the base could not be run: ${String(e?.message ?? e).split("\n")[0]}`] };   // no verdict: fails closed
   } finally {
     spawnSync("git", ["-C", top, "worktree", "remove", "--force", w], { stdio: "ignore" });
   }
