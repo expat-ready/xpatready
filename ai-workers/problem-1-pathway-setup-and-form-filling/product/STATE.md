@@ -2,7 +2,7 @@
 
 current_lead: local_7ec53395-63c1-4bdc-accc-f9b33c17e33a Lead 12 · 21 Nov 10:2x IST (series 3; took over from Lead 11 (series 3, local_f172acc0) at ~370k, P-446)
 
-updated: 2026-11-21 10:4x IST: Lead 12 (A248 full report; Lead 14 standby; J-49 card). Earlier: Lead 11 handed over to Lead 12 (series 3) · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-781**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 11:40 IST: Lead 12 (A249-A250: P-782, P-783, recovery lanes, AWS go). Earlier: A248 full report; Lead 14 standby; J-49 card. Earlier: Lead 11 handed over to Lead 12 (series 3) · milestone: Release 1 proven 34 of 101 on main (+2 this cycle: R1.27, R1.74) · rules: **`RULES.md`** (as of **P-781**) · this branch: `lead/2026-11-07-lead31`
 
 
 
