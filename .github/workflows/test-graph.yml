@@ -1,0 +1,108 @@
+# Test graph (B203, P-744): capability -> module -> file -> suite, generated from coverage, never hand-kept (a
+# requirements traceability matrix). Every studio suite runs on main under V8's own coverage (run-suites.sh with
+# SUITES_COVERAGE; c8's method, already in the stack, P-69), part by part; test-graph.py turns each part's coverage into
+# a small suites file, and the join job writes graph.json, graph.html and graph.mmd as one artifact (90 days).
+# Never on a PR and never in the merge queue (B203 gate note): a PR waits on nothing here and main's bar is unchanged
+# (P-651). Read-only token; nothing is pushed. A suite failing under coverage still gives its coverage (the run's verdict
+# belongs to ci and nightly, not here). Coverage slows suites (lanes/qa.md: timing steps), hence 10 parts and 90 min.
+# Test: product/tools/check-test-graph.sh (fixtures; run below on a PR that changes these files).
+name: test-graph
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 21 * * 0"   # Sundays 21:41 UTC (03:11 IST Monday), clear of the nightly run at 20:23
+  pull_request:
+    paths:
+      - ".github/workflows/test-graph.yml"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test-graph.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/check-test-graph.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/run-suites.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/module-cards.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/qa/CAPABILITIES.md"
+permissions: {}
+env:
+  P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+  S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+  N: 10
+jobs:
+  fixture:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: the join on fixtures (check-test-graph.sh; no suite runs)
+        run: bash "$P/tools/check-test-graph.sh"
+  parts:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions: { contents: read }
+    concurrency: { group: "test-graph-${{ matrix.shard }}", cancel-in-progress: false }
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/package-lock.json
+      - name: set up like a cloud session (cloud-setup.sh)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: Playwright's own Chromium
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: the boot baseline, part 1 only (a copy started, asked isolated.sh's one readiness request, stopped)
+        if: matrix.shard == 1
+        continue-on-error: true   # a failed baseline never costs part 1's suites; the join then warns (no boot functions)
+        timeout-minutes: 10
+        run: |
+          mkdir -p "$RUNNER_TEMP/cov/__boot__"
+          export NODE_V8_COVERAGE="$RUNNER_TEMP/cov/__boot__" NODE_OPTIONS="--import=$PWD/$S/tests/qa/coverage-preload.mjs"
+          zsh "$S/tools/isolated.sh" boot 4499 start && zsh "$S/tools/isolated.sh" boot 4499 stop
+      - name: every studio suite under coverage, part ${{ matrix.shard }} of ${{ env.N }} (verdicts are not judged here)
+        timeout-minutes: 75
+        run: SUITES_COVERAGE="$RUNNER_TEMP/cov" bash "$P/tools/run-suites.sh" --demo --shard "${{ matrix.shard }}/$N" | tee suites.md || true
+      - name: "collect (also after a timeout, the suites that ran still count)"
+        if: always()
+        run: |
+          zsh "$S/stop.sh" >/dev/null 2>&1 || true   # the demo API (check_studio_browser.cjs under --demo) writes its coverage on stop
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:4400/api/session || break; sleep 1; done; sleep 2   # stop.sh does not wait
+          python3 -I "$P/tools/test-graph.py" collect "$RUNNER_TEMP/cov" --out "suites-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-graph-part-${{ matrix.shard }}
+          path: suites-${{ matrix.shard }}.json
+          retention-days: 7
+  join:
+    needs: parts
+    if: always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v4
+        with: { pattern: test-graph-part-*, merge-multiple: true, path: parts }
+      - name: join and render (a missing part leaves its suites out; the summary says how many parts came)
+        run: |
+          n=$(ls parts/suites-*.json 2>/dev/null | wc -l)
+          python3 -I "$P/tools/test-graph.py" join parts/suites-*.json --out graph.json --commit "$GITHUB_SHA" | tee line.txt
+          jq -e .boot_baseline graph.json >/dev/null || echo "::warning::no boot baseline (part 1 missing): server start-up counts as exercised"
+          python3 -I "$P/tools/test-graph.py" render graph.json --html graph.html --mermaid graph.mmd
+          { echo "Test graph on ${GITHUB_SHA:0:9}: $n of $N parts; $(cat line.txt)"; echo; echo '```mermaid'; cat graph.mmd; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-graph
+          path: |
+            graph.json
+            graph.html
+            graph.mmd
+          retention-days: 90
