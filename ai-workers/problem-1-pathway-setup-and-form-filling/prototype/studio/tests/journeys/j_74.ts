@@ -19,10 +19,14 @@
 //   W6 its reminders are listed on the case, and they are the very jobs the reminders arm (7, 2 and 0 open days before);
 //   W7 cancel it with a reason and record it again: both lines show, the first as cancelled, its jobs cancelled, the
 //   second's armed. Today is the server's real day here (the walk's own FakeClock and queue start at now).
-//   W6b, W7b (CS-DL3 part 3, the job part; brief build-lead-c-briefs/CS-DL3-3.md): the walk's clock reaches 7 working days
-//   before the step's due date and its reminder reaches the representative and the officer once each (NR: an hour
-//   before, nobody); after the cancel the clock reaches 2 working days before and the cancelled step tells nobody more,
-//   while the step recorded again does remind (the NR: the same run is not simply silent).
+//   W6b-W7b (CS-DL3 part 3, R1.74's last part; brief build-lead-c-briefs/CS-DL3-3.md): the walk's reminders go through
+//   PF-18n's real store (PrismaNotificationPort, msg_notification), each job in its firm's scope as PF-14's runner does.
+//   W6b the clock reaches 7 working days before the step's due date: its reminder reaches the representative and the
+//   officer once each (NR: an hour before, nobody); W6c the officer signs in, opens Home and finds it under "Needs you"
+//   only by PF-18h's data-needs-you-item hooks (NR: before the reminder, no item), opens it and lands on the case, whose
+//   Government steps line names the step and its due date (the item names the case only, PF-18h concept Q1); W7b after
+//   the cancel the clock reaches 2 working days before: the cancelled step reminds nobody and no data-needs-you-item for
+//   it comes back on Home, while the step recorded again does (NR: the same walk is not simply silent).
 // What stays a stand-in (said, not hidden): the reminders run in this process on the copy's own database with PF-0p's
 // fakeJobs on a FakeClock (PF-14's runner is the same JobPort) and fakeNotifications (PF-18n's real adapter is not on main;
 // the app arms nothing until it is bound, features/case-deadlines.ts). The route is marked CITED here: labelled test data,
@@ -45,6 +49,9 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgre
 const { CaseDeadlines } = await import("../../api/src/case-deadlines/reminders.ts");
 const { REMINDER_JOB } = await import("../../api/src/case-deadlines/plan.ts");
 const { MILESTONE_JOB } = await import("../../api/src/case-deadlines/milestones.ts");
+const { PrismaNotificationPort } = await import("../../api/src/platform/notifications/store.ts");
+const { PrismaNotificationPrefs } = await import("../../api/src/platform/settings/notifications/prefs.ts");
+const { withFirm } = await import("../../api/src/platform/firm-scope.ts");
 const { CLOSED_DAYS, TIME_ZONE, readSetting, writeSetting } = await import("../../api/src/platform/settings.ts");
 const { platformAuditWorkspaceId } = await import("../../api/src/platform/identity/audit.ts");
 const { FakeClock } = await import("../../ports/clock.ts"), { fakeJobs } = await import("../../ports/jobs.ts"), { fakeNotifications } = await import("../../ports/notifications.ts");
@@ -136,7 +143,13 @@ try {
     r.status === 200 && at.join() === "2027-03-03T14:00,2027-03-04T14:00" && toldHere().length === 4 && toldHere().every((t) => t.stageId === one(`select id from case_stage where case_id = '${caseId}' and state = 'CURRENT'`) && [REP, OFF].includes(t.staffId)), { status: r.status, told: toldHere() });
   // ---------------------------------------------------------------------------------------------------- W5-W7 a government step
   // Its own clock and queue at now (the walk's clock has passed March 2027); the copy's server reads its own real day.
-  const clock2 = new FakeClock(new Date()), jobs2 = fakeJobs(clock2), dl2 = new CaseDeadlines({ db, jobs: jobs2, notifications, clock: clock2 });
+  // Part 3: PF-18n's real store, so the reminder is a msg_notification row the app's Home reads; each job runs in its
+  // firm's scope, as PF-14's runner does (the store refuses a write with no firm in scope).
+  const clock2 = new FakeClock(new Date()), jobs2 = fakeJobs(clock2);
+  const store = new PrismaNotificationPort((tx) => new PrismaNotificationPrefs(tx), () => clock2.now());
+  const real = Object.assign(Object.create(store), { async notify(tx: unknown, r: { staffId: string }, k: Parameters<typeof inner.notify>[2], i: Parameters<typeof inner.notify>[3]) { told.push({ staffId: r.staffId, stageId: i.id, at: clock2.now().toISOString().slice(0, 16), item: i.kind, kind: k }); return store.notify(tx as never, r, k, i); } });
+  const scoped = { ...jobs2, async handle(name: string, h: Parameters<typeof jobs2.handle>[1]) { return jobs2.handle(name, (j) => j.firmId ? withFirm(j.firmId, () => h(j)) : h(j)); } };
+  const dl2 = new CaseDeadlines({ db, jobs: scoped as typeof jobs2, notifications: real, clock: clock2 });
   await dl2.register({ sweep: false });
   const ZONE = await readSetting<string>(db as never, FA, TIME_ZONE.key);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -171,12 +184,34 @@ try {
   ok("J-74 W6 axe: Government steps has no WCAG 2.2 A/AA violation", va.length === 0, va.map((x) => x.id));
   const runAt = (id: string, offset: number) => mjobs(id).find((j) => j.payload.offset === offset)!.runAt.getTime();
   await walk2(runAt(m1, 7) - 3_600_000);
-  const before7 = toldStep(m1).length;
+  const before7 = toldStep(m1).length, rowsBefore = one(`select count(*) from msg_notification where item_id = '${m1}'`);
   await walk2(runAt(m1, 7) + 60_000);
   const at7 = toldStep(m1);
-  ok("J-74 W6b NR: an hour before the 7-working-day reminder, the step has told nobody", before7 === 0, before7);
+  ok("J-74 W6b NR: an hour before the 7-working-day reminder, the step has told nobody and has no row in the store (so Home can list none)", before7 === 0 && rowsBefore === "0", { before7, rowsBefore });
   ok(`J-74 W6b: at 7 working days before the due date (${armed[0]}, 09:00 in the firm's zone) the step's reminder reaches the representative and the officer once each, as a case-milestone deadline`,
-    at7.length === 2 && new Set(at7.map((t) => t.staffId)).size === 2 && at7.every((t) => [REP, OFF].includes(t.staffId) && t.kind === "case-milestone-deadline"), at7);
+    at7.length === 2 && new Set(at7.map((t) => t.staffId)).size === 2 && at7.every((t) => [REP, OFF].includes(t.staffId) && t.kind === "case-milestone-deadline")
+      && one(`select count(*) from msg_notification where item_id = '${m1}' and read_at is null`) === "2", at7);
+  // W6c: the officer, signed in as firm staff, on Home. An item is found only by its data-needs-you-item hook, whose value
+  // is the officer's own notification row for this step (never a class or a position).
+  const TO = (await staffApi(null, "POST", "/platform/session/local", { firmKey: "sample-firm", actorId: "user-O", secondStep: true })).body?.token as string;
+  const po = await (await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" })).newPage();
+  po.on("pageerror", (e) => errs.push(e.message));
+  await po.addInitScript((t) => { sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: t, expiresAt: Date.now() + 3_600_000 })); localStorage.setItem("xr-actor", "user-O"); }, TO);
+  const NUMBER = one(`select case_number from runtime_case where id = '${caseId}'`);
+  const noteOf = (step: string) => one(`select id from msg_notification where staff_id = '${OFF}' and item_id = '${step}'`);
+  const home = async () => { await po.goto(`${BASE}/home`); await po.locator("[data-needs-you-item], [data-needs-you-empty]").first().waitFor({ timeout: 30_000 }); };
+  const item = (step: string) => po.locator(`[data-needs-you-item="${noteOf(step)}"]`);
+  await home();
+  const itemText = await item(m1).innerText().catch(() => "");
+  ok("J-74 W6c: the officer signs in and opens Home: under \"Needs you\" one item (by its data-needs-you-item hook) says \"A government step on case " + NUMBER + "\"",
+    !!TO && !!noteOf(m1) && await item(m1).count() === 1 && itemText.includes(`A government step on case ${NUMBER}`), itemText);
+  const vh = (await new AxeBuilder({ page: po }).include("[data-needs-you]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
+  ok("J-74 W6c axe: Needs you has no WCAG 2.2 A/AA violation", vh.length === 0, vh.map((x) => x.id));
+  await item(m1).locator("[data-needs-you-open]").focus(); await po.keyboard.press("Enter");
+  await po.waitForURL(`${BASE}/cases/${caseId}`, { timeout: 30_000 }); await po.locator("[data-gov-steps] [data-gov-step]").first().waitFor({ timeout: 30_000 });
+  const landed = await po.locator(`[data-gov-step="${m1}"]`).innerText(), header = await po.locator("[data-case-number-h]").innerText();
+  ok(`J-74 W6c: opening it (keyboard) lands on case ${NUMBER}, whose Government steps line names the step and its due date ${words(due)}; the item is read`,
+    header === NUMBER && landed.includes("Biometrics instruction letter") && landed.includes(words(due)) && one(`select read_at is not null from msg_notification where id = '${noteOf(m1)}'`) === "t", { header, landed });
   await reach(line1.locator("[data-gov-cancel]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor();
   await reach(fld("cancel", "reason")); await p.keyboard.type("The due date was typed wrong (test walk)");
   await reach(gov("cancel").locator("[data-gov-cancel-send]")); await p.keyboard.press("Enter"); await gov("cancel").waitFor({ state: "detached", timeout: 15_000 });
@@ -190,10 +225,11 @@ try {
       && mjobs(m1, "cancelled").length === 2 && mjobs(m1, "waiting").length === 0 && mjobs(m2, "waiting").length === 3
       && one(`select string_agg(due_on::text || ':' || (cancelled_at is not null)::text, ',' order by recorded_at) from case_milestone where case_id = '${caseId}'`) === `${due}:true,${due2}:false`, { tc, m1: mjobs(m1).map((j) => j.status), m2: mjobs(m2).map((j) => j.status) });
   await walk2(runAt(m1, 2) + 60_000);
-  ok("J-74 W7b: at 2 working days before the cancelled step's due date nothing more reaches anyone for it (its two told stay the 7-day ones)",
-    toldStep(m1).length === 2, toldStep(m1));
+  await home();
+  ok("J-74 W7b: at 2 working days before the cancelled step's due date nothing more reaches anyone for it (its two told stay the 7-day ones), and Home shows no data-needs-you-item for it",
+    toldStep(m1).length === 2 && await item(m1).count() === 0 && one(`select count(*) from msg_notification where item_id = '${m1}' and read_at is null and staff_id = '${OFF}'`) === "0", { told: toldStep(m1).length, items: await item(m1).count() });
   ok("J-74 W7b NR: in the same walk the step recorded again (open) does remind its people, so the silence is the cancel's, not a stopped clock",
-    toldStep(m2).length >= 2 && toldStep(m2).every((t) => [REP, OFF].includes(t.staffId)), toldStep(m2).length);
+    toldStep(m2).length >= 2 && toldStep(m2).every((t) => [REP, OFF].includes(t.staffId)) && await item(m2).count() === 1, { told: toldStep(m2).length, items: await item(m2).count() });
   ok("J-74 walk: no page error on the way", errs.length === 0, errs);
   await b.close();
 } catch (e) {
