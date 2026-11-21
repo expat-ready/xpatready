@@ -58,3 +58,21 @@ One row only. The diff is j_49.ts (219 lines), qa/built/J-49.md and 6 screenshot
 * A real SES send: the List-Unsubscribe headers are the demo inbox's rendition (demo-inbox.ts:47).
 
 Verdict: Approve (m6 is a PR-body and CI step: add Done when and let `walks` run green once the PR is ready; m1-m5 can go in this PR or the next J row)
+
+## Re-review (diff 849e2db98..18f8f4784)
+I read the j_49.ts diff only. I did not re-run the walk, because the diff gave no reason to. I read the new W4 screenshot.
+* **m1, m2: closed.** DW1's stand-in is now judged on `fakeConsent.allows` answers (j_49.ts:158-162).
+  * It writes no outbox rows, and the W4 screenshot no longer shows a "no consent" row for A.
+  * The NR now needs reason `NO_CONSENT`, so it fails for the right reason.
+  * The paired "DW1 pass (the gate's answers)" line runs the same judge on the real `ConsentStore`, which uses the same `decide()` (consent-store.ts:143).
+  * The send-level DW1 pass stays as it was.
+* **m3: closed.** W4 now checks `=== "Sent"` for the service email and the first marketing email (:218).
+* **m4: closed.** W1 now checks one box, unticked, beside `SAMPLE_BOOKING_WORDING` (firm-seed.ts:138, the wording the seed publishes), and the label is honest about it being Sample wording (:114, :127).
+* **m5: closed.** The DW2 label now says "the gate's consent read (ConsentStore.allows, which MessagePort.send and its worker call)" (:202).
+* **m6: still open, PR side only.**
+  * The PR body now has "Done when", but the pr-rules run already finished at 18f8f4784 is `failure`. A second run is in progress, so this needs a recheck.
+  * `walks` is still skipped because the PR is a draft, so the visible-browser recording waits for ready-for-review.
+  * This is not a code finding.
+* No new findings. The scope is still one row, with no product code changed.
+
+Verdict: Approve
