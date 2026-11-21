@@ -15,6 +15,7 @@ import { LeadsPage } from "./sales/leads-page";
 import { PipelinePage } from "./sales/pipeline-page";
 import { ProspectPage } from "./sales/prospect-page";
 import { RetainerPage } from "./retainers/retainer-page";
+import { RetainerTemplatesPage } from "./retainers/templates-page";
 import { ConflictConfirmPage } from "./compliance/conflict/confirm-page";
 import { WebFormSettingsPage } from "./sales/web-form-settings-page";
 import { WebFormPage } from "./sales/web-form-page";
@@ -27,6 +28,7 @@ export const routes: ModuleRoute[] = [
   { path: "/front-office/prospects/:id", element: <ProspectPage /> },
   { path: "/front-office/retainers/:id", element: <RetainerPage /> },   // FO-5s part 1: one retainer (S3, S4, S5)
   { path: "/front-office/conflict-checks/:id", element: <ConflictConfirmPage /> },   // FO-13s part 2 PR B: a manager confirms a check with hidden matches
+  { path: "/front-office/settings/retainer-templates", element: <RetainerTemplatesPage /> },   // FO-5s part 2: Settings › Retainer templates (S1)
   { path: "/front-office/settings/web-form", element: <WebFormSettingsPage /> },   // FO-4w: Settings › Web form (Owner, Admin)
   { path: "/account/availability", element: <AvailabilityPage /> },   // FO-3st2: My account → Availability
   { path: "/front-office/bookings", element: <BookingsPage /> },

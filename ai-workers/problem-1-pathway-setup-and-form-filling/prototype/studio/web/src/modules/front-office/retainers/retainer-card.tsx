@@ -65,7 +65,7 @@ export function RetainerCard({ prospectId, name, working }: { prospectId: string
         <form onSubmit={submit} className="flex flex-col gap-4">
           {error && !error.field ? <Notice tone="danger" title={error.text} /> : null}
           {noReps ? <Notice tone="warn" title="No active licensed consultant — add one." >A retainer names a licensed representative. Ask your firm's Owner or Admin to add one in Team.</Notice> : null}
-          {noTemplates ? <Notice tone="warn" title="No active retainer template yet.">Ask your firm's Owner or Admin to upload the firm's retainer template.</Notice> : null}
+          {noTemplates ? <Notice tone="warn" title="No active retainer template yet.">{can(me, "agent/retainer:configure-template") ? <Link to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Upload one in Settings › Retainer templates</Link> : "Ask your firm's Owner or Admin to upload the firm's retainer template."}</Notice> : null}
           <Field label="Template" error={error?.field === "templateId" ? error.text : null}>
             <Select value={templateId} onChange={(e) => { setTemplateId(e.target.value); setError(null); }}>
               <option value="">{templates.isPending ? "Loading…" : "Choose a template"}</option>
