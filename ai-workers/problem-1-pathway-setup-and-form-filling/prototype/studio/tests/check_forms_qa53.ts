@@ -58,6 +58,8 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/invitations/:token": "open", // PF-4b: an invitation's state (its 256-bit token is the key)
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
+  "/api/public/firms/:firmKey/branding": "open", // PF-13 part 1b: a client page's header (name, colours, tagline, image links; no id; an inactive or unknown firm 404; asked in check_pf13b_images.ts)
+  "/api/public/firms/:firmKey/branding/:kind": "open", // PF-13 part 1b: the firm's logo, favicon or banner by its stable ?v= link (nosniff, sandbox CSP; another image or firm 404)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
 const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)

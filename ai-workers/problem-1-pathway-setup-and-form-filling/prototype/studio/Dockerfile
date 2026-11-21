@@ -39,6 +39,8 @@ RUN cd ${P}/prototype/studio && npm ci \
  && mv node_modules ../node_modules && cd .. && rm -rf node_modules-src
 COPY ${P}/prototype ${P}/prototype
 COPY ${P}/official-sources ${P}/official-sources
+# Stage 2a: the spend guard (p2/policy.ts) finds the repository root by AGENTS.md, never by counting folder levels.
+COPY AGENTS.md ./
 RUN cd ${P}/prototype/studio \
  && ./node_modules/.bin/prisma generate \
  && (cd web && ../node_modules/.bin/vite build) \
