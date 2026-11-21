@@ -31,8 +31,11 @@ export class StripePlanChange implements PlanChangePort {
     });
   }
 
+  /** API 2026-10-28: the anchor is an object ({ type: "now" }); a proration date is sent only with proration (Stripe refuses
+   *  `proration_date` with `proration_behavior: none`, InvoiceCreatePreviewParams.SubscriptionDetails.proration_date). */
   private details(c: PriceChange, itemId: string) {
-    return { items: [{ id: itemId, price: c.priceId }], proration_behavior: c.prorate ? "always_invoice" as const : "none" as const, proration_date: secs(c.prorationDate), ...(c.anchorNow ? { billing_cycle_anchor: "now" as const } : {}) };
+    return { items: [{ id: itemId, price: c.priceId }], proration_behavior: c.prorate ? "always_invoice" as const : "none" as const,
+      ...(c.prorate ? { proration_date: secs(c.prorationDate) } : {}), ...(c.anchorNow ? { billing_cycle_anchor: { type: "now" as const } } : {}) };
   }
 
   async preview(change: PriceChange) {
@@ -45,8 +48,7 @@ export class StripePlanChange implements PlanChangePort {
   async changeNow(change: PriceChange, idempotencyKey: string) {
     const c = PriceChange.parse(change), key = IdempotencyKey.parse(idempotencyKey), cur = await this.current(c.subscriptionId);
     const d = this.details(c, cur.itemId);
-    await this.stripe.subscriptions.update(c.subscriptionId, { items: d.items, proration_behavior: d.proration_behavior, proration_date: d.proration_date, payment_behavior: "error_if_incomplete",
-      ...(c.anchorNow ? { billing_cycle_anchor: "now" as const } : {}) }, { idempotencyKey: key });
+    await this.stripe.subscriptions.update(c.subscriptionId, { ...d, payment_behavior: "error_if_incomplete" }, { idempotencyKey: key });
   }
 
   async scheduleAtRenewal(change: { subscriptionId: string; priceId: string }, idempotencyKey: string) {
