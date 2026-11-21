@@ -1,0 +1,40 @@
+NOTICE:  database "xr_studio_pf18n_2790" does not exist, skipping
+PASS  PF-18n DW1 pass: notify twice for one item and kind gives one row; the second marks it unread again with the newer created_at
+PASS  PF-18n DW1 fail: another kind, or another person, is its own row (never merged into the first)
+PASS  PF-18n DW1 fail: the database refuses a second row for the same firm, person, item and kind (unique key, 23505)
+PASS  PF-18n DW1 fail (the table's rules): a row's item never changes (23514), words in place of a kind are refused (23514), and firm B's row cannot name firm A's person (23503)
+PASS  PF-18n DW1 fail (breaker m2): a repeat with an older clock re-marks it unread but never moves created_at back, and the database refuses an earlier created_at (23514)
+PASS  PF-18n DW2 pass: in-app off for My deadlines (email on) gives no row
+PASS  PF-18n DW2 fail: switched back on (email off) it writes one; a person who never switched gets the group's default (on): DW1's rows
+PASS  PF-18n DW2 fail: a deactivated person, or another firm's person named under firm A's scope, gets no row (and no key error)
+PASS  PF-18n DW2: no kind maps to SECURITY (security emails are not a group and have no in-app row, AG-16 §3.3; question for the tech lead on the PR)
+PASS  PF-18n DW2 fail (breaker M1): the switch is read inside the caller's transaction: turned off earlier in it, notify writes nothing
+PASS  PF-18n DW2 pass (breaker M1): 14 notifies at once (more than the pool's 10 connections) all commit, one row each (no second connection per call: the old wiring timed out at 5 s)
+PASS  PF-18n DW3 pass: a rollback in the caller's transaction leaves no row
+PASS  PF-18n DW3 fail: the same call committed writes its row; with no firm in scope it is refused in words, never a silent drop
+PASS  PF-0c DW2 NotificationPort PrismaNotificationPort: PF-18np DW1: two notifies for one person, item and kind give one record (time replaced); another kind is its own record; after markRead a later notify marks the same record unread (PF-18n part 1)
+PASS  PF-0c DW2 NotificationPort PrismaNotificationPort: PF-18np DW2: an unknown kind, an unknown item kind, a non-uuid id and a free-text field are each refused, nothing recorded
+PASS  PF-0c DW2 NotificationPort PrismaNotificationPort: passes its contract (2 of 2 cases)
+(node:2790) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS  PF-18n DW6 fail: without the binding CaseDeadlineJobs logs case_deadlines_waiting and registers no reminder or sweep handler
+PASS  PF-18n DW6 fail: … and no msg_notification row exists for the case
+PASS  PF-18n DW6 pass: with the binding the app starts, CASE_DEADLINE_NOTIFICATIONS is the PrismaNotificationPort, no new waiting line, and the reminder and sweep handlers are registered
+PASS  PF-18n DW6 fail (review n1): the app's own NOTIFICATION_PORT reads the switch in the caller's transaction (off earlier in it: no row; on: one row)
+PASS  PF-18n DW6 pass: the recurring sweep arms the cited deadline's three reminders (7, 2 and on the day) on the real job runner
+PASS  PF-18n DW6 pass: the 7-day point writes one msg_notification row for the case officer (and one for the lead representative), none twice
+PASS  PF-18n DW6 pass: GET …/items returns the reminder with the case's link (/cases/<case id>), ids only
+PASS  PF-18n DW4 pass: my list is newest first and holds only my rows (every row from msg_notification for me, none of the representative's)
+PASS  PF-18n DW4 fail: another person's row cannot be marked read by me (404), firm B's person gets 404 for firm A's row and an empty list; the rows stay unread
+PASS  PF-18n DW4 fail: no session is 401; a malformed id is 404
+PASS  PF-18n DW5 pass: mark one read: its readAt is set and the unread count falls by one; ?unread=1 leaves it out
+PASS  PF-18n DW5 pass: mark all read: the unread count goes to 0 (and the representative's own count is untouched)
+PASS  PF-18n DW5 fail: mark all again marks nothing (0) and reading a read row keeps its first readAt; the count never goes below 0
+PASS  PF-18n DW5 fail (review m2): with the createdAt its list showed, a click or mark-all on an old list leaves a re-surfaced reminder unread; a bad seen is 400
+PASS  PF-18n DW5 pass (review m2): with the list's own newer createdAt the click marks it read
+PASS  PF-18n DW4: the list is paged (size 1: page 1 names page 2, page 2 the next row)
+PASS  PF-18n DW4 fail (breaker m5): paging values are clamped, never reset: page 9999999 is an empty page (not page 1), size 100000 is 100, size 0 is 1
+PASS  PF-18n DW4 fail (breaker m4): item kind case links to the firm's own case (/cases/<id>) and gives no link for another firm's case id
+
+34 passed, 0 failed
+exit 0
