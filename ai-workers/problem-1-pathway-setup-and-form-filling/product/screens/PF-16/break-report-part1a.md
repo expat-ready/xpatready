@@ -131,3 +131,51 @@ Harness: the PR test's setup plus `PaymentHoldGate`, with Admin and Billing/Fina
 - **Minor: "repair" trusts a shared Stripe price and skips every check.** `service.ts:62-64` answers "repair" whenever Stripe's price equals the target's, with no Stripe call, no checkDowngrade and no check of the kind sent. Nothing makes `stripe_monthly_price_id` or `stripe_yearly_price_id` unique.
   - Repro N1: plans `pf16-twin` (40 more seats) and `pf16-tiny` (1 seat, zero limits) both carry `price_teamMonth`. Change from Team to each, with `kind: "trial"` or `"renewal"` and 0.
   - Seen: both answer 200 `repair`. DB moves to the bigger plan for free, and to the 1-seat plan with 5 staff and no conflict check.
+
+## Round 3 (head `d53df7f76`)
+
+**Setup.** Fresh `git archive d53df7f76a10` copy. I re-ran the round-2 script with the new probes added (`tests/break_pf16a_r3.ts`) and `r2_a7.ts`, both in scratch. The PR's check passes: 41/0. Scratch DBs `xr_studio_pf16brk3*` were dropped.
+
+**Every round-2 closure still holds**, with the same results as before: roles and hold, the new fields, B1, M4, M3, B3 (repair, read-back, BILLING_UNCONFIRMED), M1 (A7b), M5, M6, m1, m2, m5 and m6.
+
+In the main run, A7's "fresh preview" gave PREVIEW_STALE only because the fake clock had not moved, so the preview reused the same second and Stripe key. Re-run 2 s later in `r2_a7.ts`, it completes: DB = Stripe = firm.
+
+### Closed in round 3
+
+- **Pool freeze (round-2 Blocker).** Every query of a change now runs on its one transaction, and a second concurrent change for the same firm is refused at once instead of queueing.
+  - N3, one firm, 10 requests at once, Stripe 3 s: one 200 at 3020 ms; nine 409 PLAN_CHANGE_IN_PROGRESS at 7-12 ms. An unrelated query took 3 ms. 1 charge.
+  - With 8 and with 9 requests: one 200, the rest PLAN_CHANGE_IN_PROGRESS.
+  - A4 and A5 now give PLAN_CHANGE_IN_PROGRESS for the second request, with 1 charge and 1 event.
+  - Two parallel withdraws: 200, then 409 PLAN_CHANGE_IN_PROGRESS.
+- **Pool freeze, across firms.** I made 10 and 12 extra firms, each with its own Stripe subscription, and sent all their changes at once with Stripe slowed to 3 s.
+  - 10 firms: all 200 at about 3.08 s.
+  - 12 firms: ten 200 at about 3.1 s; two at 6.12 s, after waiting for a free connection.
+  - No deadlock and no failure. The remaining cost is listed under Minor below.
+- **M2 on the real adapter (N2, recorded Stripe).** The schedule is made, then its phase update gets a 400. Now: 503 BILLING_UNAVAILABLE, booking none, schedule released.
+  - The fake's half-made mode (R3-A10c-c) gives the same: 503, booking none, no schedule.
+- **A10c as found in round 2 (Stripe refuses, our withdraw fails).** Now: 503 BILLING_UNCONFIRMED, booking none, and the daily job applies nothing (DB stays team). The booking lives in the change's transaction, so the refusal rolls it back. "Booked by us, not by Stripe" can no longer happen.
+- **Repair (round-2 Minor N1).**
+  - Two plans sharing `price_teamMonth`: preview and change both give 409 PLAN_PRICE_SHARED "Ask us"; nothing moves.
+  - Stripe already on Lite while ours is Team, with 6 staff against Lite's 5 seats: the preview shows `repair`, the change gives 409 DOWNGRADE_CONFLICTS ("…your billing already shows…"); DB stays team.
+- **m4 (words).** `pf16-cheapbig`, and yearly Team → Firm monthly: "gives more than your plan on some limit, so it cannot start at the renewal. Ask us to make this change." That is accurate, and there is no self-service path left to describe.
+- **New behaviour checked.**
+  - A schedule left in its last phase is released quietly: withdraw answers `withdrawn:false`, and a raise afterwards gives 200 with 5000 charged and the schedule gone.
+  - A half-made schedule whose release failed (R3-A10c-d) does not block: the next raise is released quietly, charged once, and DB = Stripe = firm.
+  - Trial previews are 0 (A8, A8b).
+
+### Still open
+
+- **Minor: Stripe can keep a schedule we do not record, and nothing alerts.** The remaining split is one-directional: Stripe moves to the lower price at the renewal while our plan stays Team. The firm keeps Team limits at Lite's price, which costs us revenue but never harms the customer. Two ways to reach it:
+  - **R3-A10c-b:** the schedule is applied, the answer is lost, and the read-back fails too. Seen: 503 BILLING_UNCONFIRMED, booking rolled back. Stripe has `sub_sched_fake000001` with Lite pending. The next preview gives 409 PLAN_CHANGE_BOOKED "Withdraw it first".
+  - **Commit after Stripe:** Stripe answers, but the transaction has passed its 60 s timeout. Stripe-node's 10 s timeout × 3 tries over up to 5 calls makes this reachable during a Stripe incident.
+    - Seen, renewal: a raw 500 Prisma error ("A commit cannot be executed on an expired transaction"), not a problem answer. Booking 0, Stripe Lite pending, next try 409 PLAN_CHANGE_BOOKED.
+    - The "now" variant heals itself: 5000 charged, ours rolled back, and the next change is `repair` (DB = firm).
+  - **Asked: is this acceptable?** Yes for part 1a in my view. It needs a Stripe failure after Stripe did the work, the customer is told (503, then "withdraw it first"), and the loss is ours. But it is fixed only if the Owner withdraws: nothing logs, alerts or reconciles it, and the slow path answers 500 instead of BILLING_UNCONFIRMED.
+
+### New
+
+- **Minor: changes hold pooled connections while they wait on Stripe.** No freeze any more, but the app's 10 connections are shared with every other request. With 10 or more changes from different firms in flight, all other traffic waits for Stripe's latency.
+  - Seen, 10 firms × 3 s: an unrelated `platformPlan.count()` waited 1880 ms.
+  - Seen, 12 firms: 1906 ms, and two changes waited until 6.1 s.
+  - During a slow Stripe the waits grow toward the 30 s `maxWait` and the 60 s timeout. Each firm is limited to one change at a time, so this needs about 10 firms acting together.
+- **No Blocker or Major found in round 3.**
