@@ -6,8 +6,10 @@ PR), cycle-timeline's Sample CAPABILITIES.md and a Sample "at 07:00" copy, with 
 """
 import os
 import re
+import json
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,9 +50,9 @@ class FounderReport(unittest.TestCase):
         self.assertEqual(pos, sorted(pos), out)
         self.assertTrue(out.startswith("🔴 Needs you: nothing\n"), out)
         lines = out.splitlines()
-        self.assertTrue(lines[2].startswith("Proven this cycle"), lines[2])     # the figures sit right under the header
-        self.assertEqual(lines[3], "```")
-        self.assertTrue(lines[4].startswith("Stage "), lines[4])          # A262: the stage table before the board
+        self.assertTrue(lines[4].startswith("Proven this cycle"), lines[4])     # the figures sit right under the header
+        self.assertEqual(lines[6], "```")
+        self.assertTrue(lines[7].startswith("Stage "), lines[7])          # A262: the stage table before the board
         print(out)
 
     def test_header_numbers(self):
@@ -68,7 +70,7 @@ class FounderReport(unittest.TestCase):
         self.assertIn("· R1.47 · One email layout · #16 part 1 + #17 part 2 (screens) · 🟡⬜⬜⬜⬜ · waits on builder", out)
         self.assertIn("· R1.108 · Conflict-of-interest check · #18 (runtime) · ✅🟡⬜⬜⬜ ·", out)
         self.assertRegex(out, r"R1\.32 · .* · ✅✅🟡⬜⬜ · .* no ETA\n")                    # approved, not queued
-        self.assertIn("- ≤19:00 · R1.42 · Reschedule or cancel by link · #13 (screens) · ✅✅✅🟡⬜ · waits on qa", out)
+        self.assertIn("- ≤19:00 · R1.42 · Reschedule or cancel by link · #13 (screens) · ✅✅✅✅🟡 · waits on qa", out)
         self.assertIn("· R1.3 · Walls between firms · #24 (runtime) · ✅✅🔴⬜⬜ · waits on a fix: dequeued", out)
         self.assertIn("· R1.13 · Logs, metrics, error reports, alerts · #27 (runtime) · ✅✅✅🔴⬜ · waits on the founder's AWS",
                       out)
@@ -94,7 +96,7 @@ class FounderReport(unittest.TestCase):
                 self.assertEqual(lines[i - 1], "", (i, l))
             if l.startswith("- ") and i + 1 < len(lines) and not lines[i + 1].startswith("- "):
                 self.assertEqual(lines[i + 1], "", (i, l))
-        for block in ("Constraint: ", "Since last report:"):            # a block line never runs into the next block
+        for block in ("🔴 Needs you", "━━ Cycle", "Proven this cycle", "Constraint: ", "Since last report:"):            # a block line never runs into the next block
             i = next(i for i, l in enumerate(lines) if l.startswith(block))
             self.assertEqual(lines[i + 1], "", block)
 
@@ -143,7 +145,7 @@ class FounderReport(unittest.TestCase):
         _, out, _ = run(*FULL, *sum((["--since", "🔀 #%d merged" % n] for n in range(6)), []))
         self.assertIn("- 🔀 #3 merged\n- (+2 more in the Lead's check)", out)
         self.assertNotIn("#4 merged", out)
-        self.assertIn("weekly plan 71% (96% at 21:40)", out)              # 25 points at 2.5 %/h from 11:40
+        self.assertIn("weekly plan 71% (+2.5%/h, 96% at 21:40)", out)              # 25 points at 2.5 %/h from 11:40
         _, out, _ = run("--weekly", "97")
         self.assertIn("weekly plan 97% (96% reached)", out)
 
@@ -151,6 +153,61 @@ class FounderReport(unittest.TestCase):
         _, out, _ = run(*FULL, now="2026-11-22T06:59+05:30")
         self.assertIn("now 22 Nov 06:59 IST", out)
         self.assertIn("Proven this cycle  2 / 15", out)
+
+    def plan_with(self, change):
+        with open(os.path.join(FR, "plan.json"), encoding="utf-8") as f:
+            plan = json.load(f)
+        change(plan)
+        path = os.path.join(tempfile.mkdtemp(), "plan.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(plan, f)
+        return path
+
+    def test_forecast_counts_a_19_row_that_lands_before_07(self):
+        def late_42(plan):
+            next(r for r in plan["rows"] if r["r1"] == "R1.42")["eta"] = "20:00"
+        _, out, _ = run(*FULL, plan=self.plan_with(late_42))
+        self.assertRegex(out, r"- ~20:00 · R1\.42 · .* · late by")             # late for 19:00 on its own line
+        self.assertIn("Forecast by 07:00  5 / 15", out)                    # ... and still counted for 07:00
+
+    def test_odd_plan_shapes_print_unknown_not_a_traceback(self):
+        shapes = [lambda p: p.update(reserve=None), lambda p: p.update(reserve=[{"prs": [31]}]),
+                  lambda p: p["rows"][5].update(parts=None), lambda p: p.update(outside={"x": 1}),
+                  lambda p: p["rows"].append("not a row")]
+        for change in shapes:
+            rc, out, err = run(*FULL, plan=self.plan_with(change))
+            self.assertEqual(rc, 0, err)
+            self.assertTrue(out.startswith("🔴 Needs you: nothing"), out)
+        rc, out, err = run(*FULL, plan=self.plan_with(lambda p: p.update(reserve=[{"prs": [31]}])))
+        self.assertIn("- unknown · no r1 · plan entry unreadable (KeyError)", out)
+        path = os.path.join(tempfile.mkdtemp(), "plan.json")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("[1, 2]")
+        rc, out, err = run(*FULL, plan=path)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("Capability board: unknown (cycle plan unreadable)", out)
+        rc, out, err = run(*FULL, "--stage", "Building: 4 · 1.2.3 h · 3/1 · x", "--stage", "Merge queue: 1 · 2 h · 3/1 · x")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("(--stage name not recognised, so not shown: merge queue)", out)
+
+    def test_needs_one_line_per_item(self):
+        _, out, _ = run("--needs", "AWS keys · Settings · R1.13-15 cannot prove", "--needs", "US$40 run · card · R1.24 waits")
+        self.assertTrue(out.startswith("🔴 Needs you:\n\n- AWS keys · Settings · R1.13-15 cannot prove\n"
+                                       "- US$40 run · card · R1.24 waits\n\n━━ Cycle"), out)
+
+    def test_dequeued_is_red_even_without_the_approval_label(self):
+        gh = os.path.join(tempfile.mkdtemp(), "github.json")
+        with open(os.path.join(FR, "github.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        data["pulls"]["24"]["labels"] = ["dequeued"]          # Mergify dropped the approval label
+        with open(gh, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "founder-report.py"), "--plan",
+                            os.path.join(FR, "plan.json"), "--fixture", gh, "--capabilities",
+                            os.path.join(CT, "CAPABILITIES.md"), "--capabilities-at-start",
+                            os.path.join(FR, "CAPABILITIES-at-0700.md"), "--now", "2026-11-21T11:40+05:30"],
+                           capture_output=True, text=True)
+        self.assertIn("· R1.3 · Walls between firms · #24 (runtime) · ✅✅🔴⬜⬜ · waits on a fix: dequeued", r.stdout)
 
 
 if __name__ == "__main__":

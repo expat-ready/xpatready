@@ -21,7 +21,8 @@ Inputs (read-only; never writes, never posts):
   * qa/CAPABILITIES.md on origin/main: Proven = R1 rows at Works. "This cycle" = now minus the count in main's last
     commit before the cycle's 07:00 IST (net: a row that left Works subtracts).
   * Flags for what no file holds. A missing input prints "unknown", never a guess. Times in IST from the clock (P-302).
-Forecast by 07:00 = proven this cycle + plan rows not yet Works whose ETA is on time (a passed ETA does not count).
+Forecast by 07:00 = proven this cycle + plan rows (19:00 and 07:00 groups) not yet Works whose ETA lands before the
+cycle's 07:00 and has not passed (a 19:00 row due 20:00 is late on its line but counts here; no ETA does not count).
 On track: ✅ forecast >= 15 · ⚠️ 12-14 · ❌ under 12.
 
   python3 -I product/tools/founder-report.py --needs nothing --constraint "..." --since "✅ R1.49 proven" \
@@ -82,7 +83,7 @@ def position(step):
     if "unreadable" in s:
         return None
     # its own step texts, by prefix (substrings mislead: "approved" holds "prove", "unmerged" holds "merged")
-    for idx, prefixes in ((3, ("qa proof", "prove")), (2, ("merge queue", "approved, not queued", "labelled")),
+    for idx, prefixes in ((4, ("qa proof", "prove")), (2, ("merge queue", "approved, not queued", "labelled")),
                           (1, ("review ",)), (0, ("building",))):
         if s.startswith(prefixes) or s in prefixes:
             return idx
@@ -131,20 +132,24 @@ def boxes(row, prs, proven):
     row that has no PR. 🔴 where something stops it: Mergify's dequeued label, the founder's AWS, a `waits_on` with no PR."""
     if proven:
         return DONE * 5
-    aws = row.get("aws") or "aws" in (row.get("waits_on") or "").lower()
+    aws = bool(row.get("aws") or re.search(r"\baws\b", row.get("waits_on") or "", re.I))
     lead = [p for p in prs if p["state"] == "open" and not p.get("merged")]
     if lead:
         p = lead[0]
+        if "dequeued" in p.get("labels", []):            # Mergify may drop the approval label as it dequeues
+            return DONE * 2 + BLOCKED + NOT_YET * 2
         if p.get("draft"):
             return NOW + NOT_YET * 4
         if "review: approved" not in p.get("labels", []):
             return DONE + NOW + NOT_YET * 3
-        return DONE * 2 + (BLOCKED if "dequeued" in p.get("labels", []) else NOW) + NOT_YET * 2
-    if any(p.get("merged") for p in prs):
-        return DONE * 3 + (BLOCKED if aws else NOW) + NOT_YET
+        return DONE * 2 + NOW + NOT_YET * 2
+    if any(p.get("merged") for p in prs):              # merged: the qa lane walks it on main and proves it
+        return DONE * 3 + BLOCKED + NOT_YET if aws else DONE * 4 + NOW
     idx = position(row.get("step") or "") if row.get("step") else -1
     if idx is None or idx < 0:
         return (BLOCKED if row.get("waits_on") else NOT_YET) + NOT_YET * 4
+    if aws and idx >= 3:
+        return DONE * 3 + BLOCKED + NOT_YET
     return DONE * idx + (BLOCKED if row.get("waits_on") or aws else NOW) + NOT_YET * (4 - idx)
 
 
@@ -167,7 +172,7 @@ def work_items(row, prs):
     if not nums:
         items = "no PR yet"
     else:
-        parts = row.get("parts", {})
+        parts = row.get("parts") or {}
         items = " + ".join(("#%s %s" % (n, parts[str(n)])) if str(n) in parts else "#%s" % n for n in nums)
     lane = row.get("lane")
     if not lane and prs:
@@ -194,46 +199,37 @@ def pr_state(p):
 def board(plan, caps, gh, now):
     """-> (lines of block 3: the capability board and "Outside the 15", A263; rows forecast on time, not yet proven).
     Rows keep the plan's order every time; plain lines ("- " items) read the same in a terminal and on a phone."""
-    start, _ = CT.cycle_bounds(now)
-    proof = int(plan.get("proof_minutes", 60))
+    start, end = CT.cycle_bounds(now)
+    proof = int(plan.get("proof_minutes") or 60)
     out, coming = ["", LEGEND, ""], 0
     if plan.get("cycle_start") and plan["cycle_start"] != start.strftime("%Y-%m-%d"):
         out += ["(plan written for the %s cycle: the Lead rewrites it)" % plan["cycle_start"], ""]
-    rows = plan.get("rows", [])
+    rows = [r for r in (plan.get("rows") or []) if isinstance(r, dict)]
+    reserve = [r for r in (plan.get("reserve") or []) if isinstance(r, dict)]
     groups = [("By 19:00", [r for r in rows if r.get("by") == "19:00"], "19:00"),
               ("By 07:00", [r for r in rows if r.get("by") == "07:00"], "07:00"),
-              ("Reserve / out of cycle", plan.get("reserve", []) + [r for r in rows if r.get("by") not in ("19:00", "07:00")],
+              ("Reserve / out of cycle", reserve + [r for r in rows if r.get("by") not in ("19:00", "07:00")],
                None)]
     for title, g, by in groups:
         out.append("%s (%d):" % (title, len(g)))
         out.append("")
         deadline = CT.at_cycle_time(start, by) if by else None
         for r in g:
-            name = r.get("name") or caps.get(r.get("r1"), {}).get("name") or "(not in CAPABILITIES.md)"
-            prs = read_prs(gh, r.get("prs", []))
-            ok = caps.get(r.get("r1"), {}).get("status") == "Works"
-            if ok:
-                out.append("- done · %s · %s · %s · %s" % (r["r1"], name, work_items(r, prs or []), DONE * 5))
-                continue
-            eta, _txt, _step, waits, _ = CT.row_view(r, caps, gh, now, proof)
-            verdict = CT.lateness(eta, deadline, now, False) if deadline else ""
-            if verdict == "on time":
-                coming += 1
-            target = eta.strftime("~%H:%M") if eta else ("≤" + by if by else "—")
-            bx = "unknown (GitHub not answering)" if prs is None else boxes(r, prs, False)
-            waits = blocked_waits(r, prs) or waits
-            tail = "" if verdict in ("on time", "") else " · " + verdict
-            out.append("- %s · %s · %s · %s · %s · waits on %s%s" % (target, r["r1"], name, work_items(r, prs or []), bx,
-                                                                 waits, tail))
+            try:
+                coming += row_line(r, caps, gh, now, proof, start, end, by, deadline, out)
+            except (KeyError, TypeError, AttributeError, ValueError) as e:
+                out.append("- unknown · %s · plan entry unreadable (%s)" % (r.get("r1", "no r1"), type(e).__name__))
         if not g:
             out.append("- none")
         out.append("")
     out.append("Outside the 15 (supporting work):")
     out.append("")
     outside = plan.get("outside")
+    if outside is not None and not isinstance(outside, list):
+        outside = None
     if outside is None:
         out.append("- unknown (no \"outside\" list in cycle-plan.json)")
-    for o in outside or []:
+    for o in [o for o in outside or [] if isinstance(o, dict)]:
         prs = read_prs(gh, o.get("prs", []))
         states = U if prs is None else " · ".join("#%s %s" % (n, pr_state(p)) for n, p in zip(o.get("prs", []), prs))
         out.append("- %s · %s · %s" % (o.get("kind", "other"), o.get("what", "?"), states or "no PR yet"))
@@ -243,9 +239,29 @@ def board(plan, caps, gh, now):
     return out, coming
 
 
+def row_line(r, caps, gh, now, proof, start, end, by, deadline, out):
+    """One board line for a plan row; returns 1 when it counts in the forecast: not proven, and its ETA lands on time
+    before the cycle's 07:00 (a "By 19:00" row due at 20:00 is late for 19:00 but still counts for 07:00)."""
+    name = r.get("name") or caps.get(r.get("r1"), {}).get("name") or "(not in CAPABILITIES.md)"
+    prs = read_prs(gh, r.get("prs") or [])
+    if caps.get(r.get("r1"), {}).get("status") == "Works":
+        out.append("- done · %s · %s · %s · %s" % (r["r1"], name, work_items(r, prs or []), DONE * 5))
+        return 0
+    eta, _txt, _step, waits, _ = CT.row_view(r, caps, gh, now, proof)
+    verdict = CT.lateness(eta, deadline, now, False) if deadline else ""
+    counts = 1 if by and eta and CT.lateness(eta, end, now, False) == "on time" else 0
+    target = eta.strftime("~%H:%M") if eta else ("≤" + by if by else "—")
+    bx = "unknown (GitHub not answering)" if prs is None else boxes(r, prs, False)
+    waits = blocked_waits(r, prs) or waits
+    tail = "" if verdict in ("on time", "") else " · " + verdict
+    out.append("- %s · %s · %s · %s · %s · waits on %s%s" % (target, r["r1"], name, work_items(r, prs or []), bx, waits,
+                                                          tail))
+    return counts
+
+
 def hours(age):
     """'2.5 h' / '40 min' / '1 d' -> hours, else None."""
-    m = re.match(r"^\s*([\d.]+)\s*(min|m|h|d)\b", age or "")
+    m = re.match(r"^\s*(\d+(?:\.\d+)?)\s*(min|m|h|d)\b", age or "")
     if not m:
         return None
     return float(m.group(1)) * {"min": 1 / 60, "m": 1 / 60, "h": 1, "d": 24}[m.group(2)]
@@ -258,7 +274,7 @@ def stage_table(flags):
     for f in flags or []:
         name, _, rest = f.partition(":")
         given[name.strip().lower()] = [x.strip() for x in rest.split("·")]
-    out = ["```", "%-23s %-7s  %-10s %-10s  %s" % ("Stage", "Items", "Median age", "In/out 3 h", "Verdict")]
+    out = ["", "```", "%-23s %-7s  %-10s %-10s  %s" % ("Stage", "Items", "Median age", "In/out 3 h", "Verdict")]
     for st in STAGE_ROWS:
         v = given.get(st.lower(), [])
         v += [U] * (4 - len(v))
@@ -268,6 +284,9 @@ def stage_table(flags):
         if m and hours(age) is not None and int(m.group(2)) < int(m.group(1)) and st != "Shaped-ready":   # a buffer
             rows.append((hours(age), STAGE_ROWS.index(st), st, age, m.group(1), m.group(2)))
     out.append("```")
+    odd = [n for n in given if n not in [x.lower() for x in STAGE_ROWS]]
+    if odd:
+        out.append("(--stage name not recognised, so not shown: %s)" % ", ".join(odd))
     if rows:
         _, _, st, age, i, o = max(rows)
         out.append("Constraint today: %s because median age %s and %s in / %s out in 3 h" % (st, age, i, o))
@@ -287,7 +306,8 @@ def money(a, now):
             at = "at " + (now + timedelta(hours=(96 - a.weekly) / a.rate)).astimezone(IST).strftime("%H:%M")
         else:
             at = "at unknown"
-        weekly = "%g%% (96%% %s)" % (a.weekly, at)
+        burn = "+%g%%/h, " % a.rate if a.rate else ""
+        weekly = "%g%% (%s96%% %s)" % (a.weekly, burn, at)
     ctx = U if a.context is None else "%g%%" % a.context
     return "Money and resources: AWS %s · weekly plan %s · Lead context %s" % (aws, weekly, ctx)
 
@@ -297,7 +317,13 @@ def report(a):
     if now.tzinfo is None:
         now = now.replace(tzinfo=IST)
     start, _ = CT.cycle_bounds(now)
-    out = ["🔴 Needs you: " + (a.needs if a.needs else U)]
+    needs = a.needs or []
+    if len(needs) == 1 and needs[0].strip().lower() == "nothing":
+        out = ["🔴 Needs you: nothing", ""]
+    elif needs:
+        out = ["🔴 Needs you:", ""] + ["- " + n for n in needs] + [""]
+    else:
+        out = ["🔴 Needs you: " + U, ""]
 
     try:
         text, _src = CT.read_capabilities(a.capabilities)
@@ -317,25 +343,30 @@ def report(a):
             plan = json.load(f)
     except (OSError, ValueError):
         plan = None
+    if not isinstance(plan, dict):
+        plan = None
 
     proven = None if caps is None or at_start is None else works(caps) - works(CT.parse_capabilities(at_start))
     total = U if caps is None else "%d / %d" % (works(caps), len(caps))
-    lines, coming = (None, None)
+    lines, coming, plan_bad = None, None, False
     if plan is not None and caps is not None:
-        lines, coming = board(plan, caps, CT.Fixture(a.fixture) if a.fixture else LiveGitHub(), now)
+        try:
+            lines, coming = board(plan, caps, CT.Fixture(a.fixture) if a.fixture else LiveGitHub(), now)
+        except (KeyError, TypeError, AttributeError, ValueError):
+            lines, coming, plan_bad = None, None, True
     forecast = None if proven is None or coming is None else proven + coming
     if forecast is None:
         track = U
     else:
         track = "✅" if forecast >= TARGET else "⚠️" if forecast >= TARGET - 3 else "❌"
-    out.append("━━ Cycle 07:00 → 07:00 IST ━━  (now %s IST)" % now.astimezone(IST).strftime("%d %b %H:%M"))
+    out.extend(["━━ Cycle 07:00 → 07:00 IST ━━  (now %s IST)" % now.astimezone(IST).strftime("%d %b %H:%M"), ""])
     out.append("Proven this cycle  %s   ·   Total  %s   ·   Forecast by 07:00  %s   ·   On track %s" % (
         U if proven is None else "%d / %d" % (proven, TARGET), total,
         U if forecast is None else "%d / %d" % (forecast, TARGET), track))
     if not a.short:
         out.extend(stage_table(a.stage))
-    out.extend(lines if lines else [LEGEND, "", "Capability board: unknown (%s unreadable)" % (
-        "cycle plan" if plan is None else "CAPABILITIES.md")])
+    out.extend(lines if lines else ["", LEGEND, "", "Capability board: unknown (%s unreadable)" % (
+        "cycle plan" if plan is None else "a cycle plan entry" if plan_bad else "CAPABILITIES.md"), ""])
     if not a.short:
         out.extend(["Constraint: " + (a.constraint or U), ""])   # blank lines keep blocks apart on a phone
     since = a.since or []
@@ -353,7 +384,7 @@ def report(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--needs", help='what · where · the exact click, or "nothing"')
+    ap.add_argument("--needs", action="append", help='one 🔴 item: what · where · what stops (repeatable), or "nothing"')
     ap.add_argument("--constraint", help="<one stage> because <measured number> → doing: <action> → expect by HH:MM")
     ap.add_argument("--since", action="append", help="one line (✅ proven · 🔀 merged · ⚠️ new risk); repeatable, 4 shown")
     ap.add_argument("--aws", help="AWS spend in US$ (credit)")

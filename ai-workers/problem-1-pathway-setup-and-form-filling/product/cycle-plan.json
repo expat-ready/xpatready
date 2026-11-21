@@ -24,6 +24,6 @@
     {"kind": "pipeline", "what": "CI-SPEED-1 parallel checks 6 to 12", "prs": [2754]},
     {"kind": "tooling", "what": "ENF-782a readiness gate and static sweeps", "prs": [2738, 2746]},
     {"kind": "tooling", "what": "ENF-782b flow measures and the weekly human sample", "prs": [2741, 2776]},
-    {"kind": "tooling", "what": "ENF-783c founder report", "prs": []}
+    {"kind": "tooling", "what": "ENF-783c founder report", "prs": [2809]}
   ]
 }
