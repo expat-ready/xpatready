@@ -23,6 +23,9 @@ export const INPUT_PATHS = ["/api/platform", "/api/front-office", "/api/system",
 export const strict = <S extends z.ZodRawShape>(shape: S) => z.strictObject(shape);
 /** Bounded text: trimmed, at most `max` characters (a required value needs one). */
 export const text = (max: number) => z.string().trim().max(max);
+/** A query string's known keys, each one value of bounded text (PF-28 part 2b): an unknown key is refused and named, a
+ *  repeated key (?a=1&a=2, an array) is "This must be text.". The route's own rule reads the values. */
+export const query = (...keys: string[]) => strict(Object.fromEntries(keys.map((k) => [k, z.string().max(500).optional()])));
 /** A bounded list. */
 export const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max);
 

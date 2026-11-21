@@ -3,7 +3,8 @@
 import { Body, Controller, Get, Inject, Put, Req } from "@nestjs/common";
 import { Db } from "../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
-import { BrandingService } from "./branding.ts";
+import { parseInput } from "../http/input.ts";
+import { BrandingBody, BrandingService } from "./branding.ts";
 
 type R = { platform?: StaffContext };
 
@@ -14,5 +15,5 @@ export class BrandingController {
   @Get() @PermissionKeys("agent/settings:list")
   read(@Req() r: R) { return this.b.read(staffOf(r)); }
   @Put() @PermissionKeys("agent/settings:edit")
-  save(@Req() r: R, @Body() b: unknown) { return this.b.save(staffOf(r), b); }
+  save(@Req() r: R, @Body() b: unknown) { return this.b.save(staffOf(r), parseInput(BrandingBody, b)); }   // PF-28 part 2b: the one input rule at the door
 }

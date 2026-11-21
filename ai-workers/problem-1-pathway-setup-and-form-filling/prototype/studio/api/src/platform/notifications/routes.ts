@@ -7,6 +7,7 @@ import { notInFirm } from "../firm-scope.ts";
 import { MyNotifications } from "./store.ts";
 import { OFFICE_CLOCK } from "../settings/offices/clock.ts";
 import type { OfficeClockPort } from "../../../../ports/offices.ts";
+import { parseInput, query } from "../http/input.ts";
 
 type R = { platform?: StaffContext };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,21 +21,25 @@ const seenOf = (v: unknown): Date | undefined => {
   return d;
 };
 
+/** PF-28 part 2b (R1.10): the one query key of the two "mark read" routes. */
+const SEEN = query("seen");
+
 @Controller("api/platform/me/notifications")
 export class MyNotificationsController {
   constructor(@Inject(MyNotifications) private readonly mine: MyNotifications) {}
   @Get("items") @AnyStaff("a person's own notifications")
   items(@Req() r: R, @Query() q: Record<string, unknown>) {
+    parseInput(query("unread", "page", "size"), q);   // PF-28 part 2b: an unknown query key is refused 422, named
     const s = staffOf(r);
     return this.mine.list(s.firmId, s.staffId, { unread: q.unread === "1" || q.unread === "true", page: whole(q.page), size: whole(q.size) });
   }
   @Get("unread-count") @AnyStaff("a person's own unread count")
   unread(@Req() r: R) { const s = staffOf(r); return this.mine.unreadCount(s.firmId, s.staffId); }
   @Post("read-all") @HttpCode(200) @AnyStaff("a person marks their own notifications read")
-  readAll(@Req() r: R, @Query("seen") seen?: string) { const s = staffOf(r); return this.mine.markAllRead(s.firmId, s.staffId, seenOf(seen)); }
+  readAll(@Req() r: R, @Query() q: Record<string, unknown>) { const { seen } = parseInput(SEEN, q), s = staffOf(r); return this.mine.markAllRead(s.firmId, s.staffId, seenOf(seen)); }
   @Post(":id/read") @HttpCode(200) @AnyStaff("a person marks one of their own notifications read")
-  async read(@Req() r: R, @Param("id") id: string, @Query("seen") seen?: string) {
-    const s = staffOf(r);
+  async read(@Req() r: R, @Param("id") id: string, @Query() q: Record<string, unknown>) {
+    const { seen } = parseInput(SEEN, q), s = staffOf(r);   // the query first: a random id's 404 never hides a bad query
     if (!UUID.test(id)) return notInFirm("notification");
     return (await this.mine.markRead(s.firmId, s.staffId, id.toLowerCase(), seenOf(seen))) ?? notInFirm("notification");
   }

@@ -80,7 +80,7 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 207, UNPARSED_CEILING = 71;   // part 1 committed 238 and 81; part 2a (identity doors) lowers them to 207 and 71; each fix part lowers both
+const PROBES_CEILING = 171, UNPARSED_CEILING = 61;   // part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; each fix part lowers both
 ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
@@ -198,8 +198,16 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const off = answers.get("POST /api/platform/offices unknown");
-ok("PF-28 DW2 fail: POST /api/platform/offices parses loosely today (400, the field not named), so its probe is on the allow-list for part 2", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/platform/offices unknown"] === "PF-28 part 2 (platform)", off);
+const off = answers.get("POST /api/public/signup unknown");
+ok("PF-28 DW2 fail: POST /api/public/signup answers its own 400 today (the field not named), so its probe is on the allow-list for part 2", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/public/signup unknown"] === "PF-28 part 2 (platform)", off);
+
+// PF-28 part 2b (platform settings, complaints, logs): each body and query goes through the rule before any lookup.
+const cq = await call("GET", "/api/platform/complaints?vew=open", { token: tR });
+const cNoKey = await call("POST", "/api/platform/complaints", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2b fail: a misspelt query key on the complaints list (vew) → 422 naming it; a complaint body with an unknown field and no Idempotency-Key → 422 for the body first", cq.status === FIELD_ERROR_STATUS && (cq.body?.fields as Record<string, string>)?.vew === "This field is not allowed here." && cNoKey.status === FIELD_ERROR_STATUS, [cq.body?.fields, cNoKey.status]);
+const keep = await call("PUT", "/api/platform/keep-periods/closed-client-files", { token: tR, body: JSON.stringify({ years: "seven" }) });
+const ack = await call("POST", "/api/platform/complaints/not-a-uuid/acknowledge", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+ok("PF-28 part 2b fail: keep period years as text → 422 naming years, nothing saved; a malformed complaint id → 404 before the body", keep.status === FIELD_ERROR_STATUS && Object.hasOwn((keep.body?.fields as object) ?? {}, "years") && ack.status === 404, [keep.body?.fields, ack.status]);
 
 // PF-28 part 2a (identity doors: sign-in, staff, invitations, licence records): each body goes through parseInput before
 // any record is read, and a staff id is checked before the body.
