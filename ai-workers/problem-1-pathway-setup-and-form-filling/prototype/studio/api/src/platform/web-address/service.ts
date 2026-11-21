@@ -15,7 +15,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import type { StaffContext } from "../../../../ports/staff.ts";
-import { firmScope } from "../firm-scope.ts";
+import { firmScope, withFirm } from "../firm-scope.ts";
 import { addressBaseFromName, candidate, checkAddressChoice, DEFAULT_HOST_SUFFIXES, readHost, type AddressRefusal } from "./rules.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -185,10 +185,20 @@ export class WebAddresses {
     const host = readHost(hostHeader, this.hostSuffixes);
     if (host.kind === "main") return host;
     if (host.kind === "none") return { kind: "unknown" };
+    // PF-12b part 2: the firm this address serves (or held until lately) through the narrow definer lookup, firm id only;
+    // the rest is read as that firm, so the door never runs on the bypass.
+    const now = this.deps.clock.now(), address = host.address;
+    const firmId = (await this.deps.db.$queryRaw<{ f: string | null }[]>`select platform_web_address_firm(${address}, ${now}::timestamptz) as f`)[0]?.f;
+    if (!firmId) return { kind: "unknown" };
+    return withFirm(firmId, () => this.resolveAs(address, now, host.suffix, host.port));
+  }
+
+  private async resolveAs(address: string, now: Date, suffix: string, port: string): Promise<HostAnswer> {
+    const host = { address, suffix, port };
     const own = await this.deps.db.platformFirmWebAddress.findUnique({ where: { address: host.address }, select: { firmId: true, firm: { select: { status: true } } } });
     if (own) return SERVING_STATUSES.includes(own.firm.status) ? { kind: "firm", firmId: own.firmId, address: host.address } : { kind: "unknown" };
     const held = await this.deps.db.platformFirmAddressHistory.findFirst({
-      where: { oldAddress: host.address, until: { gt: this.deps.clock.now() } }, orderBy: { changedAt: "desc" },
+      where: { oldAddress: host.address, until: { gt: now } }, orderBy: { changedAt: "desc" },
       select: { firm: { select: { webAddress: { select: { address: true } }, status: true } } },
     });
     const to = held?.firm.webAddress?.address;
