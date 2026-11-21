@@ -80,8 +80,8 @@ ok("PF-28 DW1 pass: the same route reading its body through parseInput(strict sc
 // DW7: the allow-list is checked in and every entry names its fix part; one with no part fails.
 ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, by area)", unnamed(allow).length === 0, unnamed(allow));
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 238;   // part 1 commits 238 probe entries (81 code entries; main at its last merge, batch #2702); a fix part lowers both
-ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 81 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
+const PROBES_CEILING = 244;   // part 1 commits 244 probe entries (83 code entries; main at its last merge, after batch 44898035790: #2750's booking timings routes, owned by part 4); a fix part lowers both
+ok("PF-28 DW7 fail: the allow-list never grows past its committed size", Object.keys(allow.unparsed).length <= 83 && Object.keys(allow.probes).length <= PROBES_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
 
 // The rule's own words (break m1-m3): a missing field and a wrong type say different things; "constructor" is named like
