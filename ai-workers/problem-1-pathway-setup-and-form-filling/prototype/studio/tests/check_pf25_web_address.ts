@@ -29,7 +29,7 @@ import { PUBLIC_NOT_FOUND_HTML, PUBLIC_NOT_FOUND_JSON, publicFirmOf, registerPub
 import { WebAddressCatchUp, WebAddressController, WebAddressHostRouting } from "../api/src/platform/web-address/routes.ts";
 import { catchUpFirmAddresses, FIRM_CREATED_ACTOR, onFirmCreated } from "../api/src/platform/web-address/firm-created.ts";
 import { EVENT } from "../ports/events.ts";
-import { checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
+import { addressBaseFromName, checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
 import { ADDRESS_CHANGE_KEY, readReason, WebAddresses } from "../api/src/platform/web-address/service.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -169,6 +169,7 @@ try {
     && sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id = '${firmStg}'`) === "0");
   ok("QA-644 pass (database): with no firm holding staging the migration applies again cleanly, and an address that only starts with staging (staging-law) is still allowed",
     (() => { try { psql(EMPTY, ["-c", `begin; ${QA644} rollback;`]); return true; } catch { return false; } })() && sql(EMPTY, `select platform_web_address_allowed('staging-law')`) === "t");
+  ok("QA-644 pass: a firm named Staging Inc is offered staging-firm, never staging", addressBaseFromName("Staging Inc") === "staging-firm" && addressBaseFromName("Staging") === "staging-firm", addressBaseFromName("Staging Inc"));
   ok("QA-644 fail (host): staging under the production suffix is ExpatReady's own site, never a firm", readHost("staging.expatready.com").kind === "main" && readHost("staging.localhost:4400").kind === "main");
   ok("PF-25 fail (database): an address does not change without its redirect record, never moves firm and is never removed",
     refused(EMPTY, `update platform_firm_web_address set address = 'maple-two' where firm_id = '${firmX}'`, /changes only with its redirect record/)
