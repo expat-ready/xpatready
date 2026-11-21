@@ -9,6 +9,7 @@ import type { Channel, ConsentPort, Purpose } from "../../../../ports/consent.ts
 import { EVENT, LeadEventPayload } from "../../../../ports/events.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { conflict, notFound, written, type Tx } from "./common.ts";
+import { NO_RULE, placeNewLead } from "../assignment/place.ts";
 
 export type Attribution = Partial<Record<"utmSource" | "utmMedium" | "utmCampaign" | "utmTerm" | "utmContent" | "clickId" | "landingPage" | "referrerUrl", string>>
   & { clickIdKind?: "GCLID" | "FBCLID" | "MSCLKID" | "TTCLID" | "OTHER" };
@@ -90,6 +91,9 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
     const active = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const }), select: { id: true }, take: 2 });
     if (active.length === 1) owner = active[0].id;   // X-4: a one-user firm's one user owns every lead
   }
+  // FO-10 (AG-2-13a): no owner yet → the firm's assignment rule, else Unassigned leads; the audit line names the rule.
+  const placed = owner === null ? await placeNewLead(tx, firmId, a.door, a.interestedInServiceId ?? null) : NO_RULE;
+  owner ??= placed.ownerStaffId;
   const lead = await tx.foLead.create({
     data: { firmId, personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match, createdBy: a.actor },
     select: { id: true, number: true },
@@ -100,8 +104,8 @@ export async function arrive(tx: Tx, a: ArrivalIn, ports: { audit: AuditPort<Tx>
   await tx.foArrivalReceipt.update({ where: { id: receipt.id }, data: { outcome: "CREATED", completedAt: new Date(), leadId: lead.id, personId } });
   await written(tx, ports.audit, {
     firmId, actor: a.actor, action: EVENT.LEAD_CREATED, entityKey: lead.id,
-    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}.`,
-    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent },
+    summary: `Lead ${lead.number} arrived by ${a.door === "WEB_FORM" ? "the web form" : a.door === "BOOKING" ? "a booking" : "hand"}${match ? ", flagged as a possible match" : ""}${placed.ruleId ? (placed.ownerStaffId ? `, assigned to staff ${placed.ownerStaffId} by ${placed.strategy === "OWNER" ? "the default owner rule" : "round robin"}` : `, left in Unassigned leads: ${placed.fallback === "OWNER_INACTIVE" ? "the rule's person is not active or cannot work leads" : "no one in the rule's turn is active"}`) : ""}.`,
+    detail: { door: a.door, personId, ownerStaffId: owner, possibleMatchPersonId: match, consent: !!a.consent, ...(placed.ruleId ? { assignmentRuleId: placed.ruleId, assignmentStrategy: placed.strategy, assignmentFallback: placed.fallback } : {}) },
     // R1.8 (QA-594, P-687): the lead's values in full, its new person's name and contact included; the message stays in fo_note.
     before: null, after: { personId, door: a.door, source: a.source, sourceDetail: a.sourceDetail ?? null, interestedInServiceId: a.interestedInServiceId ?? null, ownerStaffId: owner, possibleMatchPersonId: match,
       ...(a.existingPersonId ? {} : { givenNames: a.person.givenNames, familyName: a.person.familyName, email: a.person.email, phone: a.person.phone?.phone ?? null }) },

@@ -7,18 +7,20 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/controls";
 import { useToast } from "@/lib/api";
-import { Assignees, Prospect } from "./contract";
-import { useStaff } from "./sales-frame";
+import { Prospect } from "./contract";
+import { assigneesQuery, useStaff } from "./sales-frame";
 import { staffApi, StaffApiError } from "./session";
 export type StageRef = { id: string; label: string; kind: string };
 /** Who owns what, in words. Names come from `leads/assignees` (people who may assign get every active colleague);
  *  anyone else sees their own name and "A colleague". A one-user firm shows no owner anywhere (BR-10, X-4). */
 export function useOwners() {
   const me = useStaff();
-  const a = useQuery({ queryKey: ["fo", "assignees"], queryFn: async () => Assignees.parse(await staffApi("/front-office/leads/assignees")) }).data;
+  const q = useQuery(assigneesQuery), a = q.data;
   const name = (id: string | null) => id === null ? "Nobody" : a?.assignees.find((x) => x.staffId === id)?.displayName ?? (id === me.staffId ? me.displayName : "A colleague");
   // Until the answer is in (or when it fails) no owner is shown: a one-user firm never sees an owner flash by (break m8).
-  return { oneUser: a?.oneUser ?? true, choices: a?.assignees ?? [], name };
+  // `settled`: the answer is in, or failed (R1.32: Leads waits for it, so its chips never change under the person).
+  // A failed answer is not a one-user firm (break 9): the owner lines and buttons stay, the picker says it has nobody.
+  return { oneUser: a?.oneUser ?? !q.isError, choices: a?.assignees ?? [], name, settled: !q.isPending };
 }
 /** One request at a time (review M1): a second click before the first answer is dropped, also before React has drawn
  *  the button as busy. `take()` is true for the click that may send; `free()` when the answer is in. */

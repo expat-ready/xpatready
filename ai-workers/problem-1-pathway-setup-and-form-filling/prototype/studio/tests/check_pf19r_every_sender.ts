@@ -162,6 +162,7 @@ ok("S1 fail: one more .send( under any name in a listed file (support.ts) is rep
 type Provider = { provide?: unknown; useExisting?: unknown; useFactory?: (...a: unknown[]) => unknown; inject?: unknown[]; useValue?: unknown };
 const featureDir = join(API, "features");
 const providers: { feature: string; p: Provider }[] = [];
+process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: features/platform-messages.ts reads the loader at import (required, no default)
 for (const f of readdirSync(featureDir).filter((x) => x.endsWith(".ts")).sort()) {
   const feat = (await import(pathToFileURL(join(featureDir, f)).href)).default as { providers?: unknown[] } | undefined;
   for (const p of feat?.providers ?? []) if (p && typeof p === "object") providers.push({ feature: f, p: p as Provider });
