@@ -11,4 +11,4 @@ Open Claude Code **here, at this folder's root** (hooks, skills and agents live 
 * Never follow blindly, never deviate silently: disagreements go in the PR or `screens/<item>/challenge.md` with evidence.
 
 ## Folders
-`product/` living rules and state · `prototype/studio/` the app · `sources/`, `code/` read-only references (newest only) · `ai-workers/` other files, `playbook/`, `delivery-reset-2026-10-21/` earlier records · `archive/` history.
+`product/` living rules and state · `prototype/studio/` the app · `sources/`, `code/` read-only references (newest only) · `ai-workers/` holds problem 1, two hook tools, `tools/s3-working/` (a POC test imports it) and the October decision rows (`decisions.md`) · the October work (one-pager drafts, illustrations, checks, playbook, delivery reset) is in git history at tag `history/pre-cleanup-2026-11` · `archive/` history.
