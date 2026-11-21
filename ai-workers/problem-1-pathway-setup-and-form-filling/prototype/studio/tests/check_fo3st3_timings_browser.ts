@@ -108,6 +108,10 @@ try {
   ok("FO-3st3b firm fail (not a number): \"six\" is refused at the field, focus goes there, and nothing is sent",
     (await note(pa, "Self-service limit (hours)")).startsWith("Enter a number of hours") && (await fld(pa, "Self-service limit (hours)").getAttribute("aria-invalid")) === "true" && puts.v === 0
     && (await pa.evaluate(() => document.activeElement?.getAttribute("data-timing-field"))) === "selfServiceLimitMinutes", await note(pa, "Self-service limit (hours)"));
+  await fld(pa, "Shortest notice (hours)").fill("0.000000001"); await pa.getByRole("button", { name: "Save timings" }).click(); await pa.waitForTimeout(300);
+  ok("FO-3st3b firm fail (break m1): 0.000000001 hours is refused at the field, never rounded to 0; nothing is sent",
+    (await note(pa, "Shortest notice (hours)")).startsWith("Enter a number of hours") && puts.v === 0 && (await firmApi()).timings.minNoticeMinutes === 240);
+  await fld(pa, "Shortest notice (hours)").fill("4");
   await fld(pa, "Self-service limit (hours)").fill("4");
   await fld(pa, "Gap after (minutes)").fill("2000"); await fld(pa, "Shortest notice (hours)").fill("2");
   await saveFirm(pa);

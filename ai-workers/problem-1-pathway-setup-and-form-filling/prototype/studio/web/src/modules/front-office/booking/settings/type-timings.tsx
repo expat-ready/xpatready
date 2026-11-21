@@ -58,6 +58,7 @@ export function TypeTimingsSection({ typeId, onSaved }: { typeId: string; onSave
   const start = (f: TypeField) => { if (!t) return; setEditing(f); setError(null); setSaid(null); setText(toInput(f, t.effectiveTimings[f])); focus(`[data-type-timing-input="${f}"]`); };
   /** Not a <form>: this sits inside the type panel's form, and forms do not nest (Enter saves this row only). */
   const submit = (f: TypeField) => {
+    if (t && text.trim() === toInput(f, t.effectiveTimings[f]) && t.timings[f] !== null) { setEditing(null); focus(`[data-type-timing="${f}"] button`); return; }   // unchanged: nothing to send
     const v = fromInput(f, text);
     if (v === null) { setError({ field: f, text: NOT_A_NUMBER(f) }); focus(`[data-type-timing-input="${f}"]`); return; }
     void send(f, v);

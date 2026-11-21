@@ -50,15 +50,17 @@ export function words(field: TypeField, v: number): string {
 export const reminderWords = (offsets: number[]) =>
   `${offsets.map((m) => (m % 60 === 0 ? plural(m / 60, "hour") : plural(m, "minute"))).join(" and ")} before (fixed for now)`;
 
-/** The value a field shows for editing, in its unit (hours may be a fraction: 90 minutes → "1.5"). */
-export const toInput = (field: TypeField, v: number) => String(FIELDS[field].unit === "hours" ? v / 60 : v);
+/** The value a field shows for editing, in its unit (hours may be a fraction: 90 minutes → "1.5"; at most 4 decimals,
+ *  so 1 minute shows "0.0167", break m2). An unchanged value is never sent, so the rounding never saves. */
+export const toInput = (field: TypeField, v: number) => String(FIELDS[field].unit === "hours" ? Number((v / 60).toFixed(4)) : v);
 /** What a person typed, in the unit the server keeps, or null when it is not a number of 0 or more that makes whole
- *  minutes (the field then says so and nothing is sent). Ranges are the server's: its words show on the field. */
+ *  minutes exactly (break m1: 0.000000001 hours is refused, never rounded to 0). Ranges are the server's. */
 export function fromInput(field: TypeField, text: string): number | null {
   const t = text.trim();
-  if (!/^\d+(\.\d+)?$/.test(t)) return null;
-  const v = FIELDS[field].unit === "hours" ? Number(t) * 60 : Number(t);
-  return Number.isSafeInteger(Math.round(v * 1e6) / 1e6) ? Math.round(v) : null;
+  const hours = FIELDS[field].unit === "hours";
+  if (!(hours ? /^\d{1,9}(\.\d{1,4})?$/ : /^\d{1,9}$/).test(t)) return null;
+  const v = hours ? Number(t) * 60 : Number(t);
+  return Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : null;
 }
 export const NOT_A_NUMBER = (field: TypeField) => (FIELDS[field].unit === "hours" ? "Enter a number of hours of 0 or more, in whole minutes (for example 1.5)." : "Enter a whole number of 0 or more.");
 /** The server's range words are in minutes; a field typed in hours says them in hours (review m1):
