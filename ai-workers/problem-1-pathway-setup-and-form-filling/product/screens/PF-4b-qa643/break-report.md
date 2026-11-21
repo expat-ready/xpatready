@@ -64,3 +64,34 @@ No-domain staging builds and passes every estate guard. Production refuses no-do
 Whether CloudFormation accepts `MfaConfiguration ON` with WEB_AUTHN as a first factor (the AWS model says it does when the factor configuration is MULTI_FACTOR_WITH_USER_VERIFICATION). That is PF-8c's deploy and smoke test.
 
 Verdict: Changes caeb6a3495a9940dace931891380ddb7067cfda2
+
+## Round 2 (86e89586)
+Diff `caeb6a34..86e89586` under `deploy/cdk` only. Synth and copies in the session scratchpad (`breaker-qa643/mutate.ts`, `mutate2.ts`, `codemut-full.mjs`); not committed. `npm test` gives 110/110 at the commit and also in a scratch copy of the tree.
+**Round 1 re-run: everything now caught.** On the template, B1-B8 are caught (M1 `EnabledMfas`, M2 `DeviceConfiguration`, m1 extra first factor, m2 no-domain OTP/USER_AUTH, m3 extra flows, m6 the clients' pool), and H1-H15 are still caught.
+As code mutations of `service.ts`, the full suite fails for each one: M1 email second step (2 fail), M2 `deviceTracking` (3), m2 (1), m3 `userPassword`/`adminUserPassword`/`custom` (3).
+m5 is fixed in the wording (README Sign-in bullet, `service.ts:108-118`: the passkey MFA switch per person, and the authenticator app kept enrolled). m3's password-over-USER_AUTH is now stated. m4 is stated in the README and stays a question for the tech lead.
+
+### Fresh attempts that held (caught by `poolFindings`)
+* `EnabledMfas`: listed twice, reordered `[EMAIL_OTP, SOFTWARE_TOKEN_MFA]`, lower-case, `Fn::If` token, email on no-domain own-staff (F1-F4, F9).
+* `DeviceConfiguration`: `{}`, `null`, an `Fn::If` token, and set on no-domain staging (F5-F8).
+* Flows: `ALLOW_USER_AUTH` listed twice, legacy `USER_PASSWORD_AUTH` instead of SRP, an `Fn::If` token, the list removed (which leaves Cognito's default) (F10-F13).
+* A second staff client linked with `Fn::GetAtt [pool, UserPoolId]` (F14). Whole `Policies` as `Fn::If` with a domain (F20). The clients' `SignInPolicy: null` (F22).
+* Pool name as an `Fn::Join` token. Staff and clients names swapped. `MfaConfiguration "on"`. Own-staff relying party set to staging on production (F23-F26).
+* As a code mutation, a second client using `Fn.sub` with a map is refused by the region guard's "Fn::Sub with a variable map".
+
+### Findings (all Minor; none new in kind, all need a deliberate escape hatch)
+**r2-m1. A staff app client the guard cannot link to its pool is never checked.** `poolFindings` links a client to a pool only through `refId` (`Ref` or `Fn::GetAtt`, `service-checks.ts:13`, `:246`, `:272`). Any other form drops the client, and its flows, out of every check.
+Code mutation (scratch `codemut-full.mjs` R2-a), after `staffClient` in `service.ts`: `new cognito.CfnUserPoolClient(this, "Side", { userPoolId: Fn.select(0, Fn.split(",", pools.staff.userPoolId)), explicitAuthFlows: ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_ADMIN_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"] })`.
+The synthesized `AppSide…` has `UserPoolId {"Fn::Select":[0,{"Fn::Split":[",",{"Ref":"AppPoolstaff…"}]}]}` in all four stacks, and the **full suite still passes 110/110**. As template mutations, `Fn::Join ["",[Ref]]` and a plain `Fn::Sub "${Pool}"` also pass every guard (F15-F17).
+That bypasses "exactly SRP, USER_AUTH and refresh" and "its own one" client. Pool MFA still applies (no triggers allowed), so this is the same grade as round-1 m3.
+Suggested check: a client whose `UserPoolId` is not a plain `Ref`/`GetAtt` to a pool in this stack is itself a finding.
+
+**r2-m2. No-domain staging reads an unreadable first-factor list as "not set".** `if (first.length && …)` (`service-checks.ts:277`): `arr()` turns an `Fn::If` (or a whole `Policies` in `Fn::If`) into `[]`, which then passes.
+Code mutation R2-c: a `CfnCondition` plus `addPropertyOverride("Policies.SignInPolicy.AllowedFirstAuthFactors", Fn.conditionIf(c.logicalId, ["PASSWORD","EMAIL_OTP"], ["PASSWORD"]))` on both no-domain staff pools.
+The synthesized `nd:xr-staging` has the `Fn::If` with `AppHome… Fn::Equals ["ca-central-1","ca-central-1"]` (always true), and the **full suite passes 110/110** (template versions F18 and F19 also pass every guard). The domain branch is not affected: it does not short-circuit, and F20 is caught.
+The effect is round-1 m2's: an email code as a first factor on staging (a failed deploy or a weaker sign-in, unconfirmed offline). Suggested check: absent is fine, and anything that is not a literal array is a finding.
+
+**r2-m3. The new clients'-pool check (`service-checks.ts:253`) has the same token gap.** With `Policies` as `Fn::If` and `SignInPolicy {AllowedFirstAuthFactors:["EMAIL_OTP"]}` on `xr-production-clients`, every guard passes (F21).
+The QA-643 pass test also reads `P.Policies?.SignInPolicy` as undefined, so a code change would not be caught either. This is PF-4p ground: it is recorded only because the PR adds the check.
+
+Verdict: Approve 86e895862f1ababb4cba91d3432dfdab8530609c
