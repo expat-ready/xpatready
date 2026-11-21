@@ -32,6 +32,7 @@ Moved word for word to `product/history/STATE-2026-11-21-1605-lead15s3-lead14-si
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A271 | 21 Nov 17:2x (typed): plan an account switch (not a reset) at ~95% or before he sleeps; keep everything synced and resumable as we go | RESUME-ON-NEW-ACCOUNT.md switch block written 17:2x; kept current each check |
 | A270 | 21 Nov 17:1x (typed): calm plan; commit to first 8 or 10; slow what should slow, fast-track what matters | Commitment line in Lead 15 block |
 | A269 | 21 Nov 16:5x (typed): keep working, research best practice, ask only what must be his; recover to 15 by 07:00 | Recovery plan line in Lead 15 block |
 | A268 | 21 Nov 16:3x (typed): full lead-watch, walk every lane, Show more, nobody waits on the Lead | Walk done 16:4x; report sent |

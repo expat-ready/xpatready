@@ -2,6 +2,14 @@
 
 **Tested on a real switch, 5 Nov 19:14 IST; corrected the same evening.** Canary requested and pushed inside 5 minutes; nothing on GitHub lost. The work lives on GitHub (P-82), so an account switch loses at most what a lane has not pushed. Every lane pushes after each step (P-344 (1)).
 
+## Switch of 21-22 Nov (Lead 15, series 3 → the new account's Lead), prepared 17:2x IST 21 Nov: read this block first
+**When:** at ~95% weekly or before the founder sleeps, whichever comes first (founder, A271). Weekly was 76% at 17:2x IST, ~3%/h.
+**Where the truth is:** `product/STATE.md` on branch `lead/2026-11-07-lead31` (pushed after every step): "Start here", the newest hand-over block, the "Lead 15 since" lines and the A-rows. RULES as of P-783.
+**First steps on the new account:** (1) `get_usage`; (2) start the Lead locally in the Mac's main copy, `/lead`; create the check (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`); (3) two standby Leads; (4) re-brief each cloud lane below from its PR (cloud sessions belong to the old account: open the PR, read the last comment, start one fresh cloud session per open row with its Done when).
+**Cycle commitment (A270):** 8 proven by 21:00 IST, 10 by 00:00, 13 expected by 07:00 22 Nov. Rows, PRs and owners: the A270 line in STATE.
+**Local sessions that survive the switch (Mac):** Lead B (11) `local_3a725fd1`; AWS proof session `local_35aacb3f` (idle until "go Phase 2" after #2800 + F2b + F3 merge; AWS case 179475587900349 open; staging domain parked, A266).
+**Never lost:** every branch and PR is on GitHub (P-557). Nothing lives only in a session.
+
 ## Switch of 15 Nov (Lead 55 → the new account's Lead), written 13:2x IST: read this block first
 **Why now:** weekly 93% on A1 (no new row at 93%, A68); the founder leaves within 2-3 h, so the switch is done before 95%. Everything below is on GitHub, branch `lead/2026-11-07-lead31` (P-557). Nothing lives only in a session.
 
