@@ -5,7 +5,7 @@ Lead and blocks the right lanes. This compares the list with qa's statuses (qa/C
 qa alone sets Status, P-314) and prints:
   drop: proven      a list line whose every item is Works (remove it: P-733 (1) "remove a line when its item is Proven")
   missing: Partial  an R1 item at Partial that no list line names (focus-check.py refuses its lanes)
-Exit 1 when either is printed, 0 when the list is true, 2 when a file cannot be read or has no R1 rows.
+Exit 1 when either is printed, 0 when the list is true, 2 when a file cannot be read or has no R1 rows or lines.
 Read-only: --md prints the corrected list (dropped lines removed, missing items appended for the Lead to fill in); it
 never writes the file, the records are the Lead's. Standard library only. Test: test_focus_truth.py.
   python3 -I product/tools/focus-truth.py [--md] [--list focus-list.md] [--caps qa/CAPABILITIES.md]
@@ -69,6 +69,8 @@ def main():
     caps, drop, missing = check(list_text, caps_text)
     if not caps:
         print(f"focus-truth: no R1 rows with a Status column in {cp}: nothing was checked"); return 2
+    if not list_lines(list_text):   # an empty or moved list must not read as "every Partial item is missing"
+        print(f"focus-truth: no R1 lines in {lp}: nothing was checked"); return 2
     src = list_text.split("\n")
     if "--md" in sys.argv[1:]:
         gone = {n for n, _ in drop}

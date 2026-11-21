@@ -25,11 +25,13 @@ class FocusTruth(unittest.TestCase):
     def run_tool(self, focus, *extra, caps=CAPS):
         d = tempfile.mkdtemp()
         lp, cp = os.path.join(d, "focus-list.md"), os.path.join(d, "CAPABILITIES.md")
-        open(lp, "w").write(focus)
-        open(cp, "w").write(caps)
+        for path, text in ((lp, focus), (cp, caps)):
+            with open(path, "w") as f:
+                f.write(text)
         r = subprocess.run([sys.executable, "-I", TOOL, "--list", lp, "--caps", cp, *extra], capture_output=True, text=True)
         self.addCleanup(lambda: [os.remove(lp), os.remove(cp), os.rmdir(d)])
-        return r.returncode, r.stdout, open(lp).read()
+        with open(lp) as f:
+            return r.returncode, r.stdout, f.read()
 
     def test_works_item_flagged_for_drop(self):
         rc, out, _ = self.run_tool(STALE)
@@ -63,6 +65,11 @@ class FocusTruth(unittest.TestCase):
         rc, out, _ = self.run_tool(CLEAN, caps="no table here\n")
         self.assertEqual(rc, 2)
         self.assertIn("nothing was checked", out)
+
+    def test_empty_list_exits_2_not_a_finding(self):
+        rc, out, _ = self.run_tool("")   # e.g. git show of a moved file gave nothing
+        self.assertEqual(rc, 2)
+        self.assertNotIn("missing:", out)
 
 
 if __name__ == "__main__":
