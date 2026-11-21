@@ -158,7 +158,7 @@ function RetainerBody({ id }: { id: string }) {
             <h3 id="fo-code" className="font-medium">Regulator's Code</h3>
             <p className="mt-1" data-code-line>{r.codeChecklist.line}</p>
             <p className="mt-1 text-xs text-text-muted">Shown to help you check; it never stops a send. {r.codeChecklist.legalReading}</p>
-            <ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul>
+            <details className="mt-2"><summary className="cursor-pointer text-xs text-text-muted">Each item, marked or not</summary><ul className="mt-2 flex flex-wrap gap-1" aria-label="Code s. 24(3) items">{r.codeChecklist.items.map((i) => <li key={i.letter}><Pill tone={i.present ? "ok" : "neutral"} title={`s. ${i.section}: ${i.present ? "marked" : "not marked"} in this agreement's template`}>({i.letter}) {i.present ? "marked" : "not marked"}</Pill></li>)}</ul></details>
             <Button variant="link" size="sm" className="mt-1" onClick={() => setShowItems(true)}>See the items and how we check</Button>
           </section> : null}
           {draft && can(me, R_KEY.send) ? <Button data-check-and-send onClick={() => (blockers.length ? document.querySelector<HTMLElement>("[data-error-summary] a")?.focus() : setSending(true))}>Check and send</Button> : null}
@@ -170,7 +170,7 @@ function RetainerBody({ id }: { id: string }) {
         <p className="mt-3 text-sm">{client} is asked to sign this version. After {client} signs, {repName(r.representativeStaffId)} signs for the firm.</p>
         {r.missing.length ? <p className="mt-2 text-sm text-text-muted">{r.missing.length} value{r.missing.length === 1 ? " is" : "s are"} missing. You can send without {r.missing.length === 1 ? "it" : "them"}.</p> : null}
       </Panel>
-      <Panel open={showItems} onOpenChange={setShowItems} title="The regulator's Code, s. 24(3)" description={checklist.data?.summary}>
+      <Panel open={showItems} onOpenChange={setShowItems} bodyLabel="The Code's items" title="The regulator's Code, s. 24(3)" description={checklist.data?.summary}>
         {checklist.isPending ? <Loading label="Loading the items" rows={3} /> : checklist.isError ? <Notice tone="danger" title="Could not load the items." /> : (
           <div className="flex flex-col gap-3 text-sm">
             <p className="text-xs text-text-muted">{checklist.data.source.line} · {checklist.data.legalReading}</p>
