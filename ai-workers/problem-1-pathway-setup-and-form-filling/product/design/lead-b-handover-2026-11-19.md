@@ -220,3 +220,4 @@ Merged: #2397 PF-19b part 3 (R1.48), #2313 (R1.38 2 of 4), **#2405 FO-9b** (R1.3
 | R1.38, R1.110 | Works on main (records landed) | none |
 | #2687 DEMO-LINK | labelled, queued | watch; check_pf18h_home_browser runs in CI only |
 Worktree: the stale index equals origin commit e34ef4e44a and the two unstaged skill files are older GitHub versions, so `git reset --hard HEAD` loses nothing.
+**Lead B (10), 10:2x IST:** #2618 (R1.49) labelled on 40d512a48 after #2694 merged 10:20; queued 10:23. R1.42: builder PRs #2717 (FO-3st1 part 2, consult record) and #2718 (FO-3st3 part 3a, booking types) open as drafts; Timings ruled out of #2718 into FO-3a1e (timings API + migration, DW19-DW21) and FO-3st3b (Timings screen, J-T5), rows added by Lead 11 in records PR #2708 (ruling: #2718 comment 7057396435). Current Lead: Lead 12 (local_7ec53395) from 10:23.
