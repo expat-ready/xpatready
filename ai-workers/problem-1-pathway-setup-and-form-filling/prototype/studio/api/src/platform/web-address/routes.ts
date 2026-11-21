@@ -16,6 +16,10 @@ import { platformConfig } from "../config/settings.ts";
 import { asBypass, touchingAudit } from "../firm-scope.ts";
 import { logPort } from "../observability/log.ts";
 import { dbRuleOf } from "../observability/redact.ts";
+import { parseInput, query } from "../http/input.ts";
+
+/** The suggestion's one query key. */
+const SUGGESTION_QUERY = query("name");
 
 /** The service as the app uses it: the app's database, the interim audit adapter (PF-0p; AUD-1 swaps it), the real clock. */
 export const webAddressesProvider = { provide: WebAddresses, useFactory: (db: Db) => new WebAddresses({ db, audit: auditEvent, clock: systemClock, hostSuffixes: addressHostSuffixes(platformConfig().addressSuffix) }), inject: [Db] };
@@ -61,8 +65,9 @@ export class WebAddressController {
   }
 
   /** A free address made from the firm's operating name. */
-  async suggestion(name: unknown, req: PublicReq, res: PublicRes) {
+  async suggestion(q: unknown, req: PublicReq, res: PublicRes) {
     if (publicFirmOf(req)) return sendPublicNotFound(req, res);
+    const { name } = parseInput(SUGGESTION_QUERY, q);   // PF-28 part 2b (R1.10): an unknown query key is refused 422, named
     res.setHeader("Cache-Control", "no-store");
     res.json(await this.addresses.suggest(name));
   }
@@ -92,5 +97,5 @@ const route = (method: "availability" | "suggestion" | "site", path: string, why
   params.forEach((p, i) => p(proto, method, i));
 };
 route("availability", "web-address/availability", SIGN_UP, [Query("address"), Req(), Res()]);
-route("suggestion", "web-address/suggestion", SIGN_UP, [Query("name"), Req(), Res()]);
+route("suggestion", "web-address/suggestion", SIGN_UP, [Query(), Req(), Res()]);   // PF-28 part 2b: the whole query, read through the rule
 route("site", "site", "someone on a firm's public page, who has no account", [Req(), Res()]);

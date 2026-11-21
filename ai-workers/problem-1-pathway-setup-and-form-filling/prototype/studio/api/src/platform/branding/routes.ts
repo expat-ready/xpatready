@@ -8,7 +8,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { Db, OpenRead } from "../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
-import { BrandingService } from "./branding.ts";
+import { BrandingBody, BrandingService } from "./branding.ts";
 import { isImageKind } from "./image-setting.ts";
 import { BrandingImages, IMAGE_UPLOAD_CAP, tooLarge } from "./images.ts";
 import { z } from "zod";
@@ -47,7 +47,7 @@ export class BrandingController {
   @Get() @PermissionKeys("agent/settings:list")
   async read(@Req() r: R) { const s = staffOf(r); return { ...(await this.b.read(s)), images: await this.images.links(s) }; }
   @Put() @PermissionKeys("agent/settings:edit")
-  save(@Req() r: R, @Body() b: unknown) { return this.b.save(staffOf(r), b); }
+  save(@Req() r: R, @Body() b: unknown) { return this.b.save(staffOf(r), parseInput(BrandingBody, b)); }   // PF-28 part 2b: the one input rule at the door
   @Put(":kind") @PermissionKeys("agent/settings:edit") @UseInterceptors(BrandingUploadWords, FileInterceptor("file", { limits: { fileSize: IMAGE_UPLOAD_CAP, files: 1, fields: 2, parts: 3 } }))
   upload(@Req() r: R, @Param("kind") kind: string, @UploadedFile() f: F) { return this.images.upload(staffOf(r), kind, f ? { bytes: new Uint8Array(f.buffer) } : undefined); }
   @Delete(":kind") @PermissionKeys("agent/settings:edit")
