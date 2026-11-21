@@ -5,7 +5,7 @@
 // failing case.
 //   tsx studio/tests/check_pf8b_host_suffix.ts
 import { ConfigRefused, DEFAULT_ADDRESS_SUFFIX, loadPlatformConfig } from "../api/src/platform/config/settings.ts";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addressHostSuffixes, DEFAULT_HOST_SUFFIXES, readHost } from "../api/src/platform/web-address/rules.ts";
 import { WebAddresses, type WebAddressDeps } from "../api/src/platform/web-address/service.ts";
@@ -53,6 +53,13 @@ const src = (f: string) => readFileSync(join(import.meta.dirname, "..", "api", "
 check("the app's wiring passes PLATFORM_ADDRESS_SUFFIX from the loader, and the host middleware and resolver read the service's list",
   /hostSuffixes: addressHostSuffixes\(platformConfig\(\)\.addressSuffix\)/.test(src("routes.ts")) && /readHost\(h, addresses\.hostSuffixes\)/.test(src("host.ts"))
   && /readHost\(hostHeader, this\.hostSuffixes\)/.test(src("service.ts")) && !/process\.env/.test(src("rules.ts")));
+
+// review m2: the hostSuffixes input is optional, so a second service built elsewhere would quietly read expatready.com.
+// The app builds exactly one, in routes.ts, with the loaded setting.
+const builders = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? builders(join(dir, e.name))
+  : /\.tsx?$/.test(e.name) && /new WebAddresses\(/.test(readFileSync(join(dir, e.name), "utf8")) ? [join(dir, e.name)] : []);
+const built = builders(join(import.meta.dirname, "..", "api", "src")).map((f) => f.split("/api/src/")[1]);
+check("the app builds the address service in one place only (routes.ts, with the setting)", JSON.stringify(built) === JSON.stringify(["platform/web-address/routes.ts"]), built);
 
 // --- PF-24's loader: the setting is checked at start-up, never shown
 check("the loader reads it (unset: expatready.com; set: the value)",
