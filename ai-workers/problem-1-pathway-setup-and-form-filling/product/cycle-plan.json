@@ -1,5 +1,5 @@
 {
-  "about": "The Lead's plan for the current 07:00 -> 07:00 IST cycle (founder A243/A244). tools/cycle-timeline.py reads it. Seeded by ENF-783b from STATE's 10:25 IST 21 Nov hand-over block; the Lead keeps rows, PRs, ETAs and waits current. ENF-783c (A263) added aws, reserve and outside for founder-report.py's board; lane and parts are optional per row.",
+  "about": "The Lead's plan for the current 07:00 -> 07:00 IST cycle (founder A243/A244). tools/cycle-timeline.py reads it. Seeded by ENF-783b from STATE's 10:25 IST 21 Nov hand-over block; the Lead keeps rows, PRs, ETAs and waits current. ENF-783c (A263) added aws, reserve and outside for founder-report.py's board; lane, parts and owner (the qa lane that owns a merged row's proof: it then counts in the forecast, Lead 15 on #2809) are optional per row.",
   "cycle_start": "2026-11-21",
   "proof_minutes": 60,
   "rows": [

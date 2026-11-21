@@ -112,7 +112,7 @@ class FounderReport(unittest.TestCase):
         self.assertEqual([r.split("  ")[0].strip() for r in rows],
                          ["Shaped-ready", "Building", "Review/Approve", "Waiting on the Lead", "Red after approval",
                           "Merge queue + machines", "qa proof"])
-        self.assertRegex(rows[0], r"^Shaped-ready\s+unknown\s+unknown\s+unknown\s+unknown$")
+        self.assertRegex(rows[0], r"^Shaped-ready\s+—\s+—\s+—\s+not measured yet$")     # no --stage for it
         self.assertRegex(rows[1], r"^Building\s+4\s+2\.5 h\s+3/1\s+⚠️ two drafts quiet 3 h$")
         # out below in: Building (2.5 h) and Merge queue (50 min); the older wins
         self.assertIn("Constraint today: Building because median age 2.5 h and 3 in / 1 out in 3 h", out)
@@ -169,6 +169,18 @@ class FounderReport(unittest.TestCase):
         _, out, _ = run(*FULL, plan=self.plan_with(late_42))
         self.assertRegex(out, r"- ~20:00 · R1\.42 · .* · late by")             # late for 19:00 on its own line
         self.assertIn("Forecast by 07:00  5 / 15", out)                    # ... and still counted for 07:00
+
+    def test_forecast_counts_a_merged_row_a_qa_lane_owns(self):
+        def own(plan):
+            for r in plan["rows"]:
+                if r["r1"] in ("R1.42", "R1.13"):                 # both merged; R1.13 waits on the founder's AWS
+                    r["owner"] = "qa"
+        _, out, _ = run(*FULL, plan=self.plan_with(own))
+        self.assertIn("Forecast by 07:00  5 / 15", out)                    # 4 + R1.42; R1.13 (AWS) does not count
+        _, out, _ = run(*FULL, plan=self.plan_with(lambda p: p["rows"][2].update(owner="qa", eta="23:00")))
+        self.assertIn("Forecast by 07:00  5 / 15", out)                    # an ETA only adds lateness
+        _, out, _ = run(*FULL, plan=self.plan_with(lambda p: p["rows"][6].update(owner="qa")))
+        self.assertIn("Forecast by 07:00  4 / 15", out)                    # R1.108 is not merged: no count
 
     def test_odd_plan_shapes_print_unknown_not_a_traceback(self):
         shapes = [lambda p: p.update(reserve=None), lambda p: p.update(reserve=[{"prs": [31]}]),

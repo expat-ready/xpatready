@@ -10,7 +10,7 @@ founder is this script's output, in this order, every time:
                              "By 19:00 (8)", "By 07:00 (7)", "Reserve / out of cycle", the plan's order every time:
                              - ~HH:MM|done · R1.n · plain name · #PR part + #PR part (lane) · ✅✅🟡⬜⬜ · waits on ...
                              then "Outside the 15": the plan's "outside" list (kind · what · #PR state).
-                             Plan keys it reads beside cycle-timeline's: lane, parts {"PR": "name"}, aws, reserve, outside.
+                             Plan keys it reads beside cycle-timeline's: lane, parts {"PR": "name"}, aws, owner (qa lane), reserve, outside.
   4 Constraint               --constraint
   5 Since last report        --since, up to 4 lines
   6 Money and resources      --aws, --weekly (+ --rate for the 96% time), --context
@@ -22,7 +22,8 @@ Inputs (read-only; never writes, never posts):
     commit before the cycle's 07:00 IST (net: a row that left Works subtracts).
   * Flags for what no file holds. A missing input prints "unknown", never a guess. Times in IST from the clock (P-302).
 Forecast by 07:00 = proven this cycle + plan rows (19:00 and 07:00 groups) not yet Works whose ETA lands before the
-cycle's 07:00 and has not passed (a 19:00 row due 20:00 is late on its line but counts here; no ETA does not count).
+cycle's 07:00 and has not passed (a 19:00 row due 20:00 is late on its line but counts here), plus merged rows whose
+proof a qa lane owns (`owner` in the plan; not AWS rows; an ETA only adds lateness). Otherwise no ETA does not count.
 On track: ✅ forecast >= 15 · ⚠️ 12-14 · ❌ under 12.
 
   python3 -I product/tools/founder-report.py --needs nothing --constraint "..." --since "✅ R1.49 proven" \
@@ -126,13 +127,18 @@ def read_prs(gh, nums):
         return None
 
 
+def is_aws(row):
+    """The founder's AWS stops it: the plan's flag, or the word AWS in its waits_on."""
+    return bool(row.get("aws") or re.search(r"\baws\b", row.get("waits_on") or "", re.I))
+
+
 def boxes(row, prs, proven):
     """Five stage boxes build / review / queue / walk-or-AWS / qa proof (A263): ✅ done · 🟡 now · 🔴 blocked · ⬜ not yet.
     The first open PR leads (as in cycle-timeline); with none open, merged parts mean built; a Lead's `step` places a
     row that has no PR. 🔴 where something stops it: Mergify's dequeued label, the founder's AWS, a `waits_on` with no PR."""
     if proven:
         return DONE * 5
-    aws = bool(row.get("aws") or re.search(r"\baws\b", row.get("waits_on") or "", re.I))
+    aws = is_aws(row)
     lead = [p for p in prs if p["state"] == "open" and not p.get("merged")]
     if lead:
         p = lead[0]
@@ -249,7 +255,10 @@ def row_line(r, caps, gh, now, proof, start, end, by, deadline, out):
         return 0
     eta, _txt, _step, waits, _ = CT.row_view(r, caps, gh, now, proof)
     verdict = CT.lateness(eta, deadline, now, False) if deadline else ""
-    counts = 1 if by and eta and CT.lateness(eta, end, now, False) == "on time" else 0
+    merged = bool(prs) and any(p.get("merged") for p in prs) and not any(
+        p["state"] == "open" and not p.get("merged") for p in prs)
+    owned = merged and r.get("owner") and not is_aws(r) and (not eta or eta <= end)   # Lead 15 on #2809 (1)
+    counts = 1 if by and (owned or (eta and CT.lateness(eta, end, now, False) == "on time")) else 0
     target = eta.strftime("~%H:%M") if eta else ("≤" + by if by else "—")
     bx = "unknown (GitHub not answering)" if prs is None else boxes(r, prs, False)
     waits = blocked_waits(r, prs) or waits
@@ -277,6 +286,8 @@ def stage_table(flags):
     out = ["", "```", "%-23s %-7s  %-10s %-10s  %s" % ("Stage", "Items", "Median age", "In/out 3 h", "Verdict")]
     for st in STAGE_ROWS:
         v = given.get(st.lower(), [])
+        if not v:                                    # Lead 15 on #2809 (2): no tool measures it yet
+            v = ["—", "—", "—", "not measured yet"]
         v += [U] * (4 - len(v))
         items, age, io, verdict = v[0] or U, v[1] or U, v[2] or U, " · ".join(x for x in v[3:] if x) or U
         out.append("%-23s %-7s  %-10s %-10s  %s" % (st, items, age, io, verdict))
