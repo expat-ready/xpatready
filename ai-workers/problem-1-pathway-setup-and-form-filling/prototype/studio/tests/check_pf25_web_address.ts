@@ -162,11 +162,11 @@ try {
     ["Maple", "-maple", "ma", "xn--maple", "maple-", "érable", "a".repeat(64), ...RESERVED].every((a) => refused(EMPTY, setX(a), /platform_firm_web_address_allowed/)) && sql(EMPTY, setX("maple")) === "maple");
   // QA-644: the migration that keeps `staging` stops, naming the firm, when a firm already holds it (the rule is
   // replaced, and a replaced rule does not re-check stored rows); with no such firm it applies (it ran on this copy).
-  const firmS = mkFirm("firm-s", "S");
+  const firmStg = mkFirm("firm-stg", "Stg");
   const QA644 = readFileSync(join(MIG, "20261122033000_qa644_reserve_staging", "migration.sql"), "utf8");
   ok("QA-644 fail (database): the staging migration refuses a database where a firm already holds staging, naming the firm",
-    refused(EMPTY, `begin; alter table platform_firm_web_address drop constraint platform_firm_web_address_allowed; insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${firmS}', 'staging', 'system:sign-up', now()); ${QA644}`, new RegExp(`QA-644: .*${firmS}`))
-    && sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id = '${firmS}'`) === "0");
+    refused(EMPTY, `begin; alter table platform_firm_web_address drop constraint platform_firm_web_address_allowed; insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${firmStg}', 'staging', 'system:sign-up', now()); ${QA644}`, new RegExp(`QA-644: .*${firmStg}`))
+    && sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id = '${firmStg}'`) === "0");
   ok("QA-644 pass (database): with no firm holding staging the migration applies again cleanly, and an address that only starts with staging (staging-law) is still allowed",
     (() => { try { psql(EMPTY, ["-c", `begin; ${QA644} rollback;`]); return true; } catch { return false; } })() && sql(EMPTY, `select platform_web_address_allowed('staging-law')`) === "t");
   ok("QA-644 fail (host): staging under the production suffix is ExpatReady's own site, never a firm", readHost("staging.expatready.com").kind === "main" && readHost("staging.localhost:4400").kind === "main");
