@@ -1,0 +1,4 @@
+# STATE Start here lines, word for word (moved by Lead 14 at 13:3x IST 21 Nov for the 12 KB limit; still in force)
+
+🐕 **Missed checks (founder 15:0x IST): until ENF-761 part 4 merges (lead-watch `gap` mode + standby watchdog check, skill hand-over order): at take-over create the check FIRST; the old Lead deletes its check only after the new Lead's CronList shows one; in any founder turn longer than 10 min run `tools/lead-watch.sh` inline (a check fires only while the session is idle).**
+🟥 **P-757/P-758 (founder 13:4x): at the first check that sees checks blocking the queue, merge the check-only fix in the built-in browser that same check; every check read github.com and claude.ai/code in the browser and act within the rules (founder: "I have given this authority and sanction"). Enforcer: ENF-758 lane (lead-watch ACT line). B204 wave gate: #2432/#2433 dirty, lane told to merge main and re-Approve; Lead reads and labels on green.**
