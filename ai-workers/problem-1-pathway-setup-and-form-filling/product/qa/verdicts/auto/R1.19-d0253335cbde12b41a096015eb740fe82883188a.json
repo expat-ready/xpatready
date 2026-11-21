@@ -1,0 +1,27 @@
+{
+  "item": "R1.19",
+  "name": "19 A firm is created once, with plan, trial and owner",
+  "pr": 2870,
+  "sha": "d0253335cbde12b41a096015eb740fe82883188a",
+  "run_id": "44949023938",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44949023938",
+  "at": "2026-11-21T21:01:56.714Z",
+  "overall": "FAIL",
+  "why": [
+    "tests/journeys/j_19.ts: fail (no J-test file on main)"
+  ],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_19.ts",
+      "result": "fail",
+      "exit": null,
+      "note": "no J-test file on main"
+    }
+  ],
+  "video": null,
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.19-d0253335cbde12b41a096015eb740fe82883188a.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
