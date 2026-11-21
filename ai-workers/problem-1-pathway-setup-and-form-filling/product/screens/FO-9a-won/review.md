@@ -57,3 +57,19 @@ Scratch database dropped afterwards.
 
 ## Not checked
 `check_fo8_prospect_won.ts`, `check_fo2w_won_event.ts` and the other suites the PR lists (not re-run by me). The full CI. `tsc`. `graph.mjs`. FO-6's e-sign path end to end (covered only by reading: it goes through `winProspect` → `wonPayload`). The JS `personNameKey` vs the database's `name_key` (pinned by `check_fo9a_duplicates.ts`, not re-run). Behaviour on a C-ctype cluster beyond what the migration's B2 note says.
+
+## Re-review (round 2): code at 63ffa78209232ac35761aee27ce92cba7b7ba4ba (diff from 19db5123f only, P-277)
+
+**Verdict: Approve.** All round-1 findings are fixed. No new Blocker, Major or Minor.
+
+| Round 1 | Status | Evidence |
+|---|---|---|
+| Major 1: Sample constants in the event schema | Fixed | `ports/events.ts` no longer imports `matching.ts`. It has its own `WonReason` (NAME similarity 0-1) and `WON_DUPLICATES_MAX = 50`. The writer still applies the live threshold and cap. The new D7 checks show that 12 matches at 0.55 still parse, and that 51 matches or a similarity of 1.2 are refused. |
+| Minor 1: threshold compared as `::real` | Fixed | `service.ts:99` and the company query now compare `::float8`, the same as the definer function's `%` and the JS `personReasons`. At 0.6 the result is unchanged (float4(0.6) is above 0.6). |
+| Minor 2: a failed read rolls back the win | Fixed | `prospects.ts:115-118`: a savepoint, then release; on error, rollback to the savepoint, then `logPort.error`. In my run, D9 printed one log line with the error name, code P2010 and stack frames only. It has no message and no ids (`safeError`), so it meets "never log record ids". The win goes on with `duplicates` absent, which the contract treats as not known. |
+| Minor 3: test gaps | Fixed (one gap remains, a nit) | New checks: a firm-B twin under the bypass role (the query's own firm filter is the wall); 李明 → 李明 and never 李明华; parity with the definer function for 9 people, the digit rule included; company parity with `fo_sales_company_matches`; D9, a forced failure (`extensions.similarity` renamed inside a `finally`, on the suite's own database). Still untested: the `MAX_MATCHES` cap and strongest-first order. This is a nit; the round-1 probe showed the order equals the score. |
+| Minor 4: doc comment placement | Fixed for `ProspectWonPayload` | Nit: the FO-9a block and the new "Fixed bounds" block are now two consecutive JSDoc comments above `WON_DUPLICATES_MAX` (`events.ts:240-247`). In editors `WonDuplicates` shows no doc. Merge the two blocks or move one down. Not blocking. |
+
+**Ran:** `tsx tests/check_fo9a_won_duplicates.ts`: 25 passed, 0 failed, exit 0 (own scratch database, dropped by the suite; PostgreSQL :54329; US$0, live AI off).
+
+**Not re-run by me:** fo13c, fo8, fo2w, fo2b, fo2p3, pf12_walls, graph, `tsc` (the builder reports them green). Round 1 already ran fo13c 46/46 on the earlier code; the only change in the win path since is the savepoint.
