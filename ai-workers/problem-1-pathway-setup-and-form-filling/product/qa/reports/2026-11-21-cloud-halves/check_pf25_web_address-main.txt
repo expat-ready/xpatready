@@ -1,0 +1,104 @@
+NOTICE:  database "xr_studio_pf25_empty_2243" does not exist, skipping
+NOTICE:  database "xr_studio_pf25_demo_2243" does not exist, skipping
+NOTICE:  database "xr_studio_pf25_bare_2243" does not exist, skipping
+PASS  PF-25: the migration has its own stamp, later than every migration before it (P-600 (4), rows rev 16.7: never "the newest of all"; newest before it: 20261114210000_fo5_retainer_tables)
+PASS  PF-25 fail: before PF-25's migration there is no address table and the schema differs (the diff names it)
+PASS  PF-25 pass: every migration applies to an empty database; migrate diff names no PF-25 column or table
+PASS  PF-25 fail: the migration does not apply twice
+PASS  PF-25 fail (Lead B, P-600 (2)): no PF-25 trigger on platform_firm: the Sample firms seeded after the migration have no address until the catch-up
+PASS  PF-25 pass: the catch-up gives the Sample firms (PF-3's seed raises no event) their key as their address, audited
+PASS  PF-25 fail: a firm with no firm.created event that is not a Sample firm gets no address from the catch-up (nor from its key)
+PASS  PF-25 pass: a new firm gets one address from its operating name on firm.created; the second firm's suggestion collides and takes the next (maple-immigration, maple-immigration-2)
+PASS  PF-25 fail: a second run adds nothing (the catch-up finds no firm; a repeated event leaves the address as it is)
+PASS  PF-25 fail: a firm whose key and name collide with taken addresses is still created, and gets the next free suggestion (maple-immigration-3)
+PASS  PF-25 pass: a firm whose sign-up set its chosen address keeps it when firm.created arrives
+PASS  PF-25 fail: another event type is ignored, and a DELETED firm gets no address
+PASS  PF-25 pass: on a demo-data copy the migration gives the Sample firms their key as their address and leaves every other row as it was
+PASS  PF-25 pass (Lead B): the migration backfills every firm that exists from its key (demo-law too); a DELETED firm gets none
+PASS  PF-25 pass: migrate diff after it on the demo-data copy names no PF-25 column or table
+PASS  PF-25 fail (database): Maple, -maple, ma, xn--maple, maple-, an accented or 64-character label and all nine reserved names are refused; maple is accepted
+PASS  PF-25 fail (database): an address does not change without its redirect record, never moves firm and is never removed
+PASS  PF-25 fail (database): a history row must name the firm's address as it is (no made-up hold on another firm's address)
+PASS  PF-25 pass (database): the history row first, then the address, in one transaction, is accepted
+PASS  PF-25 fail (database): a record with no address change is refused at commit; a padded or direction-changing reason is refused
+PASS  PF-25 fail (database): web addresses are written under READ COMMITTED only (REPEATABLE READ and SERIALIZABLE refused)
+PASS  PF-25 fail (database): the address history is insert-only (update, delete and truncate refused)
+PASS  PF-25 fail (database): another firm cannot take an address held for a redirect; the firm that gave it up can take it back
+PASS  PF-25 pass (database, break N4): until is exactly 2160 hours after changed_at whatever the writer sent (1 second, 100 years) and whatever the session's time zone (written in Toronto, read in Casablanca and UTC)
+PASS  PF-25 pass (database): an address whose 90 days ended (a backdated record) is taken by another firm
+PASS  PF-25 pass: a free address (maple-law) is offered
+PASS  PF-25 fail: Maple-Law, -maple-law, ma and www are refused, each with its plain reason
+PASS  PF-25 fail: all nine reserved names are refused by the service with the reserved reason
+PASS  PF-25 fail: an address starting with sample- is refused (kept for the Sample firms), with a suggestion without it (law)
+PASS  PF-25 pass: a refused shape still gets a usable suggestion (Maple-Law → maple-law; www → www-firm)
+PASS  PF-25 fail: a taken address (maple, firm-x's) → "taken" with a free suggestion (maple-2)
+PASS  PF-25 pass: an address held for firm-x's redirect (maple-two) is "taken" for everyone else, and free for firm-x itself
+PASS  PF-25 pass: a suggestion from the operating name drops accents and legal words (Érable Immigration Inc. → erable-immigration)
+PASS  PF-25 fail: no suggestion from an empty or over-long name
+PASS  PF-25 fail: a firm's own staff (its Owner, every agent/* key) changing the address → 403, nothing written, no audit line
+PASS  PF-25 fail: ExpatReady staff with no reason → 422 naming the reason field, nothing written
+PASS  PF-25 fail: a failed audit line rolls the whole change back (address, redirect record)
+PASS  PF-25 pass: ExpatReady staff with a reason → changed, one redirect record (until = 90 days after it), one audit line by staff:<id>
+PASS  PF-25 pass (break M2): staff setting a firm's first address keep the reason in the history (no old address, no redirect) and audit it
+PASS  PF-25 fail (break m9): a reason padded to under 3 characters, with a direction control, or over 500 characters → 422
+PASS  PF-25 fail (Devin on #1763): a reason is counted in characters as the database counts them: an emoji and a letter (2) → 422, 500 characters with emoji → accepted
+PASS  PF-25 pass (break m5): two staff changes of one firm at once both finish (one after the other, each from the address before it), no 500
+PASS  PF-25 fail (break m5): two firms changing to one address at once: one gets it, the other 409 (never 500, never both)
+PASS  PF-25 fail: another firm cannot be given an address held for 90 days (zeta-law, firm Z's old one) (409 taken, with a suggestion)
+PASS  PF-25 fail: a firm's address can be set at sign-up once only (claimAtSignUp refuses a firm that has one)
+PASS  PF-25 pass: hosts read case-insensitively, with a port or a trailing dot; reserved names and bare suffixes are ExpatReady's own
+PASS  PF-25 fail: two labels deep, or a label that breaks the rules, is never a firm (a.law-firm-a.localhost, -x.localhost)
+PASS  PF-25 fail (break m1): an empty, zero, out-of-range or second port, or two trailing dots, under a firm suffix is never ExpatReady's own site
+PASS  PF-25 pass: the new address serves firm A (its id only)
+PASS  PF-25 pass: the old address redirects to the new one for 90 days on the clock (day 0, day 89 23 h)
+PASS  PF-25 fail: after 90 days the old address answers like an unknown one
+PASS  PF-25 pass: after 90 days on the clock an address another firm gave up (zeta-law) is offered again; the database, on its own clock (not moved by the test), still holds it, and the service answers 409, not 500 (review m1)
+PASS  PF-25 fail: an unknown address, and a firm that is not serving (PROVISIONING), answer unknown
+{"time":"2026-11-21T10:19:11.119Z","level":"info","event":"platform_bypass","use":"platform.web-address.catch-up","method":"none"}
+PASS  PF-25 pass: the catch-up runs at app start: a firm created while no one listened has its address once the app is up (kestrel-visa-law)
+{"time":"2026-11-21T10:19:11.161Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.168Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass: an unknown address gives exactly the answer of an unknown slug (status, type, bytes: "This page is not available.")
+{"time":"2026-11-21T10:19:11.173Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.176Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail (review M1): until FO-3w registers its pages, a page path on a firm's address is the same plain not-found page as on an unknown address, never the studio's app
+{"time":"2026-11-21T10:19:11.179Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.180Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass (break M1): encoded slashes, dots and backslashes in the query string do not refuse a public route
+{"time":"2026-11-21T10:19:11.185Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail (break m3): an unregistered /api/public path on a firm's address is the plain not-found, not the framework's
+{"time":"2026-11-21T10:19:11.188Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass: firm A's address serves firm A's page
+{"time":"2026-11-21T10:19:11.191Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.192Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail: firm A's address never serves firm B's page, whatever the query or forwarded headers name; B's address serves B
+{"time":"2026-11-21T10:19:11.197Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.198Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.199Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.201Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.202Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.203Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.205Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.206Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.207Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.209Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.213Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.215Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail: on a firm's address the studio's own pages and API are not served (the plain not-found); on localhost they are, as before
+{"time":"2026-11-21T10:19:11.221Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass: an old address answers 301 to the same path and query on the new address
+{"time":"2026-11-21T10:19:11.224Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail (break m2): an absolute-URI request on an old address redirects to its path and query only, never to another site
+{"time":"2026-11-21T10:19:11.233Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.236Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail (break N1, N6): an absolute-form request on a firm's address, and two Host headers either naming a firm, get the plain not-found; one Host header serves
+{"time":"2026-11-21T10:19:11.239Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass: under expatready.com the redirect is always https
+{"time":"2026-11-21T10:19:11.247Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+{"time":"2026-11-21T10:19:11.250Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 pass: the availability route answers on ExpatReady's own host with no sign-in (taken, with a suggestion)
+PASS  PF-25 fail: the availability route is not served on a firm's address (the plain not-found, JSON form)
+{"time":"2026-11-21T10:19:11.252Z","level":"info","event":"platform_bypass","use":"platform.web-address.host","method":"GET"}
+PASS  PF-25 fail: /api/public/site on ExpatReady's own host names no firm (the plain not-found)
+
+68 passed, 0 failed
