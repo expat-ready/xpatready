@@ -240,9 +240,9 @@ export class Messages implements MessagePort<Tx> {
       if (e instanceof BypassNotRecorded) throw e;   // PF-12b part 3: nothing was sent and no try is counted; the job is retried
       // PF-12b part 3: the try is counted in its own transaction with the use's platform.bypass line (fail-closed).
       const counted = await this.d.db.$transaction(async (tx) => {
+        await touchPlatform(tx);   // first, as sendPlatformRow: every read on the use is lined (review m1, break m1)
         const row = await tx.msgOutbox.findFirst({ where: { id: outboxId, audience: "PLATFORM_ACCOUNT", firmId: null, state: "QUEUED" }, select: { stateReason: true } });
         if (!row) return null;
-        await touchPlatform(tx);
         const tries = triesOf(row.stateReason) + 1, last = tries >= PLATFORM_SEND_TRIES;
         await tx.msgOutbox.updateMany({ where: { id: outboxId, state: "QUEUED", stateReason: row.stateReason }, data: last ? { state: "FAILED", stateReason: "send failed", updatedAt: this.clock.now() } : { stateReason: `send failed: try ${tries} of ${PLATFORM_SEND_TRIES}`, updatedAt: this.clock.now() } });
         return { tries, last };

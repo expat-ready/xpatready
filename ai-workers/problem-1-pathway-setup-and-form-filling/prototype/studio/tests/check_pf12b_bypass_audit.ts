@@ -308,6 +308,26 @@ try {
   ok("PF-12b3 fail (platform.account.mail, job:messages.send): when the line cannot be written, the email's row is not written and the send does not happen (BypassNotRecorded; the row stays QUEUED with no try counted)",
     plain(mailErr) && plain(sendErr) && sql(`select count(*) from msg_outbox where firm_id is null`) === String(Number(outboxBefore) + 1)
       && sql(`select state || '|' || coalesce(state_reason, '') from msg_outbox where id = '${sentQ.messageId}'`) === "QUEUED|" && total() === linesF + 1, { mailErr: String(mailErr), sendErr: String(sendErr), outboxBefore });
+  // Review m2: the send's catch path. A provider refusal counts one try in its own transaction, with one firm-less line;
+  // an audit port that fails only on the first write (the send's own line) counts no try (BypassNotRecorded is rethrown).
+  const sendTo = async (to: string, key: string) => (await inRequest({ method: "POST", path: "/api/public/signup/verify" }, () => pmail.send({ platformAccount: true, to, replyTo: "ignored@example.com", subject: "Confirm", text: "Code 333333.", class: "TRANSACTIONAL", idempotencyKey: key } as never))).messageId;
+  const refusedId = await sendTo("refused@example.com", "signup:pf12b3-refused"), linesR = total();
+  const refusedErr = await errOf(() => asJob("messages.send", () => pm.deliver(null, refusedId)));
+  ok("PF-12b3 pass (job:messages.send, provider refusal): the try is counted with exactly one firm-less line, and the job is retried",
+    !!refusedErr && !(refusedErr instanceof BypassNotRecorded) && sql(`select state || '|' || coalesce(state_reason, '') from msg_outbox where id = '${refusedId}'`) === "QUEUED|send failed: try 1 of 5"
+      && total() === linesR + 1 && sql(`select count(*) from audit_event where action = 'platform.bypass' and firm_id is null and detail->>'use' = 'job:messages.send' and at > now() - interval '1 minute'`) !== "0", { refusedErr: String(refusedErr), linesR, total: total() });
+  const onceId = await sendTo("once@pf12b3.example.com", "signup:pf12b3-once"), linesO = total();
+  let calls = 0;
+  const failOnce = { record: async (tx: unknown, e: never) => { if (calls++ === 0) throw new Error("audit store down once (Sample)"); await auditEvent.record(tx as never, e); } }, wasO = onBypassAudit(failOnce);
+  const onceErr = await errOf(() => asJob("messages.send", () => pm.deliver(null, onceId)));
+  onBypassAudit(wasO);
+  ok("PF-12b3 fail (job:messages.send, review m2): when the send's own line fails, no try is counted and nothing is written (BypassNotRecorded rethrown before the catch path)",
+    plain(onceErr) && calls === 1 && sql(`select state || '|' || coalesce(state_reason, '') from msg_outbox where id = '${onceId}'`) === "QUEUED|" && total() === linesO, { onceErr: String(onceErr), calls });
+  // Break m3: a "platform" use in a firm's scope is refused, never written to that firm's trail.
+  const linesS = total();
+  const scopedErr = await errOf(() => requestScope.run({ correlationId: randomUUID(), firmId: () => A }, () => asJob("platform.signup.purge", () => s.purgeExpired())));
+  ok("PF-12b3 fail (break m3): the purge run in a scope that names firm A is refused (BypassNotRecorded) and writes no line on A's trail",
+    plain(scopedErr) && total() === linesS, { scopedErr: String(scopedErr), linesS, total: total() });
 
   // The sweep, both behaviours together: firm B's line fails, firm A's row and one PLATFORM_ACCOUNT row are due.
   await clock.advance({ hours: 1 });   // a new hour: no job key from an earlier sweep is reused

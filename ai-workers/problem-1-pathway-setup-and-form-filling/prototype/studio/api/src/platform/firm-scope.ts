@@ -55,6 +55,7 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { logPort, requestScope } from "./observability/log.ts";
+import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
 import { auditEvent, platformAuditWorkspaceId } from "./audit/audit-event.ts";
 import type { AuditPort } from "../../../ports/audit.ts";
 import type { PrismaClient } from "@prisma/client";
@@ -218,11 +219,16 @@ export async function touchFirm(tx: unknown, firmId: string): Promise<void> {
 }
 /** PF-12b part 3: inside a "platform" bypass use, one firm-less platform.bypass line in `tx` (once per transaction), on
  *  the platform's own audit workspace (never reset, P-571 (1)): the use, the method (never the path) and the correlation
- *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing. */
+ *  id. A failed write throws BypassNotRecorded, so `tx` rolls back (P-607). Outside a "platform" use it does nothing.
+ *  A recorded departure (review m3): AuditPort's AuditEntry requires a firm, so the line goes through the case/configuration
+ *  entry shape (it names the platform workspace, no case, no firm) rather than a port change (P-423; a firm-less platform
+ *  entry is the tech lead's later row). That shape takes the request's or job's firm when one is in scope, so a "platform"
+ *  use in a firm's scope is refused here (fail-closed) rather than land its line on that firm's trail (break m3). */
 export async function touchPlatform(tx: unknown): Promise<void> {
   const s = scope.getStore(), use = s?.bypass;
   if (!use || BYPASS_USES[use]?.audit !== "platform") return;
   if (typeof tx !== "object" || tx === null || typeof (tx as { $disconnect?: unknown }).$disconnect === "function") throw new FirmScopeError("touchPlatform: give the caller's transaction, not the client");
+  if (requestScope.getStore()?.firmId?.() || currentJobFirm()) throw new BypassNotRecorded(use, new FirmScopeError("touchPlatform: a platform use's line names no firm, but this request or job acts for one"));
   const seen = touched.get(tx) ?? new Set<string>();
   touched.set(tx, seen);
   if (seen.has("")) return;
