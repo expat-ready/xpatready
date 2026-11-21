@@ -589,8 +589,8 @@ enum FoAssignStrategy {
 /// criteria, so criteria_key (`<door or ANY>:<service id or ANY>`, a check in the migration) is unique per firm, and a
 /// rule switched off keeps its row and its cursor. The most specific active rule wins: a service rule beats a door rule
 /// (service first, then door). Strategy OWNER names owner_staff_id; ROUND_ROBIN names none and takes turns among the
-/// eligible set (empty = every active staff member holding agent/prospect:edit), its cursor persisted per rule as the last
-/// person given a lead (AG-2-13d), so a deactivated or suspended person drops out without shifting anyone's turn. Staff
+/// eligible set (empty = every active staff member holding agent/prospect:edit), its turn persisted per rule (AG-2-13d):
+/// least recently given first (FO-10 part 2, AG-2-85 rule 5); last_staff_id names the last person given one. Staff
 /// ids are checked against platform_staff of the same firm by trigger (owner) and by the API (eligible set).
 model FoAssignmentRule {
   id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -602,6 +602,10 @@ model FoAssignmentRule {
   ownerStaffId     String?          @map("owner_staff_id") @db.Uuid
   eligibleStaffIds String[]         @default([]) @map("eligible_staff_ids") @db.Uuid
   lastStaffId      String?          @map("last_staff_id") @db.Uuid
+  /// FO-10 part 2 (AG-2-85 rule 5): round robin gives the next lead to the person given one least recently. turn_no counts
+  /// the rule's turns; turns maps a staff id to the turn it last got (absent = never, first in line).
+  turnNo           Int              @default(0) @map("turn_no")
+  turns            Json             @default("{}")
   active           Boolean          @default(true)
   createdBy        String           @map("created_by")
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
