@@ -97,3 +97,89 @@ Not findings for this row:
 - `check_aud1a_insert_only` part B (needs its :4606 copy).
 
 **Verdict: Approve f817c153bb5274ceb4e6de88f10d0b40d715dcbc.** No Blocker or Major is open. m1 to m3 are recommended in the next push, or can be recorded for later.
+
+---
+
+## Re-review, 21 Nov: head `c21588eee16c5d50398112e0e98ac6b96f6fa5f6`
+(Restored here on 21 Nov: this section and re-review 2 were first added as uncommitted text and were lost when the shared tree moved to a newer head. Their content is unchanged.)
+I read the diff only: `git diff f817c153bb5274ceb4e6de88f10d0b40d715dcbc c21588eee16c5d50398112e0e98ac6b96f6fa5f6`.
+- The app changes are three: `firm-scope.ts` +8/-2, `send/messages.ts` (one line moved) and the MODULE card wording.
+- The tests add +20 lines in `check_pf12b_bypass_audit.ts`.
+- I ran everything on a scratch worktree at c21588ee, with Postgres on :54329 and never :4400.
+
+### Runs at c21588ee
+- `check_pf12b_bypass_audit` **61/0**, `check_pf19p_platform_mail` **68/0**, `check_pf5_signup_billing` **54/0**, `check_pf12_walls` **100/0**, `check_pf12b_doors` **31/0**.
+- The walls and doors suites start the real API. That proves the new `currentJobFirm` import from `jobs/pgboss-jobs.ts` loads with no import cycle at start-up.
+- `tsc`: no error in any touched file.
+
+### Mutations (each one alone, then reverted)
+| Mutation | Result |
+|---|---|
+| (A) delete `touchPlatform` from the try-count transaction (`send/messages.ts:243`) | **red**: "PF-12b3 pass (job:messages.send, provider refusal)", 60/1 |
+| (B) delete the `BypassNotRecorded` rethrow (`:240`) | **red**: "PF-12b3 fail (job:messages.send, review m2)", 60/1 |
+| (C) delete the new firm-in-scope refusal in `touchPlatform` | **red**: "PF-12b3 fail (break m3)", 60/1. Without the refusal, the purge in firm A's scope succeeds and its line lands on A's trail. |
+
+### My three Minors
+- **m1: closed.** `touchPlatform(tx)` is now the first statement of the try-count transaction, as in `sendPlatformRow`.
+- **m2: closed.** Two new tests turn mutations A and B red: a provider refusal counts try 1 of 5 with exactly one line with no firm; an audit port that fails only on the first write gives `calls === 1`, the row stays `QUEUED`, and no line is written.
+- **m3: closed.** The comment records the departure from the case-entry shape, the reason (P-423) and the later port row. `touchPlatform` refuses with BypassNotRecorded when the request scope names a firm or `currentJobFirm()` is set; platform jobs and public sign-up requests still pass. Only the request branch is tested; the job-firm branch is the same one-line condition, which I accept.
+- **The card wording** "no entry is classed none" is accepted. **The sign-up gap** goes to the tech lead as a question.
+
+No new issue.
+
+**Verdict: Approve c21588eee16c5d50398112e0e98ac6b96f6fa5f6**
+
+---
+
+## Re-review 2, 21 Nov: head `320ad5e2bd4d68790f440d0f4d6d0697e42eb345`
+This covers Lead 15's ruling on #2814: sign-up's steps that touch no firm.
+- I read the diff only: `git diff c21588eee16c5d50398112e0e98ac6b96f6fa5f6 320ad5e2bd4d68790f440d0f4d6d0697e42eb345` (+65/-28 across `firm-scope.ts`, `firms/signup.ts` and the suite).
+- Shared tree at 320ad5e2. Postgres :54329. Isolated copies on runtime ports 4433 (new head) and 4434 (c21588ee, for comparison). Never :4400.
+
+### Runs
+- `check_pf12b_bypass_audit` **66/0**, `check_pf5_signup_billing` **54/0**.
+- The new tests are real pass/fail pairs: new email (keyed by the pending id, no `@`; nothing stored when the line fails), unknown link (one line, no key, the same 404), wrong code (keyed by the pending id, 400), and both refusals answer 500 in plain words with no line when the audit write fails.
+
+### Burst check: 30 new-email sign-ups at once (3 client addresses × the per-IP cap of 10), same script on both heads
+| Head | Accepted (202) | Pending rows stored | Background steps failed | Public `GET /api/public/plans` during the burst |
+|---|---|---|---|---|
+| c21588ee (before) | 30 | **30** | 0 | first probe 403 ms, then 6 ms |
+| 320ad5e2 (this head) | 30 | **5** | **25** (`PrismaClientKnownRequestError`) | first probe **4,090 ms**, then 6 ms |
+
+### Findings
+1. **Major (Must): the provider call sits inside the sign-up transaction, and under a burst most sign-ups are lost** (`firms/signup.ts:147-165`). Each new-email step holds a connection and the email's advisory lock across `identity.register`; the local provider's email opens a second, nested transaction. 25 of 30 real sign-ups failed in the background (each person saw "Check your email" and got nothing), and every other request waited about 4 s. With Cognito, a slow SignUp call would hold a connection for up to 15 s per sign-up. Fix: `register` outside any transaction, then one short transaction with the lock, the `knownAccount` re-check, the pending writes and the line; add a burst test larger than the pool.
+2. **Accepted:** the verification email can go out before our line; a failed line leaves a link to no pending row (the same 404), the order review m1 of #2456 accepted.
+3. **No sign-up read on our register is left unlined where the read leads to an action** (catalogues are unwalled; success is followed by the firm's line; the double submit acts on nothing; PLAN_GONE's extra line is accepted).
+4. **Minor (Should):** `MODULE.md:13` should name a per-firm use's firm-less step lines.
+
+**Verdict: Changes needed.** Fix before Approve: (1). Recommended in the same push: (4).
+
+---
+
+## Re-review 3, 21 Nov: head `8700d0bf4f4aef4d7c2ae0c5d70d4e6dd5b9397f`
+I read the diff only: `git diff 320ad5e2bd4d68790f440d0f4d6d0697e42eb345 8700d0bf4f4aef4d7c2ae0c5d70d4e6dd5b9397f`. It is +33/-21 across `firms/signup.ts`, the suite and `MODULE.md`.
+Shared tree at 8700d0bf. Postgres :54329. Isolated copy on :4433. Never :4400.
+
+### Runs
+- `check_pf12b_bypass_audit` **67/0**, `check_pf5_signup_billing` **54/0**, `check_pf5v_signup_mail` **13/0**.
+- My burst script, unchanged from re-review 2 (30 new-email sign-ups at once, 3 client addresses × the per-IP cap):
+
+| Head | Pending rows stored | Background steps failed | `signup.new-email` lines | Public read during the burst |
+|---|---|---|---|---|
+| c21588ee | 30 | 0 | (none then) | 403 ms |
+| 320ad5e2 | 5 | 25 | 5 | 4,090 ms |
+| **8700d0bf** | **30** | **0** | **30**, all with no firm, keyed by the pending id, no `@` | **183 ms** |
+
+All 30 outbox rows were written, and they were sending at the time of the check (13 SENT, 17 QUEUED).
+
+### Findings
+1. **Major (1) of re-review 2: closed.**
+   - `register` runs outside any transaction again, and SIGNUP_TX_MS is gone.
+   - The pending row's transaction is short: advisory lock, `knownAccount(email, tx)` re-check, replace/delete/create, and the line last. So a failed line still leaves no pending row, which is fail-closed.
+   - The new suite burst discriminates: 16 sign-ups at once through a provider that holds its own pooled transaction. The builder reports 6 of 16 stored with 320ad5e2's `signup.ts`; I did not re-run that mutation, and my own burst above confirms it independently.
+   - Edge, accepted: if another sign-up makes the account between the pre-check and the re-check, the person gets the verification email from `register` and also the "already" email. Their pending row is not stored, so the link answers 404. This is rare and harmless, and no firm's data is shown.
+2. **Minor (4): closed.** `MODULE.md:13` now names a per-firm use's firm-less step lines through `touchPlatform(tx, { step, key })`.
+
+No new issue.
+
+**Verdict: Approve 8700d0bf4f4aef4d7c2ae0c5d70d4e6dd5b9397f**
