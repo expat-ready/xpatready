@@ -284,6 +284,15 @@ jobs:
         run: bash "$P/tools/cloud-setup.sh"
       - name: test databases are cleaned up (check-test-dbs.sh; needs the database cloud-setup.sh started)
         run: bash "$P/tools/check-test-dbs.sh"
+      - name: static sweeps on the PR merged onto main, before the label (static-sweeps.mjs; ENF-782a part 2, P-782 (2))
+        # Measured 20-21 Nov (merge-queue-causes.py): check_aud_values.ts, a sweep of every audit write that starts nothing,
+        # broke 4 merge batches by a member's own code (#1959's was the 10:55 IST wave) and 7 more by cascade, because a
+        # builder's PR runs no suite (P-651 (2)). Every studio suite that starts nothing and reads the source tree (the rule
+        # in static-sweeps.mjs, about 16 suites, ~20 s) runs here on the test merge; one failing on main too (HEAD^1) is a
+        # warning. In a batch it repeats what the parts run (~20 s; check-queue-run-scope.sh: every code step runs there too).
+        # Test: static-sweeps.mjs --self-test (in the tools' checks below).
+        if: env.KIND == 'code'
+        run: node "$P/tools/static-sweeps.mjs" --base "$(git rev-parse HEAD^1)"
       - name: records rules, pull requests only (check-docs.sh, decision-impact.sh; ENF-746c, skipped in a merge-queue batch)
         # ENF-746c (P-746, founder 20 Nov): these judge the records (STATE, RULES, DECISIONS: the P-734 lock note, the rule
         # register, decision impact, skill sizes, links), not the code. Each PR passes them before it is queued; in a batch
@@ -309,6 +318,7 @@ jobs:
           node "$P/tools/ci-and-lists.mjs" --self-test
           node "$P/tools/suite-exit.mjs" --self-test   # B160: a suite whose last step is a bare summary() can never fail
           node "$P/tools/suite-exit.mjs"
+          node "$P/tools/static-sweeps.mjs" --self-test   # ENF-782a part 2: the sweep rule and the base comparison
           bash "$P/tools/check-flaky.sh"
           bash "$P/tools/check-write-token.sh"
           bash "$P/tools/pr-base.sh" --self-test
