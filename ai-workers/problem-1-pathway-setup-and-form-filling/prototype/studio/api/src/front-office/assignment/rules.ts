@@ -125,8 +125,8 @@ export class AssignmentRules {
       if (b.onePersonStaffId != null) unprocessable("Round robin names no single person.", { onePersonStaffId: "Leave empty for round robin." });
       // AG-2-85 rule 3: round robin is "between the people the admin ticks": the list is required, never "everyone" by
       // omission (break M1 on FO-10 part 2: an omitted list had silently widened the turn to every sales person).
-      const ok = Array.isArray(list) && list.length <= 200 && list.every((x) => typeof x === "string" && UUID.test(x)) ? [...new Set((list as string[]).map((x) => x.toLowerCase()))] : null;
-      if (!ok) unprocessable("Tick the people who share new leads.", { rotationStaffIds: "Tick at least one person." });
+      const ok = (Array.isArray(list) && list.length <= 200 && list.every((x) => typeof x === "string" && UUID.test(x)) ? [...new Set((list as string[]).map((x) => x.toLowerCase()))] : null)
+        ?? unprocessable("Tick the people who share new leads.", { rotationStaffIds: "Tick at least one person." });
       if ((await eligible(this.db as unknown as Tx, firmId, ok, false)).length !== ok.length) unprocessable("Everyone ticked must be an active person of your firm who can work leads.", { rotationStaffIds: "Someone here cannot work leads." });
       await this.save(ctx, { strategy: "ROUND_ROBIN", eligibleStaffIds: ok });
     } else unprocessable("Choose Anyone takes it, Round robin or Always one person.", { mode: "Choose ANYONE, ROUND_ROBIN or ONE_PERSON." });
