@@ -389,7 +389,7 @@ try {
   const saved = await acct.setAddress(who(firmId, ["ADMIN"]), addr), badAddr = await problemOf(() => acct.setAddress(who(firmId, ["ADMIN"]), { ...addr, postal_code: "12345" }));
   ok("PF-5 part 2 pass/fail: PUT billing/address saves the business address and puts it on the Stripe customer; a bad postal code is refused at the field",
     saved.onStripe === true && billing.customers.find((c) => c.customerId === cust1)?.address?.postalCode === "M5V 1A1" && sql(`select business_address->>'postal_code' from platform_firm where id = '${firmId}'`) === "M5V 1A1"
-    && badAddr?.status === 400 && JSON.stringify(badAddr.body.errors).includes("postal_code"), badAddr);
+    && badAddr?.status === 422 && Object.hasOwn(badAddr.body.fields ?? {}, "postal_code"), badAddr);   // PF-28: 422 with the field named
   billing.invoiceList.set(cust1, [{ id: "in_d1", number: null, status: "draft", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: null }, { id: "in_p1", number: "A-0001", status: "paid", amountDueCents: 4900, currency: "cad", createdAt: clock.now(), hostedUrl: "https://invoice.stripe.com/i/in_p1" }]);
   const inv = await acct.invoices(who(firmId, ["BILLING_FINANCE"]));
   ok("PF-5 part 2 pass/fail: GET billing/invoices lists our invoices with Stripe's hosted links, never a draft", inv.invoices.length === 1 && inv.invoices[0].id === "in_p1" && !!inv.invoices[0].hostedUrl, inv);
@@ -440,7 +440,7 @@ try {
   const shutAcct = new BillingAccount(db, { ...bp, notReady: "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" });
   const shutCard = await problemOf(() => shutAcct.card(who(firmId, ["OWNER"]))), badD = await problemOf(() => acct.setAddress(who(firmId, ["OWNER"]), { ...addr, postal_code: "D0D 0D0" }));
   ok("PF-5 part 2 fail (break m5, m6, m4): a server without Stripe answers 503 on the card Checkout (never a made-up link); a postal code Canada never uses is refused",
-    shutCard?.status === 503 && badD?.status === 400, [shutCard, badD]);
+    shutCard?.status === 503 && badD?.status === 422, [shutCard, badD]);
 
   // ------------------------------------------------------------------- part 2 over HTTP: the raw-body door and the 402
   await seedSampleFirms(db);

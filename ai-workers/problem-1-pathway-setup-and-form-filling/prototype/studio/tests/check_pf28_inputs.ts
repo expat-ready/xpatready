@@ -57,7 +57,10 @@ export function inputs(dir: string): CodeInput[] {
   return codeRoutes(dir).filter((r) => DOORS.test(r.path)).flatMap((r) => r.inputs.filter((i) => i.kind !== "param")
     .map((i) => ({ key: `${r.file} ${r.verb} ${r.path} ${i.kind}${i.key ? `(${i.key})` : ""}`, parsedAt: follows(dir, r.controller, r.node, i.name) })));
 }
-const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt).map((x) => x.key);
+/** A webhook door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
+ *  judges it over HTTP rather than the static follower (a raw body read off @Req() never reads as parsed). */
+const HOOK = / \/api\/hooks\//;
+const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.test(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), allow.unparsed);
 ok("PF-28 (a) pass: every PF/FO body and query reaches a zod parse, or is on the allow-list", jc.unlisted.length === 0, jc.unlisted);
@@ -220,10 +223,21 @@ ok(`PF-28 DW5 pass: the public doors were probed with no token (${publicKeys.len
 const form = await call("POST", "/api/public/forms/not-a-token/submissions", { body: JSON.stringify({ message: "x".repeat(33 * 1024) }) });
 ok("PF-28 DW5 fail: FO-2's 33 KB web-form body still answers FO-2's own 413 words, not the platform limit's", form.status === 413 && form.body?.code === "TOO_LARGE", form);
 
-// DW6 (AG-10-32, amendment 1): the Stripe webhook is PF-5 part 2 (#1959), not on main yet.
+// DW6 (AG-10-32, amendment 1): a signed Stripe test event verifies; a one-byte change is refused 400 with nothing stored.
+// The copy runs the fake billing (local, no key), whose signature is the fake's own (ports/billing.ts sign).
 const hook = all.some((d) => d.path === "/api/hooks/stripe");
-if (hook) ok("PF-28 DW6: /api/hooks/stripe is on main: write DW6 (signed event verifies; one byte changed → 400, nothing stored)", false);
-else console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not on main (PF-5 part 2, #1959); a signed event and a one-byte change are tested once it lands (P-405: never green)");
+if (!hook) console.log("NOT TESTED  PF-28 DW6: /api/hooks/stripe is not served (P-405: never green)");
+else {
+  const { fakeBilling } = await import("../ports/billing.ts");
+  const evId = `evt_pf28${Date.now()}`, ev = JSON.stringify({ id: evId, object: "event", type: "customer.subscription.updated", created: Math.floor(Date.now() / 1000), data: { object: { object: "subscription", id: "sub_pf28nobody", customer: "cus_pf28nobody", metadata: {} } } });
+  const post = async (body: string, sig: string) => { const r = await fetch(`${BASE}/api/hooks/stripe`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": sig }, body }); return { status: r.status, body: await r.json().catch(() => null) as Record<string, unknown> | null }; };
+  const receipts = () => sql(`select count(*) from webhook_receipt where event_id like 'evt_pf28%'`);
+  const sig = fakeBilling().sign(ev), before6 = receipts();
+  const changed = await post(ev.replace('"customer.subscription.updated"', '"customer.subscription.updatee"'), sig), afterChanged = receipts();
+  const signed = await post(ev, sig);
+  ok("PF-28 DW6 fail: a signed Stripe event with one byte changed is refused 400 (the signature), and nothing is stored", changed.status === 400 && changed.body?.code === "SIGNATURE" && afterChanged === before6, { changed, before6, afterChanged });
+  ok("PF-28 DW6 pass: the same event, as signed, verifies and is stored once (the schema runs after the signature)", signed.status === 200 && signed.body?.received === true && receipts() === String(Number(before6) + 1), { signed, receipts: receipts() });
+}
 
 console.log(`${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

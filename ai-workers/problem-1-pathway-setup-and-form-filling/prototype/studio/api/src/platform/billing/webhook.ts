@@ -7,6 +7,7 @@
 //     finalizing (Lead B, step 0 fact 3: never invoiced untaxed). Each change, its audit line and its event (written last)
 //     in one transaction.
 import { HttpException } from "@nestjs/common";
+import { z } from "zod";
 import type { PlatformFirmStatus, PlatformSubscriptionStatus, Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { BillingSignatureError, type BillingEvent, type BillingPort, type BillingSubscription } from "../../../../ports/billing.ts";
@@ -14,11 +15,17 @@ import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
 import { asBypass, firmScope, touchFirms, touchPlatform, withFirm } from "../firm-scope.ts";
+import { parseInput } from "../http/input.ts";
 import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
 export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null };
 export const SWEEP_JOB = "platform.billing.webhook_sweep";
+/** A signed Stripe event's envelope (PF-28): the raw bytes are one JSON object naming an event. Not strict: Stripe adds
+ *  fields to its events over time, and the signature already proves who sent them. */
+const SignedEvent = z.union([z.instanceof(Buffer), z.string().max(1_048_576)])
+  .transform((b, ctx) => { try { return JSON.parse(String(b)) as unknown; } catch { ctx.addIssue({ code: "custom", message: "This is not JSON." }); return z.NEVER; } })
+  .pipe(z.object({ id: z.string().regex(/^evt_[A-Za-z0-9_]{1,250}$/), object: z.literal("event"), type: z.string().min(1).max(100) }));
 export const ADDRESS_NEEDED = "business address needed";
 const ACTOR = "system:billing";
 const problem = (status: number, code: string, title: string, detail: string) => new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status);
@@ -62,6 +69,7 @@ export class BillingEvents {
       if (e instanceof BillingSignatureError) throw problem(400, "SIGNATURE", "Not signed", "The Stripe-Signature header does not match this body.");
       throw problem(400, "NOT_AN_EVENT", "Not an event", "The body is not a Stripe event.");
     }
+    parseInput(SignedEvent, raw);   // AG-10-32, PF-28 amendment 1: the schema runs after the signature; nothing is stored before it
     const stored = await this.db.webhookReceipt.createMany({ data: [{ service: "stripe", eventId: ev.id }], skipDuplicates: true });
     // A repeat of a handled event is ignored; one not handled yet, or set aside, is handled now (break M1, R2).
     if (stored.count === 0) await this.db.webhookReceipt.updateMany({ where: { service: "stripe", eventId: ev.id, outcome: { startsWith: "set aside" } }, data: { handledAt: null, outcome: "redelivered" } });

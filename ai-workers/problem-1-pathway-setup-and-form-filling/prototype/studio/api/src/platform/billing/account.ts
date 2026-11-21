@@ -14,12 +14,12 @@ import { z } from "zod";
 import type { BillingAddress } from "../../../../ports/billing.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import { firmScope } from "../firm-scope.ts";
+import { parseInput } from "../http/input.ts";
 import type { StaffContext } from "../identity/keys.ts";
 import { ADDRESS_NEEDED, type BillingPorts } from "./webhook.ts";
 
 export const DELETION_DAYS = 90;
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}) => new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code, ...extra }, status);
-const fields = (e: z.ZodError) => problem(400, "CHECK_FIELDS", "Check the form", "Some answers need changing.", { errors: e.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
 const text = (max: number) => z.string().trim().min(1).max(max).refine((s) => !/(?![\u200C\u200D])[\p{Cc}\p{Cf}]/u.test(s), "no control characters")   // ZWNJ and ZWJ are letters' joiners (break m1);
 
 /** The office shape (samples/firms.json), as platform_firm.business_address keeps it. */
@@ -74,8 +74,7 @@ export class BillingAccount {
   }
 
   async setAddress(s: StaffContext, body: unknown) {
-    const p = Address.safeParse(body ?? {});
-    if (!p.success) throw fields(p.error);
+    const p = { data: parseInput(Address, body ?? {}) };   // PF-28 (R1.10): 422 with the field named, the one input rule
     const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: s.firmId } });
     const old = (firm.businessAddress ?? {}) as Record<string, unknown>;
     const value = { ...p.data, country: old.country ?? "canada", ...(old.phone ? { phone: old.phone } : {}) } as Prisma.InputJsonValue;

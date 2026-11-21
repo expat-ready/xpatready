@@ -11,7 +11,8 @@ import express from "express";
 import { Db } from "../../core.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
 import { PlatformJobs } from "../jobs/platform-jobs.ts";
-import { BillingAccount } from "./account.ts";
+import { Address, BillingAccount } from "./account.ts";
+import { parseInput } from "../http/input.ts";
 import { BillingEvents, type BillingPorts } from "./webhook.ts";
 
 export const BILLING_PORTS = "PF5_BILLING_PORTS";
@@ -72,7 +73,7 @@ export class BillingController {
   invoices(@Req() r: R) { return this.a.invoices(staffOf(r)); }
 
   @Put("billing/address") @HoldOpen() @PermissionKeys("agent/subscription:pay")
-  address(@Req() r: R, @Body() b: unknown) { return this.a.setAddress(staffOf(r), b); }
+  address(@Req() r: R, @Body() b: unknown) { return this.a.setAddress(staffOf(r), parseInput(Address, b ?? {})); }   // PF-28: the one input rule (422, fields)
 
   @Post("billing/checkout") @HttpCode(200) @HoldOpen() @PermissionKeys("agent/subscription:update-card")
   checkout(@Req() r: R) { return this.a.card(staffOf(r)); }
