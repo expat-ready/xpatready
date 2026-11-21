@@ -68,12 +68,12 @@ function Types() {
         : q.isError ? <Notice tone="danger" title="Could not load the booking types." action={<Button size="sm" variant="outline" onClick={() => void q.refetch()}>Try again</Button>}>{q.error.message}</Notice>
           : !types.length ? <Notice tone="info" title="No booking types yet. Add one so visitors can book." />
             : (
-              <Table head={["Name", "Length", "Hosts", "On booking page", edits ? "Actions" : ""]} label="Booking types">
+              <Table head={["Name", "Length", "Hosts", "On booking page", edits ? "Actions" : ""]} label="Booking types" headClass={[undefined, "hidden sm:table-cell", "hidden md:table-cell"]}>
                 {types.map((t) => (
                   <tr key={t.id} data-type-row={t.name}>
-                    <td><button type="button" className="text-left font-medium text-text-link underline-offset-2 hover:underline [overflow-wrap:anywhere]" onClick={() => setOpen(t.id)}>{t.name}</button>{!t.active ? <Pill className="ml-2" title="Switched off: not on the booking page or in staff lists. Its bookings stay.">Retired</Pill> : null}</td>
-                    <td>{t.minutes} min</td>
-                    <td className="[overflow-wrap:anywhere]">{hostWords(t.hostStaffIds, people.names, people.known)}</td>
+                    <td><button type="button" className="text-left font-medium text-text-link underline-offset-2 hover:underline [overflow-wrap:break-word]" onClick={() => setOpen(t.id)}>{t.name}</button>{!t.active ? <Pill className="ml-2" title="Switched off: not on the booking page or in staff lists. Its bookings stay.">Retired</Pill> : null}</td>
+                    <td className="hidden sm:table-cell">{t.minutes} min</td>
+                    <td className="hidden [overflow-wrap:anywhere] md:table-cell">{hostWords(t.hostStaffIds, people.names, people.known)}</td>
                     <td data-on-page>{pageCell(t)}</td>
                     <td>{edits ? (
                       <div className="flex flex-wrap gap-1">
@@ -98,7 +98,7 @@ function Types() {
 }
 
 function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null; edits: boolean; firmName: string; people: ReturnType<typeof useStaffNames>; onClose: (said?: string) => void }) {
-  const me = usePlatformStaff();
+  const me = usePlatformStaff(), qc = useQueryClient();
   const q = useQuery({ queryKey: ["fo", "booking-types", "one", id], enabled: !!id, retry: false, queryFn: async () => TypeDetail.parse(await staffApi(`/front-office/booking-types/${id}`)) });
   const [draft, setDraft] = React.useState<Draft>(EMPTY), [sets, setSets] = React.useState<Record<string, string>>({});
   const [errors, setErrors] = React.useState<Record<string, string>>({}), [problem, setProblem] = React.useState<{ text: string; stale: boolean } | null>(null);
@@ -138,7 +138,7 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
         : id && q.isError ? <Notice tone="danger" title="Could not load this booking type.">{q.error.message}</Notice>
           : (
             <form id="fo3st3-type" onSubmit={save} className="flex flex-col gap-4" data-type-panel noValidate>
-              {problem ? <Notice tone="danger" title={problem.text} action={problem.stale ? <Button size="sm" variant="outline" onClick={() => void q.refetch()}>Reload</Button> : undefined} /> : null}
+              {problem ? <Notice tone="danger" title={problem.text} action={problem.stale ? <Button size="sm" variant="outline" onClick={() => void qc.invalidateQueries({ queryKey: ["fo", "booking-types"] })}>Reload</Button> : undefined} /> : null}
               <section aria-labelledby="fo3st3-def" className="flex flex-col gap-3">
                 <h3 id="fo3st3-def" className="text-sm font-semibold">Definition</h3>
                 {ro ? (
