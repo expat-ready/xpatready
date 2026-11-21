@@ -89,3 +89,63 @@ Fix:
 * `backupFindings` catches: a second plan in the home stack; a copy whose ARN literally names us-east-1 or a vault no scanned stack defines; a copy, plan or lock kept other than 35 days (a lifecycle shorter than the lock); a compliance-mode lock; a missing copy.
 * Inline role policies allowing `backup:*`, `kms:*`, `NotAction`, AdministratorAccess, or `AWS::IAM::Policy` / `ManagedPolicy` attached to a role are all caught.
 * Not counted as findings, because AWS would reject them at deploy (Unconfirmed): cold storage after 1 day with a 35-day lifecycle; a second vault with the same name in the same region and account. A logically air-gapped vault that nothing targets moves no data, so it is not a finding either.
+
+## Round 2 at 6e5569b0d
+
+Same method as round 1, plus `resourcePolicyFindings`. Each break below was confirmed on a clean copy of 6e5569b0d's `lib/`, because another agent was again changing `lib/checks.ts` in this worktree mid-run (line 23 lost `AWS::KMS::ReplicaKey` and `AWS::Backup::ReportPlan`; that change is not mine and I did not touch it). Tests 38/38; `npm run synth` runs offline, then cdk.out was deleted.
+
+**Round-1 breaks now caught:** B2, B3 (all three copy-target forms, the Events `Fn::Sub` case and the parameter-default join), B4 (a, b, c), B5, B6, B7 (all three cases) and B8 (`MultiRegion: true`, ReplicaKey, ReportPlan). B1 is now stated as a governance-mode limit (backup.ts:7-9) and left as question 1; I did not re-test it.
+
+**R2-1 Major: IAM statements built from intrinsics are invisible to `bypassFindings`, the trust check and `resourcePolicyFindings`.**
+These checks only read an `Effect`, `Action` or `Principal` that is literal (checks.ts:294-301, 234).
+Each of these passes, with the role trusted by `lambda.amazonaws.com` and added to xr-production:
+* `Action: {"Fn::If":["Yes","backup:DeleteBackupVaultAccessPolicy","s3:GetObject"]}`;
+* `Action: {"Fn::Split":[",","backup:DeleteBackupVaultAccessPolicy,kms:PutKeyPolicy"]}`;
+* a whole statement wrapped in `{"Fn::If":["Yes",{Effect:"Allow",Action:"backup:*",Resource:"*"},{"Ref":"AWS::NoValue"}]}`;
+* an `AWS::IAM::Policy` whose `PolicyDocument` is a JSON string (Unconfirmed that CloudFormation accepts this);
+* a trust statement `{"Fn::If":[…,{Principal:{AWS:"*"}…}]}`, or `Principal:{Service:{"Fn::If":[…]}}`;
+* a key-policy `Allow` of `kms:PutKeyPolicy` to `arn:aws:iam::999999999999:root`, wrapped in `Fn::If`.
+
+Fix: a statement, `Effect`, `Action`, `Principal` or `PolicyDocument` that is not a plain object, string or list of strings is a finding ("cannot be read"). Apply this in all three checks.
+
+**R2-2 Major: `GUARDED_ACTIONS` is a block list, and privilege escalation still gets around it.**
+Inline allows that pass:
+* `cloudformation:UpdateStack`, or `CreateChangeSet` plus `ExecuteChangeSet`. Without a role named, CloudFormation reuses the stack's own service role, which under CDK is the bootstrap's AdministratorAccess deploy role (Unconfirmed: AWS docs unreachable). That is a full B1 bypass from inside the template.
+* `iam:CreateAccessKey`, `iam:AddUserToGroup`, `iam:UpdateLoginProfile`, `iam:DeleteRolePermissionsBoundary`.
+* `lambda:UpdateFunctionCode`.
+* `backup:StartCopyJob` and `backup:CopyFromBackupVault`: copy to any region, the residue of B8.
+
+Fix: invert the check. Each template principal may hold only an allow-listed set of actions (today, the backup role's `kms:Decrypt` on the data key plus its two managed policies), and anything else is a finding.
+
+**R2-3 Minor: the opaque-value check misses five shapes.**
+The copy rule itself is safe, because its exact-shape check (checks.ts:258-259) refuses all of these. They only reach the general region guard. Each passes as an `AWS::Events::Rule` target ARN in xr-production:
+* a dynamic reference split across join parts: `{"Fn::Join":["",["{{reso","lve:ssm:/elsewhere/queue-arn}}"]]}`. `opaque` walks the parts before joining (checks.ts:46-62);
+* `{"Ref":"Dest"}`, or `Fn::Sub` string form `${Dest}`, where `Dest` has no default or is typed `AWS::SSM::Parameter::Value<String>` (its default is an SSM name, not the value);
+* `Fn::FindInMap` returning `"us-ea"`, joined with a literal `"st-1:…"`;
+* an `Fn::Join` delimiter given as `{"Ref":"Dash"}` (default `"-"`) over `["arn:aws:events:us","east","1:…"]`;
+* `Fn::GetAtt` of a `Custom::*` resource.
+
+Fix:
+* run `opaque` on the flattened value;
+* treat a Ref or `${}` to a parameter without a literal default, or to an `AWS::SSM::Parameter::*` parameter, as opaque;
+* resolve `Fn::FindInMap` and flatten the delimiter;
+* treat a `GetAtt` of a custom resource inside a value as opaque.
+
+**R2-4 Minor: values that are not literal booleans or numbers get through.**
+`MultiRegion: "true"` (CloudFormation coerces it) and `MultiRegion: {"Fn::If":…}` pass checks.ts:97. `LockConfiguration.MaxRetentionDays: {"Fn::If":["Yes",7,100]}` passes checks.ts:216.
+Fix: `MultiRegion` must be absent or literally `false`. `MaxRetentionDays` must be absent or a literal number of at least 35.
+
+**R2-5 Minor: a service principal passes `resourcePolicyFindings` with any action and no source condition.**
+A vault-key `Allow` of `["kms:Decrypt","kms:PutKeyPolicy"]` to `{Service:"logs.amazonaws.com"}`, with no `aws:SourceAccount` or `aws:SourceArn` condition, passes (checks.ts:224-238). That is a confused-deputy door to the key.
+Fix: never allow a guarded action to a service, and require a source-account condition on any service allow.
+
+**Held in round 2:**
+* The ROOT shape cannot be spoofed: `AWS:[ROOT, "arn:aws:iam::999999999999:root"]` is caught, and so is a lower-case `aws` key.
+* A parameter default that names us-east-1 is caught, and so is a literal `-` join delimiter.
+* A RAM share added to the ca-west-1 stack is caught.
+* `MaxRetentionDays: "7"` as a string is caught (by JavaScript coercion).
+* No secret or real account id in the diff; `999999999999` appears only as a test fixture.
+* Not counted:
+  * a RAM share of a standard vault in the home stack (Unconfirmed that RAM can share one);
+  * a fake service name ending in `.amazonaws.com` (IAM rejects it);
+  * a second selection of `"*"` on the same plan (it moves nothing out).

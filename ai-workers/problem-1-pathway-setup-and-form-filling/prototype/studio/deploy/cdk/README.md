@@ -28,7 +28,15 @@ Never run `npx cdk synth`: the CLI looks up the account through STS when it find
 * **Database subnets:** no route leaves them and they hand out no public addresses (`dataRouteFindings`).
 * **Database:** private, encrypted, deletion-protected, 35-day backups, TLS forced, terse logs. It sits in isolated subnets only.
 * **Buckets:** public access blocked, versioned, KMS-encrypted, plain HTTP refused.
-* **Backups (PF-8rc, `test/backup.test.ts`):** the plan is daily, covers the database and every bucket, keeps 35 days and copies only to ca-west-1, into a vault one of the scanned stacks defines, kept 35 days (`backupFindings`). Every vault has its own key, a 35-day governance lock and the deny policy, and its key cannot be deleted (`vaultFindings`). No role, user, group or policy in the template allows a guarded action (the lock bypass, the vault policy, the vault keys, the IAM writes and role assumption that would grant them), by name, by wildcard or by NotAction. Roles may be assumed only by AWS services, and only AWS Backup's own managed policies may be attached, written plainly (`bypassFindings`). Key and vault policies allow only this account's root or an AWS service (`resourcePolicyFindings`). The copy target must be exactly this account's copy vault. Values whose region cannot be read from the template (Fn::Sub with variables, imports, SSM references) are refused, and a multi-region or replica key is refused.
+* **Backups (PF-8rc, `test/backup.test.ts`):** the plan is daily, covers the database and every bucket, keeps 35 days and copies only to ca-west-1, into a vault one of the scanned stacks defines, kept 35 days (`backupFindings`). Every vault has its own key, a 35-day governance lock and the deny policy, and its key cannot be deleted (`vaultFindings`). Permissions are checked against **allow lists**, not a list of forbidden actions (`bypassFindings`, `resourcePolicyFindings`, `typeFindings`):
+  * a role, user, group or policy may allow only the actions in `ROLE_ACTIONS` (today `kms:Decrypt`);
+  * a role may be assumed only by a service in `TRUSTED_SERVICES` (today AWS Backup);
+  * only AWS Backup's own managed policies may be attached, written plainly;
+  * key and vault policies may allow only this account's root;
+  * every resource type must be in `ESTATE_TYPES`;
+  * a policy built from template functions (`Fn::If`, `Fn::Split`, a JSON string, `NotAction`) cannot be read, and is refused.
+
+  Widening any list takes a reviewed PR. The copy target must be exactly this account's copy vault. Values whose region cannot be read from the template (Fn::Sub with variables, imports, SSM references) are refused, and a multi-region or replica key is refused.
 * **Unconfirmed** (the AWS documentation site is unreachable from the build lane): the contents of AWS Backup's managed policies; that a vault access policy can deny each listed action, binds the root user, and leaves AWS Backup's own 35-day expiry working; and the S3 policy's path. The cloud drill proves these.
 * **Availability:** production is Multi-AZ; staging is single-zone (cost, P-562).
 * **CI job:** `.github/workflows/deploy-synth.yml` runs on pull requests that change this folder, and never in a merge-queue batch. It is report-only until measured green (P-717 (b), P-772 (a)).

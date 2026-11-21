@@ -23,14 +23,11 @@ export const BYPASS_ACTIONS = [
   "backup:UpdateRecoveryPointLifecycle",
   "backup:DeleteBackupVault",
 ];
-/** Not denied in the vault policy (review R7: CloudFormation may apply the policy before the lock on the first deploy,
- *  and a denied lock would leave a retained vault no deploy can finish), but no role in the template may hold it. */
-export const LOCK_ACTIONS = ["backup:PutBackupVaultLockConfiguration"];
+// backup:PutBackupVaultLockConfiguration is not denied in the vault policy (review R7: CloudFormation may apply the
+// policy before the lock on the first deploy, and a denied lock would leave a retained vault no deploy can finish). No
+// role in the template may hold it, or anything else beyond checks.ts' ROLE_ACTIONS.
 /** Destroying a vault's key destroys its backups: denied to every principal in the key's own policy. */
 export const KEY_DESTROY_ACTIONS = ["kms:ScheduleKeyDeletion", "kms:DisableKey"];
-/** Changing the vault policy would lift the deny: no role in the template may hold these either (checked, not denied, so
- *  the policy itself stays changeable by a deploy). */
-export const POLICY_ACTIONS = ["backup:PutBackupVaultAccessPolicy", "backup:DeleteBackupVaultAccessPolicy"];
 /** The copy vault's name is fixed so the home plan can name it without a cross-region reference. */
 export const copyVaultName = (stage: Stage) => `xr-${stage}-copy`;
 

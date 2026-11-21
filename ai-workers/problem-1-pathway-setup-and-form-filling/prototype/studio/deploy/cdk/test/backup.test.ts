@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { App, Stack, aws_iam as iam } from "aws-cdk-lib";
 import { allStacks, buildApp } from "../lib/app.ts";
 import { BYPASS_ACTIONS, copyVaultName } from "../lib/backup.ts";
-import { HOME, REGION_ALLOW, backupFindings, bucketFindings, bypassFindings, regionFindings, resourcePolicyFindings, vaultFindings, type SynthStack, type Template } from "../lib/checks.ts";
+import { HOME, REGION_ALLOW, backupFindings, bucketFindings, bypassFindings, regionFindings, resourcePolicyFindings, typeFindings, vaultFindings, type SynthStack, type Template } from "../lib/checks.ts";
 
 const all: SynthStack[] = allStacks(buildApp().app);
 const homes = all.filter((s) => s.region === HOME);
@@ -106,7 +106,7 @@ test("PF-8rc no role can bypass, fail: a role allowed the lock bypass, the vault
   new iam.Role(bad, "Admin", { assumedBy: new iam.AccountRootPrincipal(), managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName("AdministratorAccess")] });
   new iam.Policy(bad, "Attached", { statements: [new iam.PolicyStatement({ actions: ["backup:UpdateRecoveryPointLifecycle"], resources: ["*"] })], roles: [new iam.Role(bad, "Plain", { assumedBy: new iam.AccountRootPrincipal() })] });
   const f = bypassFindings(allStacks(app)).join("\n");
-  for (const w of ["Unlock", "allows backup:DeleteBackupVaultLockConfiguration", "Repolicy", "allows backup:PutBackupVaultAccessPolicy", "Wild", "allows backup:DeleteRecoveryPoint", "allows kms:ScheduleKeyDeletion", "allows kms:PutKeyPolicy", "allows by NotAction", "AdministratorAccess is not on the allow list", "allows backup:UpdateRecoveryPointLifecycle"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  for (const w of ["Unlock", "allows backup:DeleteBackupVaultLockConfiguration", "Repolicy", "allows backup:PutBackupVaultAccessPolicy", "Wild", "allows backup:Delete*", "allows kms:*", "uses NotAction", "AdministratorAccess is not on the allow list", "allows backup:UpdateRecoveryPointLifecycle"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
 test("PF-8rc buckets pass and fail: old versions expire after 35 days; a TLS deny on the bucket but not its objects does not count (review R3)", () => {
@@ -171,7 +171,7 @@ test("PF-8rc round 2: user and group inline policies, IAM writes, role assumptio
   new iam.Role(bad, "Escalate", { assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"), inlinePolicies: { p: new iam.PolicyDocument({ statements: [new iam.PolicyStatement({ actions: ["iam:*", "sts:AssumeRole"], resources: ["*"] })] }) } });
   new iam.ManagedPolicy(bad, "Mine", { statements: [new iam.PolicyStatement({ actions: ["backup:PutBackupVaultLockConfiguration"], resources: ["*"] })] });
   const f = bypassFindings(allStacks(app)).join("\n");
-  for (const w of ["bad/U", "allows backup:DeleteBackupVaultAccessPolicy", "bad/G", "may be assumed by", "allows iam:PutRolePolicy", "allows sts:AssumeRole", "Mine", "allows backup:PutBackupVaultLockConfiguration"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
+  for (const w of ["bad/U", "allows backup:DeleteBackupVaultAccessPolicy", "bad/G", "may be assumed by", "allows iam:*", "allows sts:AssumeRole", "Mine", "allows backup:PutBackupVaultLockConfiguration"]) assert.ok(f.includes(w), `missing "${w}" in:\n${f}`);
 });
 
 test("PF-8rc round 2: AdministratorAccess hidden in Fn::Select or Fn::If beside an allowed policy is caught (B5, R5)", () => {
@@ -209,4 +209,67 @@ test("PF-8rc round 2: a selection narrowed by NotResources, Conditions or tags, 
   const off = clone(homes[0].template);
   for (const bk of of(off, "AWS::S3::Bucket")) (bk.Properties!.LifecycleConfiguration as { Rules: Record<string, unknown>[] }).Rules[0].Status = "Disabled";
   assert.equal(bucketFindings(off).filter((l) => l.includes("old versions do not expire")).length, 3);
+});
+
+// ---- Round 3: the breaker's round 2 (R2-1..R2-5) and the reviewer's N1–N3 at 6e5569b0d ----
+const roleOf = (t: Template) => Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Role")!.Properties!;
+const policyOf = (t: Template) => Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Policy")!.Properties!;
+
+test("PF-8rc round 3: every resource type is one the estate is made of; a Lambda function or a custom resource is refused", () => {
+  assert.deepEqual(typeFindings(all), []);
+  const b = swap("xr-staging", (t) => { t.Resources!.Fn = { Type: "AWS::Lambda::Function", Properties: {} }; t.Resources!.Cr = { Type: "Custom::Anything", Properties: {} }; });
+  const f = typeFindings(b).join("\n");
+  assert.ok(f.includes("AWS::Lambda::Function is not an estate type") && f.includes("Custom::Anything is not an estate type"), f);
+});
+
+test("PF-8rc round 3: a policy built from Fn::If, Fn::Split or a JSON string cannot be read, and is a finding (R2-1)", () => {
+  const edits: [string, (t: Template) => void, string][] = [
+    ["action Fn::If", (t) => { (policyOf(t).PolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Action = { "Fn::If": ["C", "backup:*", "kms:Decrypt"] }; }, "a policy cannot be read: Action"],
+    ["action Fn::Split", (t) => { (policyOf(t).PolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Action = { "Fn::Split": [",", "backup:*,kms:Decrypt"] }; }, "a policy cannot be read: Action"],
+    ["statement Fn::If", (t) => { (policyOf(t).PolicyDocument as { Statement: unknown[] }).Statement.push({ "Fn::If": ["C", { Effect: "Allow", Action: "backup:*", Resource: "*" }, { Ref: "AWS::NoValue" }] }); }, "a statement uses Fn::If"],
+    ["string document", (t) => { policyOf(t).PolicyDocument = JSON.stringify({ Statement: [{ Effect: "Allow", Action: "backup:*", Resource: "*" }] }); }, "the policy document is not a literal object"],
+    ["trust Fn::If", (t) => { (roleOf(t).AssumeRolePolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Principal = { "Fn::If": ["C", { AWS: "*" }, { Service: "backup.amazonaws.com" }] }; }, "may be assumed by"],
+    ["service Fn::If", (t) => { (roleOf(t).AssumeRolePolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Principal = { Service: { "Fn::If": ["C", "lambda.amazonaws.com", "backup.amazonaws.com"] } }; }, "may be assumed by"],
+    ["another service", (t) => { (roleOf(t).AssumeRolePolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Principal = { Service: "lambda.amazonaws.com" }; }, "may be assumed by"],
+  ];
+  for (const [name, edit, word] of edits) assert.ok(bypassFindings(swap("xr-staging", edit)).some((l) => l.includes(word)), name);
+  const key = swap("xr-production-copy", (t) => { (of(t, "AWS::KMS::Key")[0].Properties!.KeyPolicy as { Statement: unknown[] }).Statement.push({ "Fn::If": ["C", { Effect: "Allow", Principal: { AWS: "arn:aws:iam::999999999999:root" }, Action: "kms:PutKeyPolicy", Resource: "*" }, { Ref: "AWS::NoValue" }] }); });
+  assert.ok(resourcePolicyFindings(key).some((l) => l.includes("its policy cannot be read: a statement uses Fn::If")));
+});
+
+test("PF-8rc round 3: only listed actions may be allowed; CloudFormation, IAM, Lambda and copy-job escalations are refused (R2-2, review N2)", () => {
+  const acts = ["cloudformation:UpdateStack", "cloudformation:ExecuteChangeSet", "iam:CreateAccessKey", "iam:AddUserToGroup", "iam:DeleteRolePermissionsBoundary", "lambda:UpdateFunctionCode", "backup:StartCopyJob", "backup:CopyFromBackupVault"];
+  const b = swap("xr-staging", (t) => { (policyOf(t).PolicyDocument as { Statement: Record<string, unknown>[] }).Statement[0].Action = acts; });
+  const f = bypassFindings(b).join("\n");
+  for (const a of acts) assert.ok(f.includes(`allows ${a}, not on the allow list`), a);
+});
+
+test("PF-8rc round 3: a key or vault policy may allow only this account's root, never a service (R2-5)", () => {
+  const b = swap("xr-production-copy", (t) => { (of(t, "AWS::KMS::Key")[0].Properties!.KeyPolicy as { Statement: unknown[] }).Statement.push({ Effect: "Allow", Principal: { Service: "lambda.amazonaws.com" }, Action: "kms:PutKeyPolicy", Resource: "*" }); });
+  assert.ok(resourcePolicyFindings(b).some((l) => l.includes('allows "kms:PutKeyPolicy" to {"Service":"lambda.amazonaws.com"}')));
+});
+
+test("PF-8rc round 3: MultiRegion as a string or Fn::If, and a lock maximum through Fn::If, are caught (R2-4)", () => {
+  for (const v of ["true", { "Fn::If": ["C", true, false] }]) {
+    const b = swap("xr-staging", (t) => { of(t, "AWS::KMS::Key")[0].Properties!.MultiRegion = v; });
+    assert.ok(regionFindings(b, REGION_ALLOW).some((l) => l.includes("is a multi-region key")), JSON.stringify(v));
+  }
+  const m = swap("xr-staging-copy", (t) => { of(t, "AWS::Backup::BackupVault")[0].Properties!.LockConfiguration = { MinRetentionDays: 35, MaxRetentionDays: { "Fn::If": ["C", 7, 100] } }; });
+  assert.ok(vaultFindings(m).some((l) => l.includes("vault lock maximum")));
+});
+
+test("PF-8rc round 3: a parameter with no default or from SSM, Fn::FindInMap, a delimiter from a parameter, a split dynamic reference, and Fn::Sub ${Param} are caught (R2-3, N1, N3)", () => {
+  const params = { NoDefault: { Type: "String" }, FromSsm: { Type: "AWS::SSM::Parameter::Value<String>", Default: "/x" }, Sep: { Type: "String", Default: "-" }, Tail: { Type: "String", Default: "st-1" } };
+  const cases: [unknown, string][] = [
+    [{ Ref: "NoDefault" }, "a parameter set at deploy time (NoDefault)"],
+    [{ Ref: "FromSsm" }, "a parameter set at deploy time (FromSsm)"],
+    [{ "Fn::Join": ["", ["arn:aws:sqs:", { "Fn::FindInMap": ["M", "a", "b"] }, ":1:q"]] }, "Fn::FindInMap"],
+    [{ "Fn::Join": [{ Ref: "Sep" }, ["us", "east", "1"]] }, "delimiter is not a literal"],
+    [{ "Fn::Join": ["", ["{{res", "olve:ssm:/x}}"]] }, "a dynamic reference"],
+    [{ "Fn::Sub": "arn:aws:sqs:us-ea${Tail}:1:q" }, "names region us-east-1"],
+  ];
+  for (const [value, word] of cases) {
+    const b = swap("xr-staging", (t) => { t.Parameters = { ...(t.Parameters as object), ...params }; t.Resources!.X = { Type: "AWS::SSM::Parameter", Properties: { Value: value } }; });
+    assert.ok(regionFindings(b, REGION_ALLOW).some((l) => l.includes("xr-staging/X") && l.includes(word)), word);
+  }
 });

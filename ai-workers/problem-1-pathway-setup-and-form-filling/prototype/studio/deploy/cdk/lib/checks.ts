@@ -2,7 +2,7 @@
 // empty list = pass). The tests run them on the real stacks (must pass) and on broken stacks or templates (must fail),
 // so a check that cannot fail is caught. PF-8rc adds the backup checks (`backupFindings`, `vaultFindings`,
 // `bypassFindings`) and a whole-stack allowance for the ca-west-1 copy vault (`REGION_ALLOW`).
-import { BYPASS_ACTIONS, COPY_REGION, KEY_DESTROY_ACTIONS, LOCK_ACTIONS, POLICY_ACTIONS, RETENTION_DAYS } from "./backup.ts";
+import { BYPASS_ACTIONS, COPY_REGION, KEY_DESTROY_ACTIONS, RETENTION_DAYS } from "./backup.ts";
 type Resource = { Type: string; Properties?: Record<string, unknown> };
 export type Template = { Resources?: Record<string, Resource>; Parameters?: unknown; Outputs?: unknown; Mappings?: unknown; Conditions?: unknown; Rules?: unknown };
 export type SynthStack = { name: string; region: string; template: Template };
@@ -52,7 +52,12 @@ const opaque = (t: Template, v: unknown): string[] => {
     const o = x as Record<string, unknown>;
     if (Array.isArray(o["Fn::Sub"]) && Object.keys((o["Fn::Sub"] as unknown[])[1] ?? {}).length > 0) out.push("Fn::Sub with a variable map");
     if (o["Fn::ImportValue"] !== undefined) out.push("Fn::ImportValue");
+    if (o["Fn::FindInMap"] !== undefined) out.push("Fn::FindInMap"); // a mapping's halves joined (round 2, R2-3)
+    // a parameter with no default, or one whose value comes from SSM at deploy time (round 2, R2-3; review N1)
+    const param = typeof o.Ref === "string" ? (t.Parameters as Record<string, { Default?: unknown; Type?: string }> | undefined)?.[o.Ref] : undefined;
+    if (param && (param.Default === undefined || String(param.Type).startsWith("AWS::SSM::"))) out.push(`a parameter set at deploy time (${o.Ref})`);
     const j = o["Fn::Join"] as [string, unknown[]] | undefined;
+    if (j !== undefined && typeof (j as unknown[])?.[0] !== "string") out.push("a Fn::Join whose delimiter is not a literal");
     if (Array.isArray(j) && Array.isArray(j[1])) {
       j[1].forEach((p, i) => {
         const next = j[1][i + 1] as { Ref?: string } | undefined;
@@ -90,11 +95,14 @@ export function regionFindings(stacks: SynthStack[], allow: RegionAllowance[] = 
     const d = defaultsOf(s.template);
     for (const section of ["Parameters", "Outputs", "Mappings", "Conditions", "Rules"] as const) {
       for (const region of regionsIn(s.template[section])) if (region !== HOME) out.push(`${s.name} ${section} names region ${region}`);
-      for (const why of opaque(s.template, s.template[section])) out.push(`${s.name} ${section}: ${why}, whose region the guard cannot read`);
+      // Rules only assert at deploy time (CDK's bootstrap-version check reads an SSM parameter); they feed no resource
+      if (section !== "Rules") for (const why of opaque(s.template, s.template[section])) out.push(`${s.name} ${section}: ${why}, whose region the guard cannot read`);
     }
     for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
       for (const why of opaque(s.template, r)) out.push(`${s.name}/${id} (${r.Type}): ${why}, whose region the guard cannot read`);
-      if (r.Type === "AWS::KMS::Key" && r.Properties?.MultiRegion === true) out.push(`${s.name}/${id} (${r.Type}) is a multi-region key`);
+      // a dynamic reference split across Fn::Join parts is seen once the parts are joined (round 2, R2-3)
+      if (!opaque(s.template, r).length && /\{\{resolve:(?!secretsmanager:)/.test(json(flatten(r, d)))) out.push(`${s.name}/${id} (${r.Type}): a dynamic reference (joined from parts), whose region the guard cannot read`);
+      if (r.Type === "AWS::KMS::Key" && r.Properties?.MultiRegion !== undefined && r.Properties.MultiRegion !== false) out.push(`${s.name}/${id} (${r.Type}) is a multi-region key`);
       for (const region of regionsIn(r, d)) {
         if (region === HOME || here(region, r.Type)) continue;
         if (allow.some((a) => a.region === region && a.types.includes(r.Type))) continue;
@@ -213,7 +221,7 @@ export function vaultFindings(stacks: SynthStack[]): string[] {
       if (lock.MinRetentionDays !== RETENTION_DAYS) out.push(`${at}: vault lock minimum ${json(lock.MinRetentionDays)} days, not ${RETENTION_DAYS}`);
       if (lock.ChangeableForDays !== undefined) out.push(`${at}: vault lock is in compliance mode (ChangeableForDays ${lock.ChangeableForDays}), not governance`);
     }
-    if (lock && lock.MaxRetentionDays !== undefined && lock.MaxRetentionDays < RETENTION_DAYS) out.push(`${at}: vault lock maximum ${lock.MaxRetentionDays} days, under ${RETENTION_DAYS} (break B6)`);
+    if (lock && lock.MaxRetentionDays !== undefined && !(typeof lock.MaxRetentionDays === "number" && lock.MaxRetentionDays >= RETENTION_DAYS)) out.push(`${at}: vault lock maximum ${json(lock.MaxRetentionDays)} days, not a number of at least ${RETENTION_DAYS} (break B6)`);
     for (const a of denies(p.AccessPolicy, BYPASS_ACTIONS)) out.push(`${at}: its access policy does not deny ${a} to everyone`);
   }
   return out;
@@ -221,19 +229,37 @@ export function vaultFindings(stacks: SynthStack[]): string[] {
 
 /** This account's root as CDK writes it in a key policy: the only AWS principal a resource policy here may allow. */
 const ROOT = json({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, ":iam::", { Ref: "AWS::AccountId" }, ":root"]] });
-const ownOrService = (p: unknown) => {
-  const o = (p ?? {}) as Record<string, unknown>;
-  return typeof p === "object" && Object.keys(o).length > 0 && Object.entries(o).every(([k, v]) => (k === "Service" ? list(v).every((x) => x.endsWith(".amazonaws.com")) : k === "AWS" && (Array.isArray(v) ? v : [v]).every((x) => json(x) === ROOT)));
+const STATEMENT_KEYS = ["Sid", "Effect", "Principal", "Action", "Resource", "Condition"];
+/** A policy document's statements when every part the checks read is a literal; otherwise why it cannot be read (round 2,
+ *  R2-1: Fn::If around an action, a statement or a principal, a JSON-string document, NotAction, NotPrincipal). An
+ *  unreadable policy is a finding: the checks prove only what they can read. */
+const statementsOf = (doc: unknown): { st: Record<string, unknown>[]; unreadable?: undefined } | { unreadable: string } => {
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) return { unreadable: "the policy document is not a literal object" };
+  const raw = (doc as { Statement?: unknown }).Statement;
+  const sts = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  for (const x of sts) {
+    if (!x || typeof x !== "object" || Array.isArray(x)) return { unreadable: "a statement is not a literal object" };
+    const o = x as Record<string, unknown>, extra = Object.keys(o).filter((k) => !STATEMENT_KEYS.includes(k));
+    if (extra.length > 0) return { unreadable: `a statement uses ${extra.join(", ")}` };
+    if (o.Effect !== "Allow" && o.Effect !== "Deny") return { unreadable: `Effect ${json(o.Effect)} is not a literal` };
+    if (!(typeof o.Action === "string" || (Array.isArray(o.Action) && o.Action.every((a) => typeof a === "string")))) return { unreadable: `Action ${json(o.Action)} is not a literal` };
+  }
+  return { st: sts as Record<string, unknown>[] };
 };
-/** PF-8rc break B4 (c): every Allow in a KMS key policy or a vault access policy names only this account's root or an
- *  AWS service, never another account or everyone; the account root's own reach is the governance-mode limit (B1). */
+const allows = (doc: unknown) => { const r = statementsOf(doc); return r.unreadable !== undefined ? r : { st: r.st.filter((x) => x.Effect === "Allow") }; };
+
+/** PF-8rc break B4 (c), round 2 R2-1/R2-5: every KMS key policy and vault access policy is readable, and every Allow in
+ *  it names exactly this account's root (as CDK writes it), never a service, another account or everyone. The account
+ *  root's own reach is the governance-mode limit (B1). */
 export function resourcePolicyFindings(stacks: SynthStack[]): string[] {
   const out: string[] = [];
   for (const s of stacks) for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
-    const doc = r.Type === "AWS::KMS::Key" ? r.Properties?.KeyPolicy : r.Type === "AWS::Backup::BackupVault" ? r.Properties?.AccessPolicy : undefined;
-    for (const st of ((doc as { Statement?: Record<string, unknown>[] })?.Statement ?? []).filter((x) => x.Effect === "Allow")) {
-      if (st.NotPrincipal !== undefined || !ownOrService(st.Principal)) out.push(`${s.name}/${id} (${r.Type}): allows ${json(st.Action)} to ${json(st.Principal ?? st.NotPrincipal)}`);
-    }
+    if (r.Type !== "AWS::KMS::Key" && r.Type !== "AWS::Backup::BackupVault") continue;
+    const doc = r.Type === "AWS::KMS::Key" ? r.Properties?.KeyPolicy : r.Properties?.AccessPolicy;
+    if (doc === undefined) continue;
+    const a = allows(doc), at = `${s.name}/${id} (${r.Type})`;
+    if (a.unreadable !== undefined) { out.push(`${at}: its policy cannot be read: ${a.unreadable}`); continue; }
+    for (const st of a.st) if (json(st.Principal) !== json({ AWS: JSON.parse(ROOT) })) out.push(`${at}: allows ${json(st.Action)} to ${json(st.Principal)}`);
   }
   return out;
 }
@@ -277,28 +303,35 @@ export function backupFindings(home: SynthStack, stacks: SynthStack[]): string[]
   return out;
 }
 
-/** The actions no role in the template may hold: the lock bypass, the vault policy that denies it, and the vault keys. */
-// plus the IAM writes and role assumption that would let a role grant itself any of them (break B4 (b), review R1)
-export const GUARDED_ACTIONS = [...BYPASS_ACTIONS, ...LOCK_ACTIONS, ...POLICY_ACTIONS, ...KEY_DESTROY_ACTIONS, "kms:PutKeyPolicy",
-  "iam:PutRolePolicy", "iam:PutUserPolicy", "iam:PutGroupPolicy", "iam:AttachRolePolicy", "iam:AttachUserPolicy", "iam:AttachGroupPolicy",
-  "iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:UpdateAssumeRolePolicy", "iam:PassRole", "sts:AssumeRole"];
+/** The only actions a role, user, group or policy in the template may allow (round 2, R2-2: a list of what is allowed,
+ *  not of what is guarded, so CloudFormation, IAM, Lambda or a cross-region copy job are refused unless listed here by a
+ *  reviewed PR). Today: AWS Backup's role reading the data key. PF-8b adds the service's own actions. */
+export const ROLE_ACTIONS = ["kms:Decrypt"];
+/** The only principals that may assume a role: AWS Backup today (PF-8b adds the service's tasks). */
+export const TRUSTED_SERVICES = ["backup.amazonaws.com"];
 /** AWS-managed policies a role may carry: AWS Backup's own service policies (Unconfirmed: their contents could not be
- *  read from the build lane; the vault policies' explicit deny holds whatever they contain). Any other managed policy,
- *  or an allow of a guarded action (also by wildcard or NotAction), is a finding. */
+ *  read from the build lane; the vault policies' explicit deny holds whatever they contain), written plainly. */
 export const MANAGED_ALLOW = ["service-role/AWSBackupServiceRolePolicyForBackup", "AWSBackupServiceRolePolicyForS3Backup"];
 export function bypassFindings(stacks: SynthStack[]): string[] {
   const out: string[] = [];
   for (const s of stacks) for (const [id, r] of Object.entries(s.template.Resources ?? {})) {
     const p = r.Properties ?? {}, at = `${s.name}/${id} (${r.Type})`;
-    // a role may be assumed only by an AWS service (break B4 (b): trust in everyone or another account)
-    if (r.Type === "AWS::IAM::Role") for (const st of ((p.AssumeRolePolicyDocument as { Statement?: Record<string, unknown>[] })?.Statement ?? []).filter((x) => x.Effect === "Allow")) {
-      if (st.NotPrincipal !== undefined || !Object.keys((st.Principal ?? {}) as object).every((k) => k === "Service") || typeof st.Principal !== "object") out.push(`${at}: may be assumed by ${json(st.Principal ?? st.NotPrincipal)}, not only an AWS service`);
+    // a role may be assumed only by a listed AWS service, with sts:AssumeRole (break B4 (b), round 2 R2-1)
+    if (r.Type === "AWS::IAM::Role") {
+      const trust = allows(p.AssumeRolePolicyDocument);
+      if (trust.unreadable !== undefined) out.push(`${at}: its trust policy cannot be read: ${trust.unreadable}`);
+      else for (const st of trust.st) {
+        const pr = st.Principal as Record<string, unknown> | undefined;
+        const ok = !!pr && typeof pr === "object" && !Array.isArray(pr) && Object.keys(pr).length === 1 && (typeof pr.Service === "string" || Array.isArray(pr.Service)) && list(pr.Service).every((x) => TRUSTED_SERVICES.includes(x)) && json(st.Action) === json("sts:AssumeRole");
+        if (!ok) out.push(`${at}: may be assumed by ${json(st.Principal)}, not only ${TRUSTED_SERVICES.join(", ")}`);
+      }
     }
-    const docs = ["AWS::IAM::Role", "AWS::IAM::User", "AWS::IAM::Group"].includes(r.Type) ? ((p.Policies as { PolicyDocument?: unknown }[]) ?? []).map((x) => x.PolicyDocument)
-      : ["AWS::IAM::Policy", "AWS::IAM::ManagedPolicy", "AWS::IAM::UserPolicy", "AWS::IAM::GroupPolicy", "AWS::IAM::RolePolicy"].includes(r.Type) ? [p.PolicyDocument] : [];
-    for (const doc of docs) for (const st of ((doc as { Statement?: Record<string, unknown>[] })?.Statement ?? []).filter((x) => x.Effect === "Allow")) {
-      if (st.NotAction !== undefined) out.push(`${at}: allows by NotAction (everything but ${json(st.NotAction)})`);
-      for (const a of GUARDED_ACTIONS) if (list(st.Action).some((pt) => covers(pt, a))) out.push(`${at}: allows ${a}`);
+    const docs = ["AWS::IAM::Role", "AWS::IAM::User", "AWS::IAM::Group"].includes(r.Type) ? (Array.isArray(p.Policies) ? (p.Policies as { PolicyDocument?: unknown }[]).map((x) => x?.PolicyDocument) : p.Policies === undefined ? [] : [p.Policies])
+      : r.Type.startsWith("AWS::IAM::") && r.Type.endsWith("Policy") ? [p.PolicyDocument] : [];
+    for (const doc of docs) {
+      const a = allows(doc);
+      if (a.unreadable !== undefined) { out.push(`${at}: a policy cannot be read: ${a.unreadable}`); continue; }
+      for (const st of a.st) for (const act of list(st.Action)) if (!ROLE_ACTIONS.includes(act)) out.push(`${at}: allows ${act}, not on the allow list (${ROLE_ACTIONS.join(", ")})`);
     }
     // exactly an allowed policy's ARN, as a plain string or CDK's Fn::Join (break B5, review R5: no Fn::Select or Fn::If around it)
     const exact = (m: string) => [json(`arn:aws:iam::aws:policy/${m}`), json({ "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, `:iam::aws:policy/${m}`]] })];
@@ -307,4 +340,14 @@ export function bypassFindings(stacks: SynthStack[]): string[] {
     }
   }
   return out;
+}
+
+/** The resource types the estate is made of (round 2: a Lambda function, a custom resource or any type nobody reviewed
+ *  could carry data or permissions the other checks do not read). A new type joins this list by a reviewed PR. */
+export const ESTATE_TYPES = ["AWS::Backup::BackupPlan", "AWS::Backup::BackupSelection", "AWS::Backup::BackupVault", "AWS::EC2::EIP", "AWS::EC2::InternetGateway",
+  "AWS::EC2::NatGateway", "AWS::EC2::Route", "AWS::EC2::RouteTable", "AWS::EC2::SecurityGroup", "AWS::EC2::Subnet", "AWS::EC2::SubnetRouteTableAssociation",
+  "AWS::EC2::VPC", "AWS::EC2::VPCGatewayAttachment", "AWS::IAM::Policy", "AWS::IAM::Role", "AWS::KMS::Alias", "AWS::KMS::Key", "AWS::RDS::DBInstance",
+  "AWS::RDS::DBParameterGroup", "AWS::RDS::DBSubnetGroup", "AWS::S3::Bucket", "AWS::S3::BucketPolicy", "AWS::SecretsManager::Secret", "AWS::SecretsManager::SecretTargetAttachment"];
+export function typeFindings(stacks: SynthStack[]): string[] {
+  return stacks.flatMap((s) => Object.entries(s.template.Resources ?? {}).filter(([, r]) => !ESTATE_TYPES.includes(r.Type)).map(([id, r]) => `${s.name}/${id}: ${r.Type} is not an estate type`));
 }

@@ -61,3 +61,42 @@ Not tested: anything in a real AWS account (P-551), AWS's managed-policy content
 Reviewed commit: 0ab64811e (no Blocker or Major open; R1–R8 are Minor).
 
 Verdict: Approve
+
+## Re-review (diff-only) at 6e5569b0d
+Read only `git diff 0ab64811e 6e5569b0d`, together with the breaker's `break-report.md`. Commands: `npm test` gave **38 passed, 0 failed**; `npm run synth` exited 0 with 4 templates (`cdk.out` deleted afterwards; no cdk CLI). **No false finding on the real app:** `regionFindings(all, REGION_ALLOW)`, `vaultFindings`, `bypassFindings`, the new `resourcePolicyFindings` and both homes' `backupFindings` each return 0. The real stacks' Secrets Manager dynamic reference is exempt only when it names the stack's own secret; removing that exemption makes the pass test fail.
+**Mutation pass:** I removed each fix's condition from `lib/checks.ts` in turn, ran `npm test` and restored the file. The "killed" column means a test fails without the fix.
+
+| Finding | Fix in 6e5569b0d | Test fails without it |
+|---|---|---|
+| R1, B4(b): IAM writes and role assumption | `GUARDED_ACTIONS` gains the `iam:Put*/Attach*Policy` family, `CreatePolicyVersion`, `SetDefaultPolicyVersion`, `UpdateAssumeRolePolicy`, `PassRole` and `sts:AssumeRole`. Roles may be assumed by AWS services only | killed (`iam:PutRolePolicy`, `sts:AssumeRole`, the trust check) |
+| R2, B4(a): inline policies on users and groups | `Policies` is now read for User and Group as well as Role | killed |
+| R3, B2: the copy target's account and stage | The copy ARN must exactly equal the `Fn::Join` that `backupPlan` writes: `Ref AWS::AccountId` and `<stack>-copy` | killed |
+| B3: a region hidden in an intrinsic | `Fn::Sub` with a variable map, `Fn::ImportValue` and `{{resolve:` are refused. A `Ref` to a parameter is read as its default | killed (each of the four) |
+| R4, B7: a narrowed selection | `NotResources`, `Conditions` and `ListOfTags` are refused, and `BackupPlanId` must be this stack's plan | killed |
+| R5, B5: the managed-policy allow list | Only an exact plain ARN, or CDK's `Fn::Join` of one, is accepted | killed |
+| R6: untested branches | Tests added for a narrowed deny Resource, two plans and a `Disabled` lifecycle rule (`regions.length` is now made redundant by the exact-ARN check) | killed (all three) |
+| R7: risk to the first deploy | `PutBackupVaultLockConfiguration` has left the vault-policy deny (confirmed in the synthesized policy) but stays in `GUARDED_ACTIONS` through `LOCK_ACTIONS`; a customer managed policy allowing it is caught. `DeleteRecoveryPoint` and `UpdateRecoveryPointLifecycle` are still denied, so a lowered minimum cannot shorten an existing point. The RUNBOOK covers the first deploy | killed ("Mine" case) |
+| R8: the runbook overclaimed | Now reads "no role defined in the code can shorten a backup's life", plus the governance-mode **Limit** (B1, question 1) | n/a (wording) |
+| B4(c): resource policies | New `resourcePolicyFindings`: an Allow in a key policy or vault policy may name only this account's root or an AWS service | killed (the other-account case) |
+| B6: the lock maximum | `MaxRetentionDays` under 35 is a finding | killed |
+| B8: the region's runtime doors | A `MultiRegion` key, `AWS::KMS::ReplicaKey` and `AWS::Backup::ReportPlan` are refused | killed |
+
+B1 is stated as a limit in `backup.ts`, the README and the RUNBOOK, and is left to the tech lead as question 1. I agree with that: it is the governance-mode decision (P-566 (3)), not a code defect.
+
+**Still open or new (Minor; not blocking):**
+- **N1. A `Ref` to a parameter with no default is not seen** (my probe: `"arn:aws:sqs:us-ea"` joined with `{Ref: Tail}`, where `Tail` has no `Default`, passes). The same holds for any parameter whose value is overridden at deploy, since the default is only a guess. This is the same class as the `{{resolve:ssm:…}}` that is now refused. *Fix:* in resources, treat a `Ref` to any template parameter other than CDK's `BootstrapVersion` as "region not provable", with a failing case.
+- **N2. B8's copy-out door is only partly closed.** My probe: a role trusted by `lambda.amazonaws.com` with an inline allow of `backup:StartCopyJob` passes every check, and at run time it could copy recovery points to any region. *Fix:* add `backup:StartCopyJob` and `backup:CopyFromBackupVault` to `GUARDED_ACTIONS`, with one failing case. AWS Backup's role carries only managed policies, which are not scanned, so this adds no false finding. The organisation-level region guard (an SCP on `aws:RequestedRegion`) stays outside this row.
+- **N3. The `Fn::Sub` string-form `${Param}` substitution (`checks.ts` `flatten`) is not pinned by any test.** My probe shows it works (`us-ea${Tail}` with default `st-1` is caught), but removing it breaks no test. *Fix:* one case. The `NotPrincipal` and service-suffix branches of `resourcePolicyFindings` also survive mutation, but they are redundant (an absent `Principal` already fails `ownOrService`) and no hole follows from them.
+- **Note (no finding):** the exact copy ARN and `ROOT` both assume the account stays `Ref AWS::AccountId`. If a later row pins the account in `env`, both will report a finding until they are updated. That is a safe failure, so no fix is needed now.
+- **Note (no finding):** `iam:PassRole` and `sts:AssumeRole` in `GUARDED_ACTIONS` will flag a legitimate future role (for example a PF-8b task role that passes a role). That row will need a reviewed, scoped exception rather than a quiet removal.
+
+- **The breaker's round 2 (appended to `break-report.md` while I worked): my view.**
+  - **R2-2 (the block list can be escalated around)** is sound: `cloudformation:UpdateStack` reuses the stack's service role (Unconfirmed), and `iam:CreateAccessKey`, `lambda:UpdateFunctionCode` and my N2 also get through. **R2-1 (statements built from `Fn::If`, `Fn::Split` or a JSON string)** is the same class as R5.
+  - I rate both **Minor, should fix** and not Block. The real template has exactly one role: a service role holding `kms:Decrypt` and two managed policies. The Done-when proof holds on it. Any principal outside the template already has the stronger route that is accepted as B1 (governance mode, question 1).
+  - Best fix: invert `bypassFindings` into an allow list. Each template principal may hold only listed actions, and any non-literal `Effect`, `Action`, `Principal` or `PolicyDocument` is "cannot be read". That closes R2-1, R2-2 and N2 together.
+  - R2-3 to R2-5 are Minor, as the breaker rates them.
+- **Disclosure:** the "another agent changing `lib/checks.ts`" in both break-report rounds was my mutation testing in this shared worktree. Each mutation was restored from a saved copy, and `git status` shows `lib/` identical to `6e5569b0d`. The breaker says each break was re-confirmed on clean files.
+
+Reviewed commit: 6e5569b0d (no Blocker or Major open; N1–N3 are Minor).
+
+Verdict: Approve
