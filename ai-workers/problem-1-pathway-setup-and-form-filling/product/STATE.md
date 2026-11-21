@@ -2,7 +2,7 @@
 
 current_lead: local_f172acc0-277a-4ea1-b739-4fa274ba3c9b Lead 11 · 21 Nov 08:54 IST (series 3; took over from Lead 10 (series 3, local_8f916b74) at ~315k, P-446)
 
-updated: 2026-11-21 08:59 IST: Lead 11 took over 08:54 (series 3; check f3eafc24); #2696 labelled · milestone: Release 1 proven 33 of 101 on main (+1 this cycle: R1.27) · rules: **`RULES.md`** (as of **P-778**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-21 09:15 IST: Lead 11 check 1 (#2696 merged; #2638 R1.14 labelled; #2626 R1.13 and #2618 R1.49 Lead-read; R1.5 lane given fixes) · milestone: Release 1 proven 33 of 101 on main (+1 this cycle: R1.27) · rules: **`RULES.md`** (as of **P-778**) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -16,6 +16,7 @@ updated: 2026-11-21 08:59 IST: Lead 11 took over 08:54 (series 3; check f3eafc24
 (3) **REQ-QUALITY (#2695 merged):** 97/101 traced; NO SOURCE R1.64/108/109/110; 18 Source cells to fix; ~380 of 589 AG/SA ids differ between Doc and functional files → owed by the Lead: Source cells, the five narrowing rows (wordings in the map), a tooling row so the trace script reads 02-functional-requirements only. Measured: 24/101 rows have a journey; line coverage not measured by any tool (say so).
 (4) **Records/tooling:** #2696 (P-779) needs green pr-rules (body fixed 08:5x, re-run) then `lead-pr.sh approve-records 2696`. #2678 left open (superseded). #2433 labelled; #2607 told merge main; #2590/#2599 dirty (lanes merge main). Tooling merge order: #2431 → #2598 → #2605 → #2483.
 (5) **Resources:** disk **7.9 GB** (Lead B deleted its scratch clone, 08:5x). Weekly 49%. **Lead B (9) is handing over at ~46%** (hand-over: Lead B's 19 Nov hand-over file, section "Lead B (9) final hand-over", on branch lead-b-front-office at 0b1ed1d22); **start Lead B (10) at the founder's next typed turn.** **Lead C (local_b3247af3) is archived** (Lead 10's message bounced 08:55), so R1.3 and the Source-cell drafts need a new lane at the founder's next typed turn. #2687: Lead 11's P-423 read is OK (08:5x); `fast` is red (check-select-suites line 47: history.tsx selects 30 suites), so Lead B fixes it, then it labels on green. **Founder clean-up (the sandbox can't do it):** `lsof -ti tcp:4660 -sTCP:LISTEN | xargs kill`, then prune-test-dbs.sh, drop xr_studio_demolink_seed, and `git reset --hard HEAD` in worktree build-lead-c-647b40. Demo green (runs 08:4x); demo smoke times out when the Mac load is ~10.
+(6) **Lead 11 check 09:15:** #2696 (P-779) merged · **#2638 (R1.14) labelled** by the Lead (Lead 9's P-423 read, P-776) · **#2626 (R1.13):** Lead read the AI files (logging only), gave the release holder's OK and ruled `plan` red not a condition; the lane was told to label · **#2618 (R1.49):** Lead read the migration rename (40d512a48); label it when #2694 merges · **#2627 (R1.5):** the lane was told to add its Duplicate check line, merge main for the module-cards self-test, re-Approve, then go Ready (ruling P-294: PF-4s is not part of R1.5) · #2687: Lead read on e25de9d87, labels on green · tooling #2590/#2599/#2607 dirty (the lanes merge main; P-734, low priority).
 Lead 9 → Lead 10 block word for word: `product/history/STATE-2026-11-21-0900-lead10s3-handover-9-10-block-final.md`.
 
 
