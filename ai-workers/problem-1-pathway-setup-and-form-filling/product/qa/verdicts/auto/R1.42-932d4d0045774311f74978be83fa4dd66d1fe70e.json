@@ -1,0 +1,31 @@
+{
+  "item": "R1.42",
+  "name": "42 Reschedule or cancel by link; outcomes; consult record",
+  "pr": 2717,
+  "sha": "932d4d0045774311f74978be83fa4dd66d1fe70e",
+  "run_id": "44891488808",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44891488808",
+  "at": "2026-11-21T10:05:40.426Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_42.ts",
+      "result": "pass",
+      "exit": 0,
+      "note": "1 HELD step(s)"
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44891488808/artifacts/14702850879",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.42-932d4d0045774311f74978be83fa4dd66d1fe70e.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
