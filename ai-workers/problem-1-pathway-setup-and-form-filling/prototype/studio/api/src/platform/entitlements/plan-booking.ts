@@ -43,19 +43,22 @@ export class PlanBookings {
   constructor(private readonly d: PlanBookingDeps) {}
   private get audit() { return this.d.audit ?? auditEvent; }
 
+  /** In the caller's transaction when given (PF-16: one connection per change, break round 2's pool freeze), else its own. */
+  private run<T>(outer: Tx | undefined, fn: (tx: Tx) => Promise<T>): Promise<T> { return outer ? fn(outer) : this.d.db.$transaction(fn, { timeout: 30_000 }); }
+
   /** The firm's open booking, or null (its own scope). */
-  async open(firmId: string): Promise<Booking | null> {
+  async open(firmId: string, client: Tx | PrismaClient = this.d.db): Promise<Booking | null> {
     const id = firmScope(firmId).firmId;
-    const r = await this.d.db.platformSubscriptionChange.findFirst({ where: firmScope(id, { withdrawnAt: null, appliedAt: null }), include: { fromPlan: { select: { code: true } }, toPlan: { select: { code: true } } } });
+    const r = await client.platformSubscriptionChange.findFirst({ where: firmScope(id, { withdrawnAt: null, appliedAt: null }), include: { fromPlan: { select: { code: true } }, toPlan: { select: { code: true } } } });
     return r ? { id: r.id, fromPlan: r.fromPlan.code, toPlan: r.toPlan.code, bookedAt: r.bookedAt.toISOString(), effectiveAt: r.effectiveAt.toISOString(), appliedAt: null, atOnce: false } : null;
   }
 
   /** Books the firm's move to `targetPlan` (in the caller's firm scope). 409 DOWNGRADE_CONFLICTS with every conflict
    *  (usage, target limit, amount to reduce, SA-4-56's words) and nothing booked; 409 PLAN_CHANGE_BOOKED while one is
    *  open (withdraw it first); 409 for no live subscription, a payment hold or the same plan; 404 for no such plan. */
-  async book(firmId: string, targetPlan: string, actor: string): Promise<Booking> {
+  async book(firmId: string, targetPlan: string, actor: string, outer?: Tx): Promise<Booking> {
     const id = firmScope(firmId).firmId, plan = z.string().trim().min(1).max(64).parse(targetPlan), by = Actor.parse(actor);
-    return this.d.db.$transaction(async (tx) => {
+    return this.run(outer, async (tx) => {
       const firm = (await tx.$queryRaw<{ key: string }[]>`select key from platform_firm where id = ${id}::uuid for no key update`)[0];   // the staff changes' lock: no invite between the check and the booking
       if (!firm) problem(404, "NOT_FOUND", "Not found", "No such firm.");
       // Review M2: a case opening serialises on its own lock (runtime.ts createCase), not the firm row; take it too, so no
@@ -85,13 +88,13 @@ export class PlanBookings {
         detail: { fromPlan: row.from, toPlan: row.to, effectiveAt: when }, before: shape(row.from), after: atOnce ? shape(row.to) : shape(row.from, row.to, when) });
       if (atOnce) await tx.moduleEvent.create({ data: { firmId: id, type: EVENT.PLAN_CHANGED, subjectId: row.id, payload: { firmId: id, from: row.from, to: row.to, when: "now" } } });   // last (PF-16)
       return { id: row.id, fromPlan: row.from, toPlan: row.to, bookedAt: row.bookedAt.toISOString(), effectiveAt: when, appliedAt: row.appliedAt?.toISOString() ?? null, atOnce };
-    }, { timeout: 30_000 });
+    });
   }
 
   /** Withdraws the firm's open booking (its limits are its own plan's again). 404 when none is open. */
-  async withdraw(firmId: string, actor: string): Promise<{ id: string; toPlan: string }> {
+  async withdraw(firmId: string, actor: string, outer?: Tx): Promise<{ id: string; toPlan: string }> {
     const id = firmScope(firmId).firmId, by = Actor.parse(actor);
-    return this.d.db.$transaction(async (tx) => {
+    return this.run(outer, async (tx) => {
       await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;
       const r = (await tx.$queryRaw<{ id: string; to: string; from: string; effectiveAt: Date }[]>`
         UPDATE platform_subscription_change c SET withdrawn_at = greatest(clock_timestamp(), c.booked_at) FROM platform_plan t, platform_plan f

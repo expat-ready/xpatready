@@ -75,3 +75,59 @@ Harness: the PR test's setup plus `PaymentHoldGate`, with Admin and Billing/Fina
 - **Back-dated raise in an expired trial.** Stopped by the trigger's own clock, and the undo ran.
 - **Withdraw.** With nothing booked, or twice: 200, no change. Release failing: 503, booking kept.
 - **PF-15b r2.** A held firm's due booking waits (PR test).
+
+## Round 2 (fixed head `9d8d09339`)
+
+**Setup.** Fresh `git archive 9d8d093396cb` copy and the same harness (`tests/break_pf16a_r2.ts` in scratch, never committed). Every change now sends the preview's `kind` and `amountDueNowCents`. The PR's check passes: 37/0. Scratch DBs `xr_studio_pf16brk2_<pid>` were dropped.
+
+**New fields.** These are refused:
+- 422: a missing `kind`; `kind: "free"`; an amount of −1, 1.5, 10^12 or the string "5000".
+- 409 PREVIEW_STALE: a wrong amount (4999 for 5000); `kind: "trial"` or `"repair"` on a raise.
+
+### Closed (reproduction re-run, result)
+
+| Finding | Reproduction | Result now |
+|---|---|---|
+| B1 | A1: book Lite, then raise to Firm, by preview + change and by a direct change | 409 PLAN_CHANGE_BOOKED; DB team, Stripe unchanged, 0 charged |
+| B1 | A1b: book Lite, then Team monthly→yearly | 409 PLAN_CHANGE_BOOKED |
+| M4 | A3: book Lite yearly, then Team monthly | 409 PLAN_CHANGE_BOOKED; Stripe's renewal still `price_liteYear` |
+| B2 | A4: Max and Firm in parallel | Max 200 (15,000 charged). Firm 409 PREVIEW_STALE "no longer the same kind". DB = Stripe = Max; 1 event |
+| m3 | A5: the same raise twice in parallel | 200, then 409 SAME_PLAN; 1 charge, 1 audit line, 1 event |
+| B3 | A6: Stripe charged, our audit write fails | The preview now shows `kind: "repair"`, 0 due. The retry answers `repair`: DB = firm with one repair line, no second charge |
+| B3 | A6b: Stripe applied, the answer was lost | Read back, then 200 `now`, DB = firm |
+| B3 | A6c: generic failure, Stripe not changed | 503 BILLING_UNCONFIRMED, not "not charged" |
+| M1 | A7: trial, the booking fails once, then the same click | 409 PREVIEW_STALE "did not take the change". A fresh preview 2 s later completes (DB = Stripe = firm) |
+| M1 | A7b: the booking fails and the undo fails | The next preview is `repair`; the change sets DB = firm, matching Stripe |
+| M2 | A10a: schedule applied, the answer was lost (fake) | 200 renewal, booking kept, Stripe schedule to Lite: the two sides agree |
+| M2 | A10b: Stripe refuses the schedule | 503, booking withdrawn |
+| M3 | A2: period change, withdraw, book again | The second booking makes a schedule (renewal `price_teamMonth`). 1 `period_withdrawn` line (m5) |
+| M5 | A16: monthly→yearly, then Lite yearly | DB `current_period_end` 2027-11-21; booking effective on Stripe's date |
+| M6 | A8: trial preview, then the status goes ACTIVE | 409 PREVIEW_STALE |
+| M6 | A8b: the trial ends by our clock with the status still TRIAL | 409 PREVIEW_STALE |
+| M6 | A14: the preview's amount sent with a date 29 min earlier | 409 "5007 cents, not the 5000 shown"; 0 charged |
+| m1 | A9: expired trial, back-dated `trial` change, raise or period | 409 PREVIEW_STALE. The back-dated `now` change with the preview's amount gives 409 (94997 ≠ 95000) |
+| m2 | A11b: an invite that takes the firm-row lock, sent during a "now" change | The invite waits until the change commits |
+| m5 | A13 | Nothing booked: `withdrawn:false, scheduleReleased:false`. Two parallel withdraws: 200 `withdrawn:true`, then 200 `withdrawn:false` (no 404) |
+| m6 | A decline, then the same date | 402 both times, "preview the change again". A fresh preview charges once |
+
+**Roles and hold.** Admin and Billing/Finance get 403 on all three routes; anonymous gets 401. A held Owner gets 402.
+
+### Still open
+
+- **Major: M2 is not closed on the real adapter.** After a failure, the code counts any schedule as success without checking its second phase (`service.ts:148-153`).
+  - Repro N2: StripePlanChange on recorded answers. `subscriptionSchedules.create(from_subscription)` succeeds; the phase update (`POST /v1/subscription_schedules/sub_sched_r1`) answers 400.
+  - Seen: 200 `kind renewal`, our booking team->Lite kept. Stripe has `sub_sched_r1` with no Lite phase. At the renewal DB = Lite while Stripe keeps billing Team.
+- **Minor: A10c is now visible, but the two sides still split.** Stripe refuses and our withdraw fails: 503 BILLING_UNCONFIRMED "withdraw the change there if it shows", and the next preview gives 409 PLAN_CHANGE_BOOKED. If nobody withdraws, the job applies Lite (DB = pf16-lite) while Stripe stays Team with no schedule.
+- **Minor: m4's new words still lead to a dead end.** A12: `pf16-cheapbig` is monthly→monthly, yet the answer is "move to it at the same billing period first (it applies at once)". It does not apply at once; it is cheaper in Stripe, so it is refused again. Yearly Team → Firm monthly gets the same words, but Firm has no yearly price, so that path is impossible.
+
+### New
+
+- **Blocker: ten concurrent change requests freeze the whole API (every firm) for 60 s, repeatably.** `change()` holds one pooled connection for the whole interactive transaction (`service.ts:92-122`, timeout 60 s). Inside it, `plan()`, `bookings.open/book/withdraw` and `withdraw()`'s read use `this.d.db`, which needs a second connection. The app's pool is pg's default of 10 (`walledPool`, no `max`). Requests waiting on the advisory lock each hold a connection, so the one holding the lock can never get its second.
+  - Repro N3: one Owner sends 10 `change` requests for Firm at once.
+  - Seen: all 10 fail at about 60,040 ms with `PrismaClientKnownRequestError`, and nothing is charged. An unrelated `platformPlan.count()` was still waiting after 20 s. With 8 or 9 at once: 200 at about 1 s, then SAME_PLAN.
+  - Repro N3b: 10 renewal changes at once.
+  - Seen: after 60 s, 9 answers are PLAN_CHANGE_BOOKED. The tenth is a 500 ("A commit cannot be executed"), yet its booking and Stripe schedule were both made.
+  - Inferred, not run: 10 changes from different firms in flight together, or fewer alongside other traffic, should deadlock the same way. Stripe calls inside the transaction (10 s × 3 tries) widen the window.
+- **Minor: "repair" trusts a shared Stripe price and skips every check.** `service.ts:62-64` answers "repair" whenever Stripe's price equals the target's, with no Stripe call, no checkDowngrade and no check of the kind sent. Nothing makes `stripe_monthly_price_id` or `stripe_yearly_price_id` unique.
+  - Repro N1: plans `pf16-twin` (40 more seats) and `pf16-tiny` (1 seat, zero limits) both carry `price_teamMonth`. Change from Team to each, with `kind: "trial"` or `"renewal"` and 0.
+  - Seen: both answer 200 `repair`. DB moves to the bigger plan for free, and to the 1-seat plan with 5 staff and no conflict check.

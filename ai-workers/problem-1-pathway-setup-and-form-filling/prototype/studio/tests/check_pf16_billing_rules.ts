@@ -1,10 +1,6 @@
-// PF-16 part 1a (BACKLOG PF-16; SA-4-28..31, -49, -50, -55, -56; SA-3-58..61): plan changes on our own page, a pass and a
-// fail per Done when line, on Stripe test-mode fakes: an Admin → 403 · a raise charges the prorated difference once ·
-// a lower move with too many staff → refused with the conflict · a lower move books for the renewal and the lower limits
-// apply at once · monthly → yearly starts a fresh year · a trial switch charges nothing and keeps the end date · plus the
-// preview, a held firm, a stale preview, a withdrawal, PF-15 part 1b's review Minors r1 and r2, and PlanChangePort's
-// contract on the fake and on recorded Stripe answers. A scratch database (removed), the Sample firms, PF-4's classes in
-// a Nest app with the local stand-in, a fake clock. No server, no browser, no model call, no Stripe call (US$0).
+// PF-16 part 1a (SA-4-28..31, -49, -50, -55, -56; SA-3-58..61): plan changes, a pass and a fail per Done when line, on Stripe
+// fakes and recorded answers (review and break rounds 1-2 included). A scratch database (removed), the Sample firms, PF-4's
+// classes in a Nest app, a fake clock. No server, no browser, no model or Stripe call (US$0).
 //   tsx studio/tests/check_pf16_billing_rules.ts
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
@@ -123,8 +119,7 @@ try {
     const t = r.lastForm();
     await r.port.changeNow({ subscriptionId: "sub_r1", priceId: "price_teamYear", prorate: true, anchorNow: true, prorationDate: at }, "pf16-params-year");
     const y = r.lastForm();
-    ok("PF-16 adapter pass: a trial switch sends proration_behavior none and no proration_date (Stripe refuses the two together); monthly → yearly sends always_invoice, the preview's proration_date, billing_cycle_anchor[type]=now and error_if_incomplete",
-      t.get("proration_behavior") === "none" && !t.has("proration_date") && y.get("proration_behavior") === "always_invoice" && y.get("proration_date") === String(Math.floor(at.getTime() / 1000)) && y.get("billing_cycle_anchor[type]") === "now" && y.get("payment_behavior") === "error_if_incomplete", { t: t.toString(), y: y.toString() });
+    ok("PF-16 adapter pass: a trial switch sends proration_behavior none and no proration_date (Stripe refuses the two together); monthly → yearly sends always_invoice, the preview's proration_date, billing_cycle_anchor[type]=now and error_if_incomplete", t.get("proration_behavior") === "none" && !t.has("proration_date") && y.get("proration_behavior") === "always_invoice" && y.get("proration_date") === String(Math.floor(at.getTime() / 1000)) && y.get("billing_cycle_anchor[type]") === "now" && y.get("payment_behavior") === "error_if_incomplete", { t: t.toString(), y: y.toString() });
   }
 
   // ------------------------------------------------------------------------------------- the app and the Sample firms
@@ -190,9 +185,11 @@ try {
   ok("PF-16 fail (raise): a confirmation whose amount is not the one previewed at its date → 409 PREVIEW_STALE, nothing charged", lie?.body.code === "PREVIEW_STALE" && stripe.charges.length === before, lie);
   const both = await Promise.allSettled([change("firm", "month", pr2), change("firm", "month", pr2)]);
   const charged = stripe.charges.filter((c) => c.subscriptionId === "sub_f1");
-  ok("PF-16 pass (raise): a dearer plan mid-period applies at once and charges the prorated difference once, the amount the preview showed; our plan, one audit line, one plan.changed",
-    charged.length === 1 && charged[0].cents === pr2.amountDueNowCents && planOf() === "firm" && events() === 1 && sql(`select count(*) from audit_event where action = 'platform.plan.changed' and detail->>'firmId' = '${FIRM}'`) === "1", { both: both.map((b) => b.status), charged });
-  ok("PF-16 fail (raise, double click at the same moment): the second waits for the first, then is refused 409 SAME_PLAN: no second charge, audit line or event", both.filter((b) => b.status === "rejected" && /SAME_PLAN/.test(JSON.stringify((b.reason as { getResponse?: () => unknown }).getResponse?.()))).length === 1);
+  ok("PF-16 pass (raise): a dearer plan mid-period applies at once and charges the prorated difference once, the amount the preview showed; our plan, one audit line, one plan.changed", charged.length === 1 && charged[0].cents === pr2.amountDueNowCents && planOf() === "firm" && events() === 1 && sql(`select count(*) from audit_event where action = 'platform.plan.changed' and detail->>'firmId' = '${FIRM}'`) === "1", { both: both.map((b) => b.status), charged });
+  ok("PF-16 fail (raise, double click at the same moment): the second is refused (409 PLAN_CHANGE_IN_PROGRESS, never waited for): no second charge, audit line or event", both.filter((b) => b.status === "rejected" && /PLAN_CHANGE_IN_PROGRESS|SAME_PLAN/.test(JSON.stringify((b.reason as { getResponse?: () => unknown }).getResponse?.()))).length === 1);
+  await setSub("ACTIVE", 15);
+  const t0 = Date.now(), pf = await preview("firm"), storm = Promise.allSettled(Array.from({ length: 12 }, () => change("firm", "month", pf))), other = await db.platformPlan.count(), stormed = await storm;
+  ok("PF-16 pass (break round 2, the pool): 12 changes at the same moment freeze nothing: an unrelated read answers, all 12 end within 15 s, one charge", other > 0 && Date.now() - t0 < 15_000 && stormed.filter((r) => r.status === "fulfilled").length === 1 && planOf() === "firm", { ms: Date.now() - t0, ok: stormed.filter((r) => r.status === "fulfilled").length });
 
   // -------------------------------------------------------------------- Stripe and ours disagreeing (review M2, break B3)
   await setSub("ACTIVE", 15);
@@ -203,6 +200,15 @@ try {
   stripe.subs.set("sub_f1", { ...stripe.subs.get("sub_f1")!, priceId: "price_firmMonth", unitAmount: 20_000 });   // Stripe moved, our write failed
   const c2 = chargesF1(), rep = await confirm("firm");
   ok("PF-16 pass (repair): when Stripe already bills the plan and ours did not follow, the same change completes our side only: no Stripe call, no charge", rep.kind === "repair" && planOf() === "firm" && chargesF1() === c2, rep);
+  sql(`insert into platform_plan (id, code, name, seats_limit, stripe_monthly_price_id) values (gen_random_uuid(), 'pf16-twin', 'Twin (Sample)', 1, 'price_liteMonth')`);
+  await setSub("ACTIVE", 15);
+  stripe.subs.set("sub_f1", { ...stripe.subs.get("sub_f1")!, priceId: "price_liteMonth", unitAmount: 5_000 });
+  const shared = await problemOf(() => preview("pf16-lite"));
+  sql(`update platform_plan set active = false where code = 'pf16-twin'`);
+  sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) select gen_random_uuid(), '${FIRM}', 'pf16r.' || g || '@example.com', '{CASE_OFFICER}', 'pf16r-' || g, 'seed:pf16r', now() + interval '72 hours' from generate_series(1, 5) g`);
+  const repC = await problemOf(() => confirm("pf16-lite"));
+  sql(`update platform_invitation set revoked_at = now() where invited_by = 'seed:pf16r'`);
+  ok("PF-16 fail (repair, break round 2 + review R2-m1): a price two plans share repairs nothing (409 PLAN_PRICE_SHARED); a repair to a smaller plan with too many staff → 409 DOWNGRADE_CONFLICTS; the plan stays", shared?.body.code === "PLAN_PRICE_SHARED" && repC?.body.code === "DOWNGRADE_CONFLICTS" && planOf() === "team", { shared, repC });
   await setSub("ACTIVE", 15);
   failOn = "fail";
   const unconf = await problemOf(() => confirm("firm")); failOn = null;
@@ -213,13 +219,11 @@ try {
   sql(`insert into platform_invitation (id, firm_id, email, roles, token_hash, invited_by, expires_at) select gen_random_uuid(), '${FIRM}', 'pf16.' || g || '@example.com', '{CASE_OFFICER}', 'pf16-' || g, 'seed:pf16', now() + interval '72 hours' from generate_series(1, 5) g`);
   const pl = await preview("pf16-lite"), cl = await problemOf(() => change("pf16-lite", "month", pl));
   const seatC = cl?.body.conflicts?.find((c: { metric: string }) => c.metric === "seats");
-  ok("PF-16 fail (lower): with too many staff the preview lists the conflict and the change is refused 409 DOWNGRADE_CONFLICTS (used, limit, reduce 3, SA-4-56's words); nothing scheduled or booked",
-    pl.kind === "renewal" && pl.conflicts.some((c: { metric: string }) => c.metric === "seats") && cl?.status === 409 && seatC?.reduce === 3 && /Remove 3 staff/.test(cl.body.detail) && stripe.renewals.size === 0 && open() === "0", { pl, cl });
+  ok("PF-16 fail (lower): with too many staff the preview lists the conflict and the change is refused 409 DOWNGRADE_CONFLICTS (used, limit, reduce 3, SA-4-56's words); nothing scheduled or booked", pl.kind === "renewal" && pl.conflicts.some((c: { metric: string }) => c.metric === "seats") && cl?.status === 409 && seatC?.reduce === 3 && /Remove 3 staff/.test(cl.body.detail) && stripe.renewals.size === 0 && open() === "0", { pl, cl });
   sql(`update platform_invitation set revoked_at = now() where firm_id = '${FIRM}' and invited_by = 'seed:pf16'`);
   const cL = chargesF1(), lw = await confirm("pf16-lite");
   const seatsNow = (await new PgEntitlements(db, () => clock.now()).limitOf(FIRM, "seats")).limit;
-  ok("PF-16 pass (lower): a cheaper plan books for the renewal (a Stripe schedule at the period's end, no charge, no refund) and the lower limits apply at once (PF-15: seats " + seatsTeam + " → " + (used + 2) + ")",
-    lw.kind === "renewal" && !lw.chargedNow && stripe.renewals.get("sub_f1")?.priceId === "price_liteMonth" && planOf() === "team" && seatsNow === used + 2 && chargesF1() === cL && pl.refund === false, { lw, seatsNow });
+  ok("PF-16 pass (lower): a cheaper plan books for the renewal (a Stripe schedule at the period's end, no charge, no refund) and the lower limits apply at once (PF-15: seats " + seatsTeam + " → " + (used + 2) + ")", lw.kind === "renewal" && !lw.chargedNow && stripe.renewals.get("sub_f1")?.priceId === "price_liteMonth" && planOf() === "team" && seatsNow === used + 2 && chargesF1() === cL && pl.refund === false, { lw, seatsNow });
   const blocked = await problemOf(() => preview("firm")), blockedY = await problemOf(() => preview("team", "year"));
   ok("PF-16 fail (review B1, break B1/M4): while a renewal change is booked, a raise now or a period change → 409 PLAN_CHANGE_BOOKED (withdraw first): Stripe's schedule and ours never disagree", blocked?.body.code === "PLAN_CHANGE_BOOKED" && blockedY?.body.code === "PLAN_CHANGE_BOOKED" && chargesF1() === cL, { blocked, blockedY });
   const wd = await walls.withFirm(FIRM, () => changes.withdraw(owner));
@@ -239,8 +243,7 @@ try {
   await setSub("ACTIVE", 10);
   const c0 = chargesF1(), py = await preview("team", "year"), my = await change("team", "year", py);
   const fresh = stripe.subs.get("sub_f1")!, ourEnd = new Date(sql(`select to_char(current_period_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from platform_subscription where firm_id = '${FIRM}' and status <> 'ENDED'`));
-  ok("PF-16 pass (monthly → yearly): applies at once with a fresh year from today, charged once (the year less the unused month); our period end is Stripe's new one (break M5)",
-    my.kind === "now" && fresh.interval === "year" && Math.abs(fresh.periodEnd!.getTime() - (fake.now().getTime() + 365 * DAY)) < 2000 && chargesF1() === c0 + 1 && my.chargedCents === py.amountDueNowCents && Math.abs(ourEnd.getTime() - fresh.periodEnd!.getTime()) < 2000, { my, fresh, py, ourEnd });
+  ok("PF-16 pass (monthly → yearly): applies at once with a fresh year from today, charged once (the year less the unused month); our period end is Stripe's new one (break M5)", my.kind === "now" && fresh.interval === "year" && Math.abs(fresh.periodEnd!.getTime() - (fake.now().getTime() + 365 * DAY)) < 2000 && chargesF1() === c0 + 1 && my.chargedCents === py.amountDueNowCents && Math.abs(ourEnd.getTime() - fresh.periodEnd!.getTime()) < 2000, { my, fresh, py, ourEnd });
   stripe.subs.set("sub_f1", { ...fresh, periodEnd: new Date(clock.now() + 200 * DAY) });
   const ym = await confirm("team", "month");
   ok("PF-16 fail (yearly → monthly): not now: booked at the anniversary (a schedule), nothing charged, no plan booking (the plan stays), one audit line", ym.kind === "renewal" && stripe.renewals.get("sub_f1")?.priceId === "price_teamMonth" && chargesF1() === c0 + 1 && open() === "0" && sql(`select count(*) from audit_event where action = 'platform.plan.period_booked'`) === "1", ym);
@@ -253,8 +256,7 @@ try {
   const c1 = chargesF1(), endBefore = sql(`select trial_ends_at from platform_subscription where firm_id = '${FIRM}' and status <> 'ENDED'`), ev0 = events();
   const stripeEnd = stripe.subs.get("sub_f1")!.trialEnd?.getTime();
   const pt = await preview("firm"), tr = await change("firm", "month", pt);
-  ok("PF-16 pass (trial): during the trial a switch up applies at once, charges nothing, and the trial end is unchanged, ours and Stripe's (SA-4-56); one plan.changed",
-    pt.kind === "trial" && pt.amountDueNowCents === 0 && tr.kind === "trial" && !tr.chargedNow && planOf() === "firm" && sql(`select trial_ends_at from platform_subscription where firm_id = '${FIRM}' and status <> 'ENDED'`) === endBefore && stripe.subs.get("sub_f1")!.trialEnd?.getTime() === stripeEnd && chargesF1() === c1 && events() === ev0 + 1, { pt, tr });
+  ok("PF-16 pass (trial): during the trial a switch up applies at once, charges nothing, and the trial end is unchanged, ours and Stripe's (SA-4-56); one plan.changed", pt.kind === "trial" && pt.amountDueNowCents === 0 && tr.kind === "trial" && !tr.chargedNow && planOf() === "firm" && sql(`select trial_ends_at from platform_subscription where firm_id = '${FIRM}' and status <> 'ENDED'`) === endBefore && stripe.subs.get("sub_f1")!.trialEnd?.getTime() === stripeEnd && chargesF1() === c1 && events() === ev0 + 1, { pt, tr });
   await setSub("TRIAL", 1, new Date(clock.now() + 1 * DAY).toISOString());
   const pt2 = await preview("firm");
   await fake.advance({ days: 1, minutes: 1 });   // the trial ends between the preview and the confirmation

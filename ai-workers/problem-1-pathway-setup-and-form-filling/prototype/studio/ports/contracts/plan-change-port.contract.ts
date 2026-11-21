@@ -1,7 +1,5 @@
-// PF-16 part 1a: PlanChangePort's contract (ports/plan-change.ts). Run by fakePlanChange and by StripePlanChange on
-// recorded Stripe answers (tests/check_pf16_billing_rules.ts). What PlanChanges relies on: the current item and price;
-// a preview whose proration is positive for a raise and zero without proration; one charge per key; one schedule per key,
-// and its release; a malformed price refused before any call.
+// PF-16 part 1a: PlanChangePort's contract, run by fakePlanChange and by StripePlanChange on recorded answers: the item and
+// price; a raise previews a positive proration, a trial none; one charge and one schedule per key; release; bad input refused.
 import { defineContract, expect, expectRefused } from "./contract.ts";
 import type { PlanChangePort } from "../plan-change.ts";
 

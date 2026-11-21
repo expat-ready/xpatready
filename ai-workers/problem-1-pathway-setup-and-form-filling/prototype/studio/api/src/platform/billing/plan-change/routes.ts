@@ -1,6 +1,5 @@
-// PF-16 part 1a: the plan change routes. Owner only: both plan keys (PF-3's catalogue gives agent/subscription:upgrade and
-// :downgrade to the Owner alone), so an Admin gets 403 before anything is read. Not @HoldOpen: a held firm pays first
-// (402). Every body goes through PF-28's one input rule (422 with the field named).
+// PF-16 part 1a: the plan change routes. Owner only (both plan keys: only the Owner holds them), not @HoldOpen (a held firm
+// pays first, 402); bodies through PF-28's parseInput (422).
 import { Body, Controller, HttpCode, Inject, Post, Req } from "@nestjs/common";
 import { parseInput } from "../../http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";

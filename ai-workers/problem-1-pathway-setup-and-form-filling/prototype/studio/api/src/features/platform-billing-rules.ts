@@ -1,6 +1,5 @@
-// PF-16 part 1a (BACKLOG PF-16): plan changes on our own page (Stripe's portal keeps card, invoices and cancel; its plan
-// switching is off). PlanChanges over BillingPort's prices, PlanChangePort (Stripe's preview, change now, schedule at the
-// renewal) and PF-15 part 1b's PlanBookings. Stripe test-mode keys only; with no key (local) the fakes, as PF-5 does.
+// PF-16 part 1a: the plan change routes; PlanChanges over BillingPort's prices, PlanChangePort (Stripe with a key, the fake
+// without) and PF-15 part 1b's PlanBookings.
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { fakePlanChange } from "../../../ports/plan-change.ts";

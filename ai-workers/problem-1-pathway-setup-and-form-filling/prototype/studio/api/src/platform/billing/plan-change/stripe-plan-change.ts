@@ -1,13 +1,7 @@
-// PF-16 part 1a: PlanChangePort's Stripe adapter (stripe 23.1.0, pinned API 2026-10-28.endive). Test-mode keys only, never
-// in a lane: CI runs it on recorded Stripe answers (tests/check_pf16_billing_rules.ts). Each changing call carries an
-// idempotency key, so a retried request never charges or books twice.
-//   * preview: invoices.createPreview (POST /v1/invoices/create_preview) with subscription_details (items, proration
-//     behaviour, proration date, a fresh anchor); its proration lines are those whose parent says proration;
-//   * now: subscriptions.update on the one item, proration always_invoice (a raise is charged at once) or none (a trial),
-//     payment_behavior error_if_incomplete (a declined card changes nothing);
-//   * at the renewal: a subscription schedule from the subscription, its current phase kept to the period's end and then
-//     the new price, end_behavior release (no proration, no refund). Unconfirmed on a live test-mode account (no lane
-//     reaches Stripe): to be run once on the Mac with test keys before the first real firm.
+// PF-16 part 1a: PlanChangePort's Stripe adapter (stripe 23.1.0, API 2026-10-28.endive); test-mode keys only, recorded answers
+// in CI; each changing call has an idempotency key. Preview: invoices.createPreview; now: subscriptions.update (always_invoice
+// or none, error_if_incomplete); at the renewal: a schedule from the subscription, end_behavior release. Unconfirmed on a
+// live test-mode account (no lane reaches Stripe): run once on the Mac with test keys before the first real firm.
 import Stripe from "stripe";
 import { ChangePreview, IdempotencyKey, PaymentDeclined, PlanSubscription, PriceChange, RenewalChange, type PlanChangePort } from "../../../../../ports/plan-change.ts";
 import { SubscriptionId } from "../../../../../ports/billing.ts";

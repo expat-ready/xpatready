@@ -1,11 +1,7 @@
-// PF-16 part 1a (SA-4-28..31, SA-4-49, -50, -55; SA-3-58): our own plan changes, so Stripe's Customer Portal never
-// switches plans (its plan switching is off, PORTAL_FEATURES). The Stripe calls a plan change needs, beside BillingPort:
-// the subscription's one item and price, a preview of the change (Stripe's invoices.createPreview: POST
-// /v1/invoices/create_preview, stripe 23.1.0; retrieveUpcoming was removed in stripe-node 18.0.0, basil), the change now
-// (with Stripe's proration, or none during a trial), and a change at the renewal (a subscription schedule) and its
-// release. The preview and the change take the same proration date, so the amount charged is the amount shown. Two
-// adapters pass one contract (ports/contracts/plan-change-port.contract.ts): the fake here and the Stripe adapter
-// (api/src/platform/billing/plan-change/stripe-plan-change.ts). This folder imports only zod and its own files.
+// PF-16 part 1a (SA-4-28..31, -49, -50, -55; SA-3-58): the Stripe calls our own plan change needs beside BillingPort (the
+// portal's plan switching is off): the one item and price, a preview (invoices.createPreview, stripe 23.1.0), the change now,
+// a change at the renewal (a schedule) and its release. Preview and change share one proration date, so the amount charged
+// is the amount shown. Fake here, Stripe adapter in billing/plan-change/; one contract. This folder imports only zod.
 import { z } from "zod";
 import { PriceId, STRIPE_STATUSES, SubscriptionId } from "./billing.ts";
 
