@@ -1,0 +1,30 @@
+{
+  "item": "R1.19",
+  "name": "19 A firm is created once, with plan, trial and owner",
+  "pr": 2857,
+  "sha": "df1d8824e38dc5158343b6be4c6fa698bab2e1a0",
+  "run_id": "44961670040",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/44961670040",
+  "at": "2026-11-21T23:28:08.906Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_19.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/44961670040/artifacts/14729757378",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.19-df1d8824e38dc5158343b6be4c6fa698bab2e1a0.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
