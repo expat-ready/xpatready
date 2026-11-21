@@ -415,3 +415,34 @@ The open Minors from rounds 1 to 9 are unchanged (m5, m7, m8, m10, m12, m13, n1 
 **Journey score: 8/10, unchanged** (a pass, no criterion at 0). The diff adds audit lines and a test. It changes no screen or flow. The one new behaviour that matters to a user (a held firm's staff cannot open a case, an active firm's can) was proven over HTTP in the suite above. I wrote no new journey-test report, because there is no new screen or flow to walk.
 
 Verdict: Approve 9dc6a19eda13c0a5927b12d8733ccc4696e6f2cc
+
+## Round 11 (diff-only, 41200fa1): merge of origin/main only (P-270); head `41200fa120fda7b310afe6de016acfb2f2596437`
+
+Approved before this: `9dc6a19ed` (round 10). `575beeee` adds only records on top of it: `git diff --stat 9dc6a19ed 575beeee` touches only `screens/PF-5/break-report-part2.md` and this file. The new head is a merge with parents `575beeee` and `ed24d2649`. `ed24d2649` is origin/main now. The merge base is `0dece71e0` (round 10's merge). Main brings 144 studio files: FO-10 assignment rules, FO-13c conflict checks, PF-18n notifications and the Needs you list, PF-18h home, PF-24w (PLATFORM_ENVIRONMENT required; the sign-in and Sample seed settings moved into the one loader), PF-5s1 sign-up screens, CS-DL3 milestones, journeys, browser checks, and three migrations.
+
+1. **Only main's changes came in.** `git show --remerge-diff 41200fa12` over the studio shows one hand-resolved file, `api/src/platform/MODULE.md`. Every other file is git's automatic merge. Of this PR's own files, main touches only `MODULE.md` and `ports/events.ts`; I compared the two lists of changed files from the merge base.
+   * **The card:** the conflict is one hunk. This PR's long billing invariant is kept, and it contains main's short line word for word as its first clause. Main's new PF-24w line ("`PLATFORM_ENVIRONMENT` is required; no default …") is kept word for word.
+   * **Size and markers:** 39 lines, no markers left.
+   * **Against origin/main**, the card differs in exactly the same two in-line insertions as in round 9: the billing Purpose tail and the hold invariant.
+   * **Card checks:** `module-cards.py tree` PASS (15 cards). `check-module-cards.sh` PASS (44 fixtures). `module-cards.py pr` with `BASE=origin/main` over the 20 files this PR changes PASS, with no frozen-line failure. Only Tests, Tables and Entry points are frozen, and the PR's frozen items sit in `MODULE.rows/PF-5p2.md`, which is unchanged. I gave it a test body with `Card unchanged:`, because GitHub's API returned no PR body to this session. Without that line, it would still name api-core and api-features, exactly as in rounds 5 to 10.
+   * **`ports/events.ts`:** merged without a conflict. This PR's `FIRM_ACTIVATED`, `FIRM_SUBSCRIPTION_CHANGED` and `FIRM_PAYMENT_HOLD` are present, next to main's new `CONFLICT_CHECKED` and its payload. There are 42 keys, each string unique (parsed).
+2. **No bad interaction with main.**
+   * **PF-24w (configuration), the point that matters most.** `runtimeSignUpPorts` and `runtimeBillingPorts` read Stripe only through `platformConfig()`, and identity through `identityConfig()`. On main, `identityConfig()` now shapes the one loader's answer instead of reading `PLATFORM_*` itself, and its signature and return shape are unchanged. Neither function reads a `PLATFORM_*` variable directly. The only direct reads are `STUDIO_PUBLIC_URL` and `STUDIO_PORT`, which are not loader settings; main's own `platform-messages.ts`, `front-office-sales.ts` and booking `runtime-ports.ts` read them the same way. `PLATFORM_ENVIRONMENT` being required changes nothing for billing: `runtimeBillingPorts`' "not local and no key → 503" rule reads the loaded environment. check_pf24w_environment gives 28/28 on the merged tree.
+   * **The hold over main's new signed-in routes (read from the code, not walked).**
+     * FO-10's three `assignment-rules` routes and FO-13c's five conflict-check routes declare `@PermissionKeys`. PF-18n's five `me/notifications` and `me/needs-you` routes declare `@AnyStaff`.
+     * PF-4's guard sets `req.platform` for both kinds (guard.ts l. 120). None is `@HoldOpen` or in `IDENTITY_OPEN`, so the app-wide `PaymentHoldGate` answers 402 for a held firm. That is right for assignment and conflict checks: they are case work (SA-4-25).
+     * Note for the tech lead (not this PR's to change): a held firm's own notification bell and Needs you list also answer 402. That follows the stated invariant ("402 everywhere but `@HoldOpen` routes, `me`, the two `me/terms` routes and the session routes"), and PF-18n sends no hold notification (grep). If the bell should stay readable on hold, that is one `@HoldOpen()` on PF-18n's controllers in a later row.
+   * **BYPASS_USES and the walls.** Main does not touch `firm-scope.ts`, so this PR's two per-firm uses are as approved in round 10. check_pf12b gives 56/56 and check_pf12_walls 100/100.
+   * **main.ts, `billing/`, `firms/`, `identity/guard.ts`, `features/platform-firms.ts`:** main touches none of them. Its three migrations (FO-10, PF-18n, FO-13c) touch no billing table, and this PR adds none.
+3. **Checks run here (head `41200fa12`, Postgres on 54329, live AI off, US$0, never :4400).**
+   * Suites, all exit 0: check_pf5_signup_billing 90/90, check_pf12b_bypass_audit 56/56, check_pf12_walls 100/100, check_pf24w_environment 28/28, check_pf18n_notifications 34/34.
+   * `tsc -p api/tsconfig.json --noEmit`: the same 24 lines as round 10, all in five test files outside this PR's diff. No new errors.
+   * Module-card checks as in point 1. The builder's other suites (forms_qa53, pf19p, pf5t, pf5v, pf0p_ports, aud1b) are not repeated here.
+
+**Blocker:** none. **Major:** none. **New Minor:** none. The tech-lead note on PF-18n's bell under hold is a question for a later row, not a finding against this PR.
+
+The open Minors are unchanged: rounds 1 to 9 (m5, m7, m8, m10, m12, m13, n1 second half, n2, n3, n5, r4, n7), and round 10's r10-1 (tell Lead B in the PR why the bypass line is written in its own transaction) and r10-2 (no assertion that a signed event matching no firm writes zero lines).
+
+**Journey score: 8/10, unchanged** (a pass, no criterion at 0). The merge changes no behaviour of this PR's journeys. I wrote no new journey-test report, because there is no new screen or flow to walk.
+
+Verdict: Approve 41200fa120fda7b310afe6de016acfb2f2596437
