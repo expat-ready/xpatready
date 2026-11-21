@@ -24,6 +24,7 @@ import { StructurePage } from "@/pages/structure";
 import { EditionImpactPage, HeldFilePage, LibraryChangePage, MergeReviewPage, FormFieldsPage } from "@/pages/review-items";
 import { ChangeBatchPage, ProposalsPage } from "@/pages/proposals";
 import { RuntimeApp } from "@/runtime/cases";
+import { ClientsApp } from "@/runtime/clients"; // CS-K1s
 import { DemoInbox, LinkApp } from "@/runtime/link-page";
 import { draftBarWords } from "../../contracts/status-words";
 import { FINISHED_STORY_TIP, FinishedStoryDialog } from "@/components/demo-finished-story";
@@ -40,7 +41,7 @@ export default function App() {
   // simulated people.
   // BK-4a: the sign-in page (P-484 (3): a page, not a gate), one notice for every change of person, and a stored person
   // this workspace does not know goes to the sign-in page (BR-6) instead of a refusal on every screen.
-  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
+  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
 }
 
 /** BK-4a BR-6: a person chosen in this browser who is not one of the simulated people opens the sign-in page. A browser

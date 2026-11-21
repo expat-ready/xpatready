@@ -10,7 +10,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { Db, Workspace } from "./core.ts";
 import { problem, type StaffContext } from "./platform/identity/keys.ts";
-import { ClientListQuery, INVISIBLE } from "../../contracts/runtime.ts";
+import { ClientListQuery, ClientOfferView, INVISIBLE } from "../../contracts/runtime.ts";
+import { OFFER_REFUSED, offerOf, principalNameOf } from "./case-clients/prospect-won.ts"; // CS-K1s
 import { FoPersonInvalidInput, hasWord, type FoPersonPort } from "../../ports/fo-person.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -107,10 +108,11 @@ export class Clients {
     const where: Prisma.CaseClientWhereInput = { workspaceId: await this.ws.id(), firmKey,
       ...(q ? { OR: [{ displayName: { contains: like, mode: "insensitive" } }, ...(code ? [{ clientNumber: Number(code[1]) }] : [])] } : {}) };
     const [rows, total] = await Promise.all([
-      this.db.caseClient.findMany({ where, orderBy: [{ clientNumber: "desc" }], skip: (p - 1) * PAGE, take: PAGE }),
+      // CS-K1s: each client's number of cases (the list's "Cases" column), counted in the client's own firm.
+      this.db.caseClient.findMany({ where, orderBy: [{ clientNumber: "desc" }], skip: (p - 1) * PAGE, take: PAGE, include: { _count: { select: { cases: { where: { firmKey } } } } } }),
       this.db.caseClient.count({ where }),
     ]);
-    return { clients: rows.map(line), page: p, page_size: PAGE, total };
+    return { clients: rows.map((c) => ({ ...line(c), cases: c._count.cases })), page: p, page_size: PAGE, total };
   }
 
   /** GET /api/runtime/clients/:id: one client of the firm with its cases' ids and numbers; another firm's is 404. */
@@ -120,6 +122,36 @@ export class Clients {
     const c = await clientOfFirm(this.db, { workspaceId: await this.ws.id(), firmKey, id });
     if (!c) return notFound();
     const cases = await this.db.case.findMany({ where: { clientId: c.id, firmKey }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, caseNumber: true } });
-    return { ...line(c), created_at: c.createdAt, cases: cases.map((k) => ({ id: k.id, case_number: k.caseNumber })) };
+    // CS-K1s: the file owner (FO-8 sets it from the won prospect's owner), a staff member of this firm, by name.
+    const owner = c.fileOwner && UUID.test(c.fileOwner) ? await this.db.platformStaff.findFirst({ where: { firmId: ctx.firmId, id: c.fileOwner }, select: { id: true, displayName: true } }) : null;
+    // CS-K1s (breaker M1): the signed-in staff member's own case-side person (the identity join's actor_id), so the page
+    // opens this client's cases as them (the case pages read the simulated person), never as a person of another firm.
+    const me = await this.db.platformStaff.findFirst({ where: { firmId: ctx.firmId, id: ctx.staffId }, select: { actorId: true } });
+    // FO-13s part 2 (QA-610, R1.110): the front office's person (null for a company), so the page shows their identity checks.
+    return { ...line(c), created_at: c.createdAt, fo_person_id: c.foPersonId ?? null, file_owner: owner ? { staff_id: owner.id, name: owner.displayName } : null, viewer_actor_id: me?.actorId ?? null, cases: cases.map((k) => ({ id: k.id, case_number: k.caseNumber })) };
+  }
+
+  /** CS-K1s: GET /api/runtime/clients/:id/offer: the client's "Open a case?" offer, read through FO-8's one rule (offerOf)
+   *  with no second one: open, with what the opening would pre-fill, or gone with the opening's own words. Ids and names
+   *  only, never the prospect's answers; another firm's client is 404, as the client read. */
+  async offer(ctx: StaffContext, id: string): Promise<ClientOfferView> {
+    const firmKey = await this.firm(ctx);
+    if (!firmKey) return notFound();
+    const c = await clientOfFirm(this.db, { workspaceId: await this.ws.id(), firmKey, id });
+    if (!c) return notFound();
+    const o = await offerOf(this.db, c);
+    const gone = !o ? "NO_OFFER" : o.state === "OPEN" ? null : o.state;
+    if (gone || !o) return ClientOfferView.parse({ offer: null, reason: gone ?? "NO_OFFER", detail: OFFER_REFUSED[gone ?? "NO_OFFER"] });
+    const [combination, rep, prospect] = await Promise.all([
+      o.combinationId ? this.db.combination.findUnique({ where: { id: o.combinationId }, select: { id: true, label: true } }) : null,
+      o.representativeActorId ? this.db.platformStaff.findFirst({ where: { firmId: ctx.firmId, actorId: o.representativeActorId }, select: { id: true, displayName: true } }) : null,
+      this.db.foProspect.findFirst({ where: { id: o.prospectId, firmId: ctx.firmId }, select: { number: true } }),
+    ]);
+    return ClientOfferView.parse({ offer: {
+      combination: combination ? { id: combination.id, label: combination.label } : null,
+      principalName: principalNameOf(c.displayName),
+      representative: rep ? { staffId: rep.id, name: rep.displayName } : null,
+      wonVia: o.wonVia ?? "CONVERTED", prospectNumber: prospect?.number || null,
+    } });
   }
 }
