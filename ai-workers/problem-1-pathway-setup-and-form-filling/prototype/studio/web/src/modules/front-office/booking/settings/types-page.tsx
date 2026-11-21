@@ -3,7 +3,7 @@
 // list and a side panel (Definition · Hosts · Share · Preview). Edit with agent/booking-event-type:edit (Owner, Admin);
 // the view key :list (Case Manager, Case Officer, Read-only) shows the same pages with values as text and no buttons;
 // no :list, no menu entry and the refusal. Every rule is FO-3a part 1a's on the server; its refusals show on the field.
-// Timings (the firm's defaults and the type's overrides under Advanced) are part 3b: their routes are not on main.
+// FO-3st3b: the type's own timings under Advanced (type-timings.tsx); the firm's on Settings → Timings (timings-page.tsx).
 import * as React from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Field, Input, Notice, Panel, Pill, Select, Table, Textarea } from "@/components/ui/controls";
@@ -14,6 +14,7 @@ import { StaffList } from "@/modules/platform/staff/contract";
 import { allZones, hhmm } from "../../booking-public/time";
 import { nextDay, wallIso } from "../availability/contract";
 import { BOOKINGS_AREA, TYPES_HOME } from "../area";
+import { TypeTimingsSection } from "./type-timings";
 import { caseType, CONFIGURE, dayWords, embedCode, HostSets, MODES, Preview, publicUrl, PURPOSES, STAFF_MANAGE, todayIn, TypeDetail, TypeList, TYPES_EDIT, TYPES_LIST, type BookingType } from "./contract";
 
 const why = (e: unknown) => (e instanceof StaffApiError ? e.message : "Something went wrong. Please try again.");
@@ -107,7 +108,8 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
   const [busy, setBusy] = React.useState(false), [preview, setPreview] = React.useState(false), [copied, setCopied] = React.useState<string | null>(null);
   const t = q.data;
   const previewButton = React.useRef<HTMLButtonElement>(null);
-  React.useEffect(() => { if (t) { setDraft(draftOf(t)); setSets(Object.fromEntries(t.hostSets.map((h) => [h.staffId, h.setId ?? ""]))); setErrors({}); setProblem(null); } }, [t?.id, t?.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the panel
+  const timingVersion = React.useRef<number | null>(null);   // FO-3st3b: a timing save's new version keeps the typed Definition
+  React.useEffect(() => { if (t && t.version === timingVersion.current) return; if (t) { setDraft(draftOf(t)); setSets(Object.fromEntries(t.hostSets.map((h) => [h.staffId, h.setId ?? ""]))); setErrors({}); setProblem(null); } }, [t?.id, t?.version]);   // eslint-disable-line react-hooks/exhaustive-deps -- a new answer resets the panel
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const toggle = (k: "modes" | "hostStaffIds", v: string) => set(k, draft[k].includes(v) ? draft[k].filter((x) => x !== v) : [...draft[k], v]);
   const save = async (e: React.FormEvent) => {
@@ -187,12 +189,16 @@ function TypePanel({ id, edits, firmName, people, onClose }: { id: string | null
                   </div>))}
                 {errors.hostStaffIds ? <p role="alert" className="text-xs text-text-danger">{errors.hostStaffIds}</p> : null}
               </section>
-              {!ro ? (
+              {!ro || t ? (
                 <section aria-labelledby="fo3st3-adv" className="flex flex-col gap-2 border-t border-border pt-3" data-advanced>
                   <h3 id="fo3st3-adv" className="text-sm font-semibold">Advanced</h3>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
-                  <p className="text-xs text-text-muted">What a booker may do from the link in their email. Timing overrides come with Timings.</p>
+                  {!ro ? <>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowReschedule} onChange={(e) => set("allowReschedule", e.target.checked)} /> Allow reschedule</label>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowCancel} onChange={(e) => set("allowCancel", e.target.checked)} /> Allow cancellation</label>
+                    <p className="text-xs text-text-muted">What a booker may do from the link in their email.</p>
+                  </> : null}
+                  {t ? <TypeTimingsSection typeId={t.id} onSaved={(version, sent) => { if (sent !== t.version) { void qc.invalidateQueries({ queryKey: ["fo", "booking-types", "one", t.id] }); return; } timingVersion.current = version; qc.setQueryData<TypeDetail>(["fo", "booking-types", "one", t.id], (o) => (o ? { ...o, version } : o)); }} />
+                    : <p className="text-xs text-text-muted">This type uses the firm's timings. Save it first to change them for this type.</p>}
                 </section>) : null}
               {t ? (
                 <section aria-labelledby="fo3st3-share" className="flex flex-col gap-2 border-t border-border pt-3" data-share>

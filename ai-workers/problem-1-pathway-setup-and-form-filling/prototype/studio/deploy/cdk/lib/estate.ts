@@ -10,6 +10,7 @@ import type { Construct } from "constructs";
 import { backupPlan } from "./backup.ts";
 import { Observability } from "./observability.ts";
 
+import { AppService } from "./service.ts"; // PF-8b
 export const HOME_REGION = "ca-central-1";
 export const BACKUP_DAYS = 35; // the RDS maximum; SA-2-21's and SA-11-32's "backups 35 days"
 export type Stage = "staging" | "production";
@@ -21,6 +22,7 @@ export class EstateStack extends Stack {
   readonly key: kms.Key;
   readonly vpc: ec2.Vpc;
   readonly database: rds.DatabaseInstance;
+  readonly service: AppService;
   readonly buckets: Record<(typeof BUCKETS)[number], s3.Bucket>;
   readonly observability: Observability; // PF-23c: the app's log group (PF-8b's task logs here), filters and alarms
 
@@ -71,6 +73,8 @@ export class EstateStack extends Stack {
       copyTagsToSnapshot: true,
       autoMinorVersionUpgrade: true,
     });
+    // PF-8b: the app service, its secrets, mail, firm addresses and sign-in pools (lib/service.ts)
+    this.service = new AppService(this, "App", { stage: props.stage, vpc: this.vpc, key: this.key, database: this.database, domain: this.node.tryGetContext("xr:domain") });
 
     // PF-23c: log group kept 90 days, metric filters and alarms to the on-call address (lib/observability.ts)
     this.observability = new Observability(this, "Observability", { stage: props.stage });
