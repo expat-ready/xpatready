@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 00:2x IST 23 Nov** (current Lead: Lead 8, local_82fee93b): #2368 FO-7ts part 3 out of the queue (shard 8 alone on main: check_pf8b_f7_data_walls from #3068 rejects its three data blocks, not in F7's lift shape); lane text sent to Lead 8 (rewrite in F7's shape, trigger gate for the UPDATE). #3001 queued but needs #2368's index: asked Lead 8 to dequeue it until #2368 merges. #3041 PF-F1b out: conflict in settings.ts; lane text sent. #3073 waits #2913.
+
 **Lead B 2 pass, 23:5x IST 22 Nov:** #3001 FO-7q Lead B re-read OK 85d577218 (own 13 files; refusals now PF-28's 422; scope unchanged, fail closed). Queues after #2368 (DW1 needs #2368's index). New BACKLOG row **FO-7q part 2** (refund actions in allowedActions, from #3036). #2368 and #3041 queued; #2913 full run (Lead 7), then #3073.
 
 **Lead B 2 pass, 23:2x IST 22 Nov:** **#3048 FO-7g part 1w and #3036 FO-7b part 1c merged.** #3041 PF-F1b Lead B re-read OK 497134613, Lead 7 labelled, queued. #2368 waits its full run. #3001 FO-7q in conflict with main: lane text sent (merge main, own files, re-run, diff-only Approve, ready, Lead B re-read; visibility stays fail closed until CS-MV1's binding line). #3073 waits #2913 (fix e379f7a9a, unlabelled).
