@@ -239,8 +239,10 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const off = answers.get("POST /api/front-office/conflict-checks unknown");
-ok("PF-28 DW2 fail: POST /api/front-office/conflict-checks answers its own 400 today (the field not named), so its probe is on the allow-list for part 3", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/front-office/conflict-checks unknown"] === "PF-28 part 3 (front-office sales)", off);
+// The fail case names no route (part 3b): parts 4-6 fix theirs in parallel, so it takes the first listed route that still
+// answers an unknown field loosely; once every part is in, none is left and the case says so.
+const offKey = Object.keys(allow.probes).find((k) => k.endsWith(" unknown") && answers.has(k) && !fine("unknown", false, answers.get(k)!)), off = offKey ? answers.get(offKey) : undefined;
+ok(`PF-28 DW2 fail: ${offKey ?? "no route"} still parses loosely (the field not named), so its probe is on the allow-list with its fix part`, offKey === undefined || FIX_PART.test(allow.probes[offKey]), { offKey, off });
 
 // PF-28 part 2c (sign-up): field errors are 422 with each field named in the page's own plain words; a verify body that
 // is not { token, code } is 422 by its shape alone.

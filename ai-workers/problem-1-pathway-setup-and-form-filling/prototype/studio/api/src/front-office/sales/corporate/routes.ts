@@ -36,7 +36,7 @@ export class CorporateController {
   engage(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.engage(staffOf(r), idParam(id, "lead"), parseInput(ENGAGE, b ?? {})); }
 
   @Get("pipelines/:type/board") @PermissionKeys("agent/prospect:show")
-  board(@Req() r: R, @Param("type") type: string, @Query() q: B) { const t = pipeline(type); return this.svc.board(staffOf(r), t, parseInput(BOARD_QUERY, q ?? {}).source); }
+  board(@Req() r: R, @Param("type") type: string, @Query() q: B) { const { source } = parseInput(BOARD_QUERY, q ?? {}); return this.svc.board(staffOf(r), pipeline(type), source); }   // the query first: the path holds no record id
 
   @Get("corporate/prospects/:id") @PermissionKeys("agent/prospect:show")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }
