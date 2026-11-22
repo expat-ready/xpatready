@@ -7,16 +7,15 @@
 # 10 s and 20 % (23 did; the other 357 moved less and keep their row, so this diff stays small). Re-dealing those runs'
 # own times with this file: longest part 1332 s of suites at 18 parts (was 1495; 1257 with every median), 988 s at 24
 # (mean 942); each part also spends about 250 s outside its suites (checkout, set-up, browser).
-# Of the 5 suites on run-suites.sh's hand-set QUARANTINE list (6 until b78 left it, 22 Nov), 4 keep their 15 Nov times (batches skip them, so they
+# Of the 6 suites on run-suites.sh's hand-set QUARANTINE list, 5 keep their 15 Nov times (batches skip them, so they
 # weigh 0 there and these times count only in the nightly full set); check_fo3st2_availability_browser.ts has none: 30 s.
 # check_b78_section_names.ts: 1230 s is its measured hang, not its pass time (it passes in 0-5 s, but twice ran into the
 # 1200 s suite limit + 30 s kill, runs 42243001915 and 42377102612; see QUARANTINE). Its nightly part is dealt that time,
 # so the part still ends inside the job limit when it hangs. Set it back to its pass time (0) when it leaves the quarantine.
-# Back to 0 on 22 Nov: it left the quarantine (the process.exit deadlock is fixed; see run-suites.sh).
 # run-suites.sh --shard balances the shards by these times (longest first); a suite missing here counts as 30 s; a
 # quarantined suite weighs 0 only where it is skipped (PR and queue checks), its time in the nightly full set.
 # Refresh the same way when many suites are new (earlier files: 15 Nov, 8 batches with 8 parts; 14 Nov, 7ca355ba7).
-check_b78_section_names.ts	0
+check_b78_section_names.ts	1230
 check_bk5_start_browser.cjs	617
 check_c102_paper_readback.ts	369
 check_bk4c_browser.cjs	288
