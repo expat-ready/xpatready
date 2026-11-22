@@ -300,7 +300,8 @@ try {
 
   failBilling = true;
   const down = await s.plans();
-  ok("PF-5 fail: Stripe unreachable → the plans still show, without prices, saying so", down.pricesAvailable === false && down.plans.length === 3 && down.plans.every((p) => p.monthly === null), down);
+  ok("PF-5 fail: Stripe unreachable → the plans still show, saying so; the plan priced in Stripe shows no price (the table's cents never stand in for it, QA-741), the plans with no price id keep the table's",
+    down.pricesAvailable === false && down.plans.length === 3 && down.plans.every((p) => p.code === "team" ? p.monthly === null && p.yearly === null : p.monthly !== null), down);
   await up(await form({ email: "nostripe@firm.example.com", firmName: "No Stripe Law" }), "10.0.0.8");
   const ns = verifyMails("nostripe@firm.example.com")[0].text;
   const nsOut = await s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(ns)?.[1], code: /code=(\d{6})/.exec(ns)?.[1] }, "10.0.1.8");
