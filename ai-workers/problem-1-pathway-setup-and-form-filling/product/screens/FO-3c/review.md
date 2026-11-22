@@ -245,6 +245,46 @@ The Lead asked for this after the fast job's `check_pf19r_every_sender.ts` S1 fa
 * The new PF-19r pass asserts the real thing: `inject[0] === MESSAGES_MAIL` and the same object carried through. The PF-19r fail case only shows the check can tell two mails apart. That is weak, but harmless.
 * The database was up (the coordinator had restarted it).
 
-Reviewer: Approve d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb
+PF-19r fix verdict: Approve d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb
 
-Verdict: Approve d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb
+## Merge-batch fix: diff 698793985..4b7d5b404f4257f4011f7b225a1280285c153cd1 (run 45019671197)
+
+Scope: only the diff, which changes `controller.ts` and `tests/check_forms_qa53.ts`. The merge 698793985 brought in main and does not touch `consultation-agreement/`. `service.ts`, `items.ts` and the feature file are byte-identical to d9bf34ad5.
+
+**The schemas keep the service's behaviour.** I parsed each case through `parseInput`.
+
+`HostLinkBody`:
+
+| Body | Answer |
+|---|---|
+| `{}`, `consent: false` or `"true"` | 422 |
+| An extra field | 422 |
+| `consent: true` | Accepted |
+
+`consent: true` is still the only way in, as the service's own check (`service.ts`, CONSENT_NEEDED) required.
+
+`OpenBody`:
+
+| Body | Answer |
+|---|---|
+| `{}`, a numeric token, a token over 200 characters | 422 |
+| `consent: "yes"`, a numeric `code`, an extra field | 422 |
+| `{ token: "abc" }` | Accepted; the service still answers the one 404 (bad format, or a well-formed unknown token) |
+| `code: "abc"` | Accepted; the service still refuses it with 422 CODE_FORMAT |
+
+`text()` trims surrounding spaces, which a real token (76 characters, no spaces) never has.
+
+**Small changes in order and wording (Minor, accepted)**
+* PF-28 parses the body before any lookup. So a host-link body error now answers 422 before the service's 404, 403 or 409, and its detail no longer quotes the consent wording. Nothing leaks: the shape is public.
+* A malformed agreement id now gets `idParam`'s 404 ("No such agreement in your firm.") rather than the service's "This agreement or link is not available." Both are 404 NOT_FOUND on a staff route.
+* Bodies refused at the schema do not count toward the door's per-IP limit. They do no lookup and write nothing.
+
+**The QA-65 listing is right.** `/api/public/consultation-agreements/open` is a public door keyed by its token. It has no signed-in person to name, and an unknown token answers the one 404. That matches `PUBLIC_WRITES`' rule, like the forms submission and unsubscribe doors already there.
+
+**What I ran**
+* The checkout at 4b7d5b404 (`api/`, `tests/` and `ports/` match): the row suite **42/42** and a scratch schema probe, the cases above.
+* `check_pf28_inputs` and `check_forms_qa53` need their own isolated copies, so I did not re-run them: the coordinator reports 47/47 and 43/43. The `parseInput` probe covers the same answers PF-28 asks for.
+
+Reviewer: Approve 4b7d5b404f4257f4011f7b225a1280285c153cd1
+
+Verdict: Approve 4b7d5b404f4257f4011f7b225a1280285c153cd1
