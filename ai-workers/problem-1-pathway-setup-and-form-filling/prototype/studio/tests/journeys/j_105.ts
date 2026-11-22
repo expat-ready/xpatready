@@ -29,7 +29,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -56,7 +56,6 @@ const j = async (method: string, path: string, body?: unknown, token?: string): 
 };
 const signIn = async (firmKey: string, email: string) => (await j("POST", "/api/platform/session/local", { firmKey, email, secondStep: true })).body?.token as string | undefined;
 /** Every .ts file under a folder (the code read for W2's "who asks the check"; read only). */
-const tsFiles = (dir: string): string[] => existsSync(dir) ? readdirSync(dir).flatMap((n) => { const p = join(dir, n); return statSync(p).isDirectory() ? tsFiles(p) : p.endsWith(".ts") ? [p] : []; }) : [];
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, options: "-c TimeZone=UTC" }) });
 await seedSampleFirms(db); await seedSampleFirmsFrontOffice(db); await db.$disconnect();
@@ -94,11 +93,15 @@ try {
   const line = sql(`select id from audit_event where firm_id = '${firmA}' order by at desc limit 1`);
   let refusedWords = "";
   try { as("xr_app", `begin; select set_config('app.firm_id', '${firmA}', true); delete from audit_event where id = '${line}'; commit;`); } catch (e) { refusedWords = String((e as { stderr?: string }).stderr ?? e); }
-  ok("R1.105 W2: underneath, an activity-log line inside its 7-year floor cannot be deleted, even by the app's database role", /never changed or deleted/.test(refusedWords) && sql(`select count(*) from audit_event where id = '${line}'`) === "1", refusedWords.slice(0, 200));
-  const callers = tsFiles(join(STUDIO, "api", "src")).filter((f) => !f.includes(`${join("platform", "keep-period")}`) && /\.check\(/.test(readFileSync(f, "utf8")) && /keep-period/.test(readFileSync(f, "utf8")));
-  const erasure = existsSync(join(STUDIO, "api", "src", "platform", "erasure"));
-  ok("R1.105 W2 (missing: AUD-5's callers, PF-21d's erasure and PF-11c's purge): a deleter asks AUD-5's keep-period check before it deletes a record inside its period",
-    callers.length > 0 && erasure, { deletersThatAskTheCheck: callers.map((f) => f.slice(STUDIO.length + 1)), erasureModule: erasure });
+  ok("R1.105 W2: underneath, an activity-log line cannot be deleted, even by the app's database role (the audit table's insert-only rule, AUD-1; not the keep-period check itself)", /never changed or deleted/.test(refusedWords) && sql(`select count(*) from audit_event where id = '${line}'`) === "1", refusedWords.slice(0, 200));
+  // A record inside its keep period: a client person of firm A whose file closed today (Sample). Deleting it through the
+  // app (PF-21d's erasure of one person, the one deleter Release 1 names) must be refused in words, the row kept.
+  const kept = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firmA}', 'Kept', 'Sample', 'kept.${Date.now()}@example.com', 'seed:J-105', now()) returning id`);
+  const del = await j("DELETE", `/api/front-office/people/${kept}`, undefined, tOwner);
+  const erase = await j("POST", "/api/platform/erasure/run", { subject: { kind: "PERSON", id: kept } }, tOwner);
+  const refusedInPeriod = [del, erase].some((r) => r.status === 409 && /keep|kept until|period/i.test(JSON.stringify(r.body ?? "")));
+  ok("R1.105 W2 (missing: AUD-5's callers, PF-21d's erasure and PF-11c's purge): deleting a record inside its keep period through the app is refused in words (409, kept until <date>) and the row stays",
+    refusedInPeriod && sql(`select count(*) from fo_person where id = '${kept}'`) === "1", { delete: del.status, erasure: erase.status });
 
   // ------------------------------------------------------------------------------------------ W3: a leaving firm is read-only
   // The subscription ended (Stripe's "canceled" → the firm on hold, PF-5 part 2's webhook): written as the webhook writes it.
@@ -141,9 +144,12 @@ try {
   ok("R1.105 W5: on day 91 Plan and billing's deletion date has passed (the 90-day clock ran out)", !!past.body?.hold?.deletionDate && new Date(past.body.hold.deletionDate).getTime() < Date.now(), past.body?.hold);
   const schedules = sql(`select string_agg(name, ',') from platform_jobs.schedule`);
   const closer = schedules.split(",").filter((n) => /clos|exit|firm.*(purge|delete)/i.test(n) && !/signup/.test(n));
-  await wait(3000);
-  ok("R1.105 W5 (missing: PF-11c, with AUD-2's write-once archive): a daily job closes a firm whose 90 days ran out, its export archived first; the firm reads closed (DELETED)",
-    closer.length > 0 && sql(`select status from platform_firm where id = '${firmL}'`) === "DELETED", { closingJobs: closer, schedules, status: sql(`select status from platform_firm where id = '${firmL}'`) });
+  // Run the closing job now (as its daily schedule would), rather than wait a day: one job sent by its own name.
+  let sent = "no closing job";
+  if (closer.length) { try { sql(`insert into platform_jobs.job (name, data) values ('${closer[0]}', '{}'::jsonb)`); sent = "sent"; } catch (e) { sent = String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; } }
+  for (let i = 0; i < 30 && sent === "sent" && sql(`select status from platform_firm where id = '${firmL}'`) !== "DELETED"; i++) await wait(1000);
+  ok("R1.105 W5 (missing: PF-11c, with AUD-2's write-once archive): the closing job, run now, closes a firm whose 90 days ran out, its export archived first; the firm reads closed (DELETED)",
+    closer.length > 0 && sql(`select status from platform_firm where id = '${firmL}'`) === "DELETED", { closingJobs: closer, sent, status: sql(`select status from platform_firm where id = '${firmL}'`) });
 
   // ------------------------------------------------------------------------------------------ W6: sizes, axe, errors
   for (const width of [400, 1024, 1440]) {
