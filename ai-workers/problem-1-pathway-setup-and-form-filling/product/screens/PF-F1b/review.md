@@ -277,3 +277,55 @@ Diff-only review of the second merge of `origin/main` into the branch, with no r
 Findings: none new. The resolution is exactly what the tech lead asked for (main's lines plus PF-F1b's `PLATFORM_FILES_LINK_KEY` setting and `files.linkKey`). Open from earlier rounds: m7 (Minor), unchanged.
 
 **Verdict: Approve** at commit e019ae83cab8c7a7be157b5320e85a19f7a21c54.
+
+## Batch 45060228524 fix (f7ce263ad..0df34a67e)
+
+Diff only: `git diff f7ce263ad 0df34a67e939d10603627a416f620372e23dc8c4`, 3 files, +12 −7. This is a runtime row with no screen, so the journey test does not apply. The database on 54329 was not used and `run-suites.sh` was not run.
+
+**1. Shard (5), job 137325464196: the root cause is confirmed by reproduction.**
+- The job log shows both contract FAIL lines ("EntitledFiles over S3Files", "boundFiles (s3)") and `S3FilesError: files: S3 put failed (CredentialsProviderError)`. The job has no AWS credentials step (0 matches for `AWS_ACCESS_KEY_ID` or `configure-aws-credentials` in its log).
+- This container does have `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` set (`env | grep ^AWS_`). That is why the PR's local runs passed.
+- I ran the f7ce263ad tree from a scratch copy outside the repo (`git archive f7ce263ad` of `prototype/` plus the root `AGENTS.md` marker, with node_modules linked):
+  - with the AWS variables unset (the command given above): the same two FAIL lines and the same `S3FilesError … (CredentialsProviderError)` as CI;
+  - with this container's credentials: 33 passed, 0 failed.
+  - So the credentials in the environment were masking the failure. This is evidence, not a guess.
+- Mechanism (`s3-files.ts:85-88`): `S3Files` passes `credentials` to `S3Client` only when the options carry them. At f7ce263ad the recorded seam carried only `requestHandler`. So the SDK's default chain (environment, then profile, then instance metadata) ran before signing and threw on a runner with none of them, before any request reached the fake handler.
+- At 0df34a67e, from the working tree, `check_pff1b_bind.ts` gave **33/0 with the AWS variables unset and 33/0 with them set**. `check_pff1_s3_files.ts` with the variables unset: **74/0**.
+
+**2. Does any other test still rely on the machine's own credentials?** None that I found. I searched for every AWS SDK use under `tests/` and `api/src`:
+- `check_pff1_s3_files.ts:33,162` passes generated `creds`. At `:111`, `new S3Files` has no credentials, but it is expected to refuse at construction and never sends a request (74/0 without credentials, above).
+- `check_pf19b2_ses.ts:140` passes `credentials: creds`. At `:264`, `noSender` has no credentials, but it refuses before any send: the assertion is `seen.length === callsNS`. It is the same pattern as before this PR and it is green on main's CI. I did not run it here (it uses 54329).
+- `tests/journeys/j_48.ts:234-235` passes made-up SES credentials, which is the same pattern the fix copies.
+- `check_pf19r_every_sender.ts:158` is a source string for the static sender scan. It is never executed.
+- `check_pf12_walls.ts:332` is Prisma's `_requestHandler`, not AWS.
+- After the fix, every `RECORDED_S3` assignment in `check_pff1b_bind.ts` carries `RECORDED_CREDS` (6 of 6 in the diff, and `grep` finds no seam assignment without it).
+
+**3. Can the seam's credentials reach production? No.**
+- `choose.ts:80-82`: the seam object (now `requestHandler | credentials`) is read from `globalThis` and refused before `chooseFiles` whenever `NODE_ENV` is production or `PLATFORM_ENVIRONMENT !== "local"`. This refusal is unchanged.
+- The app path is `boundFiles()` with no seam → `chooseFiles(env, {})` → `S3Files` with no `credentials` → the SDK's chain, which is the task role (PF-24: no key is a setting).
+- `chooseFiles` already accepted `credentials` before this PR (`choose.ts:55`). The only source change is the seam's cast type plus a comment. The made-up keys exist only in the test file, are generated per run (`randomBytes`) and are wrapped in `Secret`.
+- The case 3 production refusal and the break m2 refusals are now exercised with the credentialed seam, and they still refuse. This makes the proof stronger: a seam that carries keys is still refused outside local.
+
+**4. qa621: the root cause is confirmed, and the one-line fix is right.**
+- Job 137325464128's log shows the local start working (outbox-sweep job lines) and then the production restart dying: `configuration: PLATFORM_FILES is not set (local or s3); production does not choose a file store by itself` at `boundFiles` (`choose.ts:79`), from `platform-messages.ts:26` during `registerFeatures` (`main.ts:238`). This is PF-F1b's own case 3 rule working as designed.
+- The suite's `production()` list is documented as "every setting a production configuration requires". PF-F1b added a required production setting, so the list must name it. `filesAdapterOf` (`choose.ts:31-39`) is untouched: the fail-closed rule is not weakened.
+- `"local"` is the right value. PF-F1 case 5 allows `PLATFORM_FILES=local` in production explicitly (`check_pff1_s3_files.ts:160`). `"s3"` would need a bucket, a KMS key, a link key and real AWS, which is out of this suite's subject (the persona door).
+- Main's #3124 adds `PLATFORM_GST_HST_NUMBER`, which is optional and plain (Merge with main 2, section 3). So qa621 needs nothing else from the batch.
+- I did not run qa621 here, because it boots an isolated copy on 54329. The builder reports 16/0 with the AWS variables unset.
+
+**5. Is any other whole-server production suite affected? None.** I checked every suite that sets production and spawns `main.ts` or `isolated.sh`:
+- `check_pf24w_environment.ts:102-118`: the bare `main.ts` run has no `PLATFORM_ENVIRONMENT` and expects that refusal. It is refused by the loader before the features load.
+- `check_pf24_secrets.ts`: `:281-290` boots `main.ts` in production without the Zoom secret and expects the Zoom refusal, which the config loader gives before `registerFeatures`. Its isolated copy at `:302` runs with `PLATFORM_ENVIRONMENT=test`, where an unset `PLATFORM_FILES` is `local`. The builder reports 84/0 without credentials.
+- `check_pf19r_case_links.ts:185-186` and `check_pf4_identity.ts:499-500`: `PROD` goes only to `seedSampleOnStart` and `sampleSeedDecision`, never to a server.
+- `check_forms_qa237_qa239_held`, `check_forms_qa276_section_move`, `check_pf25_web_address` and `check_pf28_inputs` match "production" only in comments or in local copies.
+- The real production task (CDK) still sets no `PLATFORM_FILES`. This was already recorded in round 1 (lines 43-44) as intended fail-closed behaviour, with the follow-up owned by a deploy row. It has not changed.
+
+**6. Batch PRs.** From the REST file lists: #3104 (PF-5fp-2) touches the firm-profile routes and service, its test and its records. #3124 (R1.21b) touches billing, `settings.ts` (the optional GST/HST number), runtime ports, its test and its records. Neither touches S3, the files binding, credentials or CI.
+
+**Typecheck.** `tsc --noEmit -p api/tsconfig.json` reports no error in `choose.ts`, `s3-files.ts`, `check_pff1b_bind.ts` or `check_qa621_persona_door_production.ts`. The errors it prints are in the same unrelated tests as before.
+
+**Note (not blocking, no new scope).** This container's AWS credentials can hide this class of failure from any local run. Nothing in the suite would catch a future seam assignment that drops `credentials`: it would pass here and fail only on CI. It would be cheap to guard against this, for example by having `check_pff1b_bind.ts` delete `AWS_*` from `process.env` before its first import, or by running the AWS-seam checks with the variables unset as standard practice. The tech lead can decide whether it is worth a line.
+
+Findings: none open from this diff. Open from earlier rounds: m7 (Minor), unchanged.
+
+**Verdict: Approve** at commit 0df34a67e939d10603627a416f620372e23dc8c4.
