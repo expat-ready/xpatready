@@ -48,3 +48,62 @@ Out of scope, noted: the `arrival-port.ts:87` `bookingForPerson` path and the bo
 **Verdict: Changes** on `4f36b1f031b459966d8fd2f20d4804cf27a98d7b`. Fix M1-M4, each with a case that fails without the fix. The Minors should be fixed or answered in the PR. Do not add `review: approved` for this commit.
 
 Reviewer: Changes 4f36b1f031b459966d8fd2f20d4804cf27a98d7b
+
+## Round 2 (ae52eabd6)
+
+Diff-only re-review (Opus 5.5, effort high; P-277), commit `ae52eabd60b9c22715b5880c46485fb5ea38b5f4`. I read `git diff 4f36b1f03 ae52eabd6 -- …/prototype/studio` and the context it needs. **Journey test: not applicable, no score** (still no screen and no route).
+
+**What I ran** (Postgres 127.0.0.1:54329, my own scratch databases, all dropped; no app port, never :4400; US$0):
+* `check_fo9b_merge.ts`: **66/66, exit 0**.
+* Regressions, all green: fo9b_port 20, fo9a_duplicates 53, fo9a_won 25, fo9b_phone_doors 26, fo13c 46, pf12_walls 110, fo1a 124, fo1b 80, fo1p 35, fo2 116, fo2b 61, fo2p3 44, fo2p3b 53, fo2p4 30, fo2w 19, fo3_booking 133, fo9a_phone_edit 37, fo10p2 37, fo13i 27, pf12b_doors 33, pf15_booking 42, fo3a2_feed 26, fo2pv 27, fo10 42. fo3_booking failed once while my other runs were running, because its advisory-lock count is cluster-wide; it passed 133/133 when run alone.
+* `graph.mjs --check`: G1 0, G2 0.
+* Rollback: a database with every migration and then `rollback.sql`, compared with one built without this migration. The catalog hash (constraints, triggers, functions with owner and config, columns, policies, the wall reader's CREATE) is **identical**. In my raw-applied database only the last line fails, the `_prisma_migrations` delete, because that table does not exist there.
+* **Not run:** fo8_prospect_won, r130_prospect_source, csk1_client (each needs an isolated running copy), the browser suites, full `ci`.
+* **Mutation runs** on a scratch copy (one change at a time, then the 66 cases).
+* **Probes** (my own script, not committed), quoted below.
+* Privileges: `xr_wall_reader` has BYPASSRLS and SELECT+UPDATE on fo_person/fo_company (PF-12's grants, nothing new). So `FOR KEY SHARE` in the trigger works whatever the firm setting. `xr_app` has UPDATE too, so `livePersonId` works on the production client. Probe: Add with `personId` set to a tombstone, through the walled client, is followed to the survivor.
+
+### Round-1 findings: fixed, and does the test fail without the fix?
+| Finding | Fixed | Mutation (fix removed) |
+|---|---|---|
+| Review M1 = break M1 (row left on the tombstone) | Yes: `find … for update`, `livePersonId … for key share`, `fo_dup_live_party` on the 7 MOVE tables (the trigger arguments match `columns.ts` MOVE exactly) | No `for update`: 3 red. No `for key share`: red. No fo_note guard: red. **No fo_lead guard: stays green** (m4) |
+| Review M2 (live consent kept after Undo) | Refused while a copy is live | Red |
+| Review M3 = break M3 (prospect, consent after the merge) | Yes, prospect line plus msg_consent and withdrawal lines | Red, both |
+| Review M4 (409, possible match) | Yes: the loser's own email | Filter removed in `possibleMatch`: red |
+| m1 = break m2 (refusal after writes) | Yes, checked before step 1 | Red |
+| m2 (flag left on) | Yes, set off after the move and after Undo | Red |
+| m3 = break M2 (Undo overwrote survivor edits) | Yes, compared with `survivorAfter` | Red |
+| m4 (test gaps) | wonDuplicates case, booking MOVE, moved-row case, real DW3 attribution | wonDuplicates filter removed: red. Moved-row check removed: red |
+| m5 (clocks) | Partly: `valid_to` is now compared as typed, but see m3 below | (no test, acceptable) |
+| m6 = break m4 crafted column | Yes, whitelist (`UNDOABLE`) | Red. **Break m4 rest still open** (m6 below) |
+| Break m1 (Undo racing a note) | Yes. Probe: a note held uncommitted on S makes Undo wait and then refuse | **Undo's row locks removed: stays green** (m4) |
+| Break m5 (a request per row) | Batched by table, column and value | (timing only) |
+
+### New findings
+**Blocker**
+* **B1. The usual merge fails: newer into older, when the newer person's lead is flagged as a possible match of the older one.** The code is unchanged since round 1, and I missed it. The breaker found it in round 2 and I reproduced it. Probe: Add with `confirmedNew` and the old person's email flags the new lead at the old person. `mergePersons(old ← new)` then returns raw `23514 fo_lead_links_check` (P2010, a 500, not a refusal), and nothing is merged. The reverse direction works. Cause: `service.ts:93` moves L's leads onto S while `possible_match_person_id = S`. The clean-up at `:98` (`s → null where person_id = s`) runs only after that move, so it never gets a chance. This is the pair the duplicate list exists for. **Fix:** clear S-flags on L's leads (record the Change) before `:93`, and let Undo reverse it in order. Add a DW1 case for this pair.
+
+**Major**
+* **M1. New deadlocks between merge or Undo and ordinary writers on the same person (new in this commit).** Merge and Undo lock the person rows first (`find … for update`, `:49`, Undo `:209-210`) and the leads after that (`:93`, `:212`). Writers lock in the opposite order. `Activity.addNote`/`logCall` (`calls.ts:52-53`, the person's leads `for update`), engage and close-with-note lock the leads first. Then their insert takes `FOR KEY SHARE` on the person through `fo_dup_live_party`. `livePersonId` locks loser then survivor (`follow.ts:19`), while Undo locks survivor then loser. Probes:
+  * Undo against a writer following the tombstone: **Undo got 40P01 "deadlock detected"**.
+  * A random stress (as xr_app: merges, Undos, Add with personId, notes): 1 Add and 1 merge lost to 40P01. No row ended up on a tombstone.
+  * The breaker measured 22 deadlocks in 48 aligned races at this commit, against 0 at `4f36b1f03`.
+
+  Data stays safe, but ordinary note, call and engage requests, and merges, fail as raw 500s. **Fix:** take locks in the writers' order: the persons' leads (`order by id for update`) before the person rows, and in Undo the loser before the survivor. Or map 40P01 through `api/src/busy.ts` to a retryable answer. Either way, add a race case (addNote against a merge, Undo against a follow).
+
+**Minor**
+* **m1. A legitimate arrival is refused when its possible match is merged while it is in flight (new).** `possibleMatch` (`arrival.ts:47`) reads without a lock. The lead insert (`:120`) then waits in the guard, sees the tombstone, and fails with P2003. Probe: Add with `confirmedNew` and the loser's email while the merge is open fails, where it should succeed with the flag on the survivor. Web and booking arrivals share `arrive()`, and part 2's automatic merge runs at the arrival match point. Fix: follow the match through a locking read (as `livePersonId` does), or list it for part 2.
+* **m2. Once a live consent is copied, Undo can never run.** Probe: after staff withdraw the copy on S, Undo is still refused, now by the `msg_consent_withdrawal` line (`:230`). Its reason, "Something reached the merged record … contact details", misleads. The PR should say "never" rather than "while live", and the reason should name the consent.
+* **m3. Undo's "after the merge" test now mixes two clocks.** `at` is the database's `clock_timestamp()` (`:66`). Prisma fills `created_at` itself: probe, a note's `created_at` was 702 ms after its transaction began, which is the app's time when it was written. So skew still lets a row slip past the check, now for rows written through Prisma, and the comment "rows' database times" is wrong. Fix: use one clock (for example `at` from `now()` plus the database default everywhere this check reads), or record it as a residual.
+* **m4. Test gaps.**
+  * Undo's row locks (break m1) have no case: removing them stays green, although my probe shows they work.
+  * Of the seven guards only fo_note's fails alone. The "lead re-pointed" case passes through the fo_note cascade, and removing the fo_lead guard stays green.
+  * No check ties the trigger arguments to `columns.ts` MOVE, so a future MOVE column would go unguarded. Add a schema check, as DW2 does.
+* **m5. Nit.** `follow.ts:2` still says "Reads only"; it now locks.
+* **m6. Break m4 is still partly open (Minor, as in round 1).** Undo ignores its own `find(l)` (`:210`) and never checks `l.merged_into_id = s`. The breaker's crafted record, with a live "loser", still moves another person's lead and writes the crafted `survivor_before`. A forged Undo stamp is still accepted. List them in the PR, or add the tombstone check.
+
+Kept as is, per the brief, to be listed in the PR: break m3 / review m2's design (the flag is now set off after use), Undo leaving consent copies (now refused, see m2), the size (~990 lines), and the three edits outside the touch list.
+
+**Verdict: Changes** on `ae52eabd60b9c22715b5880c46485fb5ea38b5f4`. Fix B1 and M1, each with a case that fails without the fix. Fix the Minors or list them in the PR. Do not add `review: approved` for this commit.
+
+Reviewer: Changes ae52eabd60b9c22715b5880c46485fb5ea38b5f4
