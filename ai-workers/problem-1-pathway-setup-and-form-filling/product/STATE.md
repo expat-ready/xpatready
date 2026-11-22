@@ -2,7 +2,7 @@
 
 current_lead: local_6efc4ae3-9526-4c00-9dd0-3fe31705e8c5 Lead 3 · 22 Nov 13:0x IST (took over from Lead 2 (local_d718f32a) at ~430k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 13:27 IST: Lead 3 (new account) is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 13:33 IST: Lead 3 (new account) is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -22,7 +22,8 @@ Word for word in `product/history/STATE-2026-11-22-1050-lead21s3-lead19-lines-an
 **Owed records PR (after #2952 merges):** P-791, P-792; AWS report 2dfa3ea8f; Lead B's branch lead-b/2026-11-22-track-b commits 64434d1dc + d84797c45; BACKLOG PF-8b-f5. RULES is as of P-791.
 **Sessions:** local: Lead B · Track B `local_96f8a15e…` (first read of money/Track B PRs), AWS `local_3f051647…`. Cloud (all Opus 5.5 Medium; read model labels each check): enforcement `enf-land` (session_01Ln6TiQwyyYPKkww6CjBbhp), PF-8b-f5, Structure 1/2, builders per PR above, two qa lanes, Track B FO-7b/7c/7g/PF-F1. Standbys: none after Lead 3 takes over: start one at the founder's next typed turn.
 **Usage:** 29% at 13:0x, ~5%/h (96% ≈ 02:30 IST 23 Nov); ask the founder again at 90% (P-787).
-**Lead 3, 13:1x IST:** check d2d7aaba created first. #2968 PF-8b-f5 Lead read posted (fine); label on a green head, then AWS gets "rebuild" plus `prisma migrate resolve --rolled-back 20261116013000_pf12_firm_walls` then `migrate deploy`. #2927 PF-4s P-423 read posted (fine); lane told "Size exception: P-790" (task LX932). **P-793** size exception for #2916 AUD-4s (1,020 lines) recorded on this branch, owed in the next records PR; lane told (task LX931; Lead 2's draft named P-785 wrongly). #2967 FO-7g has Approve on b297fb6c, checks running: label when green. #2955 already labelled. Queued PRs mergeable, waiting on CI machines (35 runs queued at 13:1x). All lanes read on claude.ai/code (Show more expanded): Opus 5.5 Medium on the two opened; the rest owed next check.
+Lead 3 first check line (13:1x IST): word for word in `product/history/STATE-2026-11-22-1334-lead3-first-check-line.md`.
+**Lead 3, 13:33 IST:** merged 13:14-13:26 IST: #2926 R1.89 and #2929 R1.39 (both complete; qa told to walk now, LX939), #2909/#2931 R1.10 p3a/p3b, #2885 R1.24 part, four qa journeys. R1.10 now waits on #2908 p4 (conflict with main) and #2933 p5 (lane told, LX940). #2968 PF-8b-f5 red only on a missing 'Duplicate check:' line (lane told, LX938). #2916 and #2927 wait on P-793/P-790 reaching main in records #2952 (fixed STATE TIME, re-approved eb8df7b82). #2935 R1.90 banner dequeued (shard 2): lane told (LX937). #2922 round 4 allowed. P-794/P-795: EXPERIENCE §7 UX laws, phone buttons 44 px; enforcers with the Enforcement lane (LX936, LX941). Held (P-792): batch size 2 → 3 and #2925 until no batch runs. Founder: goal window 07:00-09:00 IST 23 Nov (P-795). Standby: Lead 4 (local_bcc6ed82).
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
