@@ -154,34 +154,55 @@ END $$;
 -- role) read them and never write them (breaker m3 on #2927). The migration role, which owns them, seeds them below.
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "plat_system_role", "plat_system_role_permission" FROM xr_data;
 
--- Seed: the six roles (SA7-D8).
-INSERT INTO "plat_system_role" ("code", "display_name") VALUES
-  ('platform-owner', 'Platform Owner'), ('platform-admin', 'Admin'), ('platform-support', 'Support'),
-  ('platform-billing-ops', 'Billing'), ('platform-content-publisher', 'Content publisher'), ('platform-auditor', 'Auditor');
+-- The seed runs in one DO statement (PF-8b F7, #3068): a runner that is neither superuser nor BYPASSRLS owns these walled
+-- tables but, under FORCE ROW LEVEL SECURITY, would write none of their rows; it lifts FORCE inside this statement
+-- (ACCESS EXCLUSIVE first) and puts it back at its end. tests/check_pf8b_f7_data_walls.ts fails when a data statement on
+-- a walled table runs without this. PF-12's firm gate steps aside the same way while plainly enabled (these tables have
+-- none today, so that step finds nothing; it is kept so the shape is F7's one shape).
+DO $$
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['plat_system_role', 'plat_system_role_permission']; gated text[] := '{}';
+BEGIN
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
+  -- Seed: the six roles (SA7-D8).
+  INSERT INTO "plat_system_role" ("code", "display_name") VALUES
+    ('platform-owner', 'Platform Owner'), ('platform-admin', 'Admin'), ('platform-support', 'Support'),
+    ('platform-billing-ops', 'Billing'), ('platform-content-publisher', 'Content publisher'), ('platform-auditor', 'Auditor');
 
--- Seed: each key's roles, from the Appendix A row named on its line.
-INSERT INTO "plat_system_role_permission" ("permission_key", "role_code")
-SELECT k.key, r.code FROM (VALUES
-  -- Staff (SA-7): "Staff list and detail" — Own, Adm, Aud
-  ('system/platform-user:list',   ARRAY['platform-owner', 'platform-admin', 'platform-auditor']),
-  ('system/platform-user:show',   ARRAY['platform-owner', 'platform-admin', 'platform-auditor']),
-  -- "Manage staff — invite, give / remove roles (not Owner), countries, reactivate, Reset MFA" — Own only (SA7-D5)
-  ('system/platform-user:manage', ARRAY['platform-owner']),
-  -- "Deactivate · require a password change · end another person's session — Admin not on an Owner or other privileged
-  -- target" — Own, Adm (SA7-D5; the key name is the tech lead's mapping, SA-07 §10)
-  ('system/platform-user:remove', ARRAY['platform-owner', 'platform-admin']),
-  -- Firms (SA-2): "Firm list and detail (read-only)" — Own, Adm, Sup, Bil, Aud
-  ('system/firm:read',            ARRAY['platform-owner', 'platform-admin', 'platform-support', 'platform-billing-ops', 'platform-auditor']),
-  -- "Create firms · sign-up links (create, revoke, with approved discount) · edit contact, address, billing email, web
-  -- address · resend owner invitation" — Own, Adm
-  ('system/signup-link:manage',   ARRAY['platform-owner', 'platform-admin']),
-  ('system/firm:address',         ARRAY['platform-owner', 'platform-admin']),
-  -- "Apply and lift a security lock (SA7-D53)" — Own only (the row's system/security:lock, under SA-07's names)
-  ('system/firm:suspend',         ARRAY['platform-owner']),
-  ('system/firm:reinstate',       ARRAY['platform-owner']),
-  -- Plans and billing (SA-3, SA-4): "For a firm: change plan or billing period, cancel / undo, apply or remove an approved
-  -- discount (SA7-D50)" — Own, Bil
-  ('system/billing:manage',       ARRAY['platform-owner', 'platform-billing-ops']),
-  -- "Approved-discount list · refunds · monthly written-off report" — Own, Bil
-  ('system/billing:refund',       ARRAY['platform-owner', 'platform-billing-ops'])
-) AS k(key, roles) CROSS JOIN LATERAL unnest(k.roles) AS r(code);
+  -- Seed: each key's roles, from the Appendix A row named on its line.
+  INSERT INTO "plat_system_role_permission" ("permission_key", "role_code")
+  SELECT k.key, r.code FROM (VALUES
+    -- Staff (SA-7): "Staff list and detail" — Own, Adm, Aud
+    ('system/platform-user:list',   ARRAY['platform-owner', 'platform-admin', 'platform-auditor']),
+    ('system/platform-user:show',   ARRAY['platform-owner', 'platform-admin', 'platform-auditor']),
+    -- "Manage staff — invite, give / remove roles (not Owner), countries, reactivate, Reset MFA" — Own only (SA7-D5)
+    ('system/platform-user:manage', ARRAY['platform-owner']),
+    -- "Deactivate · require a password change · end another person's session — Admin not on an Owner or other privileged
+    -- target" — Own, Adm (SA7-D5; the key name is the tech lead's mapping, SA-07 §10)
+    ('system/platform-user:remove', ARRAY['platform-owner', 'platform-admin']),
+    -- Firms (SA-2): "Firm list and detail (read-only)" — Own, Adm, Sup, Bil, Aud
+    ('system/firm:read',            ARRAY['platform-owner', 'platform-admin', 'platform-support', 'platform-billing-ops', 'platform-auditor']),
+    -- "Create firms · sign-up links (create, revoke, with approved discount) · edit contact, address, billing email, web
+    -- address · resend owner invitation" — Own, Adm
+    ('system/signup-link:manage',   ARRAY['platform-owner', 'platform-admin']),
+    ('system/firm:address',         ARRAY['platform-owner', 'platform-admin']),
+    -- "Apply and lift a security lock (SA7-D53)" — Own only (the row's system/security:lock, under SA-07's names)
+    ('system/firm:suspend',         ARRAY['platform-owner']),
+    ('system/firm:reinstate',       ARRAY['platform-owner']),
+    -- Plans and billing (SA-3, SA-4): "For a firm: change plan or billing period, cancel / undo, apply or remove an approved
+    -- discount (SA7-D50)" — Own, Bil
+    ('system/billing:manage',       ARRAY['platform-owner', 'platform-billing-ops']),
+    -- "Approved-discount list · refunds · monthly written-off report" — Own, Bil
+    ('system/billing:refund',       ARRAY['platform-owner', 'platform-billing-ops'])
+  ) AS k(key, roles) CROSS JOIN LATERAL unnest(k.roles) AS r(code);
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
+END
+$$;
