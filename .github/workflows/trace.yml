@@ -7,6 +7,8 @@
 name: trace
 on:
   pull_request:
+    # SPD-2 item 5 (b): a draft runs only the light checks (ci's guard, pr-rules, module-cards); this runs on ready-for-review.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/BACKLOG.md"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/trace-requirements.py"
@@ -16,9 +18,10 @@ permissions:
   contents: read
 concurrency:
   group: trace-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') }}   # SPD-2 item 5: a newer push supersedes; a merge-queue batch never
 jobs:
   trace:
+    if: "${{ !github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/') }}"   # SPD-2 item 5 (b): not on a draft (a merge-queue batch is a draft and still runs it)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
