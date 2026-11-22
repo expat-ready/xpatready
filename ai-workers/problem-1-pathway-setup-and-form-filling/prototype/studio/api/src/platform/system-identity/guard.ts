@@ -15,21 +15,24 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext, type OnMod
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { HttpAdapterHost, ModulesContainer, Reflector } from "@nestjs/core";
 import { PLATFORM_ACCESS, forbidden, problem } from "../identity/keys.ts";
-import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_REASON, type SystemAccess, type SystemStaffContext } from "./keys.ts";
+import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_REASON, SYSTEM_STEP_UP, type SystemAccess, type SystemStaffContext } from "./keys.ts";
 import { correlationOf } from "../observability/hook.ts";
 import { logPort } from "../observability/log.ts";
 import { requestLine } from "../observability/metrics.ts";
+import { PlatformClock } from "../identity/port.ts";
+import { STEP_UP_SECONDS, requireStepUp } from "../identity/session/step-up.ts";
 import { SystemIdentity } from "./service.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 const bearerOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" ? /^Bearer\s+(\S+)$/i.exec(a.trim())?.[1] : undefined; };
 /** Text that goes on an audit line: control and invisible format characters dropped (a NUL would make the line
- *  impossible to write, so a refused call would leave none; breaker m2), at most `max` characters. */
-export const lineText = (v: string, max: number) => v.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, max);
+ *  impossible to write, so a refused call would leave none; breaker m2), at most `max` characters, counted and cut by code
+ *  point so a cut never splits a character in two (a lone surrogate half). */
+export const lineText = (v: string, max: number) => [...v.replace(/[\p{Cc}\p{Cf}]/gu, "").trim()].slice(0, max).join("");
 const deviceOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; const t = typeof a === "string" ? lineText(a, 300) : ""; return t || null; };
 /** A written reason: after the invisible characters go, at least one letter or digit, at most REASON_MAX (breaker m4). */
-export const reasonOf = (v: unknown): string | null => { if (typeof v !== "string") return null; const t = lineText(v, REASON_MAX + 1); return /[\p{L}\p{N}]/u.test(t) && t.length <= REASON_MAX ? t : null; };
+export const reasonOf = (v: unknown): string | null => { if (typeof v !== "string") return null; const t = lineText(v, REASON_MAX + 1); return /[\p{L}\p{N}]/u.test(t) && [...t].length <= REASON_MAX ? t : null; };
 
 /** What a call affected: the route's path parameters, each cleaned for the line. */
 const targetOf = (req: { params?: Record<string, unknown> }) => Object.fromEntries(Object.entries(req.params ?? {}).filter((e): e is [string, string] => typeof e[1] === "string").map(([k, v]) => [k, lineText(v, 200)]));
@@ -74,7 +77,7 @@ type Req = { method: string; path?: string; url?: string; headers: Record<string
 
 @Injectable()
 export class SystemGuard implements CanActivate, OnModuleInit {
-  constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(SystemIdentity) private readonly identity: SystemIdentity) {}
+  constructor(@Inject(Reflector) private readonly reflector: Reflector, @Inject(ModulesContainer) private readonly modules: ModulesContainer, @Inject(SystemIdentity) private readonly identity: SystemIdentity, @Inject(PlatformClock) private readonly clock: PlatformClock) {}
 
   onModuleInit() {
     assertSystemRoutesDeclared(systemRoutes([...this.modules.values()].flatMap((m) => [...m.controllers.values()].map((w) => w.metatype)), this.reflector));
@@ -97,12 +100,16 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const route = this.routeOf(ctx), device = deviceOf(req.headers["user-agent"]), target = targetOf(req);
     const staff = await this.identity.authenticate(bearerOf(req.headers.authorization), (who, code) => this.identity.audit({ staff: who, method: req.method, route, target, outcome: "REFUSED", code, reason: null, device }));
     const missing = access.kind === "keys" ? access.keys.filter((k) => !staff.keys.includes(k)) : [];
-    const wantsReason = this.reflector.getAllAndOverride<boolean>(SYSTEM_REASON, [ctx.getHandler(), ctx.getClass()]) === true;
+    const targets = [ctx.getHandler(), ctx.getClass()], now = this.clock.now();
+    const wantsReason = this.reflector.getAllAndOverride<boolean>(SYSTEM_REASON, targets) === true;
+    // SA-7-10: a sign-in at most 5 minutes old (exactly 5 passes, as PF-4b's requireStepUp).
+    const stale = this.reflector.getAllAndOverride<boolean>(SYSTEM_STEP_UP, targets) === true && now / 1000 - staff.authTime > STEP_UP_SECONDS;
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
-    const code = missing.length ? "MISSING_PERMISSION" : wantsReason && !reason ? "REASON_REQUIRED" : null;
+    const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : wantsReason && !reason ? "REASON_REQUIRED" : null;
     // One line per call, allowed or refused, before the handler: a line that cannot be written stops the call (fail-closed).
     await this.identity.audit({ staff, method: req.method, route, target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason ? reason : null, device });
     if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
+    if (stale) requireStepUp(staff, now, "this change");
     if (code === "REASON_REQUIRED") problem(400, "Give a reason", `This needs a written reason (reason, up to ${REASON_MAX} characters).`, { code });
     req.systemStaff = staff;
     return true;
