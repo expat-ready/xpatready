@@ -21,7 +21,7 @@ The firm's front office: public booking and retainer agreements, with their file
 - Rate limits are rolling windows per key, sized for about 100 firms in one process (P-562).
 - Every file belongs to one firm and lives under the firm's own folder (FO-5, contracts §0.3). An identity check is insert-only (a correction is a new check); its copy is put first and named only in the same insert, so a failed insert leaves no record naming it; a person is seen by the leads' own-versus-all rule (one of their leads, a prospect they own, a current contact of a company prospect they own, or a retainer they represent or whose prospect they own), else 404; the document number (only its last 4 are taken), the copy's bytes, key or link never reach a log, an audit line or an event (FO-13i).
 - Platform rules apply: `firmScope` on every table, platform guard on every staff route (P-559); a booking follows its record's visibility, or its host sees it (AG-4-67, FO-3vr: `booking/service.ts` `seenWhere` in SQL before the read, `seesBooking` by id; else the one not-found).
-- The database walls these tables (PF-12): a public door finds its firm through its named bypass use (`fo.sales.web-form`, `fo.booking.public-page`, `fo.booking.self-service`), then runs as that firm (`enterFirm`).
+- The database walls these tables (PF-12): a public door finds its firm through a narrow definer lookup that returns the firm id only (PF-12b part 2: `fo_sales_web_form_firm(token)`, `platform_firm_of_key(key)`, `fo_booking_token_firm(token id, secret hash)`: null unless both match), reads its own row as that firm (`withFirm`), then runs as it (`enterFirm`); no front-office door uses the bypass.
 - The attendance question (30 min after the end) is shown, not pushed: its job mails no one; the booking is the due item until a person answers (AG-4-39 rule 2, FO-3m). The answer's body is `{ outcome }` only.
 - The database's no-overlap rule skips only a booking a staff member confirmed with Book anyway over an overlap (`overlapConfirmedByUserId`, FO-3sa, AG-4-63 rule 4); the public door never sets it, every writer checks overlaps under the host locks, and a move clears it unless the move is itself confirmed.
 
@@ -32,7 +32,7 @@ The firm's front office: public booking and retainer agreements, with their file
 **Do not.**
 - Serve a file without a checked short-lived link, or from another firm's folder.
 - Open a staff route without the platform guard.
-- Let the signing provider email anyone: SigningPort takes no address and no vendor-email option (FO-6, P-563).
+- Let the signing provider email anyone: SigningPort takes no address and no vendor-email option (FO-6, P-563); nor store a signing code, link token or email address in clear in the signing tables (sha256 only).
 - Store a token's verifier unhashed (it is kept as a SHA-256, `hashVerifier` in tokens.ts).
 
 **Booking settings and the consult record (FO-3a parts 1a, 1b-i, 2a).** Kept in a section of its own so the one-line lists above merge by themselves.

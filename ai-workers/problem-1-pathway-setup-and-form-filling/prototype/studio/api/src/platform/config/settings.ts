@@ -21,6 +21,12 @@ export type PlatformEnvironment = (typeof ENVIRONMENTS)[number];
 /** The demo database on the Mac and in lane copies (as api/src/core.ts DATABASE_URL); never used in test or production. */
 export const LOCAL_DATABASE_URL = "postgresql://xr_studio@127.0.0.1:54329/xr_studio_demo";
 
+/** PF-8b F2b: the firm-address domain when PLATFORM_ADDRESS_SUFFIX is unset (P-607 (2)). */
+export const DEFAULT_ADDRESS_SUFFIX = "expatready.com";
+/** Two or more DNS labels, lower case, each 1-63 characters with no hyphen at either end, a letters-only last label, 253
+ *  characters at most. No port, no trailing dot, no wildcard. */
+export const ADDRESS_SUFFIX_PATTERN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
 const KEY_ENTRY = /^[1-9][0-9]{0,5}:[A-Za-z0-9+/]{43}=$/;
 
 type Setting = { name: string; secret: boolean; rule: z.ZodType<string>; expects: string; service: string; optional: boolean };
@@ -48,6 +54,9 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("identity", "PLATFORM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters (unset: a random key per start)"),
   // PF-4 (P-571 (2)): the Sample seed at start-up (identity/sample-seed.ts).
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
+  // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
+  // always kept as well (web-address/rules.ts).
+  opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
 ]);
 
 /** The names whose values are secret: PF-23's log redaction drops them by name (and their values, wherever they appear). */
@@ -68,6 +77,8 @@ export type PlatformConfig = Readonly<{
   identity: Readonly<{ via: "local" | "cognito" | "none"; poolMfaRequired: boolean; localSecret: Secret | null }>;
   /** PF-4 (P-571 (2)): PLATFORM_SAMPLE_SEED=on (production never seeds; sample-seed.ts says so). */
   sampleSeed: boolean;
+  /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
+  addressSuffix: string;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -158,6 +169,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     secretBox,
     identity: Object.freeze({ via: (plain("PLATFORM_IDENTITY") ?? "none") as "local" | "cognito" | "none", poolMfaRequired: plain("PLATFORM_POOL_MFA_REQUIRED") !== "false", localSecret: secret("PLATFORM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
+    addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
   });
 }
 

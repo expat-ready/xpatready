@@ -125,8 +125,8 @@ try {
   const forged = Buffer.from(JSON.stringify(["2026-12-31T00:00:00.000000Z", bLine[0]])).toString("base64url");
   const viaCursor = await call(base, `/api/platform/audit?${R1}&cursor=${forged}`, tR), viaPerson = await call(base, `/api/platform/audit?${R1}&person=${S.id}`, tR), viaFirm = await call(base, `/api/platform/audit?${R1}&firmId=${B}`, tR);
   const firmOf = (r: Res) => new Set((r.body?.lines ?? []).map((l: any) => sql(`select firm_id from audit_event where id = '${l.id}'`)));
-  ok("AUD-4 DW2 pass: with firm B's line in the cursor or ?firmId=B added, firm A reads only its own lines (the same answer as without)",
-    viaCursor.status === 200 && [...firmOf(viaCursor)].every((f) => f === A) && !ids(viaCursor).includes(L.other) && JSON.stringify(ids(viaFirm)) === JSON.stringify(ids(owner)), [viaCursor.status, [...firmOf(viaCursor)]]);
+  ok("AUD-4 DW2 pass: with firm B's line in the cursor, firm A reads only its own lines; ?firmId=B added is refused 422 naming it (PF-28 part 2b: an unknown filter key), never firm B's lines",
+    viaCursor.status === 200 && [...firmOf(viaCursor)].every((f) => f === A) && !ids(viaCursor).includes(L.other) && viaFirm.status === 422 && Object.hasOwn(viaFirm.body?.fields ?? {}, "firmId"), [viaCursor.status, [...firmOf(viaCursor)]]);
   const bSees = await call(base, `/api/platform/audit?${R1}`, tS);
   ok("AUD-4 DW2 fail: firm B's staff id as the person filter gives none of B's lines (nothing); firm B reads its line and none of A's",
     viaPerson.status === 200 && viaPerson.body.lines.length === 0 && ids(bSees).includes(L.other) && !ids(bSees).some((i) => Object.values(L).filter((x) => x !== L.other).includes(i)), [viaPerson.body?.lines?.length, ids(bSees).length]);
@@ -147,9 +147,9 @@ try {
   const y0 = await call(base, "/api/platform/audit?from=0000-01-01&to=0000-06-01", tR), area = await call(base, `/api/platform/audit?${R1}&area=constructor`, tR);
   const badTime = Buffer.from(JSON.stringify(["2026-13-45T99:99:99.000000Z", L.setting])).toString("base64url"), cur = await call(base, `/api/platform/audit?${R1}&cursor=${badTime}`, tR);
   ok("AUD-4 DW4 fail (break m2-m5): 31 February, hour 24 and year 0 → 400 (never rolled over or a 500); area=constructor → 400; a cursor with an impossible time → 400 BAD_CURSOR",
-    feb31.status === 400 && h24.status === 400 && y0.status === 400 && area.status === 400 && cur.status === 400 && cur.body.code === "BAD_CURSOR", [feb31.status, h24.status, y0.status, area.status, cur.status]);
+    feb31.status === 422 && h24.status === 422 && y0.status === 422 && area.status === 422 && cur.status === 422 && cur.body.code === "BAD_CURSOR", [feb31.status, h24.status, y0.status, area.status, cur.status]);
   ok("AUD-4 DW4 fail: no from → 400 DATES_REQUIRED; one year and a millisecond → 400 naming the limit; a microsecond (more precision than checked) → 400",
-    noFrom.status === 400 && noFrom.body.code === "DATES_REQUIRED" && long.status === 400 && long.body.code === "RANGE_TOO_LONG" && /one year/.test(long.body.detail) && micro.status === 400, [noFrom.body?.code, long.body?.code, micro.status]);
+    noFrom.status === 422 && noFrom.body.code === "DATES_REQUIRED" && long.status === 422 && long.body.code === "RANGE_TOO_LONG" && /one year/.test(long.body.detail) && micro.status === 422, [noFrom.body?.code, long.body?.code, micro.status]);
 
   // ------------------------------------------------------------------------- DW5: 1,000 lines at one moment, 20 pages
   sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id) select gen_random_uuid(), '${WS}', '2026-07-01T12:00:00.123456Z', 'system:aud4', 'check.same_at', 'platform_check', 'same-' || g, 'Same moment line ' || g, '${A}' from generate_series(1, 1000) g`);
@@ -158,7 +158,7 @@ try {
   ok(`AUD-4 DW5 pass: 1,000 lines with the same time page in ${1000 / PAGE} pages of ${PAGE}, no skip and no repeat (AG-13-31)`, pages === 20 && seen.length === 1000 && new Set(seen).size === 1000, { pages, n: seen.length, unique: new Set(seen).size });
   const timeOnly = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'check.same_at' and at < '2026-07-01T12:00:00.123456Z'`));
   const badCursor = await call(base, `/api/platform/audit?${R1}&cursor=not-a-cursor`, tR);
-  ok("AUD-4 DW5 fail: a time-only cursor (the stand-in) would lose all 950 lines after page 1; a cursor this log did not give → 400 BAD_CURSOR", timeOnly === 0 && badCursor.status === 400 && badCursor.body.code === "BAD_CURSOR", [timeOnly, badCursor.status]);
+  ok("AUD-4 DW5 fail: a time-only cursor (the stand-in) would lose all 950 lines after page 1; a cursor this log did not give → 422 BAD_CURSOR", timeOnly === 0 && badCursor.status === 422 && badCursor.body.code === "BAD_CURSOR", [timeOnly, badCursor.status]);
 
   // EXPLAIN on 100,000 lines of firm A (and 20,000 of B) over AUD-1a's (firm_id, at) index.
   sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id) select gen_random_uuid(), '${WS}', '2025-01-01'::timestamptz + (g || ' seconds')::interval * 300, 'system:aud4', 'check.bulk', 'platform_check', 'bulk-' || g, 'Bulk line ' || g, '${A}' from generate_series(1, 100000) g;
