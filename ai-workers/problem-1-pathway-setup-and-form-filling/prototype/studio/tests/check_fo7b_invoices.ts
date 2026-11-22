@@ -28,6 +28,7 @@ import { MONEY_EVENT, fakeClientMoney, invoiceStatus, type ClientMoneyPort, type
 import { fakeMail } from "../ports/mail.ts";
 import { runContract } from "../ports/contracts/contract.ts";
 import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
+import { clientMoneyPortContract } from "../ports/contracts/client-money-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
@@ -392,11 +393,13 @@ try {
     onDue.statusWord === "Open" && dayAfter.statusWord === "Overdue" && (await at()) === "Open", [onDue.statusWord, dayAfter.statusWord]);
 
   // ------------------------------------------------------------- H: ClientMoneyPort.hasMoney (adapter and fake, one contract)
-  const PN = person(A, "n"), contract = async (port: ClientMoneyPort) => [await port.hasMoney(A, { personId: PA }), await port.hasMoney(A, { personId: PM.toUpperCase() }), await port.hasMoney(A, { personId: PN }), await port.hasMoney(B, { personId: PA }), await port.hasMoney(A, { companyId: PA }),
-    await port.hasMoney(A, {} as never).then(() => "answered", () => "refused")].join();
-  const adapter = await withFirm(A, () => contract({ hasMoney: (f, p) => (f === A ? new ClientMoney(nest.get(Db)).hasMoney(f, p) : withFirm(f, () => new ClientMoney(nest.get(Db)).hasMoney(f, p))) }));
-  ok("FO-7b H pass and fail: hasMoney is true for a party with an invoice or a trust entry, false for a client with none, for the same id in another firm or as a company, and refuses no party; the fake keeps the same contract",
-    adapter === "true,true,false,false,false,refused" && adapter === (await contract(fakeClientMoney([{ firmId: A, personId: PA }, { firmId: A, personId: PM }]))), adapter);
+  const PN = person(A, "n"), real = new ClientMoney(nest.get(Db)), walled: ClientMoneyPort = { hasMoney: (f, p) => withFirm(f, () => real.hasMoney(f, p)) };
+  const harness = (port: ClientMoneyPort) => () => ({ port, firmId: A, withMoney: PM, without: PN, otherFirmId: B });
+  await runContract(clientMoneyPortContract, "ClientMoney", harness(walled), ok);
+  await runContract(clientMoneyPortContract, "fakeClientMoney", harness(fakeClientMoney([{ firmId: A, personId: PM }])), ok);
+  const brokenH = await runContract(clientMoneyPortContract, "brokenHasMoney", harness({ hasMoney: async () => true }), null);
+  ok("FO-7b H fail (planted): an adapter answering true for every party fails the contract", brokenH.failed.length > 0, brokenH);
+  ok("FO-7b H pass: hasMoney is true for a party with only an invoice (draft or issued), as well as for one with trust entries", await walled.hasMoney(A, { personId: PA }) === true);
 
   // Review M1 on d6948072e: MoneyDocuments is a DocumentRenderPort adapter, so it runs that port's shared contract (PF-0c).
   const cn = { firmName: "Sample Firm", firmAddress: "", taxLine: "", billTo: "Client A", number: "CN-0001", issuedOn: today, invoiceNumber: "INV-0001", currency: "CAD", total: "1.13", amount: "0.13", reason: "Goodwill" };
