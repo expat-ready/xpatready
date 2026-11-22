@@ -236,7 +236,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 32|product/tools/nightly-watch.py|s/    if c == "success":/    if True:/|check-nightly-watch.sh
 32 missed|product/tools/nightly-watch.py|s/    if newest is None or now - newest >= timedelta(hours=MISSED_H):/    if False:/|check-nightly-watch.sh
 32 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$nw")))/true/|check-nightly-watch.sh
-32 parts|../../.github/workflows/nightly.yml|s/^      N: 18$/      N: 8/|check-nightly-watch.sh'
+32 parts|../../.github/workflows/nightly.yml|s/^      N: [0-9]*$/      N: 8/|check-nightly-watch.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'
 E16 line|product/tools/deps-line-check.sh|s/^  exit 1$/  exit 0/|check-deps-line.sh
