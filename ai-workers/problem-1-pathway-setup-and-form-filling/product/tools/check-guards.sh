@@ -7,7 +7,7 @@ set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh"
 bad=0
-for t in $TESTS check-deps-line.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+for t in $TESTS check-deps-line.sh test-spd-2.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
@@ -220,6 +220,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: false$/  cancel-in-progress: true/|check-pr-suites-job.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
+37 stamp|product/tools/migration-slots.py|s/^        if not s or s.group(1) <= floor:/        if not s:/|test-spd-2.sh
+37 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
+37 module|product/tools/module-suites.py|s/^        if f in BARRIER or not mc.in_src(f):/        if True:/|test-spd-2.sh
 35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'

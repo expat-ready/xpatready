@@ -12,9 +12,10 @@ changes (prisma/schema/<area>.prisma), in its folder name, and the queue gives o
     named for it, plus the `shared` ones; barrier areas (base, links, extension, audit) add their migration folders to
     barrier_files. Two migrations of different areas queue together; two of one area wait in order; `shared` waits for
     every area. `mergify` prints that block; `mergify --check <.mergify.yml>` fails when the file differs from it.
-  * `check <base>..<head>` (ci.yml job "fast", every PR and merge batch): each migration folder the range adds must
+  * `check [--batch] <base>..<head>` (ci.yml job "fast", every PR and merge batch): each migration folder the range adds must
       - carry a stamp after main's newest (else Prisma applies it out of order on main): refused with the exact
-        `git mv` re-stamp command;
+        `git mv` re-stamp command. In a merge batch (--batch) main's newest of the same area, of a shared or barrier
+        one, or of one named before SPD-2 (a batch of another area may merge first with a later stamp);
       - name its area, and the area must cover what it changes: the schema files the range changes and the tables and
         types its migration.sql creates, alters, drops, inserts into, updates or deletes from (REFERENCES and reads do
         not count). One area -> that area; several -> `shared` (or a barrier area among them);
@@ -92,7 +93,7 @@ def read_only(sql, own):
     return {own[t] for t in READS.findall(code(sql)) if t in own}
 
 
-def check(rng):
+def check(rng, batch=False):
     base, head = rng.split("..", 1)
     # main's newest is read at <base> (main, or the test merge's main in ci); the change is <base>...<head> (from their
     # merge base), so a PR branched before main moved is judged against today's main.
@@ -129,8 +130,14 @@ def check(rng):
         area = m.group(2) if m else None
         rest = m.group(3) if m else (d[len(s.group(0)):] if s else d)
         why = []
-        if not s or s.group(1) <= newest:
-            why.append(f"its stamp {s.group(1) if s else '(none)'} is not after main's newest migration {newest}")
+        # A PR (queue entry) is after main's newest migration of any area. A merge batch is after main's newest of its
+        # own area (and of shared and barrier ones): a batch of another area may have merged first with a later stamp,
+        # which is the point of one slot per area; Prisma applies pending migrations of other tables in any order.
+        floor = newest if not batch else max((STAMP.match(x).group(1) for x in on_main if STAMP.match(x) and (
+            not NAME.match(x) or NAME.match(x).group(2) in {"shared", *BARRIER} or (m and NAME.match(x).group(2) == m.group(2)) or (m and m.group(2) == "shared"))), default="00000000000000")
+        if not s or s.group(1) <= floor:
+            why.append(f"its stamp {s.group(1) if s else '(none)'} is not after main's newest migration {floor}"
+                       + (" of its area, a shared or barrier one, or one named before SPD-2" if batch else ""))
         if not m:
             why.append("its name carries no area (<stamp>_<area>__<name>: the schema file it changes)")
         elif area not in valid:
@@ -227,8 +234,8 @@ def mergify(check_file=None):
 if __name__ == "__main__":
     a = sys.argv[1:]
     try:
-        if a[:1] == ["check"] and len(a) == 2 and ".." in a[1]:
-            sys.exit(check(a[1]))
+        if a[:1] == ["check"] and len(a) in (2, 3) and ".." in a[-1] and (len(a) == 2 or a[1] == "--batch"):
+            sys.exit(check(a[-1], batch=len(a) == 3))
         if a[:1] == ["areas"]:
             print("\n".join(areas([l.strip() for l in sys.stdin if l.strip()])))
             sys.exit(0)
@@ -241,5 +248,5 @@ if __name__ == "__main__":
         print(f"migration-slots: {e}", file=sys.stderr)
         sys.exit(2)
     print(__doc__.split("\n\n")[0], file=sys.stderr)
-    print("usage: migration-slots.py check <base>..<head> | areas < paths | clash <files-a> <files-b> | mergify [--check <.mergify.yml>]", file=sys.stderr)
+    print("usage: migration-slots.py check [--batch] <base>..<head> | areas < paths | clash <files-a> <files-b> | mergify [--check <.mergify.yml>]", file=sys.stderr)
     sys.exit(2)

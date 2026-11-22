@@ -335,7 +335,7 @@ ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "ST
 files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8
 ok "fresh: both add migrations (#502 after this ci started): failure and a re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && echo 1)" "$out / $log"
 # SPD-2 (P-802): only a migration of the same area re-checks. Main's #503 at 12:30 adds a client-money migration.
-mrg 2026-11-15T12:30:00Z 503 "$S/prisma/migrations/20261115123000_client-money__c/migration.sql"
+( cd "$T/git" && mrg 2026-11-15T12:30:00Z 503 "$S/prisma/migrations/20261115123000_client-money__c/migration.sql" )   # in the fixture's own repository
 cirun $HEAD1 completed success 2026-11-15T12:10:00Z
 files 8 "$S/prisma/migrations/20261115130000_cases__d/migration.sql"; run fresh 8
 ok "fresh (SPD-2): main merged another area's migration after this ci started: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
