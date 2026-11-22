@@ -74,16 +74,19 @@ export async function declineSigning(tx: Tx, audit: AuditPort<Tx>, input: Declin
   if (!UUID.test(String(input.firmId)) || !UUID.test(String(input.signerId))) return { refused: "unknown" };   // break m6: never a database error
   const s0 = await tx.foSigner.findFirst({ where: { firmId: input.firmId, id: input.signerId }, select: { requestId: true } });
   if (!s0) return { refused: "unknown" };
-  const [r] = await tx.$queryRaw<{ status: string; document_kind: string; document_id: string; document_version: number; sent_at: Date; expires_at: Date }[]>`
-    SELECT "status"::text AS status, "document_kind"::text AS document_kind, "document_id"::text AS document_id, "document_version", "sent_at", "expires_at"
-    FROM "fo_signature_request" WHERE "firm_id" = ${input.firmId}::uuid AND "id" = ${s0.requestId}::uuid FOR UPDATE`;
+  const [r] = await tx.$queryRaw<{ status: string; document_kind: string; document_id: string; document_version: number; sent_at: Date; expires_at: Date; client_signed: boolean }[]>`
+    SELECT "status"::text AS status, "document_kind"::text AS document_kind, "document_id"::text AS document_id, "document_version", "sent_at", "expires_at",
+      EXISTS (SELECT 1 FROM "fo_signer" s WHERE s."firm_id" = r."firm_id" AND s."request_id" = r."id" AND s."role" = 'CLIENT' AND s."signed_at" IS NOT NULL) AS client_signed
+    FROM "fo_signature_request" r WHERE "firm_id" = ${input.firmId}::uuid AND "id" = ${s0.requestId}::uuid FOR UPDATE`;
   if (!r) return { refused: "unknown" };
   if (!LIVE.includes(r.status)) return { refused: "ended", status: r.status };
   // break m4: sent_at is the database's clock and `at` the API's; a decline never ends before its request was sent
   // (sent_at keeps microseconds and a Date milliseconds, so the earliest end is the next millisecond).
   const at = input.at.getTime() > r.sent_at.getTime() ? input.at : new Date(r.sent_at.getTime() + 1);
   // break m5: past its expiry with no client signature the request is expired (FO-6's expiry job moves it), never declined.
-  if (r.status !== "CLIENT_SIGNED" && at.getTime() >= r.expires_at.getTime()) return { refused: "ended", status: "EXPIRED" };
+  // Review R2-M1: "no client signature" is FO-6's own test (any CLIENT signer signed), not the status: one of two clients
+  // signed leaves it SENT or VIEWED, it never expires, and the other client may still decline (AG-5-68 §12).
+  if (!r.client_signed && at.getTime() >= r.expires_at.getTime()) return { refused: "ended", status: "EXPIRED" };
   const s = await tx.foSigner.findFirstOrThrow({ where: { firmId: input.firmId, id: input.signerId }, select: { signedAt: true, declinedAt: true } });
   if (s.signedAt) return { refused: "signed" };
   if (s.declinedAt) return { refused: "ended", status: "DECLINED" };   // unreachable while the triggers hold: a decline ends the request

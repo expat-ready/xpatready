@@ -223,6 +223,10 @@ try {
     const late = await db.$transaction((tx) => declineSigning(tx, auditEvent, { firmId: firmA, signerId: e.c1, reason: "No", at: new Date(Date.now() + 30 * 86_400_000), via: "door" }));
     ok("FO-5d fail (break m5): past its expiry with no client signature the request is not declined: refused as EXPIRED, nothing written",
       "refused" in late && late.refused === "ended" && "status" in late && late.status === "EXPIRED" && sql(DEMO, `select status from fo_signature_request where id = '${e.r}'`) === "SENT" && lines(e.r) === 0, late);
+    const p = envelope(); sql(DEMO, sign(p.c1));
+    const partner = await db.$transaction((tx) => declineSigning(tx, auditEvent, { firmId: firmA, signerId: p.c2, reason: "No", at: new Date(Date.now() + 30 * 86_400_000), via: "door" }));
+    ok("FO-5d pass (review R2-M1, AG-5-68 §12): one client signed, the other declines past the expiry date: declined (a request a client signed never expires)",
+      "declined" in partner && sql(DEMO, `select status from fo_signature_request where id = '${p.r}'`) === "DECLINED" && lines(p.r) === 1, partner);
     const early = await db.$transaction((tx) => declineSigning(tx, auditEvent, { firmId: firmA, signerId: e.c1, reason: "No", at: new Date(Date.now() - 3_600_000), via: "door" }));
     ok("FO-5d pass (break m4): a moment before the request was sent (another clock) ends it at its sent time (the next millisecond), never a database error",
       "declined" in early && sql(DEMO, `select (ended_at >= sent_at and ended_at <= sent_at + interval '1 millisecond') from fo_signature_request where id = '${e.r}'`) === "t"

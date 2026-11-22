@@ -84,3 +84,43 @@ None.
 **N/A: not scored.** This part has no screen and no route, so the journey-test skill's browser walk, accessibility, screen-size and words criteria cannot apply. In their place I did the data checks underneath and a break-it pass by calling the function (above): correct data, the wall, races and hostile text. FO-6 part 4's door and FO-5d part 2 carry the person's journey (Decline on the signing page). Not checked: a real screen reader, an intended user's walk (D17/D20).
 
 Verdict: Changes 745c6b101b93a8c2c1a5ce563115c2776fad8363
+
+## Round 2 (diff only, P-293): `745c6b1..a888049` (b8462e6 review fixes, a888049 breaker fixes)
+
+### What I ran
+* `check_fo5d_decline.ts` at a888049, from a clean export of the tree: **38 passed, 0 failed**.
+* My code-point probe again, against the new lists: every code point U+0001 to U+10FFFF except surrogates, in 5 positions each, on a C-locale database and on an `en_US.utf8` one.
+  * JS accepted 371,026 values and the database refused **0**, in both locales.
+  * In the other direction (JS refuses a value, or reads it as no reason, but the database would keep it as typed), the count is also **0**.
+  * So the two lists are now the same rule, in every locale. NUL differs only because PostgreSQL text cannot hold it.
+* A partly signed request past its expiry, on a fully migrated scratch database (R2-M1).
+* Scratch databases and the export are deleted.
+
+### Round 1 findings
+| Finding | Fixed? | Test that fails without the fix |
+|---|---|---|
+| **M1** NUL and lone surrogates | Fixed: `CONTROL` now starts at U+0000, and `LONE_SURROGATE` is refused with `DeclineReasonInvalid` before any read | NUL, a lone high surrogate and a lone low surrogate in the fail list (:149-152) |
+| **m1** wall never exercised | Fixed: the decline runs as `xr_app` via `set_config('role')` plus `app.firm_id` | Firm B's session with firm A's id gives `unknown` (:236-238). Only the wall can hide that row, so the case would decline if the role switch did nothing. Firm A's own decline puts its line on firm A's trail |
+| **m2** label claimed too much | Fixed: label corrected | Adds the signed client's decline being refused |
+| **m3** length in UTF-16 units | Fixed: `[...t].length` | 501 emoji refused, 500 kept |
+
+### What else changed (breaker fixes)
+* **The migration is still additive.** It is the same column, CHECK and function, with the prefix kept and the rollback unchanged. Only the body of `fo_signing_reason_ok` changed: explicit lists instead of `[[:space:]]`, plus C1 and the bidi overrides and isolates. JS `INVISIBLE` and `CONTROL` are character for character the same as the SQL. The SQL trims only ASCII spaces, which JS `trim()` already removes.
+* **Non-uuid ids** give `unknown` (:219-222). **An invalid `at`** throws, which is a programming error. **An `at` before `sent_at`** becomes `sent_at` plus 1 ms. That is still at or after `sent_at`, because a Date drops `sent_at`'s microseconds, and the test (:226-229) bounds it.
+
+### Findings
+
+**R2-M1 (Major, new in a888049). A partly signed request past its expiry can never be declined, and the answer names a state it never reaches.** (decline.ts, the `break m5` line after `const at = …`)
+* The code checks `r.status !== "CLIENT_SIGNED"`. Its own comment and the test label say "with no client signature".
+* With two clients, one signature leaves the request SENT or VIEWED, and FO-6 part 1's trigger refuses EXPIRED once any client signed ("a request a client signed never expires").
+* **Scenario, run on a scratch database:** client 1 signs and the request stays SENT. Client 2 declines at expiry plus 16 days. The answer is `{"refused":"ended","status":"EXPIRED"}`, the stored status is still SENT, and `update … set status = 'EXPIRED'` is refused by the trigger.
+* So the remaining client can never decline this request. That contradicts AG-5-68 §12 ("Decline after a partner signed → still declines all"). The door would also report a final state the row does not have, which breaks `DeclineResult`'s own definition of `ended` ("the request is final: its status").
+* Round 1 declined in this case, so this is a regression from the fix.
+* **Fix:** after the lock, refuse as EXPIRED only when no CLIENT signer of the request has `signed_at`, the same test the trigger uses. For example: `const anyClientSigned = await tx.foSigner.count({ where: { firmId, requestId: s0.requestId, role: "CLIENT", signedAt: { not: null } } }) > 0`.
+* **Test to add:** one client signed, the other declines past expiry, and the result is `declined`. Keep the existing no-signature case.
+
+**Minor:** none new.
+
+**Notes (unchanged, for part 2 and FO-6):** breaker m7 (direct SQL reaches the branch marked unreachable) and m8 (a sign path must take the request lock first) belong to part 2 and FO-6, as stated. Moving an early `at` to `sent_at` plus 1 ms is recorded in the audit line's `after`, so it is visible, not silent.
+
+Verdict: Changes a88804987ec30e38e49424da78d66aec4617589d
