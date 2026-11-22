@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 01:5x IST 23 Nov:** correction to 01:2x: #3041's batch failure was its own (Lead 8: check_pff1b_bind shard 5, qa621 shard 6). Fix 0df34a67e: Lead B re-read OK 98bc7e023; /run full and label next. #3073 waits its diff-only Approve on 2366ac2be. #2368 queued; #3001 after it.
+
 **Lead B 2 pass, 01:2x IST 23 Nov:** **#2913 CS-S1 part 2 merged** (19:40 UTC). #3073 CS-MV1 merged main, own 6 files: Lead B re-read OK 2366ac2be (adapter unchanged; census 49); needs a diff-only Approve, green ci, label. #3041 dequeued (not its failure; requeues). #2368 queued; #3001 after #2368.
 
 **Lead B 2 pass, 00:5x IST 23 Nov:** #2368 F7 fix d251cd34b and #3041 f7ce263ad: Lead B re-read OK (00:42). Queued: #3041, #2913. #2368 waits green ci and Lead 8's label; #3001 dequeued until #2368 merges; #3073 after #2913; #3042 after #2368.
