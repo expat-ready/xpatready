@@ -28,3 +28,7 @@ The Prisma schema is a folder, `prisma/schema/`, read whole by Prisma 7.8 (`pris
 * Generator and datasource stay in `base.prisma` only. An enum moves to `base.prisma` when a second area starts using it.
 * Migrations: one folder, `prisma/migrations/`. Two module schema rows may run at once when each touches only its own area file and its own migration folder; the second to merge re-stamps its migration later than `main`'s newest and shows `npx prisma migrate diff` empty in its PR (P-559 (3), P-228; `WAY-OF-WORKING.md`, "Shared files"). `npx prisma migrate dev --create-only` reads the whole folder.
 * Any change under `prisma/` still runs every suite (`product/tools/select-suites.mjs`).
+
+## Events: one file per owner module (P-785 (2))
+
+An event's name and the shape its consumers read live in `ports/events/<module>.ts`, beside its module's other events (`booking.ts`, `sales.ts`, `cases.ts`, …), in that file's one `<MODULE>_EVENT` object (names are lower case with at least one dot: `case.stage.changed`, `firm.trial-ending`). A new event goes in its module's file; a new module or part adds its own file in the folder and imports from it; a file of shapes only, with no names, is fine too. Files of the folder import only zod and each other. Nothing lists the files, so no other file is edited. `ports/events.ts` is frozen and only re-exports the ten files of the split (`EVENT.X` and every earlier import keep working); `tests/check_ports_events.ts` refuses anything else written there, and a name or key used twice across the folder.
