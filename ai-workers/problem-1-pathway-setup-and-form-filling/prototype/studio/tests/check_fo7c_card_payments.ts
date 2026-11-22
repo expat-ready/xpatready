@@ -177,11 +177,19 @@ try {
     && sql(`select prosecdef || ':' || pg_get_userbyid(proowner) || ':' || has_function_privilege('public', oid, 'execute') || ':' || has_function_privilege('xr_app', oid, 'execute') from pg_proc where proname = 'money_firm_of_stripe_account'`) === "true:xr_wall_reader:false:true");
   ok("FO-7c walls fail: the door is on no bypass use (it runs as the firm it found)", ![...readdirSync(join(STUDIO, "api/src/client-money/card")).map((f) => join(STUDIO, "api/src/client-money/card", f)), join(STUDIO, "api/src/features/client-money-card.ts")].some((f) => /asBypass|BYPASS_ROLE/.test(readFileSync(f, "utf8"))));
 
+  // A break whose email cannot be sent: firm B, on the service with a failing sender (its own account, made here).
+  const mute = new PaymentAccounts(nest.get(Db), { rail, audit: auditEvent, clock: { now: () => new Date() }, mail: fakeMail({ failOn: () => true }), notifications: notes, appUrl: "https://app.example.test", firmOfAccount: firmOfAccount(nest.get(Db)) });
+  const { withFirm } = await import("../api/src/platform/firm-scope.ts"), ownerB = { firmId: B, staffId: staff("user-S", B), authTime: Date.now() / 1000 } as never;
+  await withFirm(B, () => mute.onboard(ownerB)); const acctB = row(B).split(":")[3], post = (id: string, type: string) => { const b = JSON.stringify({ ...fixture("account.updated.charges-enabled").event, id, type, account: acctB }); return mute.receive(Buffer.from(b), rail.sign(b)); };
+  rail.set(acctB, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }); await post("evt_fo7c_b1", "account.updated"); rail.deauthorize(acctB); await post("evt_fo7c_b2", "account.application.deauthorized");
+  ok("FO-7c DW2 fail: a break whose email cannot be sent still disconnects the account and leaves the home item (the failure logged by the event's id); firm A untouched",
+    row(B) === `DISCONNECTED:false:false:${acctB}` && notes.sent().some((n) => n.item.id === B) && said.some((l) => l.includes("payment_account_break_mail_failed") && l.includes("evt_fo7c_b2")) && row() === `PENDING:false:false:${acctA2}`, row(B));
+
   // ------------------------------------------------------------------- with no Stripe key: nothing connects (the feature)
   process.env.PLATFORM_ENVIRONMENT = "local";
   const bare = await (feature.providers[0] as { useFactory: (db: unknown) => PaymentAccounts }).useFactory(nest.get(Db));
   const refusal = async (f: () => Promise<unknown>) => { try { await f(); return null; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? 0; } };
-  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", (await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never))) === 503 && (await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)))) === 503 && made() === 2);
+  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", (await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never))) === 503 && (await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)))) === 503 && made() === 3);
 
   // ------------------------------------------------------------------------------------------- DW10: no secret
   const columns = sql(`select coalesce(string_agg(t, ' '), '') from (select row_to_json(a)::text t from money_payment_account a union all select row_to_json(w)::text from webhook_receipt w union all select row_to_json(e)::text from audit_event e) x`);
