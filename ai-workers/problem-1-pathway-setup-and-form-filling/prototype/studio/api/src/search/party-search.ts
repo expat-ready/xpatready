@@ -8,8 +8,8 @@
 //   * who may see: `caseScope` (api/src/case-access.ts), the one rule. A match on a case outside the scope is never
 //     named; it is only counted in `hidden_count`, and then `needs_confirmation_by_role` names who may confirm;
 //   * an email matches exactly (lower-cased); a phone exactly in E.164 (the typed text read with the firm's country as
-//     the default); a name by the start of one of its words, or pg_trgm word similarity at or above ports/matching.ts
-//     NAME_THRESHOLD (Sample), the typed text normalised by part 1's own case_party_index_norm so both sides agree
+//     the default); a name by the start of one of its words, or pg_trgm word similarity at or above
+//     CASE_NAME_THRESHOLD (Sample, below), the typed text normalised by part 1's own case_party_index_norm so both sides agree
 //     (accents are kept, as part 1 keeps them); a case number exactly, then by its start;
 //   * ranking: an exact case number, then email, then phone, then a name by its similarity;
 //   * `search` writes one audit line per search (entity "case search"): who, which fields, the counts, no searched value
@@ -18,7 +18,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import type { AuditPort } from "../../../ports/audit.ts";
-import { NAME_THRESHOLD, normaliseEmail } from "../../../ports/matching.ts";
+import { normaliseEmail } from "../../../ports/matching.ts";
 import { PartyMatch, PartySearchQuery, type PartySearchPort, type PartySearchResult } from "../../../ports/party-search.ts";
 import { caseScope, caseVisibleSql, type CaseScope, type CaseViewer } from "../case-access.ts";
 import { Db } from "../core.ts";
@@ -33,6 +33,11 @@ export type PartyHit = PartyMatch & { rank: number };
 export type CaseHit = { caseId: string; caseNumber: string; clientName: string; status: string; exact: boolean };
 export type CaseSearchOut = { parties: PartyHit[]; cases: CaseHit[]; hidden_count: number; needs_confirmation_by_role: PartySearchResult["needs_confirmation_by_role"] };
 
+/** A name matches at or above this pg_trgm word similarity (Sample; no source number). Word similarity measures the typed
+ *  text against the best stretch of the stored full name, so one typed family name finds "Marie Dupont"; a one-letter
+ *  slip in a six-letter name ("Dupnt") scores 0.5, which the row asks to find. ports/matching.ts NAME_THRESHOLD (0.6) is
+ *  FO-9a's whole-name similarity, another measure; its email and name-key rules are shared as they are. */
+export const CASE_NAME_THRESHOLD = 0.5;
 /** At most this many rows are read for one search (the finder shows 8; FO-13c stores at most its own cap). */
 export const SEARCH_ROWS = 50;
 const CONFIRMERS: PartySearchResult["needs_confirmation_by_role"] = ["FILE_OWNER", "FIRM_ADMIN"];
@@ -82,15 +87,15 @@ export class CasePartySearch implements PartySearchPort {
           from case_party_index i join runtime_case c on c.id = i.case_id and c.firm_id = i.firm_id cross join q
          where i.firm_id = ${s.firmId}::uuid)
       select m.*, (count(*) filter (where not visible) over ())::int as hidden from m
-       where by_email or by_phone or prefix or sim >= ${NAME_THRESHOLD}::float8
+       where by_email or by_phone or prefix or sim >= ${CASE_NAME_THRESHOLD}::float8
        order by visible desc, by_email desc, by_phone desc, prefix desc, sim desc, display_name, id
        limit ${SEARCH_ROWS}`);
     const hits = rows.filter((r) => r.visible).map((r): PartyHit => {
       const on: PartyMatch["matchedOn"] = [];
-      if (r.prefix || r.sim >= NAME_THRESHOLD) on.push("NAME");
+      if (r.prefix || r.sim >= CASE_NAME_THRESHOLD) on.push("NAME");
       if (r.by_email) on.push("EMAIL");
       if (r.by_phone) on.push("PHONE");
-      const score = r.by_email || r.by_phone ? 1 : round4(Math.min(1, Math.max(r.sim, NAME_THRESHOLD)));
+      const score = r.by_email || r.by_phone ? 1 : round4(Math.min(1, Math.max(r.sim, CASE_NAME_THRESHOLD)));
       return { ...PartyMatch.parse({ kind: r.kind, recordId: r.id, caseId: r.case_id, caseNumber: r.case_number, clientId: r.client_id, roleOnCase: r.role_on_case, displayName: r.display_name.slice(0, 300), matchedOn: on, score }),
         rank: r.by_email ? 900 : r.by_phone ? 850 : r.prefix ? 700 : Math.round(r.sim * 600) };
     });

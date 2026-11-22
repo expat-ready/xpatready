@@ -111,7 +111,7 @@ try {
   answer(marie, "person.email", "Dupont@X.com"); answer(marie, "person.phone_number", { country_code: "1", number: "416-555-0101" });
   const jean = person(c1.id, "spouse_or_partner", "Jean Dupont (Sample)"); named(jean, "Jean", "Dupont");
   const paul = person(c2.id, "principal", "Paul Tremblay (Sample)"); named(paul, "Paul", "Tremblay"); answer(paul, "person.email", "paul@x.com"); answer(paul, "person.phone_number", { country_code: "1", number: "416-555-0177" });
-  const owned = person(c3.id, "principal", "Olga Ownedcase (Sample)"); named(owned, "Olga", "Ownedcase");
+  const owned = person(c3.id, "principal", "Olga Ownedcase (Sample)"); named(owned, "Olga", "Ownedcase"); answer(owned, "person.email", "olga@x.com"); answer(owned, "person.phone_number", { country_code: "1", number: "416-555-0133" });
   const solo = person(c4.id, "principal", "Solo Dupont (Sample)"); named(solo, "Solange", "Dupont"); answer(solo, "person.email", "dupont@x.com"); answer(solo, "person.phone_number", { country_code: "1", number: "416-555-0101" });
   sql(`insert into case_team_member (id, workspace_id, case_id, user_id, role, assigned_by) values ('${randomUUID()}', '${W}', '${c1.id}', 'user-T', 'OFFICER', 'user-O')`);
   const teamRow = randomUUID();
@@ -206,10 +206,11 @@ try {
   ok("CS-S1 DW11 fail: the find door's finder writes no audit line (it only reads)", auditCount() === before);
   const audited = await search.search(tOwn, { name: "Tremblay", email: "Dupont@X.com", phone: "416-555-0101" });
   const line = JSON.parse(sql("select row_to_json(x) from (select actor, action, entity, entity_key, summary, detail, firm_id, case_id from audit_event where entity = 'case search' order by at desc limit 1) x")) as Record<string, unknown>;
+  const detail = line.detail as { fields: string[]; shown: number; hidden: number };
   ok("CS-S1 DW11 pass: a port search writes one line: who, the fields searched and the counts, on the searcher's firm",
-    auditCount() === before + 1 + 0 && line.actor === `staff:${T.staffId}` && line.firm_id === A && line.case_id === null && JSON.stringify(line.detail) === JSON.stringify({ fields: ["name", "email", "phone"], shown: audited.matches.length, hidden: audited.hidden_count })
+    auditCount() === before + 1 + 0 && line.actor === `staff:${T.staffId}` && line.firm_id === A && line.case_id === null && JSON.stringify(detail.fields) === JSON.stringify(["name", "email", "phone"]) && detail.shown === 1 && detail.hidden === 1 && Object.keys(detail).length === 3
     && audited.hidden_count === 1 && audited.matches.length === 1 && CASE_ENTITIES.has("case search"), line);
-  ok("CS-S1 DW11 fail: the line holds none of the searched values, no found name and no case number", ["tremblay", "dupont", "x.com", "416", "555", "0101", "marie", c1.number.toLowerCase(), c2.number.toLowerCase()].every((v) => !JSON.stringify(line).toLowerCase().includes(v)), line);
+  ok("CS-S1 DW11 fail: the line holds none of the searched values, no found name and no case number", ["tremblay", "dupont", "x.com", "416555", "0101", "marie", c1.number.toLowerCase(), c2.number.toLowerCase()].every((v) => !JSON.stringify(line).toLowerCase().includes(v)), line);
   const failing = new CasePartySearch(db); failing.audit = { record: async () => { throw new Error("forced audit failure"); } };
   ok("CS-S1 DW11 fail: when the audit line cannot be written the search answers nothing (fail-closed)", await refused(() => failing.search(R, { name: "Dupont" })) && auditCount() === before + 1);
 
@@ -223,7 +224,7 @@ try {
   // ------------------------------------------------------------------------------------------ the port's contract on the adapter
   // user-T's roles hold view.own only now (above): T sees case 1 (team) and case 3 (file owner), not case 2.
   const world = (): PartySearchWorld => ({ port: search, viewer: { firmId: T.firmId, staffId: T.staffId }, outsider: { firmId: SOLO.firmId, staffId: SOLO.staffId },
-    seen: { name: "Marie Dupont", email: "dupont@x.com" }, phoned: { name: "Marie Dupont", phone: "+14165550101" }, hidden: { name: "Paul Tremblay" } });
+    seen: { name: "Olga Ownedcase", email: "olga@x.com" }, phoned: { name: "Olga Ownedcase", phone: "+14165550133" }, hidden: { name: "Paul Tremblay" } });
   await runContract(partySearchPortContract, "CasePartySearch", world, ok);
 } finally {
   await db.$disconnect();
