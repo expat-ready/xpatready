@@ -93,3 +93,29 @@ Verdict: Approve
 Reviewed sha: 57b022e392f83ade27824ec82972421e677ac03c
 
 Reviewer: Approve 57b022e392f83ade27824ec82972421e677ac03c
+
+## Round 5 (diff-only, 5ea3119ec)
+Scope (P-277): the last Approve was recorded on 77960502 (round 4, which approved 57b022e39). The reviewed change is `git show 5ea3119ec` only. It touches `api/src/front-office/duplicates/phone.ts` (+8, plus one import) and `api/src/front-office/find.ts` (-10, +3). Why: the merge batch failed `tests/check_fo9b_phone_doors.ts` rule G, because find.ts held an E.164 regex and only `duplicates/phone.ts` may hold one.
+
+**1. Is the move exact?** Yes. The function's signature and its four body lines are identical, character for character: the CA branch calls `phoneE164Exact`, the other branch calls `parsePhoneNumberFromString(text, country as CountryCode)`, and the same guard follows (`isPossible`, no `ext`, `/^\+[1-9][0-9]{6,14}$/`, then possible again with its country code alone). The comment above the guard did not change. `DEFAULT_REGION` and `phoneE164Exact` are now the module's own names, not imports, and they are the same bindings. phone.ts gains `type CountryCode` on its existing libphonenumber import, which is type-only and changes nothing at run time. Only the doc comment's wording changed ("FO-9a's exact reader" became "phoneE164Exact", with a "PF-30a:" prefix). Behaviour is unchanged. fd1's two direct `phoneForFirm` cases still pass (CA 4165550100, GB 020 7946 0958, "555", a 17-digit number). So do the finder's phone search cases.
+
+**2. Is the re-export fine?** Yes. `import { phoneForFirm } from "./duplicates/phone.ts"; export { phoneForFirm };` keeps `tests/check_fd1_find.ts:20` (`import { FrontOfficeFinder, phoneForFirm } from ".../find.ts"`) working without edits. find.ts:62 still calls the same function. phoneForFirm has no other callers. The import and export sit between other imports, which is legal ESM (imports are hoisted). `tsc -p api/tsconfig.json --noEmit` reports nothing for either file. The libphonenumber import that find.ts no longer uses is gone.
+
+**3. Is anything weakened?** No.
+* Rule G's intent is "one normaliser": every phone read lives in duplicates/phone.ts and no door uses the looser `phoneE164`. The move carries out that intent rather than getting around it. The non-CA branch reads with libphonenumber directly, not with `phoneE164Exact`. That was the approved behaviour in earlier rounds, and it now sits beside FO-9a's readers, where a later change to the normaliser will see it. `phoneForFirm` is not `phoneE164`, so G's second check ("no front-office file imports the looser phoneE164") still holds, and it still passes. The G test file did not change: its exclusion is still `duplicates/phone.ts` alone, and no new path is excluded.
+* Module card: no row is needed. Both files are in the one front-office module (`api/src/front-office/MODULE.md`). The card's Purpose line already says `phone.ts` normalises with libphonenumber-js, and that is still true. The row's fragment `MODULE.rows/PF-30a.md` describes the finder ("phone in E.164 with the firm's country") without naming the file the reader lives in, so it is still accurate. The PR already carries that fragment. `module-cards.py tree` from the repository root: "15 cards, tree checked", PASS.
+
+**What I ran at 5ea3119ec (US$0)**
+* `tsx tests/check_fo9b_phone_doors.ts`: 26 passed, 0 failed. All three G lines pass, including "no phone regex in api/src/front-office outside duplicates/phone.ts".
+* `tsx tests/check_fd1_find.ts` (its own scratch database): 61 passed, 0 failed.
+* `python3 product/tools/module-cards.py tree` (from the repository root; run from studio/ it cannot find `.claude/rules/modules`): PASS, 15 cards.
+* Journey test: not applicable to this round. The change moves one server function, and this row has no screen (PF-30s carries it). No journey score this round; the earlier rounds' position stands.
+
+**Findings**
+* No Blocker, no Major, no minor.
+* Nit (builder's choice): moving the function left two blank lines in a row in find.ts, after `prospectWord`.
+
+Verdict: Approve
+Reviewed sha: 5ea3119eccbbf35ae6a075f703e2f71e5f1e48a6
+
+Reviewer: Approve 5ea3119eccbbf35ae6a075f703e2f71e5f1e48a6
