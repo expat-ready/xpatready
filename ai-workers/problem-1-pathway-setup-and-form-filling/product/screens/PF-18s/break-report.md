@@ -97,3 +97,48 @@ Paths are under `prototype/studio/`, at `2ed09e077`.
 
 ## Verdict
 **Changes at `2ed09e077`**: M1, attachments unreachable from the UI. The Minors can follow. M1, m5 and m8 are addressed in `05646e6d7`, which this report did not test.
+
+## Round 2 (at 5ee13db4)
+Scope `git diff 2ed09e07..5ee13db4`, read against build notes "Part 2, round 1". Run on a detached worktree at exactly `5ee13db4`, isolated copy `break2_pf18s2` on :4742 (`AI_LIVE=off PLATFORM_IDENTITY=local`, plus a known `FO_FILES_LINK_KEY` to forge an expired link). Bundle `index-D5DtsbAP.js`. Headless Chromium, Node `fetch`, psql. US$0, no model call. The builder's `check_pf18s_help_browser.ts` gave 30/30 on this copy. The copy was then stopped and the worktree removed. Paths are under `prototype/studio/`.
+
+**Retest of round 1**
+* **M1, fixed.** "Attachment 1" saves `support-1.pdf` (`%PDF` bytes), and the person stays on the ticket. When the file route is forced to answer 410, 404, 500 or a dropped connection, each shows "File not opened" with words; a forced 401 ends the session to the sign-in page.
+  * API: an Officer's link fetched with the Owner's, the Case Manager's or `sample-solo`'s bearer answers 404. With no bearer it is 401; altered it is 404.
+  * A forged expired link answers 410. The same link fetched by another person is 404, not 410.
+* **m1, fixed.** 50 lines joined by CRLF, 5,000 characters in all, are accepted and stored as 5,000; 5,001 is a 422. A lone CR is stored as LF, and so is a CRLF in a JSON reply.
+* **m2, fixed.** The footer's Close asks first.
+* **m3, fixed as reported.** When the panel is reopened during a held send, "slow one" is still there, Send stays busy, and one ticket is written. But see R2-m1 and R2-m2.
+* **m4, fixed for added text.** "reply once" plus a new line typed during the send leaves "more words" in the box. But see R2-m3.
+* **m5, fixed.** After a 409, the box is read-only and keeps the text. "Not sent" shows the server's words, the hint says to copy the text into a new ticket, and there is no Send. Focus is on the box, and axe is clean at 375 and 1440. Typing does not change the text.
+  * Raising from "?" and choosing "Open your ticket" opens the new ticket with an empty box (no carry-over). Back on the closed ticket, the Closed notice shows.
+* **m6, fixed for direction marks and emoji.** The RLO subject reads "evil text" in the list and the heading. With LRI/PDI, RLM, LRM and ALM it reads "abc def". Fifty flags stay whole, and the family emoji is not split. The Arabic heading, in `<bdi>`, ends with "!" on its left, the right end for right-to-left text.
+* **m7, fixed.** The field says "File 2: The file is not a PDF as its type says." With two bad files it says "File 1: … File 2: …", and the numbers match the server's `files.0` and `files.1`. A 21 MB file now shows on the field too. Three 9.5 MB files are accepted.
+* **m8, partly fixed.** See R2-m5.
+
+**New findings (all Minor)**
+* **R2-m1: text typed into "Ask for help" while it sends is dropped, and closing mid-send says "Discard" but sends.**
+  * Steps: hold the POST, Send "slow one", then Close; the prompt asks "Discard your message?" and is accepted. Reopen; the box is editable. Add a line, then release.
+  * Actual: "Ticket sent" shows, but the stored body is only "slow one", so the added line is lost. The "discarded" message was sent anyway.
+  * Cause: the box is never read-only while `busy` (`help-button.tsx:56`), and `close`/`confirmClose` ask "Discard" during a send (`:42`, `:44`). This is the Raise side of round-1 m4, and the m3 fix makes it easier to reach.
+* **R2-m2: after reopening mid-send, a failed send's retry carries a file the panel no longer shows.**
+  * Steps: attach `keep.pdf`, Send (held), Close (accept), reopen. The file input shows 0 files. Fail the POST with a 500, then press Send again.
+  * Actual: the stored message has 1 attachment. The `files` state survives the reset guard (`help-button.tsx:22`), but the remounted `<input type=file>` (`:59`) is empty.
+* **R2-m3: a reply corrected at its start while it sends looks unsent.**
+  * Steps: Send "Teh second reply" (held), fix it to "The second reply", release.
+  * Actual: "Teh second reply" is stored, and the box still holds the whole "The second reply" with an enabled Send, inviting a near-duplicate.
+  * Cause: `support-page.tsx:81` keeps the whole box unless it starts with the sent text.
+* **R2-m4: cutting by grapheme leaves the subject unbounded.**
+  * The subject of 80 × ("a" + 60 combining marks) is 4,880 code points. One grapheme of "a" + 4,900 marks is kept whole at 4,901. Before, the cut was 80 code points; now 21 list items come to 15.9 kB.
+  * The marks paint over four rows above it in the Owner's list at 1440. At 375 they cover the ticket's breadcrumbs and the My account tabs. No sideways scroll.
+  * Cause: `support.ts:122-123` counts graphemes and has no code-point cap.
+* **R2-m5 (round-1 m8 residual): a box holding only U+200B still enables Send.** It gets "Write what you need help with, without control characters." There are no control characters in it. `help-button.tsx:47` and the reply's Send use `body.trim()`; `support.ts:70` words it.
+
+**Held**
+* Who can use a link: the signed link names both firm and person, so another person's or another firm's bearer is 404. An expired link is 410 only for its own person.
+* The download path: `nosniff` and `no-store` on the file, and no navigation. The blob is revoked after 10 s.
+* Two bad files map to their own numbers. Four files are refused as a group ("At most 3 attachments"). A 413 shows on the field and in the notice.
+* An empty box or one of only NBSP or ideographic spaces keeps Send off (Raise).
+* The Owner's list at 720 px (200 % zoom) shows Ticket, Status and Raised by, with no sideways scroll. The status meaning is visible on the ticket at 375, 1024 and 1440, with no sideways scroll.
+* The read-only text of a closed reply never leaks into another ticket (see m5).
+
+**Verdict: Approve at `5ee13db4ec1c158a23db7962793c4ffcdf3976ee`.** M1 and round-1 m1, m2, m3, m5, m6 and m7 are fixed. m4 is fixed and m8 partly fixed. The five new Minors (R2-m1 to R2-m5) can follow in a later item.
