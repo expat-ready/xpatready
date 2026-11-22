@@ -83,8 +83,9 @@ export class SystemIdentity implements OnModuleInit {
 
   /** The local stand-in's sign-in door (never in the test environment or production: the loader refuses the stand-in there). */
   async localSignIn(input: unknown, call: { device: string | null }) {
-    if (!(this.port instanceof SystemLocalIdentity)) return problem(404, "Not available", "The local sign-in stand-in for ExpatReady staff is not switched on here (PLATFORM_SYSTEM_IDENTITY=local, local environment only).", { code: "STAND_IN_OFF" });
+    // PF-28: the body through the one input rule first (a bad body is 422 wherever it is sent), then the stand-in's gate.
     const body = parseInput(SystemLocalSignInBody, input), email = body.email.trim().toLowerCase();
+    if (!(this.port instanceof SystemLocalIdentity)) return problem(404, "Not available", "The local sign-in stand-in for ExpatReady staff is not switched on here (PLATFORM_SYSTEM_IDENTITY=local, local environment only).", { code: "STAND_IN_OFF" });
     const staff = email ? await this.db.platSystemStaff.findUnique({ where: { email }, select: { id: true, displayName: true, status: true, sessionsEndedAt: true } }) : null;
     if (!staff) return unauthorized("No ExpatReady staff member signs in with that work email.", "UNKNOWN_STAFF");
     if (staff.status !== "ACTIVE") return unauthorized("This ExpatReady staff account has been deactivated. Ask a Platform Owner.", "STAFF_NOT_ACTIVE");

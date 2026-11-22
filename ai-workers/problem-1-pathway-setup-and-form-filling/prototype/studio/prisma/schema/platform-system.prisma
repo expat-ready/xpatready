@@ -1,5 +1,4 @@
-// platform-system.prisma — ExpatReady's own staff: their sign-in records, roles, system/* keys and their audit lines.
-// Owner: Lead B (platform).
+// platform-system.prisma — ExpatReady's own staff: sign-in records, roles, system/* keys, audit lines. Owner: Lead B (platform).
 //
 // PF-4s part 1 (SA-7-1, SA-7-2, SA-7-3, SA-7-11, SA-7-14, SA-7-20, SA7-D8, Appendix A of SA-07 v2.17). Our own staff are a
 // separate sign-in group from every firm's staff and from clients: no table here has a firm_id (SA-7-1), and none is

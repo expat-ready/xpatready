@@ -41,6 +41,7 @@ const generated = () => ({
   PLATFORM_SECRET_BOX_KEYS: `2:${key32()},1:${key32()}`,
   PLATFORM_SECRET_BOX_KEY_VERSION: "2",
   PLATFORM_LOCAL_SECRET: rand(40),   // PF-24w: PF-4's stand-in key is a secret setting of the loader too (optional)
+  PLATFORM_SYSTEM_LOCAL_SECRET: rand(40),   // PF-4s: our own staff's stand-in key, a secret setting too (optional; never PLATFORM_LOCAL_SECRET's value)
 } as Record<string, string>);
 /** Every secret value in a generated set (each secret-box key on its own), to look for in messages, logs and responses. */
 const secretValues = (env: Record<string, string>) => SECRET_SETTING_NAMES.flatMap((n) => (n === "PLATFORM_SECRET_BOX_KEYS" ? env[n].split(",").map((e) => e.slice(e.indexOf(":") + 1)) : [env[n]])).filter(Boolean);
