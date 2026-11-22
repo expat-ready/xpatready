@@ -103,8 +103,11 @@ trial("9 days - 1 hour");
   await x.context().close();
   trial("-3 days");
   const past = await newPage(rTok); await open(past);
-  ok("PF-5s2 DW1 fail (break m1): a trial end already passed reads \"ended on\", never \"ends today\"", (await text(past, "[data-trial-line]"))?.startsWith(`Free trial: ended on ${ends()}.`) === true, await text(past, "[data-trial-line]"));
+  ok("PF-5s2 DW1 fail (break m1, R2-m1): a trial end already passed reads \"ended on\" with no step \"before then\", and the dates line says \"Trial ended\"", await text(past, "[data-trial-line]") === `Free trial: ended on ${ends()}.` && await text(past, "[data-billing-dates]") === `Trial ended ${ends()}`, [await text(past, "[data-trial-line]"), await text(past, "[data-billing-dates]")]);
   await past.context().close();
+  const pastCard = await newPage(rTok); await rewriteBilling(pastCard, () => ({ cardOnFile: true })); await open(pastCard);
+  ok("PF-5s2 DW1 fail (R2-m1): with a card on file and the end passed, no payment date in the past: the first payment is being taken", await text(pastCard, "[data-trial-line]") === `Card saved. The trial ended on ${ends()}; your first payment is being taken.`, await text(pastCard, "[data-trial-line]"));
+  await pastCard.context().close();
   sql(`update platform_subscription set status = 'ACTIVE', trial_ends_at = null, current_period_end = now() + interval '20 days' where id = '${SUB}' returning id`);
   const act = await newPage(rTok); await open(act);
   const pe = day(sql(`select to_char(current_period_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from platform_subscription where id = '${SUB}'`));
@@ -173,14 +176,24 @@ sql(`update platform_firm set business_address = null where id = '${A}'`);
   await fill("postal_code", "M5V 1A1");
   // Review M2 / break M1: the server saves but warns (Stripe not updated): the page stays and shows the warning.
   const WARN = "Saved here. We could not update our billing provider yet: save it again in a few minutes.";
-  await p.route("**/api/platform/billing/address", async (rt) => { const res = await rt.fetch(); return rt.fulfill({ response: res, json: { ...(await res.json()), onStripe: false, next: WARN } }); });
+  // The fake BillingPort keeps no customer for this seeded firm, so the server itself warns on every save here: the first
+  // save shows that warning as the server words it, the second has Stripe "reached" (onStripe true, no warning); the
+  // save itself always runs on the server.
+  let warn = true;
+  await p.route("**/api/platform/billing/address", async (rt) => { const res = await rt.fetch(), body = await res.json() as Record<string, unknown>;
+    if (warn) return rt.fulfill({ response: res, json: { ...body, onStripe: false, next: WARN } });
+    const { next: _drop, ...rest } = body; void _drop; return rt.fulfill({ response: res, json: { ...rest, onStripe: true } }); });
   await p.locator("[data-address-save]").click();
   await p.locator("[data-address-saved]").waitFor({ timeout: 10_000 });
   ok("PF-5s2 DW3 fail (review M2, break M1): a save that answers with a warning stays on the page, shows the warning and does not go to Stripe", await text(p, "[data-address-saved]") === WARN && p.url().startsWith(BASE) && posts.length === 0 && stripeHits.length === before, [await text(p, "[data-address-saved]"), posts]);
-  await p.unroute("**/api/platform/billing/address");
+  warn = false;
+  // R2-m3: after a warned save, the card button asks for the address again (filled in) before Stripe, so Stripe gets it.
   await p.locator("[data-stripe=card]").click();
+  await p.locator("[data-address-form]").waitFor({ timeout: 10_000 });
+  ok("PF-5s2 DW3 fail (R2-m3): after a warned save, Add a card opens the address panel again, filled in, before any hand-off", await p.locator("[data-address-field=postal_code]").inputValue() !== "" && posts.length === 0 && stripeHits.length === before);
+  await p.locator("[data-address-save]").click();
   await p.waitForURL(/stripe\.com/, { timeout: 15_000 });
-  ok("PF-5s2 DW3 pass: a good address saves (audited; the warned save above counted once), then the card button hands off to Stripe's card Checkout for this firm's customer", audits() === n0 + 1 && stripeHits.at(-1) === `https://checkout.stripe.com/c/pay/cs_setup_${CUS}` && posts.length === 1 && sql(`select business_address->>'postal_code' from platform_firm where id = '${A}'`) === "M5V 1A1", [stripeHits.at(-1), posts]);
+  ok("PF-5s2 DW3 pass: a good address saves (audited; the warned save and this one), then hands off to Stripe's card Checkout for this firm's customer", audits() === n0 + 2 && stripeHits.at(-1) === `https://checkout.stripe.com/c/pay/cs_setup_${CUS}` && posts.length === 1 && sql(`select business_address->>'postal_code' from platform_firm where id = '${A}'`) === "M5V 1A1", [stripeHits.at(-1), posts]);
   await p.context().close();
   // With the address kept, the Owner's portal goes straight to Stripe.
   const q = await newPage(rTok); await open(q);
@@ -237,6 +250,18 @@ sql(`update platform_firm set business_address = null where id = '${A}'`);
   const e = await newPage(rTok); await open(e);
   await e.locator("[data-address-edit]").focus(); await e.keyboard.press("Enter"); await e.locator("[data-address-form]").waitFor({ timeout: 10_000 });
   ok("PF-5s2 DW5 pass: the panel opens on its first field", await e.evaluate(() => document.activeElement?.getAttribute("data-address-field")) === "unit");
+  // R2-m2: Close with a typed value asks first; dismissing keeps the panel and the text, accepting closes it.
+  await e.locator("[data-address-field=city]").fill("Ottawa");
+  const asked: string[] = []; let answer = false;
+  const onDialog = (d: import("playwright").Dialog) => { asked.push(d.message()); void (answer ? d.accept() : d.dismiss()); };
+  e.on("dialog", onDialog);
+  await e.getByRole("button", { name: "Close", exact: true }).last().click(); await e.waitForTimeout(300);
+  ok("PF-5s2 DW5 fail (R2-m2): Close with a typed address asks \"Discard the address you typed?\"; No keeps the panel and the text", asked[0] === "Discard the address you typed?" && (await e.locator("[data-address-form]").count()) === 1 && await e.locator("[data-address-field=city]").inputValue() === "Ottawa", asked);
+  answer = true;
+  await e.getByRole("button", { name: "Close", exact: true }).last().click(); await e.locator("[data-address-form]").waitFor({ state: "detached", timeout: 5_000 });
+  e.off("dialog", onDialog);
+  ok("PF-5s2 DW5 pass (R2-m2): Yes discards and closes", asked.length === 2);
+  await e.locator("[data-address-edit]").focus(); await e.keyboard.press("Enter"); await e.locator("[data-address-form]").waitFor({ timeout: 10_000 });
   await e.keyboard.press("Escape"); await e.locator("[data-address-form]").waitFor({ state: "detached", timeout: 5_000 });
   ok("PF-5s2 DW5 pass: Escape closes it and focus goes back to the button that opened it", await e.waitForFunction(() => document.activeElement?.hasAttribute("data-address-edit"), null, { timeout: 3_000 }).then(() => true, () => false), await e.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
   await e.context().close();

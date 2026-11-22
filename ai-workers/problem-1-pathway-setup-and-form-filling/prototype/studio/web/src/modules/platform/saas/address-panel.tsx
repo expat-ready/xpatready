@@ -42,11 +42,14 @@ export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSave
       } else setFailed("Could not save the address. Please try again.");
     } finally { setBusy(false); }
   };
+  // Break m5, R2-m2: one question before a typed address is thrown away, whichever way the panel is closed (Escape, the
+  // X, the overlay or the footer's Close).
+  const mayClose = () => JSON.stringify(f) === JSON.stringify(formOf(current)) || window.confirm("Discard the address you typed?");
   const fieldError = (k: string) => error?.field(k) ?? null;
   return (
-    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => JSON.stringify(f) === JSON.stringify(formOf(current)) || window.confirm("Discard the address you typed?")} title="Business address"
+    <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={mayClose} title="Business address"
       description={beforeStripe ? WORDS.beforeCard : WORDS.addressNeeded}
-      footer={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="pf5s-address" busy={busy} data-address-save>{beforeStripe ? "Save and continue to Stripe" : "Save address"}</Button></>}>
+      footer={<><Button type="button" variant="outline" onClick={() => { if (mayClose()) onOpenChange(false); }}>Close</Button><Button type="submit" form="pf5s-address" busy={busy} data-address-save>{beforeStripe ? "Save and continue to Stripe" : "Save address"}</Button></>}>
       <form ref={form} id="pf5s-address" className="flex flex-col gap-3" onSubmit={save} noValidate data-address-form>
         {NAMES.map(([k, label, auto]) => <Field key={k} label={label} error={fieldError(k)}><Input value={f[k]} onChange={set(k)} autoComplete={auto} required={k !== "unit"} data-address-field={k} /></Field>)}
         <Field label="Province or territory" error={fieldError("province_state")}>

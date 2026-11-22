@@ -49,16 +49,17 @@ export function trialLine(b: Billing, now: number, canCard: boolean): { text: st
   const left = past ? `Free trial: ended on ${end}.` : n === 0 ? `Free trial: ends today (${end}).` : `Free trial: ${n} ${n === 1 ? "day" : "days"} left (ends ${end}).`;
   // Break M3: a trial set to cancel takes no payment and needs no card; it says so instead of asking for one.
   if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription is set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
-  if (b.cardOnFile === true) return { text: `Card saved. Your first payment is on ${end}.`, next: null, card: true };
+  // R2-m1: once the end has passed (the record not yet moved by Stripe's event), nothing is said as if it were ahead.
+  if (b.cardOnFile === true) return { text: past ? `Card saved. The trial ended on ${end}; your first payment is being taken.` : `Card saved. Your first payment is on ${end}.`, next: null, card: true };
   const unknown = b.cardOnFile === null && !b.billingAvailable;
-  return { text: left, next: canCard && !unknown ? "Add a card before then to keep access." : null, card: false };
+  return { text: left, next: canCard && !unknown && !past ? "Add a card before then to keep access." : null, card: false };
 }
 
 /** The dates line under the plan (BR-8). */
-export function datesLine(b: Billing): string | null {
+export function datesLine(b: Billing, now: number = Date.now()): string | null {
   const endOf = b.status === "TRIAL" ? b.trialEndsAt ?? b.currentPeriodEnd : b.currentPeriodEnd;
   if (b.cancelAtPeriodEnd && endOf) return `Cancels on ${day(endOf)}`;
-  if (b.status === "TRIAL") return b.trialEndsAt ? `Trial ends ${day(b.trialEndsAt)}` : null;
+  if (b.status === "TRIAL") return b.trialEndsAt ? `${new Date(b.trialEndsAt).getTime() < now ? "Trial ended" : "Trial ends"} ${day(b.trialEndsAt)}` : null;
   if ((b.status === "ACTIVE" || b.status === "OVERDUE") && b.currentPeriodEnd) return `Next billing date ${day(b.currentPeriodEnd)}`;
   return null;
 }

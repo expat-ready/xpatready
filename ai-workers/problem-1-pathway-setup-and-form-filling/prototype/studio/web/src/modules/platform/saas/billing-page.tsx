@@ -88,7 +88,9 @@ function Summary() {
   };
   const start = (which: "card" | "portal") => (e: React.MouseEvent<HTMLButtonElement>) => {
     opener.current = e.currentTarget;
-    if (!address) { setPanel({ then: which }); return; }   // B1: the address before any card or payment
+    // B1: the address before any card or payment; R2-m3: also again when the last save could not reach Stripe, so the
+    // Stripe customer has it before Checkout (the panel opens filled in).
+    if (!address || savedNote?.tone === "warn") { setPanel({ then: which }); return; }
     void toStripe(which);
   };
   const saved = (next: string | null) => {
