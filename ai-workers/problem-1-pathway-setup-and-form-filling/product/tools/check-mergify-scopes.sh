@@ -22,13 +22,19 @@ def rx(g):
         else: o += re.escape(g[i]); i += 1
     return re.compile(o + r"\Z")
 class Once(yaml.SafeLoader): pass   # a key given twice is refused: Mergify may keep the other copy (break m8)
+class Twice(Exception): pass
 def _once(loader, node, deep=False):
+    loader.flatten_mapping(node)   # a YAML merge key (<<:) first, as PyYAML itself does (break round 2 m4)
     keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
     dup = sorted({k for k in keys if keys.count(k) > 1}, key=str)
-    if dup: raise SystemExit(f"FAIL  .mergify.yml gives the key {dup[0]!r} twice under one mapping\nFAIL  mergify scopes: 0 checks")
+    if dup: raise Twice(dup[0])
     return loader.construct_mapping(node, deep=deep)
 Once.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _once)
-cfg = yaml.load(open(os.path.join(root, ".mergify.yml")), Loader=Once)
+def load_once(text):
+    try: return yaml.load(text, Loader=Once), None
+    except Twice as e: return None, f".mergify.yml gives the key {e.args[0]!r} twice under one mapping"
+cfg, why = load_once(open(os.path.join(root, ".mergify.yml")).read())
+if why: print(f"FAIL  {why}\nFAIL  mergify scopes: 0 checks"); sys.exit(1)   # on stdout like every FAIL (review round 2 R2-4)
 files = [f for f in subprocess.run(["git", "-C", root, "ls-files", "-z"], capture_output=True, text=True, check=True).stdout.split("\0") if f]   # -z: spaces and accents (break m2)
 sc = (cfg.get("scopes") or {}); src = ((sc.get("source") or {}).get("files") or {})
 CARDS = {"platform": "api-platform", "front-office": "api-front-office", "money": "api-client-money",
@@ -54,6 +60,9 @@ OWN = {"platform": [r"web/src/modules/platform/", r"tests/check_(pf|aud)", r"api
 for need in ("platform", "front-office", "money", "case-side", "forms-engine", "migrations", "pipeline"):
     n += 1
     if need not in src: bad.append(f"scope {need} is missing from .mergify.yml (break m5)")
+def ambiguous(g):   # glob forms this script and Mergify may read differently
+    return bool(re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g))
+# FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
            "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
 def owners_bad(src, files):
@@ -64,14 +73,16 @@ def owners_bad(src, files):
             r = re.compile(re.escape(ST) + pat, re.I if pat.startswith("tests/") else 0)   # check_FO3 too (break m4)
             lost = [f for f in files if r.match(f) and not any(p.match(f) for p in inc.get(scope, []))]
             if lost: out.append(f"path owners: scope {scope} does not hold {len(lost)} of its files, first {lost[0]} (add its pattern to .mergify.yml)")
-            if pat.startswith(("tests/", "api/src/features/")) and not pat.startswith("tests/check_fo(?!7)"):
-                twice = sorted({k for f in files if r.match(f) for k, ps in inc.items() if k not in (scope, "migrations") and any(p.match(f) for p in ps)})
-                if twice and not (scope == "money" and twice == ["front-office"]): out.append(f"path owners: files of scope {scope} ({pat}) are also in scope(s) {twice}")
+            if pat.startswith(("tests/", "api/src/features/")):   # every owned test or feature file, one scope only (follow-up 1, 2)
+                twice = sorted({k for f in files if r.match(f) for k, ps in inc.items() if k != scope and any(p.match(f) for p in ps)})
+                if twice: out.append(f"path owners: files of scope {scope} ({pat}) are also in scope(s) {twice}")
     for area in sorted({f[len(ST + "web/src/modules/"):].split("/")[0] for f in files if f.startswith(ST + "web/src/modules/") and f.count("/") > (ST + "web/src/modules/").count("/")}):
-        if area == "_example": continue   # the template folder, no area's (any other "_" folder is checked, break m3)
+        if area.startswith("_"): continue   # a fixture, never in a default build (web/src/modules/README.md; follow-up 3)
         mine = [f for f in files if f.startswith(ST + "web/src/modules/" + area + "/")]
-        want = FOLDERS.get(area)   # the folder's own area scope, by name (break M1: any scope used to do)
-        if want is None:
+        want = FOLDERS.get(area, "")   # the folder's own area scope, by name (break M1: any scope used to do)
+        if want is None:   # recorded in FOLDERS as an area with no scope, on purpose: batched with the scope-less PRs
+            continue
+        if want == "":
             out.append(f"path owners: web/src/modules/{area}/ names no area: add it to FOLDERS in this script with its scope, and to that scope in .mergify.yml")
             continue
         if not all(any(p.match(f) for p in inc.get(want, [])) for f in mine):
@@ -83,8 +94,11 @@ def owners_bad(src, files):
         if not re.fullmatch(re.escape(ST) + r"api/src/features/[^/]+\.ts", f): continue
         api = ST + "api/src/" + f.rsplit("/", 1)[1]
         for scope in OWN:
-            if any(p.match(api) for p in inc.get(scope, [])) and not any(p.match(f) for p in inc.get(scope, [])):
-                out.append(f"path owners: {f[len(ST):]} registers {api[len(ST):]} of scope {scope}, and that scope does not hold it")
+            if any(p.match(api) for p in inc.get(scope, [])):
+                if not any(p.match(f) for p in inc.get(scope, [])):
+                    out.append(f"path owners: {f[len(ST):]} registers {api[len(ST):]} of scope {scope}, and that scope does not hold it")
+                other = sorted(k for k, ps in inc.items() if k != scope and any(p.match(f) for p in ps))
+                if other: out.append(f"path owners: {f[len(ST):]} belongs to scope {scope} and is also in scope(s) {other}")
     return out
 n += 1; bad += owners_bad(src, files)
 # Self-test: each way of losing an owner is caught (this script cannot be mutation-tested by check-guards.sh --mutate,
@@ -112,11 +126,31 @@ if not owners_bad(c, files): bad.append("self-test: web/src/modules/platform/ al
 n += 1   # break m1 G1: a folder only partly held
 c = {k: {"include": [g for g in (v or {}).get("include") or [] if not g.endswith("web/src/modules/platform/**")]} for k, v in src.items()}; c.setdefault("platform", {"include": []})["include"].append(ST + "web/src/modules/platform/*.tsx")
 if not owners_bad(c, files): bad.append("self-test: web/src/modules/platform/ only partly in platform still passes")
-for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "web/src/modules/_money/x.tsx", "web/src/modules/client money/x.tsx"):
+def mutated(edit):   # a copy of the scopes, changed by edit(c)
+    c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; edit(c); return c
+for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "tests/check_Pf9_x.ts"):   # a new area test that no scope's glob holds (case-blind)
     n += 1
-    if not owners_bad({k: {"include": [g for g in (v or {}).get("include") or [] if "check_fo0" not in g]} for k, v in src.items()}, files + [ST + t]) and "check_fo" in t:
-        bad.append(f"self-test: a new {t} in no scope still passes")
-    elif "modules" in t and not owners_bad(src, files + [ST + t]): bad.append(f"self-test: a new {t} still passes")
+    c = mutated(lambda c: [c[k].__setitem__("include", [g for g in c[k]["include"] if not re.search(r"tests/check_(fo|FO|pf|Pf)", g, re.I)]) for k in c])
+    if not any(t.split("/")[-1] in x or "does not hold" in x for x in owners_bad(c, files + [ST + t])): bad.append(f"self-test: a new {t} that no scope holds still passes")
+n += 1   # a new area folder only partly in its scope (break round 2 m6, R-G1)
+c = mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money/index.tsx"))
+if not any("not wholly" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx", ST + "web/src/modules/client-money/b.tsx"])): bad.append("self-test: client-money/ only partly in money still passes")
+n += 1   # an owned test also in a second scope, migrations included (follow-up 1, 2)
+c = mutated(lambda c: c["migrations"]["include"].append(ST + "tests/check_pf*"))
+if not any("also in scope(s) ['migrations']" in x for x in owners_bad(c, files)): bad.append("self-test: check_pf* also in migrations still passes")
+n += 1
+c = mutated(lambda c: c["case-side"]["include"].append(ST + "tests/check_fo1*"))
+if not any("also in scope(s) ['case-side']" in x for x in owners_bad(c, files)): bad.append("self-test: check_fo1* also in case-side still passes")
+n += 1   # a named feature file in a second scope (follow-up 2)
+c = mutated(lambda c: c["platform"]["include"].append(ST + "api/src/features/clients.ts"))
+if not any("clients.ts belongs to scope case-side" in x for x in owners_bad(c, files)): bad.append("self-test: features/clients.ts also in platform still passes")
+n += 1   # a missing scope, a key given twice, an ambiguous glob (break round 2 m6)
+if not [x for x in ("migrations",) if x in src]: bad.append("self-test: the real file has no migrations scope")
+n += 1
+if load_once("a:\n  b: 1\n  b: 2\n")[1] is None: bad.append("self-test: a YAML mapping with a key given twice still loads")
+if load_once("x: &a {k: 1}\ny:\n  <<: *a\n  j: 2\n")[1] is not None: bad.append("self-test: a YAML merge key is refused as a duplicate")
+n += 1
+if not ambiguous(ST + "web/src/modules/client-money**") or ambiguous(ST + "web/src/modules/client-money/**"): bad.append("self-test: the glob refusal reads client-money** and client-money/** the wrong way")
 for scope, frag in (("case-side", "tests/check_case_"), ("front-office", "tests/check_fo5"), ("case-side", "features/clients.ts"), ("forms-engine", "features/answer-keys.ts")):
     n += 1; c = without(scope, frag)
     if c is None: bad.append(f"self-test: scope {scope} has no pattern holding {frag}, so removing it proves nothing")
@@ -124,7 +158,7 @@ for scope, frag in (("case-side", "tests/check_case_"), ("front-office", "tests/
 for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] + [("barrier_files", (sc.get("barrier_files") or {}).get("include") or [])]:
     for g in pats:
         n += 1
-        if re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g):
+        if ambiguous(g):
             bad.append(f"{name}: {g} uses glob syntax this script and Mergify may read differently ([...], {{...}}, ?, or ** inside a path part): use plain * and whole-part **")
 
     for g in pats:
