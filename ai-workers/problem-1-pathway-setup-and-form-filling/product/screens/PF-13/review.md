@@ -159,3 +159,19 @@ Diff-only re-review under the Lead's standing permission A277. 7ddd1fa87 is reco
 **Verdict: Approve**
 
 Reviewer: Approve 54eb2781b631fe23c7dd96a2a7dca303d33bde53
+
+## Merge of main (diff 78e92f8ed..1ca8370e6)
+
+Diff-only re-review of merge commit 1ca8370e6262dd0c8f4dd42240f6728eda78a734 (parents 78e92f8ed, this PR's last approved commit, and 346446303, origin/main after #2884 and #2906).
+
+1. **`routes.tsx` against main's side (`git diff 1ca8370e6^2 1ca8370e6`):** exactly two added lines and nothing removed: `import { BrandingPage } from "./branding/branding-page";` and `{ path: "/platform/branding", element: <BrandingPage /> }`, both placed between Offices and Support. Main's `SupportPage, SupportTicketPage` import and its `/platform/support` and `/platform/support/:id` routes are kept, as is `/account/notifications`. No route path appears twice in the merged file (checked with `sort | uniq -d`), and `/platform/branding` matches no other path.
+2. **Scope of the merge (`git diff --stat 1ca8370e6^2 1ca8370e6`):** 24 files, 1151 insertions, 0 deletions. All of them are this PR's own files: the PF-13 screen folder and screenshots, `qa/built/R1.23.md`, `MODULE.rows/PF-13.md`, `tests/check_pf13_branding_browser.ts`, the three `branding/` files, plus one line each in `account-sections.ts` (the Branding entry) and `routes.tsx`. The merge drops none of main's lines. `git diff 78e92f8ed 1ca8370e6` over `modules/platform/branding`, the PF-13 screen folder and the PF-13 check script is empty, so the merge did not change the panel.
+3. **Builder's results at 1ca8370e6 (not re-run):** `run-suites.sh --only` exit 0: pf13 branding 40/40, pf18h home 25/25, pf18s offices 28/28, pf5s2 billing 55/55, pf6a frame 52/52; typecheck PASS. These match the routes and nav files that the merge touched.
+
+**Findings:** none.
+
+**Journey score:** 9.5 / 10 stays. No behaviour changed.
+
+**Verdict: Approve**
+
+Reviewer: Approve 1ca8370e6262dd0c8f4dd42240f6728eda78a734
