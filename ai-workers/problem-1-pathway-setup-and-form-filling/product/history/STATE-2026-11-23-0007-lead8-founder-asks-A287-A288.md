@@ -1,4 +1,4 @@
-# STATE founder ask rows A287-A288, moved word for word by Lead 8 at 00:07 IST 23 Nov
+# STATE founder ask rows A287-A288, moved word for word by Lead 8 at 00:03 IST 23 Nov
 
 | # | Ask (IST) | Status |
 |---|---|---|
