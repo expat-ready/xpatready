@@ -6,36 +6,41 @@
 //   Setup (Sample rows written to the copy's database, as j_39 does): firm `maple104` with an Owner, a licensed Case
 //   Officer (Client C, a Sample licence record), a Billing and finance host (Client D: no list key); firm `birch104` with
 //   its own Owner (Client X); Mon-Fri 09:00-17:00 hours; a "Free consultation" type (FREE_CONSULT); a lead (Client P,
-//   with an email). The Owner's CONSULTATION template (a Sample .docx built here) goes into FO-5's template store, in the
-//   copy's own file folder; that is what makes the firm's consultations need an agreement (FO-3c's rule: an active
-//   consultation template; the build has no per-type switch).
+//   with an email), and a "Follow-up" type (FOLLOW_UP), the type that does not need an agreement (AG-4-15 rule 1:
+//   requireAgreement). The Owner's CONSULTATION template (a Sample .docx built here) goes into FO-5's template store, in
+//   the copy's own file folder (FO-3c's trigger: an active consultation template).
 //   W1 (screen) Client C signs in on the sign-in card, opens Home › Bookings calendar and books Client P with New booking.
 //   W2 (running app) that booking sends one agreement for signing: a CONSULTATION agreement for the booking is stored and
-//      GET …/consultation-agreements/by-booking/:id says "Agreement not signed yet". Fails on the fake (P-606): read
-//      before the booking, there is none. FO-3c leaves the booking-event poller unwired (its feature file says so), so
-//      this stays red after #2922 until that poller is on main.
+//      GET …/consultation-agreements/by-booking/:id says "Agreement not signed yet". FO-3c leaves the booking-event
+//      poller unwired (its feature file says so), so this stays red after #2922 until that poller is on main.
 //   W3 (screen) the booking's panel says "Agreement not signed yet" (FO-3c is API only: red until a screen shows it).
 //   From W4 on, the agreement is made and signed by FO-3c's own service run in this process on the copy's database and
 //   file folder (a stand-in, said, not hidden: the poller and FO-6's signing webhook are not wired, and the only signer is
 //   SigningPort's fake, whose state lives in the process that calls it). Its clock, jobs and mail are fakes. On main the
 //   service does not exist yet, so every such step is a FAIL ("not built"), never a throw.
-//   W4 cannot start until signed: a booking of Client C's that ended 40 minutes ago, its agreement sent and unsigned.
-//      On screen she presses Attended: refused in plain words naming the agreement, the booking stays Scheduled; by API
-//      the attendance answer and the consult record are refused (4xx naming the agreement), nothing changes.
-//   W5 the reminder goes: a booking three days ahead, unsigned: when the clock reaches 24 hours before it, one reminder
-//      is sent (FO-3c sends it to the person who signs for the firm, the host here); the clock an hour earlier sends
-//      none (fails on the fake); and Client C's GET …/needs-you on the running copy lists the unsigned agreement.
+//   W4 cannot start until signed: a booking of Client C's that ended about 40 minutes ago, its agreement sent and
+//      unsigned. On screen she presses Attended on its panel: the panel's own message refuses it in plain words naming
+//      the agreement, the booking stays Scheduled; by API the attendance answer and a valid consult record (ConsultBody)
+//      are refused for the agreement (the refusal names it), nothing changes.
+//   W4b fails on the fake for "whose type needs it": a Follow-up booking of Client P's, ended, gets no agreement and its
+//      Attended is saved without any signing (red on a build with no per-type switch).
+//   W5 the reminder goes: a booking three days ahead, unsigned: an hour before the 24-hour mark no reminder (fails on the
+//      fake); at the mark the person who booked (Client P) gets it, once (AG-4-15 "the reminders still go"; FO-3c sends it
+//      to the firm's signatory instead: a question for the tech lead). On the running copy, the booking made on screen
+//      in W1 has its reminder job queued for 24 hours before it, and Client C's GET …/needs-you lists W5's agreement.
 //   W6 the person signs (the client's link with consent, then the fake signer), then the host signs; the agreement is
 //      sealed; the signed copy is emailed to the person once, with the file attached.
 //   W7 the signed copy is on the person: GET …/by-person/:personId on the running copy says "Agreement signed" with the
-//      stored copy's sha256; the lead's page on screen says "Agreement signed" (red until a screen shows it).
+//      stored copy's sha256; the lead's page on screen says "Agreement signed" and offers the signed copy as a link that
+//      opens the file (red until a screen shows it).
 //   W8 others: firm birch104's Owner reads it as not found (404); Client D (no list key) is refused (403).
-//   W9 after signing the consultation can start: Attended on the W4 booking is saved on screen.
+//   W9 after signing the consultation can start: Attended on the W4 booking is saved on screen, and its consult record
+//      (the same valid body) is accepted by API.
 //   W10 the booking panel at 1440 px: no serious axe violation (WCAG 2.2 A/AA); no page error.
 // Every value is Sample. Every legal reading (Code SOR/2022-128 s. 23 "signed", e-signature identity): Unconfirmed: no
 // counsel. US$0, no model call, live AI off, no live mail (fakes in this process; the copy's own mail stays local).
 // Screenshots: product/screens/J-104/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh j104 4472 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j104 4472 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_104.ts j104 4472
+//   zsh studio/tools/isolated.sh j104 4404 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j104 4404 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_104.ts j104 4404
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -46,7 +51,7 @@ import { chromium, type Page } from "playwright";
 import { recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const NAME = process.argv[2] ?? "j104", PORT = Number(process.argv[3] ?? 4472), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const NAME = process.argv[2] ?? "j104", PORT = Number(process.argv[3] ?? 4404), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DBNAME}`, STUDIO = join(import.meta.dirname, "..", "..");
 const FILES = join(STUDIO, "var", `isolated-${NAME}`, "front-office-files");   // the copy's own LocalFiles folder (isolated.sh STUDIO_VAR)
@@ -85,6 +90,7 @@ const F = await person(M, "Client F", "OWNER"), C = await person(M, "Client C", 
 await db.platformStaffCredential.create({ data: { firmId: M.id, staffId: C.id, representativeType: "RCIC", licensingBody: "College of Immigration and Citizenship Consultants (Sample)", licenceNumber: "R000104 (Sample)", updatedBy: "seed:j104" } });
 await db.foAvailability.createMany({ data: [F, C, D].flatMap((h) => [1, 2, 3, 4, 5].map((weekday) => ({ firmId: M.id, staffId: h.id, weekday, startMinute: 540, endMinute: 1020, timeZone: TZ }))) });
 const type = await db.foConsultationType.create({ data: { firmId: M.id, slug: "free-consultation", name: "Free consultation", purpose: "FREE_CONSULT" as never, modes: ["VIDEO", "PHONE"], hostStaffIds: [F.id, C.id, D.id], minutes: 30, windowDays: 60, minNoticeMinutes: 0 } });
+const followUp = await db.foConsultationType.create({ data: { firmId: M.id, slug: "follow-up", name: "Follow-up", purpose: "FOLLOW_UP" as never, modes: ["VIDEO"], hostStaffIds: [C.id], minutes: 30, windowDays: 60, minNoticeMinutes: 0 } });
 const P = await db.foPerson.create({ data: { firmId: M.id, givenNames: "Client P", familyName: "Sample", email: "clientp@client104.example", createdBy: "test" } });
 const lead = await db.foLead.create({ data: { firmId: M.id, personId: P.id, door: "MANUAL", source: "WEBSITE", ownerStaffId: C.id, createdBy: "test" } });
 // The Owner's consultation template, through FO-5's own store, in the copy's file folder (so the running app reads it too).
@@ -99,7 +105,7 @@ ok("J-104 setup: firms maple104 and birch104 (Sample), a licensed Case Officer, 
 const ymd = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 const plus = (date: string, n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const wall = (date: string, hhmm: string) => { const [y, m, d] = date.split("-").map(Number), [h, mi] = hhmm.split(":").map(Number); return wallToUtc(y, m, d, h * 60 + mi, TZ)!; };
-const book = (startsAt: Date) => db.foBooking.create({ data: { firmId: M.id, typeId: type.id, staffId: C.id, personId: P.id, mode: "VIDEO", startsAt, endsAt: new Date(startsAt.getTime() + 30 * MIN), bookerTimeZone: TZ } });
+const book = (startsAt: Date, typeId = type.id) => db.foBooking.create({ data: { firmId: M.id, typeId, staffId: C.id, personId: P.id, mode: "VIDEO", startsAt, endsAt: new Date(startsAt.getTime() + 30 * MIN), bookerTimeZone: TZ } });
 const agreementsOf = async (bookingId: string) => Number((await db.$queryRaw<{ n: bigint }[]>`select count(*) n from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id where r.firm_id = ${M.id}::uuid and r.kind = 'CONSULTATION' and v.merge_values->>'booking.id' = ${bookingId}`)[0].n);
 
 const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: process.env.HEADED ? 200 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -122,6 +128,8 @@ const api = async (token: string, method: string, path: string, body?: unknown):
   return { status: r.status, body: await r.json().catch(() => null) };
 };
 const AGREEMENTS = "/front-office/consultation-agreements";
+/** A consult record main's ConsultBody accepts (api/src/front-office/booking/consult/service.ts), so a refusal is the rule's. */
+const RECORD = { timeSpentMinutes: 30, notes: "Sample consult notes (J-104)", recommended: ["Study permit (Sample)"] };
 const pageText = async (p: Page) => (await p.locator("body").innerText()).replace(/\s+/g, " ");
 
 try {
@@ -134,6 +142,7 @@ try {
   await c.locator("[data-new-booking]").click();
   await c.locator("[data-person-find]").fill("Client P");
   await c.locator("[data-person]").selectOption({ index: 1 });
+  await c.locator("[data-type]").selectOption({ label: "Free consultation" });
   await c.locator("[data-host]").selectOption({ label: "Client C (you)" });
   const slot = c.locator("[data-time-chooser] button[aria-pressed]").first();
   await slot.waitFor({ timeout: 15_000 }); await slot.click();
@@ -142,7 +151,7 @@ try {
   const b1 = await db.foBooking.findFirst({ where: { firmId: M.id, staffId: C.id, personId: P.id }, orderBy: { createdAt: "desc" } });
   ok("J-104 W1: Client C signs in on screen, opens Home › Bookings calendar and books Client P with New booking: \"Booked\", stored once", said.startsWith("Booked Client P Sample") && !!b1, { said });
   if (!b1) throw new Error("no booking was made; the walk cannot go on");
-  ok("J-104 W2 fail (before the booking, P-606): no consultation agreement existed", before === 0);
+  ok("J-104 W2 setup: no consultation agreement existed before the booking (a fresh copy)", before === 0);
   let sent = 0; for (let i = 0; i < 40 && !sent; i++) { await wait(500); sent = await agreementsOf(b1.id); }
   const byBooking = await api(tc, "GET", `${AGREEMENTS}/by-booking/${b1.id}`);
   ok("J-104 W2: the booking sends one agreement for signing on the running app: one CONSULTATION agreement for it, and by-booking says \"Agreement not signed yet\"",
@@ -173,20 +182,30 @@ try {
   ok("J-104 W4 setup (stand-in): the ended booking's agreement is sent and unsigned", !!a2, s2 ?? NOT_BUILT);
   await go(c, `/front-office/bookings/${b2.id}`);
   await c.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
-  await c.locator("[data-booking-detail]").getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
+  const answers2 = c.locator(`[data-booking-detail] [data-attendance="${b2.id}"]`);
+  await answers2.getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
   let afterClick0 = ""; for (let i = 0; i < 10 && afterClick0 !== "COMPLETED"; i++) { await wait(300); afterClick0 = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status; }
-  const afterClick = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status, refusal = await pageText(c);
+  const afterClick = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status;
+  const refusal = (await answers2.locator('[role="alert"]').innerText({ timeout: 3000 }).catch(() => "")).trim();
   await shot(c, "w4-attended-before-signing-1440");
-  ok("J-104 W4 (screen): before the agreement is signed, Attended is refused in plain words naming the agreement, and the booking stays Scheduled",
-    !!a2 && afterClick === "SCHEDULED" && /agreement/i.test(refusal) && /sign/i.test(refusal), { a2: !!a2, afterClick });
+  ok("J-104 W4 (screen): before the agreement is signed, Attended on that booking's panel is refused by the panel's own message, in plain words naming the agreement, and the booking stays Scheduled",
+    !!a2 && afterClick === "SCHEDULED" && /agreement/i.test(refusal) && /sign/i.test(refusal), { a2: !!a2, afterClick, refusal });
   // A second ended booking for the API judge (a status that moved cannot be put back: the table's own guard).
   const b3 = await book(new Date(Math.floor((Date.now() - 130 * MIN) / (30 * MIN)) * 30 * MIN));
   const s3 = svc ? await svc.onBookingEvent(eventOf(b3)) : null;
   const att = await api(tc, "POST", `/front-office/bookings/${b3.id}/attendance`, { outcome: "COMPLETED" });
-  const rec = await api(tc, "PUT", `/front-office/bookings/${b3.id}/consult-record`, { summary: "Sample consult notes (J-104)" });
+  const rec = await api(tc, "PUT", `/front-office/bookings/${b3.id}/consult-record`, RECORD);
   const still = (await db.foBooking.findUniqueOrThrow({ where: { id: b3.id } })).status;
-  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer and the consult record are refused (4xx naming the agreement); nothing changes",
-    !!s3?.sent && att.status >= 400 && att.status < 500 && /agreement/i.test(JSON.stringify(att.body)) && rec.status >= 400 && rec.status < 500 && /agreement/i.test(JSON.stringify(rec.body)) && still === "SCHEDULED", { sent: !!s3?.sent, attendance: [att.status, att.body?.detail], record: [rec.status, rec.body?.detail], still });
+  const forAgreement = (r: { status: number; body: unknown }) => r.status >= 400 && r.status < 500 && /agreement/i.test(JSON.stringify(r.body));
+  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer and a valid consult record are each refused for the agreement (the refusal names it); nothing changes",
+    !!s3?.sent && forAgreement(att) && forAgreement(rec) && still === "SCHEDULED", { sent: !!s3?.sent, attendance: [att.status, att.body?.detail], record: [rec.status, rec.body?.detail], still });
+  // W4b: the type that does not need it (fails on the fake for "whose type needs it").
+  const b5 = await book(new Date(Math.floor((Date.now() - 190 * MIN) / (30 * MIN)) * 30 * MIN), followUp.id);
+  const s5 = svc ? await svc.onBookingEvent(eventOf(b5)) : null;
+  const att5 = await api(tc, "POST", `/front-office/bookings/${b5.id}/attendance`, { outcome: "COMPLETED" });
+  const st5 = (await db.foBooking.findUniqueOrThrow({ where: { id: b5.id } })).status;
+  ok("J-104 W4b: a Follow-up booking (a type that does not need the agreement) gets no agreement, and its Attended is saved without any signing",
+    !!svc && s5?.sent === false && (await agreementsOf(b5.id)) === 0 && att5.status === 200 && st5 === "COMPLETED", svc ? { s5, attendance: att5.status, st5 } : NOT_BUILT);
 
   // --------------------------------------------------------------------------------------------- W5 the reminder
   const day3 = plus(ymd(new Date()), 3);
@@ -199,12 +218,17 @@ try {
     await clock.set(new Date(b4.startsAt.getTime() - DAY + MIN)); dueCount = reminders().length;
     await clock.set(new Date(b4.startsAt.getTime() - DAY + 2 * HOUR));
   }
-  const rem = reminders() as { to: string; subject: string }[];
+  const rem = reminders() as { to: string; subject: string }[], toClient = rem.filter((m) => m.to === P.email!.toLowerCase());
   ok("J-104 W5 fail (an hour before the 24-hour mark, P-606): no reminder yet", earlyCount === 0, earlyCount < 0 ? NOT_BUILT : earlyCount);
-  ok("J-104 W5: 24 hours before the unsigned booking the reminder goes, once, to the person who signs for the firm (the licensed host, Client C)",
-    dueCount === 1 && rem.length === 1 && rem[0].to === C.email.toLowerCase(), dueCount < 0 ? NOT_BUILT : rem.map((m) => [m.to, m.subject]));
+  ok("J-104 W5: 24 hours before the unsigned booking the reminder goes to the person who booked (Client P), once (AG-4-15; see the PR's question for the tech lead)",
+    dueCount >= 1 && toClient.length === 1, dueCount < 0 ? NOT_BUILT : rem.map((m) => [m.to, m.subject]));
+  // The running copy: the booking made on screen (W1) has its reminder queued in the app's own job queue (pg-boss).
+  const boss = (await db.$queryRaw<{ s: string }[]>`select table_schema s from information_schema.tables where table_schema = 'platform_jobs' and table_name = 'job' limit 1`)[0]?.s;   // PF-14's JOBS_SCHEMA
+  const queued = boss ? Number((await db.$queryRawUnsafe<{ n: bigint }[]>(`select count(*) n from "${boss}".job where name = 'consultation_agreement.reminder' and data::text like $1`, `%${b1.id}%`))[0].n) : 0;
+  const outbox = Number((await db.$queryRaw<{ n: bigint }[]>`select count(*) n from msg_outbox where firm_id = ${M.id}::uuid and idempotency_key like 'consultation-agreement:%'`)[0].n);
+  ok("J-104 W5 (running copy): the booking made on screen in W1 has its 24-hour reminder queued in the app's own job queue", queued === 1, { schema: boss ?? null, queued, agreementMailsInOutbox: outbox });
   const needs = await api(tc, "GET", `${AGREEMENTS}/needs-you`);
-  ok("J-104 W5: on the running copy Client C's \"needs you\" lists her unsigned agreements", needs.status === 200 && (needs.body?.items ?? []).some((i: { agreementId: string }) => i.agreementId === a2), [needs.status, needs.body?.items?.length ?? needs.body?.title]);
+  ok("J-104 W5: on the running copy Client C's \"needs you\" lists W5's unsigned agreement", needs.status === 200 && !!s4?.sent && (needs.body?.items ?? []).some((i: { agreementId: string }) => i.agreementId === s4.agreementId), [needs.status, needs.body?.items?.length ?? needs.body?.title]);
 
   // --------------------------------------------------------------------------------------------- W6 signing
   let sealedOk = false, copyMails = 0, sealedSha = "";
@@ -231,7 +255,10 @@ try {
   ok("J-104 W7 (running copy): by-person says \"Agreement signed\" for Client P with the stored copy's sha256", byPerson.status === 200 && mine?.words === "Agreement signed" && !!sealedSha && JSON.stringify(mine).includes(sealedSha), [byPerson.status, mine?.words ?? byPerson.body?.title]);
   await go(c, `/front-office/leads/${lead.id}`);
   const leadText = await pageText(c);
-  ok("J-104 W7 (screen): Client P's lead page says \"Agreement signed\" and offers the signed copy", leadText.includes("Agreement signed"), leadText.slice(0, 160));
+  const copyLink = c.getByRole("link", { name: /signed copy/i }).first(), href = await copyLink.getAttribute("href", { timeout: 3000 }).catch(() => null);
+  const opened = href ? await c.context().request.get(new URL(href, BASE).toString(), { headers: { authorization: `Bearer ${tc}` } }).then(async (r) => ({ status: r.status(), type: r.headers()["content-type"] ?? "", size: (await r.body()).length })).catch(() => null) : null;
+  ok("J-104 W7 (screen): Client P's lead page says \"Agreement signed\" and offers the signed copy as a link that opens the file",
+    leadText.includes("Agreement signed") && opened?.status === 200 && (opened?.size ?? 0) > 0 && !/text\/html/.test(opened?.type ?? ""), { said: leadText.includes("Agreement signed"), href, opened });
   await shot(c, "w7-lead-page-1440");
   const x = await signIn(KEY_B, X.email), d = await signIn(KEY, D.email);
   const other = await api(await tokenOf(x), "GET", `${AGREEMENTS}/by-person/${P.id}`), noKey = await api(await tokenOf(d), "GET", `${AGREEMENTS}/by-person/${P.id}`);
@@ -242,9 +269,11 @@ try {
   // --------------------------------------------------------------------------------------------- W9, W10
   await go(c, `/front-office/bookings/${b2.id}`);
   await c.locator("[data-booking-detail]").waitFor({ timeout: 15_000 });
-  await c.locator("[data-booking-detail]").getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
+  await c.locator(`[data-booking-detail] [data-attendance="${b2.id}"]`).getByRole("button", { name: "Attended", exact: true }).click().catch(() => undefined);
   let started = ""; for (let i = 0; i < 20 && started !== "COMPLETED"; i++) { await wait(300); started = (await db.foBooking.findUniqueOrThrow({ where: { id: b2.id } })).status; }
-  ok("J-104 W9: once the agreement is signed, Attended on that booking is saved (the consultation can start; it was refused in W4)", sealedOk && afterClick === "SCHEDULED" && started === "COMPLETED", { sealedOk, beforeSigning: afterClick, started });
+  const rec2 = await api(tc, "PUT", `/front-office/bookings/${b2.id}/consult-record`, RECORD);
+  ok("J-104 W9: once the agreement is signed, Attended on that booking is saved on screen and its consult record (the same body as W4) is accepted (the consultation can start; both were refused in W4)",
+    sealedOk && afterClick === "SCHEDULED" && started === "COMPLETED" && rec2.status >= 200 && rec2.status < 300, { sealedOk, beforeSigning: afterClick, started, record: [rec2.status, rec2.body?.detail] });
   const bad = (await new AxeBuilder({ page: c }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id);
   ok("J-104 W10: the booking panel at 1440 px has no serious axe violation", bad.length === 0, bad);
   await shot(c, "w9-attended-after-signing-1440");
