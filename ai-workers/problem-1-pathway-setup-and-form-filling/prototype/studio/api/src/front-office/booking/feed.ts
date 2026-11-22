@@ -19,14 +19,14 @@ import { Booking, BOOKING_PORTS } from "./public.controller.ts";
 import { partyOf } from "./consult/service.ts";
 import { hostZone, type GivenBookingPorts } from "./service.ts";
 import { firmTimings, resolveTimings } from "./settings/timings.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN, MAX_DAYS = 62;
 const LIST = "agent/booking:list", EDIT = "agent/booking:edit";
 const ACTIVE = ["SCHEDULED", "RESCHEDULED"], PIECE = 10_000;
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.example/problems/${slug}`, title, status, detail, ...extra }, status);
-// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 400, never a 500 (break F1).
+// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 422 field error, never a 500 (break F1; PF-28 part 4).
 const Instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s)).refine((d) => d.getTime() >= Date.UTC(2000, 0, 1) && d.getTime() < Date.UTC(2100, 0, 1), "a time between 2000 and 2100");
 const FeedQuery = z.strictObject({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
 
@@ -39,6 +39,7 @@ export class BookingFeed {
 
   /** `GET bookings/feed?from&to&view=mine|team`: at most 62 days, from before to; `team` needs agent/booking:list. */
   async list(ctx: StaffContext, query: unknown) {
+    parseInput(z.unknown(), query);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
     const p = FeedQuery.safeParse(query ?? {});
     // PF-28 part 4: a field error is 422 with the fields named (an unknown query key among them), the issues as before.
     if (!p.success) throw problem(FIELD_ERROR_STATUS, "booking-refused", "Bookings not listed", "Ask with from and to as ISO times, and view mine or team.", { code: "INVALID", fields: fieldsOf(p.error), issues: p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });

@@ -30,7 +30,7 @@ import { computeSlots, localDate, wallToUtc, type Slot } from "../slots.ts";
 import { windowsFor } from "./hours.ts";
 import { forbidden } from "../../../platform/identity/keys.ts";
 import { firmTimings, resolveTimings, TIMING_FIELDS, TIMING_RANGES, timingWarnings, timingKey, withTimings, type TimingField } from "./timings.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 type Row = Awaited<ReturnType<Tx["foConsultationType"]["findFirstOrThrow"]>>;
@@ -102,6 +102,7 @@ const TimingsBody = z.strictObject({ ...Object.fromEntries(TIMING_FIELDS.map((f)
   version: z.number({ error: "Send the version you read." }).int().min(1) });
 
 function parse<T extends z.ZodType>(schema: T, body: unknown): z.output<T> {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const b = (body ?? {}) as Record<string, unknown>;
   if (b && typeof b === "object" && b.purpose === "PAID_CONSULT") throw fieldError(FIELD_ERROR_STATUS, "purpose", WORDS.paid, "PAID_NOT_AVAILABLE");
   const r = schema.safeParse(b);
@@ -231,6 +232,7 @@ export class BookingTypesService {
   /** AG-4-8: the slots a visitor would see, in `tz` (the firm's zone by default), and per empty day one reason. Reads only. */
   async preview(ctx: StaffContext, id: string, query: unknown) {
     typeIdShape(id);
+    parseInput(z.unknown(), query);
     const r = SlotsQuery.safeParse(query ?? {});   // PF-28 part 4: the query is read before the type is looked up
     if (!r.success) throw problem(FIELD_ERROR_STATUS, "invalid", "Please check the highlighted details", "Give from and to as times with their offset, and tz as an IANA time zone.", { code: "INVALID", fields: fieldsOf(r.error), issues: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const t = await withTimings(this.db, ctx.firmId, await this.find(this.db, ctx.firmId, id));   // FO-3a1e: as the door resolves them

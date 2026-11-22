@@ -24,7 +24,7 @@ import type { AuditPort } from "../../../../../ports/audit.ts";
 import type { ConsultRecordRead, PartyRef } from "../../../../../ports/consult-record.ts";
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 export type ConsultPorts = { audit: AuditPort<Tx> };
@@ -119,6 +119,9 @@ export class ConsultRecordService {
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
+    // PF-28 part 4 (review M1): a malformed booking id is the one not-found before the body is read.
+    if (!UUID.test(String(bookingId))) return notInFirm("booking");
+    parseInput(z.unknown(), body);   // review m1: a "__proto__" key is refused as the one rule refuses it
     // A body that is not a JSON object (none, text/plain, an array) is refused, never read as an empty record (break m6).
     if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, "Send the record as a JSON object.", { code: "INVALID", fields: { body: "This must be an object." } });
     const parsed = ConsultBody.safeParse(body);

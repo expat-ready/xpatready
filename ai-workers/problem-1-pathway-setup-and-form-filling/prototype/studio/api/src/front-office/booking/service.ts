@@ -39,7 +39,7 @@ import { computeSlots, localDate, type HostWindow, type Range, type Slot } from 
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
 import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
-import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -87,8 +87,10 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
 export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
 /** A refused input (PF-28 part 4, Lead B rev 17.21): 422 with `code: "INVALID"`, each field named in `fields`, and the same
  *  words as "<field>: <words>" in `issues` (the booking pages read those). 400 stays for a body that cannot be parsed. */
-const refused = (detail: string, issues: string[] = [], title = "Not booked", fields: Record<string, string> = Object.fromEntries(issues.map((i) => [i.slice(0, Math.max(0, i.indexOf(": "))) || "body", i.slice(i.indexOf(": ") + 2)]))) =>
+const refused = (detail: string, issues: string[] = [], title = "Not booked", fields: Record<string, string> = Object.fromEntries(issues.map((i) => (i.includes(": ") ? [i.slice(0, i.indexOf(": ")) || "body", i.slice(i.indexOf(": ") + 2)] : ["body", i])))) =>
   problem(FIELD_ERROR_STATUS, "booking-refused", title, detail, { code: "INVALID", fields, ...(issues.length ? { issues } : {}) });
+/** The honeypot and the form stamp (too fast, forged, too old) name no field on purpose: their words are the same, so a
+ *  bot learns nothing from which check refused it (review m2). */
 /** The refusal titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
 const NOT_LISTED = "Bookings not listed", NOT_RECORDED = "Attendance not recorded";
 /** The time asked is not free (taken a moment ago, or never offered): one neutral answer with fresh times (AG-4-27). */
@@ -170,6 +172,7 @@ export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v
 export const SlotsQuery = z.strictObject({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown, title?: string): z.output<T> => {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const r = schema.safeParse(body ?? {});
   if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title, fieldsOf(r.error));
   return r.data;
@@ -269,7 +272,7 @@ export class BookingService {
     const tz = q.tz ?? firmZone;
     const now = this.ports.clock.now();
     const from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const slots = await this.slotsFor(this.db, firm.id, type, from, to);
     const consent = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
     return {
@@ -335,7 +338,7 @@ export class BookingService {
     if (!type.allowReschedule) throw notByLink("rescheduled");
     if (!this.selfServiceOpen(booking, type)) throw tooLate();
     const now = this.ports.clock.now(), from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const tz = q.tz ?? booking.bookerTimeZone;
     return { timeZone: tz, slots: (await this.slotsFor(this.db, booking.firmId, type, from, to, booking.id)).map((s) => this.publicSlot(s, tz)) };
   }
@@ -446,7 +449,7 @@ export class BookingService {
    *  their own as host), else the person's own as host. */
   async staffList(ctx: StaffContext, query: unknown) {
     const q = parse(z.strictObject({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", ["to: at most 92 days after from"], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
     const staffId = all ? q.staff?.toLowerCase() : ctx.staffId;
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) };

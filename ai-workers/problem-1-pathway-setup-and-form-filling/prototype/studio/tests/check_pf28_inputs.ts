@@ -270,6 +270,15 @@ const badLink = await call("POST", "/api/public/bookings/not-a-link/reschedule",
 const badMove = await call("POST", "/api/front-office/bookings/not-a-uuid/reschedule", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
 const randomHost = await call("POST", `/api/front-office/staff/${randomUUID()}/time-off`, { token: tR, body: JSON.stringify({ startsAt: "soon" }) });
 ok("PF-28 part 4 fail: a malformed booking link or booking id → 404 before the body; a well-formed unknown person's time off with a bad time → 422 naming startsAt (the body before the look-up)", badLink.status === 404 && badMove.status === 404 && randomHost.status === FIELD_ERROR_STATUS && Object.hasOwn((randomHost.body?.fields as object) ?? {}, "startsAt"), [badLink.status, badMove.status, randomHost.body?.fields]);
+// Review round 1: M1, a malformed booking id with an unknown field on the consult record → 404 (the id before the body);
+// m1, a "__proto__" key on a booking door → 422 naming it, as the one rule refuses it; m2, a list asked for over 92 days names to.
+const consultBadId = await call("PUT", "/api/front-office/bookings/not-a-uuid/consult-record", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+const protoCancel = await call("POST", `/api/public/bookings/${REAL[":linkToken"]}/cancel`, { body: '{"__proto__":{"x":1}}' });
+const protoHours = await call("POST", "/api/front-office/me/time-off", { token: tR, body: '{"__proto__":{"x":1}}' });
+const longList = await call("GET", "/api/front-office/bookings?from=2030-01-01T00:00:00Z&to=2030-06-01T00:00:00Z", { token: tR });
+ok("PF-28 part 4 fail (review M1, m1, m2): a malformed booking id with an unknown field on the consult record → 404; a __proto__ key on a cancel by link and on time off → 422 naming __proto__; a list over 92 days → 422 naming to",
+  consultBadId.status === 404 && [protoCancel, protoHours].every((r) => r.status === FIELD_ERROR_STATUS && Object.hasOwn((r.body?.fields as object) ?? {}, "__proto__")) && longList.status === FIELD_ERROR_STATUS && Object.hasOwn((longList.body?.fields as object) ?? {}, "to"),
+  [consultBadId.status, protoCancel.status, protoCancel.body?.fields, protoHours.status, longList.body?.fields]);
 const longFeed = await call("GET", "/api/front-office/bookings/feed?from=2030-01-01T00:00:00Z&to=2030-06-01T00:00:00Z", { token: tR });
 ok("PF-28 part 4 pass: a feed asked for more than 62 days → 422 naming to (a field error, no longer 400)", longFeed.status === FIELD_ERROR_STATUS && Object.hasOwn((longFeed.body?.fields as object) ?? {}, "to"), longFeed.body);
 

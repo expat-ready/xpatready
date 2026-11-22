@@ -243,7 +243,7 @@ try {
     /availability\.changed/.test(lines) && /availability\.set_created/.test(lines) && /availability\.set_deleted/.test(lines) && /availability\.type_set_changed/.test(lines) && /time_off\.added/.test(lines) && /time_off\.removed/.test(lines)
     && changed.startsWith(`${P.OWNER.id}|["1 09:00-17:00"`) && changed.includes(`["1 09:00-16:00"`), [lines, changed]);
   const auditRefused = (lines.match(/,/g) ?? []).length + 1;
-  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
+  ok("FO-3a DW21 fail: a refused change (the 422s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
 
   // ==================================================================== FO-3a1e (part 1b-ii): the firm's booking timings
   const CONF = "agent/booking-event-type:configure-availability", EDITK = "agent/booking-event-type:edit";
