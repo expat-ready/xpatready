@@ -16,7 +16,7 @@ export const FindQueryKeys = strict({ q: z.string().optional() });   // any leng
 @Controller("api/platform")
 export class FindController {
   constructor(@Inject(FindRegistry) private readonly registry: FindRegistry) {}
-  @Get("find") @AnyStaff("the find box: each module's finder applies its own view rule (PF-30a)")
+  @Get("find") @AnyStaff("the one find door: each module's finder applies its own view rule (PF-30a)")
   find(@Req() r: R, @Query() all: unknown): Promise<FindResult> {
     const ctx = staffOf(r);
     const { q } = parseInput(FindQueryKeys, all ?? {});   // a misspelt key → 422 naming it (PF-28)

@@ -34,7 +34,7 @@ fi
 # The tree: a copy of the rules and cards, then broken on purpose.
 mk() {   # one copy of the rules, cards and sources, then a fresh duplicate per fixture (fast)
   [ -n "${R0:-}" ] && [ ! -d "$T/r0" ] && cp -R "$R0" "$T/r0"   # a mutant run reuses its parent's copy
-  [ -d "$T/r0" ] || { rm -rf "$T/r0"; mkdir -p "$T/r0"; ( cd "$ROOTD" && git ls-files -co --exclude-standard .claude/rules/modules "$S/api/src" "$S/web/src" "$S/tests" | grep -E '(^\.claude/rules/modules/|/MODULE[^/]*\.rows/[^/]+$|\.md$|\.tsx?$|\.[cm]?js$)' | while read -r f; do mkdir -p "$T/r0/$(dirname "$f")"; cp -P "$f" "$T/r0/$f"; done ); git -C "$T/r0" init -q; git -C "$T/r0" add -A; }
+  [ -d "$T/r0" ] || { rm -rf "$T/r0"; mkdir -p "$T/r0"; ( cd "$ROOTD" && git ls-files -co --exclude-standard .claude/rules/modules "$S/api/src" "$S/web/src" "$S/tests" "$S/ports" | grep -E '(^\.claude/rules/modules/|/MODULE[^/]*\.rows/[^/]+$|\.md$|\.tsx?$|\.[cm]?js$)' | while read -r f; do mkdir -p "$T/r0/$(dirname "$f")"; cp -P "$f" "$T/r0/$f"; done ); git -C "$T/r0" init -q; git -C "$T/r0" add -A; }
   rm -rf "$T/r"; cp -R "$T/r0" "$T/r"; }
 tree() { n=$((n+1)); ( cd "$T/r" && ROOT="$T/r" run tree ); r=$?; got=$(case $r in 0) echo PASS;; 99) echo CRASH;; *) echo FAIL;; esac)
   if [ "$got" = "$1" ]; then echo "PASS  tree: $2 → $1"; else echo "FAIL  tree: $2: wanted $1, got $got"; sed 's/^/      /' "$T/log"; bad=1; fi; }
