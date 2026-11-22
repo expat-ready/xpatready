@@ -309,3 +309,23 @@ Observation (not a finding, not new in substance): a forged second line now make
 * The probe copy: 106/0 plus the rewrite and line-count prints above. Its scratch DB was dropped and /tmp was cleaned. A leftover `xr_studio_fo7b_scratch_24427` (already noted in round 4, not made by this review) was left alone.
 
 **Verdict: Approve** `2d8eaa844d82537ebcf7352add433bacb7b5ca33` (no open Blocker or Major; Minor 1 and the carried Minors may follow in a later row).
+
+## Batch fix 2 (diff 2311bc168..3b0f5bb54)
+
+A diff-only read of commit `3b0f5bb54c9386c8f740e80febd0d2113fb3e54c` on `claude/sleepy-archimedes-3a0op2`. This row is API-only, so there was no browser walk and there is no journey score. Why the fix exists: merge batch run 45010308900, shard 21, failed `tests/check_b164_no_engine_keys.ts`. Its `keyLike` (line 149, `/^[a-z]{2,5}\.[a-z][a-z0-9_]*$/`) read `"money.invoice"`, `"money.receipt"` and `"money.credit_note"` as a new program's combination key.
+
+### What was checked
+* **Scope.** The diff touches 3 files and 8 lines: `MONEY_TEMPLATES` in `api/src/client-money/invoices/documents.ts`, five literals in `money.ts` (three `key:` returns in the PDF path and two `email(...)` calls), and two literals in `tests/check_fo7b_invoices.ts`. Only the string constants changed. The mail idempotency keys `money-invoice:<id>` and `money-receipt:<id>` are unchanged, which is correct: renaming them would let a retry send the email again.
+* **No old names left.** `git grep -nE '(^|[^_a-z])money\.(invoice|receipt|credit_note)'` across the whole problem folder found nothing: no hits in code, tests, web, samples or Prisma. Because `MoneyTemplate = keyof typeof MONEY_TEMPLATES`, the type checker would have flagged any literal that was missed.
+* **Port contracts.** `client_money.invoice`, `client_money.receipt` and `client_money.credit_note` match `TemplateKey` in `ports/render.ts` (`/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$/`) and `templateKey` in `ports/mail.ts` (`/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/`), and each is under 100 characters. The PF-0c DW2 `DocumentRenderPort` contract run on `MoneyDocuments` passes (3 of 3).
+* **keyLike.** The head `client_money` has 12 characters, so it fails the `{2,5}` combination pattern. A known key would only be flagged if its first part were `client_money`, and none is.
+* **Persistence.** The template key reaches only `mail.send({ templateKey })`. No Prisma model, audit line or web file stores or reads it, so no earlier rows still carry the old name.
+
+### Checks run (on 3b0f5bb54, in this checkout)
+* `check_b164_no_engine_keys.ts`: **67 passed, 0 failed**.
+* `check_fo7b_invoices.ts` (scratch database on 127.0.0.1:54329): **107 passed, 0 failed** (exit 0).
+
+### Findings
+None.
+
+**Verdict: Approve** `3b0f5bb54c9386c8f740e80febd0d2113fb3e54c` (no open Blocker or Major; the Minors carried from earlier rounds are unchanged).
