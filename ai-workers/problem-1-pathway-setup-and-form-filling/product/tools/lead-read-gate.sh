@@ -6,30 +6,43 @@
 # read came 14 minutes before the merge (design/open-contribution-gate-2026-11-22.md).
 # A PR keeps the Lead's read when
 #   (a) a changed path (either side of a rename) matches lead-read-paths.txt, the one list (.github/, .mergify.yml, the
-#       guards, the schema, migrations, money). When the list carries the line "# --- records-exempt" (#2428), the
-#       lines after it (money, permissions) are not set off by a screenshot (*.png under screens/) or by an image or
-#       .txt under product/ outside product/tools/; every line before it holds for any file; or
-#   (b) an added or removed line of an API source file (studio/api/src/**.ts) declares access: @PermissionKeys(,
-#       @AnyStaff(, @StaffSignIn(, @OwnOrAll(, or a quoted permission key ("agent/<area>:<verb>", "system/…"); or a
-#       route line (@Get( @Post( @Put( @Patch( @Delete( @All() of a walled module (api/src/platform/, front-office/,
-#       client-money/: every route there declares its access, platform/identity/keys.ts). Read from the patch GitHub
-#       gives with the file list: the PR's code is never checked out or run. An API source file whose patch GitHub
+#       guards, the schema, migrations, money, and the permission machinery itself: platform/identity/, core.ts, the firm
+#       wall, the terms gate). When the list carries the line "# --- records-exempt" (#2428), the lines after it (money,
+#       permissions) are not set off by a screenshot (*.png under screens/) or by an image or .txt under product/
+#       outside product/tools/; every line before it holds for any file; or
+#   (b) an added or removed line of an API source or data file (studio/api/src/**.{ts,tsx,mts,cts,js,mjs,cjs,json},
+#       studio/samples/**.json; either name of a rename) declares access: @PermissionKeys(, @AnyStaff(, @StaffSignIn(,
+#       @OwnOrAll(, or a permission key written in a string ("agent/<area>:<verb>", "system/…", a template such as
+#       `agent/${area}:list`, or "agent/" + …); or it is any changed line of a walled module's routes, keys or guard
+#       file, or a route line (@Get( @Post( @Put( @Patch( @Delete( @All() anywhere in a walled module (api/src/platform/,
+#       front-office/, client-money/: every route there declares its access, platform/identity/keys.ts). Read from the
+#       patch GitHub gives with the file list: the PR's code is never checked out or run. Such a file whose patch GitHub
 #       does not give (too large) counts, and so does a PR of 3000 files or more (the list is cut there).
-# Such a PR is read when a PR comment by someone with write access (OWNER, MEMBER, COLLABORATOR) has a line
-#   Lead read: OK <7 to 40 hex characters of the head SHA>
-# ("Lead read the diff: <sha>", the line the Lead writes today, counts the same). A new push needs a new read.
+# Such a PR is read when a PR comment has a line, alone on it (a trailing full stop allowed), naming the FULL head SHA:
+#   Lead read the diff: <the head's 40 hex characters>      (the in-copy hook's form, lead-read-guard.sh, P-637)
+# ("Lead read: OK <40 hex>" counts the same; a short SHA does not: a commit can be ground
+# to match a 7 or 9 character prefix, break M3). Counted only from a writer (OWNER, MEMBER, COLLABORATOR) and, when the
+# repository variable LEAD_LOGINS (space-separated logins) is set, only from those logins and never the PR's author. An
+# edited comment never counts (anyone with write access can edit another's comment, and GitHub keeps its first
+# author's association); a quoted line, a line inside a code fence or an HTML comment is not the Lead's own. A new push
+# needs a new read. Today every session comments as one account (design gap 3): the line proves it was written, not who
+# wrote it, until LEAD_LOGINS names an account only the Lead uses.
 #   judge   prints "OK <why>", "HOLD <why>" or "SKIP <why>"; exit 0, 1, 0 (2 when GitHub cannot be read: fails closed)
 #   status  judge, then sets the status: success; failure when held (LEAD_READ_GATE=block) or unreadable; while
 #           LEAD_READ_GATE=report (the default: a new blocking check starts report-only, P-717 (b)) a held PR is
-#           "pending" with what would hold it, which no queue condition reads.
+#           "pending" with what would hold it, which no queue condition reads. Any other value counts as block.
 #   event   status for the PR of GITHUB_EVENT_PATH (pull_request_target, issue_comment)
 #   sweep   status for every open PR into main (by hand: workflow_dispatch)
-# The queue line that makes it bite (-check-failure = lead-read in .mergify.yml) and the switch to block are a later PR
-# of their own, after 24 h or 10 clean runs. Kill switch then: the repository variable LEAD_READ_GATE=report.
-# Env: GH_TOKEN, REPO (owner/name), PR (judge, status); LEAD_READ_GATE; LEAD_READ_PATHS (the test's stand-in);
-# API (default https://api.github.com). Test: check-lead-read-gate.sh.
+# The queue condition that makes it bite and the switch to block are a later PR of their own, after 24 h or 10 clean
+# runs. That PR must (1) use "check-success = lead-read" (a missing status must hold, break M6), and (2) not trust the
+# status alone: a commit status can be posted by any job holding statuses: write, including a same-repository PR's own
+# pull_request job, so main's queue-gate.sh runs "lead-read-gate.sh judge" itself before it labels (break M5).
+# Kill switch then: the repository variable LEAD_READ_GATE=report.
+# Env: GH_TOKEN, REPO (owner/name), PR (judge, status); LEAD_READ_GATE; LEAD_LOGINS; LEAD_READ_PATHS (the test's
+# stand-in); API (default https://api.github.com). Test: check-lead-read-gate.sh.
 set -uo pipefail
-API="${API:-https://api.github.com}"; CTX="lead-read"; MODE="${LEAD_READ_GATE:-report}"
+API="${API:-https://api.github.com}"; CTX="lead-read"
+MODE=$(printf '%s' "${LEAD_READ_GATE:-report}" | tr 'A-Z' 'a-z'); case "$MODE" in report|block) ;; *) MODE=block;; esac   # an unknown value fails closed
 HERE=$(cd "$(dirname "$0")" && pwd); LIST="${LEAD_READ_PATHS:-$HERE/lead-read-paths.txt}"
 for v in GH_TOKEN REPO; do [ -n "${!v:-}" ] || { echo "lead-read-gate: $v is not set"; exit 2; }; done
 H=$(mktemp); trap 'rm -f "$H" "$H.hard" "$H.soft"' EXIT; chmod 600 "$H"   # the token in a file, not on curl's command line (seen by ps)
@@ -39,10 +52,12 @@ pages() { local p=1 all='[]' one sep='?'; case "$1" in *\?*) sep='&';; esac
   while [ "$p" -le 30 ]; do one=$(api "$API/$1${sep}per_page=100&page=$p") || return 1
     all=$(jq -s '.[0] + .[1]' <(echo "$all") <(echo "$one")) || return 1; [ "$(echo "$one" | jq length)" -lt 100 ] && break; p=$((p + 1))
   done; echo "$all"; }
-SRC='/prototype/studio/api/src/.*\.ts$'; WALLED='/prototype/studio/api/src/(platform|front-office|client-money)/'
-ACCESS='@(PermissionKeys|AnyStaff|StaffSignIn|OwnOrAll)\s*\(|["'"'"'`](agent|system)/[a-z][a-z0-9-]*:[a-z]'
+SRC='/prototype/studio/(api/src/.*\.([cm]?[jt]sx?|json)|samples/.*\.json)$'
+WALLED='/prototype/studio/api/src/(platform|front-office|client-money)/'; WHOLE='/(routes|keys|guard)\.[cm]?[jt]sx?$'
+Q='["'"'"'`]'
+ACCESS='@(PermissionKeys|AnyStaff|StaffSignIn|OwnOrAll)\s*\(|'"$Q"'(agent|system)/([a-z][a-z0-9-]*:[a-z$]|'"$Q"'|\$\{|[a-z][a-z0-9-]*:?(\$\{|'"$Q"'\s*\+))'
 ROUTE='@(Get|Post|Put|Patch|Delete|All)\s*\('
-tick() { head -3 | sed 's/.*/`&`/' | paste -sd ' ' -; }
+tick() { awk 'NR <= 3' | sed 's/.*/`&`/' | paste -sd ' ' -; }
 
 paths() {  # stdin: changed paths → those that keep the Lead's read by the list (a)
   local f
@@ -55,33 +70,40 @@ paths() {  # stdin: changed paths → those that keep the Lead's read by the lis
     printf '%s\n' "$f"; done; }
 
 judge() {  # PR → verdict (OK|HOLD|SKIP), why, head; returns 0, 1, 0; 2 with why when GitHub or the list cannot be read
-  local pr files names hit lines cs; verdict=""; head=""
+  local pr files names hit lines cs author; verdict=""; head=""
   pr=$(api "$API/repos/$REPO/pulls/$PR") || { why="the PR cannot be read"; return 2; }
   head=$(jq -r '.head.sha // empty' <<< "$pr"); [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { why="the PR's head cannot be read"; return 2; }
   [ "$(jq -r .base.ref <<< "$pr")" = main ] || { verdict=SKIP; why="its base is not main"; return 0; }
-  case "$(jq -r .head.ref <<< "$pr")" in mergify/*) verdict=OK; why="a merge-queue batch: each of its PRs is judged by itself"; return 0;; esac
+  # Mergify's own batch PR only: its bot opened it from this repository (a branch name alone is anyone's choice, break B1)
+  if [ "$(jq -r --arg r "$REPO" '(.head.ref | startswith("mergify/")) and .user.login == "mergify[bot]" and .head.repo.full_name == $r' <<< "$pr")" = true ]; then
+    verdict=OK; why="a merge-queue batch: each of its PRs is judged by itself"; return 0; fi
+  author=$(jq -r '.user.login // ""' <<< "$pr")
   [ -r "$LIST" ] && grep -qv '^#' "$LIST" || { why="lead-read-paths.txt cannot be read"; return 2; }
   files=$(pages "repos/$REPO/pulls/$PR/files") && jq -e 'type == "array"' <<< "$files" >/dev/null || { why="its files cannot be read"; return 2; }
   if [ "$(jq length <<< "$files")" -ge 3000 ]; then hit="3000 files or more (GitHub lists no more)"; else
     names=$(jq -r '.[] | .filename, (.previous_filename // empty)' <<< "$files")
     hit=$(paths <<< "$names" | tick)
-    # (b) the lines that declare access, from each API source file's patch; a missing patch counts
-    lines=$(jq -r --arg src "$SRC" --arg walled "$WALLED" --arg access "$ACCESS" --arg route "$ROUTE" '.[]
-      | select(.filename | test($src)) | . as $f
+    # (b) the lines that declare access, from each API source or data file's patch (either name); a missing patch counts
+    lines=$(jq -r --arg src "$SRC" --arg walled "$WALLED" --arg whole "$WHOLE" --arg access "$ACCESS" --arg route "$ROUTE" '.[]
+      | [.filename, (.previous_filename // empty)] as $n
+      | select(any($n[]; test($src))) | . as $f | (any($n[]; test($walled))) as $w | ($w and any($n[]; test($whole))) as $all
       | if ($f.patch // "") == "" then (if (($f.changes // 0) > 0 or $f.status == "added" or $f.status == "removed") then $f.filename + " (its patch is too large for GitHub to give)" else empty end)
-        else first(($f.patch | split("\n")[] | select(test("^[+-]") and (test("^(\\+\\+\\+|---) ") | not))
-               | select(test($access) or (($f.filename | test($walled)) and test($route)))) | $f.filename + " (a permission key or a guarded route)") // empty end' <<< "$files" | tick) \
+        else first(($f.patch | split("\n")[] | select(test("^[+-]"))
+               | select($all or test($access) or ($w and test($route)))) | $f.filename + " (a permission key, a guarded route or a walled routes, keys or guard file)") // empty end' <<< "$files" | tick) \
       || { why="its patches cannot be read"; return 2; }
     hit=$(printf '%s %s' "$hit" "$lines" | sed 's/^ *//; s/ *$//')
   fi
   [ -n "$hit" ] || { verdict=OK; why="no path or line that keeps the Lead's read"; return 0; }
   cs=$(pages "repos/$REPO/issues/$PR/comments") || { why="its comments cannot be read"; return 2; }
-  # A quoted line ("> Lead read: OK …") is not the Lead's own; markdown marks around the words are dropped.
-  if jq -r '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR") | .body // ""' <<< "$cs" \
-      | tr -d '*_`\r' | grep -oiE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{7,40}\b' | grep -oiE '[0-9a-f]{7,40}$' | tr 'A-F' 'a-f' \
-      | while read -r s; do case "$head" in "$s"*) echo yes;; esac; done | grep -q yes; then
+  # Who counts (header); then code fences and HTML comments are dropped, and markdown marks around the words.
+  if jq -r --arg who "${LEAD_LOGINS:-}" --arg author "$author" '($who | split(" ") | map(select(length > 0))) as $leads | .[]
+      | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")
+      | select(($leads | length) == 0 or ((.user.login // "") as $l | ($leads | index($l)) != null and $l != $author))
+      | select((.updated_at // .created_at // "") == (.created_at // ""))
+      | (.body // "") | gsub("<!--[\\s\\S]*?(-->|$)"; "") | gsub("```[\\s\\S]*?(```|$)"; "") | gsub("~~~[\\s\\S]*?(~~~|$)"; "")' <<< "$cs" \
+      | tr -d '*_`\r' | grep -iE '^[[:space:]]*Lead read(: *OK| the diff:?)[[:space:]]+[0-9a-f]{40}[[:space:]]*\.?[[:space:]]*$' | grep -oiE '[0-9a-f]{40}' | tr 'A-F' 'a-f' | grep -x "$head" >/dev/null; then
     verdict=OK; why="the Lead read ${head:0:9} ($hit)"; return 0; fi
-  verdict=HOLD; why="waits for the Lead's read (P-423): $hit. A comment line by the Lead: Lead read: OK ${head:0:9}"; return 1; }
+  verdict=HOLD; why="waits for the Lead's read (P-423): $hit. A comment line by the Lead, alone on its line: Lead read the diff: $head"; return 1; }
 
 status() {  # judge, then the status on the head
   local r s; judge; r=$?
