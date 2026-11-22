@@ -176,7 +176,8 @@ try {
   ok("FO-7c DW2 fail: an account event arriving after the disconnect does not revive the account (still DISCONNECTED, no email)", late.status === 200 && row() === `DISCONNECTED:false:false:${acctA}` && mail.sent.length === 2 * ownersA.length);
   const re = await call(tOwner, "POST", ONB), acctA2 = row().split(":")[3];
   const stray = await hook("account.updated.charges-enabled", acctA, "evt_fo7c_8");
-  ok("FO-7c DW2 pass: the Owner connects again → a new account (PENDING), the alert gone; the lost account's events now match no firm", re.status === 200 && acctA2 !== acctA && row() === `PENDING:false:false:${acctA2}` && made() === 2 && stray.status === 200 && row() === `PENDING:false:false:${acctA2}` && (await call(tOwner, "GET", VIEW)).body.alert === null, re.body);
+  const vRe = await call(tOwner, "GET", VIEW);
+  ok("FO-7c DW2 fail (Lead B on #2938): the Owner starts connecting again → a new account (PENDING) and the alert STAYS until it is Connected; the lost account's events now match no firm", re.status === 200 && acctA2 !== acctA && row() === `PENDING:false:false:${acctA2}` && made() === 2 && stray.status === 200 && row() === `PENDING:false:false:${acctA2}` && vRe.body.alert?.code === "PAYMENT_ACCOUNT_DISCONNECTED", vRe.body);
 
   // ------------------------------------------------------------------------------------------------- the walls
   const vB = await call(tB, "GET", VIEW);
@@ -218,6 +219,8 @@ try {
     sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${staff("user-T", A)}', 'OWNER', 'seed:FO-7c-1')`);
     const post = (id: string, type: string) => { const b = JSON.stringify({ ...fixture("account.updated.charges-enabled").event, id, type, account: acctA2 }); return svc.receive(Buffer.from(b), rail.sign(b)); };
     rail.set(acctA2, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }); await post("evt_fo7c_m1a", "account.updated");
+    const vConn = await call(tOwner, "GET", VIEW);
+    ok("FO-7c DW2 pass (Lead B on #2938): the new account Connected (charges enabled) → the alert clears, no email", row() === `ACTIVE:true:true:${acctA2}` && vConn.body.alert === null && written === 0, vConn.body);
     const before = row(); rail.set(acctA2, { chargesEnabled: false, payoutsEnabled: false });
     const failed = await post("evt_fo7c_m1b", "account.updated").then(() => false, () => true);
     ok("FO-7c DW2 fail (breaker m1): a break whose change rolls back (the second Owner's item fails) sends no email: written in the change, never dispatched; the account and its receipt as before",

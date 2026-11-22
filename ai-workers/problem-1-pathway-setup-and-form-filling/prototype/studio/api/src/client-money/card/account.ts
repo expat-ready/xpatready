@@ -80,6 +80,7 @@ export class PaymentAccounts {
       if (row) await tx.moneyPaymentAccount.updateMany({ where: firmScope(firmId, { id: row.id }), data }); else await tx.moneyPaymentAccount.create({ data: { firmId, ...data } });
       await this.ports.audit.record(tx, { firmId, actor: staffActor(actor), action: "payment_account.onboarding_started", entity: "money_payment_account", entityKey: firmId,
         summary: row ? "The Owner started connecting the firm's payment account again." : "The Owner started connecting the firm's payment account.",
+        detail: { afterBreak: row?.status === "DISCONNECTED" },
         before: row ? { status: row.status, stripeAccountId: row.stripeAccountId } : null, after: { status: "PENDING", stripeAccountId: made.id } });
       return { account: made.id, status: "PENDING" as MoneyAccountStatus };
     }, { timeout: 30_000 });
@@ -88,11 +89,18 @@ export class PaymentAccounts {
     return { status: out.status, url: link.url };
   }
 
-  /** GET /payment-account: the firm's own row only (the session's firm, under the walls). */
+  /** GET /payment-account: the firm's own row only (the session's firm, under the walls). The alert shows on a break and
+   *  stays until a reconnect completes (Lead B on #2938): a new account still PENDING after a disconnect keeps it, read from
+   *  the re-onboarding's own audit line (no column); charges enabled on the new account clears it. */
   async view(actor: Pick<StaffContext, "firmId">) {
     const row = await this.db.moneyPaymentAccount.findFirst({ where: firmScope(actor.firmId) });
     const s: AccountState = row ? { status: row.status, chargesEnabled: row.chargesEnabled, payoutsEnabled: row.payoutsEnabled } : { status: "NOT_CONNECTED", chargesEnabled: false, payoutsEnabled: false };
-    return { ...s, alert: isBroken(s) ? { code: "PAYMENT_ACCOUNT_DISCONNECTED", words: BREAK_WORDS } : null };
+    let broken = isBroken(s);
+    if (!broken && s.status === "PENDING") {
+      const last = await this.db.auditEvent.findFirst({ where: firmScope(actor.firmId, { action: "payment_account.onboarding_started", entity: "money_payment_account", entityKey: actor.firmId.toLowerCase() }), orderBy: { at: "desc" }, select: { detail: true } });
+      broken = (last?.detail as { afterBreak?: unknown } | null)?.afterBreak === true;
+    }
+    return { ...s, alert: broken ? { code: "PAYMENT_ACCOUNT_DISCONNECTED", words: BREAK_WORDS } : null };
   }
 
   /** POST /api/hooks/stripe-connect: the raw body and its Stripe-Signature header. */

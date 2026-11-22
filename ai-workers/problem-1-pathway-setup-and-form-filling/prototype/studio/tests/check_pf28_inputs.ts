@@ -65,7 +65,7 @@ export function inputs(dir: string): CodeInput[] {
 /** The Stripe door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
  *  judges it over HTTP (signature and schema, each a pass and a fail) rather than the static follower, which never reads
  *  a raw body off @Req() as parsed. Only this one door: any other webhook route is judged like every door (review r15-1). */
-const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "client-money/card/routes.ts POST /api/hooks/stripe-connect body"]);   // FO-7c part 1 (Lead B on #2938): its signature and schema pairs over HTTP are in check_fo7c_card_payments.ts
 const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), { ...allow.unparsed, ...allow.exceptions?.unparsed });
