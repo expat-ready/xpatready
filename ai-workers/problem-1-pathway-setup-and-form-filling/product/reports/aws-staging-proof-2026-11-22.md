@@ -381,3 +381,10 @@ message: 'new row violates row-level security policy for table "platform_firm"'
   the seed needs an RDS-safe path (e.g. insert each firm under its own firm context the walls accept, or a platform-job door like PF-12b's
   audited bypass role).
 * Service still at 2 tasks (Lead 6: until R1.24 is proven).
+
+## Step 11: scaled to 0 (Lead 6, 19:3x IST), 19:26:53 IST 22 Nov
+
+* `d-cdk.sh deploy 0` with the same image (`sha256:5e5ca866…`): **rc=0** at 13:56:53Z (19:26:53 IST), 77.31 s. RDS stays on.
+* Next (Lead 6): when **PF-8b-f8** (RDS-safe Sample seed: each firm inserted under a firm context the walls accept, no bypass role) merges,
+  scale to 2, run `seed-sample-firms.ts` then `firm-seed.ts` with app task def :6, and prove R1.24 (`sample-firm.staging.lab.expatready.com` 200,
+  an unknown name 404). PF-8b-f7 is #3068. Idle until then: no other AWS step.
