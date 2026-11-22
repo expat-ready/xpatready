@@ -14,14 +14,15 @@
 // (AG17-D6). It only reads, writes no audit line and logs nothing (PF-23).
 import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
 import type { PrismaClient } from "@prisma/client";
-import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import { FINDER_MAX_HITS, type FindHit, type FindQuery } from "../../../ports/find.ts";
 import { NAME_THRESHOLD } from "../../../ports/matching.ts";
 import { Db } from "../core.ts";
 import { FindRegistry } from "../platform/find/registry.ts";
 import { firmScope } from "../platform/firm-scope.ts";
 import type { StaffContext } from "../platform/identity/keys.ts";
-import { DEFAULT_REGION, phoneE164Exact } from "./duplicates/phone.ts";
+import { phoneForFirm } from "./duplicates/phone.ts";
+/** Re-exported for PF-30a's check; the reader lives with FO-9a's phone readers (FO-9b G: one place reads phones). */
+export { phoneForFirm };
 import { normaliseCompanyName, seesCompany } from "./sales/corporate/match.ts";
 import { actorOf, sees, visibilityOf } from "./sales/common.ts";
 import { inactiveStaff, leadsSeenWhere } from "./sales/source-filter.ts";
@@ -33,13 +34,6 @@ const nameOf = (p: { givenNames: string | null; familyName: string | null }) => 
 /** A prospect's state as a word: Lost and Won are named; an open one is just "Prospect". */
 const prospectWord = (kind: string) => (kind === "LOST" ? "Lost" : kind === "WON" ? "Won" : "Prospect");
 
-/** The typed phone in E.164 with the firm's country as default (FO-9a's exact reader for Canada, the Sample firms' country). */
-export function phoneForFirm(text: string, country: string): string | null {
-  if (country === DEFAULT_REGION) return phoneE164Exact(text);
-  const n = parsePhoneNumberFromString(text, country as CountryCode);
-  // as FO-9a's reader: a whole number, possible with its country code alone (not a local-only length), no extension
-  return n && n.isPossible() && !n.ext && /^\+[1-9][0-9]{6,14}$/.test(n.number) && parsePhoneNumberFromString(n.number)?.isPossible() ? n.number : null;
-}
 
 @Injectable()
 export class FrontOfficeFinder implements OnModuleInit {
