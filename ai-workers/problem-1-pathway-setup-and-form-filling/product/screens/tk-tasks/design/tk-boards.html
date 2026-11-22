@@ -26,7 +26,7 @@
   .page { padding: 20px 24px; min-width: 0; }
   .title { font-size: 24px; font-weight: 600; }
   .desc { color: var(--muted); margin: 2px 0 12px; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary); color: #fff; font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary); color: #fff; font: inherit; font-weight: 500; cursor: pointer; white-space: normal; text-align: center; }
   .btn.outline { background: #fff; color: var(--primary); }
   .btn.ghost { background: transparent; border-color: transparent; color: var(--text); }
   .btn.sm { height: 28px; font-size: 13px; padding: 0 10px; }
@@ -75,32 +75,33 @@
 
 <section class="board" id="s1">
   <h2>S1 · Tasks › My Tasks (1440 px)</h2>
-  <p class="note">New staff menu entry "Tasks" (key agent/task:view.own), its count = my open tasks due today or overdue. One row of tabs (EXPERIENCE §2.2): My Tasks · Unassigned tasks (view.all or assign) · Unassigned cases (case:edit or case:assign); a tab the person may not use is not drawn. My Tasks groups by due window (Overdue · Today · This week · Later · No due date), worked out in each task's own zone, with the zone named in the row. Filters are chips. "Restricted" rows show no host name and no link (AG-13-67). Each row's one action is Done; the rest is in ⋯.</p>
+  <p class="note">r2. Staff menu entry "Tasks" (key agent/task:view.own). Its badge counts only unassigned work this person may take or assign (tasks, plus cases for agent/case:assign), tooltip "2 unassigned tasks · 1 unassigned case" (BR-12). One row of tabs: My Tasks · Unassigned tasks (view.all or assign) · Unassigned cases (case:edit or case:assign); a tab the person may not use is not drawn. Windows (Overdue · Today · This week · Later · No due date) are decided at the end of today in MY office zone, the same rule as Home; times in my zone with one footer, a task's own zone named only when it differs (BR-2). "Restricted" rows show no host name, type or link (AG-13-67). A title opens the task (S8). Each row's one action is Done; the rest is in ⋯, each per the person's keys (BR-8).</p>
   <div class="shell">
-    <nav class="menu" aria-label="Staff menu"><a href="#">Home</a><a href="#" class="on">Tasks <span class="count">3</span></a><a href="#">Profile</a><a href="#">Team</a></nav>
+    <nav class="menu" aria-label="Staff menu"><a href="#">Home</a><a href="#" class="on">Tasks <span class="count" title="2 unassigned tasks · 1 unassigned case">3</span></a><a href="#">Profile</a><a href="#">Team</a></nav>
     <main class="page">
       <h1 class="title">Tasks</h1>
       <p class="desc">Work that needs a person, from every lead, prospect, client and case you can see.</p>
       <div class="tabs" role="tablist"><span class="on" role="tab" aria-selected="true">My Tasks (7)</span><span role="tab">Unassigned tasks (4)</span><span role="tab">Unassigned cases (2)</span></div>
-      <div class="chips" aria-label="Filters"><span class="chip on">Assigned to me</span><span class="chip">Assigned by me</span><span class="chip">Status: Open, In progress ▾</span><span class="chip">Priority: Any ▾</span><span class="chip">On: Any ▾</span></div>
+      <div class="chips" aria-label="Filters"><span class="chip on">Assigned to me</span><span class="chip">Assigned by me</span><span class="chip">Due today or overdue</span><span class="chip">Filter ▾</span></div>
       <div class="tablewrap"><table>
         <thead><tr><th>Task</th><th>On</th><th>Due</th><th>Priority</th><th>By</th><th>Actions</th></tr></thead>
         <tbody>
           <tr class="group"><td colspan="6">Overdue (2)</td></tr>
-          <tr><td><b>Send the police certificate checklist</b><br><span class="muted">Client request</span></td><td><a href="#">Client A</a> · case C-2026-00042<br><span class="pill info" title="This task belongs to an individual's file">Individual</span></td><td><span class="over">Overdue</span> · 20 Nov, 17:00<br><span class="muted">Toronto time</span></td><td><span class="pill warn">High</span></td><td>Case manager B</td><td><button class="btn outline sm">Done</button> <button class="btn ghost sm" aria-label="More for Send the police certificate checklist">⋯</button></td></tr>
-          <tr><td><b>Ask for the employer letter</b></td><td><span title="You are assigned this task but cannot open what it is on">Restricted</span></td><td><span class="over">Overdue</span> · 21 Nov, 09:00<br><span class="muted">Vancouver time</span></td><td><span class="pill">Medium</span></td><td>Owner C</td><td><button class="btn outline sm">Done</button></td></tr>
+          <tr><td><a href="#"><b>Send the police certificate checklist</b></a><br><span class="muted">Client request</span></td><td><a href="#">Client A</a> · case C-2026-00042<br><span class="pill info" title="This task belongs to an individual's file">Individual</span></td><td><span class="over">Overdue</span> · 20 Nov, 17:00</td><td><span class="pill warn">High</span></td><td>Case manager B</td><td><button class="btn outline sm">Done</button> <button class="btn ghost sm" aria-label="More for Send the police certificate checklist">⋯</button></td></tr>
+          <tr><td><a href="#"><b>Ask for the employer letter</b></a></td><td><span title="You cannot open the record this task is on">Restricted</span></td><td><span class="over">Overdue</span> · 21 Nov, 12:00<br><span class="muted">09:00 Vancouver time</span></td><td><span class="pill">Medium</span></td><td>Owner C</td><td><button class="btn outline sm">Done</button></td></tr>
           <tr class="group"><td colspan="6">Today (1)</td></tr>
-          <tr><td><b>Call back about the consultation</b><br><span class="muted">Call</span></td><td><a href="#">Client D</a> · lead L-00031</td><td>Today, 15:30<br><span class="muted">Toronto time</span></td><td><span class="pill danger">Urgent</span></td><td>You</td><td><button class="btn outline sm">Done</button> <button class="btn ghost sm" aria-label="More">⋯</button></td></tr>
+          <tr><td><a href="#"><b>Call back about the consultation</b></a><br><span class="muted">Call</span></td><td><a href="#">Client D</a> · lead L-00031</td><td>Today, 15:30</td><td><span class="pill danger">Urgent</span></td><td>You</td><td><button class="btn outline sm">Done</button> <button class="btn ghost sm" aria-label="More">⋯</button></td></tr>
           <tr class="group"><td colspan="6">This week (3) · Later (1)</td></tr>
         </tbody>
       </table></div>
+      <p class="muted" style="margin-top:6px">Times in Toronto time.</p>
     </main>
   </div>
 </section>
 
 <section class="board" id="s2">
   <h2>S2 · Unassigned tasks, with a bulk selection</h2>
-  <p class="note">Open tasks with no assignee that this person may see (AG-13-62, -67). Lead tasks are not here (they show on Unassigned leads, AG-2-13c; question 2). Each row: Take it (assign to me) and Assign…; ticking rows shows the bulk bar (Assign to…, Priority…, Due date…, Done; up to 200). A Take it that lost the race says who has it, and the row leaves the list.</p>
+  <p class="note">r2. Open tasks with no assignee that this person may see (AG-13-62, -67). Lead tasks are not here (Unassigned leads, AG-2-13c). Each row: Take it and Assign…; ticking rows shows the bulk bar (Assign to…, Priority…, Due date… (each task keeps its zone), Mark done; up to 200; agent/task:bulk). A lost Take it says who has it, and the row leaves the list. No "why unassigned" column (no record holds it).</p>
   <div class="shell">
     <nav class="menu"><a href="#">Home</a><a href="#" class="on">Tasks <span class="count">3</span></a></nav>
     <main class="page">
@@ -109,10 +110,10 @@
       <div class="bulk" role="region" aria-label="2 tasks selected"><b>2 selected</b><button class="btn outline sm">Assign to…</button><button class="btn outline sm">Priority…</button><button class="btn outline sm">Due date…</button><button class="btn outline sm">Mark done</button><button class="btn ghost sm">Clear</button></div>
       <div class="notice warn" role="alert"><b>Case officer E already has this task.</b>"Prepare the fee receipt" left this list.</div>
       <div class="tablewrap" style="margin-top:8px"><table>
-        <thead><tr><th><input type="checkbox" aria-label="Select all on this page"></th><th>Task</th><th>On</th><th>Due</th><th>Why unassigned</th><th></th></tr></thead>
+        <thead><tr><th><input type="checkbox" aria-label="Select all on this page"></th><th>Task</th><th>On</th><th>Due</th><th></th></tr></thead>
         <tbody>
-          <tr><td><input type="checkbox" checked aria-label="Select Upload the signed retainer"></td><td><b>Upload the signed retainer</b></td><td><a href="#">Client F</a> · prospect</td><td>25 Nov<br><span class="muted">Toronto time</span></td><td class="muted">Handed over when Case officer G left (20 Nov)</td><td><button class="btn outline sm">Take it</button> <button class="btn ghost sm">Assign…</button></td></tr>
-          <tr><td><input type="checkbox" checked aria-label="Select Check the passport expiry"></td><td><b>Check the passport expiry</b></td><td><a href="#">Client A</a> · case C-2026-00042</td><td><span class="over">Overdue</span> · 19 Nov</td><td class="muted">Made by a rule; its assignee is inactive</td><td><button class="btn outline sm">Take it</button> <button class="btn ghost sm">Assign…</button></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Select Upload the signed retainer"></td><td><a href="#"><b>Upload the signed retainer</b></a></td><td><a href="#">Client F</a> · prospect</td><td>25 Nov</td><td><button class="btn outline sm">Take it</button> <button class="btn ghost sm">Assign…</button></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Select Check the passport expiry"></td><td><a href="#"><b>Check the passport expiry</b></a></td><td><a href="#">Client A</a> · case C-2026-00042</td><td><span class="over">Overdue</span> · 19 Nov</td><td><button class="btn outline sm">Take it</button> <button class="btn ghost sm">Assign…</button></td></tr>
         </tbody>
       </table></div>
     </main>
@@ -135,8 +136,8 @@
     <div class="card">
       <h3>Tasks <button class="btn outline sm">Add a task</button></h3>
       <ul class="tasklist">
-        <li><button class="btn outline sm">Done</button><div class="grow"><b>Call back about the consultation</b><br><span class="muted">Today, 15:30 Toronto time · You · Urgent</span></div><button class="btn ghost sm" aria-label="More for Call back about the consultation">⋯</button></li>
-        <li><button class="btn outline sm">Done</button><div class="grow"><b>Send the fee estimate</b><br><span class="muted">28 Nov · Unassigned · Medium</span></div><button class="btn ghost sm">⋯</button></li>
+        <li><button class="btn outline sm">Done</button><div class="grow"><a href="#"><b>Call back about the consultation</b></a><br><span class="muted">Today, 15:30 Toronto time · You · Urgent</span></div><button class="btn ghost sm" aria-label="More for Call back about the consultation">⋯</button></li>
+        <li><button class="btn outline sm">Done</button><div class="grow"><a href="#"><b>Send the fee estimate</b></a><br><span class="muted">28 Nov · Unassigned · Medium</span></div><button class="btn ghost sm">⋯</button></li>
       </ul>
       <p class="muted" style="margin-top:8px">▸ Done and cancelled (3)</p>
     </div>
@@ -156,19 +157,20 @@
 
 <section class="board" id="s5">
   <h2>S5 · Home: the "My Tasks" section (AG-11-115 section 2)</h2>
-  <p class="note">Beside PF-18h's "Needs you", after it. Mine, Open or In progress, due on or before the end of today in my office zone. Not drawn when empty (AG-11-115 rule 5). The heading's count opens Tasks › My Tasks. Unassigned work is a badge on the Tasks menu entry, never a section (AG-11-115).</p>
+  <p class="note">r2. After PF-18h's "Needs you". Mine, Open or In progress, due by the end of today in my office zone (the same rule as My Tasks). Government-deadline items first, then urgent or overdue (oldest due first), then by due time; at most 20 with the total in words. Not drawn when empty (AG-11-115 rule 5). "see all" opens My Tasks with "Due today or overdue" on, so the numbers match. Unassigned work is the Tasks menu badge, never a section.</p>
   <div class="card" style="max-width:720px">
     <h3><span>My Tasks</span><a href="#" class="muted" style="font-weight:400">3 due today or overdue · see all</a></h3>
     <ul class="tasklist">
-      <li><div class="grow"><a href="#"><b>Send the police certificate checklist</b></a><br><span class="muted"><span class="over">Overdue</span> · 20 Nov, 17:00 Toronto time · case C-2026-00042</span></div><button class="btn outline sm">Done</button></li>
-      <li><div class="grow"><b>Ask for the employer letter</b><br><span class="muted"><span class="over">Overdue</span> · 21 Nov · Restricted</span></div><button class="btn outline sm">Done</button></li>
+      <li><div class="grow"><a href="#"><b>Send the police certificate checklist</b></a><br><span class="muted"><span class="over">Overdue</span> · 20 Nov, 17:00 · case C-2026-00042</span></div><button class="btn outline sm">Done</button></li>
+      <li><div class="grow"><a href="#"><b>Ask for the employer letter</b></a><br><span class="muted"><span class="over">Overdue</span> · 21 Nov · Restricted</span></div><button class="btn outline sm">Done</button></li>
     </ul>
+    <p class="muted" style="margin-top:6px">Times in Toronto time.</p>
   </div>
 </section>
 
 <section class="board" id="s6">
   <h2>S6 · The deactivation step (inside PF-6's "Deactivate" dialog)</h2>
-  <p class="note">Shown only when the person has open tasks. Count and the first 10; one new owner from active staff of this firm whose role can hold tasks; "Reassign and deactivate" or "Deactivate and leave them unassigned". Completed and cancelled tasks keep their owner. Suspended people are not offered.</p>
+  <p class="note">r2. PF-6's Deactivate opens its own dialog (Sign out and Reactivate keep the shared one). It reads the person's open tasks first; with none it is today's dialog. Count and the first 10; one new owner from active staff of this firm whose role holds agent/task:view.own (never the leaver, suspended or inactive people). The choice rides in the deactivate request and its "Confirm it's you" re-send, applied in one transaction; tasks opened meanwhile move too; the toast gives the number moved.</p>
   <div class="dialog" role="dialog" aria-label="Deactivate Case officer G?">
     <header><h3 style="font-size:16px">Deactivate Case officer G?</h3></header>
     <div class="body">
@@ -176,19 +178,35 @@
       <div class="notice"><b>Case officer G has 12 open tasks.</b>Upload the signed retainer (25 Nov) · Check the passport expiry (overdue) · … and 10 more.</div>
       <label class="f">Give their open tasks to<select class="i"><option>Choose a person…</option><option>Case manager B</option></select><span class="h">Done and cancelled tasks keep Case officer G's name.</span></label>
     </div>
-    <footer><button class="btn outline">Cancel</button><span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn outline">Deactivate, leave unassigned</button><button class="btn">Reassign and deactivate</button></span></footer>
+    <footer style="flex-wrap:wrap"><button class="btn outline">Cancel</button><span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;min-width:0"><button class="btn outline">Deactivate and leave them unassigned</button><button class="btn">Reassign and deactivate</button></span></footer>
   </div>
 </section>
 
 <section class="board" id="s7">
   <h2>S7 · Phone width (375 px): My Tasks as cards</h2>
-  <p class="note">The table becomes one card per task (title, On, Due with zone, priority, Done). Tabs scroll as a row of their own; no sideways page scroll.</p>
+  <p class="note">r2. The table becomes one card per task (title, On, Due, priority, Done). Done and Take it are 44 px tall (UXL-09). Tabs and the filter row scroll in a row of their own and fade at the edge to show it (UXL-10); no sideways page scroll.</p>
   <div class="phone">
     <div style="padding:12px 16px;border-bottom:1px solid var(--border)"><b>Tasks</b><div class="tabs" style="margin:8px 0 0;overflow-x:auto;flex-wrap:nowrap"><span class="on">My Tasks (7)</span><span>Unassigned tasks (4)</span><span>Unassigned cases (2)</span></div></div>
     <ul class="tasklist" style="padding:0 16px">
-      <li><div class="grow"><b>Send the police certificate checklist</b><br><span class="muted"><span class="over">Overdue</span> · 20 Nov, 17:00 Toronto time<br>Client A · case C-2026-00042 · High</span></div><button class="btn outline sm">Done</button></li>
-      <li><div class="grow"><b>Ask for the employer letter</b><br><span class="muted"><span class="over">Overdue</span> · Restricted · Medium</span></div><button class="btn outline sm">Done</button></li>
+      <li><div class="grow"><a href="#"><b>Send the police certificate checklist</b></a><br><span class="muted"><span class="over">Overdue</span> · 20 Nov, 17:00<br>Client A · case C-2026-00042 · High</span></div><button class="btn outline" style="height:44px">Done</button></li>
+      <li><div class="grow"><b>Ask for the employer letter</b><br><span class="muted"><span class="over">Overdue</span> · Restricted · Medium</span></div><button class="btn outline" style="height:44px">Done</button></li>
     </ul>
+  </div>
+</section>
+
+<section class="board" id="s8">
+  <h2>S8 · One task (Side panel, 480-560 px; r2)</h2>
+  <p class="note">A title opens the task (AG-13-67 (c) "on the task itself"). Details, On (or "Restricted": no name, number, status or link), due, priority, assignee, created by and when; the actions the person's keys allow (BR-8). Read-only people see "You can view these tasks".</p>
+  <div class="card" style="max-width:540px">
+    <h3><span>Ask for the employer letter</span><button class="btn ghost sm" aria-label="Close">✕</button></h3>
+    <dl style="display:grid;grid-template-columns:120px 1fr;gap:6px 12px;margin:12px 0">
+      <dt class="muted">On</dt><dd style="margin:0"><span title="You cannot open the record this task is on">Restricted</span></dd>
+      <dt class="muted">Due</dt><dd style="margin:0"><span class="over">Overdue</span> · 21 Nov, 12:00 (09:00 Vancouver time)</dd>
+      <dt class="muted">Priority</dt><dd style="margin:0">Medium</dd>
+      <dt class="muted">Assigned to</dt><dd style="margin:0">You, by Owner C on 18 Nov</dd>
+      <dt class="muted">Details</dt><dd style="margin:0">The letter must give the job title, hours a week, pay and start date, on company letterhead, signed.</dd>
+    </dl>
+    <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn outline">Close</button><button class="btn">Done</button></div>
   </div>
 </section>
 
