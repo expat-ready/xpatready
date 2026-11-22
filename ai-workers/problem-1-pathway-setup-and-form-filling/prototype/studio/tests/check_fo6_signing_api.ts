@@ -335,6 +335,18 @@ try {
   ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn/.test(wd.reason ?? "")
     && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
 
+  // break R2-M1: a completed that arrives before the signatures is "not yet" (409, nothing kept), then applies
+  const p12 = await prospect("Kim"), r12 = await draft(p12);
+  await sendIt(r12);
+  const [q12, d12] = reqOf(r12);
+  consent(q12);
+  const [cS12] = await signing.act(A, d12, signerOf(q12, "CLIENT"), "signed"), fin12 = await signing.act(A, d12, signerOf(q12, "FIRM"), "signed");
+  const first = await refusal(() => post(fin12[1]));
+  await post(cS12); await post(fin12[0]);
+  const second = await post(fin12[1]);
+  ok("FO-6 B pass (break R2-M1): completed first → 409 NOT_READY, nothing kept; after both signatures its redelivery completes (SIGNED, evidence)",
+    first?.status === 409 && second.applied === true && reqOf(r12)[2] === "SIGNED" && count("fo_signing_evidence", `request_id = '${q12}'`) === 1, { first, second });
+
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   ok("FO-6 G pass: no retainer.executed or envelope.completed name anywhere in the code (A51 §12: signing.completed is the one)", grep === "", grep);

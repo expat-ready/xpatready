@@ -90,3 +90,34 @@ Observed: all applied. Request and retainer are SIGNED, `prospectWon:true`, and 
 - **Retired names and bypass use**: no `retainer.executed` or `envelope.completed` name. `front-office.signing.webhook` is per-firm, scoped to this route only.
 
 Verdict: Changes. M1 and M2 can each leave a request that was genuinely signed unrecorded for good; m1-m4 should be fixed with them.
+
+## Round 2 (head e0d7697658c973a1338cb0f862a84a31b1a76c70; diff from c1c7d32 only)
+I re-ran the same scratch harness with the same calls on a fresh scratch DB.
+- **M1: fixed.**
+  - A: the firm's `signed` sent first gives `409 NOT_YET` and nothing is kept. Then the client's `signed` applies, `completed` gives 409 NOT_READY, the redelivered firm `signed` applies and the redelivered `completed` applies. End state: SIGNED, 1 evidence.
+  - B: `signed` with no consent gives 409 NOT_YET; after consent is recorded, the redelivery applies.
+- **M2: fixed.** In I (the email changed after the check), `completed` applies with `prospectWon:false`. The request and retainer are SIGNED, there is 1 evidence row and 1 email, and a `signing.win_held` line is written.
+- **m1: fixed.** The 5000-deep and 200 000-deep bodies give 400 SIGNATURE. An array, a string or `null` gives 400.
+- **m2: fixed.** In L, a `viewed` after `signed` gives 200 "viewed already".
+- **m3: mostly fixed.** G and H (withdrawn, signed on paper) now store no files and keep a final receipt (200, then duplicates). Still open, as the code comment says: in E, 6 parallel identical completions leave 5 unused file pairs (24 file entries for 1 evidence).
+- **m4: fixed.** In X, at day 20 both signatures give 200 "the request has expired" and the request stays SENT.
+- **m5: fixed.** No audit line names the provider id any more. m6 (rate limit by caller address) was not in round 2 and is unchanged.
+- **Deadlock probe: no deadlock.** Z ran 15 requests. Each got (client viewed, firm viewed, a provider "other" event) at once, then (client signed, firm signed, completed) at once, then the provider's in-order redelivery. Result: 60 applied, 39 duplicates, 6 NOT_YET, and no 40P01, CHANGED or 500. But all 15 requests ended stuck: see R2-M1.
+- **Held again**: C, D, E (1 evidence, 1 event, 1 win, 1 mail), F, J, K, O, P and the part 1 checks, all as in round 1.
+
+**R2-M1 (Major, new in e8dc29499): a `completed` that arrives before the signatures it needs is stored as final, so the signed retainer is never recorded** (service.ts:167-170).
+Repro Y:
+1. Send, then record consent.
+2. `act(client,"signed")` gives `cS`. `act(firm,"signed")` gives `[fS, completed]`.
+3. POST `completed`, then `cS`, then `fS`, then `completed` again.
+
+Observed:
+- the first `completed`: `200 {applied:false, reason:"the agreement is sent"}`, and its receipt is written.
+- `cS` and `fS` apply.
+- the second `completed`: `200 {duplicate:true}`.
+
+End state: request and retainer CLIENT_SIGNED, both signers signed, 0 evidence, no email, no win. They can never move. In Z the same thing hit 15 of 15 requests ("the agreement is viewed" when `completed` overtook the client's `signed`).
+Cause: the early check treats every retainer status other than CLIENT_SIGNED/SIGNED as "withdrawn or signed on paper: final". SENT and VIEWED are not final: they are this round's "not yet" case (M1).
+Expected: only WITHDRAWN and SIGNED_OFFLINE (and perhaps a newer version) are final. SENT and VIEWED answer 409 NOT_READY and keep nothing.
+
+Round 2 verdict: Changes (R2-M1 brings M1's stuck request back for `completed`; everything else from round 1 is fixed except the parallel-only part of m3).

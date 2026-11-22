@@ -162,11 +162,14 @@ export class Signing {
       const seen = await this.db.foSigningHookReceipt.count({ where: { firmId, requestId: found.id, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId } });
       if (seen) return { received: true as const, applied: false, duplicate: true };
       // Break m3: nothing is fetched or stored unless the completion can apply now (a race still may leave one unused pair).
-      const pre = await this.db.foSignatureRequest.findFirst({ where: { firmId, id: found.id }, select: { status: true, documentId: true, signers: { select: { signedAt: true } } } });
-      const ret = pre ? await this.db.foRetainer.findFirst({ where: { firmId, id: pre.documentId }, select: { status: true } }) : null;
-      if (pre && ret && ret.status !== "CLIENT_SIGNED" && ret.status !== "SIGNED") {   // withdrawn or signed on paper: final, stored, never retried
+      const pre = await this.db.foSignatureRequest.findFirst({ where: { firmId, id: found.id }, select: { status: true, documentId: true, documentVersion: true, signers: { select: { signedAt: true } } } });
+      const ret = pre ? await this.db.foRetainer.findFirst({ where: { firmId, id: pre.documentId }, select: { status: true, currentVersion: true } }) : null;
+      // Final, stored and never retried: the agreement withdrawn, signed on paper or replaced by a newer version, or the
+      // request ended. SENT and VIEWED only mean "not yet" (break R2-M1): those answer 409 below and keep nothing.
+      const ended = !!pre && !["SENT", "VIEWED", "CLIENT_SIGNED"].includes(pre.status);
+      if (pre && ret && (ended || ["WITHDRAWN", "SIGNED_OFFLINE", "DECLINED", "EXPIRED"].includes(ret.status) || ret.currentVersion !== pre.documentVersion)) {
         await this.tx((tx) => this.receipt(tx, found, ev));
-        return { received: true as const, applied: false, reason: `the agreement is ${ret.status.toLowerCase().replace("_", " ")}` };
+        return { received: true as const, applied: false, reason: ended ? `the request is ${pre.status.toLowerCase()}` : ret.currentVersion !== pre.documentVersion ? "a newer version was made" : `the agreement is ${ret.status.toLowerCase().replace("_", " ")}` };
       }
       if (!pre || pre.status !== "CLIENT_SIGNED" || pre.signers.some((x) => !x.signedAt)) return conflict("Not every signature is recorded here yet. The provider may send the event again.", "NOT_READY");
       const f = await signingPort().fetchFiles(firmId, ev.providerDocumentId).catch((e) => { if (e?.name === "SigningNotCompleted") conflict("The provider has not finished this document.", "NOT_COMPLETED"); throw e; });
