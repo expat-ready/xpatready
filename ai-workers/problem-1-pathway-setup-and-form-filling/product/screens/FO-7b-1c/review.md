@@ -155,3 +155,44 @@ None. Round 1's M1 is fixed. Probe P4 from round 1 is now case `crossA`: 409 KEY
 
 **Verdict: Approve** on `872a2b8b5` (part 1c): no open Blocker or Major. Minors 1-3 are small and should go in the next push, each with its case. Minor 4 goes to Lead B as a question. Minor 5 is cleanup.
 **The `?dueDate` change `2311bc168`: Approved** (for #2953).
+
+## Round 3 (diff 872a2b8b5..d5cb7512b)
+
+Independent reviewer, Opus 5.5, 22 Nov. **Commit reviewed: `d5cb7512b7371f695e01af0f27c46b5d7a5de0f7`** on `claude/runtime-fo7b-1c` (draft PR #3036). Diff-only read under A277: `git diff 872a2b8b5..d5cb7512b -- prototype`, 2 files (`api/src/client-money/invoices/refunds.ts`, `tests/check_fo7b_refunds.ts`). API only: no browser walk, no journey score.
+
+### Runs
+- `check_fo7b_refunds.ts`: **27 passed, 0 failed** (scratch database on :54329, dropped).
+- `tsc -p api/tsconfig.json --noEmit`: no errors in either file.
+- Reviewer probes Q1-Q4 ran on a copy of the check in the session scratchpad (its own scratch database `xr_studio_fo7b1c_r3probe_*`, dropped; the copy itself 27 passed). Nothing in the repository was edited.
+
+### Round 2's Minors, one by one
+| Round 2 Minor | Fixed? | Evidence |
+|---|---|---|
+| 1. `leftToRefund` ignores the per-payment rule | **Yes.** `own = amount − refunded − kept(p)` (`refunds.ts:132`). | Case R2-1 (P2's own 50.00 kept → 409 OVER_REFUND, left 0.00). It fails on `872a2b8b5`: there `own` was 50.00 and the invoice's extra 100.00, so the app let 0.01 through and the database answered MONEY_RULE. Probe Q3 (round 2's Q1 shape: 100.00 invoice, P1 100.00, P2 10.00 kept, P3 50.00 waiting): P2 10.00 → 409 OVER_REFUND left 0; P1 50.01 → 409 left 50.00; P1 50.00 → 201; then P3 0.01 → 409 left 0. Each boundary is where the database draws it. |
+| 2. Keep's reason skips `money_text_ok` | **Yes.** Same call and limit (200) as `writeRefund`, before the KEPT write; 422 at `reason`, "Nothing was changed." | Case R2-3: `"‮gnp.exe ​"` → 422, nothing kept. The 422 is the database rule, not Zod: `words()` lets U+202E and U+200B through. Probe Q3: a plain reason → 201 and stored in `reason_after`. |
+| 3. A retry next day with no date answers KEY_USED | **Yes in the code.** `replay()` now gets `r.refundedOn ?? null` / `c.refundedOn ?? null` and compares the date only when one was sent (`refunds.ts:39, 59, 124`). `day()` still validates any sent date before the replay. | Probe Q1: a refund stored with yesterday's date, retried with no date → **200 replayed**, one row. Probe Q2 (on `/extra`): same → 200 replayed; retried with today's date → 409 KEY_USED. See Minor 1 below on the check's own case. |
+| 4. Check hygiene | **In part.** The unused imports and dynamic imports are gone (`taxForLine`, `FakeClock`, `runContract`, both contracts, `MoneyDocuments`/`documentText`/`invoiceData`, `ClientMoney`, `withFirm`, `auditEvent`), and the scratch database is `xr_studio_fo7b1c_scratch_*`. | See Nit 2. |
+
+### `leftToRefund` against `money_credit_kept_holds`
+- **Rule 2 (per payment).** The database refuses when `amount − Σrefunds < kept from p` (net of reversals) after the insert. So a refund R is allowed when `R ≤ amount − refunded − kept(p)`, which is the new `own` exactly. `kept()` uses the same net-of-reversals sum as the trigger (`e.amount_minor + Σ reversals`, `kind = 'KEPT'`, `payment_id = p`).
+- **Rule 1 (invoice).** Unchanged from round 2: `min(own, extraMinor)` while `heldAsCredit > 0`, where `extraMinor = paid − open − kept`. That is the database's `kept ≤ greatest(−due, 0)` after the refund.
+- **The early return when the invoice holds no credit.** The database skips both rules when the invoice's kept sum is ≤ 0. The app still subtracts `kept(p)`, but each KEPT entry nets to ≥ 0, so `kept(p)` is 0 whenever the invoice holds none. Same answer.
+
+### Round 2's "held" list, still held
+Lock order (`lock()` untouched; the trust lock and the invoice `FOR UPDATE` both come before the key lookup), the races (two refunds; Keep racing Refund), trust (TRUST_REFUND, TRUST_EXTRA), permissions (REFUND's key before any write; 403 for the Case Officer), audit (one line per change, `staff:` actor, outbox last), firm walls (the new `money_text_ok` call reads no table) and the touch list (the two files only; `facts.ts` untouched). All their cases still pass.
+
+### Blocker
+None.
+
+### Major
+None.
+
+### Minor
+1. **The R2-4 case does not catch the bug it names** (`check_fo7b_refunds.ts`, the "break R2-4" case). It refunds with no date and retries with no date on the same day, then retries with yesterday's date. On `872a2b8b5` both answers were already 200 and 409, so the case passes before and after the fix, and its title ("whatever day it is retried") claims more than it proves. The fix is right (probes Q1, Q2). To make the case catch it: write `rD1` with `refundedOn: yesterday`, then retry with no date → 200 replayed. That fails on the old code. A one-line change; it can go in the next push of this branch or in part 2.
+
+### Nits (no fix asked this round)
+1. Keep's reason is checked after NOT_CLEARED / NOTHING_WAITING. A bad reason on a payment with nothing waiting answers 409 NOTHING_WAITING, not 422 (probe Q4). Either order is money-safe; the refund route behaves the same way.
+2. Still in the check, from round 2's Minor 5: the unused helpers `throws`, `taxOf`, `stored`, `pdfText`, `auditN`, `events`; the keys `fo7c-refund-*` and `fo7c-mixed-1`; and the header's "pending Lead B". No case reaches the MONEY_RULE mapping. Now that the app mirrors both rules, it can only be reached by a race. That is acceptable; say so in the header.
+3. Round 2's Minor 4 (NOT_CLEARED on `/extra` only; the citation's strength) and Minor 6 (Lead items) are not in this diff and stay with Lead B and the PR.
+
+**Verdict: Approve** on `d5cb7512b7371f695e01af0f27c46b5d7a5de0f7` (part 1c): no open Blocker or Major. Round 2's Minors 1-3 are fixed in the code, and Minor 4 in part. Minor 1 above (make the R2-4 case catch the old bug) is cheap and should go in with the next push.
