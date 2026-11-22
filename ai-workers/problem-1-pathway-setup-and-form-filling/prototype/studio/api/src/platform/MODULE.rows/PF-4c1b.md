@@ -1,0 +1,2 @@
+Entry points: PF-4c1b (P-727): `POST /api/platform/staff/invitations/batch` now takes 1-50 rows and answers 200 `{ invited, flagged: [{ row, email, reason, detail, flags }], seatsLimit, seatsUsed }`: the valid rows are invited, the seat limit is read once through EntitlementPort and the rows past it are flagged `OVER_SEAT_LIMIT` in row order; 422 only for a body that is itself invalid (`ROWS_COUNT`, a row's unknown field `ROWS_FLAGGED`).
+Tests: tests/check_pf4c1b_batch.ts
