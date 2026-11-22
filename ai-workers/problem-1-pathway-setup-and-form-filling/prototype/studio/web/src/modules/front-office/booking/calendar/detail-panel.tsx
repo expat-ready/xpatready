@@ -1,8 +1,8 @@
 // FO-3st1 part 1 (concept fo-3-booking r2 §4 "Booking detail", §5; BR-14; AG-4-39; J-S1, J-S4): one booking in the
 // team's right-hand panel, read from FO-3a part 2b's `feed/:id` (its host, or the list key and the record rule; else
 // the one not-found). When (the office zone and the booker's), Who, Attendance; Reschedule and Cancel booking under
-// "More". Buttons show only where the feed says the viewer may (`canAnswerAttendance`, `canEdit`). Part 2 adds the
-// consult record and the next step.
+// "More". Buttons show only where the feed says the viewer may (`canAnswerAttendance`, `canEdit`). Part 2: the consult
+// record and the next step (consult-record.tsx), under Attendance, for the same people who answer it.
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Dialog, Notice, Panel, Pill } from "@/components/ui/controls";
@@ -12,6 +12,7 @@ import { FeedItem, hhmm, longWhen, MODE_WORDS, personOf, STATUS } from "./contra
 /** A name in a heading: at most 40 characters (a long unbroken name never covers the panel's ×; break m5). */
 const short = (s: string) => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
 import { bookingWrite, TimeChooser, useBookAnyway } from "./new-booking";
+import { ConsultRecordSection } from "./consult-record";
 
 /** "Attended" / "No-show": one click, by a person; it can be changed later (AG-4-39 rules 3-5). */
 export function AttendanceButtons({ booking }: { booking: FeedItem }) {
@@ -81,6 +82,10 @@ export function BookingPanel({ id, onClose, onSaved, returnFocus }: { id: string
               {b.canAnswerAttendance ? (
                 <section aria-labelledby="fo-att" className="border-t border-border pt-3"><h3 id="fo-att" className="font-semibold">Attendance</h3>
                   <p className="mb-2"><b>Did {who} attend?</b></p><AttendanceButtons booking={b} /></section>
+              ) : null}
+              {b.canAnswerAttendance && (b.attendance === "COMPLETED" || b.hasConsultRecord) ? (
+                <section aria-labelledby="fo-consult" className="border-t border-border pt-3"><h3 id="fo-consult" className="mb-2 font-semibold">Consult record</h3>
+                  <ConsultRecordSection booking={b} /></section>
               ) : null}
             </div>
           ) : null}

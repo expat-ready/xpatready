@@ -10,7 +10,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { Db } from "../../core.ts";
 import { EVENT, StaffEventPayload } from "../../../../ports/events.ts";
 import type { MailPort } from "../../../../ports/mail.ts";
-import { asBypass, enterFirm, firmScope, notInFirm } from "../firm-scope.ts";
+import { enterFirm, firmScope, notInFirm, withFirm } from "../firm-scope.ts";
+import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
+import { z } from "zod";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { batchRowsOf, flagOf, seatWords } from "./batch-invite.ts";
 import { readCatalogue } from "./catalogue.ts";
@@ -19,11 +21,12 @@ import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext
 import { LocalIdentity } from "./local.ts";
 import { PgEntitlements, seatsUsed } from "../entitlements/limits.ts";
 import { writeMoneyKeysGranted } from "./money-line.ts";
-import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort } from "./port.ts";
+import { IdentityRefused, PlatformClock, identityConfig, type IdentityPort, type VerifiedIdentity } from "./port.ts";
 import { MAIL_PORT, SYSTEM_REPLY_TO } from "./session/mail.ts";
 import { requireStepUp } from "./session/step-up.ts";
 import { heldOf } from "../messages/send/mail.ts";
 import { HELD_DAILY_LIMIT } from "../../../../ports/messages.ts";
+import { logPort } from "../observability/log.ts";
 
 type Tx = Prisma.TransactionClient;
 export const IDENTITY_PORT = Symbol("IdentityPort");
@@ -31,9 +34,13 @@ export const ROLES = Object.values(PlatformRole) as PlatformRole[];
 /** The only-Owner guard's words (contracts §7 §1.2; SA-6-44, AG-1-22): fixed, word for word. */
 export const ONLY_OWNER = "This is your firm's only active Owner. Give the Owner role to another person first.";
 export const ANOTHER_DEVICE = "You signed in on another device";
+/** A Cognito sign-in that raced the person's deactivation (J-5 B2): refused, in the words a deactivated token gets. */
+const NOT_ACTIVE_NOW = "This staff account has been deactivated. Ask your firm's Owner or Admin.";
 /** An Owner change needs an identity check this recent (AG-1-42). */
 export { STEP_UP_SECONDS } from "./session/step-up.ts";
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** PF-28 part 2a: the local sign-in door's body (untrimmed: emailOf reads spaces). Read after the door's gate. */
+export const LocalSignInBody = strict({ firmKey: z.string().max(100), email: z.string().max(320).optional(), actorId: z.string().max(200).optional(), secondStep: z.boolean().optional() });
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The port this server's configuration names (PLATFORM_IDENTITY). Unset: an adapter that refuses every token. */
 export function identityPortFromConfig(clock: PlatformClock): IdentityPort {
@@ -50,44 +57,44 @@ export function identityPortFromConfig(clock: PlatformClock): IdentityPort {
 const wellFormed = (s: string) => { try { encodeURIComponent(s); return true; } catch { return false; } };
 const HIDDEN = /[\s\p{Zs}\p{Zl}\p{Zp}\p{Cc}\p{Cf}\u00ad\u180e\u2000-\u200f\u2028-\u202f\u205f-\u2064\u3000\ufeff]/u;
 export function emailOf(v: unknown): string {
-  if (typeof v !== "string" || !v) return problem(400, "Check the email", "Give the person's email address.", { code: "EMAIL_REQUIRED" });
-  if (HIDDEN.test(v)) return problem(400, "Check the email", "The email contains a space or an invisible character. Type it again without them.", { code: "EMAIL_INVALID" });
-  if (v.length > 254 || !/^[^@]{1,64}@[^@.]+(\.[^@.]+)+$/.test(v) || /[<>()[\]\\,;:"]/.test(v)) return problem(400, "Check the email", "That is not an email address (name@example.com).", { code: "EMAIL_INVALID" });
+  if (typeof v !== "string" || !v) return problem(FIELD_ERROR_STATUS, "Check the email", "Give the person's email address.", { code: "EMAIL_REQUIRED" });
+  if (HIDDEN.test(v)) return problem(FIELD_ERROR_STATUS, "Check the email", "The email contains a space or an invisible character. Type it again without them.", { code: "EMAIL_INVALID" });
+  if (v.length > 254 || !/^[^@]{1,64}@[^@.]+(\.[^@.]+)+$/.test(v) || /[<>()[\]\\,;:"]/.test(v)) return problem(FIELD_ERROR_STATUS, "Check the email", "That is not an email address (name@example.com).", { code: "EMAIL_INVALID" });
   // Break m5: one spelling per address. Letters typed in two ways (an accent as a separate mark) or full-width letters are
   // refused, so two addresses that look the same cannot both be stored.
-  if (!wellFormed(v) || v.normalize("NFKC") !== v) return problem(400, "Check the email", "The email has unusual characters (an accent typed as a separate mark, or full-width letters). Type it again.", { code: "EMAIL_INVALID" });
+  if (!wellFormed(v) || v.normalize("NFKC") !== v) return problem(FIELD_ERROR_STATUS, "Check the email", "The email has unusual characters (an accent typed as a separate mark, or full-width letters). Type it again.", { code: "EMAIL_INVALID" });
   return v.toLowerCase();
 }
 export function rolesOf(v: unknown): PlatformRole[] {
-  if (!Array.isArray(v) || !v.length) return problem(400, "Choose a role", "Give at least one role.", { code: "ROLES_REQUIRED" });
+  if (!Array.isArray(v) || !v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Give at least one role.", { code: "ROLES_REQUIRED" });
   const bad = v.filter((r) => !ROLES.includes(r as PlatformRole));
-  if (bad.length) return problem(400, "Choose a role", `Not a role: ${bad.map(String).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
-  if (new Set(v).size !== v.length) return problem(400, "Choose a role", "Each role once.", { code: "ROLE_TWICE" });
+  if (bad.length) return problem(FIELD_ERROR_STATUS, "Choose a role", `Not a role: ${bad.map(String).join(", ").slice(0, 120)}. Roles: ${ROLES.join(", ")}.`, { code: "ROLE_UNKNOWN" });
+  if (new Set(v).size !== v.length) return problem(FIELD_ERROR_STATUS, "Choose a role", "Each role once.", { code: "ROLE_TWICE" });
   return v as PlatformRole[];
 }
 /** A reason of 1-200 characters (AG-1-15), after trimming; required where the rule says so. Invisible characters alone are
  *  no reason (break m3); control characters and broken text are refused (break m4, m7). */
 const VISIBLE = (s: string) => s.replace(/[\s\p{Z}\p{Cf}]/gu, "").length > 0;
 export function reasonOf(v: unknown, required: boolean, what = "reason"): string | null {
-  if (v === undefined || v === null || (typeof v === "string" && !VISIBLE(v))) return required ? problem(400, "Give a reason", `Give a ${what} (1 to 200 characters).`, { code: "REASON_REQUIRED" }) : null;
-  if (typeof v !== "string") return problem(400, "Give a reason", `The ${what} is text.`, { code: "REASON_REQUIRED" });
-  if (/\p{Cc}/u.test(v) || !wellFormed(v)) return problem(400, "Check the reason", `The ${what} contains a control character. Type it again.`, { code: "REASON_INVALID" });
+  if (v === undefined || v === null || (typeof v === "string" && !VISIBLE(v))) return required ? problem(FIELD_ERROR_STATUS, "Give a reason", `Give a ${what} (1 to 200 characters).`, { code: "REASON_REQUIRED" }) : null;
+  if (typeof v !== "string") return problem(FIELD_ERROR_STATUS, "Give a reason", `The ${what} is text.`, { code: "REASON_REQUIRED" });
+  if (/\p{Cc}/u.test(v) || !wellFormed(v)) return problem(FIELD_ERROR_STATUS, "Check the reason", `The ${what} contains a control character. Type it again.`, { code: "REASON_INVALID" });
   const t = v.trim();
-  if ([...t].length > 200) return problem(400, "Shorten the reason", `The ${what} is at most 200 characters.`, { code: "REASON_TOO_LONG" });
+  if ([...t].length > 200) return problem(FIELD_ERROR_STATUS, "Shorten the reason", `The ${what} is at most 200 characters.`, { code: "REASON_TOO_LONG" });
   return t;
 }
 /** PF-4dn (AG-1-10): the invitee's name, optional. Trimmed; 1-120 characters; no control, format or line-break character.
  *  Empty or spaces only is no name (accept then uses the part of the email before the @). */
 export function displayNameOf(v: unknown): string | null {
   if (v === undefined || v === null || (typeof v === "string" && !v.trim() && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v))) return null;   // a line or paragraph separator alone is refused, not "no name" (Devin)
-  if (typeof v !== "string") return problem(400, "Check the name", "The name is text.", { code: "DISPLAY_NAME_INVALID" });
-  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the name", "The name has a line break or an invisible character. Type it again on one line.", { code: "DISPLAY_NAME_INVALID" });
+  if (typeof v !== "string") return problem(FIELD_ERROR_STATUS, "Check the name", "The name is text.", { code: "DISPLAY_NAME_INVALID" });
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v) || !wellFormed(v)) return problem(FIELD_ERROR_STATUS, "Check the name", "The name has a line break or an invisible character. Type it again on one line.", { code: "DISPLAY_NAME_INVALID" });
   const t = v.trim();
-  if ([...t].length > 120) return problem(400, "Shorten the name", "The name is at most 120 characters.", { code: "DISPLAY_NAME_TOO_LONG" });
+  if ([...t].length > 120) return problem(FIELD_ERROR_STATUS, "Shorten the name", "The name is at most 120 characters.", { code: "DISPLAY_NAME_TOO_LONG" });
   return t;
 }
 const textOf = (v: unknown, what: string) => {
-  if (typeof v !== "string" || !v.trim() || [...v.trim()].length > 100 || /[\p{Cc}\p{Cf}]/u.test(v) || !wellFormed(v)) return problem(400, "Check the licence record", `Give the ${what} (1 to 100 characters).`, { code: "CREDENTIAL_INVALID" });
+  if (typeof v !== "string" || !v.trim() || [...v.trim()].length > 100 || /[\p{Cc}\p{Cf}]/u.test(v) || !wellFormed(v)) return problem(FIELD_ERROR_STATUS, "Check the licence record", `Give the ${what} (1 to 100 characters).`, { code: "CREDENTIAL_INVALID" });
   return v.trim();
 };
 
@@ -99,7 +106,7 @@ export class PlatformIdentity implements OnModuleInit {
 
   async onModuleInit() {
     // Keys warmed at start (tech gate entry 2). A pool that cannot be reached now is fetched on the first request instead.
-    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => console.warn(`platform identity: Cognito keys not fetched at start (${String((e as Error)?.message ?? e).slice(0, 120)}); they are fetched on the first sign-in`));
+    if (this.port instanceof CognitoIdentity && this.port.ready) await this.port.warm().catch((e) => logPort.error("cognito_keys_not_warmed", e));   /* they are fetched on the first sign-in */
   }
 
   /** PF-6b: the permission-key catalogue (the guard reads its LICENCE keys and checks the bundles once). */
@@ -113,13 +120,22 @@ export class PlatformIdentity implements OnModuleInit {
     let id;
     try { id = await this.port.verify(token); } catch (e) { if (e instanceof IdentityRefused) return unauthorized(e.detail, e.code); throw e; }
     if (!id.secondStep) return unauthorized("Two-step sign-in is required for every staff member: finish the second step, then try again.", "TWO_STEP_REQUIRED");
-    const where = "staffId" in id.lookup ? (UUID.test(id.lookup.staffId) ? { id: id.lookup.staffId.toLowerCase() } : null) : { identitySubject: id.lookup.identitySubject };
-    const staff = where && await this.db.platformStaff.findFirst({ where, include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
+    const where: { id?: string; identitySubject?: string } | null = "staffId" in id.lookup ? (UUID.test(id.lookup.staffId) ? { id: id.lookup.staffId.toLowerCase() } : null) : { identitySubject: id.lookup.identitySubject };
+    // PF-12b part 2: the person's firm through the narrow definer lookup (firm id only), then the rest runs as that firm.
+    const firmId = where && (await this.db.$queryRaw<{ f: string | null }[]>`select platform_staff_firm(${where.id ?? null}::uuid, ${where.identitySubject ?? null}::text) as f`)[0]?.f;
+    if (!where || !firmId) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
+    return withFirm(firmId, () => this.authenticateIn(firmId, where, id));
+  }
+
+  /** authenticate, as the person's own firm (PF-12b part 2). */
+  private async authenticateIn(firmId: string, where: { id?: string; identitySubject?: string }, id: VerifiedIdentity): Promise<StaffContext> {
+    const staff = await this.db.platformStaff.findFirst({ where: firmScope(firmId, where), include: { firm: { select: { key: true } }, grants: { where: { endedAt: null }, select: { role: true } } } });
     if (!staff) return unauthorized("This sign-in is not a staff member of any firm here.", "UNKNOWN_STAFF");
     if (staff.status !== "ACTIVE") return unauthorized(staff.status === "DEACTIVATED" ? "This staff account has been deactivated. Ask your firm's Owner or Admin." : "This staff account is suspended. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");
     const authMs = id.authTime * 1000;
     // Cognito: a session with a later sign-in time than the last one seen is a new sign-in, which ends the older one.
-    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)) await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs));
+    if (id.via === "cognito" && (!staff.lastSignInAt || staff.lastSignInAt.getTime() < authMs)
+      && (await this.recordSignIn(staff.firmId, staff.firm.key, staff.id, "cognito", (last) => (last !== null && last >= authMs ? null : authMs))) === "inactive") return unauthorized(NOT_ACTIVE_NOW, "STAFF_NOT_ACTIVE");
     const rev = await this.db.platformSessionRevocation.findFirst({ where: firmScope(staff.firmId, { staffId: staff.id }), orderBy: { revokedAt: "desc" } });
     // A session that started at or before the person's last revocation is refused (deactivation, a newer sign-in).
     if (rev && authMs <= rev.revokedAt.getTime()) return unauthorized(rev.reason === "another-device" ? ANOTHER_DEVICE : "This session was ended. Sign in again.", rev.reason === "another-device" ? "SIGNED_IN_ELSEWHERE" : "SESSION_REVOKED");
@@ -132,11 +148,18 @@ export class PlatformIdentity implements OnModuleInit {
   /** A new sign-in ends every older session of the person (one session at a time, AG-1-55): one revocation 1 ms before
    *  the new session's sign-in time, so a session that started earlier is refused and this one is not. The person's row is
    *  locked while the time is chosen, so parallel sign-ins are taken one after the other and each ends the one before it
-   *  (break m1). atOf: the new session's time (ms) from the last sign-in and the last revocation, or null for none. */
-  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null> {
+   *  (break m1). atOf: the new session's time (ms) from the last sign-in and the last revocation, or null for none.
+   *  R1.5 (J-5 break B1, B2): no firm lock here. Staff changes hold the firm's row FOR NO KEY UPDATE (`inFirm`), which
+   *  never conflicts with the key-share lock this transaction's inserts take on it, so a sign-in and a deactivation never
+   *  deadlock and a stream of sign-ins never starves a staff change (re-break R1: an explicit key share here did). They
+   *  meet only on the person's row; under that lock the person must still be active, so a sign-in that raced a
+   *  deactivation is refused ("inactive") rather than dated after it, where reactivation would bring its token back. */
+  private async recordSignIn(firmId: string, firmKey: string, staffId: string, via: string, atOf: (lastMs: number | null, revokedMs: number | null) => number | null): Promise<number | null | "inactive"> {
     return this.db.$transaction(async (tx) => {
-      const [row] = await tx.$queryRaw<{ last: Date | null }[]>`select last_sign_in_at as last from platform_staff where id = ${staffId}::uuid and firm_id = ${firmScope(firmId).firmId}::uuid for update`;
+      const fid = firmScope(firmId).firmId;
+      const [row] = await tx.$queryRaw<{ last: Date | null; status: string }[]>`select last_sign_in_at as last, status::text as status from platform_staff where id = ${staffId}::uuid and firm_id = ${fid}::uuid for update`;
       if (!row) return null;
+      if (row.status !== "ACTIVE") return "inactive" as const;
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(firmId, { staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       const atMs = atOf(row.last?.getTime() ?? null, rev?.revokedAt.getTime() ?? null);
       if (atMs === null) return null;   // another request recorded this sign-in already
@@ -151,10 +174,15 @@ export class PlatformIdentity implements OnModuleInit {
   }
 
   /** The local stand-in's sign-in (POST /api/platform/session/local). */
-  async localSignIn(body: { firmKey?: unknown; email?: unknown; actorId?: unknown; secondStep?: unknown }) {
+  async localSignIn(input: unknown) {
     if (!(this.port instanceof LocalIdentity)) return problem(403, "Not available", "The local sign-in stand-in is off on this server (PLATFORM_IDENTITY is not local).", { code: "LOCAL_SIGN_IN_OFF" });
-    if (typeof body.firmKey !== "string" || !body.firmKey) return problem(400, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
-    const key = body.firmKey, firm = await asBypass("platform.identity.sign-in", () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } }));
+    // PF-28 part 2a: the door's own gate first (closed in production: 403 whatever the body; check_forms_qa53, QA-621), then
+    // the body through the one input rule (batch 44935069729).
+    const body = parseInput(LocalSignInBody, input);
+    if (typeof body.firmKey !== "string" || !body.firmKey) return problem(FIELD_ERROR_STATUS, "Choose the firm", "Give the firm key.", { code: "FIRM_REQUIRED" });
+    // PF-12b part 2: the firm through the narrow definer lookup (its id only), then its row is read as that firm.
+    const key = body.firmKey, firmId = (await this.db.$queryRaw<{ f: string | null }[]>`select platform_firm_of_key(${key}) as f`)[0]?.f;
+    const firm = firmId ? await withFirm(firmId, () => this.db.platformFirm.findUnique({ where: { key }, select: { id: true, key: true } })) : null;
     if (firm) enterFirm(firm.id);   // PF-12: the rest of the sign-in runs as this firm
     const who = typeof body.actorId === "string" && body.actorId ? { actorId: body.actorId } : { email: emailOf(body.email) };
     const staff = firm && await this.db.platformStaff.findFirst({ where: firmScope(firm.id, who) });
@@ -163,6 +191,7 @@ export class PlatformIdentity implements OnModuleInit {
     if (body.secondStep !== true) return unauthorized("Two-step sign-in is required for every staff member: finish the second step (secondStep: true).", "TWO_STEP_REQUIRED");
     // The new session starts after the last sign-in and the last revocation (a deactivation in the same millisecond).
     const authMs = await this.recordSignIn(firm.id, firm.key, staff.id, "local stand-in", (last, revoked) => Math.max(this.clock.now(), (last ?? 0) + 1, (revoked ?? 0) + 1));
+    if (authMs === "inactive") return unauthorized("This staff account is not active. Ask your firm's Owner or Admin.", "STAFF_NOT_ACTIVE");   // deactivated while signing in (J-5 B2)
     if (authMs === null) return unauthorized("No staff member signs in with that firm key and work email.", "UNKNOWN_STAFF");
     return { token: this.port.issue(staff.id, { authTimeMs: authMs, secondStep: true }), tokenType: "Bearer", expiresIn: 3600, staffId: staff.id, firmKey: firm.key };
   }
@@ -179,7 +208,7 @@ export class PlatformIdentity implements OnModuleInit {
   private inFirm<T>(actor: StaffContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const id = firmScope(actor.firmId).firmId;
     return this.db.$transaction(async (tx) => {
-      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for update`;
+      await tx.$queryRaw`select id from platform_firm where id = ${id}::uuid for no key update`;   // serializes staff changes; never blocks a sign-in's key share (J-5 B1)
       const me = await tx.platformStaff.findFirst({ where: firmScope(id, { id: actor.staffId }), select: { status: true, grants: { where: { endedAt: null }, select: { role: true } } } });
       const rev = await tx.platformSessionRevocation.findFirst({ where: firmScope(id, { staffId: actor.staffId }), orderBy: { revokedAt: "desc" }, select: { revokedAt: true } });
       if (me?.status !== "ACTIVE" || (rev && actor.authTime * 1000 <= rev.revokedAt.getTime())) unauthorized("Your session ended before this change was made. Sign in again.", "SESSION_REVOKED");
@@ -211,7 +240,7 @@ export class PlatformIdentity implements OnModuleInit {
     if (targetId === actor.staffId) forbidden("Nobody changes their own roles. Ask another Owner or Admin.", "OWN_ROLES");
     if (added.includes("OWNER") || removed.includes("OWNER")) {
       if (!actor.roles.includes("OWNER")) forbidden("Only an Owner gives or removes the Owner role.", "OWNER_ONLY");
-      if (!reason) problem(400, "Give a reason", "Giving or removing the Owner role needs a written reason.", { code: "REASON_REQUIRED" });
+      if (!reason) problem(FIELD_ERROR_STATUS, "Give a reason", "Giving or removing the Owner role needs a written reason.", { code: "REASON_REQUIRED" });
       this.stepUp(actor, "giving or removing the Owner role");
     }
     if (added.length) {
@@ -278,8 +307,12 @@ export class PlatformIdentity implements OnModuleInit {
       if (isOwner && !actor.roles.includes("OWNER")) forbidden("Only an Owner deactivates an Owner.", "OWNER_ONLY");
       if (isOwner) this.stepUp(actor, "deactivating an Owner");   // break M3: the same check as removing the Owner role
       if (isOwner && t.status === "ACTIVE" && await this.onlyOwner(tx, actor, t.id)) { refuse = true; return null; }
-      const now = new Date(this.clock.now());
       await tx.platformStaff.update({ where: { id: t.id }, data: { status: "DEACTIVATED", deactivationReason: reason } });
+      // Read after the update: it waited for any sign-in holding the person's row, so that sign-in is seen here, and later
+      // ones wait for this change and find them deactivated. Never before their latest sign-in (the stand-in may date one a
+      // few ms ahead of the clock): every session they have ends (J-5 B2).
+      const last = (await tx.platformStaff.findFirst({ where: firmScope(actor.firmId, { id: t.id }), select: { lastSignInAt: true } }))?.lastSignInAt?.getTime() ?? 0;
+      const now = new Date(Math.max(this.clock.now(), last));
       await tx.platformSessionRevocation.create({ data: { firmId: actor.firmId, staffId: t.id, revokedAt: now, reason: "deactivated" } });
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.deactivated", entityKey: t.id, summary: "a staff member was deactivated; their sessions ended at once", detail: { staffId: t.id, from: t.status, reason }, before: { status: t.status, deactivationReason: t.deactivationReason }, after: { status: "DEACTIVATED", deactivationReason: reason } });
       await tx.moduleEvent.create({ data: { firmId: actor.firmId, type: EVENT.STAFF_DEACTIVATED, subjectId: t.id, payload: StaffEventPayload.parse({ staffId: t.id }) } });   // last (m8)

@@ -9,6 +9,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { FoPipeline, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import type { AuditValues } from "../../../../ports/audit.ts";
 import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, ProspectWonPayload, type EventName } from "../../../../ports/events.ts";
+import { wonDuplicates } from "../duplicates/service.ts";
+import { logPort } from "../../platform/observability/log.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -17,6 +19,7 @@ import { actorOf, conflict, notFound, sees, text, UUID, visibilityOf, type Tx } 
 import { wonSubjectOf } from "./corporate/service.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { sourcesChecked } from "./source-filter.ts";
+import { clearForWin, lockPartyOf } from "../compliance/conflict/gate.ts";
 
 const TYPES = ["INDIVIDUAL", "CORPORATE"] as const;
 /** A retainer counts as signed once the client signed it, on screen or on paper (AG-2-47 rules 17-18). */
@@ -83,9 +86,10 @@ const CAUSE = { CONVERTED: "CONVERT", SIGNED_OFFLINE: "SIGNED_OFFLINE", E_SIGNED
 export async function winProspect(tx: Tx, ctx: StaffContext, prospectId: string, w: { via: WonVia; at: Date; retainerId?: string | null; audit: (p: Locked, retainerSigned: boolean) => Promise<unknown> }) {
   const p = await lockProspect(tx, ctx.firmId, prospectId);
   if (!p || p.kind === "WON") return null;
+  const signed = await signedRetainer(tx, ctx.firmId, p.id);
+  await clearForWin(tx, ctx.firmId, p.id, w.retainerId ?? null, signed);   // FO-13c: no client without a recorded conflict check
   const to = await tx.foStage.findFirstOrThrow({ where: firmScope(ctx.firmId, { pipeline: p.type, kind: "WON" as const }) });
   const last = await tx.foStageMove.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id }), orderBy: { seq: "desc" }, select: { toStageId: true } });
-  const signed = await signedRetainer(tx, ctx.firmId, p.id);
   await tx.foProspect.update({ where: { id: p.id }, data: { stageId: to.id, wonVia: w.via, wonAt: w.at, lostReasonId: null, lostReasonKind: null, lostNote: null } });
   await tx.foStageMove.create({ data: { firmId: ctx.firmId, prospectId: p.id, fromStageId: last?.toStageId ?? null, toStageId: to.id, cause: CAUSE[w.via], byActor: actorOf(ctx) } });
   await w.audit(p, signed);
@@ -105,6 +109,13 @@ async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, sig
     signed ? tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id, kind: "RETAINER" as const, status: { in: [...SIGNED] }, ...(retainerId ? { id: retainerId } : {}) }), select: { id: true, representativeStaffId: true }, orderBy: { createdAt: "desc" } }) : null,
     wonSubjectOf(tx, ctx.firmId, p.id),
   ]);
+  // FO-9a (contract §4): the duplicate result for the subject, in this transaction (warn only; nothing linked or merged).
+  // Under a savepoint (review m2): a failed warn-only read never rolls the win back; the event then carries no
+  // `duplicates` (absent = not known, as on older events) and the failure is logged (no ids, the platform card).
+  let duplicates: Awaited<ReturnType<typeof wonDuplicates>> | undefined;
+  await tx.$executeRaw`savepoint fo9a_won_duplicates`;
+  try { duplicates = await wonDuplicates(tx, ctx.firmId, subject); await tx.$executeRaw`release savepoint fo9a_won_duplicates`; }
+  catch (e) { await tx.$executeRaw`rollback to savepoint fo9a_won_duplicates`; logPort.error("fo9a_won_duplicates_failed", e); }
   const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
   return ProspectWonPayload.parse({
     firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: via,
@@ -112,7 +123,7 @@ async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, sig
     interested_in: lead.interestedIn ? { serviceId: lead.interestedIn.id, label: lead.interestedIn.label, combinationId: lead.interestedIn.combinationId } : null,
     answers: { "person.given_names": person.givenNames, "person.family_name": person.familyName, "person.email": person.email, "person.phone_number": person.phoneE164 ?? person.phone, "person.current_residence_country": null },
     consent_ids: consents.map((c) => c.id), sealed_retainer_sha256: null,
-    type: p.type, fromStageKey: p.key, retainerSigned: signed, subject,
+    type: p.type, fromStageKey: p.key, retainerSigned: signed, subject, duplicates,
   });
 }
 
@@ -311,6 +322,7 @@ export class Prospects {
     const pid = this.idOf(id);
     const { see } = await this.seer(ctx);
     await this.db.$transaction(async (tx) => {
+      await lockPartyOf(tx, ctx.firmId, pid);   // FO-13c (review r4): the party's lock before the prospect's row, as Send and Signed offline take them
       const { p } = await this.locked(tx, ctx, pid, b.version, see);
       if (p.kind === "WON") return conflict("This prospect is already a client.", "ALREADY_WON");
       if (p.kind === "LOST") return conflict("A lost prospect cannot be converted. Start a new prospect.", "TERMINAL");

@@ -47,7 +47,7 @@ export type ComplaintDeps = { db: PrismaClient; audit: AuditPort<Tx>; jobs: JobP
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_"), ...extra }, status as HttpStatus);
 };
-const notFound = (): never => problem(404, "not-found", "Not found", "No such complaint.");
+export const notFound = (): never => problem(404, "not-found", "Not found", "No such complaint.");
 /** Field errors, one message per field (the screen shows each at its field). */
 const fieldErrors = (fields: Record<string, string>): never => problem(422, "complaint-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
 const closedRefused = (): never => problem(409, "complaint-closed", "This complaint is closed", "A closed complaint is not changed: add a note instead.");
@@ -83,7 +83,7 @@ export function isInstant(s: string): boolean {
 const instant = z.string({ error: "a date and time is needed" }).refine(isInstant, "a real date and time from 2000 on, e.g. 2026-11-16T14:00:00Z").transform((s) => new Date(s));
 /** The same uuid rule as the shared event shapes (ports/events.ts, zod's uuid): an id that passes here never fails there. */
 const UUID_SHAPE = z.string().uuid();
-const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+export const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 const uuid = z.string().refine(isUuid, "an id").transform((s) => s.toLowerCase());
 
 export const SUBJECT_KINDS = ["FRONT_OFFICE_PERSON", "CASE_PARTY", "OTHER_PERSON"] as const;
@@ -116,7 +116,7 @@ const Close = z.object({ outcome: z.enum(OUTCOMES, { error: "choose the outcome"
 export const LIST_VIEWS = ["open", "overdue", "closed", "all"] as const;
 export type ListView = (typeof LIST_VIEWS)[number];
 
-function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
+export function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});
   if (r.success) return r.data;
   const fields: Record<string, string> = {};
