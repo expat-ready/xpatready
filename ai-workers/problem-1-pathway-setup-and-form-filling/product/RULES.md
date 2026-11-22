@@ -1,4 +1,4 @@
-# Rule register (Lead keeps it; as of **P-795**, 22 Nov 13:32 IST; earlier: `history/RULES-2026-11-22-1340-lead3-as-of-P-791.md` + older)
+# Rule register (Lead keeps it; as of **P-795**, 22 Nov 13:32 IST; earlier: `history/RULES-2026-11-22-1332-lead3-as-of-P-791.md` + older)
 
 One line per rule: `ID | rule | enforced by | as of` (P-611, P-615); what each field and ID form means, word for word: `rules/register-legend.md`.
 
