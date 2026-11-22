@@ -64,10 +64,16 @@ export function inputs(dir: string): CodeInput[] {
 }
 /** The signed webhook doors (amendment 1) keep their raw body: the signature is checked first and the schema after, so the
  *  static follower, which never reads a raw body as parsed, does not judge them; each has its named signature-and-schema
- *  check instead. Only these two (review r15-1; the tech lead's ask on #2933, 22 Nov): Stripe's, judged over HTTP by DW6
+ *  check instead. Only these two (review r15-1; the tech lead's ask, Lead 4 16:02 IST 22 Nov, done in #3039): Stripe's, judged over HTTP by DW6
  *  below; SNS's (SES notices, text/plain read off the request), judged by tests/check_pf19b2_ses.ts "PF-28 fail: a signed
- *  notice whose envelope breaks the schema" (its schema `SnsNotice` runs through parseInput after the signature). */
+ *  notice whose envelope breaks the schema" (its schema `SnsNotice` runs through parseInput after the signature); the
+ *  "PF-28 HOOK" check below ties that exemption to its proof (review m1 on #3039). */
 const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body"]);
+// Review m1 (#3039): the SNS exemption holds only while its proof does: the door parses SnsNotice after verify, and the
+// named case in check_pf19b2_ses.ts exists (a deleted or renamed case fails here).
+{ const b = readFileSync(join(API, "platform/messages/channels/email/bounces.ts"), "utf8"), v = b.indexOf("await this.verify(n);"), p = b.indexOf("parseInput(SnsNotice, n)");
+  const ses = readFileSync(join(import.meta.dirname, "check_pf19b2_ses.ts"), "utf8");
+  ok("PF-28 HOOK pass: the SNS door parses SnsNotice after its signature, and check_pf19b2_ses keeps the case that proves it", v > 0 && p > v && ses.includes("PF-28 fail: a signed notice whose envelope breaks the schema") && ses.includes("PF-28 pass: AWS's documented"), { v, p }); }
 const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), { ...allow.unparsed, ...allow.exceptions?.unparsed });
