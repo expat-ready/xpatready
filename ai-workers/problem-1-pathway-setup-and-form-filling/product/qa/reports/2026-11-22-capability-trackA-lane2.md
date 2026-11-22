@@ -18,7 +18,7 @@ All five were already on main before this lane started (no new journey written; 
 | R1.10 | PF-28 part 4 #2908 (09:00 UTC) | PF-28 part 5 #2933 (approved, queued) |
 | R1.88 | AUD-4 #2339 | AUD-4s part 2 #2916 (approved, **dequeued**) |
 | R1.102 | PF-30a #2884, CS-S1 part 1 #2035 | CS-S1 part 2 #2913, PF-30s #2921 (both approved) |
-| R1.23 | PF-13 parts 1a, 1b | PF-13 part 2 #2910 |
+| R1.23 | PF-13 parts 1a, 1b, part 2 #2910 (16:34 IST) | — |
 | R1.104 | FO-5 parts 1-2 | FO-3c #2922 |
 No row has all its parts merged: **no verdict yet (P-606)**; CAPABILITIES rows unchanged.
 
@@ -31,9 +31,15 @@ Commands: `zsh studio/tools/isolated.sh jNN <port> start --ttl 30 AI_LIVE=off PL
 * **j_23 (:4473): exit 1.** PASS W0 fail-before, W5 (the confirmation email is from the sender name with logo and colour — PF-13 part 1b). FAIL: no Branding page (#2910); W4 the public booking page draws no logo/banner/favicon/colour — the header says no part yet draws the brand on a client page, so **W4 stays red after #2910**.
 * **j_104 (:4474): exit 1.** PASS W1 (booking on screen), W10 axe at 1440. FAIL: FO-3c's service not on main (#2922). The header says W2, W3 and W5's running-copy steps stay red after #2922 (booking-event poller unwired; API only, no screen) — **#2922 alone will not make j_104 green.**
 
+## Verdict R1.23 — Partial (22 Nov 16:4x IST, main 1b4f148d6)
+Walked within 10 min of #2910's merge (16:34 IST). `j_23` on isolated copies :4475 and :4476 (fresh each): exit 1 both times, 14/15 PASS, the same single FAIL.
+* PASS: W0 fail-before; W1 Owner finds Branding in My account (no address typed), the form has all five; W2 sets all five, "Branding saved.", read and stored images as entered (96x48, 32x32, 600x120), one audit line per changed key; W3 #ffcc00 refused on the colour field with ratio and 4.5:1, SVG-as-.png and 2 MB + 1 byte refused on the logo field, nothing stored; W5 confirmation email from the sender name with logo and #7a1f4e; W6 Case Officer: no entry, "Only an Owner or Admin can change the firm's branding." by address, PUT 403; W7 keyboard save, 400/1024/1440 no sideways scroll, axe clean; no page error.
+* **FAIL W4:** the public booking page draws no logo, banner, favicon or brand colour. Done when "client pages … show them" not met → **QA-743** (Gap, Major). PF-13's own Done when names client pages ("a saved logo shows on the client signing page"; FO-3w option (b) leaves the logo and colour on the booking page to PF-13), so this is a gap of the merged parts, not an unbuilt later row.
+* Not run: walks.yml on GitHub (a cloud lane asks the Lead; no Works claim made).
+
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
-2. R1.23 W4 (client page shows the brand) and R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
+2. R1.23 W4 is now QA-743 (Gap, Major): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
 3. #2916 was dequeued: is it coming back to the queue?
 
 ## Suggestions
