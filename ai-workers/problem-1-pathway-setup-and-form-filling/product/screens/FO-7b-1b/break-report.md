@@ -177,3 +177,28 @@ Commit broken: `7c3c0b5baae55ceb9b0751035283ab7e52d9b959`, diff only. How I test
 - **Regressions.** R3-F2: a backdated well-formed second line, and one in firm B, left the receipt text unchanged, and the replay still answered 300.00. 12 payments at once summed to 1,000.00 with 200.00 extra and paid once. One key 8 times gave one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. No 500 anywhere.
 
 Verdict: Changes. Commit `7c3c0b5baae55ceb9b0751035283ab7e52d9b959` has one Major (R4-F1).
+
+## Round 5 (diff 7c3c0b5ba..2d8eaa844)
+
+Commit broken: `2d8eaa844d82537ebcf7352add433bacb7b5ca33`, diff only (`money.ts` paymentView, `receiptOf`, the check). How I tested: a scratch copy of `tests/check_fo7b_invoices.ts` plus 36 attacks, on `xr_studio_brk7b5_scratch_*` at :54329. Everything passed (140/140, shipped cases included), the databases were dropped and the copy deleted.
+
+**No findings.**
+
+### What held (round 5)
+- **R4-F1, Cleared tick.** I recorded a 10.00 cheque into operating and a 20.00 cheque into trust (acknowledged), then ticked both Cleared by SQL. Both receipts are 200 before and after, word for word, and still say "Not yet cleared", as the emailed receipt did. The trust replay answers 200 with the same applied amount and `cleared: true`, the live state. The database refuses an un-tick ("a payment never changes").
+- **R4-F1, rewrites.** I rewrote `audit_event`, `money_payment` and `money_receipt` with `add column … default gen_random_uuid()` (the payment's xmin moved), then ran VACUUM FULL. For all 53 staff payments, each receipt and each replay (status, text, applied, extra, trust) matched the snapshot taken before.
+- **Dump and restore.** pg_dump here is 16 and the server is 18, so pg_dump refuses to run. In its place I built a fresh database from the migrations, copied every public table out and in with COPY (triggers off, sequences set), renamed it into place and reconnected the app. That gives every row a new xmin and loads each table separately. All 53 receipts were word for word the same and all replays gave the same status and figures: 46 at 200, 7 at 404 (the forged ones, below).
+- **Forged lines (R3-F2, R4-F2).** Each was tried on its own fresh payment:
+  - Gave 404 for both the receipt and the replay: an exact copy, a copy with other figures, a missing figure, `paidTwice: "true"` and `cleared_after: null`.
+  - Left the receipt text unchanged and the replay at 200 with 30.00 applied: another firm's id, receiptNumber R-9999, the receipt number in lower case or with a leading space, an upper-case paymentId, another payment's id, and the action with a trailing space.
+- **The only line damaged in place** (triggers off as owner): `dueAfterMinor` set to 1.5, "5", null, −1 or 1e20, `appliedMinor` set to 2^53+1, `cleared_after` set to "false", `paidTwice` set to 0, and the whole detail set to `[]`, `"x"` or `null`. Each gave 404, never a 500. A value of 3000.0 (the same number) gave the unchanged receipt. Restoring the line brought the receipt back to 200, the same.
+- **Exactly one line per legitimate payment:**
+  - 12 at once on one invoice summed to 1,205.00, all 201.
+  - One key sent 8 times at once gave one 201 and seven 200s, with the same payment and figures.
+  - A client at −150.00 paid into trust twice at once: both 201, with no negative extra.
+  - Overpayments into trust and into operating, and a payment on an invoice already paid, were all recorded.
+  - Every staff payment in the database has exactly one matching line, apart from the two the shipped check forges. All of the receipts above are 200.
+- **Regressions.** Firm B gets 404 on a receipt, and a Case Officer can read one (200, invoice:show). The shipped R3-F1, R3-F3, race, wall and audit-count cases pass.
+- **Observation, not a finding.** A duplicate line forged by SQL makes the replay answer 404 "No such payment in your firm", which reads as unrecorded. That is the 404 the diff promises, and it can only be reached through SQL.
+
+Verdict: Approve. Commit `2d8eaa844d82537ebcf7352add433bacb7b5ca33`: R4-F1 and R4-F2 are closed, with no new finding.
