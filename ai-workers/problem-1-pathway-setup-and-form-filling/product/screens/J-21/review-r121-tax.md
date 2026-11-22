@@ -58,3 +58,41 @@ N/A: Plan and billing is a firm-account screen, not a case-side screen (EXPERIEN
 A real screen reader. A visible (headed) browser: the walk was headless. An intended user's unaided walk (D17, D20 stay with the founder). Stripe's real hosted invoice and Stripe Tax. Whether PST applies to our software subscription (Unconfirmed: no counsel, no accountant; P-701). Commits after b9d69d283. The full CI suite set (360 selected). The team's code retrofit: PF-5 billing is ours, with no team screen to map.
 
 Reviewer: Changes b9d69d283e27f1bb6beaf2a2a875743b83c04308
+
+## Round 2: diff-only, b9d69d283..ab898493ae0d59a6a4e82fc7824d76d08dbeb96f (prototype/)
+Commits 5647a0094 (one issue per firm at a time), b97e2ffe6 (the breaker's Minors) and ab898493a (this review's M1, m3, m5, m6, m7). Copies `rev121r2` :4726 and `rev121r2b` :4727, from a worktree at ab898493a.
+
+**Verdict: Approve.** No Blocker or Major is open.
+
+| Run at ab898493a | Result |
+|---|---|
+| `check_r121_invoice_tax.ts 4726` | 28/28, exit 0 |
+| `journeys/j_21.ts rev121r2 4726` | 17/17, exit 0 |
+| `check_pf5_signup_billing.ts` (account.ts changed) · `check_pf5s2_billing_browser.ts 4727` | 107/107 · 55/55, exit 0 |
+| `tsc` api (no error in changed files) · web | clean |
+| Walk and break pass re-run (NS, QC, hostile names, other firm, tokens, 400/1024/1440, keyboard, axe) | as round 1; details below |
+
+**Round-1 findings:**
+* **M1: fixed.** `runtimeBillingPorts` is now tested in check_r121's port part. local with no key gives `standIn === billing`. local with a key, test, production, and test with a key all give `standIn === null`. Deleting either clause of `runtime-ports.ts:43` fails "port fail: with a Stripe key (local), or outside local…" (checked by reading: the four cases cover each clause).
+* **m3: fixed.** A test now drops another host, another path, `user:pass@` and `javascript:`, while a same-origin stand-in link and a Stripe link pass.
+* **m5: fixed, seen live.** CSP has `frame-ancestors 'none'`, `x-content-type-options: nosniff` is sent, and `x-powered-by` is absent.
+* **m6: fixed.** At 400 px the Tax cell wraps by word ("$13.86 CAD (HST 14 %, NS)" in a 144 px cell). Status, View and Download now sit in the table's inner horizontal scroll (393 → 493 px of 366). There is no page-level sideways scroll, and Tab still reaches both links. Acceptable.
+* **m7: fixed.** No decision id on the invoice: "Stand-in invoice: issued by our billing stand-in for testing, not by Stripe…".
+* **m9: fixed** by 5647a0094. **Mutation spot-check:** with the lock bypassed in my scratch copy only, the new 8-call test failed for BC (5 different invoice ids) and passed for ON (27/28). So the test catches the lock's removal, though not on every case, and the race was real.
+* **m1: fixed differently.** A plan not priced in CAD is refused with 409 NOT_CAD before an invoice is made. The hard-coded "cad" then always matches the plan.
+* **m2, m4, m8, m10:** left as PR notes, accepted as Minors (m2: the breaker checked yearly by hand, with no test).
+
+**New code, checked:**
+* `issue` shares one promise per firm, and `fake()` refuses (404) before any lock is taken. A rejected first call releases the lock (`finally`).
+* Ids are random (`in_standin` + 24 hex) and numbers are per firm (`SAMPLE-<8 hex of the firm id>-0001`). A's token on another id answers 404. The round-1 walk's "other id" check used a digits-only pattern that no longer fits the new ids; it was re-done with a valid other id.
+* `@HoldOpen()` on the issue route; still `agent/subscription:pay`; no session gives 401 (check_r121).
+* `account.ts`: reads the stored customer and the stand-in customer together. On a Stripe server `standIn` is null, so only the stored customer is read, as before. Firm B still reads only its own invoices.
+* Invoice page `overflow-wrap:anywhere`: long hostile names wrap. Escaping is unchanged and no dialog fired.
+
+**New Minors (no fix needed to merge):**
+* r2-m1 `account.ts`: the two-customer read has no test (a firm with both a stored customer and a stand-in invoice). The two lists are joined without sorting by date.
+* r2-m2 check_r121's 8-call test caught the lock's removal on one of its two cases. A larger burst, or a short wait inside `issueOnce` in the test, would make it fail every time.
+
+Journey score, round 2: **9.5/10, Pass** (was 8.5). Plain words rises to 1 (m7) and accessibility and screen sizes rises to 1 (m6). Error recovery stays ½ (m8: a stale link shows JSON; invoices are kept in memory).
+
+Reviewer: Approve ab898493ae0d59a6a4e82fc7824d76d08dbeb96f
