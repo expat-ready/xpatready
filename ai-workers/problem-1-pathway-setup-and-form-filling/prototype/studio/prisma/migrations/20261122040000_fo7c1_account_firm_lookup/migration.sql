@@ -4,7 +4,8 @@
 -- (platform_firm_of_key): the account id → the id of the firm that holds it, and nothing else; an unknown account → null.
 -- The door then stores its receipt and changes the account as that firm, under the walls (no bypass use). Owned by
 -- xr_wall_reader, SECURITY DEFINER, search_path pinned with pg_temp last; EXECUTE for xr_app and xr_staff_bypass only.
--- Additive (P-600): no table, column, index or row changes. Stamped after main's newest (20261122020000).
+-- Additive (P-600): no table, column, index or row changes. Stamped after main's newest (20261122020000) and after
+-- #2885's 20261122033000_qa644_reserve_staging, queued before this PR (Lead B's first read on #2938).
 -- Rollback: rollback.sql in this folder.
 CREATE FUNCTION money_firm_of_stripe_account(account text) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
