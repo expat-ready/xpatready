@@ -149,3 +149,61 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
   parts of R1.13 that need the running service wait on a code fix (proposed row **PF-8b F5**: make line 112-113 skip, or the
   line-91 grant not run, when the other grant already holds; prove on PostgreSQL 18 with a non-superuser CREATEROLE admin as on
   RDS). Before the rerun: `migrate resolve --rolled-back 20261116013000_pf12_firm_walls` again.
+
+## Step 4: proofs that need no running service (12:27-12:29 IST), script `~/d-proof.sh`, output `~/d-proof-2026-11-22.txt`
+
+Context line: `== proofs 2026-11-22T06:57:21Z, account 581508167097, ca-central-1, code main 5d866c746, image sha256:dabc0523…,
+xr:domain=lab.expatready.com`; stack `UPDATE_COMPLETE 2026-11-22T06:41:29Z`. No secret value printed anywhere.
+
+### TLS on the real domain
+```
+curl https://any-firm.staging.lab.expatready.com/api/health/live  →  http=503 ssl_verify=0 ip=15.157.177.223, curl exit=0
+subject=CN=*.staging.lab.expatready.com   issuer=C=US, O=Amazon, CN=Amazon RSA 2048 M04   notAfter=Jun  7 23:59:59 2027 GMT
+```
+The certificate is public and verifies (no `-k`). 503 is the load balancer with **0 tasks** (the service cannot start until the
+pf12 migration runs, Step 3). **HTTP 200 on a seeded firm: not yet (blocked by PF-8b F5).**
+
+### R1.13 logs and alarms: **Pass for the AWS half; named gap: app-emitted metrics wait on PF-8b F5**
+```
+R1.13-1 /xr/staging/app 90            (retention 90 days, NFR5-14)
+R1.13-2 streams: migrate/migrate/a082ba78… (today 06:54Z), migrate/migrate/835369d9… (today 06:52Z), studio/studio/d1695fed… (21 Nov)
+R1.13-3 9 metric filters: Alert_audit_chain_break, Alert_audit_write_failed, Alert_breach_clock_near, Alert_job_stuck,
+        Alert_privacy_clock_near, JobAge, JobFailures, MailBounced, MailSent, Requests, ServerErrors
+R1.13-4 9 alarms, all OK, each AlarmActions=1 → arn:aws:sns:ca-central-1:581508167097:xr-staging-on-call
+        (5xx-rate, job-age, job-failures, mail-bounce-rate also OKActions=1; the 5 alert-line alarms OKActions=0, as designed)
+R1.13-5 on-call subscription: email, confirmed (True)
+        set-alarm-state ALARM on xr-staging-job-failures at 2026-11-22T06:57:26Z rc=0
+R1.13-6 06:57:26.683Z StateUpdate OK→ALARM; 06:57:26.717Z Action "Successfully executed action …xr-staging-on-call"
+        06:57:46.147Z StateUpdate ALARM→OK;  06:57:46.179Z Action "Successfully executed action …xr-staging-on-call"
+R1.13-7 SNS topic last 15 min: NumberOfMessagesPublished 2, NumberOfNotificationsDelivered 2, NumberOfNotificationsFailed 0
+```
+The task's output reaches the 90-day log group from today's tasks on main's image; the alarm fired and SNS delivered it to the
+confirmed on-call subscription (2 of 2, 0 failed). The on-call address is still the stack's placeholder (P-782 open: flagged).
+Gap: request, job and alert lines from the running app are not yet seen, because the service cannot start (Step 3).
+
+### R1.15 secrets in a managed store: **Pass**
+```
+R1.15-1 service task def xrstagingAppTask7031B6E4:4, secrets (name → Secrets Manager secret):
+        DATABASE_URL→xr/staging/DATABASE_OWNER_URL, APP_DATABASE_URL→xr/staging/APP_DATABASE_URL,
+        PLATFORM_STRIPE_SECRET_KEY, PLATFORM_STRIPE_WEBHOOK_SECRET, PLATFORM_BOLDSIGN_API_KEY, PLATFORM_ZOOM_CLIENT_ID,
+        PLATFORM_ZOOM_CLIENT_SECRET, PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN, PLATFORM_SECRET_BOX_KEYS,
+        PLATFORM_SECRET_BOX_KEY_VERSION → xr/staging/<same name>   (10 secrets, all valueFrom ARNs)
+R1.15-2 plain environment, names only: PLATFORM_SES_REGION, PLATFORM_ADDRESS_SUFFIX, PLATFORM_IDENTITY,
+        PLATFORM_COGNITO_USER_POOL_ID, PLATFORM_ENVIRONMENT, PLATFORM_COGNITO_CLIENT_ID   (no secret setting among them)
+R1.15-3 execution role xr-staging-AppTaskExecutionRole…, task role xr-staging-AppTaskTaskRole…
+        migrate task def xrstagingAppMigrateFE01F052:3: secret DATABASE_URL→xr/staging/DATABASE_OWNER_URL; environment PLATFORM_ENVIRONMENT only
+R1.15-4 every xr/staging/* secret encrypted with KMS key arn:aws:kms:ca-central-1:581508167097:key/5719e23a-… (the stage key)
+R1.15-5 runtime read: today's migrate tasks (835369d9…, a082ba78…) received DATABASE_URL from Secrets Manager through the
+        execution role and connected to RDS ("Datasource db … at xr-staging-database…:5432"; resolve exit 0)
+```
+Note: two older secrets outside the `xr/staging/` names, `expatready/staging/PLATFORM_STRIPE_SECRET_KEY` and
+`expatready/staging/PLATFORM_BOLDSIGN_API_KEY`, are not referenced by any task definition (leftovers from 21 Nov): for Lead 2 to
+decide on removal (not touched). Earlier R1.15 part "firms' keys encrypted" (21 Nov) stays as it was: no store holds sealed values yet.
+
+### R1.5 staff sign-in on the real pool: **Blocked (named failure): the service cannot start until PF-8b F5 fixes the pf12
+migration on RDS** (Step 3). The pools are in place with the domain passkey settings (stack UPDATE_COMPLETE); wrong code, expiry
+and lock-out need the app's sign-in endpoint.
+
+### Cost
+0 tasks, unchanged: about US$0.18/h (RDS, NAT, load balancer, public IPv4) + Route 53 zone US$0.50/month. 2 tasks will add ~US$0.11/h.
+Spent on this proof so far: CodeBuild two builds (~5 min small) < US$0.10.
