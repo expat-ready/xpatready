@@ -148,7 +148,8 @@ try {
   ok(`J-102 W1: by name, ${NADIA} lists firm A's lead under "Leads and prospects" and firm A's case principal under "People on cases"`,
     !!w1 && w1.hits.some((h) => h.kind === "person" && h.text.includes(NADIA)) && w1.hits.some((h) => h.kind === "case_person" && h.text.includes(NUM)) && has(d1, leadHere) && has(d1, caseHere),
     { box: w1?.hits.map((h) => `${h.kind}: ${h.text.slice(0, 60)}`) ?? "no find box", door: d1 ?? "no find door" });
-  ok("J-102 W1: firm B's lead and case of the same name are never listed (box and door)", !!w1 && d1 !== null && !has(d1, caseThere) && !has(d1, leadThere) && !w1.hits.some((h) => h.text.includes(String(sql(`select case_number from runtime_case where id = '${CB}'`)) || "\u0000")), { door: d1 });
+  // Judged by address: case numbers are per firm, so firm B's case may carry the same number as firm A's.
+  ok("J-102 W1: firm B's lead and case of the same name are never listed (the door names neither; the box shows exactly the door's rows)", !!w1 && d1 !== null && !has(d1, caseThere) && !has(d1, leadThere) && w1.hits.length === d1.length, { door: d1, box: w1?.hits.length ?? "no find box" });
   await shot(o, "w1-by-name-1440");
 
   // ------------------------------------------------------------------------------------------------ W2 by email
