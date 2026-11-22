@@ -123,3 +123,36 @@ Diff read only (P-277): `git diff 4eda1fc4e 60af218c7 -- …/prototype` and buil
 **Verdict: Approve** (no open Blocker or Major; n1 to n3 are Minors).
 
 Reviewer: Approve 60af218c7f7a20d5fe9993faaa4932e2632336a9
+
+## Re-review (round 3, CI fixes): head b6ee7c89204abd58cae3b84cd97d93be4b3d1cf5
+Diff only: `git diff 9fe5f82d2 b6ee7c892` (3 files, plus re-shot screenshots).
+
+**Ran:**
+
+| Run | Result |
+|---|---|
+| `module-cards.py pr <22 changed files> <empty body>` | PASS, exit 0 |
+| `module-cards.py tree` (real tree) | PASS, exit 0 |
+| `check-select-suites.sh` | 83/83, exit 0 |
+| `check_fo9s_duplicates_browser.ts` (isolated `rv_dup` :4571) | 32/32, exit 0 |
+| **`check-module-cards.sh`** | **exit 1: "FAIL module cards: 44 fixtures"** |
+
+`check-module-cards.sh` has three failing fixtures: "tree: as on this branch", "a good row fragment" and "a fragment path relative to the card's folder". All three say: `api/src/front-office/MODULE.rows/FO-9s.md: names ports/matching.ts, which exists neither from the card's folder, the studio nor the repository root`.
+
+**B1 (Blocker, CI): the new API row file breaks the module-cards fixture test.**
+* The cause:
+  * `module-cards.py` checks every backticked path in a fragment.
+  * The fixture's tree copy takes only `api/src`, `web/src` and `tests` (`check-module-cards.sh:37`), so `studio/ports/matching.ts` is not in it.
+  * The real tree resolves the path from the studio, which is why `module-cards.py tree` passes.
+* The other row files write `ports/*.ts` without backticks for this reason (PF-18a, QA-518, FO-7b-1a). The module-cards workflow runs this test before the PR check, so CI stays red.
+* **Fix:** in `api/src/front-office/MODULE.rows/FO-9s.md`, write ports/matching.ts without backticks. I tried exactly that edit in my working copy and reverted it: `check-module-cards.sh` then exits 0 (44 fixtures).
+
+**The other two changes are sound:**
+* The web row file's path `modules/front-office/sales/add-lead-panel.tsx` resolves from the card's folder (`pr` and `tree` pass).
+* D3 now reads `web-form-page.tsx` and `web-form-settings-page.tsx` by name. These are the only two `web-form*` files in `sales/` today, and history.tsx stays under 30 suites (83/83).
+  * A renamed file fails loudly (`readFileSync` throws).
+  * n4 (Could): a *new* web-form file would not be covered. A comment pointing to the list would keep that visible.
+
+**Verdict: Block** (only B1; one character class to remove). The code verdict from round 2 stands: no product change in this diff.
+
+Reviewer: Block b6ee7c89204abd58cae3b84cd97d93be4b3d1cf5
