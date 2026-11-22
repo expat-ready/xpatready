@@ -17,6 +17,12 @@ const READ_ON = "2026-11-22";
 
 export const PROVINCE_CODES = ["AB", "BC", "MB", "NB", "NL", "NT", "NS", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
 export type ProvinceCode = (typeof PROVINCE_CODES)[number];
+/** Each code's name as the page's table writes it: an entry's quote must be its own code's row (break m2). */
+const PROVINCE_NAMES: Readonly<Record<ProvinceCode, string>> = Object.freeze({ AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick", NL: "Newfoundland and Labrador",
+  NT: "Northwest Territories", NS: "Nova Scotia", NU: "Nunavut", ON: "Ontario", PE: "Prince Edward Island", QC: "Quebec", SK: "Saskatchewan", YT: "Yukon" });
+/** The lowest GST/HST rate the table may hold: 5 % (the federal GST, the page's lowest row). A rate below it is a unit
+ *  mistake (13 % typed in basis points, with its quote edited to "0.13%"), never a real rate (break m2). */
+export const LOWEST_RATE_PPM = 50000;
 export type TaxSource = { readonly url: string; readonly quote: string; readonly readOn: string };
 export type ProvinceTaxRate = {
   readonly province: string; readonly taxName: "GST" | "HST"; readonly ratePpm: number;
@@ -62,11 +68,12 @@ const QUOTE = /^(.+) \| (\d{1,3})(?:\.(\d{1,4}))?% \| (N\/A|\d{1,3}(?:\.\d{1,4})
 const ENTRY_KEYS = ["province", "taxName", "ratePpm", "effectiveFrom", "effectiveQuote", "source"], SOURCE_KEYS = ["url", "quote", "readOn"];
 const text = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 
-/** What is wrong with a table, in words; [] when every value is cited and matches its quote. A value with no source
+/** What is wrong with a table, in words, as of `today` (YYYY-MM-DD, UTC; a start date after it is refused, because the
+ *  table holds no rate that has not begun and taxDefault does not read dates: break m3); [] when every value is cited and matches its quote. A value with no source
  *  (URL on canada.ca, quote, read date), a rate that is not its quote's percentage (so a rate in basis points, a rate
  *  with a provincial tax added, or an old rate), a missing or extra province, or any other field (a PST rate, say) is
  *  named. The app refuses to load a table with a problem (below). */
-export function tableProblems(table: unknown): string[] {
+export function tableProblems(table: unknown, today: string = new Date().toISOString().slice(0, 10)): string[] {
   const out: string[] = [];
   if (table === null || typeof table !== "object" || Array.isArray(table)) return ["the table is not an object"];
   const t = table as Record<string, unknown>, codes = Object.keys(t);
@@ -85,6 +92,8 @@ export function tableProblems(table: unknown): string[] {
     let host = ""; try { const u = new URL(String(s.url)); host = u.protocol === "https:" && !u.username && !u.password ? u.hostname : ""; } catch { /* not a URL */ }
     if (!text(s.url) || host !== "www.canada.ca") out.push(`${c}: the source has no URL on https://www.canada.ca`);
     if (!isDay(s.readOn)) out.push(`${c}: the source has no read date (YYYY-MM-DD)`);
+    if (r.province !== PROVINCE_NAMES[c as ProvinceCode]) out.push(`${c}: the province is not ${PROVINCE_NAMES[c as ProvinceCode]}`);
+    if (typeof rate === "number" && rate < LOWEST_RATE_PPM) out.push(`${c}: the rate (${rate} ppm) is below the 5 % GST (a unit mistake: parts per million, never basis points)`);
     const q = text(s.quote) ? QUOTE.exec(s.quote) : null;
     if (!text(s.quote)) out.push(`${c}: the source has no quote`);
     else if (!q) out.push(`${c}: the quote is not a row of the page's table ("Province | GST and HST | PST")`);
@@ -96,6 +105,7 @@ export function tableProblems(table: unknown): string[] {
     }
     if ((r.effectiveFrom === undefined) !== (r.effectiveQuote === undefined)) out.push(`${c}: a start date needs the page's sentence, and the sentence its date`);
     if (r.effectiveFrom !== undefined && !isDay(r.effectiveFrom)) out.push(`${c}: the start date is not a date (YYYY-MM-DD)`);
+    else if (typeof r.effectiveFrom === "string" && r.effectiveFrom > today) out.push(`${c}: the start date is after today (a rate that has not begun is never charged)`);
     if (r.effectiveQuote !== undefined && !text(r.effectiveQuote)) out.push(`${c}: the start date's quote is empty`);
   }
   return out;

@@ -52,8 +52,12 @@ export class TaxRuleRefused extends Error {}
 
 /** The rate of one draft line (rule 3), for the draft step (FO-7g part 1w calls it; nothing in invoices/ does yet).
  *  A government fee is 0, and asking to tax it is refused. A fee or a disbursement takes the default, or 0 when set not
- *  taxable. No other number can come out: the function takes no rate. */
+ *  taxable. The default must be 0 or one of the table's rates (pass taxDefault's answer), so no other number can come out. */
 export function lineRatePpm(line: { kind: "FEE" | "GOVERNMENT_FEE" | "DISBURSEMENT"; taxable?: boolean }, dflt: Pick<TaxDefault, "ratePpm">): number {
+  if (line === null || typeof line !== "object") throw new TaxRuleRefused("A line is needed.");
+  // The default must be one taxDefault can give: 0 or a rate of the cited table, never a number from a request (break m1).
+  if (!dflt || typeof dflt !== "object" || !(dflt.ratePpm === 0 || Object.values(PROVINCE_TAX_RATES).some((e) => e.ratePpm === dflt.ratePpm)))
+    throw new TaxRuleRefused("The default rate is not one of the cited table's rates (or 0).");
   if (line.taxable !== undefined && typeof line.taxable !== "boolean") throw new TaxRuleRefused("A line is taxable or not taxable: no other value is taken.");
   if (line.kind === "GOVERNMENT_FEE") {
     if (line.taxable === true) throw new TaxRuleRefused("A government fee is never taxed.");

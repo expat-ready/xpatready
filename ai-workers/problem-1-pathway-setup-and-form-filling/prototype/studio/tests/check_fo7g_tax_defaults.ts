@@ -85,6 +85,14 @@ const bc12 = planted("BC", { ...T.BC, ratePpm: 120000 }), bcPst = planted("BC", 
 ok("FO-7g DW11 fail (planted): a BC entry at 120000 (GST + PST) is caught; so is an entry given a PST field", !DW11(bc12) && tableProblems(bc12).some((p) => /BC: the rate \(120000 ppm\)/.test(p))
   && !DW11(bcPst) && tableProblems(bcPst).some((p) => /BC: the field "pstPpm" is not part of an entry/.test(p)), [tableProblems(bc12), tableProblems(bcPst)]);
 
+// Break report on 84a3e1ab (m2, m3): what the load-time check itself refuses, beyond the cases above.
+const onAsAlberta = planted("ON", { ...T.AB }), onBp = planted("ON", { ...T.ON, ratePpm: 1300, source: { ...T.ON.source, quote: "Ontario | 0.13% | N/A" } });
+const nsLater = planted("NS", { ...T.NS, effectiveFrom: "2999-01-01" });
+ok("FO-7g source fail (planted, break m2): Alberta's whole entry under ON, and 13 % in basis points with its quote edited to \"0.13%\", are refused by the table's own check (not only by DW10)",
+  tableProblems(onAsAlberta).some((p) => /ON: the province is not Ontario/.test(p)) && tableProblems(onBp).some((p) => /ON: the rate \(1300 ppm\) is below the 5 % GST/.test(p)), [tableProblems(onAsAlberta), tableProblems(onBp)]);
+ok("FO-7g source fail (planted, break m3): a start date after today is refused (a rate that has not begun is never charged); today's table passes as of its own start date",
+  tableProblems(nsLater).some((p) => /NS: the start date is after today/.test(p)) && tableProblems(T, "2025-04-01").length === 0 && tableProblems(T, "2025-03-31").some((p) => /NS: the start date is after today/.test(p)));
+
 // DW2 (pure): the firm's province.
 const DW2 = (t: ProvinceTaxTable) => PROVINCE_CODES.every((c) => { const d = taxDefault({ firmProvince: c, registered: true }, t); return d.source === "FIRM_PROVINCE" && d.taxName === T[c].taxName && d.ratePpm === T[c].ratePpm && d.registered && !d.outsideCanada && d.warning === null; });
 ok("FO-7g DW2 pass (firm province, the rule alone): each of the 13 codes gets its own entry of the table (HST where the table says HST, GST elsewhere), source FIRM_PROVINCE; \" on \" and \"on\" read as ON",
@@ -118,6 +126,10 @@ ok("FO-7g DW6 pass (the rule alone): a FEE or DISBURSEMENT line takes the defaul
 ok("FO-7g DW6 fail: the rule takes no rate (a typed ratePpm beside the line changes nothing), and a taxable that is a number or text, or an unknown kind, is refused",
   lineRatePpm({ kind: "FEE", ratePpm: 99 } as never, on) === T.ON.ratePpm && [130000, "yes", null].every((taxable) => throws(() => lineRatePpm({ kind: "FEE", taxable } as never, on), TaxRuleRefused))
   && throws(() => lineRatePpm({ kind: "TIP" } as never, on), TaxRuleRefused));
+
+ok("FO-7g DW6 fail (break m1): a default that is not 0 or a rate of the table (1300, 99, -1, text, nothing) and a missing line are refused, never passed through",
+  [1300, 99, -1, "130000", undefined, NaN].every((ratePpm) => throws(() => lineRatePpm({ kind: "FEE" }, { ratePpm } as never), TaxRuleRefused))
+  && throws(() => lineRatePpm(null as never, on), TaxRuleRefused) && throws(() => lineRatePpm({ kind: "FEE" }, null as never), TaxRuleRefused) && lineRatePpm({ kind: "FEE" }, { ratePpm: 0 }) === 0);
 
 // --------------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
