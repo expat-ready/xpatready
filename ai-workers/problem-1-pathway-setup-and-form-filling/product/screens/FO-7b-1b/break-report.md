@@ -120,7 +120,7 @@ Where: `money.ts:226-227`.
 - **F4 and F6.** 1999-12-31 gets 422; 2000-01-01 gets 200 and reads Overdue; 2999-12-31 gets 200. An invoice cancelled by two part credit notes, or part paid and then fully credited, is not sent (409 CANCELLED).
 - **F7.** The shipped case holds, and lines can't be negative (the DB checks `unit_amount_minor >= 0`), so no total below zero can be issued.
 - **Address.** `{{balance}}` in a street name prints literally. A newline was only possible by direct SQL; the writer refuses control characters (`platform/billing/account.ts:23`). Non-string parts are dropped.
-- **Regressions.** 12 payments at once sum to exactly 1,000.00, with invoice.paid written once. One key 8 times at once gives one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. There is one audit line per payment, and no storm produced a 500, a 40P01 or a 40001.
+- **Regressions.** R3-F2: a backdated well-formed second line, and one in firm B, left the receipt text unchanged, and the replay still answered 300.00. 12 payments at once sum to exactly 1,000.00, with invoice.paid written once. One key 8 times at once gives one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. There is one audit line per payment, and no storm produced a 500, a 40P01 or a 40001.
 
 Verdict: Changes. Commit `7e6e48c1f3222d282722c16ac16c8e40f8e54c7e` has two Majors (R2-F1 and R2-F2).
 
@@ -148,6 +148,32 @@ Commit broken: `521e016eeb4127e2648dda7b2da875f8ea80d28e`, diff only. How I test
 - **Audit read.** A payment with no audit line (seeded): receipt 404 and replay 404, and the invoice can still be read and paid.
 - **Letterhead (R2-F3).** After renaming the firm, moving it, changing its tax number, turning tax registration off and renaming the client, the issued invoice prints the old name, address, tax number and bill-to, with the new "How to pay". The receipt and the credit note are byte-identical. A receipt issued after the change prints the new letterhead.
 - **P2002.** The same key on two parties' invoices at once: 201 + 409 KEY_USED, 6 of 6.
-- **Regressions.** 12 payments at once sum to 1,000.00 with 200.00 extra and paid once. One key 8 times gives 201 + 7×200. A Case Officer gets 403 and firm B gets 404 on a receipt. R2-F5's message now says 2000 to 2999.
+- **Regressions.** R3-F2: a backdated well-formed second line, and one in firm B, left the receipt text unchanged, and the replay still answered 300.00. 12 payments at once sum to 1,000.00 with 200.00 extra and paid once. One key 8 times gives 201 + 7×200. A Case Officer gets 403 and firm B gets 404 on a receipt. R2-F5's message now says 2000 to 2999.
 
 Verdict: Changes. Commit `521e016eeb4127e2648dda7b2da875f8ea80d28e` has one Major (R3-F1).
+
+## Round 4 (diff 521e016ee..7c3c0b5ba)
+
+Commit broken: `7c3c0b5baae55ceb9b0751035283ab7e52d9b959`, diff only. How I tested: a scratch copy of `tests/check_fo7b_invoices.ts` plus 43 attacks, on `xr_studio_brk7b4_scratch_*` at :54329. The databases were dropped and the copy deleted. The shipped check passes 104/104. Paths are under `prototype/studio/api/src/client-money/invoices/`.
+
+**R4-F1, Major (new in this diff): the one change the schema allows to a payment, the cheque's "Cleared" tick, makes its receipt and its replay 404 for good.**
+- What I did: recorded a 10.00 cheque, then ran fo7a's permitted `update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R'` (the same statement FO-7mv's check uses). The payment's xmin moved from 226607 to 226608, and its audit line stayed at 226607.
+- Actual: `receipt.pdf` was 200 before the tick and **404** after it. Replaying the same key also gives **404** "No such payment in your firm", so a retry reads as unrecorded and invites a second cheque under a new key.
+- Any table rewrite does the same to every payment. After `alter table audit_event add column … default gen_random_uuid()`, 0 of 89 payments match and every receipt is 404. A logical dump and restore would load the two tables in separate transactions with new xmins. I couldn't run that here (pg_dump is 16, the server is 18).
+- What held: VACUUM FREEZE and VACUUM FULL kept 88/89 (the one miss was the ticked cheque), and the receipt stayed 200.
+- The Cleared action is not built in this part. This finding is about the receipt, which is: its read depends on a physical row version. Where: `money.ts:215-216`. A key that never changes, such as `detail->>'paymentId'` plus the actor and the payment's `recorded_by`, or the receipt's own row, would not have this problem.
+
+**R4-F2, Minor (R3-F2 not fully closed): the figure check passes null or missing as 0, and the same-xmin line it trusts can still be forged by SQL.**
+- In one SQL transaction: tick a cheque Cleared, then insert a `payment.recorded` line for it. That line now has the payment's xmin. The receipt printed "Forged Firm", "Paid by: Mallory" and 1,234.56 due, and the replay answered `appliedMinor` 1.
+- With `dueAfterMinor: null`, or the key removed, the receipt prints "after this payment: CAD 0.00" against a true 580.00, with no 404. A forged `paidTwice: true` with extra 5.00 offers Refund · Keep as credit. The letterhead fields are not checked.
+- A string, a negative, 1.5, 1e20, true, "5" or an object each gave a 404 with no 500. SQL only. Where: `money.ts:218` (`a.d[k] ?? 0`), `:219`, `:229-230`.
+
+### What held (round 4)
+- **R3-F1.** For a +50.00 balance, 100.00 into trust on 300.00 applied 100.00, left 200.00 due and kept the balance at 50.00, with no extra. Same in CAD and USD, and for a company in both currencies.
+- **Other balances.** Held +0.01, equal to the amount due, equal to the payment, above the payment (200.00), and 20,000,000.00 behaved the same way. +50.00 on 80.00 due: 80.00 applied and "CAD 20.00 … kept in trust", with a balance of 70.00. An invoice already paid: all 100.00 is extra, "Paid twice?". Balances of 0, −0.01, −50.00, −150.00, and −50.00 USD for a company all came out right.
+- **The sums.** In all 18 cases `shortfall + applied + extra = amount`, the extra was ≥ 0, the receipt words were exact and no amount was negative.
+- **Races.** Two trust payments at once (3 runs) applied 100.00 each and left the balance at 50.00. Six at once on one 300.00 invoice (3 runs) applied 300.00 in total, with a 300.00 extra, a 350.00 balance and invoice.paid written once.
+- **R3-F3.** With 20.00 KEPT, `waitingMinor` is 40.00, the amount is 60.00, both choices are offered and the view says 40.00. After 10.00 is reversed, all three say 50.00. When everything is kept: 0, no choices. The database refuses KEPT beyond the extra. The receipt still prints 60.00.
+- **Regressions.** R3-F2: a backdated well-formed second line, and one in firm B, left the receipt text unchanged, and the replay still answered 300.00. 12 payments at once summed to 1,000.00 with 200.00 extra and paid once. One key 8 times gave one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. No 500 anywhere.
+
+Verdict: Changes. Commit `7c3c0b5baae55ceb9b0751035283ab7e52d9b959` has one Major (R4-F1).

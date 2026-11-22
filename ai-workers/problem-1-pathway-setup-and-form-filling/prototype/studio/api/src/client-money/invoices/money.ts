@@ -127,7 +127,7 @@ export class InvoiceMoney {
       return { paymentId: pay.id, replayed: false };
     });
     const view = await this.db.$transaction((tx) => this.paymentView(tx, ctx.firmId, done.paymentId, done.replayed, today));
-    const { issuedOn: _on, balanceThen: _then, shortfall: _s, head: _h, ...payment } = view.payment;
+    const { issuedOn: _on, balanceThen: _then, shortfall: _s, head: _h, clearedThen: _c, ...payment } = view.payment;
     return PaymentView.parse({ ...payment, receiptEmail: await this.emailReceipt(ctx.firmId, view.payment, view.extraNow) });
   }
 
@@ -211,12 +211,15 @@ export class InvoiceMoney {
   private async paymentView(tx: Tx, firm: string, paymentId: string, replayed: boolean, today: string) {
     const firmId = firmScope(firm).firmId, p = await tx.moneyPayment.findFirst({ where: firmScope(firm, { id: paymentId }), include: { receipt: true, trustEntry: true } });
     if (!p?.invoiceId || !p.receipt) return notFound("payment");
-    // The audit line written in the payment's own transaction (the same xmin), never another line naming it (R3-F2).
-    const [a] = await tx.$queryRaw<{ d: Record<string, unknown> }[]>`select e.detail as d from audit_event e, money_payment m where m.firm_id = ${firmId}::uuid and m.id = ${p.id}::uuid
-      and e.firm_id = m.firm_id and e.action = 'payment.recorded' and e.entity = 'money_payment' and e.entity_key = m.id::text and e.xmin::text = m.xmin::text limit 1`;
-    if (!a) return notFound("payment");
-    for (const k of ["appliedMinor", "extraMinor", "shortfallMinor", "dueAfterMinor"]) if (!Number.isSafeInteger(a.d[k] ?? 0) || (a.d[k] as number ?? 0) < 0) return notFound("payment");
-    const num = (k: string) => Number(a.d[k] ?? 0), text = (k: string) => (typeof a.d[k] === "string" ? (a.d[k] as string) : "");
+    // The audit line the payment's own transaction wrote: it names the payment and its receipt number, stored values, so a
+    // cheque's "Cleared" tick, a table rewrite or a restore never lose the link (round 4: xmin did). Exactly one such line
+    // (audit lines are insert-only and only this path writes one), with every figure a whole number at or above zero;
+    // anything else, a second line written by hand included, is 404, never other figures (R3-F2, R4-F2).
+    const lines = await tx.$queryRaw<{ d: Record<string, unknown> }[]>`select e.detail as d from audit_event e, money_payment m where m.firm_id = ${firmId}::uuid and m.id = ${p.id}::uuid
+      and e.firm_id = m.firm_id and e.action = 'payment.recorded' and e.entity = 'money_payment' and e.entity_key = m.id::text and e.detail->>'paymentId' = m.id::text and e.detail->>'receiptNumber' = ${p.receipt.number}`;
+    const a = lines.length === 1 ? lines[0] : null;
+    if (!a || !["appliedMinor", "extraMinor", "shortfallMinor", "dueAfterMinor"].every((k) => Number.isSafeInteger(a.d[k]) && (a.d[k] as number) >= 0) || typeof a.d.paidTwice !== "boolean" || typeof a.d.cleared_after !== "boolean") return notFound("payment");
+    const num = (k: string) => a.d[k] as number, text = (k: string) => (typeof a.d[k] === "string" ? (a.d[k] as string) : "");
     const f = await this.facts(tx, firm, p.invoiceId, today), applied = num("appliedMinor"), extraThen = num("extraMinor"), shortfall = num("shortfallMinor");
     const [k] = await tx.$queryRaw<{ kept: string }[]>`select coalesce(sum(e.amount_minor + coalesce((select sum(r.amount_minor) from money_credit_entry r where r.firm_id = e.firm_id and r.reverses_entry_id = e.id), 0)), 0)::text as kept from money_credit_entry e where e.firm_id = ${firmId}::uuid and e.kind = 'KEPT' and e.payment_id = ${p.id}::uuid`;
     const waiting = Math.max(0, extraThen - Number(k.kept));
@@ -229,7 +232,7 @@ export class InvoiceMoney {
     const extra = extraThen > 0 ? { amountMinor: extraThen, waitingMinor: p.receivedInto === "OPERATING" ? waiting : 0, choices: p.receivedInto === "OPERATING" && waiting > 0 ? ["REFUND", "KEEP_AS_CREDIT"] : [], note: a.d.paidTwice === true ? "Paid twice?" : null } : null;
     const head: Letterhead = { firmName: text("firmName_after"), firmAddress: text("firmAddress_after"), taxNumber: text("taxNumber_after") || null, billTo: text("billTo_after") || "Client" };
     return { extraNow: extraThen, payment: { id: p.id, invoiceId: p.invoiceId, method: p.method, amountMinor: p.amountMinor, currency: p.currency, receivedInto: p.receivedInto, receivedOn: dayOf(p.receivedAt), reference: p.reference, cleared: p.cleared,
-      receiptNumber: p.receipt.number!, replayed, appliedMinor: applied, extra, trust, invoice: f.view, issuedOn: dayOf(p.receipt.issuedAt), balanceThen: num("dueAfterMinor"), shortfall, head } };
+      receiptNumber: p.receipt.number!, replayed, appliedMinor: applied, extra, trust, invoice: f.view, issuedOn: dayOf(p.receipt.issuedAt), balanceThen: num("dueAfterMinor"), shortfall, head, clearedThen: a.d.cleared_after as boolean } };
   }
   /** Who the document is from and to: the firm's name and tax number, the bill-to's name and email (the company's primary contact's). */
   private async letterhead(tx: Reader, firm: string, v: InvoiceView): Promise<Letterhead & { email: string | null; operatingDetails: string | null }> {
@@ -254,7 +257,7 @@ export class InvoiceMoney {
     return invoiceData(f.view, { ...(await this.storedHead(tx, firm, "invoice.issued", f.view.id, f.view)), operatingDetails: live.operatingDetails, issuedOn: f.issuedOn ?? "" });
   }
   private async receiptOf(_tx: Reader, _firm: string, p: Awaited<ReturnType<InvoiceMoney["paymentView"]>>["payment"], extraMinor: number): Promise<RenderData> {
-    return receiptData(p.invoice, { ...p, balanceMinor: p.balanceThen, extraMinor, shortfallMinor: p.shortfall, keptInTrust: p.receivedInto === "TRUST" }, p.head);
+    return receiptData(p.invoice, { ...p, cleared: p.clearedThen, balanceMinor: p.balanceThen, extraMinor, shortfallMinor: p.shortfall, keptInTrust: p.receivedInto === "TRUST" }, p.head);
   }
   /** One email to the bill-to, no Cc, with the PDF (AG-6-63 rule 5, AG-6-41). Never throws: the record is already saved. */
   private async email(firm: string, v: InvoiceView, key: MoneyTemplate, data: RenderData, subject: string, idempotencyKey: string, name: string): Promise<"SENT" | "NO_ADDRESS" | "NOT_SENT"> {

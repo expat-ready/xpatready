@@ -350,8 +350,10 @@ try {
   ok("FO-7b P pass (round 3 M1, R3-F1): +50.00 already held, 100.00 into trust on 300.00 → 100.00 applied (this payment's own), 200.00 due, the 50.00 still held, no extra; the receipt says 200.00 due and nothing \"more than asked\"",
     hPay.status === 201 && hPay.body.trust?.appliedMinor === 10000 && hPay.body.trust.shortfallCoveredMinor === 0 && hPay.body.trust.balanceMinor === 5000 && hPay.body.extra === null && hPay.body.invoice.dueMinor === 20000
     && /after this payment: CAD 200\.00/.test(hRec.text) && !/more than this invoice asked/.test(hRec.text) && sql(`select count(*) from audit_event where action = 'payment.recorded' and entity_key = '${hPay.body.id}' and (detail->>'extraMinor')::int < 0`) === "0", [hPay.body, hRec.text]);
-  ok("FO-7b P fail (round 3 M1, planted): the round-3 rule (apply up to what the ledger holds) would have applied 150.00 and stored an extra of −50.00; the case catches it",
-    Math.min(30000, 15000) - 10000 === 5000 && hPay.body.trust.appliedMinor !== 15000);
+  const round3Rule = (due: number, heldAfterDeposit: number) => Math.max(0, Math.min(due, heldAfterDeposit));   // the planted wrong rule, fed the stored facts
+  const planted3 = round3Rule(invH.dueMinor, hPay.body.trust.balanceMinor + hPay.body.trust.appliedMinor);
+  ok("FO-7b P fail (round 3 M1, planted): the round-3 rule, fed this payment's stored facts, applies 150.00 (an extra of −50.00) and so differs from what was stored; the case catches it",
+    planted3 === 15000 && planted3 !== hPay.body.trust.appliedMinor && 10000 - planted3 < 0, [planted3, hPay.body.trust]);
   const PY = person(A, "y"), [py, ey] = [randomUUID(), randomUUID()]; who = PY;
   sql(`begin; ${dep(py, ey, 15000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -15000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -15000, 'Recorded twice (Sample)', '${ey}', 'RECORDED_BY_MISTAKE'`));
   const invY = await issued(10000, 0, {}, PY), yPay = await pay(invY.id, 10000, { receivedInto: "TRUST" });
@@ -417,8 +419,18 @@ try {
   // R3-F2: a second, backdated audit line naming the payment (written by SQL, damaged figures) never changes its receipt or replay.
   sql(`insert into audit_event (id, workspace_id, at, detail, actor_type, firm_id, actor, action, entity, entity_key, summary) select gen_random_uuid(), workspace_id, at - interval '1 day', detail || '{"appliedMinor": 0, "dueAfterMinor": "x"}'::jsonb, actor_type, firm_id, actor, action, entity, entity_key, summary from audit_event where action = 'payment.recorded' and entity_key = '${xPay.body.id}'`);
   const xRec3 = await pdfText(`${invX.id}/payments/${xPay.body.id}/receipt.pdf`), xReplay2 = await post(`${invX.id}/payments`, { method: "E_TRANSFER", amountMinor: 30000, idempotencyKey: `fo7b-1b-${xKey}` });
-  ok("FO-7b P fail (R3-F2): a forged, backdated second audit line for the payment is ignored: the receipt is word for word the same and the replay still answers 300.00 applied (never a 500)",
-    xRec3.text === xRec2.text && xReplay2.status === 200 && xReplay2.body.appliedMinor === 30000 && sql(`select count(*) from audit_event where action = 'payment.recorded' and entity_key = '${xPay.body.id}'`) === "2", [xRec3.text, xReplay2.status, xReplay2.body]);
+  ok("FO-7b P fail (R3-F2): a forged, backdated second audit line for the payment never changes what is printed: the receipt and the replay answer 404 (never other figures, never a 500)",
+    xRec3.status === 404 && xReplay2.status === 404 && sql(`select count(*) from audit_event where action = 'payment.recorded' and entity_key = '${xPay.body.id}'`) === "2", [xRec3.text, xReplay2.status, xReplay2.body]);
+  // Round 4 (review M, R4-F1): a cheque's "Cleared" tick (the one change a payment row allows) keeps its receipt and replay.
+  const chq = await pay(invX.id, 1000, { method: "CHEQUE" }), chqKey = key, chqRec = await pdfText(`${invX.id}/payments/${chq.body.id}/receipt.pdf`);
+  sql(`update money_payment set cleared = true, cleared_at = now(), cleared_by = 'staff:${staffA}' where id = '${chq.body.id}'`);
+  const chqRec2 = await pdfText(`${invX.id}/payments/${chq.body.id}/receipt.pdf`), chqReplay = await post(`${invX.id}/payments`, { method: "CHEQUE", amountMinor: 1000, idempotencyKey: `fo7b-1b-${chqKey}` });
+  ok("FO-7b P pass (round 4, R4-F1): after the cheque is ticked Cleared, its receipt still answers 200, word for word the one issued (\"Not yet cleared\" was true then: a receipt never changes, AG-6-63 rule 8) and its replay answers 200",
+    chq.status === 201 && chqRec.status === 200 && chqRec2.status === 200 && chqRec2.text === chqRec.text && /Not yet cleared/.test(chqRec2.text) && chqReplay.status === 200 && chqReplay.body.appliedMinor === chq.body.appliedMinor, [chqRec2.status, chqReplay.status, chqRec.text, chqRec2.text]);
+  // R4-F2: a forged line with the payment's own time and receipt number (two lines now match), or a figure left out, is 404: never other figures, never a 500.
+  sql(`insert into audit_event (id, workspace_id, at, detail, actor_type, firm_id, actor, action, entity, entity_key, summary) select gen_random_uuid(), workspace_id, at, detail - 'dueAfterMinor', actor_type, firm_id, actor, action, entity, entity_key, summary from audit_event where action = 'payment.recorded' and entity_key = '${chq.body.id}'`);
+  const chqRec3 = await pdfText(`${invX.id}/payments/${chq.body.id}/receipt.pdf`), chqReplay3 = await post(`${invX.id}/payments`, { method: "CHEQUE", amountMinor: 1000, idempotencyKey: `fo7b-1b-${chqKey}` });
+  ok("FO-7b P fail (R4-F2): a forged second line with the payment's own time and receipt number, missing a figure → the receipt and the replay answer 404 (not other figures, not 500)", chqRec3.status === 404 && chqReplay3.status === 404, [chqRec3.status, chqReplay3.status, chqReplay3.body]);
   sql(`update platform_firm set operating_name = '${firmName.replace(/'/g, "''")}' where id = '${A}'`);
 
   // ------------------------------------------------------------------------- S: the status words, derived (a table)
@@ -452,7 +464,7 @@ try {
   const wall = await Promise.all([post(`${invP.id}/payments`, { method: "CASH", amountMinor: 100, idempotencyKey: "fo7b-wall-1" }, tB), post(`${invP.id}/credit-notes`, { full: true, reason: "x" }, tB), post(`${invP.id}/send`, {}, tB), call(tB, "GET", `${M}/${invP.id}/pdf`), call(tA, "GET", `${M}/${invP.id}/payments/${tPay.body.id}/receipt.pdf`), post("not-a-uuid/issue")]);
   ok("FO-7b walls pass: firm B gets 404 on firm A's invoice (pay, credit, send, PDF); a receipt asked under another invoice, and a malformed id, are 404; nothing written", wall.every((x) => x.status === 404) && sql(`select count(*) from money_payment where idempotency_key = 'fo7b-wall-1'`) === "0", wall.map((x) => x.status));
   ok("FO-7b audit pass: one line per change: every issued invoice, every payment and every credit note; each receipt has its own number (no gap); every money event is one of the named five",
-    sql(`select count(*) from audit_event where action = 'invoice.issued'`) === sql(`select count(*) from money_invoice where issued_at is not null`) && sql(`select count(*) from audit_event where action = 'payment.recorded' and coalesce(detail->>'dueAfterMinor', '') <> 'x'`) === sql(`select count(*) from money_payment where recorded_by like 'staff:%'`)
+    sql(`select count(*) from audit_event where action = 'invoice.issued'`) === sql(`select count(*) from money_invoice where issued_at is not null`) && sql(`select count(*) from audit_event where action = 'payment.recorded' and coalesce(detail->>'dueAfterMinor', '') ~ '^[0-9]+$'`) === sql(`select count(*) from money_payment where recorded_by like 'staff:%'`)
     && sql(`select count(*) from audit_event where action = 'invoice.credit_note_issued'`) === sql(`select count(*) from money_credit_note where created_by like 'staff:%'`) && sql(`select count(*) = max(substr(number, 3)::int) from money_receipt where firm_id = '${A}'`) === "t"
     && sql(`select count(*) from module_event where type like 'invoice.%' or type like 'payment.%'`) === sql(`select count(*) from module_event where type in ('${Object.values(MONEY_EVENT).join("','")}')`));
 } catch (e) {
