@@ -64,13 +64,15 @@ function Summary() {
   const [leaving, setLeaving] = React.useState<"card" | "portal" | null>(null);
   const [stripeError, setStripeError] = React.useState<string | null>(null);
   const [savedNote, setSavedNote] = React.useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  /** R2-m3: "due" after a save Stripe did not get (the next button to Stripe asks again); "done" once asked again. */
+  const [retry, setRetry] = React.useState<null | "due" | "done">(null);
   const opener = React.useRef<HTMLElement | null>(null), editButton = React.useRef<HTMLButtonElement>(null), errorBox = React.useRef<HTMLDivElement>(null);
   // Break M4: a refused hand-off moves focus to its words (the button was disabled under the focus while it waited).
   React.useEffect(() => { if (stripeError) errorBox.current?.focus(); }, [stripeError]);
 
   if (q.isError && !b) return <Notice tone="danger" title="Not available"><span data-billing-refused>{refusal(q.error, "Could not load your plan. Please try again.")}</span></Notice>;
   if (!b) return <p role="status" className="text-sm text-text-muted" data-loading>Loading your plan…</p>;
-  const address = addressOf(b), status = STATUS[b.status], trial = trialLine(b, Date.now(), canCard), dates = datesLine(b);
+  const now = Date.now(), address = addressOf(b), status = STATUS[b.status], trial = trialLine(b, now, canCard), dates = datesLine(b, now);   // one clock for both lines
 
   const toStripe = async (which: "card" | "portal") => {
     if (leaving) return;   // one hand-off per click
@@ -88,11 +90,16 @@ function Summary() {
   };
   const start = (which: "card" | "portal") => (e: React.MouseEvent<HTMLButtonElement>) => {
     opener.current = e.currentTarget;
-    if (!address) { setPanel({ then: which }); return; }   // B1: the address before any card or payment
+    // B1: the address before any card or payment; R2-m3: also again when the last save could not reach Stripe, so the
+    // Stripe customer has it before Checkout (the panel opens filled in).
+    // Follow-up review m2: once only. If the retry warns too, the next press goes on to Stripe (PF-5's webhook still holds
+    // a first invoice that has no address), so nobody is kept from Checkout or the Portal (where an Owner cancels).
+    if (!address || retry === "due") { setPanel({ then: which }); return; }
     void toStripe(which);
   };
   const saved = (next: string | null) => {
     const then = panel?.then ?? null;
+    setRetry(retry === "due" ? "done" : next && retry === null ? "due" : retry);
     setPanel(null);
     void qc.invalidateQueries({ queryKey: ["pf", "billing", token] });
     setSavedNote(next ? { tone: "warn", text: next } : { tone: "ok", text: "Business address saved." });
@@ -139,7 +146,7 @@ function Summary() {
           : <p className="mt-1 text-sm text-text-muted" data-address-missing>Not added yet. {WORDS.addressNeeded}</p>}
         {savedNote ? <Notice tone={savedNote.tone} className="mt-2"><span data-address-saved>{savedNote.text}</span></Notice> : null}
       </section>
-      <AddressPanel open={!!panel} onOpenChange={(o) => { if (!o) setPanel(null); }} current={address} beforeStripe={!!panel?.then} onSaved={saved} returnFocus={() => opener.current ?? editButton.current} />
+      <AddressPanel open={!!panel} onOpenChange={(o) => { if (!o) setPanel(null); }} current={address} beforeStripe={!!panel?.then} retry={!!panel?.then && retry === "due"} onSaved={saved} returnFocus={() => opener.current ?? editButton.current} />
     </TooltipProvider>
   );
 }
