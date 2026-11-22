@@ -127,7 +127,9 @@ try {
   for (const [role, id] of Object.entries(STAFF)) byRole[role] = (await list("", sessionOf(id))).status;
   ok("PF-17 DW1 pass (SA-2-14): Support, Billing, Admin, Auditor and Platform Owner read the firms list (200)", ["owner", "admin", "support", "billing", "auditor"].every((r) => byRole[r] === 200), byRole);
   const pub = await list("", sessionOf(STAFF.publisher));
-  ok("PF-17 DW1 fail (SA-7-11): a Content publisher (no system/firm:read) gets 403 MISSING_PERMISSION, no firm in the answer", pub.status === 403 && pub.body.code === "MISSING_PERMISSION" && !pub.text.includes(firmA.id), pub.body);
+  const pubOne = await call(A.base, `/api/system/firms/${firmA.id}`, { token: sessionOf(STAFF.publisher) });
+  ok("PF-17 DW1 fail (SA-7-11): a Content publisher (no system/firm:read) gets 403 MISSING_PERMISSION on the list and on one firm's figures (review M1), no figures in either answer",
+    pub.status === 403 && pub.body.code === "MISSING_PERMISSION" && !pub.text.includes(firmA.id) && pubOne.status === 403 && pubOne.body.code === "MISSING_PERMISSION" && !pubOne.text.includes("usage"), { pub: pub.body, pubOne: pubOne.body });
   const firmOnList = await list("", firmToken), firmOnOne = await call(A.base, `/api/system/firms/${firmA.id}`, { token: firmToken });
   ok("PF-17 DW1 fail (SA-7-1): a firm's staff token on the list and on its own firm's figures gets 403, never the figures",
     firmOnList.status === 403 && firmOnOne.status === 403 && firmOnList.body.code === "FIRM_SESSION_REFUSED" && !firmOnOne.text.includes("usage"), { firmOnList: firmOnList.body, firmOnOne: firmOnOne.body });
@@ -171,6 +173,13 @@ try {
   const c5 = rowOf(await list(), firmC.id);
   ok("PF-17 DW3 pass (PF-5's indicator): an overdue firm shows ATTENTION, \"payment overdue\", overdue true", c5.health === "ATTENTION" && c5.overdue === true && c5.reasons.includes("payment overdue"), c5);
   sql(`update platform_subscription set status = 'ACTIVE' where firm_id = '${firmC.id}'`);
+  // Beyond the brief's list (review m5, break m2): a locked firm, and a firm with no live subscription, are never OK.
+  const firmE = await makeFirm("pf17-locked", "Locked Sample Firm"); sql(`update platform_firm set status = 'SECURITY_LOCK' where id = '${firmE.id}'`);
+  const firmF = await makeFirm("pf17-nosub", "No Plan Sample Firm"); sql(`update platform_subscription set status = 'ENDED' where firm_id = '${firmF.id}'`);
+  const lState = await list(), e = rowOf(lState, firmE.id), f = rowOf(lState, firmF.id);
+  ok("PF-17 pass (break m2): a security-locked firm shows ATTENTION \"security lock on\"; a firm with no live subscription shows ATTENTION \"no live subscription\" with plan null",
+    e.health === "ATTENTION" && e.reasons.includes("security lock on") && f.health === "ATTENTION" && f.reasons.includes("no live subscription") && f.plan === null, { e, f });
+  ok("PF-17 fail (break m2): an active firm on a live plan with nothing wrong carries neither reason", !rowOf(lState, firmC.id).reasons.some((r: string) => /lock|subscription/.test(r)));
   // R1.93's failed jobs: one dead letter for C, with a key and an error that must never reach the answer.
   letters.push({ name: "platform.entitlements.storage_daily", key: "pf17-secret-key-client-jane", firmId: firmC.id, error: "pf17-secret-error-passport-123", failedAt: new Date(clock.now() - 86_400_000) },
     { name: "messages.send", key: "k2", firmId: firmA.id, error: "old", failedAt: new Date(clock.now() - 30 * 86_400_000) });
@@ -180,8 +189,14 @@ try {
   ok("PF-17 fail (R1.93): a failure older than 7 days, or another firm's, does not count", rowOf(l6, firmA.id).failedJobs.count === 0 && rowOf(l6, firmB.id).failedJobs.count === 0, rowOf(l6, firmA.id).failedJobs);
   lettersBroken = true;
   const l7 = await list();
-  ok("PF-17 fail: an unreadable job queue is said in words (count null, the reason listed), never a 500 or a made-up 0", l7.status === 200 && rowOf(l7, firmC.id).failedJobs.count === null && rowOf(l7, firmC.id).reasons.includes("failed jobs could not be read"), rowOf(l7, firmC.id));
+  ok("PF-17 fail (review m1): an unreadable job queue is said once on the page in words (count null), never a 500, a made-up 0 or every firm turned ATTENTION",
+    l7.status === 200 && rowOf(l7, firmC.id).failedJobs.count === null && /cannot be read/.test(l7.body.failedJobsNote ?? "") && rowOf(l7, firmC.id).health === "OK" && l1.body.failedJobsNote === null, { c: rowOf(l7, firmC.id), note: l7.body.failedJobsNote });
   lettersBroken = false; letters.length = 0;
+  // PF-14's list reads its oldest 10 000: at that cap the newest failures could be missed, so nothing is counted (review m2).
+  for (let i = 0; i < 10_000; i++) letters.push({ name: "messages.send", key: `k${i}`, firmId: firmA.id, error: "x", failedAt: new Date(clock.now() - 60 * 86_400_000) });
+  const lCap = await list();
+  ok("PF-17 fail (review m2): a dead-letter list at its 10 000 read cap is not counted (count null, said on the page), never a made-up 0", rowOf(lCap, firmC.id).failedJobs.count === null && /10000 or more/.test(lCap.body.failedJobsNote ?? ""), lCap.body.failedJobsNote);
+  letters.length = 0;
 
   // ------------------------------------------------------------------------------------------- DW4: last sign-in
   sql(`update platform_staff set last_sign_in_at = timestamptz '2026-11-20 10:00:00+00' where firm_id = '${firmA.id}' and actor_id = 'user-R'`);
@@ -247,6 +262,9 @@ try {
   ok("PF-17 DW8 pass: ?health= keeps only that health (any letter case); ?q= finds a firm by name or web address",
     held.body.firms.length === 1 && held.body.firms[0].id === firmB.id && okOnly.body.firms.every((f: any) => f.health === "OK") && okOnly.body.total === okOnly.body.counts.OK
     && byName.body.firms.map((f: any) => f.id).join() === firmC.id && byAddress.body.firms.map((f: any) => f.id).join() === firmC.id, { held: held.body.total, byName: byName.body.total, byAddress: byAddress.body.total });
+  const pct = await list("?q=%25"), und = await list("?q=_"), arr = await list("?health[]=OK"), other = await list("?sort=name");
+  ok("PF-17 DW8 fail (break m3): ?q=% and ?q=_ are plain text (no firm matches), and an unknown or bracketed key is refused 400, never ignored",
+    pct.status === 200 && pct.body.total === 0 && und.status === 200 && und.body.total === 0 && arr.status === 400 && other.status === 400, { pct: pct.body.total, und: und.body.total, arr: arr.status, other: other.status });
   const badHealth = await list("?health=GREEN"), badPage = await list("?page=0"), pastEnd = await list("?page=9"), twice = await list("?health=OK&health=HELD");
   ok("PF-17 DW8 fail: a SQL-looking ?q= finds nothing (it is text); a wrong health, page 0 or a repeated filter gets 400 in words; a page past the end is empty",
     sqlish.status === 200 && sqlish.body.total === 0 && badHealth.status === 400 && badPage.status === 400 && twice.status === 400 && /HELD, ATTENTION or OK/.test(badHealth.body.detail) && pastEnd.status === 200 && pastEnd.body.firms.length === 0,

@@ -30,6 +30,8 @@ export const PAGE_SIZE = 50;
 export const TRIAL_SOON_DAYS = 3;
 /** Failed jobs counted over this many days, and ATTENTION when one failed in them (Sample). */
 export const FAILED_JOBS_DAYS = 7;
+/** PF-14's dead-letter list reads at most its oldest 10 000 (pgboss-jobs.ts deadLetters). */
+const LETTERS_READ = 10_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const METRICS: readonly EntitlementMetric[] = ["seats", "active_individual_cases", "active_corporate_cases", "storage_mb"];
 export const HEALTH = ["HELD", "ATTENTION", "OK"] as const;
@@ -51,16 +53,20 @@ export type FirmHealth = {
   usage: Usage[]; lastStaffSignInAt: string | null; failedJobs: FailedJobs;
   health: Health; reasons: string[];
 };
-export type FirmPage = { firms: FirmHealth[]; page: number; pageSize: number; total: number; pages: number; counts: Record<Health, number>; samples: string };
+export type FirmPage = { firms: FirmHealth[]; page: number; pageSize: number; total: number; pages: number; counts: Record<Health, number>; failedJobsNote: string | null; samples: string };
 
 const SAY: Record<EntitlementMetric, string> = { seats: "seats", active_individual_cases: "active individual cases", active_corporate_cases: "active corporate cases", storage_mb: "storage" };
 const SAMPLES = `Sample values (ours; no requirement gives them): ${PAGE_SIZE} firms a page; attention when a trial ends within ${TRIAL_SOON_DAYS} days or a job failed in the last ${FAILED_JOBS_DAYS} days.`;
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+/** Plain text for a LIKE search: %, _ and the escape character match only themselves (Prisma's contains does not escape them). */
+const likeText = (q: string) => q.replace(/[\\%_]/g, (c) => `\\${c}`);
 const notFound = (): never => problem(404, "Not found", "There is no firm with that id.", { code: "NOT_FOUND" });
 const badQuery = (detail: string): never => problem(400, "Check the search", detail, { code: "BAD_QUERY" });
 
 /** The list's query: health (one of HELD, ATTENTION, OK), q (plain text on name or web address), page (from 1). */
 export function parseListQuery(raw: Record<string, unknown>): { health: Health | null; q: string | null; page: number } {
+  const unknown = Object.keys(raw).filter((k) => !["health", "q", "page"].includes(k));
+  if (unknown.length) badQuery(`Search by health, q and page only (not ${unknown.slice(0, 3).map((k) => k.slice(0, 20)).join(", ")}).`);
   const one = (k: string) => { const v = raw[k]; if (v === undefined) return undefined; if (typeof v !== "string") return badQuery(`Give ${k} once.`); return v; };
   const h = one("health"), q = one("q"), p = one("page");
   const health = h === undefined || h === "" ? null : (HEALTH as readonly string[]).includes(h.toUpperCase()) ? (h.toUpperCase() as Health) : badQuery("health is one of HELD, ATTENTION or OK.");
@@ -84,7 +90,8 @@ export class SystemConsoleFirms {
     const rows = all.filter((f) => !query.health || f.health === query.health)
       .sort((a, b) => HEALTH.indexOf(a.health) - HEALTH.indexOf(b.health) || a.name.localeCompare(b.name, "en") || a.id.localeCompare(b.id));
     const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    return { firms: rows.slice((query.page - 1) * PAGE_SIZE, query.page * PAGE_SIZE), page: query.page, pageSize: PAGE_SIZE, total: rows.length, pages, counts, samples: SAMPLES };
+    const note = all.find((f) => f.failedJobs.count === null)?.failedJobs;
+    return { firms: rows.slice((query.page - 1) * PAGE_SIZE, query.page * PAGE_SIZE), page: query.page, pageSize: PAGE_SIZE, total: rows.length, pages, counts, failedJobsNote: note && "unavailable" in note ? note.unavailable : null, samples: SAMPLES };
   }
 
   /** One firm's figures; an unknown or malformed id is 404, the same words either way. */
@@ -97,7 +104,7 @@ export class SystemConsoleFirms {
   private read(where: { id?: string; q?: string }): Promise<FirmHealth[]> {
     return asBypass(FIRM_READ_USE, async () => {
       const firms = await this.db.platformFirm.findMany({
-        where: where.id ? { id: where.id } : where.q ? { OR: [{ operatingName: { contains: where.q, mode: "insensitive" } }, { webAddress: { address: { contains: where.q, mode: "insensitive" } } }] } : {},
+        where: where.id ? { id: where.id } : where.q ? { OR: [{ operatingName: { contains: likeText(where.q), mode: "insensitive" } }, { webAddress: { address: { contains: likeText(where.q), mode: "insensitive" } } }] } : {},
         select: { id: true, key: true, operatingName: true, status: true, webAddress: { select: { address: true } },
           subscriptions: { where: { status: { not: "ENDED" } }, orderBy: { createdAt: "desc" }, take: 1, select: { status: true, billingPeriod: true, trialEndsAt: true, plan: { select: { code: true, name: true } } } } },
       });
@@ -121,7 +128,7 @@ export class SystemConsoleFirms {
           plan: sub ? { code: sub.plan.code, name: sub.plan.name } : null,
           subscriptionStatus: sub?.status ?? null, trialEndsAt: iso(sub?.trialEndsAt), billingPeriod: sub?.billingPeriod ?? null, overdue: sub?.status === "OVERDUE",
           usage, lastStaffSignInAt: iso(signIns.get(f.id)),
-          failedJobs: failed ? failed.get(f.id) ?? { days: FAILED_JOBS_DAYS, count: 0, lastAt: null, queues: [] } : { days: FAILED_JOBS_DAYS, count: null, unavailable: "The job queue cannot be read here, so failed jobs are not counted." },
+          failedJobs: "unavailable" in failed ? { days: FAILED_JOBS_DAYS, count: null, unavailable: failed.unavailable } : failed.get(f.id) ?? { days: FAILED_JOBS_DAYS, count: 0, lastAt: null, queues: [] },
           health: "OK", reasons: [],
         };
         Object.assign(row, healthOf(row, now));
@@ -133,11 +140,14 @@ export class SystemConsoleFirms {
     });
   }
 
-  /** Failed jobs per firm over the last FAILED_JOBS_DAYS; null when the job queue cannot be read. */
-  private async failedJobs(ids: Set<string>, now: number): Promise<Map<string, FailedJobs> | null> {
-    if (!this.jobs) return null;
+  /** Failed jobs per firm over the last FAILED_JOBS_DAYS; `unavailable` (said in words, never a made-up 0) when the job
+   *  queue cannot be read, or when PF-14's list is at its read cap (it reads its oldest LETTERS_READ: newer ones would be
+   *  missed). */
+  private async failedJobs(ids: Set<string>, now: number): Promise<Map<string, FailedJobs> | { unavailable: string }> {
+    if (!this.jobs) return { unavailable: "The job queue cannot be read here, so failed jobs are not counted." };
     let letters: DeadLetter[];
-    try { letters = await this.jobs.deadLetters(10_000); } catch { return null; }
+    try { letters = await this.jobs.deadLetters(LETTERS_READ); } catch { return { unavailable: "The job queue cannot be read here, so failed jobs are not counted." }; }
+    if (letters.length >= LETTERS_READ) return { unavailable: `The failed-job list holds ${LETTERS_READ} or more jobs, so recent failures cannot all be read; they are not counted.` };
     const since = now - FAILED_JOBS_DAYS * DAY_MS, out = new Map<string, { days: number; count: number; lastAt: string | null; queues: string[] }>();
     for (const d of letters) {
       const firm = d.firmId?.toLowerCase(), at = d.failedAt.getTime();
@@ -153,12 +163,19 @@ export class SystemConsoleFirms {
   }
 }
 
+const STATUS_SAY: Record<string, string> = { SECURITY_LOCK: "security lock on", PROVISIONING: "still being set up", ABANDONED: "sign-up abandoned", DELETED: "firm deleted" };
+
 /** HELD: the firm is on payment hold. ATTENTION: a metric over its limit, the trial ending within TRIAL_SOON_DAYS,
- *  overdue, or a failed job in the last FAILED_JOBS_DAYS (R1.93). OK otherwise. Each with its plain reasons. */
+ *  overdue, or a failed job in the last FAILED_JOBS_DAYS (R1.93); also a lock, a firm not live, or no live subscription.
+ *  OK otherwise. An unreadable failed-job list is said once on the page (failedJobsNote), never against each firm. Each with its plain reasons. */
 export function healthOf(f: Pick<FirmHealth, "status" | "subscriptionStatus" | "trialEndsAt" | "overdue" | "usage" | "failedJobs">, now: number): { health: Health; reasons: string[] } {
   const reasons: string[] = [];
   const held = f.status === "PAYMENT_HOLD" || f.subscriptionStatus === "PAYMENT_HOLD";
   if (held) reasons.push("on payment hold");
+  // Beyond the brief's list (review m5, break m2): a firm in any other state than trial, active or held, or with no live
+  // subscription (PF-15 then refuses every hard metric), is never OK.
+  if (STATUS_SAY[f.status]) reasons.push(STATUS_SAY[f.status]);
+  if (f.subscriptionStatus === null) reasons.push("no live subscription");
   for (const u of f.usage) if (u.over) reasons.push(`${SAY[u.metric]} over the limit`);
   if (f.overdue) reasons.push("payment overdue");
   if (f.subscriptionStatus === "TRIAL" && f.trialEndsAt) {
@@ -166,6 +183,5 @@ export function healthOf(f: Pick<FirmHealth, "status" | "subscriptionStatus" | "
     if (left >= 0 && left <= TRIAL_SOON_DAYS * DAY_MS) reasons.push(`trial ends within ${TRIAL_SOON_DAYS} days`);
   }
   if (f.failedJobs.count) reasons.push(`${f.failedJobs.count} failed job${f.failedJobs.count === 1 ? "" : "s"} in the last ${FAILED_JOBS_DAYS} days`);
-  if (f.failedJobs.count === null) reasons.push("failed jobs could not be read");
   return { health: held ? "HELD" : reasons.length ? "ATTENTION" : "OK", reasons };
 }
