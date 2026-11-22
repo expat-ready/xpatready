@@ -1,13 +1,13 @@
 // FO-4 part 1: the shapes the sales screens read, mirroring FO-2 part 1's answers (api/src/front-office/sales/leads.ts,
 // public.ts) and PF-4's `GET /api/platform/me`. Parsed at the edge, so a changed answer fails loudly, not on a screen.
 import { z } from "zod";
-export type Problem = { status?: number; title?: string; detail?: string; code?: string; fields?: Record<string, string>; ownerStaffId?: string };
+export type Problem = { status?: number; title?: string; detail?: string; code?: string; fields?: Record<string, string>; ownerStaffId?: string; matches?: unknown[]; issues?: string[] };
 /** A refused answer as Problem Details, or a plain one when the body is not (a proxy page, an empty 502). */
 export function problemOf(data: unknown, status: number): Problem {
   if (data && typeof data === "object" && !Array.isArray(data)) {
     const d = data as Record<string, unknown>;
     const fields = d.fields && typeof d.fields === "object" ? Object.fromEntries(Object.entries(d.fields as Record<string, unknown>).filter(([, v]) => typeof v === "string")) as Record<string, string> : undefined;
-    return { status, title: typeof d.title === "string" ? d.title : undefined, detail: typeof d.detail === "string" ? d.detail : undefined, code: typeof d.code === "string" ? d.code : undefined, fields, ownerStaffId: typeof d.ownerStaffId === "string" ? d.ownerStaffId : undefined };
+    return { status, title: typeof d.title === "string" ? d.title : undefined, detail: typeof d.detail === "string" ? d.detail : undefined, code: typeof d.code === "string" ? d.code : undefined, fields, ownerStaffId: typeof d.ownerStaffId === "string" ? d.ownerStaffId : undefined, matches: Array.isArray(d.matches) ? d.matches : undefined, issues: Array.isArray(d.issues) ? d.issues.filter((i): i is string => typeof i === "string") : undefined };   // FO-3st1 part 2: "<field>: <words>" (review M3)
   }
   return { status, detail: status >= 500 ? "Something went wrong on our side. Please try again." : `The request was refused (${status}).` };
 }
@@ -38,7 +38,7 @@ export const PublicForm = z.object({
 export type PublicForm = z.infer<typeof PublicForm>;
 export const Thanks = z.object({ thankYouText: z.string() });
 /** The permission keys each button needs (concept §6 as ruled on #1813: reads use `agent/prospect:show`). */
-export const KEY = { show: "agent/prospect:show", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all", lose: "agent/prospect:lose", convert: "agent/prospect:convert" } as const;
+export const KEY = { show: "agent/prospect:show", create: "agent/prospect:create", edit: "agent/prospect:edit", assign: "agent/prospect:assign", viewAll: "agent/prospect:view.all", lose: "agent/prospect:lose", convert: "agent/prospect:convert" } as const;
 /** A stored code in plain words (EXPERIENCE §5): the lead's source and state. */
 const WORDS: Record<string, string> = { WEBSITE: "Website form", OPEN: "Open", ENGAGED: "Engaged", CLOSED: "Closed" };
 /** A known stored code in plain words; anything else (a source a person typed: "VIP event", "Event, Toronto") is shown
@@ -74,6 +74,9 @@ export const Prospect = z.object({
 });
 export type Prospect = z.infer<typeof Prospect>;
 export const LostReasons = z.array(z.object({ id: z.string(), key: z.string(), label: z.string() }));
+/** FO-4 Add a lead (AG-2-4 rules 4-6): the 409 KNOWN_PERSON's matches, each a person the adder may open (with one of
+ *  their leads) or the nameless line for one they may not (`personId` null). */
+export const KnownMatches = z.array(z.object({ personId: z.string().nullable(), name: z.string(), lead: z.string().optional() }));
 export const Assignees = z.object({ oneUser: z.boolean(), assignees: z.array(z.object({ staffId: z.string(), displayName: z.string() })) });
 /** An amount in its own currency (R1.31: amounts of different currencies are listed side by side, never added). */
 /** Whole amounts without decimals; an amount with cents shows both places, exactly as stored, never rounded (FO-2pv). */

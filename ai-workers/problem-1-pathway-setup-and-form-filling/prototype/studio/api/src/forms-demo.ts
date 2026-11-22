@@ -9,7 +9,7 @@ import { HttpStatus } from "@nestjs/common";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { manifest } from "../../engine/import.ts";
-import { ACTORS, Db, fail, isDemoWorkspace, need, OFFICIAL, type Actor } from "./core.ts";
+import { ACTORS, Audit, Db, fail, isDemoWorkspace, need, OFFICIAL, type Actor } from "./core.ts";
 import type { Checklists } from "./checklist.ts";
 import type { Intake } from "./intake.ts";
 import type { Sources } from "./sources.ts";
@@ -76,6 +76,6 @@ async function seedSteps(s: Services, combinationId: string, label: string): Pro
   const checklist = await s.db.sourceAttachment.findFirst({ where: { combinationId, kind: "Document checklist", recognised: true }, orderBy: { createdAt: "asc" } });
   const job = checklist ? await s.checklists.draft(AUTHOR, checklist.id, { mode: "stub" }) : null;
   log.push(`row 7: ${checklist ? `${checklist.edition}: checklist drafting stub pass (US$0, the live draft waits for the founder)` : "no checklist attached"}`);
-  await s.db.auditEvent.create({ data: { workspaceId: combo.workspaceId, actor: AUTHOR.id, action: "seeded", entity: "demo story", entityKey: "forms", summary: `The forms part of the demo story ran on "${label}" (rows 1 and 7; Sample, no AI)`, combinationId } });
+  await new Audit(s.db).log(combo.workspaceId, AUTHOR.id, "seeded", "demo story", "forms", `The forms part of the demo story ran on "${label}" (rows 1 and 7; Sample, no AI)`, undefined, combinationId);
   return { log, held_decision: decision, checklist_job_id: job?.id ?? null };
 }

@@ -24,6 +24,7 @@ import { StructurePage } from "@/pages/structure";
 import { EditionImpactPage, HeldFilePage, LibraryChangePage, MergeReviewPage, FormFieldsPage } from "@/pages/review-items";
 import { ChangeBatchPage, ProposalsPage } from "@/pages/proposals";
 import { RuntimeApp } from "@/runtime/cases";
+import { ClientsApp } from "@/runtime/clients"; // CS-K1s
 import { DemoInbox, LinkApp } from "@/runtime/link-page";
 import { draftBarWords } from "../../contracts/status-words";
 import { FINISHED_STORY_TIP, FinishedStoryDialog } from "@/components/demo-finished-story";
@@ -40,7 +41,7 @@ export default function App() {
   // simulated people.
   // BK-4a: the sign-in page (P-484 (3): a page, not a gate), one notice for every change of person, and a stored person
   // this workspace does not know goes to the sign-in page (BR-6) instead of a refusal on every screen.
-  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
+  return <BrowserRouter><PersonNotice /><Routes><Route path="/sign-in" element={<SignInPage />} /><Route path="/cases/*" element={<KnownPerson><RuntimeApp /></KnownPerson>} /><Route path="/clients/*" element={<KnownPerson><ClientsApp /></KnownPerson>} /><Route path="/link" element={<LinkApp />} /><Route path="/inbox" element={<DemoInbox />} />{moduleRoutes}<Route path="*" element={<KnownPerson><Shell /></KnownPerson>} /></Routes></BrowserRouter>;
 }
 
 /** BK-4a BR-6: a person chosen in this browser who is not one of the simulated people opens the sign-in page. A browser
@@ -99,6 +100,7 @@ function Shell() {
           {nav.slice(3, 9).map((n) => <NavItem key={n.to} {...n} />)}
           <p className="px-2 pb-1 pt-4 text-xs font-medium text-text-muted">History</p>
           {nav.slice(9).map((n) => <NavItem key={n.to} {...n} />)}
+          <p className="px-2 pb-1 pt-4 text-xs font-medium text-text-muted">Release 1</p><NavItem to="/home" label="Release 1 screens" icon={DoorOpen} />{/* DEMO-LINK: the staff Home lists every Release 1 screen */}
           <div className="mt-auto rounded-lg border border-border bg-surface p-3 text-[11px] leading-relaxed text-text-muted">
             Simulated people; local PostgreSQL demo database. AI drafting uses the guarded prototype route (synthetic or public official inputs only). Not production.
           </div>

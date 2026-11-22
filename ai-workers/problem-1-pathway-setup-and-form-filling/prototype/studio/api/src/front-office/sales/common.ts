@@ -1,7 +1,7 @@
 // FO-2 (contracts §2.1, §7; AG-02): what the sales files share: the answers, the text and contact rules, who sees what,
 // and how a change is written down (one audit line through AuditPort, then the outbox row last: §0.5, PF-3 m8).
 import type { Prisma, PrismaClient } from "@prisma/client";
-import type { AuditPort } from "../../../../ports/audit.ts";
+import type { AuditPort, AuditValues } from "../../../../ports/audit.ts";
 import type { EventName } from "../../../../ports/events.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
@@ -67,11 +67,13 @@ export type Visibility = Awaited<ReturnType<typeof visibilityOf>>;
 export const sees = (v: Visibility, ctx: StaffContext, ownerStaffId: string | null) =>
   v.seesAll || ownerStaffId === ctx.staffId || (ownerStaffId === null && v.seesUnassigned);
 
-/** One lead change written down (entity fo_lead, named literally for check_case_feed's sweep): the audit line (fail-closed) and then the outbox row, last in the transaction. */
+/** One lead change written down (entity fo_lead, named literally for check_case_feed's sweep): the audit line (fail-closed) and then the outbox row, last in the transaction.
+ *  R1.8 (QA-594): before and after are required (null for a side that does not exist). */
 export async function written(tx: Tx, audit: AuditPort<Tx>, c: {
   firmId: string; actor: string; action: string; entityKey: string; summary: string;
   detail?: Record<string, string | number | boolean | null>; event?: { type: EventName; subjectId: string; payload: object };
+  before: AuditValues | null; after: AuditValues | null;
 }) {
-  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: "fo_lead", entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {} });
+  await audit.record(tx, { firmId: c.firmId, actor: c.actor, action: c.action, entity: "fo_lead", entityKey: c.entityKey, summary: c.summary, detail: c.detail ?? {}, before: c.before, after: c.after });
   if (c.event) await tx.moduleEvent.create({ data: { firmId: c.firmId, type: c.event.type, subjectId: c.event.subjectId, payload: c.event.payload as Prisma.InputJsonValue } });
 }

@@ -171,3 +171,42 @@ The rule register is `RULES.md`; this file holds the long text its rows came fro
 | P-669 | 5-hour bar over 90% before its reset: slow lanes; the free reset only if work would stop, and the founder is told. | prose | 17 Nov |
 | P-670 | T7: 36 more deny lines (CI cancel, secrets, protection, gh api writes, hook skips, Drive writes) in every copy via #2075. | hook: .claude/settings.json deny | 17 Nov |
 | P-693 | Enterprise hosted compute is Multi-cloud (Azure plus AWS); no Support ticket at that point (founder A167). | prose (enterprise setting; change log C26) | 18 Nov |
+
+## Moved 20 Nov (Lead 96, from RULES.md, word for word)
+
+Moved by Lead 99, 20 Nov, word for word:
+
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| P-740 | Release 1 stays 29 Nov (founder 19 Nov 20:0x); Proven per day reported each evening; slips said plainly. | prose | 19 Nov |
+| P-739 | Six merge batches at once (max_parallel_checks 6; P-730's hold lifted by the founder 19 Nov); back to 3 if failures cascade. | prose | 19 Nov |
+
+| P-744 | Test quality and impact map now (exception to P-734): c8 per-test coverage → capability → code → test graph, test impact analysis at the PR stage, Stryker mutation pilot; merge batch keeps every suite (B203). | prose (B203) | 20 Nov |
+| P-743 | No full run on every PR (CI-PRE back to P-733 (4)): `FULL_RUN_FROM=2026-11-22T14:30:00Z`; a PR that failed a batch still needs `/run full` and its failures named; code fix owed, then delete the variable. | CI: queue-gate.sh FULL_FROM (repository variable) | 20 Nov |
+| P-742 | Cut wasted test runs, no lower bar: qa proof data under `qa/reports/` is a record (#2355); affected-only tests via B203. | script: records-only.sh (#2355) | 19 Nov |
+
+
+### IDX-19 row, moved word for word from RULES.md (Lead 100, 11:1x IST 20 Nov, size limit)
+| IDX-19 | 20 Nov rows P-739, P-740, P-745 (waves, WIP caps 8/12), P-746 (core = Waves 1-2 by 29 Nov), P-747, P-748: word for word in DECISIONS and `rules/tech-lead.md` › Moved 20 Nov. | script: B204 waves check (part, owed); prose | 20 Nov |
+
+### IDX-9 row, moved word for word from RULES.md (Lead 100, 20 Nov, size limit)
+| IDX-9 | 18-19 Nov rows stand as recorded: P-703 to P-715 and P-716 (freeze to Proven 30), P-717 (records and pipeline in their own lane), P-718 (queue first, staging at Proven 30), P-721 to P-723, P-725 to P-727, P-729, P-730 (19 Nov proof sprint, tracks, hold); word for word in `rules/tech-lead.md`. | prose | 19 Nov |
+
+### IDX-20 row, moved word for word from RULES.md (Lead 2 (series 3), 14:4x IST 20 Nov, size limit)
+| IDX-20 | 20 Nov rows P-749 (titles; Lead 1 series 3), P-750 (staging at Proven 30), P-751 (self-adjusting pipeline, B206), P-752 (blocked label/ready/reopen: browser), P-753 (#2427 size), P-754 (FO-3st2 hold), P-755 (scale 50-100 firms), P-756 (guard tunes 1-2): word for word in DECISIONS. | script: lead-pr.sh | 20 Nov |
+
+## IDX-14 (moved from RULES.md word for word by Lead 3 (series 3), 20 Nov 16:2x IST, size)
+| IDX-14 | Product rulings P-735 (an expired identity document is refused as the firm's own rule), P-736 (native drag on the sales board), P-737 (a locked PDF is refused as the app's rule), P-741 (R1.31 includes FO-2pv, not QA-531) stand in their DECISIONS rows, each for the founder's review. | prose | 19 Nov |
+
+
+## IDX-21 (moved word for word from RULES.md, 21 Nov 01:1x IST, Lead 6 series 3, P-611)
+| IDX-21 | 20 Nov P-757 to P-765 (browser merges and authority, clean-up window, QA-542 Sample, 10-min check, tooling fast path, agents do outside steps, tooling apart from product, lock exceptions) stand: word for word in DECISIONS; earlier row in `history/RULES-2026-11-20-1615-lead3s3-as-of-P-761.md`. | script: lead-watch.sh (part), check-docs.sh lock; hook: founder-click-guard | 20 Nov |
+
+## IDX-23 (moved from RULES.md by Lead 10 (series 3), 21 Nov 08:2x IST, word for word)
+| ID | Rule | Enforced by | As of |
+|---|---|---|---|
+| IDX-23 | P-766 to P-777 stand as in DECISIONS (P-770 Lead does every GitHub step; P-771 measured numbers only; P-772 enforce in code, tooling queue apart; P-773 R1.32 = P-574 + AG-02, FO-10c; P-774 wave 3 tonight, 32 first; P-775 a PR's own screens records and P-776 a generated lockfile sit outside the 800-line count, body says the split; P-777 P-752 and P-775 stay, R1.108 Works only after #2651). | hook: founder-click-guard.sh (#2587), resource-claim-guard.sh (stop-check part 5) | 21 Nov |
+| P-778 | No browser-doable ask to the founder (shell refusal → built-in browser, P-752 widened to close, archive, Run workflow); product questions answered at the next check (gate 20 min, tooling 60 min); app view read within 35 min; enforcer PRs apart, full checks (E-a to E-g). | owed: ENF-778a (stop-check E-a/E-b, founder-click-guard E-c), ENF-778g (walks), ENF-778b held | 21 Nov |
+| P-779 | 21 Nov | Kind: workflow. **Size exception for #1959, PF-5 part 2 (R1.19: Stripe's webhook, payment hold 402, billing) (Lead 10 (series 3), 08:4x IST, P-384; asked on #1959 in comment 7050125346).** Code and tests are about 824 changed lines against P-610's 800; the PR's own screens records (review, break report, step 0: 674 lines) already sit outside the count under P-775. The body carries "Size exception: P-779". Why: the 24 lines over come from the PF-12b bypass-audit change and two checks Lead B asked for, and splitting a webhook flow mid-feature is riskier than 24 more lines (precedents P-711, P-720, P-748). Lead 10's P-423 read of head 803e6b0d0 (money, a public door): the signature is checked by Stripe's own `constructEvent` (300 s tolerance); receipts are stored once and duplicates ignored; the subscription is re-read from Stripe, never taken from the payload, under a per-firm advisory lock; status moves follow fixed tables (ENDED final, a hold lifts only on a paid invoice); billing routes carry PermissionKeys and @HoldOpen. Impact (P-254): time, saves a split and two re-reviews on a money row; cost US$0; quality unchanged (reviewed 11 rounds, suites green). |
+| P-780 | 21 Nov | Kind: product and workflow. **Recovery swap for the 07:00 cycle (founder, typed 09:5x IST 21 Nov, A246: "I follow your recommendation"; Lead 11 (series 3)).** (1) Rows whose proof needs the founder's AWS account (R1.13 PF-23c, R1.14 PF-8rc, R1.15 managed store, R1.24 wildcard DNS and certificate; R1.5's two Cognito lines) move behind rows provable in CI. Their code still merges; they count only when the AWS proof runs (P-551: accounts are the founder's). (2) First, close the gaps qa found in today's proofs: QA-619 (R1.32 walk), QA-621 Major (R1.108: case opening skips the conflict check), FO-3st1 part 2 and FO-3st3 (R1.42). Swap-ins: FO-5b (R1.53), then PF-5s and PF-16 (R1.90) after #1959 merges, and PF-12b2 (R1.4) after #1959, #2633, #2626 and #2627. Five cloud builders started 09:5x. (3) The founder restated the operating model: the Lead does every step itself, in the signed-in built-in browser or Claude in Chrome (GitHub, claude.ai/code with "Show more" until gone, every lane's prompt box), and the founder unblocks only where it is stuck (P-699, P-752, P-770, P-778). Impact (P-254): time, the cycle forecast goes from ~9-10 to ~12-14 of 15 if the builders land by ~16:00 IST and the queue holds; cost US$0 (live AI off); quality unchanged (gates, Opus reviews, qa proofs as before). |
+| P-781 | 21 Nov | Kind: workflow. **One model set; no model routing (founder, typed 10:3x IST 21 Nov, Lead 11 (series 3)): "I don't want to optimize the model by scrutiny ... I want to use only one model, which is Opus 5.5 medium for all the tasks, and Fable 5.2 medium for a high level task, which is like intake or something very critical."** Every new session and agent (Lead, builders, reviewers, breakers, qa, helpers) starts on Opus 5.5 at medium effort; Fable 5.2 at medium only for a high-level or critical step the Lead names (intake or readiness judgment, the strategy desk, a fresh challenger). No Haiku or Sonnet, and no risk-based model routing. Running sessions keep their model and effort until they end (P-605: no switch mid-session). It supersedes the effort parts of P-608, P-303 ("Opus high") and P-597 (desk and challenger "Fable at high"; helpers on Sonnet). It is also a binding scope line for Strategy desk 08. Impact (P-254): cost lower (medium effort); quality watched through the same gates and qa proofs, so a drop shows as more review rounds or Partials; time unchanged. |

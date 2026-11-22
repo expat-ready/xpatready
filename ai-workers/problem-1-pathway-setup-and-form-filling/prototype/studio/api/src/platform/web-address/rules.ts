@@ -1,19 +1,32 @@
 // PF-25 (rows rev 15, rev 16; SA-2-27, SA2-D8, AG-4-16, AG-4-17, AG01-1): what a firm's web address may be. Pure: no
-// database, no clock, so the sign-up field (PF-5s), the staff change and the host resolver all read one rule.
+// database, no clock, so the sign-up field (PF-5s), the staff change and the host resolver all read one rule. The host
+// resolver's one input from outside is the suffix list (PF-8b F2b: PLATFORM_ADDRESS_SUFFIX, passed in by the server).
 // A web address is one DNS label: lower-case letters, digits and hyphens, 3-63 characters, no hyphen at either end, not
 // an internationalised (`xn--`) label, and not one of the names ExpatReady keeps for its own hosts. The reserved list is
 // Sample (the row's list) until the founder sets it; the 90 days are SA2-D8's.
 
+import { ADDRESS_SUFFIX_PATTERN, DEFAULT_ADDRESS_SUFFIX } from "../config/settings.ts";
+
 export const ADDRESS_MIN = 3;
 export const ADDRESS_MAX = 63;
 /** The names ExpatReady keeps for its own hosts (rows rev 15, PF-25; Sample). A request to one of them is ExpatReady's own
- *  site, never a firm's. */
-export const RESERVED_ADDRESSES: readonly string[] = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal"];
+ *  site, never a firm's. `staging` (QA-644): staging serves firm addresses under staging.<domain> (PF-8b F2b), so no firm
+ *  may hold that label under <domain>. The database keeps the same list (platform_web_address_allowed, migration
+ *  20261122033000_qa644_reserve_staging). */
+export const RESERVED_ADDRESSES: readonly string[] = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal", "staging"];
 /** How long an old address keeps redirecting to the firm's new one and stays held from every other firm (SA2-D8). */
 export const REDIRECT_DAYS = 90;
-/** The host names firm addresses live under: `<address>.expatready.com`, and `<address>.localhost` on a person's own
- *  machine (browsers send *.localhost to this machine). No custom domain in Release 1 (AG-4-16 r13, AG-15-27; X-28). */
-export const ADDRESS_HOST_SUFFIXES: readonly string[] = ["expatready.com", "localhost"];
+/** The host names firm addresses live under: `<address>.<PLATFORM_ADDRESS_SUFFIX>` (one setting, PF-8b F2b; unset:
+ *  `expatready.com`; the deploy sets the stack's domain, `staging.<domain>` on staging), and always `<address>.localhost`
+ *  on a person's own machine (browsers send *.localhost to this machine). No custom domain in Release 1 (AG-4-16 r13,
+ *  AG-15-27; X-28). Longest first, so a base that ends in another suffix still reads one label (PF-8b F2). */
+export function addressHostSuffixes(base: string = DEFAULT_ADDRESS_SUFFIX): readonly string[] {
+  if (!ADDRESS_SUFFIX_PATTERN.test(base)) throw new Error(`PLATFORM_ADDRESS_SUFFIX is not valid: expected a lower-case domain of two or more labels`);
+  return Object.freeze([...new Set([base, "localhost"])].sort((a, b) => b.length - a.length));
+}
+/** The suffixes when none are passed in: the default domain and localhost. The server passes its own, from PF-24's loader
+ *  (read once at start-up, PF-24w), through WebAddressDeps.hostSuffixes (routes.ts). */
+export const DEFAULT_HOST_SUFFIXES: readonly string[] = addressHostSuffixes();
 
 export type AddressRefusal = "empty" | "uppercase" | "characters" | "short" | "long" | "hyphen-edge" | "xn" | "reserved" | "sample";
 export type AddressShape = { ok: true; address: string } | { ok: false; reason: AddressRefusal; message: string };
@@ -91,17 +104,17 @@ function fit(s: string): string {
  *  second port, more than one trailing dot; break m1): never ExpatReady's own site. */
 export type HostKind = { kind: "main" } | { kind: "label"; address: string; suffix: string; port: string } | { kind: "none" };
 
-export function readHost(hostHeader: unknown): HostKind {
+export function readHost(hostHeader: unknown, suffixes: readonly string[] = DEFAULT_HOST_SUFFIXES): HostKind {
   if (typeof hostHeader !== "string" || !hostHeader.trim()) return { kind: "main" };
   const raw = hostHeader.trim().toLowerCase();
   if (raw.startsWith("[")) return { kind: "main" };   // an IPv6 literal: never a firm
   // A character no host name holds (a space, a tab, a comma: break N5): never a firm, and never ExpatReady's own site
   // when it names a firm suffix anywhere.
-  if (/[^a-z0-9.:-]/.test(raw)) return ADDRESS_HOST_SUFFIXES.some((s) => raw.includes(s)) ? { kind: "none" } : { kind: "main" };
+  if (/[^a-z0-9.:-]/.test(raw)) return suffixes.some((s) => raw.includes(s)) ? { kind: "none" } : { kind: "main" };
   const colon = raw.indexOf(":");
   const name = colon < 0 ? raw : raw.slice(0, colon), portPart = colon < 0 ? null : raw.slice(colon + 1);
   const bare = name.replace(/\.+$/, "");
-  const suffix = ADDRESS_HOST_SUFFIXES.find((s) => bare === s || bare.endsWith(`.${s}`));
+  const suffix = suffixes.find((s) => bare === s || bare.endsWith(`.${s}`));
   if (!suffix) return { kind: "main" };
   const portOk = portPart === null || (/^\d{1,10}$/.test(portPart) && Number(portPart) >= 1 && Number(portPart) <= 65535);
   const dotsOk = name.length - bare.length <= 1;

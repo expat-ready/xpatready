@@ -18,8 +18,10 @@ const read = (f: string) => readFileSync(join(WEB, f), "utf8");
 
 const app = read("App.tsx"), cases = read("runtime/cases.tsx");
 const paths = (src: string) => [...src.matchAll(/<Route (?:index |path="([^"]*)" )element=/g)].map((m) => m[1] ?? "");
-const top = paths(app).filter((p) => p !== "*" && p !== "/cases/*");
+const top = paths(app).filter((p) => p !== "*" && p !== "/cases/*" && p !== "/clients/*");
 const caseRoutes = paths(cases).filter((p) => p !== "*").map((p) => (p ? `/cases/${p}` : "/cases"));
+// CS-K1s: the staff Clients pages, in the case area's frame (runtime/clients.tsx, under /clients/*).
+const clientRoutes = paths(read("runtime/clients.tsx")).filter((p) => p !== "*").map((p) => (p ? `/clients/${p}` : "/clients"));
 ok("BK-3: the routes are found (Studio, link page, inbox and the case area)", top.length >= 25 && caseRoutes.length >= 8, { top: top.length, cases: caseRoutes.length });
 
 /** A sample address for a route pattern: each :param becomes a value. */
@@ -27,13 +29,13 @@ const sample = (p: string) => p.replace(/:tab/, "forms").replace(/:[a-zA-Z]+/g, 
 /** Which frame area a route opens in, and as whom. */
 const areaOf = (p: string): Area => (p === "/link" || p === "/inbox" || p === "/sign-in" ? "outside" : p.startsWith("/cases") ? "cases" : "studio"); // BK-4a: the sign-in page
 // BK-3 PR 3: a client page's address, for a client, is refused with no Back (it is not a case of theirs, challenge M2).
-const HOMES = new Set(["studio:/", "cases:/cases", "outside:/link", "outside:/sign-in", "client:/cases", "client:/cases/x1/questionnaire", "client:/cases/clients", "client:/cases/clients/x1"]);
+const HOMES = new Set(["studio:/", "cases:/cases", "outside:/link", "outside:/sign-in", "client:/cases", "client:/cases/x1/questionnaire", "client:/cases/clients", "client:/cases/clients/x1", "cases:/clients"]);
 /** Does an address open a route of the app (and not the not-found page)? */
-const known = [...top, ...caseRoutes].map((p) => new RegExp(`^${p.replace(/:[a-zA-Z]+/g, "[^/]+")}$`));
+const known = [...top, ...caseRoutes, ...clientRoutes].map((p) => new RegExp(`^${p.replace(/:[a-zA-Z]+/g, "[^/]+")}$`));
 const opens = (to: string) => known.some((r) => r.test(to.split(/[?#]/)[0]));
 
 // The client too, on every case route (Client A can open any of them; only the questionnaire is theirs).
-const all: [Area, string][] = [...top.map((p) => [areaOf(p), p] as [Area, string]), ...caseRoutes.map((p) => ["cases", p] as [Area, string]), ...caseRoutes.map((p) => ["client", p] as [Area, string])];
+const all: [Area, string][] = [...top.map((p) => [areaOf(p), p] as [Area, string]), ...caseRoutes.map((p) => ["cases", p] as [Area, string]), ...caseRoutes.map((p) => ["client", p] as [Area, string]), ...clientRoutes.map((p) => ["cases", p] as [Area, string])];
 for (const [area, p] of all) {
   const addr = sample(p), w = whereFromAddress(area, addr), here = w.crumbs[w.crumbs.length - 1]?.label ?? "";
   ok(`BK-3 ${area} ${p}: the line names the place ("${w.crumbs.map((c) => c.label).join(" › ")}")`, w.crumbs.length > 0 && !!here && here !== "No such page", w);

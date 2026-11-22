@@ -157,6 +157,12 @@ def main(a):
         for kv in flags["field"]:
             k, v = kv.split("=", 1)
             vals[k] = {"true": True, "false": False, "null": None}.get(v, int(v) if re.fullmatch(r"-?\d+", v) else v)
+        # gh's own syntax: "inputs[journeys]=j_74" becomes {"inputs": {"journeys": "j_74"}} (workflow dispatches; 21 Nov, Lead 6).
+        if (flags.get("method") or "POST").upper() != "GET":  # a GET keeps a[b]=x literal in the query, as gh does
+            for k in [k for k in vals if re.fullmatch(r"\w+\[\w+\]", k)]:
+                top, sub = k[:-1].split("[", 1)
+                if not isinstance(vals.setdefault(top, {}), dict): die("api: -f %s and -f %s[...] conflict" % (top, top), 2)
+                vals[top][sub] = vals.pop(k)
         if ep == "graphql":
             q = vals.pop("query", None) or die("api graphql needs -f query=...", 2)
             emit(curl("POST", API + "/graphql", {"query": q, "variables": vals})[0], flags)
