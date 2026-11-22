@@ -109,3 +109,42 @@ CI on this commit; the registry figures on the gate line (222 releases, maintain
 **Verdict: Approve** (no open Blocker or Major; r2-m1 to r2-m4 and the carried Minors go in the PR body or a follow-up) for commit 46791a08357619f3ab162c6d45846fac447c0862.
 
 Reviewer: Approve 46791a08357619f3ab162c6d45846fac447c0862
+
+## Round 3 (diff 46791a083..cc2058171)
+
+Diff-only, as standing permission A277 allows (round 2 fixed only Minors). I read only `git diff 46791a083 cc20581717993c08c8f920a2a5cb1dd065b4d03b` without `product/screens/PF-F1/*`: `s3-files.ts` (+20/-8), `check_pff1_s3_files.ts` (+14/-6) and the fixture README (+2/-1). This is a runtime row with no screen and no route, so there is no journey test and no journey score. Run: `tsx --tsconfig api/tsconfig.json tests/check_pff1_s3_files.ts` on Node 24 gave **74 passed, 0 failed**. No network, no app, US$0.
+
+I ran each mutation on a scratch copy outside the repo. The tree is unchanged. The baseline there is 73 passed: case 6 says NOT TESTED because the copy has no `origin/main`.
+
+| Mutation | Result |
+|---|---|
+| any PUT 404 → "absent" again (round 2 code) | **FAIL** on the r2-m1 line (`putSaid` is ""): the fix is caught |
+| `get` reads `r.ContentType` instead of the `type` metadata | **FAIL** on the r2-m2 pass line |
+| `headerTypeOf` always passes the type through | **FAIL** on the r2-m2 pass line (served header) |
+| `headerTypeOf` always `application/octet-stream` | **FAIL** on case 2 (stored object): a normal type is still served as itself |
+| constructor KMS-region check removed (s3-files.ts:83) | **FAIL** on the m7 fail line: round 2's r2-m2 is closed |
+| NaN guard removed (:228) | **FAIL** on its own named line, and the run goes on (72/1): round 2's r2-m4 is closed |
+| retry compares the header copy (`had.ContentType !== headerTypeOf(...)`) instead of `Metadata.type` | **still green** (r3-m1) |
+| 768-byte cap in `typeOf` removed | **still green** (r3-m2) |
+| tombstone `send` no longer returns "absent" at all | still green. This path is older than this diff (Info below) |
+| tombstone drops `type` | still green. Harmless: `get` and `put` stop at `retired` first |
+
+### Each fix
+* **Round 2 r2-m1 / break r2-m2 (content type):** fixed, and better than the fix I suggested. The exact type is kept as base64url metadata, so it is ASCII and loses nothing. `get` gives it back byte for byte, and a retry compares it. LocalFiles and S3 now answer the same, and the new line proves it on both adapters. S3 serves the type as the header only when the header can carry it unchanged (printable ASCII, no space at either end). Otherwise it serves `application/octet-stream`, which is safe because links force `attachment`. The 2 KB metadata limit is S3's documented limit for user metadata. `sha256` + `type` + `retired` stay well under it.
+* **Round 2 r2-m3 / break r2-m1 (PUT 404):** fixed. A 404 is "absent" only for the tombstone's `IfMatch` put named `NoSuchKey`. Any other 404 throws and names `NoSuchBucket`. The README now states the HEAD limit (`exists`, `delete` and `open` cannot tell a missing bucket from a missing key) and points to a start-up check outside this row. That limit is fail-closed.
+* **Round 2 r2-m2 (constructor test):** fixed. See the table.
+* **Round 2 r2-m4 (crash-only mutations):** fixed for the NaN guard. The trim no longer exists, so the second half is gone.
+* **Nothing invented:** no new package, setting or immigration value. The base64url metadata and the neutral header are adapter internals behind the unchanged `FilesPort`.
+
+### Regression check
+* **Objects written before this change** have no `type` metadata. `get` reads them as `IntegrityMismatch`, and a retry put of the same bytes gives `FileKeyTaken`. **Acceptable:** nothing is deployed. PF-F1c (the bucket) still waits on PF-8 and the founder's AWS account, so no S3 object exists anywhere. Put one line about it in the PR body so PF-F1c does not load data written by an older build.
+* The port contract and the row's six cases stay green. Case 2 now also pins the stored `type` metadata.
+
+### Findings (round 3)
+* **r3-m1 (Minor, test quality) The retry's type comparison is not pinned to the metadata.** Swapping `had.Metadata?.type !== type` (s3-files.ts:130) for a comparison of the served header leaves everything green. Every "other type" in the test differs in its header too (`exact.trim()`, `text/csv`, `name=ete`). Under that swap, two different non-ASCII types would count as a retry, and `get` would then return the first type. **Fix:** add one more case to the r2-m2 fail line: `put(FIRM_A, "types/u.txt", bytesOf("u"), "text/plain; name=étè")` → `FileKeyTaken`. Both types map to `application/octet-stream`.
+* **r3-m2 (Minor, test quality and port difference) The 768-byte cap has no test.** Removing `if (t.length > 1024) throw` leaves everything green. The cap also makes S3 refuse a type that `FilePut`, LocalFiles and `fakeFiles` accept, because `FilePut` sets no length limit. That is the kind of split round 2's r2-m1 was about, although no caller sends a 769-byte media type. **Fix:** add a pass at 768 bytes and a fail at 769 (refused before any request), and record the difference in the PR body for a later port row (`ports/` is outside this row's touch list).
+* **Info: the `NoSuchKey` name on an `IfMatch` 404 is unverified.** The README lists "a put with `If-Match` on an absent key (404 here)" as not checked against a real bucket. The new rule now also depends on the error code being `NoSuchKey`. If real S3 names it otherwise, a `delete` racing an out-of-band removal throws instead of answering `deleted: false`. That is fail-closed and rare. Add the code to that README bullet so PF-F1c checks it. The tombstone "absent" path has no test, but that predates this diff.
+
+Neither Minor blocks. Both go in the PR body or a follow-up, with round 2's carried Minors.
+
+**Verdict: Approve** (no open Blocker or Major; r3-m1 and r3-m2 are Minor) for commit cc20581717993c08c8f920a2a5cb1dd065b4d03b.
