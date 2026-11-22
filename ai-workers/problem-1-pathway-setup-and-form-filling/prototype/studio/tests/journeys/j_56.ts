@@ -149,8 +149,9 @@ try {
 
   // ------------------------------------------------------------------------------------ W7: issued, PDF
   const w7 = await api(TA, "POST", `/front-office/money/invoices/${INV}/issue`, {});
+  const issued = w7.body?.invoice ?? w7.body;   // FO-7b part 1b answers { invoice: { … } }
   ok("R1.56 W7 (part missing: FO-7b part 1b, #2953): the invoice issues with an INV- number and a due date; one audit line 'invoice.issued'",
-    w7.status === 200 && /^INV-/.test(String(w7.body?.number ?? "")) && !!w7.body?.dueDate && sql(`select count(*) from audit_event where action = 'invoice.issued' and entity_key = '${INV}'`) === "1", { status: w7.status, body: w7.body?.detail ?? w7.body });
+    w7.status === 200 && /^INV-/.test(String(issued?.number ?? "")) && !!issued?.dueDate && sql(`select count(*) from audit_event where action = 'invoice.issued' and entity_key = '${INV}'`) === "1", { status: w7.status, number: issued?.number, dueDate: issued?.dueDate, body: w7.body?.detail });
   const frozen = refusedWrite(`update money_invoice_line set tax_minor = tax_minor + 1 where invoice_id = '${INV}' and kind = 'FEE'`);
   ok("R1.56 W7 (part missing: FO-7b part 1b, #2953): once issued, the tax on its lines is frozen (the database refuses a change)", w7.status === 200 && frozen, { issued: w7.status });
   const pdf = await fetch(`${BASE}/api/front-office/money/invoices/${INV}/pdf`, { headers: { authorization: `Bearer ${TA}` } });
@@ -171,7 +172,7 @@ try {
     await p.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await p.goto(`${BASE}/money/invoices`); await p.waitForLoadState("networkidle").catch(() => undefined);
     const words = (await p.locator("body").innerText()).replace(/\s+/g, " ");
-    const num = String(w7.body?.number ?? "");   // empty when the invoice did not issue: the step cannot pass on "INV-" alone
+    const num = String(issued?.number ?? "");   // empty when the invoice did not issue: the step cannot pass on "INV-" alone
     await p.screenshot({ path: join(SHOTS, "w9-money-invoices-1440.png"), fullPage: true });
     ok("R1.56 W9 (parts missing: FO-7s1 the invoice screens, FO-7q the invoice reads): Money › Invoices lists the issued invoice with its number and its tax",
       /^INV-\d/.test(num) && words.includes(num) && /\bHST\b/.test(words) && (await p.locator("[data-invoice]").count()) >= 1, words.slice(0, 200));
