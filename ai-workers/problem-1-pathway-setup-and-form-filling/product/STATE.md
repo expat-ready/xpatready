@@ -25,6 +25,7 @@ The Lead 2 → 3 hand-over block and Lead 3's check lines: word for word in `pro
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A286 | 22 Nov 14:4x (typed, to Lead 4): drive Track B to 12-15 capabilities like Track A, allocate builders and qa lanes to both goals, else running two tracks wastes tokens; run the full lead-watch; a visual page: whole pipeline, plan A 12-15 and B 12-15, strategy, how we monitor and adjust, how we are doing now, the timeline view and the lead-watch report | In progress 14:4x: full watch, visual page |
 | A285 | 22 Nov 14:3x (typed, to Lead 4): R1.21 "Yes, re-word" (prove with the billing stand-in, no Stripe key) | P-796 on #2952's branch; build row for the tax on the invoice next; Q1 tax province asked next |
 | A284 | 22 Nov ~11:2x (typed): tokens are not the limit, be mindful; run Track B and everything agreed even if it proves nothing today; why the `staging.` prefix, is the address configurable; AWS build approved | P-786; Track B's 4 builders started; AWS told "B ok"; prefix answer in chat |
 | A283 | 22 Nov 11:0x (typed): every lane on Opus 5.5 medium, decide for Lead 1 too; AWS and Cloudflare are signed in, set both up; forecast must be at least 12, else say why; the Lead checks every 10 minutes what each lane needs and that skills and enforcement work; extra enforcement goes to the parallel lane | In progress 11:1x: board for 12, AWS session, model switch running |
