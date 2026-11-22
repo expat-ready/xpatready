@@ -16,6 +16,9 @@
 //      space or a private host is refused (was stored); m2 an inherited key name is an unknown field; m3 plain words; m5 a phone of
 //      brackets only refused; m6 an Admin's save carrying the unchanged billing email goes through; m1 only Owner and Admin read the
 //      billing email and business address;
+//   V  PF-5fp-2: the version is built from change times, never values: a Case Officer cannot confirm a guessed billing email from it
+//      (fail test, with a self-test that the round-1 formula would have confirmed it); a billing email change still makes a stale save
+//      409; an array body and an over-long key are refused in plain words (review r3-m1);
 //   O1 offices: the Owner adds an office in Alberta: its zone is America/Edmonton, read back in the list with the first office (the firm's
 //      zone), one platform.office.add line for it; fail: a zone not on the list is 422;
 //   L1 licence: the Owner saves the Case Officer's licence record; GET licences reads it back; one platform.staff.credential_saved line,
@@ -27,6 +30,7 @@
 // (the usage line run-suites.sh reads: an isolated copy on its own port, 4793, used by no other suite; #3003's batch failed on shard 10
 // when this line carried --ttl and a trap, so the runner did not recognise it and ran the check with no copy)
 //   zsh studio/tools/isolated.sh r192 4793 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_r192_firm_profile.ts 4793 xr_studio_r192
+import { createHash } from "node:crypto";
 import { client, recorder } from "./runtime/api.ts";
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4793), process.argv[3] ?? "xr_studio_r192"];
@@ -203,5 +207,33 @@ const crossLic = await api(TB, "PUT", `/platform/staff/${OFF}/credential`, { rep
 ok("R1.92 F1: firm A's person's licence record is 404 to firm B and unchanged", crossLic.status === 404 && sql(`select licence_number from platform_staff_credential where staff_id = '${OFF}'`) === licNo, [crossLic.status]);
 const crossRead = await api(TB, "GET", "/platform/licences");
 ok("R1.92 F1: firm B's licence list holds no firm A person", crossRead.status === 200 && !(crossRead.body?.licences ?? []).some((l: { staffId: string }) => l.staffId === OFF), [crossRead.status]);
+
+// ------------------------------------------------------------------------------------------------ V PF-5fp-2: the version leaks nothing
+{
+  // The round-1 version was sha256([details, billingEmail]): a Case Officer, who sees the details and the version but not the billing
+  // email, could hash a guess and confirm it (review r2-m1, break r2-1). The judge below says whether a version reveals an address.
+  const oldVersion = (details: unknown, email: string | null) => createHash("sha256").update(JSON.stringify([details, email])).digest("hex").slice(0, 32);
+  const confirms = (version: string, details: unknown, guesses: (string | null)[]) => guesses.some((g) => oldVersion(details, g) === version);
+  const real = sql(`select billing_email from platform_firm where id = '${A}'`);
+  const guesses = [real, real.toUpperCase(), sql(`select email from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`), null, "billing@sample-firm.example.ca"];
+  const co = await api(TOFF, "GET", PROFILE);
+  ok("R1.92 V judge self-test (P-606): the round-1 formula's version DOES confirm the real billing email, so the judge can see a leak", confirms(oldVersion(co.body?.details, real), co.body?.details, guesses));
+  ok("R1.92 V fail-test pass: the Case Officer's version confirms no guessed billing email, the real one included (built from change times, not values)",
+    co.status === 200 && co.body?.ownerOnly?.billingEmail === null && typeof co.body?.version === "string" && !confirms(co.body.version, co.body.details, guesses), { version: co.body?.version });
+  const vOwner = (await api(TOWNER, "GET", PROFILE)).body;
+  const newBilling = `billing3-${run}@sample-firm.example.ca`;
+  const ch = await api(TOWNER, "PUT", PROFILE, { version: vOwner.version, billingEmail: newBilling });
+  const co2 = await api(TOFF, "GET", PROFILE);
+  ok("R1.92 V: after the Owner changes the billing email the version changes (a stale save is still a 409), and it still confirms neither address",
+    ch.status === 200 && co2.body?.version !== co.body?.version && !confirms(co2.body?.version, co2.body?.details, [...guesses, newBilling]), [ch.status]);
+  const stale = await api(TOWNER, "PUT", PROFILE, { version: vOwner.version, website: `https://stale2-${run}.example.ca` });
+  ok("R1.92 V: a save from before the billing email change is 409 (the firm row's updated_at is part of the version)", stale.status === 409, [stale.status]);
+  // Review r3-m1: the two body refusals in plain words.
+  const arr = await api(TOWNER, "PUT", PROFILE, [{ version: "x" }]);
+  const longKey = await api(TOWNER, "PUT", PROFILE, { version: co2.body?.version, ["k".repeat(65)]: 1 });
+  ok("R1.92 V (review r3-m1): an array body and a key over 64 characters are refused in plain words, never \"must be a record\" or \"Invalid key\"",
+    arr.status === 422 && arr.body?.fields?.body === "Send the firm profile as one set of named fields." && longKey.status === 422
+      && Object.values(longKey.body?.fields ?? {}).includes("A field name is at most 64 characters.") && !/record|Invalid key/i.test(arr.text + longKey.text), [arr.body?.fields, longKey.body?.fields]);
+}
 
 process.exit(summary() ? 1 : 0);
