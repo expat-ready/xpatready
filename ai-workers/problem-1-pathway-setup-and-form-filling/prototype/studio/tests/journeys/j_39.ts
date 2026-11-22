@@ -14,8 +14,9 @@
 //      (P-606): read before W1's booking, the same week is empty.
 //   W3 open a booking: the block opens the detail with the person, the time and the host; by keyboard too (Enter).
 //   W4 time off on the calendar: Client C adds a whole day off (My account › Availability › Add time off) on the day
-//      after her booking; it is stored. The Week, Day and List views of that day then show it. Today this FAILS
-//      (QA-743): the calendar reads only bookings (GET /front-office/bookings/feed), so a day off looks like a free day.
+//      after her booking; it is stored. Week shows "Time off" in that day's own cell and shades its hours (not the
+//      booking day's), Day the same, List one time off row naming the day (QA-743, fixed by #2929). Fails on the fake:
+//      the day's cell is read before the day off exists.
 //   W5 another person's calendar only with the key: with the list key Client C's Team view shows Client I's booking and
 //      "Host: Client I" narrows to it, while Mine never shows it; Client D (no list key) has no Bookings menu entry, the
 //      calendar refuses in plain words, Client I's booking by its link is "not available", and the team feed answers 403
@@ -158,6 +159,10 @@ try {
 
   // --------------------------------------------------------------------------------------------- W4: time off
   let off = plus(day, 1); while ([0, 6].includes(new Date(`${off}T12:00:00Z`).getUTCDay())) off = plus(off, 1);
+  // Fails on the fake (P-606): before the day off exists, that day's own cell holds no time off.
+  await go(c, `/front-office/bookings?view=week&whose=mine&date=${off}`);
+  const offBefore = await c.locator(`[data-off-day="${off}"] [data-off]`).count();
+  ok(`J-39 W4 fail (before the day off, P-606): the week shows no time off on ${off}`, offBefore === 0 && (await c.locator("[data-cell]").count()) + (await c.locator("[data-empty]").count()) > 0, { offBefore });   // the week loaded: its grid, or its empty words when the day off falls in a week with no booking
   await go(c, "/account/availability");
   await c.getByRole("button", { name: "Add time off" }).click();
   await c.locator("[data-time-off-form]").getByLabel("Whole day").check();
@@ -167,13 +172,24 @@ try {
   const offRow = await c.locator("[data-time-off-row]").first().innerText(), stored = await db.foTimeOff.findMany({ where: { firmId: M.id, staffId: C.id } });
   ok(`J-39 W4 setup: Client C adds a whole day off on ${off} (My account › Availability › Add time off): listed there and stored once`, stored.length === 1 && ymd(stored[0].startsAt) === off && offRow.length > 0, { offRow: offRow.replace(/\s+/g, " ") });
   await shot(c, "w4-time-off-added-1440");
-  const seen: Record<string, boolean> = {};
-  for (const view of ["week", "day", "list"]) {
-    await go(c, `/front-office/bookings?view=${view}&whose=mine&date=${off}`);
-    seen[view] = /time off|day off|unavailable|away/i.test(await calText(c));
-    if (view === "week") await shot(c, "w4-week-with-day-off-1440");
-  }
-  ok(`J-39 W4 (QA-743): the day off on ${off} shows on her calendar in the Week, Day and List views`, seen.week && seen.day && seen.list, seen);
+  // Tied to the day itself (review Minor on #2914): the day off's own cell, its own hours, its own List row.
+  const monday = (d: string) => { const wd = (new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7; return plus(d, -wd); }, sameWeek = monday(day) === monday(off);
+  const dayName = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${off}T12:00:00Z`));
+  await go(c, `/front-office/bookings?view=week&whose=mine&date=${off}`);
+  const wkOff = (await c.locator(`[data-off-day="${off}"] [data-off]`).allInnerTexts()).join(" | "), wkElse = await c.locator(`[data-off-day]:not([data-off-day="${off}"]) [data-off]`).count();
+  const shadedOff = await c.locator(`[data-cell^="${off}T"][data-off-hour]`).count(), shadedBooking = await c.locator(`[data-cell^="${day}T"][data-off-hour]`).count(), blockKept = await c.locator(`[data-cell="${day}T${String(hour).padStart(2, "0")}"] [data-block]`).count();
+  await shot(c, "w4-week-with-day-off-1440");
+  ok(`J-39 W4 week (QA-743): ${off}'s own cell says "Time off" (and no other day does), its hours are shaded, the booking day's are not, and the booking's block is still there`,
+    /^Time off/.test(wkOff) && wkElse === 0 && shadedOff > 0 && shadedBooking === 0 && blockKept === (sameWeek ? 1 : 0), { wkOff, wkElse, shadedOff, shadedBooking, blockKept, sameWeek });
+  await go(c, `/front-office/bookings?view=day&whose=mine&date=${off}`);
+  const dyOff = (await c.locator(`[data-off-day="${off}"] [data-off]`).allInnerTexts()).join(" | "), dyShaded = await c.locator(`[data-cell^="${off}T"][data-off-hour]`).count();
+  await shot(c, "w4-day-with-day-off-1440");
+  ok(`J-39 W4 day (QA-743): Day for ${off} shows "Time off" in that day's cell and shades its hours`, /^Time off/.test(dyOff) && dyShaded > 0, { dyOff, dyShaded });
+  await go(c, `/front-office/bookings?view=list&whose=mine&date=${off}`);
+  const lsOff = (await c.locator("[data-off-row]").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
+  await shot(c, "w4-list-with-day-off-1440");
+  ok(`J-39 W4 list (QA-743): List has one time off row naming ${dayName}, Client C and "Time off", beside her booking's row`,
+    lsOff.length === 1 && lsOff[0].includes(dayName) && lsOff[0].includes("Client C") && lsOff[0].includes("Time off") && (await c.locator("[data-row]").count()) === (sameWeek ? 1 : 0), { lsOff, sameWeek });
 
   // --------------------------------------------------------------------------------------------- W5: the key
   await go(c, `/front-office/bookings?view=week&whose=mine&date=${nextMonday}`);
