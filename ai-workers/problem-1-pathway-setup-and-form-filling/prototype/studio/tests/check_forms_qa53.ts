@@ -60,13 +60,14 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
   "/api/public/firms/:firmKey/branding": "open", // PF-13 part 1b: a client page's header (name, colours, tagline, image links; no id; an inactive or unknown firm 404; asked in check_pf13b_images.ts)
+  "/api/demo/billing/invoices/:id": "open", // R1.21 (P-796): the billing stand-in's invoice page, as Stripe's hosted link (its random token is the key; 404 without the stand-in, a wrong token or another firm's id; asked in check_r121_invoice_tax.ts)
   "/api/public/firms/:firmKey/branding/:kind": "open", // PF-13 part 1b: the firm's logo, favicon or banner by its stable ?v= link (nosniff, sandbox CSP; another image or firm 404)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
-const PUBLIC_WRITES = ["/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
+const PUBLIC_WRITES = ["/api/public/consultation-agreements/open", "/api/public/forms/:token/submissions", "/api/public/invitations/:token/accept", "/api/public/messages/ses-notices", "/api/public/unsubscribe/:token"];   // FO-3c: the client's consultation-agreement link (its token is the key; an unknown one is the one 404; per-IP limit). PF-19b part 2: one-click unsubscribe (unknown token 404) and SNS notices (signature checked first, else 400; asked in check_pf19b2_ses.ts)   // PF-4b: accept answers 410 to an unknown token (asked in its own suite)
 /** PF-5 (contracts §0.6): the public sign-up doors name nobody by design (no account exists yet); each is asked below:
  *  an empty body is refused (400) or the door is shut on a copy without sign-up set up (503), never a 2xx. */
-const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up)
+const PUBLIC_DOOR_WRITES = ["/api/public/signup", "/api/public/signup/verify", "/api/hooks/stripe", "/api/hooks/stripe-connect"];   // PF-5 part 2: Stripe's webhook (signature first: 400, or 503 not set up); FO-7c part 1 (Lead B on #2938): Stripe's connected-accounts webhook, the same
 /** C6.16 (B138): reads open to the shared guard because they have a guard of their own, each asked below.
  *  /api/link/*: an adult's own link (stand-in SI-21): a Bearer session from the link's code, x-actor refused (400),
  *  no session 401 (person-link.ts LinkOnlyGuard and PersonLinks.signed). /api/demo/inbox: the email stand-in SI-20,

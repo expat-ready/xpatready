@@ -78,8 +78,37 @@ try {
   const filled = await p.locator("[data-start]").evaluateAll((els) => els.map((e) => e.className.includes("bg-primary ")));
   ok("PF-5s1 DW1 (m2): one filled Start free trial button (the middle plan), the others outlined", filled.filter(Boolean).length === 1 && filled[Math.floor((filled.length - 1) / 2)], filled);
   const pricesShown = await p.locator("[data-price]").count(), missing = await p.locator("[data-price-missing]").count();
-  ok("PF-5s1 DW1 fail (BR-1): a plan with no price from Stripe shows no invented price", pricesShown + missing === planCodes.length, { pricesShown, missing });
+  ok("PF-5s1 DW1 fail (BR-1): every plan shows its price or \"Price not shown\", never both or neither", pricesShown + missing === planCodes.length, { pricesShown, missing });
   await axe("Pricing", p); await shot(p, "s1-pricing-1440");
+  // ------------------------------------------------- R1.89 QA-741, QA-742: the price and the trial line, from the plan table
+  {
+    const q = await newPage();
+    const card = async (code: string) => { const c = q.locator(`[data-plan="${code}"]`); return { price: await c.locator("[data-price]").count() ? await c.locator("[data-price]").innerText() : null, text: await c.innerText(), start: await c.locator("[data-start]").innerText() }; };
+    const load = async () => { await q.goto(`${BASE}/pricing`); await q.locator("[data-plan]").first().waitFor({ timeout: 20_000 }); };
+    const cad = (cents: string) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: Number(cents) % 100 ? 2 : 0 }).format(Number(cents) / 100);
+    const [m, y] = sql("select monthly_price_cents || ',' || yearly_price_cents from platform_plan where code = 'solo'").split(",");
+    try {
+      sql("update platform_plan set monthly_price_cents = null, yearly_price_cents = null where code = 'team'; update platform_plan set trial_days = 0 where code = 'firm'");
+      await load();
+      const soloM = await card("solo"), teamM = await card("team"), firm = await card("firm");
+      await q.getByRole("radio", { name: "Yearly" }).check({ force: true });
+      const soloY = await card("solo"), teamY = await card("team");
+      ok(`R1.89 QA-741 pass: a plan with cents in the plan table shows that price (solo: ${cad(m)} per month, ${cad(y)} per year, CAD, "+ applicable taxes"; Sample)`,
+        Number(m) > 0 && soloM.price === cad(m) && /per month, CAD/.test(soloM.text) && soloM.text.includes("+ applicable taxes") && soloY.price === cad(y) && /per year, CAD/.test(soloY.text) && await q.locator("[data-prices-unavailable]").count() === 0, { soloM, soloY });
+      const digits = (t: string) => (t.match(/\d+/g) ?? []).filter((d) => !["5", "14"].includes(d));   // team's own seats and trial days
+      ok("R1.89 QA-741 fail: a plan with no cents shows no price and no other digit, Monthly or Yearly (team: \"Price not shown\")",
+        teamM.price === null && teamY.price === null && teamM.text.includes("Price not shown") && digits(teamM.text).length === 0 && digits(teamY.text).length === 0, { teamM, teamY });
+      ok("R1.89 QA-742 fail: a plan with 0 trial days is not offered as a free trial (no trial line, the button reads \"Sign up\", the page's lead does not say every plan has one)",
+        !/free trial/i.test(firm.text) && !/0-day/.test(firm.text) && firm.start === "Sign up" && !(await q.locator("[data-pricing] > p").first().innerText()).includes("Every plan starts with a free trial"), firm);
+      ok("R1.89 QA-742 pass: a plan with trial days keeps its trial line and button (solo: 14-day free trial, Start free trial)", soloM.text.includes("14-day free trial · no card needed") && soloM.start === "Start free trial", soloM);
+      await q.locator('[data-start="firm"]').click(); await q.locator("[data-signup-submit]").waitFor({ timeout: 20_000 });
+      const zero = await q.locator("[data-signup]").innerText();
+      ok("R1.89 QA-742 fail: Sign up for the 0-day plan says neither \"0 days free\" nor \"free trial\" (heading and button read \"Sign up\")", !/0 days free/.test(zero) && !/free trial/i.test(zero) && (await q.locator("[data-signup-submit]").innerText()) === "Sign up", zero);
+    } finally {
+      sql(`update platform_plan set monthly_price_cents = 9900, yearly_price_cents = 99000 where code = 'team'; update platform_plan set trial_days = 14 where code = 'firm'`);
+      await q.close();
+    }
+  }
   await p.getByRole("radio", { name: "Yearly" }).check({ force: true });
   await p.locator('[data-start="team"]').click();
   await p.locator("[data-signup]").waitFor({ timeout: 20_000 });

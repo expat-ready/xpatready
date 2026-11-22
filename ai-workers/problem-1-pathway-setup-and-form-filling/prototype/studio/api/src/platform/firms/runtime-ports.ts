@@ -28,7 +28,7 @@ export function runtimeSignUpPorts(config: Pick<PlatformConfig, "environment" | 
     : !key && !local ? "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" : null;
   return {
     audit: auditEvent, clock: systemClock, mail, identity: new LocalSignUp(() => systemClock.now(), mail),
-    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady,
+    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady, stripePrices: !!key,
     appUrl: env.STUDIO_PUBLIC_URL ?? `http://localhost:${env.STUDIO_PORT ?? 4400}`,
   };
 }
@@ -39,8 +39,10 @@ export function runtimeBillingPorts(config: Pick<PlatformConfig, "environment" |
   const key = config.stripe.secretKey?.reveal() ?? null, hook = config.stripe.webhookSecret?.reveal() ?? null;
   const notReady = key && !hook ? "Stripe's webhook secret is not set on this server (PLATFORM_STRIPE_WEBHOOK_SECRET)"
     : !key && config.environment !== "local" ? "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" : null;
+  // R1.21 (P-796): with no key on a local server the fake is also the billing stand-in (stand-in.ts issues invoices on it).
+  const standIn = !key && config.environment === "local" ? fakeBilling() : null;
   return {
-    audit: auditEvent, clock: systemClock, billing: key ? StripeBilling.fromKey(key, undefined, hook) : fakeBilling(), notReady,
+    audit: auditEvent, clock: systemClock, billing: key ? StripeBilling.fromKey(key, undefined, hook) : standIn ?? fakeBilling(), notReady, standIn,
     appUrl: env.STUDIO_PUBLIC_URL ?? `http://localhost:${env.STUDIO_PORT ?? 4400}`,
   };
 }

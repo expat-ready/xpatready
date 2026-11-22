@@ -10,7 +10,7 @@ const MILLION = 1_000_000n, HALF = 500_000n;
 
 /** The tax of one line, in minor units: amountMinor × ratePpm ÷ 1,000,000, a remainder of exactly one half going to the
  *  even neighbour. Both inputs are non-negative safe integers and ratePpm is at most 1,000,000; anything else throws (a
- *  programming error: the route's parse refuses such input with 400 before this runs). */
+ *  programming error: the route's parse refuses such input with 422 before this runs). */
 export function taxForLine(amountMinor: number, ratePpm: number): number {
   if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new RangeError(`taxForLine: amount ${amountMinor} is not a whole, non-negative number of minor units`);
   if (!Number.isSafeInteger(ratePpm) || ratePpm < 0 || ratePpm > RATE_PPM_MAX) throw new RangeError(`taxForLine: rate ${ratePpm} is not a whole number of parts per million from 0 to ${RATE_PPM_MAX}`);

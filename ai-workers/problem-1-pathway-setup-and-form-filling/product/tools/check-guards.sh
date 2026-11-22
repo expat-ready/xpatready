@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), P-789 (2)'s app view rows and running jobs (guard 36, 22 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-app-view.sh"
 bad=0
-for t in $TESTS check-deps-line.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
+# Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
@@ -217,11 +218,23 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 34|product/tools/image-size.sh|s/ --not "\$base"//|check-image-size.sh
 35|product/tools/pr-suites-plan.sh|s/direct=true;; esac/direct=false;; esac/|check-pr-suites-job.sh
 35 cap|product/tools/pr-suites-plan.sh|s/\[ "\$n" -gt "\$MAX" \] \&\& n=\$MAX/true/|check-pr-suites-job.sh
-35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: false$/  cancel-in-progress: true/|check-pr-suites-job.sh
+35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-suites-job.sh
+36 batch|../../.github/workflows/ci.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
+36 stale|../../.github/workflows/walks.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: false/|check-pr-concurrency.sh
+36 group|../../.github/workflows/module-cards.yml|/^  group: module-cards-/d|check-pr-concurrency.sh
+36 comment|../../.github/workflows/review-rounds.yml|s/github.event.issue.number .. //|check-pr-concurrency.sh
+36 deadlock|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: review-rounds-${{ github.event.pull_request.number }}\njobs:/|check-pr-concurrency.sh
+36 wfname|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: ${{ github.workflow }}-${{ github.event.issue.number }}\njobs:/|check-pr-concurrency.sh
+36 kind|../../.github/workflows/ci.yml|/^  kind:$/,/^    if:/{/^    if:/d}|check-pr-concurrency.sh
+36 batchcancel|../../.github/workflows/guards.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
+36 rerun|product/tools/queue-gate.sh|s/^    \[ "\$now" = "\$head" \] .. {.*/    true/|check-queue-gate.sh
+36 ready|../../.github/workflows/guards.yml|/^    types: \[opened, synchronize, reopened, ready_for_review\]$/d|check-pr-concurrency.sh
+36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
 35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
+jsparse() { node --check "${@: -1}"; }   # "$sh -n FILE" for a .js (guard 36: app-view.js; bash -n cannot read JavaScript)
 MUT="$MUT"'
 E16 line|product/tools/deps-line-check.sh|s/^  exit 1$/  exit 0/|check-deps-line.sh
 E16 new|product/tools/deps-line-check.sh|s/^        if n not in seen: out.add(n)/        if False: pass/|check-deps-line.sh
@@ -233,7 +246,13 @@ CS3 band|product/tools/queue-depth.py|s/^        want, why = cur, /        want,
 CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if not found:/|check-queue-depth.sh
 CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
 CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
-CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh'
+CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh
+36 stale|product/tools/app-view-check.sh|s/^STALE_MIN=15 /STALE_MIN=35 /|check-app-view.sh
+36 rows|product/tools/app-view-check.sh|s/^sed -n 2p "\$f" .*/true/|check-app-view.sh
+36 read|product/tools/lead-watch.sh|s/^  if ! grep -qE .(^. )rows=\[0-9\]+. <<<"\$first"; then$/  if false; then/|check-app-view.sh
+36 click|product/tools/app-view.js|s/targets.forEach((t) => { t.click(); clicks++; });/clicks++;/|check-app-view.sh
+36 any|product/tools/app-view.js|s/if (ownText(el) === SHOW_MORE)/if (el.tagName === "BUTTON" \&\& ownText(el) === SHOW_MORE)/|check-app-view.sh
+36 jobs|product/tools/runs-waiting.py|s/ if x.get("status") == "in_progress")/)/|check-runs-waiting.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
@@ -242,7 +261,7 @@ while IFS='|' read -r g f edit t; do
   cp "$ROOTD/.github/workflows/"*.yml "$M/.github/workflows/"; cp "$ROOTD/.mergify.yml" "$M/"; git -C "$M" init -q   # every workflow: check-label-guard parses two
   for x in $(cd "$ROOTD" && ls packages/xfa-engine/fixtures/synthetic/*.pdf packages/xfa-engine/src/__tests__/fixtures/*.pdf 2>/dev/null); do mkdir -p "$M/$(dirname "$x")"; cp "$ROOTD/$x" "$M/$x"; done   # guard 11 needs the real bytes
   before=$(cksum < "$M/$P/$f"); sed -i.bak "$edit" "$M/$P/$f"; rm -f "$M/$P/$f.bak"
-  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml) sh=true;; *.py) sh=pyparse;; esac   # a .yml is parsed by its test; a .py by ast (B192)
+  sh=bash; head -1 "$M/$P/$f" | grep -q zsh && sh=zsh; case "$f" in *.yml) sh=true;; *.py) sh=pyparse;; *.js|*.mjs) sh=jsparse;; esac   # a .yml is parsed by its test; a .py by ast (B192)
   if [ "$before" = "$(cksum < "$M/$P/$f")" ]; then echo "FAIL  guard $g: the edit '$edit' changed nothing in $f"; bad=1
   elif ! $sh -n "$M/$P/$f" 2>"$M/log"; then echo "FAIL  guard $g: the edit '$edit' breaks $f's syntax, so its test failing proves nothing ($(head -1 "$M/log"))"; bad=1
   elif bash "$M/$P/product/tools/$t" > "$M/log" 2>&1; then echo "FAIL  guard $g: $t still passes with the guard off"; bad=1
