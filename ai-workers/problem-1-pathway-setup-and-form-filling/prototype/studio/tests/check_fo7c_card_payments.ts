@@ -50,10 +50,12 @@ for (const [name, rail] of rails) {
     refusedSig(() => rail.verifyEvent(eventBody, undefined)) && refusedSig(() => rail.verifyEvent(eventBody, header(otherSecret))) && refusedSig(() => rail.verifyEvent(eventBody.replace("acct_1Sample", "acct_1Other0"), header(hookSecret)))
     && refusedSig(() => rail.verifyEvent(eventBody, header(hookSecret, eventBody, Date.now() - 6 * 60_000))));
 }
-{ const [, v1] = header(hookSecret).split(","), t = header(hookSecret).split(",")[0], junk = "v1=" + "0".repeat(64);
-  ok("FO-7c rail pass (both): a header with two v1 values, one right (a secret roll), is read; a non-integer t is refused (breaker m4)",
-    rails.every(([, r]) => r.verifyEvent(eventBody, `${t},${junk},${v1}`).id === "evt_1SampleFo7cActive" && r.verifyEvent(eventBody, `${t},${v1},${junk}`).id === "evt_1SampleFo7cActive")
-    && refusedSig(() => rails[0][1].verifyEvent(eventBody, `${t}.0,${v1}`)) && refusedSig(() => rails[0][1].verifyEvent(eventBody, `t=0x${Math.floor(Date.now() / 1000).toString(16)},${v1}`))); }
+{ const now = Math.floor(Date.now() / 1000), [t, v1] = header(hookSecret).split(","), junk = "v1=" + "0".repeat(64), odd = "v1=" + "\u00e9".repeat(64);
+  const odds = [`${t},${junk},${v1}`, `${t},${v1},${junk}`, `${t}.0,${v1}`, `t=${now + 600},${v1}`, `t=1,${t},${v1}`, `${t},t=1,${v1}`, ` ${t},${v1}`, `${t},${odd}`, `t=0x${now.toString(16)},${v1}`];
+  const verdict = (r: CardRail, h: string) => { try { r.verifyEvent(eventBody, h); return "read"; } catch (e) { return e instanceof RailSignatureError ? "refused" : `other: ${(e as Error).name}`; } };
+  const fake = odds.map((h) => verdict(rails[0][1], h)), real = odds.map((h) => verdict(rails[1][1], h));
+  ok("FO-7c rail pass (round 2 n2): on odd headers (two v1 values, odd timestamps, repeated t, a leading space, non-ASCII bytes) the fake and the Stripe adapter answer alike, and never anything but read or refused",
+    JSON.stringify(fake) === JSON.stringify(real) && fake.every((v) => v === "read" || v === "refused") && fake[0] === "read" && fake[1] === "read" && fake[7] === "refused", { fake, real }); }
 ok("FO-7c rail pass: the fake signs as Stripe's library checks (its header passes the Stripe adapter with the same secret)", (rails[1][1].verifyEvent(eventBody, (rails[0][1] as ReturnType<typeof fakeCardRail>).sign(eventBody))).id === "evt_1SampleFo7cActive");
 ok("FO-7c fixtures: each file says it is not recorded from Stripe and names the type file and date it was built from", readdirSync(FIX).length === 4 && readdirSync(FIX).every((f) => /NOT recorded from Stripe.*Events\.d\.ts.*22 Nov 2026/.test((JSON.parse(readFileSync(join(FIX, f), "utf8")) as { source: string }).source)));
 
@@ -86,7 +88,7 @@ const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
 const local = new LocalIdentity("fo7c-check-signing-key-0123456789abcdef", () => clock.now());
 const rail = fakeCardRail({ webhookSecret: hookSecret }), mail = fakeMail(), notes = fakeNotifications();
-let ahead = 0, lookups = 0;   // the service's clock, moved ahead for the step-up case; firm lookups made by the door   // the service's clock, moved ahead of the sign-in for the step-up case
+let ahead = 0, lookups = 0;   // the service's clock, moved ahead for the step-up case; firm lookups made by the door
 type Res = { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
 let app: { close(): Promise<void> } | null = null;
 try {
@@ -196,14 +198,19 @@ try {
   rail.set(acctB, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }); await post("evt_fo7c_b1", "account.updated"); rail.deauthorize(acctB); await post("evt_fo7c_b2", "account.application.deauthorized");
   ok("FO-7c DW2 fail: a break whose email cannot be sent still disconnects the account and leaves the home item (the failure logged by the event's id); firm A untouched",
     row(B) === `DISCONNECTED:false:false:${acctB}` && notes.sent().some((n) => n.item.id === B) && said.some((l) => l.includes("payment_account_break_mail_failed") && l.includes("evt_fo7c_b2")) && row() === `PENDING:false:false:${acctA2}`, row(B));
+  const brokeB = () => Number(sql(`select count(*) from audit_event where action = 'payment_account.broke' and firm_id = '${B}'`)), itemsB = () => notes.sent().filter((n) => n.item.id === B).length, b0 = [brokeB(), itemsB()];
+  await withFirm(B, () => mute.onboard(ownerB)); const acctB2 = row(B).split(":")[3]; rail.deauthorize(acctB2);
+  { const b = JSON.stringify({ ...fixture("account.application.deauthorized").event, id: "evt_fo7c_b3", account: acctB2 }); await mute.receive(Buffer.from(b), rail.sign(b)); }
+  ok("FO-7c DW2 fail (round 2 n1): re-onboarded after a disconnect, the half-made account removed before it connects → the same break: DISCONNECTED, no second break line, email or item",
+    row(B) === `DISCONNECTED:false:false:${acctB2}` && acctB2 !== acctB && b0[0] === 1 && brokeB() === 1 && itemsB() === b0[1] && !said.some((l) => l.includes("payment_account_break_mail_failed") && l.includes("evt_fo7c_b3")), { b0, broke: brokeB(), items: itemsB() });
 
   // ------------------------------------------------------------------- with no Stripe key: nothing connects (the feature)
   process.env.PLATFORM_ENVIRONMENT = "local";
   const bare = await (feature.providers[0] as { useFactory: (db: unknown) => PaymentAccounts }).useFactory(nest.get(Db));
   const refusal = async (f: () => Promise<unknown>) => { try { await f(); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => unknown }; return { status: x.getStatus?.() ?? 0, body: JSON.stringify(x.getResponse?.() ?? null) }; } };
   const r1 = await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never)), r2 = await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)));
-  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", r1?.status === 503 && r2?.status === 503 && made() === 3, [r1, r2]);
-  ok("FO-7c fail: that 503 answer names no setting (plain words; the setting names go to the server log only)", ![r1, r2].some((r) => /PLATFORM_|STRIPE_|secret|key/i.test(r?.body ?? "")) && said.some((l) => l.includes("payment_account_not_set_up") && l.includes("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET")), [r1, r2]);
+  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", r1?.status === 503 && r2?.status === 503 && made() === 4, [r1, r2]);
+  ok("FO-7c fail: that 503 answer names no setting (plain words; the setting names go to the server log only, once per process however many calls)", ![r1, r2].some((r) => /PLATFORM_|STRIPE_|secret|key/i.test(r?.body ?? "")) && said.filter((l) => l.includes("payment_account_not_set_up") && l.includes("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET")).length === 1, [r1, r2]);
 
   // Breaker m1: a break whose change rolls back sends no email. Through the real outbox sender (MessagesMail, PF-19r):
   // the email is written in the change's transaction and dispatched only after it commits. Two Owners; the home item of

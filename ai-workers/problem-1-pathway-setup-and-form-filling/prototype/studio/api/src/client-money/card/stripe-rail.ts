@@ -69,9 +69,9 @@ export class StripeCardRail implements CardRail {
 
   verifyEvent(rawBody: string, signature: string | undefined) {
     if (!this.connectWebhookSecret) throw new Error("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET is not set");
-    let e: Stripe.Event;
-    try { e = this.stripe.webhooks.constructEvent(rawBody, signature ?? "", this.connectWebhookSecret); } catch { throw new RailSignatureError(); }
-    const env = EventEnvelope.parse(e);
+    // The signature over the exact bytes first (Stripe's own check, 300 seconds' tolerance); the body is read after it.
+    try { this.stripe.webhooks.signature!.verifyHeader(rawBody, signature ?? "", this.connectWebhookSecret); } catch { throw new RailSignatureError(); }
+    const env = EventEnvelope.parse(JSON.parse(rawBody));
     return { id: env.id, type: env.type, account: env.account ?? null };
   }
 }

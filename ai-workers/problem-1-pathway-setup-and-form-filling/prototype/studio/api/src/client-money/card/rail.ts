@@ -4,7 +4,7 @@
 // (AG-16-18). The interface holds the eight calls the row names; part 1 uses four (create account, account link, read
 // account, verify an event), parts 2 and 3 use the rest and add their tests. `fakeCardRail` is the rail of every test and
 // of a server with no Stripe key; the Stripe adapter is card/stripe-rail.ts.
-import { createHmac, timingSafeEqual } from "node:crypto";
+import Stripe from "stripe";
 import { z } from "zod";
 
 export const AccountId = z.string().regex(/^acct_[A-Za-z0-9]{1,64}$/, "a connected account id (acct_…)");
@@ -58,7 +58,6 @@ export interface CardRail {
 
 /** The envelope of a signed event. Not strict: the processor adds fields over time, and the signature proves the sender. */
 export const EventEnvelope = z.object({ id: z.string().regex(/^evt_[A-Za-z0-9_]{1,250}$/), object: z.literal("event"), type: z.string().min(1).max(100), account: AccountId.nullish() });
-export const SIGNATURE_TOLERANCE_SECONDS = 300;
 
 export type FakeCardRail = CardRail & {
   /** Sets what the processor says about an account (as the hosted sign-up, or the processor's own review, would). */
@@ -73,14 +72,13 @@ export type FakeCardRail = CardRail & {
   calls(): { name: string; key?: string }[];
 };
 
-/** In memory, no network. Signs and checks events as the processor does (HMAC SHA-256 over `<t>.<body>`, 300 seconds'
- *  tolerance), with its own test secret, so the door's signature-first path is the real one. */
+/** In memory, no network. Signs and checks events with Stripe's own library and its own test secret, so the door's
+ *  signature-first path is the real one. */
 export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } = {}): FakeCardRail {
   const signing = opts.webhookSecret ?? "fake-rail-signing-value", now = opts.now ?? (() => new Date());
   const accounts = new Map<string, RailAccount>(), byKey = new Map<string, unknown>(), gone = new Set<string>(), log: { name: string; key?: string }[] = [];
   const payments = new Map<string, { account: string; intent: RailIntent; created: Date; paid: Date | null }>();
   let n = 0, refusing = false;
-  const mac = (s: string, t: number, body: string) => createHmac("sha256", s).update(`${t}.${body}`).digest("hex");
   const once = <T>(name: string, key: string, make: () => T): T => { log.push({ name, key }); if (!byKey.has(`${name}:${key}`)) byKey.set(`${name}:${key}`, make()); return byKey.get(`${name}:${key}`) as T; };
   const have = (account: string) => { const a = gone.has(account) ? undefined : accounts.get(AccountId.parse(account)); if (!a) throw new RailAccountGone(); return a; };
   return {
@@ -102,12 +100,9 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
       return once("refund", i.idempotencyKey, () => ({ id: `re_fake_${++n}`, status: "pending" }));
     },
     verifyEvent(rawBody, signature) {
-      // As Stripe's library reads the header (breaker m4): `t` a whole number of seconds, any one of the `v1` values may
-      // match (two during a secret roll), within 300 seconds either way.
-      const parts = (signature ?? "").split(",").map((p) => p.trim().split("=", 2)), ts = parts.find(([k]) => k === "t")?.[1] ?? "";
-      const t = /^\d{1,12}$/.test(ts) ? Number(ts) : NaN, want = Number.isInteger(t) ? Buffer.from(mac(signing, t, rawBody)) : null;
-      const match = !!want && parts.some(([k, v]) => k === "v1" && !!v && v.length === want.length && timingSafeEqual(Buffer.from(v), want));
-      if (!match || Math.abs(now().getTime() / 1000 - t) > SIGNATURE_TOLERANCE_SECONDS) throw new RailSignatureError();
+      // Checked by Stripe's own library (its signature rule and 300 seconds' tolerance), so the fake and the adapter cannot
+      // read a header differently (round 2 n2).
+      try { Stripe.webhooks.signature!.verifyHeader(rawBody, signature ?? "", signing); } catch { throw new RailSignatureError(); }
       const e = EventEnvelope.parse(JSON.parse(rawBody));
       return { id: e.id, type: e.type, account: e.account ?? null };
     },
@@ -115,7 +110,7 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
     deauthorize(account) { gone.add(account); },
     succeed(account, paymentId, at) { const p = payments.get(paymentId); if (!p || p.account !== account) throw new Error("no such hosted payment on this account"); p.intent.status = "succeeded"; p.paid = at; return { ...p.intent }; },
     refuseRefunds(on) { refusing = on; },
-    sign(rawBody, withSecret = signing, at = now()) { const t = Math.floor(at.getTime() / 1000); return `t=${t},v1=${mac(withSecret, t, rawBody)}`; },
+    sign(rawBody, withSecret = signing, at = now()) { return Stripe.webhooks.generateTestHeaderString({ payload: rawBody, secret: withSecret, timestamp: Math.floor(at.getTime() / 1000) }); },
     calls: () => log.map((c) => ({ ...c })),
   };
 }

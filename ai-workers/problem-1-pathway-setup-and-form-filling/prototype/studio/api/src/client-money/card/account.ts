@@ -54,11 +54,12 @@ export function stateFrom(prev: AccountState, snap: Pick<RailAccount, "chargesEn
 }
 
 export class PaymentAccounts {
+  private saidNotReady = false;
   constructor(private readonly db: PrismaClient, private readonly ports: AccountPorts) {}
 
   private ready() {
     if (!this.ports.notReady) return;
-    logPort.warn("payment_account_not_set_up", { why: this.ports.notReady });
+    if (!this.saidNotReady) { this.saidNotReady = true; logPort.warn("payment_account_not_set_up", { why: this.ports.notReady }); }   // once per process (round 2 n3)
     throw problem(503, "PAYMENT_ACCOUNT_NOT_SET_UP", "Card payments are not set up here", "Card payments are not set up on this server yet. Nothing was changed.");
   }
   private lock(tx: Tx, firmId: string) { return tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`money_payment_account:${firmId}`}))`; }
@@ -95,12 +96,16 @@ export class PaymentAccounts {
   async view(actor: Pick<StaffContext, "firmId">) {
     const row = await this.db.moneyPaymentAccount.findFirst({ where: firmScope(actor.firmId) });
     const s: AccountState = row ? { status: row.status, chargesEnabled: row.chargesEnabled, payoutsEnabled: row.payoutsEnabled } : { status: "NOT_CONNECTED", chargesEnabled: false, payoutsEnabled: false };
-    let broken = isBroken(s);
-    if (!broken && s.status === "PENDING") {
-      const last = await this.db.auditEvent.findFirst({ where: firmScope(actor.firmId, { action: "payment_account.onboarding_started", entity: "money_payment_account", entityKey: actor.firmId.toLowerCase() }), orderBy: { at: "desc" }, select: { detail: true } });
-      broken = (last?.detail as { afterBreak?: unknown } | null)?.afterBreak === true;
-    }
-    return { ...s, alert: broken ? { code: "PAYMENT_ACCOUNT_DISCONNECTED", words: BREAK_WORDS } : null };
+    return { ...s, alert: (await this.alertOn(this.db, actor.firmId, s)) ? { code: "PAYMENT_ACCOUNT_DISCONNECTED", words: BREAK_WORDS } : null };
+  }
+
+  /** Whether the break alert shows for this state: a break, or a new account still PENDING after a disconnect (its
+   *  re-onboarding's audit line says so). One rule for the status read and for "is this a new break?" (round 2 n1). */
+  private async alertOn(db: Tx | PrismaClient, firmId: string, s: AccountState): Promise<boolean> {
+    if (isBroken(s)) return true;
+    if (s.status !== "PENDING") return false;
+    const last = await db.auditEvent.findFirst({ where: firmScope(firmId, { action: "payment_account.onboarding_started", entity: "money_payment_account", entityKey: firmId.toLowerCase() }), orderBy: { at: "desc" }, select: { detail: true } });
+    return (last?.detail as { afterBreak?: unknown } | null)?.afterBreak === true;
   }
 
   /** POST /api/hooks/stripe-connect: the raw body and its Stripe-Signature header. */
@@ -150,7 +155,9 @@ export class PaymentAccounts {
     }
     if (next.status === prev.status && next.chargesEnabled === prev.chargesEnabled && next.payoutsEnabled === prev.payoutsEnabled) return "no change";
     await tx.moneyPaymentAccount.updateMany({ where: firmScope(firmId, { id: row.id }), data: next });
-    const broke = isBroken(next) && !isBroken(prev);
+    // A new break only when the alert was not already showing: a half-made account removed while the firm is still
+    // disconnected is the same break (AG-16-16 rule 3: never the email again for the same break; round 2 n1).
+    const broke = isBroken(next) && !(await this.alertOn(tx, firmId, prev));
     await this.ports.audit.record(tx, { firmId, actor: ACTOR, action: broke ? "payment_account.broke" : "payment_account.status_changed", entity: "money_payment_account", entityKey: firmId,
       summary: broke ? `The firm's payment account stopped taking card payments (${next.status === "DISCONNECTED" ? "disconnected" : "charges turned off"}).` : `The firm's payment account is now ${next.status}, charges ${next.chargesEnabled ? "on" : "off"}.`,
       detail: { eventId: ev.id, eventType: ev.type }, before: prev, after: next });
