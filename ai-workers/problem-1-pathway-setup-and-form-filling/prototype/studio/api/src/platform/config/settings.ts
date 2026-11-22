@@ -141,6 +141,9 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
   // PF-4s: the same rule for our own staff's stand-in; and the two sign-in groups never share a pool or a signing key
   // (SA-7-1: a firm's token must never verify as our staff's, nor ours as a firm's).
   if (got.get("PLATFORM_SYSTEM_IDENTITY") === "local" && environment !== "local") invalid.push({ name: "PLATFORM_SYSTEM_IDENTITY", expects: `cognito, or unset: PLATFORM_SYSTEM_IDENTITY=local is refused when PLATFORM_ENVIRONMENT=${environment} (the local stand-in never runs in the test environment or production)` });
+  // Cognito for our staff names its own pool and client, or the start-up stops (review m5: never a quiet "not set up").
+  if (got.get("PLATFORM_SYSTEM_IDENTITY") === "cognito") for (const n of ["PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", "PLATFORM_SYSTEM_COGNITO_CLIENT_ID"])
+    if (!got.has(n) && !invalid.some((i) => i.name === n)) missing.push(n);
   if (got.has("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") && got.get("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") === got.get("PLATFORM_COGNITO_USER_POOL_ID")) invalid.push({ name: "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", expects: "a pool of its own: our own staff never share PLATFORM_COGNITO_USER_POOL_ID's pool with firm staff" });
   if (got.has("PLATFORM_SYSTEM_LOCAL_SECRET") && got.get("PLATFORM_SYSTEM_LOCAL_SECRET") === got.get("PLATFORM_LOCAL_SECRET")) invalid.push({ name: "PLATFORM_SYSTEM_LOCAL_SECRET", expects: "a key of its own: never the same value as PLATFORM_LOCAL_SECRET" });
   let secretBox: SecretBoxKeys | null = null;

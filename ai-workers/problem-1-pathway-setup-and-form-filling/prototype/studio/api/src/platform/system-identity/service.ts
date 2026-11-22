@@ -59,8 +59,10 @@ export class SystemIdentity implements OnModuleInit {
   }
 
   /** The guard's work: a bearer token → the staff member, or a refusal at once. A firm staff member's session is a 403
-   *  (SA-7-1: firm tokens are refused by the staff console); anything else that is not our staff's session is a 401. */
-  async authenticate(token: string | undefined): Promise<SystemStaffContext> {
+   *  (SA-7-1: firm tokens are refused by the staff console); anything else that is not our staff's session is a 401.
+   *  A refusal of a session that names one of our staff (no second step, deactivated, ended) first calls `refused` with
+   *  the person and the code, so the guard writes its REFUSED line (SA-7-20; review M2). */
+  async authenticate(token: string | undefined, refused?: (staff: Pick<SystemStaffContext, "staffId" | "name">, code: string) => Promise<void>): Promise<SystemStaffContext> {
     if (!token) return unauthorized("Sign in first: this needs an ExpatReady staff member's session (a bearer token).");
     let id;
     try { id = await this.port.verify(token); }
@@ -70,13 +72,14 @@ export class SystemIdentity implements OnModuleInit {
         return forbidden("A firm's staff session cannot be used here: this is for ExpatReady's own staff only.", "FIRM_SESSION_REFUSED");
       return unauthorized(e.detail, e.code);
     }
-    if (!id.secondStep) return unauthorized(TWO_STEP, "TWO_STEP_REQUIRED");
     const where = "staffId" in id.lookup ? (UUID.test(id.lookup.staffId) ? { id: id.lookup.staffId.toLowerCase() } : null) : { identitySubject: id.lookup.identitySubject };
     const staff = where && await this.db.platSystemStaff.findUnique({ where, include: { grants: { where: { endedAt: null }, select: { roleCode: true } } } });
-    if (!staff) return unauthorized(UNKNOWN, "UNKNOWN_STAFF");
-    if (staff.status !== "ACTIVE") return unauthorized("This ExpatReady staff account has been deactivated. Ask a Platform Owner.", "STAFF_NOT_ACTIVE");
+    if (!staff) return unauthorized(id.secondStep ? UNKNOWN : TWO_STEP, id.secondStep ? "UNKNOWN_STAFF" : "TWO_STEP_REQUIRED");
+    const refuse = async (code: string, detail: string): Promise<never> => { await refused?.({ staffId: staff.id, name: staff.displayName }, code); return unauthorized(detail, code); };
+    if (!id.secondStep) return refuse("TWO_STEP_REQUIRED", TWO_STEP);
+    if (staff.status !== "ACTIVE") return refuse("STAFF_NOT_ACTIVE", "This ExpatReady staff account has been deactivated. Ask a Platform Owner.");
     // A session that started at or before the person's sessions were ended is refused (part 2 ends them on deactivation).
-    if (staff.sessionsEndedAt && id.authTime * 1000 <= staff.sessionsEndedAt.getTime()) return unauthorized("This session was ended. Sign in again.", "SESSION_REVOKED");
+    if (staff.sessionsEndedAt && id.authTime * 1000 <= staff.sessionsEndedAt.getTime()) return refuse("SESSION_REVOKED", "This session was ended. Sign in again.");
     const roles = staff.grants.map((g) => g.roleCode).filter((r) => Object.hasOwn(SYSTEM_ROLES, r)).sort();
     const keys = roles.length ? (await this.db.platSystemRolePermission.findMany({ where: { roleCode: { in: roles } }, select: { permissionKey: true } })).map((k) => k.permissionKey).filter((k) => SYSTEM_KEY.test(k)) : [];
     return { staffId: staff.id, name: staff.displayName, email: staff.email, roles, keys: [...new Set(keys)].sort(), authTime: id.authTime, via: id.via };
@@ -89,8 +92,13 @@ export class SystemIdentity implements OnModuleInit {
     if (!(this.port instanceof SystemLocalIdentity)) return problem(404, "Not available", "The local sign-in stand-in for ExpatReady staff is not switched on here (PLATFORM_SYSTEM_IDENTITY=local, local environment only).", { code: "STAND_IN_OFF" });
     const staff = email ? await this.db.platSystemStaff.findUnique({ where: { email }, select: { id: true, displayName: true, status: true, sessionsEndedAt: true } }) : null;
     if (!staff) return unauthorized("No ExpatReady staff member signs in with that work email.", "UNKNOWN_STAFF");
-    if (staff.status !== "ACTIVE") return unauthorized("This ExpatReady staff account has been deactivated. Ask a Platform Owner.", "STAFF_NOT_ACTIVE");
-    if (body.secondStep !== true) return unauthorized(`${TWO_STEP} (secondStep: true)`, "TWO_STEP_REQUIRED");
+    // A refused sign-in by a known person is one REFUSED line (SA-7-20; review M2); an unknown email names nobody.
+    const refuse = async (code: string, detail: string): Promise<never> => {
+      await this.audit({ staff: { staffId: staff.id, name: staff.displayName }, method: "POST", route: "/api/system/session/local", target: {}, outcome: "REFUSED", code, reason: null, device: call.device });
+      return unauthorized(detail, code);
+    };
+    if (staff.status !== "ACTIVE") return refuse("STAFF_NOT_ACTIVE", "This ExpatReady staff account has been deactivated. Ask a Platform Owner.");
+    if (body.secondStep !== true) return refuse("TWO_STEP_REQUIRED", `${TWO_STEP} (secondStep: true)`);
     // The new session starts after the moment the person's sessions were last ended.
     const authTimeMs = Math.max(this.clock.now(), (staff.sessionsEndedAt?.getTime() ?? 0) + 1);
     await this.audit({ staff: { staffId: staff.id, name: staff.displayName }, method: "POST", route: "/api/system/session/local", target: {}, outcome: "ALLOWED", code: null, reason: null, device: call.device });

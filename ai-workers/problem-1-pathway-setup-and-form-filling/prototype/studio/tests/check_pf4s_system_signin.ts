@@ -154,8 +154,10 @@ try {
   const firmOnRefund = await call(A.base, "POST", "/api/system/test/refunds/r-1", { token: firmToken, body: {} });
   ok("PF-4s DW1 fail: a firm token on a keyed /api/system route → 403, and the handler never runs", firmOnRefund.status === 403 && handled === 0, firmOnRefund);
   const onPlatform = await call(A.base, "GET", "/api/platform/me", { token: owner }), onFrontOffice = await call(A.base, "GET", "/api/front-office/pf4s-probe", { token: owner });
+  const wallRid = await call(A.base, "GET", "/api/platform/me", { token: owner, requestId: `pf4s-${process.pid}-wall` });
+  ok("PF-4s DW1 pass (review m3): the wall's 403 carries the request id and leaves PF-23's request line", wallRid.status === 403 && wallRid.requestId === `pf4s-${process.pid}-wall` && printed.split("\n").some((l) => l.includes('"event":"request"') && l.includes(`pf4s-${process.pid}-wall`) && l.includes('"status":403')), wallRid);
   const wallLines = printed.split("\n").filter((l) => l.includes('"event":"system_session_elsewhere"'));
-  ok("PF-4s DW1 pass (breaker m1): each wall refusal leaves one log line naming the staff member's id (it runs before PF-23's request lines)", wallLines.length === 2 && wallLines.every((l) => l.includes(OWNER) && !l.includes(owner)), wallLines);
+  ok("PF-4s DW1 pass (breaker m1): each wall refusal leaves one log line naming the staff member's id (it runs before PF-23's request lines)", wallLines.length === 3 && wallLines.every((l) => l.includes(OWNER) && !l.includes(owner)), wallLines);
   ok("PF-4s DW1 fail (SA-7-1, SA-6-4): a system token on /api/platform/me → 403 SYSTEM_SESSION_ELSEWHERE", onPlatform.status === 403 && onPlatform.body.code === "SYSTEM_SESSION_ELSEWHERE", onPlatform);
   ok("PF-4s DW1 fail: a system token on a front-office route → 403 SYSTEM_SESSION_ELSEWHERE", onFrontOffice.status === 403 && onFrontOffice.body.code === "SYSTEM_SESSION_ELSEWHERE", onFrontOffice);
   const onCase = await call(A.base, "GET", "/api/probe", { token: owner, actor: "user-A" }), onMixedCase = await call(A.base, "GET", "/API/Platform/Me", { token: owner });
@@ -190,6 +192,9 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     && !(await refusedConfig({ ...base, PLATFORM_LOCAL_SECRET: FIRM_SIGNING, PLATFORM_SYSTEM_LOCAL_SECRET: FIRM_SIGNING }, new RegExp(FIRM_SIGNING)))
     && await refusedConfig({ ...base, PLATFORM_COGNITO_USER_POOL_ID: "ca-central-1_OnePool", PLATFORM_SYSTEM_COGNITO_USER_POOL_ID: "ca-central-1_OnePool" }, /PLATFORM_SYSTEM_COGNITO_USER_POOL_ID is set but not valid.*a pool of its own/)
     && loadPlatformConfig({ ...base, PLATFORM_LOCAL_SECRET: FIRM_SIGNING, PLATFORM_SYSTEM_LOCAL_SECRET: SYSTEM_SIGNING }).systemIdentity.localSecret !== null);
+  ok("PF-4s DW2 fail (review m5): PLATFORM_SYSTEM_IDENTITY=cognito without its own pool and client stops the start-up, naming both; with them it loads",
+    await refusedConfig({ ...base, PLATFORM_SYSTEM_IDENTITY: "cognito" }, /Missing required settings: PLATFORM_SYSTEM_COGNITO_USER_POOL_ID, PLATFORM_SYSTEM_COGNITO_CLIENT_ID/)
+    && loadPlatformConfig({ ...base, PLATFORM_SYSTEM_IDENTITY: "cognito", PLATFORM_SYSTEM_COGNITO_USER_POOL_ID: "ca-central-1_Staff", PLATFORM_SYSTEM_COGNITO_CLIENT_ID: "staffclient" }).systemIdentity.via === "cognito");
   ok("PF-4s DW2 pass: the system stand-in's key is a secret setting (never printed, scrubbed from the environment)", String(loadPlatformConfig({ ...base, PLATFORM_SYSTEM_LOCAL_SECRET: SYSTEM_SIGNING }).systemIdentity.localSecret) === "[secret PLATFORM_SYSTEM_LOCAL_SECRET]");
   // A firm stand-in token (signed with the firm's key) against the system stand-in, even one built with the same key.
   const firmSigned = firmLocal.issue(OWNER, { authTimeMs: clock.now(), secondStep: true });
@@ -317,8 +322,19 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const adminLock = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: admin, body: { reason: "trying" } });
   ok("PF-4s DW5 fail (SA7-D53): an Admin cannot apply a security lock (403), and that refusal is one line", adminLock.status === 403 && lines() === n + 1 && lastLine().code === "MISSING_PERMISSION" && lastLine().staff_id === ADMIN, adminLock);
   n = lines();
-  await call(A.base, "GET", "/api/system/me"); await call(A.base, "GET", "/api/system/me", { token: firmToken }); await call(A.base, "GET", "/api/platform/me", { token: owner }); await signIn(OWNER, false);
-  ok("PF-4s DW5 (stated limit): a call that names none of our staff (no session, a firm's session, a failed sign-in) writes no staff line: there is no person to name", lines() === n);
+  await call(A.base, "GET", "/api/system/me"); await call(A.base, "GET", "/api/system/me", { token: firmToken }); await call(A.base, "GET", "/api/platform/me", { token: owner });
+  await call(A.base, "POST", "/api/system/session/local", { body: { email: "nobody@expatready.example", secondStep: true } }); await call(A.base, "GET", "/api/system/me", { token: issued(randomUUID(), true) });
+  ok("PF-4s DW5 (stated limit): a call that names none of our staff (no session, a firm's session, an unknown email or subject) writes no staff line: there is no person to name", lines() === n);
+  // Review M2: a refusal of a session or sign-in that names one of our staff writes its one REFUSED line, with the code.
+  const refusedLine = async (what: string, f: () => Promise<Res>, who: string, code: string) => {
+    const before = lines(), r = await f(), l = lastLine();
+    ok(`PF-4s DW5 fail (review M2): ${what} → 401 ${code}, and exactly one REFUSED line naming the person`, r.status === 401 && r.body.code === code && lines() === before + 1 && l.outcome === "REFUSED" && l.code === code && l.staff_id === who && !!l.request_id, { r, l });
+  };
+  await refusedLine("a session whose sign-in skipped the second step", () => call(A.base, "GET", "/api/system/me", { token: issued(OWNER, false) }), OWNER, "TWO_STEP_REQUIRED");
+  await refusedLine("a deactivated person's session", () => call(A.base, "GET", "/api/system/me", { token: issued(GONE, true) }), GONE, "STAFF_NOT_ACTIVE");
+  await refusedLine("a session from before the person's sessions were ended (a replayed token)", () => call(A.base, "POST", "/api/system/test/refunds/r-5", { token: supportToken2, body: {} }), BOTH, "SESSION_REVOKED");
+  await refusedLine("a deactivated person's sign-in", () => signIn(GONE), GONE, "STAFF_NOT_ACTIVE");
+  await refusedLine("a known person's sign-in without the second step", () => signIn(OWNER, false), OWNER, "TWO_STEP_REQUIRED");
   ok("PF-4s DW5 fail: a firm audit list never shows these lines (none of them is on the one trail, and the staff table has no firm column)", trail() === trail0
     && sql(`select count(*) from information_schema.columns where table_name like 'plat_system_%' and column_name ~* 'firm'`) === "0" && sql(`select count(*) from audit_event where actor like '%' || '${OWNER}' || '%' or actor like '%' || '${BILLING}' || '%'`) === "0");
   ok("PF-4s DW5 fail (SA-7-20): a line is never changed or removed (UPDATE, DELETE and TRUNCATE refused by the database)",
