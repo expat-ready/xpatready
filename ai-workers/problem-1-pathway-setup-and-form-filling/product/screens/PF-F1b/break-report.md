@@ -143,3 +143,61 @@ files merged by `registerFeatures`), `r2_keys.ts`, `r2_pf24.ts`, `r2_seam.ts`. R
 
 **Verdict: Block** (head `4ae0c919ec7efa73206482b313f57a9ab070b552`). M1: settings.ts:57 makes
 `tests/check_pf24_secrets.ts` fail about 75% of runs and refuses strong hex keys.
+
+## Round 3 (diff 4ae0c919e..b66e603f4)
+
+Diff only, code level, on the clean working tree at head `b66e603f484637e752cad6c966497cc81582515a`. No app server;
+port 54329 not touched (an unreachable `DATABASE_URL` in every child). New scripts in the scratchpad `breaker-f1b/`:
+`r3_env.ts` + `r3_env_child.ts` (one fresh process per configuration; `full` registers all 71 features as main.ts
+does), `r3_cache.ts`, `r3_dump.ts`; round 2's scripts re-run as `r3_pf24.ts` (with the test's new `key32()`),
+`r3_keys.ts`, `r3_seam.ts`, `r3_drive.ts` + `r3_child.ts`. Row check on head: 33/0, twice.
+
+### m1 (Minor): the "stricter" dump test drops round 2's hex check, so a hex copy of the key passes
+- **Did:** ran the new predicate (check_pff1b_bind.ts:185-187) against planted leaks of other shapes (`r3_dump.ts`).
+- **Expected:** at least what the old check (r2 line 174, `!dump.includes(hex(key).slice(0, 32))`) caught.
+- **Actual:** it catches a Buffer, a plain string, a Uint8Array and a number[]. A field holding
+  `Buffer.from(key).toString("hex")` is NOT caught; the old check caught it. Product code is not affected:
+  `S3FileLinks` holds the `Secret` only and derives the MAC per call (s3-files.ts:208, 237).
+
+### m2 (Minor): with NODE_ENV=production and no PLATFORM_ENVIRONMENT, the server's first refusal names the wrong setting
+- **Did:** `r3_env.ts full`: `registerFeatures` over the real feature folder with `PLATFORM_ENVIRONMENT` unset, `""`,
+  `"   "` or `"\t\n"`, `NODE_ENV=production` and `PLATFORM_FILES` unset.
+- **Expected:** the refusal names `PLATFORM_ENVIRONMENT`. That was round 2's behaviour: `appEnv` threw ConfigRefused.
+- **Actual:** `configuration: PLATFORM_FILES is not set (local or s3) …`. The loader does not run before the binding:
+  `front-office-booking.ts:11` (file 32 in sort order) imports `platform-messages.ts`. Its import-time `boundFiles()`
+  (:26) runs before `platform-config.ts` loads the configuration. The comment at choose.ts:68-70 assumes the reverse
+  order. The server still fails closed, but an operator fixes `PLATFORM_FILES`, restarts, and only then sees the real cause.
+
+### Held in round 3
+- **Unset-environment tolerance (`r3_env.ts`: 8 PLATFORM_ENVIRONMENT values × PLATFORM_FILES unset/local/s3/` S3 ` ×
+  NODE_ENV unset/production/` Prod `/development, 128 fresh processes):**
+  - Only the loader's `"unset"` is tolerated: unset, empty, spaces, tab or newline. `staging`, `Local` and `PRODUCTION`
+    are refused (ConfigRefused "not recognised") with every PLATFORM_FILES and NODE_ENV value. `e.environment` is
+    `"unset"` only at settings.ts:117. No other ConfigRefused can carry it, so no other refusal is swallowed.
+  - With the environment unset, the binding uses local disk only where round 1's rules allow it: `PLATFORM_FILES=local`
+    (explicit), or `PLATFORM_FILES` unset with a NODE_ENV that is not production. NODE_ENV `production` or ` Prod `
+    with PLATFORM_FILES unset is refused. `s3` builds S3Files, but `boundLinks` re-reads the loader without the catch
+    and refuses (ConfigRefused, PLATFORM_ENVIRONMENT). The seam is refused when the environment is unset or empty.
+  - **The whole server never starts** with the environment unset or blank, in all 20 `full` runs. platform-messages.ts:27
+    calls `platformConfig()` uncaught right after its `boundFiles()`, and `platform-config.ts` would refuse later in
+    the same `registerFeatures`, before Nest starts or the port opens. The momentary LocalFiles does no disk I/O
+    (files.ts:29). Only `main.ts` registers features (deploy/container-entry.mjs imports it).
+- **Key rule (`r3_pf24.ts`, `r3_keys.ts`):** PF-24's generator with `key32()` gives 0 of 5000 refused, so the suite is
+  stable. Base64 32 bytes, hex 32 or 24 bytes, two UUIDs and base64url 24 bytes give 0 of 2000 refused. Hex 16 bytes
+  gives 16 of 200000 (0.008%), and the refusal is loud at start. Patterned keys pass as the lead accepted (r2 m1).
+  Values never appear in refusals.
+- **Cache (`r3_cache.ts`):**
+  - The same seam twice gives the same instance. A swapped seam gives a new instance on the new handler. With the seam
+    removed, a new instance is built with no seam handler, so no stale client is kept.
+  - A change of bucket gives a new instance. A local call does not clear the S3 slot. A late seam in production is
+    refused and the cached instance is kept.
+  - Test-only, not findings: a seam object whose handler is replaced in place keeps the old handler, and a seam planted
+    between the store's and the links' factory splits them. Off `local`, the seam is refused.
+- **Store and links are one object (`r3_drive.ts`, 71 features):** `links.files === store.store === boundFiles()` is
+  true on local with the seam, on NODE_ENV=test with the seam, and in production (round 2's m2 is closed).
+- **Rounds 1 and 2:** own firm 200, other firm 404. s3 without a key, with an empty key or with 40 spaces is refused
+  (local, test, production). The seam is refused under test and production, and under local with NODE_ENV production
+  or ` Prod `. `PLATFORM_FILES=local` in production starts with null links. The key is not in a dump, token, URL or
+  error. `r3_seam.ts` gives the same results as round 2.
+
+**Verdict: Approve** (head `b66e603f484637e752cad6c966497cc81582515a`). No Blocker or Major; m1 and m2 are Minor.
