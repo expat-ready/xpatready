@@ -1,15 +1,20 @@
-// PF-4c part 1 (AG-1-69; SA-3-39, SA-3-5): the batch invite's rows. One form of 1-20 rows (name, email, roles); no file
-// upload of any kind. This file reads and flags the rows without the database: a bad email or role list, a name that is
-// not plain text, an Owner row and the same email twice in the form each become that row's flag, never a 400 for the whole
-// form. The service (PlatformIdentity.inviteBatch) adds the checks that need the database (role rules, already staff,
-// already invited) through the same row check the single invite uses, then one seat check for the whole form, all inside
-// one locked transaction. The name is only the email's greeting: it is never stored (platform_invitation has no name).
+// PF-4c part 1 (AG-1-69; SA-3-39, SA-3-5) and part 1b (P-727): the batch invite's rows. One form of 1-50 rows (name,
+// email, roles); no file upload of any kind. This file reads and flags the rows without the database: a bad email or role
+// list, a name that is not plain text, an Owner row and the same email twice in the form each become that row's flag,
+// never a 400 for the whole form. The service (PlatformIdentity.inviteBatch) adds the checks that need the database (role
+// rules, already staff, already invited) through the same row check the single invite uses, then one seat check for the
+// valid rows (the rows past the limit are flagged OVER_SEAT_LIMIT), all inside one locked transaction; the rows with no
+// flag are sent. The name is only the email's greeting: the batch never stores it (part 1's rule; the single invite's
+// displayName is PF-4dn's, and the batch does not pass it).
+// A row with a field we do not know ("nmae") is the body's problem, not the row's data (PF-28's one input rule): the whole
+// form is refused 422 ROWS_FLAGGED with those rows and `fields`, and nothing is sent, so a typo never sends an invitation
+// without what the sender meant to give.
 import { HttpException } from "@nestjs/common";
 import type { PlatformRole } from "@prisma/client";
 import { problem } from "./keys.ts";
 import { emailOf, rolesOf } from "./service.ts";
 
-export const BATCH_MAX_ROWS = 20;
+export const BATCH_MAX_ROWS = 50;   // P-727: 1-50 rows
 export type RowFlag = { code: string; detail: string };
 export type BatchRow = { row: number; name: string | null; email: string | null; roles: PlatformRole[] | null; flags: RowFlag[] };
 
@@ -38,17 +43,19 @@ const OWNER_WORDS = "Invite an Owner on their own: it needs a reason and Confirm
 /** Break 3: an inviter who is not an Owner is told the rule that applies to them (the single invite answers OWNER_ONLY). */
 const OWNER_ONLY_WORDS = "Only an Owner gives the Owner role. Ask an Owner to invite this person.";
 
-/** Reads the form's rows: 1-20 rows or 422 ROWS_COUNT; every other problem is a flag on its row. */
+/** Reads the form's rows: 1-50 rows or 422 ROWS_COUNT (with `fields`); a row with an unknown field 422 ROWS_FLAGGED;
+ *  every other problem is a flag on its row. */
 const ROW_KEYS = ["name", "email", "roles"];
 export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): BatchRow[] {
   const rows = body.rows;
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > BATCH_MAX_ROWS)
-    return problem(422, "Check the rows", `Send 1 to ${BATCH_MAX_ROWS} people in one form (rows).`, { code: "ROWS_COUNT", maxRows: BATCH_MAX_ROWS });
+    return problem(422, "Check the rows", `Send 1 to ${BATCH_MAX_ROWS} people in one form (rows). Nothing was sent.`, { code: "ROWS_COUNT", maxRows: BATCH_MAX_ROWS, fields: { rows: `Give 1 to ${BATCH_MAX_ROWS} rows.` } });
   const seen = new Set<string>();
-  return rows.map((raw, i) => {
+  const read = rows.map((raw, i) => {
     const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as { name?: unknown; email?: unknown; roles?: unknown };
     const out: BatchRow = { row: i + 1, name: null, email: null, roles: null, flags: [] };
-    // PF-28 part 2a (review m1): a misspelt field on a row ("nmae") is flagged on that row, never silently dropped.
+    // PF-28 part 2a (review m1): a misspelt field on a row ("nmae") is named on that row, never silently dropped (and the
+    // form is refused below).
     const unknown = Object.keys(r).filter((k) => !ROW_KEYS.includes(k)).map((k) => k.slice(0, 64));
     if (unknown.length) out.flags.push({ code: "UNKNOWN_FIELD", detail: `This row has ${unknown.length === 1 ? "a field" : "fields"} not allowed here: ${unknown.slice(0, 5).join(", ")}. Use name, email and roles.` });
     try { out.name = nameOf(r.name); } catch (e) { out.flags.push(flagOf(e)); }
@@ -60,10 +67,14 @@ export function batchRowsOf(body: { rows?: unknown }, actorIsOwner: boolean): Ba
     if (out.email) { if (seen.has(out.email)) out.flags.push({ code: "DUPLICATE_IN_FORM", detail: "This email is already on an earlier row of this form." }); seen.add(out.email); }
     return out;
   });
+  const typos = read.filter((r) => r.flags.some((f) => f.code === "UNKNOWN_FIELD"));
+  if (typos.length) problem(422, "Check the rows", `${typos.length === 1 ? "A row has" : `${typos.length} rows have`} a field not allowed here. Use name, email and roles. Nothing was sent.`,
+    { code: "ROWS_FLAGGED", rows: typos.map((r) => ({ row: r.row, flags: r.flags.filter((f) => f.code === "UNKNOWN_FIELD") })), fields: Object.fromEntries(typos.map((r) => [`rows.${r.row - 1}`, "This row has a field not allowed here."])) });
+  return read;
 }
 
-/** The seat words for the whole form (AG-1-69): "7 of 10 seats after these invites", "Remove 1 person or upgrade". */
-export function seatWords(limit: number, afterInvites: number, removeCount: number, planName: string | null): string {
+/** The words on a row past the seat limit (P-727): the rows before it took the plan's last seats. */
+export function overSeatWords(limit: number, planName: string | null): string {
   if (planName === null) return "Your firm has no live subscription, so nobody can be added.";
-  return `${afterInvites} of ${limit} seats after these invites (plan ${planName}). Remove ${removeCount} ${removeCount === 1 ? "person" : "people"} or upgrade your plan. Nothing was sent.`;
+  return `No seat left for this person: your plan (${planName}) has ${limit} ${limit === 1 ? "seat" : "seats"}, all taken by your staff, pending invitations and the rows above. Remove someone or upgrade your plan, then send this row again.`;
 }
