@@ -324,7 +324,11 @@ export class ConsultationAgreementService {
       const line = (summary: string, after: Record<string, string | boolean | null>, action = `consultation_agreement.${ev.type}`) => this.ports.audit.record(tx, { firmId, actor: `system:signing-${ev.provider.toLowerCase()}`, action, entity: "fo_retainer", entityKey: id, summary,
         detail: { agreementId: id, requestId: req.id, eventId: ev.eventId, signerRole: s?.role ?? null }, before: { status: cur.status }, after });
       const refuse = async (reason: string, words: string) => { await line(`Consultation agreement: a signing event was not applied (${words}).`, { status: cur.status, refused: reason }, "consultation_agreement.event_refused"); return { applied: false, reason }; };
-      if (!live || !s || s.signedAt || s.declinedAt || !["viewed", "signed", "declined"].includes(ev.type)) return refuse("NO_CHANGE", "nothing to change");
+      if (ev.type === "completed" || ev.type === "other") {   // a genuine event that moves nothing here; "completed" also retries the seal
+        await line(`Consultation agreement: the provider's event "${ev.providerType}" was received.`, { status: cur.status }, "consultation_agreement.event_noted");
+        return { applied: false, reason: "NOTED", seal: ev.type === "completed" };
+      }
+      if (!live || !s || s.signedAt || s.declinedAt) return refuse("NO_CHANGE", "nothing to change");
       if (ev.type === "viewed") {
         if (s.viewedAt) return refuse("NO_CHANGE", "already viewed");
         await tx.foSigner.update({ where: { id: s.id }, data: { viewedAt: now } });
