@@ -256,7 +256,7 @@ CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/
 MUT="$MUT"'
 34 E15 kind|product/tools/decision-impact.sh|s/scope.tooling)/scope.none)/|check-decision-impact.sh
 34 E15 impact|product/tools/decision-impact.sh|s/^done . grep . \&\& bad=1$/done/|check-decision-impact.sh
-34 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=806/IMPACT_FROM=99999/|check-decision-impact.sh
+34 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=807/IMPACT_FROM=99999/|check-decision-impact.sh
 34 E15 frozen|product/tools/decision-impact.sh|s/^EXEMPT_UPTO=764;/EXEMPT_UPTO=999;/|check-decision-impact.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
