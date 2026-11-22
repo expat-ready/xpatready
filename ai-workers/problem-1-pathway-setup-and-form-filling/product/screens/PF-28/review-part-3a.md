@@ -65,3 +65,41 @@ None.
 **9.5/10, pass.** Speed is ½: no step was timed. Details are in `journey-test-reviewer-2026-11-22-part-3a.md`.
 
 Verdict: Block (Changes requested) for cc4cf4e8053e6b68f33081fc01fed6d171e850a4. To fix: M1, either by updating the five `{}` convert callers to send the version (preferred) or by making `version` optional and listing `convert missing`, then running the two browser suites and three journeys. m1 and m2 should be fixed in this PR if cheap.
+
+## Round 2 (head cda522f1f34a80f2bba0767e7a8f5eddc10b37ec, diff `cc4cf4e8..cda522f1` only)
+Scope: `sales/routes.ts` (2 lines), `source-filter.ts:4`, `MODULE.rows/R1-30.md`, `front-office/MODULE.md` (1 bullet), `check_pf28_inputs.ts` (EXCEPTIONS_CEILING), and the allow-list (1 exception). The commit also carries my round-1 reports unchanged. I ran it on a fresh copy, `rev_pf28a2` on :4489. Live AI was off; cost US$0.
+
+**Checks**
+- **J-108** (`tests/journeys/j_108.ts`) gives **15/15**; it was 13/15 in round 1. It overwrote J-108's screenshots, which I restored with `git checkout`.
+- **Live probes**
+  - Convert:
+    - `{}` on a random id gives 404, which is what the new exception says.
+    - `{}` on a real, cleared prospect gives 200, the same as main.
+    - A second no-body call gives ALREADY_WON.
+    - `{"version":"0"}` gives 409 STALE.
+    - `{"x":1}` gives 422 naming `x`.
+  - Version words: Convert `{"version":true}` and move `{"version":[1]}` both give 422 `fields.version: "Send the prospect's version as read."`.
+- **Builder's results (not re-run here):** sweep 41/41; csk1s 33/33, fo13s 36/36 and fo4as 27/27 after the fix; fo4_sales, fo4al, fo4w, fo9s, fo13s_conflict, fo3st1 and pf6a green from the earlier run.
+- **check_pf4_identity:** it fails while setting up its own database (`xr_studio_pf4` does not exist). It touches no sales code, so I do not count it against this PR.
+
+**Fixes**
+- **M1 closed.**
+  - `CONVERT = strict({ version })` again takes the version as optional, as main does. j_108, j_110, j_72, csk1s and fo13s send `{}` and are served as on main.
+  - **I accept the exception and EXCEPTIONS_CEILING 9 → 10.** It is the same case as the accepted `resend missing` line. `{}` is a valid body, so the sweep's "missing" probe can only get the random id's 404. Not listing it would mean changing a contract that five callers rely on.
+  - The exception is still pinned. An unknown field or a wrong type on Convert is still checked by the sweep (both are 422).
+  - Whether Convert should require the version (fo-2p3's break-report Minor) stays a product question, recorded in the line's "awaiting the tech lead".
+- **m1 closed.** The version union carries "Send the prospect's version as read." (probes above). A missing version on move still gives the service's own "version: the prospect's version as read." That is unchanged from main and close enough.
+- **m2 closed.**
+  - `source-filter.ts:4` and `R1-30.md:1` now say 422.
+  - `front-office/MODULE.md` has the PF-28 invariant bullet. It states the rule, names the sweep and the allow-list as what holds it, and names part 3a's file.
+- **n1** is left as it is, which I accept.
+
+**One nit, not blocking.** The exception names only csk1s and fo13s as `{}` callers. j_108, j_110 and j_72 send `{}` too, so they could be named on the next touch.
+
+**Round-2 findings:** no Blocker, no Major, and no new Minor.
+
+**Journey score:** 9.5/10 stands. This round changes no screen, and the screens walked in round 1 send `{version}`, which is unaffected.
+
+**Verdict: Approve** for cda522f1f34a80f2bba0767e7a8f5eddc10b37ec (no open Blocker or Major).
+
+Reviewer: Approve cda522f1f34a80f2bba0767e7a8f5eddc10b37ec
