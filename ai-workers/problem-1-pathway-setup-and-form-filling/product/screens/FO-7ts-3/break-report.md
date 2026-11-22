@@ -242,3 +242,82 @@ Breaker: fail 738531142067de2d88c428d01af98b44a9eec81a
   * Run from the wrong folder, it is refused and the transaction is undone.
   * It is refused when picks, refunds or treatments are recorded.
   * Run from the studio folder, the catalog (columns, constraints, indexes, function bodies, owners and settings, enums, triggers, policies, rights) is identical to a part-2-only database. Part 3 then applies again cleanly.
+
+---
+
+Breaker: fail 4ac4e8b1ab36a438ebdbeca28a6584f28e5b5c6d
+
+# FO-7ts part 3: break report, round 6 (merge of main, head 4ac4e8b1a)
+
+**What I tested:** what the merge of main and the re-stamp to `20261122040000_fo7ts_part3` newly expose. I used Postgres 18 on :54329 and scratch databases `xr_brk_r6_{full,ref}_<pid>`, all dropped. I did not run `check_fo7ts_money_settings.ts`. Nothing was fixed or committed. Commands were run from `studio/`.
+
+## Attempts
+
+1. **Order.** `ls prisma/migrations | grep -E '^[0-9]{14}_' | sort` gives 144 migrations, and part 3 is last. Its stamp is unique. Every migration was replayed in order with `psql -v ON_ERROR_STOP=1 -f` into FULL, and every one except part 3 into REF. All applied.
+2. **Did main touch our objects?** I searched every migration stamped from `20261119080001` to `20261122033000` for `money`, `pg_proc`, function-owner loops and grants.
+   * None replaces any of the five functions, and none alters `money_invoice` or `money_trust_entry`.
+   * The only definitions of the five are FO-7a, FO-7a2, FO-7mv, FO-7lk, FO-7ts part 1/2, and ours.
+   * So our CREATE OR REPLACE texts undo nothing from main, and rollback.sql's sources (part 2 for `money_trust_entry_write`, part 1 for `money_invoice_write`, FO-7lk for the other three) are still the newest versions.
+3. **Catalog compare.** I compared the five functions (md5 of the source, owner, SECURITY DEFINER, config, ACL) and every column, constraint, index, trigger, policy, enum, relation ACL and the ACL of schema public.
+   * FULL minus REF shows only what part 3 adds.
+   * `money_party_tax_treatment` gives full access (SELECT, INSERT, UPDATE, DELETE) to xr_app, xr_data, xr_wall_reader and xr_staff_bypass, the same as `money_invoice` and main's new `fo_signature_request`.
+   * pg_dump 18 is not installed here: `/usr/lib/postgresql/18/bin/pg_dump` links to 16, so the catalog query is the comparison.
+4. **Rollback, then re-apply.**
+   * `psql $FULL -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261122040000_fo7ts_part3/rollback.sql` exits 0, and the catalog is **identical to REF** (all five functions included).
+   * Applying `migration.sql` again exits 0, and the catalog is **identical to FULL**.
+   * Run from `/tmp`, the rollback is refused ("earlier function texts were not read") and the transaction is undone: `tax_treatment` is still there.
+5. **Main's pure migration checks** (all suites run, because this PR changes `prisma/`).
+   * `tsx tests/check_pf8b_f4_migrations.ts` → **exit 1, 8 passed, 1 failed** (R6-M1).
+   * `tsx --tsconfig api/tsconfig.json tests/check_prisma_schema.ts` → exit 0, 8 passed, 0 failed. The migrations give the schema with 0 differences.
+6. **RDS-shaped deploy:** `bash tools/rds-shape-check.sh 4760` (a throwaway cluster on 4760-4764, removed) → exit 0, 21/21. That includes "every migration applies from empty" as a non-superuser and "the reader holds no CREATE on public".
+7. **Main's money suites** (each makes and drops its own scratch database; the in-process app listens on port 0, so no isolated copy was needed). Both used `tsx --tsconfig api/tsconfig.json`.
+   * `tests/check_fo7b_invoices.ts` → **exit 0, 44 passed, 0 failed**. A first run without `--tsconfig` crashed on decorators before any test. Its leftover `xr_studio_fo7b_scratch_18686` was dropped.
+   * `tests/check_fo7g_tax_defaults.ts` → **exit 0, 59 passed, 0 failed**.
+   * `tests/check_pf12_walls.ts` → exit 0, 110 passed, 0 failed.
+8. **Main's draft and tax code against the freeze** (`invoices/drafts.ts`, `routes.ts`, `tax-round.ts`, `tax/*.ts`).
+   * `DraftIn` is a `z.strictObject` of person, company and currency (`ports/client-money.ts:25`), so a client cannot send `taxTreatment` (422).
+   * `create` leaves `tax_treatment` NULL on the draft (`drafts.ts:62`). NULL means "the party's" until issue, as the brief says.
+   * Main has no issue route. Issuing is only a write to `money_invoice`, where our trigger sets the party's treatment or TAXABLE and freezes it.
+   * `addLine` refuses an issued invoice (409) under `FOR UPDATE`. No path skips the freeze.
+
+## Findings
+
+**R6-M1 (Major; CI): after the re-stamp, the migration breaks main's PF-8b F4 rule, so `check_pf8b_f4_migrations.ts` fails and the PR cannot go green.**
+* Main's `20261121230000_pf8b_f4_reader_create` requires every later migration that runs `OWNER TO xr_wall_reader` to `GRANT CREATE ON SCHEMA public TO xr_wall_reader` first and `REVOKE` it after, as `20261122020000_fo6_signing_tables:369-381` does.
+* Under its old stamp, `20261119170000`, part 3 came before F4 and was exempt. The re-stamp moved it after F4, but `migration.sql` was renamed with no changes (git `R100`). Its `DO $readers$` block (`migration.sql` lines 628-637 at 4ac4e8b1a) hands the five functions over with no grant.
+* Output: `FAIL every migration after F4 that hands xr_wall_reader a function grants it CREATE on public first and revokes it after (6 later): ["20261122040000_fo7ts_part3"]`.
+* No runtime break: the RDS-shaped deploy passes (attempt 6). The five functions are already owned by xr_wall_reader, and PostgreSQL skips the privilege check when an `ALTER … OWNER` names the current owner.
+* Fix: put the readers block between the grant and the revoke, in `migration.sql` (and in `rollback.sql` for the same reason).
+
+## Notes (not findings)
+
+* **Two tax inputs until FO-7g part 2.** A draft line's tax comes only from the rate the client sends (`drafts.ts:76-77`, FO-7g part 1's province default). Nothing reads the treatment, so an invoice that freezes as EXEMPT or ZERO_RATED can carry taxed lines. "Zero-rated and Exempt give 0 on every line" is FO-7g part 2's rule (brief FO-7g.md Part 2, not built), so this is out of scope here.
+* **The re-stamp strands any database that applied `20261119170000_fo7ts_part3`:** the new name would fail on `CREATE TYPE "MoneyTaxTreatment"`. No such row exists here (the local `xr_studio_demo` holds only the new name). The shared demo takes main only.
+
+## Re-check at 2fb4965eb (pushed to this checkout during the pass; review R6-1)
+
+* The commit adds the grant/revoke pair around the readers block in `migration.sql` and in `rollback.sql`.
+* `check_pf8b_f4_migrations.ts` → exit 0, 9/9. `rds-shape-check.sh 4765` → exit 0, 21/21.
+* The attempt 1-4 script rerun at 2fb4965eb: order, apply, rollback identical to REF (the ACL of schema public included, so the pair leaves no grant behind), and re-apply identical to FULL.
+* With that commit, R6-M1 is cleared, and I found nothing else.
+
+Verdict: fail
+
+---
+
+Breaker: pass 2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f
+
+# FO-7ts part 3: break report, round 6b (head 2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f, R6-M1 fix)
+
+**What changed:** the commit puts `GRANT CREATE ON SCHEMA public TO xr_wall_reader` before the `DO $readers$` hand-over and `REVOKE` after it, in both `migration.sql` and `rollback.sql`. These are the re-checks I ran on this head during round 6. Nothing new was run, and nothing was fixed or committed.
+
+* `tsx tests/check_pf8b_f4_migrations.ts` → exit 0, 9/9 passed. The F4 pairing rule now passes for `20261122040000_fo7ts_part3`.
+* `bash tools/rds-shape-check.sh 4765`: non-superuser, RDS-shaped, throwaway cluster, removed afterwards. Exit 0, 21/21 passed. Every migration applies from empty, and the reader holds no CREATE on public afterwards.
+* The round-6 scratch script (attempts 1-4), on fresh databases that were then dropped:
+  * Order: part 3 applies last of 144.
+  * Rollback from the studio folder: exit 0. The catalog is identical to the database without part 3, including the five functions and the ACL of schema public, so the grant/revoke pair leaves nothing behind.
+  * Re-applying the migration: exit 0, and the catalog is identical to the full database.
+  * Rollback from the wrong folder: refused, and the transaction is undone.
+* R6-M1 is cleared. No new Blocker, Major or Minor.
+
+Verdict: pass
