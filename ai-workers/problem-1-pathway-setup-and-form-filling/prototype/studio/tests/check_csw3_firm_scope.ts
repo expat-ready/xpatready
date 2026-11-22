@@ -264,7 +264,7 @@ async function api() {
 }
 
 // ------------------------------------------------------------------------------------------------- 4. the census
-// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3), plus six merged on main after the
+// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3), plus seven merged on main after the
 // spike: case-clients/prospect-won (FO-8), case-clients/client-link and case-clients/live (CS-K1 part 2; live.ts already
 // sets its firm per client), case-deadlines/reminders and features/case-milestones (CS-DL3 part 1), and search/party-search (CS-S1 part 2: the case party search reads runtime_case firm-first, c.firm_id = the caller's firm; ruled by Lead 5 on #2913), and case-notes/service (CS-NT1 part 1; its staff routes take their firm from PF-4's session; Option A, Lead 5 on #2999). Paths relative to api/src. Only shrinks: part 2 and part 3 take files off as their areas run
 // with the walls on.
