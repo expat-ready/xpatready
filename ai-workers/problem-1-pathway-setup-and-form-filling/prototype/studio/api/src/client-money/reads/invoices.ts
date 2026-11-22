@@ -35,23 +35,75 @@ export type InvoiceDetail = { invoice: InvoiceView; caseId: string | null; issue
   payments: PaymentRow[]; creditNotes: { id: string; number: string | null; full: boolean; amountMinor: number; currency: string; reason: string; createdAt: string }[];
   writeOff: { amountMinor: number; currency: string; reason: string; createdAt: string } | null; trustPaidMinor?: number };
 
+type Plan = { pageSize: number; after: { d: 0 | 1; t: string; id: string } | null; want: string[] | null; today: string; firmId: string; where: Prisma.Sql };
+type Row = Omit<InvoiceRow, "totalMinor" | "paidMinor" | "dueMinor"> & { total: bigint; paid: bigint; due: bigint; d: number; t: string; n: bigint };
+/** A status filter reads candidates 200 at a time, doubling up to 2,000 (Sample sizes, measured on 10,000 invoices). */
+const CHUNK_FIRST = 200, CHUNK_MAX = 2000;
+/** The two halves: newest issued first (issued_at desc, id: FO-7ts part 3's index order), then drafts newest first. */
+type Half = { d: 0 | 1; which: Prisma.Sql; key: Prisma.Sql; order: Prisma.Sql };
+const ISSUED: Half = { d: 0, which: Prisma.sql`i.issued_at is not null`, key: Prisma.sql`i.issued_at`, order: Prisma.sql`i.issued_at desc, i.id` };
+const DRAFTS: Half = { d: 1, which: Prisma.sql`i.issued_at is null`, key: Prisma.sql`i.created_at`, order: Prisma.sql`i.created_at desc, i.id` };
+
+/** Query A: the next `limit` candidate ids of a half after `from` (its sort key and id), in order; no facts read. */
+function candidates(p: Plan, h: Half, from: { t: string; id: string } | null, limit: number): Prisma.Sql {
+  const at = from ? Prisma.sql`(${from.t}::timestamp at time zone 'UTC')` : null;
+  const after = from ? Prisma.sql`(${h.key} < ${at} or (${h.key} = ${at} and i.id > ${from.id}::uuid))` : Prisma.sql`true`;
+  return Prisma.sql`select i.id::text as id, to_char(${h.key} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t
+    from money_invoice i where ${p.where} and ${h.which} and ${after} order by ${h.order} limit ${limit}`;
+}
+/** Query B: the facts and the status word of exactly these ids (by the firm's unique id index), once each, kept when the
+ *  word is one asked for, in the candidates' order. */
+function statuses(p: Plan, ids: string[]): Prisma.Sql {
+  const status = statusSql(p.today);
+  return Prisma.sql`select * from (select i.id::text as id, i.number, i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId", i.currency::text as currency,
+        to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD') as "issuedOn", to_char(i.due_date, 'YYYY-MM-DD') as "dueDate",
+        f.total, ${PAID_SQL} as paid, ${DUE_SQL} as due, ${status} as "statusWord", (i.issued_at is null)::int as d,
+        to_char(coalesce(i.issued_at, i.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t, u.n
+      from unnest(${ids}::uuid[]) with ordinality u(id, n) join money_invoice i on i.firm_id = ${p.firmId}::uuid and i.id = u.id cross join ${FACTS_LATERAL}) x
+    ${p.want ? Prisma.sql`where x."statusWord" in (${Prisma.join(p.want)})` : Prisma.empty} order by x.n`;
+}
+
 export class InvoiceReads {
   constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed, private readonly clock: ClockPort = systemClock) {}
 
-  /** GET /api/front-office/money/invoices. */
+  /** GET /api/front-office/money/invoices. Each half (issued, then drafts) is read in candidate chunks: query A reads
+   *  only ids and sort keys in order (the firm-first index's order; no facts), query B derives the facts and the status
+   *  word of exactly those ids, once each, and keeps the words asked for. A page of matches stops it. So the facts are
+   *  never computed for rows past the page, whatever plan the database picks (#3001 run 45070511287: a sort plan
+   *  computed the status of every candidate before the limit, 696 ms). No status filter: one chunk of a page. */
   async list(ctx: StaffContext, query: unknown): Promise<InvoicePage> {
-    const built = await this.listSql(ctx, query);
-    if (!built.sql) return { items: [], pageSize: built.pageSize, next: null };
-    const { sql, pageSize } = built;
-    const rows = await this.db.$transaction((tx) => tx.$queryRaw<(Omit<InvoiceRow, "totalMinor" | "paidMinor" | "dueMinor"> & { total: bigint; paid: bigint; due: bigint; d: number; t: string })[]>(sql),
-      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
-    const page = rows.slice(0, pageSize), last = page.at(-1);
-    return { pageSize, next: rows.length > pageSize && last ? cursorText({ d: last.d, t: last.t, id: last.id }) : null,
-      items: page.map(({ total, paid, due, d: _d, t: _t, ...x }) => ({ ...x, totalMinor: Number(total), paidMinor: Number(paid), dueMinor: Number(due) })) };
+    const p = await this.plan(ctx, query);
+    if (!p) return { items: [], pageSize: pageSizeOf((query as { pageSize?: unknown } | null)?.pageSize), next: null };
+    const need = p.pageSize + 1, rows: Row[] = [];
+    await this.db.$transaction(async (tx) => {
+      for (const half of [ISSUED, DRAFTS]) {
+        if (p.after && half.d < p.after.d) continue;   // a cursor in the drafts never goes back to the issued half
+        let from = p.after && p.after.d === half.d ? { t: p.after.t, id: p.after.id } : null, chunk = p.want ? CHUNK_FIRST : need;
+        while (rows.length < need) {
+          const cands = await tx.$queryRaw<{ id: string; t: string }[]>(candidates(p, half, from, chunk));
+          if (!cands.length) break;
+          rows.push(...await tx.$queryRaw<Row[]>(statuses(p, cands.map((c) => c.id))));
+          if (cands.length < chunk) break;
+          from = cands.at(-1)!; chunk = Math.min(chunk * 2, CHUNK_MAX);
+        }
+        if (rows.length >= need) break;
+      }
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    const page = rows.slice(0, p.pageSize), last = page.at(-1);
+    return { pageSize: p.pageSize, next: rows.length > p.pageSize && last ? cursorText({ d: last.d, t: last.t, id: last.id }) : null,
+      items: page.map(({ total, paid, due, d: _d, t: _t, n: _n, ...x }) => ({ ...x, totalMinor: Number(total), paidMinor: Number(paid), dueMinor: Number(due) })) };
   }
 
-  /** The list's one query (its check EXPLAINs exactly this, DW1); null when the filters can match nothing. */
+  /** The first candidate read of the issued half (query A), as list runs it: DW1 EXPLAINs exactly this. Null when the
+   *  filters can match nothing. */
   async listSql(ctx: StaffContext, query: unknown): Promise<{ sql: Prisma.Sql | null; pageSize: number }> {
+    const p = await this.plan(ctx, query);
+    if (!p) return { sql: null, pageSize: pageSizeOf((query as { pageSize?: unknown } | null)?.pageSize) };
+    return { pageSize: p.pageSize, sql: candidates(p, ISSUED, p.after?.d === 0 ? { t: p.after.t, id: p.after.id } : null, p.want ? CHUNK_FIRST : p.pageSize + 1) };
+  }
+
+  /** The filters read once (422 naming a bad one), the scope, and what each status word needs before any facts. */
+  private async plan(ctx: StaffContext, query: unknown): Promise<Plan | null> {
     const q = parseInput(Query, query ?? {}), pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, InvoiceCursor);
     const codes = q.status === undefined ? [] : q.status.split(",");
     if (codes.length > 8 || codes.some((c) => !Object.hasOwn(STATUS_CODES, c))) return bad("status", `status is one or more of ${Object.keys(STATUS_CODES).join(", ")}, separated by commas.`);
@@ -60,7 +112,7 @@ export class InvoiceReads {
     // overdue=true narrows to the Overdue word; with a status filter both must hold (no Overdue in it: an empty page)
     let want: string[] | null = codes.length ? codes.map((c) => STATUS_CODES[c as StatusCode] as string) : null;
     if (q.overdue === "true") want = want ? want.filter((w) => w === "Overdue") : ["Overdue"];
-    if (want && !want.length) return { sql: null, pageSize };
+    if (want && !want.length) return null;
     const today = dayOf(this.clock.now()), firmId = firmScope(ctx.firmId).firmId, scope = await this.scopeOf(ctx);
     const conds: Prisma.Sql[] = [Prisma.sql`i.firm_id = ${firmId}::uuid`, scopeSql(scope)];
     if (q.partyKind === "PERSON") conds.push(Prisma.sql`i.person_id = ${q.partyId!.toLowerCase()}::uuid`);
@@ -71,25 +123,7 @@ export class InvoiceReads {
     // What each word needs before any facts are read (statusSql's own order): a draft is not issued; overdue is issued
     // with a due date before today; every other word is issued. Only narrows; the word itself is still statusSql's.
     if (want) conds.push(Prisma.sql`(${Prisma.join(want.map((w) => w === "Draft" ? Prisma.sql`i.issued_at is null` : w === "Overdue" ? Prisma.sql`(i.issued_at is not null and i.due_date < ${today}::date)` : Prisma.sql`i.issued_at is not null`), " or ")})`);
-    const status = statusSql(today);
-    // Newest issued first (issued_at desc, id: the firm-first index's own order, FO-7ts part 3), then drafts newest
-    // first (created_at desc, id). The cursor (d, t, id): d = 0 issued, 1 draft; t the issued (or created) time. Each
-    // half filters on the status word inside its own ordered, limited read, so it stops after a page of matches and
-    // reads the facts only of the rows it passes over (review M1, break B1).
-    const where = Prisma.join(conds, " and "), at = after ? Prisma.sql`(${after.t}::timestamp at time zone 'UTC')` : null;
-    const issuedAfter = !after ? Prisma.sql`true` : after.d === 1 ? Prisma.sql`false` : Prisma.sql`(i.issued_at < ${at} or (i.issued_at = ${at} and i.id > ${after.id}::uuid))`;
-    const draftAfter = !after || after.d === 0 ? Prisma.sql`true` : Prisma.sql`(i.created_at < ${at} or (i.created_at = ${at} and i.id > ${after.id}::uuid))`;
-    const words = want ? Prisma.sql`${status} in (${Prisma.join(want)})` : Prisma.sql`true`;
-    const half = (which: Prisma.Sql, order: Prisma.Sql) => Prisma.sql`(select i.id::text as id, i.number, i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId", i.currency::text as currency,
-          to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD') as "issuedOn", to_char(i.due_date, 'YYYY-MM-DD') as "dueDate",
-          f.total, ${PAID_SQL} as paid, ${DUE_SQL} as due, ${status} as "statusWord",
-          (i.issued_at is null)::int as d, to_char(coalesce(i.issued_at, i.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t
-        from money_invoice i cross join ${FACTS_LATERAL}
-        where ${where} and ${which} and ${words} order by ${order} limit ${pageSize + 1})`;
-    return { pageSize, sql: Prisma.sql`
-      select * from (${half(Prisma.sql`i.issued_at is not null and ${issuedAfter}`, Prisma.sql`i.issued_at desc, i.id`)}
-        union all ${half(Prisma.sql`i.issued_at is null and ${draftAfter}`, Prisma.sql`i.created_at desc, i.id`)}) x
-      order by x.d, x.t desc, x.id limit ${pageSize + 1}` };
+    return { pageSize, after, want, today, firmId, where: Prisma.join(conds, " and ") };
   }
 
   /** GET /api/front-office/money/invoices/:id/detail. Another firm's, an unknown, and one outside the caller's scope: the same 404. */

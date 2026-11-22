@@ -9,7 +9,7 @@ import type { StatusWord } from "../../../../ports/client-money.ts";
 export const STATUS_CODES = { DRAFT: "Draft", OPEN: "Open", PART_PAID: "Part paid", PAID: "Paid", OVERDUE: "Overdue", CREDITED: "Credited", REFUNDED: "Refunded", WRITTEN_OFF: "Written off" } as const satisfies Record<string, StatusWord>;
 export type StatusCode = keyof typeof STATUS_CODES;
 
-/** The per-invoice facts of `money_invoice i` (as facts.ts reads them), for a lateral join: `f.total`, `f.credited`,
+/** The per-invoice facts of `money_invoice i` (as facts.ts reads them), for a lateral join, once per row (`offset 0`): `f.total`, `f.credited`,
  *  `f.written`, `f.write_offs`, `f.operating`, `f.refunded`, `f.trust`, `f.applied`, `f.kept`, all bigint minor units. */
 export const FACTS_LATERAL = Prisma.sql`lateral (select
     money_invoice_total(i.firm_id, i.id)::bigint as total,
@@ -20,7 +20,8 @@ export const FACTS_LATERAL = Prisma.sql`lateral (select
     (select coalesce(sum(r.amount_minor), 0) from money_refund r join money_payment p on p.firm_id = r.firm_id and p.id = r.payment_id where r.firm_id = i.firm_id and p.invoice_id = i.id)::bigint as refunded,
     greatest(money_trust_paid(i.firm_id, i.id) - (select coalesce(sum(c.overpaid_minor), 0) from money_credit_note c where c.firm_id = i.firm_id and c.invoice_id = i.id and c.overpaid_choice = 'OVERPAID_REFUND'), 0)::bigint as trust,
     (-money_invoice_credit(i.firm_id, i.id, 'APPLIED'))::bigint as applied,
-    money_invoice_credit(i.firm_id, i.id, 'KEPT')::bigint as kept) f`;
+    money_invoice_credit(i.firm_id, i.id, 'KEPT')::bigint as kept
+    offset 0) f`;   // offset 0: computed once per row, never pulled up into every expression that names a fact (#3001)
 
 /** Paid, as facts.ts: operating less refunds, plus trust applied and not returned, plus credit applied. */
 const PAID = Prisma.sql`(f.operating - f.refunded + f.trust + f.applied)`;
