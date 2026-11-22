@@ -10,7 +10,7 @@
 //   * an email matches exactly (lower-cased); a phone exactly in E.164 (the typed text read with the firm's country as
 //     the default); a name by the start of one of its words, or pg_trgm word similarity at or above
 //     CASE_NAME_THRESHOLD (Sample, below), the typed text normalised by part 1's own case_party_index_norm so both sides agree
-//     (accents are kept, as part 1 keeps them); a case number exactly, then by its start;
+//     (accents are kept, as part 1 keeps them), and searched only when at least 2 characters are left then; a case number exactly, then by its start;
 //   * ranking: an exact case number, then email, then phone, then a name by its similarity;
 //   * `search` writes one audit line per search (entity "case search"): who, which fields, the counts, no searched value
 //     (ruled, Lead 61, #1869 comment 6900881924). `find` only reads and writes nothing, like the front office's finder.
@@ -61,11 +61,14 @@ export class CasePartySearch implements PartySearchPort {
   /** The search itself: read-only, on the given client or transaction. */
   async find(ctx: CaseViewer, q: CaseSearchIn, db: Reader = this.db): Promise<CaseSearchOut> {
     const scope = await caseScope(db, ctx);
-    const email = normaliseEmail(q.email), name = (q.name ?? "").trim(), number = (q.caseNumber ?? "").trim().toUpperCase();
+    if (!scope.member) return { parties: [], cases: [], hidden_count: 0, needs_confirmation_by_role: [] };   // not this firm's staff: nothing named, nothing counted
+    // A NUL byte is no part of any stored value and PostgreSQL refuses it in text (breaker m3): dropped, never a raw error.
+    const text = (v: string | null | undefined) => (v ?? "").replace(/\u0000/g, "");
+    const email = normaliseEmail(text(q.email)), name = text(q.name).trim(), number = text(q.caseNumber).trim().toUpperCase();
     let phone: string | null = null;
-    if (q.phone?.trim()) {
+    if (text(q.phone).trim()) {
       const firm = await db.platformFirm.findUnique({ where: { id: scope.firmId }, select: { countryCode: true } });
-      phone = phoneOf(q.phone, firm?.countryCode ?? "CA");
+      phone = phoneOf(text(q.phone), firm?.countryCode ?? "CA");
     }
     const [people, hiddenPeople] = email || phone || [...name].length >= 2 ? await this.people(db, scope, name, email, phone) : [[], 0];
     const [cases, hiddenCases] = number ? await this.cases(db, scope, number) : [[], 0];
@@ -77,7 +80,7 @@ export class CasePartySearch implements PartySearchPort {
     const visible = caseVisibleSql(s);
     // The firm first (i.firm_id, and the case's own firm_id must agree); the scope only splits named from counted.
     const rows = await db.$queryRaw<(PartyRow & { hidden: number })[]>(Prisma.sql`
-      with q as (select n as name, replace(replace(replace(n, '\\', '\\\\'), '%', '\\%'), '_', '\\_') as esc from (select case_party_index_norm(${[...name].length >= 2 ? name : ""}::text) as n) x),
+      with q as (select n as name, replace(replace(replace(n, '\\', '\\\\'), '%', '\\%'), '_', '\\_') as esc from (select case when char_length(replace(k, ' ', '')) >= 2 then k end as n from (select case_party_index_norm(${name}::text) as k) y) x),
       m as (
         select i.id::text, i.case_id::text, c.case_number, c.client_id::text, i.kind, i.role_on_case, i.display_name,
                coalesce(i.email_norm = ${email}::text, false) as by_email, coalesce(i.phone_e164 = ${phone}::text, false) as by_phone,
