@@ -9,7 +9,10 @@ Item: R1.56
 
 **What to build (the row, exactly):** in FO-7b's draft code in `api/src/client-money/invoices/` (calls only), a new `FEE` or `DISBURSEMENT` line takes `taxDefault(...)`'s `ratePpm` through `lineRatePpm` (part 1's `tax/defaults.ts`); a `GOVERNMENT_FEE` line is 0 and asking to tax it is refused 422 at the field (the app's field-error status, PF-28 part 6); taxable / not taxable is the `ratePpm` sent when adding a line: 0 (not taxable) or the default (taxable), nothing sent means the default, anything else 422 (no new route, no `ports/` change; a toggle on an existing line is a later row); the amount is always `taxForLine` (QA-482). The firm's province and `tax_registered` are read as part 1's route reads them (one snapshot). A rate sent by the client is never used.
 
+**P-797 (decided 22 Nov 14:5x IST from CRA GST/HST Memorandum 3-3-6, para 20, Example 6):** the tax follows **the client's province from the address on the record**, through an **editable Bill-to province** on the invoice, falling back to **the firm's province when there is no Canadian address**. On `main` no person or company carries an address, so in this part the default is always the firm's province (the P-797 fallback): build exactly what the row says, and make the draft step take its province from one function `billToProvince(firm, party)` that today returns the firm's province, so FO-7g part 3 changes only that function. The Bill-to province column and its edit are **FO-7g part 3** (a migration; its row is in BACKLOG), not this part.
+
 **Decisions (word for word):**
+* **P-797:** the client's province from the address on the record, an editable Bill-to province, the firm's province when there is no Canadian address (Lead 4's record, 22 Nov; CRA Memorandum 3-3-6 para 20, Example 6).
 * **P-701:** "Release 1 invoices charge GST/HST only"
 * **P-568 (1):** "Row 18: no Quebec firm in the first firms; Quebec sales tax (QST) and French stay out until he says otherwise."
 
