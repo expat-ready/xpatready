@@ -10,7 +10,11 @@ import { FirmProfile } from "./service.ts";
 type R = { platform?: StaffContext };
 /** PF-28 (the one input rule): the body is an object of named fields, parsed here (an array, a string or a key over 64 characters is
  *  422). Each field is then checked by its own rule in the service, every bad one named at once (SaveProfile, READ_ONLY). */
-export const ProfileBody = z.record(z.string().max(64), z.unknown());
+export const ProfileBody = z.unknown()
+  // PF-5fp-2 (review r3-m1): plain words, never the library's "This must be a record." or "Invalid key in record". A custom check
+  // first (parseInput keeps its message), then the record, whose key error keeps its own message too.
+  .refine((v) => v !== null && typeof v === "object" && !Array.isArray(v), "Send the firm profile as one set of named fields.")
+  .pipe(z.record(z.string().max(64), z.unknown(), { error: "A field name is at most 64 characters." }));
 
 @Controller("api/platform/firm/profile")
 export class FirmProfileController {
