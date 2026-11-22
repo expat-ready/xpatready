@@ -85,3 +85,39 @@ Reviewed head **78861110ae7926c0d6cea7289112503c9012eae6** (branch `claude/runti
 To fix before Approve: B1, M1, M2, M3. The minors are optional; m1 and m4 are cheap while the files are open. The design does not need rework. Re-review reads only the diff. Under the agent definition's two-way rule this is Block: do not label.
 
 Verdict: Changes 78861110ae7926c0d6cea7289112503c9012eae6
+
+---
+
+# Round 2 (diff only, P-277): `78861110a..5fda25666`, prototype paths (reviewer, 22 Nov 2026)
+
+Read: `git diff 78861110ae7926c0d6cea7289112503c9012eae6 5fda25666d9937f65d2c8165b10655fef9673af0 -- …/prototype` (migration +22/−14, service.ts, check_pf21b_holds.ts). Ran in a detached worktree of 5fda25666 (removed after); scratch databases dropped.
+
+**Runs:** `check_pf21b_holds.ts` 67 passed, 0 failed, exit 0, **twice**. Exit 0: `check_pf8b_f4_migrations`, `check_aud_values`, `check_pf12_walls`, `check_pf4s_system_signin`, `check_pf21b_port`, `check_aud5_check`; static sweeps 16/16 (base 6492a25ec); `count-any` 416 = base; `check-port-contracts` 0 problems. A zod probe: `2026-02-30`, `2026-02-29`, `2026-13-01` refused; `2028-02-29`, `…T10:00+05:30`, `…Z` accepted.
+
+| Round 1 | Fix at 5fda25666 | Status |
+|---|---|---|
+| **B1** RDS hand-over | `GRANT CREATE … TO xr_wall_reader` before one `DO $own$` block that now hands all six functions (`_active` moved in), `REVOKE` after; guard exit 0 | **Closed** |
+| **M1** before/after | placed: `before: null`, `after` = scope, target, category, from, to, reason (full), placedBy, active, placedAt; released: re-read in the same tx after the update, `before`/`after` with active, releasedBy, releaseReason (full), releasedAt; summary names the scope and placement date; `.slice(0, 200)` gone. Values fit `AuditValues` (4000 chars). Tests read `*_after` / `active_before` from the stored line | **Closed** |
+| **M2** list cap | `plat_legal_hold_list(firm, active, id, limit)` filters in SQL, clamps 1-501; service asks limit+1 → `truncated`; `limit` 1-500 (422 otherwise); `one()` reads by id. Test: 1 active behind 520 released is listed, `truncated` true/false as it should be, the old hold's release → 200 (the old code fails both) | **Closed** |
+| **M3** date-only range | `RangeEnd`: a calendar date is the whole UTC day (`to` = 23:59:59.999), a full time must carry its zone, years 1900-9999, null/number/bool refused; error path on `to`. Test: a one-day hold holds 22:30 that day, not 00:00 next day; five bad inputs → 422, nothing placed | **Closed** |
+| m1 contract on xr_app path | second `runContract` with `walled.$transaction` and a wrapper that only `set_config('app.firm_id', …)`; adapter and contract unchanged; 9/9 | **Closed** |
+| m2 firm sees "The system" | unchanged; PR question (waits on an OUR_STAFF actor word) | Open, Minor, accepted as a question |
+| m3 5 s timeout | `{ maxWait: 10 s, timeout: 60 s }` on both transactions | **Closed** |
+| m4 wording | migration header now says the no-firm gate is the code's (PF-4s guard and key) | **Closed** |
+| m5 firm key | asserts `/api/platform/me` keys include `agent/legal-hold:manage` | **Closed** |
+| breaker m4/m5 | reason refuses C1 and bidi marks (tested); table actor pattern equals `AuditActor` (`ports/audit.ts:13`; `system:jobs/purge` tested) | **Closed** |
+| breaker m3 duplicates | unchanged; safe direction (two releases needed, never a false release); PR question | Open, accepted |
+
+**New in this diff, checked:** the release re-read runs inside the same READ COMMITTED transaction after the definer's UPDATE (sees its own write; the lock is still held, so no other release interleaves). `plat_legal_hold_list`'s new signature is the one handed over and granted (the DO list names `(uuid, boolean, uuid, integer)`). `ScopeBody` reuses the port's `LegalHoldCategory`, then `placeAs` re-parses through the port's `PlaceHoldInput`, so the port stays the final check. No SQL built from strings; the definer's `least(greatest(coalesce(p_limit, 501), 1), 501)` makes a direct caller's limit safe.
+
+**New minors (optional, not blocking):**
+- **r2-m1.** The DATE_RANGE words in the summary use the UTC date (`toISOString().slice(0, 10)`), so a range given with an offset (`…T23:00-05:00`) reads one day later in the firm's log; the before/after values carry the exact instants. Cosmetic.
+- **r2-m2.** `ScopeBody` repeats the port's `HoldScope` shape, so a new scope kind in the port would need a line here too. The port's re-parse fails safe (422 or 500, never a wrong hold).
+
+**Still outside this diff:** `check_pf21_complaints` stays red from #2927's `plat_system_*_fkey:rc` (#2927 to fix). Size is 875 changed lines, over P-610's 800 because of the review fixes, and the records under `screens/PF-21b-2/` (P-775); the builder asks the Lead, which is not a code finding. The four departures stay agreed; the Lead acknowledges departure 4 on the PR.
+
+**Journey re-score (round 2 evidence, the suite's new journeys):** correct data ½→1 (M1, M2, M3 closed), plain words still ½ (m2), trust still ½ (m2): **7 of 8 applicable = 8.75/10, pass**, no criterion at 0.
+
+No open Blocker or Major.
+
+Verdict: Approve 5fda25666d9937f65d2c8165b10655fef9673af0
