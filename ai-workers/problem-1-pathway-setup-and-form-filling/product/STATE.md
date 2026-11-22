@@ -2,7 +2,7 @@
 
 current_lead: local_d7cc573e-4ed5-489f-910c-18742632dc7d Lead 7 · 22 Nov 21:14 IST (took over from Lead 6 (local_d4609e9d) at ~302k, ~190k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 21:14 IST: Lead 6 handed over to Lead 7 · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 21:20 IST: Lead 7 took over (check 6c5738a5 at :03/:13/…; batches started 21:17, nothing merged since 20:45; Lead B 2 and AWS told) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
