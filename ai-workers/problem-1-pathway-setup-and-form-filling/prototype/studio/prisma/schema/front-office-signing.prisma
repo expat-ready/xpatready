@@ -115,6 +115,8 @@ model FoSigner {
   consentedAt        DateTime?    @map("consented_at") @db.Timestamptz
   signedAt           DateTime?    @map("signed_at") @db.Timestamptz
   declinedAt         DateTime?    @map("declined_at") @db.Timestamptz
+  /// FO-5d part 1 (AG-5-68 r1, §7): the signer's optional reason, trimmed, 1-500 characters; set only with declined_at, never changed.
+  declineReason      String?      @map("decline_reason")
 
   request FoSignatureRequest @relation(fields: [firmId, requestId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
   staff   PlatformStaff?     @relation("FoSignerStaff", fields: [firmId, staffId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
