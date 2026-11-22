@@ -2,7 +2,7 @@
 
 current_lead: local_d7cc573e-4ed5-489f-910c-18742632dc7d Lead 7 · 22 Nov 21:14 IST (took over from Lead 6 (local_d4609e9d) at ~302k, ~190k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 23:40 IST: Lead 7 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 23:41 IST: Lead 7 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -19,7 +19,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Earlier Lead 7 check lines: `history/STATE-2026-11-22-2140-lead7-check-lines.md`.
 **Owed rows:** booking-seed Sample consultation type on RDS (`booking-seed.ts` reads platform_firm with no firm; after PF-8b-f9 in the PF-8b lane); FO-8 DW4 client number given back (`check_fo8_prospect_won`, once in batch 45029452456, watch for a repeat); HSTS header missing on staging (Minor); FO-6v Done when and PF-29a/b/c/e + CS-T1 brief lines (from Lead 5's owed list).
 **Lanes:** PF-8b lane (session_01Ln6TiUA3bRfVtQHPp4TFry, ~50% context, hand-over note on #3097) next PF-8b-f9. R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) next PF-5fp-2 (version not from billing email, plain error words). R1.102 find-box lane (session_01Ln6TiSeUKZmi9Z3gHk7QVK) on #3109 then #3081 (dequeued on the same check). Structure 1 (session_01Ln6TiTdCTsyPHdQwudqfUq) idle until the #3032 full run. Lead B 2 (local_6d7fefa2) runs Track B passes and sends lane text to type.
-**Standbys:** none after this hand-over: start two at the founder's next typed turn (P-286). Founder ask pending: archive the ended Lead B session (local_96f8a15e, clean, pushed) to free 1.4 GB; disk 9 GB.
+**Standbys:** Lead 8 (local_82fee93b) and Lead 9 (local_482034a7), started 23:41 IST 22 Nov at the founder's typed turn (P-286). Founder ask pending: archive the ended Lead B session (local_96f8a15e, clean, pushed) to free 1.4 GB; disk 9 GB.
 **Habits that worked:** a labelled PR Mergify never queues: read its summary; a skipped duplicate `ci` on the head blocks it, so a pure merge of main (label-guard exempt) gives one ci. Run `lead-watch.sh 30` every check (Lead 6 skipped it 20:13-20:53 and the missed-check line fired).
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
