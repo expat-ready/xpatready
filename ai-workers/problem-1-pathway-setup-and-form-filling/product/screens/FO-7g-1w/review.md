@@ -120,3 +120,29 @@ Housekeeping: my scratch worktree, the `rr1w` copy and its database are removed.
 * Nit: `studio/api/src/client-money/invoices/drafts.ts:104`, word order of the refusal
 
 Reviewer: Approve 825b92496608177ef120d66da0c80d21316538e0
+
+## Round 3 (diff-only, f4e48b664)
+
+Reviewer (Opus 5.5; did not build it), 22 Nov. Head `f4e48b6640c0b373949b74acd34d887b01a5ee92`. Since the round 2 Approve on `825b9249`, the branch has only: `f489ee7a7` (round 2 records), `7aafe0315` (merge of #2953's branch at `3b0f5bb54`) and `f4e48b664` (merge of `origin/main` at `bc1f39c08`, after #2953 landed as `3264e2510`). No rebase: `825b9249` is still on the first-parent line.
+
+### What I checked
+| Check | Result |
+|---|---|
+| 1. `git diff origin/main...f4e48b664 --stat` (merge base = `origin/main` = `bc1f39c08`) | 8 files, all part 1w's own: `screens/FO-7g-1w/{break-report,review}.md`, `MODULE.rows/FO-7g-1w.md`, `invoices/{bill-to,drafts}.ts`, `tests/check_fo7b_invoices.ts`, `tests/check_fo7g_tax_defaults.ts`, `tests/journeys/j_59.ts` (+316/-13). `git diff bc1f39c08 f4e48b664 --stat` is the same 8 files, so the head is main plus part 1w and nothing else |
+| 2a. Blobs at `825b9249` vs `f4e48b664` | `bill-to.ts`, `drafts.ts`, `check_fo7g_tax_defaults.ts`, `j_59.ts`, `MODULE.rows/FO-7g-1w.md`: **byte-identical** (same blob ids). `drafts.ts` addLine (the lock query, the one facts statement, both ratePpm checks, `lineRatePpm`, the audit line) is unchanged by the merges |
+| 2b. Part 1w's own diff, approved vs now | `git diff 562df834b 825b9249` (the approved PR diff, against the #2953 merge it sat on) and `git diff origin/main...f4e48b664`, on the six code/test files: the two patches are **identical hunk for hunk**. The only difference is the `index` line of `check_fo7b_invoices.ts`, because its base moved |
+| 2c. `check_fo7b_invoices.ts` merge | Main's side since `562df834b` (#2953's last commits: issue's `dueDate` moved to `?dueDate=`, the new "I fail (PF-28)" unknown-query case, the `client_money.*` template keys in R9 and the DocumentRenderPort contract) is all present at the head, and part 1w's side (registered firms, `atRate`, R10 without the rate, R10-fail, R12 as the 1w refusal) is all present. Neither side's lines were dropped or altered. `git show --cc f4e48b664` shows no hand-resolved hunk in either file |
+| 2d. Main's other changes that the 1w read depends on | `firm-scope.ts` (+1 bypass use for a billing job) and the PF-12 / pf18bk / pf8b migrations (grant and FORCE RLS handling during migration) do not change `platform_firm`'s row rules, `money_payment_settings`, `tax_registered`, `prices_include_tax` or `business_address`. `documents.ts`/`money.ts` still import `MONEY` from `drafts.ts`, which is unchanged |
+| 3. `check_fo7g_tax_defaults.ts` on PG 127.0.0.1:54329 (from `prototype/`) | **76 passed, 0 failed** |
+| 3. `check_fo7b_invoices.ts` | **108 passed, 0 failed** (107 in round 2, plus #2953's new PF-28 issue-query case; R10, R10-fail, R12 pass/fail and the race all pass) |
+| Type check `tsc --noEmit -p api/tsconfig.json` | no error in `client-money/`, `check_fo7b`, `check_fo7g` or `j_59` (errors remain in unrelated older tests, not touched here) |
+
+Not re-run: mutants and the live HTTP break runs (the code under them is byte-identical to round 2, where each was caught), `j_59.ts` (identical file and identical route code), full `ci`. Working tree clean after the runs; no evidence file rewritten; nothing committed by me.
+
+### Journey test
+No behaviour changed since round 2 (same `drafts.ts`, `bill-to.ts`, same routes for adding a line). Score stays **9/10**, pass, on the round 2 evidence: accessibility and visual quality ½ each (no screen), every other criterion 1.
+
+### Findings
+None new. Round 2's optional items stay open and optional (fixed sleeps in the lock test `check_fo7g_tax_defaults.ts:337-339`; the PRICES_INCLUDE_TAX words twice at `drafts.ts:99` and `:135`; the refusal's word order at `drafts.ts:104`). No Blocker, no Major.
+
+Verdict: Approve f4e48b6640c0b373949b74acd34d887b01a5ee92
