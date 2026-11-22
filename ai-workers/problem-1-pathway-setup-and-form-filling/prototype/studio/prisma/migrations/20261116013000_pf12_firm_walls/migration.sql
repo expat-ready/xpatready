@@ -19,7 +19,8 @@
 
 -- Roles are the cluster's; databases on it may run this at once (isolated copies, CI packs), so each statement is retried
 -- on "tuple concurrently updated" and a role already made (another run, CS-W1 for xr_case_lookup) counts as done. The reader
--- holds the migration role's rights by membership (owner-only helpers such as money_take_number keep their access lists).
+-- holds the migration role's rights by membership on a superuser cluster, and those rights themselves for a non-superuser
+-- migration role (owner-only helpers such as money_take_number keep their access lists).
 -- PF-8b F4 (RDS): the migration role may be a non-superuser with CREATEROLE (Amazon RDS's admin is rds_superuser, not
 -- SUPERUSER), and PostgreSQL 16+ refuses any SUPERUSER or REPLICATION clause from it, and a BYPASSRLS clause unless it
 -- holds BYPASSRLS. So each role is created with only the attributes it needs (the rest are PostgreSQL's NO defaults),
@@ -27,8 +28,23 @@
 -- NOCREATEDB NOCREATEROLE NOREPLICATION, xr_app LOGIN INHERIT NOBYPASSRLS, only xr_staff_bypass and xr_wall_reader
 -- BYPASSRLS. A target the migration role cannot reach stops the migration naming the role, never a weaker wall.
 DO $$
-DECLARE s text; n int; r record; want record; fix text;
+DECLARE s text; n int; r record; want record; fix text; held text; su boolean := (SELECT rolsuper FROM pg_roles WHERE rolname = current_user);
 BEGIN
+  -- PF-8b F5 (RDS 18.3): the reader and the migration role are members of each other in one direction only. A
+  -- non-superuser migration role must be a member of the reader (below), so a reader left over (another run, a manual
+  -- step) that already reaches the migration role through pg_auth_members would make a membership loop (0LP01). Such a
+  -- reader is dropped and made afresh when it holds nothing anywhere on the cluster; otherwise the migration stops naming it.
+  IF NOT su AND EXISTS (WITH RECURSIVE up(oid) AS (
+                          SELECT m.roleid FROM pg_auth_members m WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = 'xr_wall_reader')
+                          UNION SELECT m.roleid FROM pg_auth_members m JOIN up ON m.member = up.oid)
+                        SELECT 1 FROM up JOIN pg_roles g ON g.oid = up.oid WHERE g.rolname = current_user) THEN
+    BEGIN EXECUTE 'DROP ROLE xr_wall_reader';
+    EXCEPTION WHEN insufficient_privilege OR dependent_objects_still_exist THEN
+      GET STACKED DIAGNOSTICS held = PG_EXCEPTION_DETAIL;   -- what holds the reader (break m2)
+      RAISE EXCEPTION 'PF-12 stopped: role xr_wall_reader is a member of role % and cannot be made afresh (%; %)', current_user, SQLERRM, coalesce(nullif(held, ''), 'no detail')
+        USING ERRCODE = 'insufficient_privilege', HINT = format('A role with ADMIN OPTION on %I (a superuser, or on RDS the admin that made the grant) runs REVOKE %I FROM xr_wall_reader once; the reader must not hold the migration role.', current_user, current_user);
+    END;
+  END IF;
   FOR want IN SELECT * FROM (VALUES
       ('xr_data', false, false), ('xr_app', true, false), ('xr_staff_bypass', false, true),
       ('xr_wall_reader', false, true), ('xr_case_lookup', false, false)) AS w(name, login, bypass) LOOP
@@ -80,8 +96,9 @@ BEGIN
       EXIT;
     END; END LOOP;
   END IF;
-  -- The reader holds the migration role's rights by membership. A non-superuser has no ADMIN OPTION on its own role
-  -- (PostgreSQL 16+), so where that grant is refused (RDS) the reader gets the part of the owner's rights its functions use
+  -- On a superuser cluster the reader holds the migration role's rights by membership. A non-superuser migration role
+  -- never makes that grant (PF-8b F5: vanilla PostgreSQL 16+ refuses it, RDS 18.3 accepts it and the grant to the
+  -- migration role below would then loop), so the reader gets the part of the owner's rights its functions use
   -- instead, now and (default privileges) for every later object: EXECUTE on the functions, and SELECT, INSERT, UPDATE,
   -- DELETE on every table and USAGE, SELECT on sequences in public. Not xr_data's rights alone: later migrations take
   -- rights away from xr_data on tables reader functions write (pf15's limit tables). Never ownership (no ALTER, DROP,
@@ -91,7 +108,18 @@ BEGIN
     'GRANT xr_data TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user),
     'GRANT xr_staff_bypass TO xr_app WITH INHERIT FALSE, SET TRUE'] LOOP
     n := 0; LOOP
-      BEGIN EXECUTE s; EXIT;
+      BEGIN
+        -- PF-8b F5: the reader joins the migration role only where the migration role needs no membership in the reader
+        -- (a superuser) and is in no way a member of it already (pg_auth_members); a non-superuser (RDS 18.3 accepts this
+        -- grant from its admin) takes the rights instead, so the grant below the loop never goes the other way too.
+        IF s = format('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user)
+           AND (NOT su OR EXISTS (WITH RECURSIVE up(oid) AS (
+                                    SELECT m.roleid FROM pg_auth_members m WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+                                    UNION SELECT m.roleid FROM pg_auth_members m JOIN up ON m.member = up.oid)
+                                  SELECT 1 FROM up JOIN pg_roles g ON g.oid = up.oid WHERE g.rolname = 'xr_wall_reader')) THEN
+          RAISE insufficient_privilege USING MESSAGE = 'PF-12: the reader takes the migration role''s rights, not its membership';
+        END IF;
+        EXECUTE s; EXIT;
       EXCEPTION WHEN duplicate_object THEN EXIT;
         WHEN internal_error OR unique_violation THEN n := n + 1; IF n > 200 THEN RAISE; END IF; PERFORM pg_sleep(0.02 + random() * 0.1);
         WHEN insufficient_privilege THEN
@@ -109,7 +137,15 @@ BEGIN
   -- migrations that replace a reader-owned function need it to count as that owner: a superuser does both; a non-superuser
   -- that created the reader holds ADMIN OPTION but no membership (PostgreSQL 16+), so it grants itself membership. The
   -- migration role is the database's admin already; role attributes (BYPASSRLS) are never inherited.
+  -- PF-8b F5: never while the reader reaches the migration role (pg_auth_members): that grant would make a loop.
   IF NOT (pg_has_role(current_user, 'xr_wall_reader', 'SET') AND pg_has_role(current_user, 'xr_wall_reader', 'USAGE')) THEN
+    IF EXISTS (WITH RECURSIVE up(oid) AS (
+                 SELECT m.roleid FROM pg_auth_members m WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = 'xr_wall_reader')
+                 UNION SELECT m.roleid FROM pg_auth_members m JOIN up ON m.member = up.oid)
+               SELECT 1 FROM up JOIN pg_roles g ON g.oid = up.oid WHERE g.rolname = current_user) THEN
+      RAISE EXCEPTION 'PF-12 stopped: role xr_wall_reader is a member of role %, which must be a member of the reader', current_user
+        USING ERRCODE = 'insufficient_privilege', HINT = format('A role with ADMIN OPTION on %I (a superuser, or on RDS the admin that made the grant) runs REVOKE %I FROM xr_wall_reader once.', current_user, current_user);
+    END IF;
     EXECUTE format('GRANT xr_wall_reader TO %I WITH INHERIT TRUE, SET TRUE', current_user);
   END IF;
   -- …and the new owner to hold CREATE on the function's schema (a superuser skips that check). For a non-superuser
