@@ -145,12 +145,19 @@ try {
   await c.locator("[data-person]").selectOption({ index: 1 });
   await c.locator("[data-type]").selectOption({ label: "Free consultation" });
   await c.locator("[data-host]").selectOption({ label: "Client C (you)" });
+  // A day at least two days ahead, so the 24-hour reminder has a time to be queued for (FO-3c queues none inside it).
+  const dayPick = c.locator("[data-slot-day]");
+  await dayPick.waitFor({ timeout: 15_000 });
+  const days = await dayPick.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+  const ahead = days.find((d) => d >= plus(ymd(new Date()), 2));
+  if (ahead) await dayPick.selectOption(ahead);
   const slot = c.locator("[data-time-chooser] button[aria-pressed]").first();
   await slot.waitFor({ timeout: 15_000 }); await slot.click();
   await c.locator("[data-book]").click(); await c.locator("[data-book]").waitFor({ state: "detached", timeout: 15_000 });
   const said = await c.locator("[data-saved]").innerText().catch(() => "");
   const b1 = await db.foBooking.findFirst({ where: { firmId: M.id, staffId: C.id, personId: P.id }, orderBy: { createdAt: "desc" } });
-  ok("J-104 W1: Client C signs in on screen, opens Home › Bookings calendar and books Client P with New booking: \"Booked\", stored once", said.startsWith("Booked Client P Sample") && !!b1, { said });
+  ok("J-104 W1: Client C signs in on screen, opens Home › Bookings calendar and books Client P with New booking, on a day at least two days ahead: \"Booked\", stored once",
+    said.startsWith("Booked Client P Sample") && !!b1 && b1.startsAt.getTime() - Date.now() > DAY + HOUR, { said, ahead });
   if (!b1) throw new Error("no booking was made; the walk cannot go on");
   ok("J-104 W2 setup: no consultation agreement existed before the booking (a fresh copy)", before === 0);
   let sent = 0; for (let i = 0; i < 40 && !sent; i++) { await wait(500); sent = await agreementsOf(b1.id); }
@@ -204,8 +211,12 @@ try {
   const rec = await api(tc, "PUT", `/front-office/bookings/${b3.id}/consult-record`, RECORD);
   const still = (await db.foBooking.findUniqueOrThrow({ where: { id: b3.id } })).status;
   const forAgreement = (r: { status: number; body: unknown }) => r.status >= 400 && r.status < 500 && /agreement/i.test(JSON.stringify(r.body));
-  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer and a valid consult record are each refused for the agreement (the refusal names it); nothing changes",
-    !!s3?.sent && forAgreement(att) && forAgreement(rec) && still === "SCHEDULED", { sent: !!s3?.sent, attendance: [att.status, att.body?.detail], record: [rec.status, rec.body?.detail], still });
+  // The record opens only once Attended is saved (main's consult/service.ts: 409 NOT_ATTENDED), so with Attended refused
+  // that answer is the record's honest refusal; an agreement reason is accepted too.
+  const recRefused = forAgreement(rec) || (rec.status === 409 && rec.body?.code === "NOT_ATTENDED");
+  const records3 = await db.foConsultRecord.count({ where: { firmId: M.id, bookingId: b3.id } });
+  ok("J-104 W4 (API): with its agreement unsigned, the attendance answer is refused for the agreement (the refusal names it) and a valid consult record is refused (the agreement, or not attended); the booking stays Scheduled and no record is stored",
+    !!s3?.sent && forAgreement(att) && recRefused && still === "SCHEDULED" && records3 === 0, { sent: !!s3?.sent, attendance: [att.status, att.body?.detail], record: [rec.status, rec.body?.code ?? rec.body?.detail], still, records3 });
   // W4b: the type that does not need it (fails on the fake for "whose type needs it").
   const b5 = await book(new Date(Math.floor((Date.now() - 190 * MIN) / (30 * MIN)) * 30 * MIN), followUp.id);
   const s5 = svc ? await svc.onBookingEvent(eventOf(b5)) : null;
