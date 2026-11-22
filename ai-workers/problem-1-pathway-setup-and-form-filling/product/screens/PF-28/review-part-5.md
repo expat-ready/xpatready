@@ -62,3 +62,20 @@ None.
 **Verdict: Approve** (no open Blocker or Major). m1 and m2 are Should items: fix them here or in a follow-up, at the builder's choice.
 
 Reviewer: Approve 9e04ee71c4f9aafa0a3b90ddcec2f22ee3d0326d
+
+## Round 2 (head 7663cec51a6de80854acef7c06fb7e1956b505f8; diff only)
+Read: `git diff 9e04ee71c..7663cec51 -- '*retainers/service.ts' '*check_pf28_inputs.ts'` (+10 −1). The other two files in that range are my round-1 records. I checked the two fixes by calling `FileLinkBody` through `parseInput`, and `feesOf` directly, from a throwaway script (deleted). I did not start a copy and did not re-run the builder's suites.
+- **m1 closed (`service.ts:82`).** The `version` refusals for `true`, `1.5`, `null` and `{}` all read "A version number.". `"1"` and `2` still pass, and a 13-character string keeps the length words.
+- **m2 closed (`service.ts:129-136`).**
+  - Unknown keys are refused and named: `junk` gives 422 `fees[0].junk` "This field is not allowed here.". On a second row, `amount` gives `fees[1].amount`.
+  - A 100-character key is named cut to 40. A `__proto__` key inside a row is refused and named `fees[0].__proto__`; the field name is the prefixed text, so nothing is polluted. A list as a row gives `fees[0].0`.
+  - A string or null row still gives the label's own words. A good row with `dueOn` still passes.
+  - The only callers are the three `feesOf` calls in the service. The web sends the four keys (`retainer-page.tsx:79`), and every test or journey fee row sent to these doors uses only label, amountMinor, when and dueOn (grep). The other `fees: [{line, amount…}]` objects in tests are case-side readiness data, not this door.
+- **The new case (`check_pf28_inputs.ts:246-249`) would fail with either fix removed.** Without the fee check, the random prospect answers 404, not 422. Without the message, the answer is "Invalid input".
+- **No new finding.** n1 (`input.ts:40`, "a object") stays with the owner of the shared rule.
+
+**Journey score:** 9/10 stands. The m1 fix improves the plain words of one API answer, but n1 keeps that criterion at ½.
+
+**Verdict: Approve** (no open Blocker or Major; m1 and m2 closed).
+
+Reviewer: Approve 7663cec51a6de80854acef7c06fb7e1956b505f8
