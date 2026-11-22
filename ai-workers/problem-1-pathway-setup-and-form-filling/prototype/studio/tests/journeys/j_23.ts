@@ -139,7 +139,7 @@ try {
   const form = p.locator("[data-branding-form]"), hasForm = await seen(form, 20_000);
   await shot(p, "w1-branding-1440");
   ok("J-23 W1: the Branding page opens with its form (logo, brand colour, sender name, favicon, banner)",
-    hasForm && await seen(p.locator('[data-image-input="logo"]'), 2_000) && await seen(p.locator('[data-image-input="favicon"]'), 2_000) && await seen(p.locator('[data-image-input="banner"]'), 2_000) && await seen(p.locator("[data-colour-text]"), 2_000) && await seen(p.locator("[data-sender-name]"), 2_000), { url: p.url() });
+    hasForm && (await p.locator('[data-image-field="logo"], [data-image-field="favicon"], [data-image-field="banner"]').count()) === 3 && await seen(p.locator("[data-colour-text]"), 2_000) && await seen(p.locator("[data-sender-name]"), 2_000), { url: p.url() });
 
   // ---------------------------------------------------------------------------------------------- W3 refusals on the field
   const read3 = await read(), before3 = JSON.stringify(read3), audits3 = await audits();
