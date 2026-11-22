@@ -12,6 +12,7 @@ for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" 
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
+# Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
@@ -223,6 +224,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 36 group|../../.github/workflows/module-cards.yml|/^  group: module-cards-/d|check-pr-concurrency.sh
 36 comment|../../.github/workflows/review-rounds.yml|s/github.event.issue.number .. //|check-pr-concurrency.sh
 36 deadlock|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: review-rounds-${{ github.event.pull_request.number }}\njobs:/|check-pr-concurrency.sh
+36 wfname|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: ${{ github.workflow }}-${{ github.event.issue.number }}\njobs:/|check-pr-concurrency.sh
 36 kind|../../.github/workflows/ci.yml|/^  kind:$/,/^    if:/{/^    if:/d}|check-pr-concurrency.sh
 36 batchcancel|../../.github/workflows/guards.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
 36 rerun|product/tools/queue-gate.sh|s/^    \[ "\$now" = "\$head" \] .. {.*/    true/|check-queue-gate.sh
