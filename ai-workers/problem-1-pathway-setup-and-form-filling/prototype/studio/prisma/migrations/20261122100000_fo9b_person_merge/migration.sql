@@ -62,11 +62,12 @@ CREATE INDEX "fo_dup_merge_firm_id_loser_id_idx" ON "fo_dup_merge"("firm_id", "l
 -- so both are set again and the wall reader owns it (as 20261121110000_fo3a1e_firm_timings does).
 CREATE OR REPLACE FUNCTION fo_sales_insert_only() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF TG_TABLE_NAME = 'fo_note' AND TG_OP = 'UPDATE' AND current_setting('fo_dup.merging', true) = 'on'
-     AND NEW."person_id" IS DISTINCT FROM OLD."person_id"
-     AND (NEW."id", NEW."firm_id", NEW."lead_id", NEW."prospect_id", NEW."visibility", NEW."text", NEW."by_actor", NEW."created_at")
-         IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."lead_id", OLD."prospect_id", OLD."visibility", OLD."text", OLD."by_actor", OLD."created_at") THEN
-    RETURN NEW;   -- FO-9b: a merge (or its Undo) moves a note to the other person record, nothing else
+  IF TG_TABLE_NAME = 'fo_note' AND TG_OP = 'UPDATE' THEN   -- nested: only fo_note's row has these fields
+    IF current_setting('fo_dup.merging', true) = 'on' AND NEW."person_id" IS DISTINCT FROM OLD."person_id"
+       AND (NEW."id", NEW."firm_id", NEW."lead_id", NEW."prospect_id", NEW."visibility", NEW."text", NEW."by_actor", NEW."created_at")
+           IS NOT DISTINCT FROM (OLD."id", OLD."firm_id", OLD."lead_id", OLD."prospect_id", OLD."visibility", OLD."text", OLD."by_actor", OLD."created_at") THEN
+      RETURN NEW;   -- FO-9b: a merge (or its Undo) moves a note to the other person record, nothing else
+    END IF;
   END IF;
   RAISE EXCEPTION '%: rows are written once, never changed or removed (% refused)', TG_TABLE_NAME, TG_OP USING ERRCODE = 'insufficient_privilege';
 END $$;

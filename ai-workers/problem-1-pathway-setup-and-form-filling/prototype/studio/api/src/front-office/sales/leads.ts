@@ -16,6 +16,7 @@ import { openMinutesIn, openWindows } from "./open-minutes.ts";
 import { dayRange, ownerAsked } from "./prospects.ts";
 import { SALES_PORTS, type SalesPorts } from "./public.ts";
 import { leadsSeenWhere, sourcesChecked, sourcesSeen } from "./source-filter.ts";
+import { livePersonId } from "../duplicates/merge/follow.ts";
 
 export const VIEWS = ["unassigned", "mine", "all", "closed"] as const;
 type View = (typeof VIEWS)[number];
@@ -148,7 +149,8 @@ export class Leads {
     const activeOf = (o: string | null) => (o && staff.get(o)?.status === "ACTIVE" ? o : null);
     if (existingPersonId) {
       // Only a person the adder may see (review M2, AG-2-4 rule 6): one of their leads is visible to the adder.
-      const theirs = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: existingPersonId }), select: { ownerStaffId: true } });
+      const live = (await livePersonId(this.db, ctx.firmId, existingPersonId)) ?? notFound("person");   // FO-9b M3: a merged-away id → its survivor
+      const theirs = await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: live }), select: { ownerStaffId: true } });
       if (!theirs.some((l) => sees(vis, ctx, activeOf(l.ownerStaffId)))) return notFound("person");
     } else {
       if (!person.email && !person.phone) unprocessable("Add an email or a phone number.", { email: "Add an email or a phone number." });
