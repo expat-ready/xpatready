@@ -87,6 +87,17 @@ async function find(p: Page, text: string) {
   await p.waitForTimeout(150);
 }
 const live = (p: Page) => p.locator("[data-find-live]").innerText();
+/** "/" as a person uses it: press it, see the box take the focus, then type. Right after a page opens, a "/" pressed in the same
+ *  instant as its heading can be lost (merge batch for #3037, shard 22, 22 Nov: the box stayed empty and focus on the page,
+ *  then the wait for "result" timed out; reproduced locally about 1 run in 8 on main 5dd56f9e7). So the walk waits for the
+ *  box to have the focus, presses "/" once more if it did not, and fails loudly if the box never takes it. */
+async function slash(p: Page) {
+  const focused = () => p.waitForFunction(() => document.activeElement?.hasAttribute("data-find-input") === true, undefined, { timeout: 3_000 }).then(() => true, () => false);
+  await p.keyboard.press("/");
+  if (await focused()) return;
+  await p.keyboard.press("/");
+  if (!(await focused())) throw new Error('"/" pressed twice and the find box never took the focus');
+}
 
 try {
   const { p: o, asks } = await pageAs(tok.O);
@@ -192,7 +203,7 @@ try {
   // Two people named Kit<run> so the second row can be chosen with the keyboard.
   const k1 = await call(tok.O, "leads", { requestId: randomUUID(), givenNames: `Kit${run}`, familyName: "Alder", email: `kit.a.${run}@example.org`, source: "Phone call", confirmedNew: true });
   const k2 = await call(tok.O, "leads", { requestId: randomUUID(), givenNames: `Kit${run}`, familyName: "Birch", email: `kit.b.${run}@example.org`, source: "Phone call", confirmedNew: true });
-  await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
+  await slash(o); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   const firstMarked = (await hits(o).first().getAttribute("aria-selected")) === "true";
   await o.keyboard.press("ArrowDown");
@@ -206,7 +217,7 @@ try {
   const want = secondTitle.includes("Birch") ? k2.body?.id : k1.body?.id;
   ok("PF-30s F9 pass: Enter opens the marked row, not the first", openedId === want, { openedId, want, secondTitle });
   await o.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 30_000 }); await box(o).waitFor({ timeout: 30_000 });
-  await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
+  await slash(o); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   await o.keyboard.press("Escape");
   ok("PF-30s F9 fail: the first Escape closes the list and keeps the text", (await o.locator("[data-find-popup]").count()) === 0 && (await box(o).inputValue()) === `Kit${run}` && (await box(o).getAttribute("aria-expanded")) === "false");
