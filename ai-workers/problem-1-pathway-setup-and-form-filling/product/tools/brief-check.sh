@@ -35,6 +35,11 @@ if [ "${1:-}" = --brief ] && { [ "$row" = 1 ] || printf '%s\n' "$txt" | grep -qE
     wave=$(python3 -I "$(dirname "$0")/waves.py" allow $(printf '%s' "$item" | tr ',' ' ') 2>&1) && wave="" || wave=${wave:-"OUTSIDE WAVE: waves.py could not run, so the item was not checked."}
   else bad="$bad an \"Item:\" line that is neither R1 items (\"Item: R1.4, R1.8\") nor \"none (tooling|qa|records)\" (got: $item);"; fi
 fi
+# P-801 (founder 14:4x and 15:1x IST 22 Nov; ENF-798): a brief stating a domain value needs a "Source:" line, and any
+# "Question for the founder" a "Sources checked:" line (source-check.py). Fails closed: a check that cannot run refuses.
+src=$(printf '%s\n' "$txt" | python3 -I "$(dirname "$0")/source-check.py" ${1:-} 2>&1); rc=$?
+if [ "$rc" = 1 ] && [ -n "$src" ]; then bad="$bad $src"
+elif [ "$rc" != 0 ]; then bad="$bad the P-801 source check could not run (exit $rc: ${src:0:80});"; fi
 [ -z "$bad$wave" ] && exit 0
 [ -n "$bad" ] && echo "MISSING:${bad%;}."
 [ -n "$wave" ] && echo "$wave"

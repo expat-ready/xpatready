@@ -2,7 +2,7 @@
 # The "needs Lead" queue read for lead-watch (P-611 (2), row G-1). Reads comments whose first line is
 #   LANE-REPORT: <ready|blocked|question|approval> <item-id>
 # on open PRs updated in the window and on the records PR (LEAD_QUEUE_PR, default 1796), adds missing ones to
-# product/state/items.json (tools/items.py ingest), then prints ACT for open un-acked items over 45 min and FOUNDER over 90.
+# product/state/items.json (tools/items.py ingest), then prints ACT for open un-acked items over 10 min (P-798; was 45) and FOUNDER over 90.
 # Exit = number of ACT lines; a queue that cannot be read or written is an ACT too, never a quiet queue. Writes
 # items.json only; the Lead commits it with the records (P-557). The look-back is 24 h by default, not the check
 # window: ingest is idempotent, and a missed check or a hand-over gap must not drop a report (G-1 review).
@@ -28,7 +28,7 @@ while True:
 print(json.dumps(out))' "$tmp" > "$tmp.in" 2>&1 || { bad=1; head -3 "$tmp.in"; echo '[]' > "$tmp.in"; }
 ing=$(python3 -I "$TOOLS/items.py" ingest --since "$since" < "$tmp.in" 2>&1) || bad=1; rm -f "$tmp.in"
 echo "$ing" | sed 's/^/queue /'
-out=$(python3 -I "$TOOLS/items.py" watch --act "${LEAD_QUEUE_ACT:-45}" --founder "${LEAD_QUEUE_FOUNDER:-90}" 2>&1); rc=$?
+out=$(python3 -I "$TOOLS/items.py" watch --act "${LEAD_QUEUE_ACT:-10}" --founder "${LEAD_QUEUE_FOUNDER:-90}" 2>&1); rc=$?
 [ -n "$out" ] && echo "$out"; n=$(grep -c '^ACT' <<<"$out")
 [ "$rc" = "$n" ] || bad=1   # a crash also exits 1: only an exit equal to the ACT count is a clean read
 [ "$bad" = 1 ] && { echo "ACT   queue: a PR or items.json could not be read (lines above); the needs-Lead queue may be missing reports: fix it, run again"; n=$((n + 1)); }

@@ -13,7 +13,8 @@
 # Overrides (tests): LL_WORKTREES (newline list of paths), LL_PROJECTS (transcripts root), LL_NOW (epoch),
 #   LL_MERGES_SINCE (command printing merges on main since epoch $1).
 set -uo pipefail
-IDLE_MIN="${IDLE_MIN:-45}"; ACTIVE_H="${ACTIVE_H:-6}"
+# P-798 (22 Nov): a lane that ended its turn is acted on at the next 10-minute check (IDLE_MIN was 45).
+IDLE_MIN="${IDLE_MIN:-10}"; ACTIVE_H="${ACTIVE_H:-6}"
 NOW="${LL_NOW:-$(date +%s)}"
 PROJ="${LL_PROJECTS:-$HOME/.claude/projects}"
 if [ -n "${LL_WORKTREES+x}" ]; then wts="$LL_WORKTREES"
