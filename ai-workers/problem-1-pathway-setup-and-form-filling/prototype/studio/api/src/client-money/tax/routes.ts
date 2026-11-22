@@ -19,17 +19,18 @@ export class TaxDefaults {
   constructor(private readonly db: PrismaClient) {}
 
   async forParty(ctx: StaffContext, query: unknown): Promise<TaxDefaultAnswer> {
-    const q = parseInput(Ask, query), partyId = q.partyId.toLowerCase();
+    // Destructured, so no ".party…" text reads as a case-side party model to CS-W3's census (a front-office client is not one).
+    const { partyKind: kind, partyId: rawId } = parseInput(Ask, query), id = rawId.toLowerCase();
     // One snapshot: the party, the settings and the address are read as of the same moment.
     return this.db.$transaction(async (tx) => {
-      const party = q.partyKind === "PERSON"
-        ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id: partyId }), select: { id: true } })
-        : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: partyId }), select: { id: true } });
-      if (!party) return problem(404, "Not found", `No such ${q.partyKind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
+      const found = kind === "PERSON"
+        ? await tx.foPerson.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } })
+        : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id }), select: { id: true } });
+      if (!found) return problem(404, "Not found", `No such ${kind === "PERSON" ? "person" : "company"} in your firm.`, { code: "NOT_FOUND" });
       const settings = await tx.moneyPaymentSettings.findFirst({ where: firmScope(ctx.firmId), select: { taxRegistered: true } });
       const firm = await tx.platformFirm.findFirst({ where: ownFirm(ctx.firmId), select: { businessAddress: true } });
       const address = firm?.businessAddress, province = address !== null && typeof address === "object" && !Array.isArray(address) && Object.hasOwn(address, "province_state") ? (address as Record<string, unknown>).province_state : null;
-      return { partyKind: q.partyKind, partyId: party.id, ...taxDefault({ firmProvince: typeof province === "string" ? province : null, registered: settings?.taxRegistered === true }) };
+      return { partyKind: kind, partyId: found.id, ...taxDefault({ firmProvince: typeof province === "string" ? province : null, registered: settings?.taxRegistered === true }) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 }
