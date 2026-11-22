@@ -184,7 +184,7 @@ try {
   const onCancelledLate = await go("POST", `/${c.OWNER}/attendance`, P.OWNER, { outcome: "COMPLETED" });
   ok("FO-3sr DW5 fail: on a cancelled booking → 409 (its not-active answer once it has started)", onCancelled.status === 409 && onCancelledLate.status === 409 && /not-active/.test(JSON.stringify(onCancelledLate.body)) && await statusOf(c.OWNER) === "CANCELLED", [onCancelled, onCancelledLate]);
   const badOutcome = await go("POST", `/${oMon.id}/attendance`, P.OWNER, { outcome: "MAYBE" });
-  ok("FO-3sr DW5 fail: an outcome that is not COMPLETED or NO_SHOW → 400", badOutcome.status === 400 && await statusOf(oMon.id) === "SCHEDULED", badOutcome);
+  ok("FO-3sr DW5 fail: an outcome that is not COMPLETED or NO_SHOW → 422", badOutcome.status === 422 && await statusOf(oMon.id) === "SCHEDULED", badOutcome);
 
   // ---------------------------------------------------------------------------------------------- W1: the journey
   const w1 = await make(TO.id, "2026-10-28 14:00", P.CASE_OFFICER), w2 = await make(TO.id, "2026-10-29 14:00", P.CASE_OFFICER);

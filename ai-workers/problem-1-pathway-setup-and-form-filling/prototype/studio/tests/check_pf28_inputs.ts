@@ -62,10 +62,19 @@ export function inputs(dir: string): CodeInput[] {
   return codeRoutes(dir).filter((r) => DOORS.test(r.path)).flatMap((r) => r.inputs.filter((i) => i.kind !== "param")
     .map((i) => ({ key: `${r.file} ${r.verb} ${r.path} ${i.kind}${i.key ? `(${i.key})` : ""}`, parsedAt: follows(dir, r.controller, r.node, i.name) })));
 }
-/** The Stripe door (amendment 1) keeps its raw body: its signature is checked first and its schema after, so DW6 below
- *  judges it over HTTP (signature and schema, each a pass and a fail) rather than the static follower, which never reads
- *  a raw body off @Req() as parsed. Only this one door: any other webhook route is judged like every door (review r15-1). */
-const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body"]);
+/** The signed webhook doors (amendment 1) keep their raw body: the signature is checked first and the schema after, so the
+ *  static follower, which never reads a raw body as parsed, does not judge them; each has its named signature-and-schema
+ *  check instead. Only these two (review r15-1; the tech lead's ask, Lead 4 16:02 IST 22 Nov, done in #3039): Stripe's, judged over HTTP by DW6
+ *  below; SNS's (SES notices, text/plain read off the request), judged by tests/check_pf19b2_ses.ts "PF-28 fail: a signed
+ *  notice whose envelope breaks the schema" (its schema `SnsNotice` runs through parseInput after the signature); the
+ *  "PF-28 HOOK" check below ties that exemption to its proof (review m1 on #3039). */
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body",
+  "client-money/card/routes.ts POST /api/hooks/stripe-connect body"]);   // FO-7c part 1 (Lead B on #2938): its signature and schema pairs over HTTP are in check_fo7c_card_payments.ts
+// Review m1 (#3039): the SNS exemption holds only while its proof does: the door parses SnsNotice after verify, and the
+// named case in check_pf19b2_ses.ts exists (a deleted or renamed case fails here).
+{ const b = readFileSync(join(API, "platform/messages/channels/email/bounces.ts"), "utf8"), v = b.indexOf("await this.verify(n);"), p = b.indexOf("parseInput(SnsNotice, n)");
+  const ses = readFileSync(join(import.meta.dirname, "check_pf19b2_ses.ts"), "utf8");
+  ok("PF-28 HOOK pass: the SNS door parses SnsNotice after its signature, and check_pf19b2_ses keeps the case that proves it", v > 0 && p > v && ses.includes("PF-28 fail: a signed notice whose envelope breaks the schema") && ses.includes("PF-28 pass: AWS's documented"), { v, p }); }
 const found = inputs(API), unparsed = found.filter((x) => !x.parsedAt && !HOOK.has(x.key)).map((x) => x.key);
 console.log(`code: ${found.length} inputs under the PF/FO doors, ${unparsed.length} reach no zod parse (allow-listed: ${Object.keys(allow.unparsed).length})`);
 const jc = judge(unparsed, found.map((x) => x.key), { ...allow.unparsed, ...allow.exceptions?.unparsed });
@@ -105,7 +114,7 @@ ok("PF-28 DW7 pass: every allow-list entry names its fix part (PF-28 part 2-6, b
 ok("PF-28 DW7 pass (part 2c): every by-design exception carries its written reason (at least 40 characters)", unreasoned(allow).length === 0, unreasoned(allow));
 ok("PF-28 DW7 fail (part 2c): an exception without a reason, or with a fix part instead, fails", unreasoned({ unparsed: {}, probes: {}, exceptions: { probes: { "GET /api/platform/x query-unknown": "PF-28 part 2 (platform)", "GET /api/platform/y query-unknown": "By design (awaiting the tech lead): short" } } }).length === 2);
 /** The list only shrinks (review m1): its size as committed in part 1; a fix part lowers these numbers, never raises them. */
-const PROBES_CEILING = 154, UNPARSED_CEILING = 44, EXCEPTIONS_CEILING = 9;   // re-based at the merge of main after part 2a (#2787): part 1 as merged added 6 probe lines for part 4 (#2750's booking timings; their 2 code lines leave, the extends follow sees their parse) and part 2a's callback "missing" line moved to the exceptions; earlier: part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both 161: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4) part 6 (money: draft invoices and their lines, #2883) 154 (161 at the merge of main after DEMO-LINK, less part 6's 7)
+const PROBES_CEILING = 23, UNPARSED_CEILING = 8, EXCEPTIONS_CEILING = 17;   // the SNS body (part 2's last code line) leaves: its schema runs after the signature, judged by check_pf19b2_ses (9 → 8); earlier: part 4 (booking), merged after parts 3a-3b: its 70 probe lines leave (93 → 23), two by-design lines join the exceptions (the cancel by link and the consult record take {} as a valid body; 15 → 17, awaiting the tech lead); earlier: part 3b (the rest of front-office sales) lowers them to 93 and 9 and moves to the exceptions "confirm missing" ({} confirms a check whose result is set) and the public form's 4 probe lines (the sweep has no live form; check_fo4_sales_browser and check_fo2_leads_prospects prove the door): 10 → 15; part 3a (sales/routes.ts: leads, prospects, calls, notes, web-form settings) lowers them from 161 and 44 to 131 and 24 (124 with part 6's 7 lines gone, #2883), and moves "convert missing" to the exceptions ({} is a valid Convert: 9 → 10); re-based at the merge of main after part 2a (#2787): part 1 as merged added 6 probe lines for part 4 (#2750's booking timings; their 2 code lines leave, the extends follow sees their parse) and part 2a's callback "missing" line moved to the exceptions; earlier: part 1 committed 238 and 81; part 2a (identity doors) 207 and 71; part 2b (platform settings, complaints, logs) 171 and 61; part 2c (sign-up; 9 by-design lines moved to exceptions; the code follower now follows `extends`, so 15 booking inputs a parent class already parsed leave; the SNS body stays a part-2 fix, review M2) 157 and 44; the exceptions are pinned at 8 (review m1); each fix part lowers both 161: DEMO-LINK (#2687) seeds a Sample type, so the two public booking doors are reached (their 'unreached' entries go; their probes stay listed for part 4)
 const excepted = Object.keys(allow.exceptions?.unparsed ?? {}).length + Object.keys(allow.exceptions?.probes ?? {}).length;
 ok("PF-28 DW7 fail: the allow-list never grows past its committed size (the by-design exceptions included)", Object.keys(allow.unparsed).length <= UNPARSED_CEILING && Object.keys(allow.probes).length <= PROBES_CEILING && excepted <= EXCEPTIONS_CEILING, { unparsed: Object.keys(allow.unparsed).length, probes: Object.keys(allow.probes).length, exceptions: excepted });
 ok("PF-28 DW7 fail: an entry added without its fix part (or with another row's id) fails", unnamed({ unparsed: { "x.ts POST /api/platform/x body": "" }, probes: { "POST /api/platform/x unknown": "PF-5 part 3" } }).length === 2);
@@ -205,7 +214,11 @@ const SAMPLE = "(select id from platform_firm where key = 'sample-firm')";
 const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo",   // :kind: the public branding image door's enum (logo, favicon, banner)
   ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = ${SAMPLE} and active and show_on_booking_page and deleted_at is null`) };
 if (all.some((d) => d.path.startsWith("/api/public/forms/:token"))) REAL[":formToken"] = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = ${SAMPLE}`);
-const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p);
+// PF-28 part 4: a booking link's token in its own shape (<selector uuid>.<43-character verifier>) that no booking has.
+// The doors check the shape (else the one not-found), then read the body or query, then look the link up, so a body probe
+// here must be a field error: a door that looked the link up first would answer 404 and fail (the rule's M1 holds).
+REAL[":linkToken"] = `${randomUUID()}.${"A".repeat(43)}`;
+const keyOf = (path: string, p: string) => (p === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : p === ":token" && path.startsWith("/api/public/bookings/") ? ":linkToken" : p);
 const isKey = (path: string, p: string) => keyOf(path, p) in REAL || (path.startsWith("/api/public/") && p !== ":id");
 const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[keyOf(path, m)] || randomUUID()));
 /** Whether a 404 may stand for "this random record does not exist": only when some path value is a random id. */
@@ -239,8 +252,10 @@ ok("PF-28 (b) pass: the PF/FO tables' row counts are unchanged after every probe
 // DW2: a route that parses strictly refuses an unknown field with 422 naming it, and stores nothing.
 const s1 = answers.get("POST /api/platform/complaints/:id/handler unknown");
 ok("PF-28 DW2 pass: POST /api/platform/complaints/:id/handler (a strict schema, found by the sweep) refuses an unknown field with 422 naming it; the row counts above show nothing stored", s1?.status === FIELD_ERROR_STATUS && fine("unknown", false, s1) && changed.length === 0, s1);
-const off = answers.get("POST /api/front-office/conflict-checks unknown");
-ok("PF-28 DW2 fail: POST /api/front-office/conflict-checks answers its own 400 today (the field not named), so its probe is on the allow-list for part 3", off !== undefined && !fine("unknown", false, off) && allow.probes["POST /api/front-office/conflict-checks unknown"] === "PF-28 part 3 (front-office sales)", off);
+// The fail case names no route (part 3b): parts 4-6 fix theirs in parallel, so it takes the first listed route that still
+// answers an unknown field loosely; once every part is in, none is left and the case says so.
+const offKey = Object.keys(allow.probes).find((k) => k.endsWith(" unknown") && answers.has(k) && !fine("unknown", false, answers.get(k)!)), off = offKey ? answers.get(offKey) : undefined;
+ok(`PF-28 DW2 fail: ${offKey ?? "no route"} still parses loosely (the field not named), so its probe is on the allow-list with its fix part`, offKey === undefined || FIX_PART.test(allow.probes[offKey]), { offKey, off });
 
 // PF-28 part 2c (sign-up): field errors are 422 with each field named in the page's own plain words; a verify body that
 // is not { token, code } is 422 by its shape alone.
@@ -265,6 +280,28 @@ ok("PF-28 part 2b fail: a misspelt query key on the complaints list (vew) → 42
 const keep = await call("PUT", "/api/platform/keep-periods/closed-client-files", { token: tR, body: JSON.stringify({ years: "seven" }) });
 const ack = await call("POST", "/api/platform/complaints/not-a-uuid/acknowledge", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
 ok("PF-28 part 2b fail: keep period years as text → 422 naming years, nothing saved; a malformed complaint id → 404 before the body", keep.status === FIELD_ERROR_STATUS && Object.hasOwn((keep.body?.fields as object) ?? {}, "years") && ack.status === 404, [keep.body?.fields, ack.status]);
+
+// PF-28 part 4 (booking): field errors are 422 with each field named (the booking pages keep their `issues` lines); a path
+// value is checked before the body, and the body before the record is looked up.
+const bookings = () => sql(`select count(*) from fo_booking`);
+const b0 = bookings();   // the public door's own probes are in the sweep above (its per-address limit is 10 in 10 minutes)
+const sb = await call("POST", "/api/front-office/bookings", { token: tR, body: JSON.stringify({ typeId: "x", persnId: randomUUID(), mode: "VIDEO", startsAt: "2030-01-07T15:00:00Z", timeZone: "America/Toronto" }) });
+ok("PF-28 part 4 fail: a staff booking with a misspelt field (persnId) and a malformed type id → 422 naming persnId, personId and typeId, its issues lines kept for the screen, nothing stored", sb.status === FIELD_ERROR_STATUS && sb.body?.code === "INVALID" && (sb.body?.fields as Record<string, string>)?.persnId === "This field is not allowed here." && (sb.body?.fields as Record<string, string>)?.personId === "This is required." && Object.hasOwn((sb.body?.fields as object) ?? {}, "typeId") && Array.isArray(sb.body?.issues) && bookings() === b0, [sb.body?.fields, b0, bookings()]);
+const badLink = await call("POST", "/api/public/bookings/not-a-link/reschedule", { body: JSON.stringify({ pf28Unknown: "x" }) });
+const badMove = await call("POST", "/api/front-office/bookings/not-a-uuid/reschedule", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+const randomHost = await call("POST", `/api/front-office/staff/${randomUUID()}/time-off`, { token: tR, body: JSON.stringify({ startsAt: "soon" }) });
+ok("PF-28 part 4 fail: a malformed booking link or booking id → 404 before the body; a well-formed unknown person's time off with a bad time → 422 naming startsAt (the body before the look-up)", badLink.status === 404 && badMove.status === 404 && randomHost.status === FIELD_ERROR_STATUS && Object.hasOwn((randomHost.body?.fields as object) ?? {}, "startsAt"), [badLink.status, badMove.status, randomHost.body?.fields]);
+// Review round 1: M1, a malformed booking id with an unknown field on the consult record → 404 (the id before the body);
+// m1, a "__proto__" key on a booking door → 422 naming it, as the one rule refuses it; m2, a list asked for over 92 days names to.
+const consultBadId = await call("PUT", "/api/front-office/bookings/not-a-uuid/consult-record", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
+const protoCancel = await call("POST", `/api/public/bookings/${REAL[":linkToken"]}/cancel`, { body: '{"__proto__":{"x":1}}' });
+const protoHours = await call("POST", "/api/front-office/me/time-off", { token: tR, body: '{"__proto__":{"x":1}}' });
+const longList = await call("GET", "/api/front-office/bookings?from=2030-01-01T00:00:00Z&to=2030-06-01T00:00:00Z", { token: tR });
+ok("PF-28 part 4 fail (review M1, m1, m2): a malformed booking id with an unknown field on the consult record → 404; a __proto__ key on a cancel by link and on time off → 422 naming __proto__; a list over 92 days → 422 naming to",
+  consultBadId.status === 404 && [protoCancel, protoHours].every((r) => r.status === FIELD_ERROR_STATUS && Object.hasOwn((r.body?.fields as object) ?? {}, "__proto__")) && longList.status === FIELD_ERROR_STATUS && Object.hasOwn((longList.body?.fields as object) ?? {}, "to"),
+  [consultBadId.status, protoCancel.status, protoCancel.body?.fields, protoHours.status, longList.body?.fields]);
+const longFeed = await call("GET", "/api/front-office/bookings/feed?from=2030-01-01T00:00:00Z&to=2030-06-01T00:00:00Z", { token: tR });
+ok("PF-28 part 4 pass: a feed asked for more than 62 days → 422 naming to (a field error, no longer 400)", longFeed.status === FIELD_ERROR_STATUS && Object.hasOwn((longFeed.body?.fields as object) ?? {}, "to"), longFeed.body);
 
 // PF-28 part 2a (identity doors: sign-in, staff, invitations, licence records): each body goes through parseInput before
 // any record is read, and a staff id is checked before the body.
