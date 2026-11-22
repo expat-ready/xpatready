@@ -53,6 +53,12 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("identity", "PLATFORM_IDENTITY", false, z.enum(["local", "cognito"]), "local or cognito (unset: no staff sign-in on this server)"),
   opt("identity", "PLATFORM_POOL_MFA_REQUIRED", false, z.enum(["true", "false"]), "true or false (unset: true)"),
   opt("identity", "PLATFORM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters (unset: a random key per start)"),
+  // PF-4s (SA-7-1, SA-7-2): our own staff's sign-in, a second pool apart from every firm's staff (system-identity/). Unset
+  // identity = no sign-in for our staff on this server (every /api/system route answers 401).
+  opt("system-identity", "PLATFORM_SYSTEM_IDENTITY", false, z.enum(["local", "cognito"]), "local or cognito (unset: no sign-in for our own staff on this server)"),
+  opt("system-identity", "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", false, z.string().regex(/^[a-z]{2}-[a-z]+-[0-9]_[A-Za-z0-9]{1,55}$/), "our own staff's user pool id such as ca-central-1_AbC123 (never the firm staff's pool)"),
+  opt("system-identity", "PLATFORM_SYSTEM_COGNITO_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9]{1,128}$/), "our own staff pool's app client id (letters and digits)"),
+  opt("system-identity", "PLATFORM_SYSTEM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters, never PLATFORM_LOCAL_SECRET's value (unset: a random key per start)"),
   // PF-4 (P-571 (2)): the Sample seed at start-up (identity/sample-seed.ts).
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
@@ -76,6 +82,8 @@ export type PlatformConfig = Readonly<{
   secretBox: SecretBoxKeys | null;
   /** PF-4's sign-in: which adapter, the pool's two-step rule, the local stand-in's signing key (local only). */
   identity: Readonly<{ via: "local" | "cognito" | "none"; poolMfaRequired: boolean; localSecret: Secret | null }>;
+  /** PF-4s: our own staff's sign-in: which adapter, its own pool and client, the local stand-in's own signing key. */
+  systemIdentity: Readonly<{ via: "local" | "cognito" | "none"; userPoolId: string | null; clientId: string | null; localSecret: Secret | null }>;
   /** PF-4 (P-571 (2)): PLATFORM_SAMPLE_SEED=on (production never seeds; sample-seed.ts says so). */
   sampleSeed: boolean;
   /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
@@ -131,6 +139,14 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
   if (stripeKey && /^(sk|rk)_live_/.test(stripeKey) && environment !== "production") invalid.push({ name: "PLATFORM_STRIPE_SECRET_KEY", expects: `a test-mode key (sk_test_… or rk_test_…): a live key is refused when PLATFORM_ENVIRONMENT=${environment}` });
   // PF-4's rule, here since PF-24w: the local stand-in never runs in the test environment or production.
   if (got.get("PLATFORM_IDENTITY") === "local" && environment !== "local") invalid.push({ name: "PLATFORM_IDENTITY", expects: `cognito, or unset: PLATFORM_IDENTITY=local is refused when PLATFORM_ENVIRONMENT=${environment} (the local stand-in never runs in the test environment or production)` });
+  // PF-4s: the same rule for our own staff's stand-in; and the two sign-in groups never share a pool or a signing key
+  // (SA-7-1: a firm's token must never verify as our staff's, nor ours as a firm's).
+  if (got.get("PLATFORM_SYSTEM_IDENTITY") === "local" && environment !== "local") invalid.push({ name: "PLATFORM_SYSTEM_IDENTITY", expects: `cognito, or unset: PLATFORM_SYSTEM_IDENTITY=local is refused when PLATFORM_ENVIRONMENT=${environment} (the local stand-in never runs in the test environment or production)` });
+  // Cognito for our staff names its own pool and client, or the start-up stops (review m5: never a quiet "not set up").
+  if (got.get("PLATFORM_SYSTEM_IDENTITY") === "cognito") for (const n of ["PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", "PLATFORM_SYSTEM_COGNITO_CLIENT_ID"])
+    if (!got.has(n) && !invalid.some((i) => i.name === n)) missing.push(n);
+  if (got.has("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") && got.get("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID") === got.get("PLATFORM_COGNITO_USER_POOL_ID")) invalid.push({ name: "PLATFORM_SYSTEM_COGNITO_USER_POOL_ID", expects: "a pool of its own: our own staff never share PLATFORM_COGNITO_USER_POOL_ID's pool with firm staff" });
+  if (got.has("PLATFORM_SYSTEM_LOCAL_SECRET") && got.get("PLATFORM_SYSTEM_LOCAL_SECRET") === got.get("PLATFORM_LOCAL_SECRET")) invalid.push({ name: "PLATFORM_SYSTEM_LOCAL_SECRET", expects: "a key of its own: never the same value as PLATFORM_LOCAL_SECRET" });
   let secretBox: SecretBoxKeys | null = null;
   const keysRaw = got.get("PLATFORM_SECRET_BOX_KEYS"), versionRaw = got.get("PLATFORM_SECRET_BOX_KEY_VERSION");
   if (keysRaw || versionRaw) {
@@ -169,6 +185,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     zoom: Object.freeze({ clientId: plain("PLATFORM_ZOOM_CLIENT_ID"), clientSecret: secret("PLATFORM_ZOOM_CLIENT_SECRET"), webhookSecretToken: secret("PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN") }),
     secretBox,
     identity: Object.freeze({ via: (plain("PLATFORM_IDENTITY") ?? "none") as "local" | "cognito" | "none", poolMfaRequired: plain("PLATFORM_POOL_MFA_REQUIRED") !== "false", localSecret: secret("PLATFORM_LOCAL_SECRET") }),
+    systemIdentity: Object.freeze({ via: (plain("PLATFORM_SYSTEM_IDENTITY") ?? "none") as "local" | "cognito" | "none", userPoolId: plain("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_SYSTEM_COGNITO_CLIENT_ID"), localSecret: secret("PLATFORM_SYSTEM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
   });
