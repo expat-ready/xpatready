@@ -162,7 +162,7 @@ try {
   // Fails on the fake (P-606): before the day off exists, that day's own cell holds no time off.
   await go(c, `/front-office/bookings?view=week&whose=mine&date=${off}`);
   const offBefore = await c.locator(`[data-off-day="${off}"] [data-off]`).count();
-  ok(`J-39 W4 fail (before the day off, P-606): the week shows no time off on ${off}`, offBefore === 0 && (await c.locator("[data-cell]").count()) > 0, { offBefore });
+  ok(`J-39 W4 fail (before the day off, P-606): the week shows no time off on ${off}`, offBefore === 0 && (await c.locator("[data-cell]").count()) + (await c.locator("[data-empty]").count()) > 0, { offBefore });   // the week loaded: its grid, or its empty words when the day off falls in a week with no booking
   await go(c, "/account/availability");
   await c.getByRole("button", { name: "Add time off" }).click();
   await c.locator("[data-time-off-form]").getByLabel("Whole day").check();
