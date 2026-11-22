@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_51d4f3ca-37fb-4942-8b52-c107cf81908d Lead 1 · 22 Nov 10:1x IST (new account from 22 Nov; founder A279: numbering restarts at Lead 1 here, no series shown; was titled Lead 21 for 30 minutes)
+current_lead: local_d718f32a-dfe8-4387-8ec7-618cbeaa0a19 Lead 2 · 22 Nov 11:17 IST (new account; took over from Lead 1 (local_51d4f3ca) at ~375k, P-446; Opus 5.5 medium, A283)
 
 updated: 2026-11-22 05:5x IST: Lead 18 handed over to Lead 19 (series 3) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-783**; P-784 newer) · this branch: `lead/2026-11-07-lead31`
 
@@ -47,7 +47,7 @@ Older Start here pointers (P-754 hold, 19 Nov lines): `product/history/STATE-202
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST).
+**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST).
 **Series 3 (P-749):** Lead 1 (local_94786348, from 20 Nov 12:18 IST), Lead 2 (local_daadc134, from 20 Nov 13:57 IST), Lead 3 (local_b0640d3f, from 20 Nov 14:43 IST), Lead 4 (local_470182c1, from 20 Nov 18:21 IST), Lead 5 (local_08ac9385, from 20 Nov 23:0x IST), Lead 6 (local_871ed54c, from 21 Nov 00:04 IST), Lead 7 (local_a8acec34, from 21 Nov 01:17 IST), Lead 8 (local_dbce8aee, from 21 Nov 02:01 IST), Lead 9 (local_52cca488, from 21 Nov 06:48 IST), Lead 10 (local_8f916b74, from 21 Nov 07:43 IST), Lead 11 (local_f172acc0, from 21 Nov 08:54 IST), Lead 12 (local_7ec53395, from 21 Nov 10:2x IST), Lead 13 (local_369dd389, from 21 Nov 11:44 IST), Lead 14 (local_c09f305e, from 21 Nov 12:44 IST)., Lead 15 (local_666bcb32, from 21 Nov 15:47 IST), Lead 16 (local_1cd4840f, from 21 Nov 18:04 IST), Lead 17 (local_74cdbff7, from 21 Nov 20:1x IST), Lead 18 (local_bdef7c01, from 22 Nov 03:21 IST), Lead 19 (local_69eeb2bd, from 22 Nov 05:5x IST)
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
