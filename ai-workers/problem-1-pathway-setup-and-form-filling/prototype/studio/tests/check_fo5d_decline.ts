@@ -133,10 +133,19 @@ try {
     return fails && sql(DEMO, `select decline_reason = E'Fees:\\ttoo high' from fo_signer where id = '${e.c1}'`) === "t";
   })());
 
+  ok("FO-5d fail (break m2, m3): a reason of only characters that show nothing, a C1 control (NEL), or a right-to-left override is refused by the database in any locale",
+    ["chr(12644)", "chr(173) || chr(10240)", "'No' || chr(133)", "chr(133) || 'No'", "'ab' || chr(8238) || 'c'", "'ab' || chr(155)"].every((v) => {
+      const e = envelope(); return refused(DEMO, `update fo_signer set declined_at = now(), decline_reason = ${v} where id = '${e.c1}'`, /decline_reason_check/);
+    }));
+
   // ------------------------------------------------------------------------------------------ the decline function
   ok("FO-5d pass: declineReasonOf keeps a trimmed reason and reads nothing, blank or spaces as no reason",
     declineReasonOf("  Too expensive \r\n") === "Too expensive" && declineReasonOf(undefined) === null && declineReasonOf(null) === null && declineReasonOf(" \n\u200b ") === null
     && declineReasonOf("a\r\nb") === "a\nb");
+  const cp = (...c: number[]) => String.fromCodePoint(...c);
+  ok("FO-5d pass and fail (break m2): only characters that show nothing is no reason; a C1 control or a bidirectional override is refused",
+    declineReasonOf(cp(0x3164)) === null && declineReasonOf(` ${cp(0xad, 0x2800, 0x34f)} `) === null
+    && [`No${cp(0x85)}`, `ab${cp(0x9b)}c`, `ab${cp(0x202e)}c`, `ab${cp(0x2066)}c`].every((v) => { try { declineReasonOf(v); return false; } catch (e) { return e instanceof DeclineReasonInvalid; } }));
   ok(`FO-5d fail (review M1, m3): declineReasonOf refuses ${DECLINE_REASON_MAX + 1} characters, a control character, a NUL, a lone surrogate and a value that is not text; ${DECLINE_REASON_MAX} emoji (code points, as the database counts) are kept`,
     [`${"y".repeat(DECLINE_REASON_MAX + 1)}`, `${"\u{1F600}".repeat(DECLINE_REASON_MAX + 1)}`, "Too\u0007much", "No\u0000thanks", "No \ud800 thanks", "No \udc00", 42, { reason: "x" }].every((v) => { try { declineReasonOf(v); return false; } catch (e) { return e instanceof DeclineReasonInvalid; } })
     && declineReasonOf(`  ${"y".repeat(DECLINE_REASON_MAX)}  `)?.length === DECLINE_REASON_MAX
@@ -205,6 +214,19 @@ try {
     ok("FO-5d pass: the firm signer may decline while the clients have signed (any signer, AG-5-68 r2); the clients' signatures stay",
       "declined" in firm && sql(DEMO, `select status from fo_signature_request where id = '${c.r}'`) === "DECLINED"
       && sql(DEMO, `select count(*) from fo_signer where request_id = '${c.r}' and signed_at is not null`) === "2", firm);
+  }
+  {
+    const e = envelope();
+    const notUuid = await decline("not-a-uuid", "No"), notUuidFirm = await decline(e.c1, "No", { firmId: "nope" });
+    ok("FO-5d fail (break m6): a signer or firm id that is not a uuid is the one `unknown` answer, never a database error",
+      "refused" in notUuid && notUuid.refused === "unknown" && "refused" in notUuidFirm && notUuidFirm.refused === "unknown", { notUuid, notUuidFirm });
+    const late = await db.$transaction((tx) => declineSigning(tx, auditEvent, { firmId: firmA, signerId: e.c1, reason: "No", at: new Date(Date.now() + 30 * 86_400_000), via: "door" }));
+    ok("FO-5d fail (break m5): past its expiry with no client signature the request is not declined: refused as EXPIRED, nothing written",
+      "refused" in late && late.refused === "ended" && "status" in late && late.status === "EXPIRED" && sql(DEMO, `select status from fo_signature_request where id = '${e.r}'`) === "SENT" && lines(e.r) === 0, late);
+    const early = await db.$transaction((tx) => declineSigning(tx, auditEvent, { firmId: firmA, signerId: e.c1, reason: "No", at: new Date(Date.now() - 3_600_000), via: "door" }));
+    ok("FO-5d pass (break m4): a moment before the request was sent (another clock) ends it at its sent time (the next millisecond), never a database error",
+      "declined" in early && sql(DEMO, `select (ended_at >= sent_at and ended_at <= sent_at + interval '1 millisecond') from fo_signature_request where id = '${e.r}'`) === "t"
+      && sql(DEMO, `select (s.declined_at = r.ended_at) from fo_signer s join fo_signature_request r on r.id = s.request_id where s.id = '${e.c1}'`) === "t", early);
   }
   {
     // review m1: under PF-12's wall, as the API runs (role xr_app, the session's firm), not as the suite's superuser.
