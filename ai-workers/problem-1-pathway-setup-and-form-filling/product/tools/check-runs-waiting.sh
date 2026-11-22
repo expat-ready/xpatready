@@ -37,6 +37,17 @@ echo '[1, 2]' > "$T/list.json"; out=$(python3 -I "$R" --runs "$T/list.json" --no
 ok "an answer that is not an object: \"not measured\", no traceback" "$(grep -q 'not measured' <<< "$out" && ! grep -q Traceback <<< "$out" && echo 1)" "$out"
 jq '.total_count = 140' "$T/runs.json" > "$T/many.json"; out=$(python3 -I "$R" --runs "$T/many.json" --now $NOW)
 ok "more queued than one page read: said on a warn line" "$(grep -q '^warn  140 queued runs, only the newest 6 read' <<< "$out" && echo 1)" "$out"
+# P-789 (2): the jam line prints the measured number of running jobs (in_progress jobs across in_progress runs), never "40 jobs at once"
+cat > "$T/running.json" <<'EOF'
+{"workflow_runs": [{"id": 61, "status": "in_progress"}, {"id": 62, "status": "in_progress"}],
+ "jobs": {"61": {"jobs": [{"status": "in_progress"}, {"status": "in_progress"}, {"status": "completed"}, {"status": "queued"}]},
+          "62": {"jobs": [{"status": "in_progress"}]}}}
+EOF
+out=$(python3 -I "$R" --runs "$T/runs.json" --running "$T/running.json" --now $NOW --save "$T/m2.json")
+ok "jobs line: 3 jobs running now across 2 in-progress runs (measured)" "$(grep -qx 'jobs  3 job(s) running now across 2 in-progress run(s) (measured, Actions API)' <<< "$out" && jq -e '.running.jobs == 3' "$T/m2.json" >/dev/null && echo 1)" "$out"
+jq 'del(.jobs["62"])' "$T/running.json" > "$T/running-bad.json"; out=$(python3 -I "$R" --runs "$T/runs.json" --running "$T/running-bad.json" --now $NOW)
+ok "a run whose jobs cannot be read: running jobs not measured, never a count" "$(grep -q '^jobs  running now: not measured (jobs of run 62 unreadable' <<< "$out" && echo 1)" "$out"
+ok "no tool here says \"40 jobs at once\": the number is measured" "$(! grep -qE '40 jobs at once' "$R" "$TOOLS/lead-watch.sh" && grep -q 'running_line(rn)' "$R" && echo 1)" "a fixed limit is still printed"
 # lead-watch.sh prints the two lines each check and cancels nothing
 L="$TOOLS/lead-watch.sh"
 ok "lead-watch.sh runs runs-waiting.py and saves its measure" "$(grep -q 'runs-waiting.py" --save "\$STATE_DIR/runs-waiting.json"' "$L" && echo 1)" "no call in $L"

@@ -12,13 +12,20 @@
 // gives at most API_CAP (50) sessions plus a resume_token, whatever the limit, and no paging parameter reaches the rest;
 // so resume_token counts as a "more" marker, and exactly 50 sessions is "WARNING: list may be cut (50 of 50): archive
 // ended sessions" (the sidebar shows the same 50; archiving ended ones is the only way to see the rest).
-// Node (tests): require('./app-view.js').lines(json, nowMs) gives the same text without the network. Test:
-// check-app-view.sh. Read-only: it changes nothing on the page or in any session.
+// P-789 (2) (founder, 22 Nov: what was agreed must be live): before it reads the list it clicks every button whose text is
+// exactly "Show more" until none remains (a loop, SHOW_MORE_WAIT_MS between rounds, at most SHOW_MORE_MAX rounds), then
+// counts the session rows the sidebar shows. The header says "rows=N" (sidebar rows after the clicks); app-view-read in
+// lead-watch.sh refuses a summary without it. More sidebar rows than API sessions: "WARNING: list may be cut" (an ACT).
+// Node (tests): require('./app-view.js').lines(json, nowMs, limit, rows) gives the same text without the network, and
+// expandAll(doc, sleep) runs the click loop on a stand-in document. Test: check-app-view.sh. Read-only on the data: the
+// "Show more" clicks only open the sidebar list; nothing in any session changes.
 (function () {
   const IDLE_MIN = 90, CTX_SHARE = 0.45, WINDOW = 1000000; // WINDOW: assumed context size when the API gives none
   const LIMIT = 200;    // harmless: the API answers at most API_CAP whatever is asked
   const API_CAP = 50;   // ENF-761: GET /v1/code/sessions returns at most 50 (20 Nov)
   const WORK_DONE = ['completed'];
+  const SHOW_MORE = 'Show more', SHOW_MORE_WAIT_MS = 1000, SHOW_MORE_MAX = 100;
+  const ROW_SELECTOR = 'a[href*="/code/session_"], a[href*="/code/local_"]';   // one link per session row in the sidebar
   const FLAG_STATUS = ['need_input', 'blocked', 'failed'];
   const clean = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
   function items(json) {
@@ -55,22 +62,42 @@
     return json.has_more === true || json.has_more === 'true'
       || ['next_page', 'next_cursor', 'next', 'next_page_token', 'resume_token'].some((k) => json[k] != null && json[k] !== '' && json[k] !== false);
   }
-  function lines(json, now, limit) {
+  // P-789 (2): click every "Show more" until none remains; returns the rounds and clicks it took.
+  async function expandAll(doc, sleep) {
+    let rounds = 0, clicks = 0;
+    for (; rounds < SHOW_MORE_MAX; rounds++) {
+      const btns = Array.from(doc.querySelectorAll('button')).filter((b) => clean(b.textContent) === SHOW_MORE);
+      if (!btns.length) return { rounds, clicks, done: true };
+      btns.forEach((b) => { b.click(); clicks++; });
+      await sleep(SHOW_MORE_WAIT_MS);
+    }
+    return { rounds, clicks, done: false };
+  }
+  function countRows(doc) {
+    return new Set(Array.from(doc.querySelectorAll(ROW_SELECTOR)).map((a) => a.getAttribute('href'))).size;
+  }
+  function lines(json, now, limit, rows) {
     limit = Number(limit) || LIMIT;
+    const rw = rows == null || rows === '' ? '' : ` · rows=${Number(rows)}`;
     const list = items(json);
-    if (!list) return 'UNREADABLE app view: the session list had no sessions array (' + clean(JSON.stringify(json)).slice(0, 120) + ')';
+    if (!list) return 'UNREADABLE app view' + rw + ': the session list had no sessions array (' + clean(JSON.stringify(json)).slice(0, 120) + ')';
     const out = list.map((s) => one(s, now));
     const n = out.filter((o) => o.flagged).length;
     out.sort((a, b) => Number(b.flagged) - Number(a.flagged));
     const cut = list.length === API_CAP ? [`WARNING: list may be cut (${API_CAP} of ${API_CAP}): archive ended sessions`]
       : list.length >= limit || more(json) ? [`WARNING: list may be cut (${list.length} of ${limit})`] : [];
-    return [`app view ${list.length} sessions · ${n} flagged`, ...cut, ...out.map((o) => o.line)].join('\n');
+    if (rw && Number(rows) > list.length && !cut.length) cut.push(`WARNING: list may be cut (sidebar rows=${Number(rows)}, API ${list.length})`);
+    return [`app view ${list.length} sessions · ${n} flagged${rw}`, ...cut, ...out.map((o) => o.line)].join('\n');
   }
-  if (typeof module !== 'undefined' && module.exports) { module.exports = { lines }; return undefined; }
+  if (typeof module !== 'undefined' && module.exports) { module.exports = { lines, expandAll, countRows }; return undefined; }
   const url = '/v1/code/sessions?statuses=active&statuses=paused&statuses=failed&limit=' + LIMIT + '&include_pinned_beyond_page=true&omit_bound_device=true';
-  return fetch(url, { credentials: 'include', headers: { 'anthropic-version': '2023-06-01' } })
-    .then((r) => (r.ok ? r.json().then((j) => lines(j, Date.now()))
-      : `UNREADABLE app view: HTTP ${r.status} ` + ([401, 403].includes(r.status) ? '(signed out? ask the founder to sign in to claude.ai)'
+  let rows = 0, ex = { rounds: 0, clicks: 0, done: true };
+  return expandAll(document, (ms) => new Promise((ok) => setTimeout(ok, ms)))
+    .then((e) => { ex = e; rows = countRows(document); })
+    .then(() => fetch(url, { credentials: 'include', headers: { 'anthropic-version': '2023-06-01' } }))
+    .then((r) => (r.ok ? r.json().then((j) => lines(j, Date.now(), LIMIT, rows))
+      : `UNREADABLE app view · rows=${rows}: HTTP ${r.status} ` + ([401, 403].includes(r.status) ? '(signed out? ask the founder to sign in to claude.ai)'
         : `(the API refused the request; a 400 may mean limit=${LIMIT} is over its maximum: lower LIMIT in tools/app-view.js)`)))
-    .catch((e) => `UNREADABLE app view: ${clean(e && e.message)} (open claude.ai/code in the built-in browser, signed in)`);
+    .then((t) => (ex.done ? t : t.replace(/\n|$/, `\nWARNING: list may be cut ("Show more" still there after ${ex.rounds} rounds)\n`).replace(/\n$/, '')))
+    .catch((e) => `UNREADABLE app view · rows=${rows}: ${clean(e && e.message)} (open claude.ai/code in the built-in browser, signed in)`);
 })();
