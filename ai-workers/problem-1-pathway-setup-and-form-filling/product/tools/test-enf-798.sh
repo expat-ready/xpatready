@@ -210,5 +210,17 @@ mkdir -p "$T/fc"; cp "$TOOLS/brief-check.sh" "$T/fc/"; printf 'import sys\nsys.e
 out=$(printf '%s\nIMM 1294.\n' "$B" | bash "$T/fc/brief-check.sh" --brief); rc=$?
 ok "P-801 fails closed: a source check that cannot run refuses the brief" "$([ $rc = 1 ] && has "$out" 'source check could not run' && echo 1)" "exit $rc: $out"
 
+# review round 2: a quoted mention of the rule asks nothing; ID@hash must be a requirement card; Sample keeps form names.
+bc "$PRB
+This PR makes brief-check refuse a \"Question for the founder\" with no Sources checked: line, and \`question for the founder\` in backticks too."
+ok "P-801 a quoted or backticked mention of the rule is no founder question (round 2, N1)" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
+bc "$B
+IMM 1294 asks for the passport.
+Source: ENF-798@54b7ef4" --brief
+ok "P-801 a backlog id with a commit (ENF-798@54b7ef4) is no requirement card" "$([ $rc = 1 ] && has "$out" 'neither a requirement path or card' && echo 1)" "exit $rc: $out"
+bc "$B
+IMM 5257 on the demo (Sample fee CAD 100)." --brief
+ok "P-801 a form named on a Sample line still needs a Source:, its Sample amount does not" "$([ $rc = 1 ] && has "$out" 'form' && hasnt "$out" 'fee' && echo 1)" "exit $rc: $out"
+
 echo "test-enf-798: $pass passed, $fail failed"
 [ "$fail" = 0 ]

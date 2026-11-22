@@ -5,13 +5,14 @@ Called by brief-check.sh on the text of a brief (--brief, lane-preflight.sh's ho
   (a) --brief only: a text that states a domain value (a form, program, province rule, fee, tax rate, day count or
       threshold) needs a "Source:" line naming one of
         - a requirement: a path under domain/requirements-*, sources/drive-snapshot-* or a requirement card
-          ("AG-6-4@374fb7a9", the house citation of trace-requirements.py);
+          ("AG-6-4@374fb7a9" or "SA-2-1@...", the house citation of trace-requirements.py);
         - an official page: an https URL on a government host (canada.ca, *.gc.ca, the CICC, a province's site) with a
           quoted line and a date;
         - a market-research note: the words "market research" and a file path or URL.
-      A line that says "Sample" is a sample value (AGENTS rule 4) and is not counted. PR bodies quote form names all the
+      On a line that says "Sample" (AGENTS rule 4) amounts, rates, counts and thresholds are not counted; a form,
+      program or province named there still is. PR bodies quote form names all the
       time and are not checked for (a).
-  (b) any text: a "Question for the founder" (anywhere on a line; "Questions for the founder: none", or that heading
+  (b) any text: a "Question for the founder" (anywhere on a line, but not in quotes or backticks, which name the rule; "Questions for the founder: none", or that heading
       with "None." on the next line, is no question) needs a "Sources checked:" line.
 Prints what is missing, one ";"-ended clause per problem; exit 1 then, 0 when clean. Test: test-enf-798.sh.
 """
@@ -28,23 +29,26 @@ PATTERNS = [
 ]
 SRC_LINE = re.compile(r"^[\s*>-]*Sources?[*]*:[\s*]*(.*)$", re.M)
 CHECKED = re.compile(r"^[\s*>-]*Sources checked[*]*:[\s*]*\S", re.M)
-REQ = re.compile(r"(domain/requirements-\S+|sources/drive-snapshot-\S+|requirements-\d{4}-\d{2}-\d{2}/\S+|\b[A-Z]{1,5}-\d+(-\d+)*@[0-9a-f]{7,40}\b)")
+REQ = re.compile(r"(domain/requirements-\S+|sources/drive-snapshot-\S+|requirements-\d{4}-\d{2}-\d{2}/\S+|\b[A-Z]{2,3}-\d+-\d+@[0-9a-f]{7,40}\b)")   # cards: AG-6-4@374fb7a9, SA-2-1@...
 OFFICIAL = re.compile(r"https://([a-z0-9-]+\.)*(canada\.ca|gc\.ca|cicc-ccic\.ca|college-ic\.ca|ontario\.ca|gov\.bc\.ca|alberta\.ca|quebec\.ca|saskatchewan\.ca|gov\.mb\.ca|novascotia\.ca|gnb\.ca|gov\.nl\.ca|princeedwardisland\.ca|yukon\.ca|gov\.nt\.ca|gov\.nu\.ca)(/\S*)?", re.I)
 QUOTE = re.compile(r"[\"“”][^\"“”]{3,}[\"“”]")
 DATE = re.compile(r"\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
 MARKET = re.compile(r"(?i)market[- ]research")
 PATHISH = re.compile(r"(\S+/\S+\.(md|pdf|html)\b|https?://\S+)")
-QUESTION = re.compile(r"(?i)questions? for the founder")
+QUESTION = re.compile(r"(?i)(?<![\"“`'])questions? for the founder(?![\"”`'])")   # a quoted mention names the rule, asks nothing
 NONE_AFTER = re.compile(r"(?i)questions? for the founder\W*(none|no questions?)\W*$")
 
 
 def domain_hits(text):
     hits = []
     for line in text.splitlines():
-        if SRC_LINE.match(line) or CHECKED.match(line) or re.search(r"\bSample\b", line):
+        if SRC_LINE.match(line) or CHECKED.match(line):
             continue
+        sample = bool(re.search(r"\bSample\b", line))   # a Sample value (AGENTS rule 4): its amounts and counts are no claim
         line = re.sub(r"US\$ ?[0-9][0-9.,]*", "", line)
         for name, rx, fl in PATTERNS:
+            if sample and name not in ("form", "program", "province rule"):
+                continue
             m = re.search(rx, line, fl)
             if m and name not in [h[0] for h in hits]:
                 hits.append((name, m.group(0).strip()[:30]))
