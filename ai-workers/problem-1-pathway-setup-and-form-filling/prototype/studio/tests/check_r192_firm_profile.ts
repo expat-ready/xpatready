@@ -11,6 +11,11 @@
 //      an unknown field (firmId) is refused; a stale version is 409 with the latest profile;
 //   P4 Owner only: the billing email is saved by the Owner (one platform.firm.billing_email_changed line, before and after); an Admin
 //      (user-T, given Admin by the Owner through the roles route) changes the website but the billing email is 403 and nothing is written;
+//   BR the breaker's round 1 on 180c6706b, each with its fail test: M1 a website with an email-shaped part saves (was 500); M2 a
+//      billing email in capitals saves in lower case (was 500); M3/m4 a website with control, direction or invisible characters, a
+//      space or a private host is refused (was stored); m2 an inherited key name is an unknown field; m3 plain words; m5 a phone of
+//      brackets only refused; m6 an Admin's save carrying the unchanged billing email goes through; m1 only Owner and Admin read the
+//      billing email and business address;
 //   O1 offices: the Owner adds an office in Alberta: its zone is America/Edmonton, read back in the list with the first office (the firm's
 //      zone), one platform.office.add line for it; fail: a zone not on the list is 422;
 //   L1 licence: the Owner saves the Case Officer's licence record; GET licences reads it back; one platform.staff.credential_saved line,
@@ -113,6 +118,35 @@ ok("R1.92 P4 fail: the Admin's billing email is 403 (Owner only), and nothing of
 const admSite = await api(TADM, "PUT", PROFILE, { version: pAdm.body.version, website: `https://admin-${run}.example.ca` });
 ok("R1.92 P4 pass: the Admin changes the website (agent/settings:edit), audited as the Admin", admSite.status === 200 && admSite.body.profile?.details?.website === `https://admin-${run}.example.ca`
   && sql(`select count(*) from audit_event where at > '${t0}' and entity_key = '${A}:platform.website' and actor = 'staff:${ADM}'`) === "1", [admSite.status, admSite.text.slice(0, 200)]);
+
+// ------------------------------------------------------------------------------------------------ BR the breaker's round 1 (180c6706b)
+{
+  const ver = async () => (await api(TOWNER, "GET", PROFILE)).body.version as string;
+  for (const site of ["https://medium.com/@sample.firm", "https://www.example.ca/contact?to=info@example.ca"]) {
+    const r = await api(TOWNER, "PUT", PROFILE, { version: await ver(), website: site });
+    ok(`R1.92 BR M1: a website with an email-shaped part saves (no 500) and reads back: ${site}`, r.status === 200 && (await api(TOWNER, "GET", PROFILE)).body.details.website === site, [r.status, r.text.slice(0, 200)]);
+  }
+  const upper = `BILLING-${run.toUpperCase()}@SAMPLE-FIRM.EXAMPLE.CA`;
+  const m2 = await api(TOWNER, "PUT", PROFILE, { version: await ver(), billingEmail: upper });
+  ok("R1.92 BR M2: a billing email in capitals saves in lower case (no 500)", m2.status === 200 && sql(`select billing_email from platform_firm where id = '${A}'`) === upper.toLowerCase(), [m2.status, m2.text.slice(0, 200)]);
+  const tBad = now();
+  for (const site of ["https://exa\nmple.ca", "https://exa\tmple.ca", "https://exa‮mple.ca", "https://exa­mple.ca", "https://exa​mple.ca", "http://127.0.0.1", "http://192.168.1.10", "https://printer.local", "https://sample firm.ca"]) {
+    const r = await api(TOWNER, "PUT", PROFILE, { version: await ver(), website: site });
+    ok(`R1.92 BR M3/m4: a website with a control, invisible or direction character, a space or a private host is refused on its field: ${JSON.stringify(site)}`, r.status === 422 && typeof r.body?.fields?.website === "string", [r.status, r.body?.fields]);
+  }
+  ok("R1.92 BR M3: none of those was written", sql(`select count(*) from audit_event where at > '${tBad}' and firm_id = '${A}'`) === "0");
+  const proto = await api(TOWNER, "PUT", PROFILE, { version: await ver(), constructor: 1 });
+  ok("R1.92 BR m2: an inherited key name (constructor) is an unknown field, never code text in the answer", proto.status === 422 && !/native code/.test(proto.text), proto.text.slice(0, 300));
+  const nul = await api(TOWNER, "PUT", PROFILE, { version: await ver(), billingEmail: null, language: "de", website: 5 });
+  ok("R1.92 BR m3: refusals in plain words, never the library's \"Invalid input\"", nul.status === 422 && Object.values(nul.body?.fields ?? {}).length === 3 && !Object.values(nul.body?.fields ?? {}).some((m) => /^Invalid/.test(String(m))), nul.body?.fields);
+  const phone = await api(TOWNER, "PUT", PROFILE, { version: await ver(), publicPhone: "((((((((1234567" });
+  ok("R1.92 BR m5: a phone of brackets only is refused", phone.status === 422 && !!phone.body?.fields?.publicPhone, phone.body?.fields);
+  const pA = await api(TADM, "GET", PROFILE);
+  const m6 = await api(TADM, "PUT", PROFILE, { version: pA.body.version, billingEmail: pA.body.ownerOnly.billingEmail, website: `https://admin2-${run}.example.ca` });
+  ok("R1.92 BR m6: an Admin's save carrying the unchanged billing email goes through (only a change is Owner only)", m6.status === 200 && m6.body.changed?.join() === "website", [m6.status, m6.text.slice(0, 200)]);
+  const co = await api(TOFF, "GET", PROFILE);
+  ok("R1.92 BR m1: the Case Officer does not read the billing email or the business address; the Admin does", co.status === 200 && co.body.ownerOnly?.billingEmail === null && co.body.ownerOnly?.businessAddress === null && pA.body.ownerOnly?.billingEmail === upper.toLowerCase(), [co.body?.ownerOnly, pA.body?.ownerOnly?.billingEmail]);
+}
 
 // ------------------------------------------------------------------------------------------------ O1 offices with their time zones
 t0 = now();

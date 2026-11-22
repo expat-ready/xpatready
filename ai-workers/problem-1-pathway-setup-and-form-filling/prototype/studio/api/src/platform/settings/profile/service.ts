@@ -26,11 +26,20 @@ export type ProfileActor = { firmId: string; staffId: string; keys: string[] };
 const OWNER_KEY = "agent/firm-profile:manage";
 const INVISIBLE = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff]");
 /** A phone number as people write it: digits with spaces, dots, dashes, brackets and one leading +; 7 to 15 digits (ITU E.164's most). */
-const Phone = z.string().trim().max(30).refine((s) => !INVISIBLE.test(s), "no control or invisible characters")
-  .refine((s) => /^\+?[0-9 ().-]+$/.test(s), "digits, spaces and + ( ) . - only").refine((s) => { const n = s.replace(/\D/g, "").length; return n >= 7 && n <= 15; }, "a phone number of 7 to 15 digits");
-const Email = z.string().trim().max(254).pipe(z.email("an email address like office@firm.ca"));
-/** A web address the firm's clients can open: https (or http) and a host with a dot; nothing after 500 characters. */
-const Website = z.string().trim().max(500).refine((s) => { try { const u = new URL(s); return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".") && !u.username && !u.password; } catch { return false; } }, "a web address starting https://");
+// Break m5: it starts with + or a digit (or one opening bracket before a digit), at most one pair of brackets, no two marks in a row.
+const Phone = z.string({ error: "a phone number like +1 416 555-0100" }).trim().max(30).refine((s) => !INVISIBLE.test(s), "no control or invisible characters")
+  .refine((s) => /^\+?[0-9 ().-]+$/.test(s), "digits, spaces and + ( ) . - only")
+  .refine((s) => /^(\+|\(?\d)/.test(s) && (s.match(/\(/g) ?? []).length <= 1 && (s.match(/\)/g) ?? []).length <= 1 && !/[().-]{2}/.test(s.replace(/\) /g, ")")), "a phone number like +1 416 555-0100")
+  .refine((s) => { const n = s.replace(/\D/g, "").length; return n >= 7 && n <= 15; }, "a phone number of 7 to 15 digits");
+const Email = z.string({ error: "an email address like office@firm.ca" }).trim().max(254).pipe(z.email("an email address like office@firm.ca"));
+/** Private, loopback and link-local hosts are not a website clients can open (break m4). */
+const PRIVATE_HOST = /^(localhost|.*\.local|.*\.internal|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0|\[.*\])$/i;
+/** A web address the firm's clients can open: https:// or http://, a public host with a dot, no user name or password; nothing after
+ *  500 characters. Break M3: control, direction and invisible characters and any space are refused before URL parsing (which would
+ *  strip them), so what is stored is what was checked. */
+const Website = z.string({ error: "a web address starting https://" }).trim().max(500)
+  .refine((s) => !INVISIBLE.test(s) && !/\s/.test(s), "no spaces, control or invisible characters")
+  .refine((s) => { try { const u = new URL(s); return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".") && !PRIVATE_HOST.test(u.hostname) && !u.username && !u.password; } catch { return false; } }, "a web address starting https:// or http://");
 
 export const PUBLIC_PHONE = registerSetting({
   key: "platform.public_phone", ownerModule: "platform", changePermission: "agent/settings:edit", personal: true,
@@ -43,7 +52,9 @@ export const PUBLIC_EMAIL = registerSetting({
   schema: Email.nullable(), default: null as string | null,
 });
 export const WEBSITE = registerSetting({
-  key: "platform.website", ownerModule: "platform", changePermission: "agent/settings:edit",
+  // personal: a web address may hold an email-shaped part (medium.com/@a.b, ?to=a@b.ca), which AuditDetail refuses (break M1);
+  // as a personal value it goes in the line's before and after, which may hold it.
+  key: "platform.website", ownerModule: "platform", changePermission: "agent/settings:edit", personal: true,
   description: "The firm's website, shown to clients (AG01-29(7), AG-12-109). None by default.",
   schema: Website.nullable(), default: null as string | null,
 });
@@ -68,6 +79,10 @@ export const SaveProfile = z.strictObject({
   language: z.unknown().optional(), timeZone: z.unknown().optional(), currency: z.unknown().optional(),
   billingEmail: z.unknown().optional(),
 });
+
+/** Plain words for the fields whose library messages are not (break m3). */
+const WORDS: Partial<Record<string, string>> = { timeZone: "Choose a time zone from the list", language: "English (en) or French (fr)", currency: "CAD or USD" };
+const plain = (m: string | undefined, fallback = "This value is not allowed.") => (!m || /^Invalid /.test(m) ? fallback : m);
 
 const refused = (detail: string, fields: Record<string, string>): never => {
   throw new HttpException({ type: "https://expatready.local/problems/profile-refused", title: "Firm profile not saved", status: FIELD_ERROR_STATUS, detail, code: "INVALID", issues: Object.entries(fields).map(([k, v]) => `${k}: ${v}`), fields }, FIELD_ERROR_STATUS);
@@ -96,8 +111,11 @@ export class FirmProfile {
       db.platformStaffCredential.count({ where: firmScope(a.firmId, { staff: { status: "ACTIVE" as const } }) }),
       db.platformOffice.count({ where: firmScope(a.firmId) }),
     ]);
-    const ownerOnly = { billingEmail: firm.billingEmail, businessAddress: (firm.businessAddress ?? null) as Record<string, unknown> | null };
-    const version = createHash("sha256").update(JSON.stringify([details, ownerOnly.billingEmail])).digest("hex").slice(0, 32);
+    const version = createHash("sha256").update(JSON.stringify([details, firm.billingEmail])).digest("hex").slice(0, 32);
+    // Break m1: the billing email and business address are the firm's legal and billing record; only those who administer the firm
+    // (agent/settings:edit, Owner and Admin) read them, as the billing page shows the address to Owner and Admin only.
+    const admin = a.keys.includes("agent/settings:edit");
+    const ownerOnly = admin ? { billingEmail: firm.billingEmail, businessAddress: (firm.businessAddress ?? null) as Record<string, unknown> | null } : { billingEmail: null, businessAddress: null };
     return {
       firm: { key: firm.key, legalName: firm.legalName, operatingName: firm.operatingName, countryCode: firm.countryCode },
       details, ownerOnly,
@@ -112,7 +130,7 @@ export class FirmProfile {
   /** Saves the named fields, all or nothing. Returns the profile as saved and which fields changed. */
   async save(a: ProfileActor, body: unknown): Promise<{ profile: ProfileView; changed: string[] }> {
     const raw = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
-    const locked = Object.keys(raw).filter((k) => k in READ_ONLY);
+    const locked = Object.keys(raw).filter((k) => Object.hasOwn(READ_ONLY, k));   // break m2: never an inherited key (constructor)
     if (locked.length) refused("Some of these details are not changed here.", Object.fromEntries(locked.map((k) => [k, READ_ONLY[k]])));
     const p = SaveProfile.safeParse(raw);
     if (!p.success) refused("Please check the highlighted details.", fieldsOf(p.error));
@@ -123,15 +141,15 @@ export class FirmProfile {
       if (!(k in input)) continue;
       const v = input[k] === "" ? null : input[k];
       const r = DETAILS[k].schema.safeParse(v);
-      if (r.success) values[k] = r.data; else bad[k] = k === "timeZone" ? "Choose a time zone from the list" : r.error.issues[0]?.message ?? "not allowed";
+      if (r.success) values[k] = r.data; else bad[k] = WORDS[k] ?? plain(r.error.issues[0]?.message);
     }
     let billingEmail: string | undefined;
     if ("billingEmail" in input) {
+      // Break M2: one spelling, lower case, as the database keeps it (platform_firm_billing_email_lower).
       const r = Email.safeParse(input.billingEmail);
-      if (r.success) billingEmail = r.data; else bad.billingEmail = r.error.issues[0]?.message ?? "an email address";
+      if (r.success) billingEmail = r.data.toLowerCase(); else bad.billingEmail = plain(r.error.issues[0]?.message, "an email address like office@firm.ca");
     }
     if (Object.keys(bad).length) refused("Please check the highlighted details.", bad);
-    if (billingEmail !== undefined && !a.keys.includes(OWNER_KEY)) forbidden("Only the firm's Owner can change the billing email.", "OWNER_ONLY");
     if (Object.keys(values).length && !a.keys.includes("agent/settings:edit")) forbidden("You can read the firm profile but not change it.", "NOT_ALLOWED");
 
     return this.deps.db.$transaction(async (tx) => {
@@ -139,16 +157,20 @@ export class FirmProfile {
       await tx.$queryRawUnsafe(`select id from platform_firm where id = $1::uuid for update`, a.firmId);
       const now = await this.read(tx, a);
       if (now.version !== input.version) throw new HttpException({ type: "https://expatready.local/problems/profile-conflict", title: "Firm profile not saved", status: 409, detail: "Someone else changed the firm profile while you were editing. The latest details are loaded: check them and save again.", latest: now }, HttpStatus.CONFLICT);
+      // Owner only, and only a real change (break m6: an Admin's save that carries the unchanged billing email goes through). Checked
+      // before any write, so a refused save writes nothing.
+      const current = (await tx.platformFirm.findFirstOrThrow({ where: { id: firmScope(a.firmId).firmId }, select: { billingEmail: true } })).billingEmail;
+      if (billingEmail !== undefined && billingEmail !== current && !a.keys.includes(OWNER_KEY)) forbidden("Only the firm's Owner can change the billing email.", "OWNER_ONLY");
       const changed: string[] = [];
       for (const k of Object.keys(values) as DetailName[]) {
         if (JSON.stringify(now.details[k]) === JSON.stringify(values[k])) continue;
         await writeSetting(tx, { firmId: a.firmId, key: DETAILS[k].key, value: values[k], by: `staff:${a.staffId}`, workspaceId: await platformAuditWorkspaceId(tx) });
         changed.push(k);
       }
-      if (billingEmail !== undefined && billingEmail !== now.ownerOnly.billingEmail) {
+      if (billingEmail !== undefined && billingEmail !== current) {
         await tx.platformFirm.updateMany({ where: { id: firmScope(a.firmId).firmId }, data: { billingEmail } });
         await this.deps.audit.record(tx, { firmId: a.firmId, actor: `staff:${a.staffId}`, action: "platform.firm.billing_email_changed", entity: "platform_firm", entityKey: a.firmId,
-          summary: "The firm's billing email was changed", detail: { field: "billingEmail" }, before: { billingEmail: now.ownerOnly.billingEmail }, after: { billingEmail } });
+          summary: "The firm's billing email was changed", detail: { field: "billingEmail" }, before: { billingEmail: current }, after: { billingEmail } });
         changed.push("billingEmail");
       }
       return { profile: await this.read(tx, a), changed };
