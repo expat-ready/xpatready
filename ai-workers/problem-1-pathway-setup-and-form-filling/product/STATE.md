@@ -2,7 +2,7 @@
 
 current_lead: local_fec215ea-92cb-4343-a057-a43480a143bd Lead 5 · 22 Nov 17:10 IST (took over from Lead 4 (local_bcc6ed82) at ~546k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 17:45 IST: Lead 5 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 17:54 IST: Lead 5 check · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -18,7 +18,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 Lead 4's 17:10 pipeline and lane lines: word for word in `history/STATE-2026-11-22-1736-lead5-lead4-pipeline-and-lanes-lines.md`.
 Lead 5's 17:18 check line: word for word in `history/STATE-2026-11-22-1736-lead5-lead4-pipeline-and-lanes-lines.md`.
 **Lead 5 check 17:39-17:46 IST:** #3060 Lead read OK on 070255421 and labelled 17:44; AWS session briefed (on merge: rebuild, row counts as the RDS master before deploy, then resolve, deploy, proofs). #3042 ruled (a) NOWAIT + retry + Busy, round 5 allowed. #2971 round 4 allowed. Waiting: #3067 records to merge, then reopen #2368 for pr-rules (P-805) and label (Lead 4's read OK). #2972 (cancelled review-rounds job) and #2431/#2982 refresh still open. **Lead B (52% context) is replaced at the founder's next typed turn**; the new Lead B starts from the "Final hand-over" section of Lead B's 22 Nov note in the shared notes folder (outside the repo); Lead B keeps its passes until then.
-**Lead B (17:1x IST message to Lead 5):** records PR also takes `lead-b/2026-11-22-track-b` (briefs, board, new BACKLOG rows, RULES fold to P-799); Lead B's money read on #2953 was OK at bb83bcec7 (re-reads if head moved, passes :17/:47); CS-MV1 is first at the founder's next typed turn (FO-7q reads fail closed without it, R1.56 cannot be walked). Notes: Lead B's hand-over note in the shared notes folder (outside the repo).
+**Lead 5 check 17:47-17:55 IST:** #2953 head moved to 3b0f5bb54 (template keys renamed): Lead read OK, label back, `/run full` for this head. #2964 Lead read OK, labelled. AWS pre-check met (both tables 0, n_tup_ins 0; evidence on #3060). #3057 (qa R1.23 Fail, QA-745) has a merge conflict: qa lane told to merge main; QA-745 goes to the R1.23 lane after #3037 (merge main, no rebase). walks.yml dispatched on main for j_88 (#3062). #2971 round 4 Approve: label after #3006 (agreed order #3006 → #2925 → #2971).
+**Lead B (17:1x IST message to Lead 5):** (branch and P-805 are in #3067) Lead B's money read on #2953 was OK at bb83bcec7 (re-reads if head moved, passes :17/:47); CS-MV1 is first at the founder's next typed turn (FO-7q reads fail closed without it, R1.56 cannot be walked). Notes: Lead B's hand-over note in the shared notes folder (outside the repo).
 **Standbys:** Lead 6 (local_d4609e9d); top up one more at the founder's next typed turn in the desktop app.
 
 The Lead 3 → Lead 4 block and Lead 4's check lines: word for word in `history/STATE-2026-11-22-1710-lead4-handover-3-4-block-and-lines.md`.
