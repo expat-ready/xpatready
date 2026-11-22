@@ -15,4 +15,5 @@ bash tools/web-fresh.sh build || echo "web build failed: isolated copies will re
 mkdir -p var
 export PLATFORM_SAMPLE_SEED="${PLATFORM_SAMPLE_SEED:-on}"   # CS-W1 (Lead 61, #1872): the Sample firms exist on the demo, CI and every copy; never in a production configuration
 export PLATFORM_IDENTITY="${PLATFORM_IDENTITY:-local}"     # CS-C1s (P-711 ruling, Lead 84): the staff sign-in stand-in on the demo, so firm staff can sign in (else 403 LOCAL_SIGN_IN_OFF); refused outside PLATFORM_ENVIRONMENT=local
+export PLATFORM_ENVIRONMENT="${PLATFORM_ENVIRONMENT:-local}"   # PF-24w: required, no default in the app; the Mac demo is local (an exported value wins, break m1)
 zsh tools/restart-api.sh >/dev/null && echo "Product Studio: http://localhost:${STUDIO_PORT:-4400}"

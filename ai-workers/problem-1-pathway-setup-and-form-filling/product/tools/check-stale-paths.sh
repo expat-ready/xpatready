@@ -24,6 +24,8 @@ P1=ai-workers/problem-1-pathway-setup-and-form-filling
 LIVE=(.github .mergify.yml .githooks .claude .agents .goose AGENTS.md CLAUDE.md .gitignore .nvmrc tsconfig.base.json package.json
   packages "$P1/product/tools" "$P1/product/RULES.md" "$P1/product/WAY-OF-WORKING.md" "$P1/prototype")
 SKIP=(":!$P1/prototype/studio/evidence" ":!$P1/prototype/studio/tests/fixtures" ":!*.png" ":!*.jpg" ":!*.pdf" ":!$P1/product/tools/stale-paths.txt")
+# The October hash lists and hand-over notes at the prototype/ root are records no tool reads (clean-up stage 1, #2459 A).
+SKIP+=(":(glob,exclude)$P1/prototype/*-manifest*.sha256" ":(glob,exclude)$P1/prototype/*-handoff-*.md")
 n=0; hits=0; ERR=$(mktemp "${TMPDIR:-/tmp}/stale-paths.XXXXXXXX") || exit 2; trap 'rm -f "$ERR"' EXIT
 while IFS= read -r p || [ -n "$p" ]; do
   p="${p%%#*}"; p="$(printf '%s' "$p" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"; [ -n "$p" ] || continue

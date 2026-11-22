@@ -80,6 +80,9 @@ const prospect = async (given: string) => {
   const p = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${A}', '${given}${run}', 'Sample', 'j72.${++n}.${run}@example.org', 'seed:J-72', now()) returning id`);
   const lead = sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, interested_in_service_id, created_by, updated_at) values (gen_random_uuid(), '${A}', '${p}', 'MANUAL', 'Phone call', '${R.id}', '${SERVICE}', 'seed:J-72', now()) returning id`);
   const e = await api(TA, "POST", `/front-office/leads/${lead}/engage`);
+  // FO-13c: no client without a recorded conflict check; recorded through its API (the Conflict check panel is FO-13s).
+  const c = await api(TA, "POST", "/front-office/conflict-checks", { prospectId: e.body?.id, requestId: crypto.randomUUID(), result: "NO_CONFLICT" });
+  if (c.status !== 201) throw new Error(`J-72: the conflict check was not recorded (${c.status})`);
   return { id: e.body?.id as string, number: e.body?.number as string, personId: p, name: `${given}${run} Sample` };
 };
 const won = (prospectId: string) => sql(`select count(*) from module_event where type = 'prospect.won' and subject_id = '${prospectId}'`);
