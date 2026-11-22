@@ -146,3 +146,18 @@ J1–J7 as in round 1.
 No Blocker or Major is open. The breaker's two Majors (M1 manage link under another firm's address, M2 first paint) are **both fixed**. All three round-1 findings are fixed. The remaining items are a Minor (BB8's fixed 800 ms probe) and notes.
 
 **Verdict: Approve**
+
+## Merge of main (diff cc1066bcc..dfced959f)
+
+Diff-only re-review of the three commits after the last Approve (cc1066bcc): 2b3dcdf84 (clean merge of origin/main at 17b002fc0, after #2910), b64f9933b (FO-3w screenshot put back) and dfced959f (J-23 screenshots put back). Checked with git at dfced959f; origin/main = merge base = 17b002fc0.
+
+1. **Scope.** `git diff --name-only origin/main...dfced959f` lists 15 files: `booking-public/frame.tsx`, `booking-public/brand.tsx`, `tests/check_pf13c_booking_brand_browser.ts`, and 12 under `product/screens/PF-13c/` (break-report, build-notes, review, 9 screenshots). Nothing else. Held.
+2. **Approved code unchanged.** The brief's check `git diff cc1066bcc dfced959f -- …/booking-public …/check_pf13c_booking_brand_browser.ts` is **not empty**. It shows 2 lines, in `manage-page.tsx` (cancel dialog keeps a refused reason on its field when the status is `422`, was `400`) and `type-page.tsx` (field errors on `422`, was `400`). Both come from main, not from this PR: PF-28 part 4 (b18338d10, "booking doors answer field errors 422"), and both files are byte-identical to origin/main at dfced959f. This PR's own files (`frame.tsx`, `brand.tsx`, the check) are unchanged since cc1066bcc (`git diff --quiet` passes). The approved code is unchanged. The brief's statement that the diff would be empty was imprecise; this is not a finding.
+3. **Interaction with the frame.** Main's diff since the approved base (7961f166..17b002fc0, 250 files) touches nothing named brand/branding, no public branding API, and no `frame.tsx`/`brand.tsx`. Under `booking-public/` it changes only the two 400→422 lines above. These are about field errors inside the pages, which the frame wraps but does not read. The API changes (`booking/service.ts`, `settings/types.ts`, `availability.ts`, `timings.ts`, `feed.ts`, `consult/service.ts`) have no added or removed lines that mention brand, logo, colour, accent or firm name. #2910 (PF-13 part 2) was already under the approved code: its branch tip is the approved base 7961f166, an ancestor of cc1066bcc. No interaction found.
+4. **Restore commits.** b64f9933b touches only `fo-3-booking/screenshots/fo3w-times-dubai-1440.png`. dfced959f touches only 10 `J-23/screenshots/*.png`. All 11 are byte-identical to origin/main at dfced959f, so they put back main's files with nothing extra.
+
+Builder's runs at dfced959f (not re-run here; diff-only scope): check_pf13c_booking_brand_browser 28/28, check_pf13_branding_browser 40/40, check_fo3w_booking_browser 67/67, check_fo3w_manage_browser 50/50, j_23 15/15 on a fresh copy. These cover the frame and the pages that took main's 422 change. The earlier journey score stands: no PR code changed.
+
+No Blocker, Major or Minor opened.
+
+**Verdict: Approve** (dfced959f073fafc08e1c88d30ec8e1f4d616266)
