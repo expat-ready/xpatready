@@ -67,3 +67,16 @@ Replay: the builder's check 95/95 twice; old `find-box.tsx` 90/95 (the 5 new che
 | Visual quality | 1 | r5-2 fixed |
 
 **Score 9.5 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.
+
+## Follow-up PR round 2 (a0e830170), reviewer
+Journey 5 was walked again by script in headless Chromium, as user-O on `/home`. It used a persistent profile with the browser's default font set (scratchpad `font20.mjs`) and an isolated copy on 4576.
+5. Larger browser font: at 20 px and 850 or 959 px, and at 24 px and 1100 px, the Find button is shown and Escape ×3 returns focus to it. At 20 px and 960 px the desktop rule applies (the box is left). **Held** (r7-1 fixed).
+1 to 4 were checked again at 16 px, 767 and 768 px: same as before. **Held.**
+Replay: the builder's check 98/98 twice. No page errors.
+
+| Criterion | Score | Change from the follow-up round |
+|---|---|---|
+| Task completed, next step, plain words, feedback, correct data, error recovery, speed, trust, visual quality | 1 each | unchanged |
+| Accessibility and screen sizes | 1 | r7-1 fixed |
+
+**Score 10 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.

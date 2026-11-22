@@ -188,3 +188,25 @@ r3-1 and r5-2 are fixed at the default settings, and the keyboard-only and 200 %
 
 **Verdict: Approve.** No Blocker or Major is open. r7-1 is the one fix worth adding in this PR (one token). Otherwise it becomes a follow-up row with r7-2 and n4.
 Reviewer: Approve 54625b64ca208b5036be91b32e1d80997fb6b7a7
+
+## Follow-up PR round 2 (diff-only, a0e830170)
+Reviewer: a fresh agent that did not build PF-30s, 22 Nov 2026. Diff-only re-review (P-277): `git diff 54625b64c a0e830170 -- '*.tsx' '*.ts'`, which is `find-box.tsx` (1 line) and `check_pf30s_find_box_browser.ts` (5 lines changed). Running copy: `isolated.sh rv2_fu 4576`, PLATFORM_IDENTITY=local. Builder's check: **98/98**, run twice. Reviewer probe `font20.mjs` (scratchpad, not committed): a persistent Chromium profile with `default_font_size` set, as user-O on `/home`. Rewritten screenshots restored, copy stopped, worktree clean apart from this section and the journey report.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Each fix right and minimal? | **Yes.** r7-1: `find-box.tsx:108` now uses `matchMedia("(min-width: 48rem)")`, the same query Tailwind 4.3.1's `md:` produces. The Find button (`md:hidden`) and the Escape rule now switch at the same width at any browser font size. That is one token plus a comment. r7-2: the check waits until `[data-find-input]` has focus before typing, which removes the lost first key. It then asserts that focus is in the box and the value is `""` after Escape 2, before Escape 3. That pins the order: Escape 1 closes the list, Escape 2 clears the text, and Escape 3 leaves. No other lines changed. | diff |
+| Does the test catch what it says? | **Yes.** Suppose the list never opens, or the first key is lost and no list is drawn. Then Escape 1 clears the text and Escape 2 closes the bar on a phone width, so focus is on the Find button and the r7-2 assertion fails. Before this change the check passed in that case. The r3-1 assertion is unchanged and still fails on the 02113a9c6 code (round 1: 90/95). | code read; `run.txt` |
+| Anything new broken? | **No.** Focus after Escape 1, 2 and 3 (probe): 16 px font at 767 px gives INPUT, INPUT, FIND. At 768 px it gives INPUT, INPUT, BODY (n1 unchanged). **20 px font at 850 px and at 959 px gives INPUT, INPUT, FIND**, and the Find button is visible (round 1's failing case, now fixed). At 960 px (= 48 × 20) the query matches, the button is hidden, and the sequence is INPUT, INPUT, BODY. 24 px font at 1100 px gives INPUT, INPUT, FIND. Zoom is unaffected: px and rem scale together. No page errors. | probe output |
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r8-1 | Nit | The comment on `find-box.tsx:106` still says "below 768 px", but the edge is now 48rem (768 px only at the default font). The r7-2 check's label says "closed list", which is implied by focus staying in the box but not asserted on its own. | diff | Optional: "below 48rem (Tailwind's md)". No new row needed. |
+| n4 | Should (Minor), carried | Break m1, break m6 and the PlatformFrame terms clause have no test, and review m7 (graph) is open. This PR does not change them. | round 3 | As round 3. |
+
+### Journey score (reviewer, round 2): **10 / 10, pass**
+Accessibility and screen sizes goes from ½ to **1**: the larger-font walk (journey 5) now holds. All other criteria are unchanged from the follow-up round. Details are in `journey-test-reviewer-2026-11-22.md` under "Follow-up PR round 2". Not run: the graph, the pf18s and pf6a suites, and D1–D20 and BIC. This is a diff-only round with no new element, page or route. Not tested: a real screen reader, Firefox and Safari.
+
+**Verdict: Approve.** No Blocker, Major or open Minor from round 1 remains. r7-1 and r7-2 are fixed, and n4 stays a follow-up row.
+Reviewer: Approve a0e830170852a406c22ad3ad933f1eaab5bb79e2
