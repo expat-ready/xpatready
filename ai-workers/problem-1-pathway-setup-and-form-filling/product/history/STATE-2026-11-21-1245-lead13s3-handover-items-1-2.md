@@ -1,0 +1,5 @@
+# STATE hand-over items (1)-(2), moved word for word by Lead 13 (series 3), 21 Nov 12:45 IST (STATE size, P-336)
+
+(1) **Queue (at 11:36):** #2719 R1.32 walk (batch, Mergify ETA 12:01) · #2716 R1.108 (ETA 13:03) · #2618 R1.49 · #2633 R1.47 · #2725 R1.14 p2 · #2687 DEMO-LINK · #2619 R1.10 p1 · #2720 R1.53 dequeued 11:33 (shard 7, batch #2735; Lead B told) · #1959 R1.19: its lane ("Build · R1.19 + R1.10", claude.ai session_01MXNda7vUuZ1C9LJ8ySRdxn) adds the two audit before/after lines (comment 7058078552), then **your P-423 re-read before the label (money)**.
+
+(2) **Lanes started today by Lead 12 (cloud, Opus 5.5 medium):** ENF-782a (#2738: Lead read done on bc9850fc9; labels on Approve plus green) · ENF-782b (#2741: stop-hook question answered) · ENF-783 (timeline + round limit) · qa Q4 (R1.53, then R1.47 or R1.19) · J-49 walk (#2731, red, its builder fixing) · PF-8b and PF-23c (synth only, for the AWS proof) · R1.3 rescue of #2349 · PF-12b2 (R1.4) · FO-3st3b (R1.42, draft until #2727 and #2718) · PF-16 (R1.90, after #1959). Lead B (10) (local_85784f46) steers the FO and PF rows, answers their questions, and drives #2717, #2718 and #2727 (R1.42).

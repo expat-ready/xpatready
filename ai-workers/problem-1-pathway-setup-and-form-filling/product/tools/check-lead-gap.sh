@@ -38,7 +38,7 @@ run() { echo $(( $(date +%s) - $1 * 60 )) > "$T/state/last-check"; : > "$T/run.o
   for i in $(seq 150); do [ "$(grep -c . "$T/run.out")" -ge 2 ] && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
   kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; out=$(head -2 "$T/run.out"); }
 run 20; ok "normal run, previous check 20 min ago: the stall ACT (was silent under the 40-min guard)" "$(grep -q '^ACT   previous check ran 20 min ago' <<< "$out" && echo 1)" "$out"
-run 10; ok "normal run, previous check 10 min ago: step 0 ran and gave no stall ACT (line 2 is the disk line)" "$(grep -q '^time  ' <<< "$out" && sed -n 2p <<< "$out" | grep -q '^disk  ' && ! grep -q 'previous check ran' <<< "$out" && echo 1)" "$out"
+run 10; ok "normal run, previous check 10 min ago: step 0 ran and gave no stall ACT (line 2 is step 0's fresh stamp, ENF-803)" "$(grep -q '^time  ' <<< "$out" && sed -n 2p <<< "$out" | grep -qE '^ +read [0-9:]+ IST from the clock' && ! grep -q 'previous check ran' <<< "$out" && echo 1)" "$out"
 # lead-check-guard.sh: the standby's recurring prompt "run lead-watch gap" is allowed in the Lead's copy; additions are not.
 git init -q "$T/copy" && mkdir -p "$T/copy/$PRODREL/tools" && printf '#!/bin/bash\necho "$FAKE_LANE"\n' > "$T/copy/$PRODREL/tools/lane.sh"
 guard() { local o; o=$(jq -n --arg p "$2" --arg d "$T/copy" '{tool_name:"CronCreate", tool_input:{cron:"*/10 * * * *", prompt:$p, recurring:true}, cwd:$d}' | FAKE_LANE="$1" bash "$TOOLS/lead-check-guard.sh")
