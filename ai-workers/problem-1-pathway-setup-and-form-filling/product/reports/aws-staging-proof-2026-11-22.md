@@ -82,3 +82,8 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
   between phases, so the project's stored buildspec (`cd src` in both pre_build and build) changes folder twice; the 21 Nov
   `~/cb/buildspec.yml` (one `cd`, tag from `$TAG`) is the version that built. Fix: same project, `--buildspec-override` with
   that file, `TAG=5d866c746`. Build `xr-staging-image-build:64818f1b-a640-45a8-a435-2455d2eebef0` started 11:38 IST: in BUILD at 11:39.
+* Build 64818f1b **SUCCEEDED** 11:41 IST. Image `xr-staging-studio:5d866c746` =
+  **`sha256:dabc0523c90a1c8d99ea9a84820d827482c55488b90d47b88ef8ed79ba179769`**, pushed 2026-11-22T06:11:05Z, 325,461,024 bytes.
+* **Deleted 11:42 IST** as approved: project `xr-staging-image-build` (`delete-project` ok; `list-projects` empty), the role's inline
+  policy and role `xr-staging-image-build` (`get-role` → NoSuchEntity). Build logs stay in `/aws/codebuild/xr-staging-image-build`.
+* 11:42 IST: stack still UPDATE_IN_PROGRESS, certificate PENDING_VALIDATION (NS records not yet in Cloudflare).
