@@ -27,6 +27,7 @@ import { fakeMail } from "../ports/mail.ts";
 import { randomUUID } from "node:crypto";
 import { asBypass } from "../api/src/platform/firm-scope.ts";
 import { runtimeSignUpPorts } from "../api/src/platform/firms/runtime-ports.ts";
+import { Secret } from "../api/src/platform/config/secret.ts";
 import { Runtime, RuntimeController } from "../api/src/runtime.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { StripeBilling } from "../api/src/platform/billing/stripe.ts";
@@ -353,6 +354,9 @@ try {
   const localPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
   ok("PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a \"check your email\" that sends nothing; local runs the stand-ins",
     shutUp?.status === 503 && shutUp.body.code === "SIGNUP_NOT_SET_UP" && pendingCount("shut@firm.example.com") === "0" && localPorts.notReady === null, shutUp);
+  const keyedPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: new Secret("PLATFORM_STRIPE_SECRET_KEY", "sk_test_recordedOnly000000"), webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  ok("R1.89 QA-741 (review m2): the running app reads Stripe's price ids only with a key: no key → stripePrices false (the table's cents), a key → true (no Stripe call made here)",
+    localPorts.stripePrices === false && keyedPorts.stripePrices === true, { local: localPorts.stripePrices, keyed: keyedPorts.stripePrices });
 
   const routes = Object.getOwnPropertyNames(PlatformSignUpController.prototype).filter((k) => k !== "constructor").map((k) => {
     const h = (PlatformSignUpController.prototype as unknown as Record<string, () => unknown>)[k];

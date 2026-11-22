@@ -101,8 +101,9 @@ try {
       ok("R1.89 QA-742 fail: a plan with 0 trial days is not offered as a free trial (no trial line, the button reads \"Sign up\", the page's lead does not say every plan has one)",
         !/free trial/i.test(firm.text) && !/0-day/.test(firm.text) && firm.start === "Sign up" && !(await q.locator("[data-pricing] > p").first().innerText()).includes("Every plan starts with a free trial"), firm);
       ok("R1.89 QA-742 pass: a plan with trial days keeps its trial line and button (solo: 14-day free trial, Start free trial)", soloM.text.includes("14-day free trial · no card needed") && soloM.start === "Start free trial", soloM);
-      await q.locator('[data-start="firm"]').click(); await q.locator("[data-signup]").waitFor({ timeout: 20_000 });
-      ok("R1.89 QA-742 fail: Sign up for the 0-day plan does not say \"0 days free\"", !/0 days free/.test(await q.locator("[data-signup]").innerText()));
+      await q.locator('[data-start="firm"]').click(); await q.locator("[data-signup-submit]").waitFor({ timeout: 20_000 });
+      const zero = await q.locator("[data-signup]").innerText();
+      ok("R1.89 QA-742 fail: Sign up for the 0-day plan says neither \"0 days free\" nor \"free trial\" (heading and button read \"Sign up\")", !/0 days free/.test(zero) && !/free trial/i.test(zero) && (await q.locator("[data-signup-submit]").innerText()) === "Sign up", zero);
     } finally {
       sql(`update platform_plan set monthly_price_cents = 9900, yearly_price_cents = 99000 where code = 'team'; update platform_plan set trial_days = 14 where code = 'firm'`);
       await q.close();
