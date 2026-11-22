@@ -91,3 +91,40 @@ The diff touches `activity-log-page.tsx`, `contract.ts` and the check only. No A
 Round-1 items for the Lead are unchanged: the C9 zone field, AUD-4's export name and summary one day past To (breaker m5), and the §4b re-read before the label (C8 Minor 8).
 
 Reviewer: Approve dc006e04e0e4e70922fd785b4e4778656a80a2fd
+
+## Round 3 (diff-only: dc006e04e..e8ffb5edf, `prototype/studio`; commit e8ffb5edf26dbdff605b08f830bda1ddd9a422cb)
+
+**Verdict: Ship (Approve).** No Blocker, no Major. The stamp design for M2 holds on every path I tried. One Minor carries over: the R2-1 tooltip is only partly fixed.
+
+**Run:** check on a fresh copy rv_aud4s :4444 gave **63/63 PASS, exit 0**. Then my own probes on the same copy, which was stopped afterwards. Screenshots the check rewrote were restored to the commit.
+
+**M2 by stamp (`activity-log-page.tsx:300-311`, `Gate`).** Each history entry of the page carries `{ auditOwner: firmId:staffId }` in history state, never in the address:
+* An unstamped entry keeps its filters and is stamped on first draw.
+* An entry stamped for someone else is replaced, before anything is drawn (`foreign ? null`), by the bare address with `auditCleared`. That shows the "Filters cleared" note.
+* `set()` re-stamps on every filter change.
+
+Probes:
+| Path | Result |
+|---|---|
+| Breaker R2-M1: Owner sets filters over three entries, signs out on Home, the **Admin of the same firm** signs in, then Back ×3 and Forward | Every entry opens bare: no record text or `br.hostile` in the DOM. "Filters cleared" shows on the entries that had filters. Forward is clean |
+| Same person signs out and back in | Filters kept, no note (correct: they are theirs) |
+| Another person signs in, then sets a filter, then reloads | The note goes after their own change. Their filter survives the reload |
+| Case Officer (no key) lands on the Owner's filtered entry | No-access page; address emptied; no leak |
+| Breaker R2-M2: a link opened before sign-in | Filters kept (check: R2-M2 PASS) |
+| Firm B after firm A on the page itself (DW1b) | Bare address, no chips, the note shows (check) |
+
+Residual, not a finding: after a sign-out on the page, the browser's address bar keeps the last person's filters until the next sign-in. The page's DOM does not. The browser's own history holds those addresses anyway, so the page cannot remove them. BR-13 speaks of what the page shows, and that holds.
+Cost: the stamp's `replace` gives the entry a new key, so `PlatformFrame` asks `/me` once more on first visit. That is harmless.
+
+**Breaker round-2 m1 (bad `timeZone`)** is fixed at the zod edge (`contract.ts:28`, `refine(isZone)`). An unusable zone now shows "The activity log could not load" with the frame kept, not a blank app (check PASS). Retry cannot succeed while AUD-4 sends that zone. That is honest for a latent case, and the choice of falling back to UTC instead is the Lead's.
+
+**R2-1 (tooltip, WCAG 1.4.13): partly fixed.** Shows on focus: yes. Escape hides it without moving focus, whether the button has focus or the pointer is only hovering: yes. It returns on the next focus: yes. It is the button's description: yes. **Still failing: hoverable with a real pointer.** The tip sits `top-full mt-1` (`:205`), 4 px below the button, outside the `group` box (`:202`). Moving the pointer down 1 px at a time, the tip hides in the gap and stays hidden when the pointer reaches it, because `invisible` takes no hover (probe: hidden at a step = true, visible at end = false). The check passes only because it moves the pointer straight onto the tip in one jump.
+* Should (Minor): close the gap, e.g. `pt-1` on a transparent wrapper instead of `mt-1`. Make the check move the pointer in steps (`mouse.move(x, y, { steps: 10 })`).
+
+The rest of the diff, read line by line, breaks nothing:
+* The "Filters cleared" notice is plain words and has the info tone.
+* `useLocation`/`useNavigate` imports are used.
+* `ActivityLogPage` no longer touches the address.
+* All 59 round-2 checks are among the 63, axe is clean, and there are no page errors.
+
+Reviewer: Approve e8ffb5edf26dbdff605b08f830bda1ddd9a422cb
