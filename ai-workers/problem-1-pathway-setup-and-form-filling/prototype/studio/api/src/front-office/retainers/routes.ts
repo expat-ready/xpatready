@@ -7,6 +7,7 @@ import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Req, Res, 
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { OwnOrAll, PermissionKeys, problem, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
+import { idParam } from "../../platform/http/input.ts";
 import { PlatformClock } from "../../platform/identity/port.ts";
 import { FileLinks, LocalFiles } from "../files.ts";
 import { OFFLINE_PDF_MAX_BYTES, Retainers, TEMPLATE_MAX_BYTES, type Upload } from "./service.ts";
@@ -44,7 +45,7 @@ export class RetainersController {
   upload(@Req() r: R, @Body() b: B, @UploadedFile() f: F) { return this.svc.uploadTemplate(staffOf(r), b ?? {}, up(f)); }
 
   @Post("retainer-templates/:id/versions") @file(TEMPLATE_MAX_BYTES) @PermissionKeys("agent/retainer:configure-template")
-  newVersion(@Req() r: R, @Param("id") id: string, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f)); }
+  newVersion(@Req() r: R, @Param("id") id: string, @Body() b: B, @UploadedFile() f: F) { return this.svc.newTemplateVersion(staffOf(r), id, up(f), b ?? {}); }
 
   @Patch("retainer-templates/:id") @PermissionKeys("agent/retainer:configure-template")
   changeTemplate(@Req() r: R, @Param("id") id: string, @Body() b: B) { return this.svc.changeTemplate(staffOf(r), id, b ?? {}); }
@@ -54,6 +55,10 @@ export class RetainersController {
 
   @Post("prospects/:id/retainers") @PermissionKeys("agent/retainer:draft")
   draft(@Req() r: R, @Param("id") prospectId: string, @Body() b: B) { return this.svc.draft(staffOf(r), prospectId, b ?? {}); }
+
+  /** FO-5s: the prospect's retainers (its card on the prospect page). */
+  @Get("prospects/:id/retainers") @PermissionKeys("agent/retainer:list")
+  listForProspect(@Req() r: R, @Param("id") prospectId: string) { return this.svc.listForProspect(staffOf(r), idParam(prospectId, "prospect")); }   // PF-28: a malformed id is the one not-found (404), never a field error
 
   @Get("retainers/:id") @PermissionKeys("agent/retainer:show") @OwnOrAll("agent/prospect")
   read(@Req() r: R, @Param("id") id: string) { return this.svc.read(staffOf(r), id); }

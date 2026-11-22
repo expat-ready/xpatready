@@ -1,6 +1,7 @@
 // PF-8b's checks over a synthesized template: pure functions returning plain-words findings (empty = pass), run on the
 // real stacks (must pass) and on broken copies (must fail) by test/service.test.ts, as PF-8a's checks.ts does.
 import type { Template } from "./checks.ts";
+import { CERT_ARN_PATTERN, NO_DOMAIN } from "./service.ts";
 
 type Res = { Type: string; Properties?: Record<string, unknown> };
 /** A nested template value by path (unknown when any step is missing). */
@@ -233,8 +234,10 @@ export function mailFindings(t: Template, domain: string): string[] {
   return out;
 }
 
-/** Three separate Cognito pools (staff, own-staff, clients), each with its own app client; both staff pools need two-step. */
-export function poolFindings(t: Template, stage: string): string[] {
+/** Three separate Cognito pools (staff, own-staff, clients), each with its own app client; both staff pools need two-step.
+ *  QA-643: on a stack with a domain both staff pools also take a passkey with user verification in place of password plus
+ *  app (`domain` is the stack's domain, or NO_DOMAIN: then no staff pool may offer passkeys, having no relying party). */
+export function poolFindings(t: Template, stage: string, domain: string): string[] {
   const out: string[] = [];
   const pools = all(t, "AWS::Cognito::UserPool");
   const want = ["staff", "own-staff", "clients"].map((n) => `xr-${stage}-${n}`);
@@ -246,10 +249,107 @@ export function poolFindings(t: Template, stage: string): string[] {
     if (/-(own-)?staff$/.test(String(p.Properties?.UserPoolName)) && p.Properties?.MfaConfiguration !== "ON") out.push(`${id}: a staff pool without required two-step sign-in`);
     if (p.Properties?.DeletionProtection !== "ACTIVE") out.push(`${id}: deletion protection off`);
     if (g(p.Properties, "AdminCreateUserConfig", "AllowAdminCreateUserOnly") !== true) out.push(`${id}: anyone may sign up (break m2)`);
+    if (/-(own-)?staff$/.test(String(p.Properties?.UserPoolName))) out.push(...passkeyFindings(t, id, p, domain));
+    else if (g(p.Properties, "Policies", "SignInPolicy") !== undefined || Object.keys(p.Properties ?? {}).some((k) => k.startsWith("WebAuthn"))) out.push(`${id}: sign-in factors or passkeys set on the clients' pool, which PF-4p has not decided`);
   }
   for (const [id, c] of all(t, "AWS::Cognito::UserPoolClient")) if (c.Properties?.AllowedOAuthFlowsUserPoolClient === true) out.push(`${id}: OAuth flows on with no hosted domain or real callback (break m3)`);
   const svc = taskDefinitions(t).service, poolEnv = svc && env(containers(svc[1])[0]).get("PLATFORM_COGNITO_USER_POOL_ID");
   const staffPool = pools.find(([, p]) => String(p.Properties?.UserPoolName) === `xr-${stage}-staff`)?.[0];
   if (!staffPool || refId(poolEnv) !== staffPool) out.push(`the service signs staff in against ${json(poolEnv)}, not the staff pool (break m2)`);
+  return out;
+}
+
+/** QA-643 (PF-4b): one staff pool's sign-in factors (break round 1: each list exact, not "contains").
+ *  Always: the authenticator app is the only second step (no email or SMS code, which the inbox or phone alone would
+ *  pass) and no remembered device skips it. With a domain: first factors exactly a password and a passkey, user
+ *  verification required, a verified passkey counting as both steps (MULTI_FACTOR_WITH_USER_VERIFICATION; never a
+ *  passkey alone without verification), the relying party the stack's domain, a tier that has these (Essentials or Plus),
+ *  and its app client allowing exactly SRP, USER_AUTH and refresh. With no domain: a password only, its client SRP and
+ *  refresh only, and no passkey setting at all. */
+function passkeyFindings(t: Template, id: string, p: Res, domain: string): string[] {
+  const out: string[] = [], P = p.Properties ?? {};
+  const first = arr(g(P, "Policies", "SignInPolicy", "AllowedFirstAuthFactors")).map(String);
+  const client = all(t, "AWS::Cognito::UserPoolClient").find(([, c]) => refId(c.Properties?.UserPoolId) === id)?.[1];
+  const flows = arr(client?.Properties?.ExplicitAuthFlows).map(String).sort();
+  if (json(arr(P.EnabledMfas)) !== json(["SOFTWARE_TOKEN_MFA"])) out.push(`${id}: second steps ${json(P.EnabledMfas)}, not the authenticator app only`);
+  if (P.DeviceConfiguration !== undefined) out.push(`${id}: remembered devices ${json(P.DeviceConfiguration)} could skip the second step`);
+  if (domain === NO_DOMAIN) {
+    if (first.length && json(first) !== json(["PASSWORD"])) out.push(`${id}: first sign-in factors ${json(first)}, not a password only (no domain)`);
+    if (P.WebAuthnRelyingPartyID !== undefined || P.WebAuthnFactorConfiguration !== undefined || P.WebAuthnUserVerification !== undefined) out.push(`${id}: passkeys on with no domain to be their relying party`);
+    if (json(flows) !== json(["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_USER_SRP_AUTH"])) out.push(`${id}: its app client allows ${json(flows)}, not SRP and refresh only`);
+    return out;
+  }
+  if (json([...first].sort()) !== json(["PASSWORD", "WEB_AUTHN"])) out.push(`${id}: first sign-in factors ${json(first)}, not exactly a password and a passkey (QA-643)`);
+  if (P.WebAuthnUserVerification !== "required") out.push(`${id}: passkey user verification ${json(P.WebAuthnUserVerification)}, not required`);
+  if (P.WebAuthnFactorConfiguration !== "MULTI_FACTOR_WITH_USER_VERIFICATION") out.push(`${id}: a passkey is ${json(P.WebAuthnFactorConfiguration)}, not both steps with user verification (MULTI_FACTOR_WITH_USER_VERIFICATION)`);
+  if (P.WebAuthnRelyingPartyID !== domain) out.push(`${id}: passkey relying party ${json(P.WebAuthnRelyingPartyID)}, not ${domain}`);
+  if (!["ESSENTIALS", "PLUS"].includes(String(P.UserPoolTier))) out.push(`${id}: tier ${json(P.UserPoolTier)} has no passkey sign-in (Essentials or Plus)`);
+  if (!flows.includes("ALLOW_USER_AUTH")) out.push(`${id}: its app client does not allow USER_AUTH, so no passkey can sign in`);
+  else if (json(flows) !== json(["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_USER_AUTH", "ALLOW_USER_SRP_AUTH"])) out.push(`${id}: its app client allows ${json(flows)}, not SRP, USER_AUTH and refresh only`);
+  return out;
+}
+
+/** PF-8b F1 (AWS preflight, 21 Nov): the service's and the migration's containers each send their output with the awslogs
+ *  driver to this stack's app log group (`/xr/<stage>/app`, PF-23c), in this stack's region, so R1.13's alarms and R1.15's
+ *  log checks see the app's lines. No driver, another driver or another group is a finding. */
+export function logFindings(t: Template, stage: string, region = "ca-central-1"): string[] {
+  const groups = all(t, "AWS::Logs::LogGroup").filter(([, r]) => g(r, "Properties", "LogGroupName") === `/xr/${stage}/app`).map(([id]) => id);
+  const { service, migration } = taskDefinitions(t), out: string[] = [];
+  if (groups.length !== 1) out.push(`${groups.length} log groups named /xr/${stage}/app, not one`);
+  for (const [what, td] of [["service", service], ["migration", migration]] as const) {
+    if (!td) { out.push(`no ${what} task definition`); continue; }
+    for (const c of containers(td[1])) {
+      const lc = g(c, "LogConfiguration");
+      if (g(lc, "LogDriver") !== "awslogs") out.push(`${what}/${c.Name}: log driver ${json(g(lc, "LogDriver"))}, not awslogs`);
+      else if (refId(g(lc, "Options", "awslogs-group")) !== groups[0] || groups.length !== 1) out.push(`${what}/${c.Name}: logs to ${json(g(lc, "Options", "awslogs-group"))}, not /xr/${stage}/app`);
+      else if (g(lc, "Options", "awslogs-region") !== region) out.push(`${what}/${c.Name}: logs in ${json(g(lc, "Options", "awslogs-region"))}, not ${region}`);
+    }
+  }
+  // and the log actions CDK grants the execution roles name that one group's ARN and nothing else (review m1: the
+  // bypass check only holds them to some resource of this stack)
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) for (const st of arr(g(r, "Properties", "PolicyDocument", "Statement"))) {
+    const acts = arr(g(st, "Action")).concat(typeof g(st, "Action") === "string" ? [g(st, "Action")] : []);
+    if (!acts.some((a) => typeof a === "string" && a.startsWith("logs:"))) continue;
+    const res = g(st, "Resource"), want = json({ "Fn::GetAtt": [groups[0], "Arn"] });
+    if (groups.length !== 1 || json(res) !== want) out.push(`${id}: allows ${acts.filter((a) => String(a).startsWith("logs:")).join(", ")} on ${json(res).slice(0, 80)}, not the /xr/${stage}/app group's ARN alone`);
+  }
+  return out;
+}
+
+/** PF-8b F2b: the service's task tells the app which domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX), and it is
+ *  exactly this stack's domain: the hosted zone's name and the wildcard certificate's base, so the host the load balancer
+ *  is reached by is the host the app reads a firm from. */
+export function addressSuffixFindings(t: Template, domain: string): string[] {
+  const { service } = taskDefinitions(t);
+  if (!service) return ["no task definition run by the service"];
+  const v = env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX"), out: string[] = [];
+  if (v !== domain) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not this stack's domain "${domain}"`);
+  if (!all(t, "AWS::Route53::HostedZone").some(([, z]) => z.Properties?.Name === `${v}.`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} is no hosted zone of this stack`);
+  if (!all(t, "AWS::CertificateManager::Certificate").some(([, c]) => c.Properties?.DomainName === `*.${v}`)) out.push(`PLATFORM_ADDRESS_SUFFIX ${json(v)} has no wildcard certificate in this stack`);
+  return out;
+}
+
+/** PF-8b F3, no-domain mode (`-c xr:domain=none`, staging only): no hosted zone, DNS record, ACM-issued certificate or SES
+ *  identity, and no SES grant; every HTTPS listener serves the one imported certificate (xr:certArn, an ACM ARN in
+ *  ca-central-1, written into the template; no parameter); the app's PLATFORM_ADDRESS_SUFFIX is the load balancer's AWS name, and the load
+ *  balancer's fixed name is lower case (the loader refuses capitals). */
+export function noDomainFindings(t: Template): string[] {
+  const out: string[] = [];
+  for (const type of ["AWS::Route53::HostedZone", "AWS::Route53::RecordSet", "AWS::CertificateManager::Certificate", "AWS::SES::EmailIdentity"])
+    for (const [id] of all(t, type)) out.push(`${id}: ${type} in no-domain mode`);
+  for (const [id, r] of all(t, "AWS::IAM::Policy")) if (json(g(r, "Properties", "PolicyDocument")).includes('"ses:')) out.push(`${id}: an SES grant in no-domain mode`);
+  const https = all(t, "AWS::ElasticLoadBalancingV2::Listener").filter(([, l]) => l.Properties?.Protocol === "HTTPS");
+  if (!https.length) out.push("no HTTPS listener");
+  for (const [id, l] of https) {
+    const certs = arr(l.Properties?.Certificates), arn = g(certs[0], "CertificateArn");
+    if (certs.length !== 1 || typeof arn !== "string" || !CERT_ARN_PATTERN.test(arn)) out.push(`${id}: serves ${json(l.Properties?.Certificates)}, not one imported ACM certificate in ca-central-1`);
+  }
+  // port 80 still answers only with the HTTPS redirect (break 5: the listener sits beside the early return)
+  const http = all(t, "AWS::ElasticLoadBalancingV2::Listener").filter(([, l]) => l.Properties?.Port === 80);
+  if (http.length !== 1 || g(arr(http[0][1].Properties?.DefaultActions)[0], "RedirectConfig", "Protocol") !== "HTTPS") out.push("port 80 does not redirect to HTTPS");
+  const lbs = all(t, "AWS::ElasticLoadBalancingV2::LoadBalancer"), { service } = taskDefinitions(t);
+  const v = service ? env(containers(service[1])[0]).get("PLATFORM_ADDRESS_SUFFIX") : undefined;
+  if (lbs.length !== 1 || json(v) !== json({ "Fn::GetAtt": [lbs[0][0], "DNSName"] })) out.push(`PLATFORM_ADDRESS_SUFFIX is ${json(v)}, not the load balancer's AWS name`);
+  for (const [id, lb] of lbs) if (typeof lb.Properties?.Name !== "string" || !/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(lb.Properties.Name as string)) out.push(`${id}: name ${json(lb.Properties?.Name)} is not fixed lower case`);
   return out;
 }

@@ -1,0 +1,8 @@
+| check_pf19a_messages_schema.ts | PASS | 24 s | 94 passed, 0 failed |
+| check_pf19b_mail.ts | PASS | 13 s | 29 passed, 0 failed |
+| check_pf19b_sending.ts | PASS | 8 s | 42 passed, 0 failed |
+| check_pf19p_platform_mail.ts | PASS | 11 s | 68 passed, 0 failed |
+| check_pf19r_case_links.ts | PASS | 33 s | PF-19r part 2: 21 passed, 0 failed |
+| check_pf19r_every_sender.ts | PASS | 4 s | 21 passed, 0 failed |
+| check_pf19r_senders.ts | PASS | 8 s | PF-19r part 1: 27 passed, 0 failed |
+| check_qa518_unsubscribe_address.ts | PASS | 8 s | 22 passed, 0 failed |

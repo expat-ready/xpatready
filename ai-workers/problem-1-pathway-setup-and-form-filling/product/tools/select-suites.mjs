@@ -31,7 +31,8 @@
 // (I1, 3 Nov) the .md files the app or a suite reads as data: the AI prompts (prototype/**/prompts/*.md), api/src/**/*.md
 // (the features guide) and test fixtures, which go through the graph; and official-sources/ (the app reads its
 // manifests and PDFs at start): all. Of product/tools/ only the files that decide how the suites run choose everything
-// (run-suites.sh, this file, cloud-setup.sh, lane.sh, change-kind.sh, ci-memory.mjs); of .github/ only workflows/ci.yml.
+// (run-suites.sh, this file, cloud-setup.sh, lane.sh, change-kind.sh, ci-memory.mjs, pr-suites-plan.sh); of .github/
+// only workflows/ci.yml and workflows/pr-suites.yml (E2: a change to how a PR's suites run runs them, report only).
 // --direct (I1, a PR check that leaves the full set to the merge queue, P-291 (3)): never ALL and never "every browser
 // suite"; a file that would choose everything chooses the suites that import it (through test helpers) or name it.
 // --why: each chosen suite's reason names the chain of files by which it uses the change; SELECT_DEBUG=1 prints every
@@ -65,7 +66,7 @@ const RUNTIME_GROUP = ["check_runtime_r1c.cjs", "check_runtime_r1d.ts", "check_r
 const DOCS0 = /\.(md|txt|png|jpe?g|gif|webp|svg|pdf)$/i;
 const DATA_MD = new RegExp(`^${P}/prototype/(.*/)?prompts/|^${P}/prototype/studio/(api/src|tests/fixtures)/`);
 const DOCS = { test: (f) => DOCS0.test(f) && !DATA_MD.test(f) && !f.startsWith(`${P}/official-sources/`) || /^ai-workers\/[^/]+\/official-sources\/.*\.md$/i.test(f) };
-const SUITE_TOOLS = /\/product\/tools\/(run-suites\.sh|select-suites\.mjs|cloud-setup\.sh|lane\.sh|change-kind\.sh|ci-memory\.mjs)$/;
+const SUITE_TOOLS = /\/product\/tools\/(run-suites\.sh|select-suites\.mjs|cloud-setup\.sh|lane\.sh|change-kind\.sh|ci-memory\.mjs|pr-suites-plan\.sh)$/;
 const DIRECT = process.argv.includes("--direct"), WHY = process.argv.includes("--why");
 
 const texts = new Map();
@@ -91,7 +92,7 @@ const hit = (src, key, t) => {
 // The suites run-suites.sh runs, by the name its summary uses (file names are unique across the three folders).
 const suites = new Map();   // name -> path
 for (const f of [...ls(`${S}/tests`, /^check_.*\.(ts|cjs)$/), ...ls(`${S}/tests/runtime`, /^check_.*\.(ts|cjs)$/),
-  ...["check_p2_guard.ts", "check_p2_launch.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
+  ...["check_p2_guard.ts", "check_p2_launch.ts", "check_p2_shared_ledger.ts"].map((n) => `${PR}/tests/${n}`).filter((f) => existsSync(join(ROOT, f)))]) {
   if (!SKIP.has(basename(f))) suites.set(basename(f), f);
 }
 const text = new Map([...suites].map(([n, f]) => [n, read(f)]));
@@ -386,7 +387,7 @@ const webMemo = (w) => webMemos.get(w) ?? webMemos.set(w, existsSync(join(ROOT, 
 // ---- one changed file
 function pick(f) {
   if (DOCS.test(f)) return {};
-  if (f === ".github/workflows/ci.yml" || f === ".nvmrc" || /(^|\/)package(-lock)?\.json$/.test(f)) return { all: `${f}: shared` };
+  if (f === ".github/workflows/ci.yml" || f === ".github/workflows/pr-suites.yml" || f === ".nvmrc" || /(^|\/)package(-lock)?\.json$/.test(f)) return { all: `${f}: shared` };
   if (/^\.github\//.test(f)) return {};   // other workflows (nightly, demo) do not change a pull request's check
   if (f.startsWith(`${P}/product/tools/`)) return SUITE_TOOLS.test(f) ? { all: `${f.slice(P.length + 1)}: decides how the suites run` } : {};
   if (f.startsWith(`${P}/official-sources/`)) return { all: `${f.slice(P.length + 1)}: official sources (the app reads them)` };
