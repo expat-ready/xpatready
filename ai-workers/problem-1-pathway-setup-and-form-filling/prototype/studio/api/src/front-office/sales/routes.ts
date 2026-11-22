@@ -33,7 +33,7 @@ type B = Record<string, unknown>;
 const ID = 100, LINE = 1000, LONG = 20_000;
 const s = (max: number) => z.string().max(max).nullish();
 /** A prospect's version as read: a whole number, or its digits as text (the service checks it). */
-const version = z.union([z.number(), z.string().max(40)]).nullish();
+const version = z.union([z.number(), z.string().max(40)], { error: "Send the prospect's version as read." }).nullish();
 /** `?source=` once or repeated (FO-4sf): one text value or a list of them. */
 const sources = z.union([z.string().max(500), list(z.string().max(500), 50)]).optional();
 const LEADS_QUERY = strict({ view: z.string().max(500).optional(), source: sources, owner: z.string().max(500).optional(), from: z.string().max(500).optional(), to: z.string().max(500).optional() });
@@ -44,7 +44,7 @@ const CLOSE = strict({ reasonId: z.string().max(ID), note: s(LONG) });
 const REOPEN = strict({ reason: z.string().max(LONG) });
 const MOVE = strict({ stageId: s(ID), version, cause: s(LINE) });
 const LOST = strict({ reasonId: s(ID), note: s(LONG), version });
-const CONVERT = strict({ version: version.unwrap().unwrap() });
+const CONVERT = strict({ version });   // {} is a valid Convert (the suites and callers send no version), so not required
 const UNDO_CONVERT = strict({ reason: s(LONG), version });
 const CALL = strict({ direction: s(LINE), outcome: s(LINE), when: s(LINE), seconds: z.number().nullish(), notes: s(LONG) });
 const NOTE = strict({ text: s(LONG), visibility: s(LINE) });

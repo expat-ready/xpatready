@@ -1,7 +1,7 @@
 // FO-4sf (AG-2-23 rule 1) and R1.30 (QA-533): the one Source filter. Leads, the prospects List and the board filter by the
 // lead's stored source (AG-02 glossary: "where a lead came from … not the door"); a prospect's source is its lead's. The
 // choices are the sources of the leads the person may see (FO-2v), so another person's free-text source is never named,
-// and the same choices check every list: one unknown → 400 UNKNOWN_SOURCE with the allowed ones.
+// and the same choices check every list: one unknown → 422 UNKNOWN_SOURCE with the allowed ones (PF-28 part 3a; was 400).
 import type { PrismaClient } from "@prisma/client";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS } from "../../platform/http/input.ts";
