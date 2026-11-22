@@ -45,7 +45,11 @@ export async function possibleMatch(tx: Tx | PrismaClient, firmId: string, p: Ar
   const or = [...(p.email ? [{ email: p.email }] : []), ...(p.phone?.readable ? [{ phone: p.phone.phone, phoneReadable: true }] : [])];
   if (!or.length) return null;
   const m = await tx.foPerson.findFirst({ where: firmScope(firmId, { OR: or, mergedIntoId: null, ...(except ? { id: { not: except } } : {}) }), orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { id: true } });
-  return m?.id ?? null;
+  if (!m) return null;
+  // FO-9b (break m1): the match is share-locked and read again, so a merge in flight is waited for and a record it just
+  // merged away is never flagged (it would be refused at commit); a tombstone falls back to the next match.
+  const [still] = await tx.$queryRaw<{ id: string }[]>`select "id"::text as id from "fo_person" where "firm_id" = ${firmScope(firmId).firmId}::uuid and "id" = ${m.id}::uuid and "merged_into_id" is null for key share`;
+  return still ? still.id : possibleMatch(tx, firmId, p, except);
 }
 
 /** How the owner was set, for the lead's arrival line (the timeline shows it). */

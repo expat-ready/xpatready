@@ -58,12 +58,32 @@ const valuesOf = (kind: MergeKind, row: Record<string, unknown>) => {
   for (const f of MERGE_FIELDS[kind]) if (COMPANION[f]) out[COMPANION[f].field] = row[COMPANION[f].column];
   return out;
 };
-/** The lock order every writer uses (a row it writes, then the record that row names, at commit through fo_dup_live_party
- *  or through a foreign key): merge and Undo take the rows they will move first, then the records, loser before
- *  survivor (the order livePersonId follows a tombstone in), so no cycle forms (break and review round 2 M1). */
-async function lockRows(tx: Tx, firmId: string, kind: MergeKind, ids: string[]) {
+/** The writers' lock orders (review and break rounds 2-3, M1): a company writer (Corporate changeRole, endContact) takes
+ *  the company, then its links; a prospect writer (a note or call on a prospect) the prospect, then its leads; a lead
+ *  writer the lead, then the person (a foreign key, or fo_dup_live_party at commit). Merge and Undo follow them: for
+ *  persons, the companies either record is linked to, then prospects, links, leads and the other rows, then the loser,
+ *  then the survivor (the order livePersonId follows a tombstone in); for companies, the two company records first
+ *  (loser, survivor), then their prospects and links. So no cycle forms. */
+const ROW_ORDER = ["fo_prospect", "fo_company_contact", "fo_lead", "fo_note", "fo_call", "fo_arrival_receipt", "fo_booking"];
+const lockIds = async (tx: Tx, firmId: string, t: string, ids: string[]) => {
+  if (ids.length) await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) order by "id" for update`, firmId, ids);
+};
+/** Persons: the companies the records are linked to (live or not), then every row naming them, by ROW_ORDER. */
+async function lockForPersons(tx: Tx, firmId: string, ids: string[], moved: Change[] = []) {
+  await tx.$queryRawUnsafe(`select 1 from "fo_company" where "firm_id" = $1::uuid and "id" in (select "company_id" from "fo_company_contact" where "firm_id" = $1::uuid and ("person_id" = any($2::uuid[]) or "id" = any($3::uuid[]))) order by "id" for update`,
+    firmId, ids, moved.filter((c) => c.t === "fo_company_contact").map((c) => c.id));
+  await lockRowsByOrder(tx, firmId, "PERSON", ids, moved);
+}
+/** Every row naming the records (a MOVE column of the kind), plus the rows a merge moved, table by table in ROW_ORDER. */
+async function lockRowsByOrder(tx: Tx, firmId: string, kind: MergeKind, ids: string[], moved: Change[] = []) {
   const cols = Object.entries(COLUMNS).filter(([tc, [k]]) => k === "MOVE" && (kind === "COMPANY") === /company_id$/.test(tc)).map(([tc]) => tc.split("."));
-  for (const [t, c] of cols) await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and "${c}" = any($2::uuid[]) order by "id" for update`, firmId, ids);
+  for (const t of ROW_ORDER) {
+    const mine = cols.filter(([ct]) => ct === t).map(([, c]) => c);
+    const movedIds = moved.filter((c) => c.t === t).map((c) => c.id);
+    if (!mine.length && !movedIds.length) continue;
+    const where = [...mine.map((c) => `"${c}" = any($2::uuid[])`), `"id" = any($3::uuid[])`].join(" or ");
+    await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and (${where}) order by "id" for update`, firmId, ids, movedIds);
+  }
 }
 async function lockPair(tx: Tx, a: string, b: string) {
   for (const id of [a.toLowerCase(), b.toLowerCase()].sort()) await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_dup_merge:${id}`}, 0))`;
@@ -169,8 +189,9 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
   const sId = input.survivor_fo_id.toLowerCase(), lId = input.loser_fo_id.toLowerCase();
   if (sId === lId) refuse("SELF_MERGE", "A record cannot be merged into itself.");
   await lockPair(tx, sId, lId);
-  await lockRows(tx, firmId, input.kind, [lId, sId]);
-  const l = await find(tx, firmId, lId), s = await find(tx, firmId, sId);
+  let l: Rec | null, s: Rec | null;
+  if (input.kind === "COMPANY") { l = await find(tx, firmId, lId); s = await find(tx, firmId, sId); await lockRowsByOrder(tx, firmId, "COMPANY", [lId, sId]); }
+  else { await lockForPersons(tx, firmId, [lId, sId]); l = await find(tx, firmId, lId); s = await find(tx, firmId, sId); }
   if (!s || !l) return refuse("NOT_FOUND", "No such record.");
   if (s.row.merged_into_id || l.row.merged_into_id) refuse("ALREADY_MERGED", "This record was already merged.");
   if (s.kind !== l.kind || s.kind !== input.kind) refuse("KIND_MISMATCH", "A person and a company cannot be merged.");
@@ -233,20 +254,20 @@ export async function unmergeRecords(tx: Tx, ctx: StaffContext, ref: string, por
   if (later) refuse("UNDO_REFUSED", "A later merge involves one of these records; undo that one first.");
   const snap = m.loserSnapshot as unknown as MergeSnapshot, s = m.survivorId, l = m.loserId;
   if (!snap?.changes?.every((c) => UNDOABLE.has(`${c.t}.${c.c}`) && UUID.test(c.id)) || !snap.survivorAfter || !Array.isArray(snap.present)) refuse("UNDO_REFUSED", "This merge record was not written by the merge; it cannot be undone.");
-  // Locks in the writers' order (round 2 M1): every moved row, then the loser, then the survivor. A writer adding to them
-  // either finished before (and is seen below) or waits for the Undo.
-  for (const t of [...new Set(snap.changes.map((c) => c.t))])
-    await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) order by "id" for update`, firmId, snap.changes.filter((c) => c.t === t).map((c) => c.id));
-  const lo = await find(tx, firmId, l), sv = await find(tx, firmId, s);
+  // Locks in the writers' order (rounds 2-3 M1; lockForPersons): a writer adding to these records either finished
+  // before (and is seen below) or waits for the Undo.
+  let lo: Rec | null, sv: Rec | null;
+  if (kind === "COMPANY") { lo = await find(tx, firmId, l); sv = await find(tx, firmId, s); await lockRowsByOrder(tx, firmId, "COMPANY", [l, s], snap.changes); }
+  else { await lockForPersons(tx, firmId, [l, s], snap.changes); lo = await find(tx, firmId, l); sv = await find(tx, firmId, s); }
   // The record really is this merge's tombstone (break m4: a crafted record naming a live loser moves nothing).
-  if (!lo || lo.row.merged_into_id !== s) refuse("UNDO_REFUSED", "This merge record does not match the records; it cannot be undone.");
+  if (!lo || lo.row.merged_into_id !== s || Date.parse(String(lo.row.merged_at)) !== m.at.getTime()) refuse("UNDO_REFUSED", "This merge record does not match the records; it cannot be undone.");
   // The survivor edited since the merge (break M2): its values are not the merge's any more, so they are not overwritten.
   const nowValues = sv ? valuesOf(kind, sv.row) : {};   // compared field by field (jsonb does not keep key order)
   if (!sv || Object.keys(nowValues).some((k) => JSON.stringify(nowValues[k] ?? null) !== JSON.stringify(snap.survivorAfter[k] ?? null))) refuse("UNDO_REFUSED", "The merged record was edited after the merge; it cannot be undone.");
   // A consent the merge copied is still live (review M2): consent rows are never removed, so the survivor would keep it.
   // Withdrawing the copy first lets the Undo run.
   if (snap.copied.consents.length && await tx.msgConsent.count({ where: firmScope(firmId, { id: { in: snap.copied.consents }, withdrawnAt: null }) }))
-    refuse("UNDO_REFUSED", "The merge copied a live consent to the merged record; withdraw it there first (consent records are never removed).");
+    refuse("UNDO_REFUSED", "The merge copied a live consent to the merged record, and consent records are never removed; it cannot be undone while that copy is live.");
   // Anything new on the survivor or a moved lead since the merge (a lead, note, call, arrival, booking, link, prospect or
   // consent; compared by id, no clock) may have come by the loser's email or phone: it cannot be told apart, so the Undo
   // is refused (break M3).

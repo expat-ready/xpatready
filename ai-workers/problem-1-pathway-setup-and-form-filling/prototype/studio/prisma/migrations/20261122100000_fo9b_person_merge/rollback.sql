@@ -14,6 +14,7 @@ DO $$ DECLARE t text; BEGIN
 END $$;
 DROP FUNCTION fo_dup_live_party();
 DROP POLICY "pf12_firm" ON "fo_dup_merge";
+DROP INDEX "fo_dup_merge_one_standing";
 DROP TABLE "fo_dup_merge";
 DROP FUNCTION fo_dup_merge_write(), fo_dup_merge_no_delete();
 DROP TYPE "FoDupKind";

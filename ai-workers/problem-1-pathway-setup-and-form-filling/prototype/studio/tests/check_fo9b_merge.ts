@@ -326,6 +326,54 @@ try {
   const wout = await undo(wref).then(() => "ok", (e) => String(e));
   ok("FO-9b DW5 pass: after the copy is withdrawn on the survivor, the Undo runs; the withdrawn copy stays on the survivor", wout === "ok" && count("msg_consent", `subject_id = '${wp.s}' and withdrawn_at is not null`) === 1 && sql(`select coalesce(merged_into_id::text, 'live') from fo_person where id = '${wp.l}'`) === "live", wout);
 
+  // Round 3 M1: writers that lock a record before its rows. Each holder takes its first lock, the merge starts and must
+  // queue behind it without taking anything the holder needs next; then the holder takes its second lock and commits.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const lockRace = async (what: string, first: string, second: string, run: () => Promise<unknown>) => {
+    const holder = db.$transaction(async (t) => { await t.$queryRawUnsafe(first); await sleep(500); await t.$queryRawUnsafe(second); }, { timeout: 20000 }).then(() => "ok", (e) => String(e));
+    await sleep(150);
+    const [h, m] = await Promise.all([holder, run().then(() => "ok", (e) => String(e))]);
+    ok(`FO-9b DW4 pass (round 3 M1): ${what}: no deadlock, both finish`, h === "ok" && m === "ok", { holder: h.slice(0, 200), merge: m.slice(0, 200) });
+  };
+  const cA = randomUUID(), cB = randomUUID(), kA = await pairOf(), kB = await pairOf();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cA}', '${A}', 'Alder Co (Sample)', 'alder co', 'seed:fo9b', now()), ('${cB}', '${A}', 'Alder Company (Sample)', 'alder company', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cA}', '${kA.s}', 'HR', 'seed:fo9b'), ('${A}', '${cB}', '${kB.s}', 'HR', 'seed:fo9b')`);
+  const linkB = sql(`select id from fo_company_contact where company_id = '${cB}'`);
+  await lockRace("a company merge while a contact edit holds the company and then changes its link (Corporate changeRole's order)",
+    `select 1 from fo_company where id = '${cB}' for update`, `update fo_company_contact set role = 'BILLING' where id = '${linkB}'`,
+    () => merge({ kind: "COMPANY", survivor_fo_id: cA, loser_fo_id: cB }));
+  const kC = await pairOf(), cC = randomUUID();
+  sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values ('${cC}', '${A}', 'Birch Co (Sample)', 'birch co', 'seed:fo9b', now());
+       insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${A}', '${cC}', '${kC.l}', 'HR', 'seed:fo9b')`);
+  const linkC = sql(`select id from fo_company_contact where company_id = '${cC}'`);
+  await lockRace("a person merge while a contact edit holds the loser's company and then changes the loser's link",
+    `select 1 from fo_company where id = '${cC}' for update`, `update fo_company_contact set role = 'OTHER' where id = '${linkC}'`,
+    () => merge({ kind: "PERSON", survivor_fo_id: kC.s, loser_fo_id: kC.l }));
+  const kD = await pairOf(), prD = await pros.engage(R, kD.lLead) as { id: string };
+  await lockRace("a person merge while a note on a prospect holds the prospect and then its lead (calls.ts's order)",
+    `select 1 from fo_prospect where id = '${prD.id}' for update`, `select 1 from fo_lead where id = '${kD.lLead}' for update`,
+    () => merge({ kind: "PERSON", survivor_fo_id: kD.s, loser_fo_id: kD.l }));
+  // An arrival whose possible match is merged while it is in flight (round 2-3 m1): it waits, then flags no tombstone.
+  const kE = await pairOf();
+  let rel2!: () => void, merged2!: () => void;
+  const gate2 = new Promise<void>((r) => { rel2 = r; }), mergedNow2 = new Promise<void>((r) => { merged2 = r; });
+  const open2 = inFirm(A, async (t) => { await merger.mergePersons(t, R, { kind: "PERSON", survivor_fo_id: kE.s, loser_fo_id: kE.l }); merged2(); await gate2; });
+  await mergedNow2;
+  const arriving = leads.add(R, { requestId: randomUUID(), source: "Web", confirmedNew: true, givenNames: "Late", email: `pair${pn}.b@example.org` }).then((x) => x as { id: string }, (e) => String(e));
+  await sleep(300);
+  rel2();
+  await open2;
+  const arrived = await arriving;
+  ok("FO-9b DW1m pass (round 3 m1): an arrival matching the loser while the merge is open waits, then saves without flagging the tombstone",
+    typeof arrived === "object" && sql(`select coalesce(possible_match_person_id::text, 'none') from fo_lead where id = '${(arrived as { id: string }).id}'`) !== kE.l, arrived);
+  // One standing merge per loser; the tombstone check on its own (break m4 remainder, review round 3 m3).
+  const kF = await pairOf();
+  const { merge_ref: fref } = await merge({ kind: "PERSON", survivor_fo_id: kF.s, loser_fo_id: kF.l });
+  ok("FO-9b DW5 fail: a second standing merge record for the same loser cannot be written (crafted copy refused by the database)",
+    /fo_dup_merge_one_standing|duplicate key/.test(sqlErr(`insert into fo_dup_merge (firm_id, kind, survivor_id, loser_id, loser_snapshot, survivor_before, choices, by) select firm_id, kind, survivor_id, loser_id, loser_snapshot, survivor_before, choices, by from fo_dup_merge where id = '${fref}'`)));
+  sql(`update fo_person set merged_at = merged_at + interval '1 second' where id = '${kF.l}'`);
+  ok("FO-9b DW5 fail: Undo of a record whose tombstone is not this merge's (merged_at differs) → 409 UNDO_REFUSED", (await refusedAs(() => undo(fref), "UNDO_REFUSED")) === true && sql(`select merged_into_id from fo_person where id = '${kF.l}'`) === kF.s);
+
   // The flag is off again once the merge returns (review m2): the same transaction cannot re-point an unrelated note.
   const fp = await pairOf(), other = await pairOf();
   let flagLeft = "";

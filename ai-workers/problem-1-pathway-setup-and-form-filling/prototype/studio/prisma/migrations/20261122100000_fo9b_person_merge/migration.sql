@@ -59,6 +59,9 @@ CREATE TABLE "fo_dup_merge" (
 );
 CREATE INDEX "fo_dup_merge_firm_id_survivor_id_idx" ON "fo_dup_merge"("firm_id", "survivor_id");
 CREATE INDEX "fo_dup_merge_firm_id_loser_id_idx" ON "fo_dup_merge"("firm_id", "loser_id");
+-- One standing merge per loser (break m4): a record is merged away once until that merge is undone, so a crafted second
+-- record for a standing pair cannot be written (in the migration only: Prisma cannot write a partial unique index).
+CREATE UNIQUE INDEX "fo_dup_merge_one_standing" ON "fo_dup_merge"("firm_id", "loser_id") WHERE "undone_at" IS NULL;
 
 -- (2) FO-1a's insert-only rule with the merge's one exception. CREATE OR REPLACE resets SECURITY DEFINER and search_path,
 -- so both are set again and the wall reader owns it (as 20261121110000_fo3a1e_firm_timings does).
@@ -98,10 +101,10 @@ CREATE TRIGGER "fo_dup_merge_no_delete" BEFORE DELETE ON "fo_dup_merge" FOR EACH
 CREATE TRIGGER "fo_dup_merge_no_truncate" BEFORE TRUNCATE ON "fo_dup_merge" FOR EACH STATEMENT EXECUTE FUNCTION fo_dup_merge_no_delete();
 
 -- AG-2-16 rule 5 "No row ever points to a tombstone", held by the database (review and break M1): checked at commit
--- (a deferred constraint trigger), on the row as it stands then, by a locking read of the record it names (FOR KEY SHARE):
--- a merge in flight (which holds the record FOR UPDATE) is waited for and its tombstone then refused; a writer that
--- commits first is seen and moved by the merge. At commit the writer already holds its own rows, so its locks run row,
--- then record: the order the merge takes them in (merge/service.ts lockRows; round 2 M1: no deadlock). The guarded
+-- (a deferred constraint trigger), on the row as it stands then (a row written and moved again in one transaction is
+-- judged where it ends), by a locking read of the record it names (FOR KEY SHARE): a merge in flight (which holds the
+-- record FOR UPDATE) is waited for and its tombstone then refused; a writer that commits first is seen and moved by the
+-- merge. Columns with a foreign key already lock the record at the statement; fo_booking.person_id has none. The guarded
 -- columns are columns.ts's MOVE list (arguments: the table's person columns, then '|', then its company columns;
 -- tests/check_fo9b_merge.ts ties the two).
 CREATE FUNCTION fo_dup_live_party() RETURNS trigger LANGUAGE plpgsql AS $$
