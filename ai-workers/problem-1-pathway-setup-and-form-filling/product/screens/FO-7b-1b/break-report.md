@@ -81,3 +81,45 @@ Where: `documents.ts:350-351,398`.
 - **Events.** invoice.paid is never written twice, and payment.succeeded is written once per payment. `hasMoney` matches an uppercase company id and refuses malformed input.
 
 Verdict: Changes. Commit `d6948072ee713669f29a979fc9b812620ba57077` has two Majors (F1 and F2).
+
+## Round 2 (diff d6948072e..7e6e48c1f)
+
+Commit broken: `7e6e48c1f3222d282722c16ac16c8e40f8e54c7e`. Only the diff was attacked. How I tested: a scratch copy of `tests/check_fo7b_invoices.ts` (its setup) plus about 40 attacks, on scratch databases `xr_studio_brk7b2_scratch_*` at :54329. They were dropped and the copy deleted. The shipped check passes 98/98. The oracle for "what was due right after the payment" is the payment's own audit line (`invoiceDueMinor_after`, written under the lock).
+
+**R2-F1, Major: a receipt's "balance after" is wrong under concurrent writes, and can change after it was emailed (F2 not fully fixed).**
+The as-of read orders credit notes, write-offs, trust withdrawals, trust returns and credit entries by `created_at <= receipt.issued_at`. Every one of those is the database's `now()`, which is the *transaction's start*, not its commit order. A writer that began first but waited on the lock is counted as earlier. One that began later but committed first is left out. Operating payments are ordered by receipt number, which is correct, so the two orders disagree.
+- Seeded, deterministic: a credit note of 100.00 in a transaction that began before a 300.00 payment on 1,000.00 and committed after it. The emailed receipt said 700.00, the re-download says **600.00**, the truth is 700.00.
+- API only: one operating payment and one trust payment at the same moment, 20 runs. 2 receipts were wrong; one says 690.00 against a true 700.00 *after* the email said 700.00. Operating payment plus credit note: 1 of 20 in one run, 0 of 20 in another, the same change after email.
+- Storms of 24 writes on one invoice: 6 of 8 storms produced wrong receipts, worst R-0107, which prints 130.00 against a true 60.00.
+
+No 500, and the answer's `appliedMinor` always equalled the audit line's.
+Where: `api/src/client-money/invoices/money.ts:203-217` (`c.created_at <= r.issued_at`, `w.created_at`, `e.created_at`, credit `e.created_at <= issuedAt`). Timestamps come from fo7a `money_receipt_write` (`issued_at := now()`, migration line 1088) and the `created_at := now()` triggers.
+
+**R2-F2, Major: in the new F1 path, the receipt tells the client their money is "kept in trust" when it covered a shortfall and the invoice is still owed.**
+- A client at −50.00 pays 100.00 into trust on a 100.00 invoice. The answer gives 201, 50.00 applied, trust balance **0.00**, 50.00 due. The receipt prints "Balance due … after this payment: CAD 50.00" and then "**CAD 50.00 is more than this invoice asked: kept in trust.**" Both are on one page, and nothing is in trust.
+- A client at −150.00 pays 100.00: 0 applied, balance −50.00, 100.00 due. The receipt says "CAD 100.00 is more than this invoice asked: kept in trust". The audit says "CAD 100.00 is extra". The answer's `extra` is 100.00 with no note.
+- A client at −50.00 pays exactly 50.00: the same text for 50.00.
+
+Expected: the receipt does not call shortfall money extra or held. Where: `money.ts:106` (applied capped by `held`), `money.ts:226-227` (`extraNow = amount − applied`), `money.ts:112` (audit summary), `documents.ts:44` (`keptInTrust` wording).
+
+**R2-F3, Minor: a receipt reprints the firm's *current* address (new in this diff), so its text changes when the firm moves.**
+What I did: changed `platform_firm.business_address` after a receipt was issued. The same receipt then read "99 New Rd, Toronto, Canada" instead of "1 Main … St, Ottawa …". Firm name and bill-to are read live too (from round 1, not new).
+Where: `money.ts:233,238`, `documents.ts:30`.
+
+**R2-F4, Minor (latent): the payment's own `extra` ignores KEPT credit.**
+What I did: an invoice where a payment of 160.00 overpaid by 60.00, with 30.00 of that seeded KEPT and then 10.00 REVERSED. Replaying that payment's key answers `extra` 60.00 with choices REFUND and KEEP_AS_CREDIT, although 20.00 is already kept. The invoice view is right. No route writes KEPT yet.
+Where: `money.ts:226-227`.
+
+**R2-F5, Minor (wording):** due date `3000-01-01` → 422 "A date from the year 2000 on." The rule is a 2999 upper bound, and the message names only the lower one. Where: `ports/client-money.ts:84` (`day`).
+
+### What held (round 2)
+- **Receipts, sequential.** Two receipts (one operating, one trust) stayed word for word after: later operating and trust payments, an API credit note, a seeded refund, a seeded trust return (CORRECTION naming the withdrawal), seeded KEPT, APPLIED and REVERSED credit, and a seeded write-off. A payment after all of them prints the true balance, and the view equals `money_invoice_due`. A credit-note PDF prints no balance. A trust receipt's balance after is right when nothing runs at the same time.
+- **F1.** No 500 and no WITHDRAWAL_TO_INVOICE row below zero in these cases: −50.00, −150.00, exactly cured (−50.00 + 50.00), a balance of 0, USD, a company bill-to, and 6 concurrent trust payments for one short party over two invoices.
+- **F5.** With KEPT, APPLIED and REVERSED (of both kinds), `dueMinor`, `extraMinor` and the status equal `money_invoice_due` and `money_invoice_credit` at each step. `extraMinor` was never negative. A receipt after applied and reversed credit is right.
+- **F3.** One key on two parties' invoices at once: 201 + 409 KEY_USED in 6 of 6 runs. One key in two firms: 201 + 201 in 6 of 6. 16 parties, each with a payment and a credit note, all at once: all 201, no number clash read as KEY_USED.
+- **F4 and F6.** 1999-12-31 gets 422; 2000-01-01 gets 200 and reads Overdue; 2999-12-31 gets 200. An invoice cancelled by two part credit notes, or part paid and then fully credited, is not sent (409 CANCELLED).
+- **F7.** The shipped case holds, and lines can't be negative (the DB checks `unit_amount_minor >= 0`), so no total below zero can be issued.
+- **Address.** `{{balance}}` in a street name prints literally. A newline was only possible by direct SQL; the writer refuses control characters (`platform/billing/account.ts:23`). Non-string parts are dropped.
+- **Regressions.** 12 payments at once sum to exactly 1,000.00, with invoice.paid written once. One key 8 times at once gives one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. There is one audit line per payment, and no storm produced a 500, a 40P01 or a 40001.
+
+Verdict: Changes. Commit `7e6e48c1f3222d282722c16ac16c8e40f8e54c7e` has two Majors (R2-F1 and R2-F2).

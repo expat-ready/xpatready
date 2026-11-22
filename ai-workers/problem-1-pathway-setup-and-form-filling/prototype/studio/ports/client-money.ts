@@ -81,7 +81,7 @@ export const InvoiceView = z.strictObject({
 });
 export type InvoiceView = z.infer<typeof InvoiceView>;
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date as YYYY-MM-DD.").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d), "That date does not exist.").refine((d) => d >= "2000-01-01" && d <= "2999-12-31", "A date from the year 2000 on.");
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date as YYYY-MM-DD.").refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d), "That date does not exist.").refine((d) => d >= "2000-01-01" && d <= "2999-12-31", "A date from the year 2000 to 2999.");
 const words = (what: string, max: number) => z.string().trim().min(1, `${what} is needed.`).refine((t) => [...t].length <= max, `At most ${max} characters.`).regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters.").refine((t) => !LONE_SURROGATE.test(t), "Use only whole characters: this text has a broken character in it.");
 
 /** POST …/invoices/:id/issue: the due date, else the firm's "Due in N days" from today (AG-6-46 rule 1). */
@@ -104,12 +104,12 @@ export const CreditNoteIn = z.strictObject({ full: z.boolean().optional(), amoun
   .refine((c) => (c.full === true) !== (c.amountMinor !== undefined), { message: "Give an amount, or choose a full credit note: one of the two.", path: ["amountMinor"] });
 
 /** What a recorded payment answers. `extra` is money past what the invoice asked: a person chooses (amendment 1). `trust`
- *  only for money received into trust: the party's balance is its newest ledger entry's, never one row of a paired move. */
+ *  only for money received into trust: `shortfallCoveredMinor` is the part that made up a balance below zero (P-634); the party's balance is its newest ledger entry's, never one row of a paired move. */
 export const PaymentView = z.strictObject({
   id: z.string(), invoiceId: z.string(), method: HandMethod, amountMinor: z.number().int(), currency: MoneyCurrency, receivedInto: ReceivedInto,
   receivedOn: z.string(), reference: z.string().nullable(), cleared: z.boolean(), receiptNumber: z.string(), replayed: z.boolean(),
   appliedMinor: z.number().int(), extra: z.strictObject({ amountMinor: z.number().int(), choices: z.array(z.enum(["REFUND", "KEEP_AS_CREDIT"])), note: z.string().nullable() }).nullable(),
-  trust: z.strictObject({ depositedMinor: z.number().int(), appliedMinor: z.number().int(), balanceMinor: z.number().int() }).nullable(),
+  trust: z.strictObject({ depositedMinor: z.number().int(), appliedMinor: z.number().int(), shortfallCoveredMinor: z.number().int(), balanceMinor: z.number().int() }).nullable(),
   receiptEmail: z.enum(["SENT", "NO_ADDRESS", "NOT_SENT"]), invoice: InvoiceView,
 });
 export type PaymentView = z.infer<typeof PaymentView>;

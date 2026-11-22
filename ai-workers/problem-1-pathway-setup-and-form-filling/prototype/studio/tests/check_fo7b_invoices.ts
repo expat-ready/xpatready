@@ -338,24 +338,35 @@ try {
   const PZ = person(A, "z"), [pz, ez] = [randomUUID(), randomUUID()]; who = PZ;
   sql(`begin; ${dep(pz, ez, 5000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -5000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -5000, 'Recorded twice (Sample)', '${ez}', 'RECORDED_BY_MISTAKE'`));
   const invZ = await issued(10000, 0, {}, PZ), zPay = await pay(invZ.id, 10000, { receivedInto: "TRUST" });
-  ok("FO-7b P pass (break F1): a client at −50.00 in trust pays 100.00 into trust on a 100.00 invoice → 201: the deposit is recorded (balance 50.00), 50.00 is applied, 50.00 stays due, and the ledger never goes below zero by this payment",
-    zPay.status === 201 && zPay.body.trust?.depositedMinor === 10000 && zPay.body.trust.appliedMinor === 5000 && zPay.body.trust.balanceMinor === 0 && zPay.body.invoice.dueMinor === 5000 && zPay.body.invoice.statusWord === "Part paid" && zPay.body.extra?.note === null, zPay.body);
-  ok("FO-7b P fail (break F1, stand-in): the old rule (apply all that is due, whatever the ledger holds) would ask the database for a 100.00 withdrawal from 50.00, which it refuses", Math.min(10000, invZ.dueMinor) > 5000 && sql(`select min(balance_after_minor) from money_trust_entry where person_id = '${PZ}' and seq > 3`) === "0");
+  const zRec = await pdfText(`${invZ.id}/payments/${zPay.body.id}/receipt.pdf`);
+  ok("FO-7b P pass (break F1; R2 review M1, break R2-F2): a client at −50.00 in trust pays 100.00 into trust on a 100.00 invoice → 201: 50.00 makes up the shortfall, 50.00 is applied, 50.00 stays due, no extra; the receipt says so and never says \"kept in trust\"",
+    zPay.status === 201 && zPay.body.trust?.depositedMinor === 10000 && zPay.body.trust.shortfallCoveredMinor === 5000 && zPay.body.trust.appliedMinor === 5000 && zPay.body.trust.balanceMinor === 0 && zPay.body.extra === null && zPay.body.invoice.dueMinor === 5000 && zPay.body.invoice.statusWord === "Part paid"
+    && /CAD 50\.00 of this payment made up the client's trust balance, which was below zero\./.test(zRec.text) && /after this payment: CAD 50\.00/.test(zRec.text) && !/kept in trust/.test(zRec.text), [zPay.body, zRec.text]);
+  const PY = person(A, "y"), [py, ey] = [randomUUID(), randomUUID()]; who = PY;
+  sql(`begin; ${dep(py, ey, 15000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -15000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -15000, 'Recorded twice (Sample)', '${ey}', 'RECORDED_BY_MISTAKE'`));
+  const invY = await issued(10000, 0, {}, PY), yPay = await pay(invY.id, 10000, { receivedInto: "TRUST" });
+  ok("FO-7b P fail (break R2-F2): at −150.00, 100.00 into trust all goes to the shortfall: nothing applied, nothing \"kept\", 100.00 still due, the balance −50.00 (shown red by money_trust_shortfall), never a refusal",
+    yPay.status === 201 && yPay.body.trust?.shortfallCoveredMinor === 10000 && yPay.body.trust.appliedMinor === 0 && yPay.body.trust.balanceMinor === -5000 && yPay.body.extra === null && yPay.body.invoice.dueMinor === 10000 && sql(`select count(*) from money_trust_shortfall where person_id = '${PY}'`) === "1", yPay.body);
   // Review M5 on d6948072e: credit applied to an invoice counts as paid (money_invoice_due), so a trust payment never applies
   // money the invoice does not owe; credit kept from a payment is no longer waiting extra.
-  const PK = person(A, "k"), invK = await issued(10000, 0, {}, PK), kOver = await pay(invK.id, 13000);
+  const PK = person(A, "k"), invK = await issued(10000, 0, {}, PK), kOver = await pay(invK.id, 13000); const kOverKey = `fo7b-1b-${key}`;
   sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, payment_id, created_by) values ('${A}', '${PK}', 'KEPT', 3000, 'CAD', '${kOver.body.id}', 'seed:FO-7b-1b')`);
   const invK2 = await issued(10000, 0, {}, PK); sql(`insert into money_credit_entry (firm_id, person_id, kind, amount_minor, currency, invoice_id, created_by) values ('${A}', '${PK}', 'APPLIED', -3000, 'CAD', '${invK2.id}', 'seed:FO-7b-1b')`);
   const gK = await call(tA, "GET", `${M}/${invK.id}`), gK2 = await call(tA, "GET", `${M}/${invK2.id}`), dbDue = sql(`select money_invoice_due('${A}', '${invK2.id}')`), kTrust = await pay(invK2.id, 10000, { receivedInto: "TRUST" });
   ok("FO-7b credit pass (review M5): 30.00 extra kept as credit is no longer waiting extra; 30.00 of credit applied to a 100.00 invoice leaves 70.00 due (as money_invoice_due), so 100.00 into trust applies 70.00 and leaves 30.00 in trust",
     gK.body.extraMinor === 0 && gK2.body.dueMinor === 7000 && dbDue === "7000" && kTrust.status === 201 && kTrust.body.trust?.appliedMinor === 7000 && kTrust.body.trust.balanceMinor === 3000 && kTrust.body.invoice.statusWord === "Paid", [gK.body.extraMinor, gK2.body.dueMinor, dbDue, kTrust.status, kTrust.body.trust ?? kTrust.body, kTrust.body.invoice?.statusWord]);
-  ok("FO-7b credit fail (stand-in): read without the credit, the same invoice would show 100.00 due and apply all 100.00 from trust", gK2.body.totalMinor - gK2.body.creditedMinor === 10000 && kTrust.body.trust.appliedMinor !== 10000);
+  const kReplay = await post(`${invK.id}/payments`, { method: "E_TRANSFER", amountMinor: 13000, idempotencyKey: kOverKey }), pTrust = await post(`${invK2.id}/payments`, { method: "E_TRANSFER", amountMinor: 100, idempotencyKey: "fo7b-after-credit" });
+  ok("FO-7b credit fail (review M5, break R2-F4): with its 30.00 extra already kept as credit, the overpaying payment's replay no longer offers Refund · Keep as credit; the invoice paid by credit and trust takes any more money as extra, never as due",
+    kReplay.status === 200 && kReplay.body.replayed === true && kReplay.body.extra?.amountMinor === 3000 && kReplay.body.extra.choices.length === 0 && pTrust.status === 201 && pTrust.body.appliedMinor === 0 && pTrust.body.extra?.amountMinor === 100, [kReplay.body, pTrust.body]);
   // Break report F2 (Major): a receipt never changes after it is issued (AG-6-63 rule 8). The cheque's receipt said 630.00
   // due; since then three more payments were recorded on that invoice.
   const recLater = await pdfText(`${invP.id}/payments/${c1.body.id}/receipt.pdf`), recOver = await pdfText(`${invP.id}/payments/${over.body.id}/receipt.pdf`);
   ok("FO-7b P pass (break F2): read again after later payments, the cheque's receipt is word for word the one issued (630.00 due after it); the overpaying receipt keeps its own 80.00 extra",
     recLater.text === recC.text && /CAD 80\.00 is more than this invoice asked/.test(recOver.text) && /after this payment: CAD 0\.00/.test(recOver.text), [recLater.text, recOver.text]);
   ok("FO-7b P fail (break F2, planted): a receipt printed from today's balance would say 0.00 for the cheque, and the case catches it", invP.id === c1.body.invoiceId && (await call(tA, "GET", `${M}/${invP.id}`)).body.dueMinor === 0 && !/after this payment: CAD 0\.00/.test(recLater.text));
+  // Break F3: one idempotency key sent at the same moment on two parties' invoices → one 201 and one 409 KEY_USED, never a 500.
+  const PF = person(A, "f"), invF1 = await issued(1000, 0), invF2 = await issued(1000, 0, {}, PF), clash = await Promise.all([invF1, invF2].map((i) => post(`${i.id}/payments`, { method: "CASH", amountMinor: 1000, idempotencyKey: "fo7b-clash-key" })));
+  ok("FO-7b P fail (break F3): one key on two parties' invoices at once → 201 and 409 KEY_USED (never 500), one payment", clash.map((x) => x.status).sort().join() === "201,409" && clash.some((x) => x.body.code === "KEY_USED") && sql(`select count(*) from money_payment where idempotency_key = 'fo7b-clash-key'`) === "1", clash.map((x) => [x.status, x.body.code]));
   // Break report F4, F6, F7 (Minors): a due date before 2000 is 422 (was 500); an invoice of 0.00 is not issued; a cancelled invoice is not sent.
   const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue`, { dueDate: "0000-01-01" });
   ok("FO-7b I fail (break F4, F7): a due date of 0000-01-01 → 422 at dueDate, never 500; an invoice whose total is 0.00 → 409 NOTHING_TO_BILL; it stays a draft", oldDue.status === 422 && zero.status === 409 && zero.body.code === "NOTHING_TO_BILL" && sql(`select issued_at is null from money_invoice where id = '${dZero.body.id}'`) === "t", [oldDue.body, zero.body]);
@@ -371,13 +382,29 @@ try {
   const cn2 = await post(`${invC.id}/credit-notes`, { full: true, reason: "Wrong amount" }), cn3 = await post(`${invC.id}/credit-notes`, { full: true, reason: "Again" }), payCancelled = await pay(invC.id, 100);
   ok("FO-7b C pass: a full credit note cancels what is left (CN-0002, 2,542.50): Credited, the number kept, invoice.voided written", cn2.status === 201 && cn2.body.number === "CN-0002" && cn2.body.amountMinor === 254250 && cn2.body.invoice.statusWord === "Credited" && cn2.body.invoice.number === invC.number && events(MONEY_EVENT.INVOICE_VOIDED, invC.id) === "1", cn2.body);
   ok("FO-7b C fail: a credit note on the cancelled invoice → 409 NOTHING_LEFT; a payment on it → 409 CANCELLED; nothing written", cn3.body.code === "NOTHING_LEFT" && payCancelled.body.code === "CANCELLED" && sql(`select count(*) from money_credit_note where invoice_id = '${invC.id}'`) === "2" && sql(`select count(*) from money_payment where invoice_id = '${invC.id}'`) === "0", [cn3.body, payCancelled.body]);
-  const sentCancelled = await post(`${invC.id}/send`), mailsBefore = mail.sent.length;
+  const mailsBefore = mail.sent.length, sentCancelled = await post(`${invC.id}/send`);
   ok("FO-7b E fail (break F6): a cancelled invoice is not sent (409 CANCELLED, no email)", sentCancelled.status === 409 && sentCancelled.body.code === "CANCELLED" && mail.sent.length === mailsBefore, sentCancelled.body);
   const cTrust = await post(`${invT.id}/credit-notes`, { full: true, reason: "Cancel" });
   ok("FO-7b C fail: crediting an invoice paid from trust → 409 TRUST_PAID in words (return the money to trust first), never the database's 500", cTrust.status === 409 && cTrust.body.code === "TRUST_PAID" && /CAD 113\.00 of INV-\d+ was paid from trust/.test(cTrust.body.detail), cTrust.body);
   const invW = await issued(5000, 0); await pay(invW.id, 4900); sql(`insert into money_write_off (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${A}', '${invW.id}', 100, 'CAD', 'Small balance (Sample)', 'seed:FO-7b-1b')`);
   const gW = await call(tA, "GET", `${M}/${invW.id}`), cW = await post(`${invW.id}/credit-notes`, { amountMinor: 100, reason: "Late" });
   ok("FO-7b S pass: a seeded write-off row → Written off (nothing due); FO-7b C fail: a credit note on it → 409 \"Already settled by write-off\"", gW.body.statusWord === "Written off" && gW.body.writtenOffMinor === 100 && gW.body.dueMinor === 0 && cW.status === 409 && /Already settled by write-off/.test(cW.body.detail), [gW.body, cW.body]);
+
+  // R2 review M2, break R2-F1: a writer that began before the payment but saved after it (here a credit note in a
+  // transaction opened first, which waits for the invoice's lock) never changes the receipt: its figures were stored
+  // under the lock with the payment. Also the letterhead (R2-F3): a later change of the firm's name is not printed.
+  const invX = await issued(100000, 0), early = owner.$transaction(async (t) => { await t.$queryRaw`select now()`; await new Promise((r) => setTimeout(r, 300));
+    await t.$executeRawUnsafe(`insert into money_credit_note (firm_id, invoice_id, amount_minor, currency, reason, created_by) values ('${A}', '${invX.id}', 10000, 'CAD', 'Opened first (Sample)', 'seed:FO-7b-1b')`); });
+  const xPay = await pay(invX.id, 30000); await early;
+  const xRec1 = mail.inbox("fo7b.a@example.org").find((m) => m.subject.startsWith(`Receipt ${xPay.body.receiptNumber} `))?.text ?? "";
+  const firmName = sql(`select operating_name from platform_firm where id = '${A}'`);
+  sql(`update platform_firm set operating_name = 'Renamed Firm (Sample)' where id = '${A}'`);
+  const xRec2 = await pdfText(`${invX.id}/payments/${xPay.body.id}/receipt.pdf`), xReplay = await post(`${invX.id}/payments`, { method: "E_TRANSFER", amountMinor: 30000, idempotencyKey: `fo7b-1b-${key}` });
+  ok("FO-7b P pass (R2 M2, R2-F1, R2-F3): a credit note opened before a 300.00 payment and saved after it: the emailed receipt and the re-downloaded one both say 700.00 due after the payment (true when it was recorded), the firm's later new name is not printed, the replay answers the same applied 300.00",
+    /after this payment: CAD 700\.00/.test(xRec1) && /after this payment: CAD 700\.00/.test(xRec2.text) && !/Renamed Firm/.test(xRec2.text) && xReplay.body.appliedMinor === 30000 && xReplay.body.extra === null && sql(`select count(*) from money_credit_note where invoice_id = '${invX.id}'`) === "1", [xRec1, xRec2.text, xReplay.body]);
+  ok("FO-7b P fail (R2 M2, planted): a receipt read from the rows by their times would now say 600.00 for that payment (the credit note's time is before the receipt's), and the case catches it",
+    sql(`select (select created_at from money_credit_note where invoice_id = '${invX.id}') < (select issued_at from money_receipt where payment_id = '${xPay.body.id}')`) === "t" && (await call(tA, "GET", `${M}/${invX.id}`)).body.dueMinor === 60000 && !/CAD 600\.00/.test(xRec2.text));
+  sql(`update platform_firm set operating_name = '${firmName.replace(/'/g, "''")}' where id = '${A}'`);
 
   // ------------------------------------------------------------------------- S: the status words, derived (a table)
   const F: InvoiceFacts = { issued: true, totalMinor: 1000, creditedMinor: 0, writtenOffMinor: 0, hasWriteOff: false, paidMinor: 0, refundedMinor: 0, dueDate: "2026-12-01", today: "2026-12-01" };
@@ -411,7 +438,7 @@ try {
   ok("FO-7b walls pass: firm B gets 404 on firm A's invoice (pay, credit, send, PDF); a receipt asked under another invoice, and a malformed id, are 404; nothing written", wall.every((x) => x.status === 404) && sql(`select count(*) from money_payment where idempotency_key = 'fo7b-wall-1'`) === "0", wall.map((x) => x.status));
   ok("FO-7b audit pass: one line per change: every issued invoice, every payment and every credit note; each receipt has its own number (no gap); every money event is one of the named five",
     sql(`select count(*) from audit_event where action = 'invoice.issued'`) === sql(`select count(*) from money_invoice where issued_at is not null`) && sql(`select count(*) from audit_event where action = 'payment.recorded'`) === sql(`select count(*) from money_payment where recorded_by like 'staff:%'`)
-    && sql(`select count(*) from audit_event where action = 'invoice.credit_note_issued'`) === sql(`select count(*) from money_credit_note`) && sql(`select count(*) = max(substr(number, 3)::int) from money_receipt where firm_id = '${A}'`) === "t"
+    && sql(`select count(*) from audit_event where action = 'invoice.credit_note_issued'`) === sql(`select count(*) from money_credit_note where created_by like 'staff:%'`) && sql(`select count(*) = max(substr(number, 3)::int) from money_receipt where firm_id = '${A}'`) === "t"
     && sql(`select count(*) from module_event where type like 'invoice.%' or type like 'payment.%'`) === sql(`select count(*) from module_event where type in ('${Object.values(MONEY_EVENT).join("','")}')`));
 } catch (e) {
   ok("FO-7b: the check ran to the end", false, e instanceof Error ? e.stack : String(e));

@@ -32,6 +32,9 @@ const refuse = (code: string, detail: string, extra: Record<string, unknown> = {
 /** The firm's business address on one line (samples/firms.json's office shape), or "" when none is saved. */
 const addressOf = (a: unknown): string => { if (!a || typeof a !== "object" || Array.isArray(a)) return ""; const o = a as Record<string, unknown>, t = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
   return [[t("unit"), [t("street_number"), t("street_name")].filter(Boolean).join(" ")].filter(Boolean).join("-"), t("city"), [t("province_state"), t("postal_code")].filter(Boolean).join(" "), t("country")].filter(Boolean).join(", "); };
+/** The letterhead as the document printed it, for the audit line's after values (R2-F3: an issued document never
+ *  changes when the firm's name or address later does). */
+const lettered = (h: Letterhead) => ({ firmName: h.firmName, firmAddress: h.firmAddress ?? "", taxNumber: h.taxNumber ?? "", billTo: h.billTo });
 const idOf = (invoiceId: string) => (UUID.test(invoiceId) ? invoiceId.toLowerCase() : notFound("invoice"));
 
 export class InvoiceMoney {
@@ -52,9 +55,9 @@ export class InvoiceMoney {
       if (draft.totalMinor > MINOR_MAX) refuse("TOTAL_TOO_LARGE", `The total is more than one invoice can hold (${MONEY(MINOR_MAX)}). Nothing was changed.`);
       const due = new Date(`${today}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + s.dueInDays);
       await tx.moneyInvoice.update({ where: { firmId_id: { firmId: firmScope(ctx.firmId).firmId, id } }, data: { issuedAt: this.clock.now(), issuedBy: `staff:${ctx.staffId}`, dueDate: new Date(`${b.dueDate ?? dayOf(due)}T00:00:00Z`) } });
-      const f = await this.facts(tx, ctx.firmId, id, today), v = f.view;
+      const f = await this.facts(tx, ctx.firmId, id, today), v = f.view, head = await this.letterhead(tx, ctx.firmId, v);
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.issued", entity: "money_invoice", entityKey: id, summary: `Invoice ${v.number} issued: ${v.currency} ${MONEY(v.totalMinor)}, due ${v.dueDate}.`,
-        detail: { invoiceId: id, number: v.number, totalMinor: v.totalMinor, taxMinor: v.taxMinor }, before: { status: "DRAFT", number: null, dueDate: null }, after: { status: "ISSUED", number: v.number, dueDate: v.dueDate, totalMinor: v.totalMinor, currency: v.currency } });
+        detail: { invoiceId: id, number: v.number, totalMinor: v.totalMinor, taxMinor: v.taxMinor }, before: { status: "DRAFT", number: null, dueDate: null }, after: { status: "ISSUED", number: v.number, dueDate: v.dueDate, totalMinor: v.totalMinor, currency: v.currency, ...lettered(head) } });
       await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_ISSUED, f);
       return v;
     });
@@ -97,27 +100,34 @@ export class InvoiceMoney {
       }
       const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select ${p.reference ?? null}::text is null or money_text_ok(${p.reference ?? null}, 200) as ok`;
       if (!text.ok) badField("reference", "The reference needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
-      let applied = Math.min(p.amountMinor, before.view.dueMinor);
+      // The receipt's figures are decided here, under the invoice's lock, and stored in the payment's audit line (never
+      // recomputed later: a receipt never changes, AG-6-63 rule 8; review and break R2 on 7e6e48c1f). Due before: what is
+      // left to pay. Into operating: applied up to that, the rest is extra. Into trust: a party below zero is made up first
+      // (P-634: a reversal may leave it there), then applied up to what is due, and only the rest is kept in trust as extra.
+      const dueBefore = before.view.dueMinor;
+      let applied = Math.min(p.amountMinor, dueBefore), shortfall = 0;
       const pay = await tx.moneyPayment.create({ data: { firmId, invoiceId: id, method: p.method, amountMinor: p.amountMinor, currency: inv.currency, receivedInto: into, receivedAt: receivedOn === today ? now : new Date(`${receivedOn}T00:00:00Z`),
         reference: p.reference ?? null, idempotencyKey: p.idempotencyKey, recordedBy: by, cleared: p.method !== "CHEQUE" }, select: { id: true } });
-      if (into === "TRUST") {   // the deposit, then its application to this invoice (never more than is due)
+      if (into === "TRUST") {   // the deposit, then its application to this invoice (never more than is due, nor than the ledger holds)
         const entry = { firmId, personId: inv.personId, companyId: inv.companyId, caseId: before.caseId, currency: inv.currency, createdBy: by };
         const held = (await tx.moneyTrustEntry.create({ data: { ...entry, kind: "DEPOSIT", amountMinor: p.amountMinor, paymentId: pay.id }, select: { balanceAfterMinor: true } })).balanceAfterMinor;
-        applied = Math.max(0, Math.min(applied, held));   // a party below zero in trust (a reversal, P-634): the money is still recorded; only what the ledger holds is applied
+        shortfall = Math.max(0, Math.min(p.amountMinor, p.amountMinor - held));
+        applied = Math.max(0, Math.min(dueBefore, held));
         if (applied > 0) await tx.moneyTrustEntry.create({ data: { ...entry, kind: "WITHDRAWAL_TO_INVOICE", amountMinor: -applied, invoiceId: id } });
       }
+      const extra = p.amountMinor - shortfall - applied;
       const receipt = await tx.moneyReceipt.create({ data: { firmId, kind: "PAYMENT", paymentId: pay.id }, select: { number: true } });
-      const after = await this.facts(tx, ctx.firmId, id, today);
+      const after = await this.facts(tx, ctx.firmId, id, today), head = await this.letterhead(tx, ctx.firmId, after.view);
       await this.audit.record(tx, { firmId: ctx.firmId, actor: by, action: "payment.recorded", entity: "money_payment", entityKey: pay.id,
-        summary: `Payment of ${inv.currency} ${MONEY(p.amountMinor)} recorded on ${inv.number}, receipt ${receipt.number}${p.amountMinor > applied ? `; ${inv.currency} ${MONEY(p.amountMinor - applied)} is extra` : ""}.`,
-        detail: { invoiceId: id, paymentId: pay.id, receiptNumber: receipt.number, amountMinor: p.amountMinor, appliedMinor: applied, receivedInto: into, method: p.method },
-        before: null, after: { amountMinor: p.amountMinor, currency: inv.currency, method: p.method, receivedInto: into, receivedOn, reference: p.reference ?? null, cleared: p.method !== "CHEQUE", receiptNumber: receipt.number, invoiceDueMinor: after.view.dueMinor } });
+        summary: `Payment of ${inv.currency} ${MONEY(p.amountMinor)} recorded on ${inv.number}, receipt ${receipt.number}${extra ? `; ${inv.currency} ${MONEY(extra)} is extra` : ""}${shortfall ? `; ${inv.currency} ${MONEY(shortfall)} made up a trust balance below zero` : ""}.`,
+        detail: { invoiceId: id, paymentId: pay.id, receiptNumber: receipt.number, amountMinor: p.amountMinor, appliedMinor: applied, extraMinor: extra, shortfallMinor: shortfall, dueAfterMinor: after.view.dueMinor, paidTwice: dueBefore <= 0, receivedInto: into, method: p.method },
+        before: null, after: { amountMinor: p.amountMinor, currency: inv.currency, method: p.method, receivedInto: into, receivedOn, reference: p.reference ?? null, cleared: p.method !== "CHEQUE", receiptNumber: receipt.number, invoiceDueMinor: after.view.dueMinor, ...lettered(head) } });
       await tx.moduleEvent.create({ data: { firmId, type: MONEY_EVENT.PAYMENT_SUCCEEDED, subjectId: pay.id, payload: PaymentEventPayload.parse({ paymentId: pay.id, externalId: `offline:${pay.id}`, invoiceId: id, method: p.method, amountMinor: p.amountMinor, currency: inv.currency, receivedInto: into, receiptNumber: receipt.number }) } });
       if (before.view.dueMinor > 0 && after.view.dueMinor === 0) await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_PAID, after);
       return { paymentId: pay.id, replayed: false };
     });
     const view = await this.db.$transaction((tx) => this.paymentView(tx, ctx.firmId, done.paymentId, done.replayed, today));
-    const { issuedOn: _on, balanceThen: _then, ...payment } = view.payment;
+    const { issuedOn: _on, balanceThen: _then, shortfall: _s, head: _h, ...payment } = view.payment;
     return PaymentView.parse({ ...payment, receiptEmail: await this.emailReceipt(ctx.firmId, view.payment, view.extraNow) });
   }
 
@@ -136,10 +146,10 @@ export class InvoiceMoney {
       const [text] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${c.reason}, 200) as ok`;
       if (!text.ok) badField("reason", "The reason needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was saved.");
       const note = await tx.moneyCreditNote.create({ data: { firmId, invoiceId: id, full: c.full === true, amountMinor: amount, currency: cur, reason: c.reason, createdBy: `staff:${ctx.staffId}` }, select: { id: true, number: true } });
-      const after = await this.facts(tx, ctx.firmId, id, today);
+      const after = await this.facts(tx, ctx.firmId, id, today), head = await this.letterhead(tx, ctx.firmId, after.view);
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.credit_note_issued", entity: "money_credit_note", entityKey: note.id,
         summary: `Credit note ${note.number} on ${inv.number}: ${cur} ${MONEY(amount)}${c.full ? " (the invoice is cancelled)" : ""}.`, detail: { invoiceId: id, creditNoteId: note.id, number: note.number, amountMinor: amount, full: c.full === true },
-        before: { creditedMinor: before.view.creditedMinor, dueMinor: before.view.dueMinor }, after: { creditedMinor: after.view.creditedMinor, dueMinor: after.view.dueMinor, reason: c.reason } });
+        before: { creditedMinor: before.view.creditedMinor, dueMinor: before.view.dueMinor }, after: { creditedMinor: after.view.creditedMinor, dueMinor: after.view.dueMinor, reason: c.reason, ...lettered(head) } });
       if (after.view.statusWord === "Credited") await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_VOIDED, after, note.id);
       else if (before.view.dueMinor > 0 && after.view.dueMinor === 0) await this.event(tx, ctx.firmId, MONEY_EVENT.INVOICE_PAID, after);
       return CreditNoteView.parse({ id: note.id, number: note.number, full: c.full === true, amountMinor: amount, currency: cur, reason: c.reason, invoice: after.view });
@@ -160,7 +170,7 @@ export class InvoiceMoney {
       if (what.creditNoteId !== undefined) {
         const n = UUID.test(what.creditNoteId) ? await tx.moneyCreditNote.findFirst({ where: firmScope(ctx.firmId, { id: what.creditNoteId.toLowerCase(), invoiceId: id }) }) : null;
         if (!n) return notFound("credit note");
-        return { key: "money.credit_note" as const, name: n.number!, data: creditNoteData(f.view, { number: n.number!, issuedOn: dayOf(n.createdAt), amountMinor: n.amountMinor, reason: n.reason }, await this.letterhead(tx, ctx.firmId, f.view)) };
+        return { key: "money.credit_note" as const, name: n.number!, data: creditNoteData(f.view, { number: n.number!, issuedOn: dayOf(n.createdAt), amountMinor: n.amountMinor, reason: n.reason }, await this.storedHead(tx, ctx.firmId, "invoice.credit_note_issued", n.id, f.view)) };
       }
       return { key: "money.invoice" as const, name: f.view.number!, data: await this.invoiceOf(tx, ctx.firmId, f) };
     });
@@ -172,7 +182,7 @@ export class InvoiceMoney {
   private async write<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
     try { return await this.db.$transaction(fn); } catch (e) {
       if (e instanceof HttpException) throw e;
-      if ((e as { code?: string }).code === "P2002") refuse("KEY_USED", "This idempotency key is already in use for another payment. Nothing was saved.");   // the same key at the same moment on another invoice
+      if ((e as { code?: string }).code === "P2002" && /idempotency_key/.test(JSON.stringify((e as { meta?: unknown }).meta ?? ""))) refuse("KEY_USED", "This idempotency key is already in use for another payment. Nothing was saved.");   // the same key at the same moment on another invoice
       const said = /money_[a-z_]+: ([^\n]{1,300})/.exec(e instanceof Error ? e.message : "");
       return said ? refuse("MONEY_RULE", `The money rules refused this: ${said[1].replace(/\s*\(.*$/, "")}. Nothing was saved.`) : Promise.reject(e);
     }
@@ -193,40 +203,30 @@ export class InvoiceMoney {
     await tx.moduleEvent.create({ data: { firmId: firmScope(firm).firmId, type, subjectId: v.id, payload: InvoiceEventPayload.parse({ invoiceId: v.id, number: v.number, personId: v.personId, companyId: v.companyId, caseId: f.caseId, currency: v.currency,
       subtotalMinor: v.subtotalMinor, taxMinor: v.taxMinor, totalMinor: v.totalMinor, dueDate: v.dueDate, ...(creditNoteId ? { creditNoteId } : {}) }) } });
   }
-  /** A payment read back from its stored rows. What of it settled the invoice: money into operating settles in the order
-   *  it was recorded; money into trust settles by the application written with its deposit (the next ledger entry). The
-   *  trust balance shown is the party's newest ledger entry's, never one row of a paired move (Lead 91's read of #2204). */
+  /** A payment read back: its stored row and the figures its audit line stored under the invoice's lock when it was
+   *  recorded (applied, extra, the trust shortfall it made up, what was due after it, the letterhead). They never change
+   *  (AG-6-63 rule 8). Only the choices offered for the extra follow later facts: credit already kept from this payment is
+   *  no longer offered (break R2-F4). The trust balance shown is the party's newest ledger entry's, never one row of a
+   *  paired move (Lead 91's read of #2204). */
   private async paymentView(tx: Tx, firm: string, paymentId: string, replayed: boolean, today: string) {
     const firmId = firmScope(firm).firmId, p = await tx.moneyPayment.findFirst({ where: firmScope(firm, { id: paymentId }), include: { receipt: true, trustEntry: true } });
     if (!p?.invoiceId || !p.receipt) return notFound("payment");
-    const f = await this.facts(tx, firm, p.invoiceId, today);
-    // The receipt's figures are as of its own moment and never change after (AG-6-63 rule 8): what was left to pay then
-    // (credit notes, the write-off and trust applications written up to the receipt; operating payments recorded before
-    // it: receipt numbers are taken one at a time under the invoice's lock, so their order is the order of recording).
-    const mine = Number(/\d+$/.exec(p.receipt.number!)![0]);
-    const [then] = await tx.$queryRaw<{ open: string; trust: string; earlier: string }[]>`select
-      (money_invoice_total(r.firm_id, ${p.invoiceId}::uuid) - (select coalesce(sum(c.amount_minor), 0) from money_credit_note c where c.firm_id = r.firm_id and c.invoice_id = ${p.invoiceId}::uuid and c.created_at <= r.issued_at)
-        - (select coalesce(sum(w.amount_minor), 0) from money_write_off w where w.firm_id = r.firm_id and w.invoice_id = ${p.invoiceId}::uuid and w.created_at <= r.issued_at))::text as open,
-      ((select coalesce(-sum(e.amount_minor), 0) from money_trust_entry e where e.firm_id = r.firm_id and e.invoice_id = ${p.invoiceId}::uuid and e.kind = 'WITHDRAWAL_TO_INVOICE' and e.created_at <= r.issued_at)
-        - (select coalesce(sum(c.amount_minor), 0) from money_trust_entry c join money_trust_entry w on w.firm_id = c.firm_id and w.id = c.corrects_entry_id where c.firm_id = r.firm_id and c.kind = 'CORRECTION' and w.invoice_id = ${p.invoiceId}::uuid and c.created_at <= r.issued_at))::text as trust,
-      (select coalesce(sum(q.amount_minor - (select coalesce(sum(x.amount_minor), 0) from money_refund x where x.firm_id = q.firm_id and x.payment_id = q.id and x.created_at <= r.issued_at)), 0)
-         from money_payment q left join money_receipt qr on qr.firm_id = q.firm_id and qr.payment_id = q.id
-        where q.firm_id = r.firm_id and q.invoice_id = ${p.invoiceId}::uuid and q.received_into = 'OPERATING' and q.id <> ${p.id}::uuid and coalesce(substring(qr.number from '[0-9]+$')::bigint, 0) < ${mine})::text as earlier
-      from money_receipt r where r.firm_id = ${firmId}::uuid and r.id = ${p.receipt.id}::uuid`;
-    const [credit] = await tx.$queryRaw<{ applied: string }[]>`select coalesce(-sum(e.amount_minor), 0)::text as applied from money_credit_entry e where e.firm_id = ${firmId}::uuid and (e.invoice_id = ${p.invoiceId}::uuid or e.reverses_entry_id in (select a.id from money_credit_entry a where a.firm_id = ${firmId}::uuid and a.invoice_id = ${p.invoiceId}::uuid and a.kind = 'APPLIED')) and e.kind in ('APPLIED', 'REVERSED') and e.created_at <= ${p.receipt.issuedAt}`;
-    const left = Number(then.open) - Number(then.trust) - Number(then.earlier) - Number(credit.applied);   // before this payment, when it went to operating
-    let applied: number, trust: PaymentView["trust"] = null;
+    const [a] = await tx.$queryRaw<{ d: Record<string, unknown> }[]>`select detail as d from audit_event where firm_id = ${firmId}::uuid and action = 'payment.recorded' and entity = 'money_payment' and entity_key = ${p.id} order by at limit 1`;
+    if (!a) return notFound("payment");
+    const num = (k: string) => Number(a.d[k] ?? 0), text = (k: string) => (typeof a.d[k] === "string" ? (a.d[k] as string) : "");
+    const f = await this.facts(tx, firm, p.invoiceId, today), applied = num("appliedMinor"), extraThen = num("extraMinor"), shortfall = num("shortfallMinor");
+    const [k] = await tx.$queryRaw<{ kept: string }[]>`select coalesce(sum(e.amount_minor + coalesce((select sum(r.amount_minor) from money_credit_entry r where r.firm_id = e.firm_id and r.reverses_entry_id = e.id), 0)), 0)::text as kept from money_credit_entry e where e.firm_id = ${firmId}::uuid and e.kind = 'KEPT' and e.payment_id = ${p.id}::uuid`;
+    const waiting = Math.max(0, extraThen - Number(k.kept));
+    let trust: PaymentView["trust"] = null;
     if (p.receivedInto === "TRUST" && p.trustEntry) {
       const e = p.trustEntry, party = e.personId ? { personId: e.personId } : { companyId: e.companyId };
-      const next = await tx.moneyTrustEntry.findFirst({ where: firmScope(firm, { ...party, currency: e.currency, seq: e.seq + 1, kind: "WITHDRAWAL_TO_INVOICE" as const, invoiceId: p.invoiceId }) });
       const newest = await tx.moneyTrustEntry.findFirst({ where: firmScope(firm, { ...party, currency: e.currency }), orderBy: { seq: "desc" } });
-      applied = next ? -next.amountMinor : 0;
-      trust = { depositedMinor: e.amountMinor, appliedMinor: applied, balanceMinor: newest!.balanceAfterMinor };
-    } else applied = Math.max(0, Math.min(p.amountMinor, left));
-    const balanceThen = Math.max(0, left - (p.receivedInto === "OPERATING" ? p.amountMinor : 0)), extraNow = p.amountMinor - applied;
-    const extra = extraNow > 0 ? { amountMinor: extraNow, choices: p.receivedInto === "OPERATING" ? ["REFUND", "KEEP_AS_CREDIT"] : [], note: applied === 0 && left <= 0 ? "Paid twice?" : null } : null;
-    return { extraNow, payment: { id: p.id, invoiceId: p.invoiceId, method: p.method, amountMinor: p.amountMinor, currency: p.currency, receivedInto: p.receivedInto, receivedOn: dayOf(p.receivedAt), reference: p.reference, cleared: p.cleared,
-      receiptNumber: p.receipt.number!, replayed, appliedMinor: applied, extra, trust, invoice: f.view, issuedOn: dayOf(p.receipt.issuedAt), balanceThen } };
+      trust = { depositedMinor: e.amountMinor, appliedMinor: applied, shortfallCoveredMinor: shortfall, balanceMinor: newest!.balanceAfterMinor };
+    }
+    const extra = extraThen > 0 ? { amountMinor: extraThen, choices: p.receivedInto === "OPERATING" && waiting > 0 ? ["REFUND", "KEEP_AS_CREDIT"] : [], note: a.d.paidTwice === true ? "Paid twice?" : null } : null;
+    const head: Letterhead = { firmName: text("firmName_after"), firmAddress: text("firmAddress_after"), taxNumber: text("taxNumber_after") || null, billTo: text("billTo_after") || "Client" };
+    return { extraNow: extraThen, payment: { id: p.id, invoiceId: p.invoiceId, method: p.method, amountMinor: p.amountMinor, currency: p.currency, receivedInto: p.receivedInto, receivedOn: dayOf(p.receivedAt), reference: p.reference, cleared: p.cleared,
+      receiptNumber: p.receipt.number!, replayed, appliedMinor: applied, extra, trust, invoice: f.view, issuedOn: dayOf(p.receipt.issuedAt), balanceThen: num("dueAfterMinor"), shortfall, head } };
   }
   /** Who the document is from and to: the firm's name and tax number, the bill-to's name and email (the company's primary contact's). */
   private async letterhead(tx: Reader, firm: string, v: InvoiceView): Promise<Letterhead & { email: string | null; operatingDetails: string | null }> {
@@ -237,9 +237,21 @@ export class InvoiceMoney {
           email: (await tx.foCompanyContact.findFirst({ where: firmScope(firm, { companyId: v.companyId!, role: "PRIMARY" as const, validTo: null }), select: { person: { select: { email: true } } } }))?.person.email ?? null };
     return { firmName: f?.operatingName ?? "", firmAddress: addressOf(f?.businessAddress), taxNumber: s?.taxRegistered ? s.taxNumber : null, billTo: who.name || "Client", email: who.email, operatingDetails: s?.operatingDetails?.trim() || null };
   }
-  private async invoiceOf(tx: Reader, firm: string, f: Facts): Promise<RenderData> { return invoiceData(f.view, { ...(await this.letterhead(tx, firm, f.view)), issuedOn: f.issuedOn ?? "" }); }
-  private async receiptOf(tx: Reader, firm: string, p: Awaited<ReturnType<InvoiceMoney["paymentView"]>>["payment"], extraMinor: number): Promise<RenderData> {
-    return receiptData(p.invoice, { ...p, balanceMinor: p.balanceThen, extraMinor, keptInTrust: p.receivedInto === "TRUST" }, await this.letterhead(tx, firm, p.invoice));
+  /** The letterhead a document printed when it was issued, from its audit line; the live one only for a line written
+   *  before letterheads were stored (none outside test databases). */
+  private async storedHead(tx: Reader, firm: string, action: string, key: string, v: InvoiceView): Promise<Letterhead> {
+    const [a] = await tx.$queryRaw<{ d: Record<string, unknown> }[]>`select detail as d from audit_event where firm_id = ${firmScope(firm).firmId}::uuid and action = ${action} and entity_key = ${key} order by at limit 1`;
+    const t = (k: string) => (a && typeof a.d[k] === "string" ? (a.d[k] as string) : null);
+    if (t("firmName_after") === null) return this.letterhead(tx, firm, v);
+    return { firmName: t("firmName_after")!, firmAddress: t("firmAddress_after") ?? "", taxNumber: t("taxNumber_after") || null, billTo: t("billTo_after") || "Client" };
+  }
+  /** The invoice: its stored figures and the letterhead it was issued with; "How to pay" is the firm's current block. */
+  private async invoiceOf(tx: Reader, firm: string, f: Facts): Promise<RenderData> {
+    const live = await this.letterhead(tx, firm, f.view);
+    return invoiceData(f.view, { ...(await this.storedHead(tx, firm, "invoice.issued", f.view.id, f.view)), operatingDetails: live.operatingDetails, issuedOn: f.issuedOn ?? "" });
+  }
+  private async receiptOf(_tx: Reader, _firm: string, p: Awaited<ReturnType<InvoiceMoney["paymentView"]>>["payment"], extraMinor: number): Promise<RenderData> {
+    return receiptData(p.invoice, { ...p, balanceMinor: p.balanceThen, extraMinor, shortfallMinor: p.shortfall, keptInTrust: p.receivedInto === "TRUST" }, p.head);
   }
   /** One email to the bill-to, no Cc, with the PDF (AG-6-63 rule 5, AG-6-41). Never throws: the record is already saved. */
   private async email(firm: string, v: InvoiceView, key: MoneyTemplate, data: RenderData, subject: string, idempotencyKey: string, name: string): Promise<"SENT" | "NO_ADDRESS" | "NOT_SENT"> {

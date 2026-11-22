@@ -38,10 +38,11 @@ export function invoiceData(v: InvoiceView, h: Letterhead & { issuedOn: string; 
 }
 
 const METHOD: Record<string, string> = { BANK_TRANSFER: "bank transfer", WIRE: "wire", CHEQUE: "cheque", CASH: "cash", E_TRANSFER: "Interac e-Transfer", CARD_TERMINAL: "card terminal", OTHER: "another method" };
-export function receiptData(v: InvoiceView, p: { receiptNumber: string; issuedOn: string; amountMinor: number; method: string; receivedOn: string; reference: string | null; cleared: boolean; balanceMinor: number; extraMinor: number; keptInTrust: boolean }, h: Letterhead): RenderData {
+export function receiptData(v: InvoiceView, p: { receiptNumber: string; issuedOn: string; amountMinor: number; method: string; receivedOn: string; reference: string | null; cleared: boolean; balanceMinor: number; extraMinor: number; shortfallMinor?: number; keptInTrust: boolean }, h: Letterhead): RenderData {
+  const shortfall = p.shortfallMinor ? `${v.currency} ${MONEY(p.shortfallMinor)} of this payment made up the client's trust balance, which was below zero.\n` : "";
   return { ...head(h), number: p.receiptNumber, issuedOn: p.issuedOn, invoiceNumber: v.number ?? "", currency: v.currency, total: MONEY(v.totalMinor), tax: MONEY(v.taxMinor), amount: MONEY(p.amountMinor), method: METHOD[p.method] ?? p.method,
     receivedOn: p.receivedOn, reference: p.reference ? `, reference ${p.reference}` : "", cleared: p.cleared ? "" : "Not yet cleared", balance: MONEY(p.balanceMinor),
-    extra: p.extraMinor ? `${v.currency} ${MONEY(p.extraMinor)} is more than this invoice asked${p.keptInTrust ? ": kept in trust." : ": we will be in touch about it."}\n` : "" };
+    extra: shortfall + (p.extraMinor ? `${v.currency} ${MONEY(p.extraMinor)} is more than this invoice asked${p.keptInTrust ? ": kept in trust." : ": we will be in touch about it."}\n` : "") };
 }
 export function creditNoteData(v: InvoiceView, c: { number: string; issuedOn: string; amountMinor: number; reason: string }, h: Letterhead): RenderData {
   return { ...head(h), number: c.number, issuedOn: c.issuedOn, invoiceNumber: v.number ?? "", currency: v.currency, total: MONEY(v.totalMinor), amount: MONEY(c.amountMinor), reason: c.reason };
