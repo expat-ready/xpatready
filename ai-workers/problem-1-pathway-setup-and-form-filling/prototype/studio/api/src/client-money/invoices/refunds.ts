@@ -56,7 +56,7 @@ export class Refunds {
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
-        const had = await this.replay(tx, ctx.firmId, c.idempotencyKey, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason, method: c.method, reference: c.reference ?? null, refundedOn });
+        const had = await this.replay(tx, ctx.firmId, c.idempotencyKey!, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason!, method: c.method!, reference: c.reference ?? null, refundedOn });
         if (had) return this.choiceView(tx, ctx.firmId, p, "REFUND", (await tx.moneyRefund.findFirst({ where: firmScope(ctx.firmId, { id: had }) }))!.amountMinor, had, null, true);
       }
       if (p.receivedInto === "TRUST") refuse("TRUST_EXTRA", "Money received into trust stays in the trust ledger: there is no Refund · Keep as credit choice here. Nothing was changed.");
@@ -66,7 +66,7 @@ export class Refunds {
       if (waiting > 0 && !p.cleared) refuse("NOT_CLEARED", "This cheque is not cleared yet: its extra waits until it clears, then a person chooses Refund or Keep as credit. Nothing was changed.");
       if (waiting <= 0) refuse("NOTHING_WAITING", "Nothing of this payment is waiting for a choice: it was chosen already, or it paid no more than was asked. Nothing was changed.", { waitingMinor: 0 });
       if (c.choice === "REFUND") {
-        const refundId = await this.writeRefund(tx, ctx, p, waiting, c.reason, c.idempotencyKey, c.method, c.reference ?? null, refundedOn!, true);
+        const refundId = await this.writeRefund(tx, ctx, p, waiting, c.reason!, c.idempotencyKey!, c.method!, c.reference ?? null, refundedOn!, true);
         return this.choiceView(tx, ctx.firmId, p, "REFUND", waiting, refundId, null);
       }
       const entry = await tx.moneyCreditEntry.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: p.personId, companyId: p.companyId, caseId: p.caseId, kind: "KEPT", amountMinor: waiting, currency: p.currency, paymentId: id, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });

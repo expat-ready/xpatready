@@ -171,11 +171,17 @@ export const RefundIn = z.strictObject({
 export type RefundIn = z.infer<typeof RefundIn>;
 /** POST …/payments/:paymentId/extra: a person's one choice on a payment's waiting extra (FO-7b amendment 1). Always for
  *  exactly what is waiting. A Refund needs how it was paid back, a reason and an idempotency key. */
-export const ExtraChoiceIn = z.discriminatedUnion("choice", [
-  z.strictObject({ choice: z.literal("KEEP_AS_CREDIT"), reason: words("The reason", 200).optional() }),
-  z.strictObject({ choice: z.literal("REFUND"), method: HandMethod, reference: words("The reference", 200).optional(), refundedOn: day.optional(), reason: words("The reason", 200),
-    idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -") }),
-], { error: "Choose REFUND or KEEP_AS_CREDIT." });
+export const ExtraChoiceIn = z.strictObject({
+  choice: z.enum(["REFUND", "KEEP_AS_CREDIT"], { error: "Choose REFUND or KEEP_AS_CREDIT." }),
+  method: HandMethod.optional(), reference: words("The reference", 200).optional(), refundedOn: day.optional(), reason: words("The reason", 200).optional(),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -").optional(),
+}).superRefine((c, x) => {   // one strict shape, so an unknown field is named whatever the choice (PF-28); each choice's own fields below
+  if (c.choice === "REFUND") {
+    if (!c.method) x.addIssue({ code: "custom", path: ["method"], message: "This is required." });
+    if (!c.reason) x.addIssue({ code: "custom", path: ["reason"], message: "This is required." });
+    if (!c.idempotencyKey) x.addIssue({ code: "custom", path: ["idempotencyKey"], message: "This is required." });
+  } else for (const k of ["method", "reference", "refundedOn", "idempotencyKey"] as const) if (c[k] !== undefined) x.addIssue({ code: "custom", path: [k], message: "Only a Refund takes this." });
+});
 export type ExtraChoiceIn = z.infer<typeof ExtraChoiceIn>;
 /** What a refund answers: the refund as stored and the invoice read back after it. */
 export const RefundView = z.strictObject({
