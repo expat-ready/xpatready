@@ -155,7 +155,7 @@ ok "P-801 clean PR body: \"Questions for the founder: none\" and a form name (PR
 # ---------- review round 1 (reviewer on 54b7ef4): live wiring and real phrasing ----------
 # P-798: the saved app view lead-watch reads is fresh for one 10-min check plus grace (was 35 min).
 export APP_VIEW_FILE="$T/app-view.txt"; AN=1763270000
-printf 'app view 1 sessions · 1 flagged\nFLAG  Lane asks · cloud · need_input · needs: x · d · idle 2 min · context ?\n' | NOW=$AN bash "$TOOLS/app-view-save.sh" >/dev/null
+printf 'app view 1 sessions · 1 flagged · rows=1\nFLAG  Lane asks · cloud · need_input · needs: x · d · idle 2 min · context ?\n' | NOW=$AN bash "$TOOLS/app-view-save.sh" >/dev/null
 out=$(NOW=$((AN + 16 * 60)) bash "$TOOLS/app-view-check.sh"); rc=$?
 ok "P-798 an app view 16 min old is an ACT (lead-watch would miss a waiting lane for 35 min before)" "$([ $rc = 1 ] && has "$out" '^ACT   app view not read in 16 min' && echo 1)" "exit $rc: $out"
 out=$(NOW=$((AN + 9 * 60)) bash "$TOOLS/app-view-check.sh"); rc=$?
