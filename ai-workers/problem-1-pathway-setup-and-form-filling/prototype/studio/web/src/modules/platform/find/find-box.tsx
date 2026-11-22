@@ -20,7 +20,7 @@ type State =
   | { at: "tooLong" }
   | { at: "searching"; last: FindAnswer | null }
   | { at: "done"; answer: FindAnswer }
-  | { at: "error" };
+  | { at: "error"; words?: string };
 
 export function FindBox() {
   const nav = useNavigate();
@@ -35,6 +35,8 @@ export function FindBox() {
   const enterWaits = React.useRef(false);   // Enter pressed during the pause: open the first hit of the answer for this text
   const [state, setState] = React.useState<State>({ at: "idle" });
   const [active, setActive] = React.useState(0);
+  const [tries, setTries] = React.useState(0);   // Enter on the error line asks again (break m5)
+  const list = React.useRef<HTMLDivElement>(null);
 
   // Focus at once, so a quick typist's next keys land in the box; below 768 px the box shows only after the render, so try again then.
   const focusBox = React.useCallback(() => {
@@ -66,10 +68,11 @@ export function FindBox() {
       staffApi<FindAnswer>("/platform/find?q=" + encodeURIComponent(q))
         .then((answer) => { if (seq.current === n) setState({ at: "done", answer }); })
         // A 401 has ended the session (the frame shows the sign-in card), so no error line on top of it (challenge m10).
-        .catch((e) => { if (seq.current === n) setState(e instanceof StaffApiError && e.status === 401 ? { at: "idle" } : { at: "error" }); });
+        // SalesFrame has no terms gate: a 428 TERMS_PENDING shows the server's own words, not "try again" (break m1).
+        .catch((e) => { if (seq.current === n) setState(e instanceof StaffApiError && e.status === 401 ? { at: "idle" } : { at: "error", words: e instanceof StaffApiError && e.status === 428 ? e.message : undefined }); });
     }, FIND_PAUSE_MS);
     return () => clearTimeout(t);
-  }, [text]);
+  }, [text, tries]);
 
   const answer = state.at === "done" ? state.answer : state.at === "searching" ? state.last : null;
   const groups = answer ? grouped(answer) : [];
@@ -79,6 +82,8 @@ export function FindBox() {
   const go = (h: FindHit) => { reset(); input.current?.blur(); nav(h.url); };
   const showList = open && state.at !== "idle";
   const mark = showList && count ? Math.min(active, count - 1) : -1;
+  // The marked row is always in sight in the scrolling list (break M2).
+  React.useEffect(() => { if (mark >= 0) list.current?.querySelector<HTMLElement>(`[id="${CSS.escape(optionId(flat[mark]))}"]`)?.scrollIntoView({ block: "nearest" }); });   // eslint-disable-line react-hooks/exhaustive-deps -- after each render, cheap
   // Enter during the pause opens the first hit once the answer for this text arrives (review m5); none → the empty line stays.
   React.useEffect(() => {
     if (state.at === "done" && enterWaits.current) { enterWaits.current = false; const first = grouped(state.answer).flatMap((g) => g.hits)[0]; if (first) go(first); }
@@ -94,6 +99,7 @@ export function FindBox() {
     } else if (e.key === "Enter") {
       if (state.at === "done" && mark >= 0) { e.preventDefault(); go(flat[mark]); }
       else if (state.at === "searching") { e.preventDefault(); enterWaits.current = true; }
+      else if (state.at === "error" && !state.words) { e.preventDefault(); setTries((x) => x + 1); }
     } else if (e.key === "Escape") {
       e.preventDefault();
       if (showList) setOpen(false); else if (text) setText(""); else if (wide) close(); else input.current?.blur();
@@ -102,12 +108,12 @@ export function FindBox() {
 
   const line = state.at === "searching" && !answer ? WORDS.searching
     : state.at === "tooLong" ? WORDS.tooLong
-      : state.at === "error" ? WORDS.error
+      : state.at === "error" ? (state.words ?? WORDS.error)
         : state.at === "done" ? (count ? WORDS.count(count, capped(answer!)) : answer?.partial ? WORDS.emptyPartial : WORDS.empty) : "";
   // "Searching…" is shown, never announced on every key (challenge m11).
   const said = open && state.at !== "searching" ? [answer?.message, line].filter(Boolean).join(". ") : "";
   return (
-    <div className="min-w-0 md:relative" data-find>
+    <div className="min-w-0 md:relative" data-find onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setOpen(false); setWide(false); } }}>
       <button ref={opener} type="button" onClick={focusBox} aria-label={WORDS.label} title={`${WORDS.label} (press /)`} data-find-open
         className={cn("inline-flex size-11 items-center justify-center rounded-lg text-text-muted outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden", wide && "hidden")}>
         <Search className="size-5" aria-hidden />
@@ -123,7 +129,6 @@ export function FindBox() {
             value={text} placeholder={WORDS.placeholder} data-find-input
             onChange={(e) => { setText(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
-            onBlur={(e) => { if (!e.currentTarget.closest("[data-find]")?.contains(e.relatedTarget as Node | null)) setOpen(false); }}
             onKeyDown={onKeyDown}
             className="h-9 w-full rounded-lg border border-border-strong bg-surface-raised pl-8 pr-8 text-sm text-text placeholder:text-text-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:w-48 lg:w-64"
           />
@@ -132,7 +137,7 @@ export function FindBox() {
         <button type="button" onClick={close} aria-label="Close search" data-find-close className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-text-muted hover:bg-text/5 md:hidden"><X className="size-5" aria-hidden /></button>
         <p role="status" aria-live="polite" className="sr-only" data-find-live>{said}</p>
         {showList ? (
-          <div className="fixed inset-x-4 top-14 z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface-raised p-1 shadow-lg md:absolute md:inset-x-auto md:right-0 md:top-full md:w-[min(28rem,calc(100vw-2rem))]" data-find-popup>
+          <div ref={list} className="fixed inset-x-4 top-14 z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface-raised p-1 shadow-lg md:absolute md:inset-x-auto md:right-0 md:top-full md:w-[min(28rem,calc(100vw-2rem))]" data-find-popup>
             {answer?.message ? <p className="px-3 py-2 text-xs font-medium text-text-warn" data-find-partial>{answer.message}</p> : null}
             {line && !(state.at === "done" && count) ? <p className={cn("px-3 py-2 text-sm", state.at === "error" ? "text-danger" : "text-text-muted")} data-find-line={state.at}>{line}</p> : null}
             <div id={`${id}-list`} role="listbox" aria-label={WORDS.label} hidden={!count}>

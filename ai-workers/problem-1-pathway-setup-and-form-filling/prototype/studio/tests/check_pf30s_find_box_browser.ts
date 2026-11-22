@@ -164,6 +164,8 @@ try {
   ok("PF-30s F7 pass (BR-6): a failing API shows \"Search is not available right now. Try again.\" and keeps the text",
     (await o.locator("[data-find-line='error']").innerText()) === WORDS.error && (await box(o).inputValue()) === `Lena${run}` && (await hits(o).count()) === 0);
   await o.screenshot({ path: join(SHOTS, "pf30s-04-error-1440.png") });
+  const asked = asks.length; await box(o).press("Enter"); await o.waitForTimeout(700);
+  ok("PF-30s F7 pass (break m5): Enter on the error line asks again (\"Try again\" works from the keyboard)", asks.length === asked + 1, { before: asked, after: asks.length });
   await o.unroute("**/api/platform/find**"); stubbed = false;
   await box(o).press("Backspace");
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 }).catch(() => undefined);
@@ -238,6 +240,15 @@ try {
   await stub({ groups: [{ kind: "person", hits: Array.from({ length: 8 }, (_, i) => hit("person", `Many ${i}`, i)) }], partial: false, message: null });
   await find(o, "Many");
   ok("PF-30s F11 pass (BR-6): a kind at the finder's cap of 8 says \"8 best matches. Type more to narrow.\"", (await live(o)).includes(WORDS.count(8, true)), await live(o));
+  // Break M2: on a short window the list scrolls, and the row the arrows mark is always in sight.
+  await o.setViewportSize({ width: 1440, height: 400 });
+  for (let k = 0; k < 7; k++) await box(o).press("ArrowDown");
+  const sight = await o.evaluate(() => { const pop = document.querySelector("[data-find-popup]")!.getBoundingClientRect(), row = document.querySelector("[data-find-hit][aria-selected='true']")!.getBoundingClientRect(); return { inside: row.top >= pop.top - 1 && row.bottom <= pop.bottom + 1, row: Math.round(row.top), pop: [Math.round(pop.top), Math.round(pop.bottom)] }; });
+  ok("PF-30s F11 pass (break M2): on a 400 px high window the 8th marked row is scrolled into the list's view", sight.inside, sight);
+  await box(o).press("ArrowDown");
+  const wrap = await o.evaluate(() => { const pop = document.querySelector("[data-find-popup]")!.getBoundingClientRect(), row = document.querySelector("[data-find-hit][aria-selected='true']")!.getBoundingClientRect(); return row.top >= pop.top - 1 && row.bottom <= pop.bottom + 1; });
+  ok("PF-30s F11 fail (break M2): wrapping back to the first row scrolls it back into view", wrap);
+  await o.setViewportSize({ width: 1440, height: 900 });
   await stub({ groups: [{ kind: "person", hits: Array.from({ length: 5 }, (_, i) => hit("person", `Many ${i}`, i)) }, { kind: "company", hits: Array.from({ length: 4 }, (_, i) => hit("company", `Many co ${i}`, i)) }], partial: false, message: null });
   await find(o, "Many c");
   ok("PF-30s F11 fail (review m6b): 9 rows with no kind at its cap say \"9 results\", not best matches", (await live(o)).includes("9 results") && !(await live(o)).includes("best"), await live(o));
@@ -282,6 +293,11 @@ try {
     ok(`PF-30s F10: no sideways page scroll with the list open at ${w} px, and the list fits the window`,
       !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) && await p.locator("[data-find-popup]").evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }));
     if (w < 768) {
+      // Break M3: Tab out of the bar closes it, so focus never lands on a control hidden under it.
+      await box(p).focus(); await p.keyboard.press("Tab"); await p.keyboard.press("Tab"); await p.waitForTimeout(100);
+      const hidden = await p.evaluate(() => { const a = document.activeElement as HTMLElement | null; if (!a || a === document.body) return false; const r = a.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(top === a || a.contains(top)); });
+      ok(`PF-30s F10 (break M3): at ${w} px Tab out of the open bar closes it; the focused control is not hidden under it`, !hidden && (await p.locator("[data-find-open]").isVisible()));
+      await p.locator("[data-find-open]").click(); await box(p).pressSequentially(`Kit${run}`, { delay: 10 });
       await p.locator("[data-find-close]").click(); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
     } else {

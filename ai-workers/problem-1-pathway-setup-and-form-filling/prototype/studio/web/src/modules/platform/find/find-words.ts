@@ -68,5 +68,5 @@ export function slashOpens(e: { key: string; metaKey: boolean; ctrlKey: boolean;
   if (doc?.querySelector("[aria-modal='true'], dialog[open], [role='dialog'], [role='alertdialog']")) return false;
   const el = e.target as HTMLElement | null;
   if (!el || typeof el.closest !== "function") return true;
-  return !el.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']");
+  return !(el.isContentEditable || el.closest("input, textarea, select"));   // any editable area, "plaintext-only" too (break m6)
 }
