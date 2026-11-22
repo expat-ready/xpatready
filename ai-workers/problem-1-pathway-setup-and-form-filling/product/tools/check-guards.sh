@@ -235,7 +235,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh
 34 E15 kind|product/tools/decision-impact.sh|s/scope.tooling)/scope.none)/|check-decision-impact.sh
 34 E15 impact|product/tools/decision-impact.sh|s/^done . grep . \&\& bad=1$/done/|check-decision-impact.sh
-34 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=773/IMPACT_FROM=99999/|check-decision-impact.sh
+34 E15 from|product/tools/decision-impact.sh|s/IMPACT_FROM=806/IMPACT_FROM=99999/|check-decision-impact.sh
 34 E15 frozen|product/tools/decision-impact.sh|s/^EXEMPT_UPTO=764;/EXEMPT_UPTO=999;/|check-decision-impact.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'
