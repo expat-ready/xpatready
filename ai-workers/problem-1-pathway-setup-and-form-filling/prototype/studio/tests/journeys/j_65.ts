@@ -82,6 +82,8 @@ const onDisk = (firm: string, key: string) => existsSync(join(FILES_DIR, firm.to
 // virtual-host style (<bucket>.<host>) are both read.
 type Seen = { method: string; bucket: string; key: string; headers: Record<string, string>; bytes: number };
 const S3_PORT = PORT + 1000, BUCKET = `xr-j65-sample-${run}`.slice(0, 63), KMS = `arn:aws:kms:ca-central-1:000000000000:key/${randomUUID()}`;
+/** XML text escape for every value the fake echoes back (the request's bucket, prefix and keys; CodeQL js/reflected-xss). */
+const xml = (v: string) => v.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]!);
 const objects = new Map<string, { bytes: Buffer; headers: Record<string, string>; etag: string }>(), seen: Seen[] = [];
 const fakeS3 = createServer((req: IncomingMessage, res: ServerResponse) => {
   const parts: Buffer[] = []; req.on("data", (c: Buffer) => parts.push(c));
@@ -96,7 +98,7 @@ const fakeS3 = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.method === "GET" && u.searchParams.get("list-type") === "2") {
       const prefix = u.searchParams.get("prefix") ?? "", keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
       res.writeHead(200, { "content-type": "application/xml" });
-      res.end(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${bucket}</Name><Prefix>${prefix}</Prefix><KeyCount>${keys.length}</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>${keys.map((k) => `<Contents><Key>${k}</Key><Size>${objects.get(k)!.bytes.length}</Size><ETag>"${objects.get(k)!.etag}"</ETag></Contents>`).join("")}</ListBucketResult>`);
+      res.end(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult><Name>${xml(bucket)}</Name><Prefix>${xml(prefix)}</Prefix><KeyCount>${keys.length}</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>${keys.map((k) => `<Contents><Key>${xml(k)}</Key><Size>${objects.get(k)!.bytes.length}</Size><ETag>"${objects.get(k)!.etag}"</ETag></Contents>`).join("")}</ListBucketResult>`);
       return;
     }
     const had = objects.get(path);
