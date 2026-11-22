@@ -95,4 +95,66 @@ Note for the tech lead (not a finding): this PR builds the CONSULTATION signing 
 ## Could not check
 A real vendor (fake only); a typecheck (killed for lack of memory); a browser or screen reader (no screen); an intended user's walk (D17 and D20 stay with the founder).
 
-Verdict: Changes be10e6d24ee1efbc06a0fa8e4a8d59dfa86a3000
+Round 1 verdict: Changes be10e6d24ee1efbc06a0fa8e4a8d59dfa86a3000
+
+## Round 2: diff be10e6d24..e6365237a (head e6365237a4a3f647ad14eae2c90b77940539a4f9)
+
+Scope: only the diff. adec95da8 and its revert e6365237a cancel out on the evidence file. This file and `break-report.md` came into the branch as records. Round 1 above is kept as written (rule 8), so this file runs past 100 lines.
+
+**What I ran**
+* Suite on a `git archive` copy of e6365237a: **34 passed, 0 failed**. The checkout's working tree matched the head for `api/` and the suite.
+* Seven mutations on that copy, each caught by the suite:
+
+  | Mutation | Result |
+  |---|---|
+  | Drop the NO_CODE refusal | M3 fail goes red |
+  | Hand out the link without a code | 3 cases red |
+  | Lock after 60 tries, not 6 | The suite stops |
+  | REPEAT no longer reseals | m3 pass and M2 pass red |
+  | Decline goes back to DECLINED | The suite stops on FO-5's trigger |
+  | No per-IP limit | The limit case red |
+  | Catch-up no longer reseals | M2 pass red |
+
+**Majors from round 1: all closed**
+* **M1, closed.** `service.ts:448-457`. A firm signer's decline after CLIENT_SIGNED now ends the agreement WITHDRAWN, with its time, by and reason, and the version's end reason WITHDRAWN. The request becomes DECLINED. Both FO-5's and FO-6's rules allow these moves, and the round-1 failure no longer throws. Tests: M1 pass and M1 fail (a client decline stays DECLINED).
+* **M2, closed.**
+  - A repeated event now retries the seal (`:430`). The provider's retry after a failed seal seals it (m3 pass/fail).
+  - `catchUp` reseals fully signed requests that have no evidence, and queues the signed copy again under one key. The email's idempotency key makes it one email (M2 pass: the catch-up ran twice, one copy).
+  - The seal after the firm's signature still throws to the caller (`:457`). This is now deliberate: the provider retries, and the retry seals. Accepted.
+* **M3, closed.** `service.ts:336-390`, `controller.ts:59-64`.
+  - P-564's code is built on FO-6's `fo_signer` columns:
+    - 6 digits from `randomInt`, stored only as sha256, compared with `timingSafeEqual`.
+    - 10 minutes (Sample). The sixth wrong code locks the link for 15 minutes, and even the right code is refused while locked.
+    - Resend is only on request, and each step writes one audit line under the request lock.
+  - A client "signed" event without a checked code is refused with NO_CODE: a second wall behind the door.
+  - Per-IP limit of 30 per 10 minutes, then 429.
+  - The firm's switch to turn the code off is FO-6's setting (not on main). It is always on here, which matches "on by default".
+
+**Minors from round 1**
+* m3 closed: `providerLink` maps an ended signer to 409 SIGNING_ENDED and an unknown one to 404. Host consent is taken under the lock and re-read.
+* m5 closed: a cancelled booking's agreement gives no "needs you" item, and its link answers the one 404.
+* m6 closed: a "signed" event with no consent and with no code is played; the reminder runs twice.
+* Still open by design and listed for the tech lead, so not blocking: m1 (no outbox poller; J-104), m2 (FO-3vr visibility on the reads), m4 (no resend of a lost first email), m7, m8.
+
+**New in round 2 (Minors, not blocking)**
+* n1. The per-IP limit is held in memory per process (`:63-69`). Behind a proxy that hides client addresses, everyone shares one count. This is the same pattern as the booking door; keep it in mind for PF-8.
+* n2. Once wired, `catchUp` re-queues the copy for every request SIGNED in the last 7 days on every run (`:107-117`). One email results, but it is wasted work. Fix: only when no copy has been sent yet.
+
+**Journey score, round 2 (reviewer, API level): 8.5/10.** That is 7 of the 8 criteria that apply; visual quality and accessibility are N/A.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | ½ | Still not in the running app (m1, J-104) |
+| Next step obvious | 1 | |
+| Plain words | 1 | |
+| Feedback and state | 1 | M2 closed |
+| Correct data | 1 | M1 closed |
+| Error recovery | ½ | m4 still open |
+| Speed | 1 | |
+| Trust and sources | 1 | |
+
+Pass, with no criterion at 0.
+
+Reviewer: Approve e6365237a4a3f647ad14eae2c90b77940539a4f9
+
+Verdict: Approve e6365237a4a3f647ad14eae2c90b77940539a4f9
