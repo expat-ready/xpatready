@@ -5,6 +5,8 @@
 #   bash product/tools/check-lane-preflight.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
+# ENF-803: a start brief's Duplicate check names the main sha and the exact IST time (brief-fresh.py); HEAD stands for main here
+export BRIEF_MAIN=HEAD; FRESH_DUP="read main $(git rev-parse --short=9 HEAD) at $(TZ=Asia/Kolkata date +%H:%M) IST;"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT; mkdir "$T/bin"
 printf '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted"\necho "/dev/disk3s1 990000000 1 $FAKE_KB 1%% /"\n' > "$T/bin/df"
@@ -23,7 +25,7 @@ pf "$(gb 150)" 3 "4420 4431 4452 4471"; ok "four running test copies are refused
 pf "$(gb 30)" 20 "4420 4431 4452 4471"; ok "every reason is named at once" "$([ $r = 1 ] && [ "$(echo "$out" | grep '^REFUSED' | grep -o 'under 7 GB\|over 16\|cap 4' | wc -l | tr -d ' ')" = 3 ] && echo 1)" "$out"
 # The stand-in brief's row X-1 is put on a throwaway focus list, so focus-check.py (ENF-733; test: check-focus-list.sh) is not what these checks see.
 printf '| R1.1 | X-1 | test | test |\n' > "$T/focus-list.md"; export FOCUS_LIST="$T/focus-list.md"
-BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nItem: R1.1\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'   # passes brief-check.sh --brief (G-4, B204)
+BRIEF=$'Row X-1. Model: Opus 5.5, effort: medium.\nItem: R1.1\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0'   # passes brief-check.sh --brief (G-4, B204)
 # B204 (P-745): a throwaway waves list, so the wave a fixture item is in never moves with qa's verdicts. Wave 1 has 4 unproven
 # items (active), wave 2 is next; R1.6 is wave 4, R1.7 wave 3; R1.8 is Proven (wave 0).
 printf '| # | Map row: capability | Module | Status |\n|---|---|---|---|\n' > "$T/caps.md"
@@ -37,7 +39,7 @@ hook "$(gb 37)" 3 "" x cloud; ok "hook: a cloud start is not checked" "$([ $r = 
 hook "$(gb 150)" 3 "" x ""; ok "hook: a Mac start with room passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"
 hook "$(gb 150)" 3 "" x cloud "Row X-1. Done when: check-x.sh exits 0"; ok "hook: a cloud brief with no model and effort line or Duplicate check is denied (G-4 (7))" "$(echo "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test("model and effort") and test("Duplicate check"))' >/dev/null && echo 1)" "$out"
 # B204 (P-745): what the lane is for, and its wave (brief-check.sh --brief, then waves.py allow).
-B4=$'Row X-1. Model: Opus 5.5, effort: medium.\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0\n'
+B4=$'Row X-1. Model: Opus 5.5, effort: medium.\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0\n'
 deny() { echo "$out" | jq -e --arg w "$1" '.hookSpecificOutput.permissionDecision == "deny" and (.hookSpecificOutput.permissionDecisionReason | test($w))' >/dev/null 2>&1 && echo 1; }
 hook "$(gb 150)" 3 "" x cloud "${B4}Item: R1.6"; ok "hook: a Wave 4 item (R1.6) is refused, with its wave and the open waves" "$(deny 'OUTSIDE WAVE: R1.6 is in wave 4; lane starts are open for waves 0, 1, 2 only')" "$out"
 hook "$(gb 150)" 3 "" x cloud "${B4}Item: R1.1"; ok "hook: a Wave 1 item (R1.1, the active wave) passes" "$([ $r = 0 ] && [ -z "$out" ] && echo 1)" "$out"

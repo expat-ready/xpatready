@@ -1,0 +1,7 @@
+#!/bin/bash
+# Pre-commit guard (ENF-803, P-803): installed by lane.sh setup (core.hooksPath=.githooks). Refuses a commit made while
+# GIT_INDEX_FILE points at a temp or stale index (22 Nov: 54e27fc66 deleted 10,753 files that way). The bulk-delete count
+# needs the message, so it runs in commit-msg; pre-push and CI check it again (a --no-verify commit is still refused there).
+G="$(git rev-parse --show-toplevel)/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/bulk-delete-guard.sh"
+[ -f "$G" ] || { echo "bulk-delete guard missing at $G — commit refused (restore it or run lane.sh setup)"; exit 1; }
+exec bash "$G" index

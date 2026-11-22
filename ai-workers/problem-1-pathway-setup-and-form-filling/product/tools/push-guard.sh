@@ -1,12 +1,12 @@
 #!/bin/bash
 # Push guard (P-82): ported from the P-81 filtered-mirror push check. Refuses a range of commits that adds
-# an excluded path, a PDF, a secret or a personal name. Called by .githooks/pre-push for every pushed ref
+# an excluded path, a PDF, a secret, a personal name or a bulk delete without its reason (ENF-803). Called by .githooks/pre-push for every pushed ref
 # and by the CI guard job for each pull request.
 #   push-guard.sh <old>..<new> [...]   check the given commit ranges
 #   push-guard.sh --unpushed <sha> [remote]   check every commit on <sha> not on <remote>'s branches (default origin)
 # Exit 1 and print every violation; exit 0 when the range is clean.
 set -u
-HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
+GDIR="$(cd "$(dirname "$0")" && pwd)"; HERE="$(git rev-parse --show-toplevel)"; cd "$HERE" || exit 2
 
 # Never on GitHub (P-81): sources/, code/, archive/, local tools, databases/dumps, archives, env/secret files, every PDF
 # except the manifest-checksummed official blanks under official-sources/ (P-83, enforced below).
@@ -38,6 +38,8 @@ check_range() {
   # Intentionally unquoted: $range carries several rev-list args (e.g. "HEAD --not --remotes").
   commits=$(git rev-list $range 2>/dev/null) || { echo "GUARD: unresolvable range '$range' — refusing"; bad=1; return; }
   [ -n "$commits" ] || return 0
+  # ENF-803 (P-803): a commit deleting more than 50 files needs "BULK-DELETE-OK: <reason>" (22 Nov: 54e27fc66, 10,753 files).
+  bash "$GDIR/bulk-delete-guard.sh" range $range || bad=1
   # Paths added, modified, renamed-to or copied-into by the range (deletions are safe, so D is excluded).
   # P-83: a .pdf is admitted ONLY under official-sources/ and only when the blob's SHA-256 at its commit
   # equals a "sha256" value in an official-sources/*/manifest.json at the range tip; every other PDF refuses.
