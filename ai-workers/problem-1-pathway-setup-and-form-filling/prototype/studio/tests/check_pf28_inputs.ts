@@ -68,7 +68,8 @@ export function inputs(dir: string): CodeInput[] {
  *  below; SNS's (SES notices, text/plain read off the request), judged by tests/check_pf19b2_ses.ts "PF-28 fail: a signed
  *  notice whose envelope breaks the schema" (its schema `SnsNotice` runs through parseInput after the signature); the
  *  "PF-28 HOOK" check below ties that exemption to its proof (review m1 on #3039). */
-const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body"]);
+const HOOK = new Set(["platform/billing/routes.ts POST /api/hooks/stripe body", "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body",
+  "client-money/card/routes.ts POST /api/hooks/stripe-connect body"]);   // FO-7c part 1 (Lead B on #2938): its signature and schema pairs over HTTP are in check_fo7c_card_payments.ts
 // Review m1 (#3039): the SNS exemption holds only while its proof does: the door parses SnsNotice after verify, and the
 // named case in check_pf19b2_ses.ts exists (a deleted or renamed case fails here).
 { const b = readFileSync(join(API, "platform/messages/channels/email/bounces.ts"), "utf8"), v = b.indexOf("await this.verify(n);"), p = b.indexOf("parseInput(SnsNotice, n)");
