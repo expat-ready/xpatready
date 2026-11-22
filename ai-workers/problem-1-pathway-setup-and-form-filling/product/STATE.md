@@ -28,6 +28,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 **Lead 9 check 02:5x IST:** #3081's label was removed by the guard (failed batch 45036239918: shard 14 check_forms_qa53 from #2927's routes, shard 2 check_pf21_complaints; neither its own): covered line posted, relabelled. #3001 full run 45070511287 going; #3041 full run attempt 2 going.
 
+**Lead 9 check 03:0x IST:** #3081 queued again. Runs on several branches were cancelled together at ~21:16Z (02:46 IST), cause unknown (no failed suite): #3001 full run 45070511287 re-run (attempt 2), #3041 on attempt 2. #3042 lane pushed 21a6416c5 (re-stamp under way).
+
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
