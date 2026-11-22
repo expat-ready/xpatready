@@ -28,11 +28,15 @@ const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { Db } = await import("../api/src/core.ts");
 const { registerFeatures } = await import("../api/src/features.ts");
 const { fakeS3 } = await import("./fixtures/pff1-s3/fake-s3.ts");
+const { Secret } = await import("../api/src/platform/config/secret.ts");
 const { runContract } = await import("../ports/contracts/contract.ts");
 const { filesPortContract } = await import("../ports/contracts/files-port.contract.ts");
 
 const FIRM_A = "0c0c0c0c-0000-4000-8000-0000000000a1", FIRM_B = "0c0c0c0c-0000-4000-8000-0000000000b2", PERSON = "5a5a5a5a-0000-4000-8000-000000000001";
 const BUCKET = "pff1b-recorded-bucket", KMS = "arn:aws:kms:ca-central-1:000000000000:key/00000000-0000-4000-8000-00000000f1f1";
+/** Made-up AWS credentials for the recorded client: without them the SDK looks for the machine's own (environment, profile,
+ *  instance role), which a CI runner does not have (batch 45060228524 shard (5): CredentialsProviderError). */
+const RECORDED_CREDS = { accessKeyId: new Secret("PFF1B_ACCESS_KEY_ID", `AKIA${randomBytes(8).toString("hex").toUpperCase()}`), secretAccessKey: new Secret("PFF1B_SECRET_ACCESS_KEY", randomBytes(30).toString("base64")) };
 const S3_ENV = { PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: BUCKET, PLATFORM_FILES_KMS_KEY_ID: KMS };
 let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail)?.slice(0, 500)}` : ""}`); };
@@ -85,7 +89,7 @@ try {
   // The shared FilesPort contract (P-606 (8); the port-contract guard): EntitledFiles over each store, with a database
   // whose limit is Unlimited (null), and boundFiles in each mode, each make an empty store.
   const unlimited = { $queryRaw: async () => [{ firmId: FIRM_A, code: "sample", name: "Sample", seats: null, value: null, hasRow: true, hard: false }] };
-  const recordedS3 = () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS }).handler }; };
+  const recordedS3 = () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS }).handler }; };
   const contracts = [
     await runContract(filesPortContract, "EntitledFiles", () => new EntitledFiles(unlimited as never, () => Date.now(), null, join(WORK, "c-entitled", randomBytes(6).toString("hex"))), null),
     await withEnv(S3_ENV, async () => runContract(filesPortContract, "EntitledFiles over S3Files", () => { recordedS3(); return new EntitledFiles(unlimited as never, () => Date.now(), null, boundFiles()); }, null)),
@@ -109,7 +113,7 @@ try {
     await inner.delete(FIRM_A, "bind/known.txt");
     ok("R1.65 PF-F1b case 1 fail: a retired key still gives FileKeyTaken, never the storage limit", await refused(() => store.put(FIRM_A, "bind/known.txt", bytesOf("local"), "text/plain"), (e) => e instanceof FileKeyTaken));
     const seen = fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS });
-    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: seen.handler };
+    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: seen.handler };
     ok("R1.65 PF-F1b case 1 fail: with PLATFORM_FILES unset nothing goes to S3 even when an S3 client is at hand", boundFiles() instanceof LocalFiles && seen.seen.length === 0);
     delete (globalThis as Record<symbol, unknown>)[RECORDED_S3];
     await app.close();
@@ -118,7 +122,7 @@ try {
   // Case 2: PLATFORM_FILES=s3 with the recorded fake client serves a put and a get through the bound port.
   {
     const s3 = fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS });
-    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: s3.handler };
+    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: s3.handler };
     await withEnv(S3_ENV, async () => {
       const app = await context();
       const store = app.get(LocalFiles) as unknown as InstanceType<typeof EntitledFiles>, inner = store.store;
@@ -169,12 +173,12 @@ try {
     ok("R1.65 PF-F1b case 3 fail: any other configuration fault (a malformed link key) still stops the start-up, naming the setting", badKey.status !== 0 && !/STARTED/.test(badKey.stdout) && /PLATFORM_FILES_LINK_KEY/.test(badKey.stderr), { status: badKey.status, err: badKey.stderr.slice(0, 600) });
     const dev = run({});
     ok("R1.65 PF-F1b case 3 pass: outside production, unset starts on the local adapter", dev.status === 0 && /STARTED/.test(dev.stdout), { status: dev.status, err: dev.stderr.slice(0, 600) });
-    ok("R1.65 PF-F1b case 3 fail: the recorded S3 client is refused in production (a test seam never reaches a real server)", await withEnv({ NODE_ENV: "production", ...S3_ENV }, async () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: {} }; try { return await refused(() => boundFiles(), (e) => /recorded S3 client/.test(String(e))); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } }));
+    ok("R1.65 PF-F1b case 3 fail: the recorded S3 client is refused in production (a test seam never reaches a real server)", await withEnv({ NODE_ENV: "production", ...S3_ENV }, async () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: {} }; try { return await refused(() => boundFiles(), (e) => /recorded S3 client/.test(String(e))); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } }));
   }
 
   // Round 1's Minors (break m2, m3, m4).
   {
-    const seam = (environment: string) => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: {} }; try { boundFiles({ ...S3_ENV, PLATFORM_ENVIRONMENT: environment }); return "used"; } catch (e) { return String(e); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } };
+    const seam = (environment: string) => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: {} }; try { boundFiles({ ...S3_ENV, PLATFORM_ENVIRONMENT: environment }); return "used"; } catch (e) { return String(e); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } };
     ok("R1.65 PF-F1b break m2 fail: the recorded S3 client is refused on the AWS test environment and production, honoured only on a local server", /refused outside PLATFORM_ENVIRONMENT=local/.test(seam("test")) && /refused outside/.test(seam("production")) && seam("local") === "used");
     const { loadPlatformConfig } = await import("../api/src/platform/config/settings.ts");
     const keyOk = (v: string) => { try { loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_FILES_LINK_KEY: v }); return true; } catch (e) { return /PLATFORM_FILES_LINK_KEY/.test(String(e)) ? false : String(e); } };
@@ -191,7 +195,7 @@ try {
   {
     let nowMs = Date.UTC(2026, 10, 22, 12, 0, 0);
     const s3 = fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS, now: () => nowMs });
-    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: s3.handler };
+    (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { credentials: RECORDED_CREDS, requestHandler: s3.handler };
     await withEnv(S3_ENV, async () => {
       class Clock { now() { return nowMs; } }
       const linked = await context(Clock);

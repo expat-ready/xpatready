@@ -77,7 +77,7 @@ function loadedEnvironment(): string | undefined {
  *  per process (one client, one connection pool). `env` is for tests; the app passes none. */
 export function boundFiles(env: FilesEnv = appEnv()): FilesPort {
   if (filesAdapterOf(env) === "local") return chooseFiles(env);
-  const recorded = (globalThis as Record<symbol, unknown>)[RECORDED_S3] as Pick<S3FilesOptions, "requestHandler"> | undefined;
+  const recorded = (globalThis as Record<symbol, unknown>)[RECORDED_S3] as Pick<S3FilesOptions, "requestHandler" | "credentials"> | undefined;   // made-up credentials too, so a test never uses the machine's own (batch 45060228524)
   // Honoured on a local server only (the Mac, lanes, CI): never in the test environment on AWS or production (break m2).
   if (recorded && (isProduction(env.NODE_ENV) || env.PLATFORM_ENVIRONMENT !== "local")) refuse("a recorded S3 client is a test seam and is refused outside PLATFORM_ENVIRONMENT=local");
   const settings = JSON.stringify([s3SettingsOf(env), !!recorded]);
