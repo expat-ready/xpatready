@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_6efc4ae3-9526-4c00-9dd0-3fe31705e8c5 Lead 3 · 22 Nov 13:0x IST (took over from Lead 2 (local_d718f32a) at ~430k, P-446; Opus 5.5 medium, P-788)
+current_lead: local_bcc6ed82-631c-44af-bb92-b7e04a629acd Lead 4 · 22 Nov 14:18 IST (took over from Lead 3 (local_6efc4ae3) at ~315k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 13:33 IST: Lead 3 (new account) is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 14:18 IST: Lead 3 handed over to Lead 4 · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -12,17 +12,14 @@ updated: 2026-11-22 13:33 IST: Lead 3 (new account) is the Lead · milestone: Re
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Hand-over Lead 2 → Lead 3, 13:0x IST 22 Nov (Lead 2 at ~430k context, P-446; the Lead 1 → Lead 2 block word for word: `product/history/STATE-2026-11-22-1305-lead2-handover-1-2-block.md`)
-**Goal (founder):** at least 12 proven by 07:00 IST 23 Nov (target 15), with Track B and the structure lanes in parallel (P-785, P-786). Proven 43/101; +0 since 07:00. Board: `product/design/board-lead-a-2026-11-22.md`.
-**Constraint now: CI machines.** 10 merge-queue batches restarted 12:18 when Lead 2 hand-merged #2754 (queue 6 → 12 parallel); 153 jobs running, 142 waiting at 13:03. **Do not merge by hand or merge any queue-config PR until these batches land (P-791).** Then: batch_size 2 → 3 (one line, Lead read), measure; price AWS-hosted runners only if jobs still wait. Held (P-792, tell the founder): #2925 Structure 2 scopes, after #2445 merges and the capability batches land (~13:30-14:00).
-**In the queue (capability parts):** #2926 R1.89 pricing, #2929 R1.39 calendar, #2884 R1.102 find door (6 ahead), #2906 R1.92 Help, #2919 events split, #2445 scopes check, #2952 records (P-785 to P-790 + board pages). Then qa walks each (two qa lanes; a third only when 3+ merged rows wait over 1 h, P-789 (5)).
-**Waiting on lanes (told):** #2916 AUD-4s R1.88 (5 red checks; lane claimed "queued" wrongly) · #2910 PF-13 R1.23 (conflict; moved Fable → Opus) · #2964 enforcement Show-more fix (Major: it only clicks buttons; claude.ai's Show more is a plain element) · #2927 PF-4s R1.5 (size row P-790, 5 red checks, then Lead read) · #2953 FO-7b (round 4 allowed) · #2967 FO-7g, #2955 PF-F1 (need "Reviewer: Approve <head>", Lead reads done; label then) · #2938 FO-7c labelled.
-**AWS (local `local_3f051647…`):** staging on staging.lab.expatready.com, cert valid; R1.15 Pass, R1.13 AWS half Pass; app cannot start until **PF-8b-f5** (cloud builder, branch claude/runtime-pf8bf5) merges → send AWS "rebuild"; founder types the CodeBuild OK in the AWS session. Report on branch aws/2026-11-22-staging-proof @ 2dfa3ea8f.
-**Owed records PR (after #2952 merges):** P-791, P-792; AWS report 2dfa3ea8f; Lead B's branch lead-b/2026-11-22-track-b commits 64434d1dc + d84797c45; BACKLOG PF-8b-f5. RULES is as of P-791.
-**Sessions:** local: Lead B · Track B `local_96f8a15e…` (first read of money/Track B PRs), AWS `local_3f051647…`. Cloud (all Opus 5.5 Medium; read model labels each check): enforcement `enf-land` (session_01Ln6TiQwyyYPKkww6CjBbhp), PF-8b-f5, Structure 1/2, builders per PR above, two qa lanes, Track B FO-7b/7c/7g/PF-F1. Standbys: none after Lead 3 takes over: start one at the founder's next typed turn.
-**Usage:** 29% at 13:0x, ~5%/h (96% ≈ 02:30 IST 23 Nov); ask the founder again at 90% (P-787).
-Lead 3 first check line (13:1x IST): word for word in `product/history/STATE-2026-11-22-1334-lead3-first-check-line.md`.
-**Lead 3, 13:48 IST:** demo red at 13:26 was a one-off (re-run green). **#2980** (opened by the Lead) fixes main: front-office/MODULE.md at 41 lines (cap 40) after PF-28 3a, so module-cards fails every PR; it needs an independent reviewer's Approve (Enforcement lane asked), then merge when green (P-757, P-791 (2)). #2952 re-pushed (Kind tags; the history page STATE links). #2445 merged 13:46 IST: #2925 may go after the running batches. Track B (Lead B 13:33): none of its rows prove by 09:00 except maybe R1.56 (FO-7b 1b by ~18:00, FO-7g 1w by ~03:00, founder Q1 province); freed lanes given PF-F1b, CS-W3 2-review, FO-7g 1w (LX942-LX947).
+## Hand-over Lead 3 → Lead 4, 14:18 IST 22 Nov (Lead 3 at ~315k, P-446; the Lead 2 → 3 block and Lead 3's lines stay below and in history)
+**Goal (founder, P-795):** 12 proven (target 15) by 07:00-09:00 IST 23 Nov. Proven this cycle: 0; qa walking R1.39 and R1.89 (merged 13:2x). Board: `product/design/board-lead-a-2026-11-22.md`.
+**Merged since 13:00:** #2926 R1.89, #2929 R1.39, #2909/#2931 R1.10 p3a/3b, #2885 R1.24 part, #2884 R1.102 find door, #2906 R1.92 p2, #2934 nightly fix, #2445 scopes check, #2967 FO-7g p1, qa journeys.
+**Do first:** (1) **#2980** (main fix: front-office/MODULE.md 41 > 40 lines; module-cards red on every PR) is queued and green: let it merge. (2) Then **#2952** records (P-785..P-795, EXPERIENCE §7 UX laws, RULES as of P-795): re-label after its checks are green on eb11cce19 (it lost the label on push; module-cards needs #2980); #2916 (P-793) and #2927 (P-790) and #2955 pr-rules wait on it. (3) **#2968** PF-8b-f5 labelled 14:1x, ci running: on merge send AWS (local_3f051647) "rebuild" + `migrate resolve --rolled-back 20261116013000_pf12_firm_walls` then `deploy`, and ask the founder to type the CodeBuild OK **in the AWS session**. (4) P-791: batch size 2 → 3 and #2925 only in a window with no batch running; name the hold to the founder (P-792).
+**Lanes told (tasks LX931-LX950):** R1.10 p4 #2908 (requeued) and p5 #2933; R1.23 #2910 conflict (LX950); R1.90 #2935 dequeued (LX937); R1.88 #2916 waits P-793 on main; R1.5 #2927 waits P-790 on main; FO-7b #2953 round 5 allowed with a stop condition (LX949); Track B freed lanes: PF-F1b, CS-W3 2-review, FO-7g 1w (briefs on lead-b/2026-11-22-track-b); Enforcement: #2964 then UX-law enforcers LX936/LX941. A pr-rules **re-run** reads the old PR body: edit the body to get a fresh run.
+**Founder, open:** R1.21 Stripe test key or re-worded done-when (asked 13:4x, Lead recommends re-word); then Lead B's Q1 (tax province: firm's province for R1, recommended). Track B: only R1.56 can prove by 09:00 (low-medium odds). Standbys: none after Lead 4: start one at the founder's next typed turn.
+
+The Lead 2 → 3 hand-over block and Lead 3's check lines: word for word in `product/history/STATE-2026-11-22-1418-lead3-handover-2-3-block-and-lines.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
@@ -50,7 +47,7 @@ Older Start here pointers (P-754 hold, 19 Nov lines): `product/history/STATE-202
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST).
+**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST).
 **Series 3 (P-749):** Lead 1 (local_94786348, from 20 Nov 12:18 IST), Lead 2 (local_daadc134, from 20 Nov 13:57 IST), Lead 3 (local_b0640d3f, from 20 Nov 14:43 IST), Lead 4 (local_470182c1, from 20 Nov 18:21 IST), Lead 5 (local_08ac9385, from 20 Nov 23:0x IST), Lead 6 (local_871ed54c, from 21 Nov 00:04 IST), Lead 7 (local_a8acec34, from 21 Nov 01:17 IST), Lead 8 (local_dbce8aee, from 21 Nov 02:01 IST), Lead 9 (local_52cca488, from 21 Nov 06:48 IST), Lead 10 (local_8f916b74, from 21 Nov 07:43 IST), Lead 11 (local_f172acc0, from 21 Nov 08:54 IST), Lead 12 (local_7ec53395, from 21 Nov 10:2x IST), Lead 13 (local_369dd389, from 21 Nov 11:44 IST), Lead 14 (local_c09f305e, from 21 Nov 12:44 IST)., Lead 15 (local_666bcb32, from 21 Nov 15:47 IST), Lead 16 (local_1cd4840f, from 21 Nov 18:04 IST), Lead 17 (local_74cdbff7, from 21 Nov 20:1x IST), Lead 18 (local_bdef7c01, from 22 Nov 03:21 IST), Lead 19 (local_69eeb2bd, from 22 Nov 05:5x IST)
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
