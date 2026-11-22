@@ -67,7 +67,9 @@ const { requestMiddleware } = await import("../api/src/platform/observability/ho
 const { SystemLocalIdentity, SYSTEM_LOCAL_ISSUER } = await import("../api/src/platform/system-identity/local.ts");
 const { SYSTEM_IDENTITY_PORT, SystemIdentity, systemIdentityPortFromConfig } = await import("../api/src/platform/system-identity/service.ts");
 const { SystemGuard, SystemPlaneWall, assertSystemRoutesDeclared } = await import("../api/src/platform/system-identity/guard.ts");
-const { SystemIdentityController } = await import("../api/src/platform/system-identity/routes.ts");
+const { SystemIdentityController, SystemStaffController } = await import("../api/src/platform/system-identity/routes.ts");
+const { SystemStaffAccess } = await import("../api/src/platform/system-identity/staff.ts");
+const { lineText } = await import("../api/src/platform/system-identity/guard.ts");
 const { AnySystemStaff, SystemKeys, SystemReason, SYSTEM_ACCESS, SYSTEM_ROLES } = await import("../api/src/platform/system-identity/keys.ts");
 const feature = (await import("../api/src/features/platform-system-identity.ts")).default;
 const firmFeature = (await import("../api/src/features/platform-identity.ts")).default;
@@ -99,8 +101,8 @@ const issued = (staffId: string, secondStep: boolean) => systemLocal.issue(staff
 
 async function makeApp(o: { systemPort?: unknown; extra?: unknown[]; identity?: unknown } = {}) {
   const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: firmLocal }, PlatformIdentity, PlatformGuard, { provide: APP_GUARD, useExisting: PlatformGuard },
-    { provide: SYSTEM_IDENTITY_PORT, useValue: o.systemPort ?? systemLocal }, o.identity ? { provide: SystemIdentity, useClass: o.identity } : SystemIdentity, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard }];
-  @Module({ controllers: [ProbeController, FirmProbeController, PlatformIdentityController, SystemIdentityController, TestSystemController, ...(o.extra ?? [])] as never[], providers: providers as never[] }) class TestApp {}
+    { provide: SYSTEM_IDENTITY_PORT, useValue: o.systemPort ?? systemLocal }, o.identity ? { provide: SystemIdentity, useClass: o.identity } : SystemIdentity, SystemStaffAccess, SystemPlaneWall, SystemGuard, { provide: APP_GUARD, useExisting: SystemGuard }];
+  @Module({ controllers: [ProbeController, FirmProbeController, PlatformIdentityController, SystemIdentityController, SystemStaffController, TestSystemController, ...(o.extra ?? [])] as never[], providers: providers as never[] }) class TestApp {}
   const app = await NestFactory.create(TestApp, { logger: false });
   app.use(requestMiddleware());   // PF-23's request scope (main.ts observe): the request id an audit line carries
   await app.listen(0, "127.0.0.1");
@@ -360,6 +362,77 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     && refusedBySql(`insert into plat_system_audit (id, staff_id, staff_name, method, route, target, outcome, request_id) values (gen_random_uuid(), gen_random_uuid(), 'x', 'GET', '/x', '{}', 'ALLOWED', 'r')`, /plat_system_audit_staff_id_fkey/));
   ok("PF-4s DW3 fail (SA7-D58): a staff member is never deleted, and holds a role at most once at a time",
     refusedBySql(`delete from plat_system_staff where id = '${NOBODY}'`, /plat_system_staff_kept/) && refusedBySql(`insert into plat_system_role_grant (id, staff_id, role_code) values (gen_random_uuid(), '${OWNER}', 'platform-owner')`, /plat_system_role_grant_open_once/));
+
+
+  // ------------------------------------------------------------- DW6, DW7 (part 2): step-up and staff access
+  const P2 = "/api/system/staff";
+  const one = async (f: () => Promise<Res>) => { const before = lines(); const r = await f(); return { r, added: lines() - before, line: lastLine() }; };
+  const signedNow = async (id: string) => { clock.t = Math.ceil(clock.t / 1000) * 1000 + 1000; return tokenOf(id); };   // a sign-in on a whole second
+  const rolesNow = async (id: string) => (await db.platSystemRoleGrant.findMany({ where: { staffId: id, endedAt: null }, select: { roleCode: true } })).map((g) => g.roleCode).sort();
+  const TSUP = await person("Target Support", ["platform-support"]), TSUP2 = await person("Target Support Two", ["platform-support"]);
+
+  let o = await signedNow(OWNER); clock.t += 6 * 60_000;
+  let x = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: o, body: { roles: ["platform-support", "platform-auditor"] } }));
+  ok("PF-4s DW6 fail (SA-7-10): a role change 6 minutes after sign-in is 401 STEP_UP_REQUIRED, one REFUSED line, nothing changed",
+    x.r.status === 401 && x.r.body.code === "STEP_UP_REQUIRED" && x.added === 1 && x.line.outcome === "REFUSED" && x.line.code === "STEP_UP_REQUIRED" && (await rolesNow(TSUP)).join() === "platform-support", x);
+  o = await signedNow(OWNER); clock.t += 5 * 60_000;
+  x = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: o, body: { roles: ["platform-support", "platform-auditor"] } }));
+  ok("PF-4s DW6 pass (SA-7-10, SA-7-12; breaker: exactly 5 minutes): a role change exactly 5 minutes after sign-in is 200, one ALLOWED line with before and after",
+    x.r.status === 200 && x.added === 1 && x.line.outcome === "ALLOWED" && x.line.route === "/api/system/staff/:id/roles" && JSON.stringify(x.line.target.before) === '{"roles":["platform-support"]}' && JSON.stringify(x.line.target.after) === '{"roles":["platform-auditor","platform-support"]}' && (await rolesNow(TSUP)).join() === "platform-auditor,platform-support", x);
+  const sup = await signedNow(SUPPORT); clock.t += 6 * 60_000;
+  x = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: sup, body: { roles: [] } }));
+  ok("PF-4s DW6 order: missing keys answer before step-up (403 MISSING_PERMISSION, not 401), one line", x.r.status === 403 && x.r.body.code === "MISSING_PERMISSION" && x.added === 1, x);
+  o = await signedNow(OWNER);
+  x = await one(() => call(A.base, "POST", `${P2}/${OWNER}/reset-mfa`, { token: o, body: { reason: "lost phone", verified: true } }));
+  ok("PF-4s DW6 fail (SA-7-31): Reset MFA on oneself is 403 OWN_ACCOUNT, one REFUSED line", x.r.status === 403 && x.r.body.code === "OWN_ACCOUNT" && x.added === 1 && x.line.code === "OWN_ACCOUNT", x);
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { verified: true } }));
+  ok("PF-4s DW6 fail (SA-7-31): Reset MFA without a reason is 400 REASON_REQUIRED, one line", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1, x);
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { reason: "lost phone" } }));
+  ok("PF-4s DW6 fail (SA7-D21): Reset MFA without the verified flag is 400 IDENTITY_NOT_VERIFIED, one line", x.r.status === 400 && x.r.body.code === "IDENTITY_NOT_VERIFIED" && x.added === 1 && x.line.code === "IDENTITY_NOT_VERIFIED", x);
+  const tsupToken = await tokenOf(TSUP); clock.t += 1000;
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP}/reset-mfa`, { token: o, body: { reason: "lost phone", verified: true } }));
+  const afterReset = await call(A.base, "GET", "/api/system/me", { token: tsupToken });
+  ok("PF-4s DW6 pass (SA-7-31): Reset MFA by an Owner is 200 with its reason on the line, and the person's session ends at once",
+    x.r.status === 200 && x.added === 1 && x.line.reason === "lost phone" && afterReset.status === 401 && afterReset.body.code === "SESSION_REVOKED", { x, afterReset });
+
+  let a = await signedNow(ADMIN); const tsup2Token = await tokenOf(TSUP2); clock.t += 1000;
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP2}/deactivate`, { token: a, body: { reason: "left the company" } }));
+  const gone = await call(A.base, "GET", "/api/system/me", { token: tsup2Token }), row = await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP2 } });
+  ok("PF-4s DW7 pass (SA-7-22, SA7-D5): an Admin deactivates Support (200, one line with before and after); that person's next call is 401 and their sessions are ended",
+    x.r.status === 200 && x.added === 1 && x.line.target.after?.status === "DEACTIVATED" && gone.status === 401 && row.status === "DEACTIVATED" && !!row.sessionsEndedAt, { x, gone });
+  x = await one(() => call(A.base, "POST", `${P2}/${OWNER}/deactivate`, { token: a, body: { reason: "test" } }));
+  ok("PF-4s DW7 fail (SA7-D5): an Admin deactivating an Owner is 403 PRIVILEGED_TARGET, one REFUSED line, still active",
+    x.r.status === 403 && x.r.body.code === "PRIVILEGED_TARGET" && x.added === 1 && (await db.platSystemStaff.findUniqueOrThrow({ where: { id: OWNER } })).status === "ACTIVE", x);
+  x = await one(() => call(A.base, "POST", `${P2}/${OWNER}/end-sessions`, { token: a, body: {} }));
+  ok("PF-4s DW7 fail (SA7-D5): an Admin ending an Owner's sessions is 403 PRIVILEGED_TARGET", x.r.status === 403 && x.r.body.code === "PRIVILEGED_TARGET" && x.added === 1, x);
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP2}/reactivate`, { token: a, body: {} }));
+  ok("PF-4s DW7 fail (SA-7-23): an Admin reactivating anyone is 403 MISSING_PERMISSION", x.r.status === 403 && x.r.body.code === "MISSING_PERMISSION" && x.added === 1, x);
+  x = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: a, body: { roles: ["platform-owner"], reason: "promotion" } }));
+  ok("PF-4s DW7 fail (SA-7-29): an Admin giving the Owner role is 403", x.r.status === 403 && x.added === 1 && !(await rolesNow(TSUP)).includes("platform-owner"), x);
+  x = await one(() => call(A.base, "POST", P2, { token: a, body: { email: "new.person@expatready.example", displayName: "Sample New", roles: ["platform-support"] } }));
+  ok("PF-4s DW7 fail (SA-7-4): an Admin cannot invite (403)", x.r.status === 403 && x.added === 1, x);
+
+  o = await signedNow(OWNER);
+  x = await one(() => call(A.base, "POST", `${P2}/${TSUP2}/reactivate`, { token: o, body: {} }));
+  const oldAfter = await call(A.base, "GET", "/api/system/me", { token: tsup2Token }), newIn = await signIn(TSUP2);
+  ok("PF-4s DW7 pass (SA-7-23): an Owner reactivates (200, one line); the old session stays ended and a new sign-in works",
+    x.r.status === 200 && x.added === 1 && oldAfter.status === 401 && oldAfter.body.code === "SESSION_REVOKED" && newIn.status === 200, { x, oldAfter, newIn });
+  x = await one(() => call(A.base, "PUT", `${P2}/${OWNER}/roles`, { token: o, body: { roles: [] , reason: "test" } }));
+  ok("PF-4s DW7 fail (SA-7-12): nobody changes their own roles (403 OWN_ROLES), one line", x.r.status === 403 && x.r.body.code === "OWN_ROLES" && x.added === 1, x);
+  x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "second.owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"] } }));
+  ok("PF-4s DW7 fail (SA-7-12): giving the Owner role without a reason is 400 REASON_REQUIRED, nobody created", x.r.status === 400 && x.r.body.code === "REASON_REQUIRED" && x.added === 1 && !(await db.platSystemStaff.findUnique({ where: { email: "second.owner@expatready.example" } })), x);
+  x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "Second.Owner@expatready.example", displayName: "Sample Second Owner", roles: ["platform-owner"], reason: "a second Owner" } }));
+  const OWNER2 = x.r.body.staffId as string;
+  ok("PF-4s DW7 pass (SA-7-4): an Owner adds a staff member with the Owner role and a reason (201, one ALLOWED line naming the new person)",
+    x.r.status === 201 && x.added === 1 && x.line.outcome === "ALLOWED" && x.line.target.staffId === OWNER2 && (await rolesNow(OWNER2)).join() === "platform-owner", x);
+  x = await one(() => call(A.base, "POST", P2, { token: o, body: { email: "second.owner@expatready.example", displayName: "Again", roles: [] } }));
+  ok("PF-4s DW7 fail: the same work email twice is 409 STAFF_EXISTS", x.r.status === 409 && x.r.body.code === "STAFF_EXISTS" && x.added === 1, x);
+  const o1 = await signedNow(OWNER), o2 = await tokenOf(OWNER2), before2 = lines();
+  const [r1, r2] = await Promise.all([call(A.base, "PUT", `${P2}/${OWNER2}/roles`, { token: o1, body: { roles: [], reason: "race" } }), call(A.base, "PUT", `${P2}/${OWNER}/roles`, { token: o2, body: { roles: [], reason: "race" } })]);
+  const owners = Number(sql(`select count(*) from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`));
+  ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds, one active Owner stays, two lines",
+    [r1.status, r2.status].sort().join() === "200,409" && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  ok("PF-4s part 2: audit text is cut by code point, never splitting a character", lineText("😀😀😀", 2) === "😀😀" && lineText("a\u0000b", 5) === "ab");
 
   // ------------------------------------------------------------------------ DW8: everything else is as it was
   const simulated = await call(A.base, "GET", "/api/probe", { actor: "user-A" }), nobody = await call(A.base, "GET", "/api/probe"), linkOnly = await call(A.base, "GET", "/api/probe", { token: "some-link-token", actor: "user-A" });
