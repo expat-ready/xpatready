@@ -36,6 +36,7 @@ Once.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _once)
 def load_once(text):
     try: return yaml.load(text, Loader=Once), None
     except Twice as e: return None, f".mergify.yml gives the key {e.args[0]!r} twice under one mapping"
+    except yaml.YAMLError as e: return None, f".mergify.yml cannot be read as YAML: {str(e).splitlines()[0]} (break 2971 m8d)"
 cfg, why = load_once(open(os.path.join(root, ".mergify.yml")).read())
 if why: print(f"FAIL  {why}\nFAIL  mergify scopes: 0 checks"); sys.exit(1)   # on stdout like every FAIL (review round 2 R2-4)
 files = [f for f in subprocess.run(["git", "-C", root, "ls-files", "-z"], capture_output=True, text=True, check=True).stdout.split("\0") if f]   # -z: spaces and accents (break m2)
@@ -68,6 +69,7 @@ def ambiguous(g):   # glob forms this script and Mergify may read differently
 # FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
            "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
+AREA_NAMES = frozenset(k for k, v in FOLDERS.items() if v) | {v for v in FOLDERS.values() if v}   # frozen: a later None never hides an area
 def owners_bad(src, files):
     out = []
     inc = {k: [rx(g) for g in (v or {}).get("include") or []] for k, v in src.items()}
@@ -80,10 +82,16 @@ def owners_bad(src, files):
                 twice = sorted({k for f in files if r.match(f) for k, ps in inc.items() if k != scope and any(p.match(f) for p in ps)})
                 if twice: out.append(f"path owners: files of scope {scope} ({pat}) are also in scope(s) {twice}")
     for area in sorted({f[len(ST + "web/src/modules/"):].split("/")[0] for f in files if f.startswith(ST + "web/src/modules/") and f.count("/") > (ST + "web/src/modules/").count("/")}):
-        if area.startswith("_"): continue   # a fixture, never in a default build (web/src/modules/README.md; follow-up 3)
         mine = [f for f in files if f.startswith(ST + "web/src/modules/" + area + "/")]
+        # A fixture folder (web/src/modules/README.md): the default build leaves out only its routes.tsx, so it is
+        # skipped only when routes.tsx files are all it holds; any other file may ship (break 2971 m3, follow-up 3).
+        if area.startswith("_") and all(f.endswith("/routes.tsx") for f in mine): continue
         want = FOLDERS.get(area, "")   # the folder's own area scope, by name (break M1: any scope used to do)
         if want is None:   # recorded in FOLDERS as an area with no scope, on purpose: batched with the scope-less PRs
+            held = sorted(k for k, ps in inc.items() if any(p.match(f) for f in mine for p in ps))
+            if area in inc or area in OWN or area in AREA_NAMES:
+                out.append(f"path owners: web/src/modules/{area}/ is recorded with no scope, but {area} is an area: give it its scope (break 2971 m2)")
+            elif held: out.append(f"path owners: web/src/modules/{area}/ is recorded with no scope, yet scope(s) {held} hold it")
             continue
         if want == "":
             out.append(f"path owners: web/src/modules/{area}/ names no area: add it to FOLDERS in this script with its scope, and to that scope in .mergify.yml")
@@ -220,27 +228,43 @@ n += 1; bad += ci_bad(citext)
 # list (product/tools/track-paths.txt, read by track-route.py) names a scope by "scope:<name>"; a raw line that repeats a
 # scope's own include pattern is a second copy that can drift, so it is refused. A raw line naming part of a scope (a
 # sub-folder) is allowed: that is the track's own split. Dormant while track-paths.txt does not exist.
-def track_copies(text, scopes):
-    """-> [(line number, track, glob, scope)] for every raw track line that repeats a scope include pattern."""
-    own = {g: k for k, v in scopes.items() for g in ((v or {}).get("include") or [])}
-    prefix, out = "", []
+def track_copies(text, scopes, files=None):
+    """-> [(line number, track, line text, why)] for every raw track line that is a second copy of a scope's pattern:
+    the same text, or (with files) a glob matching the same tracked files as one of the scope's wildcard patterns
+    (dir/**/*, check_pf**: break 2971 m6). A pattern naming one file (no *) may be repeated: a track may take one file
+    of a scope (break 2971 m8a). Also refused: a track glob this script and Mergify may read differently, and one scope
+    named by two tracks (every PR of it would touch both, break 2971 m7)."""
+    own = {g: k for k, v in scopes.items() for g in ((v or {}).get("include") or []) if "*" in g}
+    sets = {}
+    if files is not None:
+        for g, k in own.items():
+            m = frozenset(f for f in files if rx(g).match(f))
+            if m: sets.setdefault(m, (g, k))
+    prefix, out, named = "", [], {}
     for i, raw in enumerate(text.split("\n"), 1):
         parts = raw.split("#", 1)[0].split()
         if len(parts) != 2: continue
         k, v = parts
         if k == "prefix": prefix = v; continue
-        if v.startswith("scope:"): continue
+        if v.startswith("scope:"):
+            named.setdefault(v[6:], set()).add(k)
+            if len(named[v[6:]]) > 1: out.append((i, k, v, f"scope {v[6:]} is named by tracks {sorted(named[v[6:]])}: one track per scope"))
+            continue
         w = v[1:] if v.startswith("!") else v   # an exception that copies a scope pattern is a copy too (review 2971 m3)
         g = w[1:] if w.startswith("/") else prefix + w
-        g = re.sub(r"/\*\*/\*$", "/**", g)   # dir/**/* names the same files as dir/**
-        if g in own or g.replace("/**", "/**/*") in own: out.append((i, k, v, own.get(g) or own[g.replace("/**", "/**/*")]))
+        if ambiguous(g): out.append((i, k, v, "uses glob syntax this script and Mergify may read differently")); continue
+        g2 = re.sub(r"/\*\*/\*$", "/**", g)   # dir/**/* names the same files as dir/**
+        if g in own or g2 in own: out.append((i, k, v, f"repeats scope {own.get(g) or own[g2]}'s own pattern")); continue
+        if files is not None and "*" in g:
+            m = frozenset(f for f in files if rx(g).match(f))
+            if m in sets: out.append((i, k, v, f"matches exactly the files of scope {sets[m][1]}'s pattern {sets[m][0][len(ST):] if sets[m][0].startswith(ST) else sets[m][0]}"))
     return out
 TP = os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/track-paths.txt")
-def one_source_bad(text, src):
-    return [f"one source: track-paths.txt:{i} '{k} {v}' repeats scope {sc}'s own pattern: write '{k} scope:{sc}' (or name a sub-folder), never a second copy"
-            for i, k, v, sc in track_copies(text, src)]
+def one_source_bad(text, src, files=None):
+    return [f"one source: track-paths.txt:{i} '{k} {v}' {why}: name the scope ('{k} scope:<name>') or a sub-folder, never a second copy"
+            for i, k, v, why in track_copies(text, src, files)]
 n += 1
-if os.path.exists(TP): bad += one_source_bad(open(TP, encoding="utf-8").read(), src)
+if os.path.exists(TP): bad += one_source_bad(open(TP, encoding="utf-8").read(), src, files)
 elif os.path.exists(os.path.join(os.path.dirname(TP), "track-route.py")):
     bad.append("one source: track-route.py exists but track-paths.txt does not: the one-source check would be off (move both together)")
 n += 1   # review 2971 Major 1: the missing-scope rule, the glob refusal loop and "names no area" each fire
@@ -249,6 +273,20 @@ n += 1
 if not globs_bad(mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money**")), BARRIER): bad.append("self-test: a scope pattern client-money** is not refused")
 n += 1
 if not any("names no area" in x for x in owners_bad(src, files + [ST + "web/src/modules/client money/x.tsx"])): bad.append("self-test: a new web module folder that names no area still passes")
+for scope, glob, what in (("front-office", "tests/check_fo7*", "check_fo7"), ("front-office", "api/src/features/platform-*.ts", "features/platform-"),
+                          ("pipeline", "tests/**", "tests/"), ("pipeline", "api/src/features/clients.ts", "features/clients.ts")):   # break 2971 m4a-d
+    n += 1
+    if not owners_bad(mutated(lambda c, s=scope, g=glob: c[s]["include"].append(ST + g)), files): bad.append(f"self-test: {glob} also in {scope} still passes")
+n += 1   # break 2971 m2: a recorded "no scope" entry that is really an area, or that a scope holds
+FOLDERS["forms"] = None
+if not any("is an area" in x for x in owners_bad(src, files + [ST + "web/src/modules/forms/page.tsx"])): bad.append("self-test: FOLDERS forms: None still passes")
+FOLDERS["forms"] = "forms-engine"; FOLDERS["billing"] = None
+if not any("yet scope(s)" in x for x in owners_bad(mutated(lambda c: c["platform"]["include"].append(ST + "web/src/modules/billing/**")), files + [ST + "web/src/modules/billing/page.tsx"])):
+    bad.append("self-test: a no-scope folder that a scope holds still passes")
+del FOLDERS["billing"]
+n += 1   # break 2971 m3: a _ folder holding more than routes.tsx is checked
+if not any("_cases/" in x for x in owners_bad(src, files + [ST + "web/src/modules/_cases/page.tsx"])): bad.append("self-test: a _ folder with a page in it is skipped")
+if owners_bad(src, files + [ST + "web/src/modules/_demo/routes.tsx"]) != owners_bad(src, files): bad.append("self-test: a _ folder holding only routes.tsx is refused")
 n += 1   # review 2971 m1: a test or feature file listed by name in a second scope
 if not any("visitor-visa-filings.ts is in scopes" in x for x in owners_bad(mutated(lambda c: c["platform"]["include"].append(ST + "api/src/features/visitor-visa-filings.ts")), files)):
     bad.append("self-test: features/visitor-visa-filings.ts also in platform still passes")
@@ -259,9 +297,15 @@ if len(one_source_bad(f"prefix {ST}\ntrack-a tests/check_pf*\ntrack-a web/src/mo
     bad.append("self-test: the one-source check does not give one FAIL per copy (plain, /**/* form, ! form)")
 n += 1   # self-test, on a made-up track list
 demo = f"prefix {ST}\ntrack-a scope:platform\ntrack-a tests/check_pf*\ntrack-a api/src/front-office/sales/**\ntrack-b /{ST}tests/check_cs*\n"
-got = [(k, v, sc) for _, k, v, sc in track_copies(demo, src)]
-if got != [("track-a", "tests/check_pf*", "platform"), ("track-b", f"/{ST}tests/check_cs*", "case-side")]:
+got = [(k, v) for _, k, v, _w in track_copies(demo, src)]
+if got != [("track-a", "tests/check_pf*"), ("track-b", f"/{ST}tests/check_cs*")]:
     bad.append(f"self-test: a track list repeating scope patterns is not caught exactly (got {got})")
+n += 1   # break 2971 m4e, m6, m7, m8a: a feature copy, copies spelled differently, one scope in two tracks, one file of a scope
+demo2 = (f"prefix {ST}\ntrack-a api/src/features/platform-*.ts\ntrack-a tests/check_pf**\ntrack-a tests/**/check_pf*\n"
+         f"track-a scope:case-side\ntrack-b scope:case-side\ntrack-b api/src/clients.ts\ntrack-a api/src/front-office/sales/**\n")
+got = [v for _, k, v, _w in track_copies(demo2, src, files)]
+if got != ["api/src/features/platform-*.ts", "tests/check_pf**", "tests/**/check_pf*", "scope:case-side"]:
+    bad.append(f"self-test: copies spelled differently, a feature copy or one scope in two tracks are not caught exactly (got {got})")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)
