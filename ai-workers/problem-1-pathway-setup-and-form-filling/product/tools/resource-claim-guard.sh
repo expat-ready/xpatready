@@ -20,7 +20,8 @@ CLAIM = re.compile(
   r"|\bwait(ing|s|ed)? (for|on) (a |free |spare )?(machine|runner)s?\b|\b(machine|runner) (wait|queue|shortage|limit)s?\b", I)
 # A denial of the claim itself, not any "not" in the sentence (review 1).
 NEG = re.compile(r"\b(is|are|was|were)(n\x27t|n’t| not)\b[^.\n]{0,25}\b(the )?(constraint|bottleneck|short|problem|limited|busy)\b"
-  r"|\bnot (the )?(constraint|bottleneck|problem)\b|\bno shortage\b|\bnever (short|the constraint)\b", I)
+  r"|\bnot (the )?(constraint|bottleneck|problem)\b|\bno shortage\b|\bnever (short|the constraint)\b"
+  r"|\bnot (the |our )?" + RES + r"\b|\b" + RES + r" (is|are|were|was) (fine|idle|free)\b", I)   # review: "X, not runners" / "runners are fine" deny it
 # A measured number in the claim sentence or the one next to it (review 1: a number anywhere was too loose).
 EVID = re.compile(r"\b\d+(\.\d+)?(-\d+)? ?(s|sec|secs|seconds|min|mins|minutes)\b|\b\d+ (runs?|jobs?) (waiting|queued|in queue)\b"
   r"|\brun (id )?\d{8,}|\bbatch \d{8,}|\b\d+(\.\d+)? ?GB\b|runs-waiting|get_usage|df -h", I)

@@ -23,7 +23,8 @@ r=$(stop 'Runners are the bottleneck tonight.' transcript); ok "... read from th
 for m in 'Machines are not the constraint: jobs waited 3-4 s in batch 44793064743.' 'Machines are not the constraint.' \
          'Runs waiting for a machine: 5 runs queued (runs-waiting.py), each started within 40 s.' \
          'The batch waited 12 min for a runner (run 44793064743, created 18:28, started 18:40).' 'R1.8 merged; R1.38 is next.' \
-         'Disk is short: 3.2 GB free (df -h).' 'There is no shortage of machines.'; do
+         'Disk is short: 3.2 GB free (df -h).' 'There is no shortage of machines.' \
+         'The bottleneck is review, not runners.' 'Our runners are fine; the bottleneck is review.'; do
   r=$(stop "$m"); ok "passes: $m" "$([ "$r" = pass ] && echo 1)" "got $r"; done
 # Review 1: product and code words in builder and qa turns pass; short on, a stray "not" and a far number do not exempt.
 for m in 'No resources found for that pathway.' 'Out of memory in the jest run, fixed by raising the heap.' 'No capacity rule exists yet.' \

@@ -246,6 +246,10 @@ CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if
 CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
 CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
 CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh'
+MUT="$MUT"'
+ENF771 stop|product/tools/stop-check.sh|/resource-claim-guard.sh" 2>\/dev\/null/d|check-resource-claim-guard.sh
+ENF771 deny|product/tools/resource-claim-guard.sh|s/    if s and CLAIM.search(s) and not NEG.search(s)/    if s and CLAIM.search(s)/|check-resource-claim-guard.sh
+ENF771 near|product/tools/resource-claim-guard.sh|s/EVID.search(" ".join(sents\[max(0, i - 1):i + 2\]))/EVID.search(text)/|check-resource-claim-guard.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
