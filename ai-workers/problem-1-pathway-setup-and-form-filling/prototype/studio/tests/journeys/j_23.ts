@@ -27,7 +27,7 @@
 // and W5 still judge their own clause (the client page and the email), never the page's.
 // Sample data only; US$0, no model call, live AI off, no live mail (the local email adapter, read at GET
 // /api/demo/platform-inbox). Screenshots: product/screens/J-23/screenshots/. Run from prototype/ (HEADED=1: visible):
-//   zsh studio/tools/isolated.sh j23 4478 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j23 4478 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_23.ts j23 4474
+//   zsh studio/tools/isolated.sh j23 4423 start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j23 4423 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_23.ts j23 4474
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -42,7 +42,7 @@ import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const NAME = process.argv[2] ?? "j23", PORT = Number(process.argv[3] ?? 4478), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const NAME = process.argv[2] ?? "j23", PORT = Number(process.argv[3] ?? 4423), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const SHOTS = join(import.meta.dirname, "..", "..", "..", "..", "product", "screens", "J-23", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const { ok, summary } = recorder();
