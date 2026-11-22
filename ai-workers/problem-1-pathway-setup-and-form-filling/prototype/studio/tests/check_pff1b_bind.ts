@@ -26,6 +26,7 @@ const { filesProviders, boundFiles, RECORDED_S3 } = await import("../api/src/pla
 const { EntitledFiles } = await import("../api/src/platform/entitlements/storage.ts");
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { Db } = await import("../api/src/core.ts");
+const { registerFeatures } = await import("../api/src/features.ts");
 const { fakeS3 } = await import("./fixtures/pff1-s3/fake-s3.ts");
 const { runContract } = await import("../ports/contracts/contract.ts");
 const { filesPortContract } = await import("../ports/contracts/files-port.contract.ts");
@@ -44,9 +45,20 @@ type Provider = { provide?: unknown; useFactory?: (...a: never[]) => unknown } |
 class DbReached extends Error {}
 const stubDb = new Proxy({}, { get: (_t, p) => (typeof p !== "string" || p === "then" || /^on(Module|Application)/.test(p) || p.startsWith("before") ? undefined : () => { throw new DbReached(p); }) });   // Nest's lifecycle hooks pass through
 /** A Nest context of the files bindings as the app merges them: the shared providers once, then the retainers' own. */
-async function context(retainersProvider: Provider) {
+/** The six features re-exported, one line each, in a folder of their own: `registerFeatures` (main.ts's own merge) reads
+ *  it, so the provider order below is the app's (review M2): each object once, in file order, a later one wins a name. */
+const FEATURE_DIR = join(WORK, "features");
+mkdirSync(FEATURE_DIR, { recursive: true });
+for (const f of FEATURES) writeFileSync(join(FEATURE_DIR, `${f}.ts`), `export { default } from ${JSON.stringify(join(STUDIO, "api/src/features", `${f}.ts`))};\n`);
+/** The merged module's files bindings (LocalFiles and S3FileLinks, in the app's order) on PlatformClock and the stub database. */
+async function appFiles(): Promise<Provider[]> {
+  class AppLike {}
+  await registerFeatures(AppLike, FEATURE_DIR);
+  return (Reflect.getMetadata("providers", AppLike) as Provider[]).filter((p) => typeof p === "object" && (p.provide === LocalFiles || p.provide === S3FileLinks));
+}
+async function context(clock: new () => { now(): number } = PlatformClock) {
   class FilesOnly {}
-  Module({ providers: [...filesProviders, retainersProvider, PlatformClock, { provide: Db, useValue: stubDb }] as never })(FilesOnly);
+  Module({ providers: [...await appFiles(), { provide: PlatformClock, useClass: clock }, { provide: Db, useValue: stubDb }] as never })(FilesOnly);
   return NestFactory.createApplicationContext(FilesOnly, { logger: false, abortOnError: false });
 }
 const withEnv = async <T>(env: Record<string, string | undefined>, f: () => Promise<T>): Promise<T> => {
@@ -78,11 +90,10 @@ try {
   delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; process.env.FO_FILES_DIR = join(WORK, "files");
   for (const r of contracts) ok(`R1.65 PF-F1b contract: ${r.adapter} keeps every case of the FilesPort contract`, r.failed.length === 0 && r.passed.length >= 11, r.failed);
 
-  const retainersProvider = features["front-office-retainers"]!.providers.find((p: Provider) => typeof p === "object" && p.provide === LocalFiles)!;
 
   // Case 1: unset outside production gives the local adapter.
   {
-    const app = await context(retainersProvider);
+    const app = await context();
     const store = app.get(LocalFiles) as unknown as InstanceType<typeof EntitledFiles>, links = app.get(S3FileLinks, { strict: false });
     const inner = store.store;
     ok("R1.65 PF-F1b case 1 pass: PLATFORM_FILES unset (not production): the bound store is EntitledFiles over FO-5's LocalFiles, and no S3 links are bound", store instanceof EntitledFiles && inner instanceof LocalFiles && links === null, { store: store?.constructor?.name, inner: inner?.constructor?.name, links });
@@ -104,7 +115,7 @@ try {
     const s3 = fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS });
     (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: s3.handler };
     await withEnv(S3_ENV, async () => {
-      const app = await context(retainersProvider);
+      const app = await context();
       const store = app.get(LocalFiles) as unknown as InstanceType<typeof EntitledFiles>, inner = store.store;
       ok("R1.65 PF-F1b case 2 pass: PLATFORM_FILES=s3: the bound store is EntitledFiles over S3Files in ca-central-1", store instanceof EntitledFiles && inner instanceof S3Files && (inner as InstanceType<typeof S3Files>).region === "ca-central-1", inner?.constructor?.name);
       await inner.put(FIRM_A, "bind/doc.pdf", bytesOf("the client's copy"), "application/pdf");
@@ -114,6 +125,8 @@ try {
       ok("R1.65 PF-F1b case 2 pass: a new key on S3 reaches PF-15's storage-limit check too (the limit is not lost on S3)", fresh instanceof DbReached && s3.object(`${FIRM_A}/bind/new.pdf`) === null, fresh?.constructor?.name);
       await inner.delete(FIRM_A, "bind/doc.pdf");
       ok("R1.65 PF-F1b case 2 fail: on S3 a retired key gives FileKeyTaken, never the limit check; another firm reads the key as absent", await refused(() => store.put(FIRM_A, "bind/doc.pdf", bytesOf("the client's copy"), "application/pdf"), (e) => e instanceof FileKeyTaken) && await store.get(FIRM_B, "bind/doc.pdf") === null);
+      const links = app.get(S3FileLinks, { strict: false });
+      ok("R1.65 PF-F1b case 2 pass: in the app's provider order the S3 download links are bound on S3 (review M1, break B1)", links instanceof S3FileLinks, links);
       ok("R1.65 PF-F1b case 2 fail: the same app with PLATFORM_FILES=local sends nothing to the bucket", await withEnv({ PLATFORM_FILES: "local" }, async () => { const n = s3.seen.length; const f = boundFiles(); await f.put(FIRM_A, "bind/l.txt", bytesOf("l"), "text/plain"); return f instanceof LocalFiles && s3.seen.length === n; }));
       await app.close();
     });
@@ -126,9 +139,14 @@ try {
     writeFileSync(start, [
       `import "reflect-metadata";`,
       `import { Module } from "@nestjs/common"; import { NestFactory } from "@nestjs/core";`,
-      `import { filesProviders } from ${JSON.stringify(join(STUDIO, "api/src/platform/files/choose.ts"))};`,
+      `import { LocalFiles } from ${JSON.stringify(join(STUDIO, "api/src/front-office/files.ts"))};`,
+      `import { S3FileLinks } from ${JSON.stringify(join(STUDIO, "api/src/platform/files/s3-files.ts"))};`,
+      `import { registerFeatures } from ${JSON.stringify(join(STUDIO, "api/src/features.ts"))};`,
       `import { PlatformClock } from ${JSON.stringify(join(STUDIO, "api/src/platform/identity/port.ts"))};`,
-      `class App {} Module({ providers: [...filesProviders, PlatformClock] })(App);`,
+      `class AppLike {} await registerFeatures(AppLike, ${JSON.stringify(FEATURE_DIR)});`,
+      `const files = Reflect.getMetadata("providers", AppLike).filter((p) => typeof p === "object" && (p.provide === LocalFiles || p.provide === S3FileLinks));`,
+      `import { Db } from ${JSON.stringify(join(STUDIO, "api/src/core.ts"))};`,
+      `class App {} Module({ providers: [...files, PlatformClock, { provide: Db, useValue: {} }] })(App);`,
       `const app = await NestFactory.createApplicationContext(App, { logger: false, abortOnError: false }); console.log("STARTED"); await app.close();`,
     ].join("\n"));
     const run = (env: Record<string, string>) => spawnSync(join(STUDIO, "node_modules/.bin/tsx"), ["--tsconfig", join(STUDIO, "api/tsconfig.json"), start], { cwd: STUDIO, encoding: "utf8", env: { ...process.env, PLATFORM_FILES: "", NODE_ENV: "", PLATFORM_FILES_LINK_KEY: "", ...env } });
@@ -143,6 +161,19 @@ try {
     ok("R1.65 PF-F1b case 3 fail: the recorded S3 client is refused in production (a test seam never reaches a real server)", await withEnv({ NODE_ENV: "production", ...S3_ENV }, async () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: {} }; try { return await refused(() => boundFiles(), (e) => /recorded S3 client/.test(String(e))); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } }));
   }
 
+  // Round 1's Minors (break m2, m3, m4).
+  {
+    const seam = (environment: string) => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: {} }; try { boundFiles({ ...S3_ENV, PLATFORM_ENVIRONMENT: environment }); return "used"; } catch (e) { return String(e); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } };
+    ok("R1.65 PF-F1b break m2 fail: the recorded S3 client is refused on the AWS test environment and production, honoured only on a local server", /refused outside PLATFORM_ENVIRONMENT=local/.test(seam("test")) && /refused outside/.test(seam("production")) && seam("local") === "used");
+    const { loadPlatformConfig } = await import("../api/src/platform/config/settings.ts");
+    const keyOk = (v: string) => { try { loadPlatformConfig({ PLATFORM_ENVIRONMENT: "local", PLATFORM_FILES_LINK_KEY: v }); return true; } catch (e) { return /PLATFORM_FILES_LINK_KEY/.test(String(e)) ? false : String(e); } };
+    ok("R1.65 PF-F1b break m4 fail: a link key of one repeated character, or under 32 characters, is refused at start; a random one is accepted", keyOk("a".repeat(40)) === false && keyOk(randomBytes(12).toString("base64")) === false && keyOk(randomBytes(32).toString("base64")) === true);
+    const key = randomBytes(32).toString("base64"), { Secret } = await import("../api/src/platform/config/secret.ts"), { inspect } = await import("node:util");
+    const links = new S3FileLinks({ exists: async () => true, signedGetUrl: async () => "" }, new Secret("PLATFORM_FILES_LINK_KEY", key), () => Date.now());
+    const dump = inspect(links, { depth: 5, showHidden: true }) + JSON.stringify(links);
+    ok("R1.65 PF-F1b break m3 fail: a dump of the bound links never shows the key (neither its text nor its bytes)", !dump.includes(key) && !dump.includes(Buffer.from(key).toString("hex").slice(0, 32)) && links.sign(FIRM_A, PERSON, "a/b.txt").token.length > 40);
+  }
+
   // Case 4: a link opened through the bound links for another firm gives 404.
   {
     let nowMs = Date.UTC(2026, 10, 22, 12, 0, 0);
@@ -150,13 +181,9 @@ try {
     (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: s3.handler };
     await withEnv(S3_ENV, async () => {
       class Clock { now() { return nowMs; } }
-      const app = await context(retainersProvider);
-      await app.close();
-      class Linked {}
-      Module({ providers: [...filesProviders, { provide: PlatformClock, useClass: Clock }] })(Linked);
-      const linked = await NestFactory.createApplicationContext(Linked, { logger: false, abortOnError: false });
-      const links = linked.get(S3FileLinks), files = linked.get(LocalFiles) as unknown as InstanceType<typeof S3Files>;
-      await files.put(FIRM_A, "signed/s.pdf", bytesOf("signed"), "application/pdf");
+      const linked = await context(Clock);
+      const links = linked.get(S3FileLinks), store = linked.get(LocalFiles) as unknown as InstanceType<typeof EntitledFiles>;
+      await store.store.put(FIRM_A, "signed/s.pdf", bytesOf("signed"), "application/pdf");
       const l = links.sign(FIRM_A, PERSON, "signed/s.pdf");
       ok("R1.65 PF-F1b case 4 pass: the bound links open the firm's own link (200, an address on the bucket that ends with the link)", links instanceof S3FileLinks && (await links.open(l.token, FIRM_A, PERSON)).status === 200);
       ok("R1.65 PF-F1b case 4 fail: the same link opened for another firm gives 404", JSON.stringify(await links.open(l.token, FIRM_B, PERSON)) === `{"status":404}`);

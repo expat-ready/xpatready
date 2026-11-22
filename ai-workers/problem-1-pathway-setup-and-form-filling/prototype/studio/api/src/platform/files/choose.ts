@@ -71,7 +71,8 @@ const appEnv = (): FilesEnv => ({ ...Object.fromEntries(FILES_SETTINGS.map((n) =
 export function boundFiles(env: FilesEnv = appEnv()): FilesPort {
   if (filesAdapterOf(env) === "local") return chooseFiles(env);
   const recorded = (globalThis as Record<symbol, unknown>)[RECORDED_S3] as Pick<S3FilesOptions, "requestHandler"> | undefined;
-  if (recorded && (isProduction(env.NODE_ENV) || isProduction(env.PLATFORM_ENVIRONMENT))) refuse("a recorded S3 client is a test seam and is refused in production");
+  // Honoured on a local server only (the Mac, lanes, CI): never in the test environment on AWS or production (break m2).
+  if (recorded && (isProduction(env.NODE_ENV) || env.PLATFORM_ENVIRONMENT !== "local")) refuse("a recorded S3 client is a test seam and is refused outside PLATFORM_ENVIRONMENT=local");
   const settings = JSON.stringify([s3SettingsOf(env), !!recorded]);
   if (!s3Bound || s3Bound.settings !== settings || recorded) s3Bound = { settings, files: chooseFiles(env, recorded ?? {}) as S3Files };
   return s3Bound.files;
@@ -85,8 +86,11 @@ export function boundLinks(files: FilesPort, now: () => number): S3FileLinks | n
   return new S3FileLinks(files, key, now);
 }
 
-/** The providers a feature lists to get the bound store (the same objects in every feature, so the app adds them once). */
+/** The providers a feature lists to get the bound store (the same objects in every feature, so the app adds them once).
+ *  The links take the bound store itself, not whatever wins the `LocalFiles` name: in the app that is the retainers'
+ *  EntitledFiles wrapper (review M1, break B1), and on S3 the links must still be made, and a missing key still stop the
+ *  start-up. */
 export const filesProviders = Object.freeze([
   { provide: LocalFiles, useFactory: () => boundFiles() },
-  { provide: S3FileLinks, useFactory: (files: FilesPort, clock: PlatformClock) => boundLinks(files, () => clock.now()), inject: [LocalFiles, PlatformClock] },
+  { provide: S3FileLinks, useFactory: (clock: PlatformClock) => boundLinks(boundFiles(), () => clock.now()), inject: [PlatformClock] },
 ]);
