@@ -91,3 +91,48 @@ The journey: an operator runs `seed-sample-firms.ts` and then `firm-seed.ts` as 
 Blockers: B1 · Majors: none · Minors: m1-m6
 
 Reviewer: Block ebb81df963775fefcdfc0a5b93ba3f82f1a7a2f0
+
+## Round 2: diff-only re-review, `ebb81df96..0528e40225e688535d6c0ab5460b37d54d449b3a`
+
+**Verdict: Approve.** B1 is closed. No Blocker or Major is open.
+
+### What I ran (PG 18.3, ports 15741 and 15743, clusters removed afterwards)
+- `npx tsx tests/check_pf8b_f8_seeds_nobypass.ts 15741`: **15/15, exit 0.** The three new checks are the catch-up with data (m1) and the two B1 checks.
+- I re-ran my round-1 probe on the new code, using the API's `walledPool` as `xr_app` with `wallUnscopedQueries()`:
+  - `withFirm(A)` then `seedFirmFrontOffice(tx, V)` now throws `firm-seed: V is no platform firm`, and V has 0 stages and 0 setup rows (superuser view). The next pooled query as A reads A.
+  - With no scope, `ensureBookingWording(tx, V)` is refused: 42501 on `msg_firm`.
+  - The catch-up with firm X active, Y DELETED, W ABANDONED and Z already seeded gives the same list as owner and as superuser (`[X, seeded]`). A second run gives 0 and 0.
+
+### B1: resolved
+- `seedFirmFrontOffice` and `ensureBookingWording` are byte-identical to main again, so the four app paths keep their caller's firm and the walls catch a wrong firm id.
+- The firm is now set only in fresh transactions opened by the seed paths:
+  - `seedSampleFirmsFrontOffice`;
+  - `seedCreatedFirms` through `seedAsFirm`;
+  - `seedSampleFirms` and `seedSampleSettings`, unchanged from round 1.
+- `seedAsFirm` drops `onFirmCreated`'s type check. That is equivalent, because `seedCreatedFirms` always passed `firm.created`. `onFirmCreated` itself is unchanged.
+- `firmInTransaction` refuses when a firm-scope store exists without a bypass use. That covers a request, a job's `withFirm`, a door's `enterFirm` and the case opening.
+  - The demo reset (`asBypass("platform.demo.reset")`) still passes. The breaker's demo run showed it unaffected.
+  - The start-up seed (`main.ts:239`, its own owner client, no scope) still passes.
+  - A heuristic search found no test that calls a seed inside `withFirm`, `inRequest` or `asJob`.
+- The fail cases would fail on round 1:
+  - `seedFirmFrontOffice(tx, NEW)` in A's scope returned seeded there; the check now expects "no platform firm".
+  - `firmInTransaction` had no guard; the check now expects the refusal.
+  - The test simulates `WalledPool` with a plain `xr_app` client plus a local `set_config`. For this purpose that is equivalent.
+
+### Round-1 minors
+- m1: closed. The check now has a `firm.created` firm seeded by the owner, then a second run that seeds nothing, with 16 stages counted.
+- m5: closed. `MODULE.rows/PF-8b-f8.md` exists in both modules and states the helper's limits. This was also the breaker's M2.
+- m2, m3, m6: open, as acknowledged in the PR. m3 is the breaker's m1. m6 is outside the row.
+- m4: closed by the fix. The app's `ensureBookingWording` no longer sets the firm.
+
+### New minor (non-blocking)
+- **m7.** The guard reads only the JS scope. In the API process with no scope, `firmInTransaction` on the walled `xr_app` client still switches the firm. My probe: with `unscopedMode` walled and no store, `firmInTransaction(tx, X)` was followed by a read that found X's `platform_firm` row (`seesx: 1`, `current_user = xr_app`).
+  - No caller reaches this today. Only the seed functions call it: the start-up seed uses the owner's client, and the demo runs under bypass.
+  - Hardening, so it never depends on call sites: refuse in SQL when `current_user = 'xr_app'` (`APP_ROLE`). Under bypass, `current_user` is `xr_staff_bypass`; the owner and the superuser are unaffected. The builder's reason for not keying on `unscopedMode` (the start-up seed) does not apply to a role check.
+
+### Could not check
+The suites bound to port 54329. The PR is a draft, so the full CI runs when it is marked ready.
+
+Blockers: none · Majors: none · Minors: m2, m3, m6, m7 open
+
+Reviewer: Approve 0528e40225e688535d6c0ab5460b37d54d449b3a
