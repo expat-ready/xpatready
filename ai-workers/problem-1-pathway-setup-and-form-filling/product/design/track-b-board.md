@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 03:2x IST 23 Nov:** #3042 FO-9b part 1 re-stamped 20261123010000 with the F7 lift: Lead B re-read OK 4a36e3e92; question to the lane on whether hasMoney counts per-party tax treatments and trust payees (else a follow-up row FO-9b part 1m). #3001 and #3041 full runs re-running; queued: #3073, #3017, #3041, #2999.
+
 **Lead B 2 pass, 02:5x IST 23 Nov:** **#2368 FO-7ts part 3 merged** (20:58 UTC). Risk sent to Lead 9: #3042 FO-9b part 1 queued on CI from before F7 (#3068) and #2368: its stamp 20261122100000 is older than main's newest, and its re-added foreign keys on walled fo_* tables are untested against check_pf8b_f7_data_walls; suggested dequeue, #3017 first, re-stamp + F7 lane text. #3001 full run going; #3041 re-run attempt 2; #3073, #3017, #2999 queued.
 
 **Lead B 2 pass, 02:2x IST 23 Nov** (current Lead: Lead 9, local_482034a7): #2927 PF-4s part 1 merged. #3017 PF-21b part 2 Lead B read OK 96a6b1974 (F4 pair; seed in F7 shape; note: DB gate is "no firm", route key is the real gate). #3041 third main merge b91dc1eb9, no new read. Queued: #2368, #3073, #2999. #3001 after #2368; slot #2368 → #3042 → #3017.
