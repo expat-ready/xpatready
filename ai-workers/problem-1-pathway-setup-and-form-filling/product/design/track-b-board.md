@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 04:2x IST 23 Nov:** **#2999 CS-NT1 part 1 merged** (R1.76). #3001 FO-7q OVERDUE fix: Lead B re-read OK 84b4ab16e (chunked candidates, facts once per row; limit noted: rare status in a very large firm). #3073 merged main again (343981ef3), own 6 files, queued. #3042 labelled; #3041, #3017 queued. Records branch lead-b/2026-11-23-track-b-records @a1c2ce3ae waits the founder's decision (PR open refused in this session).
+
 **Lead B 2 pass, 03:5x IST 23 Nov:** no merge since 02:5x. #3001 dequeued: its own DW1 OVERDUE page 696 ms > 300 ms; Lead 9 prompting its lane (session_01Ln6TiQZEG25BKeaDRJjEfy). #3042 full run going; hasMoney answered from main (port.ts:11-16 does not count tax treatments or trust payees) → new BACKLOG row **FO-9b part 1m**. Queued: #3073, #3017, #3041, #2999.
 
 **Lead B 2 pass, 03:2x IST 23 Nov:** #3042 FO-9b part 1 re-stamped 20261123010000 with the F7 lift: Lead B re-read OK 4a36e3e92; question to the lane on whether hasMoney counts per-party tax treatments and trust payees (else a follow-up row FO-9b part 1m). #3001 and #3041 full runs re-running; queued: #3073, #3017, #3041, #2999.
