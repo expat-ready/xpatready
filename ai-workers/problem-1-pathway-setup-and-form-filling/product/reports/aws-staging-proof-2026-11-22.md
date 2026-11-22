@@ -87,3 +87,26 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
 * **Deleted 11:42 IST** as approved: project `xr-staging-image-build` (`delete-project` ok; `list-projects` empty), the role's inline
   policy and role `xr-staging-image-build` (`get-role` → NoSuchEntity). Build logs stay in `/aws/codebuild/xr-staging-image-build`.
 * 11:42 IST: stack still UPDATE_IN_PROGRESS, certificate PENDING_VALIDATION (NS records not yet in Cloudflare).
+
+## Step 2b: certificate issued, deploy A failed, stack UPDATE_ROLLBACK_FAILED (11:47-11:50 IST)
+
+* NS records in Cloudflare at 11:4x IST (Lead 1 on the founder's typed word). Certificate **ISSUED 11:47:10 IST** (polled every 20 s).
+* **Deploy A failed** (`deploy tasks=0 rc=1`, 06:17:21Z). Events (`describe-stack-events`):
+  * 06:17:12Z `AppLbHttps240768BC` UPDATE_FAILED: "The following target groups cannot be associated with more than one load
+    balancer: …targetgroup/xr-sta-AppLb-N8GK4CMNJQJE/…". **Root cause (code):** leaving no-domain mode replaces the load balancer
+    (the fixed name `xr-staging-app` is dropped), so the HTTPS listener is replaced on the new load balancer, but its target group
+    is not replaced; CloudFormation creates the new listener before deleting the old one, and an ALB target group may belong to
+    one load balancer only. Any switch that replaces the load balancer hits this (it is not specific to this account).
+  * Rollback 06:17:15-17Z: the three Cognito pools UPDATE_FAILED: "Cannot set WebAuthn factor configuration to SINGLE_FACTOR if
+    MFA is required and WebAuthn is an allowed first auth factor". **Root cause:** the forward update (05:45Z, UPDATE_COMPLETE)
+    turned on the domain's passkey settings; Cognito refuses the no-domain values on the way back, so the rollback cannot undo them.
+  * Stack **UPDATE_ROLLBACK_FAILED** 06:17:18Z. Nothing is serving (0 tasks); RDS, buckets, secrets and logs untouched.
+* **Recovery options (asked of Lead 2, nothing done yet):**
+  1. `aws cloudformation continue-update-rollback --stack-name xr-staging --resources-to-skip` the three pools: the stack returns to
+     no-domain mode (UPDATE_ROLLBACK_COMPLETE), pools keep the domain settings (the next deploy sets the same). The rollback's
+     cleanup **deletes the resources created minutes ago**: new load balancer, zone `staging.lab.expatready.com`, certificate,
+     SES identity and records. A new zone gets **new name servers**, so the 4 Cloudflare records must be changed after the redeploy.
+  2. Forward fix for the target group, either (a) staging only, today: delete the old load balancer's HTTPS listener by hand just
+     before redeploying (0 tasks, nothing served; CloudFormation's later delete of it finds it gone), or (b) a code row (PF-8b):
+     replace the target group with the load balancer (or keep a fixed load balancer name in domain mode), so production and
+     future switches are clean. Recommended: (a) today plus (b) as a row.
