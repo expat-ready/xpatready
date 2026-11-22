@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 23:5x IST 22 Nov:** #3001 FO-7q Lead B re-read OK 85d577218 (own 13 files; refusals now PF-28's 422; scope unchanged, fail closed). Queues after #2368 (DW1 needs #2368's index). New BACKLOG row **FO-7q part 2** (refund actions in allowedActions, from #3036). #2368 and #3041 queued; #2913 full run (Lead 7), then #3073.
+
 **Lead B 2 pass, 23:2x IST 22 Nov:** **#3048 FO-7g part 1w and #3036 FO-7b part 1c merged.** #3041 PF-F1b Lead B re-read OK 497134613, Lead 7 labelled, queued. #2368 waits its full run. #3001 FO-7q in conflict with main: lane text sent (merge main, own files, re-run, diff-only Approve, ready, Lead B re-read; visibility stays fail closed until CS-MV1's binding line). #3073 waits #2913 (fix e379f7a9a, unlabelled).
 
 **Lead B 2 pass, 22:5x IST 22 Nov:** **#2955 PF-F1 and #2938 FO-7c part 1 merged** (17:15 UTC). #2368 Lead B read OK 048bbee68 (per-firm fill, R7-1), reviewer Approve; waits the Lead's read and label; #3042 next in the slot. #3041 PF-F1b: lane text sent (merge main, diff-only Approve, ready, Lead B re-read). Queued: #3036, #3048. #3073 waits #2913.
