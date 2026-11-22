@@ -258,10 +258,14 @@ try {
   ok("FO-7b I fail: issuing it again → 409 ISSUED (no second number); a line on the issued invoice → 409 \"use a credit note\"; its lines are unchanged",
     again.status === 409 && again.body.code === "ISSUED" && edit.status === 409 && /Use a credit note/.test(edit.body.detail) && stored(inv1.id) === "1:FEE:100000:130000:13000:CAD" && sql(`select next_number from money_number_series where firm_id = '${A}' and kind = 'INVOICE'`) === "2", [again.body, edit.body]);
   const two = await Promise.all([draft(), draft()]); await Promise.all(two.map((d) => line(d.body.id, fee(1000, 0))));
-  const both2 = await Promise.all(two.map((d) => post(`${d.body.id}/issue`, { dueDate: plus(today, 30) })));
+  const both2 = await Promise.all(two.map((d) => post(`${d.body.id}/issue?dueDate=${plus(today, 30)}`)));
   ok("FO-7b I pass: two invoices issued at the same moment take INV-0002 and INV-0003 (no gap, no clash), each with the due date sent",
     both2.map((x) => x.body.invoice?.number).sort().join() === "INV-0002,INV-0003" && both2.every((x) => x.body.invoice.dueDate === plus(today, 30)), both2.map((x) => x.body));
-  ok("FO-7b I fail: a due date that is not a date → 422 at dueDate, the draft stays a draft", await (async () => { const d = await draft(); await line(d.body.id, fee(100, 0)); const r = await post(`${d.body.id}/issue`, { dueDate: "2026-02-30" }); return r.status === 422 && r.body.fields?.dueDate && sql(`select issued_at is null from money_invoice where id = '${d.body.id}'`) === "t"; })());
+  // Batch #3016 (check_pf28_inputs): issue's one input is the query, parsed strictly before the invoice is read.
+  const dQ = await draft(); await line(dQ.body.id, fee(100, 0)); const qUnknown = await post(`${dQ.body.id}/issue?pf28Unknown=x`), qBadId = await post(`not-a-uuid/issue?pf28Unknown=x`);
+  ok("FO-7b I fail (PF-28): an unknown query field on issue → 422 naming it, before anything is read (also for a malformed id); the draft stays a draft",
+    qUnknown.status === 422 && Object.hasOwn(qUnknown.body.fields ?? {}, "pf28Unknown") && qBadId.status === 422 && sql(`select issued_at is null from money_invoice where id = '${dQ.body.id}'`) === "t", [qUnknown.body, qBadId.status]);
+  ok("FO-7b I fail: a due date that is not a date → 422 at dueDate, the draft stays a draft", await (async () => { const d = await draft(); await line(d.body.id, fee(100, 0)); const r = await post(`${d.body.id}/issue?dueDate=2026-02-30`); return r.status === 422 && r.body.fields?.dueDate && sql(`select issued_at is null from money_invoice where id = '${d.body.id}'`) === "t"; })());
 
   // ----------------------------------------------------------------- E: the invoice email waits (AG-6-71 rule 3)
   sql(`update money_payment_settings set operating_details = 'Payee: Sample Firm. Interac e-Transfer: pay@example.org (Sample)' where firm_id = '${A}'`);
@@ -380,7 +384,7 @@ try {
   const PF = person(A, "f"), invF1 = await issued(1000, 0), invF2 = await issued(1000, 0, {}, PF), clash = await Promise.all([invF1, invF2].map((i) => post(`${i.id}/payments`, { method: "CASH", amountMinor: 1000, idempotencyKey: "fo7b-clash-key" })));
   ok("FO-7b P fail (break F3): one key on two parties' invoices at once → 201 and 409 KEY_USED (never 500), one payment", clash.map((x) => x.status).sort().join() === "201,409" && clash.some((x) => x.body.code === "KEY_USED") && sql(`select count(*) from money_payment where idempotency_key = 'fo7b-clash-key'`) === "1", clash.map((x) => [x.status, x.body.code]));
   // Break report F4, F6, F7 (Minors): a due date before 2000 is 422 (was 500); an invoice of 0.00 is not issued; a cancelled invoice is not sent.
-  const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue`, { dueDate: "0000-01-01" });
+  const dZero = await draft(); await line(dZero.body.id, fee(0, 0)); const zero = await post(`${dZero.body.id}/issue`), oldDue = await post(`${dZero.body.id}/issue?dueDate=0000-01-01`);
   ok("FO-7b I fail (break F4, F7): a due date of 0000-01-01 → 422 at dueDate, never 500; an invoice whose total is 0.00 → 409 NOTHING_TO_BILL; it stays a draft", oldDue.status === 422 && zero.status === 409 && zero.body.code === "NOTHING_TO_BILL" && sql(`select issued_at is null from money_invoice where id = '${dZero.body.id}'`) === "t", [oldDue.body, zero.body]);
 
   // ------------------------------------------------------------------------------------ C: credit notes (AG-6-48)
