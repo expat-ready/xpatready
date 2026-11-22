@@ -32,6 +32,7 @@ const generated = () => ({
   PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${rand(9)}`,
   PLATFORM_COGNITO_CLIENT_ID: rand(26),
   PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", rand(32)].join("_"),
+  PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),   // FO-7c part 1: optional, a secret setting (redacted and scrubbed like the rest)
   PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", rand(32)].join("_"),
   PLATFORM_SES_REGION: "ca-central-1",
   PLATFORM_BOLDSIGN_API_KEY: rand(40),
