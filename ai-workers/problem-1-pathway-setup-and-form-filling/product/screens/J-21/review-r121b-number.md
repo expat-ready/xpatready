@@ -51,3 +51,31 @@ A real screen reader. A headed (visible) browser: my walk was headless Playwrigh
 **Verdict: Approve.** Nothing must be fixed before `review: approved`; m1–m6 are Should.
 
 Reviewer: Approve 90da148cdd0ff858fdd77bee2f605f299dd6c138
+
+## Round 2: diff-only, 90da148cd..83a73299153bf6020450b2a6ef52dde4048ae233 (prototype/)
+Commits 30bcdf0cf (the breaker's report) and 83a732991 (round-1 Minors and the breaker's). I used a new worktree at 83a732991 and copy `rv121b2` :4437 (number set). pf24 ran on :4438. I never used :4400 or :4728.
+
+**Verdict: Approve.** No Blocker or Major is open.
+
+| Run at 83a732991 | Result |
+|---|---|
+| `check_r121_invoice_number.ts 4437` | 15/15, exit 0 |
+| `check_r121_invoice_tax.ts 4437` · `journeys/j_21.ts rv121b2 4437` | 28/28 · 17/17 |
+| `check_pf24_secrets` | 84 passed, 0 failed |
+| Live probes on the copy, plus the loader called directly on 10 values | below |
+
+**Round-1 findings:**
+* **m1: fixed, seen live.** `same()` now compares `Buffer` byte lengths (`stand-in.ts:103`). On the copy, each of these returns the page in words (404 `text/html`, the same bytes as a wrong ASCII token, `nosniff` kept, no attachment): a known id with 32 × `é`, with 16 × `é` (same byte length as the real token), with 8 × 😀 (32 bytes), and with 32 × `é` plus `&download=1`. The new test fails if the old compare comes back: the RangeError escapes `call`.
+* **m2: fixed.** A stub `page` that throws a 500 HttpException is rethrown as 500, not turned into the page. Widening the catch now fails "an error that is not a 404 is never turned into the page". A plain `Error` is not tested, but it takes the same `throw e` branch.
+* **m3: fixed, seen live.** The line reads "ExpatReady's GST/HST registration number: 000000001RT0001". On the page the apostrophe is `&#39;` and the browser shows it as text. The Sample line has the same prefix plus "(Sample: not our real number)".
+* **m4: fixed.** The refusal now says "…9 to 20 characters of capital letters, digits (at least one) and single spaces, never the invoice's Sample number (the CRA's own format is not checked yet…)". It no longer claims a CRA format. It names the setting, and the value appeared 0 times in the messages for any of the refused values.
+* **m5 and m6:** PR-body and records notes, handled by the coordinator (body corrected; m6 to the tech lead). I did not re-check them.
+* **The breaker's Minor (Sample as the setting):** fixed. `000000000 RT 0000`, `000000000RT0000`, `000000000 RT0000`, `ABCDEFGHI` and `NOT A REAL NUMBER` are refused. `123456789 RT 0001` and `123456789RT0001` still load. Dropping the `(?!0{9} ?RT ?0{4}$)` lookahead fails the test, because `SAMPLE_GST_HST_NUMBER` is in `bads`.
+
+**Note (no action asked; within the plain-shape limit already recorded):** other all-zero values, `000000000 RT 0001` and `000000000`, still load and would print unlabelled. The CRA-format tightening the PR asks the tech lead for (m6) is where to close this. It is not a finding on its own.
+
+The journey score rises from 8.5 to **9.5 / 10, pass**. Error recovery rises to 1 (m1). Plain words rises to 1 (m3, m4). Speed, accessibility and layout were not re-measured: the changes are a text prefix, a compare and a regex.
+
+**Verdict: Approve.**
+
+Reviewer: Approve 83a73299153bf6020450b2a6ef52dde4048ae233
