@@ -32,7 +32,7 @@ const outbox: NonNullable<MergePorts["emit"]> = async (tx, e) => { await tx.modu
 /** One changed cell: Undo sets `c` of row `id` in `t` back to `from` (`ts`: a timestamp column, else a uuid). */
 export type Change = { t: string; id: string; c: string; from: string | null; to: string | null; ts?: true };
 /** fo_dup_merge.loser_snapshot. */
-export type MergeSnapshot = { loser: Record<string, unknown>; changes: Change[]; copied: { consents: string[]; withdrawals: string[] }; survivorAfter: Record<string, unknown> };
+export type MergeSnapshot = { loser: Record<string, unknown>; changes: Change[]; copied: { consents: string[]; withdrawals: string[] }; survivorAfter: Record<string, unknown>; present: string[] };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TABLE: Record<MergeKind, "fo_person" | "fo_company"> = { PERSON: "fo_person", COMPANY: "fo_company" };
@@ -58,6 +58,13 @@ const valuesOf = (kind: MergeKind, row: Record<string, unknown>) => {
   for (const f of MERGE_FIELDS[kind]) if (COMPANION[f]) out[COMPANION[f].field] = row[COMPANION[f].column];
   return out;
 };
+/** The lock order every writer uses (a row it writes, then the record that row names, at commit through fo_dup_live_party
+ *  or through a foreign key): merge and Undo take the rows they will move first, then the records, loser before
+ *  survivor (the order livePersonId follows a tombstone in), so no cycle forms (break and review round 2 M1). */
+async function lockRows(tx: Tx, firmId: string, kind: MergeKind, ids: string[]) {
+  const cols = Object.entries(COLUMNS).filter(([tc, [k]]) => k === "MOVE" && (kind === "COMPANY") === /company_id$/.test(tc)).map(([tc]) => tc.split("."));
+  for (const [t, c] of cols) await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and "${c}" = any($2::uuid[]) order by "id" for update`, firmId, ids);
+}
 async function lockPair(tx: Tx, a: string, b: string) {
   for (const id of [a.toLowerCase(), b.toLowerCase()].sort()) await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_dup_merge:${id}`}, 0))`;
 }
@@ -70,8 +77,8 @@ const refuse = (code: ConstructorParameters<typeof PersonMergeRefused>[0], why: 
 const mayMerge = (ctx: StaffContext) => { if (!ctx.keys.includes(MERGE_KEY)) refuse("MISSING_PERMISSION", "You may not merge records."); };
 
 /** Re-points `c` of `t` from `from` to `to` for the rows `where` picks (all of `from`'s when empty); records each change. */
-async function move(tx: Tx, firmId: string, changes: Change[], t: string, c: string, from: string, to: string | null, where = "") {
-  const rows = await tx.$queryRawUnsafe<{ id: string }[]>(`update "${t}" set "${c}" = $3::uuid where "firm_id" = $1::uuid and "${c}" = $2::uuid ${where} returning "id"::text as id`, firmId, from, to);
+async function move(tx: Tx, firmId: string, changes: Change[], t: string, c: string, from: string, to: string | null, where = "", extra?: string) {
+  const rows = await tx.$queryRawUnsafe<{ id: string }[]>(`update "${t}" set "${c}" = $3::uuid where "firm_id" = $1::uuid and "${c}" = $2::uuid ${where} returning "id"::text as id`, firmId, from, to, ...(extra ? [extra] : []));
   for (const r of rows) changes.push({ t, id: r.id, c, from, to });
 }
 /** Ends (valid_to = now) the loser's live company links that the survivor already holds live (the same company or person
@@ -90,12 +97,13 @@ async function endDuplicateLinks(tx: Tx, firmId: string, changes: Change[], side
 async function movePerson(tx: Tx, firmId: string, s: string, l: string, changes: Change[]) {
   await endDuplicateLinks(tx, firmId, changes, "person_id", l, s);
   await move(tx, firmId, changes, "fo_company_contact", "person_id", l, s);
+  // AG-2-16 rule 10: a flag between the two records is done (cleared) BEFORE the leads move, since a lead never flags its
+  // own person (fo_lead_links_check; break and review B1); every other flag naming the loser names the survivor after.
+  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", s, null, `and "person_id" = $4::uuid`, l);
+  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", l, null, `and "person_id" = $4::uuid`, s);
   await move(tx, firmId, changes, "fo_lead", "person_id", l, s);
   for (const t of ["fo_note", "fo_call", "fo_arrival_receipt"]) await move(tx, firmId, changes, t, "person_id", l, s);
-  // AG-2-16 rule 10: a flag naming the loser names the survivor, unless that is the lead's own person (then it is done).
-  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", l, s, `and "person_id" <> $3::uuid`);
-  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", l, null);
-  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", s, null, `and "person_id" = $2::uuid`);
+  await move(tx, firmId, changes, "fo_lead", "possible_match_person_id", l, s);
   // A prospect's subject and primary contact move in one statement (an individual prospect's two are the same person).
   const pros = await tx.$queryRawUnsafe<{ id: string; sub: boolean; pri: boolean }[]>(
     `select "id"::text as id, coalesce("subject_person_id" = $2::uuid, false) as sub, "primary_contact_person_id" = $2::uuid as pri from "fo_prospect" where "firm_id" = $1::uuid and ("subject_person_id" = $2::uuid or "primary_contact_person_id" = $2::uuid)`, firmId, l);
@@ -133,6 +141,25 @@ async function copyConsent(tx: Tx, ports: MergePorts, firmId: string, s: string,
   return copied;
 }
 
+/** Every row that reaches the survivor (or a lead moved to it), by table and id: kept at the merge, compared at Undo, so
+ *  "something new arrived" needs no clock (break and review round 2 m2/m3). A withdrawal is not counted: it only ever
+ *  narrows what may be sent, and it stays after Undo (consent rows are never removed). */
+async function reaching(tx: Tx, firmId: string, kind: MergeKind, s: string, changes: Change[]): Promise<string[]> {
+  const leads = changes.filter((c) => c.t === "fo_lead" && c.c === "person_id").map((c) => c.id);
+  const q = kind === "PERSON"
+    ? `select 'fo_lead:' || "id" as k from "fo_lead" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_note:' || "id" from "fo_note" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_call:' || "id" from "fo_call" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_arrival_receipt:' || "id" from "fo_arrival_receipt" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_booking:' || "id" from "fo_booking" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_company_contact:' || "id" from "fo_company_contact" where "firm_id" = $1::uuid and "person_id" = $2::uuid
+       union all select 'fo_prospect:' || "id" from "fo_prospect" where "firm_id" = $1::uuid and ("subject_person_id" = $2::uuid or "primary_contact_person_id" = $2::uuid or "lead_id" = any($3::uuid[]))
+       union all select 'msg_consent:' || "id" from "msg_consent" where "firm_id" = $1::uuid and "subject_kind" = 'FO_PERSON' and "subject_id" = $2::uuid`
+    : `select 'fo_company_contact:' || "id" as k from "fo_company_contact" where "firm_id" = $1::uuid and "company_id" = $2::uuid
+       union all select 'fo_prospect:' || "id" from "fo_prospect" where "firm_id" = $1::uuid and "subject_company_id" = $2::uuid and cardinality($3::uuid[]) >= 0`;
+  return (await tx.$queryRawUnsafe<{ k: string }[]>(q, firmId, s, leads)).map((r) => r.k).sort();
+}
+
 /** Merges `loser_fo_id` into `survivor_fo_id` in `tx` (PersonMergePort.mergePersons). `automatic`: part 2's safe merge. */
 export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, ports: MergePorts, opts: { automatic?: boolean } = {}): Promise<MergeResult> {
   mayMerge(ctx);
@@ -142,7 +169,8 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
   const sId = input.survivor_fo_id.toLowerCase(), lId = input.loser_fo_id.toLowerCase();
   if (sId === lId) refuse("SELF_MERGE", "A record cannot be merged into itself.");
   await lockPair(tx, sId, lId);
-  const s = await find(tx, firmId, sId), l = await find(tx, firmId, lId);
+  await lockRows(tx, firmId, input.kind, [lId, sId]);
+  const l = await find(tx, firmId, lId), s = await find(tx, firmId, sId);
   if (!s || !l) return refuse("NOT_FOUND", "No such record.");
   if (s.row.merged_into_id || l.row.merged_into_id) refuse("ALREADY_MERGED", "This record was already merged.");
   if (s.kind !== l.kind || s.kind !== input.kind) refuse("KIND_MISMATCH", "A person and a company cannot be merged.");
@@ -177,7 +205,8 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
   else await tx.foCompany.updateMany({ where: firmScope(firmId, { id: lId }), data: { mergedIntoId: sId, mergedAt: at } });
   const ref = randomUUID();
   const after = (await find(tx, firmId, sId))!.row;
-  const snapshot: MergeSnapshot = { loser: l.row, changes, copied, survivorAfter: valuesOf(kind, after) };
+  const present = await reaching(tx, firmId, kind, sId, changes);
+  const snapshot: MergeSnapshot = { loser: l.row, changes, copied, survivorAfter: valuesOf(kind, after), present };
   await tx.foDupMerge.create({ data: { id: ref, firmId, kind, survivorId: sId, loserId: lId, loserSnapshot: snapshot as unknown as Prisma.InputJsonValue, survivorBefore: valuesOf(kind, s.row) as Prisma.InputJsonValue,
     choices: picks, automatic, reason: input.reason ?? null, by: actor, at } });
   const what = kind === "PERSON" ? "person" : "company";
@@ -203,34 +232,26 @@ export async function unmergeRecords(tx: Tx, ctx: StaffContext, ref: string, por
   const later = await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: { not: m.id }, undoneAt: null, at: { gt: m.at }, OR: [{ survivorId: { in: ids } }, { loserId: { in: ids } }] }), select: { id: true } });
   if (later) refuse("UNDO_REFUSED", "A later merge involves one of these records; undo that one first.");
   const snap = m.loserSnapshot as unknown as MergeSnapshot, s = m.survivorId, l = m.loserId;
-  if (!snap?.changes?.every((c) => UNDOABLE.has(`${c.t}.${c.c}`) && UUID.test(c.id)) || !snap.survivorAfter) refuse("UNDO_REFUSED", "This merge record was not written by the merge; it cannot be undone.");
-  // Lock both records and every moved lead first (break m1): a writer adding to them either finished before (and is seen
-  // below) or waits for the Undo.
-  const sv = await find(tx, firmId, s);
-  await find(tx, firmId, l);
-  const leads = snap.changes.filter((c) => c.t === "fo_lead" && c.c === "person_id").map((c) => c.id);
-  if (leads.length) await tx.$queryRawUnsafe(`select 1 from "fo_lead" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) for update`, firmId, leads);
+  if (!snap?.changes?.every((c) => UNDOABLE.has(`${c.t}.${c.c}`) && UUID.test(c.id)) || !snap.survivorAfter || !Array.isArray(snap.present)) refuse("UNDO_REFUSED", "This merge record was not written by the merge; it cannot be undone.");
+  // Locks in the writers' order (round 2 M1): every moved row, then the loser, then the survivor. A writer adding to them
+  // either finished before (and is seen below) or waits for the Undo.
+  for (const t of [...new Set(snap.changes.map((c) => c.t))])
+    await tx.$queryRawUnsafe(`select 1 from "${t}" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) order by "id" for update`, firmId, snap.changes.filter((c) => c.t === t).map((c) => c.id));
+  const lo = await find(tx, firmId, l), sv = await find(tx, firmId, s);
+  // The record really is this merge's tombstone (break m4: a crafted record naming a live loser moves nothing).
+  if (!lo || lo.row.merged_into_id !== s) refuse("UNDO_REFUSED", "This merge record does not match the records; it cannot be undone.");
   // The survivor edited since the merge (break M2): its values are not the merge's any more, so they are not overwritten.
   const nowValues = sv ? valuesOf(kind, sv.row) : {};   // compared field by field (jsonb does not keep key order)
   if (!sv || Object.keys(nowValues).some((k) => JSON.stringify(nowValues[k] ?? null) !== JSON.stringify(snap.survivorAfter[k] ?? null))) refuse("UNDO_REFUSED", "The merged record was edited after the merge; it cannot be undone.");
   // A consent the merge copied is still live (review M2): consent rows are never removed, so the survivor would keep it.
+  // Withdrawing the copy first lets the Undo run.
   if (snap.copied.consents.length && await tx.msgConsent.count({ where: firmScope(firmId, { id: { in: snap.copied.consents }, withdrawnAt: null }) }))
-    refuse("UNDO_REFUSED", "The merge copied a live consent to the merged record; consent records are never removed, so it cannot be undone.");
+    refuse("UNDO_REFUSED", "The merge copied a live consent to the merged record; withdraw it there first (consent records are never removed).");
   // Anything new on the survivor or a moved lead since the merge (a lead, note, call, arrival, booking, link, prospect or
-  // consent) may have come by the loser's email or phone: it cannot be told apart, so the Undo is refused (break M3).
-  const fresh = kind === "PERSON"
-    ? `select 1 from "fo_lead" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "fo_note" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "fo_call" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "fo_arrival_receipt" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "received_at" > $3::timestamptz
-       union all select 1 from "fo_booking" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "fo_company_contact" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "valid_from" > $3::timestamptz
-       union all select 1 from "fo_prospect" where "firm_id" = $1::uuid and ("subject_person_id" = $2::uuid or "primary_contact_person_id" = $2::uuid or "lead_id" = any($4::uuid[])) and "created_at" > $3::timestamptz
-       union all select 1 from "msg_consent" where "firm_id" = $1::uuid and "subject_kind" = 'FO_PERSON' and "subject_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "msg_consent_withdrawal" where "firm_id" = $1::uuid and "subject_kind" = 'FO_PERSON' and "subject_id" = $2::uuid and "created_at" > $3::timestamptz`
-    : `select 1 from "fo_company_contact" where "firm_id" = $1::uuid and "company_id" = $2::uuid and "valid_from" > $3::timestamptz
-       union all select 1 from "fo_prospect" where "firm_id" = $1::uuid and "subject_company_id" = $2::uuid and "created_at" > $3::timestamptz and cardinality($4::uuid[]) >= 0`;
-  if ((await tx.$queryRawUnsafe<{ x: boolean }[]>(`select exists (${fresh}) as x`, firmId, s, m.at, leads))[0].x)
+  // consent; compared by id, no clock) may have come by the loser's email or phone: it cannot be told apart, so the Undo
+  // is refused (break M3).
+  const was = new Set(snap.present ?? []);
+  if ((await reaching(tx, firmId, kind, s, snap.changes)).some((k) => !was.has(k)))
     refuse("UNDO_REFUSED", "Something reached the merged record after the merge (it may have come by the other record's contact details); it cannot be undone.");
   // Every moved cell still holds what the merge wrote (typed comparison, one query per table and column; break m5).
   const byCell = new Map<string, Change[]>();

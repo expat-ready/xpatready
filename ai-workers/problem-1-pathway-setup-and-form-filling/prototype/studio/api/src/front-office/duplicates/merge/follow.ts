@@ -1,5 +1,5 @@
 // FO-9b part 1 (§8 M3 of the FO-9s concept, accepted on #2896; AG-2-68 rule 12; AG-2-16 §10 "the tombstone stays
-// resolvable"): a person id that names a merged-away record is followed to its survivor. Reads only.
+// resolvable"): a person id that names a merged-away record is followed to its survivor. Writes nothing; its read share-locks each record it passes (the writer's transaction then waits for a merge in flight).
 import type { PrismaClient } from "@prisma/client";
 import type { Tx } from "../../sales/common.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";

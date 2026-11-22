@@ -82,6 +82,11 @@ BEGIN
      OR OLD."undone_at" IS NOT NULL OR NEW."undone_at" IS NULL THEN
     RAISE EXCEPTION 'fo_dup_merge: a merge record is written once; only its Undo stamp is added, once' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- The stamp only after the tombstone has ended (break m4: no Undo stamp on a merge that still stands).
+  IF EXISTS (SELECT 1 FROM "fo_person" WHERE "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id")
+     OR EXISTS (SELECT 1 FROM "fo_company" WHERE "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id") THEN
+    RAISE EXCEPTION 'fo_dup_merge: the Undo stamp is written only once the merge is undone (the record is still merged)' USING ERRCODE = 'insufficient_privilege';
+  END IF;
   RETURN NEW;
 END $$;
 CREATE FUNCTION fo_dup_merge_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -92,37 +97,41 @@ CREATE TRIGGER "fo_dup_merge_write" BEFORE UPDATE ON "fo_dup_merge" FOR EACH ROW
 CREATE TRIGGER "fo_dup_merge_no_delete" BEFORE DELETE ON "fo_dup_merge" FOR EACH ROW EXECUTE FUNCTION fo_dup_merge_no_delete();
 CREATE TRIGGER "fo_dup_merge_no_truncate" BEFORE TRUNCATE ON "fo_dup_merge" FOR EACH STATEMENT EXECUTE FUNCTION fo_dup_merge_no_delete();
 
--- AG-2-16 rule 5 "No row ever points to a tombstone", held by the database (review and break M1): a row written or
--- re-pointed onto a person or company record reads that record with a row lock (FOR KEY SHARE), so a merge in flight
--- (which holds the record FOR UPDATE) is waited for; a tombstone is then refused. The guarded columns are columns.ts's
--- MOVE list (arguments: the table's person columns, then '|', then its company columns).
+-- AG-2-16 rule 5 "No row ever points to a tombstone", held by the database (review and break M1): checked at commit
+-- (a deferred constraint trigger), on the row as it stands then, by a locking read of the record it names (FOR KEY SHARE):
+-- a merge in flight (which holds the record FOR UPDATE) is waited for and its tombstone then refused; a writer that
+-- commits first is seen and moved by the merge. At commit the writer already holds its own rows, so its locks run row,
+-- then record: the order the merge takes them in (merge/service.ts lockRows; round 2 M1: no deadlock). The guarded
+-- columns are columns.ts's MOVE list (arguments: the table's person columns, then '|', then its company columns;
+-- tests/check_fo9b_merge.ts ties the two).
 CREATE FUNCTION fo_dup_live_party() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE i int; col text; v uuid; m uuid; company boolean := false;
+DECLARE i int; col text; v uuid; m uuid; company boolean := false; cur jsonb;
 BEGIN
+  EXECUTE format('SELECT to_jsonb(x) FROM %I x WHERE x."id" = $1', TG_TABLE_NAME) INTO cur USING NEW."id";
+  IF cur IS NULL THEN RETURN NULL; END IF;
   FOR i IN 0 .. TG_NARGS - 1 LOOP
     col := TG_ARGV[i];
     IF col = '|' THEN company := true; CONTINUE; END IF;
-    v := (to_jsonb(NEW) ->> col)::uuid;
+    v := (cur ->> col)::uuid;
     CONTINUE WHEN v IS NULL;
-    IF TG_OP = 'UPDATE' AND v IS NOT DISTINCT FROM (to_jsonb(OLD) ->> col)::uuid THEN CONTINUE; END IF;
     IF company THEN
-      SELECT c."merged_into_id" INTO m FROM "fo_company" c WHERE c."firm_id" = NEW."firm_id" AND c."id" = v FOR KEY SHARE;
+      SELECT c."merged_into_id" INTO m FROM "fo_company" c WHERE c."firm_id" = (cur ->> 'firm_id')::uuid AND c."id" = v FOR KEY SHARE;
     ELSE
-      SELECT p."merged_into_id" INTO m FROM "fo_person" p WHERE p."firm_id" = NEW."firm_id" AND p."id" = v FOR KEY SHARE;
+      SELECT p."merged_into_id" INTO m FROM "fo_person" p WHERE p."firm_id" = (cur ->> 'firm_id')::uuid AND p."id" = v FOR KEY SHARE;
     END IF;
     IF m IS NOT NULL THEN
       RAISE EXCEPTION '%: % names a merged-away record (merged into %): use that record', TG_TABLE_NAME, col, m USING ERRCODE = 'foreign_key_violation';
     END IF;
   END LOOP;
-  RETURN NEW;
+  RETURN NULL;
 END $$;
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id", "possible_match_person_id" ON "fo_lead" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', 'possible_match_person_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_note" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_call" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_arrival_receipt" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_booking" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id", "company_id" ON "fo_company_contact" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', '|', 'company_id');
-CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "subject_person_id", "primary_contact_person_id", "subject_company_id" ON "fo_prospect" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('subject_person_id', 'primary_contact_person_id', '|', 'subject_company_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id", "possible_match_person_id" ON "fo_lead" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', 'possible_match_person_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id" ON "fo_note" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id" ON "fo_call" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id" ON "fo_arrival_receipt" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id" ON "fo_booking" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "person_id", "company_id" ON "fo_company_contact" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', '|', 'company_id');
+CREATE CONSTRAINT TRIGGER "fo_dup_live_party" AFTER INSERT OR UPDATE OF "subject_person_id", "primary_contact_person_id", "subject_company_id" ON "fo_prospect" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('subject_person_id', 'primary_contact_person_id', '|', 'subject_company_id');
 
 -- PF-12's wall (forced policy naming the session's firm; the firm-first gate before the area's own triggers); the trigger
 -- functions run as xr_wall_reader (tests/check_pf12_walls.ts).

@@ -266,6 +266,66 @@ try {
   ok("FO-9b DW4 pass: Add a lead naming the loser while the merge is open waits, then lands on the survivor", raced.person.id === rp.s && count("fo_lead", `person_id = '${rp.l}'`) === 0, raced);
   ok("FO-9b DW4 fail: a raw note naming the loser while the merge is open is refused once it commits (no row on the tombstone)", /merged-away/.test(noteOut) && count("fo_note", `person_id = '${rp.l}'`) === 0, noteOut);
   ok("FO-9b DW4 fail: a lead re-pointed onto a tombstone later is refused by the database", /merged-away/.test(sqlErr(`update fo_lead set person_id = '${rp.l}' where id = '${raced.id}'`)));
+  ok("FO-9b DW4 fail: a new lead naming a tombstone (no note, no cascade) is refused by the database's own guard on fo_lead", /merged-away/.test(sqlErr(`insert into fo_lead (firm_id, person_id, number, door, source, created_by, updated_at) values ('${A}', '${rp.l}', 'L-x', 'MANUAL', 'Sample', 'seed:fo9b', now())`)));
+  const guarded = sql(`select string_agg(tgrelid::regclass::text || ':' || encode(tgargs, 'escape'), ',' order by tgrelid::regclass::text) from pg_trigger where tgname = 'fo_dup_live_party'`).split(",")
+    .flatMap((x) => { const [t, args] = x.split(":"); let company = false; return args.split("\\000").filter(Boolean).flatMap((c) => { if (c === "|") { company = true; return []; } void company; return [`${t}.${c}`]; }); }).sort();
+  const moveList = Object.entries(COLUMNS).filter(([, [k]]) => k === "MOVE").map(([tc]) => tc).sort();
+  ok("FO-9b DW2 pass: the database guard (fo_dup_live_party) covers exactly columns.ts's MOVE list", JSON.stringify(guarded) === JSON.stringify(moveList), { guarded, moveList });
+
+  // B1 (round 2): the usual pair: the newer lead is flagged as a possible match of the older record; merged newer → older.
+  const older = await add({ givenNames: "Oona", familyName: "Sample", email: "oona@example.org" });
+  const newer = await leads.add(R, { requestId: randomUUID(), source: "Web", confirmedNew: true, givenNames: "Oona", familyName: "Sample", email: "oona@example.org", phone: "+1 416 555 0177" }) as { id: string; person: { id: string } };
+  const flagWas = sql(`select possible_match_person_id from fo_lead where id = '${newer.id}'`);
+  const before7 = state([older.person.id, newer.person.id]);
+  let b1: unknown = null;
+  try { b1 = await merge({ kind: "PERSON", survivor_fo_id: older.person.id, loser_fo_id: newer.person.id }); } catch (e) { b1 = String(e); }
+  ok("FO-9b DW1 pass (round 2 B1): merging the newer record, whose lead is flagged as a possible match of the older one, into the older works; the flag is done (cleared), the lead on the older record",
+    flagWas === older.person.id && typeof b1 === "object" && sql(`select coalesce(possible_match_person_id::text, 'none') || '|' || person_id from fo_lead where id = '${newer.id}'`) === `none|${older.person.id}`, { flagWas, b1 });
+  if (typeof b1 === "object" && b1) await undo((b1 as { merge_ref: string }).merge_ref);
+  ok("FO-9b DW5 pass (round 2 B1): its Undo puts the flag and the lead back exactly", state([older.person.id, newer.person.id]) === before7);
+
+  // Round 2 M1: merges and Undos racing ordinary writers on the same person never deadlock (40P01); each writer either
+  // lands on the survivor or is refused cleanly, and no row is left on a tombstone.
+  const outcomes: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const p = await pairOf();
+    const r = await Promise.allSettled([
+      merge({ kind: "PERSON", survivor_fo_id: p.s, loser_fo_id: p.l }),
+      act.addNote(R, { kind: "lead", id: p.lLead }, { text: `Racing note ${i} (Sample).` }),
+      act.logCall(R, { kind: "lead", id: p.lLead }, { direction: "OUT", outcome: "NO_ANSWER" }),
+      leads.add(R, { requestId: randomUUID(), source: "Phone call", personId: p.l }),
+    ]);
+    outcomes.push(...r.map((x) => (x.status === "fulfilled" ? "ok" : String(x.reason))));
+    const m = r[0].status === "fulfilled" ? (r[0].value as { merge_ref: string }).merge_ref : null;
+    if (m && i % 2 === 0) {
+      const u = await Promise.allSettled([undo(m), leads.add(R, { requestId: randomUUID(), source: "Phone call", personId: p.l }), act.addNote(R, { kind: "lead", id: p.lLead }, { text: "During Undo (Sample)." })]);
+      outcomes.push(...u.map((x) => (x.status === "fulfilled" ? "ok" : String(x.reason))));
+    }
+  }
+  const onTomb = Number(sql(`select count(*) from fo_person t where t.merged_into_id is not null and (exists (select 1 from fo_lead x where x.person_id = t.id) or exists (select 1 from fo_note x where x.person_id = t.id) or exists (select 1 from fo_call x where x.person_id = t.id))`));
+  ok("FO-9b DW4 pass (round 2 M1): 8 merges racing a note, a call and an Add on the loser (4 with an Undo racing an Add and a note): no deadlock, no row on a tombstone",
+    !outcomes.some((o) => /deadlock|40P01/i.test(o)) && onTomb === 0, { deadlocks: outcomes.filter((o) => /deadlock/i.test(o)).length, onTomb, failed: outcomes.filter((o) => o !== "ok").slice(0, 3) });
+
+  // Break m4 remainder: a crafted record whose "loser" is live moves nothing; a forged Undo stamp is refused.
+  const cp = await pairOf(), cp2 = await pairOf();
+  const { merge_ref: cref } = await merge({ kind: "PERSON", survivor_fo_id: cp.s, loser_fo_id: cp.l });
+  const forged = sqlErr(`update fo_dup_merge set undone_at = now(), undone_by = 'staff:x' where id = '${cref}'`);
+  ok("FO-9b DW5 fail: a forged Undo stamp on a merge that still stands is refused by the database", /only once the merge is undone/.test(forged), forged);
+  const craft = randomUUID();
+  sql(`insert into fo_dup_merge (id, firm_id, kind, survivor_id, loser_id, loser_snapshot, survivor_before, choices, by, at)
+       select '${craft}', firm_id, kind, '${cp2.s}', '${cp2.l}', loser_snapshot, survivor_before, choices, by, clock_timestamp() from fo_dup_merge where id = '${cref}'`);
+  const before8 = state([cp2.s, cp2.l]);
+  ok("FO-9b DW5 fail: Undo of a crafted record naming a live loser → 409 UNDO_REFUSED, nothing moved", (await refusedAs(() => undo(craft), "UNDO_REFUSED")) === true && state([cp2.s, cp2.l]) === before8);
+
+  // Review round 2 m2: once the copied consent is withdrawn on the survivor, the Undo runs (the withdrawal stays).
+  const wp = await pairOf();
+  await db.$transaction((t) => consent.record(t, { firmId: A, subject: { kind: "FO_PERSON", id: wp.l }, channel: "EMAIL", purpose: "MARKETING", basis: "IMPORT_DECLARED", source: "IMPORT_DECLARED", recordedKind: "USER", recordedBy: `staff:${R.staffId}` }));
+  const { merge_ref: wref } = await merge({ kind: "PERSON", survivor_fo_id: wp.s, loser_fo_id: wp.l });
+  ok("FO-9b DW5 fail: Undo while the copied consent is live → refused", (await refusedAs(() => undo(wref), "UNDO_REFUSED")) === true);
+  await db.$transaction((t) => consent.withdraw(t, { firmId: A, subject: { kind: "FO_PERSON", id: wp.s }, channel: "EMAIL", purpose: "MARKETING", via: "STAFF", by: `staff:${R.staffId}` }));
+  const wout = await undo(wref).then(() => "ok", (e) => String(e));
+  ok("FO-9b DW5 pass: after the copy is withdrawn on the survivor, the Undo runs; the withdrawn copy stays on the survivor", wout === "ok" && count("msg_consent", `subject_id = '${wp.s}' and withdrawn_at is not null`) === 1 && sql(`select coalesce(merged_into_id::text, 'live') from fo_person where id = '${wp.l}'`) === "live", wout);
+
   // The flag is off again once the merge returns (review m2): the same transaction cannot re-point an unrelated note.
   const fp = await pairOf(), other = await pairOf();
   let flagLeft = "";
