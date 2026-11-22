@@ -18,8 +18,8 @@
 //   file folder (a stand-in, said, not hidden: the poller and FO-6's signing webhook are not wired, and the only signer is
 //   SigningPort's fake, whose state lives in the process that calls it). Its clock, jobs and mail are fakes. On main the
 //   service does not exist yet, so every such step is a FAIL ("not built"), never a throw.
-//   W4 cannot start until signed: a booking of Client C's that ended about 40 minutes ago, its agreement sent and
-//      unsigned. On screen she presses Attended on its panel: the panel's own message refuses it in plain words naming
+//   W4 cannot start until signed: a booking of Client C's that ended about 40 minutes ago (its attendance question is
+//      open), its agreement sent and unsigned. On screen she presses Attended on its panel: the panel's own message refuses it in plain words naming
 //      the agreement, the booking stays Scheduled; by API the attendance answer and a valid consult record (ConsultBody)
 //      are refused for the agreement (the refusal names it), nothing changes.
 //   W4b fails on the fake for "whose type needs it": a Follow-up booking of Client P's, ended, gets no agreement and its
@@ -29,7 +29,8 @@
 //      to the firm's signatory instead: a question for the tech lead). On the running copy, the booking made on screen
 //      in W1 has its reminder job queued for 24 hours before it, and Client C's GET …/needs-you lists W5's agreement.
 //   W6 the person signs (the client's link with consent, then the fake signer), then the host signs; the agreement is
-//      sealed; the signed copy is emailed to the person once, with the file attached.
+//      sealed; the signed copy is emailed to the person once, with the file attached. The stand-in's clock is set to 5
+//      minutes into W4's meeting for this (FO-3c refuses the link of a meeting that has ended; said, not hidden).
 //   W7 the signed copy is on the person: GET …/by-person/:personId on the running copy says "Agreement signed" with the
 //      stored copy's sha256; the lead's page on screen says "Agreement signed" and offers the signed copy as a link that
 //      opens the file (red until a screen shows it).
@@ -167,16 +168,22 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the module is not on main yet; read loosely
   let mod: any = null, sig: any = null;
   try { mod = await import("../../api/src/front-office/booking/consultation-agreement/service.ts"); sig = await import("../../api/src/front-office/signing/port.ts"); } catch (e) { console.log(`      (FO-3c's service is not here: ${String(e).slice(0, 120)})`); }
-  const clock = new FakeClock(new Date()), jobs = fakeJobs(clock), mail = fakeMail({ clock }), audit = fakeAudit();
-  const signing = sig?.fakeSigning ? sig.fakeSigning({ now: () => clock.now() }) : null;
-  const svc = mod?.ConsultationAgreementService ? new mod.ConsultationAgreementService(db, { audit, clock, mail, jobs, signing, files, publicBaseUrl: BASE }) : null;
-  if (svc) await svc.registerJobs();
+  // Two instances on the same database: `svc` keeps today's clock (W4, W6, W9: a link of a meeting that has ended is not
+  // signed, FO-3c break m5); `svc5` walks its own clock days ahead for the reminder (W5).
+  const make = async (clk: InstanceType<typeof FakeClock>) => {
+    const jobs = fakeJobs(clk), mail = fakeMail({ clock: clk }), signing = sig?.fakeSigning ? sig.fakeSigning({ now: () => clk.now() }) : null;
+    const s = mod?.ConsultationAgreementService ? new mod.ConsultationAgreementService(db, { audit: fakeAudit(), clock: clk, mail, jobs, signing, files, publicBaseUrl: BASE }) : null;
+    if (s) await s.registerJobs();
+    return { s, mail, signing };
+  };
+  const clock = new FakeClock(new Date()), clock5 = new FakeClock(new Date());
+  const { s: svc, mail, signing } = await make(clock), { s: svc5, mail: mail5, signing: signing5 } = await make(clock5);
   const NOT_BUILT = "FO-3c's service is not on main";
   const eventOf = (b: { id: string; firmId: string; sequence: number; status: string; typeId: string; staffId: string; personId: string | null; prospectId: string | null; mode: string; startsAt: Date; endsAt: Date; bookerTimeZone: string }) =>
     ({ type: EVENT.BOOKING_SCHEDULED, firmId: b.firmId, payload: { key: `${b.id}:${b.sequence}`, bookingId: b.id, sequence: b.sequence, status: b.status, typeId: b.typeId, staffId: b.staffId, personId: b.personId, prospectId: b.prospectId, mode: b.mode, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), bookerTimeZone: b.bookerTimeZone } });
 
   // --------------------------------------------------------------------------------------------- W4 cannot start
-  const b2 = await book(new Date(Math.floor((Date.now() - 70 * MIN) / (30 * MIN)) * 30 * MIN));   // ended about 40 minutes ago
+  const b2 = await book(new Date(Math.floor((Date.now() - 70 * MIN) / (30 * MIN)) * 30 * MIN));   // ended about 40 minutes ago: its attendance question is open
   const s2 = svc ? await svc.onBookingEvent(eventOf(b2)) : null;
   const a2: string | null = s2?.sent ? s2.agreementId : null;
   ok("J-104 W4 setup (stand-in): the ended booking's agreement is sent and unsigned", !!a2, s2 ?? NOT_BUILT);
@@ -210,13 +217,13 @@ try {
   // --------------------------------------------------------------------------------------------- W5 the reminder
   const day3 = plus(ymd(new Date()), 3);
   const b4 = await book(wall(day3, "15:00"));
-  const s4 = svc ? await svc.onBookingEvent(eventOf(b4)) : null;
-  const reminders = () => mail.sent.filter((m: { templateKey?: string }) => m.templateKey === "consultation_agreement.reminder");
+  const s4 = svc5 ? await svc5.onBookingEvent(eventOf(b4)) : null;
+  const reminders = () => mail5.sent.filter((m: { templateKey?: string }) => m.templateKey === "consultation_agreement.reminder");
   let earlyCount = -1, dueCount = -1;
-  if (svc && s4?.sent) {
-    await clock.set(new Date(b4.startsAt.getTime() - DAY - HOUR)); earlyCount = reminders().length;
-    await clock.set(new Date(b4.startsAt.getTime() - DAY + MIN)); dueCount = reminders().length;
-    await clock.set(new Date(b4.startsAt.getTime() - DAY + 2 * HOUR));
+  if (svc5 && s4?.sent) {
+    await clock5.set(new Date(b4.startsAt.getTime() - DAY - HOUR)); earlyCount = reminders().length;
+    await clock5.set(new Date(b4.startsAt.getTime() - DAY + MIN)); dueCount = reminders().length;
+    await clock5.set(new Date(b4.startsAt.getTime() - DAY + 2 * HOUR));
   }
   const rem = reminders() as { to: string; subject: string }[], toClient = rem.filter((m) => m.to === P.email!.toLowerCase());
   ok("J-104 W5 fail (an hour before the 24-hour mark, P-606): no reminder yet", earlyCount === 0, earlyCount < 0 ? NOT_BUILT : earlyCount);
@@ -231,27 +238,40 @@ try {
   ok("J-104 W5: on the running copy Client C's \"needs you\" lists W5's unsigned agreement", needs.status === 200 && !!s4?.sent && (needs.body?.items ?? []).some((i: { agreementId: string }) => i.agreementId === s4.agreementId), [needs.status, needs.body?.items?.length ?? needs.body?.title]);
 
   // --------------------------------------------------------------------------------------------- W6 signing
-  let sealedOk = false, copyMails = 0, sealedSha = "";
-  if (svc && a2) {
-    const link = (mail.inbox(P.email!) as { templateKey?: string; text: string }[]).find((m) => m.templateKey === "consultation_agreement.sent")?.text.match(/#([^\s]+)/)?.[1] ?? "";
-    await svc.open(link); await svc.open(link, { consent: true });
-    const req = await db.foSignatureRequest.findFirstOrThrow({ where: { firmId: M.id, documentId: a2 } });
+  let sealedOk = false, copyMails = 0, sealedSha = "", signErr = "";
+  // Which agreement is signed: W4's, if W4 held its meeting unstarted; else (W4's Attended went through, so FO-3c treats
+  // that meeting as over and refuses its link, break m5) W5's, whose meeting is still ahead, so the signing path is still
+  // walked. The stand-in signs during W4's meeting (its clock set back to 5 minutes in: the running app answers
+  // attendance only after the end) or a day before W5's (said, not hidden).
+  const w4Open = afterClick === "SCHEDULED";
+  const target = w4Open ? { s: svc, sg: signing, mb: mail, clk: clock, id: a2, at: b2.startsAt.getTime() + 5 * MIN } : { s: svc5, sg: signing5, mb: mail5, clk: clock5, id: s4?.sent ? s4.agreementId as string : null, at: b4.startsAt.getTime() - 22 * HOUR };
+  const signed = target.id;
+  if (target.s && signed) try {
+    await target.clk.set(new Date(target.at));
+    const link = (target.mb.inbox(P.email!) as { idempotencyKey?: string; text: string }[]).find((m) => m.idempotencyKey === `consultation-agreement:${signed}:sent`)?.text.match(/consultation-agreement#([0-9a-f]{32}\.[\w-]{43})/)?.[1] ?? "";
+    await target.s.open(link); await target.s.open(link, { consent: true });
+    // P-564: the one-time code our mail sends before signing (the newest mail to the person with 6 digits), typed back.
+    const code = [...(target.mb.inbox(P.email!) as { templateKey?: string; text: string }[])].reverse().find((m) => /code/i.test(m.templateKey ?? "") && /\b\d{6}\b/.test(m.text))?.text.match(/\b(\d{6})\b/)?.[1];
+    if (code) await target.s.open(link, { consent: true, code });
+    const req = await db.foSignatureRequest.findFirstOrThrow({ where: { firmId: M.id, documentId: signed } });
     const client = await db.foSigner.findFirstOrThrow({ where: { firmId: M.id, requestId: req.id, role: "CLIENT" } }), firmSigner = await db.foSigner.findFirstOrThrow({ where: { firmId: M.id, requestId: req.id, role: "FIRM" } });
-    for (const h of await signing.act(M.id, req.providerDocumentId, client.id, "signed")) await svc.signingEvent(h);
-    await svc.hostLink(ctxOf(C, KEY), a2, { consent: true });
-    for (const h of await signing.act(M.id, req.providerDocumentId, firmSigner.id, "signed")) await svc.signingEvent(h);
-    await svc.seal(M.id, req.id);   // the provider's "completed" may already have sealed it; a second seal changes nothing
-    sealedOk = (await db.foRetainer.findFirst({ where: { firmId: M.id, id: a2 } }))?.status === "SIGNED";
-    await clock.set(new Date(clock.now().getTime() + 5 * MIN));
-    copyMails = (mail.inbox(P.email!) as { templateKey?: string; attachments?: unknown[] }[]).filter((m) => m.templateKey === "consultation_agreement.signed_copy" && (m.attachments?.length ?? 0) === 1).length;
+    const applied: unknown[] = [];
+    for (const step of ["viewed", "signed"] as const) for (const h of await target.sg.act(M.id, req.providerDocumentId, client.id, step)) applied.push(await target.s.signingEvent(h));
+    signErr = JSON.stringify(applied).slice(0, 200);
+    await target.s.hostLink(ctxOf(C, KEY), signed, { consent: true });
+    for (const h of await target.sg.act(M.id, req.providerDocumentId, firmSigner.id, "signed")) await target.s.signingEvent(h);
+    await target.s.seal(M.id, req.id);   // the provider's "completed" may already have sealed it; a second seal changes nothing
+    sealedOk = (await db.foRetainer.findFirst({ where: { firmId: M.id, id: signed } }))?.status === "SIGNED";
+    await target.clk.set(new Date(target.clk.now().getTime() + 5 * MIN));
+    copyMails = (target.mb.inbox(P.email!) as { templateKey?: string; attachments?: unknown[] }[]).filter((m) => m.templateKey === "consultation_agreement.signed_copy" && (m.attachments?.length ?? 0) === 1).length;
     sealedSha = (await db.foSigningEvidence.findFirst({ where: { firmId: M.id, requestId: req.id } }))?.sealedSha256 ?? "";
-  }
-  ok("J-104 W6 (stand-in signer): Client P signs through the emailed link with consent, then Client C signs for the firm; the agreement is sealed and the signed copy is emailed to Client P once, attached",
-    sealedOk && copyMails === 1 && /^[0-9a-f]{64}$/.test(sealedSha), svc ? { sealedOk, copyMails, sealedSha: !!sealedSha } : NOT_BUILT);
+  } catch (e) { signErr = `${signErr} | ${JSON.stringify((e as { getResponse?: () => unknown }).getResponse?.() ?? String(e)).slice(0, 200)}`; }
+  ok(`J-104 W6 (stand-in signer): Client P signs through the emailed link with consent, then Client C signs for the firm; the agreement is sealed and the signed copy is emailed to Client P once, attached (signed: ${w4Open ? "W4's" : "W5's, because W4's meeting was let start"})`,
+    sealedOk && copyMails === 1 && /^[0-9a-f]{64}$/.test(sealedSha), svc ? { sealedOk, copyMails, sealedSha: !!sealedSha, eventsAndRefusal: signErr || null } : NOT_BUILT);
 
   // --------------------------------------------------------------------------------------------- W7, W8 the copy on the person
   const byPerson = await api(tc, "GET", `${AGREEMENTS}/by-person/${P.id}`);
-  const mine = (byPerson.body?.agreements ?? []).find((x: { id: string }) => x.id === a2);
+  const mine = (byPerson.body?.agreements ?? []).find((x: { id: string }) => x.id === signed);
   ok("J-104 W7 (running copy): by-person says \"Agreement signed\" for Client P with the stored copy's sha256", byPerson.status === 200 && mine?.words === "Agreement signed" && !!sealedSha && JSON.stringify(mine).includes(sealedSha), [byPerson.status, mine?.words ?? byPerson.body?.title]);
   await go(c, `/front-office/leads/${lead.id}`);
   const leadText = await pageText(c);
