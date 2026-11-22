@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 02:5x IST 23 Nov:** **#2368 FO-7ts part 3 merged** (20:58 UTC). Risk sent to Lead 9: #3042 FO-9b part 1 queued on CI from before F7 (#3068) and #2368: its stamp 20261122100000 is older than main's newest, and its re-added foreign keys on walled fo_* tables are untested against check_pf8b_f7_data_walls; suggested dequeue, #3017 first, re-stamp + F7 lane text. #3001 full run going; #3041 re-run attempt 2; #3073, #3017, #2999 queued.
+
 **Lead B 2 pass, 02:2x IST 23 Nov** (current Lead: Lead 9, local_482034a7): #2927 PF-4s part 1 merged. #3017 PF-21b part 2 Lead B read OK 96a6b1974 (F4 pair; seed in F7 shape; note: DB gate is "no firm", route key is the real gate). #3041 third main merge b91dc1eb9, no new read. Queued: #2368, #3073, #2999. #3001 after #2368; slot #2368 → #3042 → #3017.
 
 **Lead B 2 pass, 01:5x IST 23 Nov:** correction to 01:2x: #3041's batch failure was its own (Lead 8: check_pff1b_bind shard 5, qa621 shard 6). Fix 0df34a67e: Lead B re-read OK 98bc7e023; /run full and label next. #3073 waits its diff-only Approve on 2366ac2be. #2368 queued; #3001 after it.
