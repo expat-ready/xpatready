@@ -155,6 +155,42 @@ Scope: only the diff. adec95da8 and its revert e6365237a cancel out on the evide
 
 Pass, with no criterion at 0.
 
-Reviewer: Approve e6365237a4a3f647ad14eae2c90b77940539a4f9
+Round 2 verdict: Approve e6365237a4a3f647ad14eae2c90b77940539a4f9
 
-Verdict: Approve e6365237a4a3f647ad14eae2c90b77940539a4f9
+## Round 3: diff e6365237a..0ccbd59c98ac08a96b09ff245c14a090697822c7
+
+Scope: only the diff, which changes `service.ts`, the test, and the records (my round-2 section and the breaker's round 2). The committed `review.md` matched my round-2 file.
+
+**What I ran**
+* Suite on a `git archive` copy of 0ccbd59c9: **37 passed, 0 failed**.
+* Four mutations on that copy:
+
+  | Mutation | Result |
+  |---|---|
+  | No 30-minute session in `open` | R2-1 fail and R2-2 go red |
+  | No one-a-minute limit | R2-2 goes red |
+  | A used code not spent | Still 37/37 (see r3-2) |
+  | `codeVerifiedAt` not cleared when a new code is sent | Still 37/37 (see r3-1) |
+
+**The breaker's round-2 fixes**
+* **R2-1, closed.** `service.ts:350-351`, `:367`, `:377`, `:381`. A checked code opens the link for 30 minutes (Sample). After that, opening the link sends a new code and clears `codeVerifiedAt`. The old code no longer works, from any address.
+* **R2-2, closed.** `:374`. A new code at most once a minute per signer, otherwise 429 CODE_TOO_SOON. This holds even with `resend`.
+* **R2-3, closed.** `:72-79`. The limiter re-inserts each address on use, so the oldest go first. It sweeps at most once a minute and keeps at most 50,000 addresses.
+* **R2-4, closed.** `:109-110`, `:123`. The catch-up skips firms with no active licensed person, and stuck seals come first.
+
+All of these still hold:
+* every change writes its audit line under the request lock;
+* only the code's sha256 is stored;
+* nothing reads across firms beyond m1, which is unchanged;
+* no personal data in events or logs.
+
+**Minors (not blocking)**
+* r3-1. No test shows that a new code works after the 30-minute session ends (mutation V). With the clearing at `:377` removed, the new code would never be "live" (`:381`), and the client would be shut out for good. The code is correct today. Fix: one more case in which the new code, once checked, gives the link.
+* r3-2. "A used code is spent" (`:381`) cannot be seen through the door. A code is checked within its 10 minutes, and inside the 30-minute session `open` answers before any code is read, so the old code has always expired by the time it is asked for again. It is harmless defence in depth.
+* r3-3. For FO-6v: `apply` refuses a client's "signed" event once `codeVerifiedAt` is cleared (`:466`). If a vendor's embedded link lives longer than the 30-minute session, a client who signs in an old tab after a new code was sent gets NO_CODE. The fake's link lives 10 minutes, so this cannot happen today. Keep the vendor's link life at or under the session.
+
+**Journey score, round 3:** unchanged, **8.5/10**. A pass with no criterion at 0.
+
+Reviewer: Approve 0ccbd59c98ac08a96b09ff245c14a090697822c7
+
+Verdict: Approve 0ccbd59c98ac08a96b09ff245c14a090697822c7
