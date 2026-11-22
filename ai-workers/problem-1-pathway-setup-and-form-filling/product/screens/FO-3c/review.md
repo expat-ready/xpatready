@@ -224,6 +224,27 @@ Scope: only the diff, which changes `service.ts` and the test. The record files 
 
 **Journey score, round 4:** unchanged, **8.5/10**. A pass with no criterion at 0.
 
-Reviewer: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
+Round 4 verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
 
-Verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
+## PF-19r fix: diff ba53ced16..d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb (tests only)
+
+The Lead asked for this after the fast job's `check_pf19r_every_sender.ts` S1 failure. `api/` is unchanged since 8a09b9609.
+
+**Is the classification true? Yes.**
+* All four `this.ports.mail.send(` calls in `service.ts` (lines 224, 247, 405 and 539: the client's link, the 24 h reminder, the one-time code, the signed copy) use the injected `ports.mail`.
+* The only source of that mail is `CONSULTATION_AGREEMENT_PORTS`, whose factory (`features/front-office-consultation-agreement.ts:14`) injects `[MESSAGES_MAIL, LocalFiles]` and passes the mail through unchanged. The path is `runtimeAgreementPorts(mail, …)`, `controller.ts:20-21`, then `ConsultationAgreements` (`{ ...ports, jobs }`).
+* No other mail is built in those files: no `fakeMail` default, no raw transport, no in-memory list.
+* The controller sends nothing itself, so its entry with no sends is right.
+
+**Counts:** mailSend 4 and anySend 7 are exact against the sweep's patterns.
+* m-pf1 (Minor, wording only): the entry's note says "its other 3 `.send(` are SigningPort's". In fact **one** is `this.ports.signing.send` (`:200`). The other **two** are the service calling its own `send` method (`:99`, `:138`, the agreement's send). Neither is mail, so the classification stands. Fix the note's wording when next touched.
+
+**What I ran**
+* `check_pf19r_every_sender.ts` in the checkout, whose head and files matched d9bf34ad5: **21 passed, 0 failed**. A `git archive` copy cannot reach `prototype/contracts/`.
+* The row suite on a `git archive` copy of d9bf34ad5: **42 passed, 0 failed**.
+* The new PF-19r pass asserts the real thing: `inject[0] === MESSAGES_MAIL` and the same object carried through. The PF-19r fail case only shows the check can tell two mails apart. That is weak, but harmless.
+* The database was up (the coordinator had restarted it).
+
+Reviewer: Approve d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb
+
+Verdict: Approve d9bf34ad5bcebec54b6cf15b2fd0832f4e7de6fb
