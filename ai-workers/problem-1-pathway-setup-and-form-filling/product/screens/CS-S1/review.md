@@ -133,3 +133,25 @@ The HTTP route on an isolated copy, and the firm walls under the API's own datab
 
 **Verdict: Approve** at dc95fa3447616efaa63796e6a74026d561a0d177. Both Majors and all four Minors are fixed and guarded by tests; no new Blocker or Major. Merge on green CI for this commit.
 Reviewer: Approve dc95fa3447616efaa63796e6a74026d561a0d177
+
+## Round 3 (diff only: 9e40aee7cd90b17a60788d864bbece4a8e59bdd0 → 25c882bb630e85e4578c4252f9c90cddc12a655f)
+The tech lead allowed this round. 9e40aee7c is the merge of main on top of the round-2 record (de468fa05, which follows the approved dc95fa344). Two commits since then:
+* **680346c3f, a merge of main (parents 9e40aee7c and 73c4e4dcd).** It is a pure merge. `git show --cc` prints no conflict hunks. None of the 44 files main brought in is one of this PR's 11 files. The stat over `case-access.ts`, `search/`, `features/case-search.ts`, `case-feed.ts`, `party-search-port.contract.ts`, `check_css1_search.ts` and `MODULE.cases.md` from 9e40aee7 to 25c882bb is empty, so `case-feed.ts` did not change either.
+* **25c882bb6, one line in `.mergify.yml` (line 52).** The `case-side` scope now claims `.../studio/api/src/search/*.ts`.
+  * It belongs there. The cases card (`api/src/MODULE.cases.md:4`) claims `api/src/{case-clients,case-deadlines,search}/*.ts`, and `case-clients/*.ts` and `case-deadlines/*.ts` already sit in `case-side`.
+  * It is written like its neighbours: full quoted path, the same indent, and a trailing `# card api-cases (CS-S1 part 2, #2913)` in the form of the CS-DL1 line above it. It sits next to the other card subfolders.
+  * `*.ts` covers both files (`search/case-finder.ts`, `search/party-search.ts`). The folder has no subfolders.
+  * No other `.mergify.yml` line changed, and no other scope claims `api/src/search/`.
+
+### Checks run (at HEAD 25c882bb6, clean tree)
+* `bash product/tools/check-mergify-scopes.sh`: **PASS**, 102 checks.
+* `python3 product/tools/module-cards.py tree`: **PASS**, 15 cards, tree checked.
+
+### Findings
+None. The code, tests, deviations and journey score (9.4 / 10) from round 2 still stand: no PR file changed.
+
+### Not checked
+CI on 25c882bb6, which I cannot see from here.
+
+**Verdict: Approve** at 25c882bb630e85e4578c4252f9c90cddc12a655f. Merge on green CI for this commit.
+Reviewer: Approve 25c882bb630e85e4578c4252f9c90cddc12a655f
