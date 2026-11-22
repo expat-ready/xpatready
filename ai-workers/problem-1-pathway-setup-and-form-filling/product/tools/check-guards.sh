@@ -7,11 +7,12 @@ set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
 TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-contributing.sh check-owed-watch.sh"
 bad=0
-for t in $TESTS check-deps-line.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+for t in $TESTS check-deps-line.sh check-pr-concurrency.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
 # guard | file the edit goes in | sed edit that switches the guard off (no | or ' in it: .. stands for || and . for ') | the test that must then fail
+# Rows 36 deadlock and 36 wfname add a line with GNU sed's \n in the replacement (CI runs on ubuntu; BSD sed would not).
 MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-lead.sh
 2|product/tools/label-guard.sh|s/^# No review for the head.*/exit 0/|check-label-guard.sh
 2 walk|product/tools/label-guard.sh|s/^  c=\$next; merges=.*/  exit 0/|check-label-guard.sh
@@ -217,7 +218,18 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 34|product/tools/image-size.sh|s/ --not "\$base"//|check-image-size.sh
 35|product/tools/pr-suites-plan.sh|s/direct=true;; esac/direct=false;; esac/|check-pr-suites-job.sh
 35 cap|product/tools/pr-suites-plan.sh|s/\[ "\$n" -gt "\$MAX" \] \&\& n=\$MAX/true/|check-pr-suites-job.sh
-35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: false$/  cancel-in-progress: true/|check-pr-suites-job.sh
+35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-suites-job.sh
+36 batch|../../.github/workflows/ci.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
+36 stale|../../.github/workflows/walks.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: false/|check-pr-concurrency.sh
+36 group|../../.github/workflows/module-cards.yml|/^  group: module-cards-/d|check-pr-concurrency.sh
+36 comment|../../.github/workflows/review-rounds.yml|s/github.event.issue.number .. //|check-pr-concurrency.sh
+36 deadlock|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: review-rounds-${{ github.event.pull_request.number }}\njobs:/|check-pr-concurrency.sh
+36 wfname|../../.github/workflows/review-rounds.yml|s/^jobs:$/concurrency:\n  group: ${{ github.workflow }}-${{ github.event.issue.number }}\njobs:/|check-pr-concurrency.sh
+36 kind|../../.github/workflows/ci.yml|/^  kind:$/,/^    if:/{/^    if:/d}|check-pr-concurrency.sh
+36 batchcancel|../../.github/workflows/guards.yml|s/^  cancel-in-progress: .*/  cancel-in-progress: true/|check-pr-concurrency.sh
+36 rerun|product/tools/queue-gate.sh|s/^    \[ "\$now" = "\$head" \] .. {.*/    true/|check-queue-gate.sh
+36 ready|../../.github/workflows/guards.yml|/^    types: \[opened, synchronize, reopened, ready_for_review\]$/d|check-pr-concurrency.sh
+36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
 35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh
