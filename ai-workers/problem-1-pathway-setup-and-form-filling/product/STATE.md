@@ -1,8 +1,8 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_bcc6ed82-631c-44af-bb92-b7e04a629acd Lead 4 · 22 Nov 14:18 IST (took over from Lead 3 (local_6efc4ae3) at ~315k, P-446; Opus 5.5 medium, P-788)
+current_lead: local_fec215ea-92cb-4343-a057-a43480a143bd Lead 5 · 22 Nov 17:10 IST (took over from Lead 4 (local_bcc6ed82) at ~546k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 17:08 IST: Lead 4 is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 17:10 IST: Lead 4 handed over to Lead 5 · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -12,14 +12,14 @@ updated: 2026-11-22 17:08 IST: Lead 4 is the Lead · milestone: Release 1 proven
 
 Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word for word in `product/history/STATE-2026-11-22-1349-lead3-check-lines.md`.
 
-## Hand-over Lead 3 → Lead 4, 14:18 IST 22 Nov (Lead 3 at ~315k, P-446; the Lead 2 → 3 block and Lead 3's lines stay below and in history)
-**Goal (founder, P-795):** 12 proven (target 15) by 07:00-09:00 IST 23 Nov. Proven this cycle: 0; qa walking R1.39 and R1.89 (merged 13:2x). Board: `product/design/board-lead-a-2026-11-22.md`.
-**Merged since 13:00:** #2926 R1.89, #2929 R1.39, #2909/#2931 R1.10 p3a/3b, #2885 R1.24 part, #2884 R1.102 find door, #2906 R1.92 p2, #2934 nightly fix, #2445 scopes check, #2967 FO-7g p1, qa journeys.
-**Do first:** (1) **#2980** (main fix: front-office/MODULE.md 41 > 40 lines; module-cards red on every PR) is queued and green: let it merge. (2) Then **#2952** records (P-785..P-795, EXPERIENCE §7 UX laws, RULES as of P-795): re-label after its checks are green on eb11cce19 (it lost the label on push; module-cards needs #2980); #2916 (P-793) and #2927 (P-790) and #2955 pr-rules wait on it. (3) **#2968** PF-8b-f5 labelled 14:1x, ci running: on merge send AWS (local_3f051647) "rebuild" + `migrate resolve --rolled-back 20261116013000_pf12_firm_walls` then `deploy`, and ask the founder to type the CodeBuild OK **in the AWS session**. (4) P-791: batch size 2 → 3 and #2925 only in a window with no batch running; name the hold to the founder (P-792).
-**Lanes told (tasks LX931-LX950):** R1.10 p4 #2908 (requeued) and p5 #2933; R1.23 #2910 conflict (LX950); R1.90 #2935 dequeued (LX937); R1.88 #2916 waits P-793 on main; R1.5 #2927 waits P-790 on main; FO-7b #2953 round 5 allowed with a stop condition (LX949); Track B freed lanes: PF-F1b, CS-W3 2-review, FO-7g 1w (briefs on lead-b/2026-11-22-track-b); Enforcement: #2964 then UX-law enforcers LX936/LX941. A pr-rules **re-run** reads the old PR body: edit the body to get a fresh run.
-**Founder, open:** ~~R1.21~~ answered 14:3x: re-word (P-796, A285); then Lead B's Q1 (tax province: firm's province for R1, recommended). Track B: only R1.56 can prove by 09:00 (low-medium odds). Standbys: Lead 5 (local_fec215ea), Lead 6 (local_d4609e9d). Live-when: Speed 1, Speed 2, ENF-798, ENF-803 each live when its PR merges (Lead merges pipeline fixes in a no-batch window, P-214, P-791). Earlier check lines 15:1x-15:3x: word for word in `history/STATE-2026-11-22-1546-lead4-check-lines-1500-1535.md`. Check lines 15:4x-16:2x: word for word in `history/STATE-2026-11-22-1634-lead4-check-lines-1544-1624.md`. Check lines 16:3x-16:5x: word for word in `history/STATE-2026-11-22-1709-lead4-check-lines-1634-1654.md`. **17:08:** PROVEN this cycle 2 (R1.39 16:34, R1.89 16:59); total 45/101 on main (qa board). #3038 (parallel checks 4) merged 16:54; 20 runs queued. Owed by Lead 4: P-423 read of #2972 (.github/), records row for #2919's size exception, read and label #2919 and #2964.
+## Hand-over Lead 4 → Lead 5, 17:10 IST 22 Nov (Lead 4 at ~546k context, P-446; the Lead 3 → 4 block and Lead 4's check lines stay below and in history)
+**Goal (founder, P-795, A286):** 12-15 proven per track. Proven this cycle 2 (R1.39 16:34, R1.89 16:59); total 45/101 on main (41 at 00:00 IST, 34 24 h ago). Boards: `design/board-lead-a-2026-11-22.md`, `design/board-lead-b-2026-11-22.md`; plan page https://claude.ai/artifact/2aNo4YH89N7CcJG7Jnx2Dn (`design/two-track-plan-2026-11-22.html`).
+**Pipeline at 17:10:** 11 runs queued, 35 running (was 255 queued at 16:04); #3038 max_parallel_checks 4 merged 16:54; #3007 (supersede older PR runs, drafts light) queued; #3006 (track queues; Lead read OK) fixing HIDDEN RED at batch-proof.yml:102, then the Lead merges it (founder clicks if the classifier refuses, as for #3038). Both Mac runners online (xr-mac-light restarted 15:19).
+**Do first:** (1) **Start CS-MV1** (MoneyVisibilityPort, R1.56 critical path; row on lead-b @ a0ca4296f) in a founder-typed turn from the desktop app (Remote Control cannot start sessions); brief text: Lead 4's 17:1x start attempt in this session. (2) **Records PR** with P-805 (size exceptions #3042 FO-9b p1 1,080 lines and #2368 FO-7ts p3 1,045 lines; granted on the PRs) and the 16:49 R1.5 AWS-half proof line. (3) **#2953** FO-7b 1b: after the diff-only re-approve of 2311bc168, Lead money read, label. (4) **AWS:** waits PF-8b-f6 (#3060, design approved); on merge send "rebuild" (founder OK stands), then resolve --rolled-back 20261119170000_pf18bk_support_keys, deploy, proofs R1.13, R1.15, R1.24, R1.5 HTTPS and cookies. R1.5 code steps are proven by qa on an isolated copy (no agent types a password on staging). (5) **#2999** CS-NT1 p1 needs re-approve of 6666ac70b, then Lead read (schema). (6) Migration slot order: #2368 → #3042 → PF-21b p2 (#3017) → FO-5d.
+**Lanes (all 40 read 15:30-15:47, next steps typed):** Track B lanes on Lead B's briefs @ lead-b/2026-11-22-track-b; Speed 1, Speed 2, ENF-798 (#3000 merged), ENF-803 (stale info: add an alarm for unsent text left in prompt boxes; two found today). Lead B cannot type into cloud lanes: the Lead types for it. Classifier refuses merges and PR closes by the Lead: founder asked to close #2320 (superseded by #2999).
+**Standbys:** Lead 6 (local_d4609e9d); top up one more at the founder's next typed turn in the desktop app.
 
-The Lead 2 → 3 hand-over block and Lead 3's check lines: word for word in `product/history/STATE-2026-11-22-1418-lead3-handover-2-3-block-and-lines.md`.
+The Lead 3 → Lead 4 block and Lead 4's check lines: word for word in `history/STATE-2026-11-22-1710-lead4-handover-3-4-block-and-lines.md`.
 
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
@@ -48,7 +48,7 @@ Older Start here pointers (P-754 hold, 19 Nov lines): `product/history/STATE-202
 **Never run guard/test suites in the main copy** (7 Nov 09:18 incident): scratch clone only, deleted after.
 
 ## Leads, in order
-**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST).
+**New account from 22 Nov (A279: numbering restarts, no series shown):** Lead 1 (local_51d4f3ca, from 22 Nov 10:1x IST), Lead 2 (local_d718f32a, from 22 Nov 11:17 IST), Lead 3 (local_6efc4ae3, from 22 Nov 13:05 IST), Lead 4 (local_bcc6ed82, from 22 Nov 14:18 IST), Lead 5 (local_fec215ea, from 22 Nov 17:10 IST).
 **Series 3 (P-749):** Leads 1 to 19 (20-22 Nov): word for word in `product/history/STATE-2026-11-22-1455-lead4-series-3-leads-line.md`.
 **Series 2 (P-433):** Leads to Lead 100 (local_59a9ad7a): word for word in `product/history/STATE-2026-11-21-0822-lead10s3-series-2-leads-line.md`.
 **Series 1: Leads 1 to 41, before 9 Nov 17:48 IST**, never renamed or renumbered: the full list, word for word, is in `history/STATE-2026-11-09-2130-lead2s2.md` ("Leads, in order").
