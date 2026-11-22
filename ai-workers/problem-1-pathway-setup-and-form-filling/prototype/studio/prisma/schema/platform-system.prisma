@@ -1,0 +1,101 @@
+// platform-system.prisma — ExpatReady's own staff: sign-in records, roles, system/* keys, audit lines. Owner: Lead B (platform).
+//
+// PF-4s part 1 (SA-7-1, SA-7-2, SA-7-3, SA-7-11, SA-7-14, SA-7-20, SA7-D8, Appendix A of SA-07 v2.17). Our own staff are a
+// separate sign-in group from every firm's staff and from clients: no table here has a firm_id (SA-7-1), and none is
+// under PF-12's firm policy. Instead each is closed to a session that acts for a firm (policy plat_system_no_firm in the
+// migration 20261122060000_pf4s_system_identity): a firm's request can never read or write our staff.
+// Rules Prisma cannot say (the six role codes, the key shape, insert-only audit lines, the policies) are in that migration.
+
+enum PlatSystemStaffStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+/// REFUSED: the guard answered 401 (step-up), 403 or 400 (no reason) to a signed-in staff member.
+enum PlatSystemAuditOutcome {
+  ALLOWED
+  REFUSED
+}
+
+/// The six fixed staff roles (SA7-D8: codes and final display names). Changed by a release, never by a screen (SA7-D2).
+model PlatSystemRole {
+  code        String @id
+  displayName String @map("display_name")
+
+  grants      PlatSystemRoleGrant[]
+  permissions PlatSystemRolePermission[]
+
+  @@map("plat_system_role")
+}
+
+/// One of our own staff (SA-7-1: no firm_id). Deactivated is the end state; a row is never deleted (SA7-D58).
+model PlatSystemStaff {
+  id          String                @id @default(uuid()) @db.Uuid
+  email       String                @unique
+  displayName String                @map("display_name")
+  status      PlatSystemStaffStatus @default(ACTIVE)
+  /// The staff pool's `sub` once the person has signed in through Cognito; the local stand-in names the id instead.
+  identitySubject String?           @unique @map("identity_subject")
+  /// Every session that signed in at or before this moment is refused (part 2 sets it on deactivation).
+  sessionsEndedAt DateTime?         @map("sessions_ended_at") @db.Timestamptz
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz
+
+  grants PlatSystemRoleGrant[]
+  audits PlatSystemAudit[]
+
+  @@map("plat_system_staff")
+}
+
+/// A role a staff member holds (SA-7-11: several per person). Ended, never deleted; one open grant per person and role.
+model PlatSystemRoleGrant {
+  id        String    @id @default(uuid()) @db.Uuid
+  staffId   String    @map("staff_id") @db.Uuid
+  roleCode  String    @map("role_code")
+  grantedAt DateTime  @default(now()) @map("granted_at") @db.Timestamptz
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz
+
+  staff PlatSystemStaff @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  role  PlatSystemRole  @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+
+  @@index([staffId])
+  @@map("plat_system_role_grant")
+}
+
+/// The system/* keys each role holds (Appendix A; each pair cites its row in the migration).
+model PlatSystemRolePermission {
+  roleCode      String @map("role_code")
+  permissionKey String @map("permission_key")
+
+  role PlatSystemRole @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+
+  @@id([roleCode, permissionKey])
+  @@map("plat_system_role_permission")
+}
+
+/// One line per /api/system call by a signed-in staff member, allowed or refused (SA-7-3, SA-7-20). Insert-only.
+/// Its staff member is a real one (foreign key; staff are never deleted). Never on a firm's trail (audit_event): no firm.
+model PlatSystemAudit {
+  id        String                 @id @default(uuid()) @db.Uuid
+  at        DateTime               @default(now()) @db.Timestamptz
+  /// Always `expatready_staff` (SA-7-3: the actor is named as ExpatReady staff from the sign-in group itself).
+  actorKind String                 @default("expatready_staff") @map("actor_kind")
+  staffId   String                 @map("staff_id") @db.Uuid
+  staffName String                 @map("staff_name")
+  method    String
+  /// The route's declared pattern ("/api/system/firms/:id"), never the path itself.
+  route     String
+  /// What the call affected: the route's path parameters ({ "id": "…" }).
+  target    Json
+  outcome   PlatSystemAuditOutcome
+  /// The refusal's code (MISSING_PERMISSION, REASON_REQUIRED, …); null when allowed.
+  code      String?
+  reason    String?
+  requestId String                 @map("request_id")
+  /// The caller's User-Agent, at most 300 characters (SA-7-20 "device").
+  device    String?
+
+  staff PlatSystemStaff @relation(fields: [staffId], references: [id], onDelete: Restrict)
+
+  @@index([staffId, at])
+  @@map("plat_system_audit")
+}
