@@ -8,7 +8,7 @@ Steps: B build · R review · Q queue · J journey written · P qa proof. ✔ do
 
 | # | Capability | Open parts → lane (started 14:4x unless named) | B | R | Q | J | P | Waits on | Proven by (Lead estimate) |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | R1.56 client invoices, provincial tax | FO-7b 1b #2953 (queued); FO-7g 1w (LX945); FO-7s1 screens (new lane) | ▶ | ▶ | ▶ | ▶ qa-B | · | #2952 records on main; P-797 client's province | 23 Nov 09:00 |
+| 1 | R1.56 client invoices, provincial tax | FO-7b 1b #2953 (queued); FO-7g 1w (LX945); FO-7s1 screens (new lane) | ▶ | ▶ | ▶ | ▶ qa-B | · | #2952 on main; FO-7g part 3 (client province, a migration) and a "from retainer" part, both needed by its journey (qa, 15:0x) | 24 Nov (was 23 Nov 09:00) |
 | 2 | R1.29 duplicate warning, safe merge | FO-9b part 1 (lane, brief FO-9b-1, migration slot 3); FO-9s part 2 (lane, brief FO-9s-2; part 1 #2900 merged) | ▶ | · | · | ▶ qa-B | · | concept approval (Lead) | 23 Nov 18:00 |
 | 3 | R1.55 withdraw, re-issue, decline | FO-5d decline and withdraw (lane, brief FO-5d, migration slot 5, after FO-6 part 3) | ▶ | · | · | ▶ qa-B | · | FO-6 lane | 24 Nov |
 | 4 | R1.105 keep periods, leaving firm | PF-5 part 4 hold clock and notices 0/16/46/83 (P-799; lane, brief PF-5-4); AUD-5 p2 merged #2197; AUD-2 and PF-11c blocked (PF-11c lane stopped) | ▶ | · | · | ▶ qa-B | · | none | 24 Nov |
