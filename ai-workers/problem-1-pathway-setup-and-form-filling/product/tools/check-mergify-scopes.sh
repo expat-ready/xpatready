@@ -3,7 +3,8 @@
 # stay true to the code. Each fenced module's scope holds its module card's own `paths:` (the cards are the one map of
 # the modules, P-615), every scope and barrier pattern matches a tracked file, and the product and pipeline queues use
 # one and the same "pipeline paths" pattern (P-717 (a)); each area's screens, tests and feature files sit in its scope
-# (path owners, P-785 (2) step 2). Run by check-guards.sh, and by ci.yml on every pull request and batch (P-756 (2): job
+# (path owners, P-785 (2) step 2), and a track list (track-paths.txt) never repeats a scope's pattern (one source).
+# Run by check-guards.sh, and by ci.yml on every pull request and batch (P-756 (2): job
 # "fast", and job "ci" for notes; checked below). US$0, no network.
 #   bash product/tools/check-mergify-scopes.sh
 set -u
@@ -208,6 +209,32 @@ for why, edit in (("the fast step gone", lambda t: re.sub(r"(every PR and batch,
     if t == citext: bad.append(f"self-test: the edit '{why}' changed nothing in ci.yml, so it proves nothing")
     elif not ci_bad(t): bad.append(f"self-test: ci.yml with {why} still passes this check")
 n += 1; bad += ci_bad(citext)
+# One source (Lead 4, 22 Nov 16:03 IST, for SPD-1 #3006): the path owners live in .mergify.yml's scopes only. A track
+# list (product/tools/track-paths.txt, read by track-route.py) names a scope by "scope:<name>"; a raw line that repeats a
+# scope's own include pattern is a second copy that can drift, so it is refused. A raw line naming part of a scope (a
+# sub-folder) is allowed: that is the track's own split. Dormant while track-paths.txt does not exist.
+def track_copies(text, scopes):
+    """-> [(line number, track, glob, scope)] for every raw track line that repeats a scope include pattern."""
+    own = {g: k for k, v in scopes.items() for g in ((v or {}).get("include") or [])}
+    prefix, out = "", []
+    for i, raw in enumerate(text.split("\n"), 1):
+        parts = raw.split("#", 1)[0].split()
+        if len(parts) != 2: continue
+        k, v = parts
+        if k == "prefix": prefix = v; continue
+        if v.startswith(("scope:", "!")): continue
+        g = v[1:] if v.startswith("/") else prefix + v
+        if g in own: out.append((i, k, v, own[g]))
+    return out
+TP = os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/track-paths.txt")
+if os.path.exists(TP):
+    for i, k, v, sc in track_copies(open(TP, encoding="utf-8").read(), src):
+        n += 1; bad.append(f"one source: track-paths.txt:{i} '{k} {v}' repeats scope {sc}'s own pattern: write '{k} scope:{sc}' (or name a sub-folder), never a second copy")
+n += 1   # self-test, on a made-up track list
+demo = f"prefix {ST}\ntrack-a scope:platform\ntrack-a tests/check_pf*\ntrack-a api/src/front-office/sales/**\ntrack-b /{ST}tests/check_cs*\n"
+got = [(k, v, sc) for _, k, v, sc in track_copies(demo, src)]
+if got != [("track-a", "tests/check_pf*", "platform"), ("track-b", f"/{ST}tests/check_cs*", "case-side")]:
+    bad.append(f"self-test: a track list repeating scope patterns is not caught exactly (got {got})")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)
