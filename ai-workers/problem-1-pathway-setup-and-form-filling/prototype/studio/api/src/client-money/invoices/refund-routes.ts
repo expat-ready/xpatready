@@ -17,6 +17,7 @@ export class RefundsController {
   @Post(":paymentId/refunds") @PermissionKeys("agent/refund:create")
   async refund(@Req() r: R, @Param("paymentId") id: string, @Body() b: unknown, @Res({ passthrough: true }) res: Response) { const v = await this.refunds.refund(staffOf(r), id, b); if (v.replayed) res.status(200); return v; }
 
+  /** 201 for a new choice, 200 for the replay of a Refund choice under the same idempotency key (as the refund route). */
   @Post(":paymentId/extra") @PermissionKeys("agent/payment:record")
-  choose(@Req() r: R, @Param("paymentId") id: string, @Body() b: unknown) { return this.refunds.choose(staffOf(r), id, b); }
+  async choose(@Req() r: R, @Param("paymentId") id: string, @Body() b: unknown, @Res({ passthrough: true }) res: Response) { const v = await this.refunds.choose(staffOf(r), id, b); if (v.replayed) res.status(200); return v; }
 }
