@@ -1,0 +1,30 @@
+{
+  "item": "R1.39",
+  "name": "39 Staff calendar screen",
+  "pr": 2929,
+  "sha": "344f2641adf1db450f323a0f73f83dd015abd024",
+  "run_id": "45000462083",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45000462083",
+  "at": "2026-11-22T08:05:23.156Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_39.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45000462083/artifacts/14745951133",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.39-344f2641adf1db450f323a0f73f83dd015abd024.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
