@@ -137,9 +137,10 @@ try {
   ok("FO-5d pass: declineReasonOf keeps a trimmed reason and reads nothing, blank or spaces as no reason",
     declineReasonOf("  Too expensive \r\n") === "Too expensive" && declineReasonOf(undefined) === null && declineReasonOf(null) === null && declineReasonOf(" \n\u200b ") === null
     && declineReasonOf("a\r\nb") === "a\nb");
-  ok(`FO-5d fail: declineReasonOf refuses ${DECLINE_REASON_MAX + 1} characters, a control character and a value that is not text`,
-    [`${"y".repeat(DECLINE_REASON_MAX + 1)}`, "Too\u0007much", 42, { reason: "x" }].every((v) => { try { declineReasonOf(v); return false; } catch (e) { return e instanceof DeclineReasonInvalid; } })
-    && declineReasonOf(`  ${"y".repeat(DECLINE_REASON_MAX)}  `)?.length === DECLINE_REASON_MAX);
+  ok(`FO-5d fail (review M1, m3): declineReasonOf refuses ${DECLINE_REASON_MAX + 1} characters, a control character, a NUL, a lone surrogate and a value that is not text; ${DECLINE_REASON_MAX} emoji (code points, as the database counts) are kept`,
+    [`${"y".repeat(DECLINE_REASON_MAX + 1)}`, `${"\u{1F600}".repeat(DECLINE_REASON_MAX + 1)}`, "Too\u0007much", "No\u0000thanks", "No \ud800 thanks", "No \udc00", 42, { reason: "x" }].every((v) => { try { declineReasonOf(v); return false; } catch (e) { return e instanceof DeclineReasonInvalid; } })
+    && declineReasonOf(`  ${"y".repeat(DECLINE_REASON_MAX)}  `)?.length === DECLINE_REASON_MAX
+    && [...(declineReasonOf("\u{1F600}".repeat(DECLINE_REASON_MAX)) ?? "")].length === DECLINE_REASON_MAX && declineReasonOf("ok \u{1F600}") === "ok \u{1F600}");
 
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DEMO), options: "-c TimeZone=UTC" }) }); dbs.push(db);
   const at = new Date(Math.ceil(Date.now() / 1000) * 1000 + 60_000);   // after every request's sent_at (the times check), whole seconds
@@ -162,8 +163,9 @@ try {
     ok("FO-5d pass: the decline writes exactly one audit line in its transaction (who: the signing door; the reason in after, ids in detail)",
       lines(e.r) === 1 && sql(DEMO, `select actor || ':' || entity || ':' || (detail->>'signerId') || ':' || (detail->>'declineReason_after') from audit_event where action = 'signing.declined' and entity_key = '${e.r}'`)
         === `system:signing-door:fo_signature_request:${e.c1}:Found another firm.`, sql(DEMO, `select detail from audit_event where entity_key = '${e.r}'`));
-    ok("FO-5d fail (AG05-D2(6)): after a decline every link is dead: the other client cannot sign or decline, the firm cannot sign, the reason cannot change",
+    ok("FO-5d fail (AG05-D2(6)): after a decline every link is dead: the firm signer cannot sign or decline, the client who signed cannot decline, the declined signer's reason cannot change",
       refused(DEMO, sign(e.f), /DECLINED request is final|is DECLINED and final/) && refused(DEMO, `update fo_signer set declined_at = now() where id = '${e.f}'`, /DECLINED request is final|is DECLINED and final/)
+      && refused(DEMO, `update fo_signer set declined_at = now() where id = '${e.c2}'`, /DECLINED request is final|does not change/)
       && refused(DEMO, `update fo_signer set decline_reason = 'other' where id = '${e.c1}'`, /does not change|DECLINED request is final|is DECLINED and final/));
     const again = await decline(e.f, "Me too");
     ok("FO-5d fail: a second decline on the ended request is refused with its state; nothing changes, no second line",
@@ -203,6 +205,21 @@ try {
     ok("FO-5d pass: the firm signer may decline while the clients have signed (any signer, AG-5-68 r2); the clients' signatures stay",
       "declined" in firm && sql(DEMO, `select status from fo_signature_request where id = '${c.r}'`) === "DECLINED"
       && sql(DEMO, `select count(*) from fo_signer where request_id = '${c.r}' and signed_at is not null`) === "2", firm);
+  }
+  {
+    // review m1: under PF-12's wall, as the API runs (role xr_app, the session's firm), not as the suite's superuser.
+    const asFirm = (sessionFirm: string, signerId: string, firmId: string, reason?: unknown) => db.$transaction(async (tx) => {
+      await tx.$queryRaw`select set_config('app.firm_id', ${sessionFirm}, true), set_config('role', 'xr_app', true)`;
+      return declineSigning(tx, auditEvent, { firmId, signerId, reason, at, via: "door" });
+    });
+    const e = envelope();
+    const crossB = await asFirm(firmB, e.c1, firmB, "No"), crossA = await asFirm(firmB, e.c1, firmA, "No");
+    ok("FO-5d fail (wall): acting as firm B, firm A's signer is the one `unknown` answer whatever firm id is passed; nothing changes",
+      "refused" in crossB && crossB.refused === "unknown" && "refused" in crossA && crossA.refused === "unknown" && sql(DEMO, `select status from fo_signature_request where id = '${e.r}'`) === "SENT" && lines(e.r) === 0, { crossB, crossA });
+    const own = await asFirm(firmA, e.c1, firmA, "Under the wall");
+    ok("FO-5d pass (wall): acting as firm A under the wall (xr_app), firm A's signer declines; one line on firm A's trail",
+      "declined" in own && sql(DEMO, `select status from fo_signature_request where id = '${e.r}'`) === "DECLINED"
+      && sql(DEMO, `select firm_id from audit_event where action = 'signing.declined' and entity_key = '${e.r}'`) === firmA, own);
   }
   {
     const e = envelope(), was4 = state(e);

@@ -21,16 +21,21 @@ export class DeclineReasonInvalid extends Error {
 }
 
 const INVISIBLE = /^[\s\u00a0\u1680\u2000-\u200f\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]*$/;
-const CONTROL = /[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+/** A lone surrogate (ill-formed UTF-16): PostgreSQL stores U+FFFD in the column but jsonb refuses it in the audit line
+ *  (review M1: a public caller could raise the audit-failure alarm at will). */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 
 /** The reason as it is kept: undefined, null, "" or only spaces → null (no reason); else trimmed, 1-500 characters, line
- *  breaks (a Windows line break becomes one) and tabs kept, no other control character. Anything else is refused. */
+ *  breaks (a Windows line break becomes one) and tabs kept, no other control character (NUL included), no lone
+ *  surrogate; the length counts characters (code points) as the database's char_length does. Anything else is refused. */
 export function declineReasonOf(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   if (typeof v !== "string") throw new DeclineReasonInvalid("The reason must be text.");
   const t = v.replace(/\r\n?/g, "\n").trim();
   if (!t || INVISIBLE.test(t)) return null;
-  if (t.length > DECLINE_REASON_MAX) throw new DeclineReasonInvalid(`The reason is at most ${DECLINE_REASON_MAX} characters.`);
+  if (LONE_SURROGATE.test(t)) throw new DeclineReasonInvalid("The reason has a character we cannot read.");
+  if ([...t].length > DECLINE_REASON_MAX) throw new DeclineReasonInvalid(`The reason is at most ${DECLINE_REASON_MAX} characters.`);
   if (CONTROL.test(t)) throw new DeclineReasonInvalid("Remove control characters from the reason.");
   return t;
 }
