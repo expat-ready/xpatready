@@ -107,6 +107,13 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # Back on this list until that is fixed; the nightly full set still runs it. Fix row (proposed on #1236): run it so the
 # exit cannot deadlock (Node 24's own type stripping instead of tsx's loader thread, or no process.exit), then 3 batch
 # passes in a row.
+# Off the list 22 Nov (runtime fix row, after nightly 44966816530 hung on it again): reproduced locally on Node 24.21 in
+# 38 of 100 runs; gdb on a hung run: the main thread in process.exit > Environment::Exit > NodePlatform::Shutdown joins
+# V8's worker threads, while one worker (concurrent baseline compile) waits in CollectionBarrier::AwaitCollectionBackground
+# for the main thread to collect garbage: a deadlock inside process.exit, not tsx and not a leaked handle. The suite now
+# sets process.exitCode and ends by itself (V8 is disposed before the platform shuts down): 300 of 300 runs exit 0 in
+# about 0.3 s. Any other suite ending in a synchronous process.exit can meet the same deadlock (rarely: b78 is all
+# synchronous work right up to the exit).
 # check_c613_filing_changes_browser.cjs (C6.13 filing changes by screens, runtime) quarantined 12 Nov by the tech lead's
 # ruling on #1612 (Lead 23, P-205): its focus check "C6.13 walk 6a pass (review M4): after the change, focus is back on
 # the person's row (its menu button)" fails at random. On main's code (348fa8b11's api, a fresh isolated copy each run)
@@ -121,7 +128,7 @@ SKIP="check_catalogue_scale.cjs check_pf8r_restore.ts"
 # 20 Nov: the suite derives its days from today's date (full runs 44676827988, 44676831421; #2305's batch). No product PR
 # merged for ~1.5 h. The nightly full set still runs it. The fix lane ("Fix · FO-3st2 staff-hours test fails by date")
 # pins the suite's dates and removes this hold in the same PR; it must be off this list by 21 Nov.
-QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_b78_section_names.ts check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
+QUARANTINE="check_forms_c36_rule_facts_browser.cjs check_screen01_api.ts check_d1_reset_to_six_browser.cjs check_c613_filing_changes_browser.cjs check_fo3st2_availability_browser.ts"
 # Automatic quarantine (B122): only well-formed entries; anything else is named and ignored, never run blind.
 AUTOQ=" "
 for e in ${SUITES_QUARANTINE_AUTO:-}; do
