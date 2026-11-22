@@ -71,3 +71,28 @@ Actual: the address is stripped to `/platform/activity-log` while the sign-in ca
 Seen in passing, not counted (outside this round's scope): at 1024 px the Person select shows "Everyon" clipped.
 
 Verdict: Changes dc006e04e0e4e70922fd785b4e4778656a80a2fd
+
+## Round 3 (head `e8ffb5edf26dbdff605b08f830bda1ddd9a422cb`)
+Breaker, 22 Nov 2026. I read `git diff dc006e04e..e8ffb5edf -- prototype/studio` only and ran a fresh copy `br_aud4s` on :4446, stopped afterwards. Every sign-in went through the real sign-in card. A per-frame watcher (`requestAnimationFrame`) checked the body text and every input or select value for firm A's `client-alpha` or `br.hostile` after firm B signed in. This was not a full sweep. **Round 3 totals: 0 Blocker · 0 Major · 2 Minor.**
+
+**R2-M1: fixed, and held.** Steps: A opens the filtered address, clicks Team, signs out; B signs in and presses Back.
+* B lands on `/platform/activity-log` with no filters and the "Filters cleared" notice.
+* No frame showed firm A text.
+* Getting around the stamp (`activity-log-page.tsx:300-310`):
+  * Forward and then Back again: held. A reload of the cleared entry: held.
+  * Three filtered entries pushed by A, then Back three times and `history.go(3)`: each entry was cleared on arrival, with no firm A frame.
+  * A's session ending elsewhere (a second sign-in by A from outside), then B signing in from "Signed in elsewhere": cleared.
+  * The same email as Owner of firm B (a new `platform_staff` row in `sample-solo`), signing in on A's entry: cleared, because the stamp is firm id plus staff id.
+  * B signing in on A's entry, using the menu, then Back: cleared.
+  * Expected to keep their filters, and they did: A signing out and back in on A's own entry; a link opened by full load mid-session by B, which is unstamped and so stamped for B.
+* Residual, by design: an address A loads while already signed out is never stamped, so it counts as a link and keeps its filters.
+
+**R2-M2: fixed, and held.** A fresh tab, signed out, opens `/platform/activity-log?action=br.hostile`. After the same firm's Owner signs in, the filter is still there: sentence "action br.hostile (Advanced)", one line, entry stamped for that person.
+
+**R2-m1: fixed, and held.** A stand-in answer with `timeZone: "Mars/Olympus_Mons"` no longer blanks the app: the header stays and nothing throws. A stand-in with `America/Toronto` gives "(Toronto time)".
+
+**Minors:**
+* **R3-m1. An unknown zone now fails the whole list, and the words point the wrong way.** `contract.ts:28` (`refine(isZone)` rejects the whole page): the page says "The activity log could not load · Check your connection and try again · Retry", but Retry can never succeed and the connection is not the cause. Falling back to UTC would keep the list. Latent: AUD-4 sends no zone today.
+* **R3-m2. "Filters cleared" comes back on every return to that entry.** `activity-log-page.tsx:232` (`auditCleared` stays in history state): after B is told once, a reload or Back-then-Forward onto the same entry shows "Filters cleared … set in an earlier session" again, though nothing was cleared that time. It goes once B changes any filter.
+
+Verdict: Approve e8ffb5edf26dbdff605b08f830bda1ddd9a422cb
