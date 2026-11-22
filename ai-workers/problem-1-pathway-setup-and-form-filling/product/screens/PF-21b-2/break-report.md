@@ -105,3 +105,29 @@ New or remaining (all Minor):
 - m1, m3 and m7 are with the Lead as documented or open questions (not re-raised).
 
 Verdict: Approve 5fda25666d9937f65d2c8165b10655fef9673af0
+
+## Round 3 — `git diff 5fda2566…16da2b10e` (re-stamp to 20261122180000; the seed INSERT inside a PF-8b F7 lifting DO)
+
+**Set-up.** A throwaway PostgreSQL 18 cluster on port 15497 (initdb, `log_error_verbosity=terse`), removed at the end. `prisma migrate deploy` ran through a copy of `prisma/`, as in F7's own check. The runner was `xr_admin` (NOSUPERUSER, CREATEROLE, member of `rds_superuser`), or `postgres` for the superuser case. For each non-BYPASSRLS case, every migration up to `20261122060000_pf4s_system_identity` was deployed with BYPASSRLS, then `ALTER ROLE xr_admin NOBYPASSRLS`, then pf21b.
+
+**Results.** The seed count is for `system/compliance:legal-hold`; FORCE is read from `relforcerowsecurity`.
+- **Superuser, all migrations:** pf21b applied; 1 seed row; FORCE on for plat_system_role, plat_system_role_permission and plat_legal_hold.
+- **BYPASSRLS admin, all migrations:** pf21b applied; 1 seed row; all three tables forced.
+- **NOBYPASSRLS owner, pf21b alone:** pf21b applied; 1 seed row; all three forced. The owner sees all 24 permission rows even under FORCE, because the policy is "no firm".
+- **NOBYPASSRLS owner whose role default sets `app.firm_id`:** this is the case where the lift matters.
+  - Control: a bare INSERT under FORCE fails with "new row violates row-level security policy".
+  - Migration: pf21b applied; 1 seed row; all three forced again.
+- **The INSERT fails inside the DO** (the row was planted first, so the primary key refuses it): P3018, 23505.
+  - FORCE is still on for both PF-4s tables. plat_legal_hold is absent: Prisma's single implicit transaction rolled back the whole file. No locks are left.
+  - Recovery (delete the planted row, `migrate resolve --rolled-back`, deploy again) applied; all forced.
+- **A failure after the DO**, at CREATE FUNCTION (`plat_legal_hold_firm` planted first): P3018, 42723. The seed row was **not** kept (0); FORCE is on; plat_legal_hold is absent.
+- **Second apply:**
+  - `migrate deploy` again: "No pending migrations".
+  - The file again by hand with `psql -f` (each statement auto-committed, no stop on error), as the NOBYPASSRLS owner: 20 errors, starting at `CREATE TYPE … already exists`. The DO's INSERT fails on the key and its ALTERs roll back with it. Afterwards: 1 seed row; all three tables forced.
+- **`psql -1 -f` (one transaction) on a fresh NOBYPASSRLS window:** applied; 1 seed row; all three forced.
+- **`tests/check_pf8b_f7_data_walls.ts` at 16da2b10e:** 17/17 passed. Its text rule counts 33 guarded statements in 13 migrations (pf21b's DO among them), and it finds 90 forced tables.
+- **`tests/check_pf21b_holds.ts` at 16da2b10e:** 67 passed, 0 failed (scratch databases dropped).
+
+**Held:** the lock comes before the lift (ACCESS EXCLUSIVE, so no other session sees the table unforced). The lift and the way back sit in the same DO statement, so any error rolls FORCE back with it. A superuser or BYPASSRLS runner skips the lift; FORCE stays untouched. No new findings.
+
+Verdict: Approve 16da2b10e1375193240ce0108479c53be44a4359
