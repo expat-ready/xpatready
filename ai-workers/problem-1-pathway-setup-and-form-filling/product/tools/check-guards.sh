@@ -232,9 +232,10 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 36 draft|../../.github/workflows/trace.yml|/SPD-2 item 5 (b): not on a draft/d|check-pr-concurrency.sh
 35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
 35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
-37 stamp|product/tools/migration-slots.py|s/^        if not s or s.group(1) <= floor:/        if not s:/|test-spd-2.sh
+37 stamp|product/tools/migration-slots.py|s/^        elif s.group(1) <= floor:/        elif False:/|test-spd-2.sh
 37 area|product/tools/migration-slots.py|s/^    return bool(x and y and (x \& y or x \& wide or y \& wide))/    return False/|test-spd-2.sh
-37 module|product/tools/module-suites.py|s/^        if f in BARRIER or not mc.in_src(f):/        if True:/|test-spd-2.sh
+37 multi|product/tools/migration-slots.py|s/^    for rx in MULTI_FORMS:/    for rx in []:/|test-spd-2.sh
+37 slot|product/tools/migration-slots.py|s/^        if area not in (.shared., \*BARRIER) and f.mig-{area}. not in scopes:/        if False:/|test-spd-2.sh
 35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
 MUT="$MUT"'

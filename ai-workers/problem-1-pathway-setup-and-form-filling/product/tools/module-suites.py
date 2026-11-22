@@ -101,5 +101,5 @@ def main(files):
 
 if __name__ == "__main__":
     fs = [l.strip() for l in sys.stdin if l.strip()]
-    # Only code changes pick suites: docs and records alone pick nothing (select-suites.mjs decides for them).
+    # Any change gets the always-run set (docs only too); pr-suites.yml runs suites only for a code change (change-kind.sh).
     sys.exit(main(fs))

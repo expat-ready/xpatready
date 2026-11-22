@@ -24,6 +24,21 @@ printf 'model MoneyRow {\n  id String @id\n  @@map("money_row")\n}\n' > "$SC/cli
 printf 'model RuntimeCase {\n  id String @id\n  @@map("runtime_case")\n}\n' > "$SC/cases.prisma"
 printf 'model Firm {\n  id String @id\n  @@map("platform_firm")\n}\n' > "$SC/base.prisma"
 echo 'CREATE TABLE "money_row" ("id" TEXT);' > "$M/20261122033000_qa644_reserve_staging/migration.sql"
+# a .mergify.yml with the generated slots of these three schema files (the anchors migration-slots.py --write needs)
+cat > .mergify.yml <<'YML'
+scopes:
+  source:
+    files:
+      pipeline:
+        include:
+          - ".github/**"
+  barrier_files:
+    include:
+      # SPD-2: a migration of a barrier schema file is a barrier too (migration-slots.py)
+  capacities:
+    pipeline: 1
+YML
+(ROOT="$G" python3 -I "$MS" mergify --write .mergify.yml >/dev/null) || echo "FAIL  the fixture .mergify.yml could not be written"
 git add -A && git commit -qm main
 mig() {  # mig <branch> <folder> <sql> [schema file to touch]
   git checkout -q -B "$1" main; mkdir -p "$M/$2"; printf '%s\n' "$3" > "$M/$2/migration.sql"
@@ -34,7 +49,8 @@ chk() { (cd "$G" && ROOT="$G" python3 -I "$MS" check "$@" 2>&1); }
 mig old 20261118150000_aud1c_money 'ALTER TABLE "money_row" ADD COLUMN "x" TEXT;' client-money.prisma
 out=$(chk main..old); r=$?
 ok "3. an old stamp is refused (exit 1)" "$([ $r = 1 ] && grep -q "is not after main's newest migration 20261122033000" <<< "$out" && echo 1)" "exit $r: $out"
-ok "3. ... with the exact git mv re-stamp command, area included" "$(grep -qF "Fix: git mv $M/20261118150000_aud1c_money $M/20261122033100_client-money__aud1c_money" <<< "$out" && echo 1)" "$out"
+st=$(grep -oE "Fix: git mv $M/20261118150000_aud1c_money $M/[0-9]{14}_client-money__aud1c_money" <<< "$out" | grep -oE '[0-9]{14}_client' | cut -c1-14)
+ok "3. ... with the exact git mv re-stamp command, area included, to a stamp after main's newest" "$([ -n "$st" ] && [ "$st" -gt 20261122033000 ] && echo 1)" "$out"
 mig good 20261122040000_client-money__fo7ts 'ALTER TABLE "money_row" ADD COLUMN "y" TEXT;' client-money.prisma
 out=$(chk main..good); r=$?
 ok "3. a stamp after main's newest naming its area passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
@@ -43,7 +59,7 @@ out=$(chk main..noarea); r=$?
 ok "3. a migration naming no area is refused, the area read from its SQL" "$([ $r = 1 ] && grep -qF "$M/20261122040000_client-money__fo7ts" <<< "$out" && echo 1)" "exit $r: $out"
 mig wrong 20261122040000_cases__fo7ts 'ALTER TABLE "money_row" ADD COLUMN "y" TEXT;'
 out=$(chk main..wrong); r=$?
-ok "3. a migration naming the wrong area is refused" "$([ $r = 1 ] && grep -q "changes client-money, not only 'cases'" <<< "$out" && echo 1)" "exit $r: $out"
+ok "3. a migration naming the wrong area is refused" "$([ $r = 1 ] && grep -q "names tables of client-money, not only 'cases'" <<< "$out" && echo 1)" "exit $r: $out"
 mig two 20261122040000_client-money__both 'ALTER TABLE "money_row" ADD COLUMN "y" TEXT; CREATE TRIGGER t AFTER DELETE ON "runtime_case" FOR EACH ROW EXECUTE FUNCTION f();'
 out=$(chk main..two); r=$?
 ok "3. a migration writing two areas must be shared" "$([ $r = 1 ] && grep -qF "$M/20261122040000_shared__both" <<< "$out" && echo 1)" "exit $r: $out"
@@ -51,6 +67,61 @@ mig cmt 20261122040000_client-money__cmt '-- UPDATE "runtime_case" in a comment 
 ALTER TABLE "money_row" ADD COLUMN "z" TEXT;'
 out=$(chk main..cmt); r=$?
 ok "3. a comment's words are not changes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+# M1 (review round 1): every form that writes another area's table is seen; reads and foreign keys are not
+w() {  # w <label> <sql> <want: refused|passes>  (a client-money migration with that SQL)
+  local b="w$((++wn))"; mig "$b" "20261122040000_client-money__$b" "$2"; out=$(chk main.."$b"); r=$?
+  if [ "$3" = refused ]; then ok "3. M1: $1 is seen as writing cases (refused as client-money)" "$([ $r = 1 ] && grep -q "names tables of cases, client-money\|names tables of cases," <<< "$out" && echo 1)" "exit $r: $out"
+  else ok "3. M1: $1 is not a write of cases (passes as client-money)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"; fi; }
+wn=0
+w "CREATE POLICY ... ON" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE POLICY p ON runtime_case USING (true);' refused
+w "CREATE CONSTRAINT TRIGGER ... ON" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE CONSTRAINT TRIGGER t AFTER INSERT ON "runtime_case" DEFERRABLE FOR EACH ROW EXECUTE FUNCTION f();' refused
+w "DROP TRIGGER ... ON" 'ALTER TABLE money_row ADD COLUMN a TEXT; DROP TRIGGER IF EXISTS t ON runtime_case;' refused
+w "an unnamed CREATE INDEX ON" 'ALTER TABLE money_row ADD COLUMN a TEXT; CREATE INDEX ON runtime_case (id);' refused
+w "DROP INDEX of the table's index" 'ALTER TABLE money_row ADD COLUMN a TEXT; DROP INDEX runtime_case_id_idx;' refused
+w "the second table of DROP TABLE a, b" 'DROP TABLE money_row, runtime_case;' refused
+w "the second table of TRUNCATE a, b" 'TRUNCATE money_row, "runtime_case";' refused
+w "ALTER TABLE IF EXISTS ONLY" 'ALTER TABLE money_row ADD COLUMN a TEXT; ALTER TABLE IF EXISTS ONLY runtime_case ADD COLUMN b TEXT;' refused
+w "UPDATE ONLY" 'ALTER TABLE money_row ADD COLUMN a TEXT; UPDATE ONLY runtime_case SET id = id;' refused
+w "DELETE FROM ONLY" 'ALTER TABLE money_row ADD COLUMN a TEXT; DELETE FROM ONLY runtime_case;' refused
+w "an unquoted upper-case name" 'ALTER TABLE money_row ADD COLUMN a TEXT; ALTER TABLE RUNTIME_CASE ADD COLUMN b TEXT;' refused
+w "a write after a '--' inside a string" "ALTER TABLE money_row ADD COLUMN a TEXT; SELECT '--'; ALTER TABLE runtime_case ADD COLUMN b TEXT;" refused
+w "an INSERT inside a DO block" 'ALTER TABLE money_row ADD COLUMN a TEXT; DO $$ BEGIN INSERT INTO runtime_case (id) VALUES (1); END $$;' refused
+w "a schema-qualified name" 'ALTER TABLE money_row ADD COLUMN a TEXT; ALTER TABLE public."runtime_case" ADD COLUMN b TEXT;' refused
+w "CREATE TABLE of another area" 'CREATE TABLE runtime_case (id TEXT);' refused
+w "INSERT INTO" 'INSERT INTO runtime_case (id) VALUES (1);' refused
+w "a policy reading another table" 'CREATE POLICY p ON money_row USING (EXISTS (SELECT 1 FROM runtime_case c WHERE c.id = money_row.id));' passes
+w "a foreign key to another table" 'ALTER TABLE money_row ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES "runtime_case"("id");' passes
+# M2: a Prisma back-relation in another schema file does not make it shared
+mig back 20261122040000_client-money__back 'CREATE TABLE money_row2 (id TEXT REFERENCES runtime_case(id));' cases.prisma
+out=$(chk main..back); r=$?
+ok "3. M2: a back-relation edit in another schema file (cases.prisma) keeps the area (client-money)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mig hint 20261122040000_hint 'SELECT 1;' client-money.prisma
+out=$(chk main..hint); r=$?
+ok "3. M2: with no table written, the edited schema file suggests the area" "$([ $r = 1 ] && grep -qF "$M/20261122040000_client-money__hint" <<< "$out" && echo 1)" "exit $r: $out"
+# invalid areas and stamps, the barrier exemption
+mig nosuch 20261122040000_nosuch__x 'SELECT 1;'
+out=$(chk main..nosuch); r=$?
+ok "3. an area that is no schema file is refused" "$([ $r = 1 ] && grep -q "neither a schema file" <<< "$out" && echo 1)" "exit $r: $out"
+mig bar 20261122040000_base__x 'ALTER TABLE platform_firm ADD COLUMN a TEXT; ALTER TABLE money_row ADD COLUMN b TEXT;'
+out=$(chk main..bar); r=$?
+ok "3. a barrier area may name a migration that also writes other areas (it waits for everything)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+mig far 20991231000000_client-money__far 'ALTER TABLE money_row ADD COLUMN a TEXT;'
+out=$(chk main..far); r=$?
+ok "3. a stamp far in the future is refused (it would hold every later migration)" "$([ $r = 1 ] && grep -q "at most two days ahead" <<< "$out" && echo 1)" "exit $r: $out"
+mig baddate 20261340000000_client-money__bad 'ALTER TABLE money_row ADD COLUMN a TEXT;'
+out=$(chk main..baddate); r=$?
+ok "3. a stamp that is no date is refused with a fix, no crash" "$([ $r = 1 ] && grep -q "Fix: git mv" <<< "$out" && echo 1)" "exit $r: $out"
+# M3: a new schema area needs its slot, and --write adds it
+git checkout -q -B newarea main; printf 'model Note {\n  id String @id\n  @@map("case_note")\n}\n' > "$SC/case-notes.prisma"
+mkdir -p "$M/20261122040000_case-notes__n"; echo 'CREATE TABLE case_note (id TEXT);' > "$M/20261122040000_case-notes__n/migration.sql"; git add -A; git commit -qm newarea
+out=$(chk main..newarea); r=$?
+ok "3. M3: a new schema area without its slot is refused with the mergify --write command" "$([ $r = 1 ] && grep -q "has no slot mig-case-notes" <<< "$out" && grep -q "mergify --write .mergify.yml" <<< "$out" && echo 1)" "exit $r: $out"
+(ROOT="$G" python3 -I "$MS" mergify --write .mergify.yml >/dev/null); git add -A; git commit -qm slot
+out=$(chk main..newarea); r=$?
+ok "3. M3: ... and passes once mergify --write added mig-case-notes" "$([ $r = 0 ] && grep -q "mig-case-notes:" .mergify.yml && echo 1)" "exit $r: $out"
+out=$(ROOT="$G" python3 -I "$MS" mergify --check .mergify.yml); r=$?
+ok "3. M3: mergify --write is idempotent and --check passes" "$([ $r = 0 ] && cp .mergify.yml "$T/m1" && ROOT="$G" python3 -I "$MS" mergify --write .mergify.yml >/dev/null && cmp -s .mergify.yml "$T/m1" && echo 1)" "$out"
+git checkout -q main
 # a batch: another area merged first with a later stamp
 git checkout -q -B main2 main; mkdir -p "$M/20261122050000_cases__later"; echo 'ALTER TABLE "runtime_case" ADD COLUMN "q" TEXT;' > "$M/20261122050000_cases__later/migration.sql"; git add -A; git commit -qm later; git checkout -q main
 git checkout -q -B batch main2; git merge -q --no-edit good 2>/dev/null; git checkout -q main
@@ -62,6 +133,16 @@ git checkout -q -B main3 main; mkdir -p "$M/20261122050000_client-money__later";
 git checkout -q -B batch3 main3; git merge -q --no-edit good 2>/dev/null; git checkout -q main
 out=$(chk --batch main3..batch3); r=$?
 ok "3. in a merge batch, the same area's later migration is refused" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+for later in 20261122050000_shared__l 20261122050000_base__l 20261122050000_legacy_name; do
+  git checkout -q -B "m-$later" main; mkdir -p "$M/$later"; echo 'SELECT 1;' > "$M/$later/migration.sql"; git add -A; git commit -qm "$later"; git checkout -q main
+  git checkout -q -B "b-$later" "m-$later"; git merge -q --no-edit good 2>/dev/null; git checkout -q main
+  out=$(chk --batch "m-$later..b-$later"); r=$?
+  ok "3. in a merge batch, a later $(sed 's/^[0-9]*_//; s/__l$//' <<< "$later") migration on main holds a client-money one" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
+done
+mig sharedb 20261122040000_shared__s 'ALTER TABLE money_row ADD COLUMN s TEXT; ALTER TABLE runtime_case ADD COLUMN s TEXT;'
+git checkout -q -B b-sharedb main2; git merge -q --no-edit sharedb 2>/dev/null; git checkout -q main
+out=$(chk --batch main2..b-sharedb); r=$?
+ok "3. in a merge batch, a shared migration is held by any area's later migration" "$([ $r = 1 ] && echo 1)" "exit $r: $out"
 # an applied migration edited
 git checkout -q -B edit main; echo '-- edited' >> "$M/20261122033000_qa644_reserve_staging/migration.sql"; git add -A; git commit -qm edit; git checkout -q main
 out=$(chk main..edit); r=$?
@@ -70,12 +151,18 @@ git checkout -q edit; mkdir -p "$M/20261122040000_client-money__repair"
 echo "UPDATE _prisma_migrations SET checksum = 'x' WHERE migration_name = '20261122033000_qa644_reserve_staging';" > "$M/20261122040000_client-money__repair/migration.sql"; git add -A; git commit -qm repair; git checkout -q main
 out=$(chk main..edit); r=$?
 ok "3. ... unless the change re-records its checksum in a new migration" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+git checkout -q -B edit2 main; echo '-- edited' >> "$M/20261122033000_qa644_reserve_staging/migration.sql"; mkdir -p "$M/20261122040000_client-money__fake"
+printf '%s\n' "-- UPDATE _prisma_migrations SET checksum = 'x' WHERE migration_name = '20261122033000_qa644_reserve_staging';" "SELECT count(*) FROM _prisma_migrations; ALTER TABLE money_row ADD COLUMN f TEXT;" > "$M/20261122040000_client-money__fake/migration.sql"; git add -A; git commit -qm fake; git checkout -q main
+out=$(chk main..edit2); r=$?
+ok "3. ... a repair only in a comment, or a mere mention of _prisma_migrations, is not one" "$([ $r = 1 ] && grep -q "already on main and changed here" <<< "$out" && echo 1)" "exit $r: $out"
 
 # 1 and 2. slots: clash, and the Mergify scopes
 cl() { printf '%s\n' "$1" > "$T/a"; printf '%s\n' "$2" > "$T/b"; python3 -I "$MS" clash "$T/a" "$T/b"; echo $?; }
 ok "1. two migrations in different areas may queue together (clash exit 1)" "$([ "$(cl "$M/20261122040000_client-money__a/migration.sql" "$M/20261122040100_cases__b/migration.sql")" = 1 ] && echo 1)"
 ok "2. two migrations of the same area wait in order (clash exit 0)" "$([ "$(cl "$M/20261122040000_client-money__a/migration.sql" "$M/20261122040100_client-money__b/migration.sql")" = 0 ] && echo 1)"
 ok "2. a shared migration waits for any area" "$([ "$(cl "$M/20261122040000_shared__a/migration.sql" "$M/20261122040100_cases__b/migration.sql")" = 0 ] && echo 1)"
+python3 -I "$MS" clash "$T/does-not-exist" "$T/b" 2>/dev/null; r=$?
+ok "2. clash exits 2 on an error (queue-gate reads anything but 1 as a clash)" "$([ $r = 2 ] && echo 1)" "exit $r"
 ok "2. a migration named before SPD-2 waits for any area (fails closed)" "$([ "$(cl "$M/20261122040000_fo7ts/migration.sql" "$M/20261122040100_cases__b/migration.sql")" = 0 ] && echo 1)"
 cd "$ROOTD"
 scopes=$(python3 -I - "$ROOTD/.mergify.yml" <<'PY'
@@ -101,12 +188,21 @@ ok "1. Mergify: different areas are in different scopes" "$(grep -qw diff <<< "$
 ok "2. Mergify: one area is one scope with capacity 1" "$(grep -qw same <<< "$scopes" && grep -qw cap1 <<< "$scopes" && echo 1)" "$scopes"
 ok "2. Mergify: a shared migration is in every area's scope" "$(grep -qw shared-all <<< "$scopes" && echo 1)" "$scopes"
 ok "1. Mergify: the one product-wide migrations slot is gone" "$(grep -qw no-global <<< "$scopes" && echo 1)" "$scopes"
+# The app tree (schema files, module cards) is absent in check-guards.sh's mutation copy, which holds only the tools,
+# the workflows and .mergify.yml: there the cases that need it are skipped, so a guard 37 row fails for its own reason.
+REAL=0; [ -d "$ROOTD/$SC" ] && [ -d "$ROOTD/.claude/rules/modules" ] && REAL=1
+[ "$REAL" = 1 ] || echo "SKIP  the cases that read the app tree (no $SC here: check-guards.sh's mutation copy)"
+if [ "$REAL" = 1 ]; then
 out=$(python3 -I "$MS" mergify --check "$ROOTD/.mergify.yml"); r=$?
 ok ".mergify.yml holds exactly the generated per-area slots" "$([ $r = 0 ] && echo 1)" "$out"
+fi
 ok "ci.yml runs the check on every PR and batch (fast job; --batch in the queue)" "$(grep -q 'migration-slots.py" check $(\[ "$QUEUE" = true \] && echo --batch) "$RANGE"' "$ROOTD/.github/workflows/ci.yml" && echo 1)"
 ok "queue-gate.sh re-checks only for a migration of the same area (migration-slots.py clash)" "$(grep -q 'migration-slots.py" clash' "$TOOLS/queue-gate.sh" && echo 1)"
 
 # 4. a one-module change runs only its suites
+ok "4. pr-suites.yml and pr-suites-plan.sh run by module" "$(grep -q -- '--changed "$RANGE" --modules' "$ROOTD/.github/workflows/pr-suites.yml" && grep -q -- '--modules --list' "$TOOLS/pr-suites-plan.sh" && echo 1)"
+ok "4. the merge batch and the nightly still run every suite (no --modules there)" "$(! grep -q -- '--modules' "$ROOTD/.github/workflows/ci.yml" && ! grep -q -- '--modules' "$ROOTD/.github/workflows/nightly.yml" && echo 1)"
+if [ "$REAL" = 1 ]; then
 P=ai-workers/problem-1-pathway-setup-and-form-filling
 f="$S/api/src/client-money/invoices/drafts.ts"
 sel=$(echo "$f" | python3 -I "$TOOLS/module-suites.py"); r=$?
@@ -117,6 +213,7 @@ rows=$(cat "$S/api/src/client-money/MODULE.rows/"*.md 2>/dev/null | sed -n 's/^T
 extra=$(comm -23 <(echo "$mine") <(printf '%s\n' "$card" "$rows" "$smoke" | sort -u))
 ok "4. a one-module change runs only its card's suites and the always-run set" "$([ $r = 0 ] && [ -z "$extra" ] && [ -n "$card" ] && echo 1)" "exit $r; not the module's: $(echo $extra)"
 ok "4. ... every suite on its card is chosen" "$([ -z "$(comm -23 <(echo "$card") <(echo "$mine"))" ] && echo 1)" "$(echo $mine)"
+ok "4. ... and every suite on its row files (P-712)" "$([ -n "$rows" ] && [ -z "$(comm -23 <(echo "$rows") <(echo "$mine"))" ] && echo 1)" "rows: $(echo $rows); chosen: $(echo $mine)"
 ok "4. ... and the always-run set" "$([ -z "$(comm -23 <(echo "$smoke") <(echo "$mine"))" ] && echo 1)" "$(echo $mine)"
 all=$(echo "$f" | node "$TOOLS/select-suites.mjs" | grep -c .)
 ok "4. ... far fewer than the path rules pick ($(grep -c . <<< "$mine") against $all)" "$([ "$(grep -c . <<< "$mine")" -lt "$all" ] && echo 1)"
@@ -126,8 +223,7 @@ out=$(echo "$S/tests/check_engine.ts" | python3 -I "$TOOLS/module-suites.py" | c
 ok "4. a file outside every card keeps select-suites.mjs --direct (a changed suite runs itself)" "$(grep -qx check_engine.ts <<< "$out" && echo 1)" "$out"
 out=$(echo "$S/api/src/main.ts" | python3 -I "$TOOLS/module-suites.py" | cut -f2 | grep -vc 'always-run\|on its card' || true)
 ok "4. a barrier file (main.ts) is not narrowed to a card" "$([ "${out:-0}" -gt 0 ] && echo 1)" "$out"
-ok "4. pr-suites.yml and pr-suites-plan.sh run by module" "$(grep -q -- '--changed "$RANGE" --modules' "$ROOTD/.github/workflows/pr-suites.yml" && grep -q -- '--modules --list' "$TOOLS/pr-suites-plan.sh" && echo 1)"
-ok "4. the merge batch and the nightly still run every suite (no --modules there)" "$(! grep -q -- '--modules' "$ROOTD/.github/workflows/ci.yml" && ! grep -q -- '--modules' "$ROOTD/.github/workflows/nightly.yml" && echo 1)"
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]
