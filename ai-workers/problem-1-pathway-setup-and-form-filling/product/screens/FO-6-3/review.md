@@ -118,3 +118,47 @@ The head moved to `e8dc29499` (the breaker's fixes) while I was reviewing. I did
 * The HTTP Send and state read with a signed-in session: two-step sign-in. P3 covered that path in code.
 * The commit `e8dc29499`.
 * A real vendor (FO-6v).
+
+## Round 2 (diff only, P-277): `c1c7d32bd..e0d7697658c973a1338cb0f862a84a31b1a76c70`
+**Reviewer: Changes e0d7697658c973a1338cb0f862a84a31b1a76c70.** **Verdict: Block** on one new Major, R2-1, which the m2 fix introduced.
+
+**What I ran, at e0d7697:**
+* Suites: check_fo6_signing_api 47/47, check_pf19r_every_sender 21/21, check_fo5_retainers 248/248, check_pf12b_bypass_audit 70/70.
+* My probe on a scratch database (dropped afterwards):
+  * Two different events at once: 0 errors in 8 runs. In round 1, 1 to 3 of 6 runs deadlocked.
+  * `completed` delivered before the signatures: R2-1 below.
+
+**Closed:**
+* **R-M1**: `receipt()` locks the request `FOR UPDATE` before it inserts (service.ts:142), on every path, CONSULTATION's included. A test covers it.
+* **R-M2**: both files are now in the pf19r table.
+* **R-M4**:
+  * The firm signing before the clients, and a signature with no consent yet, now answer 409 NOT_YET and keep nothing. Redelivery applies them.
+  * The win runs under a savepoint, so a refused win keeps the evidence, both SIGNED states and the event. It writes `signing.win_held`.
+* **Minors closed**:
+  * m1 (a body that is not an object gets 400) and the breaker's m1 (a too-deep body gets 400).
+  * The breaker's m2: a late `viewed` gets 200.
+  * The breaker's m4: a signature after the expiry is refused.
+  * m6: the Edit-then-Send case now has a test.
+  * The event id is gone from the audit detail.
+  * m3, m4 and m7 and deviations 2 and 3 are recorded in the module row as known gaps. I accept that.
+
+**Major (Must), new**
+* **R2-1. A `completed` delivered before the signatures is swallowed for good** (service.ts:165-169).
+  * The new pre-check treats every retainer status other than CLIENT_SIGNED or SIGNED as final. That includes **SENT and VIEWED**, which still lead to signing.
+  * Probe:
+    1. Send, then consent.
+    2. Deliver `completed` first: it answers `200 {applied:false, reason:"the agreement is viewed"}` (or "sent") and stores the receipt.
+    3. Deliver the client's `signed`, then the firm's `signed`: both are applied, and the request reaches CLIENT_SIGNED.
+    4. Deliver `completed` again: `200 duplicate`.
+  * End state: CLIENT_SIGNED for good, no evidence, no SIGNED, no `signing.completed`. This is the out-of-order case R-M4 was about, now for `completed`. Before this round the same call gave a retryable 409 NOT_READY.
+  * Fix: treat as final only a retainer that can no longer reach CLIENT_SIGNED at this version (WITHDRAWN, SIGNED_OFFLINE, EXPIRED, or `current_version` ≠ the request's version). SENT or VIEWED at the request's version gives 409 NOT_READY, with nothing stored. Add the test.
+
+**Minor (Should), new**
+* R2-2. The commit also carries `evidence/ai-orchestration/check_ai_orchestration.json` (new timestamps, port and database). That is another suite's evidence, written by the concurrent `run-suites.sh`, not this row's. Take it out of the PR.
+
+**R-M3 (PF-28 part (b) on the hook route):** I accept sending it to the tech lead as a question. It does not block my label, as long as the ruling is applied and `check_pf28_inputs` is green before merge, either through a HOOK entry judged over HTTP like Stripe's, or through an allow-list entry naming FO-6v. CI holds the merge until then.
+
+**Journey re-score:**
+* Journeys 7 (concurrent events) and 8 (out-of-order signatures) now hold.
+* Out-of-order `completed` is stuck (R2-1), so task completed and correct data stay at ½. Error recovery rises to 1.
+* **6/7 applicable = 8.6/10 scaled, no 0. Blocked on R2-1.**
