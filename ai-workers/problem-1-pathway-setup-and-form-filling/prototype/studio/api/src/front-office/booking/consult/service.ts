@@ -24,6 +24,7 @@ import type { AuditPort } from "../../../../../ports/audit.ts";
 import type { ConsultRecordRead, PartyRef } from "../../../../../ports/consult-record.ts";
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope, notInFirm } from "../../../platform/firm-scope.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 export type ConsultPorts = { audit: AuditPort<Tx> };
@@ -118,13 +119,17 @@ export class ConsultRecordService {
   }
 
   async put(ctx: StaffContext, bookingId: string, body: unknown) {
+    // PF-28 part 4 (review M1): a malformed booking id is the one not-found before the body is read.
+    if (!UUID.test(String(bookingId))) return notInFirm("booking");
+    parseInput(z.unknown(), body);   // review m1: a "__proto__" key is refused as the one rule refuses it
     // A body that is not a JSON object (none, text/plain, an array) is refused, never read as an empty record (break m6).
-    if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(400, "consult-refused", NOT_SAVED, "Send the record as a JSON object.");
+    if (body === null || typeof body !== "object" || Array.isArray(body)) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, "Send the record as a JSON object.", { code: "INVALID", fields: { body: "This must be an object." } });
     const parsed = ConsultBody.safeParse(body);
-    if (!parsed.success) throw problem(400, "consult-refused", NOT_SAVED, WORDS.check, { issues: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
+    // PF-28 part 4: a field error is 422 with each field named (an unknown field among them); `issues` as the screen reads them.
+    if (!parsed.success) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.check, { code: "INVALID", fields: fieldsOf(parsed.error), issues: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`) });
     const v = parsed.data;
     const fee = v.quotedFeeMinor ?? null;
-    if (fee !== null && !v.quotedFeeCurrency) throw problem(400, "consult-refused", NOT_SAVED, WORDS.currency, { issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
+    if (fee !== null && !v.quotedFeeCurrency) throw problem(FIELD_ERROR_STATUS, "consult-refused", NOT_SAVED, WORDS.currency, { code: "INVALID", fields: { quotedFeeCurrency: WORDS.currency }, issues: [`quotedFeeCurrency: ${WORDS.currency}`] });
     await this.booking(this.db, ctx, bookingId);   // who may, before the lock (a 404 or 403 takes no lock)
     const { b, saved } = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM fo_booking WHERE firm_id = ${firmScope(ctx.firmId).firmId}::uuid AND id = ${bookingId}::uuid FOR UPDATE`;
