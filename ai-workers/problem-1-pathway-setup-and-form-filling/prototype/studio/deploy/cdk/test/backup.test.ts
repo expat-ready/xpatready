@@ -90,7 +90,10 @@ test("PF-8rc vaults fail: compliance mode, a shorter lock, no lock, a narrowed d
 test("PF-8rc no role can bypass, pass: the only role is AWS Backup's, with its own managed policies and kms:Decrypt on the data key", () => {
   assert.deepEqual(bypassFindings(all), []);
   assert.deepEqual(resourcePolicyFindings(all), []); // key and vault policies allow only this account's root
-  for (const h of homes) assert.equal(of(h.template, "AWS::IAM::Role").length, 1);
+  for (const h of homes) { // one role for AWS Backup; PF-8b's four (two tasks, each an execution and a task role) for ECS tasks only
+    const by = (svc: string) => of(h.template, "AWS::IAM::Role").filter((r) => JSON.stringify(r.Properties!.AssumeRolePolicyDocument).includes(`"Service":"${svc}"`)).length;
+    assert.deepEqual([by("backup.amazonaws.com"), by("ecs-tasks.amazonaws.com"), of(h.template, "AWS::IAM::Role").length], [1, 4, 5]);
+  }
 });
 
 test("PF-8rc no role can bypass, fail: a role allowed the lock bypass, the vault policy, a wildcard, NotAction or an admin managed policy is caught", () => {
@@ -177,7 +180,7 @@ test("PF-8rc round 2: user and group inline policies, IAM writes, role assumptio
 test("PF-8rc round 2: AdministratorAccess hidden in Fn::Select or Fn::If beside an allowed policy is caught (B5, R5)", () => {
   const allowed = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup", admin = "arn:aws:iam::aws:policy/AdministratorAccess";
   for (const arn of [{ "Fn::Select": [0, [admin, allowed]] }, { "Fn::If": ["C", admin, allowed] }]) {
-    const b = swap("xr-staging", (t) => { (Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Role")!.Properties!.ManagedPolicyArns as unknown[]).push(arn); });
+    const b = swap("xr-staging", (t) => { (Object.values(t.Resources!).find((r) => r.Type === "AWS::IAM::Role" && r.Properties!.ManagedPolicyArns)!.Properties!.ManagedPolicyArns as unknown[]).push(arn); /* the Backup role: PF-8b adds ECS roles */ });
     assert.ok(bypassFindings(b).some((l) => l.includes("AdministratorAccess is not on the allow list")), JSON.stringify(arn));
   }
 });

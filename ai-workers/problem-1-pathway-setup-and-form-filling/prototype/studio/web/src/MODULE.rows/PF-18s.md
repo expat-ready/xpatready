@@ -1,0 +1,2 @@
+Entry points: PF-18s part 1: `/platform/offices` (`modules/platform/settings/offices-page.tsx`, My account → Offices for `agent/settings:edit`; `OfficePanel`, `PlacePanel`, `offices-contract.ts`). PF-18s part 3: `/account/notifications` (`modules/platform/settings/notifications-page.tsx`, My account → Notifications for `agent/notification:manage-preferences`, everyone; `modules/platform/settings/notifications-contract.ts`).
+Tests: tests/check_pf18s_offices_browser.ts, tests/check_pf18s_notifications_browser.ts

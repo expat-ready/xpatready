@@ -108,6 +108,9 @@ await p.goto(`${BASE}/front-office/pipeline?view=list`); await p.locator(`[data-
 await p.locator("[data-source-toggle]").click(); await p.locator(`[data-source="${REF}"]`).click();
 await p.locator(`[data-source-chip="${REF}"]`).waitFor({ timeout: 10_000 }); await p.keyboard.press("Escape");
 await p.locator(`[data-prospect-row="${num("tPhone")}"]`).waitFor({ state: "detached", timeout: 15_000 });
+// The Phone call row also goes while "Loading prospects" stands in for the list (a new source is a new query): read the
+// rows only once the filtered list has drawn, or a slow answer reads none (batch #2825, shard 7, both tries: []).
+await p.locator(`[data-prospect-row="${num("tRef")}"]`).waitFor({ timeout: 15_000 });
 let shown = await rowsShown("data-prospect-row");
 ok("R1.30 DW4 pass: List → Source → Referral shows only the Referral prospects, a chip names it, the address keeps it, focus back on Source",
   shown.has(num("tRef")) && shown.has(num("oRef")) && !shown.has(num("tComma")) && p.url().includes(`source=${encodeURIComponent(REF).replace(/%20/g, "+")}`) && await p.evaluate(() => document.activeElement?.hasAttribute("data-source-toggle") ?? false), [[...shown], p.url()]);
