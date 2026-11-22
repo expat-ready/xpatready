@@ -1,0 +1,71 @@
+# Review: FO-7g part 1w (R1.56, money; no screen): the tax default on every new draft line
+
+Reviewer (Opus 5.5, effort high; did not build it), 22 Nov. Code reviewed: `edea9f68f975440cf43b67f2f4af0d875cde7794`, diff `562df834b..edea9f68 -- prototype/studio` (6 files, +129/-13). Commit `8b81ec120` (the breaker's `break-report.md`), added on the branch after this head, changes only records (+44 lines in one file). I did not read it, so this review stands on its own.
+Spec: brief `track-b/FO-7g-1w.md` (lead-b branch, with P-797 and `billToProvince(firm, party)`), and Lead B's ruling A on #2967.
+
+**Verdict: Approve** (Ship). No open Blocker or Major.
+
+## Runs (PG 127.0.0.1:54329; isolated copies on :4471 and :4487, never :4400)
+| Check | Result |
+|---|---|
+| `check_fo7g_tax_defaults.ts` | 72/0, exit 0 (also 72/0 in a scratch worktree) |
+| `check_fo7b_invoices.ts` | 107/0, exit 0 |
+| `check_fo7a_money_schema.ts` / `check_pf12_walls.ts` | 122/0 / 110/0, both unchanged by the diff |
+| `journeys/j_59.ts` on isolated `rv1w` :4471 | 15/15, exit 0 |
+| `check_pf28_inputs.ts` on isolated :4487 | 46/47. The one fail is `POST …/invoices/:id/issue missing → 404`, an #2953 route the diff does not touch (the known item) |
+| New checks against the **old** `drafts.ts` (562df834b) | 62/10: all ten 1w case lines fail, so the checks were written first and are real |
+
+## Done-when: five cases, each passing and each named fail caught (mutation runs on `drafts.ts`)
+| Case | Pass | Named fail, and what I planted |
+|---|---|---|
+| 1. Ontario 0.50 FEE, no rate sent → 130000 / 0.06 | yes | half up through the route stores 0.07 and is caught. My mutants: `Math.round` → 2 fails; "nothing sent = 0" → 5 fails |
+| 2. GOVERNMENT_FEE sent with 130000 → 422 at ratePpm | yes | refusal removed → case 2 fails, and fo7b R10-fail fails too; government fee taxed at the default → 4 fails |
+| 3. A rate the client sends is never stored | yes | client rate stored and 422 removed → 4 fails in fo7g, and R12 fails in fo7b |
+| 4. Not registered → 0 on every line | yes | `registered: true` forced → 2 fails |
+| 5. Firm A never reads firm B's province | yes | B in NS: A gets ON, B gets NS. Dropping `where f.id = …` is **not** caught (72/0), because PF-12's RLS on `platform_firm` (`20261116013000_pf12_firm_walls/migration.sql:190-192`) already hides B's row. The behaviour holds at two layers (Minor 1) |
+| Audit carries the stored rate | yes | audit `detail.ratePpm` set to the client's value → the 1w audit line fails |
+
+## Rate safety, the read, concurrency (code: `invoices/drafts.ts:80-112`, `invoices/bill-to.ts`)
+* **No client rate reaches `tax_rate_ppm`.** The stored rate is only `lineRatePpm(…, dflt)` (`drafts.ts:100`), which returns 0 or `taxDefault`'s rate, and `lineRatePpm` itself refuses any default outside the cited table. The sent value only sets `taxable`. Probes: `ratePpm` null or "0" → 422 (zod); 1,000,000 → 422; DISBURSEMENT at default or 0 → stored default or 0; `taxable: true` → 422 unknown key.
+* **Government fee:** sent with any rate other than 0 → 422 at `ratePpm`, in words, before the transaction (`drafts.ts:83`). No rate, 0 or -0 → 201 with rate 0 and tax 0.
+* **One-statement read after the lock:** `drafts.ts:94` runs after the `for update` at `:87`. It reads `tax_registered` and `business_address` in one statement (one snapshot), filtered by the session's `firmScope(ctx.firmId)`, with RLS under it. The province goes through `billToProvince`, which pulls `province_state` the same way part 1's route does. It is exported for part 3, takes `(firm, party)`, and the party comes from the invoice row.
+* **Race:** 24 lines added at once to one invoice while a loop flipped `tax_registered` and the province ON/AB. Result: 24×201; positions 1-24, unique; stored rates only {0, 130000, 50000}; 24/24 audit lines with `ratePpm` = `taxRatePpm_after` = stored; `money_invoice_total` = the sum of the lines. Across the whole copy, 70/70 lines carry the stored rate in their audit line. A New Brunswick firm sending 13 % → 422 naming 150000; nothing sent → 150000.
+* **Scope:** no `ports/` change, no new route, no migration. All edits are inside the touch list (`invoices/`, the three tests, `MODULE.rows/FO-7g-1w.md`).
+
+## Edits to the frozen checks (ruling A: setup and requests only), compared line by line
+* `check_fo7b_invoices.ts:103-109`: **setup**. Both firms registered; `atRate` puts firm A in NB, NS or AB for the 15/14/5 % cases and back in ON in a `finally`. `:116` `taxOf` and `:157` R8 wrap the same request in `atRate`. **Every assertion and figure is unchanged** (110.50/960.50, the R2-R6 halves, R7's 0.06+0.06, R8's 3,221,225.47 and 24,696,061.94, the race total 2.26, the audit counts).
+* `:164-167` R10: the rate is removed from the government-fee request; the message loses "(13 % sent)"; the assertion is identical. `:168-170` adds the R10 refusal (new).
+* `:182-184` R12 pass is turned into the 1w refusal (422, nothing written, then the default is accepted), as the ruling names. R12 fail (`:186-188`) is unchanged.
+* `journeys/j_59.ts:45-48`: setup only (registered). `:87`: the rate is removed from the W4 government-fee request. No assertion changed.
+* `check_fo7g_tax_defaults.ts:264,271`: DW3's request loses the government-fee rate (that path is now case 2's refusal); its assertion is identical.
+Nothing weakened: no rounding, total, wall or audit assertion was removed.
+
+## Journey test (API, reviewer role; the invoice has no screen yet). Score **8.5/10**, pass
+Journeys walked: (1) a staff member drafts and adds fee, disbursement and government lines with no rate (J-59 W1-W5 and DW, plus my probes); (2) "not taxable" sent as 0; (3) an error: a wrong rate, then recovery by sending the default; (4) the wrong firm (fo7b and J-59 DW give 404); (5) a firm outside Ontario; (6) a race of 24 at once. Line add p50 27 ms, p95 33 ms (20 calls on :4471).
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | J-59 15/15; the default lands on every new line |
+| Next step obvious | 1 | the refusal names what to send: "send no rate or 150000 … or 0" |
+| Plain words | ½ | "130000" in parts per million appears in the words (Minor 2) |
+| Feedback and state | 1 | 422 at the field, "Nothing was saved.", count unchanged |
+| Correct data | 1 | race and audit results above |
+| Error recovery | 1 | R12: refused, then the default is accepted |
+| Accessibility and screen sizes | ½ | not applicable: no screen |
+| Speed | 1 | p95 33 ms |
+| Visual quality | ½ | not applicable: no screen |
+| Trust and sources | 1 | the rate comes only from the cited table; "Unconfirmed: no accountant" in `bill-to.ts:5` |
+
+## Screen-review items
+No screen and no concept: D1-D20 and the BIC-01 to BIC-20 scorecard do not apply. The graph (`graph.mjs` run): the line route has no page ("no page uses it either"), as expected while the invoice has no screen. Its tests are named in `MODULE.rows/FO-7g-1w.md`.
+
+## Issues
+1. **Minor** (no fix required): `tests/check_fo7g_tax_defaults.ts:237-239`. Case 5's "fail (stand-in)" shows that the rate follows the firm's own province, but it cannot detect a missing `where f.id = ${firmId}` at `drafts.ts:94`: RLS is the guard that actually holds. Either say so in the case's words ("held by the wall and the filter"), or leave it as it is.
+2. **Minor** (builder's call): `drafts.ts:97-99`. The refusal says "send no rate or 130000 for taxable (HST)". Fine for an API, but the future invoice screen should not show it verbatim. A percentage ("13 %") would read as plain words.
+
+## Could not check
+Full `ci` (no PR yet; P-683 asks for the reviewer's verdict first). `check_pf28_inputs.ts` at the base commit (it needs a copy running the base code); its one failing probe is on the issue route, outside this diff. No accountant, so the tax readings stay Unconfirmed.
+
+**Verdict: Approve**. No Blocker, no Major. Minors 1 and 2 are optional.
+
+Reviewer: Approve edea9f68f975440cf43b67f2f4af0d875cde7794

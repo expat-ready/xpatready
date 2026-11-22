@@ -330,8 +330,24 @@ try {
   ok("FO-7g 1w case 5 pass: with firm B moved to Nova Scotia, firm A's line still takes Ontario's rate and firm B's takes Nova Scotia's",
     rows(w5a) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}` && rows(w5b) === `FEE:100000:${T.NS.ratePpm}:${taxForLine(100000, T.NS.ratePpm)}`, [rows(w5a), rows(w5b)]);
   province(A, inProvince("AB")); const w5c = await fresh(); await addTo(w5c, feeLine(100000)); province(A, inProvince("ON")); province(B, inProvince("AB"));
-  ok("FO-7g 1w case 5 fail (stand-in): firm A moved to Alberta takes Alberta's rate on its next line, so the case above would catch a step that read another firm's province or none",
+  ok("FO-7g 1w case 5 fail (stand-in): firm A moved to Alberta takes Alberta's rate on its next line, so the case above would catch a step that read another firm's province or none (the read names the session's firm, and PF-12's row rules on platform_firm hide firm B's row as well: either alone keeps this case green)",
     rows(w5c) === `FEE:100000:${T.AB.ratePpm}:${taxForLine(100000, T.AB.ratePpm)}` && T.AB.ratePpm !== T.ON.ratePpm, rows(w5c));
+  // Break m1: "Prices include tax" turned on while a line waits on the invoice lock is seen after the lock (409, nothing written).
+  const lockId = await fresh(); let release!: () => void; const held = new Promise<void>((r) => { release = r; });
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const locker = owner.$transaction(async (tx) => { await tx.$queryRawUnsafe(`select 1 from money_invoice where id = '${lockId}' for update`); await held; await tx.$executeRawUnsafe(`update money_payment_settings set prices_include_tax = true where firm_id = '${A}'`); }, { timeout: 30_000 });
+  await sleep(300); const waiting = addTo(lockId, feeLine(100000)); await sleep(700); release(); await locker; const m1 = await waiting;
+  sql(`update money_payment_settings set prices_include_tax = false where firm_id = '${A}'`);
+  ok("FO-7g 1w (break m1) fail: \"Prices include tax\" turned on while the line waited on the invoice lock → 409 PRICES_INCLUDE_TAX, nothing written (never taxed on top)", m1.status === 409 && m1.body.code === "PRICES_INCLUDE_TAX" && rows(lockId) === "", [m1.status, m1.body?.code, rows(lockId)]);
+  const m1b = await addTo(lockId, feeLine(100000));
+  ok("FO-7g 1w (break m1) pass (stand-in): with it off again, the same line is added at the default", m1b.status === 201 && rows(lockId) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(lockId));
+  // Break m2: an in-process caller passing ratePpm: undefined gets the default, not 0 (undefined is "not sent").
+  const realDrafts = nest.get(InvoiceDrafts), m2 = await fresh();
+  await withFirm(A, () => realDrafts.addLine(ctxA, m2, feeLine(100000, { ratePpm: undefined })));
+  ok("FO-7g 1w (break m2): ratePpm: undefined from an in-process caller is \"not sent\" → the default, not 0", rows(m2) === `FEE:100000:${T.ON.ratePpm}:${taxForLine(100000, T.ON.ratePpm)}`, rows(m2));
+  const m3 = await addTo(await fresh(), feeLine(100000, { ratePpm: 150000 }));
+  ok("FO-7g 1w (review minor 2): the refusal names the rate as a person reads it (HST 13 %) beside its parts per million", m3.status === 422 && /HST 13 %/.test(m3.body.detail) && /130000 \(parts per million\)/.test(m3.body.detail), m3.body.detail);
+
   ok("FO-7g 1w audit: each line written above has one audit line by a typed staff actor, carrying the rate stored",
     sql(`select count(*) from money_invoice_line l join audit_event a on a.entity_key = l.id::text and a.action = 'invoice.line_added' where (a.detail->>'ratePpm')::int = l.tax_rate_ppm and a.actor like 'staff:%'`) === count());
 

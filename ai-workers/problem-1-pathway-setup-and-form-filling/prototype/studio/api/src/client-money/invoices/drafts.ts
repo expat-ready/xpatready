@@ -48,6 +48,8 @@ export const notFound = (what: string): never => problem(404, "Not found", `No s
 
 /** Adding to a draft someone else started needs this key (AG-06 C5: "Edit a DRAFT invoice"); one's own draft, :create. */
 export const EDIT_KEY = "agent/invoice:edit";
+/** A rate in parts per million as a person reads it ("13 %", "9.975 %"), from the integer's digits (no float). */
+const percent = (ppm: number) => { const whole = Math.trunc(ppm / 10_000), rest = String(ppm % 10_000).padStart(4, "0").replace(/0+$/, ""); return `${whole}${rest ? `.${rest}` : ""} %`; };
 
 export class InvoiceDrafts {
   /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
@@ -79,7 +81,7 @@ export class InvoiceDrafts {
     if (amountMinor > MINOR_MAX) badField("unitMinor", `The line's amount (quantity × unit amount) is more than one line can hold (${MONEY(MINOR_MAX)}). Nothing was saved.`);
     // FO-7g part 1w: the rate is never the client's. A sent ratePpm only says "taxable" (the default) or "not taxable" (0);
     // nothing sent is the default (LineIn defaults an absent rate to 0, so the body is asked whether it sent one).
-    const sentRate = Object.hasOwn(body as object, "ratePpm");
+    const sentRate = Object.hasOwn(body as object, "ratePpm") && (body as Record<string, unknown>).ratePpm !== undefined;   // undefined is "not sent" (break m2)
     if (l.kind === "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0) badField("ratePpm", "A government fee is never taxed: send no rate, or 0. Nothing was saved.");   // AG-6-4 rule 3, no override
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
@@ -91,12 +93,15 @@ export class InvoiceDrafts {
       if (inv.issued) problem(409, "Not possible now", "This invoice is issued: it can't be edited. Use a credit note. Nothing was saved.", { code: "ISSUED" });
       // The tax default (FO-7g part 1): the firm's tax_registered and its province, read in one statement (one snapshot),
       // after the lock; the province through billToProvince (P-797). Only this firm's row is read.
-      const [facts] = await tx.$queryRaw<{ registered: boolean | null; address: unknown }[]>`select s.tax_registered as registered, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
+      // "Prices include tax" is asked again here, in the same statement, so a change made while this line waited on the lock
+      // is never taxed on top (break m1; the ruling of 18 Nov).
+      const [facts] = await tx.$queryRaw<{ registered: boolean | null; inclusive: boolean | null; address: unknown }[]>`select s.tax_registered as registered, s.prices_include_tax as inclusive, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
+      if (facts?.inclusive) problem(409, "Not possible now", "Prices that include tax come later: this firm has \"Prices include tax\" on, so an invoice can't be drafted yet. Nothing was saved.", { code: "PRICES_INCLUDE_TAX" });
       const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null), registered: facts?.registered === true });
       if (l.kind !== "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0 && l.ratePpm !== dflt.ratePpm)
         badField("ratePpm", dflt.ratePpm === 0
           ? "This firm adds no tax to this line (not registered for tax, or its province isn't set): send no rate, or 0. Nothing was saved."
-          : `The tax rate comes from your firm's province: send no rate or ${dflt.ratePpm} for taxable (${dflt.taxName}), or 0 for not taxable. Nothing was saved.`);
+          : `The tax rate comes from your firm's province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
       const ratePpm = lineRatePpm({ kind: l.kind, taxable: l.kind === "GOVERNMENT_FEE" ? undefined : !(sentRate && l.ratePpm === 0) }, dflt);
       const taxMinor = this.tax(amountMinor, ratePpm);
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
