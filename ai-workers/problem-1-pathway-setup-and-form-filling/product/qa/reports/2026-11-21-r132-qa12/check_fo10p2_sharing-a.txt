@@ -1,0 +1,40 @@
+NOTICE:  database "xr_studio_fo10p2_4649" does not exist, skipping
+PASS  FO-10p2 setup: both Sample firms have a front office
+PASS  FO-10p2 pass (rule 5): three leads, three people, each given one (nobody given one yet: by id)
+PASS  FO-10p2 fail (rule 5): a person added to the turn, never given a lead, is next (never behind a stored place in an id order)
+PASS  FO-10p2 pass (rules 5, 9): while away the person is passed by; the others take their turns in order of their last lead
+PASS  FO-10p2 fail (rule 5): back again, the person given a lead least recently gets the next one (their turn kept)
+PASS  FO-10p2 pass (AG-2-13d): the turn is kept on the rule: turn_no counts every lead given, turns names each person's last
+PASS  FO-10p2 pass: 20 parallel arrivals still give each of three people 6 or 7, never 9
+PASS  FO-10p2 pass (rule 10): a possible match is placed by no rule: Unassigned, and its line says why
+PASS  FO-10p2 fail (rule 10): the possible match moves nobody's turn; the first enquiry of that person was placed as usual
+PASS  FO-10p2 fail (rule 10): a one-person rule does not place a possible match either
+PASS  FO-10p2 pass (rule 1(b)): a booking lead is its host's, whatever the booking rule says; the line names the fact
+PASS  FO-10p2 fail (rule 18): a host no longer active gives no owner, and no rule steps in
+PASS  FO-10p2 fail: a booking arrival naming no host still follows the booking rule
+PASS  FO-10p2 pass (rule 1(b)): through the real ArrivalPort, the booking's host (from fo_booking) owns the new lead
+PASS  FO-10p2 pass (rule 8): reading and changing the setting need agent/firm-capability:manage, held by Owner and Admin
+PASS  FO-10p2 fail (rule 8): the routes need the key and a Case Officer's and a Case Manager's roles do not grant it
+PASS  FO-10p2 pass: PF-4's start-up rule accepts both routes
+PASS  FO-10p2 pass (rule 3): the default is Anyone takes it
+PASS  FO-10p2 pass (rule 3): Round robin between the people ticked shares new web-form leads between them
+PASS  FO-10p2 pass (rule 6): Always one person gets every new lead no rule or fact owns
+PASS  FO-10p2 fail (P-773): a door rule still beats the sharing setting; other doors keep the setting
+PASS  FO-10p2 fail (rule 4): back to Anyone takes it, a new lead has no owner
+PASS  FO-10p2 fail: Always one person naming someone who cannot work leads → refused at the field
+PASS  FO-10p2 fail: an unknown mode, an unknown field, or a person with Anyone takes it → refused at the field
+PASS  FO-10p2 pass (review n4): choosing Anyone takes it says so on the setting's audit line
+PASS  FO-10p2 pass: each change of the setting writes its audit line with before and after
+PASS  FO-10p2 fail (break M1): Round robin with no ticked list → refused, never "everyone" by omission
+PASS  FO-10p2 pass (break M1): Round robin keeps exactly the people ticked
+PASS  FO-10p2 pass (review m2): the body GET answers (an empty list, a null person) is accepted back with the mode changed
+PASS  FO-10p2 fail (review m3): a bad person or list is named under the setting's own field
+PASS  FO-10p2 fail (break M2): a booking host who cannot work leads (Read-only) owns nothing; the lead waits in Unassigned and no rule steps in
+PASS  FO-10p2 fail (review m1): a one-user firm whose booking host is away: its one user owns the lead and the line does not say Unassigned
+PASS  FO-10p2 fail (review m5): another firm's booking id never lends its host to this firm's lead
+PASS  FO-10p2 fail (break m5): a turn value that is no whole number counts as never given, never shutting the person out
+PASS  FO-10p2 fail (review M1): a firm whose front office was never set up can choose its sharing setting (set up on the way, no 500)
+PASS  FO-10p2 pass (P-601): the rollback runs in one transaction, drops turns, turn_no and their check, keeps part 1's last_staff_id and every rule, and clears its _prisma_migrations row
+PASS  FO-10p2 fail (P-601): after the rollback the migration applies again (the rollback leaves nothing that blocks it)
+
+FO-10 part 2 sharing: 37 passed, 0 failed

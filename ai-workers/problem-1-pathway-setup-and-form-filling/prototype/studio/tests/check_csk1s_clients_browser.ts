@@ -87,7 +87,12 @@ const appears = async (name: string) => {
     await new Promise((res) => setTimeout(res, 100));
   }
 };
-const convert = (prospectId: string) => api(TA, "POST", `/front-office/prospects/${prospectId}/convert`, {});
+// FO-13c: no client without a recorded conflict check; recorded through its API right before Convert (the panel is FO-13s).
+const convert = async (prospectId: string) => {
+  const c = await api(TA, "POST", "/front-office/conflict-checks", { prospectId, requestId: crypto.randomUUID(), result: "NO_CONFLICT" });
+  if (c.status !== 201) throw new Error(`conflict check for ${prospectId}: ${c.status}`);
+  return api(TA, "POST", `/front-office/prospects/${prospectId}/convert`, {});
+};
 const wonClient = async (given: string) => { const p = await prospect(given); const c = await convert(p.id); if (c.status !== 200) throw new Error(`convert ${given}: ${c.text.slice(0, 200)}`); const cl = await appears(p.name); if (!cl) throw new Error(`no client for ${given}`); return { ...p, client: cl }; };
 const casesOf = (clientId: string) => Number(sql(`select count(*) from runtime_case where client_id = '${clientId}'`));
 
@@ -145,6 +150,7 @@ try {
   sql(`insert into fo_retainer_template (id, firm_id, name, kind, file_key, file_sha256, placeholders, created_by, updated_by, updated_at) values ('${TPL}', '${A}', 'Retainer (Sample CS-K1s ${run})', 'RETAINER', 'retainer-templates/${TPL}/v1.docx', '${hex}', '{client.name}', 'seed:csk1s', 'seed:csk1s', now())`);
   sql(`insert into fo_retainer (id, firm_id, kind, prospect_id, subject, signer_person_id, representative_staff_id, template_id, template_version, template_file_key, created_by, updated_at) values ('${RET}', '${A}', 'RETAINER', '${ben.id}', 'PERSON', '${ben.personId}', '${R.id}', '${TPL}', 1, 'retainer-templates/${TPL}/v1.docx', 'staff:${R.id}', now()); insert into fo_retainer_version (id, firm_id, retainer_id, n, merge_values, file_key, original_sha256, created_by) values ('${VER}', '${A}', '${RET}', 1, '{"client.name":"Sample","representative.staff_id":"${T.id}","signer.person_id":"${ben.personId}"}', 'retainers/${RET}/v1.docx', '${hex}', 'staff:${R.id}')`);
   sql(`update fo_retainer_version set sent_at = now() where id = '${VER}'; update fo_retainer set status = 'SENT' where id = '${RET}'`);
+  await api(TA, "POST", "/front-office/conflict-checks", { prospectId: ben.id, requestId: crypto.randomUUID(), result: "NO_CONFLICT" });   // FO-13c: the check before the paper win
   const f = new FormData(); f.set("reason", "Signed at the office (Sample)"); f.set("expectedVersion", "1"); f.set("file", new Blob(["%PDF-1.4\n%%EOF\n"], { type: "application/pdf" }), "signed.pdf");
   const off = await fetch(`${BASE}/api/front-office/retainers/${RET}/signed-offline`, { method: "POST", headers: { authorization: `Bearer ${TA}` }, body: f }).then((r) => r.status);
   const benClient = await appears(ben.name);

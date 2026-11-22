@@ -1,0 +1,2 @@
+Entry points: FO-9s part 1 (R1.29): `modules/front-office/duplicates/` (`DuplicateHint`, `useDuplicateCheck`, `checkBody`, `unmatchedDetails`), mounted in Add a lead (`modules/front-office/sales/add-lead-panel.tsx`): FO-9a's `POST /api/front-office/duplicates/check` on leaving a key field; the hint is the one place to choose ("Use this person" or Add as new); typed email and phone the pick did not match are offered for the first note
+Tests: tests/check_fo9s_duplicates_browser.ts

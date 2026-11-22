@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E11/E19's owed watch (guard 32, 21 Nov, P-599, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
+# The eight guards of 6 Nov, B134's label sweep (7 Nov), B170a's engine test PDFs (L1, 11 Nov), D3's comment trigger (P-506, 12 Nov), rule triage (guard 14) and B194's queue gate (guard 15, 16 Nov), B206's runs waiting (guard 30, 20 Nov), ENF-763's founder-click guard (guard 31, 20 Nov, P-763), E14's index integrity (guard 33, 21 Nov, P-772), CI-SPEED-3's queue depth (CS3, 21 Nov, A254), E2's report-only PR suites (guard 35, 21 Nov, P-772), E11/E19's owed watch (guard 32, 21 Nov, P-599, P-772), B193 part 2's Lead hooks (18-23, 16 Nov), CK-1's conformance check (guard 24) and CK-2's heartbeat (guard 25, 17 Nov), ENF-733's focus list (guard 26) and workflow lock (guard 27, 19 Nov, P-734), B204's waves (guard 28, 20 Nov, P-745) (founder, ~03:00 IST: "fix it so that it becomes a hard rule and it never messes up"), each
 # with its test. --mutate also proves each test fails without its guard: in a throwaway copy of the tools, the guard is
 # switched off by one edit and its test must go red. Run by .github/workflows/guards.yml. US$0, no network.
 #   bash product/tools/check-guards.sh [--mutate]
 set -u
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; ROOTD="$(cd "$TOOLS/../../../.." && pwd)"; P=ai-workers/problem-1-pathway-setup-and-form-filling
-TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-owed-watch.sh"
+TESTS="check-current-lead.sh check-items.sh check-handover.sh check-label-guard.sh check-lane-preflight.sh check-isolated-ttl.sh check-gh-fallback.sh check-state-page.sh check-lead-cron.sh check-lead-heartbeat.sh check-label-sweep.sh check-rules-lag.sh check-push-guard-fixtures.sh check-comment-run.sh check-outside-deps-watch.sh check-rule-triage.sh check-queue-gate.sh check-lead-watch-board.sh check-known-failures.sh check-queued-push-guard.sh check-lead-read-guard.sh check-gmail-start-check.sh check-lead-act-check.sh check-wip-guard.sh check-ist-time-guard.sh check-conformance-check.sh check-pipeline-heartbeat.sh check-mergify-scopes.sh check-focus-list.sh check-workflow-lock.sh check-waves.sh check-runs-waiting.sh check-founder-click-guard.sh check-proof-read-watch.sh check-idx-integrity.sh check-image-size.sh check-queue-depth.sh check-pr-suites-job.sh check-owed-watch.sh"
 bad=0
-for t in $TESTS; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
+for t in $TESTS check-deps-line.sh; do bash "$TOOLS/$t" > "${TMPDIR:-/tmp}/guard-$$.log" 2>&1; r=$?; echo "$( [ $r = 0 ] && echo PASS || echo FAIL )  $t ($(tail -1 "${TMPDIR:-/tmp}/guard-$$.log"))"
   [ $r = 0 ] || { bad=1; grep '^FAIL' "${TMPDIR:-/tmp}/guard-$$.log" | sed 's/^/      /'; }; done
 rm -f "${TMPDIR:-/tmp}/guard-$$.log"
 [ "${1:-}" = --mutate ] || exit $bad
@@ -23,11 +23,22 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 2 relabel|../../.github/workflows/label-guard.yml|/^ *LABELED: /d|check-label-guard.sh
 2 reviewers|../../.github/workflows/label-guard.yml|/^          REVIEWERS: /{x;s/^/x/;/^x$/{x;d;};x;}|check-label-guard.sh
 3|product/tools/lane-preflight.sh|/under ${min} GB;/d|check-lane-preflight.sh
+3 touch|product/tools/lane-preflight.sh|s/ python3 -I "\$DIR\/touch-overlap.py" 2>\&1)/ cat >\/dev\/null)/|check-touch-overlap.sh
+3 hit|product/tools/touch-overlap.py|s/^            if paths:/            if False:/|check-touch-overlap.sh
+3 closed|product/tools/touch-overlap.py|s/^        return 2$/        return 0/|check-touch-overlap.sh
+3 own|product/tools/touch-overlap.py|s/^        if n in own:/        if False:/|check-touch-overlap.sh
+3 dot|product/tools/touch-overlap.py|s/re.sub(r"^(\\.\/)+", "", /(/|check-touch-overlap.sh
+3 run|product/tools/check-lane-preflight.sh|/check-touch-overlap.sh" 2>\&1)/d|check-touch-overlap.sh
 4 ttl|prototype/studio/tools/isolated.sh|s/\$(( TTL \* \${ISOLATED_TTL_UNIT:-60} ))/999999/|check-isolated-ttl.sh
 4 cap|prototype/studio/tools/isolated.sh|s/COPY_CAP:-4} ))/COPY_CAP:-99} ))/|check-isolated-ttl.sh
 5|product/tools/factory-board.sh|s/; gh() { bash "\$TOOLS\/gh.sh" "\$@"; }//|check-gh-fallback.sh
 6|product/tools/check-docs.sh|/STATE TOO BIG/d|check-state-page.sh
 7|product/tools/check-docs.sh|s/if m > 30:/if False:/|check-state-page.sh
+7 mine|product/tools/check-docs.sh|s/^  mine=1; c=""$/  mine=0; c=""/|check-state-page.sh
+7 read|product/tools/check-docs.sh|s/^  if \[ -z "\$u" \]; then msg=/  if false; then msg=/|check-state-page.sh
+7 tens|product/tools/check-docs.sh|s/\[0-9\]{2}:\[0-5\]\[0-9x\]) IST/[0-9]{2}:[0-5][0-9]) IST/|check-state-page.sh
+7 base|product/tools/check-docs.sh|s/{ mine=0; c=/{ mine=1; c=/|check-state-page.sh
+7 merges|product/tools/check-docs.sh|s/ git log -1 --no-merges --format=%ct "\$b..HEAD"/ git log -1 --format=%ct "$b..HEAD"/|check-state-page.sh
 8|product/tools/lead-check-guard.sh|s/^\[ -z "\$why" \] \&\& exit 0/exit 0/|check-lead-cron.sh
 9|product/tools/label-sweep.sh|s/^  if \[ "\$who" != "\$BOT" \]; then/  if true; then/|check-label-sweep.sh
 9 sched|../../.github/workflows/label-guard.yml|/cron: "\*\/10 \* \* \* \*"/d|check-label-sweep.sh
@@ -39,6 +50,7 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 9 dispatch|../../.github/workflows/label-guard.yml|s/ github.event_name == .workflow_dispatch. ..//|check-label-sweep.sh
 10|product/tools/check-docs.sh|s/-gt 3 \]/-gt 999 ]/|check-rules-lag.sh
 11|product/tools/push-guard.sh|s/^\( *\)\[ "\$h" = "\$want" \] \(..\)/\1true \2/|check-push-guard-fixtures.sh
+11 records|product/tools/check-stale-paths.sh|/prototype\/\*-manifest\*.sha256/d|check-cleanup-checks.sh
 12 who|../../.github/workflows/comment-run.yml|s/OWNER.MEMBER.COLLABORATOR) ;;/*) ;;/|check-comment-run.sh
 12 if|../../.github/workflows/comment-run.yml|s/ \&\& contains(fromJSON([^)]*), github.event.comment.author_association)//|check-comment-run.sh
 12 pr|../../.github/workflows/comment-run.yml|s/IS_PR" != yes/IS_PR" = never/|check-comment-run.sh
@@ -186,6 +198,9 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 28 page|product/tools/waves.py|s/        if norm(old) != norm(gen_block(rows, st)):/        if False:/|check-waves.sh
 28 cap|product/tools/waves.py|s/    if len(building) > CAP_BUILDING:/    if False:/|check-waves.sh
 28 ids|product/tools/waves.py|s/        if miss or extra or dup:/        if False:/|check-waves.sh
+28 pr|product/tools/waves.py|s/               if i in wave and wave\[i\]\[0\] not in ok and not wave\[i\]\[1\].startswith(.allow:.)\]/               if False]/|check-waves.sh
+28 watch|product/tools/lead-watch.sh|/waves.py" wip --prs/d|check-waves.sh
+28 flag|../../.github/workflows/pr-rules.yml|/labels\[\]=outside-wave/d|check-waves.sh
 28 item|product/tools/brief-check.sh|s/^  if \[ -z "\$item" \]; then bad=/  if false; then bad=/|check-lane-preflight.sh
 28 wave|product/tools/brief-check.sh|s/waves.py" allow /waves.py" active /|check-lane-preflight.sh
 28 none|product/tools/brief-check.sh|s/waves.py" none-ok 2>\&1)/waves.py" active 2>\&1)/|check-lane-preflight.sh
@@ -195,6 +210,17 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 31 state|product/tools/founder-click-guard.sh|s/^    hits = \[h for l in/    hits = [] and [h for l in/|check-founder-click-guard.sh
 31 stop|product/tools/stop-check.sh|/founder-click-guard.sh" 2>\/dev\/null/d|check-founder-click-guard.sh
 31 watch|product/tools/lead-watch.sh|s/act=\$((act + \$(grep -c .^ACT. <<<"\$fc")))/true/|check-founder-click-guard.sh
+33 E14|product/tools/check-docs.sh|s/        if miss: print(f"INDEX:/        if False: print(f"INDEX:/|check-idx-integrity.sh
+33 E14 range|product/tools/check-docs.sh|s/            ids .= {f"P-{i}" for i in range(a, b + 1)}/            pass/|check-idx-integrity.sh
+33 E14 rules|product/tools/check-docs.sh|s/^for f in \[os.path.join(ph, "RULES.md")\] + sorted(glob.glob(os.path.join(ph, "rules", "\*.md"))):/for f in [os.path.join(ph, "RULES.md")]:/|check-idx-integrity.sh
+33 E14 decisions|product/tools/check-docs.sh|s/^for f in \[os.path.join(ph, "DECISIONS.md")\] + sorted(glob.glob(os.path.join(ph, "decisions", "\*.md"))):/for f in [os.path.join(ph, "DECISIONS.md")]:/|check-idx-integrity.sh
+34|product/tools/image-size.sh|s/ --not "\$base"//|check-image-size.sh
+35|product/tools/pr-suites-plan.sh|s/direct=true;; esac/direct=false;; esac/|check-pr-suites-job.sh
+35 cap|product/tools/pr-suites-plan.sh|s/\[ "\$n" -gt "\$MAX" \] \&\& n=\$MAX/true/|check-pr-suites-job.sh
+35 cancel|../../.github/workflows/pr-suites.yml|s/^  cancel-in-progress: false$/  cancel-in-progress: true/|check-pr-suites-job.sh
+35 report|../../.github/workflows/pr-suites.yml|/^        if: steps.setup.outcome == .success.$/{n;d;}|check-pr-suites-job.sh
+35 batch|../../.github/workflows/pr-suites.yml|s/ \&\& !startsWith(github.event.pull_request.head.ref, .mergify\/.)//|check-pr-suites-job.sh
+35 rename|product/tools/pr-suites-plan.sh|s/ diff --no-renames --name-only/ diff --name-only/|check-pr-suites-job.sh
 32 lanes|product/tools/owed-watch.py|s/        elif r < a.min:/        elif False:/|check-owed-watch.sh
 32 unread|product/tools/owed-watch.py|s/        if r is None:/        if False and r is None:/|check-owed-watch.sh
 32 board|product/tools/owed-watch.py|s/            raise ValueError("no backlog.by_lane")/            by = {}/|check-owed-watch.sh
@@ -204,6 +230,18 @@ MUT='1|product/tools/check-docs.sh|/CURRENT LEAD: STATE.md has/d|check-current-l
 32 watch|product/tools/lead-watch.sh|s/echo "\$lr"; act=\$((act + \$(grep -c .^ACT. <<<"\$lr")))/echo "$lr"/|check-owed-watch.sh
 32 watch2|product/tools/lead-watch.sh|s/echo "\$so"; act=\$((act + \$(grep -c .^ACT. <<<"\$so")))/echo "$so"/|check-owed-watch.sh'
 pyparse() { python3 -I -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${@: -1}"; }   # "$sh -n FILE" for a .py
+MUT="$MUT"'
+E16 line|product/tools/deps-line-check.sh|s/^  exit 1$/  exit 0/|check-deps-line.sh
+E16 new|product/tools/deps-line-check.sh|s/^        if n not in seen: out.add(n)/        if False: pass/|check-deps-line.sh
+E16 alias|product/tools/deps-line-check.sh|s/ and not PLAIN.match(v):/ and False:/|check-deps-line.sh
+E16 ci|../../.github/workflows/pr-rules.yml|/deps-line-check.sh" --base HEAD^1/d|check-deps-line.sh
+CS3 low|product/tools/queue-depth.py|s/^    if bad \* 100 < LOW \* N:/    if False:/|check-queue-depth.sh
+CS3 high|product/tools/queue-depth.py|s/^    elif bad \* 100 > HIGH \* N:/    elif False:/|check-queue-depth.sh
+CS3 band|product/tools/queue-depth.py|s/^        want, why = cur, /        want, why = DEEP, /|check-queue-depth.sh
+CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if not found:/|check-queue-depth.sh
+CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
+CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
+CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do
   M=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$M" ] || { echo "no temp dir: nothing was checked"; exit 2; }; mkdir -p "$M/$P/product" "$M/$P/prototype/studio" "$M/.claude" "$M/.github/workflows" "$M/$P/product/qa"
