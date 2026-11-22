@@ -14,6 +14,8 @@ export function PlacePanel({ person, offices, onClose, returnFocus }: { person: 
   const [choice, setChoice] = React.useState(NONE), [busy, setBusy] = React.useState(false), [problem, setProblem] = React.useState<string | null>(null);
   const sending = React.useRef(false);
   React.useEffect(() => { if (person) { setChoice(person.officeId ?? NONE); setProblem(null); } }, [person]);
+  // Break m5: the panel opens on the ticked choice (the person's current office), not the first radio, so Space never moves them.
+  React.useEffect(() => { if (!person) return; const t = setTimeout(() => document.querySelector<HTMLInputElement>('#place-form input[name="place"]:checked')?.focus(), 0); return () => clearTimeout(t); }, [person]);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!person || sending.current) return;

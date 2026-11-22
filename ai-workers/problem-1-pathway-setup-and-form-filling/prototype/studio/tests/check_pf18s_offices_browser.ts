@@ -106,6 +106,12 @@ try {
   await p.locator("[data-office-province]").selectOption("AB");
   const pre = await p.locator("[data-office-zone]").inputValue(), hint = await dialog(p).innerText();
   ok("PF-18s DW3: before saving, picking AB shows the time zone America/Edmonton, pre-filled and editable, with \"Pre-filled from AB\"", pre === "America/Edmonton" && hint.includes("Pre-filled from AB") && await p.locator("[data-office-zone]").isEnabled(), { pre });
+  const firmOpt = () => p.locator('[data-office-zone] option', { hasText: "Your firm's time zone" }).count();
+  const withProvince = await firmOpt();
+  await p.locator("[data-office-province]").selectOption(""); const noProvince = await firmOpt(), zoneNone = await p.locator("[data-office-zone]").inputValue();
+  await p.locator("[data-office-province]").selectOption("AB");
+  ok("PF-18s DW3 (break M1): while a province gives a zone, \"Your firm's time zone\" is not offered (the server would pre-fill the province's over it); with no province it is, and chosen",
+    withProvince === 0 && noProvince === 1 && zoneNone === "" && await p.locator("[data-office-zone]").inputValue() === "America/Edmonton", { withProvince, noProvince, zoneNone });
   const vPanel = await axe(p, true); ok("PF-18s DW7: the add panel has no WCAG 2.2 A/AA violation", vPanel.length === 0, ids(vPanel));
   await shot(p, "3-add-prefilled-1440");
   await p.locator("[data-office-save]").click(); await dialog(p).waitFor({ state: "detached" });
@@ -127,10 +133,16 @@ try {
   await p.locator("[data-office-name]").fill("calgary OFFICE"); await p.locator("[data-office-save]").click();
   await p.locator("[data-office-problem]").waitFor();
   const dup = await p.locator("[data-office-problem]").innerText();
-  await p.locator("[data-office-name]").fill("Leeds"); await p.locator("[data-office-abroad]").check(); await p.locator("[data-office-country]").fill("ZZ");
+  await p.locator("[data-office-name]").fill("Leeds"); await p.locator("[data-office-abroad]").check(); await p.locator("[data-office-country]").fill("Canada");
   await p.locator("[data-office-save]").click();
-  await dialog(p).getByRole("alert").first().waitFor();
+  await dialog(p).getByText("For an office in Canada, choose In Canada and its province.").waitFor();
+  await p.locator("[data-office-country]").fill("ZZ");
+  await p.locator("[data-office-save]").click();
+  await dialog(p).getByText("Office not saved").or(dialog(p).locator('[role="alert"]')).first().waitFor();
+  await p.waitForFunction(() => document.activeElement?.hasAttribute("data-office-country"), undefined, { timeout: 5_000 });
   const countryErr = await p.locator("[data-office-country]").getAttribute("aria-invalid");
+  ok("PF-18s DW4 (break m3, m4): \"Canada\" typed as a country abroad is refused on the field before sending; after a refusal focus is on the field in error",
+    countryErr === "true" && sql(`select count(*) from platform_office where firm_id = '${A}' and name = 'Leeds'`) === "0");
   ok("PF-18s DW4: a name already used (any case) is refused in words, nothing saved; a country code not on the list is refused on the Country field",
     dup === "An office with this name already exists." && countryErr === "true" && sql(`select count(*) from platform_office where firm_id = '${A}'`) === "3", { dup, countryErr });
   const vErr = await axe(p, true); ok("PF-18s DW7: the panel with a field error has no WCAG 2.2 A/AA violation", vErr.length === 0, ids(vErr));
@@ -164,6 +176,17 @@ try {
   const staffRow = (await api(TOWNER, "GET", "/platform/staff")).body.staff.find((s: { id: string }) => s.id === OFF);
   ok("PF-18s DW6: Change → Calgary downtown → Save: the row shows it, focus is back on Change, GET staff answers its officeId, one audit line",
     backOnChange && staffRow?.officeId === cal && audits("platform.office.staff", OFF) === 1, { backOnChange, officeId: staffRow?.officeId, audits: audits("platform.office.staff", OFF) });
+  // Break B1: Offices and Team read the staff list into separate cache entries; moving between them by the menu breaks neither.
+  await p.locator('nav[aria-label="My account"] [data-account-section="/platform/team"]').click(); await p.locator("[data-seat-line]").waitFor({ timeout: 15_000 });
+  await p.locator('nav[aria-label="My account"] [data-account-section="/platform/offices"]').click();
+  const placedCell = where.locator(`[data-place-row="${OFFNAME}"] [data-place-office-name]`);
+  await placedCell.filter({ hasText: "Calgary downtown" }).waitFor({ timeout: 15_000 });
+  await where.locator(`[data-place-row="${OFFNAME}"] [data-place-open]`).click(); await dialog(p).waitFor();
+  await p.waitForFunction(() => (document.activeElement as HTMLInputElement | null)?.checked === true, undefined, { timeout: 5_000 });
+  const onTicked = await p.evaluate(() => document.activeElement?.getAttribute("data-place-office"));
+  await dialog(p).locator("button", { hasText: "Close" }).click(); await dialog(p).waitFor({ state: "detached" });
+  ok("PF-18s DW6 (break B1, m5): Offices → Team → Offices by the menu: Team shows its seat line, Offices still shows the placement; the place panel opens on the ticked office",
+    onTicked === "Calgary downtown" && !errs.length, { onTicked, errs });
   const again = await api(TOWNER, "PUT", `/platform/staff/${OFF}/office`, { officeId: cal.toUpperCase() });
   const moved = await api(TOWNER, "PUT", `/platform/staff/${OFF}/office`, { officeId: van });
   ok("PF-18s DW6 (m1): the same placement again answers it and writes no audit line; a real move writes one",

@@ -16,7 +16,8 @@ const Empty = ({ children }: { children: React.ReactNode }) => <p data-empty cla
 
 function WhoWorksWhere({ offices }: { offices: Office[] }) {
   const token = useStaffToken();
-  const people = useQuery({ queryKey: ["pf", "staff", "list", token], enabled: !!token, retry: false, queryFn: async () => People.parse(await staffApi("/platform/staff")) });
+  // Its own cache entry (break B1): Team, Licences and the booking pages keep a wider shape of the same read under ["pf","staff","list"].
+  const people = useQuery({ queryKey: ["pf", "staff", "placements", token], enabled: !!token, retry: false, queryFn: async () => People.parse(await staffApi("/platform/staff")) });
   const [placing, setPlacing] = React.useState<Person | null>(null);
   const opener = React.useRef<HTMLElement | null>(null);
   if (people.isError) return <Notice tone="danger" title="Could not load your team">{people.error instanceof StaffApiError ? people.error.message : "Please reload the page."}</Notice>;
@@ -73,10 +74,10 @@ function OfficesBody() {
       ) : (
         <>
           {firstAdded ? <Notice tone="ok" title="Your firm now has offices"><span data-first-added>Your current office was written from the firm's own time zone, hours and closed days.</span></Notice> : null}
-          <Table label="Offices" head={["Name", "Where", "Time zone", "Hours", <span key="e" className="sr-only">Edit</span>]}>
+          <Table label="Offices" head={["Name", "Where", "Time zone", "Hours", <span key="e" className="sr-only">Edit</span>]} headClass={[undefined, "hidden sm:table-cell", undefined, "hidden md:table-cell"]}>
             {l.offices.map((o) => <tr key={o.id} data-office-row={o.name}>
-              <td className="font-medium [overflow-wrap:anywhere]">{o.name}{o.isFirst ? <span className="block text-xs font-normal text-text-muted">First office</span> : null}</td>
-              <td>{whereLine(o)}</td><td data-office-zone-cell>{o.timeZone}</td><td className="text-sm">{hoursLine(o.businessHours)}</td>
+              <td className="min-w-32 font-medium [overflow-wrap:anywhere]">{o.name}{o.isFirst ? <span className="block text-xs font-normal text-text-muted">First office</span> : null}<span className="block text-xs font-normal text-text-muted sm:hidden">{whereLine(o)}</span></td>
+              <td className="hidden sm:table-cell">{whereLine(o)}</td><td data-office-zone-cell>{o.timeZone.split("/").map((part, i) => <React.Fragment key={i}>{i ? <>/<wbr /></> : null}{part}</React.Fragment>)}</td><td className="hidden text-sm md:table-cell">{hoursLine(o.businessHours)}</td>
               <td className="text-right"><Button variant="outline" size="sm" aria-label={`Edit ${o.name}`} onClick={open(o)} data-office-edit>Edit</Button></td>
             </tr>)}
           </Table>
