@@ -56,7 +56,11 @@ export class ConsultationAgreementController {
 @Controller("api/public/consultation-agreements")
 export class ConsultationAgreementPublicController {
   constructor(@Inject(ConsultationAgreements) private readonly a: ConsultationAgreements) {}
-  /** The client's link: `{ token }` records the view; `{ token, consent: true }` records the consent and answers the signing link. */
+  /** The client's link: `{ token }` records the view; `{ token, consent: true }` records the consent and emails the one-time
+   *  code (P-564); `{ token, consent: true, code }` checks it and answers the signing link; `resend: true` sends a new code. */
   @Post("open") @HttpCode(200)
-  open(@Body() body: unknown) { const b = (body ?? {}) as { token?: unknown; consent?: unknown }; return this.a.open(b.token, { consent: b.consent }); }
+  open(@Body() body: unknown, @Req() req: { ip?: string; socket?: { remoteAddress?: string } }) {
+    const b = (body ?? {}) as { token?: unknown; consent?: unknown; code?: unknown; resend?: unknown };
+    return this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"));
+  }
 }

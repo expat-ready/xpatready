@@ -15,7 +15,7 @@
 // for it. Every value is Sample. Every legal reading (s. 23 "signed", e-signature identity): Unconfirmed: no counsel.
 import { HttpException } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import type { ClockPort } from "../../../../../ports/clock.ts";
 import { BookingEvent, EVENT } from "../../../../../ports/events.ts";
@@ -38,6 +38,11 @@ export const BOOKING_ID = "booking.id";
 /** Sample: the consent wording's version, the request's life (FO-6's 14 days) and the reminder's lead. */
 export const CONSENT_TEXT_VERSION = "sign-electronically-v1", CONSENT_TEXT = "I agree to sign this consultation agreement electronically.";
 const EXPIRES_DAYS = 14, DAY = 24 * 60 * 60_000;
+/** P-564 (on by default): a one-time email code before signing. Sample: 10 minutes, the sixth wrong code locks 15 minutes
+ *  (FO-6's fo_signer columns and check). The firm's switch to turn it off is FO-6's setting (not on main): always on here. */
+const CODE_MINUTES = 10, CODE_TRIES = 6, LOCK_MINUTES = 15;
+/** The public door's limit per IP (contracts §0.6; Sample, sized as the booking door's token limit). */
+const DOOR_PER_IP = 30, DOOR_WINDOW_MS = 10 * 60_000;
 export const PRO_BONO = "No fee: this consultation is provided pro bono.";   // Sample wording
 export const WORDS = { signed: "Agreement signed", unsigned: "Agreement not signed yet", none: "No agreement was sent" } as const;
 const SYSTEM = "system:consultation-agreement";
@@ -54,7 +59,15 @@ const nameOf = (p: { givenNames: string | null; familyName: string | null }) => 
 export type SendResult = { sent: true; agreementId: string } | { sent: false; reason: "NOT_SCHEDULED" | "ALREADY_SENT" | "NO_AGREEMENT" | "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "NO_BOOKING"; agreementId?: string };
 
 export class ConsultationAgreementService {
+  private readonly door = new Map<string, number[]>();
   constructor(protected readonly db: PrismaClient, protected readonly ports: AgreementPorts) {}
+  /** A rolling window per IP on the public door (review M3): over it → 429, nothing read. */
+  private limit(ip: string) {
+    const now = this.ports.clock.now().getTime(), key = ip.slice(0, 64), hits = (this.door.get(key) ?? []).filter((t) => t > now - DOOR_WINDOW_MS);
+    if (hits.length >= DOOR_PER_IP) { this.door.set(key, hits); fail(429, "Too many tries", "Too many tries from here. Wait a few minutes and open the link again.", "TOO_MANY"); }
+    hits.push(now); this.door.set(key, hits);
+    if (this.door.size > 10_000) for (const [k, v] of this.door) if (!v.some((t) => t > now - DOOR_WINDOW_MS)) this.door.delete(k);
+  }
 
   /** The job workers. Call once at start-up. */
   async registerJobs() {
@@ -77,7 +90,7 @@ export class ConsultationAgreementService {
 
   /** Every scheduled booking whose event was missed (no agreement yet, the meeting still ahead): made good by the next run.
    *  The first read crosses firms (the caller's own scope decides what it sees: PF-12); each send runs as its firm. */
-  async catchUp(each: <T>(firmId: string, fn: () => Promise<T>) => Promise<T> = withFirm): Promise<{ sent: number; failed: number }> {
+  async catchUp(each: <T>(firmId: string, fn: () => Promise<T>) => Promise<T> = withFirm): Promise<{ sent: number; failed: number; sealed: number }> {
     const rows = await this.db.$queryRaw<{ firm_id: string; id: string }[]>`
       select b.firm_id::text, b.id::text from fo_booking b
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
@@ -87,7 +100,21 @@ export class ConsultationAgreementService {
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
                           where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
        order by b.starts_at limit 200`;
-    const out = { sent: 0, failed: 0 };
+    const out = { sent: 0, failed: 0, sealed: 0 };
+    // A seal that failed (every signer signed, no evidence) is tried again, and a signed copy whose job was lost is queued
+    // again (its key sends it once) (review M2).
+    const unsealed = await this.db.$queryRaw<{ firm_id: string; id: string; sealed: boolean }[]>`
+      select q.firm_id::text, q.id::text, exists (select 1 from fo_signing_evidence e where e.firm_id = q.firm_id and e.request_id = q.id) as sealed
+        from fo_signature_request q where q.document_kind = 'CONSULTATION' and (
+          (q.status = 'CLIENT_SIGNED' and not exists (select 1 from fo_signer s where s.firm_id = q.firm_id and s.request_id = q.id and s.signed_at is null))
+          or (q.status = 'SIGNED' and q.ended_at > ${new Date(this.ports.clock.now().getTime() - 7 * DAY)}))
+       order by q.sent_at limit 200`;
+    for (const q of unsealed) {
+      try {
+        if (!q.sealed) { if (await each(q.firm_id, () => this.seal(q.firm_id, q.id))) out.sealed++; }
+        else await each(q.firm_id, async () => { const d = await this.db.foSignatureRequest.findFirstOrThrow({ where: { firmId: q.firm_id, id: q.id } }); await this.queueCopy(q.firm_id, d.documentId, q.id); });
+      } catch (e) { out.failed++; await this.safe(`catch-up of request ${q.id}`, () => { throw e; }); }
+    }
     for (const r of rows) { try { if ((await each(r.firm_id, () => this.send(r.firm_id, r.id))).sent) out.sent++; } catch (e) { out.failed++; await this.safe(`catch-up of booking ${r.id}`, () => { throw e; }); } }
     return out;
   }
@@ -278,13 +305,14 @@ export class ConsultationAgreementService {
   }
   /** The client's door (no sign-in; the emailed link's token). Records the first view; with `consent: true` records the
    *  consent and answers the provider's embedded link. A wrong, ended or signed link is the one not-found. */
-  async open(token: unknown, body: { consent?: unknown } = {}) {
+  async open(token: unknown, body: { consent?: unknown; code?: unknown; resend?: unknown } = {}, ip = "unknown") {
+    this.limit(ip);
     const m = typeof token === "string" ? /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/.exec(token) : null;
     if (!m) return notFound();
     const firm = m.slice(1, 6).join("-");
     return withFirm(firm, () => this.openAs(firm, token as string, body));
   }
-  private async openAs(firm: string, token: string, body: { consent?: unknown }) {
+  private async openAs(firm: string, token: string, body: { consent?: unknown; code?: unknown; resend?: unknown }) {
     const s0 = await this.db.foSigner.findFirst({ where: { firmId: firm, linkTokenSha256: sha(token), role: "CLIENT" }, include: { request: true } });
     if (!s0 || s0.request.documentKind !== "CONSULTATION" || !["SENT", "VIEWED"].includes(s0.request.status) || s0.signedAt || s0.declinedAt) return notFound();
     const firmId = s0.firmId, now = this.ports.clock.now(), consent = body.consent === true;
@@ -305,8 +333,60 @@ export class ConsultationAgreementService {
         detail: { agreementId: s0.request.documentId, signerId: cur.id, consentTextVersion: data.consentedAt ? CONSENT_TEXT_VERSION : null }, before: { viewed: !!cur.viewedAt, consented: !!cur.consentedAt }, after: { viewed: true, consented: !!next.consentedAt } });
       return next;
     });
-    const link = s.consentedAt ? await this.providerLink(firmId, s0.request.providerDocumentId, s.id) : null;
-    return { agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!s.consentedAt, link };
+    const base = { agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!s.consentedAt };
+    if (!s.consentedAt) return { ...base, codeNeeded: false, link: null };
+    const verified = s.codeVerifiedAt ? true : await this.code(firmId, s0.id, s0.request.documentId, body);
+    if (!verified) return { ...base, codeNeeded: true, codeSentTo: "the email address this link was sent to", link: null };
+    return { ...base, codeNeeded: false, link: await this.providerLink(firmId, s0.request.providerDocumentId, s.id) };
+  }
+
+  /** P-564: the one-time email code. No code given → one is sent (again only when the last has expired, or on `resend`);
+   *  a code given → checked under the request's lock: right → verified (true); wrong → counted, the sixth locks the link
+   *  15 minutes (423); a locked link answers 423 until then. Only the code's sha256 is stored. */
+  private async code(firmId: string, signerId: string, agreementId: string, body: { code?: unknown; resend?: unknown }): Promise<boolean> {
+    const now = this.ports.clock.now(), given = typeof body.code === "string" && /^\d{6}$/.test(body.code.trim()) ? body.code.trim() : null;
+    if (body.code !== undefined && !given) fail(422, "Check the code", "The code is the 6 digits in the email we sent you.", "CODE_FORMAT");
+    let send: string | null = null;
+    const verdict = await this.db.$transaction(async (tx) => {
+      const r = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId }, include: { request: true } });
+      await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${r.requestId}::uuid for update`;
+      const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+      if (cur.codeVerifiedAt) return "OK" as const;
+      if (cur.lockedUntil && cur.lockedUntil > now) return "LOCKED" as const;
+      const line = (summary: string, after: Record<string, string | number | boolean | null>) => this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.code", entity: "fo_retainer", entityKey: agreementId, summary,
+        detail: { agreementId, signerId }, before: { codeFailures: cur.codeFailures, locked: !!cur.lockedUntil }, after });
+      if (!given) {
+        if (cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && body.resend !== true) return "SENT" as const;
+        send = String(randomInt(0, 1_000_000)).padStart(6, "0");
+        const failures = cur.lockedUntil ? 0 : cur.codeFailures;
+        await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null } });
+        await line("Consultation agreement: a one-time code was emailed to the client.", { codeFailures: failures, locked: false });
+        return "SENT" as const;
+      }
+      const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now;
+      const right = !!live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));
+      if (right) {
+        await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null } });
+        await line("Consultation agreement: the client's one-time code was right.", { codeFailures: 0, locked: false, verified: true });
+        return "OK" as const;
+      }
+      const failures = (cur.lockedUntil ? 0 : cur.codeFailures) + 1, lock = failures >= CODE_TRIES ? new Date(now.getTime() + LOCK_MINUTES * 60_000) : null;
+      await tx.foSigner.update({ where: { id: cur.id }, data: { codeFailures: Math.min(failures, CODE_TRIES), lockedUntil: lock } });
+      await line(lock ? "Consultation agreement: a sixth wrong code locked the link for 15 minutes." : "Consultation agreement: a wrong or expired code.", { codeFailures: Math.min(failures, CODE_TRIES), locked: !!lock });
+      return (lock ? "LOCKED" : live ? "WRONG" : "EXPIRED") as "LOCKED" | "WRONG" | "EXPIRED";
+    });
+    if (send) {
+      const s = await this.db.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
+      const person = s.personId ? await this.db.foPerson.findFirst({ where: { firmId, id: s.personId } }) : null;
+      const firm = await this.db.platformFirm.findUniqueOrThrow({ where: { id: firmId } });
+      if (person?.email) await this.safe("the one-time code's email", () => this.ports.mail.send({ firmId, to: person.email!, replyTo: firm.contactEmail, class: "TRANSACTIONAL", person: { kind: "FO_PERSON", id: person.id },
+        idempotencyKey: `consultation-agreement:${agreementId}:code:${sha(send!).slice(0, 16)}`, templateKey: "consultation_agreement.code",
+        subject: `Your code to sign with ${firm.operatingName}`.slice(0, 200), text: `Your one-time code is ${send}. It works for ${CODE_MINUTES} minutes. If you did not ask for it, ignore this email.\n` }));
+    }
+    if (verdict === "LOCKED") fail(423, "Locked for now", `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.`, "CODE_LOCKED");
+    if (verdict === "WRONG") fail(422, "Wrong code", "That code is not right. Check the email and try again.", "CODE_WRONG");
+    if (verdict === "EXPIRED") fail(422, "Code expired", "That code has expired. Ask for a new one.", "CODE_EXPIRED");
+    return verdict === "OK";
   }
 
   /** The firm's signer asks for their signing link (`consent: true`, the same consent text). Refused until the client has
@@ -378,6 +458,7 @@ export class ConsultationAgreementService {
       }
       if (s.role === "FIRM" && cur.signers.some((x) => x.role === "CLIENT" && !x.signedAt)) return refuse("CLIENT_SIGNS_FIRST", "the firm cannot sign before the client");
       if (!s.consentedAt) return refuse("NO_CONSENT", "no recorded consent to sign electronically");
+      if (s.role === "CLIENT" && !s.codeVerifiedAt) return refuse("NO_CODE", "the client's one-time email code was not checked (P-564)");
       await tx.foSigner.update({ where: { id: s.id }, data: { signedAt: now, viewedAt: s.viewedAt ?? now } });
       if (s.role === "CLIENT") {
         await tx.foSignatureRequest.update({ where: { id: req.id }, data: { status: "CLIENT_SIGNED" } });
@@ -414,8 +495,12 @@ export class ConsultationAgreementService {
       await tx.moduleEvent.create({ data: { firmId, type: AGREEMENT_EVENT.SIGNED, subjectId: id, occurredAt: now, payload: { agreementId: id, bookingId, sealedSha256: sealed.sha256 } } });   // last (contracts §0.5)
       return true;
     }, { maxWait: 10_000, timeout: 20_000 });
-    if (done) await this.safe("the signed copy's email", () => this.ports.jobs.enqueue(COPY_JOB, { agreementId: id, requestId: req.id }, { firmId, key: `consultation-agreement:${id}:signed-copy` }));
+    if (done) await this.queueCopy(firmId, id, req.id);
     return done;
+  }
+  /** The signed copy's job, keyed once per agreement (a second queue of it does nothing; the runner retries a failed run). */
+  private async queueCopy(firmId: string, agreementId: string, requestId: string) {
+    await this.safe("the signed copy's email", () => this.ports.jobs.enqueue(COPY_JOB, { agreementId, requestId }, { firmId, key: `consultation-agreement:${agreementId}:signed-copy` }));
   }
 
   /** The signed copy to the client, once (the job's key is the email's key). */

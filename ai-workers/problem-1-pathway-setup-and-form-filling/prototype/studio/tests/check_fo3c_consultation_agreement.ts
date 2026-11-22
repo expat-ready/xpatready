@@ -65,6 +65,16 @@ try {
   } };
   const svc = new ConsultationAgreementService(db, { audit: audit as never, clock, mail, jobs, signing, files, publicBaseUrl: "https://book.example" });
   await svc.registerJobs();
+  // The public door counts tries per IP: each call here comes from its own address unless a case says otherwise.
+  let ipN = 0;
+  const op = (t: unknown, b: Parameters<typeof svc.open>[1] = {}, ip = `10.0.${Math.floor(++ipN / 250)}.${ipN % 250}`) => svc.open(t, b, ip);
+  /** Consent, then the one-time code from the client's email (P-564): answers the signing link. */
+  const withCode = async (t: string, email: string) => {
+    const first = await op(t, { consent: true });
+    const m = mail.inbox(email).filter((x) => x.templateKey === "consultation_agreement.code").at(-1);
+    const code = /\b(\d{6})\b/.exec(m?.text ?? "")?.[1];
+    return { first, done: await op(t, { consent: true, code }) };
+  };
   const lines = (key: string, action?: string) => inner.entries.filter((e) => e.entityKey === key && (!action || e.action === action));
   const events = (type: string, key: string) => Number(sql(`select count(*) from module_event where type = '${type}' and subject_id = '${key}'`));
 
@@ -131,16 +141,16 @@ try {
     early && refused.verified && !refused.applied && refused.reason === "CLIENT_SIGNS_FIRST" && sql(`select signed_at is null from fo_signer where id = '${fm0.id}'`) === "t" && sql(`select status from fo_signature_request where id = '${req0.id}'`) === "SENT"
     && lines(a0, "consultation_agreement.event_refused").length === 1 && await fails(() => svc.hostLink(T, a1, { consent: true }), 403, /NOT_THE_SIGNATORY/), { early, refused });
   // The client: the door records the view, then the consent, and answers the provider's embedded link; no consent → no signature.
-  const seen = await svc.open(token1);
+  const seen = await op(token1);
   const [noConsent] = await signing.act(A, req1.providerDocumentId, cl1.id, "viewed");
   await svc.signingEvent(noConsent);
-  const consented = await svc.open(token1, { consent: true });
+  const { first: codeAsked, done: consented } = await withCode(token1, "lee@client.example");
   const [clientSigned] = await signing.act(A, req1.providerDocumentId, cl1.id, "signed");
   const c1 = await svc.signingEvent(clientSigned);
   const hostNow = await svc.hostLink(R, a1, { consent: true });
   ok("FO-3c DW2 pass: once the client has consented and signed (CLIENT_SIGNED), the host gets their signing link; a wrong link is the one not-found",
-    seen.consented === false && seen.link === null && /^https:\/\/signing\.fake\.invalid\//.test(consented.link?.url ?? "") && c1.applied && sql(`select status from fo_retainer where id = '${a1}'`) === "CLIENT_SIGNED"
-    && /^https:\/\/signing\.fake\.invalid\//.test(hostNow.link.url) && await fails(() => svc.open(`${token1.slice(0, -1)}${token1.endsWith("A") ? "B" : "A"}`), 404) && await fails(() => svc.open("nonsense"), 404), { seen, c1 });
+    seen.consented === false && seen.link === null && codeAsked.codeNeeded === true && codeAsked.link === null && /^https:\/\/signing\.fake\.invalid\//.test(consented.link?.url ?? "") && c1.applied && sql(`select status from fo_retainer where id = '${a1}'`) === "CLIENT_SIGNED"
+    && /^https:\/\/signing\.fake\.invalid\//.test(hostNow.link.url) && await fails(() => op(`${token1.slice(0, -1)}${token1.endsWith("A") ? "B" : "A"}`), 404) && await fails(() => op("nonsense"), 404), { seen, c1 });
 
   // ------------------------------------------------------------- DW3: the signed copy and its hash are stored and emailed once
   const before = await svc.read(R, a1);
@@ -172,6 +182,7 @@ try {
   const itemsR = (await svc.needsYou(R)).items;
   await clock.set(new Date(b4.startsAt.getTime() - 86_400_000 + 60_000));
   await jobs.runDue();
+  await jobs.runDue();   // a second run adds none
   ok("FO-3c DW5 pass: an unsigned agreement 24 h before the meeting gives one reminder to the person who signs and one \"needs you\" item (a second run adds none); the meeting stays booked",
     reminders().filter((m) => m.text.includes(wall(b4.startsAt))).length === 1 && reminders().every((m) => m.to === "representative@sample-firm.example.com") && itemsR.filter((i) => i.agreementId === a4).length === 1
     && sql(`select status from fo_booking where id = '${b4.id}'`) === "SCHEDULED", { reminders: reminders().length, itemsR });
@@ -188,7 +199,7 @@ try {
   const kim = await person(A, "Kim", "kim@client.example");
   // M1: the firm's signer declines after the client signed.
   const m1 = await sendOne(T.staffId, kim);
-  await svc.open(m1.tok, { consent: true });
+  await withCode(m1.tok, "kim@client.example");
   for (const h of await signing.act(A, m1.q.providerDocumentId, m1.cl.id, "signed")) await svc.signingEvent(h);
   const [declined] = await signing.act(A, m1.q.providerDocumentId, m1.fm.id, "declined");
   const d1 = await svc.signingEvent(declined), d2 = await svc.signingEvent(declined);
@@ -199,15 +210,15 @@ try {
   const m1b = await sendOne(T.staffId, kim, 10);
   const [cdecl] = await signing.act(A, m1b.q.providerDocumentId, m1b.cl.id, "declined");
   ok("FO-3c M1 fail: a client's decline before signing is DECLINED, never WITHDRAWN; the client's link is then the one not-found",
-    (await svc.signingEvent(cdecl)).applied && sql(`select status || '|' || coalesce(withdrawn_reason, '-') from fo_retainer where id = '${m1b.id}'`) === "DECLINED|-" && await fails(() => svc.open(m1b.tok), 404));
+    (await svc.signingEvent(cdecl)).applied && sql(`select status || '|' || coalesce(withdrawn_reason, '-') from fo_retainer where id = '${m1b.id}'`) === "DECLINED|-" && await fails(() => op(m1b.tok), 404));
   // M2: the provider ended the client's part before its event reached us (the client signed and reloads).
   const m2 = await sendOne(T.staffId, kim, 11);
-  await svc.open(m2.tok, { consent: true });
+  await withCode(m2.tok, "kim@client.example");
   const early2 = await signing.act(A, m2.q.providerDocumentId, m2.cl.id, "signed");   // not handed to us yet
   ok("FO-3c M2 pass: the client reloading after signing at the provider gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
-    await fails(() => svc.open(m2.tok, { consent: true }), 409, /SIGNING_ENDED/) && await fails(() => svc.open(m2.tok), 409, /signed copy/));
+    await fails(() => op(m2.tok, { consent: true }), 409, /SIGNING_ENDED/) && await fails(() => op(m2.tok), 409, /signed copy/));
   for (const h of early2) await svc.signingEvent(h);
-  ok("FO-3c M2 fail: once the client's signature is applied, their link is the one not-found (not a 409, not a 500)", await fails(() => svc.open(m2.tok), 404));
+  ok("FO-3c M2 fail: once the client's signature is applied, their link is the one not-found (not a 409, not a 500)", await fails(() => op(m2.tok), 404));
   // m4: a double click on the host's link records the consent once; m3: a seal that failed is retried by the provider's repeat.
   const clicks = await Promise.allSettled([1, 2, 3].map(() => svc.hostLink(T, m2.id, { consent: true })));
   ok("FO-3c m4 pass: three parallel host links all answer, one consent line", clicks.every((c) => c.status === "fulfilled") && lines(m2.id, "consultation_agreement.opened").filter((l) => /firm/.test(l.summary)).length === 1, clicks.map((c) => c.status));
@@ -226,10 +237,57 @@ try {
   const had5 = (await svc.needsYou(T)).items.some((i) => i.agreementId === m5.id);
   await db.foBooking.update({ where: { id: m5.b.id }, data: { status: "CANCELLED" } });
   ok("FO-3c m5 pass/fail: an agreement shows as an item while its meeting is ahead; once the booking is cancelled the item goes and the client's link is the one not-found (the booking is never touched by us)",
-    had5 && !(await svc.needsYou(T)).items.some((i) => i.agreementId === m5.id) && await fails(() => svc.open(m5.tok), 404));
+    had5 && !(await svc.needsYou(T)).items.some((i) => i.agreementId === m5.id) && await fails(() => op(m5.tok), 404));
   // m9: a reschedule of a booking with no agreement says so (b0 had none until the catch-up; a fresh one in firm B with no template is used).
   const bNo = await book(A, TA, T.staffId, await person(A, "Noe", null), 13), r9 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, bNo));
   ok("FO-3c m9 pass/fail: a reschedule of a booking with no agreement answers NO_AGREEMENT, not ALREADY_SENT", r9?.sent === false && r9.reason === "NO_AGREEMENT", r9);
+
+  // ------------------------------------------------------------- the reviewer's cases on be10e6d24 (M2, M3, m6)
+  // M3: P-564's code before the signing link; the sixth wrong code locks; an unchecked code never signs; a per-IP limit.
+  const r3 = await sendOne(T.staffId, kim, 14);
+  const ask = await op(r3.tok, { consent: true });
+  const wrongs: number[] = [];
+  for (let i = 0; i < 6; i++) { try { await op(r3.tok, { consent: true, code: String(111111 + i) }); wrongs.push(200); } catch (e) { wrongs.push((e as { getStatus(): number }).getStatus()); } }
+  const lockedRight = await fails(async () => { const code = /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)!.text)![1]; return op(r3.tok, { consent: true, code }); }, 423, /CODE_LOCKED/);
+  ok("FO-3c M3 fail: consent alone gives no signing link (a code is emailed); five wrong codes answer 422, the sixth locks (423), and even the right code is refused while locked",
+    ask.codeNeeded === true && ask.link === null && wrongs.slice(0, 5).every((x) => x === 422) && wrongs[5] === 423 && lockedRight && sql(`select code_failures || '|' || (locked_until is not null) from fo_signer where id = '${r3.cl.id}'`) === "6|true", { ask, wrongs });
+  await clock.advance({ minutes: 16 });
+  const fresh = await op(r3.tok, { consent: true, resend: true }), code3 = /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)!.text)![1];
+  const good = await op(r3.tok, { consent: true, code: code3 });
+  ok("FO-3c M3 pass: after the lock a new code is sent, the right code gives the signing link once checked, and only its sha256 is stored",
+    fresh.codeNeeded && /^https:\/\/signing\.fake\.invalid\//.test(good.link?.url ?? "") && sql(`select code_verified_at is not null and code_sha256 ~ '^[0-9a-f]{64}$' from fo_signer where id = '${r3.cl.id}'`) === "t"
+    && Number(sql(`select count(*) from fo_signer where code_sha256 = '${code3}'`)) === 0, good);
+  const r3b = await sendOne(T.staffId, kim, 15);
+  await op(r3b.tok, { consent: true });   // consent recorded, code not checked
+  const [noCode] = await signing.act(A, r3b.q.providerDocumentId, r3b.cl.id, "signed");
+  const nc = await svc.signingEvent(noCode);
+  ok("FO-3c M3 fail: a provider \"signed\" for a client whose code was never checked is stored and not applied (NO_CODE)", nc.reason === "NO_CODE" && sql(`select signed_at is null from fo_signer where id = '${r3b.cl.id}'`) === "t", nc);
+  const r3c = await sendOne(T.staffId, kim, 17);
+  const [noConsent3] = await signing.act(A, r3c.q.providerDocumentId, r3c.cl.id, "signed");
+  const ncs = await svc.signingEvent(noConsent3);
+  ok("FO-3c m6 fail: a provider \"signed\" for a client who never consented here is stored and not applied (NO_CONSENT)", ncs.reason === "NO_CONSENT" && sql(`select signed_at is null from fo_signer where id = '${r3c.cl.id}'`) === "t", ncs);
+  const flood: number[] = [];
+  for (let i = 0; i < 31; i++) { try { await op("nonsense", {}, "203.0.113.9"); } catch (e) { flood.push((e as { getStatus(): number }).getStatus()); } }
+  ok("FO-3c M3 pass/fail: the public door answers the one 404 for 30 tries from one address, then 429; another address is still answered", flood.slice(0, 30).every((x) => x === 404) && flood[30] === 429 && await fails(() => op("nonsense", {}, "203.0.113.10"), 404), flood.slice(28));
+  // M2: a fully signed request with no evidence is sealed by the catch-up; its copy is sent once.
+  const r2 = await sendOne(T.staffId, kim, 16);
+  await withCode(r2.tok, "kim@client.example");
+  for (const h of await signing.act(A, r2.q.providerDocumentId, r2.cl.id, "signed")) await svc.signingEvent(h);
+  await svc.hostLink(T, r2.id, { consent: true });
+  const realFetch = signing.fetchFiles;
+  signing.fetchFiles = async () => { throw new Error("not ready"); };
+  for (const h of await signing.act(A, r2.q.providerDocumentId, r2.fm.id, "signed")) { try { await svc.signingEvent(h); } catch { /* the provider retries */ } }
+  const stuck = sql(`select status from fo_signature_request where id = '${r2.q.id}'`);
+  signing.fetchFiles = realFetch;
+  const cu = await svc.catchUp((_f, fn) => fn());
+  await jobs.runDue();
+  await svc.catchUp((_f, fn) => fn());
+  await jobs.runDue();
+  const copies2 = mail.inbox("kim@client.example").filter((m) => m.templateKey === "consultation_agreement.signed_copy" && m.subject.includes("signed"));
+  ok("FO-3c M2 fail: the provider not ready at the seal leaves it CLIENT_SIGNED with no evidence", stuck === "CLIENT_SIGNED");
+  ok("FO-3c M2 pass: the catch-up seals it (SIGNED, one evidence row) and the copy is emailed once though the catch-up ran twice",
+    cu.sealed === 1 && sql(`select status from fo_signature_request where id = '${r2.q.id}'`) === "SIGNED" && Number(sql(`select count(*) from fo_signing_evidence where request_id = '${r2.q.id}'`)) === 1
+    && copies2.filter((m) => m.idempotencyKey === `consultation-agreement:${r2.id}:signed-copy`).length === 1, { cu, copies: copies2.length });
 
   // --------------------------------------------------------------------------------- DW7: firm A's agreement unreadable by firm B
   const bB = await book(B, TB, S.staffId, sam), sB = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, bB)), aB = sB?.sent ? sB.agreementId : "";
