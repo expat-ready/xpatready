@@ -51,5 +51,9 @@ export const COLUMNS: Readonly<Record<string, readonly [Treatment, string]>> = {
   "money_trust_request.company_id": ["STAYS", "client money's record; never written here"],
   "money_trust_shortfall.person_id": ["STAYS", "client money's record; never written here"],
   "money_trust_shortfall.company_id": ["STAYS", "client money's record; never written here"],
+  "money_party_tax_treatment.person_id": ["STAYS", "client money's per-party tax setting (FO-7ts part 3); never written here (a person with money is never merged by itself, P-574 (2))"],
+  "money_party_tax_treatment.company_id": ["STAYS", "client money's per-party tax setting (FO-7ts part 3); never written here"],
+  "money_trust_entry.payee_person_id": ["STAYS", "the payee named on an insert-only trust entry (FO-7ts part 3); never re-pointed"],
+  "money_trust_entry.payee_company_id": ["STAYS", "the payee named on an insert-only trust entry (FO-7ts part 3); never re-pointed"],
   "sample_fact.person_id": ["STAYS", "not a front-office person: the configurator's Sample profile person"],
 };
