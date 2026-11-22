@@ -230,3 +230,18 @@ Reading: the failing statement is migration.sql line 113 (`GRANT xr_wall_reader 
 with is `xr_admin` → `xr_wall_reader` from line 91 (`GRANT xr_admin TO xr_wall_reader`), which RDS allowed. State left: the
 migration is recorded failed again; before the rerun, `prisma migrate resolve --rolled-back 20261116013000_pf12_firm_walls`.
 Service held at **0 tasks** until f5 merges (Lead 2, 12:3x).
+
+## Step 5: staging database state before PF-8b-f5 (#2968, head 7e5b71a21), read only, 13:1x IST
+Read from the VPC CloudShell (`xr-staging-db`) with `psql`, the owner address read from Secrets Manager into a shell variable
+and unset after (never printed; the app-only `uselibpqcompat` option dropped, `sslmode=require` kept). No write.
+```
+pg_roles like 'xr\_%':   xr_admin | super f | createrole t | bypassrls f | login t        (1 row: no xr_data, xr_app, xr_wall_reader …)
+pg_auth_members (xr_*):  rds_superuser → member xr_admin | admin f | inherit t | set t      (1 row: no xr_* membership at all)
+_prisma_migrations pf12: row 1 done f, rolled_back t   (21 Nov / today's resolve)
+                         row 2 done f, rolled_back f   (today 12:25 failure: needs `migrate resolve --rolled-back` again)
+functions owned by xr_wall_reader: 0
+```
+Reading: the failed DO block rolled back as a whole, so the database is clean: no pf12 role or membership is left. #2968's
+"leftover reader" branch (drop, or stop with the REVOKE hint) will **not** be hit here; its non-superuser path (rights instead
+of membership, then `GRANT xr_wall_reader TO xr_admin`) is the one that runs. Also confirmed: `xr_admin` is not a superuser and
+has no BYPASSRLS; the 12:25 run still got past creating the BYPASSRLS roles (it failed later, at line 113 of the old file).
