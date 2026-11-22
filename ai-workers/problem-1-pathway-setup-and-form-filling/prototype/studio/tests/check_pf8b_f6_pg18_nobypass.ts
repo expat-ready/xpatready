@@ -32,7 +32,7 @@ const f6 = readFileSync(join(MIG, "20261122040000_pf8b_f6_pf18bk_checksum", "mig
 check(`${PF18BK}: its sha256 is the checksum 20261122040000_pf8b_f6_pf18bk_checksum writes (edit it only with that line)`,
   new RegExp(`SET checksum = '${sha}'\\s+WHERE migration_name = '${PF18BK}' AND finished_at IS NOT NULL AND checksum <> '${sha}'`).test(f6), sha);
 // the counts run for every runner, after FORCE is lifted for a non-BYPASSRLS owner, and FORCE comes back after the keys
-const countsKept = (text: string) => /IF NOT \(SELECT r\.rolsuper OR r\.rolbypassrls FROM pg_roles r WHERE r\.rolname = current_user\) THEN[\s\S]*?NO FORCE ROW LEVEL SECURITY[\s\S]*?END IF;\s+SELECT count\(\*\) INTO no_firm[\s\S]*RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket[\s\S]*ADD CONSTRAINT "platform_support_message_firm_id_fkey"[\s\S]*FOREACH t IN ARRAY forced LOOP EXECUTE format\('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t\)/.test(text.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n"));
+const countsKept = (text: string) => /IF \(SELECT r\.rolsuper OR r\.rolbypassrls FROM pg_roles r WHERE r\.rolname = current_user\) THEN\s+LOCK TABLE[^;]*IN SHARE ROW EXCLUSIVE MODE;\s+ELSE\s+LOCK TABLE[^;]*IN ACCESS EXCLUSIVE MODE;[\s\S]*?NO FORCE ROW LEVEL SECURITY[\s\S]*?END IF;\s+SELECT count\(\*\) INTO no_firm[\s\S]*RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket[\s\S]*ADD CONSTRAINT "platform_support_message_firm_id_fkey"[\s\S]*FOREACH t IN ARRAY forced LOOP EXECUTE format\('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t\)/.test(text.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n"));
 check("pf18bk: every runner gets the orphan counts and their message; a non-BYPASSRLS owner lifts FORCE first and puts it back after the keys", countsKept(pf18bk));
 check("…and that rule catches the counts skipped for a non-BYPASSRLS runner, or FORCE not put back",
   !countsKept(pf18bk.replace(/END IF;\n  SELECT count\(\*\) INTO no_firm/, "ELSE\n  SELECT count(*) INTO no_firm")) && !countsKept(pf18bk.replace("'ALTER TABLE %I FORCE ROW LEVEL SECURITY'", "'SELECT 1'")));
@@ -84,18 +84,24 @@ try {
   if (!start(PORT)) { check("cluster started", false, PGBIN); throw new Error("no cluster"); }
   check("PostgreSQL 18", /^18\./.test(q(PORT, "postgres", "show server_version", "postgres")), q(PORT, "postgres", "show server_version", "postgres"));
   // the RDS state: every migration before pf18bk applied (the databases are made first; the admin then loses BYPASSRLS)
-  const dbs = ["xr_a", "xr_b0", "xr_b1", "xr_b2"];
+  const dbs = ["xr_a", "xr_b0", "xr_b1", "xr_b2", "xr_d"];
   for (const db of dbs) { newDb(PORT, db); const m = migrate(PORT, db, PF18BK); check(`${db}: the migrations before pf18bk apply (as on RDS)`, m.status === 0, out(m)); }
   adminBypass(PORT, false);
   check("the migrating user is now neither superuser nor BYPASSRLS, and has CREATEROLE (RDS's admin, not given BYPASSRLS)",
     q(PORT, "xr_admin", "select rolsuper||','||rolbypassrls||','||rolcreaterole from pg_roles where rolname = current_user", "postgres") === "false,false,true");
 
-  // A — the rest applies
+  // A — the rest applies (over one firm the admin cannot see: review m4)
+  orphan(PORT, "xr_a", `INSERT INTO platform_firm (id, key, operating_name, country_code, contact_email, updated_at) VALUES ('${FIRM}', 'f6-a', 'Firm A', 'CA', 'a@example.test', now())`);
   let m = migrate(PORT, "xr_a");
   check("A: pf18bk and every later migration apply: prisma migrate deploy exits 0 (main: P3018 / 42501 at pf18bk)", m.status === 0, out(m));
   check("A: pf18bk's three keys are in place", keys(PORT, "xr_a") === "3", keys(PORT, "xr_a"));
   check("A: the four tables keep ENABLE and FORCE ROW LEVEL SECURITY (the walls as they were)", forcedAll(PORT, "xr_a"), q(PORT, "postgres", FOUR, "xr_a"));
-  check("A: the admin still reads no support row and no firm through the walls", q(PORT, "xr_admin", "select (select count(*) from platform_firm) + (select count(*) from platform_staff)", "xr_a") === "0");
+  // the walls after the lift: xr_app reads no firm without a session firm, only its own with one (the superuser sees it)
+  check("A: after pf18bk the walls hold: xr_app reads no firm with no session firm, firm A only as firm A",
+    q(PORT, "xr_app", "select count(*) from platform_firm", "xr_a") === "0"
+    && q(PORT, "xr_app", `select set_config('app.firm_id','${FIRM}',false); select count(*) from platform_firm`, "xr_a").split("\n").pop() === "1"
+    && q(PORT, "postgres", "select count(*) from platform_firm", "xr_a") === "1",
+    [q(PORT, "xr_app", "select count(*) from platform_firm", "xr_a"), q(PORT, "postgres", "select count(*) from platform_firm", "xr_a")]);
   check("A: prisma migrate status is clean (pf18bk's checksum is the file's)", /Database schema is up to date/.test(spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "status"],
     { cwd: STUDIO, encoding: "utf8", env: { ...process.env, DATABASE_URL: `postgresql://xr_admin@127.0.0.1:${PORT}/xr_a` } }).stdout));
 
@@ -121,6 +127,13 @@ try {
       keys(PORT, db) === "0" && q(PORT, "postgres", rows, db) === "1" && forcedAll(PORT, db)
       && q(PORT, "postgres", `select count(*) from _prisma_migrations where migration_name = '${PF18BK}' and finished_at is not null`, db) === "0", keys(PORT, db));
   }
+
+  // D — only the tables that had FORCE get it back (review m4): platform_staff without FORCE stays without it
+  q(PORT, "postgres", "ALTER TABLE platform_staff NO FORCE ROW LEVEL SECURITY", "xr_d");
+  m = migrate(PORT, "xr_d");
+  check("D: with platform_staff not forced, pf18bk applies and leaves it not forced; the other three forced",
+    m.status === 0 && keys(PORT, "xr_d") === "3" && q(PORT, "postgres", FOUR, "xr_d") === "platform_firm:truetrue,platform_staff:truefalse,platform_support_message:truetrue,platform_support_ticket:truetrue",
+    [out(m), q(PORT, "postgres", FOUR, "xr_d")]);
 
   // C — a BYPASSRLS admin keeps pf18bk's own counts and message (the guard as it was)
   if (!start(PORT + 1)) { check("cluster C started", false); throw new Error("no cluster"); }

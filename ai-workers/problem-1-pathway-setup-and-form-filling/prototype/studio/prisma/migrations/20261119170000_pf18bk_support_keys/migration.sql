@@ -26,8 +26,11 @@ DO $pf18bk$
 DECLARE no_firm bigint; no_raiser bigint; msg_no_firm bigint; t text; forced text[] := '{}';
   four regclass[] := ARRAY['platform_firm', 'platform_staff', 'platform_support_ticket', 'platform_support_message']::regclass[];
 BEGIN
-  LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN SHARE ROW EXCLUSIVE MODE;
-  IF NOT (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
+    LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN SHARE ROW EXCLUSIVE MODE;
+  ELSE
+    -- PF-8b F6 review m1: ALTER TABLE below needs ACCESS EXCLUSIVE, so it is taken at once (no lock upgrade, no deadlock)
+    LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN ACCESS EXCLUSIVE MODE;
     IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (four) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
       RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % cannot see every support row (row level security); run migrations as the database owner', current_user
         USING ERRCODE = 'insufficient_privilege';
@@ -45,7 +48,7 @@ BEGIN
   IF no_firm + no_raiser + msg_no_firm > 0 THEN
     RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % support ticket(s) without their firm, % without a raiser on that firm''s staff, % support message(s) without their firm', no_firm, no_raiser, msg_no_firm
       USING ERRCODE = 'foreign_key_violation',
-            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then mark the failed attempt rolled back (prisma migrate resolve --rolled-back 20261119010000_pf18bk_support_keys) and deploy again.';
+            HINT = 'Find them with the three NOT EXISTS queries in this migration and take each to the tech lead: never delete a support record. A ticket''s firm and raiser are fixed by platform_support_ticket_write, so a repair is the database owner''s, with that trigger disabled for the one row. Then mark the failed attempt rolled back (prisma migrate resolve --rolled-back 20261119170000_pf18bk_support_keys) and deploy again.';
   END IF;
 
   -- AddForeignKey
