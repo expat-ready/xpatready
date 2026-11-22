@@ -178,6 +178,59 @@ try {
   ok("FO-3c DW5 fail: a signed agreement gives no reminder and no item; nor does the time a rescheduled booking left; another person has no item",
     !itemsR.some((i) => i.agreementId === a1) && !reminders().some((m) => m.text.includes(wall(moved.startsAt)) || m.text.includes(wall(b1.startsAt))) && (await svc.needsYou(O)).items.length === 0, { itemsR });
 
+  // ------------------------------------------------------------- the breaker's cases on be10e6d24 (each a pass and a fail)
+  const sendOne = async (staffId: string, who: { id: string }, days = 9) => {
+    const b = await book(A, TA, staffId, who, days), r = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, b));
+    const id = r?.sent ? r.agreementId : "", q = await db.foSignatureRequest.findFirstOrThrow({ where: { documentId: id }, include: { signers: true } });
+    const tok = /#([0-9a-f]{32}\.[\w-]{43})/.exec(mail.inbox(`${(await db.foPerson.findFirstOrThrow({ where: { id: who.id } })).email}`).filter((m) => m.templateKey === "consultation_agreement.sent").at(-1)!.text)![1];
+    return { b, id, q, cl: q.signers.find((x) => x.role === "CLIENT")!, fm: q.signers.find((x) => x.role === "FIRM")!, tok };
+  };
+  const kim = await person(A, "Kim", "kim@client.example");
+  // M1: the firm's signer declines after the client signed.
+  const m1 = await sendOne(T.staffId, kim);
+  await svc.open(m1.tok, { consent: true });
+  for (const h of await signing.act(A, m1.q.providerDocumentId, m1.cl.id, "signed")) await svc.signingEvent(h);
+  const [declined] = await signing.act(A, m1.q.providerDocumentId, m1.fm.id, "declined");
+  const d1 = await svc.signingEvent(declined), d2 = await svc.signingEvent(declined);
+  ok("FO-3c M1 pass: the firm's signer declining after the client signed ends the request DECLINED and the agreement WITHDRAWN with that reason (no 500); its retry is a repeat; no item, no host link",
+    d1.applied && d2.reason === "REPEAT" && sql(`select status from fo_signature_request where id = '${m1.q.id}'`) === "DECLINED" && sql(`select status || '|' || withdrawn_reason from fo_retainer where id = '${m1.id}'`) === "WITHDRAWN|The firm's signer declined to sign after the client signed."
+    && !(await svc.needsYou(T)).items.some((i) => i.agreementId === m1.id) && await fails(() => svc.hostLink(T, m1.id, { consent: true }), 409, /NOT_OPEN/), { d1, d2 });
+  // A client's decline before signing stays DECLINED (the fail side: no WITHDRAWN there).
+  const m1b = await sendOne(T.staffId, kim, 10);
+  const [cdecl] = await signing.act(A, m1b.q.providerDocumentId, m1b.cl.id, "declined");
+  ok("FO-3c M1 fail: a client's decline before signing is DECLINED, never WITHDRAWN; the client's link is then the one not-found",
+    (await svc.signingEvent(cdecl)).applied && sql(`select status || '|' || coalesce(withdrawn_reason, '-') from fo_retainer where id = '${m1b.id}'`) === "DECLINED|-" && await fails(() => svc.open(m1b.tok), 404));
+  // M2: the provider ended the client's part before its event reached us (the client signed and reloads).
+  const m2 = await sendOne(T.staffId, kim, 11);
+  await svc.open(m2.tok, { consent: true });
+  const early2 = await signing.act(A, m2.q.providerDocumentId, m2.cl.id, "signed");   // not handed to us yet
+  ok("FO-3c M2 pass: the client reloading after signing at the provider gets 409 SIGNING_ENDED (never a 500), with the words that the copy follows",
+    await fails(() => svc.open(m2.tok, { consent: true }), 409, /SIGNING_ENDED/) && await fails(() => svc.open(m2.tok), 409, /signed copy/));
+  for (const h of early2) await svc.signingEvent(h);
+  ok("FO-3c M2 fail: once the client's signature is applied, their link is the one not-found (not a 409, not a 500)", await fails(() => svc.open(m2.tok), 404));
+  // m4: a double click on the host's link records the consent once; m3: a seal that failed is retried by the provider's repeat.
+  const clicks = await Promise.allSettled([1, 2, 3].map(() => svc.hostLink(T, m2.id, { consent: true })));
+  ok("FO-3c m4 pass: three parallel host links all answer, one consent line", clicks.every((c) => c.status === "fulfilled") && lines(m2.id, "consultation_agreement.opened").filter((l) => /firm/.test(l.summary)).length === 1, clicks.map((c) => c.status));
+  const fetchFiles = signing.fetchFiles;
+  signing.fetchFiles = async () => { throw new Error("provider down"); };
+  const [firmSig] = await signing.act(A, m2.q.providerDocumentId, m2.fm.id, "signed");
+  let sealFailed = false;
+  try { await svc.signingEvent(firmSig); } catch { sealFailed = true; }
+  const unsealed = sql(`select status from fo_signature_request where id = '${m2.q.id}'`);
+  signing.fetchFiles = fetchFiles;
+  const retried = await svc.signingEvent(firmSig);
+  ok("FO-3c m3 fail: the provider down at the seal leaves the request CLIENT_SIGNED (the firm's signature kept) and the call fails, so the provider retries", sealFailed && unsealed === "CLIENT_SIGNED");
+  ok("FO-3c m3 pass: the provider's retry (a repeat) seals it: SIGNED, one evidence row", retried.reason === "REPEAT" && sql(`select status from fo_signature_request where id = '${m2.q.id}'`) === "SIGNED" && Number(sql(`select count(*) from fo_signing_evidence where request_id = '${m2.q.id}'`)) === 1);
+  // m5: a cancelled booking's agreement: no item, the link is the one not-found.
+  const m5 = await sendOne(T.staffId, kim, 12);
+  const had5 = (await svc.needsYou(T)).items.some((i) => i.agreementId === m5.id);
+  await db.foBooking.update({ where: { id: m5.b.id }, data: { status: "CANCELLED" } });
+  ok("FO-3c m5 pass/fail: an agreement shows as an item while its meeting is ahead; once the booking is cancelled the item goes and the client's link is the one not-found (the booking is never touched by us)",
+    had5 && !(await svc.needsYou(T)).items.some((i) => i.agreementId === m5.id) && await fails(() => svc.open(m5.tok), 404));
+  // m9: a reschedule of a booking with no agreement says so (b0 had none until the catch-up; a fresh one in firm B with no template is used).
+  const bNo = await book(A, TA, T.staffId, await person(A, "Noe", null), 13), r9 = await svc.onBookingEvent(eventOf(EVENT.BOOKING_RESCHEDULED, bNo));
+  ok("FO-3c m9 pass/fail: a reschedule of a booking with no agreement answers NO_AGREEMENT, not ALREADY_SENT", r9?.sent === false && r9.reason === "NO_AGREEMENT", r9);
+
   // --------------------------------------------------------------------------------- DW7: firm A's agreement unreadable by firm B
   const bB = await book(B, TB, S.staffId, sam), sB = await svc.onBookingEvent(eventOf(EVENT.BOOKING_SCHEDULED, bB)), aB = sB?.sent ? sB.agreementId : "";
   ok("FO-3c DW7 pass: each firm reads its own agreement, by id, by booking and by person", (await svc.read(S, aB)).id === aB && (await svc.forBooking(S, bB.id)).id === aB && (await svc.forPerson(S, sam.id)).agreements.length === 1 && (await svc.read(R, a1)).id === a1);

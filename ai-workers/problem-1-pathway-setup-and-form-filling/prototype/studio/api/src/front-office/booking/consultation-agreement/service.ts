@@ -25,7 +25,7 @@ import type { MailPort } from "../../../../../ports/mail.ts";
 import { withFirm } from "../../../platform/firm-scope.ts";
 import { DUTY_KEYS, type StaffContext } from "../../../platform/identity/keys.ts";
 import { DOCX, renderDocx } from "../../retainers/docx.ts";
-import type { SigningHookCall, SigningHookEvent, SigningPort } from "../../signing/port.ts";
+import { SigningEnded, SigningNotFound, type SigningHookCall, type SigningHookEvent, type SigningPort } from "../../signing/port.ts";
 import { wallLabel } from "../service.ts";
 import { CODE_S23, s23Check } from "./items.ts";
 
@@ -51,7 +51,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sha = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 const nameOf = (p: { givenNames: string | null; familyName: string | null }) => [p.givenNames, p.familyName].filter(Boolean).join(" ").trim();
 
-export type SendResult = { sent: true; agreementId: string } | { sent: false; reason: "NOT_SCHEDULED" | "ALREADY_SENT" | "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "NO_BOOKING"; agreementId?: string };
+export type SendResult = { sent: true; agreementId: string } | { sent: false; reason: "NOT_SCHEDULED" | "ALREADY_SENT" | "NO_AGREEMENT" | "NO_TEMPLATE" | "NO_LICENSED" | "NO_CLIENT_EMAIL" | "NO_BOOKING"; agreementId?: string };
 
 export class ConsultationAgreementService {
   constructor(protected readonly db: PrismaClient, protected readonly ports: AgreementPorts) {}
@@ -72,7 +72,7 @@ export class ConsultationAgreementService {
     if (event.type === EVENT.BOOKING_SCHEDULED) return this.send(event.firmId, p.bookingId);
     const a = await this.ofBooking(this.db, event.firmId, p.bookingId);
     if (a && a.status !== "SIGNED") await this.scheduleReminder(event.firmId, a.id, p.bookingId);
-    return { sent: false, reason: "ALREADY_SENT", agreementId: a?.id };
+    return a ? { sent: false, reason: "ALREADY_SENT", agreementId: a.id } : { sent: false, reason: "NO_AGREEMENT" };
   }
 
   /** Every scheduled booking whose event was missed (no agreement yet, the meeting still ahead): made good by the next run.
@@ -81,6 +81,8 @@ export class ConsultationAgreementService {
     const rows = await this.db.$queryRaw<{ firm_id: string; id: string }[]>`
       select b.firm_id::text, b.id::text from fo_booking b
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
+         -- only a booking that can be sent (its person has an email), so unsendable ones never fill the batch (break m6)
+         and exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)
          and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
                           where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
@@ -200,6 +202,12 @@ export class ConsultationAgreementService {
   }
 
   // ------------------------------------------------------------------------------------------------------ reads
+  /** Whether the agreement version's booking is still to happen (SCHEDULED or RESCHEDULED). */
+  private async bookingActive(q: Tx | PrismaClient, firmId: string, versionId: string) {
+    const rows = await q.$queryRaw<{ n: bigint }[]>`select count(*) as n from fo_retainer_version v join fo_booking b on b.firm_id = v.firm_id and b.id::text = v.merge_values->>${BOOKING_ID}
+       where v.firm_id = ${firmId}::uuid and v.id = ${versionId}::uuid and b.status in ('SCHEDULED', 'RESCHEDULED')`;
+    return Number(rows[0]?.n ?? 0) > 0;
+  }
   private async view(firmId: string, r: { id: string; status: string; signerPersonId: string | null; representativeStaffId: string; createdAt: Date }) {
     const v = await this.db.foRetainerVersion.findFirst({ where: { firmId, retainerId: r.id, n: 1 } });
     const m = (v?.mergeValues ?? {}) as Record<string, unknown>;
@@ -239,7 +247,13 @@ export class ConsultationAgreementService {
   }
   /** "Needs you": one item per unsigned agreement the person signs for the firm (it goes when the agreement is signed or ended). */
   async needsYou(ctx: StaffContext) {
-    const rows = await this.db.foRetainer.findMany({ where: { firmId: ctx.firmId, kind: "CONSULTATION", representativeStaffId: ctx.staffId, status: { in: ["SENT", "VIEWED", "CLIENT_SIGNED"] } }, orderBy: { createdAt: "asc" }, take: 100 });
+    // Only while the meeting is still to happen (break m5: a cancelled booking's item goes).
+    const rows = await this.db.$queryRaw<{ id: string; status: string }[]>`
+      select r.id::text, r.status::text from fo_retainer r join fo_retainer_version v on v.firm_id = r.firm_id and v.retainer_id = r.id and v.n = 1
+        join fo_booking b on b.firm_id = r.firm_id and b.id::text = v.merge_values->>${BOOKING_ID}
+       where r.firm_id = ${ctx.firmId}::uuid and r.kind = 'CONSULTATION' and r.representative_staff_id = ${ctx.staffId}::uuid
+         and r.status in ('SENT', 'VIEWED', 'CLIENT_SIGNED') and b.status in ('SCHEDULED', 'RESCHEDULED')
+       order by r.created_at limit 100`;
     return { items: rows.map((r) => ({ kind: "consultation-agreement-unsigned", agreementId: r.id, words: WORDS.unsigned, yourTurn: r.status === "CLIENT_SIGNED" })) };
   }
   /** The template panel and the booking settings: each consultation template's s. 23(2) list (never blocking), and the
@@ -253,6 +267,15 @@ export class ConsultationAgreementService {
   }
 
   // -------------------------------------------------------------------------------------------------- signing
+  /** The provider's embedded link. The provider may have ended this signer's part before its event reached us (the client
+   *  signed and reloads): that is a 409 "no longer open here", never a 500 (break M2). */
+  private async providerLink(firmId: string, providerDocumentId: string, signerId: string) {
+    try { return await this.ports.signing.embeddedLink(firmId, providerDocumentId, signerId); } catch (e) {
+      if (e instanceof SigningEnded) return fail(409, "Not open", "This agreement is signed or no longer open for signing here. The firm will email you the signed copy.", "SIGNING_ENDED");
+      if (e instanceof SigningNotFound) return notFound();
+      throw e;
+    }
+  }
   /** The client's door (no sign-in; the emailed link's token). Records the first view; with `consent: true` records the
    *  consent and answers the provider's embedded link. A wrong, ended or signed link is the one not-found. */
   async open(token: unknown, body: { consent?: unknown } = {}) {
@@ -265,6 +288,8 @@ export class ConsultationAgreementService {
     const s0 = await this.db.foSigner.findFirst({ where: { firmId: firm, linkTokenSha256: sha(token), role: "CLIENT" }, include: { request: true } });
     if (!s0 || s0.request.documentKind !== "CONSULTATION" || !["SENT", "VIEWED"].includes(s0.request.status) || s0.signedAt || s0.declinedAt) return notFound();
     const firmId = s0.firmId, now = this.ports.clock.now(), consent = body.consent === true;
+    // A cancelled or ended booking's agreement is not signed by its link (break m5): the one not-found.
+    if (!(await this.bookingActive(this.db, firmId, s0.request.documentVersionId))) return notFound();
     const s = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${s0.requestId}::uuid for update`;
       const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: s0.id } });
@@ -280,7 +305,7 @@ export class ConsultationAgreementService {
         detail: { agreementId: s0.request.documentId, signerId: cur.id, consentTextVersion: data.consentedAt ? CONSENT_TEXT_VERSION : null }, before: { viewed: !!cur.viewedAt, consented: !!cur.consentedAt }, after: { viewed: true, consented: !!next.consentedAt } });
       return next;
     });
-    const link = s.consentedAt ? await this.ports.signing.embeddedLink(firmId, s0.request.providerDocumentId, s.id) : null;
+    const link = s.consentedAt ? await this.providerLink(firmId, s0.request.providerDocumentId, s.id) : null;
     return { agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!s.consentedAt, link };
   }
 
@@ -293,13 +318,17 @@ export class ConsultationAgreementService {
     if (r.status !== "CLIENT_SIGNED") fail(409, "Not open", r.status === "SIGNED" ? "This agreement is already signed." : "This agreement is no longer open for signing.", "NOT_OPEN");
     if (body.consent !== true) fail(422, "Consent needed", CONSENT_TEXT, "CONSENT_NEEDED");
     const req = await this.db.foSignatureRequest.findFirstOrThrow({ where: { firmId: ctx.firmId, documentKind: "CONSULTATION", documentId: r.id, status: "CLIENT_SIGNED" }, include: { signers: true } });
-    const me = req.signers.find((s) => s.role === "FIRM")!, now = this.ports.clock.now();
-    if (!me.consentedAt) await this.db.$transaction(async (tx) => {
+    const me0 = req.signers.find((s) => s.role === "FIRM")!, now = this.ports.clock.now();
+    // Under the request's lock and re-read, so a double click records the consent once (break m4).
+    if (!me0.consentedAt) await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${ctx.firmId}::uuid and id = ${req.id}::uuid for update`;
+      const me = await tx.foSigner.findFirstOrThrow({ where: { firmId: ctx.firmId, id: me0.id } });
+      if (me.consentedAt || me.signedAt || me.declinedAt) return;
       await tx.foSigner.update({ where: { id: me.id }, data: { viewedAt: me.viewedAt ?? now, consentedAt: now, consentTextVersion: CONSENT_TEXT_VERSION } });
       await this.ports.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "consultation_agreement.opened", entity: "fo_retainer", entityKey: r.id, summary: "Consultation agreement: consent to sign electronically recorded (firm).",
         detail: { agreementId: r.id, signerId: me.id, consentTextVersion: CONSENT_TEXT_VERSION }, before: { consented: false }, after: { consented: true } });
     });
-    return { agreementId: r.id, link: await this.ports.signing.embeddedLink(ctx.firmId, req.providerDocumentId, me.id) };
+    return { agreementId: r.id, link: await this.providerLink(ctx.firmId, req.providerDocumentId, me0.id) };
   }
 
   /** A provider's call (FO-6's webhook route hands it over). Unverified, or about a document that is not a consultation
@@ -318,7 +347,7 @@ export class ConsultationAgreementService {
     const out = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${req.id}::uuid for update`;
       const cur = await tx.foSignatureRequest.findFirstOrThrow({ where: { firmId, id: req.id }, include: { signers: true } });
-      if (await tx.foSigningHookReceipt.findFirst({ where: { firmId, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId }, select: { id: true } })) return { applied: false, reason: "REPEAT" };
+      if (await tx.foSigningHookReceipt.findFirst({ where: { firmId, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId }, select: { id: true } })) return { applied: false, reason: "REPEAT", seal: true };   // a repeat retries a seal that failed (break m3)
       await tx.foSigningHookReceipt.create({ data: { firmId, requestId: req.id, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId, eventType: ev.providerType } });
       const s = ev.signerId ? cur.signers.find((x) => x.id === ev.signerId) : undefined, live = ["SENT", "VIEWED", "CLIENT_SIGNED"].includes(cur.status);
       const line = (summary: string, after: Record<string, string | boolean | null>, action = `consultation_agreement.${ev.type}`) => this.ports.audit.record(tx, { firmId, actor: `system:signing-${ev.provider.toLowerCase()}`, action, entity: "fo_retainer", entityKey: id, summary,
@@ -339,9 +368,12 @@ export class ConsultationAgreementService {
       if (ev.type === "declined") {
         await tx.foSigner.update({ where: { id: s.id }, data: { declinedAt: now } });
         await tx.foSignatureRequest.update({ where: { id: req.id }, data: { status: "DECLINED", endedAt: now } });
-        await tx.foRetainerVersion.update({ where: { id: req.documentVersionId }, data: { endedAt: now, endReason: "DECLINED" } });
-        await tx.foRetainer.update({ where: { id }, data: { status: "DECLINED" } });
-        await line(`Consultation agreement declined (${s.role === "CLIENT" ? "client" : "firm"}). The meeting stays booked.`, { status: "DECLINED" });
+        // FO-5's agreement moves CLIENT_SIGNED only to SIGNED, WITHDRAWN or SIGNED_OFFLINE (fo_retainer_write): a decline after
+        // the client signed (the firm's signer) ends it as WITHDRAWN with that reason, never a 500 (break M1).
+        const after = cur.status === "CLIENT_SIGNED" ? "WITHDRAWN" : "DECLINED";
+        await tx.foRetainerVersion.update({ where: { id: req.documentVersionId }, data: { endedAt: now, endReason: after } });
+        await tx.foRetainer.update({ where: { id }, data: after === "WITHDRAWN" ? { status: "WITHDRAWN", withdrawnAt: now, withdrawnBy: SYSTEM, withdrawnReason: "The firm's signer declined to sign after the client signed." } : { status: "DECLINED" } });
+        await line(`Consultation agreement declined (${s.role === "CLIENT" ? "client" : "firm"}). The meeting stays booked.`, { status: "DECLINED", agreement: after });
         return { applied: true };
       }
       if (s.role === "FIRM" && cur.signers.some((x) => x.role === "CLIENT" && !x.signedAt)) return refuse("CLIENT_SIGNS_FIRST", "the firm cannot sign before the client");
