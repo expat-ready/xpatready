@@ -1,4 +1,29 @@
-Reviewer: Block 4ac4e8b1ab36a438ebdbeca28a6584f28e5b5c6d
+Reviewer: Approve 2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f
+
+# Round 6b (diff-only, 4ac4e8b1a..2fb4965eb)
+
+**What changed in the studio:** `git diff 4ac4e8b1a 2fb4965eb -- …/studio` shows two files, +4 lines each, and nothing else.
+* `migration.sql:629-631, 641`: a 2-line PF-8b F4 comment, then `GRANT CREATE ON SCHEMA public TO xr_wall_reader;` right before `DO $readers$`, and `REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;` right after `$readers$;`.
+* `rollback.sql:38-40, 50`: the same pair around its `$readers$` block.
+* No function body, column, constraint or test changed.
+
+**R6-1: closed.**
+* The pair is the same form as `20261122020000_fo6_signing_tables:369-381`.
+* The grant comes before the first `OWNER TO xr_wall_reader`, and the revoke comes after the last one. The order is right in both files.
+* On a superuser cluster the pair is a no-op. The reader holds no CREATE grant of its own after F4, so grant-then-revoke leaves the ACL as it was. The rollback's "exact" result is therefore unchanged.
+* In the rollback, both statements run inside its single `-1` transaction, so a refusal still undoes everything.
+* **What I ran at 2fb4965eb:** `tests/check_pf8b_f4_migrations.ts` reads files only and starts no database. Result: **9/9 passed**, including "every migration after F4 that hands xr_wall_reader a function grants it CREATE on public first and revokes it after (6 later)".
+* I did no database work, as asked. The FO-7ts suite re-runs at this head are the builder's evidence for the changed migration text.
+
+**Nothing else is open:**
+* Round 6's question-2 findings stand: there is no conflict with main's FO-7b, FO-7g or migrations.
+* The FO-7g part 2 note does not block this PR.
+
+**Verdict: Approve** for `2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f`. No Blocker, Major or Minor is open.
+
+---
+
+Round 6 line (superseded): Reviewer: Block 4ac4e8b1ab36a438ebdbeca28a6584f28e5b5c6d
 
 # Round 6 (diff-only, head 4ac4e8b1a)
 
