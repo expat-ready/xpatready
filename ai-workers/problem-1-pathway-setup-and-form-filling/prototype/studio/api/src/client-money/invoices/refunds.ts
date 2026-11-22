@@ -39,6 +39,10 @@ export class Refunds {
       const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
       if (had) return this.refundView(tx, ctx.firmId, had, p, true);   // a double click or a retry: the one refund, never a second
       if (p.receivedInto === "TRUST") refuse("TRUST_REFUND", TRUST_WORDS);
+      // Reading: AG-6-63 r7 only warns on applying uncleared money; refusing refunds of it is Lead B's reading (ruling on
+      // #3036, 12:35 UTC 22 Nov: if the cheque bounces, the refund came out of operating money with nothing behind it; a
+      // client who wants an undeposited cheque back gets the paper cheque back). Unconfirmed: no accountant.
+      if (!p.cleared) refuse("NOT_CLEARED", "This cheque is not cleared yet: it can be refunded once it clears. Nothing was refunded.");
       const { left, heldAsCredit } = await this.leftToRefund(tx, ctx.firmId, p);
       if (r.amountMinor > left) refuse("OVER_REFUND", `Only ${p.currency} ${MONEY(left)} of this payment is left to refund${heldAsCredit ? ` (${p.currency} ${MONEY(heldAsCredit)} paid on this invoice is held as credit: reverse the kept credit first to refund it)` : ""}. Nothing was refunded.`, { leftMinor: left, heldAsCreditMinor: heldAsCredit });
       const refundId = await this.writeRefund(tx, ctx, p, r.amountMinor, r.reason, r.idempotencyKey, r.method, r.reference ?? null, refundedOn, false);
@@ -61,8 +65,9 @@ export class Refunds {
       }
       if (p.receivedInto === "TRUST") refuse("TRUST_EXTRA", "Money received into trust stays in the trust ledger: there is no Refund · Keep as credit choice here. Nothing was changed.");
       const waiting = await this.waiting(tx, ctx.firmId, p);
-      // Money that has not arrived is neither kept nor paid back (the database refuses KEPT from an uncleared cheque; a
-      // refund of it follows the same rule here: AG-6-63 rule 7, MS-D23(3)).
+      // Money that has not arrived is neither kept nor paid back. The database refuses KEPT from an uncleared cheque. Reading:
+      // AG-6-63 r7 only warns on applying uncleared money; refusing refunds of it is Lead B's reading (as in refund()).
+      // Unconfirmed: no accountant.
       if (waiting > 0 && !p.cleared) refuse("NOT_CLEARED", "This cheque is not cleared yet: its extra waits until it clears, then a person chooses Refund or Keep as credit. Nothing was changed.");
       if (waiting <= 0) refuse("NOTHING_WAITING", "Nothing of this payment is waiting for a choice: it was chosen already, or it paid no more than was asked. Nothing was changed.", { waitingMinor: 0 });
       if (c.choice === "REFUND") {

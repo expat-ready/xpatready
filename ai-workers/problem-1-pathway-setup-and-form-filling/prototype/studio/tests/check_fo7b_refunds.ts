@@ -190,6 +190,15 @@ try {
   const qRefund = await choose(pQ.body.id, { choice: "REFUND", method: "CASH", reason: "Not arrived (Sample)", idempotencyKey: rkey() }), qKeep = await choose(pQ.body.id, { choice: "KEEP_AS_CREDIT" });
   ok("FO-7b 1c RX/KC fail (review m1, break F5): an uncleared cheque's 20.00 extra → Refund 409 NOT_CLEARED and Keep 409 (never paid back before it arrives); nothing refunded or kept",
     qRefund.status === 409 && qRefund.body.code === "NOT_CLEARED" && qKeep.status === 409 && refunds(pQ.body.id) === "" && kept(pQ.body.id) === "0", [qRefund.body, qKeep.body]);
+  // Lead B's ruling on #3036 (12:35 UTC; review Minor 4, break F5, R2-2): the plain refund route refuses an uncleared
+  // cheque too, so the extra's rule is not bypassed by the other door; once it clears, the same refund goes through.
+  const qPlain = await refund(pQ.body.id, { amountMinor: 2000, method: "CASH", reason: "Not arrived (Sample)", idempotencyKey: rkey() });
+  ok("FO-7b 1c RF fail (Lead B's ruling): a plain refund of the uncleared 120.00 cheque → 409 NOT_CLEARED in words, nothing written, no audit line, no event",
+    qPlain.status === 409 && qPlain.body.code === "NOT_CLEARED" && /not cleared yet: it can be refunded once it clears/.test(qPlain.body.detail) && refunds(pQ.body.id) === ""
+    && sql(`select count(*) from audit_event where action = 'payment.refunded' and detail->>'paymentId' = '${pQ.body.id}'`) === "0" && sql(`select count(*) from module_event where type = 'payment.refunded' and subject_id = '${pQ.body.id}'`) === "0", qPlain.body);
+  sql(`update money_payment set cleared = true, cleared_at = now(), cleared_by = 'staff:${staffA}' where id = '${pQ.body.id}'`);
+  const qAfter = await refund(pQ.body.id, { amountMinor: 2000, method: "CASH", reason: "Cleared now (Sample)", idempotencyKey: rkey() });
+  ok("FO-7b 1c RF pass (Lead B's ruling): once the cheque is ticked Cleared, the same 20.00 refund → 201, one OFFLINE refund", qAfter.status === 201 && refunds(pQ.body.id) === "2000:OFFLINE:Cleared now (Sample)", qAfter.body);
   // Round 2 Minors (review m1-m3, break R2-1, R2-3, R2-4).
   const invS = await issued(10000, 0), pS1 = await pay(invS.id, 20000), pS2 = await pay(invS.id, 5000), kS = await choose(pS2.body.id, { choice: "KEEP_AS_CREDIT" });
   const rS = await refund(pS2.body.id, { amountMinor: 1, method: "CASH", reason: "Own kept (Sample)", idempotencyKey: rkey() });
