@@ -238,6 +238,24 @@ try {
   const { r: e10, res: res10 } = fakeRes(); await routes.notice({}, req() as never, res10 as never);
   ok("DW10 fail: an unverified SNS notice (changed, other key, foreign or http certificate, no version, empty) → 400, nothing stored, no certificate fetched from a foreign host",
     all400 && e10.code === 400 && (await db.msgSuppression.count({ where: { address: x10 } })) === 0 && (await db.msgEvent.count({ where: { outboxId: s10.outboxId, kind: "BOUNCED" } })) === 0 && certFetches - before10 <= 0, bad.map((b) => b[0]));
+  // PF-28 (R1.10): the envelope through the one rule after the signature. A notice SNS signed whose Timestamp is not a time
+  // → 422 naming Timestamp, nothing applied; the same envelope unsigned (changed after signing) → 400 first (signature first).
+  const shapeBad: Record<string, string> = { ...good10, Timestamp: "yesterday" };
+  shapeBad.Signature = createSign("RSA-SHA256").update(snsStringToSign(shapeBad)).sign(sns.privateKey, "base64");
+  const { r: e22, res: res22 } = fakeRes(); await routes.notice(shapeBad, req() as never, res22 as never);
+  const { r: e22u, res: res22u } = fakeRes(); await routes.notice({ ...good10, Timestamp: "yesterday" }, req() as never, res22u as never);
+  ok("PF-28 fail: a signed notice whose envelope breaks the schema (Timestamp \"yesterday\") → 422 naming Timestamp, after the signature, nothing stored; the same unsigned → 400 (the signature first)",
+    e22.code === 422 && JSON.parse(e22.body)?.fields?.Timestamp !== undefined && e22u.code === 400 && (await db.msgSuppression.count({ where: { address: x10 } })) === 0, [e22, e22u.code]);
+  // Review m2 (#3039): AWS's documented shapes pass the schema: a Notification with Subject and UnsubscribeURL, and an
+  // UnsubscribeConfirmation with a 256-character Token (a later tightening that refused real notices fails here).
+  const awsNote = signed(notice("Bounce", firmA, randomUUID(), "aws-doc-shape", box("dw10aws")), { extra: { Subject: "Amazon SES Email Event Notification", UnsubscribeURL: "https://sns.ca-central-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:ca-central-1:000000000000:ses-notices:2bcfbf39-05c3-41de-beaa-fcfcc21c8f55" } });
+  const awsUnsub = signed({}, { extra: { Type: "UnsubscribeConfirmation", Token: "sample-token-".repeat(20).slice(0, 256), SubscribeURL: "https://sns.ca-central-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=arn:aws:sns:ca-central-1:000000000000:ses-notices&Token=x" } });
+  awsUnsub.Message = "You have chosen to deactivate subscription arn:aws:sns:ca-central-1:000000000000:ses-notices:2bcfbf39.";
+  awsUnsub.Signature = createSign("RSA-SHA256").update(snsStringToSign(awsUnsub)).sign(sns.privateKey, "base64");
+  const { r: eAws, res: resAws } = fakeRes(); await routes.notice(awsNote, req() as never, resAws as never);
+  const { r: eUnsub, res: resUnsub } = fakeRes(); await routes.notice(awsUnsub, req() as never, resUnsub as never);
+  ok("PF-28 pass: AWS's documented Notification (Subject, UnsubscribeURL) and UnsubscribeConfirmation (256-character Token) pass the schema → 200",
+    eAws.code === 200 && eUnsub.code === 200, [eAws, eUnsub]);
   const { r: ok10, res: res10b } = fakeRes(); await routes.notice(good10, req() as never, res10b as never);
   ok("DW10 pass: the same notice, signed, → 200 and the address is suppressed", ok10.code === 200 && (await db.msgSuppression.count({ where: { address: x10 } })) === 1, ok10);
   const topics = new SesNotices({ db, consent, fetchCert, topics: ["arn:aws:sns:ca-central-1:000000000000:other"] });

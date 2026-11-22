@@ -78,7 +78,14 @@ None.
 2. **A wider preview than the standard side panel?** At 560 px small print on an A4 scan is hard to read. **Recommend:** measure one real Sample scan first; if too small, let the preview use up to about 60 % of the screen on wide screens, as a recorded exception to the 480-560 px panel rule.
 
 ## Lead response
+Lead 4, 15:32 IST 22 Nov (PR #3005, comment 7077532328; P-223 (4)), written in by the screens lane as the Lead asked: **the CS-D5 preview concept is APPROVED on 30cd601c1**, after this challenge. Decisions (P-801: settled from sources, not founder questions):
+1. **Accept sits inside the preview**, as the requirement says (AG-09 §3.8; requirements outrank our row, AGENTS rule 2); "Reject with a reason" goes beside Accept as CS-D1 part 2's row text.
+2. **The preview panel may be up to 60% of the window, max 960 px**, recorded as an exception to the 480-560 px side panel (document review needs the width); below about 1300 px the 100%/200% zoom stays.
+3. **Release 1 previews PDF, PNG and JPEG only**; where the scripts flag is stored is Lead B's call.
+
+The concept's §8 corrections are carried into `design/briefs/CS-D5.md` (follow-up records PR #3024; #3005 was already queued). The Lead asked for the BACKLOG row CS-D5 in the same PR, but the repository guard forbids lanes editing BACKLOG, so the row text went to the Lead as a proposal (#3024 comment 7077574079): noted here, not done silently.
 
 ## Agreement
+Concept r2.1 (30cd601c1) answers B: none, M1-M4, m1-m5 (concept §8); reviewer Approve on 30cd601c1 (#3005); Lead approval above.
 
 ## Build discoveries
