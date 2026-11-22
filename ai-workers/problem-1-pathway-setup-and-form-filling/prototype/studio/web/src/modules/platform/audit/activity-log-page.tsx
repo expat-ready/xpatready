@@ -8,7 +8,7 @@
 // body is keyed by the person, so a session's end clears it (BR-13). The server decides every rule.
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { Button, Dialog, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
@@ -65,7 +65,7 @@ function OpenLine({ line, zone, person, onOnlyPerson }: { line: Line; zone: stri
 }
 
 function ActivityLog() {
-  const token = useStaffToken();
+  const token = useStaffToken(), qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   // C9: the log's zone. AUD-4's answer carries none today, so times are UTC and the sentence says so; never the browser's zone.
   const [zone, setZone] = React.useState("UTC");
@@ -76,6 +76,7 @@ function ActivityLog() {
   if (!problem && apiQuery(f, zone) !== key) setRead(f);
   const q = useInfiniteQuery({
     queryKey: ["pf", "audit", "lines", token, key], enabled: !!token && !!read, retry: false, initialPageParam: "", placeholderData: keepPreviousData,
+    staleTime: 0,   // a log is read fresh: going back to a filter seen before asks again
     queryFn: async ({ pageParam }) => Page.parse(await staffApi(`/platform/audit?${apiQuery(read!, zone, pageParam || undefined)}`)),
     getNextPageParam: (last) => last.next ?? undefined,
   });
@@ -117,6 +118,13 @@ function ActivityLog() {
   const [asking, setAsking] = React.useState(false), [exporting, setExporting] = React.useState(false), busy = React.useRef(false);
   const [exportError, setExportError] = React.useState<{ title: string; words: string } | null>(null);
   const exportButton = React.useRef<HTMLButtonElement>(null);
+  // The shared Dialog has no trigger to return to: when the confirm closes (Cancel, Escape or the export itself), focus goes back to Export CSV.
+  const asked = React.useRef(false);
+  React.useEffect(() => {
+    if (asking) { asked.current = true; return; }
+    if (!asked.current) return;
+    asked.current = false; const t = setTimeout(() => exportButton.current?.focus(), 0); return () => clearTimeout(t);
+  }, [asking]);
   const canExport = !!read && !problem && !q.isError;
   const exportNow = async () => {
     if (busy.current || !read) return;
@@ -137,7 +145,7 @@ function ActivityLog() {
       const url = URL.createObjectURL(blob), a = document.createElement("a"), name = fileName(res.headers.get("content-disposition")), rows = res.headers.get("x-export-rows");
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setSaid(`Export saved: ${name}${rows ? ` (${Number(rows).toLocaleString("en-CA")} lines)` : ""}. The export is now a line in the log.`);
-      void q.refetch();
+      void qc.invalidateQueries({ queryKey: ["pf", "audit", "lines"] });   // the export is a new line under every filter that matches it
     } catch { setExportError({ title: COPY.exportFailed, words: COPY.exportFailedTry }); }
     finally { busy.current = false; setExporting(false); }
   };
@@ -229,7 +237,7 @@ function ActivityLog() {
                             className="inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-left text-text-link outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50">
                             <time dateTime={l.at}>{t}</time>{isOpen ? <ChevronDown className="size-4 shrink-0" aria-hidden /> : <ChevronRight className="size-4 shrink-0" aria-hidden />}</button>
                         </td>
-                        <td className="hidden max-w-48 sm:table-cell" data-audit-who><span className="[overflow-wrap:anywhere]">{l.who}</span>
+                        <td className="hidden max-w-48 sm:table-cell" data-audit-who><span className="block [overflow-wrap:anywhere]">{l.who}</span>
                           {p && !p.active ? <span className="block text-xs text-text-muted">(left the firm)</span> : null}
                           {l.advanced.supportSessionId ? <Pill tone="info" className="mt-0.5">Support session</Pill> : null}</td>
                         <td className="hidden whitespace-nowrap lg:table-cell">{l.areaWords}</td>
