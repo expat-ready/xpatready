@@ -107,8 +107,10 @@ export function declarationFindings(roots: string[], base: string, scopeFile = S
   for (const f of roots.filter((r) => { try { return statSync(r).isDirectory(); } catch { return false; } }).flatMap((r) => tsFiles(r))) {
     if (f === scopeFile) continue;
     const rel = relative(base, f), text = readFileSync(f, "utf8");
-    if (!text.includes("defineBypassUse")) continue;
     const src = parse(f, text), isUseFile = /\.bypass\.ts$/.test(f);
+    // review (fresh) minor 1: no file reaches node:vm (it can run code under a made-up file name, past the caller check).
+    if (/\bfrom\s*["'](node:)?vm["']|\brequire\(\s*["'](node:)?vm["']\s*\)|\bimport\(\s*["'](node:)?vm["']\s*\)/.test(text)) findings.push(`${rel}: imports node:vm (it can run code under any file name; not used in the API)`);
+    if (!isUseFile && !text.includes("defineBypassUse")) continue;
     if (!isUseFile) {   // any mention (an alias, a namespace member, a variable, a string), not only a direct call (review M1)
       const at = new Set<number>();
       const visit = (n: ts.Node) => { if ((ts.isIdentifier(n) || ts.isStringLiteralLike(n)) && n.text.includes("defineBypassUse")) at.add(src.getLineAndCharacterOfPosition(n.getStart(src)).line + 1); ts.forEachChild(n, visit); };
@@ -138,7 +140,9 @@ export function declarationFindings(roots: string[], base: string, scopeFile = S
       if (ANCHOR.includes(name)) findings.push(`${rel}: "${name}" is already on BYPASS_USES`);
       if (declared.has(name)) findings.push(`"${name}" is declared in ${declared.get(name)} and in ${rel}: a use is declared once`); else declared.set(name, rel);
     }
-    const calls = (text.match(/\bdefineBypassUse\s*\(/g) ?? []).length;
+    let calls = 0;
+    const count = (n: ts.Node) => { if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "defineBypassUse") calls++; ts.forEachChild(n, count); };
+    count(src);
     if (calls !== mine && !findings.some((l) => l.startsWith(rel))) findings.push(`${rel}: a defineBypassUse call that is not a top-level export`);
   }
   return { declared, findings };
@@ -213,6 +217,11 @@ try {
   fresh(); mkdirSync(join(tmp, "p2"), { recursive: true }); writeFileSync(join(tmp, "p2", "ledger.bypass.ts"), "export {};\n");
   const strayHere = strayUseFiles(tmp, join(tmp, "billing"));
   ok("P-785 step 2 B fail: a *.bypass.ts file elsewhere in prototype/ (p2, which the API imports) is named", strayHere.includes(join("p2", "ledger.bypass.ts")), strayHere);
+  refuses("a *.bypass.ts file that never names defineBypassUse but imports other code", { "billing/x.bypass.ts": `import { db } from "../core.ts";\nexport const n = db;\n` }, /imports "\.\.\/core\.ts"/);
+  refuses("node:vm in any file", { "billing/service.ts": `import vm from "node:vm";\nexport const x = vm;\n` }, /billing\/service\.ts: imports node:vm/);
+  fresh(); writeFileSync(join(tmp, "billing", "x.bypass.ts"), `// Declared with defineBypassUse("platform.p785probe.c"), see DEVELOPING.md.\n${useFile("platform.p785probe.commented")}`.replace(`why: "a probe"`, `why: "a probe; defineBypassUse( in words"`));
+  const commented = scan();
+  ok("P-785 step 2 B pass: a comment or a reason naming defineBypassUse( in a *.bypass.ts file is not a call", commented.findings.length === 0, commented.findings);
   refuses("a missing audit", { "billing/x.bypass.ts": entryWith(`why: "w", routes: []`) }, /audit is missing/);
 
   // D: at run time, on real *.bypass.ts files under var/ importing the real firm-scope.ts.
@@ -265,7 +274,7 @@ try {
     ok("P-785 step 2 D pass: after closing, the declared uses still run", await fs.asBypass(probe, () => fs.currentBypass()) === "platform.p785probe.run");
   } finally { fs.onBypassLine(was); }
   const walls = readFileSync(WALLS, "utf8");
-  ok("P-785 step 2 D pass: the API's start-up loads every api/src *.bypass.ts file, then closes the list (platform-firm-walls.ts onApplicationBootstrap)", /async onApplicationBootstrap\(\)\s*\{\s*await loadBypassUseFiles\(join\(import\.meta\.dirname, "\.\."\)\);\s*closeBypassUses\(\);\s*\}/.test(walls));
+  ok("P-785 step 2 D pass: the API loads every api/src *.bypass.ts file with the features (platform-firm-walls.ts, top level, before any start-up hook) and closes the list in onApplicationBootstrap", /^await loadBypassUseFiles\(join\(import\.meta\.dirname, "\.\."\)\);$/m.test(walls) && /onApplicationBootstrap\(\)\s*\{\s*closeBypassUses\(\);\s*\}/.test(walls));
 } finally {
   rmSync(WORK, { recursive: true, force: true });
   for (const e of readdirSync(join(SRC, "platform"))) if (e.startsWith("__p785probe_")) rmSync(join(SRC, "platform", e), { recursive: true, force: true });

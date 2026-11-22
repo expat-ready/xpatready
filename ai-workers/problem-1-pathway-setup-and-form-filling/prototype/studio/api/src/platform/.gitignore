@@ -1,0 +1,2 @@
+# P-785 (2): tests/check_bypass_uses.ts writes its run-time probes here and removes them; a killed run must never stage them.
+__p785probe_*/
