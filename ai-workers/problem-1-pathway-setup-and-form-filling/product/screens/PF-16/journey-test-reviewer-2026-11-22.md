@@ -58,3 +58,11 @@ PR #2935, head `05067ca66d335288dae123ee9433840b35b97c34`. Isolated copies `rev_
 * An intended user's unaided walk (D17/D20 stay with the founder).
 * Stripe's real return from Checkout.
 * A fake subscription set to cancel.
+
+## Round 2 (head 4bbdc547f, :4435)
+* J7 now holds: the banner says "Free trial: ended on 20 Nov 2026.", the same as Plan and billing, with no card ask (probe P1).
+* J8 now holds: "set to cancel then, so no payment will be taken", checked on the read and on screen (B7).
+* J4 is now covered with a kept trial end (B3).
+* The held firm gets no banner.
+* The check passed 29/29 twice. j_90 scored 29/32, with W3 5/5.
+* **Score: 9 / 10, pass.** Plain words, correct data and trust each go up to 1. Feedback (60 s cache) and visual quality (width on Home) stay at ½.

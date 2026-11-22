@@ -90,3 +90,57 @@ Minors m1-m5 should land with the fixes, but they do not block.
 Verdict: Block
 
 Reviewer: Block 05067ca66d335288dae123ee9433840b35b97c34
+
+## Round 2: head `4bbdc547fcd0aac379505fc00421f2a02dba2816` (diff since `05067ca66` only)
+
+### What I re-ran
+I ran these on an isolated copy `rev2_pf16b` on :4435 (never :4400), and stopped it afterwards.
+
+* The check passed **29/29 twice** (exit 0).
+* qa's `j_90` scored **29/32**. All 5 W3 steps passed; W4 (private link) belongs to another part.
+* My round 1 probes, re-run at 1440 px:
+  * **P1** (end two days ago, status still TRIAL): the read gives `daysLeft 0, tone amber`. The banner says "Free trial: ended on 20 Nov 2026.", the same as the page, with no card ask.
+  * **P2** (ACTIVE with a kept trial end): `show:false`.
+  * **P3** (5 hours left): `daysLeft 1`.
+  * At 512 px there is no sideways scroll, and the banner is `role=status`.
+  * "Add a card" is now the first stop after the menu and breadcrumb (Tab 14, was 31).
+
+The check rewrites its screenshots on each run, so I restored the committed ones; the copies under `screenshots-banner/` were not changed by me.
+
+### Round 1 findings
+* **M1: closed.**
+  * The banner's words now come from `trialLine` (`trial-banner.tsx` `bannerWords`). A passed end reads "ended on <date>" with no card ask.
+  * The "0 on the last day" comments in `banner.ts` are corrected.
+  * The pass/fail pair is B6, with screenshot `b6-home-ended-1440.png`.
+* **M2: closed.**
+  * The read passes on `cancelAtPeriodEnd`, which is null when Stripe cannot be reached (`banner.ts:36`).
+  * On screen, a trial set to cancel reads "…set to cancel then, so no payment will be taken.", with no "Card saved" and no "Add a card".
+  * B7 covers this both on the read (through a stub BillingPort) and on screen.
+* **m1: closed.** B3 now keeps a trial end on the ACTIVE row, so removing `sub.status !== "TRIAL"` would fail.
+* **m3: closed.** Card saved, Stripe down and set to cancel each have a check in B7.
+* **m4: closed for placement.** The banner is first in the content, above the demo "Release 1 screens" card (`b2-home-3-days-amber-1440.png`, `b5-home-amber-400.png`). Its width on Home remains a Minor, as the builder listed.
+* **m2 and m5: open as Minors**, as the builder listed: the banner's 60 s cache is not refreshed when the card is confirmed, and the graph tool shows the route as untested.
+
+### The builder's other changes
+* **Held firm** (breaker m3): `show:false` when the firm is PAYMENT_HOLD.
+  * The new `platformFirm.findUnique({ where: { id: s.firmId } })` reads by the caller's own id, the same way as `account.ts` `view` and `routes.ts` `PaymentHoldGate`, under PF-12's walls.
+  * There is a pass/fail pair: on hold gives `show:false`; the hold lifted gives the banner.
+* **No link to the page you are on** (breaker m6): on `/settings/billing` the "Add a card" link is hidden; the sentence stays and the page's own button is just below. B2 checks this.
+* The frame diff is still one moved line, and the module rows are unchanged.
+
+### New in this round
+* **n1 (Minor):** with a card saved, the banner reads "Card saved. Your first payment is on 2 Dec 2026." and no longer says how many days are left. This is the same line Plan and billing uses, so the two agree, and the end date is given. A days count would match R1.90's "counts days" more literally. This does not block.
+
+### Scores
+* **Journey score (reviewer), round 2: 9 / 10, pass.**
+  * Plain words, correct data and trust go from ½ to 1.
+  * Feedback and state stays ½ (m2: the 60 s cache).
+  * Visual quality stays ½ (width on Home).
+* **D1-D20 changes:** D1 1, D3 1 (one rule shared by the line and the banner), D10 1, D12 ½, D16 1. Everything else is unchanged.
+
+### Open, not blocking
+m2, m5 and n1 (Minors), plus the banner's width on Home.
+
+Verdict: Approve 4bbdc547fcd0aac379505fc00421f2a02dba2816
+
+Reviewer: Approve 4bbdc547fcd0aac379505fc00421f2a02dba2816
