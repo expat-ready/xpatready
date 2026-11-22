@@ -23,6 +23,7 @@ const ok = (name: string, cond: boolean, detail?: unknown) => { if (cond) pass++
 export const NOT_FOLD_OUTS: { file: string; on: string; why: string }[] = [
   { file: "components/add-to-structure.tsx", on: 'role="combobox"', why: "a combobox: aria-expanded tells that its list of choices is showing" },
   { file: "runtime/add-form.tsx", on: 'role="combobox"', why: "a combobox: aria-expanded tells that its list of choices is showing" },
+  { file: "modules/platform/find/find-box.tsx", on: 'role="combobox"', why: "PF-30s find box: a combobox, aria-expanded tells that its list of results is showing" },
   { file: "components/own-questions.tsx", on: "data-own-ask", why: "an action: opens the form to ask the field as its own question" },
   { file: "components/rule-facts.tsx", on: ">Add the fact this rule needs<", why: "an action: opens the form to add a fact" },
   { file: "components/rule-facts.tsx", on: ">Work it out instead<", why: "an action: opens the form to work the fact out" },
