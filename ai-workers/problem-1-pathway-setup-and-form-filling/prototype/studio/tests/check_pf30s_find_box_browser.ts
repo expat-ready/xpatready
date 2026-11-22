@@ -314,6 +314,13 @@ try {
       await p.locator("[data-find-open]").click(); await box(p).pressSequentially(`Kit${run}`, { delay: 10 });
       await p.locator("[data-find-close]").click(); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
+      // Review r3-1: three Escapes from the open bar also give focus back to the Find button, never to the page.
+      await p.locator("[data-find-open]").click(); await p.waitForFunction(() => document.activeElement?.matches("[data-find-input]"));
+      await box(p).pressSequentially("Le", { delay: 10 }); await p.waitForTimeout(600);
+      await p.keyboard.press("Escape"); await p.keyboard.press("Escape"); await p.waitForTimeout(60);
+      ok(`PF-30s F10 (review r7-2): at ${w} px two Escapes keep focus in the box (closed list, cleared text)`, await box(p).evaluate((el) => el === document.activeElement) && (await box(p).inputValue()) === "");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      ok(`PF-30s F10 (review r3-1): at ${w} px the third Escape gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
     } else {
       // Closed box: the input never covers the person's name (review M1: 640-719 px overlapped it).
       await box(p).press("Escape"); await box(p).press("Escape");
@@ -331,6 +338,10 @@ try {
     const { p } = await pageAs(tok.O, w);
     await p.route("**/api/platform/me", async (r) => { const res = await r.fetch(); const j = await res.json() as Record<string, unknown>; await r.fulfill({ response: res, json: { ...j, displayName: LONG } }); });
     await home(p); await p.locator("[data-staff-name], [data-find-open], [data-find-input]").first().waitFor({ state: "attached", timeout: 30_000 });
+    ok(`PF-30s F12 (review r5-1): at ${w} px the help button is in the top bar, so this check covers it`, (await p.locator('header [aria-label="Get help with this page"]').count()) === 1);
+    // Review r5-2: the placeholder fits its box (measured with the input's own font against its text area).
+    const clip = await p.evaluate(() => { const i = document.querySelector<HTMLInputElement>("[data-find-input]"); if (!i || i.getBoundingClientRect().width === 0) return 0; const s = getComputedStyle(i), c = document.createElement("canvas").getContext("2d")!; c.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`; return Math.max(0, Math.ceil(c.measureText(i.placeholder).width - (i.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)))); });
+    ok(`PF-30s F12 (review r5-2): at ${w} px the placeholder is not cut off`, clip === 0, clip);
     const hidden = await p.evaluate(() => [...document.querySelectorAll("header button, header a, header input")].filter((el) => { const r = el.getBoundingClientRect(); if (r.width === 0 || r.height === 0) return false; const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(at === el || el.contains(at)) || r.width < 24 || r.height < 24; }).map((el) => el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? (el.textContent ?? "").trim()));
     ok(`PF-30s F12 (review r4-1): at ${w} px with a long name every top-bar control is whole and on top (help button, Find, Sign out)`, hidden.length === 0, hidden);
     const axe22 = await new AxeBuilder({ page: p }).include("header").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
