@@ -212,7 +212,13 @@ fresh() {
     mf=$(git diff --no-renames --name-only "$m^1" "$m" 2>/dev/null)
     local both; both=$(comm -12 <(sort -u <<< "$mine") <(sort -u <<< "$mf"); true)   # no grep -q in a pipe (round 2 m1)
     if [ -n "$both" ]; then hit="$subj ($(sed -n '1s|.*/||p' <<< "$both"))"; break; fi
-    if [ "$mig" -gt 0 ] && grep -qE "$MIG" <<< "$mf"; then hit="$subj (a migration)"; break; fi
+    # SPD-2 (P-802): only a migration of the same area (or a shared, barrier or unnamed one) re-checks; another area's
+    # migration touches other tables (migration-slots.py clash; it fails closed: no answer counts as a clash).
+    if [ "$mig" -gt 0 ] && grep -qE "$MIG" <<< "$mf"; then
+      grep -E "$MIG" <<< "$mine" > "$H.ma"; grep -E "$MIG" <<< "$mf" > "$H.mb"
+      local cl=0; python3 -I "$HERE/migration-slots.py" clash "$H.ma" "$H.mb" || cl=$?; rm -f "$H.ma" "$H.mb"
+      [ "$cl" = 1 ] || { hit="$subj (a migration of the same area)"; break; }
+    fi
   done < <(TZ=UTC git log --first-parent --date=format-local:%Y-%m-%dT%H:%M:%SZ --format='%H %cd %s' --since="$run_started" "$MAIN_REF" 2>/dev/null | awk '{print $1, $2, $6}')
   [ -n "$hit" ] || { status success "no merge since this ci started touches its files"; return; }
   status failure "main merged $hit after this ci started: re-check on today's main" || return 2

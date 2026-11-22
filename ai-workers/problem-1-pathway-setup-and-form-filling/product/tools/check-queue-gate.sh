@@ -334,6 +334,15 @@ files 8 "$S/api/src/other.ts"; run fresh 8
 ok "fresh: no merge since touches its files: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/prisma/migrations/9_z/migration.sql"; run fresh 8
 ok "fresh: both add migrations (#502 after this ci started): failure and a re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && echo 1)" "$out / $log"
+# SPD-2 (P-802): only a migration of the same area re-checks. Main's #503 at 12:30 adds a client-money migration.
+mrg 2026-11-15T12:30:00Z 503 "$S/prisma/migrations/20261115123000_client-money__c/migration.sql"
+cirun $HEAD1 completed success 2026-11-15T12:10:00Z
+files 8 "$S/prisma/migrations/20261115130000_cases__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): main merged another area's migration after this ci started: success, no re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && ! grep -q RERUN <<< "$log" && echo 1)" "$out / $log"
+files 8 "$S/prisma/migrations/20261115130000_client-money__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): main merged a migration of the same area after this ci started: failure and a re-run" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && grep -qx 'RERUN 77' <<< "$log" && grep -q 'same area' <<< "$out" && echo 1)" "$out / $log"
+files 8 "$S/prisma/migrations/20261115130000_shared__d/migration.sql"; run fresh 8
+ok "fresh (SPD-2): a shared migration waits for any area's: failure" "$(grep -qx "STATUS $HEAD1 queue-fresh failure" <<< "$log" && echo 1)" "$out / $log"
 files 8 "$S/api/src/form.ts"; cirun $HEAD1 completed success 2026-11-15T11:30:00Z; run fresh 8
 ok "fresh: a ci started after the merge touching its file: success" "$(grep -qx "STATUS $HEAD1 queue-fresh success" <<< "$log" && echo 1)" "$out / $log"
 cirun $HEAD1 completed success 2026-11-15T10:00:00Z; prj 8 $HEAD1; run fresh 8

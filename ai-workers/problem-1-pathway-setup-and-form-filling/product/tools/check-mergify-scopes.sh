@@ -37,6 +37,9 @@ for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] 
     for g in pats:
         n += 1
         p = rx(g)   # once per pattern, not per file (about 14k files: 22 s became 0.3 s)
+        # SPD-2: a per-area migration glob names folders still to come (<stamp>_<area>__<name>); migration-slots.py
+        # mergify --check (below) proves those lines instead.
+        if re.fullmatch(r".*/prisma/migrations/\*_[a-z0-9-]+__\*/\*\*", g): continue
         if not any(p.match(f) for f in files):
             bad.append(f"{name}: {g} matches no tracked file")
 conds = {q["name"]: [c for c in q.get("queue_conditions") or [] if isinstance(c, str)] for q in cfg.get("queue_rules") or []}
@@ -80,6 +83,11 @@ for why, edit in (("the fast step gone", lambda t: re.sub(r"(every PR and batch,
     if t == citext: bad.append(f"self-test: the edit '{why}' changed nothing in ci.yml, so it proves nothing")
     elif not ci_bad(t): bad.append(f"self-test: ci.yml with {why} still passes this check")
 n += 1; bad += ci_bad(citext)
+# SPD-2 (P-802): the per-area migration slots are exactly what migration-slots.py generates from prisma/schema.
+n += 1
+r = subprocess.run([sys.executable, "-I", os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/migration-slots.py"),
+                    "mergify", "--check", os.path.join(root, ".mergify.yml")], capture_output=True, text=True, env={**os.environ, "ROOT": root})
+if r.returncode: bad += [l[6:] for l in r.stdout.splitlines() if l.startswith("FAIL  ") and "mergify migration slots" not in l] or [f"migration-slots.py mergify --check: exit {r.returncode} {r.stderr.strip()[:200]}"]
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
 sys.exit(1 if bad else 0)
