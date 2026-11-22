@@ -46,3 +46,30 @@ Duplicates: safe in the browser; two direct API POSTs make two tickets (no serve
 
 ## Not tested
 A real screen reader, files over 10 MB, browsers other than Chromium, reload while a send is held, and an intended user's unaided walk (D17/D20 stay with the founder).
+
+---
+## Round 2 (commit 5ee13db4ec1c158a23db7962793c4ffcdf3976ee, 22 Nov 2026)
+This round used isolated copy `review2_pf18s2` :4732 with a fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`, at US$0. The copy is stopped and the builder's shots are restored. I re-walked only the journeys the fixes touch, in headless Chromium, by clicking, typing and reading:
+* **J7 (attachments): held.** Raised from the "?" with a PDF and a PNG, then opened the ticket. "Attachment 1" saved `support-1.pdf` (bytes `%PDF-`) and "Attachment 2" saved `support-2.png`; the page stayed on the ticket both times. An expired link (the file route's own 410 words) shows "File not opened · This download link has expired. Open the ticket again."
+* **J8 (closed while typing): held.** Typed a reply, then closed the ticket by SQL (scaffolding for PF-17) and pressed Send. The result: "Not sent · A closed ticket takes no new message: raise a new ticket instead.", the text kept read-only, no Send, the hint "copy your text into a new ticket", focus on the box, axe clean. A fresh visit to the Closed ticket shows the Closed notice only (1024 px, axe clean).
+* **J4 (bad input): words better.** Send is off on an empty or spaces-only box. The errors are now sentences: "At most 3 attachments." and "File 2: The file is not a PDF as its type says.". They still do not say how to fix the problem.
+* **J10 (zoom): held.** At 720 px the list's heads match its cells ("Last change" hidden with its column). There is no sideways scroll.
+* **Status words:** the ticket page shows the meaning beside the status ("Closed · No more messages on this ticket."). The list and the "?" keep hover-only tips.
+* **Automated:** `check_pf18s_help_browser.ts` ran **30/30 twice**, exit 0, 15 s. It now covers the download (PNG bytes plus a 401 without the bearer), closed-while-typing, the footer Close prompt and a CRLF body. No page errors appeared in either run.
+
+| Criterion | R1 | R2 | Evidence (round 2) |
+|---|---|---|---|
+| Task completed | ½ | 1 | Raise, follow, reply and open attachments (J7) |
+| Next step obvious | 1 | 1 | Unchanged; the closed hint says what to do with the kept text |
+| Plain words | ½ | ½ | Sentences now, but the file refusals say what is wrong, not how to fix it |
+| Feedback and state | ½ | 1 | Closed while typing says "Not sent" and why (J8); "File not opened" with the reason |
+| Correct data | 1 | 1 | One row per send; CRLF stored as one character (DW1) |
+| Error recovery | ½ | 1 | 409 keeps the text to copy; 410 says to open the ticket again; no raw JSON page |
+| Accessibility and screen sizes | 1 | 1 | axe clean, including the new closed-with-text state; 720 px columns fixed; list and "?" tips still hover-only (minor) |
+| Speed | 1 | 1 | Check 15 s for 30 lines; download under 1 s locally |
+| Visual quality | ½ | 1 | Column mismatch and the squeezed dot are gone |
+| Trust and sources | 1 | 1 | Unchanged |
+| **Total** | **7.5** | **9.5 / 10** | **Pass (8 or more, no 0)** |
+
+**Raise the last half point:** file refusal words that say how to fix the problem ("Attach a real PDF, PNG or JPEG", "Remove a file: at most 3"). After that, the team's tooltip on the list status and the "?".
+**Not tested (round 2):** a real screen reader, files over 10 MB, other browsers, and an intended user's unaided walk (D17/D20 stay with the founder).

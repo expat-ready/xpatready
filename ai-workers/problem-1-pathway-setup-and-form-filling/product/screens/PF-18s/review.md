@@ -65,3 +65,34 @@ A real screen reader; files over 10 MB; Safari/Firefox; the team's code (Mac-onl
 **Verdict: Block.** To fix: M-1 (Must); m-1 to m-5 (Should, or a follow-up row each).
 
 Reviewer: Block 2ed09e077c74d205611195331d49c81bdb50b700
+
+---
+## Round 2 (commit 5ee13db4ec1c158a23db7962793c4ffcdf3976ee): Ship (Approve)
+Scope: `git diff 2ed09e07..5ee13db4` only (support.ts, help-button.tsx, support-page.tsx, support-contract.ts, the check, build notes). Isolated copy `review2_pf18s2` :4732, fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`, US$0. `check_pf18s_help_browser.ts`: **30/30 twice**, exit 0, 15 s. I also walked it in my own Playwright script (shots in the session scratchpad, not committed). The copy is stopped and the rewritten `pf18s-help-*.png` are restored.
+
+| Round 1 | Fixed? | Evidence (walk + test that fails without the fix) |
+|---|---|---|
+| **M-1** attachment opened by navigation → 401 | **Yes** | `support-page.tsx:19-34` fetches with the bearer and saves the blob. A 401 ends the session as `staffApi` does. Walked: Attachment 1 saved `support-1.pdf` (`%PDF-`), Attachment 2 saved `support-2.png`, still on the ticket. A 410 shows "File not opened · This download link has expired. Open the ticket again." Test: DW5 waits for Playwright's `download` event and checks the PNG bytes. With `location.assign` no download fires, the wait throws and the check fails (`:225`). The fail line asserts 401 without the bearer. |
+| m-1 reply lost on a 409 Closed | Yes | `Reply` now always mounts (`:133`). While it holds text on a Closed ticket, the box stays read-only with "Not sent · A closed ticket takes no new message: raise a new ticket instead." There is no Send, the hint says "copy your text into a new ticket" and focus is on the box. Axe is clean in that state. A fresh Closed ticket still shows only the Closed notice (1024, axe clean). Test: the new DW5 line (it would time out on `[data-reply-problem]` before the fix). |
+| m-2 field errors were lower-case fragments | Mostly | `fieldOf` makes the server's words sentences and names the refused file ("File 2: The file is not a PDF as its type says."). Raise's Send is disabled on a blank or spaces-only box (walked). Residual below. |
+| m-3 empty "Last change" column at 640–767 px | Yes | `headClass` now follows the columns (`:56`). At 720 px the heads are `[Ticket, Status, Last change:none]` and the cells match. No sideways scroll. The dot has `shrink-0`. |
+| m-4 tips only on hover | Partly | The ticket page shows the tip as visible text ("Closed · No more messages on this ticket."), `aria-hidden` so screen readers do not hear it twice. The list status and the "?" are still `title` only. Residual below. |
+| m-5 test words overstated the second click | Yes | The check's names and comments (`:108, :113, :170-179`) say that only the ref stops the one-moment submits. The guard code is unchanged, so my round 1 red run (3 and 2 POSTs without the ref) still applies. |
+| Breaker m1 to m8 (not mine; checked in passing) | Yes | CRLF transform (`support.ts:70`). Node's FormData sends `\r\n`, so the DW1 4,999-character line goes red without the transform (5,048 > 5,000). Footer Close asks before discarding (DW1). Reopening mid-send keeps the message. Text typed during a send stays. Subjects drop bidi marks, are wrapped in `<bdi>` and cut by grapheme. A 413 shows on the files field. |
+
+**Nothing broke:**
+* DW1–DW6 hold as in round 1: one POST under the held double send, path only, 500 recovery, visibility 404, keyboard to "?", axe clean at 375/1024/1440.
+* No page errors.
+* The graph still shows G1 0 and G2 0. The support routes appear only in G3 because of `staffApi(`, the blind spot already noted. Both file routes are now reached by DW5.
+* The frame and session files are untouched in this diff.
+* The builder ran `check_pf18b_support` 41/41 and `check_pf28_inputs` 41/41. I did not re-run them: the server change is additive, the CRLF transform plus the subject function.
+
+**Scores that change:** D1 4, D5 4, D10 4, D11 4, D12 5, D16 4. The rest are as in round 1. BIC-13 Partly (file words, below). BIC-14 Partly (m-4 residual). BIC-19 Met at every width.
+
+**Open Minors (Should; a follow-up row each, none blocks):** 1. **m-2 rest.** "The file is not a PDF as its type says." and "At most 3 attachments." say what is wrong but not how to fix it (EXPERIENCE §2.10). A ZWSP-only body still reaches "…without control characters." (`support.ts:70`). Fix: "Attach a real PDF, PNG or JPEG." and "Remove a file: at most 3." 2. **m-4 rest.** The list's status tip and the "?" tip are still hover-only (`support-page.tsx:37`, `help-button.tsx:73`). Fix: the team's `tooltip.tsx`.
+
+Journey (`journey-test-reviewer-2026-11-22-part2.md`, round 2): **9.5/10**, pass.
+
+**Verdict: Approve.** There is no open Blocker or Major at 5ee13db4.
+
+Reviewer: Approve 5ee13db4ec1c158a23db7962793c4ffcdf3976ee
