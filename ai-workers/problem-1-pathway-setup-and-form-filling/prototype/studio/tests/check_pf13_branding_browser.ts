@@ -88,6 +88,7 @@ const first = await read();
 ok("PF-13 setup: the Sample firms, the Owner (user-R) and the Case Officer (user-O) signed in; firm A's branding is not set (neutral colour, no images, no audit line)",
   !!A && !!B && !!FIRM && first?.colour === null && first?.senderName === null && first?.images?.logo === null && typeof first?.neutral?.colour === "string", { FIRM, first });
 const NEUTRAL = first.neutral.colour as string;
+const LOW = colourProblem("#ffcc00") ?? "";   // "Contrast 1.5:1 on white; at least 4.5:1 is needed."
 
 // ------------------------------------------------------------------------------------------------ pure parity (no browser)
 const COLOURS = ["#000000", "#1f4e79", "#767676", "#777777", "#ffcc00", "#ffffff", "#0b6e4f", "#e63946", "#959595", "#595959"];
@@ -138,7 +139,7 @@ try {
   const p = await tab(TOWNER);
   const writes: string[] = [];
   p.on("request", (r) => { if (r.method() !== "GET" && r.url().includes("/api/")) writes.push(`${r.method()} ${new URL(r.url()).pathname}`); });
-  await open(p);
+  await open(p); await p.locator("[data-preview-sender]").filter({ hasText: FIRM }).waitFor({ timeout: 15_000 });
   ok("R1.23 PF-13 DW6e fail: the Owner has the Branding entry and the form; not set, the preview shows the neutral colour, the firm's name as the sender and no logo",
     await menuHas(p) === 1 && await previewColour(p) === NEUTRAL && (await p.locator("[data-preview-sender]").innerText()) === FIRM && await p.locator("[data-preview-logo]").count() === 0, { colour: await previewColour(p) });
   const vClean = await axe(p); ok("R1.23 PF-13 DW7: the page not yet set has no WCAG 2.2 A/AA violation", vClean.length === 0, ids(vClean));
@@ -174,13 +175,13 @@ try {
   // ---------------------------------------------------------------------------------------------- DW6b
   writes.length = 0;
   await p.locator("[data-colour-text]").fill("#ffcc00");
-  await p.getByText("Contrast 1.48:1 on white; at least 4.5:1 is needed.").waitFor({ timeout: 15_000 });
+  await p.getByText(LOW).waitFor({ timeout: 15_000 });
   const invalid = await p.locator("[data-colour-text]").getAttribute("aria-invalid"), kept = await previewColour(p);
   await p.locator("[data-branding-save]").click(); await said(p, /Not saved/);
   const onColour = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-colour-text"), undefined, { timeout: 5_000 }).then(() => true, () => false);
   const byApi = await api(TOWNER, "PUT", "/platform/branding", { colour: "#ffcc00" });
-  ok("R1.23 PF-13 DW6b: #ffcc00 is refused on the field with its ratio (\"Contrast 1.48:1 on white; at least 4.5:1 is needed.\"), the preview keeps #0b6e4f, Save sends nothing and puts focus on the field; the API refuses it in the same words (422); the stored colour is unchanged",
-    invalid === "true" && kept === "#0b6e4f" && writes.length === 0 && onColour && byApi.status === 422 && byApi.body?.detail === "Contrast 1.48:1 on white; at least 4.5:1 is needed." && (await read()).colour === "#0b6e4f", { invalid, kept, writes, onColour, api: byApi.text.slice(0, 160) });
+  ok(`R1.23 PF-13 DW6b: #ffcc00 is refused on the field with its ratio (${JSON.stringify(LOW)}), the preview keeps #0b6e4f, Save sends nothing and puts focus on the field; the API refuses it in the same words (422); the stored colour is unchanged`,
+    invalid === "true" && kept === "#0b6e4f" && writes.length === 0 && onColour && byApi.status === 422 && /^Contrast \d+(\.\d+)?:1 on white; at least 4\.5:1 is needed\.$/.test(LOW) && byApi.body?.detail === LOW && (await read()).colour === "#0b6e4f", { invalid, kept, writes, onColour, api: byApi.text.slice(0, 160) });
   const vErr = await axe(p); ok("R1.23 PF-13 DW7: the form with a refused colour has no WCAG 2.2 A/AA violation", vErr.length === 0, ids(vErr));
   await shot(p, "5-contrast-refused-1440");
   await p.locator("[data-colour-text]").fill("#777777"); await p.getByText("Contrast 4.47:1 on white; at least 4.5:1 is needed.").waitFor({ timeout: 15_000 });

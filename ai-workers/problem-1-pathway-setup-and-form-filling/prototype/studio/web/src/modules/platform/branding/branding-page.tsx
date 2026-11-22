@@ -47,7 +47,7 @@ function ImageField({ kind, saved, pending, error, onChoose, onRemove, onUndo }:
         </div>
         <input ref={input} type="file" hidden accept="image/png,image/jpeg" data-image-input={kind}
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onChoose(f); }} />
-        <Button type="button" variant="outline" size="sm" aria-label={`Choose a ${low} file`} aria-describedby={`${id}-n`} aria-invalid={error ? true : undefined} onClick={() => input.current?.click()} data-image-choose={kind}>Choose a file</Button>
+        <Button type="button" variant="outline" size="sm" aria-describedby={`${id}-n`} aria-invalid={error ? true : undefined} onClick={() => input.current?.click()} data-image-choose={kind}>Choose a {low} file</Button>
         {pending ? <Button type="button" variant="ghost" size="sm" aria-label={`Undo the ${low} change`} onClick={onUndo} data-image-undo={kind}>Undo</Button>
           : saved ? <Button type="button" variant="ghost" size="sm" aria-label={`Remove the ${low}`} onClick={onRemove} data-image-remove={kind}>Remove</Button> : null}
       </div>
@@ -61,7 +61,12 @@ function BrandingBody() {
   const me = usePlatformStaff(), token = useStaffToken();
   const allowed = me.keys.includes(BRANDING_KEY);
   const read = useQuery({ queryKey: ["pf", "branding", token], enabled: !!token && allowed, retry: false, queryFn: async () => Branding.parse(await staffApi("/platform/branding")) });
-  const firm = useQuery({ queryKey: ["pf", "branding", "firm", me.firmKey], enabled: allowed, retry: false, staleTime: Infinity, queryFn: async () => PublicBranding.parse(await staffApi(`/public/firms/${encodeURIComponent(me.firmKey)}/branding`)).name });
+  const firm = useQuery({ queryKey: ["pf", "branding", "firm", me.firmKey], enabled: allowed, retry: false, staleTime: Infinity, queryFn: async () => {
+    // The open door, asked as a client's page asks it: no token (it refuses a staff session's).
+    const r = await fetch(`/api/public/firms/${encodeURIComponent(me.firmKey)}/branding`, { headers: { accept: "application/json" } });
+    if (!r.ok) throw new Error(`${r.status}`);
+    return PublicBranding.parse(await r.json()).name;
+  } });
   const [draft, setDraft] = React.useState<Draft>(NONE), [errors, setErrors] = React.useState<Errors>({});
   const [busy, setBusy] = React.useState(false), [said, setSaid] = React.useState<{ tone: "ok" | "danger" | "info"; text: string } | null>(null);
   const [goodColour, setGoodColour] = React.useState<string | null>(null);   // the last colour typed that may be saved (the preview keeps it)
