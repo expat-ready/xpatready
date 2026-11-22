@@ -1,7 +1,7 @@
 ---
 paths:
   - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{runtime,clients,case-*,assessments,team,person-link,employer-*,earlier-facts,findings,readiness,readiness-inputs,document-review-*,filing,filing-*,fill-case,submission,submission-record,sign-steps,review-rounds,review-runs,review-run-shapes,review-stamp,review-items,release-*,stage-scope,routes-data}.ts"
-  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{case-clients,case-deadlines}/*.ts"
+  - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/{case-clients,case-deadlines,search}/*.ts"
 ---
 # Module card: api-cases (P-615)
 The runtime: a client's case on a released combination, from answers to a recorded submission. Read this before editing these files; update it in the same PR when an entry point, invariant, table or test below changes (or say `Card unchanged: <reason>` in the PR body).
