@@ -15,7 +15,7 @@
 //   W8: the host records the consult on the booking detail's Consult record panel (FO-3st1 part 2): time spent starts at
 //       the booked length; a fee with no currency is refused in the concept's words (J-S6) and nothing is stored; then
 //       notes, a recommended item and a CAD fee are saved ("Saved"): stored with who and when, one audit line without the
-//       notes' text; a quoted fee in EUR is still refused by the route (400, on quotedFeeCurrency);
+//       notes' text; a quoted fee in EUR is still refused by the route (422, on quotedFeeCurrency);
 //   W9: row 53's first step: the panel's Next step offers "Engage and prepare retainer" (B hangs on a lead, the host has
 //       agent/retainer:draft); it opens FO-4's Engage panel on B's lead page, and Engage as Individual starts the prospect.
 //       FO-5's retainer draft screen (FO-5s) is not on main, so the walk ends at the prospect (NOTE line).
@@ -297,7 +297,7 @@ try {
     && recLines.length === 1 && recLines[0].action === "booking.consult_record.created" && recLines[0].actor.includes(host.id) && !JSON.stringify(recLines[0].detail).includes(note),
     { rec, lines: recLines.map((l) => [l.action, l.actor]) });
   const eur = await call(tok, "PUT", `/front-office/bookings/${B.id}/consult-record`, { quotedFeeMinor: 1000, quotedFeeCurrency: "EUR", version: rec?.version });
-  ok("J-42 W8 (route) fail: a quoted fee in EUR is refused (400, on quotedFeeCurrency) and the record is unchanged", eur.status === 400 && JSON.stringify(eur.body?.issues ?? "").includes("quotedFeeCurrency") && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === "CAD", eur);
+  ok("J-42 W8 (route) fail: a quoted fee in EUR is refused (422, on quotedFeeCurrency) and the record is unchanged", eur.status === 422 && JSON.stringify(eur.body?.issues ?? "").includes("quotedFeeCurrency") && (await db.foConsultRecord.findFirstOrThrow({ where: { id: rec?.id } })).quotedFeeCurrency === "CAD", eur);
 
   // ---------------------------------------------------------------------------------------------- W9: the next-step button (row 53's first step)
   const steps = await staff.locator("[data-next-step] button").allInnerTexts();

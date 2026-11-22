@@ -218,8 +218,8 @@ try {
   // ---------------------------------------------------------------------------------------------------------- DW4
   const P5 = person(R.id, "Indigo"), X5 = prospectOf(P5);
   const noText = await check(X5, { result: "POTENTIAL_CONFLICT" }), textOther = await check(X5, { result: "NO_CONFLICT", disclosureText: "x" });
-  ok("FO-13c DW4 fail: POTENTIAL_CONFLICT without disclosure text → 400 on disclosureText; a disclosure with another result → 400",
-    noText.status === 400 && !!noText.body.fields?.disclosureText && textOther.status === 400, [noText.body, textOther.status]);
+  ok("FO-13c DW4 fail: POTENTIAL_CONFLICT without disclosure text → 422 on disclosureText; a disclosure with another result → 422",
+    noText.status === 422 && !!noText.body.fields?.disclosureText && textOther.status === 422, [noText.body, textOther.status]);
   const TEXT = "We acted for your employer in 2025. Sample disclosure.";
   const LONG = "Sample disclosure 😀 ".repeat(450), XL = prospectOf(person(R.id, "Long Text")), cl = await check(XL, { result: "POTENTIAL_CONFLICT", disclosureText: LONG });
   const auditAfter = sql(`select coalesce(length(detail->>'disclosureText_after'), 0) || ':' || coalesce(length(detail::text), 0) from audit_event where entity_key = '${cl.body?.id}'`);
@@ -272,11 +272,11 @@ try {
   const m1 = await check(X8, { requestId: rid8, result: "NO_CONFLICT" }), m2 = await check(X8, { requestId: rid8, result: "CONFLICT_CANNOT_ACT" });
   ok("FO-13c DW6 fail (break M-2): the same requestId with another result → 409 REQUEST_REUSED; the stored check is unchanged", m1.status === 201 && m2.status === 409 && m2.body.code === "REQUEST_REUSED", [m1.status, m2.body]);
   // Break M-5, m-1: a name the public form accepts (a C1 control mark, many emoji) is searched and stored cleaned, never a 500;
-  // a disclosure with a direction mark is a 400.
+  // a disclosure with a direction mark is a 422 (PF-28 part 3b).
   const P9 = person(R.id, "Ana\u0085", { email: "ana.c1@example.com" }), X9 = prospectOf(P9), P9b = person(R.id, "😀".repeat(100), { email: "emoji@example.com" }), X9b = prospectOf(P9b);
   const n9 = await check(X9, { result: "NO_CONFLICT" }), n9b = await check(X9b, { result: "NO_CONFLICT" }), d9 = await check(X8, { result: "POTENTIAL_CONFLICT", disclosureText: "We acted \u202e for them." });
-  ok("FO-13c DW6 pass/fail (break M-5, m-1): names with a control mark or 100 emoji are checked (201, stored cleaned); a disclosure with a direction mark → 400",
-    n9.status === 201 && n9.body.searched.name === "Ana Sample" && n9b.status === 201 && d9.status === 400, [n9.status, n9.body?.searched, n9b.status, d9.status]);
+  ok("FO-13c DW6 pass/fail (break M-5, m-1): names with a control mark or 100 emoji are checked (201, stored cleaned); a disclosure with a direction mark → 422",
+    n9.status === 201 && n9.body.searched.name === "Ana Sample" && n9b.status === 201 && d9.status === 422, [n9.status, n9.body?.searched, n9b.status, d9.status]);
   // Break M-1: a hidden match is still counted behind 60 visible matches of the same name (no row limit drops it).
   const P10 = person(T.id, "Quinn Many", { email: "quinn.many@example.com" }), X10 = prospectOf(P10, T.id);
   sql(`with p as (insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) select gen_random_uuid(), '${A}', 'Quinn Many', 'Sample', 'quinn.' || g || '@example.com', 'test', now() from generate_series(1, 60) g returning id)
