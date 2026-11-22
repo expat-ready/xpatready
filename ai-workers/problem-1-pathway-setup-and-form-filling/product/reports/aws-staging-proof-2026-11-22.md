@@ -245,3 +245,37 @@ Reading: the failed DO block rolled back as a whole, so the database is clean: n
 "leftover reader" branch (drop, or stop with the REVOKE hint) will **not** be hit here; its non-superuser path (rights instead
 of membership, then `GRANT xr_wall_reader TO xr_admin`) is the one that runs. Also confirmed: `xr_admin` is not a superuser and
 has no BYPASSRLS; the 12:25 run still got past creating the BYPASSRLS roles (it failed later, at line 113 of the old file).
+
+## Step 6: rebuild on main b17e28f3a (PF-8b-f5 merged), 16:34-16:47 IST 22 Nov
+
+* **Go:** Lead 4's "rebuild", 16:34 IST, with the founder's CodeBuild OK as quoted to Lead 4 (14:4x IST) and A284 (11:2x "AWS build approved").
+* **Build:** temporary role and project `xr-staging-image-build` recreated from `~/cb`, build `xr-staging-image-build:c3830ad5-a40f-4603-9eb0-46072429913c`
+  on SHA b17e28f3a, **SUCCEEDED 16:38:42 IST**, image `xr-staging-studio:b17e28f3a` digest
+  `sha256:c22a25554bb4578b6a1316a228ca048a229341394324eedee68169ad95645be5`. Project deleted, role policy and role deleted
+  (script output `project-deleted`, `role-deleted`). Build cost under US$0.10.
+* **Diff (0 tasks, domain mode):** only `AppMigrateF2FDD66B` and `AppTask786C7957` (new image, may be replaced) and
+  `AppService606B9134`. **Deploy rc=0 at 11:12:39Z (16:42:39 IST)**, 88.86 s.
+* **`migrate resolve --rolled-back 20261116013000_pf12_firm_walls`:** task def `xrstagingAppMigrateFE01F052:4`, task
+  169f672e…, exit 0: "Migration 20261116013000_pf12_firm_walls marked as rolled back."
+* **`migrate deploy` (16:46:51 IST): PF-8b-f5 works on RDS:** pf12 and every migration up to `20261119163000_pf19p_platform_account_mail`
+  applied. **It then stops at `20261119170000_pf18bk_support_keys`:**
+
+```
+Error: P3018
+Migration name: 20261119170000_pf18bk_support_keys
+Database error code: 42501
+ERROR: PF-18bk stopped, nothing changed: xr_admin cannot see every support row (row level security); run migrations as the database owner
+```
+
+* **Root cause (code, same family as PF-8b-f5):** the migration's first statement requires the runner to be `rolsuper OR rolbypassrls`
+  (written for the local `xr_studio` owner). On Amazon RDS the admin `xr_admin` is neither (rds_superuser member, not SUPERUSER, no
+  BYPASSRLS), so the guard stops before anything happens. The DO block is one statement, so nothing changed.
+  The guard's reason (review m1: "ADD CONSTRAINT would validate blind as well") does not hold for the keys themselves: PostgreSQL's
+  row security docs say referential integrity checks (unique, primary key and foreign key references) always bypass row security. Only the
+  three orphan pre-counts are blind for a non-bypass runner, and the key validation would still refuse an orphan with
+  foreign_key_violation. Staging's support tables are new and empty.
+* **Other migrations after it (18):** scanned on main for the same guard (`rolsuper`/`rolbypassrls` stop): **none**. Only pf18bk stops this way.
+* **Not done, by the rules:** no `ALTER ROLE … BYPASSRLS` on RDS (a security setting, and not mine to change), no hand-applied SQL. Staging stays at **0 tasks**;
+  `_prisma_migrations` holds a failed pf18bk row, so after a fix: `migrate resolve --rolled-back 20261119170000_pf18bk_support_keys`, then `migrate deploy`.
+* **Proposed code row (for the Lead): PF-8b-f6:** pf18bk's guard on a runner that is neither superuser nor BYPASSRLS: skip the blind pre-counts (or say so in a
+  NOTICE) and let ADD CONSTRAINT's own validation (which bypasses row security) refuse orphans; test like `check_pf8b_f5_pg18_grants.ts`.
