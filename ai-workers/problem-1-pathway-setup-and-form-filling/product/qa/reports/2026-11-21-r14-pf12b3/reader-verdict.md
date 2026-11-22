@@ -1,0 +1,34 @@
+# R1.4 reader verdict (fresh reader, ran nothing, P-303), main 24f839678 (#2814 PF-12b3), 21 Nov
+
+Read: CAPABILITIES R1.4; BUGS QA-499/500/609; `2026-11-21-r14-main.md` and its reader verdict; `rules/works.md`; P-339/290/305/303/616/607; `firm-scope.ts`, `firms/signup.ts`, `messages/send/{messages,mail}.ts`, `secret-box/reencrypt.ts`, `identity/guard.ts`; `git show 24f839678 --stat`; the four suites; `screens/PF-12b3/{review,break-report}.md`; this folder (committed in 592520f3f). Paths under `prototype/studio/api/src/platform/`.
+
+## Evidence
+- This folder: doors 33/33, bypass_audit 67/67, walls 100/100, pf4_identity 120/120 (a = b), gate A 17/17 twice. The counts match the reviewer's re-review 4 on 0ed88006 (33/0, 67/0). The logs do not print the commit they ran on, so "main 24f839678" rests on qa's commit message; the app tree of HEAD equals 24f839678 (only these files differ).
+- Gate A's step 6 (as merged via e8b467287, an ancestor of main) shows 0 bypass uses: gate A proves clauses 1-2 and that sign-in is off the bypass. It does not exercise the audit clause; only `check_pf12b_bypass_audit` does.
+- No GitHub run on main's head yet (P-339). Not green until it exists.
+
+## (a) Done when, clause by clause
+1. **Firm from the signed-in person only: MET.** `identity/guard.ts:108-109` (narrow lookup, then `setRequestFirm`); `firm-scope.ts:298-303` sets it only in the request's own unbypassed scope. Gate A R1.4 3 (header/query/body naming firm B never reach B); pf4_identity 120/120.
+2. **No firm, nothing: MET.** `WalledPool.connect` `firm-scope.ts:329-331`: no firm and no bypass gives `app.firm_id=''`, role `none`. pf12_walls 100/100; gate A R1.4 2 and 7.
+3a. **Bypass only through the named list: MET as "named uses".** `asBypass` refuses an unlisted use or route (`:160-163`), one use at a time (`:168-172`). The list is now 8 per-firm + 3 platform (`:108-120`), the type has no `none` (`:105`), and DW3/the PF-12b3 registry test pin it (`check_pf12b_bypass_audit.ts:73,79-80`). Re-encrypt is off the list and refuses a job without its firm (`reencrypt.ts:60`). Five entries still have request routes (QA-500).
+3b. **Every use writes an audit line: MET for the four ex-`none:` uses; NOT MET for one firm-less step.**
+   - purge: `signup.ts:251` line first, in the delete's transaction. messages.send: `messages.ts:261` and the catch path `:244` (break m1 fixed: line before the read). account.mail: `mail.ts:40`. All through `touchPlatform` (`firm-scope.ts:230-246`): firm-less, fail-closed (`:245` BypassNotRecorded rolls back), refused in a firm's scope (`:234`, break m3). Tests: "PF-12b3 pass/fail" for each of the three, the provider-refusal pair, break m3 (`check_pf12b_bypass_audit.ts:284-357`).
+   - Sign-up's firm-less steps (Lead 15 on #2814) line too: `signup.ts:163` (new email), `:193,:196` (refused verify), tests `:232-258`.
+   - **Not met:** `job:messages.outbox_sweep`'s platform branch, `messages.ts:311-320`. It reads firm-less `PLATFORM_ACCOUNT` rows of the walled `msg_outbox` on the bypass and queues sends, with no line: `touchEachFirm` (`:306`) gets only firm ids, and `touchPlatform` is never called in `sweep()`. This is break-report **m2** (attack F: `queued=1, platformJobs=1, linesAdded=0`). The review records never close or accept it (review.md rounds 1-4 dispose of the reviewer's own m1-m3 and the sign-up gap only). It is the same shape Lead 15 ruled must line on #2814 (a per-firm use's step that touches no firm writes `touchPlatform(tx, { step })`).
+   - Accepted reading, not an objection: per-firm uses write one line per firm touched, so a run that crosses no wall (an empty sweep; sign-up's honeypot path reading unwalled catalogues) writes none. Prior verdicts and part 1 accepted that.
+
+## (b) The findings
+- **QA-499: close as Fixed** for its narrowed scope (the four `none:` uses): three write a firm-less fail-closed line, re-encrypt left the list. Open the sweep step as its own bug (below) rather than widen QA-499 a fourth time.
+- **QA-609: still valid, Minor, now wider.** `asBypass` (`:157-175`) checks neither a per-firm `touchFirm` nor a platform `touchPlatform`: a use that forgets the call writes nothing and is not refused. The suite's `misclassed` (`check_pf12b_bypass_audit.ts:63-66`) covers only the paths it runs. The sweep step below is exactly this fail-open, in shipped code. Update the line refs to `:157-175`, `:230-246`.
+- **QA-500: does not block Works.** Minor ambiguity; the list is enforced and every entry is named and audited. Literally, "named platform jobs" is false (5 request uses). Works should cite the reading "named uses (platform jobs and listed request doors)", and the Lead should reword the Done when in the same change. If the Lead holds the literal wording instead, it becomes a defect and R1.4 cannot be Works.
+
+## (c) Verdict: **Partial**
+Clauses 1, 2 and 3a are met. 3b is met for every listed use's main paths and for all four QA-499 uses, but one firm-less crossing (the sweep's platform branch) writes no `audit_event` row. Under Lead 70's ruling and Lead 15's #2814 ruling that is the QA-499 class, which qa rated Major. It is not "an invented objection": the breaker reproduced it and nobody disposed of it.
+- **GitHub run green:** still Partial until the sweep step lines (one `touchPlatform(tx, { step: "sweep.platform" })` transaction before queuing, plus a pass/fail test), or a recorded Lead ruling accepts it. Then green on main + this reader's re-check = **Works** (with QA-500 reworded).
+- **GitHub run red:** Partial at best regardless. Broken if `check_pf12_walls` or gate A's checks 1-3/7 are the red ones (walls not holding).
+- If the Lead rates the new finding Minor and accepts it with a ruling, my verdict becomes **Works on a green GitHub run** on this code.
+
+## (d) New finding, and what qa got wrong
+- **N1. Gap · Major (consistent with QA-499's rating; the Lead may rule it Minor because each queued send later writes its own `job:messages.send` line).** `messages.ts:311-320`: the outbox sweep's `PLATFORM_ACCOUNT` branch crosses the wall with no audit line (break m2, PF-12b3, undispositioned). Expected: one firm-less line per run that queues a platform row, fail-closed, keyed by step, as sign-up's steps; plus a test. Owner: runtime.
+- **qa:** the R1.4 score leans on the suites and gate A but did not read PF-12b3's break report, whose m2 sits squarely on R1.4. Also, the evidence logs do not record their commit (add `git rev-parse HEAD` to each). The counts themselves agree with the reviewer's independent runs.
+- Out of R1.4's scope, for the record: break m4 (the trail's `correlation_id` column keeps a caller's free-text X-Request-Id; AUD-1b behaviour, newly reachable by anonymous sign-ups) and m5 (`detail.correlationId` always null for jobs) are also undispositioned.

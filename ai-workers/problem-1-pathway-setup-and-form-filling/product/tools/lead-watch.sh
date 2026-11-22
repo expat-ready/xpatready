@@ -1,7 +1,7 @@
 #!/bin/bash
 # Lead watch (founder, 3 Nov): one call per check gives the tech lead resources, merges and lanes in a few lines.
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
-# Exit code = number of ACT lines; step 14 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
+# Exit code = number of ACT lines; step 15 always adds one, the current constraint (P-738), so 1 = only that. Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
 set -uo pipefail
 SINCE="${1:-30}"
@@ -70,6 +70,7 @@ python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS
 # hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
 pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(grep -c '^ACT' <<<"$pw"))); seen "$pw"
+hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -139,6 +140,7 @@ day="$STATE_DIR/works-$(TZ=Asia/Kolkata date +%Y%m%d).txt"; [ -f "$day" ] || ech
 hour=$(gh pr list --state merged --search "merged:>=$(date -u -v-60M '+%Y-%m-%dT%H:%M:%SZ')" --json number -q '.[].number' 2>/dev/null | bash "$TOOLS/app-code-prs.sh" | grep -c .)
 back=$(grep -cE '^ACT   #[0-9]+ (dequeued|red after approval)' "$STATE_DIR/q.txt")
 say "four  Works on main ${works}/${active} (${bym% }) (+$((works - $(cat "$day"))) today, target +10) · app-code merges last hour ${hour:-?} · Mac builders ${macb} · approved then red or dequeued ${back}"
+FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead 2>&1 | tee -a "$SEEN"   # 5b. ENF-782b (P-782 (3)): start→Proven, review rounds, first-time proof, reverse plan, queue bounces; answer cached 30 min
 
 # 6. Private backup (P-589 (1), P-590): the backup repository's last push, read from GitHub (read-only here). Over 24 h:
 # the Lead runs tools/backup-refresh.sh (needs allowed_domains github.com). Unreadable = said, never a silent pass.
@@ -213,11 +215,15 @@ print(json.dumps({"now": datetime.now(timezone.utc).isoformat(), "files": {"RULE
   "seen": open(E["KF_SEEN"]).read().splitlines()}))' > "$STATE_DIR/known-facts.json"
 kf=$(python3 -I "$TOOLS/known-failures.py" --facts "$STATE_DIR/known-facts.json" 2>&1); echo "$kf"; act=$((act + $(grep -c '^ACT' <<<"$kf")))
 
+# 12b. Merge-queue depth (CI-SPEED-3, founder A254): queue-depth.py reads the last 20 batches; exit 3 = a change is due.
+qd=$(python3 -I "$TOOLS/queue-depth.py" ${QUEUE_DEPTH_RUNS:+--runs "$QUEUE_DEPTH_RUNS"} ${QUEUE_DEPTH_MERGIFY:+--mergify "$QUEUE_DEPTH_MERGIFY"} 2>&1); qdr=$?; echo "$qd"; seen "$qd"; [ "$qdr" = 3 ] && ACT "queue depth: set max_parallel_checks to $(sed -nE '1s/.* want=([0-9]+) .*/\1/p' <<<"$qd") (rate $(sed -nE '1s/^rate=([0-9.]+)%.*/\1/p' <<<"$qd")% over last 20 batches)"
+
 # 13. Founder asks that are clicks (ENF-763, P-752/P-763): STATE's "For the founder", "Founder asks open" and "Needs you"
 # entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
 fc=$(bash "$TOOLS/founder-click-guard.sh" --state "$TOOLS/../STATE.md" 2>&1); echo "$fc"; act=$((act + $(grep -c '^ACT' <<<"$fc"))); seen "$fc"
 
-# 14. The constraint (ENF-738, P-738; B206 part 4, P-751): the flow measured from tools each check (batch wall time and its
+tl=$(python3 -I "$TOOLS/cycle-timeline.py" 2>&1); echo "$tl"; act=$((act + $(grep -c '^ACT' <<<"$tl")))   # 14. Cycle timeline (A244, ENF-783b, P-783 (2)): every check
+# 15. The constraint (ENF-738, P-738; B206 part 4, P-751): the flow measured from tools each check (batch wall time and its
 # longest part, runs waiting for a machine from step 2c, failed batches with culprit PRs, approved to merged, merges per hour,
 # Proven today from the board), then the one current constraint with its measure and one action, as an ACT line. Last, so it
 # reads what the steps above saved.

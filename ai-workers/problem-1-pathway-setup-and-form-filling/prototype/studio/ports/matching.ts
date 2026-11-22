@@ -57,6 +57,9 @@ export type DuplicateCheckIn = z.infer<typeof DuplicateCheckIn>;
 const PersonMatch = z.strictObject({
   kind: z.literal("PERSON"), personId: z.string().uuid(), name: z.string(), score: z.number().int().min(0).max(100),
   reasons: z.array(MatchReason).min(1), useExisting: z.strictObject({ personId: z.string().uuid() }),
+  /** FO-9s (break F2): the number of the newest lead of this person the caller may open, so two people with one name are
+   *  told apart (as Add a lead's 409 names them). Optional: additive. */
+  lead: z.string().nullable().optional(),
 });
 const CompanyMatch = z.strictObject({
   kind: z.literal("COMPANY"), companyId: z.string().uuid(), name: z.string(), score: z.number().int().min(0).max(100),
