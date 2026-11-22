@@ -29,6 +29,11 @@ export const DraftIn = z.strictObject({
 }).refine((d) => (d.personId ? 1 : 0) + (d.companyId ? 1 : 0) === 1, { message: "Name one client: a person or a company.", path: ["personId"] });
 export type DraftIn = z.infer<typeof DraftIn>;
 
+/** PUT /api/front-office/money/invoices/:id/bill-to (FO-7g part 3, P-797): the province a draft's tax follows, one of the
+ *  13 codes (the same list as api/src/client-money/tax/canada-gst-hst.ts PROVINCE_CODES and the database's CHECK). */
+export const BILL_TO_PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NT", "NS", "NU", "ON", "PE", "QC", "SK", "YT"] as const;
+export const BillToIn = z.strictObject({ province: z.enum(BILL_TO_PROVINCES, { message: "Choose one of the 13 provinces and territories (a two-letter code such as ON)." }) });
+
 /** POST /api/front-office/money/invoices/:id/lines: one line. The description's last word is the database's own text rule
  *  (money_text_ok: some visible letter, number or punctuation; no bidi or C1 control), which the route asks before writing. The rate is in parts per million (13 % is 130000), 0 when absent;
  *  a government fee is never taxed. The currency, when sent, must be the invoice's. */
@@ -74,7 +79,7 @@ export function invoiceStatus(f: InvoiceFacts): StatusWord {
  *  money received past what the invoice asks (waiting for a person's "Refund · Keep as credit", never moved by itself). */
 export const InvoiceView = z.strictObject({
   id: z.string(), status: z.literal("DRAFT").or(z.literal("ISSUED")), number: z.string().nullable(),
-  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, lines: z.array(LineView),
+  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, billToProvince: z.string().nullable(), lines: z.array(LineView),
   subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(),
   statusWord: StatusWord, dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(),
   writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),

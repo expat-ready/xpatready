@@ -10,14 +10,14 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
-import { DraftIn, type InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
+import { BillToIn, DraftIn, type InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "./facts.ts";
-import { lineRatePpm, taxDefault } from "../tax/defaults.ts";
+import { lineRatePpm, provinceCode, taxDefault } from "../tax/defaults.ts";
 import { billToProvince } from "./bill-to.ts";
 import { taxForLine } from "./tax-round.ts";
 
@@ -65,9 +65,13 @@ export class InvoiceDrafts {
         : await tx.foCompany.findFirst({ where: firmScope(ctx.firmId, { id: d.companyId!.toLowerCase() }), select: { id: true } });
       if (!client) notFound(d.personId ? "person" : "company");
       const currency = d.currency ?? settings.defaultCurrency;
-      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
+      // FO-7g part 3 (P-797): the Bill-to province starts as the client's Canadian address, else the firm's province, as a
+      // code (null while the firm's province is not one of the 13: the tax default then warns, never guesses).
+      const [firm] = await tx.$queryRaw<{ address: unknown }[]>`select business_address as address from platform_firm where id = ${firmScope(ctx.firmId).firmId}::uuid`;
+      const billTo = provinceCode(billToProvince({ businessAddress: firm?.address ?? null }, d.personId ? { kind: "PERSON", id: client!.id } : { kind: "COMPANY", id: client!.id }));
+      const inv = await tx.moneyInvoice.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.draft_created", entity: "money_invoice", entityKey: inv.id, summary: `Draft invoice started in ${currency}.`, detail: { invoiceId: inv.id, currency },
-        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
+        before: null, after: { personId: d.personId ? client!.id : null, companyId: d.companyId ? client!.id : null, currency, billToProvince: billTo, status: "DRAFT" } });   // R1.8 (QA-594): the draft as created
       return this.view(tx, ctx.firmId, inv.id);
     });
   }
@@ -86,7 +90,7 @@ export class InvoiceDrafts {
     return this.db.$transaction(async (tx) => {
       await this.settingsOrRefuse(tx, ctx.firmId);
       const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
-      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      const [inv] = await tx.$queryRaw<{ currency: string; issued: boolean; by: string; personId: string | null; companyId: string | null; billTo: string | null }[]>`select currency::text as currency, issued_at is not null as issued, created_by as by, person_id::text as "personId", company_id::text as "companyId", bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
       if (!inv) return notFound("invoice");
       if (inv.by !== `staff:${ctx.staffId}` && !(await holdsKey(tx, firmId, ctx.staffId, EDIT_KEY)))
         problem(403, "Not allowed", "Only the person who started this draft, or someone who may edit invoices, can add to it. Nothing was saved.", { code: "MISSING_PERMISSION", missing: [EDIT_KEY] });
@@ -97,7 +101,7 @@ export class InvoiceDrafts {
       // is never taxed on top (break m1; the ruling of 18 Nov).
       const [facts] = await tx.$queryRaw<{ registered: boolean | null; inclusive: boolean | null; address: unknown }[]>`select s.tax_registered as registered, s.prices_include_tax as inclusive, f.business_address as address from platform_firm f left join money_payment_settings s on s.firm_id = f.id where f.id = ${firmId}::uuid`;
       if (facts?.inclusive) problem(409, "Not possible now", "Prices that include tax come later: this firm has \"Prices include tax\" on, so an invoice can't be drafted yet. Nothing was saved.", { code: "PRICES_INCLUDE_TAX" });
-      const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null), registered: facts?.registered === true });
+      const dflt = taxDefault({ firmProvince: billToProvince({ businessAddress: facts?.address ?? null }, inv.personId ? { kind: "PERSON", id: inv.personId } : inv.companyId ? { kind: "COMPANY", id: inv.companyId } : null, inv.billTo), registered: facts?.registered === true });
       if (l.kind !== "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0 && l.ratePpm !== dflt.ratePpm)
         badField("ratePpm", dflt.ratePpm === 0
           ? "This firm adds no tax to this line (not registered for tax, or its province isn't set): send no rate, or 0. Nothing was saved."
@@ -120,6 +124,26 @@ export class InvoiceDrafts {
   }
 
   /** GET /api/front-office/money/invoices/:id. */
+  /** PUT /api/front-office/money/invoices/:id/bill-to (agent/invoice:edit, AG-6-4 §8): the province the draft's tax
+   *  follows (FO-7g part 3, P-797), one of the 13 codes. New lines take its rate; lines already added keep their stored
+   *  tax. An issued invoice's is fixed (409, and the database's gate). */
+  async setBillTo(ctx: StaffContext, invoiceId: string, body: unknown): Promise<InvoiceView> {
+    if (!UUID.test(invoiceId)) notFound("invoice");
+    const b = parse(BillToIn, body);
+    return this.db.$transaction(async (tx) => {
+      const firmId = firmScope(ctx.firmId).firmId, id = invoiceId.toLowerCase();
+      const [inv] = await tx.$queryRaw<{ issued: boolean; number: string | null; billTo: string | null }[]>`select issued_at is not null as issued, number, bill_to_province as "billTo" from money_invoice where firm_id = ${firmId}::uuid and id = ${id}::uuid for update`;
+      if (!inv) return notFound("invoice");
+      if (inv.issued) problem(409, "Not possible now", `This invoice is issued (${inv.number}): its Bill-to province is fixed. Nothing was saved.`, { code: "ISSUED" });
+      if (inv.billTo !== b.province) {
+        await tx.moneyInvoice.update({ where: { firmId_id: { firmId, id } }, data: { billToProvince: b.province } });
+        await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "invoice.bill_to_changed", entity: "money_invoice", entityKey: id,
+          summary: `Bill-to province of a draft invoice set to ${b.province}; new lines take its tax.`, detail: { invoiceId: id }, before: { billToProvince: inv.billTo }, after: { billToProvince: b.province } });
+      }
+      return this.view(tx, ctx.firmId, id);
+    });
+  }
+
   async read(ctx: StaffContext, invoiceId: string): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     // One snapshot: the lines and the total are read as of the same moment (a line added between them never shows).

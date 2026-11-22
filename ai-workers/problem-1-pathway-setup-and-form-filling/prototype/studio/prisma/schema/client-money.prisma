@@ -294,6 +294,9 @@ model MoneyInvoice {
   unsignedRetainerConfirmedAt DateTime? @map("unsigned_retainer_confirmed_at") @db.Timestamptz
   /// Null on a draft = the party's treatment (money_party_tax_treatment), else Taxable; set to that at issue, then fixed.
   taxTreatment                MoneyTaxTreatment? @map("tax_treatment")
+  /// FO-7g part 3 (P-797): the province the tax follows, one of the 13 codes (a CHECK); filled on a new draft from the
+  /// client's Canadian address, else the firm's province; editable on a draft; fixed at issue. Null = the firm's province.
+  billToProvince              String?            @map("bill_to_province")
 
   settings     MoneyPaymentSettings @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   lines        MoneyInvoiceLine[]
