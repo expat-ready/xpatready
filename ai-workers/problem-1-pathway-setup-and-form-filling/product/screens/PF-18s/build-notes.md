@@ -148,3 +148,13 @@ Part 2 of 3 (concept #2332, approved by Lead 19 with the challenge's Majors; the
 * **Breaker m6:** direction marks are dropped from the subject; the list and heading wrap it in `<bdi>`; the 80 cut is by grapheme.
 * **Breaker m7:** each refused file is named ("File 2: …"), and a 413 shows on the files field.
 * Check: 30/30 on a fresh copy (`pf18s4`). `check_pf18b_support` 41/41 and `check_pf28_inputs` 41/41 through `run-suites.sh --only`, exit 0.
+
+## Part 3: My account → Notifications (22 Nov, PR #2904)
+* **Where:** `/account/notifications`, a My account line for `agent/notification:manage-preferences` (all six roles). API on main: PF-18a part 2 `GET|PUT /api/platform/me/notifications`; no server change.
+* **Checkboxes, one Save (challenge m3):** plain checkboxes named "In app for <group>" / "Email for <group>", the line "Changes apply when you press Save"; Save sends only the changed groups with the view's version.
+* **409 and 422 re-read the latest view:** the shared Problem parser (`sales/contract.ts`, not this row's file) keeps no `current`, so the page reads `GET` again rather than change a shared contract. A role change while the page is open is never a 409 (the version hashes the saved rows only), so a 422 re-reads too (break M1); a group no longer in the view is dropped and named by its label; the person's other changes stay. A failed re-read says "reload the page" (break m2); a 409 that leaves nothing to save says so (break m3).
+* **Overlay per box (review m2):** a box the person changed keeps their value; the other box of the same group takes the latest.
+* **Focus (review m4, break m4):** Save is `aria-disabled` while sending (it keeps focus) and shows "Saving…"; after a save, focus goes to the heading.
+* **Background re-read (break m5):** a newer view read while nothing is unsaved replaces the shown one.
+* **Kept as is:** at 375 px the three-column table stays (it fits with no sideways scroll; no stacked rows: as part 1's m-3); loading is a status line, not a skeleton; no Sample Billing user exists, so Payments is walked with the Sample Case Officer, who holds `agent/invoice:list` (review m6). An in-app menu click with unsaved changes is not blocked (BrowserRouter has no blocker; `beforeunload` only).
+* **Check:** `tests/check_pf18s_notifications_browser.ts` (DN1-DN8), 40/40.

@@ -16,6 +16,7 @@ import { VerifyPage } from "./signup/verify-page";
 import { BillingPage } from "./saas/billing-page";
 import { OfficesPage } from "./settings/offices-page";
 import { SupportPage, SupportTicketPage } from "./settings/support-page";
+import { NotificationsPage } from "./settings/notifications-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -35,4 +36,5 @@ export const routes: ModuleRoute[] = [
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
   { path: "/platform/support", element: <SupportPage /> },   // PF-18s part 2: Help & support
   { path: "/platform/support/:id", element: <SupportTicketPage /> },   // PF-18s part 2: one ticket
+  { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)
 ];
