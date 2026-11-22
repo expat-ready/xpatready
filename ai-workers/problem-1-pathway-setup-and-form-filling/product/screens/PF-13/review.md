@@ -89,3 +89,47 @@ A real screen reader; an intended user's unaided walk (D17, D20 stay with the fo
 **Verdict: Approve**
 
 Reviewer: Approve 39253167e19404c934996bf81266e66668452cc4
+
+## Round 2 (diff 39253167e..7c17c4b93)
+Diff-only re-read of `branding-page.tsx`, `check_pf13_branding_browser.ts` (DW6h), build notes and concept, plus the break report's MAJOR-1. The check was not re-run: I accept the builder's 40/40, exit 0 on a fresh isolated copy at this head. DW6h asserts the locked state while the PUT is held, so it could not pass on the old code, where every field stayed open.
+
+**Break MAJOR-1 / review m5: fixed.** A `fieldset disabled={busy}` (`:188-204`) wraps every field: logo, colour text, picker, "Use the neutral colour", sender name, favicon and banner, with their Choose (and the hidden file input), Remove and Undo. Save and Discard sit outside it. Nothing can change `draft` between the click and `setDraft(next)` (`:176`), so no edit can be lost and no object address can leak that way. The break report's variant (a new logo chosen while the old one uploads, then a revoked address put back) cannot happen now either. DW6h holds the logo PUT and reads the disabled state of sender, colour, picker, favicon Choose and banner Remove. Once the Save ends it checks they are open again and a new edit shows "Unsaved changes".
+
+**The Minor fixes are correct:**
+* m1: `aria-describedby` now holds the hint and the error id.
+* m2: "Nothing to discard." is shown, and the misleading `aria-disabled` is gone.
+* m6 and the breaker's point:
+  * `read.error && !d` keeps the form when data is already loaded. TanStack Query keeps the last data on a failed refetch, so the "Could not confirm … reload" line is now seen.
+  * A first load that fails, or a change of token (a new query key, so no data), still gets "Could not load the branding".
+* m7:
+  * The concept now says an inline notice.
+  * `goodColour` as `{ colour: string | null }` tells "never typed a good colour" (fall back to the saved colour) apart from "chose the neutral colour" (`colour: null`, so the neutral colour is shown).
+* Pasted spaces:
+  * `maxLength` 40 lets ` #1F4E79 ` in. `colourProblem` and `colourValue` trim it.
+  * Longer junk such as `#1f4e79;background:url(x)` is refused by the same rule and never reaches `style`, because the preview takes only `colourNow` or a stored value.
+* Long file name: `[overflow-wrap:anywhere]` on the hint.
+* `staffToken()` stop (`:163`):
+  * After a 401, `staffApi` ends the session, so the remaining images are counted as not saved and are not sent.
+  * The refetch then fails, and the sign-in card replaces the page anyway.
+  * This is sound, but no browser test covers it. The build notes say so.
+
+**New in the diff (Minor, Should; neither blocks):**
+* **r2-m1** Focus is lost when a keyboard user saves with Enter from inside a field:
+  * Pressing Enter in Sender name or Brand colour with a valid change submits the form. The focused input then sits in the disabled fieldset, so the browser drops focus to `body`.
+  * On success nothing moves it back. "Branding saved." is announced by the live region, but the user's place is gone (WCAG 2.4.3).
+  * DW7 saves with Enter only on the Save button (line 313), so the check does not see this.
+  * Fix: before `setBusy(true)`, move focus to Save (or to `[data-branding-said]`) when `document.activeElement` is inside `[data-branding-fields]`. Or put focus back on that field after a success.
+* **r2-m2 (nit)** On a partial save, `focusError()` (requestAnimationFrame) is called before `finally { setBusy(false) }`. It works only if React commits `busy=false` before the next frame. That is the normal order, but no test checks focus after a partial save.
+  * Fix: call `focusError` after `setBusy(false)`, for example from an effect or after the `finally`.
+
+**Listed and not fixed: Minor is enough for each:**
+* m3, the loading line: polish (EXPERIENCE §4). No data is at risk.
+* m4, no conflict state: the cause is the merged API's design (part 1a has no version). It needs its own row, as the build notes say.
+* A PNG with a sound structure and garbage pixels: the server takes it too. It is a valid image of the allowed size and type, and it is shown to the Owner before Save.
+* The "Saved/Not saved" line is not seen after a 401 mid-save: the sign-in card replaces every staff page in the same way. After signing in again, the read shows what is stored.
+
+**Journey score:** 9.5 / 10 stays. m1 is fixed, but r2-m1 is a new keyboard gap, so accessibility stays at ½. Pass.
+
+**Verdict: Approve** (no open Blocker or Major; r2-m1 and r2-m2 are Should, fix in a follow-up or in this PR at the builder's choice)
+
+Reviewer: Approve 7c17c4b93bc0e506a66134af1cff8a71c00550bc

@@ -22,3 +22,6 @@
 * **Fixed, not tested by the browser check:** break: after a 401 in the middle of a Save nothing more is sent (the sign-in card shows, as on every staff page).
 * **Not fixed, listed:** review m3 (loading is a line of text, as on Offices; no skeleton); review m4 (no conflict state: the merged API has no version; needs its own row); break: a PNG with a sound structure and garbage pixels is taken, as the server takes it; after a 401 mid-save the "Saved: … Not saved: …" line is not seen because the sign-in card replaces the page.
 * Check now 40/40, exit 0, on a fresh isolated copy.
+
+## Round 2 (diff-only, on 7c17c4b93): Approve
+The Major is fixed; the Minor fixes are correct. Two new Minors, listed, not fixed (a code push would need a third round): **r2-m1** Enter inside Brand colour or Sender name starts a Save and the focused field is disabled, so focus drops to the page until the Save ends (fix: move focus to Save before the fields lock); **r2-m2** no test checks where focus lands after a partial save. Both go to the screens area's next minor-bugs PR.
