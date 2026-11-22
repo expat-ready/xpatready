@@ -162,3 +162,72 @@ Commit `ae52eabd60b9c22715b5880c46485fb5ea38b5f4`. This is a diff pass with the 
 - **Unchanged from round 1.** F1 walls, I1 inputs, C1 consent.
 
 Verdict: Block ae52eabd60b9c22715b5880c46485fb5ea38b5f4
+
+## Round 3 (4bcbf9c41)
+
+Commit `4bcbf9c4119fb844ebf91e6f07628a01995cd586`. This is a diff pass (`git diff ae52eabd6 4bcbf9c41 -- …/studio`) using the same method as before: scratch databases `xr_brk_fo9b_*`, all dropped; port 4400 never used; US$0. Each race was run 12 times. To tell new problems from old ones, every new attack was also run against an extracted copy of `ae52eabd6`. The script is `scratchpad/brk/break4.mts`.
+
+### Round-2 findings, re-run
+- **B1 fixed.** Merging the newer record into the older one works by email and by phone, and Undo restores the lead exactly. Also checked: the reverse direction, two-way flags (each lead flags the other person, all cleared) and Undo after them.
+- **M1 fixed for the writers it named.** Merge races ×12 each against engage, close, addNote, logCall and Add with `personId`, plus Undo races against addNote, Add with `personId` and livePersonId: 0 deadlocks in 96. At ae52eabd6 the same races gave 23 deadlocks. Q2 (livePersonId locking L then S, against Undo): both finish. 0 rows on any tombstone. The same class is still open for other writers: see M1′.
+- **m1 not fixed.** N2 again: with the merge held open, an Add with `confirmedNew` and the loser's email fails at commit with a raw `ForeignKeyConstraintViolation` (500). `possibleMatch` still reads without a lock (`arrival.ts:47`). A retry works.
+- **m2 fixed.** Undo now compares ids instead of times:
+  - Q3 (app clock 2 s behind; the note's `created_at` is earlier than the merge's `at`): Undo refused.
+  - N4 (Add in a transaction begun before the merge): refused.
+  - N4b (raw note on the survivor from an older transaction): refused.
+- **m3 fixed as asked:** once the copy is withdrawn, Undo runs. It leaves a side effect: see m3′.
+- **m4 partly fixed.** A crafted record whose loser is live is refused and moves nothing. A forged Undo stamp on a merge that still stands is refused (42501). The remainder is still open: see m4′.
+
+### Findings
+**M1′ — Major. Merge and Undo still deadlock with ordinary writers that lock a record before its rows. The writer, or the merge, gets a raw 40P01 (500).** No data was wrong in any run, and no row was left on a tombstone.
+
+| Race (×12) | Deadlocks at 4bcbf9c41 | At ae52eabd6 |
+|---|---|---|
+| Company merge vs `Corporate.changeRole` on the loser company | 5 | 0 (new) |
+| Company merge vs `Corporate.endContact` on the loser company | 7 | 0 (new) |
+| Person merge vs changeRole, where L is the old primary | 7 | 9 |
+| Person merge vs endContact of L's link | 9 | 4 |
+| Undo vs changeRole | 8 | 5 |
+| addNote on a prospect vs merge | 1 | 6 |
+| logCall on a prospect vs merge | 2 | 3 |
+| addNote on a prospect vs Undo | 1 | 5 |
+
+- **New in this commit (D5, deterministic):**
+  1. Session A runs `select … from fo_company where id = coL for update`.
+  2. Start a company merge `coS ← coL`. `lockRows` (`service.ts:64-67, :172`) locks coL's link rows first, then waits on coL.
+  3. A runs `update fo_company_contact set valid_to = now()` on a link of coL. The merge dies with 40P01.
+  - At ae52eabd6 the merge took the company first and simply waited.
+  - The corporate writers take the company first, then its links: `corporate/service.ts:269→:275` (changeRole) and `:306→:310` (endContact). So the order the comment at `service.ts:61-63` says "every writer uses" is not the order these writers use.
+- **Still open since round 1 (person merge and Undo):**
+  - The merge moves L's link rows. At commit, FO-1a's deferred `fo_company_contact_still_linked` (fo1a migration `:824`) takes the company `FOR NO KEY UPDATE`. changeRole holds the company and waits on that same link row.
+  - D1 (deterministic, real `changeRole`): the writer dies with 40P01. D1b (raw) is the same.
+- **Prospect path (D3, deterministic):** `Activity.locked` takes the prospect, then the person's leads (`calls.ts:43→:54`). The merge takes the leads first (`lockRows`), then the prospects, so logCall on a prospect dies with 40P01.
+- Expected: one lock order across every writer of these tables, or 40P01 turned into a 409 or retry (`busy.ts`).
+
+**m3′ — Minor (new). The advised way to Undo withdraws the survivor's own consent.**
+- Repro: S and L both have a live EMAIL/MARKETING consent. Merge S ← L; Undo is refused with "withdraw it there first".
+- `ConsentStore.withdraw(S, EMAIL, MARKETING)` ends every live consent of that key (`consent-store.ts:99-103`), here 2. Undo then succeeds, but S's own pre-merge consent stays WITHDRAWN.
+- No API withdraws only the copy, so following the message silently cancels a consent the person gave.
+
+**m4′ — Minor (remainder, same class as before; it needs code that writes `fo_dup_merge`).**
+- The new check only asks whether the loser's tombstone names the survivor (`service.ts:242`).
+- Repro: make a real merge Y ← X. From the app role, insert a second record for the same pair, copying the real snapshot and adding the change `{fo_lead V's lead, person_id, from X, to V}`, with `survivor_before` set to `{givenNames: "PWNED", email: attacker}`.
+- Undo of that record returns `{restored:true}`: V's lead moves to X, and Y becomes "PWNED attacker@example.org". The real merge stays unstamped while X is live.
+
+**m5′ — Minor (pre-existing since round 1; seen in many runs here). A note or call on a lead that the merge moves is refused with 404 "No such lead in your firm".**
+- `calls.ts:56` treats a changed `person_id` as not found ("a lead's person never changes"), but a merge now changes it.
+- Rate: addNote 5/12, logCall 8/12, addNote vs Undo 3/12, against similar rates at ae52eabd6. The lead exists; a retry works.
+
+### What held (new)
+- **Deferred guard (`fo_dup_live_party`).** 0 rows on any tombstone, across all nine MOVE columns, after every race above. It re-reads the row as it stands (a flag cleared, then moved). It runs as `xr_wall_reader` with `search_path = pg_catalog, public, pg_temp`, so a temp table cannot shadow the table it re-reads.
+- **R4 stress:** 48 random merges and Undos over 8 people with random cross-flags: no deadlock, 0 rows on tombstones.
+- **Undo by ids.**
+  - A note on a moved prospect after the merge: refused.
+  - D6: Undo of S ← L while a later merge T ← S commits mid-flight is refused, with or without moved rows.
+  - Not a regression: a new enquiry by the loser's email, flagged as a match of S, does not block Undo; the old clock check behaved the same.
+- **Cost. Not a spike.**
+  - Merge, 400 leads + 800 notes + 50 flags: 251 ms (ae52eabd6: 244); Undo 221 ms (184).
+  - With 400 leads + 2000 notes on S: merge 327 ms (256), Undo 403 ms (340). The `present` list holds 3,600 ids, 164 KB in the snapshot. It grows with the survivor's history.
+  - 10,000 plain note inserts: about 0.045 ms per row for the guard (700–900 ms with it vs 260–330 ms without; at ae52eabd6, 500–620 ms vs 430).
+
+Verdict: Changes 4bcbf9c4119fb844ebf91e6f07628a01995cd586
