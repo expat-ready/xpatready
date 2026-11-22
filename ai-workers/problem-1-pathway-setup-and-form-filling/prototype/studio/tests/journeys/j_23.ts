@@ -176,12 +176,12 @@ try {
     await shot(p, "w3-colour-refused-1440");
     await p.locator("[data-branding-discard]").click().catch(() => undefined);
     await p.locator('[data-image-input="logo"]').setInputFiles(file("logo.png", "image/png", SVG)).catch(() => undefined);
-    svgSaid = /PNG or JPEG/.test(await p.locator('[data-image-error="logo"]').innerText({ timeout: 5_000 }).catch(() => ""));
+    svgSaid = await seen(p.locator('[data-image-error="logo"]', { hasText: /PNG or JPEG/ }), 5_000);   // waits for its own words (no stale message read)
     await p.locator("[data-branding-save]").click().catch(() => undefined); await wait(1500);
     await shot(p, "w3-svg-refused-1440");
     await p.locator("[data-branding-discard]").click().catch(() => undefined);
     await p.locator('[data-image-input="logo"]').setInputFiles(file("big-logo.png", "image/png", TOO_BIG)).catch(() => undefined);
-    bigSaid = /2 MB/.test(await p.locator('[data-image-error="logo"]').innerText({ timeout: 5_000 }).catch(() => ""));
+    bigSaid = await seen(p.locator('[data-image-error="logo"]', { hasText: /2 MB/ }), 5_000);
     await p.locator("[data-branding-save]").click().catch(() => undefined); await wait(1500);
     await shot(p, "w3-size-refused-1440");
     await p.locator("[data-branding-discard]").click().catch(() => undefined);
