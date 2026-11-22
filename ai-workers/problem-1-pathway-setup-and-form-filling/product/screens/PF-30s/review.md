@@ -143,3 +143,25 @@ Visual quality returns to full: at 768–900 px nothing covers "?" or the name (
 
 **Verdict: Approve.** There is no open Blocker or Major. r5-1, r5-2 and r3-1 are Minor: fix them in this PR or list them in the PR with a follow-up row (WAY-OF-WORKING step 4).
 Reviewer: Approve aa4f874182eb2c657487d8ab17edb4fc665f3429
+
+## Round 6 (diff-only, 02113a9c6)
+Reviewer: the same fresh agent, 22 Nov 2026. I read only `git show 02113a9c6` (P-277). The merge 739798ce0 brought main's code (#2980), which I did not review; it changed neither `find/` nor `check_bk2_fold_outs.ts`. Runs on this worktree at 02113a9c6: `check_bk2_fold_outs.ts` **16/16**; `static-sweeps.mjs --base origin/main` **16 PASS**. I did not re-run the browser pack (the builder reports pf30s 82/82 and pf6a 52/52 on a fresh copy). Mutation runs used a copy of `web/src` and the check in the reviewer scratchpad (`bk2/`, not committed). The worktree is untouched.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Is the fix right and minimal? | **Yes.** BK-2's `elementAt` reads from the last `<` on the aria-expanded line. The input's `<input` is two lines up, so the scan sees the whole aria-expanded line, and before this fix that line had no `role="combobox"`. Moving `role="combobox"` onto that line is a JSX attribute reorder: same element, same one role, same DOM, so nothing changes in behaviour or accessibility. The new `NOT_FOLD_OUTS` entry has the same shape and wording as the two existing comboboxes (`add-to-structure.tsx`, `add-form.tsx`). Two lines of code and one of test. | diff; `check_bk2_fold_outs.ts:23-27, 47-54` |
+| Does it weaken BK-2? | **No.** An entry is keyed by file plus a piece of the element's own text, so it excuses only aria-expanded elements in `find-box.tsx` whose element text contains `role="combobox"`. Mutations: **A**, old layout (role back on the `type` line) with the entry kept, fails 14/16: the "every aria-expanded" check flags `find-box.tsx:130`, and the **stale-entry check fires** because the entry no longer matches. **B**, new layout with the entry removed, fails 15/16 (find-box:130 flagged). **C**, entry kept plus a bare `<button aria-expanded>` with no FoldArrow added to `find-box.tsx`, fails 15/16 (find-box:141 flagged), so the entry does not cover other fold-outs in the file. **D**, entry kept and `find-box.tsx` deleted, fails 15/16 on the stale-entry check. So the stale-entry check still holds both ways. It is as coarse as the existing entries: it would also excuse a new element whose six-line window happens to contain `role="combobox"`. That limit was there before this change and is not made worse by it. | scratchpad mutation runs A–D |
+| Anything new broken? | **No.** `find-box.tsx` has one aria-expanded (line 130), and the list (`role="listbox"`, options, groups) is unchanged. The other 15 sweeps pass. | grep; sweeps |
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r6-1 | Should (Minor), process | **BK-2 was already red on the commits approved in rounds 1–5.** Neither `find-box.tsx` nor `check_bk2_fold_outs.ts` changed between aa4f874/86aca4354 and the merge: mutation A is the 86aca4354 file, and it fails. So the earlier rounds approved a head whose `fast` job would fail this check. None of them ran `static-sweeps.mjs`. No code fix is needed now. | mutation A; `git diff 86aca4354 739798ce0 -- web/src/modules/platform/find/ tests/check_bk2_fold_outs.ts` is empty | From now on, the reviewer runs `static-sweeps.mjs --base origin/main` in every round, diff-only rounds included. |
+| r5-1, r5-2, n4 | Should (Minor), carried | Unchanged by this diff; they are listed in the PR as follow-ups (86aca4354). | round 5 | As round 5. |
+
+### Journey score (reviewer, round 6): **9.5 / 10, pass**
+The same as round 5. This diff changes no behaviour a person can see, and Accessibility and screen sizes stays at ½ only because of r3-1. Not run: the graph and the browser pack (diff-only round; the builder reports 82/82 and 52/52).
+
+**Verdict: Approve.** There is no open Blocker or Major. r6-1 is a process note, and the carried Minors stay on the PR's follow-up list.
+Reviewer: Approve 02113a9c6c82f19a1a19f0714e63e31cf9487df5
