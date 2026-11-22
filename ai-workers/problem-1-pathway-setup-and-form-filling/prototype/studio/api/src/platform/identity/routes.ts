@@ -48,8 +48,8 @@ export class PlatformIdentityController {
   @Post("staff/invitations") @PermissionKeys("agent/staff:manage")
   invite(@Req() r: R, @Body() b: B) { return this.id.invite(staffOf(r), parseInput(IdentityInput.invite, b)); }
 
-  /** PF-4c part 1 (AG-1-69): one form of 1-20 rows, one invitation per row; flagged rows or too few seats send nothing. */
-  @Post("staff/invitations/batch") @PermissionKeys("agent/staff:manage")
+  /** PF-4c part 1b (P-727, AG-1-69): one form of 1-50 rows; the valid rows are invited, each flagged row comes back with its reason (200). */
+  @Post("staff/invitations/batch") @HttpCode(200) @PermissionKeys("agent/staff:manage")
   inviteBatch(@Req() r: R, @Body() b: B) { return this.id.inviteBatch(staffOf(r), parseInput(IdentityInput.batch, b ?? {})); }
 
   @Get("staff/invitations") @PermissionKeys("agent/staff:manage")
