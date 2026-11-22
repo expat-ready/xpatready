@@ -97,7 +97,7 @@
           <div class="hint" role="status" aria-live="polite">
             <b>2 people on file look like this person.</b>
             <div class="match">
-              <div><div><b>Lena Park</b></div><div class="why">Same phone · Similar name</div></div>
+              <div><div><b>Lena Park</b></div><div class="why">Same phone · Similar name (91%)</div></div>
               <button class="btn sm outline">Use this person</button>
             </div>
             <div class="match">
@@ -105,7 +105,7 @@
               <button class="btn sm outline">Use this person</button>
             </div>
             <div class="why">Possible match with a record you cannot open — ask a manager.</div>
-            <div class="why">Not the same person? Carry on and save: a new person is made.</div>
+            <div class="row" style="justify-content:space-between"><span class="why">None of these? Add as new: a new person is made, and these pairs are kept separate.</span><button class="btn sm">Add as new</button></div>
           </div>
           <label class="f">Source<span class="h">Where the enquiry came from, in your words.</span><input class="i" value="Phone call"></label>
         </div>
@@ -113,7 +113,7 @@
       </div>
     </div>
   </div>
-  <div class="note">States: idle (no box) · checking (a quiet "Checking for people on file…" line, no spinner over the form) · no match (no box; nothing said) · matches (as above, strongest first, at most 10) · hidden only (the nameless line alone) · check failed (nothing shown; Save still works and the server's own check on Save still applies) · after "Use this person" (the box becomes "Adding to Lena Park's record. <u>Change</u>", Save reads "Add lead to Lena Park") · a key edited after a match (box clears, check runs again).</div>
+  <div class="note">States: idle (no box) · checking (a quiet "Checking for people on file…" line, no spinner over the form) · no match (no box; nothing said) · matches (as above, strongest first, at most 10) · hidden only (the nameless line alone) · check failed (nothing shown; Save still works and the server's own check on Save still applies) · after "Use this person" (the box becomes "Adding to Lena Park's record. <u>Change</u>" and names typed details that will not be saved, e.g. "lp.work@example.org will not be added to Lena Park. Add it on her record after saving."; Save reads "Add lead to Lena Park") · a 409 on Save replaces this box (one box, never two) · a key edited after a match (box clears, check runs again).</div>
 </section>
 
 <section class="board" id="s2">
@@ -129,9 +129,9 @@
       <table aria-label="People to merge">
         <thead><tr><th>People</th><th>What matched</th><th>Match</th><th>First seen</th><th></th></tr></thead>
         <tbody>
-          <tr><td><b>Lena Park</b> · L-00012<br><b>Lena Parks</b> · L-00044</td><td>Same phone · Similar name</td><td><span class="pill warn" title="An exact email or phone is a 100 match. A similar name alone scores its likeness.">100 · strong</span></td><td>21 Nov, 10:14</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
-          <tr><td><b>Omar Haddad</b> · L-00007<br><b>O. H.</b> · L-00051</td><td>Same email</td><td><span class="pill warn">100 · strong</span></td><td>21 Nov, 15:02</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
-          <tr><td><b>Ana Silva</b> · client C-2026-4<br><b>Ana Silva</b> · L-00053</td><td>Same email</td><td><span class="pill warn">100 · strong</span></td><td>22 Nov, 08:40</td><td><button class="btn sm" disabled title="This person has a case; merge them from the client record.">Merge…</button> <button class="btn sm ghost">Keep separate</button><div class="why">This person has a case; merge them from the client record.</div></td></tr>
+          <tr><td><b>Lena Park</b> · L-00012<br><b>Lena Parks</b> · L-00044</td><td>Same phone · Similar name</td><td><span class="pill warn" title="An exact email or phone is a 100 match. A similar name alone scores its likeness.">100</span></td><td>21 Nov, 10:14</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
+          <tr><td><b>Omar Haddad</b> · L-00007<br><b>O. H.</b> · L-00051</td><td>Same email</td><td><span class="pill warn">100</span></td><td>21 Nov, 15:02</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
+          <tr><td><b>Ana Silva</b> · client C-2026-4<br><b>Ana Silva</b> · L-00053</td><td>Same email</td><td><span class="pill warn">100</span></td><td>22 Nov, 08:40</td><td><button class="btn sm" disabled title="This person has a case; merge them from the client record.">Merge…</button> <button class="btn sm ghost">Keep separate</button><div class="why">This person has a case; merge them from the client record.</div></td></tr>
         </tbody>
       </table>
       <div class="note">Merged tab rows: both people, "Merged by Representative, 21 Nov 16:20" or "Merged automatically (same email; no case, document or money)", and <b>Undo merge</b> while allowed; when refused, the server's reason replaces the button ("Something new reached Lena Park from this email after the merge."). Empty To review: "No pairs to review. When two records look like one person, they appear here." No key: the menu item is not shown; a typed URL shows "You need access to People to merge. Ask an Owner or Admin."</div>
@@ -155,7 +155,7 @@
     </div>
     <div class="moves">
       <div><b>Step 2 · What moves to Lena Park</b><ul><li>1 lead (L-00044) with its 2 notes and 1 call</li><li>1 consent record (copied, kept as it was)</li><li>Stage history and where they came from: kept</li></ul></div>
-      <div><b>Stays as it is</b><ul><li>Identity and conflict checks stay on their record and show on Lena Park</li></ul><div class="notice" style="margin-top:8px"><b>Both records have an open prospect for Express Entry.</b>Both stay as they are.</div></div>
+      <div><b>Stays as it is</b><ul><li>Identity and conflict checks stay on their record and show on Lena Park</li></ul><div class="notice" style="margin-top:8px"><b>Shown only when both records have an open case on the same program</b>(AG-2-16 rule 3); never for these pairs, since a pair with a case is refused.</div></div>
     </div>
     <footer><span class="why">Nothing is deleted. You can undo this merge while nothing new reaches Lena Park from Lena Parks's email or phone.</span><span class="row"><button class="btn ghost">Cancel</button><button class="btn outline">Back</button><button class="btn">Next</button></span></footer>
   </div>
