@@ -40,6 +40,8 @@ export class SigningHooksController {
     if (limited(req.ip ?? "unknown")) problem(429, "Too many requests", "Too many requests. Please wait a minute and try again.", { code: "TOO_MANY_REQUESTS" });
     // PF-28: the body is a JSON object or raw bytes, nothing else; its fields are the provider's, checked by the adapter
     // after the signature (port.ts verifyWebhook's strict schema). Nothing is stored before both.
+    // Review m1: anything but an object or raw bytes is not the provider's call: 400, as an unverified one.
+    if (!Buffer.isBuffer(body) && (body === null || typeof body !== "object" || Array.isArray(body))) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const bytes = hookBytes(parseInput(HookBody, body));
     if (!bytes?.length) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? undefined : v]));

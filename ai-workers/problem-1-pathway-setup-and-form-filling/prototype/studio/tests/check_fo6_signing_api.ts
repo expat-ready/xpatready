@@ -299,6 +299,42 @@ try {
   const deepR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.9", headers: {} }, deep));
   ok("FO-6 B fail (break m1): a 6000-level nested body → 400, never 500", deepR?.status === 400, deepR);
 
+  // review Major 1: two different events of one request at once (the lock comes before the receipt): no deadlock, both applied
+  const p9 = await prospect("Hal"), r9 = await draft(p9);
+  await sendIt(r9);
+  const [q9, d9] = reqOf(r9);
+  consent(q9);
+  const [vC] = await signing.act(A, d9, signerOf(q9, "CLIENT"), "viewed"), [vF] = await signing.act(A, d9, signerOf(q9, "FIRM"), "viewed");
+  const [sC] = await signing.act(A, d9, signerOf(q9, "CLIENT"), "signed");
+  const both = await Promise.allSettled([post(vC), post(vF), post(sC)]);
+  ok("FO-6 B pass (review Major 1): three events of one request at once → each answered 200 (no deadlock, no 409), three receipts, the signature applied",
+    both.every((x) => x.status === "fulfilled" && (x.value as { received: boolean }).received) && count("fo_signing_hook_receipt", `request_id = '${q9}'`) === 3 && reqOf(r9)[2] === "CLIENT_SIGNED",
+    both.map((x) => (x.status === "fulfilled" ? x.value : String((x as PromiseRejectedResult).reason?.getResponse?.()?.code ?? x.reason))));
+  // review deviation 4: an Edit makes version 2 and leaves version 1's signing request live; the next Send ends it and its envelope
+  const p10 = await prospect("Ida"), r10 = await draft(p10);
+  await sendIt(r10);
+  const [q10, d10] = reqOf(r10);
+  await svc.edit(R, r10, { expectedVersion: 1, expectedStatus: "SENT", fees: [{ label: "Deposit on signing", amountMinor: 160000, when: "ON_SIGNING" }] });
+  const cancelsBefore = signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length;
+  await svc.send(R, r10, { expectedVersion: 2 });
+  ok("FO-6 B pass (deviation 4): Send of version 2 ends version 1's live request (CANCELLED, UPDATED) with one audit line and one cancel at the fake; one live request",
+    sql(`select status || ':' || cancel_reason from fo_signature_request where id = '${q10}'`) === "CANCELLED:UPDATED" && count("audit_event", `entity_key = '${q10}' and action = 'signing.request_cancelled'`) === 1
+      && signing.calls.filter((c) => c.op === "cancel" && c.providerDocumentId === d10).length === cancelsBefore + 1
+      && count("fo_signature_request", `document_id = '${r10}' and status in ('SENT','VIEWED','CLIENT_SIGNED')`) === 1);
+  ok("FO-6 B fail (deviation 4): the old envelope gives no signing link any more", (await refusal(() => signing.embeddedLink(A, d10, signerOf(q10, "CLIENT")))) !== null);
+  // break m3: a withdrawn retainer's completion is final: stored, 200, no files, never retried as 409
+  const p11 = await prospect("Jon"), r11 = await draft(p11);
+  await sendIt(r11);
+  const [q11, d11] = reqOf(r11);
+  consent(q11);
+  await post((await signing.act(A, d11, signerOf(q11, "CLIENT"), "signed"))[0]);
+  const fin = await signing.act(A, d11, signerOf(q11, "FIRM"), "signed");
+  await post(fin[0]);
+  await svc.withdraw(R, r11, { expectedVersion: 1, expectedStatus: "CLIENT_SIGNED", reason: "Client changed their mind" });
+  const wd = await post(fin[1]);
+  ok("FO-6 B fail (break m3): completed after a withdraw → 200 not applied, stored once, no evidence, no files", wd.applied === false && /withdrawn/.test(wd.reason ?? "")
+    && count("fo_signing_evidence", `request_id = '${q11}'`) === 0 && count("fo_signing_hook_receipt", `request_id = '${q11}'`) === 3, wd);
+
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   ok("FO-6 G pass: no retainer.executed or envelope.completed name anywhere in the code (A51 §12: signing.completed is the one)", grep === "", grep);

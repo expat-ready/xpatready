@@ -1,7 +1,7 @@
 {
- "at": "2026-10-30T04:57:09.509Z",
- "port": 16403,
- "database": "xr_studio_forms_aiorch",
+ "at": "2026-11-22T09:49:36.294Z",
+ "port": 18403,
+ "database": "xr_studio_runtime_aiorch",
  "paid_calls": 0,
  "test_switches": [
   "STUDIO_FAULT_SOURCE=imm5475e.pdf (phase 1)",
@@ -76,8 +76,8 @@
    "name": "spend bound: a live launch whose worst case exceeds the person's limit is refused before anything is queued (no model call)",
    "ok": true,
    "detail": {
-    "worst": 7.23,
-    "message": "The worst case (US$7.23) is above this launch's limit (US$1.00). Narrow the selection or raise the limit."
+    "worst": 7.27,
+    "message": "The worst case (US$7.27) is above this launch's limit (US$1.00). Narrow the selection or raise the limit."
    }
   },
   {
@@ -128,7 +128,7 @@
    "name": "compare again (no AI call) keeps every decision that still holds, including the person's change",
    "ok": true,
    "detail": {
-    "at": "2026-10-30T04:57:08.763Z",
+    "at": "2026-11-22T09:49:35.816Z",
     "by": "user-A",
     "kept": 84,
     "reopened": 0

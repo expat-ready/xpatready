@@ -136,7 +136,10 @@ export class Signing {
     });
   }
 
+  /** Stores the event once. The request row is locked first (part 1 review m10; review Major 1: two events of one
+   *  request at once deadlocked when the receipt came before the lock), so writers queue on the request. */
   private async receipt(tx: Tx, q: { id: string; firmId: string }, ev: SigningHookEvent): Promise<boolean> {
+    await tx.$queryRaw`select id from fo_signature_request where firm_id = ${q.firmId}::uuid and id = ${q.id}::uuid for update`;
     const n = await tx.foSigningHookReceipt.createMany({ data: [{ firmId: q.firmId, requestId: q.id, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId, eventType: ev.providerType }], skipDuplicates: true });
     return n.count === 1;
   }
