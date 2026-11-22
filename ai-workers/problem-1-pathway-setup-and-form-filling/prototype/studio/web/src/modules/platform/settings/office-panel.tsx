@@ -9,7 +9,7 @@ import { Button, Field, Input, Notice, Panel, Select } from "@/components/ui/con
 import { useToast } from "@/lib/api";
 import { allZones } from "@/modules/front-office/booking-public/time";
 import { staffApi, StaffApiError } from "../session";
-import { Added, fieldErrors, Office, prefill, type Province } from "./offices-contract";
+import { Added, fieldErrors, Office, OfficeList, prefill, type Province } from "./offices-contract";
 
 type Form = { name: string; inCanada: boolean; province: string; country: string; zone: string; zoneTouched: boolean };
 const blank: Form = { name: "", inCanada: true, province: "", country: "", zone: "", zoneTouched: false };
@@ -51,10 +51,12 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
       await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
       onOpenChange(false);
     } catch (x) {
-      if (x instanceof StaffApiError && x.status === 409 && (x.problem as { current?: unknown }).current) {
-        const cur = Office.parse((x.problem as { current: unknown }).current);
+      // A stale change (409): the latest office is read again (the staff client keeps only a problem's plain fields, not its `current`).
+      const cur = office && x instanceof StaffApiError && x.status === 409
+        ? await staffApi("/platform/offices").then((r) => OfficeList.parse(r)).then((l) => (l.multipleOffices ? l.offices.find((o) => o.id === office.id) ?? null : null)).catch(() => null) : null;
+      if (cur && cur.version !== version) {
         const s = fromOffice(cur); setF(s); setStart(s); setVersion(cur.version);
-        setProblem(`${x.message} We've loaded the latest; make your change again and save.`);
+        setProblem(`${(x as StaffApiError).message} We've loaded the latest; make your change again and save.`);
         await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
       } else if (x instanceof StaffApiError) { setErrors(fieldErrors(x.problem.fields)); setProblem(x.message); }
       else setProblem("Not saved. Please try again.");
