@@ -92,7 +92,34 @@ None.
 2. **What the unassigned-work badge counts.** AG-13-62: "all unassigned work for anyone who can reassign". **Recommend** unassigned tasks the person may see plus unassigned cases for `agent/case:assign` holders, one badge on the Tasks entry with both numbers in its tooltip; unassigned leads stay on their own list (AG-2-13c) until that list's row adds them.
 
 ## Lead response
+Written in word for word by the screens lane from PR #3072, comment 7079309749 (#3072 was already queued, so it lands in a follow-up records PR):
+
+**Lead response (Lead 5, 18:13 IST 22 Nov; P-223 (4)): concept r2.1 approved.** The fresh challenge found no Blocker; M1-M7 and m1-m6 are each answered in §8 and visible in BR-1 to BR-14, §6's contract table and the tests. Rulings:
+1. **Unassigned gate:** "`view.all` or `:assign`" (AG-13-62's "or"), lead tasks excluded; PF-29c's "+" is corrected to the requirement.
+2. **Deactivate** becomes its own dialog with BR-13's wording; Sign out and Reactivate keep `ActDialog`; the choice rides in the step-up body.
+3. **§8's brief lines** (PF-29a `version`; PF-29b `registerHost` → `typeLabel` + zone, `GET /tasks/:id`; PF-29c `windowWord`, `total`, `badge`, Home order and cap, the filter; PF-29e preview route and deactivate body; CS-T1 queue fields and `total`) go into those rows in my next records PR.
+4. **Founder questions, one at a time with the recommendation, before the build** (the build waits on PF-29b-e and CS-T1 anyway): Q1 after-filing case items read-only in My Tasks (recommend yes); Q2 the badge counts (recommend BR-12); and the zone conflict (AG-13-5 "firm TZ" vs AG-11-115 "my zone"; recommend my office zone, BR-2). Until answered, BR-2 is built as written and the CaseTask rows are not drawn.
+Write this into `challenge.md` "Lead response", fill "Agreement" from BR-1 to BR-14, get the record reviewer's Approve on that head, and label (records).
+
 
 ## Agreement
+Concept r2.1 (46a70e597), approved by the tech lead above. Agreed for the build, rule by rule (the concept's §3 is the full text):
+* **BR-1** My Tasks: assigned to me (default) or by me; no Individual/Corporate filter; type label on client and case tasks only.
+* **BR-2** One "today" in my office zone for My Tasks and Home; "This week" to the end of Sunday; times in my zone with a footer, a task's own zone named when it differs; bulk keeps each task's zone. Built as written until the founder answers the zone question (ruling 4).
+* **BR-3** Restricted: title only, no name, number, status, type or link; the assignee can read and complete it.
+* **BR-4** Unassigned tasks: "`view.all` or `:assign`", each host's visibility applied, lead tasks excluded (ruling 1); no "why unassigned" column.
+* **BR-5** First Take it wins; the loser reads "<name> already has this task" (or "… this case").
+* **BR-6** Bulk up to 200, all or nothing, for `agent/task:bulk`.
+* **BR-7** Unassigned cases: the third tab, for `agent/case:edit` or `:assign`; its rows show the stage.
+* **BR-8** Actions follow keys: Add `:create`; Edit, Cancel, Reopen `:edit`; Done for the assignee or `:edit`; Assign and Reassign `:assign`; Take it `:assign`, or `view.all` with `:edit`; otherwise "You can view these tasks".
+* **BR-9** The Tasks panel on lead, prospect, client and case pages; Add a task due in the record's office zone.
+* **BR-10** A title opens one task's side panel (`GET /tasks/:id`).
+* **BR-11** Home "My Tasks": due by the end of today in my zone, after "Needs you", not drawn when empty, ordered and capped at 20; "see all" opens My Tasks with the same filter.
+* **BR-12** One badge: unassigned tasks for `task:assign` holders plus unassigned cases for `case:assign` holders. Waits on the founder's answer to question 2 (ruling 4).
+* **BR-13** Deactivate is its own dialog with the hand-over; the choice rides in the deactivate request and its step-up re-send (ruling 2).
+* **BR-14** Plain names: "Tasks", "My Tasks", "Unassigned tasks", "Unassigned cases".
+* **Not drawn until the founder answers question 1:** today's `CaseTask` rows in My Tasks (ruling 4).
+* **§8's brief lines** go into PF-29a/b/c/e and CS-T1 in the tech lead's records PR (ruling 3).
+
 
 ## Build discoveries
