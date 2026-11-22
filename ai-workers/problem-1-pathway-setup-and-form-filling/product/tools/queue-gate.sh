@@ -227,6 +227,7 @@ fresh() {
     # SPD-2 item 5 (review m2): a re-run of an older head now cancels the newer head's running ci (one group per PR,
     # cancel-in-progress), so the head is read again just before the re-run; a moved head gets no re-run.
     local now; now=$(api "$API/repos/$REPO/pulls/$PR" | jq -r '.head.sha // empty' 2>/dev/null)
+    [ -n "$now" ] || { echo "#$PR: the head could not be read again before the re-run: no re-run now (the next sweep tries again)"; return 0; }
     [ "$now" = "$head" ] || { echo "#$PR: the head moved to ${now:0:9} after ${head:0:9} was read: no re-run (the new head's ci runs by itself)"; return 0; }
     api -X POST "$API/repos/$REPO/actions/runs/$run_id/rerun" >/dev/null && echo "#$PR: ci run $run_id re-run (attempt $((run_attempt + 1)))" || echo "#$PR: the re-run was refused"
   fi; }

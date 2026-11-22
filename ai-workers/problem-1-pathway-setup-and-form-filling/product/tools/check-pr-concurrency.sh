@@ -112,6 +112,8 @@ class Parser:
     def ctxval(self, path):
         if path[0] not in ("github", "inputs"): raise Unknown(f"context {'.'.join(path)}")
         v = self.ctx if path[0] == "github" else self.ctx.get("inputs", {})
+        if path[0] == "github" and len(path) > 1 and path[1] not in self.ctx:
+            raise Unknown(f"github.{path[1]} is not modelled here")   # round 2 R2-1: never read an unknown key as null
         for i, k in enumerate(path[1:]):
             if k == "*":   # labels.*.name: a list of that field
                 rest = path[2 + i:]
@@ -134,10 +136,11 @@ def ev(expr, ctx, is_if=False):
 def tmpl(t, ctx):
     return re.sub(r"\$\{\{(.*?)\}\}", lambda m: text(Parser(m.group(1), ctx).parse()), str(t))
 
+WF = {}
 def load(f):
-    d = yaml.safe_load(open(os.path.join(W, f), encoding="utf-8")); return d, (d.get(True) or d.get("on") or {})
+    d = yaml.safe_load(open(os.path.join(W, f), encoding="utf-8")); WF["name"] = str(d.get("name") or f); return d, (d.get(True) or d.get("on") or {})
 def pr(num_, ref, draft=False, event="pull_request"):
-    return {"event_name": event, "run_id": 99, "head_ref": ref, "ref": f"refs/pull/{num_}/merge",
+    return {"event_name": event, "run_id": 99, "head_ref": ref, "ref": f"refs/pull/{num_}/merge", "workflow": WF.get("name", ""), "sha": "c" * 40, "repository": "o/r",
             "event": {"pull_request": {"number": num_, "draft": draft, "head": {"ref": ref}, "labels": []}}}
 BATCH = pr(8, "mergify/merge-queue/abc", True)
 CASES = (("a PR push", pr(7, "claude/x"), True), ("a draft push", pr(7, "claude/x", True), True), ("a merge-queue batch", BATCH, False))
@@ -176,8 +179,17 @@ for f, event in A.items():
             n += 1; ctx = {"event_name": "workflow_dispatch", "run_id": 99, "event": {}, "inputs": {"head": "a" * 40, "pr": "7"}}
             if any(truthy(c) for _, _, c in groups(d, ctx)): bad.append(f"{f}: a run by hand can be cancelled")
         if "issue_comment" in on:
-            n += 1; ctx = {"event_name": "issue_comment", "run_id": 99, "event": {"issue": {"number": 7, "pull_request": {"url": "x"}}, "comment": {"body": "Reviewer: Approve"}}}
-            if not any("7" in g for _, g, _ in groups(d, ctx)): bad.append(f"{f}: a verdict comment's run is not in its PR's group")
+            cm = lambda body: {"event_name": "issue_comment", "run_id": 99, "workflow": WF["name"], "head_ref": "", "ref": "refs/heads/main",
+                               "event": {"issue": {"number": 7, "pull_request": {"url": "x"}}, "comment": {"body": body}}}
+            n += 1; gs = groups(d, cm("Reviewer: Approve"))
+            if not any("7" in g for _, g, _ in gs): bad.append(f"{f}: a verdict comment's run is not in its PR's group")
+            wf = [g for w, g, _ in gs if w == "workflow"]
+            for w, g, _ in gs:
+                n += 1
+                if w != "workflow" and wf and g == wf[0]: bad.append(f"{f}: a verdict comment's run: {w}'s group {g!r} equals the workflow's (a deadlock)")
+            # #2749 M1: a run for an unrelated comment takes no slot, so it can never cancel a verdict's run
+            n += 1; gs = groups(d, cm("thanks"))
+            if gs: bad.append(f"{f}: a run for an unrelated comment holds a concurrency group {gs} (it would cancel a verdict's run, #2749 M1)")
     except Unknown as e:
         bad.append(f"{f}: cannot read its concurrency or conditions ({e})")
 # m3: no two workflows share a group name for the same PR (they would cancel each other's runs)
@@ -187,8 +199,14 @@ for p in sorted(glob.glob(os.path.join(W, "*.yml"))):
     try:
         d, on = load(f)
         evn = "pull_request_target" if "pull_request_target" in on and "pull_request" not in on else "pull_request"
-        gs = {g for _, g, _ in groups(d, {**pr(7, "claude/x"), "event_name": evn})}
-    except Exception: continue
+        ctx = {**pr(7, "claude/x"), "event_name": evn}; gs = set()
+        for blk in [d.get("concurrency")] + [j.get("concurrency") for j in (d.get("jobs") or {}).values()]:
+            if not blk: continue
+            raw = blk.get("group") if isinstance(blk, dict) else blk
+            if not raw: bad.append(f"{f}: a concurrency block without a group"); continue
+            try: gs.add(tmpl(raw, ctx))
+            except Unknown: gs.add(str(raw))   # a matrix or index group: compared by its text (same text, same group)
+    except Exception: continue   # not a workflow file this check can parse (a YAML error fails its own run)
     for g in gs:
         n += 1
         if g in seen and seen[g] != f: bad.append(f"{f} and {seen[g]} share the concurrency group {g!r}: they cancel each other")
@@ -210,11 +228,11 @@ for f in ("guards.yml", "trace.yml", "cockpit-tests.yml", "lead-tools-tests.yml"
             if any(truthy(c) for _, _, c in groups(d, ctx)): bad.append(f"{f}: {why} can be cancelled")
         except Unknown as e: bad.append(f"{f}: cannot read its concurrency ({e})")
 # M2: the heavy PR jobs need a condition that skips a draft and runs on a ready PR (never "no condition")
-for f, job in (("ci.yml", "kind"), ("pr-suites.yml", "plan"), ("walks.yml", "plan")):
+for f, job, on_batch in (("ci.yml", "kind", True), ("pr-suites.yml", "plan", False), ("walks.yml", "plan", False)):
     d, _ = load(f); j = (d.get("jobs") or {}).get(job); n += 1
     if j is None: bad.append(f"{f}: no job {job}"); continue
     if "if" not in j: bad.append(f"{f}: job {job} has no condition, so it runs on every draft"); continue
-    for why, ctx, want in (("a draft", pr(7, "claude/x", True), False), ("a ready PR", pr(7, "claude/x"), True)):
+    for why, ctx, want in (("a draft", pr(7, "claude/x", True), False), ("a ready PR", pr(7, "claude/x"), True), ("a merge-queue batch", BATCH, on_batch)):
         n += 1
         try: r = truthy(ev(j["if"], ctx, is_if=True))
         except Unknown as e: bad.append(f"{f}: job {job}: cannot read its condition ({e})"); continue

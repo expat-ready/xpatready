@@ -79,3 +79,44 @@ Ran: `check-pr-concurrency.sh` PASS (51 checks); `check-pr-suites-job.sh` 20/20.
 
 Reviewer: Block f8faae7555ba564886b3108bc153afb8fa91570b
 Verdict: Block
+
+## Round 2 (diff-only, f8faae755..839fe12603360472bf4eee89a8a6ae706e716f1c)
+
+Read: `git diff f8faae755 839fe1260` (8 workflows, check-pr-concurrency.sh rewrite, queue-gate.sh, check-queue-gate.sh, check-guards.sh rows).
+Ran: `check-pr-concurrency.sh` PASS (78 checks); `check-queue-gate.sh` 137/137; `check-pr-suites-job.sh` 20/20; 20 mutations on a scratch copy (PRC_WORKFLOWS=...); each of the ten guard-36 rows applied by hand in a scratch copy (not `--mutate`).
+
+### Round-1 findings
+* **B1 fixed.** review-rounds has only the job-level group. Its cancel `${{ !startsWith(github.event.pull_request.head.ref || '', 'mergify/') }}` is correct:
+  * pull_request_target on a batch: false;
+  * on a PR: true;
+  * issue_comment has no `pull_request` in its payload, so `null || ''` gives `''` and cancel is true. That is fine: one group per PR, a newer run reads every verdict again, and a skipped job takes no slot. The exact round-1 block, re-added, now fails the check.
+* **Trailing comment on the five:** PyYAML and Ruby Psych both read `cancel-in-progress` as just the `${{ ... }}`. YAML ends a plain scalar at ` #`, so GitHub reads the expression, not a string. All five are pull_request-only, so `head.ref` is never null there.
+* **M1 partly fixed.** Job-level groups are accepted and the same-name deadlock is checked, but only for pull_request_target. See Major R2-1.
+* **M2 fixed.** These now FAIL: a missing `if`; a bare `if` (evaluated as an expression); an unreadable `if`. Each was mutation-checked: kind `if: true`, kind bare `event_name == 'pull_request'`, walks plan `if` deleted, pr-suites plan bare `if`.
+* **m1 fixed:** ci.yml (2) and the group note, module-cards header, queue-gate.sh. queue-gate.yml:8 "never a cancel" is about the gate itself and is still true.
+* **m2 fixed.** The head is read again just before `rerun`; a moved head gets no re-run. The new fixture goes red when that line is removed (136/1 in a scratch copy, with only that test failing). The non-moved path still re-runs (`RERUN 77`).
+* **m3 fixed:** pr-suites renamed to `walks-`, and guards renamed to `trace-`, both now FAIL.
+* **m4 fixed:** the five no longer cancel a batch. Guards `cancel: true` and guards cancel keyed on `head.label` both FAIL.
+* **m5 mostly fixed:** `==` and `startsWith` ignore case (`'MERGIFY/'` now passes, as on GitHub); `null == ''` is true; `true`/`false`/`null` literals work; `contains()` works; `head_ref` is in the contexts. One gap is left, in R2-1(a).
+* **Guard-36 rows:** each of the ten edits changes its file, keeps the YAML valid, and turns its test red for the intended reason. `36 comment` also strips `issue.number` from the `PR:` env line, which is harmless. `36 rerun` turns exactly the m2 fixture red.
+
+### Major
+1. **R2-1, the rest of M1: the check still passes three edits that break review-rounds.** issue_comment and pull_request_target run main's copy, so this check is the only guard. Each edit below PASSES (79 checks):
+   * (a) A workflow-level `group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}`. On GitHub this is `review-rounds-7`, equal to the job group: B1's deadlock, which cancels every run. The checker's contexts have no `workflow`, and an unknown `github.<key>` silently evaluates to null, so it sees `-7`. The script's header says a context it cannot know fails the check.
+   * (b) A workflow-level `group: review-rounds-${{ github.event.issue.number }}`. This deadlocks every verdict-comment run. The same-name comparison runs only in the pull_request_target cases, not in the issue_comment case.
+   * (c) A workflow-level group with another name and the mergify cancel. This brings back #2749 M1: an unrelated comment's skipped run takes the slot and cancels a running verdict run. Round 1 asked for this check ("a run whose job is skipped takes no group slot").
+
+   Fix (small):
+   * put `workflow` (the file's `name:`) into the contexts, and fail on any `github.<key>` the evaluator does not model;
+   * run the deadlock comparison in the issue_comment context too;
+   * for a workflow with issue_comment, add an unrelated-comment context (body "thanks") whose `groups()` must be empty.
+
+### Minors / nits (not blocking)
+1. review-rounds' new comment says a batch "is never cancelled". That holds for pull_request_target runs only: a verdict comment on a batch PR gets cancel true. This is harmless (no verdicts on batch PRs; not a Mergify condition), so reword the comment or leave it.
+2. The M2 cases test a draft and a ready PR, not a batch. ci kind `if: github.event.pull_request.draft == false` passes, yet batches would then skip kind. The `ci` job fails when kind is not `success`, so this fails closed (red batches), not unsafe. Adding a batch case would catch it.
+3. The m3 loop's `except Exception: continue` silently skips a workflow whose group it cannot read (for example a `vars.` group outside the eleven). It should FAIL instead.
+4. Row `36 deadlock` needs GNU sed's `\n` in a replacement. With BSD sed (Mac) it writes broken YAML, and since a `.yml` is not syntax-checked (`sh=true`), the row would pass for the wrong reason. CI on ubuntu is fine.
+5. queue-gate.sh: if the head cannot be read again, it prints "the head moved to  after ...". This is fail-safe (no re-run; the 30-minute sweep tries again), but the message is misleading.
+
+Reviewer: Block 839fe12603360472bf4eee89a8a6ae706e716f1c
+Verdict: Block (fix Major R2-1; the minors are optional)
