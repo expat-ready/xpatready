@@ -262,7 +262,7 @@ fresh "cycle-timeline.py"
 # longest part, runs waiting for a machine from step 2c, failed batches with culprit PRs, approved to merged, merges per hour,
 # Proven today from the board), then the one current constraint with its measure and one action, as an ACT line. Last, so it
 # reads what the steps above saved.
-cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "${COCKPIT_DATA:-${TMPDIR:-/tmp}/cockpit/data.json}" \
+cs=$(python3 -I "$TOOLS/flow-constraint.py" --runs-waiting "$STATE_DIR/runs-waiting.json" --board "$BOARD" \
   --save "$STATE_DIR/constraint.json" ${FLOW_FACTS:+--facts "$FLOW_FACTS"} 2>&1); echo "$cs"; act=$((act + $(grep -c '^ACT' <<<"$cs")))
-fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board (its age checked, 45 min)"
+fresh "flow-constraint.py: ci runs, PRs and merges (gh.sh), runs-waiting.json from step 2c, the board as step 11 accepted it (over $FRESH_MAX_MIN min: not measured)"
 exit "$act"

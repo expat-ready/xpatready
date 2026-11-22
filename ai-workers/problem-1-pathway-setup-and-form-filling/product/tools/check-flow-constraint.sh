@@ -20,7 +20,7 @@ facts() {  # facts <file> [jq edit]
              {number: 13, approved_at: "2026-11-20T04:40:00Z", merged_at: "2026-11-20T05:10:00Z"},
              {number: 14, approved_at: null, merged_at: "2026-11-19T10:00:00Z"}]}' | jq "${2:-.}" > "$1"; }
 echo '{"fresh": 1, "oldest_fresh_min": 4, "stale": [{"id": 43098053168}, {"id": 43098053155}]}' > "$T/rw.json"
-echo '{"freshness": {"generated_at": "2026-11-20T05:30:00Z"}, "first": {"today": {"proven": 3, "goal": 10, "short": 7, "waiting": 5}}}' > "$T/board.json"
+echo '{"freshness": {"generated_at": "2026-11-20T05:55:00Z"}, "first": {"today": {"proven": 3, "goal": 10, "short": 7, "waiting": 5}}}' > "$T/board.json"
 run() { out=$(python3 -I "$C" --facts "$1" --runs-waiting "${RW:-$T/rw.json}" --board "${BD:-$T/board.json}" --now "$NOW" --save "$T/m.json" 2>&1); r=$?; act=$(grep '^ACT' <<< "$out"); }
 facts "$T/f.json"; run "$T/f.json"
 ok "section heading with the IST time" "$(grep -qx 'constraint (P-738, ENF-738) measured 20 Nov 11:30 IST' <<< "$out" && echo 1)" "$out"
@@ -29,7 +29,7 @@ ok "machines: runs-waiting.py's measure (part 1), stale runs apart" "$(grep -qx 
 ok "failed: each failed batch with its members, the still-open one named culprit" "$(grep -qx '  failed    1 of 4 batch(es) failed in 6 h: run 3: #11, #12 (culprit: still open)' <<< "$out" && echo 1)" "$out"
 ok "merge: approved to merged median over PRs merged in 24 h (no label time: left out)" "$(grep -qx '  merge     approved to merged median 60 min (n=2, merged in 24 h)' <<< "$out" && echo 1)" "$out"
 ok "rate: merges per hour over 3 h" "$(grep -qx '  rate      0.7 merges per hour (last 3 h, 2 merges)' <<< "$out" && echo 1)" "$out"
-ok "proven: the board's Today card with its age" "$(grep -qx '  proven    Proven today 3 of 10 (7 short), 5 Built waiting for qa (board 30 min old)' <<< "$out" && echo 1)" "$out"
+ok "proven: the board's Today card with its age" "$(grep -qx '  proven    Proven today 3 of 10 (7 short), 5 Built waiting for qa (board 5 min old)' <<< "$out" && echo 1)" "$out"
 ok "exactly one ACT line, the constraint" "$([ "$(grep -c '^ACT' <<< "$out")" = 1 ] && echo 1)" "$out"
 ok "1 of 4 failed (25%, bar 10%): the constraint is failed batches, culprit #12, the P-731 way back" "$(grep -q '^ACT   constraint: failed batches — 1 of 4 failed in 6 h (bar 10%), culprits #12: send each culprit back' <<< "$act" && grep -q 'Batch failures covered:' <<< "$act" && echo 1)" "$act"
 ok "--save writes the measures" "$(jq -e '.failed.n == 1 and .batch.median_min == 45 and .machines.fresh == 1' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"
@@ -58,6 +58,11 @@ facts "$T/f9.json" '.batches[2].conclusion = "success" | .batches[0].updated = "
 ok "board unreadable, all else fine and under its bar: \"not measured — proven\", never none" "$(grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$act"
 echo '{"freshness": {"generated_at": "2026-11-20T04:00:00Z"}, "first": {"today": {"proven": 10, "goal": 10, "short": 0, "waiting": 0}}}' > "$T/b3.json"; BD="$T/b3.json" run "$T/f9.json"
 ok "board 120 min old: stale, not this check's measure" "$(grep -q '^  proven    not measured (the board is 120 min old' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
+echo '{"freshness": {"generated_at": "2026-11-20T05:40:00Z"}, "first": {"today": {"proven": 3, "goal": 10, "short": 7, "waiting": 5}}}' > "$T/b20.json"; BD="$T/b20.json" run "$T/f9.json"
+ok "board 20 min old: over the 10-min limit (P-803, FRESH_MAX_MIN), not measured, never \"Proven today\"" "$(grep -q '^  proven    not measured (the board is 20 min old, over 10' <<< "$out" && ! grep -q 'Proven today' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
+out=$(FRESH_MAX_MIN=30 python3 -I "$C" --facts "$T/f9.json" --runs-waiting "$T/rw.json" --board "$T/b20.json" --now "$NOW" 2>&1)
+ok "FRESH_MAX_MIN=30 (lead-watch exports it): the same board 20 min old is read" "$(grep -q '^  proven    Proven today 3 of 10' <<< "$out" && echo 1)" "$out"
+ok "lead-watch.sh passes step 11's \$BOARD to step 15 (a refused board reads as not measured)" "$(grep -q 'flow-constraint.py" --runs-waiting "\$STATE_DIR/runs-waiting.json" --board "\$BOARD"' "$TOOLS/lead-watch.sh" && echo 1)" "step 15 reads the board itself"
 facts "$T/f10.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged[0].approved_at = null | .merged[1].approved_at = null'; BD="$T/b2.json" run "$T/f10.json"
 ok "merges with no approval time found: approved to merged is not measured, never under its bar" "$(grep -q '^  merge     not measured (merges with no approval time' <<< "$out" && grep -q '^ACT   constraint: not measured — merge' <<< "$act" && echo 1)" "$out"
 ok "--save keeps the same verdict as the lines (saved after pick)" "$(jq -e '.merge.error' "$T/m.json" >/dev/null && echo 1)" "$(cat "$T/m.json")"

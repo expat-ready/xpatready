@@ -27,7 +27,8 @@ BAR = {"wait_min": 15, "fail_share": 0.10, "batch_min": 45, "merge_min": 60, "pr
 IST = timezone(timedelta(hours=5, minutes=30))
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 GH = os.environ.get("FLOW_GH") or f"{TOOLS}/gh.sh"   # FLOW_GH: the test's stand-in for gh.sh
-STALE_MIN = 45   # a saved file or the board older than this is not this check's measure (the board's amber line)
+STALE_MIN = 45   # a saved runs-waiting.json older than this is not this check's measure (step 2c rewrites it every check)
+BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10)   # the board: ENF-803's limit (P-803), as lead-watch step 11
 
 
 def iso(s):
@@ -144,9 +145,9 @@ def measure(f, rw, board, now):
     t = ((board or {}).get("first") or {}).get("today") if isinstance(board, dict) else None
     gen = ((board or {}).get("freshness") or {}).get("generated_at") if isinstance(board, dict) else None
     age = round((now - iso(gen)).total_seconds() / 60) if iso(gen) else None
-    m["proven"] = ({"error": f"the board is {age} min old: refresh it (P-591)"} if isinstance(t, dict) and age is not None and age > STALE_MIN else
+    m["proven"] = ({"error": f"the board is {age} min old, over {BOARD_MAX_MIN} (P-803): refresh it (P-591)"} if isinstance(t, dict) and age is not None and age > BOARD_MAX_MIN else
                    {"proven": t.get("proven"), "goal": t.get("goal"), "short": t.get("short"), "waiting": t.get("waiting"), "age_min": age} if isinstance(t, dict) else
-                   {"error": "the board's data.json has no Today card"})
+                   {"error": "the board's data.json has no Today card (refused at step 11, unreadable or empty)"})
     return m
 
 
