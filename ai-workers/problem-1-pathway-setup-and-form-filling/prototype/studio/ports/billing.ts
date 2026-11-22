@@ -58,10 +58,21 @@ export const BillingEvent = z.strictObject({
 });
 export type BillingEvent = z.infer<typeof BillingEvent>;
 
+/** One tax on an invoice (R1.21, P-796): its name as the invoice prints it ("HST", "GST"; Stripe Tax's own lines say
+ *  "Tax" when the rate is not expanded), the province or territory it is for, the rate in parts per million (13 % is
+ *  130000) when known, and the amount in cents. */
+export const InvoiceTax = z.strictObject({
+  name: z.string().min(1).max(40), jurisdiction: z.string().regex(/^[A-Z]{2}$/).nullable(), ratePpm: z.number().int().min(0).max(1_000_000).nullable(), amountCents: z.number().int().min(0),
+});
+export type InvoiceTax = z.infer<typeof InvoiceTax>;
+
+/** An invoice of ours to a firm. R1.21: before tax (`subtotalCents`), the tax amount (`taxCents`, the sum of `taxLines`)
+ *  and each tax; null when the provider did not say (an invoice read before its tax was worked out), never 0 by guess. */
 export const BillingInvoice = z.strictObject({
   id: InvoiceId, number: z.string().nullable(), status: z.enum(["draft", "open", "paid", "uncollectible", "void"]),
   amountDueCents: z.number().int().min(0), currency: z.string().regex(/^[a-z]{3}$/), createdAt: z.date(), hostedUrl: z.url().nullable(),
-});
+  subtotalCents: z.number().int().nullable().default(null), taxCents: z.number().int().min(0).nullable().default(null), taxLines: z.array(InvoiceTax).max(10).default([]),
+}).refine((i) => i.taxCents === null ? i.taxLines.length === 0 : i.taxCents === i.taxLines.reduce((n, t) => n + t.amountCents, 0), "the tax amount is the sum of the invoice's taxes");
 export type BillingInvoice = z.infer<typeof BillingInvoice>;
 
 export const CardCheckoutInput = z.strictObject({ firmId: FirmId, customerId: CustomerId, successUrl: z.url(), cancelUrl: z.url() });
@@ -121,6 +132,10 @@ export const PORTAL_FEATURES = {
   subscription_cancel: { enabled: true, mode: "at_period_end" }, customer_update: { enabled: false },
 } as const;
 
+/** R1.21 (P-796): a firm's customer on the billing stand-in, from its id: one per firm, never a counter another firm
+ *  could share (api/src/platform/billing/stand-in.ts). */
+export const standInCustomer = (firmId: string) => CustomerId.parse(`cus_standin${FirmId.parse(firmId).replace(/-/g, "").toLowerCase()}`);
+
 /** What the fake keeps of one Checkout session: the parameters Stripe would receive. */
 export type FakeCheckout = TrialCheckout & { input: TrialCheckoutInput; paymentMethodCollection: "if_required"; missingPaymentMethod: "pause" };
 
@@ -130,7 +145,7 @@ export type FakeBilling = BillingPort & {
   /** Stripe's side, set by the test: subscriptions, events (by id) and invoices (by customer). */
   readonly subs: Map<string, BillingSubscription>;
   readonly events: Map<string, BillingEvent>;
-  readonly invoiceList: Map<string, BillingInvoice[]>;
+  readonly invoiceList: Map<string, z.input<typeof BillingInvoice>[]>;
   readonly resumed: string[]; readonly heldDrafts: string[]; readonly portals: string[];
   /** The fake's signature of a raw body (Stripe's header shape `t=…,v1=…`; a plain hash, not Stripe's HMAC). */
   sign(rawBody: string, at?: Date): string;
@@ -146,7 +161,7 @@ export function fakeBilling(opts: { prices?: BillingPrice[]; failOn?: (call: Cal
   const customers: (CustomerInput & { customerId: string })[] = [];
   const checkouts: FakeCheckout[] = [];
   let calls = 0;
-  const subs = new Map<string, BillingSubscription>(), events = new Map<string, BillingEvent>(), invoiceList = new Map<string, BillingInvoice[]>();
+  const subs = new Map<string, BillingSubscription>(), events = new Map<string, BillingEvent>(), invoiceList = new Map<string, z.input<typeof BillingInvoice>[]>();
   const resumed: string[] = [], heldDrafts: string[] = [], portals: string[] = [];
   const now = opts.now ?? (() => new Date());
   const hash = (s: string) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; return h.toString(16); };
