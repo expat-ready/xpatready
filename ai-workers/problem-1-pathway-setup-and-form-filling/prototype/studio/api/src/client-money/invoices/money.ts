@@ -40,9 +40,10 @@ const idOf = (invoiceId: string) => (UUID.test(invoiceId) ? invoiceId.toLowerCas
 export class InvoiceMoney {
   constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly mail: MailPort | null, private readonly docs: DocumentRenderPort = new MoneyDocuments()) {}
 
-  /** POST …/invoices/:id/issue: the next INV- number, the lines frozen, a due date (the firm's "Due in N days" when none is sent). */
-  async issue(ctx: StaffContext, invoiceId: string, body: unknown): Promise<IssuedView> {
-    const id = idOf(invoiceId), b = parse(IssueIn, body ?? {}), today = dayOf(this.clock.now());
+  /** POST …/invoices/:id/issue[?dueDate=YYYY-MM-DD]: the next INV- number, the lines frozen, a due date (the firm's "Due in
+   *  N days" when none is sent). The query is parsed before anything is read. */
+  async issue(ctx: StaffContext, invoiceId: string, query: unknown): Promise<IssuedView> {
+    const b = parse(IssueIn, query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());
     const view = await this.write(async (tx) => {
       const inv = await this.lock(tx, ctx.firmId, id);
       if (inv.issued) refuse("ISSUED", `This invoice is already issued (${inv.number}). Nothing was changed.`);
@@ -165,14 +166,14 @@ export class InvoiceMoney {
       if (what.paymentId !== undefined) {
         const pv = UUID.test(what.paymentId) ? await this.paymentView(tx, ctx.firmId, what.paymentId.toLowerCase(), false, today) : notFound("payment");
         if (pv.payment.invoiceId !== id) notFound("payment");
-        return { key: "money.receipt" as const, name: pv.payment.receiptNumber, data: await this.receiptOf(tx, ctx.firmId, pv.payment, pv.extraNow) };
+        return { key: "client_money.receipt" as const, name: pv.payment.receiptNumber, data: await this.receiptOf(tx, ctx.firmId, pv.payment, pv.extraNow) };
       }
       if (what.creditNoteId !== undefined) {
         const n = UUID.test(what.creditNoteId) ? await tx.moneyCreditNote.findFirst({ where: firmScope(ctx.firmId, { id: what.creditNoteId.toLowerCase(), invoiceId: id }) }) : null;
         if (!n) return notFound("credit note");
-        return { key: "money.credit_note" as const, name: n.number!, data: creditNoteData(f.view, { number: n.number!, issuedOn: dayOf(n.createdAt), amountMinor: n.amountMinor, reason: n.reason }, await this.storedHead(tx, ctx.firmId, "invoice.credit_note_issued", n.id, f.view)) };
+        return { key: "client_money.credit_note" as const, name: n.number!, data: creditNoteData(f.view, { number: n.number!, issuedOn: dayOf(n.createdAt), amountMinor: n.amountMinor, reason: n.reason }, await this.storedHead(tx, ctx.firmId, "invoice.credit_note_issued", n.id, f.view)) };
       }
-      return { key: "money.invoice" as const, name: f.view.number!, data: await this.invoiceOf(tx, ctx.firmId, f) };
+      return { key: "client_money.invoice" as const, name: f.view.number!, data: await this.invoiceOf(tx, ctx.firmId, f) };
     });
     return { filename: `${doc.name}.pdf`, ...(await this.docs.render(doc.key, doc.data)) };
   }
@@ -273,9 +274,9 @@ export class InvoiceMoney {
   private async emailInvoice(firm: string, v: InvoiceView): Promise<IssuedView["email"]> {
     const f = await this.facts(this.db, firm, v.id, dayOf(this.clock.now())), data = await this.invoiceOf(this.db, firm, f), h = await this.letterhead(this.db, firm, v);
     if (!h.operatingDetails) return "HELD";   // AG-6-71 rule 3: invoice messages wait until the operating details are filled
-    return this.email(firm, v, "money.invoice", data, `Invoice ${v.number} from ${h.firmName}`, `money-invoice:${v.id}`, v.number!);
+    return this.email(firm, v, "client_money.invoice", data, `Invoice ${v.number} from ${h.firmName}`, `money-invoice:${v.id}`, v.number!);
   }
   private async emailReceipt(firm: string, p: Awaited<ReturnType<InvoiceMoney["paymentView"]>>["payment"], extraMinor: number) {
-    return this.email(firm, p.invoice, "money.receipt", await this.receiptOf(this.db, firm, p, extraMinor), `Receipt ${p.receiptNumber} for invoice ${p.invoice.number}`, `money-receipt:${p.id}`, p.receiptNumber);
+    return this.email(firm, p.invoice, "client_money.receipt", await this.receiptOf(this.db, firm, p, extraMinor), `Receipt ${p.receiptNumber} for invoice ${p.invoice.number}`, `money-receipt:${p.id}`, p.receiptNumber);
   }
 }
