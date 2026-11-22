@@ -146,3 +146,39 @@ Verdict: Changes on 1693e1149
 **Merge note:** CI cannot be green until #2368 merges, which is already the Ready-when. Both failing cases pass with that index.
 
 Verdict: Approve on 77713d8e8
+
+## Round 3: diff-only re-review of 2b1b85a40 (P-277; `git diff 77713d8e8 2b1b85a40 --` reads/, check_fo7q_reads.ts)
+
+**Verdict: Ship.** No Blocker and no Major. Since 77713d8e8 the branch merged main (60f6d32ce: #2953, #3036 FO-7b 1c refunds, #3048 FO-7g 1w). `git diff origin/main...2b1b85a40` holds only FO-7q's 13 files.
+
+**The status twin still holds on main.**
+- `invoices/facts.ts` is unchanged from 77713d8e8 to 2b1b85a40, and is identical on the current `origin/main` tip.
+- `ports/client-money.ts` gained only additive code from FO-7b 1c (the refund event, RefundIn, ExtraChoiceIn and the two views). `invoiceStatus`, `InvoiceFacts` and `StatusWord` did not change.
+- The database functions that FACTS_LATERAL reads (`money_invoice_total`, `money_trust_paid`, `money_invoice_credit`) are the same calls `facts.ts` makes, so a migration change reaches both alike.
+- So `status-sql.ts` still mirrors `invoiceStatus` rule for rule and column for column.
+
+**Suites I ran myself:**
+- `check_fo7q_reads`: 35 passed, 2 failed. The same two DW1 cases wait on #2368, as in round 2 (OVERDUE 379 ms without the index).
+- `check_fo7b_refunds`: 29 passed, 0 failed.
+- I did not re-run `check_fo7b_invoices` (108/0), `check_pf12_walls` (110/0), `check_pf28_inputs` (48/48) or tsc. They are the builder's figures.
+
+**The changes**
+1. **PF-28's one rule for field errors: correct.**
+   - `parseInput` and `badField` now give 422 `INVALID` with `fields` naming the field:
+     - `pageSize`, `status`, `after`, `issuedTo` or `to` (for an inverted range), `partyId` (for a half pair);
+     - any unknown field, through the strict schema.
+   - The test's check is real: it requires 422, `code: "INVALID"` and a `fields` object naming `pageSize`, `colour`, `status` and `from`. The 400 answers of round 2 would fail it.
+   - This replaces the brief's "500 gives 400". PF-28 is the platform's rule on `main` and `check_pf28_inputs` enforces it. It must be named in the PR as a deviation from the brief (the builder says it will be).
+   - Cosmetic, from the platform helpers and not FO-7q's text: on a GET, parseInput's detail ends "Nothing was saved.", and the two helpers use different titles ("Check the details" vs "Some details need fixing").
+2. **The overdue fixture now sends `?dueDate=`.** This follows #3016's move of issue's due date to the query, and the setup case still checks `dueDate === "2026-01-05"`.
+
+**The REFUND and EXTRA_CHOICE follow-up: acceptable, not needed in this PR.**
+- The brief says an action appears only when its route is on `main` (a ceiling, not a duty), and that a later row adds its line to `reads/actions.ts`.
+- Both routes (`POST …/payments/:paymentId/refunds` with `agent/refund:create`, and `…/extra` with `agent/payment:record`) act on a **payment**, not on the invoice that `allowedActions` describes.
+- Offering them correctly needs FO-7b's private `leftToRefund` and waiting logic. Copying that logic here would put the same rule in two places (P-526).
+- Nothing offered today is wrong: this is an omission, and no screen consumes it yet (FO-7s3a is not built).
+- **Condition (R3-c1):** the PR names it as a follow-up with its row (export the two predicates from `refunds.ts`, then one line each in `actions.ts` or in a per-payment actions field), before the label.
+
+**Still standing from round 2:** R2-m1 (rare status words 1.2-1.7 s with the index). It is now posted on #3001 as "Question for the tech lead", so that condition is met. m4 (partly fixed) and m5 (accepted) remain Minor. The journey score is unchanged: **8.75 / 10, pass.**
+
+Verdict: Approve on 2b1b85a40
