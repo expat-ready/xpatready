@@ -71,3 +71,33 @@ Written 22 Nov 2026 by a breaker that did not build or review this screen. PR #2
 * A real screen reader.
 * Reload or Back in the middle of an Add: the panel keeps no draft, which is FO-4's behaviour and not this row's.
 * The Engage and add-contact mounts and parts 2-3: not built (concept §6b).
+
+## Re-check (round 2) at 60af218c7
+I pulled 60af218c7 and started a new `brk_dup` copy on :4581. `web/dist`'s stamp (71643108…) matched the source. The seed check passed 32/32. The copy is stopped.
+
+**Verdict: no Blocker and no Major. F1, F2, F3 and F6 are fixed. F4 and F5 were not in this round and stay open as Minors. Two new Minors.**
+
+* **F1, fixed.**
+  * Hint ran and matched the email (R1b): the 409 box offers only the phone, "With Use existing person, also keep in the lead's first note: 416 555 0178". With it ticked, the note gets the line.
+  * Unticking reads "Not saved: 416 555 0178", and the note is only what was typed.
+  * Hint never ran, because Save was pressed with Enter from Phone (R1a): it offers both details, and the note gets "Also gave: zara…@example.org · 416 555 0177". See N1.
+  * A 4,975-character note sends nothing and shows the guard; unticking clears it, and then Save gives 201.
+  * A late check answer arriving after the 409 box shrinks the offer from both details to the phone only. It is correct, but it changes while the adder reads it.
+* **F2, fixed.** The two Wren Hale rows now read "· L-00015" and "· L-00016", and the aria-labels add the lead number.
+  * Leak probe: Pia's older lead belongs to O and her newer lead was moved to T. O sees L-00017 (O's own) and T sees L-00018.
+  * A hidden match still returns no lead and no id.
+  * The number is chosen with the same `sees()` rule as the 409 (`duplicates/service.ts:61-64`). No leak found.
+* **F3, fixed.** After a pick, the lead was moved to T and O pressed Save. The result was 404, then "Xavi… Ruiz can no longer be opened. Choose again, or add as new." The pick was dropped and one new check ran, which showed the nameless hidden line. Saving again gave the hidden 409 box. See N2 for where focus goes.
+* **F4, not fixed** (Minor, unchanged): an "Add as new" made earlier still sends `confirmedNew` past an exact match added later.
+* **F5, not fixed** (Minor, unchanged): a zero-width character in Phone still passes the check and is refused on Save.
+* **F6, fixed.** At 200 % zoom (360x225 CSS px, deviceScaleFactor 2), a 57-character name gives a 44 px button and a 59 px fields area. A 200-character name gives a 60 px button and a 43 px fields area. The label is cut at 40 characters with "…" and the full name in `title`. Nothing is clipped or scrolls sideways.
+
+**New**
+* **N1 Minor: when the hint never ran, the 409 offer also includes the email that matched exactly.**
+  * The first note then keeps the person's own email as "Also gave: zara…@example.org · …". This is noise, not a loss.
+  * Code: `add-lead-panel.tsx:66`, `extraFor` with empty reasons.
+  * Fix: leave out a typed value equal to the key the 409 matched on. The 409 could return which key matched, or the screen could leave out the email when the 409 came from an email-only match.
+* **N2 Minor: two errors leave keyboard focus away from the message.**
+  * The note guard on the 409 path: the textarea gets `aria-invalid=true`, but focus stays on the 409 box (`DIV role=status`). On the hint path, focus goes to the textarea as it should.
+  * After F3's 404, focus falls to the dialog container, and the "can no longer be opened" banner is only seen if the adder looks.
+  * Fix: on the 409 path, focus `[aria-invalid=true]` after the box's own focus effect. After the 404, focus the banner (`tabIndex=-1`) or the first hint button.
