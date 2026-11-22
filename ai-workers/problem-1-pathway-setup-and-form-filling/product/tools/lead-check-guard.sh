@@ -9,7 +9,7 @@
 # Lead's copy (lane.sh whoami = lead), so the line is allowed there too; a Lead running it on itself only watches itself.
 # Stop hook too (B197 (4), founder A110, 16 Nov: "I requested multiple times ... lead keep forgetting"): in the Lead's copy a
 # check turn (its prompt is that one line) cannot end while the app view (app-view-check.sh --stale-only: missing or over
-# 35 min old) is stale; it asks again on every stop until the view is saved (a page that cannot be read is saved as its
+# 15 min old, P-798) is stale; it asks again on every stop until the view is saved (a page that cannot be read is saved as its
 # UNREADABLE line). Other turns, and other copies, stop freely. Test: check-app-view.sh.
 CANON="run lead-watch; read STATE Start here"
 HEARTBEAT="run lead-heartbeat; notify the founder if stale"

@@ -28,7 +28,7 @@ export function runtimeSignUpPorts(config: Pick<PlatformConfig, "environment" | 
     : !key && !local ? "Stripe is not set up on this server (PLATFORM_STRIPE_SECRET_KEY)" : null;
   return {
     audit: auditEvent, clock: systemClock, mail, identity: new LocalSignUp(() => systemClock.now(), mail),
-    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady,
+    billing: key ? StripeBilling.fromKey(key) : fakeBilling(), notReady, stripePrices: !!key,
     appUrl: env.STUDIO_PUBLIC_URL ?? `http://localhost:${env.STUDIO_PORT ?? 4400}`,
   };
 }

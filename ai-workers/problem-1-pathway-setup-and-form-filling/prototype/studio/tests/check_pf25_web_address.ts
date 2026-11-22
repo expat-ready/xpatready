@@ -17,7 +17,7 @@ import { PrismaClient } from "@prisma/client";
 import { execFileSync, spawnSync } from "node:child_process";
 import { request } from "node:http";
 import { connect } from "node:net";
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeAudit } from "../ports/audit.ts";
 import { FakeClock } from "../ports/clock.ts";
@@ -29,7 +29,7 @@ import { PUBLIC_NOT_FOUND_HTML, PUBLIC_NOT_FOUND_JSON, publicFirmOf, registerPub
 import { WebAddressCatchUp, WebAddressController, WebAddressHostRouting } from "../api/src/platform/web-address/routes.ts";
 import { catchUpFirmAddresses, FIRM_CREATED_ACTOR, onFirmCreated } from "../api/src/platform/web-address/firm-created.ts";
 import { EVENT } from "../ports/events.ts";
-import { checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
+import { addressBaseFromName, checkAddressShape, readHost } from "../api/src/platform/web-address/rules.ts";
 import { ADDRESS_CHANGE_KEY, readReason, WebAddresses } from "../api/src/platform/web-address/service.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
@@ -39,7 +39,7 @@ const EMPTY = `xr_studio_pf25_empty_${process.pid}`, DEMO = `xr_studio_pf25_demo
 const urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const WORK = join(STUDIO, "var", `pf25-check-${process.pid}`);
 const DAY = 24 * 60 * 60 * 1000;
-const RESERVED = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal"];
+const RESERVED = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal", "staging"];   // staging: QA-644
 const ADDRESSES = `select string_agg(f.key || '=' || coalesce(w.address, '-'), ',' order by f.key) from platform_firm f left join platform_firm_web_address w on w.firm_id = f.id where f.key like 'sample-%'`;
 
 let pass = 0, fail = 0;
@@ -158,8 +158,19 @@ try {
 
   // ------------------------------------------------------------------------------------------- the database's own rules
   const setX = (a: string) => `insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${firmX}', '${a}', 'system:sign-up', now()) returning address`;
-  ok("PF-25 fail (database): Maple, -maple, ma, xn--maple, maple-, an accented or 64-character label and all nine reserved names are refused; maple is accepted",
+  ok("PF-25 fail (database): Maple, -maple, ma, xn--maple, maple-, an accented or 64-character label and all ten reserved names (staging included, QA-644) are refused; maple is accepted",
     ["Maple", "-maple", "ma", "xn--maple", "maple-", "érable", "a".repeat(64), ...RESERVED].every((a) => refused(EMPTY, setX(a), /platform_firm_web_address_allowed/)) && sql(EMPTY, setX("maple")) === "maple");
+  // QA-644: the migration that keeps `staging` stops, naming the firm, when a firm already holds it (the rule is
+  // replaced, and a replaced rule does not re-check stored rows); with no such firm it applies (it ran on this copy).
+  const firmStg = mkFirm("firm-stg", "Stg");
+  const QA644 = readFileSync(join(MIG, "20261122033000_qa644_reserve_staging", "migration.sql"), "utf8");
+  ok("QA-644 fail (database): the staging migration refuses a database where a firm already holds staging, naming the firm",
+    refused(EMPTY, `begin; alter table platform_firm_web_address drop constraint platform_firm_web_address_allowed; insert into platform_firm_web_address (firm_id, address, set_by, updated_at) values ('${firmStg}', 'staging', 'system:sign-up', now()); ${QA644}`, new RegExp(`QA-644: .*${firmStg}`))
+    && sql(EMPTY, `select count(*) from platform_firm_web_address where firm_id = '${firmStg}'`) === "0");
+  ok("QA-644 pass (database): with no firm holding staging the migration applies again cleanly, and an address that only starts with staging (staging-law) is still allowed",
+    (() => { try { psql(EMPTY, ["-c", `begin; ${QA644} rollback;`]); return true; } catch { return false; } })() && sql(EMPTY, `select platform_web_address_allowed('staging-law')`) === "t");
+  ok("QA-644 pass: a firm named Staging Inc is offered staging-firm, never staging", addressBaseFromName("Staging Inc") === "staging-firm" && addressBaseFromName("Staging") === "staging-firm", addressBaseFromName("Staging Inc"));
+  ok("QA-644 fail (host): staging under the production suffix is ExpatReady's own site, never a firm", readHost("staging.expatready.com").kind === "main" && readHost("staging.localhost:4400").kind === "main");
   ok("PF-25 fail (database): an address does not change without its redirect record, never moves firm and is never removed",
     refused(EMPTY, `update platform_firm_web_address set address = 'maple-two' where firm_id = '${firmX}'`, /changes only with its redirect record/)
     && refused(EMPTY, `update platform_firm_web_address set firm_id = (select id from platform_firm where key='sample-solo') where firm_id = '${firmX}'`, /never moves to another firm/)
@@ -205,8 +216,8 @@ try {
     refusals.map((r) => !r.available && `${r.reason}:${r.message}`).join(" | ") === [
       "uppercase:Use lower-case letters only (maple, not Maple).", "hyphen-edge:A web address cannot start or end with a hyphen.",
       "short:Use at least 3 characters.", "reserved:This address is kept for ExpatReady's own pages. Choose another."].join(" | "), refusals);
-  const nine = await Promise.all(RESERVED.map((a) => svc.availability(a)));
-  ok("PF-25 fail: all nine reserved names are refused by the service with the reserved reason", nine.every((r) => !r.available && r.reason === "reserved"), nine);
+  const ten = await Promise.all(RESERVED.map((a) => svc.availability(a)));
+  ok("PF-25 fail: all ten reserved names (staging included, QA-644) are refused by the service with the reserved reason", ten.every((r) => !r.available && r.reason === "reserved"), ten);
   const sampleChoice = await svc.availability("sample-law");
   ok("PF-25 fail: an address starting with sample- is refused (kept for the Sample firms), with a suggestion without it (law)",
     !sampleChoice.available && sampleChoice.reason === "sample" && sampleChoice.suggestion === "law", sampleChoice);
