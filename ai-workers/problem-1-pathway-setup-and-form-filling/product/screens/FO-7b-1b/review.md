@@ -267,3 +267,45 @@ None.
 Then re-review the new head (diff only).
 
 Reviewer: Block 7c3c0b5baae55ceb9b0751035283ab7e52d9b959
+
+## Round 5 (diff 7c3c0b5ba..2d8eaa844)
+
+Same reviewer role, diff-only (the Lead's round 5 on #2953, from `7c3c0b5ba`). **Commit reviewed: `2d8eaa844d82537ebcf7352add433bacb7b5ca33`** on `claude/sleepy-archimedes-3a0op2`. I read `git diff 7c3c0b5ba..2d8eaa844` on its 2 code files (`api/src/client-money/invoices/money.ts`, `tests/check_fo7b_invoices.ts`). There is no screen, so no browser walk and no journey score. Paths below are under `prototype/studio/`.
+
+### Blocker
+None.
+
+### Major
+None. Round 4's Major 1 (R4-F1) is fixed (see below).
+
+### Minor
+1. **New in this diff (test only): the R4-F2 case's title claims more than it tests** (`tests/check_fo7b_invoices.ts:430-433`). The forged line is missing `dueAfterMinor`, but the receipt returns 404 because two lines now match, so `lines.length === 1` fails before the figure check runs. No case reaches the per-figure or boolean checks at `money.ts:221` with a lone line. Through the app that cannot happen: `audit_event` refuses UPDATE always and DELETE outside the demo reset (`aud1a_audit_insert_only/migration.sql:113`, `:155`), so the genuine line can't be altered or removed. The checks are defensive. Rename the case ("a second line, also missing a figure"), or say in the comment that the figure check guards a write that bypasses the triggers.
+2. **Carried, not changed by this diff:** round-3 Minor 2 (no letterhead fallback in `paymentView`) and Minor 3 (lower-case country key in the stored address).
+
+Observation (not a finding, not new in substance): a forged second line now makes the genuine receipt **and the replay** answer 404 "No such payment", where round 4 ignored it. That is the stated fail-closed rule (R3-F2, R4-F2: never other figures). It can only be reached by direct SQL inserts into the audit trail, which is tampering. A 404 there could read as "not recorded", but nothing in the product can produce that state.
+
+### Each claimed fix (pass / fail)
+* **R4-F1 / round-4 Major 1 (the `xmin` link): holds.** The predicate (`money.ts:218-219`) is now: `m.firm_id`, `m.id`, `e.firm_id = m.firm_id`, `action`, `entity`, `e.entity_key = m.id::text`, `e.detail->>'paymentId' = m.id::text` and `e.detail->>'receiptNumber' = receipt.number`. Every term is a stored column value:
+  * `money_payment.id` and `firm_id` never change. The fo7a trigger (`fo7a_client_money_tables/migration.sql:991-994`) allows only `cleared false→true` with `cleared_at`/`cleared_by`, and lists `id` and `firm_id` among the columns that must stay the same.
+  * `money_receipt.number` is assigned by the database, NOT NULL, unique per firm (`:331`, `:612`) and insert-only (`:666`, `:671`).
+  * `audit_event` is insert-only (above), and its `detail` is jsonb written once, with `paymentId`, `receiptNumber` (`money.ts:123`) and `cleared_after` (from `after.cleared`, through `flattenValues`, `ports/audit.ts:47-55`).
+  * So a Cleared tick, a table rewrite and a logical dump/restore all keep the link. None of them changes a stored value, and nothing physical (`xmin`, ctid) is read any more.
+  * Measured (a throwaway copy of the suite under /tmp, own scratch DB at :54329, dropped): after the cheque was ticked Cleared, I ran `VACUUM FULL` on both tables, then `ALTER TABLE … ADD COLUMN … DEFAULT gen_random_uuid()` on both (a forced rewrite). The receipt was **200, word for word the original** (still "Not yet cleared"), and the replay was **200, `appliedMinor` 1000**. Dump/restore is argued from the above, not run.
+* **Firm scope: holds.** The payment is read with `firmScope`, and the audit query pins `m.firm_id = firmId` and `e.firm_id = m.firm_id`. A receipt number repeated in another firm can't match. The walls case passes.
+* **Exactly one line for a real payment: holds.** `payment.recorded` / `money_payment` is written only at `money.ts:121`, inside the single interactive `$transaction` of `write()` (`:182-183`), which commits or rolls back whole. The adapter runs `attempts: 1` (`platform/audit/audit-event.ts`, both paths), so nothing is retried inside the transaction. A replay returns at `:86` before any write. The same key at the same moment is serialised by the invoice lock, or refused by the unique key (P2002 → KEY_USED) with the whole transaction rolled back. In the probe, all 25 payments in the suite DB were classified: every staff-recorded payment had exactly one line, except the one where the suite plants a forgery (2 lines, as intended). The other 5 are the suite's SQL-seeded fixtures (`seed:FO-7b-1b`), which have no line and are never read as receipts.
+* **The cheque replay after a Cleared tick answers the same figures: holds.** `appliedMinor`, `extra`, the due amount, `trust` and `shortfall` come from the stored line. The JSON `cleared` field shows the live state (true after the tick). The receipt (PDF and email, both through `receiptOf`, `money.ts:259-260`) prints the stored `cleared_after`, so it never changes (AG-6-63 rule 8). The new case at `:424-428` asserts this word for word.
+* **R4-F2 / round-4 Minor (missing figure read as 0): holds.** `?? 0` is gone. Each figure must be `Number.isSafeInteger` and ≥ 0, `paidTwice` and `cleared_after` must be booleans, and anything else is 404. `num()` now reads the value as is.
+* **Round-4 Minor 1 (planted fail that could not fail): holds.** `round3Rule` is now fed the response's stored `balanceMinor + appliedMinor`. If the code applied 150.00, `planted3` would equal `appliedMinor` and the case would fail.
+
+### What held (rounds 1-4, re-checked on the diff)
+* Lock order, idempotency under the lock and outbox last: unchanged.
+* The receipt is never recomputed: figures, letterhead and now the cleared state come from the stored line.
+* The trust arithmetic (R3-F1), partial kept credit (R3 Minor 1) and the walls: unchanged, and their cases pass.
+* `clearedThen` is stripped from the API response (`money.ts:130`) like the other print-only fields, so `PaymentView`'s strict schema is unchanged.
+* The audit count case now counts lines whose `dueAfterMinor` is a whole number, which leaves out exactly the suite's two forged lines.
+
+### Checks run (on 2d8eaa844, in this checkout)
+* `check_fo7b_invoices.ts`: **106 passed, 0 failed** (exit 0).
+* The probe copy: 106/0 plus the rewrite and line-count prints above. Its scratch DB was dropped and /tmp was cleaned. A leftover `xr_studio_fo7b_scratch_24427` (already noted in round 4, not made by this review) was left alone.
+
+**Verdict: Approve** `2d8eaa844d82537ebcf7352add433bacb7b5ca33` (no open Blocker or Major; Minor 1 and the carried Minors may follow in a later row).
