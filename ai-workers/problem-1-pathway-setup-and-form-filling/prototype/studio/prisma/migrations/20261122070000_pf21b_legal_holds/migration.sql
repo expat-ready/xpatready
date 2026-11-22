@@ -8,10 +8,11 @@
 --   * plat_legal_hold_active(firm): a firm's deleter (xr_app, in its firm's transaction) reads its OWN firm's active holds;
 --     any other firm, or no firm, is refused. The bypass role and the owner read the table itself (the adapter).
 --   * plat_legal_hold_place, plat_legal_hold_release, plat_legal_hold_firm and plat_legal_hold_list: our console's routes
---     (/api/system/register/holds, @SystemKeys("system/compliance:legal-hold")), which run with no firm. Each is REFUSED
---     inside a firm's session (platform_session_firm() set), so no firm's request can place, release or read a hold,
---     whatever its code does. Placing and releasing take the firm's exclusive hold lock themselves (ports/legal-hold.ts
---     rule 3), so a deleter's open transaction finishes first and the next deleter sees the change.
+--     (/api/system/register/holds, @SystemKeys("system/compliance:legal-hold")), which run with no firm. Each is refused
+--     inside a firm's session (platform_session_firm() set). Who may call them with no firm is the code's gate (PF-4s's
+--     guard and the key), the same model as PF-4s's plat_system_no_firm policy. Placing and releasing take the firm's
+--     exclusive hold lock themselves (ports/legal-hold.ts rule 3), so a deleter's open transaction finishes first and
+--     the next deleter sees the change.
 -- Rules: the scope's shape (each kind its own target, nothing else); the firm exists (a check at insert: PlatformFirm's
 -- schema file is not this row's, so no relation; firms are never deleted while a hold exists, PF-11 asks this port
 -- first); reason and actors are set; placed_at and released_at are the database's time; a hold is never deleted or
@@ -58,13 +59,13 @@ ALTER TABLE "plat_legal_hold" ADD CONSTRAINT "plat_legal_hold_scope_shape" CHECK
     WHEN 'CATEGORY' THEN "target_id" IS NULL AND "category" ~ '^[a-z][a-z0-9_]{0,62}$' AND "range_from" IS NULL AND "range_to" IS NULL
     WHEN 'DATE_RANGE' THEN "target_id" IS NULL AND "category" IS NULL AND "range_from" IS NOT NULL AND "range_to" IS NOT NULL AND "range_from" <= "range_to"
   END);
--- A reason is set and at most 500 characters; actors are audit actor words (staff:<id>, seed:<row>, system:<door>).
+-- A reason is set and at most 500 characters; actors are AuditPort's actor words (staff:<id>, seed:<row>, system:<door>).
 ALTER TABLE "plat_legal_hold" ADD CONSTRAINT "plat_legal_hold_facts_set" CHECK (
-  btrim("reason") <> '' AND char_length("reason") <= 500 AND "placed_by" ~ '^(staff|seed|system):[A-Za-z0-9_.:-]{1,120}$');
+  btrim("reason") <> '' AND char_length("reason") <= 500 AND "placed_by" ~ '^(staff|seed|system):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$');
 -- Released: all four release fields together, or none; the release's reason is set; it ends on or after the placement.
 ALTER TABLE "plat_legal_hold" ADD CONSTRAINT "plat_legal_hold_release_whole" CHECK (
   ("released_by" IS NULL AND "released_at" IS NULL AND "release_reason" IS NULL)
-  OR ("released_by" ~ '^(staff|seed|system):[A-Za-z0-9_.:-]{1,120}$' AND "released_at" >= "placed_at"
+  OR ("released_by" ~ '^(staff|seed|system):[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$' AND "released_at" >= "placed_at"
       AND btrim("release_reason") <> '' AND char_length("release_reason") <= 500));
 
 -- At insert: the firm exists; the placement time is the database's; a hold is placed active.
@@ -126,9 +127,7 @@ BEGIN
   RETURN QUERY SELECT h.id, h.scope_kind::text, h.target_id, h.category, h.range_from, h.range_to, h.reason, h.placed_by, h.placed_at
     FROM plat_legal_hold h WHERE h.firm_id = p_firm AND h.released_at IS NULL ORDER BY h.placed_at, h.id;
 END $fn$;
-ALTER FUNCTION plat_legal_hold_active(uuid) OWNER TO xr_wall_reader;
-REVOKE ALL ON FUNCTION plat_legal_hold_active(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION plat_legal_hold_active(uuid) TO xr_data;
+-- (Owner and grants: the last block below.)
 
 -- Seed (P-601 (1)): SA-07 v2.17 Appendix A "Place and release legal holds (`system/compliance:legal-hold` — G-Q5)" — Own
 -- only (SA7-D74 (a) "Place and release legal holds — Platform Owner only"; SA2-D25).
@@ -176,8 +175,9 @@ BEGIN
   RETURN CASE WHEN n = 1 THEN 'RELEASED' ELSE 'ALREADY_RELEASED' END;
 END $fn$;
 
--- Every hold (active and released), of one firm or of all, newest first.
-CREATE FUNCTION plat_legal_hold_list(p_firm uuid)
+-- Holds newest first: of one firm or all (p_firm), active only, released only or both (p_active), or one hold (p_id); at
+-- most p_limit rows (1 to 501: the service asks one more than it shows, to say the list was cut).
+CREATE FUNCTION plat_legal_hold_list(p_firm uuid, p_active boolean, p_id uuid, p_limit int)
   RETURNS TABLE (id uuid, firm_id uuid, scope_kind text, target_id uuid, category text, range_from timestamptz, range_to timestamptz, reason text,
                  placed_by text, placed_at timestamptz, released_by text, released_at timestamptz, release_reason text)
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $fn$
@@ -185,17 +185,23 @@ BEGIN
   PERFORM plat_legal_hold_system_only();
   RETURN QUERY SELECT h.id, h.firm_id, h.scope_kind::text, h.target_id, h.category, h.range_from, h.range_to, h.reason, h.placed_by, h.placed_at,
                       h.released_by, h.released_at, h.release_reason
-    FROM plat_legal_hold h WHERE p_firm IS NULL OR h.firm_id = p_firm ORDER BY h.placed_at DESC, h.id LIMIT 500;
+    FROM plat_legal_hold h
+   WHERE (p_firm IS NULL OR h.firm_id = p_firm) AND (p_id IS NULL OR h.id = p_id) AND (p_active IS NULL OR (h.released_at IS NULL) = p_active)
+   ORDER BY h.placed_at DESC, h.id LIMIT least(greatest(coalesce(p_limit, 501), 1), 501);
 END $fn$;
 
+-- PF-8b F4 (RDS): a non-superuser may hand a function to xr_wall_reader only while it holds CREATE on public; granted for
+-- the hand-over and taken back after (a no-op pair on a superuser cluster; tests/check_pf8b_f4_migrations.ts).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $own$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['plat_legal_hold_system_only()', 'plat_legal_hold_place(uuid, text, uuid, text, timestamptz, timestamptz, text, text)',
-                           'plat_legal_hold_firm(uuid)', 'plat_legal_hold_release(uuid, text, text)', 'plat_legal_hold_list(uuid)'] LOOP
+  FOREACH f IN ARRAY ARRAY['plat_legal_hold_active(uuid)', 'plat_legal_hold_system_only()', 'plat_legal_hold_place(uuid, text, uuid, text, timestamptz, timestamptz, text, text)',
+                           'plat_legal_hold_firm(uuid)', 'plat_legal_hold_release(uuid, text, text)', 'plat_legal_hold_list(uuid, boolean, uuid, integer)'] LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO xr_data', f);
   END LOOP;
 END
 $own$;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;

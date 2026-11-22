@@ -101,12 +101,18 @@ try {
 
   // ----------------------------------------------------------------------------------- DW2: the shared contract
   const make = async (): Promise<LegalHoldHarness> => ({
-    holds: holds as never, tx: (fn) => owner.$transaction(fn as never), firmA: await newFirm(), firmB: await newFirm(), by,
+    holds: holds as never, tx: (fn) => owner.$transaction(fn as never) as never, firmA: await newFirm(), firmB: await newFirm(), by,
     place: (input, during) => svc.placeAs(input.by, { firmId: input.firmId, scope: input.scope, reason: input.reason }, during),
     release: (input, during) => svc.releaseAs(input, during),
   });
   const real = await runContract(legalHoldPortContract, "PgLegalHolds", make, ok);
   ok(`PF-21b DW2 pass: the shared LegalHoldPort contract passes on the real adapter over plat_legal_hold (${real.passed.length} cases; placements and releases on our staff's plane as xr_app)`, real.failed.length === 0 && real.passed.length === legalHoldPortContract(make as never).length, real.failed);
+  // Review m1: the same contract on the path the app uses: each isHeld in an xr_app transaction acting for the asked firm,
+  // reading through plat_legal_hold_active (the adapter itself unchanged; the wrapper only names the session's firm).
+  const asFirmHolds = { isHeld: async (t: any, firm: string, subjects: any) => { await t.$executeRaw`select set_config('app.firm_id', ${firm.toLowerCase()}, true)`; return holds.isHeld(t, firm, subjects); } };
+  const makeWalled = async (): Promise<LegalHoldHarness> => ({ ...(await make()), holds: asFirmHolds as never, tx: (fn) => walled.$transaction(fn as never) as never });
+  const viaFirm = await runContract(legalHoldPortContract, "PgLegalHolds", makeWalled, ok);
+  ok(`PF-21b DW2 pass (review m1): the same contract passes on the app's own path, xr_app in the asked firm's session through plat_legal_hold_active (${viaFirm.passed.length} cases)`, viaFirm.failed.length === 0 && viaFirm.passed.length === real.passed.length, viaFirm.failed);
   const tool = spawnSync(process.execPath, [join(STUDIO, "tools", "check-port-contracts.mjs")], { cwd: STUDIO, encoding: "utf8" });
   ok("PF-21b DW2 pass: tools/check-port-contracts.mjs finds the real adapter's contract call (exit 0)", tool.status === 0, `${tool.stdout}${tool.stderr}`.slice(-500));
 
@@ -127,11 +133,11 @@ try {
     && await throwsLike(() => owner.$transaction((tx) => holds.isHeld(tx, firmA, [{ kind: "FIRM" }]), { isolationLevel: "Serializable" }), (e) => e instanceof LegalHoldTxRefused));
 
   // A firm's session can never place, release, list or read a hold (the database, whatever the code does).
-  ok("PF-21b DW3 fail (database wall): placing inside a firm's session is refused by the database (svc.placeAs as firm A)",
+  ok("PF-21b DW3 fail (database wall, review m4): placing inside a firm's session is refused by the database (svc.placeAs as firm A); with no firm the gate is the code's (PF-4s's guard and the key)",
     await throwsLike(() => withFirm(firmA, () => svc.placeAs(by, { firmId: firmA, scope: { kind: "FIRM" }, reason: "Sample: from a firm" })), (e) => /only ExpatReady's own staff/.test(String(e))));
   ok("PF-21b DW3 fail (database wall): releasing and listing inside a firm's session are refused; a direct read or insert as xr_app reads and writes nothing",
     await throwsLike(() => withFirm(firmA, () => svc.releaseAs({ holdId: personHold.holdId, by, reason: "Sample: from a firm" })), (e) => /only ExpatReady's own staff/.test(String(e)))
-    && refusedAsApp(firmA, `select count(*) from plat_legal_hold_list(null)`, /only ExpatReady's own staff/)
+    && refusedAsApp(firmA, `select count(*) from plat_legal_hold_list(null, null, null, 10)`, /only ExpatReady's own staff/)
     && asApp(firmA, `select count(*) from plat_legal_hold`) === "0" && asApp(null, `select count(*) from plat_legal_hold`) === "0"
     && refusedAsApp(firmA, `insert into plat_legal_hold (id, firm_id, scope_kind, reason, placed_by) values (gen_random_uuid(), '${firmA}', 'FIRM', 'x', 'staff:x')`, /row-level security|permission denied/)
     && sql(`select released_at is null from plat_legal_hold where id = '${personHold.holdId}'`) === "t");
@@ -217,6 +223,8 @@ try {
   const ownerT = await tokenOf(OWNER), supportT = await tokenOf(SUPPORT), adminT = await tokenOf(ADMIN), auditorT = await tokenOf(AUDITOR);
   const firmT = (await call(base, "POST", "/api/platform/session/local", { body: { firmKey: "sample-firm", actorId: "user-R", secondStep: true } })).body.token as string;
   const sampleFirm = sql(`select id from platform_firm where key = 'sample-firm'`);
+  const firmMe = await call(base, "GET", "/api/platform/me", { token: firmT });
+  ok("PF-21b DW3 (review m5): the firm token used below is a firm admin's that holds agent/legal-hold:manage (the dormant firm key)", firmMe.status === 200 && firmMe.body.keys.includes("agent/legal-hold:manage"), firmMe.body?.keys);
   ok("PF-21b DW3 pass (SA7-D74 (a)): the migration gives system/compliance:legal-hold to the Platform Owner only",
     sql(`select string_agg(role_code, ',') from plat_system_role_permission where permission_key = '${LEGAL_HOLD_KEY}'`) === "platform-owner");
 
@@ -241,6 +249,9 @@ try {
   const line = JSON.parse(sql(`select row_to_json(a) from (select actor, actor_type, entity_key, detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1) a`));
   ok("PF-21b DW3 pass: the line names the hold, our system actor (never typed as the firm's own staff) and the staff member's id in its detail",
     line.entity_key === placed.body.id && line.actor === "system:platform.register.legal-hold" && line.actor_type === "SYSTEM" && line.detail.staffId === OWNER, line);
+  const values = JSON.parse(sql(`select detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.placed' order by at desc, id desc limit 1`));
+  ok("PF-21b DW3 pass (review M1, QA-594): the placement line carries the hold's values in full as after-values (scope, target, reason, placed by), no before",
+    values.scope_after === "CASE" && values.target_after === c && values.reason_after === body.reason && values.placedBy_after === `staff:${OWNER}` && !Object.keys(values).some((k) => k.endsWith("_before")), values);
   const listed = await call(base, "GET", `/api/system/register/holds?firm=${sampleFirm}&state=active`, { token: ownerT });
   ok("PF-21b DW3 pass: the Platform Owner lists the firm's active holds → 200 with the new hold", listed.status === 200 && listed.body.holds.some((h: { id: string }) => h.id === placed.body.id) && listed.body.holds.every((h: { firmId: string; active: boolean }) => h.firmId === sampleFirm && h.active), listed);
   const badList = await call(base, "GET", `/api/system/register/holds?firm=nope`, { token: ownerT });
@@ -257,6 +268,9 @@ try {
   ok("PF-21b DW3 pass/fail (breaker: two parallel releases): one release → 200 (released, by staff:<id>), the other → 409 ALREADY_RELEASED; exactly one release line",
     JSON.stringify(statuses) === "[200,409]" && [r1, r2].find((r) => r.status === 409)!.body.code === "ALREADY_RELEASED" && row.released_by === `staff:${OWNER}`
     && holdLines(sampleFirm, "platform.legal_hold.released") === releasedBefore + 1, { r1, r2, row });
+  const relLine = JSON.parse(sql(`select row_to_json(a) from (select summary, detail from audit_event where firm_id = '${sampleFirm}' and action = 'platform.legal_hold.released' order by at desc, id desc limit 1) a`));
+  ok("PF-21b DW3 pass (review M1): the release line names the hold in its summary and carries before (active) and after (released, by whom, why, in full)",
+    relLine.summary.includes(`case ${c}`) && relLine.detail.active_before === true && relLine.detail.active_after === false && relLine.detail.releasedBy_after === `staff:${OWNER}` && /^Sample: litigation ended/.test(relLine.detail.releaseReason_after), relLine);
   const again = await call(base, "POST", `/api/system/register/holds/${placed.body.id}/release`, { token: ownerT, body: { reason: "Sample: once more" } });
   const rowAfter = JSON.parse(sql(`select row_to_json(h) from (select released_by, release_reason from plat_legal_hold where id = '${placed.body.id}') h`));
   ok("PF-21b DW3 fail: a second release → 409, nothing changed (who and why kept), no new line",
@@ -267,6 +281,37 @@ try {
   const replacedHeld = await withFirm(sampleFirm, () => walled.$transaction((tx) => holds.isHeld(tx, sampleFirm, [{ kind: "CASE", id: c }])));
   ok("PF-21b breaker pass: a release followed by a new hold on the same case holds again, by the new hold only",
     replaced.status === 201 && replacedHeld.held && replacedHeld.holds.length === 1 && replacedHeld.holds[0].holdId === replaced.body.id, replacedHeld);
+
+  // --------------------------------------------- review M2, break M1: the list is filtered in the database, never cut silently
+  const crowded = await newFirm();
+  const oldHold = await svc.placeAs(by, { firmId: crowded, scope: { kind: "FIRM" }, reason: "Sample: the oldest, still active" });
+  sql(`with h as (select plat_legal_hold_place('${crowded}', 'CASE', gen_random_uuid(), null, null, null, 'Sample: bulk', '${by}') from generate_series(1, 520))
+       select count(*) from h; update plat_legal_hold set released_by = '${by}', release_reason = 'Sample: bulk release' where firm_id = '${crowded}' and reason = 'Sample: bulk'`);
+  const activeOnly = await call(base, "GET", `/api/system/register/holds?firm=${crowded}&state=active`, { token: ownerT });
+  const page = await call(base, "GET", `/api/system/register/holds?firm=${crowded}&limit=2`, { token: ownerT });
+  const whole = await call(base, "GET", `/api/system/register/holds?firm=${crowded}&state=released`, { token: ownerT });
+  ok("PF-21b pass/fail (review M2, break M1): behind 520 released holds the firm's one active hold is still listed as active; a page of 2 and the 520 released say truncated, a list that fits does not",
+    activeOnly.status === 200 && activeOnly.body.holds.length === 1 && activeOnly.body.holds[0].id === oldHold.holdId && activeOnly.body.truncated === false
+    && page.body.holds.length === 2 && page.body.truncated === true && whole.body.holds.length === 500 && whole.body.truncated === true, { activeOnly: activeOnly.body, page: page.body.truncated, whole: whole.body.holds?.length });
+  const oldRelease = await call(base, "POST", `/api/system/register/holds/${oldHold.holdId}/release`, { token: ownerT, body: { reason: "Sample: the oldest released" } });
+  ok("PF-21b pass (break M1): releasing a hold older than 500 others answers 200 with that hold, never a 404 after a commit", oldRelease.status === 200 && oldRelease.body.id === oldHold.holdId && oldRelease.body.active === false, oldRelease);
+
+  // ------------------------------------------------- review M3, break M2: a date range given as calendar dates
+  const day = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { firmId: sampleFirm, scope: { kind: "DATE_RANGE", from: "2026-03-31", to: "2026-03-31" }, reason: "Sample: one day's records" } });
+  const lateThatDay = await withFirm(sampleFirm, () => walled.$transaction((tx) => holds.isHeld(tx, sampleFirm, [{ kind: "DATE", at: new Date("2026-03-31T22:30:00Z") }])));
+  const nextDay = await withFirm(sampleFirm, () => walled.$transaction((tx) => holds.isHeld(tx, sampleFirm, [{ kind: "DATE", at: new Date("2026-04-01T00:00:00Z") }])));
+  ok("PF-21b pass/fail (review M3, break M2): a hold from 2026-03-31 to 2026-03-31 covers that whole day (UTC): a record at 22:30 that day is held, one at 00:00 the next day is not",
+    day.status === 201 && day.body.scope.from === "2026-03-31T00:00:00.000Z" && day.body.scope.to === "2026-03-31T23:59:59.999Z" && lateThatDay.held && lateThatDay.holds.some((h) => h.holdId === day.body.id) && !nextDay.held, { day: day.body, lateThatDay, nextDay });
+  const before422 = Number(sql(`select count(*) from plat_legal_hold`));
+  const badDates = await Promise.all([{ from: null, to: null }, { from: 0, to: true }, { from: "0001-01-01", to: "0001-01-02" }, { from: "2026-03-01T10:00:00", to: "2026-03-02T10:00:00" }, { from: "2026-03-02", to: "2026-03-01" }]
+    .map((r) => call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { firmId: sampleFirm, scope: { kind: "DATE_RANGE", ...r }, reason: "Sample: bad dates" } })));
+  ok("PF-21b fail (break M2, m6): null, a number, true, year 1, a time with no zone and a range ending before it starts → 422 each, nothing placed",
+    badDates.every((r) => r.status === 422 && r.body.code === "LEGAL_HOLD_FIELDS") && Number(sql(`select count(*) from plat_legal_hold`)) === before422, badDates.map((r) => [r.status, r.body.fields]));
+  const bidi = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { ...body, reason: "Sample \u202e reversed" } });
+  const c1 = await call(base, "POST", "/api/system/register/holds", { token: ownerT, body: { ...body, reason: "Sample \u0085 next line" } });
+  ok("PF-21b fail (break m4): a reason with a direction mark or a C1 control character → 422, nothing placed", bidi.status === 422 && c1.status === 422 && Number(sql(`select count(*) from plat_legal_hold`)) === before422, { bidi, c1 });
+  const slash = await svc.placeAs("system:jobs/purge", { firmId: sampleFirm, scope: { kind: "CATEGORY", category: "case_files" }, reason: "Sample: a door with a slash" });
+  ok("PF-21b pass (break m5): every AuditPort actor word is a valid placer (system:jobs/purge with a slash)", typeof slash.holdId === "string");
 
   // ------------------------------------------------------------------------------- DW6: no firm route for holds
   const firmTry = await Promise.all(["/api/platform/legal-holds", "/api/platform/register/holds", "/api/front-office/legal-holds"].map((p) => call(base, "GET", p, { token: firmT })));
