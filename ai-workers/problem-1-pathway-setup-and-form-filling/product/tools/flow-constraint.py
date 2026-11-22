@@ -28,7 +28,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 GH = os.environ.get("FLOW_GH") or f"{TOOLS}/gh.sh"   # FLOW_GH: the test's stand-in for gh.sh
 STALE_MIN = 45   # a saved runs-waiting.json older than this is not this check's measure (step 2c rewrites it every check)
-BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10)   # the board: ENF-803's limit (P-803), as lead-watch step 11
+BOARD_MAX_MIN = int(os.environ.get("FRESH_MAX_MIN") or 10) if str(os.environ.get("FRESH_MAX_MIN") or 10).isdigit() else 10   # the board: ENF-803's limit (P-803), as lead-watch step 11; not a number: 10
 
 
 def iso(s):

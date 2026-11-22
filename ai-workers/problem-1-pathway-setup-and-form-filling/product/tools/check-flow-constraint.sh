@@ -62,6 +62,8 @@ echo '{"freshness": {"generated_at": "2026-11-20T05:40:00Z"}, "first": {"today":
 ok "board 20 min old: over the 10-min limit (P-803, FRESH_MAX_MIN), not measured, never \"Proven today\"" "$(grep -q '^  proven    not measured (the board is 20 min old, over 10' <<< "$out" && ! grep -q 'Proven today' <<< "$out" && grep -q '^ACT   constraint: not measured — proven' <<< "$act" && echo 1)" "$out"
 out=$(FRESH_MAX_MIN=30 python3 -I "$C" --facts "$T/f9.json" --runs-waiting "$T/rw.json" --board "$T/b20.json" --now "$NOW" 2>&1)
 ok "FRESH_MAX_MIN=30 (lead-watch exports it): the same board 20 min old is read" "$(grep -q '^  proven    Proven today 3 of 10' <<< "$out" && echo 1)" "$out"
+out=$(FRESH_MAX_MIN=abc python3 -I "$C" --facts "$T/f9.json" --runs-waiting "$T/rw.json" --board "$T/b20.json" --now "$NOW" 2>&1)
+ok "FRESH_MAX_MIN not a number: 10 is used, no traceback, the board 20 min old is not measured" "$(grep -q 'over 10 (P-803)' <<< "$out" && ! grep -q Traceback <<< "$out" && echo 1)" "$out"
 ok "lead-watch.sh passes step 11's \$BOARD to step 15 (a refused board reads as not measured)" "$(grep -q 'flow-constraint.py" --runs-waiting "\$STATE_DIR/runs-waiting.json" --board "\$BOARD"' "$TOOLS/lead-watch.sh" && echo 1)" "step 15 reads the board itself"
 facts "$T/f10.json" '.batches[2].conclusion = "success" | .batches[0].updated = "2026-11-20T01:20:00Z" | .merged[0].approved_at = null | .merged[1].approved_at = null'; BD="$T/b2.json" run "$T/f10.json"
 ok "merges with no approval time found: approved to merged is not measured, never under its bar" "$(grep -q '^  merge     not measured (merges with no approval time' <<< "$out" && grep -q '^ACT   constraint: not measured — merge' <<< "$act" && echo 1)" "$out"
