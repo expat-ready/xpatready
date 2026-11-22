@@ -1,4 +1,44 @@
-Reviewer: Block c561f07e7ac0de125f809e957d7c402ab48c8649
+Reviewer: Approve d5fa43a1ec95dea734f74c2274b0deb3d652777e
+
+# Round 8 (diff-only, c561f07e7..d5fa43a1e)
+
+**What changed:** `git diff c561f07e7 d5fa43a1e` touches three files.
+* `migration.sql`: the `$issued$` block only, +7 −1.
+* `tests/check_fo7ts_money_settings.ts`: one new block, +27.
+* `review.md`: my round-7 record, committed unchanged.
+* No other studio file changed.
+* As asked, I did no database work. The builder's runs are the evidence: the FO-7ts check passed 157 of 157 with exit 0.
+
+**R7-1: closed.**
+* **The change** (`migration.sql:88, 103-109`): the block now loops over `SELECT DISTINCT "firm_id"` of issued invoices with no treatment. For each firm it runs `set_config('app.firm_id', f::text, true)` and then an UPDATE limited to that firm. It saves the earlier value (`was`, unset read as `''`) and puts it back after the loop, before FORCE is restored.
+* **In the no-bypass path:**
+  * FORCE is lifted, so the owner reads every firm's rows and the loop sees all of them.
+  * PF-12's `"0_pf12_firm_first"` passes, because each row's `firm_id` is the session's firm. The wall's own check stays in force rather than being switched off.
+  * `money_invoice_write` and `money_invoice_credit_pinned` behave as in round 7: no effect.
+  * The loop's cursor reads a snapshot taken once, and the UPDATE only changes `tax_treatment`. Updating inside the loop cannot skip or repeat a firm.
+* **In the superuser/BYPASSRLS path:** the per-firm setting changes nothing. `row_security` is off, and the trigger returns early for these roles.
+* **On error:** every `set_config` is transaction-local, and so are the FORCE changes. An error inside the block rolls all of them back. When the block succeeds, `app.firm_id` is left as it was.
+* **The new test:**
+  * It clones T and seeds issued invoices with no treatment in two firms. The seed uses `session_replication_role = replica`, as the suite's other seeds do.
+  * The role is NOLOGIN, NOSUPERUSER and NOBYPASSRLS, and a member of `xr_studio` (the tables' and database's owner) and of `xr_wall_reader`. Role attributes are never inherited, so under `SET ROLE` it takes the no-bypass path. That is the RDS shape.
+  * The planted copy (the per-firm `set_config` line removed, guarded by `planted !== text3`) is refused with "violates row-level security policy for table "money_invoice"", and nothing changes. That is c561f07e7's failure, so the case fails without the fix.
+  * The real text exits 0, sets both invoices `TAXABLE`, and FORCE is back on both `money_invoice` and `money_trust_entry`.
+  * Cleanup drops the clone first, which also drops the objects the role created, and then the role.
+
+**Nits (not blocking):**
+* The pass case does not assert that `app.firm_id` is empty after the block. The text plainly restores it.
+* The role drop is best-effort. A failure would leave one role named after the run's pid on the local cluster.
+* The optional hidden-refund case from round 7 was not added. The read path is the same F6 pattern as pf18bk, which `check_pf8b_f6_pg18_nobypass.ts` proves with hidden rows.
+
+**Round 7's Q1-Q3 answers stand** for everything else. The rest of the SQL, the rollback and the FO-7b test lines are unchanged since c561f07e7.
+
+**Screen review and journey test:** not applicable, as in rounds 1-7. This part has no route, screen or `ports/` change. No journey score is given.
+
+**Verdict: Approve** for `d5fa43a1ec95dea734f74c2274b0deb3d652777e`. No Blocker or Major is open, and no Minor either.
+
+---
+
+Round 7 line (superseded): Reviewer: Block c561f07e7ac0de125f809e957d7c402ab48c8649
 
 # Round 7 (diff-only, head c561f07e7)
 
