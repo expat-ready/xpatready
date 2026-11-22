@@ -26,8 +26,9 @@ def rx(g):
 class Once(yaml.SafeLoader): pass   # a key given twice is refused: Mergify may keep the other copy (break m8)
 class Twice(Exception): pass
 def _once(loader, node, deep=False):
-    loader.flatten_mapping(node)   # a YAML merge key (<<:) first, as PyYAML itself does (break round 2 m4)
-    keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
+    # the node's own keys only: a merge key (<<:) is skipped, and a key it brings in may be overridden here, as YAML
+    # allows (review 2971 m2); construct_mapping does the merging (break round 2 m4)
+    keys = [loader.construct_object(k, deep=deep) for k, _ in node.value if k.tag != "tag:yaml.org,2002:merge"]
     dup = sorted({k for k in keys if keys.count(k) > 1}, key=str)
     if dup: raise Twice(dup[0])
     return loader.construct_mapping(node, deep=deep)
@@ -52,16 +53,16 @@ for scope, card in CARDS.items():
 # feature files sit in the area's scope: every web/src/modules/<area>/ folder is in the scope of that name; every
 # tests/check_<id>* file whose id is an area's (pf, aud: platform; fo<digit>: front office, fo7 money too; cs, case_:
 # case side; forms: forms engine) and every api/src/features/<area>-*.ts file is matched by that area's scope. So a new
-# module folder, area test or feature file that no scope owns fails here, in the PR that adds it (with #2445: on every PR).
+# module folder, area test or feature file that no scope owns fails here, in the PR that adds it (on every PR: ci.yml runs it, #2445).
 ST = "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"
 OWN = {"platform": [r"web/src/modules/platform/", r"tests/check_(pf|aud)", r"api/src/features/platform-[^/]*\.ts$"],
        "front-office": [r"web/src/modules/front-office/", r"tests/check_fo(?!7)[0-9]", r"api/src/features/front-office-[^/]*\.ts$"],
        "money": [r"tests/check_fo7", r"api/src/features/client-money-[^/]*\.ts$"],
        "case-side": [r"tests/check_(cs|case_)", r"api/src/features/case-[^/]*\.ts$"],
        "forms-engine": [r"tests/check_forms", r"api/src/features/form-[^/]*\.ts$"]}
-for need in ("platform", "front-office", "money", "case-side", "forms-engine", "migrations", "pipeline"):
-    n += 1
-    if need not in src: bad.append(f"scope {need} is missing from .mergify.yml (break m5)")
+def missing(src):
+    return [f"scope {need} is missing from .mergify.yml (break m5)" for need in ("platform", "front-office", "money", "case-side", "forms-engine", "migrations", "pipeline") if need not in src]
+n += 7; bad += missing(src)
 def ambiguous(g):   # glob forms this script and Mergify may read differently
     return bool(re.search(r"[\[\]{}?]", g) or re.search(r"[^/]\*\*|\*\*[^/]", g))
 # FOLDERS: a module folder's scope; None = a known area left out of every scope on purpose (say why on its line).
@@ -91,6 +92,11 @@ def owners_bad(src, files):
             out.append(f"path owners: web/src/modules/{area}/ is not wholly in its scope {want}: its PRs would batch with another area's (add it to {want} in .mergify.yml)")
         other = sorted(k for k, ps in inc.items() if k != want and any(p.match(f) for f in mine for p in ps))
         if other: out.append(f"path owners: web/src/modules/{area}/ is also in scope(s) {other}: only {want} holds it")
+    # Every held test or feature file, listed by name or by glob, sits in one scope only (review 2971 m1).
+    for f in files:
+        if not f.startswith((ST + "tests/", ST + "api/src/features/")): continue
+        held = sorted(k for k, ps in inc.items() if any(p.match(f) for p in ps))
+        if len(held) > 1: out.append(f"path owners: {f[len(ST):]} is in scopes {held}: one scope only")
     # A feature file named after an API file registers that file: it sits in the API file's area scope (review m1).
     for f in files:
         if not re.fullmatch(re.escape(ST) + r"api/src/features/[^/]+\.ts", f): continue
@@ -157,11 +163,12 @@ for scope, frag in (("case-side", "tests/check_case_"), ("front-office", "tests/
     n += 1; c = without(scope, frag)
     if c is None: bad.append(f"self-test: scope {scope} has no pattern holding {frag}, so removing it proves nothing")
     elif not owners_bad(c, files): bad.append(f"self-test: scope {scope} without its {frag} pattern still passes the path-owners check")
-for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] + [("barrier_files", (sc.get("barrier_files") or {}).get("include") or [])]:
-    for g in pats:
-        n += 1
-        if ambiguous(g):
-            bad.append(f"{name}: {g} uses glob syntax this script and Mergify may read differently ([...], {{...}}, ?, or ** inside a path part): use plain * and whole-part **")
+def globs_bad(src, barrier):
+    return [f"{name}: {g} uses glob syntax this script and Mergify may read differently ([...], {{...}}, ?, or ** inside a path part): use plain * and whole-part **"
+            for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] + [("barrier_files", barrier)] for g in pats if ambiguous(g)]
+BARRIER = (sc.get("barrier_files") or {}).get("include") or []
+n += 1; bad += globs_bad(src, BARRIER)
+for name, pats in [(k, (v or {}).get("include") or []) for k, v in src.items()] + [("barrier_files", BARRIER)]:
 
     for g in pats:
         n += 1
@@ -222,14 +229,34 @@ def track_copies(text, scopes):
         if len(parts) != 2: continue
         k, v = parts
         if k == "prefix": prefix = v; continue
-        if v.startswith(("scope:", "!")): continue
-        g = v[1:] if v.startswith("/") else prefix + v
-        if g in own: out.append((i, k, v, own[g]))
+        if v.startswith("scope:"): continue
+        w = v[1:] if v.startswith("!") else v   # an exception that copies a scope pattern is a copy too (review 2971 m3)
+        g = w[1:] if w.startswith("/") else prefix + w
+        g = re.sub(r"/\*\*/\*$", "/**", g)   # dir/**/* names the same files as dir/**
+        if g in own or g.replace("/**", "/**/*") in own: out.append((i, k, v, own.get(g) or own[g.replace("/**", "/**/*")]))
     return out
 TP = os.path.join(root, "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/track-paths.txt")
-if os.path.exists(TP):
-    for i, k, v, sc in track_copies(open(TP, encoding="utf-8").read(), src):
-        n += 1; bad.append(f"one source: track-paths.txt:{i} '{k} {v}' repeats scope {sc}'s own pattern: write '{k} scope:{sc}' (or name a sub-folder), never a second copy")
+def one_source_bad(text, src):
+    return [f"one source: track-paths.txt:{i} '{k} {v}' repeats scope {sc}'s own pattern: write '{k} scope:{sc}' (or name a sub-folder), never a second copy"
+            for i, k, v, sc in track_copies(text, src)]
+n += 1
+if os.path.exists(TP): bad += one_source_bad(open(TP, encoding="utf-8").read(), src)
+elif os.path.exists(os.path.join(os.path.dirname(TP), "track-route.py")):
+    bad.append("one source: track-route.py exists but track-paths.txt does not: the one-source check would be off (move both together)")
+n += 1   # review 2971 Major 1: the missing-scope rule, the glob refusal loop and "names no area" each fire
+if not missing({k: v for k, v in src.items() if k != "migrations"}): bad.append("self-test: a .mergify.yml without the migrations scope still passes")
+n += 1
+if not globs_bad(mutated(lambda c: c["money"]["include"].append(ST + "web/src/modules/client-money**")), BARRIER): bad.append("self-test: a scope pattern client-money** is not refused")
+n += 1
+if not any("names no area" in x for x in owners_bad(src, files + [ST + "web/src/modules/client money/x.tsx"])): bad.append("self-test: a new web module folder that names no area still passes")
+n += 1   # review 2971 m1: a test or feature file listed by name in a second scope
+if not any("visitor-visa-filings.ts is in scopes" in x for x in owners_bad(mutated(lambda c: c["platform"]["include"].append(ST + "api/src/features/visitor-visa-filings.ts")), files)):
+    bad.append("self-test: features/visitor-visa-filings.ts also in platform still passes")
+n += 1   # review 2971 m2: a merge key may override a key it brings in
+if load_once("x: &a {k: 1}\ny:\n  <<: *a\n  k: 2\n")[1] is not None: bad.append("self-test: a YAML merge override is refused as a duplicate")
+n += 1   # review 2971 m4: the one-source FAIL loop itself
+if len(one_source_bad(f"prefix {ST}\ntrack-a tests/check_pf*\ntrack-a web/src/modules/platform/**/*\ntrack-b !api/src/features/platform-*.ts\n", src)) != 3:
+    bad.append("self-test: the one-source check does not give one FAIL per copy (plain, /**/* form, ! form)")
 n += 1   # self-test, on a made-up track list
 demo = f"prefix {ST}\ntrack-a scope:platform\ntrack-a tests/check_pf*\ntrack-a api/src/front-office/sales/**\ntrack-b /{ST}tests/check_cs*\n"
 got = [(k, v, sc) for _, k, v, sc in track_copies(demo, src)]
