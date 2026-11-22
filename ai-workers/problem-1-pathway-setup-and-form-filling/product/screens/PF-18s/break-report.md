@@ -99,3 +99,71 @@ Breaker: a fresh context that did not build it. Commit `f5a1ea6c4` on `claude/af
 
 ## Verdict: Block
 One Blocker (B1: the Offices page's shared cache key with a narrower parse blanks the Team page and shows wrong placements) and one Major (M1: an explicit "Your firm's time zone" choice is replaced by the province's zone and audited as `province`).
+
+## Round 2 (df35afdd)
+Scope: `git diff f5a1ea6c..df35afdd -- '*.ts' '*.tsx'` (office-panel, offices-page, place-panel, the browser check). Ran on a fresh copy `break2_pf18s` on :4447 (`PLATFORM_IDENTITY=local AI_LIVE=off`), then stopped it. The web bundle was checked to hold the new code (`["pf","staff","placements"]`, the new hints). Headless Chromium through the studio's playwright, with and without reduced motion; curl/fetch for the API; psql for `audit_event`. US$0, no model call.
+
+**Round-1 items re-run**
+* **B1: fixed.**
+  * Offices → Team by the menu shows the seat line, with no page error.
+  * With the Case Officer in Calgary and the Owner in the first office, Team → Offices within 2 s shows both correctly. Three fast round trips stay correct.
+  * A placement made in the panel shows on the row at once and is still there after Team → Offices.
+  * Team actions invalidate the prefix `["pf","staff"]` (`staff/person-panel.tsx:41,109`, `invite-panel.tsx:42`), which covers the new key. Placing invalidates the same prefix (`place-panel.tsx:26`), which also refreshes Team's entry.
+* **M1: fixed.**
+  * AB → `America/Edmonton`, and "Your firm's time zone" is no longer offered. That round-1 path cannot be built any more.
+  * Saves, read from the audit:
+    * AB untouched → `province America/Edmonton`.
+    * No province, firm option → `firm America/Toronto`.
+    * Firm option chosen, then BC → `province America/Vancouver`.
+    * AB, Regina picked, province cleared → `chosen America/Regina`.
+    * NS, then abroad GB → `firm America/Toronto`.
+* **m1: partly fixed** (see m6). At 375 px the table no longer scrolls inside itself (341/341). Where moves under the name, Edit buttons are inside the viewport, and zones break at "/" (`America/North_Dakota/New_Salem` wraps on three lines).
+* **m2: fixed.** The edit title is "Edit office". With a 120 × "W" name at 375 px, the edit dialog's scrollWidth equals its clientWidth (374/374), and so does the add dialog's.
+* **m3: fixed** for every value the server maps to CA:
+  * `ca`, ` CANADA `, `Ca` and `Canada` + NBSP are refused on Country with "For an office in Canada, choose In Canada and its province.", with no POST sent and no row written. Enter in the field does the same, and so does Edit on an abroad office.
+  * The server takes only two letters or "canada" (`service.ts:29`), so the client check covers everything it maps. `can`, `Canadá`, `C A` and full-width `ＣＡ` go to the server and are refused 422.
+* **m4: fixed.** Focus goes to the first field in error:
+  * Country after the Canada check, after 422 `ZZ`, and after `ca` + Enter.
+  * Name after a 409 on the name, also with a response held 1.5 s. Name first when both Name and Country are wrong.
+  * The "Not saved" box after a network abort and after a stale 409.
+  * Held with and without reduced motion.
+  * Secondary not fixed (outside the diff): the Country message is still "This is not in the expected format." for `can`, and the raw "a country code on the ISO list" for `ZZ`.
+* **m5: fixed.** Change opens with focus on the ticked radio: "Calgary" for a placed person, "No office" for an unplaced one. It held on 5 of 5 opens at delays of 0–600 ms. ArrowUp + Enter moves the person, and focus returns to their Change button.
+
+**Attacks on what the diff adds**
+* **Zone options** (add panel; each step reads zone / firm option / hint):
+  * Blank → `""`, firm option offered, hint "Pick a province…".
+  * AB → Edmonton, no firm option, "Pre-filled from AB".
+  * Province cleared → `""`, firm option back.
+  * Firm option chosen explicitly, then BC → Vancouver, firm option gone. This is the round-1 M1 path the other way round, and it holds.
+  * AB with Regina picked, then BC → Regina kept. Cleared → Regina kept, firm option offered.
+  * NS untouched, then abroad → `""`, firm option, hint "Choose this office's own time zone…". Back to In Canada → Halifax again.
+  * London picked, then abroad, then back, then QC → London kept throughout.
+  * Province chosen by arrow keys pre-fills its zone. Home on Zone picks the first named zone, which saves as `chosen`.
+  * No state found where the panel shows one zone and the server saves another.
+* **New cache key:** held (B1 above).
+
+**New finding (Minor)**
+* **m6 (Minor): below 768 px the Hours column is hidden and not shown anywhere else.**
+  * Steps: open Offices at 375, 640 or 767 px, or at 512 px CSS (200 % zoom).
+  * Expected: concept §4 board C lists "Hours" as a column of the list, and "375 px: tables become stacked rows". The hours summary stays readable.
+  * Actual: `hidden md:table-cell` on the Hours column and its header (`settings/offices-page.tsx:77-80`). No hours text appears on the page or in the edit panel.
+  * The page still never scrolls sideways (375/375, 512/512).
+* **m7 (Minor): an edit's stale 409 whose re-read fails is shown as a Name-field error.**
+  * Steps: open Edit on Calgary. In another session, PATCH Calgary. Then make the re-read `GET /platform/offices` fail (route abort) and press Save.
+  * Expected: the "Not saved" notice with the stale message.
+  * Actual: Name gets `aria-invalid=true` with "Someone changed this office since you opened it." under it, and focus goes to Name. Every 409 that is not a loaded stale copy now lands on the name (`settings/office-panel.tsx:67`).
+  * This needs a failed GET straight after a 409, so it is rare. Nothing is saved wrongly.
+
+**What held (new)**
+* Arabic office name at 375 px: it renders right to left and wraps.
+* No page errors in any run.
+* The place panel and both office panels do not overflow at 375 px.
+
+### Verdict: Approve
+Commit `df35afddccb17e10158aa5f93c07847eca882628` has no Blocker and no Major:
+* B1, M1, m2, m3, m4 and m5 are fixed.
+* m1 is partly fixed: Hours is now hidden below 768 px (m6).
+* m7 is new and Minor.
+
+Note: the round-2 section takes the file over 100 lines; round 1 already used 101.
