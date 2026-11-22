@@ -8,7 +8,7 @@
 // Throwaway clusters on their own ports (initdb; as the postgres user when run as root), removed at the end. US$0.
 //   tsx studio/tests/check_pf8b_f5_pg18_grants.ts [port]     (default 15421; uses port..port+2; PGBIN=<PostgreSQL 18 bin>)
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, chownSync } from "node:fs";
+import { chownSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const STUDIO = join(import.meta.dirname, "..");
@@ -48,6 +48,19 @@ const loopFree = (p: number) => q(p, "xr_admin", "select pg_has_role('xr_admin',
   + "exists(select 1 from pg_auth_members where member = 'xr_wall_reader'::regrole and roleid = 'xr_admin'::regrole)");
 const ports = [PORT, PORT + 1, PORT + 2];
 process.on("exit", () => ports.forEach(stop));
+
+// Static (review m1): vanilla PostgreSQL refuses line 91's grant from a non-superuser whatever pf12 says, so the cluster
+// runs below cannot see the skip that fixes RDS. The text must keep it: the reader's grant of the migration role is
+// raised into the fallback for every non-superuser (NOT su) and wherever the migration role already reaches the reader.
+const PF12 = readFileSync(join(STUDIO, "prisma", "migrations", "20261116013000_pf12_firm_walls", "migration.sql"), "utf8");
+const skipsForNonSuperuser = (text: string): boolean => {
+  const sql = text.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+  return /su boolean := \(SELECT rolsuper FROM pg_roles WHERE rolname = current_user\)/.test(sql)
+    && /IF s = format\('GRANT %I TO xr_wall_reader WITH INHERIT TRUE, SET FALSE', current_user\)\s+AND \(NOT su OR EXISTS \(WITH RECURSIVE[\s\S]{0,400}?g\.rolname = 'xr_wall_reader'\)\) THEN\s+RAISE insufficient_privilege/.test(sql);
+};
+check("pf12: the reader's grant of the migration role is skipped for every non-superuser (the RDS 18.3 fix; vanilla cannot show it)", skipsForNonSuperuser(PF12));
+check("…and that rule catches the skip removed (NOT su gone) or commented out",
+  !skipsForNonSuperuser(PF12.replace("AND (NOT su OR EXISTS", "AND (false OR EXISTS")) && !skipsForNonSuperuser(PF12.replace(/^(\s*)(IF s = format\('GRANT %I TO xr_wall_reader)/m, "$1-- $2")));
 
 try {
   // A — the RDS shape from empty
