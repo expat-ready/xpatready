@@ -248,12 +248,14 @@ try {
     await p.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await p.goto(`${BASE}/money/trust`); await p.waitForLoadState("networkidle").catch(() => undefined);
     const nameTag = `ClientR${run}`;
-    const red = await p.evaluate((tag) => {
+    // A string, not a function: tsx's name helper (__name) does not exist in the page.
+    const red = await p.evaluate(`(() => {
+      const tag = ${JSON.stringify(nameTag)};
       // an element whose own text is the −200.00 figure, in a row (or block) naming the client, coloured red
-      const isRed = (el: Element) => { const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(el).color); return !!m && +m[1] > 150 && +m[1] > +m[2] + 60 && +m[1] > +m[3] + 60; };
-      return [...document.querySelectorAll("body *")].some((el) => el.children.length === 0 && /[−-]\s*(CAD\s*)?200\.00/.test(el.textContent ?? "") && isRed(el)
-        && (el.closest("tr, li, [role=row], article, section")?.textContent ?? "").includes(tag));
-    }, nameTag);
+      const isRed = (el) => { const m = /rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/.exec(getComputedStyle(el).color); return !!m && +m[1] > 150 && +m[1] > +m[2] + 60 && +m[1] > +m[3] + 60; };
+      return [...document.querySelectorAll("body *")].some((el) => el.children.length === 0 && /[−-]\\s*(CAD\\s*)?200\\.00/.test(el.textContent || "") && isRed(el)
+        && ((el.closest("tr, li, [role=row], article, section") || {}).textContent || "").includes(tag));
+    })()`) as boolean;
     ok("R1.58 W5 (parts missing: FO-7s3b, the trust screens; the shortfall list's screen (no row names one)): Money › Trust shows the client below zero in red (−200.00)", red, { url: p.url() });
     await ctx.close();
   } finally { await browser.close(); }
