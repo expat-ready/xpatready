@@ -49,3 +49,42 @@ The DB CHECK (`migration.sql`, `case_note_text_check`) refuses only C0 controls 
 - **No note text leaked:** none in `audit_event` (summary and detail hold version ids only), `module_event`, the API log (including the 500), or any error body. The 409 shows the current note only to the same firm's staff.
 - **Speed:** with 200k notes elsewhere, the list query uses the `(case_id, …)` index (0.5 ms).
 - **Not counted as findings:** the database role `xr_studio` is a superuser and owns the table, so `ALTER TABLE … DISABLE TRIGGER` goes past insert-only; that is outside this row. A direct insert can plant a CLIENT_VISIBLE note with a non-staff author, which only database access allows.
+
+## Round 2, 22 Nov: after the merge of origin/main (schema focus)
+
+Commit `7b53833466cad3536c90975ad55b70114630d49a`, branch `claude/runtime-csnt1-notes`, migration `20261122110000_csnt1a_case_note`. Isolated copy `brk_csnt1` on :4691 (`PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`, live AI off). The API connects as `xr_app`. The copy is now stopped and removed. Setup: the configured checkpoint, then case A and A2 (sample-firm) and BC (sample-solo), opened through the API. Staff tokens from `session/local`: O, R, T (firm A) and S (firm B). Later, the finished-story checkpoint was loaded twice.
+
+**Counts: 2 Blocker, 0 Major, 2 Minor.** The earlier m1 and m2 are fixed and held when retested.
+
+**B1 (Blocker): case_note is a firm_id table with no wall and is not on PF-12b5's exception list, so main's walls guard goes red.**
+- Repro: `tsx --tsconfig api/tsconfig.json tests/check_pf12_walls.ts` gives 76 PASS and 3 FAIL, all naming case_note:
+  - "no other table with a firm_id column … is without its forced policy" gives `["case_note"]`.
+  - The "firm tables kept outside … exactly the named list" check fails on the same table.
+  - "every trigger function on a firm table runs as xr_wall_reader" gives `case_note_check_insert` and `case_note_refuse_change`. Both are INVOKER, owned by xr_studio, with no `pg_temp` (`migration.sql:61`, `:72`).
+- select-suites.mjs:399 runs every suite for a `prisma/` change, so the merge queue bounces this PR.
+- What the guard is protecting, shown live: as `xr_app` with `app.firm_id` set to firm B, `select text from case_note where firm_id = <firm A>` returned firm A's 3 note texts. An insert of version 3 of a firm A note, marked CLIENT_VISIBLE with `by_actor='staff:attacker'`, was accepted (rolled back). The insert trigger refuses only a firm_id that differs from the case's firm, not a session of another firm.
+- runtime_case is just as open until CS-W4. But it is named on `FIRM_ID_ELSEWHERE` (`check_pf12_walls.ts:40-47`) and case_note is not.
+- Expected: either ship the forced policy and definer trigger functions PF-12b5 asks for, or have the table named on the list on purpose by its owner. Settle it in the PR, not silently.
+
+**B2 (Blocker): CS-W3's census goes red, because `api/src/case-notes/service.ts` queries a case table and is not on the allow-list.**
+- Repro: `tests/check_csw3_firm_scope.ts`, part 4. "every case-side file that queries a case table is on the allow-list (47 at part 1)" fails with `["api/src/case-notes/service.ts"]`. Its planted-file twin fails too, because it catches 2 files instead of 1.
+- Cause: `service.ts:95` has `db.case.findFirst`. The list at `check_csw3_firm_scope.ts:271` "only shrinks". The census needs no server, so it fails in CI too.
+- Expected: settle it with CS-W3's owner. Either the file goes on the list, which adds an entry to a list meant only to shrink, or its case reads take the form the census accepts.
+
+**m5 (Minor, latent until CS-W4): once runtime_case is walled, any session that cannot see the case can DELETE its notes.**
+- `case_note_refuse_change` (`migration.sql:64`) lets a DELETE through when it cannot find the case row. It is SECURITY INVOKER, so a wall on runtime_case hides the case and the function reads that as "case gone".
+- Repro (psql as xr_studio, rolled back): `alter table runtime_case enable/force row level security`, then `create policy … using (firm_id = platform_session_firm())`, then `set local role xr_app`. With app.firm_id set to firm B, `delete from case_note where firm_id=<A>` gave `DELETE 2` with 0 left. With no firm set, `delete from case_note` also gave `DELETE 2`.
+- main's case_decision has the same pattern (not counted). The xr_wall_reader definer form in B1 would close it.
+- Expected: the existence check sees past the walls, or the case's own cascade is told apart some other way.
+
+**m6 (Minor): stale stamp.** `prisma/schema/case-notes.prisma:4` still names migration `20261120030000_csnt1a_case_note`. The folder is now `20261122110000_…`, as service.ts:6 says.
+
+### What held (round 2)
+- **Migration:** 144 folders applied to a fresh database. 20261122110000 is the newest and unique; origin/main has nothing newer as of 73c4e4dcd, with 0 commits ahead. `prisma migrate diff --from-config-datasource --to-schema prisma/schema` printed "This is an empty migration". `migrate status` is up to date. The builder's `check_csnt1_notes.ts` passed 56 of 56.
+- **Insert-only under xr_app:** UPDATE and DELETE were refused by the triggers. TRUNCATE gave "permission denied" (xr_data has no TRUNCATE). `ALTER TABLE … DISABLE TRIGGER` gave "must be owner". `SET session_replication_role` gave "permission denied". The superuser bypass noted in round 1 is not open to the app role.
+- **Firm source:** the trigger's `case_firm_id_of_key(firm_key)` matches `runtime_case.firm_id`. Moving a case's firm_id to firm B was refused by `runtime_case_client_id_firm_id_fkey`. Moving firm_id together with client_id was refused by the `(client_id, workspace_id, firm_key)` key. firm_id can still be set to null (CS-W1 part 2 is pending). In that case the trigger still answers firm A by key; that is not a note matter. A firm B firm_id on a firm A case was refused by the trigger.
+- **Cascade:** deleting a case as xr_app, with no firm set and with firm B's session, removed its notes alongside main's runtime_case triggers. The demo reset with 6 notes on 2 cases removed 12,135 rows and left 0 notes and 0 orphans. The finished-story checkpoint, reloaded with 2 notes present (one pinned v2), finished "done" with 0 notes and 0 API errors. An add racing a committed case delete answered 404 with no row (m2 fixed).
+- **API through the real server and door:** firm B (S) got 404 on list, add, text, pin, visibility and versions of firm A's case. Mixed case and note ids gave 404 four ways. A stale version gave 409 NOTE_CHANGED. Four key spellings at once gave one 200 and three 409s, with versions 1, 2, 3 and no gap (m1 fixed).
+- **Idempotency:** a replay returned the same note. The same key with other text gave 409 IDEMPOTENCY_KEY_REUSED. The same key on firm B's case made a new note. 8 parallel adds with one key saved 1 row.
+- **Client read:** user-P on case A saw only the CLIENT_VISIBLE note, also in `/questionnaire`. user-P has cases in two firms; on firm B's case the door picked that case's firm and P saw only its note. user-Q got 404 on P's case. Officers get no `notes` field. A staff bearer token on the client read got 403. x-actor alone on the note routes got 401, and firm B's token plus `x-actor: user-O` got 404. Audit lines carry `firm_id` = firm A and no text.
+- **Not run to the end here:** `check_csw1_firm_id`, `check_cssd1_no_drift` and `check_aud1a_insert_only` need their own server copies (ECONNREFUSED in this sandbox). Their database parts passed, 40, 11 and 31 PASS; none of their FAILs names case_note.
