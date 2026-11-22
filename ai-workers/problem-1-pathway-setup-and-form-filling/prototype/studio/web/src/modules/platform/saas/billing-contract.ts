@@ -19,7 +19,10 @@ export type AddressValue = z.infer<typeof Address>;
 export const addressOf = (b: Billing): AddressValue | null => { const r = Address.safeParse(b.businessAddress); return r.success ? r.data : null; };
 export const addressLines = (a: AddressValue) => [`${a.unit ? `${a.unit}-` : ""}${a.street_number} ${a.street_name}`, `${a.city} ${a.province_state} ${a.postal_code}`];
 
-export const Invoices = z.object({ invoices: z.array(z.object({ id: z.string(), number: z.string().nullable(), status: z.string().nullable(), amountDueCents: z.number(), currency: z.string(), createdAt: z.string(), hostedUrl: z.string().nullable() })) });
+/** R1.21: each invoice's tax (null: the provider has not said; never shown as 0). */
+export const InvoiceTax = z.object({ name: z.string(), jurisdiction: z.string().nullable(), ratePpm: z.number().nullable(), amountCents: z.number() });
+export const Invoices = z.object({ invoices: z.array(z.object({ id: z.string(), number: z.string().nullable(), status: z.string().nullable(), amountDueCents: z.number(), currency: z.string(), createdAt: z.string(), hostedUrl: z.string().nullable(),
+  subtotalCents: z.number().nullable().default(null), taxCents: z.number().nullable().default(null), taxLines: z.array(InvoiceTax).default([]) })) });
 export const SetAddressAnswer = z.object({ saved: z.literal(true), onStripe: z.boolean().nullable(), next: z.string().optional() });
 export const HandOff = z.object({ url: z.string() });
 
@@ -80,8 +83,19 @@ export const cardLabel = (b: Billing) => b.status === "TRIAL" && b.cardOnFile !=
 export function stripeUrl(raw: string): string | null {
   try { const u = new URL(raw); return u.protocol === "https:" && /(^|\.)stripe\.com$/.test(u.hostname) ? u.href : null; } catch { return null; }
 }
-/** An invoice's hosted link, https only. */
-export const invoiceUrl = (raw: string | null) => raw ? stripeUrl(raw) : null;
+/** R1.21 (P-796): the billing stand-in's own invoice page, on this app's own address only. */
+export const STAND_IN_INVOICE_PATH = "/api/demo/billing/invoices/";
+export function standInUrl(raw: string, origin: string = globalThis.location?.origin ?? ""): string | null {
+  try { const u = new URL(raw); return origin && u.origin === origin && u.pathname.startsWith(STAND_IN_INVOICE_PATH) && !u.username && !u.password ? u.href : null; } catch { return null; }
+}
+/** An invoice's hosted link: Stripe's own https page, or the stand-in's page on this app's own address. */
+export const invoiceUrl = (raw: string | null) => raw ? stripeUrl(raw) ?? standInUrl(raw) : null;
+/** R1.21: the tax cell's words, e.g. "$6.37 CAD (HST 13 %, ON)"; "Not worked out yet" when the provider has not said. */
+export function taxWords(i: { taxCents: number | null; currency: string; taxLines: { name: string; jurisdiction: string | null; ratePpm: number | null }[] }): string {
+  if (i.taxCents === null) return "Not worked out yet";
+  const named = i.taxLines.map((t) => [t.name, t.ratePpm === null ? "" : `${(t.ratePpm / 10_000).toLocaleString("en-CA", { maximumFractionDigits: 4 })} %`].filter(Boolean).join(" ") + (t.jurisdiction ? `, ${t.jurisdiction}` : "")).join("; ");
+  return `${money(i.taxCents, i.currency)}${named ? ` (${named})` : ""}`;
+}
 /** Break m8: a currency code the browser does not know falls back to plain digits, never a blank page. */
 export const money = (cents: number, currency: string) => { try { return `${(cents / 100).toLocaleString("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol" })} ${currency}`; } catch { return `${(cents / 100).toFixed(2)} ${currency}`; } };
 
