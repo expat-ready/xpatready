@@ -13,6 +13,8 @@ import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
+import { HelpButton } from "./settings/help-button";   // PF-18s part 2: the "?" on every staff page (AG-16-63)
+import { SUPPORT_CREATE_KEY } from "./settings/support-contract";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
 export function SignInCard({ failed, focus, embedded }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean;
@@ -92,7 +94,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
-      controls={who ? <><span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
+      controls={who ? <>{pending.checked && !pending.terms && who.keys.includes(SUPPORT_CREATE_KEY) ? <HelpButton /> : null}<span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
       <Place crumbs={crumbs} back={back} area={area} />{intro}
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)

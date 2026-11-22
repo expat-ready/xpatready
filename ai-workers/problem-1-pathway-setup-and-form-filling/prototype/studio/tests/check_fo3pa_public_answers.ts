@@ -144,8 +144,8 @@ try {
   const before = arrival.calls.length;
   const badTick = await book("fo3pa-a", "free", "2026-10-27 15:00", "badtick", { consent: true, consentWordingId: "00000000-0000-4000-8000-000000000bad" });
   const tickNoId = await book("fo3pa-a", "free", "2026-10-27 15:00", "ticknoid", { consent: true });
-  ok("FO-3pa DW3 fail: a tick naming another wording → 409 consent-wording-changed, a tick with no wording id → 400; neither books nor arrives",
-    badTick.status === 409 && /consent-wording-changed/.test(badTick.body.type) && tickNoId.status === 400 && arrival.calls.length === before && await db.foBooking.count({ where: { firmId: A.id, startsAt: at("2026-10-27 15:00") } }) === 0, [badTick.body, tickNoId.body]);
+  ok("FO-3pa DW3 fail: a tick naming another wording → 409 consent-wording-changed, a tick with no wording id → 422; neither books nor arrives",
+    badTick.status === 409 && /consent-wording-changed/.test(badTick.body.type) && tickNoId.status === 422 && arrival.calls.length === before && await db.foBooking.count({ where: { firmId: A.id, startsAt: at("2026-10-27 15:00") } }) === 0, [badTick.body, tickNoId.body]);
 
   // ------------------------------------------------------------------------------------------------------------ DW4
   const want = { name: "Sample Maple Immigration", email: "hello@fo3pa-a.example", phone: "+1 416 555 0100", address: { unit: "4", streetNumber: "100", streetName: "Sample Street", city: "Toronto", provinceState: "ON", postalCode: "M5V 0A1", country: "CA" } };
@@ -225,8 +225,8 @@ try {
   const tooLong = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: "x".repeat(501) });
   const control = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: "bad\u0007bell" });
   const rowNow = (id: string) => db.foBooking.findUniqueOrThrow({ where: { id } });
-  ok("FO-3pa DW10 fail: a reason over 500 characters or with a control character → 400, the booking unchanged and no reason stored",
-    tooLong.status === 400 && control.status === 400 && (await rowNow(rcRow.id)).status === "SCHEDULED" && (await rowNow(rcRow.id)).cancelReason === null, [tooLong.body, control.body]);
+  ok("FO-3pa DW10 fail: a reason over 500 characters or with a control character → 422, the booking unchanged and no reason stored",
+    tooLong.status === 422 && control.status === 422 && (await rowNow(rcRow.id)).status === "SCHEDULED" && (await rowNow(rcRow.id)).cancelReason === null, [tooLong.body, control.body]);
   const rcCancel = await go("POST", `/bookings/${rc.body.manageToken}/cancel`, { reason: `  ${REASON}  ` });
   const rcAudit = await cancelLines(rcRow.id);
   ok("FO-3pa DW10 pass: the reason (trimmed) is stored on the booking (cancel_reason) in the cancel's own write", rcCancel.status === 200 && (await rowNow(rcRow.id)).cancelReason === REASON && (await rowNow(rcRow.id)).status === "CANCELLED", await rowNow(rcRow.id));
@@ -242,7 +242,7 @@ try {
   const nrCancel = await go("POST", `/bookings/${noReason.body.manageToken}/cancel`);
   ok("FO-3pa DW10 pass: a cancel with no body still works, stores NULL and its audit sentence names no reason",
     nrCancel.status === 200 && (await rowNow(nrRow.id)).cancelReason === null && (await cancelLines(nrRow.id))[0]?.summary === "Consultation cancelled by the booker.", nrCancel.body);
-  // Break B1, B2, M1, m2: any reason the form takes is taken in full, or refused with 400, never a 500.
+  // Break B1, B2, M1, m2: any reason the form takes is taken in full, or refused with 422, never a 500.
   const reasons = [["500 characters", "r".repeat(500)], ["an email address in it", "Please write to sample.person@client.example instead"], ["two lines", "First line\nsecond line"]] as const;
   const kept: unknown[] = [];
   for (const [i, [what, reason]] of reasons.entries()) {
@@ -257,8 +257,8 @@ try {
   const bad = await book("fo3pa-a", "free", "2026-10-30 09:00", "badreason");
   const badRow = await rowOf(bad.body.manageToken);
   const refusedReasons = await Promise.all(["x\ud800y", "right\u202eto left", "\u200b\u200b"].map((reason) => go("POST", `/bookings/${bad.body.manageToken}/cancel`, { reason })));
-  ok("FO-3pa DW10 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 400, never a 500; the booking unchanged (break M1, m2)",
-    refusedReasons.every((r) => r.status === 400) && (await rowNow(badRow.id)).status === "SCHEDULED" && (await rowNow(badRow.id)).cancelReason === null, refusedReasons.map((r) => [r.status, r.body?.issues]));
+  ok("FO-3pa DW10 fail: a reason with broken UTF-16, a bidirectional override or only invisible characters → 422, never a 500; the booking unchanged (break M1, m2)",
+    refusedReasons.every((r) => r.status === 422) && (await rowNow(badRow.id)).status === "SCHEDULED" && (await rowNow(badRow.id)).cancelReason === null, refusedReasons.map((r) => [r.status, r.body?.issues]));
   // The database's own rule: a reason only on a cancelled booking, at most 500 characters.
   const dbRefuses = async (sql: string) => { try { await db.$executeRawUnsafe(sql); return false; } catch { return true; } };
   ok("FO-3pa DW10 fail: the database refuses a reason on a booking that is not cancelled, and one over 500 characters",

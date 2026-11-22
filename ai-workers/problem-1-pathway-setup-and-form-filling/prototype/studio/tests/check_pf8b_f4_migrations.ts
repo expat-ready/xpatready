@@ -14,9 +14,11 @@ let failed = 0, total = 0;
 const check = (name: string, ok: boolean, got?: unknown) => { total++; console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : `: ${JSON.stringify(got)}`}`); if (!ok) failed++; };
 
 const F4 = read("20261121230000_pf8b_f4_reader_create");
-for (const m of ["20261116013000_pf12_firm_walls", "20261118090000_csw1_firm_id"]) {
+// PF-8b F5 edited pf12 again: its current sha256 is written by 20261122030000_pf8b_f5_grant_loop (the latest writer wins).
+const writers: Record<string, string> = { "20261116013000_pf12_firm_walls": "20261122030000_pf8b_f5_grant_loop", "20261118090000_csw1_firm_id": "20261121230000_pf8b_f4_reader_create" };
+for (const [m, w] of Object.entries(writers)) {
   const want = new RegExp(`SET checksum = '${sha(m)}'\\s+WHERE migration_name = '${m}' AND finished_at IS NOT NULL AND checksum <> '${sha(m)}'`);
-  check(`${m}: its sha256 is the checksum the F4 migration writes (edit it only with that line)`, want.test(F4), sha(m));
+  check(`${m}: its sha256 is the checksum ${w} writes (edit it only with that line)`, want.test(read(w)), sha(m));
 }
 // An unconditional role statement is a string literal or a plain statement; F4's form builds ALTER from the differing
 // attributes, so a literal 'ALTER ROLE … NOSUPERUSER' or 'NOREPLICATION' (the form RDS refused) must not come back.
