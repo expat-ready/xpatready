@@ -23,7 +23,7 @@ import { FindRegistry } from "../api/src/platform/find/registry.ts";
 import { dutiesOf, type StaffContext } from "../api/src/platform/identity/keys.ts";
 import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { CaseFinder } from "../api/src/search/case-finder.ts";
-import { CasePartySearch, phoneOf } from "../api/src/search/party-search.ts";
+import { CasePartySearch, phoneOf, SEARCH_ROWS } from "../api/src/search/party-search.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
@@ -227,6 +227,28 @@ try {
   ok("CS-S1 DW12 pass: every match the adapter and the fake return, wrapped as FO-13c stores it (source CASE), passes fo_compliance_matches_ok", real.length >= 1 && fake.length === 1 && stored([...real, ...fake].map((m) => ({ source: "CASE", ...m }))), { real, fake });
   ok("CS-S1 DW12 fail: a lowercase roleOnCase, or a matchedOn of CASE_NUMBER, does not pass it", !stored([{ source: "CASE", ...real[0], roleOnCase: "principal" }]) && !stored([{ source: "CASE", ...real[0], matchedOn: ["CASE_NUMBER"] }]));
   ok("CS-S1 DW12 pass: recordId is the index row's id (stable per person), with the case's client id", real.find((m) => m.recordId === mId)?.clientId === c1.client && real.find((m) => m.recordId === mId)?.kind === "CLIENT" && real.find((m) => m.recordId === mId)?.score === 1);
+
+  // ------------------------------------------------------------------------------------------ ranking: email, then phone, then name
+  const ranked = await search.search(R, { name: "Tremblay", email: "dupont@x.com" });
+  ok("CS-S1 pass (ranking): an exact email ranks above a name match (Marie by EMAIL first, Paul by NAME after)", ranked.matches[0]?.recordId === mId && ranked.matches[0].matchedOn.includes("EMAIL") && ranked.matches.at(-1)?.displayName === "Paul Tremblay", ranked);
+  const rankedPhone = await search.search(R, { name: "Olga Ownedcase", phone: "416 555 0101" });
+  ok("CS-S1 fail (ranking): a name match never ranks above an exact phone (Marie by PHONE first, Olga by NAME after)", rankedPhone.matches[0]?.recordId === mId && rankedPhone.matches[0].matchedOn.includes("PHONE") && rankedPhone.matches.at(-1)?.displayName === "Olga Ownedcase", rankedPhone);
+
+  // ------------------------------------------------------------------------------------------ the count survives the row cap (review M2)
+  // 55 people on case 1 (user-T sees it: team row) and 3 on case 2 (hidden from T), all named "Bulkname <n>", made in one
+  // statement per case so part 1's triggers index them at commit.
+  const bulk = (caseId: string, from: number, count: number) => sql(`with p as (select gen_random_uuid() as party, gen_random_uuid() as subject, ${from} + g as n from generate_series(0, ${count - 1}) g),
+      a as (insert into party (id, workspace_id) select party, '${W}' from p),
+      b as (insert into party_profile (id, workspace_id, party_id, display_name) select gen_random_uuid(), '${W}', party, 'Bulkname ' || n from p),
+      c as (insert into answer_subject (id, workspace_id, party_id, subject_kind, label) select subject, '${W}', party, 'spouse_or_partner', 'Bulkname ' || n from p)
+    insert into case_participant (id, workspace_id, case_id, subject_id, role, "order") select gen_random_uuid(), '${W}', '${caseId}', subject, 'spouse_or_partner', 100 + n from p`);
+  bulk(c1.id, 1, 55); bulk(c2.id, 101, 3);
+  ok("CS-S1 setup (cap): the 58 bulk people are indexed", sql("select count(*) from case_party_index where name_norm like 'bulkname %'") === "58");
+  const capped = await search.search({ firmId: T.firmId, staffId: T.staffId }, { name: "Bulkname" });
+  ok(`CS-S1 DW8 pass (cap, review M2): with 55 visible and 3 hidden matches, ${SEARCH_ROWS} are named and all 3 hidden are still counted (the count is taken before the row cap)`,
+    capped.matches.length === SEARCH_ROWS && capped.hidden_count === 3 && capped.needs_confirmation_by_role.length === 2 && capped.matches.every((m) => m.caseId === c1.id), { n: capped.matches.length, hidden: capped.hidden_count });
+  const cappedAll = await search.search(R, { name: "Bulkname" });
+  ok("CS-S1 DW8 fail (cap): for a viewer who sees all, nothing is hidden and the answer is still capped", cappedAll.matches.length === SEARCH_ROWS && cappedAll.hidden_count === 0 && cappedAll.needs_confirmation_by_role.length === 0, { n: cappedAll.matches.length, hidden: cappedAll.hidden_count });
 
   // ------------------------------------------------------------------------------------------ the port's contract on the adapter
   // user-T's roles hold view.own only now (above): T sees case 1 (team) and case 3 (file owner), not case 2.
