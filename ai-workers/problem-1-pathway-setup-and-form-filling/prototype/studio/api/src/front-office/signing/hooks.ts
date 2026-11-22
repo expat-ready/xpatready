@@ -25,7 +25,7 @@ function limited(key: string, now = Date.now()): boolean {
 export function hookBytes(body: unknown): Uint8Array | null {
   if (Buffer.isBuffer(body)) return new Uint8Array(body);
   if (typeof body === "string") return new TextEncoder().encode(body);
-  if (body && typeof body === "object") return new TextEncoder().encode(JSON.stringify(body));
+  if (body && typeof body === "object") { try { return new TextEncoder().encode(JSON.stringify(body)); } catch { return null; } }   // break m1: too deep → 400
   return null;
 }
 

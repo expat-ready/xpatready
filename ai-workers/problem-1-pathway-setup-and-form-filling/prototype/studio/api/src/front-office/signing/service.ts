@@ -158,6 +158,14 @@ export class Signing {
     if (ev.type === "completed") {
       const seen = await this.db.foSigningHookReceipt.count({ where: { firmId, requestId: found.id, provider: ev.provider, providerDocumentId: ev.providerDocumentId, eventId: ev.eventId } });
       if (seen) return { received: true as const, applied: false, duplicate: true };
+      // Break m3: nothing is fetched or stored unless the completion can apply now (a race still may leave one unused pair).
+      const pre = await this.db.foSignatureRequest.findFirst({ where: { firmId, id: found.id }, select: { status: true, documentId: true, signers: { select: { signedAt: true } } } });
+      const ret = pre ? await this.db.foRetainer.findFirst({ where: { firmId, id: pre.documentId }, select: { status: true } }) : null;
+      if (pre && ret && ret.status !== "CLIENT_SIGNED" && ret.status !== "SIGNED") {   // withdrawn or signed on paper: final, stored, never retried
+        await this.tx((tx) => this.receipt(tx, found, ev));
+        return { received: true as const, applied: false, reason: `the agreement is ${ret.status.toLowerCase().replace("_", " ")}` };
+      }
+      if (!pre || pre.status !== "CLIENT_SIGNED" || pre.signers.some((x) => !x.signedAt)) return conflict("Not every signature is recorded here yet. The provider may send the event again.", "NOT_READY");
       const f = await signingPort().fetchFiles(firmId, ev.providerDocumentId).catch((e) => { if (e?.name === "SigningNotCompleted") conflict("The provider has not finished this document.", "NOT_COMPLETED"); throw e; });
       const at = randomBytes(6).toString("hex"), base = `signing/${found.id}/${at}`;
       const s = await this.files.put(firmId, `${base}/sealed.pdf`, f.sealed.bytes, f.sealed.contentType), a = await this.files.put(firmId, `${base}/audit.pdf`, f.audit.bytes, f.audit.contentType);
@@ -165,22 +173,25 @@ export class Signing {
     }
     const out = await this.tx(async (tx) => {
       if (!(await this.receipt(tx, found, ev))) return { received: true as const, applied: false, duplicate: true };
-      const [q] = await tx.$queryRaw<{ id: string; status: string; document_id: string; document_version_id: string; document_version: number }[]>`
-        select id::text, status::text, document_id::text, document_version_id::text, document_version from fo_signature_request where firm_id = ${firmId}::uuid and id = ${found.id}::uuid for update`;
+      const [q] = await tx.$queryRaw<{ id: string; status: string; document_id: string; document_version_id: string; document_version: number; expires_at: Date }[]>`
+        select id::text, status::text, document_id::text, document_version_id::text, document_version, expires_at from fo_signature_request where firm_id = ${firmId}::uuid and id = ${found.id}::uuid for update`;
       const signers = await tx.foSigner.findMany({ where: { firmId, requestId: q.id } });
       const live = ["SENT", "VIEWED", "CLIENT_SIGNED"].includes(q.status);
       const refuse = (reason: string) => ({ received: true as const, applied: false, reason });
+      // Break M1: a refusal that a later event can lift (the firm before the clients, no consent yet) keeps nothing and
+      // answers 409, so the provider's redelivery applies once the order or the consent is right.
+      const notYet = (reason: string): never => conflict(`${reason}. The provider may send the event again.`, "NOT_YET");
       if (ev.type === "declined" || ev.type === "other") return refuse(ev.type === "declined" ? "a decline is applied by FO-5d" : "nothing to apply");
       if (!live) return refuse(`the request is ${q.status.toLowerCase()}`);
       const line = (action: string, summary: string, detail: Record<string, string | number | boolean | null>, before: Record<string, string | number | null>, after: Record<string, string | number | null>) =>
-        this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action, entity: "fo_signature_request", entityKey: q.id, summary, detail: { requestId: q.id, retainerId: q.document_id, eventId: ev.eventId.slice(0, 200), ...detail }, before, after });
+        this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action, entity: "fo_signature_request", entityKey: q.id, summary, detail: { requestId: q.id, retainerId: q.document_id, ...detail }, before, after });
       const moveRetainer = (from: string[], to: string) => tx.foRetainer.updateMany({ where: { firmId, id: q.document_id, status: { in: from as never[] }, currentVersion: q.document_version }, data: { status: to as never } });
 
       if (ev.type === "viewed" || ev.type === "signed") {
         const s = signers.find((x) => x.id === ev.signerId);
         if (!s) return refuse("no such signer on this request");
         if (ev.type === "viewed") {
-          if (s.viewedAt) return refuse("viewed already");
+          if (s.viewedAt || s.signedAt || s.declinedAt) return refuse("viewed already");   // break m2: a late viewed after the signature
           await tx.foSigner.update({ where: { id: s.id }, data: { viewedAt: now } });
           const moved = q.status === "SENT";
           if (moved) { await tx.foSignatureRequest.update({ where: { id: q.id }, data: { status: "VIEWED" } }); await moveRetainer(["SENT"], "VIEWED"); }
@@ -188,8 +199,10 @@ export class Signing {
           return { received: true as const, applied: true };
         }
         if (s.signedAt || s.declinedAt) return refuse("this signer has answered already");
-        if (s.role === "FIRM" && signers.some((x) => x.role === "CLIENT" && !x.signedAt)) return refuse("the firm signs last, after every client");
-        if (!s.consentedAt) return refuse("no consent to sign electronically is recorded for this signer");
+        // Break m4 (part 1's m2): past its expiry with no client signature, a request takes no signature (part 5's job ends it).
+        if (now > q.expires_at && !signers.some((x) => x.role === "CLIENT" && x.signedAt)) return refuse("the request has expired");
+        if (s.role === "FIRM" && signers.some((x) => x.role === "CLIENT" && !x.signedAt)) return notYet("The firm signs last, after every client");
+        if (!s.consentedAt) return notYet("No consent to sign electronically is recorded for this signer yet");
         await tx.foSigner.update({ where: { id: s.id }, data: { signedAt: now < s.consentedAt ? s.consentedAt : now } });
         const clientsDone = signers.every((x) => x.role !== "CLIENT" || x.signedAt || x.id === s.id);
         const to = clientsDone && q.status !== "CLIENT_SIGNED" ? "CLIENT_SIGNED" : q.status;
@@ -218,7 +231,18 @@ export class Signing {
       await line("signing.completed", "Signed by everyone: the sealed copy and the audit file are stored with us; the retainer is signed", { sealedSha256: files!.sealed.sha256, auditSha256: files!.audit.sha256 },
         { status: "CLIENT_SIGNED", retainerStatus: "CLIENT_SIGNED" }, { status: "SIGNED", retainerStatus: "SIGNED", sealedSha256: files!.sealed.sha256, auditSha256: files!.audit.sha256 });
       // The retainers module's answer runs in this transaction; the event row is the last write (contracts §0.5).
-      const won = await onSigningCompleted(tx, this.audit, firm, payload, now);
+      // Break M2: a refused win (FO-13c's conflict gate: the party changed since its check) never undoes the signature:
+      // the evidence, the SIGNED states and the event stay; the prospect is not won and the line says why.
+      let won = false;
+      await tx.$executeRaw`savepoint fo6_signing_win`;
+      try { won = await onSigningCompleted(tx, this.audit, firm, payload, now); await tx.$executeRaw`release savepoint fo6_signing_win`; }
+      catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        await tx.$executeRaw`rollback to savepoint fo6_signing_win`;
+        const code = String((e.getResponse() as { code?: unknown })?.code ?? "REFUSED").slice(0, 60);
+        await this.audit.record(tx, { firmId, actor: SIGNING_ACTOR, action: "signing.win_held", entity: "fo_signature_request", entityKey: q.id, summary: "Signed, but the prospect is not won yet: the win was refused (record the conflict check again, then Convert)",
+          detail: { requestId: q.id, retainerId: ret.id, prospectId: ret.prospectId, refusal: code }, before: null, after: { prospectWon: false, refusal: code } });
+      }
       await tx.moduleEvent.create({ data: { firmId, type: SIGNING_EVENT.SIGNING_COMPLETED, subjectId: q.id, occurredAt: now, payload: payload as Prisma.InputJsonValue } });
       return { received: true as const, applied: true, prospectWon: won, clients: signers.flatMap((x) => (x.personId ? [x.personId] : [])) };
     });

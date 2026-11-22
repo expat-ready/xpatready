@@ -164,13 +164,27 @@ try {
   // ------------------------------------------------------------- W2: the order and the consent
   consent(q1);
   const firmFirst = await signing.act(A, d1, firm1, "signed");   // the fake lets it through: the order rule is ours
-  const ff = await post(firmFirst[0]);
-  ok("FO-6 W2 fail: the firm's signature before every client → refused, state unchanged (request VIEWED, firm signer unsigned)",
-    ff.applied === false && /firm signs last/.test(ff.reason ?? "") && reqOf(r1)[2] === "VIEWED" && sql(`select signed_at is null from fo_signer where id = '${firm1}'`) === "t", ff);
+  const receiptsQ1 = count("fo_signing_hook_receipt", `request_id = '${q1}'`);
+  const ff = await refusal(() => post(firmFirst[0]));
+  ok("FO-6 W2 fail: the firm's signature before every client → refused (409 NOT_YET), state unchanged, nothing kept (request VIEWED, firm signer unsigned, no receipt)",
+    ff?.status === 409 && ff.body.code === "NOT_YET" && /firm signs last/.test(String(ff.body.detail)) && reqOf(r1)[2] === "VIEWED" && sql(`select signed_at is null from fo_signer where id = '${firm1}'`) === "t"
+      && count("fo_signing_hook_receipt", `request_id = '${q1}'`) === receiptsQ1, ff);
+  // break M1: once the client has signed, the provider's redelivery of the firm's signature applies (never a "duplicate")
+  const c1 = await post((await signing.act(A, d1, client1, "signed"))[0]);
+  const ffAgain = await post(firmFirst[0]);
+  ok("FO-6 W2 pass (break M1): after the client's signature, the redelivered firm signature applies (both signed, CLIENT_SIGNED)",
+    c1.applied === true && ffAgain.applied === true && sql(`select count(*) from fo_signer where request_id = '${q1}' and signed_at is not null`) === "2" && reqOf(r1)[2] === "CLIENT_SIGNED", { c1, ffAgain });
   // a second request whose client has no consent recorded
   const [q2, d2] = reqOf(r2);
-  const nc = await post((await signing.act(A, d2, signerOf(q2, "CLIENT"), "signed"))[0]);
-  ok("FO-6 W2 fail: a signature with no recorded consent → refused, the signer unsigned (no consent, no signature)", nc.applied === false && /consent/.test(nc.reason ?? "") && sql(`select signed_at is null from fo_signer where request_id = '${q2}' and role = 'CLIENT'`) === "t", nc);
+  const ncCall = (await signing.act(A, d2, signerOf(q2, "CLIENT"), "signed"))[0];
+  const nc = await refusal(() => post(ncCall));
+  ok("FO-6 W2 fail: a signature with no recorded consent → refused (409), the signer unsigned, nothing kept (no consent, no signature)",
+    nc?.status === 409 && /consent/.test(String(nc.body.detail)) && sql(`select signed_at is null from fo_signer where request_id = '${q2}' and role = 'CLIENT'`) === "t" && count("fo_signing_hook_receipt", `request_id = '${q2}'`) === 0, nc);
+  consent(q2);
+  const ncAgain = await post(ncCall);
+  ok("FO-6 W2 pass (break M1): once consent is recorded, the redelivered signature applies", ncAgain.applied === true && sql(`select signed_at is not null from fo_signer where request_id = '${q2}' and role = 'CLIENT'`) === "t", ncAgain);
+  const late = await post((await (async () => { const [lv] = await signing.act(A, d2, signerOf(q2, "FIRM"), "viewed"); return lv; })()));
+  ok("FO-6 W2 pass (break m2): a viewed for a signer is answered 200 even after a signature (never a 500)", late.received === true, late);
 
   // ------------------------------------------------------------- W3: the client signs, then the firm: completed
   // (a fresh request: the fake kept the firm's out-of-order signature on the first one)
@@ -258,6 +272,32 @@ try {
   const unknown = await post((await (async () => { const f = fakeSigning(); useSigningPort(f); const x = await f.send({ firmId: A, requestId: randomUUID(), title: "x", document: { bytes: new Uint8Array([1]), contentType: "application/pdf" }, signers: [{ signerId: randomUUID(), role: "CLIENT", name: "C" }, { signerId: randomUUID(), role: "FIRM", name: "F" }] }); return f.other(A, x.providerDocumentId); })()));
   useSigningPort(signing);
   ok("FO-6 W5 pass: a verified event for a document no request names → 200, nothing stored", unknown.applied === false && unknown.reason === "unknown document");
+
+  // ------------------------------------------------------------- B: the break report's other cases
+  // break M2: the conflict gate refuses the win (the client's email changed after Send): the signature still stands.
+  const p7 = await prospect("Fay"), r7 = await draft(p7);
+  await sendIt(r7);
+  const [q7, d7] = reqOf(r7);
+  consent(q7);
+  sql(`update fo_person set email = 'fay.changed@example.com' where id = '${p7.personId}'`);
+  await post((await signing.act(A, d7, signerOf(q7, "CLIENT"), "signed"))[0]);
+  for (const c of await signing.act(A, d7, signerOf(q7, "FIRM"), "signed")) await post(c);
+  ok("FO-6 B pass (break M2): a win the conflict gate refuses never undoes the signature: evidence, SIGNED, signing.completed, one win_held line; the prospect not won",
+    count("fo_signing_evidence", `request_id = '${q7}'`) === 1 && reqOf(r7)[2] === "SIGNED" && sql(`select status from fo_retainer where id = '${r7}'`) === "SIGNED"
+      && count("module_event", `subject_id = '${q7}' and type = 'signing.completed'`) === 1 && count("audit_event", `entity_key = '${q7}' and action = 'signing.win_held'`) === 1
+      && count("module_event", `subject_id = '${p7.id}' and type = 'prospect.won'`) === 0, { won: count("module_event", `subject_id = '${p7.id}' and type = 'prospect.won'`), held: count("audit_event", `entity_key = '${q7}' and action = 'signing.win_held'`) });
+  // break m4: past the expiry with no client signature, a signature is refused
+  const p8 = await prospect("Gus"), r8 = await draft(p8);
+  await sendIt(r8);
+  const [q8, d8] = reqOf(r8);
+  consent(q8);
+  sql(`set session_replication_role = replica; update fo_signature_request set sent_at = now() - interval '20 days', expires_at = now() - interval '6 days' where id = '${q8}'`);
+  const exp = await post((await signing.act(A, d8, signerOf(q8, "CLIENT"), "signed"))[0]);
+  ok("FO-6 B fail (break m4): a signature on day 20 of a 14-day request with no client signature → refused, unsigned", exp.applied === false && /expired/.test(exp.reason ?? "") && sql(`select signed_at is null from fo_signer where request_id = '${q8}' and role = 'CLIENT'`) === "t", exp);
+  // break m1: a hostile body too deep to write back is 400, never 500
+  let deep: unknown = {}; for (let i = 0; i < 6000; i++) deep = { a: deep };
+  const deepR = await refusal(() => hooks.receive("fake", { ip: "10.9.9.9", headers: {} }, deep));
+  ok("FO-6 B fail (break m1): a 6000-level nested body → 400, never 500", deepR?.status === 400, deepR);
 
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
