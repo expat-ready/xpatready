@@ -94,3 +94,17 @@ The full `ci` set (every suite) and `graph.mjs` (it rewrites `qa/GRAPH.md`; I ma
 **Verdict: Block** `7b53833466cad3536c90975ad55b70114630d49a`. To fix: B1 (`check_pf12_walls` green: `case_note` on `FIRM_ID_ELSEWHERE`, or walled) and B2 (`check_csw3_firm_scope` census green: `case-notes/service` on `ALLOW`, count 48). m1 can go in the same commit. After the fix, a diff-only check: both suites plus `check_csnt1_notes`.
 
 Reviewer: Block 7b53833466cad3536c90975ad55b70114630d49a
+
+## Re-review round 2, 22 Nov 2026 (diff-only): head `8373756792c10b0bde8e5ff464c5b68973cf6255`
+I read only `git diff 7b5383346 8373756792 -- prototype/studio`: code commit `218d7dd4a`, three files; the other two commits are records only.
+* **B1 closed:** `case_note` is on `FIRM_ID_ELSEWHERE` (`tests/check_pf12_walls.ts:47`), with its reason and CS-W4 named, the same way `case_decision` and `case_milestone` are. `check_pf12_walls` (run with `--tsconfig api/tsconfig.json`) **110/110, exit 0**.
+* **B2 closed:** `case-notes/service` is on CS-W3's `ALLOW`, the count is 48, and the comment names it and why (PF-4's session gives its firm). `check_csw3_firm_scope` **48/48, exit 0**, on my isolated copy `rv_csw3` :4436 (stopped afterwards).
+* **m1 closed:** `case-notes.prisma:4` names `20261122110000`. `check_csnt1_notes` **56/56, exit 0**.
+* **m2:** goes in the PR body, as the coordinator states.
+* **Breaker m5 (`case_note_refuse_change` lets a DELETE through when the case row is hidden): I agree with naming it for CS-W4, not fixing it here.** It is byte-for-byte the pattern main ships in `case_decision_refuse_change` (`20261115160000_csc1a_case_decision/migration.sql:82`). It only matters once `runtime_case` is walled, and no code path issues a DELETE on `case_note` other than the cascade. CS-W4 should fix both tables together, with one test.
+
+No new findings. The journey score of 8.5 / 10 (`journey-test-reviewer-2026-11-22.md`) stands: the code under the walk is unchanged.
+
+**Verdict: Approve** `8373756792c10b0bde8e5ff464c5b68973cf6255` (code at `218d7dd4a`).
+
+Reviewer: Approve 8373756792c10b0bde8e5ff464c5b68973cf6255
