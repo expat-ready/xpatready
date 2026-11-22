@@ -59,7 +59,7 @@ export function chooseFiles(env: FilesEnv = process.env, s3: Pick<S3FilesOptions
 /** Tests only: the recorded fake S3 client (tests/fixtures/pff1-s3/), put on globalThis under this symbol. Refused in
  *  production, so a test seam never reaches a real server. */
 export const RECORDED_S3 = Symbol.for("expatready.pff1b.recordedS3");
-let s3Bound: { settings: string; files: S3Files } | null = null;
+let s3Bound: { settings: string; recorded: unknown; files: S3Files } | null = null;
 
 /** The settings the binding reads. PLATFORM_ENVIRONMENT comes from the one loader (PF-24w: read once per process, by
  *  config/settings.ts), never from process.env again; the files settings and NODE_ENV are read here. */
@@ -81,7 +81,8 @@ export function boundFiles(env: FilesEnv = appEnv()): FilesPort {
   // Honoured on a local server only (the Mac, lanes, CI): never in the test environment on AWS or production (break m2).
   if (recorded && (isProduction(env.NODE_ENV) || env.PLATFORM_ENVIRONMENT !== "local")) refuse("a recorded S3 client is a test seam and is refused outside PLATFORM_ENVIRONMENT=local");
   const settings = JSON.stringify([s3SettingsOf(env), !!recorded]);
-  if (!s3Bound || s3Bound.settings !== settings || recorded) s3Bound = { settings, files: chooseFiles(env, recorded ?? {}) as S3Files };
+  // One S3Files per settings and recorded client: the store and its links are the same object, with the seam too (break r2 m2).
+  if (!s3Bound || s3Bound.settings !== settings || s3Bound.recorded !== recorded) s3Bound = { settings, recorded, files: chooseFiles(env, recorded ?? {}) as S3Files };
   return s3Bound.files;
 }
 

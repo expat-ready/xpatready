@@ -131,7 +131,7 @@ try {
       await inner.delete(FIRM_A, "bind/doc.pdf");
       ok("R1.65 PF-F1b case 2 fail: on S3 a retired key gives FileKeyTaken, never the limit check; another firm reads the key as absent", await refused(() => store.put(FIRM_A, "bind/doc.pdf", bytesOf("the client's copy"), "application/pdf"), (e) => e instanceof FileKeyTaken) && await store.get(FIRM_B, "bind/doc.pdf") === null);
       const links = app.get(S3FileLinks, { strict: false });
-      ok("R1.65 PF-F1b case 2 pass: in the app's provider order the S3 download links are bound on S3 (review M1, break B1)", links instanceof S3FileLinks, links);
+      ok("R1.65 PF-F1b case 2 pass: in the app's provider order the S3 download links are bound on S3, over the store's own S3Files (review M1, break B1 and r2 m2)", links instanceof S3FileLinks && (links as unknown as { files: unknown }).files === inner, links);
       ok("R1.65 PF-F1b case 2 fail: the same app with PLATFORM_FILES=local sends nothing to the bucket", await withEnv({ PLATFORM_FILES: "local" }, async () => { const n = s3.seen.length; const f = boundFiles(); await f.put(FIRM_A, "bind/l.txt", bytesOf("l"), "text/plain"); return f instanceof LocalFiles && s3.seen.length === n; }));
       await app.close();
     });
