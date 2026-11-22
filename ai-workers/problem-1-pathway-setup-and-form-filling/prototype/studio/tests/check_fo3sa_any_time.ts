@@ -156,12 +156,12 @@ try {
   await db.platformStaff.update({ where: { id: P.ADMIN.id }, data: { status: "DEACTIVATED" } });
   const gone = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 10:00", { hostStaffId: P.ADMIN.id }, T2.id));
   const goneAnyway = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 12:00", { hostStaffId: P.ADMIN.id, bookAnyway: true }, T2.id));
-  ok("FO-3sa DW6 fail: a deactivated host → 400 with the field error \"hostStaffId: choose an active host\" (with Book anyway too), nothing saved",
-    [gone, goneAnyway].every((r) => r.status === 400 && (r.body.issues ?? []).includes("hostStaffId: choose an active host")) && await countAt("2026-10-29 10:00") === 0 && await countAt("2026-11-01 12:00") === 0, [gone, goneAnyway]);
+  ok("FO-3sa DW6 fail: a deactivated host → 422 with the field error \"hostStaffId: choose an active host\" (with Book anyway too), nothing saved",
+    [gone, goneAnyway].every((r) => r.status === 422 && (r.body.issues ?? []).includes("hostStaffId: choose an active host")) && await countAt("2026-10-29 10:00") === 0 && await countAt("2026-11-01 12:00") === 0, [gone, goneAnyway]);
   const picked = await go("POST", "", P.CASE_OFFICER, body("2026-11-01 12:00", { bookAnyway: true, acceptedWarnings: ["OUTSIDE_HOURS"] }, T2.id));
   ok("FO-3sa DW6 pass: with no host chosen, Book anyway never takes the deactivated host (the pick rule skips it, AG-4-53)", picked.status === 201 && picked.body.staffId === P.OWNER.id, picked);
   const notHost = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 11:00", { hostStaffId: P.CASE_MANAGER.id }));
-  ok("FO-3sa DW6 fail: an active staff member who is not a host of the type → 400 field error, nothing saved", notHost.status === 400 && (notHost.body.issues ?? []).includes("hostStaffId: not a host of this consultation") && await countAt("2026-10-29 11:00") === 0, notHost);
+  ok("FO-3sa DW6 fail: an active staff member who is not a host of the type → 422 field error, nothing saved", notHost.status === 422 && (notHost.body.issues ?? []).includes("hostStaffId: not a host of this consultation") && await countAt("2026-10-29 11:00") === 0, notHost);
 
   // ------------------------------------------------------------------------------------------------- DW7: reschedule
   const mv = inHours.body.id as string;
@@ -180,7 +180,7 @@ try {
   ok("FO-3sa DW7 fail: moved back to a free time, it needs no Book anyway and the confirmer is cleared (the no-overlap rule covers it again)",
     back.status === 200 && (await db.foBooking.findUniqueOrThrow({ where: { id: mv } })).overlapConfirmedByUserId === null && !("warnings" in (auditOf(mv, "booking.rescheduled").at(-1)?.detail ?? {})), back);
   const past = await go("POST", `/${mv}/reschedule`, P.CASE_MANAGER, { startsAt: iso("2026-10-26 07:00"), bookAnyway: true });
-  ok("FO-3sa DW7 fail: a time that has passed is refused even with Book anyway", past.status === 400 && (past.body.issues ?? []).includes("startsAt: in the past"), past);
+  ok("FO-3sa DW7 fail: a time that has passed is refused even with Book anyway", past.status === 422 && (past.body.issues ?? []).includes("startsAt: in the past"), past);
 
   // ----------------------------------------------------------------------------------------------- DW8: permissions
   await db.platformStaff.update({ where: { id: P.ADMIN.id }, data: { status: "ACTIVE" } });
@@ -256,7 +256,7 @@ try {
   const upper = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 15:00", { hostStaffId: P.OWNER.id.toUpperCase() }, T2.id));
   const upperNot = await go("POST", "", P.CASE_OFFICER, body("2026-10-29 15:30", { hostStaffId: P.CASE_MANAGER.id.toUpperCase() }, T2.id));
   ok("FO-3sa Devin-3 pass: an upper-case id of an active host is that host (stored in lower case)", upper.status === 201 && upper.body.staffId === P.OWNER.id, upper);
-  ok("FO-3sa Devin-3 fail: an upper-case id of a non-host is still refused as not a host", upperNot.status === 400 && (upperNot.body.issues ?? []).includes("hostStaffId: not a host of this consultation"), upperNot);
+  ok("FO-3sa Devin-3 fail: an upper-case id of a non-host is still refused as not a host", upperNot.status === 422 && (upperNot.body.issues ?? []).includes("hostStaffId: not a host of this consultation"), upperNot);
 } catch (e) {
   fail++; console.log(`FAIL  FO-3sa: the check stopped — ${String((e as Error)?.stack ?? e).slice(0, 800)}`);
 } finally {

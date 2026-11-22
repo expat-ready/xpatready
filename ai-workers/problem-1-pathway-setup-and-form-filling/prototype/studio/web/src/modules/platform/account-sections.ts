@@ -14,6 +14,7 @@ export const ACCOUNT_SECTIONS: AccountSection[] = [
   { label: "Terms", path: "/platform/terms", key: "agent/settings:list" },   // PF-5t part 2
   { label: "Offices", path: "/platform/offices", key: "agent/settings:edit" },   // PF-18s part 1: Owner and Admin (challenge M1)
   { label: "Plan and billing", path: "/settings/billing", key: "agent/subscription-invoice:view" },   // PF-5s part 2: Owner, Admin, Billing / Finance
+  { label: "Help & support", path: "/platform/support", key: "agent/support-ticket:list" },   // PF-18s part 2: everyone's own tickets (AG-16-63)
 ];
 
 /** The entries this person sees: those with no key, or whose key they hold. */
