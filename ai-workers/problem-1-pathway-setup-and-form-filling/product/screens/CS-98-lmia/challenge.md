@@ -189,5 +189,6 @@ None. Every open point above is a contract or ruling question for the tech lead:
 * **m1** six keys listed; **m2** un-pass dropped; **m3** MAJOR "Acknowledge" drawn; **m4** samples agree (2 CRITICAL; placed-manually card moved to Maple Bistro; "No dated item yet"; the passed CRITICAL names its warning); **m5** Move to step on every pre-submission card, menu drawn; **m6** FilterLayout; **m7** future-date rule dropped, Link added; **m8** outline buttons per row; **m9** validity expiring defined; **m10** concept checks renamed C1-C7 and mapped; **m11** BR-2 event rules; **m12** AG-17-79 claim dropped; **m13** "Approved"; **m14** household employer named *Not built*; **m15** conflict, saving and failed-to-save states.
 
 ## Agreement
+The tech lead (Lead 4) approved r2 on #3002, 22 Nov 15:44 IST (comment 7077590191), with Q1-Q5 as recommended. The reviewer's round-2 Minor (board 3 reused the file number L-0019) is fixed: it now reads L-0035.
 
 ## Build discoveries

@@ -1,4 +1,4 @@
-# CS-98 LMIA screens (CS-98s1 and CS-98s2): concept r2 (after the fresh challenge; for the tech lead's approval)
+# CS-98 LMIA screens (CS-98s1 and CS-98s2): concept r2, approved
 
 Rows CS-98s1, CS-98s2 (BACKLOG; R1.98, P-607 (5)); briefs `design/briefs/CS-98s1.md`, `CS-98s2.md` (this concept covers both; Lead 61/62 rulings on #1883 applied). Asked by the tech lead (P-800, 22 Nov). Requirement text (`trace-requirements.py --brief`): AG-17-2 (only what the board must not do), -3, -7..11, -13..19, -22..30, -32, -36, -37, -39..41, -43..45, -54, -55, -57, -79, -87, -89, -95, AG-7-86, AG17-D6, AG17-D46. API contract: briefs CS-98b..e (none on `main` yet). No canvas board (cloud lane): `design/layout.html`, 12 boards. Challenge: `challenge.md` (2 Blockers, 14 Majors, 15 Minors, all accepted, r2 below).
 **LMIA values (P-801):** none here is a fact. canada.ca is not reachable from the cloud session (DNS and proxy refuse it, 22 Nov; CS-98r's brief records the same), so every threshold, minimum, window, validity, list and date worked out from them is **Sample** and shown "Sample" (rows, cards, List, strips). Real values: CS-98r step 0 on the Mac (page, quote, date). The screens hold no number (AG-17-6).
@@ -81,4 +81,4 @@ Capability, *Needed for the proof* (R1.98 LMIA half): board, List, moves, wizard
 Fresh challenge 22 Nov: Build after these changes (B1-B2, M1-M14, m1-m15); all accepted and applied in r2 (`challenge.md`, Lead response). B2, M5, M13, M14 need rulings: Q2-Q5.
 
 ## Approval
-(the tech lead)
+**Approved by the tech lead (Lead 4), 22 Nov 15:44 IST, on #3002 (comment 7077590191).** Q1-Q5 ruled as recommended: (1) builds and j_98 run on Sample LMIA values; R1.98 is Proven only once every LMIA value is cited from ESDC (the Lead reads them on the Mac); (2) `GET /api/runtime/cases/:id/corporate/summary`, (3) `DELETE …/corporate/step-override` and (5) the computed step stored on `corp_job` in each write's transaction all go to CS-98b part 1; (4) `/clients/:id` (CS-K1s) is AG-7-86's staff client screen, and CS-98s2 part 2 mounts there. The founder reviews it next (P-223 (4)); changes become follow-up rows.
