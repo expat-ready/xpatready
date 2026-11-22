@@ -31,7 +31,7 @@ jq '.s901.total_count = 150' "$T/checks.json" > "$T/c3.json"; out=$(python3 -I "
 ok "a batch with more check runs than one page read (2 of 150): not measured, never a false 0" "$([ $r = 3 ] && grep -q 'only 2 of 150 read' <<< "$out" && echo 1)" "exit $r: $out"
 jq 'del(.s901)' "$T/checks.json" > "$T/c2.json"; out=$(python3 -I "$Q" --pulls "$T/pulls.json" --checks "$T/c2.json" --count); r=$?
 ok "a batch whose checks cannot be read: \"?\", exit 3" "$([ $r = 3 ] && [ "$out" = "?" ] && echo 1)" "exit $r: $out"
-ok "lead-watch.sh prints the line every check (step 2f)" "$(grep -q 'qb=$(python3 -I "$TOOLS/queue-batches.py"' "$TOOLS/lead-watch.sh" && grep -q 'say "$qb"' "$TOOLS/lead-watch.sh" && echo 1)" "no step 2f in lead-watch.sh"
+ok "lead-watch.sh prints the line every check (step 2h)" "$(grep -q 'qb=$(python3 -I "$TOOLS/queue-batches.py"' "$TOOLS/lead-watch.sh" && grep -q 'say "$qb"' "$TOOLS/lead-watch.sh" && echo 1)" "no step 2h in lead-watch.sh"
 # lead-merge.sh with a gh that logs every call: it must never call GitHub to change anything
 mkdir -p "$T/bin"; printf '#!/bin/bash\necho "gh $*" >> "%s/gh.log"\nexit 1\n' "$T" > "$T/bin/gh"; chmod +x "$T/bin/gh"; : > "$T/gh.log"
 lm() { PATH="$T/bin:$PATH" QB_PULLS="$1" QB_CHECKS="$T/checks.json" bash "$M" "${@:2}" 2>&1; echo "rc=$?"; }
