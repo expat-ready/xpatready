@@ -148,3 +148,39 @@ I ran each mutation on a scratch copy outside the repo. The tree is unchanged. T
 Neither Minor blocks. Both go in the PR body or a follow-up, with round 2's carried Minors.
 
 **Verdict: Approve** (no open Blocker or Major; r3-m1 and r3-m2 are Minor) for commit cc20581717993c08c8f920a2a5cb1dd065b4d03b.
+
+## Re-review after merge batch shard 22 (diff 8212d3ff8..01b79a79b)
+Diff only: one file, `studio/tests/check_pff1_s3_files.ts` (15+/6-). Runtime row with no screen, so there is no journey test and no journey score (no user journey changed). Everything ran in a separate scratch clone, never the main working tree, with no network, no AWS and no cost.
+
+### What I ran
+| Shape | Result |
+|---|---|
+| Batch shape (`sim` = main with #2980 + this row, origin/main moved back to 8bfb1f76f), full check, run twice, Node 24.22.3 | **74/0** both runs; case 6 measured `0c3f95afd..01b79a79b` |
+| Same shape, old range `origin/main...HEAD` | flags `api/src/front-office/MODULE.md` (#2980): the failure is reproduced, and the new range drops it |
+| Same shape, full check on **Node 24.21.0** (`npx node@24.21.0`, first on PATH so the tsx child also runs on 24.21.0) | **74/0**; case 5 child line PASS |
+| Child by hand, as case 5 starts it, Node 24.21.0 | with `PLATFORM_FILES` empty in production: exits 1 and the stack ends in `chooseFiles`, `configuration: PLATFORM_FILES is not set`, no `STARTED`. With `PLATFORM_FILES=local`: prints `STARTED` and exits 0. Both outcomes are real, so the line can fail |
+| Main after a `--no-ff` merge of 01b79a79b | git's history simplification follows the TREESAME parent and picks 01b79a79b, not the merge. Range is empty: PASS |
+| Main after a squash merge | anchor = squash commit, range is empty: PASS |
+| Main after merge, origin/main still the pre-merge commit | range = this row's commits: PASS (correct) |
+| Main after merge plus a later PR that edits FO-5 (and not this check) | anchor stays 01b79a79b, range stays empty: PASS (no false fail for others) |
+| Shallow clones: depth 1 without origin/main, depth 1 with origin/main at depth 1, depth 2 and 3 on the batch shape | **NOT TESTED** each time (no merge-base). Never a pass |
+| Shallow depth 12 and 50 (fork point reachable) | the true merge-base 0c3f95afd: PASS |
+| Main, depth 1, HEAD = origin/main | anchor = HEAD (the grafted root seems to add every file), range empty: PASS. That is the same vacuous pass as full main, not a false one |
+
+I did not re-run the local merge with current main separately. The batch shape already contains #2980 and #2912 on top of 8bfb1f76f.
+
+### The questions asked
+* **Is the anchor right on main?** Yes. See the table: after a merge it gives an empty range, through merge commits and after a squash.
+* **In a batch: only this row's commits?** Yes, as long as nothing else in the batch edits this check file. The anchor is this row's commit, and its merge-base with any origin/main (old or current) is the row's own fork point. The branch is linear from 0c3f95afd with no main merged in. If a future row merged main into its branch and CI's origin/main were older than that merge, the range would again pull in main's files. That would be a false fail, never a false pass.
+* **Shallow clone:** NOT TESTED whenever the fork point is missing, as required.
+* **A later row edits this check:** the anchor moves to that row's newest commit that touches the check, and case 6 measures that row's range under the words "this row". I reproduced this: a later commit that changes FO-5 together with the check gives FAIL naming `front-office/files.ts`. That fails safe, and the later row knowingly edits this file. But the line's text no longer names PF-F1, so a reader may think PF-F1 broke FO-5. See m2.
+* **Case 5:** still proved by a real process that stops. See the table. It is started the way `run-suites.sh` starts a suite (`node_modules/.bin/tsx --tsconfig api/tsconfig.json <file>`). The CI root cause (tsx's CJS loader on `-e` under 24.21.0) was not reproduced here either, so only the next CI run proves the new start passes there. Info only.
+
+### Findings
+* **r4-m1 (Minor, can pass falsely) A row commit after the last edit of this check is outside the range.** The range ends at the anchor, not at the row's head. I reproduced it: on 01b79a79b, one more commit that changes `api/src/front-office/files.ts` and leaves the check alone gives `case 6 pass: this row changed no file of FO-5…` PASS, on the branch and in a batch. The same happens when a later row edits the check first and changes FO-5 in a later commit. **Why it is not Major for this commit:** at 01b79a79b the anchor *is* the row's head, so the measured range is the whole row (`0c3f95afd..01b79a79b`, verified). The approval is bound to this commit, so any later code commit gets a diff re-review where an FO-5 change is visible. FO-5's own suites and the port contract still run. **Fix (a small follow-up or the next touch of this file):** anchor on the newest commit touching any of this row's own paths, for example `git log -1 -- tests/check_pff1_s3_files.ts api/src/platform/files ../../product/screens/PF-F1`. Every round of this row ends with a records commit there, so the anchor reaches the row's head. Also print the measured range in the line.
+* **r4-m2 (Minor, wording) After a later row edits this check, case 6 says "this row" but measures that row.** **Fix:** print the anchor's short hash and subject (or the range) in the PASS/FAIL line, so a failure points at the right row.
+* **Info:** on main the line passes over an empty range. That was already true of `origin/main...HEAD` and is the design asked for. The 600-character stderr head replaces the 300-character tail. That helps here, because the CI failure's tail showed only loader frames.
+
+Nothing in the diff adds a package, setting, immigration value or scope. Round 3's Minors (r3-m1, r3-m2) are not touched by this diff and stay as recorded.
+
+**Verdict: Approve** (no open Blocker or Major; r4-m1 and r4-m2 are Minor) for commit 01b79a79b20e60b53986849cfd6af582ac630c91.
