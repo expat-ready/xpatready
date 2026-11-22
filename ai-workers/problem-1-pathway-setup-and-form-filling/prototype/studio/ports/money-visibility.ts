@@ -10,6 +10,10 @@
 // 3. Holding only invoice keys (`agent/invoice:list`, `:show`) gives nothing: visibility comes from case and prospect
 //    access, never from the money keys.
 // 4. Each list holds each id once, lower case.
+// 5. `ctx` is the session's, built by PF-4's guard (which refuses a deactivated or suspended person with 401); a person
+//    who is not a staff member of `ctx.firmId` gets nothing at all.
+// A firm-wide viewer's lists hold every case and prospect subject of the firm: a consumer passes each list to SQL as
+// ONE array parameter (`= any(${ids}::uuid[])`, as FO-7q does), never as one parameter per id (Postgres's limit).
 // This folder imports only zod and its own files.
 import { z } from "zod";
 import type { StaffContext } from "./staff.ts";

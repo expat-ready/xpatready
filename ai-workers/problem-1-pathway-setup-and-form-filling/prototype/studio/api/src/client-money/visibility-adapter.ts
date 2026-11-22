@@ -13,7 +13,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { MoneyVisibility, MoneyVisibilityPort } from "../../../ports/money-visibility.ts";
 import type { StaffContext } from "../platform/identity/keys.ts";
-import { caseScope, caseScopeWhere } from "../case-access.ts";
+import { caseScope, caseScopeWhere, type CaseScope } from "../case-access.ts";
 import { visibilityOf } from "../front-office/sales/common.ts";
 import { firmScope } from "../platform/firm-scope.ts";
 
@@ -26,11 +26,14 @@ export class PgMoneyVisibility implements MoneyVisibilityPort {
   constructor(private readonly db: Reader) {}
 
   async scopeOf(ctx: StaffContext): Promise<MoneyVisibility> {
-    return { cases: await this.cases(ctx), parties: await this.parties(ctx) };
+    // caseScope's membership check guards both halves: a person who is not a staff member of the firm named (a forged
+    // or malformed staff id) gets nothing at all, never the firm's parties (review m1, breaker Minor 1).
+    const scope = await caseScope(this.db, { firmId: ctx.firmId, staffId: ctx.staffId, keys: ctx.keys });
+    if (!scope.member) return { cases: [], parties: [] };
+    return { cases: await this.cases(scope), parties: await this.parties(ctx) };
   }
 
-  private async cases(ctx: StaffContext): Promise<string[]> {
-    const scope = await caseScope(this.db, { firmId: ctx.firmId, staffId: ctx.staffId, keys: ctx.keys });
+  private async cases(scope: CaseScope): Promise<string[]> {
     const rows = await this.db.case.findMany({ where: caseScopeWhere(scope), select: { id: true } });
     return uniqueLower(rows.map((r) => r.id));
   }

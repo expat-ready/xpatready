@@ -131,7 +131,9 @@ try {
   const s = await port.scopeOf(S);
   ok("CS-MV1 DW2 fail: and firm A's never in firm B's", ![X, Y, Z].some((c) => s.cases.includes(c)) && ![P1, P2, P3, C1].some((p) => s.parties.includes(p)) && s.cases.includes(W1) && s.parties.includes(PB), s);
   const forged = await port.scopeOf({ ...R, staffId: S.staffId });
-  ok("CS-MV1 DW2 fail: a staff id of firm B under firm A's session is no member of A: no case at all", forged.cases.length === 0, forged.cases);
+  ok("CS-MV1 DW2 fail: a staff id of firm B under firm A's session is no member of A: no case and no party at all", forged.cases.length === 0 && forged.parties.length === 0, forged);
+  const notStaff = await port.scopeOf({ ...without(R, "agent/prospect:view.all"), staffId: "not-a-staff-id" });
+  ok("CS-MV1 DW2 fail: a staff id that is no uuid gets nothing (never a thrown query)", notStaff.cases.length === 0 && notStaff.parties.length === 0, notStaff);
 
   // ----------------------------------------------------------- DW3: a party with no case follows its prospect's rule
   everyoneSeesAll(A, true);
