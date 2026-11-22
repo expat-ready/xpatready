@@ -78,3 +78,7 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
   on SHA 5d866c7464957f96551fefa2d7a9fab59e4c7a76. Both are deleted after the build (recorded below).
 * 11:21 IST: stack UPDATE_IN_PROGRESS 18/23, waiting on the certificate; Lead 2 (now current Lead) holds the NS values and adds
   them in Cloudflare after the founder's approval in its session.
+* Build 1b240947 **FAILED** at 11:36 IST in BUILD: `cd: can't cd to src`. Root cause: CodeBuild keeps the working folder
+  between phases, so the project's stored buildspec (`cd src` in both pre_build and build) changes folder twice; the 21 Nov
+  `~/cb/buildspec.yml` (one `cd`, tag from `$TAG`) is the version that built. Fix: same project, `--buildspec-override` with
+  that file, `TAG=5d866c746`. Build `xr-staging-image-build:64818f1b-a640-45a8-a435-2455d2eebef0` started 11:38 IST: in BUILD at 11:39.
