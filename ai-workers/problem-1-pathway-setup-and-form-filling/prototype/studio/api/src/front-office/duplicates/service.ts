@@ -13,7 +13,7 @@ import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../sales/corporate/match.ts";
-import { actorOf, unprocessable, visibilityOf, type Tx } from "../sales/common.ts";
+import { actorOf, sees, unprocessable, visibilityOf, type Tx } from "../sales/common.ts";
 import { phoneE164Exact } from "./phone.ts";
 
 export const HIDDEN_LINE = "Possible match with a record you cannot open — ask a manager";
@@ -56,10 +56,17 @@ export class Duplicates {
     const seenCompanies = new Set((await this.db.foCompany.findMany({ where: firmScope(ctx.firmId, { id: { in: companies.map((c) => c.id) } }), select: { id: true, createdBy: true, prospects: { select: { ownerStaffId: true } } } }))
       .filter((c) => seesCompany(seer, c)).map((c) => c.id));
 
+    // FO-9s (break F2): each named person's newest lead the caller may open (the rule of the lead page's possible-match
+    // line: an inactive owner counts as unassigned), so two people with one name read apart.
+    const shown = people.filter((p) => seenPeople.has(p.id) && personReasons(p).length).slice(0, MAX_MATCHES);
+    const active = new Set((await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { status: "ACTIVE" as const }), select: { id: true } })).map((s) => s.id));
+    const leadOf = new Map<string, string>();
+    for (const l of shown.length ? await this.db.foLead.findMany({ where: firmScope(ctx.firmId, { personId: { in: shown.map((p) => p.id) } }), select: { personId: true, number: true, ownerStaffId: true }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }) : [])
+      if (!leadOf.has(l.personId) && sees(vis, ctx, l.ownerStaffId && active.has(l.ownerStaffId) ? l.ownerStaffId : null)) leadOf.set(l.personId, l.number);
     const named = [
-      ...people.filter((p) => seenPeople.has(p.id) && personReasons(p).length).slice(0, MAX_MATCHES).map((p) => {
+      ...shown.map((p) => {
         const reasons = personReasons(p);
-        return { kind: "PERSON" as const, personId: p.id, name: nameOf(p), score: matchScore(reasons), reasons, useExisting: { personId: p.id } };
+        return { kind: "PERSON" as const, personId: p.id, name: nameOf(p), score: matchScore(reasons), reasons, useExisting: { personId: p.id }, lead: leadOf.get(p.id) ?? null };
       }),
       ...companies.filter((c) => seenCompanies.has(c.id) && c.sim >= NAME_THRESHOLD).slice(0, MAX_MATCHES).map((c) => {
         const reasons: MatchReason[] = [{ key: "NAME", similarity: Math.min(1, Math.round(c.sim * 1000) / 1000) }];
