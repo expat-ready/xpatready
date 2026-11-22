@@ -16,7 +16,7 @@ Kept by Lead 1; one line per capability; updated at each check that changes it. 
 | 10 | R1.5 staff sign-in, two-step | PF-4s part 1 (started 10:55) | 1 lane | Lead read (schema, permissions); AWS proof | AWS evidence | high |
 | 11 | R1.90 sign-up and trial | trial banner (lane started 11:1x); invited sign-up routes + screen | 1 lane + 2 parts | PF-4s part 1 for the invited sign-up | j_90 exists (#2917) | high |
 | 12 | R1.24 firm web address | #2885 (left the queue, shard 7 red: lane told); PF-25w | 1 lane + 1 part | PF-4s; `lab` NS records; AWS | j_24 to write | high |
-| 13 | R1.21 our invoices with tax | tax amount on the invoice | none yet | **founder: Stripe test key, or re-word the done-when** | j_21 exists (#2918) | high |
+| 13 | R1.21 our invoices with tax | tax amount on the invoice | none yet | founder chose re-word 14:3x (P-796): prove on the billing stand-in; tax amount on invoice, read and list to build | j_21 exists (#2918) | high |
 | 14 | R1.92 firm profile, offices | PF-18s p2 #2906, p3 #2904 (queued); firm-profile API not built, no row | 2 lanes | shaping of the firm-profile API | none | not today |
 | 15 | R1.20 seat limits | PF-4c1b → PF-4c p2 → invite screen (serial) | none | a lane | none | not today |
 
