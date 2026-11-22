@@ -76,8 +76,14 @@ No walk at 1440 px: this part is API only. The screens are part 4, concept first
 * Round 3 on 47716a7d (diff-only): Lead 4's ruling 3 (CLOSED), and the breaker's round-2 Minors fixed:
   * m4: the 400 for an unknown key names the allowed keys only, never the caller's;
   * m5: "failed jobs not counted" is a reason that alone never makes a firm ATTENTION.
+* Round 3 result: **both Approve 47716a7d3737945cd738ff77f76a472aec14ec40**. Each new rule's mutation turns the check red.
 * Round 3 needs the tech lead's `Lead allows round 3:` line (review-rounds).
-* Records: `product/screens/PF-17-1/review.md`, `break-report.md`, `break-report-round2.md` (round 3 added when it lands).
+* Records: `product/screens/PF-17-1/review.md` (rounds 1-3), `break-report.md`, `break-report-round2.md`, `break-report-round3.md`.
+
+**Minors listed, not fixed** (any code push after the Approve needs a new round):
+* Review r3 m1: the PROVISIONING reason has no test. A firm still being set up with a live subscription would show OK if a later edit dropped the reason; without a subscription, "no live subscription" still makes it ATTENTION.
+* Review r3 m2 (also the breaker's round-3 note): three comments still name only HELD, ATTENTION and OK (`firms.ts:69`, `firms.ts:89`, `routes.ts:11`). For part 4 or the next Minor PR.
+* Breaker round-3 note: CLOSED hides a still-live subscription, as ruled; `subscriptionStatus` still shows it, so part 4's screen could surface "deleted but still subscribed".
 
 ## Departures from the brief (stated, then ruled by Lead 4, 15:42 IST 22 Nov)
 * **Failed jobs** (R1.93 names them): 7 days (Sample). One recent failure adds an ATTENTION reason. Ruling 3: keep, labelled Sample.

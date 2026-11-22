@@ -135,4 +135,53 @@ Other probes:
 
 No Blocker or Major is open. Head reviewed: b6965705f91b9c6567da454d3d6f4571594a0827.
 
+Round 2 result (b6965705f): Approve.
+
+## Round 3: head `47716a7d3737945cd738ff77f76a472aec14ec40`, diff only
+Scope: `git diff b6965705f..47716a7d3 -- prototype/studio`, which touches only `firms.ts` (+24/-8) and `check_pf17_console.ts` (+15/-6).
+Why it changed: Lead 4's ruling (15:42 IST):
+1. Keep the per-firm audit line for every firm a list call reads.
+2. Keep pf12b's extra line and the card row.
+3. Keep failed jobs, labelled Sample. Locked firms and firms with no live subscription are ATTENTION. Deleted or abandoned firms are CLOSED.
+
+The builder also fixed two of the breaker's round-2 Minors (r2 m4 and r2 m5).
+I ran everything in my own `git archive` copy of `47716a7d3`, never in the shared checkout, with scratch databases on :54329 (Postgres was up after its restart).
+
+**Check:** 41 passed, 0 failed, exit 0, on two runs. `tsc` shows no error in either changed file.
+
+**The ruling is met in the code.**
+- `HEALTH` is `HELD, ATTENTION, OK, CLOSED`. That is also the sort order, the `counts` keys and the values `?health=` accepts.
+- A `DELETED` or `ABANDONED` firm returns early as CLOSED with that one reason (`firms.ts:179`). It stays off `?health=attention`.
+- `SECURITY_LOCK` and "no live subscription" are ATTENTION.
+- Failed jobs are still labelled Sample (`FAILED_JOBS_DAYS`, and the `samples` text).
+- The audit mode (`firm-scope.ts:122`) and pf12b are unchanged, as the ruling says. With the ruling now in, my round-1 condition on choice (a) is met.
+
+**Mutations: each new rule turns the check red.** I removed or changed each rule, ran the check, then restored the file from the archive:
+
+| Mutation | Result |
+|---|---|
+| CLOSED early return removed | red, 3 checks (closed pass, closed fail, DW8 order) |
+| CLOSED keeps the other reasons | red (exactly one reason) |
+| CLOSED sorted before OK | red (DW8 order) |
+| `counts.CLOSED` missing | red |
+| `?health=closed` refused | red (the check stops) |
+| ABANDONED no longer CLOSED | red, 2 checks |
+| the 400 echoes the unknown key | red (r2 m4) |
+| "failed jobs not counted" turns the firm ATTENTION | red (m1 check) |
+| "failed jobs not counted" reason dropped | red |
+
+**Minor (not blocking)**
+- **r3 m1: the PROVISIONING reason has no test.**
+  - Where: `firms.ts:170`, `STATUS_SAY.PROVISIONING`.
+  - I dropped it and the check stayed green, 41/41.
+  - Failure scenario: a later edit removes it, and a firm still being set up that already has a live subscription shows OK. If it has no live subscription yet, "no live subscription" still makes it ATTENTION, so the harm is small.
+  - Fix: add one firm in `PROVISIONING` to the DW3 checks, or drop the extension. The ruling names only locked and no-subscription firms.
+- **r3 m2: three code comments still list the old health values, without CLOSED.**
+  - Where: `firms.ts:69` (the query doc: "HELD, ATTENTION, OK"), `firms.ts:89` (the `list()` doc: "sorted HELD, ATTENTION, OK"), and `routes.ts:11` ("HELD then ATTENTION then OK").
+  - Effect: the code is right, but a reader, or part 4's builder, is told the old order and set.
+  - Fix: add CLOSED to all three, in this PR or in part 4.
+
+No Blocker or Major is open. Head reviewed: 47716a7d3737945cd738ff77f76a472aec14ec40.
+
+Reviewer: Approve 47716a7d3737945cd738ff77f76a472aec14ec40
 Verdict: Approve
