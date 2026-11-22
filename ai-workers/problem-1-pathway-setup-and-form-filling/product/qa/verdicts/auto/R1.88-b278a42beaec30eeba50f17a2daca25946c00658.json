@@ -1,0 +1,30 @@
+{
+  "item": "R1.88",
+  "name": "88 The firm reads its own audit log",
+  "pr": 3062,
+  "sha": "b278a42beaec30eeba50f17a2daca25946c00658",
+  "run_id": "45025814687",
+  "run_url": "https://github.com/expat-ready/xpatready/actions/runs/45025814687",
+  "at": "2026-11-22T13:10:40.369Z",
+  "overall": "PASS",
+  "why": [],
+  "suites": [
+    {
+      "kind": "journey",
+      "name": "tests/journeys/j_88.ts",
+      "result": "pass",
+      "exit": 0
+    },
+    {
+      "kind": "scan",
+      "name": "no key or secret value in the recording",
+      "result": "pass",
+      "exit": 0
+    }
+  ],
+  "video": "https://github.com/expat-ready/xpatready/actions/runs/45025814687/artifacts/14755537794",
+  "trace": null,
+  "file": "product/qa/verdicts/auto/R1.88-b278a42beaec30eeba50f17a2daca25946c00658.json",
+  "repo": "expat-ready/xpatready",
+  "note": "Machine half only (P-339 pack on main's head on GitHub's runners); qa reads this, walks the journey (gate A) and alone sets Works in qa/CAPABILITIES.md."
+}
