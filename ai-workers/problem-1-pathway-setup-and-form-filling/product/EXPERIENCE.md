@@ -79,3 +79,25 @@ The study's "applies when" column says when a check is N/A. Each check names the
 | BIC-18 | **States drawn and teaching.** Empty states say what will appear and offer the first action; loading uses skeletons, never "No records" before data; saved, saving and failed-to-save are visible; read-only says why. | Open with no data, slow data, failed save, no permission | Always | user friendly, completeness |
 | BIC-19 | **Low cognitive load by layout.** At 1440 and 1024 px each panel has one heading and at most one primary button; at most three type sizes per panel, all from the team scale; red only for errors; status by shape and text; client pages hold at most five inputs per page; staff pages group by person with sections, not tabs in tabs; no internal ids on the main path; counts say what they count. | Screenshots at both widths; count headings, primary buttons, type sizes, reds and inputs per panel; read every count | Always | aesthetic, low cognitive load, organization |
 | BIC-20 | **Accessible and keyboard-complete.** Every task can be done by keyboard with visible focus; 4.5:1 contrast; 1024 px and 200 % zoom with no sideways page scroll; headings in order; plain words (client copy at about grade 6-8, sentences under 20 words). | Keyboard-only walk; zoom to 200 %; heading outline; read the copy | Always | user friendly, completeness |
+
+## 7. Screen laws, every screen (founder, 22 Nov, P-794; from the team's "UI/UX guide, design laws" of 19 Nov and its UX-laws screen audit)
+The team checks its own screens against 18 UI/UX laws and found 169 issues on ~226 screens, most of them on phones. We adopt its 14-point checklist so our screens arrive already passing it. The style guide still wins on look.
+
+**How it is used:** the concept answers each check (skill screen-concept); the reviewer scores each as Met, Partly, Not met or N/A with a screenshot at **1280 and 375 px** (skill screen-review; journey-test widths include 375); a Not met is a Should, or a Must when it also breaks an [M] line above. qa runs the same list on every screen at each milestone gate.
+
+| Id | Check (law) | How to test |
+|---|---|---|
+| UXL-01 | One primary action per view is clearly the loudest thing (Von Restorff, Hick). | Count filled buttons per panel: at most one. |
+| UXL-02 | Each label sits closer to its own field than to the next field (Proximity). | Squint test; spacing from tokens only. |
+| UXL-03 | Related items share one card or panel; every button clearly belongs to one item (Common Region). | For each button, name its item in one second. |
+| UXL-04 | Same look means same job: one link style, one danger style (Similarity). | Pick a style; every element with it does the same kind of thing. |
+| UXL-05 | Standard patterns for search, menu, dialog and table; primary action right-most in a dialog footer (Jakob). | Find Search, Settings and Sign out in 5 seconds. |
+| UXL-06 | About 7 equal choices at most in one place; the rest grouped or behind "More" (Hick, Miller). | Count equal-weight clickable choices. |
+| UXL-07 | Identifiers longer than 6 characters are chunked (UCI, application, invoice, case numbers) (Miller). | Look for any long id shown as one block. |
+| UXL-08 | First and last items in each list or menu are the important ones; Delete and Sign out set apart (Serial Position). | Read each nav list's ends. |
+| UXL-09 | Touch targets big enough on phones; primary actions in thumb reach; whole row clickable (Fitts). | At 375 px primary buttons are at least 44 px tall (founder, P-795); other targets at least 24 px (WCAG 2.5.8). |
+| UXL-10 | No sideways page scroll at 375 px; wide tables, tab strips and chip rows show they scroll (Continuity). | At 375 px: page width = viewport; overflow visible. |
+| UXL-11 | Multi-pane pages collapse to one pane on phones (Continuity, Prägnanz). | At 375 px each pane is reachable and readable. |
+| UXL-12 | Loading, empty and error states exist; feedback within about 400 ms (Doherty). | Throttle the network; click every action. |
+| UXL-13 | Forms accept messy input (spaces, dashes, lower-case postal codes) and validate in code (Postel). | Paste a phone number with spaces and dashes. |
+| UXL-14 | Colour is never the only signal; both locales (en, fr-CA) carry new text where the screen is bilingual. | Greyscale view; switch locale. |
