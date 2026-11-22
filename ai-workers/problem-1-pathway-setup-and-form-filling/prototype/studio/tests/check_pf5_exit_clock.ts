@@ -13,7 +13,8 @@ import { fakeBilling } from "../ports/billing.ts";
 import { FakeClock } from "../ports/clock.ts";
 import { EVENT } from "../ports/events.ts";
 import { fakeJobs } from "../ports/jobs.ts";
-import { fakeMail } from "../ports/mail.ts";
+import { fakeMail, type MailPort } from "../ports/mail.ts";
+import { MessageRefused } from "../ports/messages.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BREW = "/opt/homebrew/opt/postgresql@18/bin", bin = (n: string) => (existsSync(join(BREW, n)) ? join(BREW, n) : n);
@@ -33,7 +34,7 @@ const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 const { BillingAccount, DELETION_DAYS } = await import("../api/src/platform/billing/account.ts");
 const { EXIT_NOTICE_DAYS, dueNotice, exitClock } = await import("../api/src/platform/billing/exit-clock.ts");
-const { EXIT_NOTICE_CRON, EXIT_NOTICE_QUEUE, EXIT_NOTICE_ZONE, ExitNotices } = await import("../api/src/platform/billing/exit-notices.ts");
+const { EXIT_NOTICE_CRON, EXIT_NOTICE_QUEUE, EXIT_NOTICE_ZONE, ExitNotices, exitNoticeWords } = await import("../api/src/platform/billing/exit-notices.ts");
 const { BYPASS_USES, withFirm } = await import("../api/src/platform/firm-scope.ts");
 const exitFeature = (await import("../api/src/features/platform-billing-exit.ts")).default;
 
@@ -137,7 +138,7 @@ try {
   await run(90, 0); await run(95);
   ok("PF-5 DW22 fail: the job down from day 47 to the deletion date → nothing is sent on or after it (day 83 is never sent late)", daysSent(B) === "0,16,46" && sentTo(B).length === perNotice * 3, daysSent(B));
   {
-    const c = { holdSince: T0, holdSeq: "1", deletionDate: new Date(T0.getTime() + 90 * DAY), noticesSent: [] as { day: number; sentAt: Date }[] };
+    const c = { holdSince: T0, holdSeq: "1", reason: "payment needed" as const, deletionDate: new Date(T0.getTime() + 90 * DAY), noticesSent: [] as { day: number; sentAt: Date }[] };
     ok("PF-5 DW22 pass: down for the whole hold → only the newest due notice is sent (day 84 → day 83, never 0, 16 or 46 late)", dueNotice(c, at(84)) === 83 && dueNotice(c, at(45, 23)) === 16 && dueNotice(c, at(-1)) === null && dueNotice(c, c.deletionDate) === null);
   }
   hold(B, at(200, 0)); await run(283); await run(283, 6);
@@ -152,6 +153,36 @@ try {
     const cB = await exitClock(db, B), seqB = cB!.holdSeq, mailedDays = [...new Set(sentTo(B).map((m) => m.idempotencyKey!).filter((k) => k.includes(`:${seqB}:`)).map((k) => Number(/:day-(\d+):/.exec(k)![1])))].sort((x, y) => x - y);
     ok("PF-5 DW25 fail: noticesSent lists exactly the notices sent for the current hold (not an earlier hold's), each with the clock's time", cB!.noticesSent.map((n) => n.day).join() === mailedDays.join() && mailedDays.join() === "83" && cB!.noticesSent[0].sentAt.getTime() === at(283).getTime(), { sent: cB!.noticesSent, mailedDays });
   }
+
+  // ------------------------------------------ review round 1: a refused address, the firm's calendar, the address hold
+  {
+    const ownerA = ownersA[0];
+    const refusing: MailPort = { async send(m) { if (m.to === ownerA) throw new MessageRefused("this address is suppressed (a hard bounce)"); return mail.send(m); } };
+    const n = new ExitNotices({ db, mail: refusing, audit: auditEvent, now: () => fake.now(), appUrl: APP });
+    const before = sentTo(A).length; await fake.set(at(116));
+    const r = await withFirm(A, () => n.runFirm(A)), got = sentTo(A).slice(before).map((m) => m.to).sort();
+    const line = sql(`select (detail->>'refused') || '/' || (detail->>'recipients') from audit_event where firm_id = '${A}' and action = 'firm.exit_notice_sent' and detail->>'day' = '16' and entity_key like '%:${c2!.holdSeq}:%'`);
+    ok("review M1 pass: an address that is always refused never holds back the others: they get the warning and the notice is recorded with 1 refused",
+      r.sent === 16 && r.refused === 1 && !got.includes(ownerA) && got.length === want.length - 1 && line === `1/${want.length}`, { r, got, line });
+    await fake.set(at(116, 5)); const again = await withFirm(A, () => n.runFirm(A));
+    ok("review M1 fail: the next run sends nothing more for that notice (the refusal is final)", again.sent === null && sentTo(A).length === before + want.length - 1, again);
+  }
+  {
+    const evening = { deletionDate: new Date(new Date("2026-12-01T02:00:00Z").getTime() + 90 * DAY), reason: "payment needed" as const };
+    const toronto = exitNoticeWords(16, evening, "America/Toronto", APP), utc = exitNoticeWords(16, evening, "UTC", APP);
+    ok("review M2 pass/fail: a hold that starts on 30 Nov at 21:00 Toronto names 28 Feb 2027 on the firm's calendar (UTC would say 1 Mar)", toronto.subject.endsWith("28 Feb 2027") && utc.subject.endsWith("1 Mar 2027"), [toronto.subject, utc.subject]);
+    const addr = exitNoticeWords(0, { ...evening, reason: "business address needed" }, "America/Toronto", APP), pay = exitNoticeWords(0, evening, "America/Toronto", APP);
+    ok("review m2 pass/fail: a hold for the business address says to add the address; a payment hold says to add a card or pay", /add your firm's business address/.test(addr.text) && !/add a card/.test(addr.text) && /add a card or pay the open invoice/.test(pay.text), addr.text);
+  }
+  {
+    // review m3: three sweeps and a direct run at the same time on the same due notice → one line, one mail per recipient.
+    const before = sentTo(A).length; await fake.set(at(146));
+    await Promise.all([notices.sweep(), notices.sweep(), notices.sweep(), withFirm(A, () => notices.runFirm(A))]);
+    const lines = sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'firm.exit_notice_sent' and detail->>'day' = '46' and entity_key like '%:${c2!.holdSeq}:%'`);
+    const keys = sentTo(A).slice(before).map((m) => m.idempotencyKey);
+    ok("review m3 pass: concurrent runs write one audit line for the notice and send each recipient once", lines === "1" && keys.length === want.length && new Set(keys).size === keys.length, { lines, keys: keys.length });
+  }
+  ok("review m4 fail (SA2-D13): no notice of the whole run, any day or firm, says \"legal obligation\", a regulator, a number of years or a section", mail.sent.length >= 15 && mail.sent.every((m) => !FORBIDDEN.some((re) => re.test(`${m.subject}\n${m.text}`))), mail.sent.length);
 } catch (e) {
   ok("PF-5 part 4: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
 } finally {

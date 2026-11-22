@@ -1,0 +1,47 @@
+# Review: PF-5 part 4 (the 90-day payment-hold clock and the departure notices; R1.105)
+
+Reviewer: an independent Opus 5.5 session that did not build this part. Commit reviewed: `40fd58854a20814de0cc10b5989c07568091343e` (branch `claude/friendly-bell-veq0zz`) against `origin/main`. Spec: brief `design/briefs/track-b/PF-5-4.md` (origin/lead-b/2026-11-22-track-b), P-799, SA-02 v2.24 lines 65, 354, 476. This part is API only (no screen, no route), so the screen steps (keyboard, 1024 px, 200 % zoom, BIC-01 to BIC-20) are N/A. No app was started (none was needed), and :4400 was not used. Live AI off, US$0. Journey test: `journey-test-reviewer-2026-11-22.md`, **7/10 (fail)**.
+
+**Verdict: Rework.** The clock, the newest-due rule, the deletion-date stop, the walls and the race handling are correct, and every DW mutation I tried except one is caught. Three of CI's static sweeps fail with this change, though, and there are three Majors.
+
+## What I ran
+* `tsx --tsconfig api/tsconfig.json tests/check_pf5_exit_clock.ts </dev/null`: **28 passed, 0 failed**, exit 0, 7 s.
+* `tests/check_pf12b_bypass_audit.ts`: 70/70. Unchanged and passing: `check_pf5_signup_billing` (107), `check_pf5v_signup_mail` (13), `check_pf5t_terms` (42), `check_pf12_walls` (110), `check_features_registry` (27). `tsc` reports no error in a changed file.
+* `product/tools/static-sweeps.mjs --base origin/main`: **3 sweeps fail with this change** (B1). `module-cards.py pr` on the changed files fails (M3). `graph.mjs`: G1, G2, G4 and G5 are 0, and no route or page is added.
+* **Mutations** (in a scratch copy, not the branch). Each of these makes named checks fail: a Case Officer among the recipients (DW20 ×2); the oldest unsent notice in place of the newest (DW22, DW21, DW25); no deletion-date guard (DW22 ×2, DW21); a clock for any status (DW24 ×2 and 7 more); `noticesSent` across holds (DW23, DW25); `sentAt` taken from `audit_event.at` (DW25); "7 years as your regulator requires" in the text (DW20 fail); the billing email dropped (DW20); the audit line written despite a failed send (DW22 ×4); day 16 changed to 15 (9 checks). **One survives:** removing the re-check before the audit line (`exit-notices.ts:69`) still gives 28/28 (m3).
+* **Probes** (scratch scripts on a scratch database). Three concurrent `sweep()` calls plus one `runFirm()`, on day 0 and again on day 16, gave exactly one `firm.exit_notice_sent` line per day and one mail per recipient (the advisory lock and the re-check hold). A permanently refused first recipient gave M1.
+
+## Deliberate choices, judged
+1. **The sweep runs hourly, 06:45 to 22:45 Toronto:** accepted. It avoids 01:00-03:00 in every Canadian zone, and day 0 goes out within the hour. Its cost is m1.
+2. **The billing email is sent TRANSACTIONAL with no person:** accepted. The gate treats it the same as SERVICE: `purposeNeeded` returns null for both on email (`ports/consent.ts:181-185`), so only the outbox label differs. The PR body must state the departure from the brief's "SERVICE".
+3. **`sentAt` is kept in the line's `detail`:** accepted. DW25 catches the mutation that reads `at` instead.
+4. **Mails go before the line, one key per recipient:** correct for a passing failure (DW22). Wrong for a permanent refusal (M1).
+5. **Newest due only, nothing on or after the deletion date:** correct (`exit-clock.ts:45-51`). The test catches both mutations.
+Walls: `asBypass` on its listed use, then `touchEachFirm` before any firm is worked, then each firm in its own `withFirm`. The audit line's `firmId` is that scope's firm. This is the same pattern as `storage.ts`. The `BYPASS_USES` entry is the one line the brief allows. Recipients come from `firmScope` and a live OWNER or ADMIN grant, so never a Case Officer and never firm B (DW20 fail, mutation M1). Wording (SA-2-38, SA2-D13): no regulator name, no number of years, no section and no "legal obligation", and it keeps "keep your own copy … professional rules require". The day arithmetic uses 24 h steps from `occurredAt`, the same as `account.ts`; day 15 at 23:00 sends nothing.
+
+## Findings
+**Blocker**
+* **B1. CI's static sweeps fail with this change, so the merge batch would fail** (`static-sweeps.mjs`: "3 sweep(s) fail with this change … fix before the label"):
+  (a) `tests/check_aud_values.ts`: "`platform/billing/exit-notices.ts:70` (no before)". QA-594 requires `before` and `after` on every platform audit write. Fix: pass them, e.g. `before: { noticesSent: [...] }` and `after` with the new day.
+  (b) `tests/check_case_feed.ts`: "`exit-notices.ts:70` (entity EXIT_NOTICE_ENTITY is dynamic and not known to this check)". Fix: write the literal `"platform_firm"` at the call.
+  (c) `tests/check_pf19r_every_sender.ts` S1: "`platform/billing/exit-notices.ts`: {mailSend:1,anySend:1} send call(s) not in the table". Fix: add the file's row to that test's table (route: MESSAGES_MAIL, `features/platform-billing-exit.ts`). This file is outside the touch list, a knock-on like the `check_pf12b` one, so state it in the PR body.
+
+**Major**
+* **M1. One permanently refused recipient blocks every recipient after it, and the record, for the whole hold** (`exit-notices.ts:61-64`, together with `messages/send/mail.ts`, which throws `MessageRefused` on SUPPRESSED/FAILED/BOUNCED and again on every repeat of that key). Scenario, run as a probe: the firm's first recipient by staff id has a bounced or complained address (`msg_suppression`). Every hourly run on days 0 to 89 returns `{sent:0, failed:1}`. The billing email, which comes after it in the loop, gets **no mail at all**. No `firm.exit_notice_sent` line is ever written, so PF-11c's day-90 gate ("notices recorded as sent") cannot pass, and `exit_notice_failed` is logged 17 times a day. DW22 tests only a failure that passes. Fix: send every recipient whatever another's result is. Treat `MessageRefused` as final for that recipient (count it in `detail`, e.g. `refused`) and write the line once each recipient is sent or refused. Keep the retry for any other error. Add a DW22 case with a recipient that is always refused.
+* **M2. The deletion date in the email is formatted in UTC, a day later than the billing page and the real deadline for evening holds** (`exit-notices.ts:30`, `timeZone: "UTC"`). Scenario: a hold starts 2026-12-01T02:00Z, which is 30 Nov 21:00 in Toronto. The email says "deleted on **1 Mar 2027**". The billing page (`web/.../billing-contract.ts:40`, the browser's local time) and the clock's own instant (2027-02-28 21:00 Toronto) give **28 Feb 2027**. A firm that pays "on" the stated day may already be past the clock. For Canadian zones this happens to every hold that starts between 00:00 and 08:00 UTC. Fix: format in the firm's time zone (the `TIME_ZONE` setting, `api/src/platform/settings.ts:218`) or fall back to the day before, and test it with an evening hold.
+* **M3. Module card rule (P-712, STANDARDS line 46):** `api/src/features/platform-billing-exit.ts` changes the `api-features` module, but neither `features/MODULE.md` nor a `features/MODULE.rows/PF-5-4.md` is in the change. `module-cards.py pr` fails: "module api-features: 1 file(s) changed …, card … not". The precedents (`features/MODULE.rows/PF-15b.md`, `PF-16a.md`) each add a fragment. Fix: add `features/MODULE.rows/PF-5-4.md`, with an Entry points line and `Tests: tests/check_pf5_exit_clock.ts`.
+
+**Minor**
+* **m1.** The hourly sweep runs `touchEachFirm` on every held firm on every run (`exit-notices.ts:91-94`), even when nothing is due. That is up to 17 `platform.bypass` lines a day on each held firm's trail, about 1,500 over one hold. Fix: work out which firms are due inside the bypass read, and touch only those.
+* **m2.** A hold for reason `business address needed` (`webhook.ts:142`) is told to "add a card or pay the open invoice" (`exit-notices.ts:39`). That is the wrong action for that reason (the billing page names it). Fix: pass the hold's reason and use words for "add your business address".
+* **m3.** No race case: removing the re-check under the lock (`exit-notices.ts:69`) leaves the check green. The code is correct (probe above). Add a case with two concurrent `runFirm` calls → one line.
+* **m4.** "DW20 fail (SA2-D13) … in any notice's subject or text" (`check_pf5_exit_clock.ts:103`) scans only the day-0 mails. Also scan the words for days 16, 46 and 83 (`exitNoticeWords`).
+* **m5.** The firm's message panel will show these emails' purpose as "mail": `purposeOf` (`messages/staff-routes.ts:32-35`) reads the key `mail:firm-exit:…`, the same as the storage emails. A dotted head (e.g. `platform.billing.exit_notice:…`) would name them.
+
+## What I could not check
+A real SES send, and the email as rendered by the branded layout (fake mail only). PF-11c's use of `noticesSent`, which is not built. D17 and D20 (simulated only; no intended user). Whether full `ci` is green (local runs only).
+
+## D1-D20 (API-only part; N/A where a screen is meant)
+D1 3/5 (the rules map to tests; M2 misstates the date) · D2 4 (no duplicate under race, probe) · D3 5 (DELETION_DAYS imported, one constant) · D4 N/A · D5 2 (a permanent refusal is never recovered, M1) · D6 4 (an audit line with day, deletion date and sentAt) · D7 N/A (no AI) · D8-D14 N/A (no screen; plain words in the email: D10 4) · D15 5 (a sweep takes milliseconds) · D16 3 (11/12 mutations caught; three sweeps red) · D17, D20 simulated only · D18 4 (P-799 and SA-02 cited in code) · D19 N/A (the close is PF-11c's).
+
+Verdict: Block. Commit reviewed: 40fd58854a20814de0cc10b5989c07568091343e

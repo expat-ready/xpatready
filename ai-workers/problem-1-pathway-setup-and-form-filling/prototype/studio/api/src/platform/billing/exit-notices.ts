@@ -1,14 +1,18 @@
 // PF-5 part 4 (R1.105; SA-2-6, SA-2-38, SA2-D13; P-799): the departure notices of a firm on payment hold. Day 0 is the
 // payment-hold notice; days 16, 46 and 83 of the hold are the deletion warnings (EXIT_NOTICE_DAYS, the one constant).
 // Each goes to the firm's Owners and Admins (active, a live grant) and to the billing email, never to another role or
-// another firm. The words state only our own facts (SA-2-38, SA2-D13): the deletion date and where to pay. No regulator
-// name, number of years or section, never "legal obligation". The data download is PF-11's: until it exists the notice
-// names the billing page only and says nothing about a download (BACKLOG row PF-5).
+// another firm. The words state only our own facts (SA-2-38, SA2-D13): the deletion date (in the firm's own time zone,
+// as its billing page shows it) and what to do on the billing page. No regulator name, number of years or section, never
+// "legal obligation". The data download is PF-11's: until it exists the notice names the billing page only and says
+// nothing about a download (BACKLOG row PF-5).
 // A sweep runs on PF-14's runner (ExitNotices.register), every firm on hold, each in its own firm scope. Per firm: the
-// newest due notice is sent once (the mail key per recipient: a run twice sends nothing new), then one audit line
-// `firm.exit_notice_sent` records it (actor system:platform.billing.exit_notices). A notice missed while the job was down
-// is sent on the next run, only the newest one due, never on or after the deletion date. A hold that ends sends nothing
-// more; a new hold starts a new clock. The close on day 90 is PF-11c's. Legal readings: Unconfirmed: no counsel.
+// newest due notice goes to each recipient on its own (one key per recipient: a run twice sends nothing new). A refusal
+// (MessageRefused: a suppressed or withdrawn address) is final for that recipient and never holds back the others; any
+// other failure leaves the notice unrecorded, so the next run sends to the ones still missing. Once every recipient was
+// sent or refused, one audit line `firm.exit_notice_sent` records it (actor system:platform.billing.exit_notices; the
+// count sent and refused). A notice missed while the job was down is sent on the next run, only the newest one due,
+// never on or after the deletion date. A hold that ends sends nothing more; a new hold starts a new clock. The close on
+// day 90 is PF-11c's. Legal readings: Unconfirmed: no counsel.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
@@ -16,7 +20,9 @@ import type { MailPort } from "../../../../ports/mail.ts";
 import { asBypass, firmScope, touchEachFirm, withFirm } from "../firm-scope.ts";
 import { SYSTEM_REPLY_TO } from "../identity/session/mail.ts";
 import { logPort } from "../observability/log.ts";
-import { EXIT_NOTICE_ACTION, EXIT_NOTICE_ENTITY, dueNotice, exitClock, exitNoticeKey, type ExitClock, type ExitNoticeDay } from "./exit-clock.ts";
+import { TIME_ZONE, readSetting } from "../settings.ts";
+import { EXIT_NOTICE_ACTION, dueNotice, exitClock, exitNoticeKey, type ExitClock, type ExitNoticeDay } from "./exit-clock.ts";
+import { ADDRESS_NEEDED } from "./webhook.ts";
 
 type Tx = Prisma.TransactionClient;
 /** Hourly from 06:45 to 22:45 Toronto: outside 01:00-03:00 in every Canadian zone (St. John's 08:15-00:15, Vancouver
@@ -27,52 +33,67 @@ const ACTOR = "system:platform.billing.exit_notices";
 export type ExitNoticeDeps = { db: PrismaClient; mail: MailPort | null; audit: AuditPort<Tx>; now: () => Date; appUrl: string };
 type Recipient = { email: string; staffId: string | null };
 
-const dateWords = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });   // "14 Jan 2027", SA-2-38's form
+/** "1 Mar 2027" (SA-2-38's form), on the firm's own calendar. */
+export const dateWords = (d: Date, zone: string) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: zone });
 
 /** The words (SA-2-38's facts only). Exported for the test that reads them. */
-export function exitNoticeWords(day: ExitNoticeDay, deletionDate: Date, appUrl: string) {
-  const on = dateWords(deletionDate), billing = `${appUrl}/settings/billing`;
+export function exitNoticeWords(day: ExitNoticeDay, clock: Pick<ExitClock, "deletionDate" | "reason">, zone: string, appUrl: string) {
+  const on = dateWords(clock.deletionDate, zone), billing = `${appUrl}/settings/billing`;
   const subject = day === 0 ? "Your ExpatReady subscription is on hold" : `Your firm's data will be permanently deleted on ${on}`;
   const first = day === 0
-    ? `Your firm's ExpatReady subscription is on hold. Unless it is paid, your firm's data will be permanently deleted on ${on}.`
+    ? `Your firm's ExpatReady subscription is on hold. Unless this is resolved, your firm's data will be permanently deleted on ${on}.`
     : `Your firm's ExpatReady subscription is still on hold. Your firm's data will be permanently deleted on ${on}.`;
-  const text = `${first}\n\nTo keep your firm's data, add a card or pay the open invoice on your billing page: ${billing}. Paying at any time before then restores your account with all its data.\n\nKeep your own copy of your records for as long as your professional rules require.`;
+  const todo = clock.reason === ADDRESS_NEEDED
+    ? `To keep your firm's data, add your firm's business address on your billing page so your invoice can be issued and paid: ${billing}.`
+    : `To keep your firm's data, add a card or pay the open invoice on your billing page: ${billing}.`;
+  const text = `${first}\n\n${todo} Resolving it at any time before then restores your account with all its data.\n\nKeep your own copy of your records for as long as your professional rules require.`;
   return { subject, text };
 }
+
+const refusedFinally = (e: unknown) => e instanceof Error && e.name === "MessageRefused";
 
 export class ExitNotices {
   constructor(private readonly d: ExitNoticeDeps) {}
 
   /** Sends the due notice of one firm, in the caller's firm scope (the job's withFirm, or a test). */
-  async runFirm(firmId: string): Promise<{ sent: ExitNoticeDay | null; to: number }> {
+  async runFirm(firmId: string): Promise<{ sent: ExitNoticeDay | null; to: number; refused: number }> {
     const id = firmScope(firmId).firmId, now = this.d.now();
-    if (!this.d.mail) return { sent: null, to: 0 };   // no mail wired: nothing is recorded as sent
+    if (!this.d.mail) return { sent: null, to: 0, refused: 0 };   // no mail wired: nothing is recorded as sent
     const mail = this.d.mail;
     const read = await this.d.db.$transaction(async (tx) => {
       const clock = await exitClock(tx, id);
       const day = clock ? dueNotice(clock, now) : null;
-      return clock && day !== null ? { clock, day, to: await this.recipients(tx, id) } : null;
+      return clock && day !== null ? { clock, day, to: await this.recipients(tx, id), zone: await readSetting<string>(tx, id, TIME_ZONE.key) } : null;
     });
-    if (!read) return { sent: null, to: 0 };
-    const { clock, day, to } = read;
-    {
-      const { subject, text } = exitNoticeWords(day, clock.deletionDate, this.d.appUrl), key = exitNoticeKey(id, clock.holdSeq, day);
-      // Each recipient once per notice (its own key): a failure leaves no line, and the next run sends only the rest.
-      for (const r of to) await mail.send({ firmId: id, to: r.email, replyTo: SYSTEM_REPLY_TO, templateKey: day === 0 ? "platform.billing.payment_hold" : "platform.billing.deletion_warning",
-        idempotencyKey: `${key}:${r.staffId ?? "billing"}`, subject, text,
-        // A SERVICE email names its person (MessagePort's gate); the billing email of no staff member is an account notice with no person.
-        ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }) });
+    if (!read) return { sent: null, to: 0, refused: 0 };
+    const { clock, day, to, zone } = read;
+    const { subject, text } = exitNoticeWords(day, clock, zone, this.d.appUrl), key = exitNoticeKey(id, clock.holdSeq, day);
+    let refused = 0, retry = 0;
+    for (const r of to) {
+      try {
+        await mail.send({ firmId: id, to: r.email, replyTo: SYSTEM_REPLY_TO, templateKey: day === 0 ? "platform.billing.payment_hold" : "platform.billing.deletion_warning",
+          idempotencyKey: `${key}:${r.staffId ?? "billing"}`, subject, text,
+          // A SERVICE email names its person (MessagePort's gate); the billing email of no staff member is an account notice with no person.
+          ...(r.staffId ? { class: "SERVICE" as const, person: { kind: "STAFF" as const, id: r.staffId } } : { class: "TRANSACTIONAL" as const }) });
+      } catch (e) {
+        if (refusedFinally(e)) refused++; else retry++;
+        logPort.error(refusedFinally(e) ? "exit_notice_refused" : "exit_notice_send_failed", e, { firmId: id });
+      }
     }
+    if (retry) throw new Error(`exit notice day ${day}: ${retry} send(s) failed; the next run sends to them`);
     const written = await this.d.db.$transaction(async (tx) => {
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`firm-exit:${id}`}))`;
       const again = await exitClock(tx, id);
       if (!again || again.holdSeq !== clock.holdSeq || again.noticesSent.some((n) => n.day === day)) return false;
-      await this.d.audit.record(tx, { firmId: id, actor: ACTOR, action: EXIT_NOTICE_ACTION, entity: EXIT_NOTICE_ENTITY, entityKey: exitNoticeKey(id, clock.holdSeq, day),
-        summary: day === 0 ? `The payment-hold notice was sent; the firm's data is deleted on ${dateWords(clock.deletionDate)} unless paid.` : `The day-${day} deletion warning was sent; the firm's data is deleted on ${dateWords(clock.deletionDate)} unless paid.`,
-        detail: { day, holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), sentAt: now.toISOString(), recipients: to.length } });
+      const deletion = dateWords(clock.deletionDate, zone);
+      await this.d.audit.record(tx, { firmId: id, actor: ACTOR, action: EXIT_NOTICE_ACTION, entity: "platform_firm", entityKey: key,
+        summary: `${day === 0 ? "The payment-hold notice" : `The day-${day} deletion warning`} was sent; the firm's data is deleted on ${deletion} unless resolved.${refused ? ` ${refused} of ${to.length} recipient(s) refused it (a suppressed or withdrawn address).` : ""}`,
+        detail: { day, holdSeq: clock.holdSeq, deletionDate: clock.deletionDate.toISOString(), sentAt: now.toISOString(), recipients: to.length, refused },
+        // R1.8 (QA-594): a notice is a new fact, nothing before it; after it, the notice day and the date it names.
+        before: null, after: { noticeDay: day, deletionDate: clock.deletionDate.toISOString(), sent: to.length - refused, refused } });
       return true;
     });
-    return { sent: written ? day : null, to: to.length };
+    return { sent: written ? day : null, to: to.length, refused };
   }
 
   /** The firm's active Owners and Admins (a live grant), then the billing email when it is none of theirs. */
