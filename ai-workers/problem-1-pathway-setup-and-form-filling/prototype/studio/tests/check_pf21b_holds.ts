@@ -337,11 +337,15 @@ try {
     shape(EMPTY) === "tplatform-owner5" && shape(DEMO) === "tplatform-owner5" && sqlOn(DEMO, `select count(*) from platform_firm`) === firmsBefore, { empty: shape(EMPTY), demo: shape(DEMO) });
   ok("PF-21b DW6: every function the migration creates carries the area prefix plat_ (rows rev 15.2)",
     [...readFileSync(join(MIG, NEW, "migration.sql"), "utf8").replace(/^\s*--.*$/gm, "").matchAll(/CREATE (?:OR REPLACE )?FUNCTION (\w+)/g)].every((m) => m[1].startsWith("plat_legal_hold")));
+  // The diff compares the fully migrated database with the schema: every migration later than this one is applied to the
+  // empty copy first, so a later row's tables never read as drift (batch 45080999446: FO-9b's fo_dup_merge listed).
+  const later = all.filter((d) => d > NEW);
+  for (const d of later) psqlFile(EMPTY, join(MIG, d, "migration.sql"));
   mkdirSync(WORK, { recursive: true });
   const cfg = join(WORK, "prisma.config.ts");
   writeFileSync(cfg, `import { defineConfig } from "prisma/config";\nexport default defineConfig({ schema: ${JSON.stringify(SCHEMA)}, migrations: { path: ${JSON.stringify(MIG)} }, datasource: { url: ${JSON.stringify(urlOf(EMPTY))} } });\n`);
   const diff = spawnSync(join(STUDIO, "node_modules", ".bin", "prisma"), ["migrate", "diff", "--config", cfg, "--from-config-datasource", "--to-schema", SCHEMA, "--exit-code"], { cwd: STUDIO, encoding: "utf8" });
-  ok("PF-21b DW6 pass: prisma migrate diff between the migrated database and the schema is empty", diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
+  ok(`PF-21b DW6 pass: prisma migrate diff between the fully migrated database (this migration, then the ${later.length} after it) and the schema is empty`, diff.status === 0, `${diff.stdout}${diff.stderr}`.slice(0, 800));
 } catch (e) {
   fail++; console.log(`FAIL  unexpected error — ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
