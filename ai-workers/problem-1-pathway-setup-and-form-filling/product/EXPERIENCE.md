@@ -95,7 +95,7 @@ The team checks its own screens against 18 UI/UX laws and found 169 issues on ~2
 | UXL-06 | About 7 equal choices at most in one place; the rest grouped or behind "More" (Hick, Miller). | Count equal-weight clickable choices. |
 | UXL-07 | Identifiers longer than 6 characters are chunked (UCI, application, invoice, case numbers) (Miller). | Look for any long id shown as one block. |
 | UXL-08 | First and last items in each list or menu are the important ones; Delete and Sign out set apart (Serial Position). | Read each nav list's ends. |
-| UXL-09 | Touch targets big enough on phones; primary actions in thumb reach; whole row clickable (Fitts). | At 375 px measure primary buttons (size: founder question, see P-794). |
+| UXL-09 | Touch targets big enough on phones; primary actions in thumb reach; whole row clickable (Fitts). | At 375 px primary buttons are at least 44 px tall (founder, P-795); other targets at least 24 px (WCAG 2.5.8). |
 | UXL-10 | No sideways page scroll at 375 px; wide tables, tab strips and chip rows show they scroll (Continuity). | At 375 px: page width = viewport; overflow visible. |
 | UXL-11 | Multi-pane pages collapse to one pane on phones (Continuity, Prägnanz). | At 375 px each pane is reachable and readable. |
 | UXL-12 | Loading, empty and error states exist; feedback within about 400 ms (Doherty). | Throttle the network; click every action. |
