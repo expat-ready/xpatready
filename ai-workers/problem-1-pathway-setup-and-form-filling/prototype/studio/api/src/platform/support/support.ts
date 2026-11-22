@@ -10,6 +10,10 @@
 // (EVENT.SUPPORT_TICKET_RAISED, ids only) are one transaction. After the commit, one email to our support inbox (Sample
 // address) with the firm's key, the ticket id and the page only; a failed send leaves the ticket saved (`emailed: false`).
 // Our reply (replyAsSupport) has no route here: PF-17's console calls it under /api/system after PF-4s.
+// PF-18s part 2 (challenge M4, M5): the list and one ticket also answer `subject` (the first line of the first message, cut to
+// 80 characters: AG-16 §3.15 "the first line as the subject") and `raisedByName`; one ticket's staff messages carry `authorName`.
+// Names come from platform_staff in the ticket's own firm in the same read (AG01-28: colleague names on records need no key),
+// so the Help pages never call GET /staff.
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { PlatformSupportMessage, PlatformSupportTicket, Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -105,13 +109,20 @@ export function attachmentProblem(f: Upload): string | null {
 }
 
 // ------------------------------------------------------------------------------------------------------------- views
-export type MessageView = { id: string; authorKind: PlatformSupportMessage["authorKind"]; authorId: string; body: string; files: number[]; createdAt: Date };
-export type TicketView = Omit<PlatformSupportTicket, "firmId"> & { messages?: MessageView[] };
+export type MessageView = { id: string; authorKind: PlatformSupportMessage["authorKind"]; authorId: string; authorName?: string | null; body: string; files: number[]; createdAt: Date };
+export type TicketView = Omit<PlatformSupportTicket, "firmId"> & { messages?: MessageView[]; subject?: string; raisedByName?: string | null };
+/** A ticket's subject (PF-18s part 2, challenge M5): the first line with words of its first message, cut to 80 characters. */
+export const SUBJECT_MAX = 80;
+export const subjectOf = (body: string) => {
+  const line = body.split(/\r\n|\r|\n/).map((l) => l.trim()).find(hasText) ?? body.trim(), cs = [...line];
+  return cs.length > SUBJECT_MAX ? `${cs.slice(0, SUBJECT_MAX - 1).join("").trimEnd()}…` : line;
+};
 const fileNumber = (key: string) => Number(key.split("/").pop());
-const messageView = (m: PlatformSupportMessage): MessageView => ({ id: m.id, authorKind: m.authorKind, authorId: m.authorId, body: m.body, files: m.fileKeys.map(fileNumber), createdAt: m.createdAt });
-const view = (t: PlatformSupportTicket, messages?: PlatformSupportMessage[]): TicketView => {
+const messageView = (m: PlatformSupportMessage, names?: Map<string, string>): MessageView => ({ id: m.id, authorKind: m.authorKind, authorId: m.authorId,
+  ...(names ? { authorName: m.authorKind === "FIRM_STAFF" ? names.get(m.authorId) ?? null : null } : {}), body: m.body, files: m.fileKeys.map(fileNumber), createdAt: m.createdAt });
+const view = (t: PlatformSupportTicket, messages?: PlatformSupportMessage[], names?: Map<string, string>): TicketView => {
   const { firmId: _f, ...rest } = t;
-  return { ...rest, ...(messages ? { messages: messages.map(messageView) } : {}) };
+  return { ...rest, ...(messages ? { messages: messages.map((m) => messageView(m, names)) } : {}) };
 };
 export const fileKeyOf = (ticketId: string, n: number) => `support/${ticketId.toLowerCase()}/${n}`;
 
@@ -170,15 +181,19 @@ export class SupportService {
   /** The person's own tickets, or the firm's for an Owner or Admin; newest first. */
   async list(ctx: StaffContext): Promise<{ items: TicketView[]; allFirm: boolean }> {
     const firmId = firmScope(ctx.firmId).firmId, all = this.allFirm(ctx);
-    const rows = await this.d.db.platformSupportTicket.findMany({ where: firmScope(firmId, all ? {} : { raisedBy: ctx.staffId.toLowerCase() }), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PAGE });
-    return { items: rows.map((t) => view(t)), allFirm: all };
+    const rows = await this.d.db.platformSupportTicket.findMany({ where: firmScope(firmId, all ? {} : { raisedBy: ctx.staffId.toLowerCase() }), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: PAGE,
+      include: { raiser: { select: { displayName: true } }, messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 1, select: { body: true } } } });
+    return { items: rows.map(({ raiser, messages, ...t }) => ({ ...view(t), subject: subjectOf(messages[0]?.body ?? ""), raisedByName: raiser.displayName })), allFirm: all };
   }
 
   /** One ticket with its messages in order, for a person who may see it; otherwise the same 404 as another firm's. */
   async get(ctx: StaffContext, id: string): Promise<TicketView> {
     const t = await this.visible(ctx, id);
     const messages = await this.d.db.platformSupportMessage.findMany({ where: firmScope(t.firmId, { ticketId: t.id }), orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-    return view(t, messages);
+    const ids = [...new Set([t.raisedBy, ...messages.filter((m) => m.authorKind === "FIRM_STAFF").map((m) => m.authorId)])].filter(isUuid);
+    const staff = await this.d.db.platformStaff.findMany({ where: firmScope(t.firmId, { id: { in: ids } }), select: { id: true, displayName: true } });
+    const names = new Map(staff.map((s) => [s.id.toLowerCase(), s.displayName]));
+    return { ...view(t, messages, names), subject: subjectOf(messages[0]?.body ?? ""), raisedByName: names.get(t.raisedBy) ?? null };
   }
 
   /** The firm's next message (the raiser, or an Owner or Admin): "Waiting on support". */
