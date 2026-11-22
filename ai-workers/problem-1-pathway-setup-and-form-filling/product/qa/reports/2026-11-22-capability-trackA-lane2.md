@@ -17,7 +17,7 @@ All five were already on main before this lane started (no new journey written; 
 |---|---|---|
 | R1.10 | PF-28 part 4 #2908 (09:00 UTC) | PF-28 part 5 #2933 (approved, queued) |
 | R1.88 | AUD-4 #2339, AUD-4s part 2 #2916 (17:18 IST) | — |
-| R1.102 | PF-30a #2884, CS-S1 part 1 #2035 | CS-S1 part 2 #2913, PF-30s #2921 (both approved) |
+| R1.102 | PF-30a #2884, CS-S1 part 1 #2035, PF-30s #2921 (18:29 IST) | CS-S1 part 2 #2913 |
 | R1.23 | PF-13 parts 1a, 1b, part 2 #2910 (16:34 IST) | — |
 | R1.104 | FO-5 parts 1-2 | FO-3c #2922 |
 No row has all its parts merged: **no verdict yet (P-606)**; CAPABILITIES rows unchanged.
@@ -42,6 +42,9 @@ Walked within 10 min of #2916's merge (17:18 IST).
 * GitHub (P-339): walks.yml 45019288306 (job 137198530530) and 45019291303 (job 137198572385), j_88 success twice on f198c943b (this lane dispatched both; the second was a duplicate click, kept as the second run). PR head walk 45011253504 success; merge-queue ci 45015795367 success.
 * Local: `j_88` on fresh isolated copies :4477 and :4478: 26/26 PASS, exit 0, twice.
 * All of the Done when holds: Owner and Admin filter by person, record and date and export (row-by-row match with audit_event, one audit.exported line); the four other roles refused on screen and by API (403); 375/1024/1440 axe clean. Screenshots: `2026-11-22-capability-trackA-lane2/R1.88-f198c943b/`.
+
+## R1.102 interim (22 Nov 18:3x IST, main after #2921; no verdict, P-606)
+One `j_102` run on a fresh isolated copy (:4472), exit 1. The find box works now: "/" opens it, "No matches" before the records exist, the lead found by name and by email ("Matched: Email"), firm B's records never shown to firm A, a hidden lead never shown to user-O, records closed by their own routes, and 400/1024/1440 axe clean. **Failing only on CS-S1 part 2 (#2913, the case finder):** W1 and W2 case principal by name and email, W3 by file number (firm A's and firm B's searches name no case), W4 firm B's case, W5 keyboard (needs the case as the second row).
 
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
