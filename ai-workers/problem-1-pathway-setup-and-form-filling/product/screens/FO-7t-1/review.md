@@ -1,6 +1,27 @@
-Reviewer: Block 0243e27a7bd7d7192f9ca74bca2d04e127348044
+Reviewer: Approve cf0f8cd6ec0eb04c921b758b0075c1d4eb4e2214
 
-# Round 2 (diff only, 6b67dcf31 → 0243e27a7)
+# Round 3 (diff only, 0243e27a7 → cf0f8cd6e)
+
+Read diff-only on 22 Nov by the same reviewer (only `tests/check_fo7t_trust.ts` changed under `tests/`). I did not run the check.
+
+**Verdict: Approve.** The check is the right specification to build part 1 to. No Blocker or Major is open.
+
+* **N1 fixed (l. 175):** the concurrent replay now sends `WIRE 1500` twice with the key `fo7t-replay`, with no reference and no trust request. So the duplicate-reference rule cannot fire. "200,201" with one payment is what a correct build answers: FO-7b checks the replay first, and a build has to turn the unique `(firm_id, idempotency_key)` race into a replay. Knock-on effects checked:
+  * r1 stays at its 600.00, so Paid.
+  * The duplicate case (l. 179-183) still finds d1's `ET-0001`.
+  * The receipt series check (l. 199-200) and the DW6 sums, held amounts and DW18 counts all read the database, so the extra 15.00 deposit keeps them true.
+* **n2 fixed (l. 160-161):** a request on another firm's person must now be 404, as DW10 and the firm-B wall (l. 250) say.
+* **n3 fixed (header l. 22):** the contract now states that a cheque's TRUST receipt says "Not yet cleared" on the PDF and in the email text, and that the check reads the text. The rule is pinned openly, not left implicit.
+* **Still open, as the builder chose: n1** (the trust-off 404 on `GET /requests/:id` is probed with an id that does not exist) and **n4** (`companyId` is never used; nothing confirms that no receipt number or event was taken after the cancelled-request refusal). Both are Minor, and the build's review may pick them up.
+* **Still open from earlier rounds:** the 400-vs-422 question to the tech lead (M7) and Lead B's confirmation of `trust.request_sent` (M8). Both are rulings, recorded in the header.
+
+Journey score: still not applicable, because no route or screen is built at this head.
+
+---
+
+# Round 2
+
+Round 2 verdict line: `Reviewer: Block 0243e27a7bd7d7192f9ca74bca2d04e127348044`
 
 Read diff-only on 22 Nov by the same reviewer, against the round 1 findings below and against the FO-7b payment code on #2953 (`invoices/money.ts`: the replay is checked before the duplicate reference). I did not run the check. Line numbers are those of the file at `0243e27a7`.
 
