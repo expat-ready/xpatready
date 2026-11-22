@@ -231,3 +231,107 @@ Commit `4bcbf9c4119fb844ebf91e6f07628a01995cd586`. This is a diff pass (`git dif
   - 10,000 plain note inserts: about 0.045 ms per row for the guard (700–900 ms with it vs 260–330 ms without; at ae52eabd6, 500–620 ms vs 430).
 
 Verdict: Changes 4bcbf9c4119fb844ebf91e6f07628a01995cd586
+
+## Round 4 (c5b957bb7)
+
+Commit `c5b957bb73ddca910a8e14a33b4e09a799ad6e76`. This is a diff pass (`git diff 4bcbf9c41 c5b957bb7 -- …/studio`) using the same method as before: scratch databases `xr_brk_fo9b_*`, all dropped; port 4400 never used; US$0. To tell new problems from old ones, every new attack was also run against an extracted copy of `4bcbf9c41`. The script is `scratchpad/brk/break5.mts`. The repo check (`tests/check_fo9b_merge.ts`, run on an extracted copy with the database renamed) gives 81 passed, 0 failed.
+
+### Round-3 findings, re-run
+- **M1′ fixed for every writer named in round 3.** The same races, ×12 each, and the deterministic cases, all at c5b957bb7:
+
+| Race | Deadlocks at 4bcbf9c41 | At c5b957bb7 |
+|---|---|---|
+| Company merge vs changeRole / endContact | 5 / 7 | 0 / 0 |
+| D5 (company held, then its link) | merge 40P01 | both finish |
+| Person merge vs changeRole / endContact | 7 / 9 | 0 / 0 |
+| D1 / D1b (person merge vs changeRole) | writer 40P01 | both finish |
+| Person Undo vs changeRole | 8 | 0 |
+| Company Undo vs changeRole / endContact | 3 / 10 | 0 / 0 |
+| addNote / logCall on a prospect vs merge | 1 / 2 | 0 / 0 |
+| addNote on a prospect vs Undo | 1 | 0 |
+| D3 (logCall on a prospect) | 40P01 | both finish |
+
+  M1b (engage, close, addNote, logCall, Add by id, Undo vs addNote, Add, livePersonId) and R4 random stress: 0 deadlocks. 0 rows on any tombstone after any run. Other writers still deadlock: see M1″.
+- **m1 fixed.** N2: with the merge held open, an Add with `confirmedNew` and the loser's email now waits, then saves.
+  - Survivor kept its own email: no flag.
+  - Survivor took the loser's email: the survivor is flagged.
+  - Undo in flight: the Add saves.
+  - Random races (Add vs merge, Add vs Undo, ×12 each): 24 of 24 succeed.
+- **m3′ fixed as worded.** The message no longer advises withdrawing: "…consent records are never removed; it cannot be undone while that copy is live." Withdrawing on S still ends S's own consent too (`consent-store.ts:99-103`), but nothing steers staff there now. The code comment at `service.ts:268` still says "Withdrawing the copy first lets the Undo run".
+- **m4′ fixed.**
+  - A crafted copy of a real standing merge, even with the same `at`, gets `23505 fo_dup_merge_one_standing`.
+  - A forged stamp on the real merge is refused.
+  - The real Undo restores exactly, and V's lead is untouched.
+  - New remainder: see m4″.
+- **m5′ unchanged, as listed for part 2.** `calls.ts` is not in the diff (the line is now `:56`). The 404 "No such lead" rates are addNote 5/12, logCall 6/12, Undo vs addNote 5/12.
+
+### Findings
+**M1″ — Major. Merge still deadlocks with three ordinary writers. The new lock order causes two of them, and cuts the third from 7/12 to 2/12; the loser gets a raw 40P01 (500).** No data was wrong in any run.
+- **X1, new: company merge vs person merge, where one contact is linked to both duplicate companies** (the usual case for duplicate companies).
+  - The two merges take the same two companies in opposite orders:
+    - `lockForPersons` locks the companies in id order (`service.ts:73`).
+    - The company merge locks loser, then survivor (`find` at `:193`).
+  - Deterministic repro:
+    1. coS has the lower id. A session takes `select … from fo_company where id = coL for update`.
+    2. Start `merge(COMPANY coS ← coL)`; it queues on coL.
+    3. Start `merge(PERSON Y ← X)`; it locks coS, then queues on coL.
+    4. Commit the session. The person merge dies with 40P01.
+  - With the ids the other way round, both finish.
+  - Random races: 8 of 20 deadlock at c5b957bb7, 0 of 20 at 4bcbf9c41.
+- **X2, new: `Corporate.engage` of the loser's lead with a company the loser is already linked to.**
+  - Engage locks the lead (`corporate/service.ts:118`), then the company (`:126` → `:95`). The merge now locks the company first, then the leads.
+  - Deterministic repro:
+    1. A session holds the company `FOR UPDATE`.
+    2. Start the merge; it queues on the company.
+    3. Run `corp.engage(R, L's lead, { companyId })`; it locks the lead, then queues on the company.
+    4. Commit the session. Engage dies with 40P01.
+  - Random races: 9 of 12 deadlock (writer 5, merge 4); 0 of 12 at 4bcbf9c41.
+- **X3, improved, still open: `Corporate.changeType` to Corporate of L's individual prospect, with a company L is linked to.**
+  - changeType locks the prospect (`:331`), then the company (`:351` → `:95`). The merge locks company, then prospects.
+  - Deterministic repro: same steps as X2, with changeType instead of engage. changeType dies with 40P01.
+  - Random races: 2/12 (was 7/12).
+  - Corporate.engage vs Undo: 2/12 (was 10/12).
+- The tech lead's ordering (companies, then prospects, then leads) is the reverse of the order these two Corporate writers take. Either they change, or 40P01 becomes a 409 or a retry (`busy.ts`). The two company merges also need one order between their records (for example by id).
+
+**m6 — Minor (pre-existing; at 4bcbf9c41 too). `lockForPersons` reads the links without a lock, so a link committed after that read leaves its company unlocked.**
+- Repro (X4):
+  1. Session H inserts an OTHER link of L at company coN and does not commit.
+  2. Start a slow merge S ← L. Its company read misses coN, and `find(L)` waits on H's key share.
+  3. H commits. The merge moves the new link and stalls in `emit`.
+  4. Writer W runs `select … from fo_company where id = coN for update`, then ends that link.
+- Observed: at commit, the merge's deferred company lock meets W, and the merge dies with 40P01.
+- Three concurrent actions are needed, so it is Minor.
+
+**m4″ — Minor (new; same class as m4: it needs code that writes `fo_dup_merge`). A crafted standing record for a live loser blocks every later merge of that loser with a raw unique violation (500).**
+- Repro (X7):
+  1. Make a real merge Y ← X, then Undo it.
+  2. As `xr_app`, insert a record (Y, X) with `undone_at` null.
+  3. Merge Y ← X again.
+- Observed: `tx.foDupMerge.create` (`service.ts:231`) throws P2002. It is not a `PersonMergeRefused`, and the merge cannot run. Undo of the crafted row is refused (the tombstone does not match). The app role can still stamp it, which frees the slot.
+
+### What held (new)
+- **Unique index.**
+  - These all work: merge → Undo → re-merge of the same pair; the reversed pair; another survivor (T ← L); company merge → Undo → re-merge.
+  - A stale record cannot be undone again (ALREADY_UNDONE).
+  - Two merges of one loser into two survivors at once: one ok, the other ALREADY_MERGED (the advisory lock refuses it before the index is reached).
+  - The `merged_at` check passes with the Node process in UTC, America/Toronto and Asia/Kolkata.
+- **`possibleMatch` cannot loop.**
+  - Under READ COMMITTED, each `findFirst` takes a fresh snapshot that excludes the tombstone.
+  - A REPEATABLE READ caller gets one 40001 after 44 ms.
+  - Every `arrive()` caller is READ COMMITTED.
+  - Its new key-share lock deadlocked nothing: Add vs merge and Add vs Undo, ×12 each, 0 deadlocks.
+- **Other writers vs merge and Undo, ×12 each, 0 deadlocks:**
+  - `Prospects.engage`, close with a note.
+  - Staff phone edit on S and on L (`people/edit.ts:60`).
+  - A booking row writer (`FOR UPDATE`, then update).
+  - The person port (`ensureForClient` by prospect, then a note).
+  - `Corporate.addContact` while the company merge runs.
+
+### Noted, not graded (pre-existing writers that do not follow a tombstone; same class as m5′)
+Each answers a raw `ForeignKeyConstraintViolation` (500) rather than a 409:
+- `Corporate.addContact(personId: L)` during a person merge: 11/12.
+- `Corporate.engage` with the loser company during a company merge: 8/12 (7/12 at 4bcbf9c41).
+
+Nit: `lockIds` (`service.ts:68`) is never used.
+
+Verdict: Changes c5b957bb73ddca910a8e14a33b4e09a799ad6e76
