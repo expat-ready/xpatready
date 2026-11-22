@@ -46,7 +46,7 @@ Seeded 19 Nov from the two nearest-to-done lists: Lead B's lane order of 19 Nov 
 ## Track B (case side and client money; Lead B (Track B), P-785; founder A286/A287 22 Nov: one lane per open part)
 | Item | Rows a brief may name | Lead | Parts left |
 |---|---|---|---|
-| R1.56, R1.60 | FO-7b, FO-7g, FO-7s1 | Lead B (Track B) | FO-7b part 1b (#2953), FO-7g part 1w, FO-7s1 |
+| R1.56, R1.60 | FO-7b, FO-7g, FO-7q, FO-7s1 | Lead B (Track B) | FO-7b part 1b (#2953), FO-7g parts 1w and 3, FO-7q, FO-7s1 |
 | R1.57 | FO-7c | Lead B (Track B) | FO-7c parts 1-3 |
 | R1.58 | FO-7ts, FO-7t | Lead B (Track B) | FO-7ts part 3 (#2368), FO-7t parts 1-3 |
 | R1.65 | PF-F1 | Lead B (Track B) | PF-F1, PF-F1b, PF-F1c |
@@ -55,6 +55,6 @@ Seeded 19 Nov from the two nearest-to-done lists: Lead B's lane order of 19 Nov 
 | R1.93 | PF-17 | Lead B (Track B) | PF-17 parts 1-4 |
 | R1.54, R1.61 | FO-6, J-61 | Lead B (Track B) | FO-6 parts 3+, FO-6d, J-61 |
 | R1.55 | FO-5d | Lead B (Track B) | FO-5d part 1 |
-| R1.105 | PF-5 | Lead B (Track B) | PF-5 part 4; AUD-2 and PF-11c blocked |
+| R1.105 | PF-5 | Lead B (Track B) | PF-5 part 4; AUD-2 and PF-11c blocked (AUD-5 done, #2197) |
 | R1.85 | PF-21b, PF-21d | Lead B (Track B) | PF-21b parts 2-3, PF-21d, PF-21rs |
 | R1.76 | CS-NT1 | Lead B (Track B) | CS-NT1 parts 1-3 (#2320), CS-NT1t |
