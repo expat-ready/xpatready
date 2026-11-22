@@ -7,7 +7,7 @@ Item: R1.56
 
 **Start when:** #2967 (FO-7g part 1) and #2953 (FO-7b part 1b) are both merged. Branch from `origin/main` after both. No migration.
 
-**What to build (the row, exactly):** in FO-7b's draft code in `api/src/client-money/invoices/` (calls only), a new `FEE` or `DISBURSEMENT` line takes `taxDefault(...)`'s `ratePpm` through `lineRatePpm` (part 1's `tax/defaults.ts`); a `GOVERNMENT_FEE` line is 0 and asking to tax it is refused 400 at the field; a draft line may be set taxable or not taxable (`agent/invoice:edit`), giving the default or 0, never another number; the amount is always `taxForLine` (QA-482). The firm's province and `tax_registered` are read as part 1's route reads them (one snapshot). A rate sent by the client is never used.
+**What to build (the row, exactly):** in FO-7b's draft code in `api/src/client-money/invoices/` (calls only), a new `FEE` or `DISBURSEMENT` line takes `taxDefault(...)`'s `ratePpm` through `lineRatePpm` (part 1's `tax/defaults.ts`); a `GOVERNMENT_FEE` line is 0 and asking to tax it is refused 422 at the field (the app's field-error status, PF-28 part 6); taxable / not taxable is the `ratePpm` sent when adding a line: 0 (not taxable) or the default (taxable), nothing sent means the default, anything else 422 (no new route, no `ports/` change; a toggle on an existing line is a later row); the amount is always `taxForLine` (QA-482). The firm's province and `tax_registered` are read as part 1's route reads them (one snapshot). A rate sent by the client is never used.
 
 **Decisions (word for word):**
 * **P-701:** "Release 1 invoices charge GST/HST only"
@@ -16,9 +16,11 @@ Item: R1.56
 **Touches:**
 - `api/src/client-money/invoices/`
 - `tests/check_fo7g_tax_defaults.ts`
+- `tests/check_fo7b_invoices.ts`
+- `tests/journeys/j_59.ts`
 - `api/src/client-money/MODULE.rows/FO-7g-1w.md`
 
-**Done when:** `tsx studio/tests/check_fo7g_tax_defaults.ts` exits 0 with the row's five cases each passing and failing as named (Ontario 0.50 `FEE` through the route → `tax_rate_ppm` 130000 and tax 0.06, not 0.07; `GOVERNMENT_FEE` with 130000 refused; a client-sent rate not used; not registered → 0 on every line; firm A never reads firm B's province); `check_fo7b_invoices.ts`, `tests/journeys/j_59.ts`, `check_fo7a_money_schema.ts` and `check_pf12_walls.ts` pass unchanged (exit 0); full `ci` green.
+**Done when:** `tsx studio/tests/check_fo7g_tax_defaults.ts` exits 0 with the row's five cases each passing and failing as named (Ontario 0.50 `FEE` through the route → `tax_rate_ppm` 130000 and tax 0.06, not 0.07; `GOVERNMENT_FEE` with 130000 refused; a client-sent rate not used; not registered → 0 on every line; firm A never reads firm B's province); `check_fo7b_invoices.ts` and `tests/journeys/j_59.ts` pass (exit 0) with **setup and requests changed only** (Lead B ruling A on #2967, 22 Nov 13:5x IST: the sample firm registered in Ontario; the 15 % and 5 % cases on firms in New Brunswick and Alberta; no rate on government-fee requests; R10 and R12 become the 1w refusals; no rounding, total, wall or audit assertion weakened); `check_fo7a_money_schema.ts` and `check_pf12_walls.ts` pass unchanged (exit 0); full `ci` green.
 
 Duplicate check: 22 Nov 13:4x IST: no draft-step call of `taxDefault` or `lineRatePpm` on `main` or in #2953 (part 1's file header: "nothing in invoices/ does yet").
 
