@@ -57,18 +57,43 @@ export function listFindings(text: string): { names: string[]; findings: string[
   return { names, findings };
 }
 
+/** The entry of a declaration, written as plain literals only (breaker M1, M2): `why` a string, `routes` regular
+ *  expressions, `audit` "per-firm" or "platform", `outside`/`direct` true or false, `inside` strings. A getter, a spread,
+ *  a call (an IIFE, an import()) or any other key could run code or change what is declared, so each is refused. */
+export function entryShape(obj: ts.ObjectLiteralExpression, src: ts.SourceFile): string[] {
+  const out: string[] = [], seen = new Set<string>();
+  const str = (e: ts.Expression) => ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e);
+  for (const p of obj.properties) {
+    const key = ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) ? p.name.text : null;
+    if (!key || !ts.isPropertyAssignment(p)) { out.push(`not a plain entry property: ${p.getText(src).slice(0, 60)}`); continue; }
+    if (seen.has(key)) out.push(`${key} written twice`);
+    seen.add(key);
+    const v = p.initializer;
+    const good = key === "why" ? str(v)
+      : key === "routes" ? ts.isArrayLiteralExpression(v) && v.elements.every((e) => e.kind === ts.SyntaxKind.RegularExpressionLiteral)
+      : key === "audit" ? ts.isStringLiteral(v) && (v.text === "per-firm" || v.text === "platform")
+      : key === "outside" || key === "direct" ? v.kind === ts.SyntaxKind.TrueKeyword || v.kind === ts.SyntaxKind.FalseKeyword
+      : key === "inside" ? ts.isArrayLiteralExpression(v) && v.elements.every(str)
+      : null;
+    if (good === null) out.push(`${key} is not an entry field (why, routes, audit, outside, direct, inside)`);
+    else if (!good) out.push(`${key} is not written as a plain literal: ${v.getText(src).slice(0, 60)}`);
+  }
+  for (const k of ["why", "routes", "audit"]) if (!seen.has(k)) out.push(`${k} is missing`);
+  return out;
+}
+
 /** Every .ts file under a folder (no node_modules). */
 function tsFiles(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
     if (e === "node_modules") continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) tsFiles(p, out); else if (/\.tsx?$/.test(e)) out.push(p);
+    if (statSync(p).isDirectory()) tsFiles(p, out); else if (/\.[cm]?[jt]sx?$/.test(e)) out.push(p);
   }
   return out;
 }
 
 /** Rules B and C on a source folder: the declared names (file per name) and what is wrong. */
-export function declarationFindings(roots: string[], base: string, scopeFile = SCOPE): { declared: Map<string, string>; findings: string[] } {
+export function declarationFindings(roots: string[], base: string, scopeFile = SCOPE, srcRoot = SRC): { declared: Map<string, string>; findings: string[] } {
   const declared = new Map<string, string>(), findings: string[] = [];
   for (const f of roots.filter((r) => { try { return statSync(r).isDirectory(); } catch { return false; } }).flatMap((r) => tsFiles(r))) {
     if (f === scopeFile) continue;
@@ -98,6 +123,8 @@ export function declarationFindings(roots: string[], base: string, scopeFile = S
       }
       const name = arg.text;
       mine++;
+      for (const l of entryShape(call.arguments[1] as ts.ObjectLiteralExpression, src)) findings.push(`${rel}: "${name}": ${l}`);
+      if (!f.startsWith(srcRoot + "/")) findings.push(`${rel}: a *.bypass.ts file lives under api/src (the API loads only those at start-up)`);
       if (!NAME.test(name)) findings.push(`${rel}: "${name}" is not a use name (area.what, or job:<queue>)`);
       if (ANCHOR.includes(name)) findings.push(`${rel}: "${name}" is already on BYPASS_USES`);
       if (declared.has(name)) findings.push(`"${name}" is declared in ${declared.get(name)} and in ${rel}: a use is declared once`); else declared.set(name, rel);
@@ -134,7 +161,7 @@ try {
   ok("P-785 step 2 A fail: a spread of more uses into the list is refused", spread.findings.some((l) => /an entry that is not a written name: \.\.\.MORE_USES/.test(l)), spread.findings);
 
   // B, C: the tree as it is.
-  const ROOTS = ["api/src", "ports", "engine", "contracts"].map((d) => join(STUDIO, d));
+  const ROOTS = ["api/src", "ports", "engine", "contracts", "web/src"].map((d) => join(STUDIO, d));
   const tree = declarationFindings(ROOTS, STUDIO);
   ok(`P-785 step 2 B, C pass: ${tree.declared.size} use(s) declared in *.bypass.ts files (api/src, ports, engine, contracts), each well formed and once, none on the list`, tree.findings.length === 0, tree.findings);
 
@@ -143,7 +170,7 @@ try {
   const tmp = join(WORK, "src"), tmpScope = join(tmp, "platform", "firm-scope.ts");
   const fresh = () => { rmSync(tmp, { recursive: true, force: true }); mkdirSync(join(tmp, "billing"), { recursive: true }); mkdirSync(join(tmp, "platform"), { recursive: true }); writeFileSync(tmpScope, "export {};\n"); };
   const useFile = (name: string) => `import { defineBypassUse } from "../platform/firm-scope.ts";\nexport const PROBE = defineBypassUse("${name}", { why: "a probe", routes: [], outside: true, audit: "per-firm" });\n`;
-  const scan = () => declarationFindings([tmp], tmp, tmpScope);
+  const scan = () => declarationFindings([tmp], tmp, tmpScope, tmp);
   fresh(); writeFileSync(join(tmp, "billing", "p785-probe.bypass.ts"), useFile("platform.p785probe.one"));
   const after = scan();
   ok("P-785 step 2 pass (after): a new use is one new <name>.bypass.ts file beside its module, firm-scope.ts untouched", after.findings.length === 0 && after.declared.get(join("billing", "p785-probe.bypass.ts")) === undefined && after.declared.get("platform.p785probe.one") === join("billing", "p785-probe.bypass.ts") && listFindings(scopeText).findings.length === 0, after.findings);
@@ -163,6 +190,16 @@ try {
   refuses("the same name declared in two files (one finding)", { "billing/a.bypass.ts": useFile("platform.p785probe.five"), "money/b.bypass.ts": useFile("platform.p785probe.five") }, /"platform\.p785probe\.five" is declared in .* and in /, true);
   refuses("a name already on the list", { "billing/x.bypass.ts": useFile("platform.demo.inbox") }, /"platform\.demo\.inbox" is already on BYPASS_USES/);
   refuses("a malformed name", { "billing/x.bypass.ts": useFile("NotAUse") }, /"NotAUse" is not a use name/);
+  const entryWith = (body: string) => `${imp}export const P = defineBypassUse("platform.p785probe.shape", { ${body} });\n`;
+  refuses("a reason computed by a function (an IIFE that could declare a hidden use)", { "billing/x.bypass.ts": entryWith(`why: (() => "w")(), routes: [], audit: "per-firm"`) }, /why is not written as a plain literal/);
+  refuses("a getter in the entry", { "billing/x.bypass.ts": entryWith(`why: "w", get routes() { return [/.*/]; }, audit: "per-firm"`) }, /not a plain entry property: get routes/);
+  refuses("a spread into the entry", { "billing/x.bypass.ts": entryWith(`...base, why: "w", routes: [], audit: "per-firm"`) }, /not a plain entry property: \.\.\.base/);
+  refuses("routes built at run time", { "billing/x.bypass.ts": entryWith(`why: "w", routes: [new RegExp(".*")], audit: "per-firm"`) }, /routes is not written as a plain literal/);
+  refuses("an unknown field", { "billing/x.bypass.ts": entryWith(`why: "w", routes: [], audit: "per-firm", hook: 1`) }, /hook is not an entry field/);
+  fresh(); mkdirSync(join(tmp, "ports"), { recursive: true }); writeFileSync(join(tmp, "ports", "x.bypass.ts"), useFile("platform.p785probe.ports"));
+  const outsideSrc = declarationFindings([tmp], tmp, tmpScope, join(tmp, "billing"));
+  ok("P-785 step 2 B/C fail: a *.bypass.ts file outside api/src (the folders the API loads) is refused", outsideSrc.findings.some((l) => /ports\/x\.bypass\.ts: a \*\.bypass\.ts file lives under api\/src/.test(l)), outsideSrc.findings);
+  refuses("a missing audit", { "billing/x.bypass.ts": entryWith(`why: "w", routes: []`) }, /audit is missing/);
 
   // D: at run time, on real *.bypass.ts files under var/ importing the real firm-scope.ts.
   const fs = await import("../api/src/platform/firm-scope.ts");
@@ -195,6 +232,13 @@ try {
     writeFileSync(join(live, "noaudit.bypass.ts"), `import { defineBypassUse } from "${toScope}";\nexport const USE = defineBypassUse("platform.p785probe.noaudit", { why: "w", routes: [] } as never);\n`);
     await refusedAt("a declaration with no audit", () => import(pathToFileURL(join(live, "noaudit.bypass.ts")).href), /names no audit/);
     ok("P-785 step 2 D pass: a declared use is frozen (its routes cannot be widened later)", Object.isFrozen(probe) && Object.isFrozen(probe.entry) && Object.isFrozen(probe.entry.routes));
+    writeFileSync(join(live, "routed.bypass.ts"), `import { defineBypassUse } from "${toScope}";\nexport const USE = defineBypassUse("platform.p785probe.routed", { why: "the check's routed probe", routes: [/^GET \\/api\\/p785probe$/], audit: "per-firm" });\n`);
+    const routed = (await import(pathToFileURL(join(live, "routed.bypass.ts")).href) as { USE: import("../api/src/platform/firm-scope.ts").BypassUse }).USE;
+    const req = (path: string) => ({ method: "GET", path });
+    ok("P-785 step 2 D pass: a declared use runs on its own route", await fs.inRequest(req("/api/p785probe"), () => fs.asBypass(routed, () => fs.currentBypass())) === "platform.p785probe.routed");
+    await refusedAt("a declared use on another route", () => fs.inRequest(req("/api/elsewhere"), () => fs.asBypass(routed, () => 1)), /not allowed on GET \/api\/elsewhere/);
+    (routed.entry.routes[0] as RegExp & { compile?: (s: string) => void }).compile?.(".*");
+    await refusedAt("a handed-out route recompiled to match anything (the use keeps its own copy)", () => fs.inRequest(req("/api/elsewhere"), () => fs.asBypass(routed, () => 1)), /not allowed on GET \/api\/elsewhere/);
     fs.closeBypassUses();
     declare("late.bypass.ts", "platform.p785probe.late");
     await refusedAt("a declaration after start-up (closeBypassUses)", () => import(pathToFileURL(join(live, "late.bypass.ts")).href), /declared after start-up/);

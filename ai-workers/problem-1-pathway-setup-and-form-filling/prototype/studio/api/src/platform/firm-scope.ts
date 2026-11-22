@@ -136,6 +136,8 @@ export function asJob<T>(queue: string, fn: () => Promise<T>): Promise<T> {
 /** A use declared by its module (defineBypassUse): the value its caller hands to asBypass. */
 export type BypassUse = { readonly name: string; readonly entry: Readonly<BypassEntry> };
 const declared = new Map<string, BypassUse>();
+/** A declared use's routes as source and flags (never a RegExp anyone else holds). */
+const routeSpecs = new WeakMap<BypassUse, readonly { source: string; flags: string }[]>();
 let closed = false;
 const USE_NAME = /^(job:)?[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/;
 /** P-785 (2): a module declares its own bypass use in its own `<name>.bypass.ts` file (only there: tests/check_bypass_uses.ts),
@@ -150,10 +152,19 @@ export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
   if (closed) throw new BypassRefused(`defineBypassUse: "${name}" declared after start-up; the list closed when the API started (declare it in a <name>.bypass.ts file its module imports at load)`);
   if (typeof name !== "string" || !USE_NAME.test(name)) throw new BypassRefused(`defineBypassUse: "${String(name)}" is not a use name (area.what, or job:<queue>)`);
   if (Object.prototype.hasOwnProperty.call(BYPASS_USES, name) || declared.has(name)) throw new BypassRefused(`defineBypassUse: "${name}" is already a bypass use`);
-  if (entry?.audit !== "per-firm" && entry?.audit !== "platform") throw new BypassRefused(`defineBypassUse: "${name}" names no audit (per-firm or platform)`);
-  if (typeof entry.why !== "string" || !entry.why.trim() || !Array.isArray(entry.routes) || !entry.routes.every((r) => r instanceof RegExp)) throw new BypassRefused(`defineBypassUse: "${name}" needs a reason and a list of routes`);
-  const use: BypassUse = Object.freeze({ name, entry: Object.freeze({ ...entry, routes: Object.freeze([...entry.routes]), ...(entry.inside ? { inside: Object.freeze([...entry.inside]) } : {}) }) });
+  // Read once (breaker M2): a getter answers once, and only the copies below are kept.
+  const given = typeof entry === "object" && entry !== null ? { ...entry } : ({} as Partial<BypassEntry>);
+  if (given.audit !== "per-firm" && given.audit !== "platform") throw new BypassRefused(`defineBypassUse: "${name}" names no audit (per-firm or platform)`);
+  const routes = Array.isArray(given.routes) ? [...given.routes] : null, inside = given.inside === undefined ? undefined : Array.isArray(given.inside) ? [...given.inside] : null;
+  if (typeof given.why !== "string" || !given.why.trim() || !routes || !routes.every((r) => r instanceof RegExp) || inside === null || (inside && !inside.every((u) => typeof u === "string"))) throw new BypassRefused(`defineBypassUse: "${name}" needs a reason and a list of routes`);
+  // The routes are kept as their source and flags, and each check builds its own RegExp (breaker M2): a RegExp handed out
+  // could be recompiled (.compile) to match anything, so nothing anyone holds can widen a declared use.
+  const spec = routes.map((r) => ({ source: r.source, flags: r.flags.replace(/[gy]/g, "") }));
+  const copy: BypassEntry = { why: given.why, routes: Object.freeze(spec.map((x) => new RegExp(x.source, x.flags))), audit: given.audit,
+    ...(given.outside === true ? { outside: true } : {}), ...(given.direct === true ? { direct: true } : {}), ...(inside ? { inside: Object.freeze(inside) } : {}) };
+  const use: BypassUse = Object.freeze({ name, entry: Object.freeze(copy) });
   declared.set(name, use);
+  routeSpecs.set(use, Object.freeze(spec.map((x) => Object.freeze(x))));
   return use;
 }
 /** The file that called the function calling this one (the first stack frame outside this file), or undefined. */
@@ -226,7 +237,9 @@ export async function asBypass<T>(given: string | BypassUse, fn: () => Promise<T
   const store = scope.getStore(), route = store?.route;
   if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES) nor passed as a declared use (defineBypassUse)`);
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
-  const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
+  const spec = typeof given === "string" ? undefined : routeSpecs.get(given);
+  const matches = (r: string) => (spec ? spec.some((x) => new RegExp(x.source, x.flags).test(r)) : entry.routes.some((x) => x.test(r)));
+  const allowed = route !== undefined ? matches(route) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
   // PF-12b (break M1): one use at a time. A use inside another would cross the walls under the outer use's name, with the
   // outer use's lines only; it is refused before any query runs.
