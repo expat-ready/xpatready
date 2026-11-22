@@ -17,6 +17,7 @@ import { matchScore, NAME_THRESHOLD, normaliseEmail, personNameKey, type MatchRe
 import type { PartySearchPort } from "../../../../../ports/party-search.ts";
 import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
+import { FIELD_ERROR_STATUS } from "../../../platform/http/input.ts";
 import { problem, type StaffContext } from "../../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../../duplicates/phone.ts";
 import { normaliseCompanyName, seesCompany, type Seer } from "../../sales/corporate/match.ts";
@@ -35,7 +36,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const CHOOSE_RESULT = "Choose a result: No conflict, Potential conflict or Conflict: the firm cannot act.";
 export const NOT_SEARCHED = "Other parties on cases are not searched yet (the case side's party search is not connected).";
 export const HIDDEN_LINE = "Matches with records you cannot open: a manager who may see them confirms this check.";
-const bad = (field: string, detail: string): never => problem(400, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
+/** A field error: 422, the field named (PF-28 part 3b moves it from 400; Lead B rev 17.21). */
+const bad = (field: string, detail: string): never => problem(FIELD_ERROR_STATUS, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 const LABEL: Record<string, string> = { NO_CONFLICT: "No conflict", POTENTIAL_CONFLICT: "Potential conflict", CONFLICT_CANNOT_ACT: "Conflict: the firm cannot act" };
 const notFound = (what = "prospect"): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 /** A text as the audit line keeps it: AuditPort's values hold at most 4,000 UTF-16 units, so a longer disclosure (the table
