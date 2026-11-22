@@ -30,9 +30,12 @@ jobs:
       contains(github.event.changes.body.from, 'allows round')))
     # On the job, not the workflow (#2749 review M1): a skipped run for an unrelated comment takes no slot, so it can
     # never cancel a verdict's run. Every run reads the PR as it is now, so a newer run replacing an older one is safe.
+    # Never also at the workflow: the same group at both levels is a deadlock that cancels every run (SPD-2 item 5,
+    # review B1). A push run of a merge-queue batch (head mergify/...) is never cancelled (SPD-2 item 5, P-802); a verdict
+    # comment on a batch PR can supersede an older comment run of that batch, which is harmless (each run reads all).
     concurrency:
       group: review-rounds-${{ github.event.issue.number || github.event.pull_request.number }}
-      cancel-in-progress: true
+      cancel-in-progress: ${{ !startsWith(github.event.pull_request.head.ref || '', 'mergify/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
