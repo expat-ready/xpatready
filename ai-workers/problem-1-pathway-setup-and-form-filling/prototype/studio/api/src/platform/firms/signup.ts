@@ -38,6 +38,9 @@ export type SignUpPorts = {
   limits?: Partial<Limits>; formKey?: Buffer;
   /** Why this server cannot take sign-ups (a provider not set up), or null: the door answers 503 with it. */
   notReady?: string | null;
+  /** QA-741: false on a server with no Stripe key: the plans' Stripe price ids are not read there, and the pricing page
+   *  shows the plan table's own cents. Left out = a billing provider is wired (read its prices). */
+  stripePrices?: boolean;
 };
 type Limits = { signupPerIp: number; verifyPerIp: number; windowMinutes: number; minFillSeconds: number };
 const LIMITS: Limits = { signupPerIp: 10, verifyPerIp: 30, windowMinutes: 10, minFillSeconds: 3 };
@@ -116,13 +119,21 @@ export class FirmSignUp {
 
   async plans() {
     const plans = await this.db.platformPlan.findMany({ where: { active: true }, orderBy: { seatsLimit: "asc" } });
-    const ids = plans.flatMap((p) => [p.stripeMonthlyPrice, p.stripeYearlyPrice]).filter((x): x is string => !!x);
-    // Stripe unreachable: the plans show without prices (never an invented one) rather than no page.
+    // QA-741 (the tech lead's ruling on #2912): a plan's price is Stripe's when a key is present and the plan carries a
+    // price id; otherwise the plan table's own cents (monthly_price_cents / yearly_price_cents, in the plan's currency);
+    // neither → no price (never an invented one). Stripe is never asked on a server with no key.
+    const keyed = this.ports.stripePrices !== false;
+    const ids = keyed ? plans.flatMap((p) => [p.stripeMonthlyPrice, p.stripeYearlyPrice]).filter((x): x is string => !!x) : [];
+    // Stripe unreachable: its plans show without prices rather than no page (the table's cents never stand in for a price Stripe holds).
     const got = ids.length ? await this.ports.billing.prices(ids).catch(() => null) : [];
     const prices = new Map((got ?? []).filter((p) => p.active).map((p) => [p.id, p]));
-    const price = (id: string | null) => { const p = id ? prices.get(id) : undefined; return p ? { amountCents: p.unitAmount, currency: p.currency.toUpperCase(), interval: p.interval } : null; };
+    const price = (id: string | null, cents: number | null, currency: string, interval: "month" | "year") => {
+      if (keyed && id) { const p = prices.get(id); return p ? { amountCents: p.unitAmount, currency: p.currency.toUpperCase(), interval: p.interval } : null; }
+      return cents === null ? null : { amountCents: cents, currency: currency.toUpperCase(), interval };
+    };
     return {
-      plans: plans.map((p) => ({ code: p.code, name: p.name, seatsLimit: p.seatsLimit, trialDays: p.trialDays, monthly: price(p.stripeMonthlyPrice), yearly: price(p.stripeYearlyPrice) })),
+      plans: plans.map((p) => ({ code: p.code, name: p.name, seatsLimit: p.seatsLimit, trialDays: p.trialDays,
+        monthly: price(p.stripeMonthlyPrice, p.monthlyPriceCents, p.currency, "month"), yearly: price(p.stripeYearlyPrice, p.yearlyPriceCents, p.currency, "year") })),
       pricesAvailable: got !== null, taxNote: TAX_NOTE, defaultPlan: "team", defaultPeriod: "MONTHLY",
       terms: (await this.currentTerms()).map((t) => ({ id: t.id, kind: t.kind, version: t.version, url: t.url })),
       formStamp: this.stamp(this.ports.clock.now()),

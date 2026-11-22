@@ -162,15 +162,24 @@ test("PF-8a synth never runs the CDK CLI in CI or by npm (the CLI looks up the a
   assert.ok(Object.values(pkg.scripts).every((v) => !/\bcdk\b/.test(v)), JSON.stringify(pkg.scripts));
 });
 
-test("PF-8a the CI job runs only when deploy/cdk changes, on pull requests only, never in a merge-queue batch (P-772 (a))", () => {
+test("PF-8a the CI job runs on pull requests that change deploy/cdk and on every push to main, never in a merge-queue batch (P-772 (a), QA-645)", () => {
   const raw = readFileSync(join(HERE, "..", "..", "..", "..", "..", "..", "..", ".github", "workflows", "deploy-synth.yml"), "utf8");
   const wf = raw.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n"); // the header comment names merge_group in words
   const paths = [...wf.matchAll(/^ {6}- "([^"]+)"$/gm)].map((m) => m[1]);
   assert.deepEqual(paths, ["ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk/**", "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/compose.test.yml", ".github/workflows/deploy-synth.yml"]);
-  // the only trigger is pull_request (break 6: pull_request_target, workflow_dispatch, workflow_run, push, merge_group, schedule)
+  // the only triggers are pull_request and push (break 6: pull_request_target, workflow_dispatch, workflow_run, merge_group, schedule)
   const on = /^on:\n((?: {2}.*\n)+)/m.exec(wf)?.[1] ?? "";
-  assert.deepEqual([...on.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]), ["pull_request"]);
-  assert.doesNotMatch(wf, /merge_group|pull_request_target|workflow_run|workflow_dispatch|schedule:|push:/);
+  assert.deepEqual([...on.matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1]), ["pull_request", "push"]);
+  assert.doesNotMatch(wf, /merge_group|pull_request_target|workflow_run|workflow_dispatch|schedule:/);
+  // QA-645: the push trigger is main only, with no path filter (every head of main has its own run, P-339), and it is
+  // the last trigger, so the three paths above belong to pull_request
+  assert.match(on, /\n {2}push:\n {4}branches: \[main\]\n$/);
+  assert.equal(wf.match(/push:/g)?.length, 1);
+  assert.doesNotMatch(wf, /branches-ignore|tags:/);
+  // a push run is never held back as a draft; a pull request run still is (merge-queue batch PRs are drafts)
+  assert.match(wf, /^ {4}if: github\.event_name == 'push' \|\| github\.event\.pull_request\.draft == false$/m);
+  // two pushes never share a concurrency group, so no waiting run is replaced (P-371)
+  assert.match(wf, /^ {2}group: deploy-synth-\$\{\{ github\.event\.pull_request\.number \|\| github\.sha \}\}\n {2}cancel-in-progress: false$/m);
   assert.doesNotMatch(wf, /secrets\s*[.[]|toJSON\(\s*secrets|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|id-token/i); // no secret, key or OIDC token
   assert.match(wf, /^permissions:\n {2}contents: read\n(?! )/m); // read-only, nothing else
   assert.equal(wf.match(/permissions:/g)?.length, 1); // and no job widens it (PF-8a review R4)

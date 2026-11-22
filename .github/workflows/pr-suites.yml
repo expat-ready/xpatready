@@ -11,15 +11,17 @@
 # The pick: change-kind.sh says code, else nothing runs; select-suites.mjs, or --direct when it would pick every suite
 # (the importers and namers of the changed files plus the smoke set: the whole set is the queue's job, P-651); split
 # over ceil(units / 25) parts, at most 12, each a fresh copy (as ci.yml's job "shard"). product/tools/pr-suites-plan.sh.
-# Drafts and Mergify's batch PRs run nothing. A newer push waits for the older run (never cancelled, P-371).
+# Drafts and Mergify's batch PRs run nothing. A newer push cancels the PR's older run (SPD-2 item 5; was: waited, P-371).
 # Read-only token: it runs the PR's code. US$0 (GitHub's machines), no model call. Test: check-pr-suites-job.sh.
 name: pr-suites
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
   group: pr-suites-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 permissions: {}
 jobs:
   plan:
