@@ -59,3 +59,53 @@ No Blocker. No Major.
 **Verdict: Approve** (no open Blocker or Major; m1-m5 are for the builder to fix or answer in the PR) for commit 853f37a3226383c66f1c58b1b77d66fe4f8deda4.
 
 Reviewer: Approve 853f37a3226383c66f1c58b1b77d66fe4f8deda4
+
+## Round 2 (diff 853f37a32..46791a083)
+
+Commit reviewed: **46791a08357619f3ab162c6d45846fac447c0862** (branch `claude/loving-fermi-c75sij`). Diff only: `git diff 853f37a32 46791a083 -- . ':(exclude)*/product/screens/PF-F1/*'`, 7 files, +97/−22 (`s3-files.ts`, `choose.ts`, the test, the fake, `errors.json`, the fixture README, the gate page). This is still a runtime row: **no screen, no route, nothing bound in the app.** **Journey test: does not apply; no journey score; no journey-test report.** I did not start the app or run `run-suites.sh`.
+
+### What I ran (Node 24.22.3, no network, no AWS)
+* `check_pff1_s3_files.ts` on the working tree at 46791a083: **72 passed, 0 failed.** The working tree was clean before and after.
+* **Mutations** on a scratch copy outside the repository: 71/0 green there, because case 6's `origin/main` line prints NOT TESTED in a copy. Each round 2 fix was removed one at a time:
+
+| Fix removed | Result |
+|---|---|
+| `ResponseContentDisposition: "attachment"`; `ResponseCacheControl: "no-store"` (s3-files.ts:178) | 1 FAIL each ("break m1 pass") |
+| `Number.isFinite(nowMs)` guard (:221) | exit 1 by a crash (`signedGetUrl` throws on NaN seconds), not by the named line (r2-m4) |
+| `contentType.trim()` (:113) | exit 1 by a crash (`FileKeyTaken` on the retry), not by the named line (r2-m4) |
+| printable-ASCII refusal (:112) | 1 FAIL ("break m3 fail") |
+| `name === "NoSuchKey"` on GET (:136) | 1 FAIL ("break m6 fail") |
+| integrity check on `get` (:138) | 1 FAIL ("m4 fail"). Round 1's m4 is closed |
+| Canada-only region, chooser / constructor | 2 FAIL / 1 FAIL |
+| KMS key region = bucket region, chooser (choose.ts:42) | 1 FAIL |
+| **KMS key region = bucket region, constructor (s3-files.ts:75)** | **still green** (r2-m2) |
+| production in any case / `prod` (choose.ts:21) | 1 FAIL each |
+| dots allowed again in `BUCKET_NAME` | 1 FAIL |
+
+### Each fix judged
+* **break m1, links download:** works. The presigner puts both overrides into the signed query, so a browser cannot remove them without breaking the signature. S3 honours `response-*` overrides only on signed requests, which a presigned GET is. This matches the local route's `attachment`. The "break m1 fail" line removes the parameter and fetches from the fake. It shows what the fake would answer, not what the adapter does. The guard is the "pass" line, which fails when the fix is removed.
+* **review m5 / break m6, NoSuchBucket:** works on GET. The SDK names a GET error after the XML `Code`, so `NoSuchKey` → null and any other 404 → error. That is fail-closed, also for a 404 with no body. HEAD and PUT are unchanged: see r2-m3.
+* **break m7, settings:** works. The bucket regex rejects dots, IP shapes and S3's reserved prefixes and suffixes. Banning dots is stricter than S3 itself, but the reason is sound: TLS on the virtual host. The KMS regex accepts a key ARN, an alias ARN, an alias, a uuid or an `mrk-` id, and an ARN's region must match. **The Canada limit does not conflict with "the region is configuration":** the region is still a setting with a default of `ca-central-1`. The row's own source line names "P-559 (data in Canada)". AG-9-19 says region-configurable *for data residency*. The requirements' complexity register (row 17) says "One Canadian region for all firms". This is not new scope. (Note only: P-559's own text in DECISIONS.md does not contain the word Canada. The label comes from the row.)
+* **break m8, production in any case:** works. `productionish` stays local. Adding `prod` is a small extra, but it only makes the refusal stricter, so I do not raise it.
+* **break m3, content type:** the ASCII refusal works and fires before any request. The trim keeps S3 consistent with itself, but see r2-m1 for how it fits the port.
+* **break m9, NaN clock:** works. NaN and Infinity give 404. Before the fix, open threw (still closed, but a 500).
+* **Named errors** (`IntegrityMismatch`, `KeyUnsettled`, `ListWithoutToken`): each is a fixed name that passes the existing name regex. No SDK message leaks.
+* **Fake:** trimming header values matches the HTTP hop. The made-up ETag for SSE-KMS objects stays consistent with the `If-Match` on delete, and the delete cases are still green. The overrides are answered on GET only. Nothing the adapter relies on was loosened.
+* **README (review m2):** both of round 1's items are listed, `s3:ListBucket` is named for PF-F1c's role, and the new ETag and header assumptions are listed too. Closed.
+* **Gate (review m3):** the line shows the six checks under P-587 (1), which defines them ((3) requires that they be shown). Two are honestly left open: the security policy (to confirm on the Mac) and Scorecard (not verified). I could not re-check the release count (no network). Closed.
+* **Nothing else changed:** the diff touches no `ports/`, FO-5 or feature file and adds no package. Nothing is bound.
+
+### Findings
+No Blocker. No Major.
+* **r2-m1 (Minor) Trimming makes S3 differ from the port's "same type" rule and from the other two adapters.** `FilePut` lets a space sit at the end only after a `;` (for example `text/plain; charset=utf-8 `). For that input, S3 `get` returns a different string than the one put, and a later put *without* the space counts as a retry on S3 but is `FileKeyTaken` on `LocalFiles` and `fakeFiles`. The ASCII rule has the same kind of split: S3 refuses types the other two accept, although a real HTTP hop would have failed anyway. No caller sends such a type, and the contract tests only `application/pdf`, so this is an edge case. **Fix:** refuse a type with spaces at its ends, as the ASCII check does, instead of storing it trimmed: what is stored is then exactly what was put. Or record the difference in the PR body for a later port row (`ports/` is outside this row's touch list).
+* **r2-m2 (Minor) The constructor's KMS-region check has no failing test.** Removing s3-files.ts:75 leaves everything green, because the m7 line tests only the chooser's copy. **Fix:** add `/in the bucket's region/` for `new S3Files({ bucket: BUCKET, kmsKeyId: KMS, region: "ca-west-1" })` to the m7 fail line.
+* **r2-m3 (Minor) A missing bucket is an error on GET only.** `send` (:96) still reads any PUT 404 as "absent". With `IfNoneMatch: "*"`, a 404 can only mean a missing bucket, so `put` against a wrong bucket now ends as `KeyUnsettled`, a specific and wrong name. `exists`, `delete` and `open` still read as absent, because HEAD has no error body. All of this is fail-closed. **Fix (optional):** in `send`, return "absent" on 404 only for the `IfMatch` condition, or only when the name is `NoSuchKey`. Add HEAD's limit to the README's list.
+* **r2-m4 (Minor, test quality) Two fixes are caught only by a crash.** Removing the NaN guard or the trim fails the run with exit 1 because an exception stops it. Their named lines never print FAIL, and the 20 or so lines after them never run. CI still goes red, so this is acceptable. **Fix (optional):** wrap those two calls in `refused`/try so each mutation shows its own FAIL line.
+* **Carried, as the builder lists them:** round 1's m1 (the chooser is not wired to start-up, so no production stop yet) stays open and must be in the PR body. So must break m2, m4 and m5 (see `break-report.md`). None of them blocks.
+
+### What I could not check
+CI on this commit; the registry figures on the gate line (222 releases, maintainers); real S3 answers (PF-F1c); FO-5's PostgreSQL suites.
+
+**Verdict: Approve** (no open Blocker or Major; r2-m1 to r2-m4 and the carried Minors go in the PR body or a follow-up) for commit 46791a08357619f3ab162c6d45846fac447c0862.
+
+Reviewer: Approve 46791a08357619f3ab162c6d45846fac447c0862
