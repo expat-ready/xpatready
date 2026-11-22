@@ -22,7 +22,7 @@ def ev(expr, ctx):
     e = str(expr).strip()
     m = re.fullmatch(r"\$\{\{(.*)\}\}", e, re.S)
     if not m: return {"true": True, "false": False}.get(e.lower(), e)
-    s = m.group(1)
+    s = re.sub(r"\bcontains\([^()]*\)", "False", m.group(1))   # the test contexts carry no labels
     s = re.sub(r"startsWith\(([^,()]+(?:\|\|\s*'[^']*')?),\s*'([^']*)'\)", lambda x: f"str({x.group(1)} or '').startswith('{x.group(2)}')", s)
     s = re.sub(r"\bformat\('([^']*)',\s*([^)]*)\)", lambda x: f"'{x.group(1)}'.replace('{{0}}', str({x.group(2)}))", s)
     s = s.replace("&&", " and ").replace("||", " or ").replace("!=", " NE ").replace("==", " EQ ")
@@ -53,7 +53,10 @@ for f, event in A.items():
             got = ev(c.get("cancel-in-progress", False), ctx); grp = tmpl(c["group"], ctx)
         except Exception as e:
             bad.append(f"{f}: cannot read its concurrency ({e})"); break
-        if not want and all(not ev(j.get("if", "true"), ctx) for j in (d.get("jobs") or {}).values()):
+        def runs(j):
+            try: return bool(ev(j.get("if", "true"), ctx))
+            except Exception: return True   # a condition this reader cannot evaluate (needs., always()) may run
+        if not want and not any(runs(j) for j in (d.get("jobs") or {}).values()):
             continue   # every job skips a merge-queue batch (pr-rules): no batch run exists to cancel
         if bool(got) is not want: bad.append(f"{f}: {why} {'is not' if want else 'is'} cancelled by a newer run")
         if want and "7" not in str(grp): bad.append(f"{f}: {why}: the group {grp!r} is not the PR's own")
