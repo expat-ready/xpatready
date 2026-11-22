@@ -75,14 +75,14 @@
 
 <section class="board" id="s1">
   <h2>S1 · Tasks › My Tasks (1440 px)</h2>
-  <p class="note">r2. Staff menu entry "Tasks" (key agent/task:view.own). Its badge counts only unassigned work this person may take or assign (tasks, plus cases for agent/case:assign), tooltip "2 unassigned tasks · 1 unassigned case" (BR-12). One row of tabs: My Tasks · Unassigned tasks (view.all or assign) · Unassigned cases (case:edit or case:assign); a tab the person may not use is not drawn. Windows (Overdue · Today · This week · Later · No due date) are decided at the end of today in MY office zone, the same rule as Home; times in my zone with one footer, a task's own zone named only when it differs (BR-2). "Restricted" rows show no host name, type or link (AG-13-67). A title opens the task (S8). Each row's one action is Done; the rest is in ⋯, each per the person's keys (BR-8).</p>
+  <p class="note">r2. Staff menu entry "Tasks" (key agent/task:view.own). Its badge counts only unassigned work this person can reassign (tasks for agent/task:assign, cases for agent/case:assign; never view.all, which all six roles hold), tooltip "2 unassigned tasks · 1 unassigned case" (BR-12). One row of tabs: My Tasks · Unassigned tasks (view.all or assign) · Unassigned cases (case:edit or case:assign); a tab the person may not use is not drawn. Windows (Overdue · Today · This week · Later · No due date) are decided at the end of today in MY office zone, the same rule as Home; times in my zone with one footer, a task's own zone named only when it differs (BR-2). "Restricted" rows show no host name, type or link (AG-13-67). A title opens the task (S8). Each row's one action is Done; the rest is in ⋯, each per the person's keys (BR-8).</p>
   <div class="shell">
     <nav class="menu" aria-label="Staff menu"><a href="#">Home</a><a href="#" class="on">Tasks <span class="count" title="2 unassigned tasks · 1 unassigned case">3</span></a><a href="#">Profile</a><a href="#">Team</a></nav>
     <main class="page">
       <h1 class="title">Tasks</h1>
       <p class="desc">Work that needs a person, from every lead, prospect, client and case you can see.</p>
       <div class="tabs" role="tablist"><span class="on" role="tab" aria-selected="true">My Tasks (7)</span><span role="tab">Unassigned tasks (4)</span><span role="tab">Unassigned cases (2)</span></div>
-      <div class="chips" aria-label="Filters"><span class="chip on">Assigned to me</span><span class="chip">Assigned by me</span><span class="chip">Due today or overdue</span><span class="chip">Filter ▾</span></div>
+      <div class="chips" aria-label="Filters"><span class="seg" role="group" aria-label="Whose tasks" style="display:inline-flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden"><span style="padding:2px 10px;background:var(--info-fill);color:var(--link);font-weight:600" aria-pressed="true">Assigned to me</span><span style="padding:2px 10px;background:#fff;border-left:1px solid var(--border-strong)">Assigned by me</span></span><span class="chip">Due today or overdue</span><span class="chip">Filter ▾</span></div>
       <div class="tablewrap"><table>
         <thead><tr><th>Task</th><th>On</th><th>Due</th><th>Priority</th><th>By</th><th>Actions</th></tr></thead>
         <tbody>
