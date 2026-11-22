@@ -16,6 +16,7 @@ import { VerifyPage } from "./signup/verify-page";
 import { BillingPage } from "./saas/billing-page";
 import { OfficesPage } from "./settings/offices-page";
 import { BrandingPage } from "./branding/branding-page";
+import { NotificationsPage } from "./settings/notifications-page";
 
 export const routes: ModuleRoute[] = [
   { path: "/sign-in/callback", element: <CallbackPage /> },
@@ -34,4 +35,5 @@ export const routes: ModuleRoute[] = [
   { path: "/settings/billing", element: <BillingPage /> },   // PF-5s part 2: Plan and billing (PF-5 part 2 returns from Stripe here)
   { path: "/platform/offices", element: <OfficesPage /> },   // PF-18s part 1: Offices (Owner and Admin)
   { path: "/platform/branding", element: <BrandingPage /> },   // PF-13 part 2: Branding (Owner and Admin; R1.23)
+  { path: "/account/notifications", element: <NotificationsPage /> },   // PF-18s part 3: My account → Notifications (everyone's own)
 ];
