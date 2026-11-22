@@ -59,6 +59,7 @@ const REVIEWED: Record<string, "case" | "open"> = {
   "/api/public/plans": "open", // PF-5: the public pricing page (contracts §0.6): plans, prices and terms, no firm or person data
   "/api/public/unsubscribe/:token": "open", // PF-19b part 2: the one-click unsubscribe page (its sealed token is the key; changes nothing)
   "/api/public/firms/:firmKey/branding": "open", // PF-13 part 1b: a client page's header (name, colours, tagline, image links; no id; an inactive or unknown firm 404; asked in check_pf13b_images.ts)
+  "/api/demo/billing/invoices/:id": "open", // R1.21 (P-796): the billing stand-in's invoice page, as Stripe's hosted link (its random token is the key; 404 without the stand-in, a wrong token or another firm's id; asked in check_r121_invoice_tax.ts)
   "/api/public/firms/:firmKey/branding/:kind": "open", // PF-13 part 1b: the firm's logo, favicon or banner by its stable ?v= link (nosniff, sandbox CSP; another image or firm 404)
 };
 /** FO-2: public doors that take a write from anyone (contracts §0.6): no person to name; an unknown token answers 404. */
