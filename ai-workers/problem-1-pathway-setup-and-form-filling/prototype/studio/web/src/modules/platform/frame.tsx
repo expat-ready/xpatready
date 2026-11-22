@@ -93,7 +93,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
   const refused = me.error instanceof StaffApiError ? me.error.message : me.error ? "Could not check who is signed in." : null;
   return (
     <Frame area="outside" title={who ? who.firmKey : "Your firm"} home="/home"
-      controls={who ? <><FindBox /><span className="min-w-0 max-w-[30%] truncate text-sm font-medium sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
+      controls={who ? <>{pending.checked && !pending.terms ? <FindBox /> : null}<span className="min-w-0 max-w-[30%] truncate text-sm font-medium sm:max-w-none" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
       <Place crumbs={crumbs} back={back} area={area} />{intro}
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
