@@ -79,3 +79,79 @@ None.
 - **Readings** are labelled ("Unconfirmed: no accountant / no counsel", `refunds.ts:12` and the check's header). There are no personal names.
 
 **Verdict: Block** on `5f49018bf62ef08e5e0cdccee260d5dd50770fc3`. To fix: Major 1 (a choice replay must have been written from the extra, otherwise 409, with a failing case). Minors 2, 3, 4, 7 and 8 are cheap to fix in the same round. Minors 1 and 6 go to Lead B as questions.
+
+## Round 2 (diff 5f49018bf..872a2b8b5)
+
+Independent reviewer, Opus 5.5, 22 Nov. **Commit reviewed: `872a2b8b5`** on `claude/runtime-fo7b-1c` (draft PR #3036). This was a diff-only read: `git diff 5f49018bf..872a2b8b5 -- prototype`, 7 files, +134/-70. It holds part 1c's round-1 fixes (`refunds.ts`, `refund-routes.ts`, `ports/client-money.ts`, `check_fo7b_refunds.ts`) and the merge of part 1b's batch fix `2311bc168` (`routes.ts`, `money.ts`, `check_fo7b_invoices.ts`). The row is API only, so there is no browser walk and no journey score.
+
+### Runs
+- `check_fo7b_refunds.ts`: **24 passed, 0 failed**.
+- `check_fo7b_invoices.ts`: **107 passed, 0 failed**.
+- `tsc -p api/tsconfig.json --noEmit`: no errors in any of the 7 files.
+- Reviewer probes Q1-Q7 ran on a copy of the check under `/tmp/fo7b1c-r2`. The copy's clock can be shifted, and it used its own scratch database on :54329, which was dropped. Results are cited below.
+- Not run: `check_pf28_inputs`, which needs an isolated running copy. The batch's CI run is what proves the #3016 fix.
+
+### The `?dueDate` change (`2311bc168`, for #2953): **Approved**
+- **Parse before lookup.** `issue()` now runs `parse(IssueIn, query ?? {})` before `idOf()` and before any read. Probe Q7c: a random UUID with `?dueDate=2026-02-30` gives 422, not 404.
+- **The query is strict.** An unknown query field gives 422 and names it, even on a malformed id (the new case). A repeated `?dueDate=a&dueDate=b` gives 422 at `dueDate` (Q7b). An impossible date, or 0000-01-01, gives 422.
+- **Nothing else changed.** `@Body` became `@Query`, and the comment on the route is new. Lock, numbering, due-date default and email are untouched. No other caller in `studio/` (web, tests, module cards) sends a body to `/issue`.
+- **Note (no fix asked).** A body sent to `/issue` is now ignored without a word. Q7: a body of `{dueDate: +45 days}` gives 200 with the firm's default due date. Nothing sends one today. Word the PR body so that a later screen sends the query.
+- Also a nit: the doc line on `IssueIn` (`ports/client-money.ts:87`) still reads as if it described a body.
+
+### Part 1c's fixes, one by one
+| Claim | Held? | Pass case | Fail case |
+|---|---|---|---|
+| `replay()`: one key is one request (route via the audit line's `fromExtra`, payment, amount, reason, method, reference, date) | Yes. The refund lookup is firm-scoped (`firmScope` and the unique index is `(firm_id, idempotency_key)`). It reads the one `payment.refunded` line for that refund in that firm (`entity = 'money_refund'`, `entity_key = refund id`). It runs after the lock. | `again` (200, replayed) | `crossA`, `crossB`, `otherMethod`, `otherRef` (all 409 KEY_USED, nothing written). The date part is proven only by probe Q5: the same date sent again gives 200 replayed; another date gives 409. |
+| A replayed choice answers 200 `replayed` | Yes (`refund-routes.ts`, `ExtraChoiceView.replayed`) | `rxAgain` | `crossA` |
+| Uncleared cheque: Refund gives 409 NOT_CLEARED | Yes on `/extra` | none (no "after it clears, Refund works" case) | `qRefund`, `qKeep` |
+| The database's words in full | Yes. Q1 shows the full text with its remedy: "…the payment less its refunds: reverse the kept credit first." | — | **No case in the check reaches MONEY_RULE.** `afterKeep` stops at the app's own OVER_REFUND precheck (see Minor 4). |
+| `leftToRefund` capped at the invoice's extra while credit is kept | It matches `money_credit_kept_holds` **rule 1**. `facts.extraMinor = paid − open − kept = −due − kept` (the same terms as `money_invoice_due`), so a refund R is allowed when R ≤ −due − kept. That is exactly the database's `kept ≤ greatest(-due, 0)` after the refund. **Rule 2** (per payment) is not mirrored: Minor 1. | stand-in (full refund, no credit kept) | `afterKeep` (left 0.00, `heldAsCreditMinor` 1500, the remedy named) |
+| Keep takes `reason?` | Yes. It goes into the audit line `after.reason`. | the Keep inside the M1 case (201, 15.00) | none (see Minor 3) |
+| A refund stores `refundedOn` | Yes. `after.refundedOn` is in the audit line. The default is the clock's day, and a future date or one before 2000 gives 422. | every audit line has it | `future` (422 at `refundedOn`) |
+| `ExtraChoiceIn` is one strict object with a `superRefine` | Yes. Q3a: an unknown field is named. Q3d: Keep with `method` gives 422 "Only a Refund takes this." Q3b: a bare REFUND names `method`, `reason` and `idempotencyKey`. | — | `kAmt` (422) |
+| Part 1a leftovers removed | **In part.** Only the "rule alone" block went (Minor 5). | | |
+
+### Blocker
+None.
+
+### Major
+None. Round 1's M1 is fixed. Probe P4 from round 1 is now case `crossA`: 409 KEY_USED, with the 15.00 extra still waiting and then kept.
+
+### Minor
+1. **`leftToRefund` overstates for a payment whose own extra was kept** (`refunds.ts:146-153`). It ignores `money_credit_kept_holds` rule 2: a payment less its refunds is never less than the credit kept from it.
+   - Probe Q1: an invoice of 100.00. P1 pays 100.00. P2 pays 10.00, and that 10.00 is kept as credit. P3 pays 50.00, which is waiting.
+   - A refund of 10.00 on P2 gives 409 **MONEY_RULE** from the database. Nothing is written, and the full words are shown, so this is money-safe.
+   - But P2's OVER_REFUND answer says `leftMinor: 1000` (Q1c), and `leftToRefundMinor` in the views would say the same.
+   - Fix: `own = amount − refunded − this.kept(tx, firm, p.id)`. The helper already exists. Then add Q1 to the check as the MONEY_RULE/OVER_REFUND case.
+2. **A retry across midnight (UTC) that sends no date is refused as "a different refund"** (`refunds.ts:54-55`, `77-79`, `day()`).
+   - When `refundedOn` is not sent, the request's date is filled in with today. `replay()` then compares that date with the stored one.
+   - Probe Q4 (clock shifted one day, same body, same key) gives **409 KEY_USED** on both `/refunds` and `/extra`, not 200 `replayed`. UTC midnight is about 19:00 in Eastern Canada.
+   - This is money-safe: nothing is written twice. But the answer is wrong.
+   - Fix: compare `refundedOn` only when the request sent one.
+3. **Keep's `reason` skips `money_text_ok`.** A refund's reason is checked in `writeRefund`; Keep's goes straight into the audit line.
+   - Probe Q3c: `"Client‮ asked (Sample)"` gives 201, and the right-to-left override character is stored in `detail.reason_after`.
+   - The brief's reasons are `money_text_ok`. Fix: run the same check before the KEPT write, and add a fail case.
+4. **The NOT_CLEARED rule is applied on one door only, and its citation is stronger than its source.**
+   - The code comment cites "AG-6-63 rule 7, MS-D23(3)" for "neither kept nor paid back". AG-6-63 r7 defines `cleared` and says "Applying uncleared money **warns**". It says nothing about refunds. So refusing is a reading, not the rule. Label it as a reading.
+   - Probe Q2: a plain `/refunds` of 20.00 on the same uncleared cheque gives **201**. So the extra can still be paid back before the cheque arrives, by the other route.
+   - Round 1's question stands for Lead B, now with both doors in view: refuse on both, or warn on both.
+   - Also, the check has no pass case for "after the tick, Refund works".
+5. **Check hygiene, still open from round 1, Minor 7.**
+   - Unused imports and helpers remain: `taxForLine`, `FakeClock`, `runContract`, both contracts, `MoneyDocuments`/`documentText`/`invoiceData`, `throws`, `taxOf`, `stored`, `pdfText`, `auditN`, `events`.
+   - The scratch database is still `xr_studio_fo7c_scratch_*`, and the keys are still `fo7c-refund-*`.
+   - The header still speaks of "pending Lead B" cases.
+   - No case reaches the MONEY_RULE mapping (see the table).
+6. **Carried over, not code:** round 1's Minor 6 (the AG-6-23 r7 ruling) and Minor 8 (`module-cards` / `Card unchanged:`, and the PR body) stay with the Lead and the PR. They are not in this diff.
+
+### Round 1's "held" list, still held
+- **Lock order.** `lock()` only adds `p.cleared` to the select. The trust lock comes before the invoice `FOR UPDATE`, and both come before the key lookup.
+- **Two refunds at once, and Keep racing Refund** (cases pass): never over the payment, and never both kept and refunded.
+- **Trust.** TRUST_REFUND and TRUST_EXTRA still answer. A replay comes first, but a trust payment never has a stored refund.
+- **Permissions.** The service still checks REFUND's `agent/refund:create` before any write. A Case Officer still gets 403.
+- **Audit.** There is still one line per refund and per Keep, by a `staff:` actor, and the outbox row is written last. The payment row is never edited.
+- **Firm walls.** Firm B gets 404, and every new query (the audit read, `money_invoice_credit`, `kept()`) is scoped to the firm.
+- **Touch list.** Part 1c's own changes stay within the brief's files. `money.ts`, `routes.ts` and `check_fo7b_invoices.ts` change only through the merge of `2311bc168`. That drops out once #2953 lands with it.
+- **`facts.ts` is untouched.**
+
+**Verdict: Approve** on `872a2b8b5` (part 1c): no open Blocker or Major. Minors 1-3 are small and should go in the next push, each with its case. Minor 4 goes to Lead B as a question. Minor 5 is cleanup.
+**The `?dueDate` change `2311bc168`: Approved** (for #2953).
