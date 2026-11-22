@@ -9,8 +9,8 @@ Our own staff can now list every firm with its health and usage, and read one fi
   * Per firm: id, name, web address, status, plan, subscription status, trial end, billing period, `overdue` (PF-5's indicator) and the newest staff sign-in.
   * Usage against each limit (seats, active individual cases, active corporate cases, storage), each as used, limit (null means Unlimited) and over. These come from PF-15's own reads (`seatsUsed`, `PgEntitlements.limitOf`, `PgCaseCount`, `FilesPort.usedBytes`), never a second count.
   * Failed jobs from PF-14's dead-letter list: count, last time and queue names (never a job's key or error text).
-  * `health`, one of `HELD`, `ATTENTION` or `OK`, with its plain reasons.
-  * Sorted HELD, then ATTENTION, then OK, then by name. Filters: `?health=` and `?q=` (name or web address, literal text). Paged with `?page=`, 50 firms a page (Sample).
+  * `health`, one of `HELD`, `ATTENTION`, `OK` or `CLOSED` (a deleted firm or an abandoned sign-up; Lead 4's ruling 3), with its plain reasons.
+  * Sorted HELD, then ATTENTION, then OK, then CLOSED, then by name. Filters: `?health=` and `?q=` (name or web address, literal text). Paged with `?page=`, 50 firms a page (Sample).
   * Unknown query keys get 400.
 * `GET /api/system/firms/:id`: the same figures for one firm. An unknown or malformed id gets 404 in plain words.
 * The key is `system/firm:read`: Platform Owner, Admin, Support, Billing and Auditor have it; Content publisher does not.
@@ -25,7 +25,7 @@ Our own staff can now list every firm with its health and usage, and read one fi
 * `tests/check_pf12b_bypass_audit.ts`: 3 lines, see question 2
 
 ## Done when (brief DW1-DW8)
-All of them are in `tests/check_pf17_console.ts`: **38/38, exit 0, on two runs**.
+All of them are in `tests/check_pf17_console.ts`: **41/41, exit 0, on two runs** (head 47716a7d).
 - [x] DW1:
   - Support, Billing, Admin, Auditor and Platform Owner get 200.
   - Content publisher gets 403 on the list and on one firm.
@@ -54,7 +54,7 @@ All of them are in `tests/check_pf17_console.ts`: **38/38, exit 0, on two runs**
 ## Checks
 | Suite | Result |
 |---|---|
-| pf17 console | 38/38 ×2 |
+| pf17 console | 41/41 ×2 |
 | pf4s system sign-in | 78/78 |
 | pf12 walls | 110 |
 | pf12b doors | 33 |
@@ -72,35 +72,33 @@ No walk at 1440 px: this part is API only. The screens are part 4, concept first
 * Round 1 on 27e8b406:
   * Reviewer: Changes (M1: no test for the key on the one-firm route).
   * Breaker: Changes (M1: audit volume; m2: health; m3: input).
-* Round 2 on b6965705 (diff-only): **both Approve**. Records: `product/screens/PF-17-1/review.md`, `break-report.md`, `break-report-round2.md`.
+* Round 2 on b6965705 (diff-only): **both Approve**, with two new Minors from the breaker.
+* Round 3 on 47716a7d (diff-only): Lead 4's ruling 3 (CLOSED), and the breaker's round-2 Minors fixed:
+  * m4: the 400 for an unknown key names the allowed keys only, never the caller's;
+  * m5: "failed jobs not counted" is a reason that alone never makes a firm ATTENTION.
+* Round 3 needs the tech lead's `Lead allows round 3:` line (review-rounds).
+* Records: `product/screens/PF-17-1/review.md`, `break-report.md`, `break-report-round2.md` (round 3 added when it lands).
 
-**Minors listed, not fixed:**
-* Breaker r2 m4: the 400 for an unknown key echoes the typed key back to our own staff member.
-* Breaker r2 m5: a firm whose failed jobs cannot be counted can show OK; the page note says so.
-
-## Departures from the brief (stated, not silent)
-* **Failed jobs** (R1.93 names them): 7 days (Sample). One recent failure adds an ATTENTION reason, which the brief's list does not include.
+## Departures from the brief (stated, then ruled by Lead 4, 15:42 IST 22 Nov)
+* **Failed jobs** (R1.93 names them): 7 days (Sample). One recent failure adds an ATTENTION reason. Ruling 3: keep, labelled Sample.
 * **More ATTENTION reasons** (review m5, break m2):
-  * SECURITY_LOCK, PROVISIONING, ABANDONED and DELETED each add a reason, as does "no live subscription".
-  * A DELETED or ABANDONED firm therefore stays in ATTENTION for good.
+  * SECURITY_LOCK, PROVISIONING and "no live subscription" are ATTENTION (ruling 3).
+  * DELETED and ABANDONED are a fourth health, **CLOSED**, with that one reason, so the list does not fill with permanent alarms (ruling 3).
 * **Speed:** several queries per firm (STANDARDS §5 "no N+1"), forced by "PF-15's own reads, never a second count".
   * 100 firms: about 0.6 s.
   * 400 firms: 2.4–3.7 s.
   * One firm or a `?q=` search: under 15 ms.
 * **Paging:** by page number, not the cursor STANDARDS §6 asks for. Health is computed and sorted in memory, so a page number is the honest choice; the brief asks for pages.
-* `tests/check_pf12b_bypass_audit.ts` and `features/MODULE.rows/PF-17-1.md` are outside the touch list (question 2).
+* `tests/check_pf12b_bypass_audit.ts` and `features/MODULE.rows/PF-17-1.md` are outside the touch list. Ruling 2: keep both.
+* **Size:** 880 changed lines in this row's own files (#2927's drop out once it is on main):
+  * 527 lines of code and tests: firms.ts 197, the check 289, routes 18, the feature 11, card rows 5, firm-scope 1, pf12b 6.
+  * 353 lines of review records under `product/screens/PF-17-1/`, which pass the 800-line limit under P-775.
+  * No size exception is needed.
 
-## Questions for the tech lead
-1. **Question for the tech lead: audit mode.** The brief says to ask before choosing per-firm.
-   * Each list call writes one `platform.bypass` line for every firm it read, even when the page or filter shows none of them. The breaker measured `?health=HELD` returning 3 rows with 100 firms and writing 100 lines; with 400 firms, 400 lines per call.
-   * My recommendation, which the reviewer shares: keep per-firm. The list does read every matching firm's staff, invitations and cases, and `firm-scope.ts` keeps "platform" for uses that touch no firm's rows.
-   * The alternative is lines for the returned page only.
-   * Changing it needs another review. **Not labelled until answered.**
-2. **Question for the tech lead: two files outside the touch list.**
-   * `check_pf12b_bypass_audit.ts` hard-codes the list of uses, so it fails with any new one: 3 lines.
-   * The features card row.
-   * Keep both? I recommend yes.
-3. **Question for the tech lead: failed jobs and the wider ATTENTION list.** Keep both as above, or leave failed jobs and DELETED/ABANDONED out of health? I recommend keeping failed jobs (R1.93) and DELETED/ABANDONED.
+## The tech lead's rulings (Lead 4, 15:42 IST 22 Nov)
+1. **Audit mode: per-firm, kept.** Each list call writes one `platform.bypass` line for every firm it reads (breaker: 100 lines per call with 100 firms), because our staff reading across firms must be visible to each firm (R1.87).
+2. **Both extra files, kept.** The bypass list in `check_pf12b_bypass_audit.ts` must name the new reader, and the module-card row is required.
+3. **The failed-job signal, kept** (7 days, labelled Sample). Locked firms and firms with no live subscription are ATTENTION; deleted or abandoned firms show as CLOSED.
 
 Duplicate check: searched BACKLOG (PF-17, R1.93), open PRs at 15:1x IST 22 Nov (#2927 is the guard; none builds a console route), `main`'s code (`system-console`, `system/firms`, `firm:read`) and `qa/BUGS.md`: none. touch-overlap: `touch-overlap.py` cannot read PRs from a cloud lane (GraphQL 403), so I compared the branches of the 10 open runtime/screens PRs by hand: no overlap. #2927's files are not touched.
 
