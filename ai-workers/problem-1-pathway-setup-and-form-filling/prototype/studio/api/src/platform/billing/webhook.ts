@@ -10,7 +10,7 @@ import { HttpException } from "@nestjs/common";
 import { z } from "zod";
 import type { PlatformFirmStatus, PlatformSubscriptionStatus, Prisma, PrismaClient } from "@prisma/client";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import { BillingSignatureError, type BillingEvent, type BillingPort, type BillingSubscription } from "../../../../ports/billing.ts";
+import { BillingSignatureError, type BillingEvent, type BillingPort, type BillingSubscription, type FakeBilling } from "../../../../ports/billing.ts";
 import type { ClockPort } from "../../../../ports/clock.ts";
 import { EVENT } from "../../../../ports/events.ts";
 import type { JobPort } from "../../../../ports/jobs.ts";
@@ -19,7 +19,9 @@ import { parseInput } from "../http/input.ts";
 import { currentAlerts } from "../observability/alerts.ts";
 
 type Tx = Prisma.TransactionClient;
-export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null };
+/** `standIn` (R1.21, P-796): the fake BillingPort on a local server with no Stripe key (the same object as `billing`),
+ *  so the billing stand-in (stand-in.ts) can issue invoices on it; null or absent everywhere else. */
+export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null; standIn?: FakeBilling | null };
 export const SWEEP_JOB = "platform.billing.webhook_sweep";
 /** A signed Stripe event's envelope (PF-28): the raw bytes are one JSON object naming an event. Not strict: Stripe adds
  *  fields to its events over time, and the signature already proves who sent them. */
