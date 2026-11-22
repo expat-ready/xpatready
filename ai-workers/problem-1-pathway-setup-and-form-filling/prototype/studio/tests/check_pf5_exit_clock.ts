@@ -34,6 +34,7 @@ const { BillingAccount, DELETION_DAYS } = await import("../api/src/platform/bill
 const { EXIT_NOTICE_DAYS, dueNotice, exitClock } = await import("../api/src/platform/billing/exit-clock.ts");
 const { EXIT_NOTICE_CRON, EXIT_NOTICE_QUEUE, EXIT_NOTICE_ZONE, ExitNotices } = await import("../api/src/platform/billing/exit-notices.ts");
 const { BYPASS_USES, withFirm } = await import("../api/src/platform/firm-scope.ts");
+const exitFeature = (await import("../api/src/features/platform-billing-exit.ts")).default;
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const DAY = 86_400_000, T0 = new Date("2026-12-01T15:00:00Z"), at = (d: number, h = 1) => new Date(T0.getTime() + d * DAY + h * 3_600_000);
@@ -73,6 +74,11 @@ try {
     const zoneOk = EXIT_NOTICE_ZONE === "America/Toronto" && /^45 6-22 \* \* \*$/.test(EXIT_NOTICE_CRON);
     ok("job pass: the sweep is on PF-14's runner, hourly 06:45-22:45 Toronto (outside 01:00-03:00 in every Canadian zone)", zoneOk && early === 0 && first === 1, { early, first });
     ok("job fail: its bypass use is on the named list, outside a request only, audited per firm", BYPASS_USES[`job:${EXIT_NOTICE_QUEUE}`]?.outside === true && BYPASS_USES[`job:${EXIT_NOTICE_QUEUE}`]?.audit === "per-firm" && BYPASS_USES[`job:${EXIT_NOTICE_QUEUE}`]?.routes.length === 0);
+  }
+
+  {
+    const p = (exitFeature.providers ?? []) as { provide?: unknown; inject?: unknown[] }[];
+    ok("feature pass: platform-billing-exit.ts registers ExitNotices (with the billing ports, the messages mail and PF-14's runner) and no route", p.length === 1 && p[0].provide === ExitNotices && (p[0].inject?.length ?? 0) === 4 && !(exitFeature.controllers ?? []).length, p.length);
   }
 
   // --------------------------------------------------------------------------- DW24: no clock, no notice
