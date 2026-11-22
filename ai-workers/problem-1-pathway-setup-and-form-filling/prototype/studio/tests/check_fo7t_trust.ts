@@ -19,6 +19,7 @@
 //                                           → 201 { paymentId, entryId, receiptNumber, cleared, receiptEmail } (a replay: 200)
 //     A duplicate reference is any trust deposit of the same party with that reference, any case (as FO-7b's payments).
 //     evidenceFileKey is a FilesPort key the screen got from its upload; only the key is stored (the route never reads bytes).
+//     A cheque's TRUST receipt says "Not yet cleared" on the receipt PDF and in its email's text (the check reads the text).
 //   GET  /trust/ledger?personId=&caseId=&currency=&pageSize= → { items: [{ at, kind, reference, payer, amountMinor,
 //                                              balanceAfterMinor }], pageSize }   (newest first; default 50, maximum 200)
 //   GET  /trust/balances?personId=          → { balances: [{ currency, caseId, amountMinor }], totals: [{ currency, amountMinor }] }
@@ -156,8 +157,8 @@ try {
   ok("FO-7t DW3 pass: a cancelled request keeps its number (Cancelled, reason stored, one audit line)", cancel.status === 200 && cancel.body.status === "Cancelled" && cancel.body.number === r2.body.number
     && sql(`select number || ':' || cancel_reason from money_trust_request where id = '${r2.body.id}'`) === `${r2.body.number}:Asked twice by mistake` && audits("trust.request_cancelled") === 1, cancel.body);
   const prospect = await call(tR, "POST", "/requests", { amountMinor: 100, currency: "CAD", purpose: "x" }), otherFirm = await call(tR, "POST", "/requests", { ...reqBody, personId: PB });
-  ok("FO-7t DW3 fail: a request with no person or company (a field error), or on another firm's person (404 or a field error) → nothing written",
-    fieldError(prospect.status) && (otherFirm.status === 404 || fieldError(otherFirm.status)) && sql(`select count(*) from money_trust_request where firm_id = '${A}'`) === "3", [prospect.body, otherFirm.body]);
+  ok("FO-7t DW3 fail: a request with no person or company (a field error), or on another firm's person (404, as DW10) → nothing written",
+    fieldError(prospect.status) && otherFirm.status === 404 && sql(`select count(*) from money_trust_request where firm_id = '${A}'`) === "3", [prospect.body, otherFirm.body]);
 
   // ------------------------------------------------------------------------------------------------- DW4: deposit
   const dep = (body: Record<string, unknown>, t = tR) => call(t, "POST", "/deposits", { personId: PA, currency: "CAD", ...body });
@@ -171,7 +172,7 @@ try {
     d1.status === 201 && d1again.status === 200 && d1again.body.paymentId === d1.body.paymentId
     && sql(`select count(*) || ':' || min(received_into::text) from money_payment where idempotency_key = 'fo7t-d1'`) === "1:TRUST"
     && sql(`select count(*) from money_trust_entry where payment_id = '${d1.body.paymentId}' and kind = 'DEPOSIT' and amount_minor = 60000`) === "1" && receiptsOf(d1.body.paymentId) === "1", [d1.body, d1again.body]);
-  const raced = await Promise.all([dep({ ...d1body, idempotencyKey: "fo7t-replay" }), dep({ ...d1body, idempotencyKey: "fo7t-replay" })]);
+  const raced = await Promise.all([dep({ method: "WIRE", amountMinor: 1500, idempotencyKey: "fo7t-replay" }), dep({ method: "WIRE", amountMinor: 1500, idempotencyKey: "fo7t-replay" })]);
   ok("FO-7t DW4 pass: the same new key sent twice at once → one payment (201 and 200)", raced.map((r) => r.status).sort().join() === "200,201" && sql(`select count(*) from money_payment where idempotency_key = 'fo7t-replay'`) === "1", raced.map((r) => r.status));
   ok("FO-7t DW4 pass: the evidence is its FilesPort key on money_payment.evidence_file_key, never the file's bytes in a column (no bytea column on money_)",
     sql(`select evidence_file_key from money_payment where id = '${d1.body.paymentId}'`) === "firm/fo7t/evidence/et-0001.pdf"
