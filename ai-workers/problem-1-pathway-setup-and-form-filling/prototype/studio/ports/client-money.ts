@@ -135,6 +135,8 @@ export const MONEY_EVENT = {
   INVOICE_OVERDUE: "invoice.overdue",
   /** A payment was recorded (AG-6-19 rule 9); `externalId` is a surrogate id for a payment recorded by hand. */
   PAYMENT_SUCCEEDED: "payment.succeeded",
+  /** A payment was refunded (AG-6-23 rule 9; FO-7b part 1c: offline refunds only, card refunds are FO-7c). */
+  PAYMENT_REFUNDED: "payment.refunded",
 } as const;
 const uuid = z.string().regex(UUID);
 /** invoice.*: ids and the stored figures only (no name, no email). The tax and total are the stored lines' sums (R9). */
@@ -157,3 +159,35 @@ export interface ClientMoneyPort {
 export function fakeClientMoney(have: { firmId: string; personId?: string; companyId?: string }[] = []): ClientMoneyPort {
   return { async hasMoney(firmId, party) { const p = MoneyParty.parse(party), id = (p.personId ?? p.companyId)!.toLowerCase(); return have.some((h) => h.firmId.toLowerCase() === firmId.toLowerCase() && (p.personId ? h.personId : h.companyId)?.toLowerCase() === id); } };
 }
+
+// ------------------------------------------------------------------------------------------- FO-7b part 1c (additive)
+/** POST /api/front-office/money/payments/:paymentId/refunds: an offline refund of a payment recorded into operating
+ *  (AG-6-23 rules 2, 4): an amount, how it was paid back, a reason (required), and an idempotency key. */
+export const RefundIn = z.strictObject({
+  amountMinor: whole("The amount (in cents)", 1, MINOR_MAX), method: HandMethod, reference: words("The reference", 200).optional(),
+  reason: words("The reason", 200), idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -"),
+});
+export type RefundIn = z.infer<typeof RefundIn>;
+/** POST …/payments/:paymentId/extra: a person's one choice on a payment's waiting extra (FO-7b amendment 1). Always for
+ *  exactly what is waiting. A Refund needs how it was paid back, a reason and an idempotency key. */
+export const ExtraChoiceIn = z.discriminatedUnion("choice", [
+  z.strictObject({ choice: z.literal("KEEP_AS_CREDIT") }),
+  z.strictObject({ choice: z.literal("REFUND"), method: HandMethod, reference: words("The reference", 200).optional(), reason: words("The reason", 200),
+    idempotencyKey: z.string().regex(/^[A-Za-z0-9:._-]{8,200}$/, "8 to 200 letters, numbers, or : . _ -") }),
+], { error: "Choose REFUND or KEEP_AS_CREDIT." });
+export type ExtraChoiceIn = z.infer<typeof ExtraChoiceIn>;
+/** What a refund answers: the refund as stored and the invoice read back after it. */
+export const RefundView = z.strictObject({
+  id: z.string(), paymentId: z.string(), amountMinor: z.number().int(), currency: MoneyCurrency, route: z.literal("OFFLINE"), reason: z.string(),
+  replayed: z.boolean(), leftToRefundMinor: z.number().int(), invoice: InvoiceView,
+});
+export type RefundView = z.infer<typeof RefundView>;
+/** What a choice answers: what was chosen, for how much, what is still waiting (0), and the invoice after it. */
+export const ExtraChoiceView = z.strictObject({
+  paymentId: z.string(), choice: z.enum(["REFUND", "KEEP_AS_CREDIT"]), amountMinor: z.number().int(), currency: MoneyCurrency,
+  refundId: z.string().nullable(), creditEntryId: z.string().nullable(), waitingMinor: z.number().int(), invoice: InvoiceView,
+});
+export type ExtraChoiceView = z.infer<typeof ExtraChoiceView>;
+/** payment.refunded: ids and figures only (no name, no email). */
+export const RefundEventPayload = z.strictObject({ refundId: uuid, paymentId: uuid, invoiceId: uuid, amountMinor: z.number().int(), currency: MoneyCurrency, route: z.literal("OFFLINE"), fromExtra: z.boolean() });
+export type RefundEventPayload = z.infer<typeof RefundEventPayload>;

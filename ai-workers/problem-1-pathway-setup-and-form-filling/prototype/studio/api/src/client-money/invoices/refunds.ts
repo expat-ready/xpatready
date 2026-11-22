@@ -1,0 +1,143 @@
+// FO-7b part 1c (R1.96, R1.56; briefs/track-b/FO-7b-1c.md; Lead B's FO-7b.md amendment 1 and "refund with a reason and
+// its own key (AG-6-23)"; P-603, P-567 (3), P-634 (1)): refunds of a payment recorded into operating, and a person's one
+// choice on a payment's waiting extra, "Refund · Keep as credit".
+// * OFFLINE refunds only (card refunds are FO-7c part 3). A payment received into trust is refused here: its money goes
+//   back from the trust ledger (FO-7t part 2's REFUND_TO_CLIENT; P-603). Never more than the payment less its earlier
+//   refunds; the database's refund_ordinal serialises two refunds of one payment at any isolation.
+// * The extra is what the payment's own audit line stored under the invoice's lock when it was recorded (part 1b), less
+//   what was already kept or refunded from that payment, and never more than the invoice is still paid over. A choice
+//   takes exactly all of it, once; a second choice finds nothing waiting (409).
+// * One lock order (FO-7lk): the party's trust lock, then the invoice row. Each change is one transaction with one audit
+//   line (fail-closed) and its outbox row last. money_refund holds no method or reference: both are in the audit line.
+// Readings: refunds and credit Unconfirmed: no accountant; trust Unconfirmed: no counsel.
+import { HttpException } from "@nestjs/common";
+import type { Prisma, PrismaClient } from "@prisma/client";
+import type { AuditPort } from "../../../../ports/audit.ts";
+import type { ClockPort } from "../../../../ports/clock.ts";
+import { ExtraChoiceIn, ExtraChoiceView, MONEY_EVENT, RefundEventPayload, RefundIn, RefundView, type InvoiceView } from "../../../../ports/client-money.ts";
+import { firmScope } from "../../platform/firm-scope.ts";
+import { holdsKey } from "../../platform/identity/catalogue.ts";
+import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { MONEY, UUID, badField, notFound, parse } from "./drafts.ts";
+import { dayOf, invoiceFacts } from "./facts.ts";
+
+type Tx = Prisma.TransactionClient;
+export const REFUND_KEY = "agent/refund:create";
+const refuse = (code: string, detail: string, extra: Record<string, unknown> = {}): never => problem(409, "Not possible now", detail, { code, ...extra });
+const TRUST_WORDS = "Money received into trust is refunded from the trust ledger. Nothing was refunded here.";
+type Pay = { id: string; invoiceId: string; amountMinor: number; currency: "CAD" | "USD"; receivedInto: "OPERATING" | "TRUST"; method: string; receiptNumber: string | null; personId: string | null; companyId: string | null; caseId: string | null };
+
+export class Refunds {
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort) {}
+
+  /** POST /api/front-office/money/payments/:paymentId/refunds (agent/refund:create on the route). */
+  async refund(ctx: StaffContext, paymentId: string, body: unknown): Promise<RefundView> {
+    const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), r = parse(RefundIn, body);
+    return this.write(async (tx) => {
+      const p = await this.lock(tx, ctx.firmId, id);
+      const had = await tx.moneyRefund.findFirst({ where: firmScope(ctx.firmId, { idempotencyKey: r.idempotencyKey }) });
+      if (had) {   // a double click or a retry: the one refund, never a second
+        if (had.paymentId !== id || had.amountMinor !== r.amountMinor || had.reason !== r.reason) refuse("KEY_USED", "This idempotency key already recorded a different refund. Nothing was refunded.");
+        return this.refundView(tx, ctx.firmId, had.id, p, true);
+      }
+      if (p.receivedInto === "TRUST") refuse("TRUST_REFUND", TRUST_WORDS);
+      const left = p.amountMinor - (await this.refunded(tx, ctx.firmId, id));
+      if (r.amountMinor > left) refuse("OVER_REFUND", `Only ${p.currency} ${MONEY(Math.max(0, left))} of this payment is left to refund. Nothing was refunded.`, { leftMinor: Math.max(0, left) });
+      const refundId = await this.writeRefund(tx, ctx, p, r.amountMinor, r.reason, r.idempotencyKey, r.method, r.reference ?? null, false);
+      return this.refundView(tx, ctx.firmId, refundId, p, false);
+    });
+  }
+
+  /** POST /api/front-office/money/payments/:paymentId/extra (agent/payment:record on the route; a Refund also needs
+   *  agent/refund:create). Exactly the waiting extra, once. */
+  async choose(ctx: StaffContext, paymentId: string, body: unknown): Promise<ExtraChoiceView> {
+    const id = UUID.test(paymentId) ? paymentId.toLowerCase() : notFound("payment"), c = parse(ExtraChoiceIn, body);
+    if (c.choice === "REFUND" && !(await holdsKey(this.db, firmScope(ctx.firmId).firmId, ctx.staffId, REFUND_KEY)))
+      problem(403, "Not allowed", "Refunding money needs the refund permission. Nothing was refunded.", { code: "MISSING_PERMISSION", missing: [REFUND_KEY] });
+    return this.write(async (tx) => {
+      const p = await this.lock(tx, ctx.firmId, id);
+      if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again
+        const had = await tx.moneyRefund.findFirst({ where: firmScope(ctx.firmId, { idempotencyKey: c.idempotencyKey }) });
+        if (had) {
+          if (had.paymentId !== id || had.reason !== c.reason) refuse("KEY_USED", "This idempotency key already recorded a different refund. Nothing was refunded.");
+          return this.choiceView(tx, ctx.firmId, p, "REFUND", had.amountMinor, had.id, null);
+        }
+      }
+      if (p.receivedInto === "TRUST") refuse("TRUST_EXTRA", "Money received into trust stays in the trust ledger: there is no Refund · Keep as credit choice here. Nothing was changed.");
+      const waiting = await this.waiting(tx, ctx.firmId, p);
+      if (waiting <= 0) refuse("NOTHING_WAITING", "Nothing of this payment is waiting for a choice: it was chosen already, or it paid no more than was asked. Nothing was changed.", { waitingMinor: 0 });
+      if (c.choice === "REFUND") {
+        const refundId = await this.writeRefund(tx, ctx, p, waiting, c.reason, c.idempotencyKey, c.method, c.reference ?? null, true);
+        return this.choiceView(tx, ctx.firmId, p, "REFUND", waiting, refundId, null);
+      }
+      const entry = await tx.moneyCreditEntry.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: p.personId, companyId: p.companyId, caseId: p.caseId, kind: "KEPT", amountMinor: waiting, currency: p.currency, paymentId: id, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
+      await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "payment.extra_kept", entity: "money_credit_entry", entityKey: entry.id,
+        summary: `${p.currency} ${MONEY(waiting)} paid over invoice kept as credit (receipt ${p.receiptNumber}).`, detail: { paymentId: id, invoiceId: p.invoiceId, creditEntryId: entry.id, amountMinor: waiting },
+        before: { waitingMinor: waiting }, after: { waitingMinor: 0, keptMinor: waiting, currency: p.currency } });
+      return this.choiceView(tx, ctx.firmId, p, "KEEP_AS_CREDIT", waiting, null, entry.id);
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------------- helpers
+  /** One writing transaction; a rule the database refused (its own words name the rule) is a 409, never a 500. */
+  private async write<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    try { return await this.db.$transaction(fn); } catch (e) {
+      if (e instanceof HttpException) throw e;
+      const meta = JSON.stringify((e as { meta?: unknown }).meta ?? "");
+      if ((e as { code?: string }).code === "P2002" && /refund_ordinal/.test(meta)) refuse("OVER_REFUND", "Another refund of this payment was recorded at the same moment: read it again. Nothing was refunded.");
+      if ((e as { code?: string }).code === "P2002" && /idempotency_key/.test(meta)) refuse("KEY_USED", "This idempotency key is already in use. Nothing was refunded.");
+      const said = /money_[a-z_]+: ([^\n]{1,300})/.exec(e instanceof Error ? e.message : "");
+      return said ? refuse("MONEY_RULE", `The money rules refused this: ${said[1].replace(/\s*\(.*$/, "")}. Nothing was changed.`) : Promise.reject(e);
+    }
+  }
+  /** The payment (on an invoice of the firm), the party's trust lock, then the invoice row (FO-7lk's order). */
+  private async lock(tx: Tx, firm: string, id: string): Promise<Pay> {
+    const firmId = firmScope(firm).firmId;
+    const [p] = await tx.$queryRaw<Pay[]>`select p.id::text as id, p.invoice_id::text as "invoiceId", p.amount_minor as "amountMinor", p.currency::text as currency, p.received_into::text as "receivedInto", p.method::text as method,
+        r.number as "receiptNumber", i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId"
+      from money_payment p join money_invoice i on i.firm_id = p.firm_id and i.id = p.invoice_id left join money_receipt r on r.firm_id = p.firm_id and r.payment_id = p.id
+      where p.firm_id = ${firmId}::uuid and p.id = ${id}::uuid`;
+    if (!p) return notFound("payment");
+    await tx.$executeRaw`select money_trust_lock(${firmId}::uuid, ${p.personId ?? p.companyId}::uuid, ${p.currency}::"MoneyCurrency")`;
+    await tx.$queryRaw`select 1 from money_invoice where firm_id = ${firmId}::uuid and id = ${p.invoiceId}::uuid for update`;
+    return p;
+  }
+  private async refunded(tx: Tx, firm: string, paymentId: string): Promise<number> {
+    const [r] = await tx.$queryRaw<{ n: string }[]>`select coalesce(sum(amount_minor), 0)::text as n from money_refund where firm_id = ${firmScope(firm).firmId}::uuid and payment_id = ${paymentId}::uuid`;
+    return Number(r.n);
+  }
+  /** What of the payment's extra is still waiting: the extra its audit line stored (exactly one line, part 1b), less what
+   *  was kept from it or refunded from it, and never more than the invoice is still paid over. */
+  private async waiting(tx: Tx, firm: string, p: Pay): Promise<number> {
+    const firmId = firmScope(firm).firmId;
+    const lines = await tx.$queryRaw<{ extra: unknown }[]>`select detail->'extraMinor' as extra from audit_event where firm_id = ${firmId}::uuid and action = 'payment.recorded' and entity = 'money_payment'
+      and entity_key = ${p.id} and detail->>'paymentId' = ${p.id} and detail->>'receiptNumber' = ${p.receiptNumber}`;
+    if (lines.length !== 1 || !Number.isSafeInteger(lines[0].extra) || (lines[0].extra as number) < 0) return notFound("payment");
+    const [k] = await tx.$queryRaw<{ kept: string }[]>`select coalesce(sum(e.amount_minor + coalesce((select sum(r.amount_minor) from money_credit_entry r where r.firm_id = e.firm_id and r.reverses_entry_id = e.id), 0)), 0)::text as kept
+      from money_credit_entry e where e.firm_id = ${firmId}::uuid and e.kind = 'KEPT' and e.payment_id = ${p.id}::uuid`;
+    const facts = await invoiceFacts(tx, firm, p.invoiceId, dayOf(this.clock.now()));
+    return Math.max(0, Math.min((lines[0].extra as number) - Number(k.kept) - (await this.refunded(tx, firm, p.id)), facts?.view.extraMinor ?? 0));
+  }
+  private async writeRefund(tx: Tx, ctx: StaffContext, p: Pay, amount: number, reason: string, key: string, method: string, reference: string | null, fromExtra: boolean): Promise<string> {
+    const [text] = await tx.$queryRaw<{ ok: boolean; ref: boolean }[]>`select money_text_ok(${reason}, 200) as ok, ${reference}::text is null or money_text_ok(${reference}, 200) as ref`;
+    if (!text.ok) badField("reason", "The reason needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was refunded.");
+    if (!text.ref) badField("reference", "The reference needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was refunded.");
+    const firmId = firmScope(ctx.firmId).firmId, by = `staff:${ctx.staffId}`;
+    const row = await tx.moneyRefund.create({ data: { firmId, paymentId: p.id, amountMinor: amount, currency: p.currency, reason, route: "OFFLINE", idempotencyKey: key, createdBy: by }, select: { id: true } });
+    await this.audit.record(tx, { firmId: ctx.firmId, actor: by, action: "payment.refunded", entity: "money_refund", entityKey: row.id,
+      summary: `${p.currency} ${MONEY(amount)} refunded${fromExtra ? " (money paid over the invoice)" : ""} from the payment with receipt ${p.receiptNumber}.`,
+      detail: { paymentId: p.id, invoiceId: p.invoiceId, refundId: row.id, amountMinor: amount, fromExtra, route: "OFFLINE" },
+      before: null, after: { amountMinor: amount, currency: p.currency, method, reference, reason, route: "OFFLINE" } });
+    await tx.moduleEvent.create({ data: { firmId, type: MONEY_EVENT.PAYMENT_REFUNDED, subjectId: p.id, payload: RefundEventPayload.parse({ refundId: row.id, paymentId: p.id, invoiceId: p.invoiceId, amountMinor: amount, currency: p.currency, route: "OFFLINE", fromExtra }) } });
+    return row.id;
+  }
+  private async invoice(tx: Tx, firm: string, invoiceId: string): Promise<InvoiceView> { return (await invoiceFacts(tx, firm, invoiceId, dayOf(this.clock.now())))?.view ?? notFound("invoice"); }
+  private async refundView(tx: Tx, firm: string, refundId: string, p: Pay, replayed: boolean): Promise<RefundView> {
+    const r = (await tx.moneyRefund.findFirst({ where: firmScope(firm, { id: refundId }) }))!;
+    return RefundView.parse({ id: r.id, paymentId: r.paymentId, amountMinor: r.amountMinor, currency: r.currency, route: "OFFLINE", reason: r.reason, replayed,
+      leftToRefundMinor: Math.max(0, p.amountMinor - (await this.refunded(tx, firm, p.id))), invoice: await this.invoice(tx, firm, p.invoiceId) });
+  }
+  private async choiceView(tx: Tx, firm: string, p: Pay, choice: "REFUND" | "KEEP_AS_CREDIT", amount: number, refundId: string | null, creditEntryId: string | null): Promise<ExtraChoiceView> {
+    return ExtraChoiceView.parse({ paymentId: p.id, choice, amountMinor: amount, currency: p.currency, refundId, creditEntryId, waitingMinor: await this.waiting(tx, firm, p), invoice: await this.invoice(tx, firm, p.invoiceId) });
+  }
+}
