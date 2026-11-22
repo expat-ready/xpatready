@@ -321,6 +321,42 @@ try {
   ok("AUD-4s DW7 (C8): pressing the shortcut with Person and Done by set clears both (the address and the chips) and says \"Person filter cleared.\" in the status; the two support lines show; fail: pressed with neither set, nothing is said",
     said7 === "Person filter cleared. Done by filter cleared." && url7.get("ours") === "1" && !url7.has("person") && !url7.has("actorType") && JSON.stringify(chips7) === '["ours"]' && (await said(p)) === "", { said7, chips7 });
 
+  // ---------------------------------------------------------------------------------------------- review round 1, Minors 1-3
+  const LONGKEY = "記録".repeat(30), LONGASCII = "r".repeat(120);
+  for (const [w, key] of [[1024, LONGKEY], [375, LONGASCII]] as const) {
+    const q = await tab(TOWNER, w); await log(q, `?entityKey=${encodeURIComponent(key)}&person=${R}`);
+    const fits = await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), chipW = await q.locator('[data-audit-chip="entityKey"]').evaluate((el) => el.getBoundingClientRect().right <= window.innerWidth);
+    ok(`AUD-4s review m1: a ${key.length}-character record filter's chip is cut short at ${w} px: the page does not scroll sideways`, fits && chipW, { fits, chipW });
+    if (w === 1024) {
+      // fail: the same judge on the chip with its width limit taken away widens the page
+      await q.evaluate(() => { const li = document.querySelector('[data-audit-chip="entityKey"]')!.parentElement!; li.className = ""; li.style.whiteSpace = "nowrap"; li.querySelector("button")!.className = "inline-flex"; });
+      ok("AUD-4s review m1 fail: without the width limit the same chip widens the page (the judge can fail)", await q.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
+    }
+    await q.context().close();
+  }
+  await log(p, `?person=${R}&area=team&action=audit.exported`);
+  const areaChip = p.locator('[data-audit-chip="area"]'); await areaChip.focus(); await p.keyboard.press("Enter");
+  await p.locator('[data-audit-chip="area"]').waitFor({ state: "detached" });
+  const nextChip = await p.waitForFunction(() => document.activeElement?.getAttribute("data-audit-chip") === "action", undefined, { timeout: 5_000 }).then(() => true, () => false);
+  await p.locator('[data-audit-chip="action"]').focus(); await p.keyboard.press("Enter"); await p.locator('[data-audit-chip="action"]').waitFor({ state: "detached" });
+  const prevChip = await p.waitForFunction(() => document.activeElement?.getAttribute("data-audit-chip") === "person", undefined, { timeout: 5_000 }).then(() => true, () => false);
+  await p.keyboard.press("Enter"); await p.locator('[data-audit-chip="person"]').waitFor({ state: "detached" });
+  const lastToBox = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-audit-filters"), undefined, { timeout: 5_000 }).then(() => true, () => false);
+  await log(p, `?from=${addDays(TODAY, -200)}&to=${addDays(TODAY, -199)}&person=${R}`);
+  await p.locator("[data-audit-clear]").focus(); await p.keyboard.press("Enter"); await p.locator('[data-audit-chip="person"]').waitFor({ state: "detached" });
+  const clearToBox = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-audit-filters"), undefined, { timeout: 5_000 }).then(() => true, () => false);
+  const notBody = await p.evaluate(() => document.activeElement !== document.body);
+  ok("AUD-4s review m2: removing a chip by keyboard puts focus on the chip that took its place, else the one before; the last chip and Clear filters put it on the Filters box; fail: focus is never left on the page body",
+    nextChip && prevChip && lastToBox && clearToBox && notBody, { nextChip, prevChip, lastToBox, clearToBox });
+  await log(p);
+  const tip = p.locator("[data-audit-shortcut-tip]");
+  const hiddenBefore = !(await tip.isVisible());
+  await p.locator("[data-audit-shortcut]").focus(); await p.keyboard.press("Shift+Tab"); await p.keyboard.press("Tab");
+  const onFocus = await tip.isVisible(), described = await p.locator("[data-audit-shortcut]").evaluate((el) => document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent);
+  ok("AUD-4s review m3: the shortcut's tip shows when the button gets keyboard focus (not only on hover) and is its description; fail: before focus it is not shown",
+    hiddenBefore && onFocus && described === COPY.shortcutTip, { hiddenBefore, onFocus, described });
+  await shot(p, "15-shortcut-tip-on-focus-1440");
+
   // ---------------------------------------------------------------------------------------------- DW8, C9
   await log(p);
   const keepApi = await api(TOWNER, "GET", "/platform/keep-periods"), keepShown = await text(p, "[data-audit-keep]");

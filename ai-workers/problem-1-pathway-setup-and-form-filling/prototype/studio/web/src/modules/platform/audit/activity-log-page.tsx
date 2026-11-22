@@ -88,8 +88,17 @@ function ActivityLog() {
 
   const [said, setSaid] = React.useState("");
   const set = (patch: Partial<Filters>) => setParams(writeFilters({ ...f, ...patch }, zone), { replace: true });
-  const clear = () => set({ ...defaults(zone), from: f.from, to: f.to });
+  // Removing a chip or clearing the filters keeps the keyboard where it was (review round 1, Minor 2): on the chip that took the
+  // removed one's place, else the one before it, else the filters' own box, never the page's start.
+  const filtersBox = React.useRef<HTMLElement>(null), refocus = React.useRef<number | "box" | null>(null);
+  const clear = () => { refocus.current = "box"; set({ ...defaults(zone), from: f.from, to: f.to }); };
+  const removeChip = (key: keyof Filters, at: number) => { refocus.current = at; set({ [key]: key === "ours" ? false : "" }); };
   const chips = activeFilters(f, names), advancedSet = ADVANCED.filter((k) => f[k]).length;
+  React.useEffect(() => {
+    const at = refocus.current; if (at === null) return; refocus.current = null;
+    const left = filtersBox.current?.querySelectorAll<HTMLElement>("[data-audit-chip]") ?? [];
+    (typeof at === "number" && left.length ? left[Math.min(at, left.length - 1)] : filtersBox.current)?.focus();
+  }, [chips.length]);
   // BR-12: Advanced opens by itself when one of its filters is set (also from the address); the person can still close it.
   const [advanced, setAdvanced] = React.useState(advancedSet > 0);
   React.useEffect(() => { if (advancedSet > 0) setAdvanced(true); }, [advancedSet]);
@@ -159,7 +168,7 @@ function ActivityLog() {
   return (
     <Shell action={<Button ref={exportButton} variant="outline" aria-disabled={!canExport || exporting || undefined} className={cn((!canExport || exporting) && "opacity-60")}
       onClick={() => { if (canExport && !busy.current) setAsking(true); }} data-audit-export>{exporting ? "Exporting…" : "Export CSV"}</Button>}>
-      <section aria-label="Filters" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4" data-audit-filters>
+      <section ref={filtersBox} tabIndex={-1} aria-label="Filters" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" data-audit-filters>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[10rem_10rem_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start">
           <Field label="From" error={problem?.field === "from" ? problem.words : null}><Input type="date" value={f.from} onChange={(e) => set({ from: e.target.value })} data-audit-filter="from" /></Field>
           <Field label="To" error={problem?.field === "to" ? problem.words : null}><Input type="date" value={f.to} onChange={(e) => set({ to: e.target.value })} data-audit-filter="to" /></Field>
@@ -174,8 +183,10 @@ function ActivityLog() {
             {f.area && !names.areas.some((a) => a.code === f.area) ? <option value={f.area}>{f.area}</option> : null}
             {names.areas.map((a) => <option key={a.code} value={a.code}>{a.words}</option>)}
           </Select></Field>
-          <div className="flex flex-col gap-1.5"><span className="text-xs font-medium text-text" aria-hidden>Shortcut</span>
-            <Button variant={f.ours ? "default" : "outline"} aria-pressed={f.ours} title={COPY.shortcutTip} onClick={shortcut} data-audit-shortcut>{COPY.shortcut}</Button></div>
+          <div className="relative flex flex-col gap-1.5"><span className="text-xs font-medium text-text" aria-hidden>Shortcut</span>
+            <Button variant={f.ours ? "default" : "outline"} aria-pressed={f.ours} aria-describedby="audit-shortcut-tip" onClick={shortcut} data-audit-shortcut className="peer">{COPY.shortcut}</Button>
+            {/* The tip shows on hover and on keyboard focus (review round 1, Minor 3), and is the button's description. */}
+            <span id="audit-shortcut-tip" role="tooltip" className="pointer-events-none invisible absolute z-10 mt-12 max-w-64 rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-md peer-hover:visible peer-focus-visible:visible" data-audit-shortcut-tip>{COPY.shortcutTip}</span></div>
         </div>
         <div>
           <Button variant="ghost" size="sm" aria-expanded={advanced} aria-controls="audit-advanced" onClick={() => setAdvanced((o) => !o)} data-audit-advanced-toggle>
@@ -195,10 +206,10 @@ function ActivityLog() {
             </Select></Field>
           </div>
         </div>
-        {chips.length ? <ul aria-label="Filters set" className="flex flex-wrap gap-2" data-audit-chips>{chips.map((c) => <li key={c.key}>
-          <button type="button" onClick={() => set({ [c.key]: c.key === "ours" ? false : "" })} aria-label={`Remove filter: ${c.words}`} data-audit-chip={c.key}
+        {chips.length ? <ul aria-label="Filters set" className="flex flex-wrap gap-2" data-audit-chips>{chips.map((c, i) => <li key={c.key} className="min-w-0 max-w-full">
+          <button type="button" onClick={() => removeChip(c.key, i)} aria-label={`Remove filter: ${c.words}`} data-audit-chip={c.key}
             className="inline-flex min-h-7 max-w-full items-center gap-1 rounded-md border border-border bg-surface px-2 text-xs outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50">
-            <span className="truncate">{c.words}</span><X className="size-3 shrink-0" aria-hidden /></button></li>)}</ul> : null}
+            <span className="min-w-0 truncate">{c.words}</span><X className="size-3 shrink-0" aria-hidden /></button></li>)}</ul> : null}
       </section>
 
       {exportError ? <Notice tone="danger" title={exportError.title}><span data-audit-export-error>{exportError.words}</span></Notice> : null}
@@ -216,11 +227,11 @@ function ActivityLog() {
             <div aria-hidden className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-9 animate-pulse rounded-md bg-text/10" />)}</div></div>)
         : (
           <div ref={body} className={cn("flex flex-col gap-3", q.isPlaceholderData && "opacity-60")} aria-busy={q.isPlaceholderData || undefined} data-audit-list>
-            <p className="text-sm" data-audit-sentence>Showing {readBack} — {lines.length === 0 ? "no lines" : q.hasNextPage ? `${lines.length} shown, more below` : `${lines.length} ${lines.length === 1 ? "line" : "lines"}`}.</p>
+            <p className="text-sm [overflow-wrap:anywhere]" data-audit-sentence>Showing {readBack} — {lines.length === 0 ? "no lines" : q.hasNextPage ? `${lines.length} shown, more below` : `${lines.length} ${lines.length === 1 ? "line" : "lines"}`}.</p>
             {f.ours ? <p className="text-xs text-text-muted" data-audit-sessions>{COPY.sessions}</p> : null}
             {lines.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center" data-audit-empty>
-                <h2 className="text-base font-semibold">{firstUse ? COPY.firstUse : emptyTitle(read, names)}</h2>
+                <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{firstUse ? COPY.firstUse : emptyTitle(read, names)}</h2>
                 <p className="mt-1 text-sm text-text-muted">{firstUse ? COPY.firstUseHelp : COPY.emptyHelp}</p>
                 {chips.length ? <Button variant="outline" size="sm" className="mt-3" onClick={clear} data-audit-clear>Clear filters</Button> : null}
               </div>
@@ -262,7 +273,7 @@ function ActivityLog() {
 
       <Dialog open={asking} onOpenChange={setAsking} title={COPY.exportAsk} description={COPY.exportRecorded}
         footer={<><Button variant="outline" onClick={() => setAsking(false)} data-audit-export-cancel>Cancel</Button><Button onClick={() => void exportNow()} data-audit-export-confirm>Export CSV</Button></>}>
-        <p className="text-sm" data-audit-export-sentence>{readBack ? `${readBack[0].toUpperCase()}${readBack.slice(1)}.` : ""} {COPY.exportFull}</p>
+        <p className="text-sm [overflow-wrap:anywhere]" data-audit-export-sentence>{readBack ? `${readBack[0].toUpperCase()}${readBack.slice(1)}.` : ""} {COPY.exportFull}</p>
       </Dialog>
     </Shell>
   );
