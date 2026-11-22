@@ -44,6 +44,7 @@ const SENDERS: Record<string, Entry> = {
   "platform/identity/session/service.ts": { counts: { mailIn: 1 }, route: "two-step reset notice: MAIL_PORT (MESSAGES_MAIL) in the caller's transaction (PF-19r part 1)" },
   "platform/identity/session/email-sender.ts": { counts: { mailSend: 1, anySend: 1 }, route: "the identity provider's code emails: the MailPort its caller gives (no caller in api/src; PF-19r part 1 tests it over MessagesMail). Not verified: the deployed function's wiring" },
   "platform/complaints/complaints.ts": { counts: { mailIn: 1 }, route: "complaint reminder: COMPLAINT_PORTS.mail = MESSAGES_MAIL (features/platform-complaints.ts; PF-19r part 1)" },
+  "client-money/card/account.ts": { counts: { mailIn: 1 }, route: "payment account break email to each Owner: MAIL_PORT (MESSAGES_MAIL) in the webhook's transaction, sent after commit (features/client-money-card.ts; FO-7c part 1)" },
   "platform/support/support.ts": { counts: { mailSend: 1, anySend: 1 }, route: "support ticket mail: MAIL_PORT (MESSAGES_MAIL) (features/platform-support.ts)" },
   "platform/entitlements/storage.ts": { counts: { mailSend: 2, anySend: 2 }, route: "storage-over emails: MAIL_PORT (MESSAGES_MAIL) (features/platform-entitlements.ts; PF-15 part 1a)" },
   "platform/entitlements/limit-changes.ts": { counts: { mailSend: 1, anySend: 1 }, route: "live-plan removal notice: the MailPort its caller gives (no caller in api/src: no route until PF-4s)" },
