@@ -16,7 +16,8 @@
 * a put with `If-Match` on an absent key (404 here);
 * a missing key answers 404 only when the role holds `s3:ListBucket`; without it S3 answers 403 (`HeadObjectCommand` documentation in the SDK) and the adapter would throw instead of answering absent. PF-F1c's role needs `s3:ListBucket` (also for `usedBytes`);
 * an SSE-KMS object's ETag (not the MD5 of its bytes: here a made-up one per put);
-* header values: the fake trims spaces at their ends, as an HTTP hop does; it does not refuse characters Node's HTTP layer refuses (the adapter refuses a content type that is not printable ASCII before any request);
+* header values: the fake trims spaces at their ends, as an HTTP hop does; it does not refuse characters Node's HTTP layer refuses (the adapter keeps the exact content type in metadata, base64url, and sends only a safe Content-Type header);
+* a HEAD has no body, so the SDK names every HEAD 404 `NotFound`: `exists`, `delete` and a link's `open` cannot tell a missing bucket from a missing key and answer absent (GET and PUT name `NoSuchBucket` and throw). A start-up check of the bucket would close this: not in this row (listed in the PR);
 * the CRC32 checksum the SDK sends on every put is not checked; signatures are not checked; a signed address that dies early because the task role's temporary credentials end is not modelled; a body that never ends is not modelled. PF-F1c runs the same contract (`ports/contracts/files-port.contract.ts`) against the real bucket and replaces any answer here that differs.
 
 The fake does not check request signatures. Ids, keys and the bucket name in tests are made up (`pff1-recorded-…`), never real.

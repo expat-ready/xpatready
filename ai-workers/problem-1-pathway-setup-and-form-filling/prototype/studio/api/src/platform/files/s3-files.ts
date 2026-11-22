@@ -57,6 +57,14 @@ class S3FilesError extends Error {
 }
 /** An error of the adapter's own (no S3 answer behind it), named so the caller's message says which. */
 const named = (name: string) => Object.assign(new Error(name), { name });
+/** The exact type, as object metadata (base64url: ASCII, nothing lost); S3 allows 2 KB of metadata in all. */
+const typeOf = (contentType: string): string => {
+  const t = Buffer.from(contentType, "utf8").toString("base64url");
+  if (t.length > 1024) throw new Error("files: a content type is at most 768 bytes");
+  return t;
+};
+/** The Content-Type header S3 serves: the type itself when a header can carry it unchanged, else a neutral one. */
+const headerTypeOf = (contentType: string): string => /^[\x21-\x7e]([\x20-\x7e]*[\x21-\x7e])?$/.test(contentType) ? contentType : "application/octet-stream";
 /** The object key: the firm's prefix, then the key. The only place a key is built; both parts are checked here. */
 export const objectKey = (firmId: string, key: string): string => `${FirmId.parse(firmId).toLowerCase()}/${FileKey.parse(key)}`;
 
@@ -93,7 +101,9 @@ export class S3Files implements FilesPort {
       } catch (e) {
         const status = statusOf(e);
         if (status === 412) return "taken";
-        if (status === 404) return "absent";
+        // Only a tombstone's If-Match put may find the key gone (NoSuchKey); any other 404 is a missing bucket: an error,
+        // never "absent" (break r2-m1).
+        if (status === 404 && "IfMatch" in condition && (e as Error).name === "NoSuchKey") return "absent";
         if (status === 409 && attempt < CONFLICT_TRIES) { await new Promise((r) => setTimeout(r, 50 * attempt)); continue; }
         throw new S3FilesError(op, e);
       }
@@ -107,17 +117,17 @@ export class S3Files implements FilesPort {
 
   async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
     const f = FilePut.parse({ firmId, key, bytes, contentType });
-    // An HTTP header carries printable ASCII only, and loses spaces at its ends on the way (break m3): such a type is
-    // stored trimmed, so a retry of it is still a retry.
-    if (!/^[\x20-\x7e]+$/.test(f.contentType)) throw new Error("files: a content type is printable ASCII");
-    f.contentType = f.contentType.trim();
+    // The port keeps the type exactly as put (a retry compares it, get gives it back). An HTTP header carries printable
+    // ASCII only and loses spaces at its ends (break m3, r2-m2), so the exact type is kept in the object's metadata,
+    // base64url; the Content-Type header S3 serves is a safe copy of it (or application/octet-stream).
+    const type = typeOf(f.contentType);
     const body = new Uint8Array(f.bytes), sha256 = await sha256Hex(body), objKey = objectKey(f.firmId, f.key);
     for (let attempt = 1; ; attempt++) {
-      if (await this.send("put", objKey, body, f.contentType, { sha256 }, { IfNoneMatch: "*" }) === "stored") return { key: f.key, sha256 };
+      if (await this.send("put", objKey, body, headerTypeOf(f.contentType), { sha256, type }, { IfNoneMatch: "*" }) === "stored") return { key: f.key, sha256 };
       const had = await this.head("put", objKey);
       if (had) {
         // The key is taken: a tombstone (PF-Fd), other bytes or another type are refused; the same bytes and type are a retry.
-        if (had.Metadata?.retired !== undefined || had.Metadata?.sha256 !== sha256 || had.ContentType !== f.contentType) throw new FileKeyTaken(f.key);
+        if (had.Metadata?.retired !== undefined || had.Metadata?.sha256 !== sha256 || had.Metadata?.type !== type) throw new FileKeyTaken(f.key);
         return { key: f.key, sha256 };
       }
       // Taken a moment ago and absent now (only someone working on the bucket itself removes an object): ask once more.
@@ -132,7 +142,7 @@ export class S3Files implements FilesPort {
       const r = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: objKey }));
       if (r.Metadata?.retired !== undefined) { (r.Body as { destroy?: () => void } | undefined)?.destroy?.(); return null; }
       bytes = r.Body ? new Uint8Array(await r.Body.transformToByteArray()) : new Uint8Array();
-      contentType = r.ContentType; meta = r.Metadata;
+      meta = r.Metadata; contentType = meta?.type ? Buffer.from(meta.type, "base64url").toString("utf8") : undefined;
     } catch (e) { if (statusOf(e) === 404 && (e as Error).name === "NoSuchKey") return null; throw new S3FilesError("get", e); }   // a missing bucket is an error, never "no such file" (break m6)
     // An object without our sha256, or whose bytes no longer match it, was not written by this adapter: never served.
     if (!contentType || !meta?.sha256 || meta.sha256 !== await sha256Hex(bytes)) throw new S3FilesError("get", named("IntegrityMismatch"));
@@ -150,7 +160,7 @@ export class S3Files implements FilesPort {
     if (!h || h.Metadata?.retired !== undefined || !h.ETag) return { deleted: false };
     // The tombstone replaces exactly the object read above: when another delete (or anything else) got there first, this
     // one changed nothing and answers deleted false.
-    const wrote = await this.send("delete", objKey, new Uint8Array(), h.ContentType ?? "application/octet-stream", { retired: "true", sha256: h.Metadata?.sha256 ?? "" }, { IfMatch: h.ETag });
+    const wrote = await this.send("delete", objKey, new Uint8Array(), h.ContentType ?? "application/octet-stream", { retired: "true", sha256: h.Metadata?.sha256 ?? "", type: h.Metadata?.type ?? "" }, { IfMatch: h.ETag });
     return { deleted: wrote === "stored" };
   }
 

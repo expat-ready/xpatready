@@ -194,13 +194,21 @@ try {
     ok("R1.65 PF-F1 break m1 fail: without the override the same object would come back with no Content-Disposition (an HTML upload would render)", !!unsigned && (await s3.fetchUrl(unsigned.toString())).headers["content-disposition"] === undefined);
     const fresh = links.sign(FIRM_A, PERSON_1, "planted/ok.txt");
     nowMs = Number.NaN;
-    ok("R1.65 PF-F1 break m9 fail: a clock that gives no time (NaN) opens no link (404)", JSON.stringify(await links.open(fresh.token, FIRM_A, PERSON_1)) === `{"status":404}`);
+    ok("R1.65 PF-F1 break m9 fail: a clock that gives no time (NaN) opens no link (404)", JSON.stringify(await links.open(fresh.token, FIRM_A, PERSON_1).catch((e) => `threw: ${(e as Error).message}`)) === `{"status":404}`);
     nowMs = Date.UTC(2026, 10, 22, 12, 0, 0);
     ok("R1.65 PF-F1 break m9 pass: the same link opens once the clock gives the time again", (await links.open(fresh.token, FIRM_A, PERSON_1)).status === 200);
-    const spaced = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/plain; charset=utf-8 ");
-    const again = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/plain; charset=utf-8 ");
-    ok("R1.65 PF-F1 break m3 pass: a type with a space at its end is stored trimmed, and the same put again is a retry", spaced.sha256 === again.sha256 && (await files.get(FIRM_A, "types/t.txt"))?.contentType === "text/plain; charset=utf-8");
-    ok("R1.65 PF-F1 break m3 fail: a type that is not printable ASCII is refused before any request, and another type is still FileKeyTaken", await refused(() => files.put(FIRM_A, "types/u.txt", bytesOf("u"), "text/plain; name=中")) && await files.exists(FIRM_A, "types/u.txt") === false && await refused(() => files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/csv"), (e) => e instanceof FileKeyTaken));
+    const exact = "text/plain; charset=utf-8 ", accented = "text/plain; name=été";
+    const spaced = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), exact), again = await files.put(FIRM_A, "types/t.txt", bytesOf("t"), exact);
+    await files.put(FIRM_A, "types/u.txt", bytesOf("u"), accented);
+    ok("R1.65 PF-F1 r2-m2 pass: a type with a space at its end, or not ASCII, is kept exactly (get gives it back; the same put again is a retry); S3 serves a safe header", spaced.sha256 === again.sha256 && (await files.get(FIRM_A, "types/t.txt"))?.contentType === exact && (await files.get(FIRM_A, "types/u.txt"))?.contentType === accented && s3.object(`${FIRM_A}/types/u.txt`)?.contentType === "application/octet-stream" && s3.object(`${FIRM_A}/types/t.txt`)?.contentType === "application/octet-stream");
+    ok("R1.65 PF-F1 r2-m2 fail: the same type without its space, or another type, is FileKeyTaken (as LocalFiles and the fake)", await refused(() => files.put(FIRM_A, "types/t.txt", bytesOf("t"), exact.trim()), (e) => e instanceof FileKeyTaken) && await refused(() => files.put(FIRM_A, "types/t.txt", bytesOf("t"), "text/csv"), (e) => e instanceof FileKeyTaken) && await refused(() => files.put(FIRM_A, "types/u.txt", bytesOf("u"), "text/plain; name=ete"), (e) => e instanceof FileKeyTaken));
+    const local = new LocalFiles(join(WORK, "types-local"));
+    await local.put(FIRM_A, "types/t.txt", bytesOf("t"), exact);
+    ok("R1.65 PF-F1 r2-m2 pass: LocalFiles answers the same way for the same puts (one rule for both adapters)", (await local.get(FIRM_A, "types/t.txt"))?.contentType === exact && await refused(() => local.put(FIRM_A, "types/t.txt", bytesOf("t"), exact.trim()), (e) => e instanceof FileKeyTaken));
+    s3.failNext("PUT", "NoSuchBucket");
+    let putSaid = "";
+    try { await files.put(FIRM_A, "types/v.txt", bytesOf("v"), "text/plain"); } catch (e) { putSaid = (e as Error).message; }
+    ok("R1.65 PF-F1 r2-m1 fail: a put to a missing bucket (404 NoSuchBucket) fails naming it, not as an unsettled key", putSaid === "files: S3 put failed (NoSuchBucket 404)", putSaid);
     s3.failNext("GET", "NoSuchBucket");
     let said = "";
     try { await files.get(FIRM_A, "planted/ok.txt"); } catch (e) { said = (e as Error).message; }
@@ -210,7 +218,7 @@ try {
     const env = { PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: BUCKET, PLATFORM_FILES_KMS_KEY_ID: KMS };
     ok("R1.65 PF-F1 break m7 pass: a Canadian region (ca-west-1 with its own key), an alias and a key id are accepted", s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1", PLATFORM_FILES_KMS_KEY_ID: KMS.replace("ca-central-1", "ca-west-1") }).region === "ca-west-1" && !!s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: "alias/expatready-files" }) && !!s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: "00000000-0000-4000-8000-00000000f1f1" }));
     const badBuckets = ["a..b", "192.168.1.1", "xn--bucket", "with.dot", "ends-s3alias", "-lead"], badKeys = ["::::", "AKIAPFF1", "arn:aws:kms:ca-central-1:000000000000:key/nope"];
-    ok("R1.65 PF-F1 break m7 fail: a bucket name S3 forbids or a dotted one, a value that is no KMS key, a region outside Canada, or a key in another region, refuses to start", badBuckets.every((b) => /PLATFORM_FILES_BUCKET must be/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_BUCKET: b })))) && badKeys.every((k) => /PLATFORM_FILES_KMS_KEY_ID must be a KMS key/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: k })))) && ["us-east-1", "eu-west-1"].every((r) => /must be a region in Canada/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: r })))) && /in the bucket's region/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1" }))) && /stays in Canada/.test(sayOf(() => new S3Files({ bucket: BUCKET, kmsKeyId: KMS, region: "us-east-1" }))));
+    ok("R1.65 PF-F1 break m7 fail: a bucket name S3 forbids or a dotted one, a value that is no KMS key, a region outside Canada, or a key in another region, refuses to start", badBuckets.every((b) => /PLATFORM_FILES_BUCKET must be/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_BUCKET: b })))) && badKeys.every((k) => /PLATFORM_FILES_KMS_KEY_ID must be a KMS key/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_KMS_KEY_ID: k })))) && ["us-east-1", "eu-west-1"].every((r) => /must be a region in Canada/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: r })))) && /in the bucket's region/.test(sayOf(() => s3SettingsOf({ ...env, PLATFORM_FILES_REGION: "ca-west-1" }))) && /stays in Canada/.test(sayOf(() => new S3Files({ bucket: BUCKET, kmsKeyId: KMS, region: "us-east-1" }))) && /in the bucket's region/.test(sayOf(() => new S3Files({ bucket: BUCKET, kmsKeyId: KMS, region: "ca-west-1" }))));
     ok("R1.65 PF-F1 break m8 fail: production written in any case, with spaces, or as prod refuses to start when PLATFORM_FILES is unset", [{ NODE_ENV: "Production" }, { NODE_ENV: " production" }, { NODE_ENV: "prod" }, { PLATFORM_ENVIRONMENT: "PRODUCTION" }].every((e) => /PLATFORM_FILES is not set/.test(sayOf(() => filesAdapterOf(e)))));
     ok("R1.65 PF-F1 break m8 pass: test, development and local still default to the local adapter", ["test", "development", "local", "productionish"].every((v) => filesAdapterOf({ NODE_ENV: v, PLATFORM_ENVIRONMENT: v }) === "local"));
   }
