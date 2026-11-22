@@ -1,7 +1,7 @@
 // FO-9a: a typed phone number in E.164 by libphonenumber-js (PF-L's gate entry), default region CA (Sample: the firms
 // are Canadian, contracts §7 §1.1 country CA). "+1 (416) 555-0101", "416.555.0101" and "(416) 555 0101" are all
 // +14165550101. A number that cannot be a phone number gives null, so it matches nothing.
-import { parseIncompletePhoneNumber, parsePhoneNumberFromString } from "libphonenumber-js";
+import { parseIncompletePhoneNumber, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
 export const DEFAULT_REGION = "CA";
 
@@ -32,4 +32,12 @@ export function phoneE164Exact(v: string): string | null {
   const typed = parseIncompletePhoneNumber(t), cc = n.countryCallingCode, nat = n.nationalNumber;
   const heads = typed.startsWith("+") ? [`+${cc}`] : ["", cc, `00${cc}`, `011${cc}`];
   return heads.some((h) => typed === `${h}${nat}` || typed === `${h}0${nat}`) ? n.number : null;
+}
+
+/** PF-30a: the typed phone in E.164 with the firm's country as default (phoneE164Exact for Canada, the Sample firms' country). */
+export function phoneForFirm(text: string, country: string): string | null {
+  if (country === DEFAULT_REGION) return phoneE164Exact(text);
+  const n = parsePhoneNumberFromString(text, country as CountryCode);
+  // as FO-9a's reader: a whole number, possible with its country code alone (not a local-only length), no extension
+  return n && n.isPossible() && !n.ext && /^\+[1-9][0-9]{6,14}$/.test(n.number) && parsePhoneNumberFromString(n.number)?.isPossible() ? n.number : null;
 }
