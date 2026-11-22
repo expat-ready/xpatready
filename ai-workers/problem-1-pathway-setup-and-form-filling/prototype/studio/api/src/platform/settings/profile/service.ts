@@ -111,7 +111,12 @@ export class FirmProfile {
       db.platformStaffCredential.count({ where: firmScope(a.firmId, { staff: { status: "ACTIVE" as const } }) }),
       db.platformOffice.count({ where: firmScope(a.firmId) }),
     ]);
-    const version = createHash("sha256").update(JSON.stringify([details, firm.billingEmail])).digest("hex").slice(0, 32);
+    // PF-5fp-2 (review r2-m1, break r2-1): the version is built from when things changed, never from what they hold: the firm row's
+    // updated_at (a billing email change sets it) and each profile setting's changed_at. A reader without the billing email can no
+    // longer confirm a guessed address by hashing it with the details. Any change to the firm row (also the address on Billing)
+    // gives a new version, so a save from before it is a 409 and reloads: safe, at worst one extra reload.
+    const changed = await db.platformFirmSetting.findMany({ where: firmScope(a.firmId, { key: { in: (Object.keys(DETAILS) as DetailName[]).map((k) => DETAILS[k].key) } }), select: { key: true, changedAt: true }, orderBy: { key: "asc" } });
+    const version = createHash("sha256").update(JSON.stringify([firm.updatedAt.toISOString(), changed.map((s) => [s.key, s.changedAt.toISOString()])])).digest("hex").slice(0, 32);
     // Break m1: the billing email and business address are the firm's legal and billing record; only those who administer the firm
     // (agent/settings:edit, Owner and Admin) read them, as the billing page shows the address to Owner and Admin only.
     const admin = a.keys.includes("agent/settings:edit");
@@ -168,7 +173,7 @@ export class FirmProfile {
         changed.push(k);
       }
       if (billingEmail !== undefined && billingEmail !== current) {
-        await tx.platformFirm.updateMany({ where: { id: firmScope(a.firmId).firmId }, data: { billingEmail } });
+        await tx.platformFirm.updateMany({ where: { id: firmScope(a.firmId).firmId }, data: { billingEmail, updatedAt: new Date() } });   // the version's clock (PF-5fp-2)
         await this.deps.audit.record(tx, { firmId: a.firmId, actor: `staff:${a.staffId}`, action: "platform.firm.billing_email_changed", entity: "platform_firm", entityKey: a.firmId,
           summary: "The firm's billing email was changed", detail: { field: "billingEmail" }, before: { billingEmail: current }, after: { billingEmail } });
         changed.push("billingEmail");
