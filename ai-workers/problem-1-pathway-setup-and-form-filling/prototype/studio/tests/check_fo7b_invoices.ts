@@ -1,8 +1,8 @@
 // FO-7b part 1a (QA-482: tax rounded per line by one stated rule; R1.59; brief build-lead-c-briefs/FO-7b-1a.md, with
 // FO-7b.md's named cases and the rulings of 18 Nov): draft invoice lines through the route, each read back from
 // money_invoice_line. R1-R8 and R10 (FO-7b.md; R2's and R7's planted fails: half up with Math.round, tax on the
-// subtotal), R11 (another currency: 400, not 500, nothing written), R12 (rate in parts per million, taken as sent; out of
-// range 400), R13 (a client-sent tax is ignored), R14 ("Prices include tax" on: refused in words); also the firm walls,
+// subtotal), R11 (another currency: 422, not 500, nothing written), R12 (rate in parts per million, taken as sent; out of
+// range 422), R13 (a client-sent tax is ignored), R14 ("Prices include tax" on: refused in words); also the firm walls,
 // one audit line per write, and two lines added at once. R9 (PDF, receipt, payload) is FO-7b part 1b's. The rates are
 // CRA's GST/HST rates (5 %, 13 %, 15 %; P-701), used here as Sample (not cited in this file); 14 % is Sample only. A
 // scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls and this row's classes, with the local
@@ -136,7 +136,7 @@ try {
   ok("FO-7b R8 pass: unit 21,474,836.47 at 15 % → 3,221,225.47 exactly (exact 322,122,547.05 cents, down); the total past 2^31 is exact (24,696,061.94)",
     r8.status === 201 && stored(d8.body.id) === "1:FEE:2147483647:150000:322122547:CAD" && r8.body.totalMinor === 2469606194 && sql(`select money_invoice_total('${A}', '${d8.body.id}')`) === "2469606194", r8.body);
   const big = await line(d8.body.id, fee(2147483647, 0, { quantity: 2 }));
-  ok("FO-7b R8 fail: a line whose quantity × unit passes 21,474,836.47 → 400 at unitMinor, in words, nothing written", big.status === 400 && big.body.errors?.[0]?.field === "unitMinor" && stored(d8.body.id).split(",").length === 1, big.body);
+  ok("FO-7b R8 fail: a line whose quantity × unit passes 21,474,836.47 → 422 at unitMinor, in words, nothing written", big.status === 422 && big.body.errors?.[0]?.field === "unitMinor" && stored(d8.body.id).split(",").length === 1, big.body);
 
   // ------------------------------------------------------------------------------------- R10: a government fee
   const d10 = await draft(); await line(d10.body.id, { kind: "GOVERNMENT_FEE", description: "Government processing fee (Sample)", unitMinor: 25500, ratePpm: 130000 });
@@ -147,8 +147,8 @@ try {
   // ------------------------------------------------------------------------------------- R11: another currency
   const linesNow = () => sql(`select count(*) from money_invoice_line`);
   let n0 = linesNow(); const r11 = await line(d1.body.id, fee(1000, 0, { currency: "USD" }));
-  ok("FO-7b R11 pass: a USD line on the CAD draft → 400 (not 500) at currency, in plain words, and no row written",
-    r11.status === 400 && r11.body.errors?.[0]?.field === "currency" && r11.body.detail === "This invoice is in CAD; a line in USD can't be added. Nothing was saved." && linesNow() === n0, r11.body);
+  ok("FO-7b R11 pass: a USD line on the CAD draft → 422 (not 500) at currency, in plain words, and no row written",
+    r11.status === 422 && r11.body.errors?.[0]?.field === "currency" && r11.body.detail === "This invoice is in CAD; a line in USD can't be added. Nothing was saved." && linesNow() === n0, r11.body);
   ok("FO-7b R11 fail (stand-in): a CAD line, sent with its currency, on the same draft is added (201)", (await line(d1.body.id, fee(1000, 0, { currency: "CAD" }))).status === 201);
   const dUsd = await draft({ personId: PA, currency: "USD" }), rUsd = await line(dUsd.body.id, fee(85000, 130000));
   ok("FO-7b R11 pass: a USD draft takes its own lines in USD (the line's currency is the invoice's)", rUsd.status === 201 && stored(dUsd.body.id) === "1:FEE:85000:130000:11050:USD", rUsd.body);
@@ -158,17 +158,17 @@ try {
   ok("FO-7b R12 pass: ratePpm 1300 (13 % typed in basis points) is stored as 1300 ppm, not corrected: 1,000.00 → tax 1.30", r12.status === 201 && stored(d12.body.id) === "1:FEE:100000:1300:130:CAD", r12.body);
   n0 = linesNow();
   const bad = await Promise.all([-1, 1_000_001, 1.5, "130000"].map((ratePpm) => line(d12.body.id, fee(100000, 0, { ratePpm }))));
-  ok("FO-7b R12 fail: ratePpm −1, 1,000,001, 1.5 and the text \"130000\" → 400 at ratePpm, nothing written",
-    bad.every((x) => x.status === 400 && x.body.errors?.some((e: { field: string }) => e.field === "ratePpm")) && linesNow() === n0, bad.map((x) => [x.status, x.body?.errors]));
+  ok("FO-7b R12 fail: ratePpm −1, 1,000,001, 1.5 and the text \"130000\" → 422 at ratePpm, nothing written",
+    bad.every((x) => x.status === 422 && x.body.errors?.some((e: { field: string }) => e.field === "ratePpm")) && linesNow() === n0, bad.map((x) => [x.status, x.body?.errors]));
   const badUnit = await Promise.all([-1, 0.5, "100"].map((unitMinor) => line(d12.body.id, fee(0, 0, { unitMinor }))));
-  ok("FO-7b R12 fail: a unit amount of −1, 0.5 cents or text → 400 at unitMinor (never a float total), nothing written", badUnit.every((x) => x.status === 400 && x.body.errors?.[0]?.field === "unitMinor") && linesNow() === n0, badUnit.map((x) => x.body?.errors));
+  ok("FO-7b R12 fail: a unit amount of −1, 0.5 cents or text → 422 at unitMinor (never a float total), nothing written", badUnit.every((x) => x.status === 422 && x.body.errors?.[0]?.field === "unitMinor") && linesNow() === n0, badUnit.map((x) => x.body?.errors));
 
   // ----------------------------------------------------------------- descriptions (break report 8a243502f, Major 1)
   n0 = linesNow();
-  const odd = ["\u200b", "Fee \u0085 x", "Fee \u0080", "Fee \u202e gnp.exe", "Fee \u2066x\u2069", "\u0301\u0301", "\u3164"];
+  const odd = ["\u200b", "Fee \u0085 x", "Fee \u0080", "Fee \u202e gnp.exe", "Fee \u2066x\u2069", "\u0301\u0301", "\u3164", "Fee \ud800 x", "\udc00"];   // the last two: a lone surrogate (break report on #2883, Major 1: was a 500 at the audit write)
   const oddAns = await Promise.all(odd.map((description) => line(d12.body.id, fee(100, 0, { description }))));
-  ok("FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler) → 400 at description, never 500, nothing written",
-    oddAns.every((x) => x.status === 400 && x.body.errors?.[0]?.field === "description") && linesNow() === n0, oddAns.map((x) => [x.status, x.body?.errors?.[0]?.field]));
+  ok("FO-7b text fail: a description the database's text rule refuses (zero-width only, C1 controls, bidi override and isolate, combining marks only, Hangul filler, a lone surrogate) → 422 at description, never 500, nothing written",
+    oddAns.every((x) => x.status === 422 && x.body.errors?.[0]?.field === "description") && linesNow() === n0, oddAns.map((x) => [x.status, x.body?.errors?.[0]?.field]));
   const emoji = await line(d12.body.id, fee(100, 0, { description: "\u{1F4B8}".repeat(300) })), words = await line(d12.body.id, fee(100, 0, { description: "Frais de dossier — été, 申请费, رسوم" }));
   ok("FO-7b text pass: 300 emoji (600 UTF-16 units, 300 characters) and mixed-script words are stored as sent", emoji.status === 201 && words.status === 201 && linesNow() === String(Number(n0) + 2), [emoji.body?.errors, words.body?.errors]);
 
@@ -176,7 +176,13 @@ try {
   const d13 = await draft(); const r13 = await line(d13.body.id, fee(85000, 130000, { taxMinor: 1, amountMinor: 5 }));
   ok("FO-7b R13 pass: a client-sent taxMinor (1) and amountMinor (5) are ignored: the stored line is 850.00 and 110.50", r13.status === 201 && stored(d13.body.id) === "1:FEE:85000:130000:11050:CAD", r13.body);
   const unknown = await line(d13.body.id, fee(100, 0, { firmId: B }));
-  ok("FO-7b R13 fail (stand-in): any other unknown field (a firm id from the request) → 400, nothing written", unknown.status === 400 && stored(d13.body.id).split(",").length === 1, unknown.body);
+  ok("FO-7b R13 fail (stand-in): any other unknown field (a firm id from the request) → 422, nothing written", unknown.status === 422 && stored(d13.body.id).split(",").length === 1, unknown.body);
+  // PF-28 part 6 (break report on #2883, minors 1-2): a "__proto__" key is refused in the money shape (its errors list at
+  // the field); an unknown key's name is never echoed in full (a 10,000-character key → a small answer, the name cut).
+  const proto = await call(tA, "POST", `/front-office/money/invoices/${d13.body.id}/lines`, JSON.parse(`{"kind":"FEE","description":"Sample","unitMinor":1,"__proto__":{"x":1}}`));
+  const longKey = await line(d13.body.id, fee(100, 0, { ["k".repeat(10_000)]: 1 }));
+  ok("PF-28 part 6 fail: a __proto__ key → 422 with errors and fields at __proto__; a 10,000-character unknown key → 422 in under 4 KB, the name cut; nothing written",
+    proto.status === 422 && proto.body.errors?.[0]?.field === "__proto__" && Object.hasOwn(proto.body.fields ?? {}, "__proto__") && longKey.status === 422 && JSON.stringify(longKey.body).length < 4096 && stored(d13.body.id).split(",").length === 1, [proto.body, JSON.stringify(longKey.body).length]);
 
   // ---------------------------------------------------------------------------- R14: "Prices include tax" on
   sql(`update money_payment_settings set tax_registered = true, tax_number = '123456789RT0001', prices_include_tax = true where firm_id = '${A}'`);

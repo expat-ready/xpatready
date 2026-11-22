@@ -10,8 +10,10 @@ import { ADDRESS_SUFFIX_PATTERN, DEFAULT_ADDRESS_SUFFIX } from "../config/settin
 export const ADDRESS_MIN = 3;
 export const ADDRESS_MAX = 63;
 /** The names ExpatReady keeps for its own hosts (rows rev 15, PF-25; Sample). A request to one of them is ExpatReady's own
- *  site, never a firm's. */
-export const RESERVED_ADDRESSES: readonly string[] = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal"];
+ *  site, never a firm's. `staging` (QA-644): staging serves firm addresses under staging.<domain> (PF-8b F2b), so no firm
+ *  may hold that label under <domain>. The database keeps the same list (platform_web_address_allowed, migration
+ *  20261122033000_qa644_reserve_staging). */
+export const RESERVED_ADDRESSES: readonly string[] = ["www", "api", "app", "admin", "mail", "status", "help", "book", "portal", "staging"];
 /** How long an old address keeps redirecting to the firm's new one and stays held from every other firm (SA2-D8). */
 export const REDIRECT_DAYS = 90;
 /** The host names firm addresses live under: `<address>.<PLATFORM_ADDRESS_SUFFIX>` (one setting, PF-8b F2b; unset:

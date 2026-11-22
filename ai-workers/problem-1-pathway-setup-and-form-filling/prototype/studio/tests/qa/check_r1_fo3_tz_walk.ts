@@ -41,7 +41,7 @@ async function main() {
   const sT = await j("GET", `/api/public/firms/${key}/book/free/slots?${q}`);
   ok("R1.38 default: with no tz the page answers in the firm's zone (America/Toronto) and Fri 15:00Z reads 10:00 a.m.", sT.body.timeZone === "America/Toronto" && /10:00\s?a\.m\./.test(sT.body.slots.find((x: any) => x.startsAt === "2027-03-12T15:00:00.000Z")?.label ?? ""), sT.body.timeZone);
   const bad = await j("GET", `/api/public/firms/${key}/book/free/slots?${q}&tz=Mars/Olympus`);
-  ok("R1.38 fail: an unknown zone → 400 in words, never 500", bad.status === 400, bad);
+  ok("R1.38 fail: an unknown zone → 422 in words, never 500 (PF-28 part 4: a field error)", bad.status === 422, bad);
 
   await new Promise((r) => setTimeout(r, 3500)); // the form's minimum fill time (3 s)
   const form = { givenNames: "Client", familyName: "A", email: `client-${key}@example.com`, mode: "VIDEO", startsAt: "2027-03-12T15:00:00.000Z", timeZone: "Asia/Dubai", consent: true, consentWordingId: s.body.consent?.wordingId, formStamp: s.body.formStamp };

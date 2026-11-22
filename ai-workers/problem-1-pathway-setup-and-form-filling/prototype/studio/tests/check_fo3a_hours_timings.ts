@@ -126,8 +126,8 @@ try {
   const before12 = JSON.stringify(await mySets());
   const backwards = await patchSet(own.id, P.OWNER, { windows: [{ weekday: 1, start: "14:00", end: "13:00" }] });
   const overlap = await patchSet(own.id, P.OWNER, { windows: [{ weekday: 1, start: "09:00", end: "12:00" }, { weekday: 1, start: "11:00", end: "13:00" }] });
-  ok("FO-3a DW12 fail: a window 14:00-13:00 → 400 \"End must be after start.\" on its field; two overlapping windows on one day → 400 \"These hours overlap.\"; nothing saved",
-    backwards.status === 400 && backwards.body.fields?.["windows.0.end"] === "End must be after start." && overlap.status === 400 && overlap.body.fields?.["windows.1"] === "These hours overlap."
+  ok("FO-3a DW12 fail: a window 14:00-13:00 → 422 \"End must be after start.\" on its field; two overlapping windows on one day → 422 \"These hours overlap.\"; nothing saved",
+    backwards.status === 422 && backwards.body.fields?.["windows.0.end"] === "End must be after start." && overlap.status === 422 && overlap.body.fields?.["windows.1"] === "These hours overlap."
     && JSON.stringify(await mySets()) === before12, [backwards.body, overlap.body]);
   await patchSet(own.id, P.OWNER, { windows: MON_FRI });
   const stale = await F("PATCH", `me/availability-sets/${own.id}`, P.OWNER, { version: 1, windows: [] });
@@ -167,8 +167,8 @@ try {
   const notHost = await F("PUT", `booking-types/${T2.id}/hosts/${NEW1.id}/set`, P.OWNER, { setId: first[0].id });
   const gone = await F("DELETE", `me/availability-sets/${evening.body.id}`, P.OWNER);
   const s2b = await slots(T2.slug, "2026-10-19 00:00", "2026-10-24 00:00");
-  ok("FO-3a DW14 fail: another person's set → 400, a person who is not a host → 400; deleting the named set falls back to the default (Tue 09:00 again, no 18:00)",
-    notTheirs.status === 400 && notTheirs.body.fields?.setId && notHost.status === 400 && notHost.body.fields?.staffId && gone.status === 200 && gone.body.typesBackOnDefault === 2
+  ok("FO-3a DW14 fail: another person's set → 422, a person who is not a host → 422; deleting the named set falls back to the default (Tue 09:00 again, no 18:00)",
+    notTheirs.status === 422 && notTheirs.body.fields?.setId && notHost.status === 422 && notHost.body.fields?.staffId && gone.status === 200 && gone.body.typesBackOnDefault === 2
     && has(s2b, "2026-10-20 09:00") && !has(s2b, "2026-10-20 18:00") && psql(DB, `select count(*) from fo_type_host_set where type_id = '${T2.id}'`) === "0", [notTheirs.status, notHost.status, gone.body]);
 
   // ---------------------------------------------------------------------------------- DW15: a set's zone (rule 4, Delhi)
@@ -181,8 +181,8 @@ try {
     delhi.status === 201 && s3[0] === "2026-10-20T03:30:00.000Z" && plain.status === 201 && plain.body.timeZone === TZ, [s3[0], plain.body]);
   const mars = await F("POST", "me/availability-sets", P.ADMIN, { name: "Mars", timeZone: "Mars/Base" });
   const lower = await F("POST", "me/availability-sets", P.ADMIN, { name: "Lower", timeZone: "asia/kolkata" });
-  ok("FO-3a DW15 fail: an unknown zone or one in the wrong capitals → 400 on timeZone, no set made",
-    mars.status === 400 && mars.body.fields?.timeZone && lower.status === 400 && psql(DB, `select count(*) from fo_availability_set where staff_id = '${P.ADMIN.id}'`) === "3", [mars.body, lower.status]);
+  ok("FO-3a DW15 fail: an unknown zone or one in the wrong capitals → 422 on timeZone, no set made",
+    mars.status === 422 && mars.body.fields?.timeZone && lower.status === 422 && psql(DB, `select count(*) from fo_availability_set where staff_id = '${P.ADMIN.id}'`) === "3", [mars.body, lower.status]);
 
   // --------------------------------------------------------------------- DW16: a Saturday outside business hours (rule 1c)
   const cm = (await mySets(P.CASE_MANAGER))[0];
@@ -208,8 +208,8 @@ try {
   const officer = await F("POST", `staff/${P.CASE_MANAGER.id}/time-off`, P.CASE_OFFICER, { startsAt: iso("2026-10-21 09:00"), endsAt: iso("2026-10-21 12:00") });
   const backOff = await F("POST", "me/time-off", P.OWNER, { startsAt: iso("2026-10-23 12:00"), endsAt: iso("2026-10-23 11:00") });
   const otherFirm = await F("POST", `staff/${P.CASE_MANAGER.id}/time-off`, BO, { startsAt: iso("2026-10-21 09:00"), endsAt: iso("2026-10-21 12:00") });
-  ok("FO-3a DW17 fail: a Case Officer entering a colleague's time off → 403; an end before the start → 400 \"End must be after start.\"; another firm's owner → 404; nothing saved",
-    officer.status === 403 && backOff.status === 400 && backOff.body.fields?.endsAt === "End must be after start." && otherFirm.status === 404
+  ok("FO-3a DW17 fail: a Case Officer entering a colleague's time off → 403; an end before the start → 422 \"End must be after start.\"; another firm's owner → 404; nothing saved",
+    officer.status === 403 && backOff.status === 422 && backOff.body.fields?.endsAt === "End must be after start." && otherFirm.status === 404
     && psql(DB, `select count(*) from fo_time_off where firm_id = '${A.id}'`) === "2", [officer.status, backOff.body, otherFirm.status]);
   // DW18: hours, a type's set and time off changed above and here; every booking row is as it was.
   await patchSet(cm.id, P.CASE_MANAGER, { windows: [{ weekday: 1, start: "13:00", end: "14:00" }] });
@@ -243,7 +243,7 @@ try {
     /availability\.changed/.test(lines) && /availability\.set_created/.test(lines) && /availability\.set_deleted/.test(lines) && /availability\.type_set_changed/.test(lines) && /time_off\.added/.test(lines) && /time_off\.removed/.test(lines)
     && changed.startsWith(`${P.OWNER.id}|["1 09:00-17:00"`) && changed.includes(`["1 09:00-16:00"`), [lines, changed]);
   const auditRefused = (lines.match(/,/g) ?? []).length + 1;
-  ok("FO-3a DW21 fail: a refused change (the 400s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
+  ok("FO-3a DW21 fail: a refused change (the 422s, 403s, 404s and 409 above) wrote no line: exactly the successful changes are there (19)", auditRefused === 19, [auditRefused, lines]);
 
   // ==================================================================== FO-3a1e (part 1b-ii): the firm's booking timings
   const CONF = "agent/booking-event-type:configure-availability", EDITK = "agent/booking-event-type:edit";
@@ -286,10 +286,10 @@ try {
   const third = await F("PUT", "booking-timings", P.ADMIN, { reminderOffsetsMinutes: [1440, 60, 10] });
   const unknown = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, holdMinutes: 30 });
   const staleT = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: 1, gapAfterMinutes: 5 });
-  ok("FO-3a DW19 fail: a negative or non-whole value → 400 with the allowed range on its field; window 0, a repeated or third reminder, a field not a timing → 400; an old version → 409; nothing saved, no audit line",
-    neg.status === 400 && neg.body.fields?.gapAfterMinutes === "Gap after must be a whole number of minutes from 0 to 1,440." && frac.status === 400 && frac.body.fields?.minNoticeMinutes === "Shortest notice must be a whole number of minutes from 0 to 525,600."
-    && big.status === 400 && big.body.fields?.windowDays === "Booking window must be a whole number of days from 1 to 730." && rem.status === 400 && third.status === 400 && /one or two different times/.test(third.body.fields?.reminderOffsetsMinutes ?? "")
-    && unknown.status === 400 && staleT.status === 409 && staleT.body.code === "STALE_VERSION"
+  ok("FO-3a DW19 fail: a negative or non-whole value → 422 with the allowed range on its field; window 0, a repeated or third reminder, a field not a timing → 422; an old version → 409; nothing saved, no audit line",
+    neg.status === 422 && neg.body.fields?.gapAfterMinutes === "Gap after must be a whole number of minutes from 0 to 1,440." && frac.status === 422 && frac.body.fields?.minNoticeMinutes === "Shortest notice must be a whole number of minutes from 0 to 525,600."
+    && big.status === 422 && big.body.fields?.windowDays === "Booking window must be a whole number of days from 1 to 730." && rem.status === 422 && third.status === 422 && /one or two different times/.test(third.body.fields?.reminderOffsetsMinutes ?? "")
+    && unknown.status === 422 && staleT.status === 409 && staleT.body.code === "STALE_VERSION"
     && JSON.stringify((await F("GET", "booking-timings", P.OWNER)).body.timings) === firmBefore19 && JSON.stringify((await v5()).timings) === typeBefore19 && psql(DB, "select count(*) from audit_event") === auditBefore19,
     [neg.body, frac.body, big.body, rem.status, third.body, unknown.status, staleT.status]);
   const warnT = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, minNoticeMinutes: 525600, windowDays: 30 });
@@ -332,12 +332,12 @@ try {
   ok("FO-3a DW21 fail: the refused timing changes above (403s, 404) wrote no line: two type timings lines for the Admin's last change and none for the Case Manager or Officer",
     psql(DB, `select count(*) from audit_event where action in ('booking_type.timings_changed', 'platform.setting.change') and actor in ('staff:${P.CASE_MANAGER.id}', 'staff:${P.CASE_OFFICER.id}', 'staff:${BO.id}')`) === "0");
 
-  // Review and break minors: a key named like an Object member is a 400, never a 500; the §12 warning on the firm's
+  // Review and break minors: a key named like an Object member is a 422, never a 500; the §12 warning on the firm's
   // answer names a type its values leave with no times, and the type's own read carries its warning.
   const proto = await F("PUT", "booking-timings", P.ADMIN, { constructor: 1 }), protoT = await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, toString: 1 });
   const protoC = await F("POST", "booking-types", P.OWNER, { name: "Proto", minutes: 30, modes: ["VIDEO"], valueOf: 1 });
-  ok("FO-3a1e fail (break m1): a body key such as constructor, toString or valueOf → 400 on that field, nothing saved",
-    proto.status === 400 && proto.body.fields?.constructor === "Not a booking timing." && protoT.status === 400 && protoC.status === 400, [proto.status, protoT.status, protoC.status]);
+  ok("FO-3a1e fail (break m1): a body key such as constructor, toString or valueOf → 422 on that field, nothing saved",
+    proto.status === 422 && proto.body.fields?.constructor === "Not a booking timing." && protoT.status === 422 && protoC.status === 422, [proto.status, protoT.status, protoC.status]);
   await F("PATCH", `booking-types/${T5.id}/timings`, P.ADMIN, { version: (await v5()).version, minNoticeMinutes: 2880 });
   const narrow = await F("PUT", "booking-timings", P.ADMIN, { windowDays: 1 }), t5w = await v5() as unknown as { warnings: string[] };
   await F("PUT", "booking-timings", P.ADMIN, { windowDays: 60 });
