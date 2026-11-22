@@ -150,7 +150,7 @@ try {
       && /Z$/.test(it.startsAt) && it.person?.name === "Client M Sample" && /@example\.com$/.test(it.person?.email) && it.type?.name === "Free consultation" && it.host?.name?.startsWith("Sample") && it.hangsOn?.kind === "lead" && /^L-/.test(it.hangsOn?.name), { status: big.status, n: big.body?.items?.length, it });
   const far = `from=${encodeURIComponent(new Date(T0).toISOString())}&to=${encodeURIComponent(new Date(T0 + 63 * 24 * HOUR).toISOString())}`;
   const [r63, rBack, rBad] = [await go(`/feed?${far}`, OWNER), await go(`/feed?from=${encodeURIComponent(new Date(T0).toISOString())}&to=${encodeURIComponent(new Date(T0 - HOUR).toISOString())}`, OWNER), await go(`/feed?${week}&view=everyone`, OWNER)];
-  ok("FO-3a2 DW10 fail: a range over 62 days → 400 with the limit; to before from → 400; an unknown view → 400", r63.status === 400 && String(r63.body?.detail).includes("62 days") && rBack.status === 400 && rBad.status === 400, [r63.status, rBack.status, rBad.status]);
+  ok("FO-3a2 DW10 fail: a range over 62 days → 422 with the limit; to before from → 422; an unknown view → 422", r63.status === 422 && String(r63.body?.detail).includes("62 days") && rBack.status === 422 && rBad.status === 422, [r63.status, rBack.status, rBad.status]);
 
   // ------------------------------------------------------------------------------------------- DW11 (edge case: host changed)
   const pOther = client(A, "Client O"); lead(A, pOther, CO2.id);
@@ -213,7 +213,7 @@ try {
   const [coView, co2View] = [(await go(`/feed/${coHosts}`, CO)).body, (await go(`/feed/${coHosts}`, CO2)).body];
   ok("FO-3a2 hangsOn fail/pass (break F3): the host who may not open the colleague's lead gets no lead named; the lead's owner gets it", coView.id === coHosts && coView.hangsOn === null && co2View.hangsOn?.kind === "lead", { co: coView.hangsOn, co2: co2View.hangsOn });
   const y0 = await go(`/feed?from=0000-01-01T00:00:00Z&to=0000-01-05T00:00:00Z`, OWNER);
-  ok("FO-3a2 DW10 fail (break F1): a year outside 2000-2099 is refused with 400, never a 500", y0.status === 400, y0.status);
+  ok("FO-3a2 DW10 fail (break F1): a year outside 2000-2099 is refused with 422, never a 500", y0.status === 422, y0.status);
 
   // PF-18a (on main since this row was briefed): a booking's office zone is its host's office's; the firm's for a host
   // with none. The feed reads the booking ports' OfficeClockPort at call time, so the fake is put in here.
