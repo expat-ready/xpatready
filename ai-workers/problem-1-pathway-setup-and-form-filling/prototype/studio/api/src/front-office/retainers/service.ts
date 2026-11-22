@@ -79,7 +79,7 @@ export const EditBody = strict({ templateId: any, signerPersonId: any, represent
 export const SendBody = strict({ expectedVersion: any });
 export const WithdrawBody = strict({ reason: any, expectedVersion: any, expectedStatus: any });
 export const OfflineBody = strict({ reason: any, expectedVersion: any, signedVersion: any });
-export const FileLinkBody = strict({ file: z.enum(["signed-offline"]).optional(), version: z.union([z.number().int(), z.string().max(12)]).optional() });
+export const FileLinkBody = strict({ file: z.enum(["signed-offline"]).optional(), version: z.union([z.number().int(), z.string().max(12)], { error: "A version number." }).optional() });   // review m1: plain words
 /** A path id: a uuid, else the one not-found before the body is read (PF-28 part 5). */
 const idOf = (id: unknown, what = "retainer"): string => (typeof id === "string" && UUID.test(id) ? id : notFound(what));
 const uuidOf = (v: unknown, field: string): string | null => {
@@ -126,10 +126,14 @@ export const SIGNER_ID = "signer.person_id", REPRESENTATIVE_ID = "representative
 export const PROSPECT_VIEW_ALL = "agent/prospect:view.all";
 
 /** BR-5: fee rows in. Amounts in cents (whole numbers, 0 … CAD 100 million), empty while the draft has none. */
+const FEE_KEYS = ["label", "amountMinor", "when", "dueOn"];
 export function feesOf(v: unknown): FeeIn[] {
   if (!Array.isArray(v) || v.length > 50) return unprocessable("Fee rows are a list of at most 50.", { fees: "At most 50 rows." });
   return v.map((r, i) => {
     const o = (r ?? {}) as Record<string, unknown>, at = `fees[${i}]`;
+    // PF-28 part 5 (review m2): a fee row takes only its four fields; a misspelt one is refused, never dropped.
+    const extra = typeof o === "object" ? Object.keys(o).find((k) => !FEE_KEYS.includes(k)) : undefined;
+    if (extra !== undefined) unprocessable(`A fee row takes only label, amountMinor, when and dueOn (fee row ${i + 1}).`, { [`${at}.${extra.slice(0, 40)}`]: "This field is not allowed here." });
     const label = str(o.label, 120, "A fee row's label", `${at}.label`)!;
     let amountMinor: bigint | null = null;
     if (o.amountMinor !== undefined && o.amountMinor !== null && o.amountMinor !== "") {

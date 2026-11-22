@@ -243,6 +243,10 @@ const rDraft = await call("POST", `/api/front-office/prospects/${randomUUID()}/r
 const rSend = await call("POST", `/api/front-office/retainers/${randomUUID()}/send`, { token: tR, body: "{}" });
 ok("PF-28 part 5 fail: Prepare retainer with a misspelt field (templteId) → 422 naming it; a send with no expectedVersion → 422 in its own words before a random retainer is looked up; nothing stored",
   rDraft.status === FIELD_ERROR_STATUS && (rDraft.body?.fields as Record<string, string>)?.templteId === "This field is not allowed here." && rSend.status === FIELD_ERROR_STATUS && (rSend.body?.fields as Record<string, string>)?.expectedVersion === "Send the version shown on your page." && retainers() === r0, [rDraft.body?.fields, rSend.body?.fields, r0, retainers()]);
+const rFee = await call("POST", `/api/front-office/prospects/${randomUUID()}/retainers`, { token: tR, body: JSON.stringify({ fees: [{ label: "Deposit (Sample)", amountMnor: 1000 }] }) });
+const rLink = await call("POST", `/api/front-office/retainers/${randomUUID()}/download-link`, { token: tR, body: JSON.stringify({ version: true }) });
+ok("PF-28 part 5 fail (review m1, m2): a fee row with a misspelt amount (amountMnor) → 422 naming fees[0].amountMnor, never dropped; a download link with version true → 422 in plain words, before a random retainer is looked up",
+  rFee.status === FIELD_ERROR_STATUS && (rFee.body?.fields as Record<string, string>)?.["fees[0].amountMnor"] === "This field is not allowed here." && rLink.status === FIELD_ERROR_STATUS && (rLink.body?.fields as Record<string, string>)?.version === "A version number.", [rFee.body?.fields, rLink.body?.fields]);
 const rBadId = await call("POST", "/api/front-office/retainers/not-a-uuid/withdraw", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
 const rBadProspect = await call("POST", "/api/front-office/prospects/not-a-uuid/retainers", { token: tR, body: JSON.stringify({ pf28Unknown: "x" }) });
 const rTemplate = await call("PATCH", `/api/front-office/retainer-templates/${randomUUID()}`, { token: tR, body: JSON.stringify({ active: "yes" }) });
