@@ -184,8 +184,8 @@ try {
   await timingRow(pa, "windowDays").getByRole("button", { name: "Change for this type" }).click();
   await panel(pa).getByLabel("Booking window (days) for this type", { exact: true }).fill("1000");
   const wst = await saveTiming(pa, "windowDays", () => timingRow(pa, "windowDays").getByRole("button", { name: "Save", exact: true }).click());
-  ok("FO-3st3b type fail (range): a window of 1,000 days is refused (400) with the server's words at the field; nothing saved",
-    wst === 400 && (await timingRow(pa, "windowDays").locator('[role="alert"]').innerText()) === "Booking window must be a whole number of days from 1 to 730." && (await typeApi()).timings.windowDays === null);
+  ok("FO-3st3b type fail (range): a window of 1,000 days is refused (422) with the server's words at the field; nothing saved",
+    wst === 422 && (await timingRow(pa, "windowDays").locator('[role="alert"]').innerText()) === "Booking window must be a whole number of days from 1 to 730." && (await typeApi()).timings.windowDays === null);
   await panel(pa).getByLabel("Booking window (days) for this type", { exact: true }).press("Escape");
   ok("FO-3st3b type: Escape leaves the row's field without closing the panel", (await panel(pa).count()) === 1 && (await timingRow(pa, "windowDays").getByRole("button", { name: "Change for this type" }).count()) === 1);
 

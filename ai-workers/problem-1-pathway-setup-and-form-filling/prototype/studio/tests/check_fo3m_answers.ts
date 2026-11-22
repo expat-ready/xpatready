@@ -105,30 +105,30 @@ try {
   ok("FO-3m DW2 fail: a cancelled booking before its start answers 409 not-active (\"Cancelled\"), not too-early",
     cancel.status === 200 && earlyCancelled.status === 409 && /not-active/.test(earlyCancelled.body?.type) && earlyCancelled.body?.title === "Cancelled" && await statusOf(b3.id) === "CANCELLED", earlyCancelled);
 
-  // ------------------------------------------------------------------------------------- DW4 (list): the 400 title
+  // ------------------------------------------------------------------------------------- DW4 (list): the 422 title
   const listOk = await go("GET", range("2026-10-26 00:00", "2026-10-30 00:00"), P.OWNER);
   ok("FO-3m DW4 pass: a good list query → 200 with the firm's bookings", listOk.status === 200 && Array.isArray(listOk.body) && listOk.body.length === 4, listOk.status);
   const listBack = await go("GET", range("2026-10-30 00:00", "2026-10-26 00:00"), P.OWNER);
   const listNoFrom = await go("GET", `?to=${encodeURIComponent(iso("2026-10-30 00:00"))}`, P.OWNER);
   ok("FO-3m DW4 fail: a refused list (to before from; from missing) is titled \"Bookings not listed\", never \"Not booked\"",
-    [listBack, listNoFrom].every((r) => r.status === 400 && r.body?.title === "Bookings not listed") && issues(listNoFrom).some((i) => i.startsWith("from:")), [listBack, listNoFrom]);
+    [listBack, listNoFrom].every((r) => r.status === 422 && r.body?.title === "Bookings not listed") && issues(listNoFrom).some((i) => i.startsWith("from:")), [listBack, listNoFrom]);
 
   await clock.set(at("2026-10-27 11:10"));   // b1 and b2 have started
 
-  // --------------------------------------------------------------------------------- DW1: the 400 names `outcome`
+  // --------------------------------------------------------------------------------- DW1: the 422 names `outcome`
   const bfOwn = await go("POST", `/${b1.id}/attendance`, P.BILLING_FINANCE, { outcome: "COMPLETED" });
   ok("FO-3m DW1 pass: { outcome: COMPLETED } on the host's own started booking → 200 COMPLETED", bfOwn.status === 200 && bfOwn.body?.status === "COMPLETED", bfOwn);
   const bad = await go("POST", `/${b2.id}/attendance`, P.OWNER, { outcome: "MAYBE" });
   const none = await go("POST", `/${b2.id}/attendance`, P.OWNER, {});
-  ok("FO-3m DW1 fail: an unknown or missing outcome → 400 whose issues name outcome, none body",
-    [bad, none].every((r) => r.status === 400 && issues(r).length > 0 && issues(r).every((i) => i.startsWith("outcome:")))
+  ok("FO-3m DW1 fail: an unknown or missing outcome → 422 whose issues name outcome, none body",
+    [bad, none].every((r) => r.status === 422 && issues(r).length > 0 && issues(r).every((i) => i.startsWith("outcome:")))
       && await statusOf(b2.id) === "SCHEDULED", [bad, none]);
 
-  // ------------------------------------------------------------------------------- DW4 (attendance): the 400 title
+  // ------------------------------------------------------------------------------- DW4 (attendance): the 422 title
   ok("FO-3m DW4 fail: a refused attendance answer is titled \"Attendance not recorded\", never \"Not booked\"",
     [bad, none].every((r) => r.body?.title === "Attendance not recorded"), [bad.body?.title, none.body?.title]);
   const createBad = await go("POST", "", P.OWNER, { typeId: TO.id });
-  ok("FO-3m DW4 pass: a refused booking itself keeps \"Not booked\" (only the list and attendance titles change)", createBad.status === 400 && createBad.body?.title === "Not booked", createBad);
+  ok("FO-3m DW4 pass: a refused booking itself keeps \"Not booked\" (only the list and attendance titles change)", createBad.status === 422 && createBad.body?.title === "Not booked", createBad);
 
   // -------------------------------------------------------------------------- DW3: the service's 403 is the guard's
   const guard403 = await go("POST", "", P.BILLING_FINANCE, body(TO.id, "2026-10-29 10:00"));
@@ -143,8 +143,8 @@ try {
   const strictOk = await go("POST", `/${b2.id}/attendance`, P.OWNER, { outcome: "NO_SHOW" });
   ok("FO-3m DW5 pass: { outcome: NO_SHOW } alone → 200 NO_SHOW (the answer may be changed)", strictOk.status === 200 && strictOk.body?.status === "NO_SHOW", strictOk);
   const extra = await go("POST", `/${b2.id}/attendance`, P.OWNER, { outcome: "COMPLETED", note: "came late" });
-  ok("FO-3m DW5 fail: an extra key → 400 naming it, nothing recorded (still NO_SHOW)",
-    extra.status === 400 && issues(extra).some((i) => /note/.test(i)) && extra.body?.title === "Attendance not recorded" && await statusOf(b2.id) === "NO_SHOW", extra);
+  ok("FO-3m DW5 fail: an extra key → 422 naming it, nothing recorded (still NO_SHOW)",
+    extra.status === 422 && issues(extra).some((i) => /note/.test(i)) && extra.body?.title === "Attendance not recorded" && await statusOf(b2.id) === "NO_SHOW", extra);
 
   // ------------------------------------------------------------------------- DW6: shown, not pushed (AG-4-39 rule 2)
   const askJob = () => jobs.jobs.find((j) => j.name === "booking.attendance_ask" && j.key === `booking:${b4.id}:0:attendance`);
