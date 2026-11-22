@@ -9,6 +9,11 @@ on:
     types: [opened, synchronize, reopened, edited, ready_for_review]
 permissions:
   contents: read
+concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
+  group: module-cards-${{ github.event.pull_request.number }}
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   module-cards:
     # A merge-queue batch PR carries no body of its own; each PR in it passed this check already.

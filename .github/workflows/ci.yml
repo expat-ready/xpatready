@@ -80,10 +80,12 @@ on:
     # second run whose "ci" check goes back to in progress just as Mergify queues the PR (review, 6 Nov).
     types: [opened, synchronize, reopened, ready_for_review]
 concurrency:
-  # One group per PR and mode: a draft's guard runs replace each other; a full check is never cancelled (P-371 (2)).
+  # One group per PR and mode. SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its
+  # older run in either mode (it judged an older head); a merge-queue batch (head mergify/...) and a full run by hand
+  # (workflow_dispatch, group ci-full-<head>) are never cancelled. P-371 (2)'s "never cancel" is about cancelling by hand.
   # Re-run failed jobs only on a PR's newest run: an older run re-entering the group replaces a newer one still waiting.
   group: "ci-${{ github.event.pull_request.number || format('full-{0}', inputs.head) }}-${{ (!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) && 'full' || 'draft' }}"
-  cancel-in-progress: "${{ !(!github.event.pull_request.draft || startsWith(github.event.pull_request.head.ref, 'mergify/')) }}"
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   guard:
     # P-371 (1): a draft PR's push runs only this; a draft's "ci" is skipped, and Mergify's queues also refuse drafts.

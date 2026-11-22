@@ -44,8 +44,10 @@ on:
       - ai-workers/problem-1-pathway-setup-and-form-filling/prototype/p5/**
 permissions: { contents: read }
 concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
   group: walks-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
 jobs:
   plan:
     # Never on a draft or a merge-queue batch (Lead 81 on #2133, review m9): no gate reads walks, each PR's head is

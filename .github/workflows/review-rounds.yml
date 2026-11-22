@@ -20,6 +20,11 @@ permissions:
   issues: read
   pull-requests: read
   statuses: write
+concurrency:
+  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push or comment on the same PR supersedes its older run here (each run reads every verdict again); a merge-queue
+  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
+  group: review-rounds-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: "${{ !startsWith(github.event.pull_request.head.ref || '', 'mergify/') }}"
 jobs:
   review-rounds:
     # contains() ignores case; an edit is judged on its old body too (removing a verdict or an allowance re-judges)
