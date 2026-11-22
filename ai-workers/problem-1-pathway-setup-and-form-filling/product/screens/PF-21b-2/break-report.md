@@ -63,32 +63,45 @@ the firm's own staff", and so uses `system:` on the audit line. Yet the table's 
 "Why can't I delete this?" shows as the owner, still carry `staff:<system staff uuid>`.
 
 ## What held
-- Wrong role: a firm token (user-R), Support, Admin, Auditor, Billing, Content publisher, and one person holding all five non-Owner
-  roles → 403 on place, list and release. A mixed-case path and a trailing slash → 403. `/api/%73ystem/…` → 404. No token → 401.
-- A firm session as xr_app with `app.firm_id` set: `plat_legal_hold_active(other firm)` refused; place, release and list refused;
-  direct SELECT shows 0 rows; INSERT, DELETE and TRUNCATE get "permission denied"; UPDATE changes 0 rows.
-- xr_app with no firm, through `isHeld` / `KeepPeriods.check` → refused (42501), never `{held:false}`. A cross-firm ask in firm A's
-  transaction → refused.
-- REPEATABLE READ, SERIALIZABLE, and `SET TRANSACTION … REPEATABLE READ` inside the transaction → LegalHoldTxRefused. The root
-  client → refused.
-- Locking:
-  - a placement while a deleter is open waits, and the next deleter answers HELD;
-  - a deleter that starts while a placement holds the lock waits 1.5 s, then answers HELD;
-  - a second deleter that arrives behind a queued placement queues too (pg_locks: Exclusive f, Share f), then answers HELD;
-  - a release in progress, plus a deleter, plus a new hold on the same person → HELD before and after.
+- Wrong role: a firm token (user-R), Support, Admin, Auditor, Billing, Content publisher, and one person with all five non-Owner roles → 403 on place, list and release; mixed-case path and trailing slash → 403; `/api/%73ystem/…` → 404; no token → 401.
+- A firm session (xr_app, `app.firm_id` set): `plat_legal_hold_active(other firm)`, place, release and list refused; direct SELECT 0 rows; INSERT, DELETE, TRUNCATE "permission denied"; UPDATE 0 rows. xr_app with no firm, or a cross-firm ask, through `isHeld`/`KeepPeriods.check` → refused (42501), never `{held:false}`.
+- REPEATABLE READ, SERIALIZABLE, `SET TRANSACTION … REPEATABLE READ` inside the transaction, and the root client → LegalHoldTxRefused.
+- Locking: a placement during an open deleter waits and the next deleter answers HELD; a deleter starting during an open placement waits 1.5 s, then HELD; a second deleter behind a queued placement queues too (pg_locks: Exclusive f, Share f), then HELD; release in progress + deleter + new hold on the same person → HELD before and after.
 - Two parallel releases → 200 + 409. A release followed by a new hold holds again.
-- DELETE and TRUNCATE are refused for the bypass role and for the owner. Changing `placed_at` is refused ("facts never change").
-  `ALTER TABLE … DISABLE TRIGGER` by the bypass role is refused (not the owner).
-- A hold for a firm that does not exist → 404 FIRM_NOT_FOUND. A firm with no hold, or with only released holds, + ALL_FIRM_DATA →
-  `{held:false}`, which is correct.
-- Bodies:
-  - extra body fields (`placedBy`, `placedAt`), an extra scope field, a release body naming `by` → 422;
-  - a category outside LEGAL_HOLD_CATEGORY, including `case_documents'; drop table …` → 422;
-  - `?firm=' or 1=1 --`, `firm[]=`, `state=ACTIVE` → 422;
-  - a SQL-looking reason is stored as text (all queries are parameterised);
-  - an id like `x' or '1'='1` on release → 404.
-- Text: zero-width-only and 501-character reasons → 400 (guard). French, Chinese, Arabic and emoji reasons are kept exactly.
-  Upper-case firm and case ids are stored in lower case and still match.
+- DELETE and TRUNCATE refused for the bypass role and the owner; changing `placed_at` refused; `DISABLE TRIGGER` by the bypass role refused (not the owner).
+- Unknown firm → 404 FIRM_NOT_FOUND. A firm with no hold, or only released holds, + ALL_FIRM_DATA → `{held:false}` (correct).
+- Bodies: extra fields (`placedBy`, `placedAt`), an extra scope field, a release body naming `by`, a category outside LEGAL_HOLD_CATEGORY (incl. `case_documents'; drop table …`), `?firm=' or 1=1 --`, `firm[]=`, `state=ACTIVE` → 422; a SQL-looking reason is stored as text (parameterised); release id `x' or '1'='1` → 404.
+- Text: zero-width-only and 501-character reasons → 400 (guard); French, Chinese, Arabic and emoji kept exactly; upper-case firm and case ids stored lower case and still match.
 - Not applicable (no screen in this row): keyboard, 1024 px, 200 % zoom, uploads.
 
 Verdict: Changes 78861110ae7926c0d6cea7289112503c9012eae6
+
+## Round 2 — `git diff 78861110…5fda2566` (diff only)
+New scratch databases `brk_pf21b` and `brk_pf21b_g` (all migrations, dropped after); the same scratch script plus new probes. Round-2 suite: 67 passed, 0 failed.
+
+| Round-1 item | Retry | Result |
+|---|---|---|
+| M1 list cap / 404 after release | 1 active + 520 released holds | **Fixed.** `state=active` → 1 hold; all → 500 with `truncated`; releasing the oldest → 200 with the hold. `limit` 0, 501, `abc`, `1.5`, empty, twice → 422; `limit=1` → 1, truncated. xr_app `p_limit` -5 → 1 row, 2147483647 → capped at 501; firm session → refused. |
+| M2 date ranges | `2026-01-01..2026-01-31`, record 31 Jan 15:00Z | **Fixed.** `to` = 23:59:59.999Z; `isHeld` held, `KeepPeriods.check` HELD. null, `0`/`true`, year 1, a time with no zone, an end before the start, 2026-02-30, 2026-02-29, a leading space, lower-case `t…z`, week and ordinal dates, `+0530` → 422. 2028-02-29 → 201. `+14:00`/`-12:00` ends → converted correctly. |
+| m2 5 s timeout | deleter holds its lock 7 s | **Fixed.** placeAs waits about 7.2 s, then places; through the route → 201 and the hold is saved. |
+| m4 bidi / C1 | `‮`, `\u0085`, `‎`, `⁦…⁩` | **Fixed** → 422. Residual: see r2-m2. |
+| m5 actor words | `system:jobs/purge`, 150-character `staff:` id | **Fixed.** Both placed; the table's regex now equals AuditActor. |
+| m6 out-of-range date | `-271821-…`, `1900-01-01T00:30+01:00` (UTC 1899), `9999-12-31T23:00-05:00` (UTC 10000) | **Fixed** → 422; `9999-12-31` → 201. |
+
+Also checked:
+- **Release audit line.** Before/after values carry the full release reason (500 characters, accented).
+- **Upper-case id.** A second release with the hold's id in upper case → 409.
+- **RDS GRANT/REVOKE CREATE pair.** Unchanged before and after: `has_schema_privilege('xr_wall_reader','public','CREATE')` is t, through membership of the superuser migration role, as pf8b_f4 documents.
+- **Definer ownership.** All six definers are owned by xr_wall_reader, with EXECUTE for xr_data only.
+
+New or remaining (all Minor):
+- **r2-m1 — Minor: the port layer still turns null dates into 1970.** The port-level `LegalHolds.placeAs` still parses ports/legal-hold.ts's `HoldScope` (`z.coerce.date`). `placeAs(by, {scope:{kind:"DATE_RANGE", from:null, to:null}})` places a hold on 1970-01-01T00:00Z. Only the route got the strict `ScopeBody` (service.ts). No route reaches it today; the next caller of the port (PF-11, a job) would.
+- **r2-m2 — Minor: two invisible characters still get through.** The reason accepts U+061C (ARABIC LETTER MARK, a direction mark) and U+2028 (LINE SEPARATOR): both → 201. The refused list names U+200E/F, U+202A–E and U+2066–9 only.
+- **r2-m3 — Minor: the whole UTC day is not the firm's day, and nothing says so.**
+  - "A calendar date is the whole UTC day" is documented. But the Sample firms are Canadian.
+  - A hold "to 2026-03-31" does not cover a record from 21:00 Toronto time on 31 March, which is 01 Apr 02:00Z.
+  - The audit summary (service.ts:67, "records dated 2026-01-01 to 2026-01-31") and the 201 answer do not say "UTC".
+  - This is a wording point, not a false success on the dates actually given.
+- m1, m3 and m7 are with the Lead as documented or open questions (not re-raised).
+
+Verdict: Approve 5fda25666d9937f65d2c8165b10655fef9673af0
