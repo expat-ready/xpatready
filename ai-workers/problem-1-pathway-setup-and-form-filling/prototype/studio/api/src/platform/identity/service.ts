@@ -15,6 +15,7 @@ import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { z } from "zod";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { batchRowsOf, flagOf, overSeatWords } from "./batch-invite.ts";
+import { bodyNamed, licenceWarning } from "./licence-format.ts";
 import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
@@ -349,7 +350,7 @@ export class PlatformIdentity implements OnModuleInit {
   async saveCredential(actor: StaffContext, id: string, body: { representativeType?: unknown; licensingBody?: unknown; licenceNumber?: unknown }) {
     const own = id.toLowerCase() === actor.staffId;
     const data = { representativeType: textOf(body.representativeType, "representative type"), licensingBody: textOf(body.licensingBody, "licensing body"), licenceNumber: textOf(body.licenceNumber, "licence number") };
-    return this.inFirm(actor, async (tx) => {
+    const saved = await this.inFirm(actor, async (tx) => {
       const t = await this.target(tx, actor.firmId, id);   // another firm's id: 404 first, whatever the key (break m6)
       if (!own && !actor.keys.includes("agent/firm-credential:manage")) forbidden("You can change only your own licence record.", "NOT_ALLOWED");
       const before = await tx.platformStaffCredential.findFirst({ where: firmScope(actor.firmId, { staffId: t.id }) });
@@ -363,6 +364,11 @@ export class PlatformIdentity implements OnModuleInit {
         after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
       return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
     });
+    // PF-4c part 2 (AG-1-34): a number that does not match the body's format in the pack is saved with a soft warning,
+    // never refused; no validity, expiry or register look-up (AG1-D19). The warning names the body, never the number.
+    // Read after the commit (review m1): the pattern never runs while the firm's row is locked.
+    const warning = licenceWarning(bodyNamed(data.licensingBody), data.licenceNumber);
+    return warning ? { ...saved, warning } : saved;
   }
 
   // ------------------------------------------------------------------------------------------------------- invitations
