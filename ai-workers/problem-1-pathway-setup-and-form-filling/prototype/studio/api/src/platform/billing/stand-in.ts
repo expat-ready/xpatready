@@ -28,7 +28,7 @@ import { BILLING_PORTS, HoldOpen } from "./routes.ts";
 import type { BillingPorts } from "./webhook.ts";
 
 export const STAND_IN_PAGE = "/api/demo/billing/invoices";
-export const STAND_IN_WORDS = "Stand-in invoice (P-796): issued by our billing stand-in, not by Stripe. Prices are Sample. Tax: GST/HST from the Canada Revenue Agency's rate table; no provincial sales tax is charged. Unconfirmed: no counsel, no accountant.";
+export const STAND_IN_WORDS = "Stand-in invoice: issued by our billing stand-in for testing, not by Stripe. Prices are Sample. Tax: GST/HST from the Canada Revenue Agency's rate table; no provincial sales tax is charged. Unconfirmed: no counsel, no accountant.";
 
 const problem = (status: number, code: string, title: string, detail: string) => new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status);
 const notHere = () => problem(404, "NOT_FOUND", "Not found", "There is no billing stand-in on this server.");
@@ -132,7 +132,9 @@ export class BillingStandInPageController {
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.setHeader("cache-control", "no-store");
     res.setHeader("referrer-policy", "no-referrer");
-    res.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'");
+    res.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+    res.setHeader("x-content-type-options", "nosniff");
+    res.removeHeader("x-powered-by");   // review m5
     if (download === "1") res.setHeader("content-disposition", `attachment; filename="invoice-${p.number.replace(/[^A-Za-z0-9-]/g, "")}.html"`);
     res.send(p.html);
   }

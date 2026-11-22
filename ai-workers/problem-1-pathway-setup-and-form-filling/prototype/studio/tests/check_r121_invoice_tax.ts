@@ -15,6 +15,8 @@ import { PROVINCE_TAX_RATES } from "../api/src/client-money/tax/canada-gst-hst.t
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { taxOf } from "../api/src/platform/billing/stripe.ts";
 import { BillingStandIn, standInTax } from "../api/src/platform/billing/stand-in.ts";
+import { runtimeBillingPorts } from "../api/src/platform/firms/runtime-ports.ts";
+import { invoiceUrl, standInUrl } from "../web/src/modules/platform/saas/billing-contract.ts";
 import { client, recorder } from "./runtime/api.ts";
 
 const PORT = Number(process.argv[2] ?? 4723), DB = process.argv[3] ?? "xr_studio_r121tax", BASE = `http://localhost:${PORT}`;
@@ -45,6 +47,14 @@ const back = (await fake.invoices("cus_t1"))[0];
 ok("R1.21 port: the fake BillingPort hands the tax back on its invoices read", back.taxCents === 1287 && back.taxLines[0].amountCents === 1287, back);
 const a = "11111111-1111-4111-8111-111111111111", b = "22222222-2222-4222-8222-222222222222";
 ok("R1.21 port: each firm has its own stand-in customer, from its id (never a shared counter)", standInCustomer(a) !== standInCustomer(b) && standInCustomer(a) === "cus_standin11111111111141118111111111111111");
+// Review M1: the stand-in exists only on a local server with no Stripe key; with a key, or outside local, never.
+const cfg = (environment: string, key: string | null) => ({ environment, stripe: { secretKey: key ? { reveal: () => key } : null, webhookSecret: key ? { reveal: () => "whsec_test_r121" } : null } }) as never;
+const localFake = runtimeBillingPorts(cfg("local", null), {});
+ok("R1.21 port: a local server with no Stripe key runs the stand-in (the same fake as its BillingPort)", !!localFake.standIn && localFake.standIn === localFake.billing);
+ok("R1.21 port fail: with a Stripe key (local), or outside local (test, production), there is no stand-in", [cfg("local", "sk_test_r121"), cfg("test", null), cfg("production", null), cfg("test", "sk_test_r121")].every((c) => runtimeBillingPorts(c, {}).standIn === null));
+// Review m3: the list follows the stand-in's page on this app's own address only; Stripe's https pages as before.
+const o = "http://localhost:4723";
+ok("R1.21 list fail: an invoice link to another address or another path is never followed", standInUrl(`${o}/api/demo/billing/invoices/in_x?t=y`, o) !== null && [`http://evil.example/api/demo/billing/invoices/in_x`, `${o}/api/platform/billing`, `http://u:p@localhost:4723/api/demo/billing/invoices/in_x`, "javascript:alert(1)"].every((u) => standInUrl(u, o) === null) && invoiceUrl("https://invoice.stripe.com/i/x") !== null);
 const noStandIn = new BillingStandIn({} as never, { standIn: null, clock: { now: () => new Date() }, appUrl: BASE });
 ok("R1.21 port fail: a server with no stand-in (a Stripe key, or not local) issues nothing: 404", await noStandIn.issue({ firmId: a } as never).then(() => false, (e: { getStatus?: () => number }) => e.getStatus?.() === 404));
 

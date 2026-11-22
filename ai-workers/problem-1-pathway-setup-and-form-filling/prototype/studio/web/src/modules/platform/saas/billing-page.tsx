@@ -32,7 +32,7 @@ function InvoiceList() {
             {q.data.invoices.map((i) => { const href = invoiceUrl(i.hostedUrl); return (
               <tr key={i.id} data-invoice={i.id}>
                 <td className="[overflow-wrap:anywhere]">{i.number ?? (i.status === "draft" ? "Draft" : "No number")}</td><td><time dateTime={i.createdAt}>{day(i.createdAt)}</time></td><td>{money(i.amountDueCents, i.currency)}</td>
-                <td data-invoice-tax className="[overflow-wrap:anywhere]">{taxWords(i)}</td>
+                <td data-invoice-tax className="min-w-[9rem] [overflow-wrap:break-word]">{taxWords(i)}</td>
                 <td className="capitalize">{i.status ?? ""}</td>
                 <td>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-text-link underline">View<span className="sr-only"> invoice {i.number ?? ""} {stripeUrl(href) ? "on Stripe" : "(stand-in)"} (opens in a new tab)</span></a> : null}
                   {href && !stripeUrl(href) ? <> · <a href={`${href}&download=1`} download className="text-text-link underline">Download<span className="sr-only"> invoice {i.number ?? ""}</span></a></> : null}</td>
