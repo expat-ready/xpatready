@@ -1,4 +1,85 @@
-Reviewer: Approve d5fa43a1ec95dea734f74c2274b0deb3d652777e
+Reviewer: Approve 3e5b947c8e65a92706baabc9812bc0706a26cb21
+
+# Round 9 (diff-only, 048bbee68..3e5b947c8)
+
+**Base:** 048bbee68, the last head approved (d5fa43a1e plus records only). Head 3e5b947c8 has two parts:
+* 28adce19e merges origin/main 5a9e98b6d (PF-8b F7 #3068 and others).
+* 3e5b947c8 is the change under review.
+
+**What I read:**
+* `git diff 048bbee68 3e5b947c8` for `prisma/migrations/20261122170000_fo7ts_part3/` and `tests/check_fo7ts_money_settings.ts`.
+* Main's `20261116030000_fo7mv_move_list` lift block.
+* `tests/check_pf8b_f7_data_walls.ts` `audit()`.
+* `git diff origin/main...3e5b947c8 --stat`.
+* As asked, I did no database work.
+
+**The scope holds.** Against origin/main (merge-base 5a9e98b6d) the PR touches the same 16 files as in round 7. Only `review.md`, `migration.sql`, `rollback.sql` and `check_fo7ts_money_settings.ts` grew, and only in the parts named here. `20261122170000_fo7ts_part3` is still the newest stamp; main's `20261122050000_pf8b_f7…` and `20261122060000_fo7c1…` sort before it.
+
+## Q1: the F7 shape, and whether F7's audit() accepts it
+
+**The lift blocks are copied byte for byte.**
+* `diff` of main's `fo7mv_move_list/migration.sql:23-38` against this migration's `$refunds$` (lines 19-34) and `$issued$` (lines 92-107) shows no difference.
+* `rollback.sql:10-25` is identical except for its walls array.
+* The closing pair is main's: ENABLE TRIGGER for `gated`, then FORCE back for `lifted`, after the statement.
+
+**What audit() checks for each data statement, and what this text gives it:**
+* `$refunds$`: `IF EXISTS (SELECT 1 FROM "money_trust_entry" …)` is a read.
+  * `money_trust_entry` is named in `walls … := ARRAY[…]`.
+  * `IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles` matches `when`.
+  * `INTO lifted FROM pg_class … relforcerowsecurity` is present.
+  * `IN ACCESS EXCLUSIVE MODE` comes before `NO FORCE`, which comes before the statement, and the last FORCE comes after it.
+  * A read needs no gate, but it has one anyway, which is harmless.
+* `$issued$`: `UPDATE "money_invoice"` is a write. It passes the same tests, and `DISABLE TRIGGER "0_pf12_firm_first"` comes before it with the last `ENABLE` after it.
+* **Other mentions of walled tables** in runnable text are DDL, which audit() skips: ADD COLUMN, the CHECK constraints, CREATE INDEX, policies and grants.
+  * The one foreign key, `money_party_tax_treatment_firm_id_fkey`, sits on the new table, so `fk[1] !== "money_payment_settings"`. That table is empty, so there is nothing to validate.
+  * The walls array inside DECLARE is skipped by the rule.
+* audit() reads `migration.sql` only, so `rollback.sql` is not subject to the rule. It has the same shape anyway.
+* The builder's F7 run on this head is the proof the rule passes. My reading of the text agrees with it.
+
+## Q2: is a bypass runner still correct without `row_security off`?
+
+**Yes.**
+* With `row_security` at its default (on), PostgreSQL skips RLS for a superuser or a BYPASSRLS role whatever FORCE says. FORCE only takes away the owner's exemption.
+* `platform_firm_first()` returns NEW at once for these roles.
+* Such a runner therefore takes no lock, lifts nothing and gates nothing, yet reads every refund row and updates every invoice, exactly as before.
+* Dropping the transaction-local `row_security off` also means it no longer stays set for the rest of the migration. Nothing later relied on it.
+
+## Q3: does DISABLE TRIGGER leave anything behind on error?
+
+**No.**
+* `ALTER TABLE … DISABLE/ENABLE TRIGGER` and `NO FORCE/FORCE` are catalog changes in the same transaction. Any RAISE or statement error fails the DO block and the transaction rolls all of them back. There is no EXCEPTION handler and no early exit.
+* ACCESS EXCLUSIVE is taken before the change and held to commit, so no other session can write the table while its gate is off. By commit, the gate is back.
+* Only a plainly enabled gate (`tgenabled = 'O'`) is stepped aside. `ENABLE TRIGGER` puts back exactly `'O'`. An ALWAYS (`'A'`), REPLICA or disabled gate is left as found.
+
+## Q4: the other money_invoice triggers
+
+On this head (main's migrations included) `money_invoice` has these triggers:
+* **`money_invoice_write`:** an issued row takes the frozen-fields branch. `tax_treatment` is not frozen yet at this point (part 3's replacement adds it afterwards), so it returns NEW. No effect.
+* **`money_invoice_credit_pinned`:** party, case and currency don't change, so it does no read. It is SECURITY DEFINER, owned by `xr_wall_reader`.
+* **`money_invoice_no_truncate`:** a statement-level TRUNCATE trigger only, so it does not fire.
+* **`"0_pf12_firm_first"`:** stepped aside as above. A bypass runner passes it anyway.
+
+The UPDATE does not touch `updated_at`, and no AFTER or audit trigger exists on `money_invoice`.
+
+## The test
+
+* The RDS-shaped two-firm case stays.
+* **Planted fail:** the copy removes both `DISABLE TRIGGER` lines (the `/gm` regex, guarded by `planted !== text3`). With the gate left on, `$issued$` is refused with 42501 on `money_invoice` and nothing changes. That is round 7's failure, so the case fails without the gate step.
+* **Pass:** exit 0, both invoices `TAXABLE`, FORCE back on both tables, and the gate is `'O'` again on `money_invoice` and `money_trust_entry`.
+
+## Nits (not blocking)
+
+* The F6 ownership pre-check is gone, by the Lead's request for F7's exact shape. A runner that is neither superuser, BYPASSRLS nor owner now gets PostgreSQL's own error from LOCK or ALTER, not the block's "run migrations as …" message. It still stops cleanly with nothing changed. This is the same as main's F7 blocks.
+* The rollback's lift for a non-bypass runner is not exercised by a test. The text is identical to the shape the F7 check proves.
+* Round 8's nits stand: the role cleanup is best-effort, and there is no hidden-refund case.
+
+**Screen review and journey test:** not applicable, as in rounds 1-8. This part has no route, screen or `ports/` change. No journey score is given.
+
+**Verdict: Approve** for `3e5b947c8e65a92706baabc9812bc0706a26cb21`. No Blocker, Major or Minor is open. The data rules and messages are unchanged.
+
+---
+
+Round 8 line (superseded): Reviewer: Approve d5fa43a1ec95dea734f74c2274b0deb3d652777e
 
 # Round 8 (diff-only, c561f07e7..d5fa43a1e)
 
