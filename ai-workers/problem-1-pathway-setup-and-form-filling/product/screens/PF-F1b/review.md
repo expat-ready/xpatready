@@ -164,3 +164,63 @@ During this review, uncommitted edits to `settings.ts` and `choose.ts` appeared 
 To fix before Approve: **M3**, then show `check_pf24_secrets.ts` green. Fix m5 in the same commit if cheap. m6 is for the Lead, or it is the M3 fix itself.
 
 **Verdict: Block** at commit 4ae0c919ec7efa73206482b313f57a9ab070b552.
+
+## Round 3 (diff 4ae0c919e..b66e603f4)
+
+Reviewer: Opus 5.5, same fresh-context reviewer. Diff only: `git diff 4ae0c919e b66e603f484637e752cad6c966497cc81582515a -- . ':(exclude)*/product/screens/*'`, 4 files, +30/-9 (settings.ts, choose.ts, check_pf24_secrets.ts, check_pff1b_bind.ts). Journey test: N/A (runtime row, no screen). I did not use the database on 54329, did not run run-suites.sh, and did not use :4400. The working tree was clean at head; I changed nothing in it.
+
+**Verdict: Approve.** M3, m5 and m6 are fixed, and breaker r2 m2 is fixed. Each new test fails without its fix, except one: the "malformed link key" line passes even when the narrowing it names is removed (m7, Minor). The unset-environment tolerance is safe on a real server, and the read-once rule is kept.
+
+### Checks I ran (Node 24.22.3)
+- `tests/check_pff1b_bind.ts` at head: **33 passed, 0 failed**, in the repo and in a `git archive` scratch copy. I checked that the copy's five touched files are byte-identical to `b66e603f4`.
+- `tests/check_pf24_secrets.ts`, scratch copy, port 4436 (runtime range), 7 runs: **78 passed, 0 failed every time**.
+  - Sections 1-4 and the first block of section 5 ran in full.
+  - The suite's isolated-server block (`tools/isolated.sh`, which creates a database on 54329) was stubbed out in the copy, so I did not run its 6 checks. 78 + 6 matches the builder's 84.
+- Loader probe, 2000 draws each, at head:
+  - Refused 0 times each: `key32()`, the old `rand(40)`, and random hex of 32 and 64 characters.
+  - Refused: `"a"x40`, `"short"`, and 9 different characters repeated.
+  - Accepted: 10 different characters repeated (the patterned-key Minor, already accepted by the Lead).
+
+| Fix removed (scratch copy only) | Result |
+|---|---|
+| m5: s3-files.ts at `4f6e08001` | break m3 FAIL (32/1). Still FAILs with the `/Buffer/` clause also dropped, so the spaced-hex and decimal checks catch it on their own. |
+| r2 m2: cache back to `\|\| recorded` | case 2 links line FAIL by name, `{"links":"S3FileLinks","sameStore":false}` (32/1). |
+| Tolerance removed (`platformConfig().environment`) | 2 FAIL: support-only with no environment exits 1; the production line fails too (ConfigRefused instead of "PLATFORM_FILES is not set"). |
+| Tolerance catches every fault (`catch { return undefined; }`) | **33/0: not caught** (m7). |
+| m4 `.refine` removed | break m4 FAIL (32/1). |
+
+### Each fix
+- **M3 / m6: fixed.** The rule at settings.ts:57 is now `new Set(v).size >= 10`, which is the lower bound my round-2 m6 proposed. Random hex and base64 keys now pass (0/2000). The `expects` text is updated, and break m4 still fails without the rule.
+- **PF-24's generator: fixed.** check_pf24_secrets.ts:44 uses `key32()`. This is the one line the Lead accepted. The new rule alone would also pass the old `rand(40)`, so either change on its own would fix M3.
+- **m5: fixed.** check_pff1b_bind.ts:185-187 looks for the key's bytes in the two forms the old leak printed: spaced hex (whitespace-normalised) and JSON decimal. It also refuses `Buffer`, and its self-check shows that the same test sees the old leak.
+- **Breaker r2 m2: fixed.** choose.ts:85 now rebuilds when the recorded client changes. With the seam, the links and the store share one S3Files, and case 2 asserts `links.files === inner`. With no seam (`recorded` undefined), production behaves as before. A seam planted later is still refused first at :82.
+
+### Unset environment: safe on a real server
+- **Code path:**
+  - choose.ts:71-74 returns `undefined` only for `ConfigRefused` with `environment === "unset"`. A blank value trims to unset at settings.ts:114-117; "not recognised" and every other fault are rethrown.
+  - With `PLATFORM_FILES` unset and NODE_ENV not production, `filesAdapterOf` (:34) then gives `local`, and `LocalFiles`' constructor does no I/O (front-office/files.ts:29).
+- **Does a real server get there?** Yes, but it never runs. main.ts:238 `await registerFeatures(AppModule)` imports every feature before `NestFactory.create` at main.ts:240, which is where provider factories run and before any listen.
+  - `features/platform-messages.ts:26` calls `boundFiles()` at import, which now returns a LocalFiles.
+  - `:27` then calls `platformConfig()`, which throws `ConfigRefused` (unset).
+  - My scratch start of `api/src/main.ts`, with no PLATFORM_ENVIRONMENT and a dead DATABASE_URL (not 54329), exited 1 with the stack `settings.ts:117 <- platform-messages.ts:27 <- features.ts:20 <- main.ts:238`.
+- **What guards it:** main.ts has no loader call of its own. The refusal comes from the import-time read in platform-messages.ts:27, and PF-24w DW2 (`check_pf24w_environment.ts:113-115`) pins the whole-server result. NODE_ENV=production still fails closed with the environment unset (the new case 3 line).
+- **Which apps it is for:** the tolerance only helps apps built without the full feature set, such as the tests that delete `PLATFORM_ENVIRONMENT` (check_pf18b_support.ts:34, check_fo13i_identity.ts:30).
+
+### Read-once (PF-24)
+Kept. PLATFORM_ENVIRONMENT still comes only from `platformConfig()`, and a server whose configuration loads caches it once. One side effect, only when the environment is unset: `platformConfig()` does not cache a refusal (settings.ts:193-199). So in a feature-only test app, each `boundFiles()` re-runs the loader, and no secret is scrubbed from `process.env`. A real server never runs in that state, because it exits at main.ts:238 as above. Note only.
+
+### Findings
+**m7 (Minor): the "any other configuration fault still stops the start-up" line does not test the rethrow.**
+- In the full six-feature child, the malformed key is refused by `platform-messages.ts:27` whatever `loadedEnvironment` does. With a catch-all tolerance the run is still 33/0.
+- My probe: the same malformed key with `PFF1B_FEATURES: SUPPORT_ONLY` started (status 0, STARTED) under the catch-all, and stopped at `choose.ts:72` at head.
+- Fix: run that line with `PFF1B_FEATURES: SUPPORT_ONLY`. The behaviour at head is already correct.
+
+**Note (no change asked):** the server's refusal of an unset environment rests on an incidental import-time read (platform-messages.ts:27), not on an explicit main.ts loader call. PF-24w DW2 covers it.
+
+### Regressions and invention
+- Regressions: none. Every round-1 and round-2 line still passes, and the PF-24 suite is green (7/7) on everything I could run without the database.
+- Invention: none. The claims in the new comments are true: FO-13i's and PF-18b's tests delete PLATFORM_ENVIRONMENT, and platform-messages reads the configuration at import. The three accepted items (settings.ts lines, the generator line, the patterned-key Minor) were not re-judged.
+
+Open: m7 (Minor), for the PR body or a one-line follow-up.
+
+**Verdict: Approve** at commit b66e603f484637e752cad6c966497cc81582515a.
