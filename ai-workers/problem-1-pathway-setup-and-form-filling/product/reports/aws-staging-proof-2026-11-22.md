@@ -110,3 +110,21 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
      before redeploying (0 tasks, nothing served; CloudFormation's later delete of it finds it gone), or (b) a code row (PF-8b):
      replace the target group with the load balancer (or keep a fixed load balancer name in domain mode), so production and
      future switches are clean. Recommended: (a) today plus (b) as a row.
+
+## Step 2c: recovery and second domain deploy (11:5x-12:12 IST)
+
+* **Founder's approval typed in this session (~11:5x IST):** "You do have my approval, so go ahead and do the job and inform these
+  two and listen to lead two".
+* 11:54:51 `continue-update-rollback --resources-to-skip AppPoolstaff2F6C69E5 AppPoolownstaff0D412439 AppPoolclientsE77529FE`
+  ("Resource skipped during UpdateRollback"). Cleanup deleted the new LB, certificate, SES identity and records; the zone's delete
+  failed twice (12:03, 12:06: `HostedZoneNotEmptyException`): the certificate's DNS validation CNAME
+  (`_461fd8b3….staging.lab.expatready.com`, TTL 300) is written by CloudFormation's certificate handler, not a stack resource, so
+  the stack never deletes it. Deleted by hand 12:07:33 (`change-resource-record-sets` DELETE, PENDING). **Stack
+  UPDATE_ROLLBACK_COMPLETE 12:08:48 IST**; zone Z0301963960X9VWH68EH gone (`NoSuchHostedZone`). Pools keep the domain passkey settings.
+  * Also for the PF-8b row: a domain stack that rolls back or is deleted leaves this CNAME and fails to delete its zone.
+* **Target group freed without deleting anything (12:10:34):** the old HTTPS listener on `xr-staging-app` changed from
+  `forward` to a fixed 503 (`staging-moving-to-domain`); target group `xr-sta-AppLb-N8GK4CMNJQJE` now on 0 load balancers.
+  The listener is kept so a rollback still has it; CloudFormation deletes it after a successful update. ARN in `~/d-old-listener.txt`.
+* **Deploy 2 started ~12:10 IST:** `d-cdk.sh deploy 0 sha256:dabc0523…` (main 5d866c746 image), log `~/d-deploy-0.log`, rc in
+  `~/d-deploy-0b.rc`. New zone **Z10188462TUE6DHK5P3ZY**, name servers `ns-796.awsdns-35.net`, `ns-1711.awsdns-21.co.uk`,
+  `ns-28.awsdns-03.com`, `ns-1442.awsdns-52.org`: **sent to Lead 2 12:1x** to replace the 4 Cloudflare records.
