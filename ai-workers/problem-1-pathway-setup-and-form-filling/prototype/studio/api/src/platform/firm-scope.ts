@@ -149,6 +149,8 @@ export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze(
   "job:platform.billing.exit_notices": { why: "the payment-hold notices list every firm on hold, then send each its due notice in its own firm scope (PF-5 part 4, SA-2-6)", routes: [], outside: true, audit: "per-firm" },
   "job:platform.entitlements.booking_daily": { why: "the daily job lists every firm with a booked plan change now due, then applies each in its own firm scope (PF-15 part 1b, SA-3-60)", routes: [], outside: true, audit: "per-firm" },
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
+  "platform.console.firms-list": { why: "our team's firms list reads every firm's status, plan and usage, read only (PF-17 part 1, R1.93; system/firm:read); one firm-less line per list call (the audit mode is the tech lead's ruling on #3155)", routes: [/^GET \/api\/system\/firms$/i], direct: true, audit: "platform" },
+  "platform.console.firm-read": { why: "our team opens one firm's status, plan and usage, read only (PF-17 part 1, R1.93; system/firm:read); that firm's own platform.bypass line", routes: [/^GET \/api\/system\/firms\/[^/]+$/i], direct: true, audit: "per-firm" },
 });
 
 /** A job with no firm (a platform-wide sweep): on the named list, or declared, as "job:<queue>" it runs on the bypass; otherwise with no
