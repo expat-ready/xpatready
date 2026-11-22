@@ -1,0 +1,2 @@
+Entry points: PF-30a: `GET /api/platform/find?q=` (any staff; 2-100 characters trimmed, else 400 `QUERY_LENGTH`; each finder applies its own view rule), `FindRegistry.register(module, finder)` (`find/registry.ts`, FindPort's real adapter; studio ports/find.ts `runFinders`: each finder within 400 ms, a slow or failing one dropped with "Some results could not be loaded", at most 8 hits each and 20 in all, grouped by kind; the query is never logged or echoed).
+Tests: tests/check_fd1_find.ts
