@@ -24,7 +24,7 @@ import { taxForLine } from "../../client-money/invoices/tax-round.ts";
 import { Db, OpenRead } from "../../core.ts";
 import { firmScope } from "../firm-scope.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../identity/keys.ts";
-import { BILLING_PORTS } from "./routes.ts";
+import { BILLING_PORTS, HoldOpen } from "./routes.ts";
 import type { BillingPorts } from "./webhook.ts";
 
 export const STAND_IN_PAGE = "/api/demo/billing/invoices";
@@ -69,9 +69,11 @@ export class BillingStandIn {
     const subtotalCents = sub.billingPeriod === "YEARLY" ? sub.plan.yearlyPriceCents : sub.plan.monthlyPriceCents;
     if (subtotalCents === null || subtotalCents === undefined) throw problem(409, "NO_PRICE", "No price for this plan", `The ${sub.plan.name} plan has no ${sub.billingPeriod === "YEARLY" ? "yearly" : "monthly"} price, so no invoice can be issued.`);
     const tax = standInTax(subtotalCents, province as ProvinceCode);
-    const n = this.kept.size + 1, id = `in_standin${String(n).padStart(6, "0")}`, token = randomBytes(24).toString("base64url");
+    if (sub.plan.currency.toUpperCase() !== "CAD") throw problem(409, "NOT_CAD", "Not in Canadian dollars", `The ${sub.plan.name} plan is priced in ${sub.plan.currency}; the stand-in taxes Canadian-dollar invoices only.`);   // break m4
+    // Break m3: a random id and a number of the firm's own (never a counter shared across firms or reset by a restart).
+    const id = `in_standin${randomBytes(12).toString("hex")}`, token = randomBytes(24).toString("base64url");
     const invoice = {
-      id, number: `SAMPLE-${String(n).padStart(4, "0")}`, status: "open" as const, amountDueCents: subtotalCents + tax.amountCents, currency: "cad", createdAt: this.ports.clock.now(),
+      id, number: `SAMPLE-${s.firmId.replace(/-/g, "").slice(0, 8).toUpperCase()}-0001`, status: "open" as const, amountDueCents: subtotalCents + tax.amountCents, currency: "cad" as const, createdAt: this.ports.clock.now(),
       hostedUrl: `${this.ports.appUrl}${STAND_IN_PAGE}/${id}?t=${token}`, subtotalCents, taxCents: tax.amountCents, taxLines: [tax],
     };
     const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string) : "");
@@ -94,7 +96,7 @@ export class BillingStandIn {
     const taxRows = (inv.taxLines ?? []).map((t) => `<tr><th scope="row">${esc(t.name)}${pct(t.ratePpm)}${t.jurisdiction ? ` (${esc(t.jurisdiction)})` : ""}</th><td>${cad(t.amountCents)}</td></tr>`).join("");
     const number = inv.number ?? id, day = new Date(inv.createdAt).toISOString().slice(0, 10);
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Invoice ${esc(number)}</title>
-<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;color:#1a1a1a}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.4rem;border-bottom:1px solid #ccc}td{text-align:right}.note{font-size:.85rem;color:#444}</style></head>
+<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;color:#1a1a1a;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.4rem;border-bottom:1px solid #ccc}td{text-align:right}.note{font-size:.85rem;color:#444}</style></head>
 <body><main data-stand-in-invoice="${esc(id)}"><h1>Invoice ${esc(number)}</h1>
 <p>ExpatReady (Sample) to <strong>${esc(k.firmName)}</strong><br>${k.addressLines.map(esc).join("<br>")}</p>
 <p>Date: <time datetime="${day}">${day}</time> · Status: ${esc(inv.status)}</p>
@@ -116,7 +118,7 @@ export class PlatformBillingStandIn extends BillingStandIn {
 @Controller("api/platform/billing/stand-in")
 export class BillingStandInController {
   constructor(@Inject(PlatformBillingStandIn) private readonly x: PlatformBillingStandIn) {}
-  @Post("invoice") @HttpCode(200) @PermissionKeys("agent/subscription:pay")
+  @Post("invoice") @HttpCode(200) @HoldOpen() @PermissionKeys("agent/subscription:pay")   // break m2: a held firm is told to pay the open invoice
   issue(@Req() r: { platform?: StaffContext }) { return this.x.issue(staffOf(r)); }
 }
 

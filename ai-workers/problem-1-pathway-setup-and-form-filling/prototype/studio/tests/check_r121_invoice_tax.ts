@@ -88,9 +88,11 @@ try {
     const early = await j("POST", "/api/platform/billing/stand-in/invoice", {}, f.token);
     ok(`R1.21 read fail (${c.province}): no invoice before the business address is saved (409, in words)`, early.status === 409 && /business address/i.test(early.body?.detail ?? ""), early);
     const put = await j("PUT", "/api/platform/billing/address", c.address, f.token);
-    const issued = await j("POST", "/api/platform/billing/stand-in/invoice", {}, f.token), again = await j("POST", "/api/platform/billing/stand-in/invoice", {}, f.token);
+    const burst = await Promise.all(Array.from({ length: 8 }, () => j("POST", "/api/platform/billing/stand-in/invoice", {}, f.token)));   // break M1: simultaneous calls
+    const issued = burst[0], again = await j("POST", "/api/platform/billing/stand-in/invoice", {}, f.token);
+    ok(`R1.21 stand-in fail (${c.province}): 8 simultaneous issue calls make one invoice, never two`, burst.every((r) => r.status === 200 && r.body?.invoice?.id === issued.body?.invoice?.id), burst.map((r) => `${r.status} ${r.body?.invoice?.id}`));
     f.invoiceId = issued.body?.invoice?.id;
-    ok(`R1.21 stand-in (${c.province}): the address saves, the stand-in issues one invoice (a second call answers the same one)`, put.status === 200 && issued.status === 200 && issued.body.created === true && again.body?.created === false && again.body?.invoice?.id === f.invoiceId, { put: put.status, issued: issued.status, again: again.body?.invoice?.id });
+    ok(`R1.21 stand-in (${c.province}): the address saves, the stand-in issues one invoice (a second call answers the same one)`, put.status === 200 && issued.status === 200 && again.body?.created === false && again.body?.invoice?.id === f.invoiceId, { put: put.status, issued: issued.status, again: again.body?.invoice?.id });
     const price = Number(sql(`select p.monthly_price_cents from platform_subscription s join platform_plan p on p.id = s.plan_id where s.firm_id = (select id from platform_firm where key = '${f.key}')`));
     const read = await j("GET", "/api/platform/billing/invoices", undefined, f.token), inv = read.body?.invoices?.[0];
     const want = taxForLine(price, c.rate);

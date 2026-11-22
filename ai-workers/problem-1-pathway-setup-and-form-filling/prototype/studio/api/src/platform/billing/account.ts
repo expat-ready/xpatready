@@ -69,10 +69,11 @@ export class BillingAccount {
     const sub = await this.current(s.firmId);
     // R1.21 (P-796): on the billing stand-in (a local server with no Stripe key) a firm with no Stripe customer reads its
     // stand-in customer's invoices (stand-in.ts); anywhere else no customer means no invoices.
-    const customer = sub.stripeCustomerId ?? (this.ports.standIn ? standInCustomer(s.firmId) : null);
-    if (!customer) return { invoices: [] };
+    // Break m1: a firm that also has a stored customer on the stand-in reads both.
+    const customers = [...new Set([sub.stripeCustomerId, this.ports.standIn ? standInCustomer(s.firmId) : null].filter((c): c is string => !!c))];
+    if (!customers.length) return { invoices: [] };
     this.ready();
-    const list = await this.ports.billing.invoices(customer).catch(() => { throw unavailable(); });
+    const list = (await Promise.all(customers.map((c) => this.ports.billing.invoices(c))).catch(() => { throw unavailable(); })).flat();
     return { invoices: list.filter((i) => i.status !== "draft").map((i) => ({ id: i.id, number: i.number, status: i.status, amountDueCents: i.amountDueCents, currency: i.currency.toUpperCase(), createdAt: i.createdAt, hostedUrl: i.hostedUrl,
       subtotalCents: i.subtotalCents, taxCents: i.taxCents, taxLines: i.taxLines.map((t) => ({ name: t.name, jurisdiction: t.jurisdiction, ratePpm: t.ratePpm, amountCents: t.amountCents })) })) };
   }
