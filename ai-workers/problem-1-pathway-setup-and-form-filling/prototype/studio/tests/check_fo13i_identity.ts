@@ -129,16 +129,16 @@ try {
   const rFull = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, documentNumberLast4: FULL });
   const rNum = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, documentNumberLast4: undefined, documentNumber: FULL });
   const rNote = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, method: "OTHER", methodDetail: `Seen passport ${FULL} at the office` });
-  ok("FO-13i DW1 fail: a 5-character or full number → 400 naming documentNumberLast4; a full `documentNumber` → 400 naming it; a number in the note → 400 naming methodDetail; nothing stored",
-    r5.status === 400 && r5.body.fields?.documentNumberLast4 && rFull.status === 400 && rFull.body.fields?.documentNumberLast4 && rNum.status === 400 && rNum.body.fields?.documentNumber
-    && rNote.status === 400 && rNote.body.fields?.methodDetail && rows(PR) === 1, [r5.body, rNum.body, rNote.body]);
+  ok("FO-13i DW1 fail: a 5-character or full number → 422 naming documentNumberLast4; a full `documentNumber` → 422 naming it; a number in the note → 422 naming methodDetail; nothing stored",
+    r5.status === 422 && r5.body.fields?.documentNumberLast4 && rFull.status === 422 && rFull.body.fields?.documentNumberLast4 && rNum.status === 422 && rNum.body.fields?.documentNumber
+    && rNote.status === 422 && rNote.body.fields?.methodDetail && rows(PR) === 1, [r5.body, rNum.body, rNote.body]);
   const spaced = ["Seen passport AB 123 4567", "AB12 3456", "AB\u00a0123\u00a04567", "AB.123.456.7", "AB/123/4567", "AB_123_4567", "ＡＢ１２３４５６７", "AB ١٢٣٤٥٦٧", "AB १२३४५६७", "AB123\u200b4567", "AB12\u20603456", "AB12\u00ad34567"];
   const sp = await Promise.all(spaced.map((d) => call("POST", `people/${PR}/identity-checks`, R.token, { method: "OTHER", methodDetail: d, details: ["NAME"] })));
   const fine = await call("POST", `people/${PO}/identity-checks`, O.token, { method: "OTHER", methodDetail: "Seen at the office on video, 2 people present", details: ["NAME"] });
-  ok("FO-13i DW1 fail (break B-1): a number spaced, dotted, slashed, full-width, in Arabic-Indic or Devanagari digits, or split by a hidden character → 400 naming methodDetail, nothing stored; a note with a few digits saves",
-    sp.every((r) => r.status === 400 && r.body.fields?.methodDetail) && rows(PR) === 1 && fine.status === 201, sp.map((r, i) => `${spaced[i]}: ${r.status}`).filter((x) => !x.endsWith("400")));
+  ok("FO-13i DW1 fail (break B-1): a number spaced, dotted, slashed, full-width, in Arabic-Indic or Devanagari digits, or split by a hidden character → 422 naming methodDetail, nothing stored; a note with a few digits saves",
+    sp.every((r) => r.status === 422 && r.body.fields?.methodDetail) && rows(PR) === 1 && fine.status === 201, sp.map((r, i) => `${spaced[i]}: ${r.status}`).filter((x) => !x.endsWith("422")));
   const rXX = await call("POST", `people/${PR}/identity-checks`, R.token, { ...good, issuingCountry: "XX" });
-  ok("FO-13i DW1 fail: an issuing country XX → 400 naming issuingCountry, nothing stored", rXX.status === 400 && rXX.body.fields?.issuingCountry && rows(PR) === 1, rXX.body);
+  ok("FO-13i DW1 fail: an issuing country XX → 422 naming issuingCountry, nothing stored", rXX.status === 422 && rXX.body.fields?.issuingCountry && rows(PR) === 1, rXX.body);
 
   // ---------------------------------------------------------------------------------------------------------- DW2
   const ALL5 = ["NAME", "HOME_ADDRESS", "PHONE", "EMAIL", "BUSINESS_DETAILS"];
@@ -150,7 +150,7 @@ try {
     && list.body.checks[0].checkedBy.staffId === R.id && !JSON.stringify(list.body).includes("identity/"), list.body);
   const rUnk = await call("POST", `people/${PR}/identity-checks`, R.token, { method: "VIDEO", details: ["NAME", "PASSPORT_NUMBER"] });
   const rNone = await call("POST", `people/${PR}/identity-checks`, R.token, { method: "VIDEO", details: [] });
-  ok("FO-13i DW2 fail: an unknown detail → 400 naming details; none → 400; nothing stored", rUnk.status === 400 && rUnk.body.fields?.details && rNone.status === 400 && rows(PR) === 2, rUnk.body);
+  ok("FO-13i DW2 fail: an unknown detail → 422 naming details; none → 422; nothing stored", rUnk.status === 422 && rUnk.body.fields?.details && rNone.status === 422 && rows(PR) === 2, rUnk.body);
 
   // ---------------------------------------------------------------------------------------------------------- DW3
   const form = (fields: Record<string, string | string[]>, file?: { bytes: Uint8Array; name: string; type: string }) => {
@@ -169,7 +169,7 @@ try {
     refused(`update fo_identity_check set document_number_last4 = '0000' where id = '${c3.body.id}'`, /a check is a record \(write a new check instead\)/));
   const txt = await call("POST", `people/${PR}/identity-checks`, R.token, form(docFields, { bytes: new TextEncoder().encode("just text, renamed"), name: "passport.pdf", type: "application/pdf" }));
   const noDoc = await call("POST", `people/${PR}/identity-checks`, R.token, form({ method: "IN_PERSON", details: "NAME" }, { bytes: pdf, name: "x.pdf", type: "application/pdf" }));
-  ok("FO-13i DW3 fail: a text file renamed .pdf → 415; a copy with no document named → 400; nothing stored", txt.status === 415 && noDoc.status === 400 && noDoc.body.fields?.documentType && rows(PR) === 3, [txt.body, noDoc.body]);
+  ok("FO-13i DW3 fail: a text file renamed .pdf → 415; a copy with no document named → 422; nothing stored", txt.status === 415 && noDoc.status === 422 && noDoc.body.fields?.documentType && rows(PR) === 3, [txt.body, noDoc.body]);
   const failing = new IdentityChecks(db, new LocalFiles(), { now: () => nowMs }, fakeAudit({ failOn: (e) => e.action === "identity.checked" }) as never);
   const ctxR0 = { staffId: R.id, firmId: A, firmKey: "sample-firm", roles: [], keys: [], duties: [], authTime: 0, via: "local" as const };
   const lost = await failing.record(ctxR0, PR, { ...docFields, requestId: crypto.randomUUID() }, { bytes: pdf, size: pdf.length }).then(() => null, (e) => ({ status: e.getStatus?.(), body: e.getResponse?.() }));
@@ -179,8 +179,8 @@ try {
   const onDisk = filesOnDisk();
   const lines2 = await Promise.all(["Seen in person\nat the office", "Seen\tin person", "\u200b\u200b", "\u3164", "\u0301"].map((d) =>
     call("POST", `people/${PR}/identity-checks`, R.token, form({ ...docFields, method: "OTHER", methodDetail: d }, { bytes: pdf, name: "p.pdf", type: "application/pdf" }))));
-  ok("FO-13i DW3 fail (break B-2): a note with a line break or tab, or only hidden characters, with a copy → 400 naming methodDetail before the copy is stored (no new file on disk, no row)",
-    lines2.every((r) => r.status === 400 && r.body.fields?.methodDetail) && filesOnDisk() === onDisk && rows(PR) === 3, lines2.map((r) => r.status));
+  ok("FO-13i DW3 fail (break B-2): a note with a line break or tab, or only hidden characters, with a copy → 422 naming methodDetail before the copy is stored (no new file on disk, no row)",
+    lines2.every((r) => r.status === 422 && r.body.fields?.methodDetail) && filesOnDisk() === onDisk && rows(PR) === 3, lines2.map((r) => r.status));
   const link = await call("POST", `identity-checks/${c3.body.id}/copy/download-link`, R.token);
   const got = await call("GET", link.body.url, R.token);
   ok("FO-13i DW3 pass: the copy's link works within its lifetime: the same bytes, as an attachment, not cached, not sniffed",
@@ -210,8 +210,8 @@ try {
   const otherBytes = new TextEncoder().encode("%PDF-1.4\n% other bytes\n%%EOF\n");
   const iBytes = await call("POST", `people/${PR}/identity-checks`, R.token, form({ ...docFields, requestId: RID }, { bytes: otherBytes, name: "p.pdf", type: "application/pdf" }));
   const iB = await call("POST", `people/${PB}/identity-checks`, S.token, { ...good, requestId: RID });
-  ok("FO-13i DW3 fail (idempotent): the same requestId with other details or another copy → 409 REQUEST_REUSED (also from firm B, which learns nothing else); a missing or malformed requestId → 400; nothing stored",
-    iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iBytes.status === 409 && iBytes.body.code === "REQUEST_REUSED" && iBad.status === 400 && iNone.status === 400 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iBytes.status, iBad.status, iNone.status, iB.status]);
+  ok("FO-13i DW3 fail (idempotent): the same requestId with other details or another copy → 409 REQUEST_REUSED (also from firm B, which learns nothing else); a missing or malformed requestId → 422; nothing stored",
+    iOther.status === 409 && iOther.body.code === "REQUEST_REUSED" && iBytes.status === 409 && iBytes.body.code === "REQUEST_REUSED" && iBad.status === 422 && iNone.status === 422 && iNone.body.fields?.requestId && iB.status === 409 && rows(PR) === before7 + 1 && rows(PB) === 0, [iOther.status, iBytes.status, iBad.status, iNone.status, iB.status]);
 
   // ---------------------------------------------------------------------------------------------------------- DW4
   clearingConflicts(db, { retainers: Retainers.prototype });   // FO-13c: the conflict check first

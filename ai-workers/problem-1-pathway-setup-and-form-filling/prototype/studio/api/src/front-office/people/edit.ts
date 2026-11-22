@@ -13,6 +13,8 @@ import { Body, Controller, HttpException, Inject, Injectable, Param, Patch, Req 
 import type { PrismaClient } from "@prisma/client";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { z } from "zod";
+import { idParam, parseInput, strict } from "../../platform/http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { actorOf, notFound, sees, text, unprocessable, UUID, visibilityOf, type Tx } from "../sales/common.ts";
@@ -68,10 +70,14 @@ export class PeopleEdit {
   }
 }
 
+/** PF-28 part 3b (R1.10): `{ phone }` only, through a strict schema (an unknown field 422, named). The phone itself is
+ *  left to phoneOf, so any value that is not a readable number gets the field's one sentence (breaker F7). */
+const PHONE = strict({ phone: z.unknown().optional() });
+
 @Controller("api/front-office")
 export class PeopleEditController {
   constructor(@Inject(PeopleEdit) private readonly people: PeopleEdit) {}
 
   @Patch("people/:personId") @PermissionKeys("agent/prospect:edit")
-  edit(@Req() r: { platform?: StaffContext }, @Param("personId") personId: string, @Body() b: unknown) { return this.people.editPhone(staffOf(r), personId, b); }
+  edit(@Req() r: { platform?: StaffContext }, @Param("personId") personId: string, @Body() b: unknown) { return this.people.editPhone(staffOf(r), idParam(personId, "person"), parseInput(PHONE, b ?? {})); }   // the id first (404), then the body
 }
