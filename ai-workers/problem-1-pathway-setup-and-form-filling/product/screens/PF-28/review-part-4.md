@@ -117,3 +117,25 @@ Scope: only `git diff 6b8ca678d 3afa09afa`, leaving out the records commit `cc74
 **Verdict: Approve 3afa09afabf236f5b01314f4cc3a66b0281f52ab** (no open Blocker or Major).
 
 Reviewer: Approve 3afa09afabf236f5b01314f4cc3a66b0281f52ab
+
+## Round 3 (head 04b72b8b39904d77cec0e72a9082bdd52bb35430: merge of origin/main after #2883, PF-28 part 6)
+
+Scope: only the conflict resolution, `git diff 8ce9dd85a 04b72b8b3 -- '*check_pf28_inputs.ts' '*pf28-allow-list.json'`. The merge changed no file of part 4's own; the booking, booking-public and web-address files are untouched by it.
+
+- **Both files equal main plus exactly part 4's changes.** I checked with `git diff 5d866c746 04b72b8b3` on the two files.
+  - `check_pf28_inputs.ts`: only the ceiling line, the `:linkToken` filler, and the part-4 cases (including round 2's). Part 6's two cases are kept as merged on main.
+  - `pf28-allow-list.json`: only the 70 `PF-28 part 4 (booking)` probe lines leave, and the two by-design exceptions join. Part 6's 7 money lines were already gone on main, and nothing came back.
+- **Ceilings: `PROBES_CEILING` 84, `EXCEPTIONS_CEILING` 11, `UNPARSED_CEILING` 44.** These are main's 154 − 70, 9 + 2, and 44.
+  - The list holds exactly 44 unparsed, 84 probes and 11 exceptions, so every ceiling is met exactly, with no slack for a line to sneak back.
+  - No entry names part 4 or part 6.
+  - The ceiling comment records the 161 → 154 step from part 6.
+- **Sweep on a fresh copy of the merged head** (`rev_pf28p4`, :4491, now stopped): **47/47, exit 0**.
+  - Code half: 107 inputs, 44 unparsed (44 listed).
+  - Probes: 504 on 207 routes, of which 95 are not as the rule says (84 listed + 11 exceptions).
+  - No 500. Part 4's four cases and part 6's two pass.
+
+No new findings.
+
+**Verdict: Approve 04b72b8b39904d77cec0e72a9082bdd52bb35430** (no open Blocker or Major).
+
+Reviewer: Approve 04b72b8b39904d77cec0e72a9082bdd52bb35430
