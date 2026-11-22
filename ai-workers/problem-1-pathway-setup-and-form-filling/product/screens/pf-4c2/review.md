@@ -81,3 +81,20 @@ Journey score: **8/10** (`journey-test-reviewer-2026-11-22.md`).
 **Verdict: Changes** — fix M1 (m1 and m2 recommended). Head `f1741130774a2a90cb6f31ed4eab8db3e8845012`.
 
 Reviewer: Changes f1741130774a2a90cb6f31ed4eab8db3e8845012
+
+## Round 2: `git diff f1741130…c7a2bc9a` only (22 Nov)
+* **M1 fixed.** `MODULE.rows/PF-4c2.md:1` now names the pack without backticks. `check-module-cards.sh` passes locally ("module cards: 44 fixtures", 0 FAIL, exit 0), and the CI `module-cards` check is green on c7a2bc9a. CodeQL, guard, pr-rules and review-rounds are green too.
+* **m1 fixed.**
+  * `service.ts:353,370-371`: the warning is computed after `inFirm` returns, so a pattern never runs under the firm's row lock. The answer's shape is unchanged.
+  * `licence-format.ts:18,35`: `NESTED_REPEAT` refuses a group that holds a repeat and is itself repeated.
+  * Suite: `check_pf4c_licence_format.ts:71` refuses `(a+)+`, `R(\d+)*` and `(R\d{1,})+` and loads `R\d{6}`, `(R|Q)\d{6}` and `[A-Z]{2}-\d{4,6}`. Result: **15 passed, 0 failed**.
+* **NESTED_REPEAT's own speed.** It is quadratic, not exponential: its two parts never match the same characters (`[^()\\]` vs `\\.`).
+  * A compiling 10,000-character pattern (`\(` + `a+`×5,000) takes 116 ms; 40,000 characters take 1.8 s.
+  * It runs once at load, on the committed file only, never on user input. A real licence format is tens of characters, so this is not a finding.
+* **Plain formats accepted** (probe): `[A-Z]{2}-\d{4,6}`, `(R|Q)\d{6}`, `R\d{6}`, `\d{5,7}`, `(\d{3}-)?\d{4}`, `(R\d{6})?`.
+* **Remaining note (Minor, Could; not blocking).** The guard is a heuristic and lets through `((a+))+`, `(a|ab)*` and `(a?)+`. These are bounded by committed-only patterns, review, the 100-character number cap and the off-lock call.
+* **m2 (PR body)** is left to the builder, as agreed.
+
+**Round 2 verdict: Ship → Approve.** No open Blocker or Major. Head `c7a2bc9ad1051ae175630868daa616908400aebc`.
+
+Reviewer: Approve c7a2bc9ad1051ae175630868daa616908400aebc
