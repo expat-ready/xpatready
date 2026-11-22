@@ -82,6 +82,15 @@ export function entryShape(obj: ts.ObjectLiteralExpression, src: ts.SourceFile):
   return out;
 }
 
+/** Every *.bypass.ts file under `root` (the prototype folder: the API also imports p2, p5 and contracts there) that is
+ *  not under `apiSrc` (review round 2): defineBypassUse refuses such a file at run time, and the check names it. */
+export function strayUseFiles(root: string, apiSrc: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => { for (const e of readdirSync(d, { withFileTypes: true })) { if (["node_modules", ".git", "var", "dist"].includes(e.name)) continue; const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.bypass\.[cm]?[jt]sx?$/.test(e.name) && !p.startsWith(apiSrc + "/")) out.push(relative(root, p)); } };
+  walk(root);
+  return out;
+}
+
 /** Every .ts file under a folder (no node_modules). */
 function tsFiles(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
@@ -163,7 +172,9 @@ try {
   // B, C: the tree as it is.
   const ROOTS = ["api/src", "ports", "engine", "contracts", "web/src"].map((d) => join(STUDIO, d));
   const tree = declarationFindings(ROOTS, STUDIO);
-  ok(`P-785 step 2 B, C pass: ${tree.declared.size} use(s) declared in *.bypass.ts files (api/src, ports, engine, contracts), each well formed and once, none on the list`, tree.findings.length === 0, tree.findings);
+  ok(`P-785 step 2 B, C pass: ${tree.declared.size} use(s) declared in *.bypass.ts files (api/src, ports, engine, contracts, web/src), each well formed and once, none on the list`, tree.findings.length === 0, tree.findings);
+  const PROTOTYPE = join(STUDIO, ".."), stray = strayUseFiles(PROTOTYPE, SRC);
+  ok("P-785 step 2 B pass: no *.bypass.ts file in prototype/ outside studio/api/src (p2, p5, contracts and the rest)", stray.length === 0, stray);
 
   // Before and after, on a scratch folder (its own platform/firm-scope.ts path): a new use is one new file beside its
   // module; nothing shared is edited.
@@ -199,11 +210,16 @@ try {
   fresh(); mkdirSync(join(tmp, "ports"), { recursive: true }); writeFileSync(join(tmp, "ports", "x.bypass.ts"), useFile("platform.p785probe.ports"));
   const outsideSrc = declarationFindings([tmp], tmp, tmpScope, join(tmp, "billing"));
   ok("P-785 step 2 B/C fail: a *.bypass.ts file outside api/src (the folders the API loads) is refused", outsideSrc.findings.some((l) => /ports\/x\.bypass\.ts: a \*\.bypass\.ts file lives under api\/src/.test(l)), outsideSrc.findings);
+  fresh(); mkdirSync(join(tmp, "p2"), { recursive: true }); writeFileSync(join(tmp, "p2", "ledger.bypass.ts"), "export {};\n");
+  const strayHere = strayUseFiles(tmp, join(tmp, "billing"));
+  ok("P-785 step 2 B fail: a *.bypass.ts file elsewhere in prototype/ (p2, which the API imports) is named", strayHere.includes(join("p2", "ledger.bypass.ts")), strayHere);
   refuses("a missing audit", { "billing/x.bypass.ts": entryWith(`why: "w", routes: []`) }, /audit is missing/);
 
   // D: at run time, on real *.bypass.ts files under var/ importing the real firm-scope.ts.
   const fs = await import("../api/src/platform/firm-scope.ts");
-  const live = join(WORK, "live"), toScope = relative(live, SCOPE).split("\\").join("/");
+  // The probes live under api/src (only there may a file declare), in a folder of this run's own, removed at the end.
+  for (const e of readdirSync(join(SRC, "platform"))) if (e.startsWith("__p785probe_")) rmSync(join(SRC, "platform", e), { recursive: true, force: true });
+  const live = join(SRC, "platform", `__p785probe_${process.pid}`), toScope = relative(live, SCOPE).split("\\").join("/");
   mkdirSync(live, { recursive: true });
   const declare = (file: string, name: string, extra = "") => writeFileSync(join(live, file), `import { defineBypassUse } from "${toScope}";\nexport const USE = defineBypassUse("${name}", { why: "the check's probe", routes: [], outside: true, audit: ${name.startsWith("job:") ? '"platform"' : '"per-firm"'}${extra} });\n`);
   declare("run.bypass.ts", "platform.p785probe.run");
@@ -219,13 +235,17 @@ try {
     ok("P-785 step 2 D pass: asJob finds a declared job:<queue> use", await fs.asJob("p785probe.queue", async () => fs.currentBypass()) === "job:p785probe.queue");
     ok("P-785 step 2 D pass: a listed use still runs by its name (backward compatible)", await fs.asBypass("platform.web-address.catch-up", () => fs.currentBypass()) === "platform.web-address.catch-up");
     await refusedAt("a declared use passed by its name (only its value counts)", () => fs.asBypass("platform.p785probe.run", () => 1), /not on the named list/);
-    await refusedAt("a declaration from a file that is not *.bypass.ts (this check)", () => fs.defineBypassUse("platform.p785probe.here", { why: "w", routes: [], audit: "per-firm" }), /only a <name>\.bypass\.ts file may declare/);
+    await refusedAt("a declaration from a file that is not *.bypass.ts (this check)", () => fs.defineBypassUse("platform.p785probe.here", { why: "w", routes: [], audit: "per-firm" }), /only a <name>\.bypass\.ts file under api\/src may declare/);
     const alias = fs.defineBypassUse;
-    await refusedAt("a declaration through a variable from such a file", () => alias("platform.p785probe.alias", { why: "w", routes: [], audit: "per-firm" }), /only a <name>\.bypass\.ts file may declare/);
+    await refusedAt("a declaration through a variable from such a file", () => alias("platform.p785probe.alias", { why: "w", routes: [], audit: "per-firm" }), /only a <name>\.bypass\.ts file under api\/src may declare/);
     writeFileSync(join(live, "sneaky.ts"), `import * as fsc from "${toScope}";\nexport const USE = fsc.defineBypassUse("platform.p785probe.sneaky", { why: "w", routes: [], audit: "per-firm" });\n`);
-    await refusedAt("a namespace call from an ordinary file", () => import(pathToFileURL(join(live, "sneaky.ts")).href), /declared in .*sneaky\.ts; only a <name>\.bypass\.ts file may declare/);
+    await refusedAt("a namespace call from an ordinary file", () => import(pathToFileURL(join(live, "sneaky.ts")).href), /declared in .*sneaky\.ts; only a <name>\.bypass\.ts file under api\/src may declare/);
     await refusedAt("a look-alike of a declared use", () => fs.asBypass({ name: "platform.p785probe.run", entry: { why: "x", routes: [], outside: true, audit: "per-firm" } }, () => 1), /not a declared bypass use/);
     await refusedAt("a name neither listed nor declared", () => fs.asBypass("platform.p785probe.nowhere", () => 1), /not on the named list/);
+    const outside = join(WORK, "outside"); mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, "elsewhere.bypass.ts"), `import { defineBypassUse } from "${relative(outside, SCOPE).split("\\").join("/")}";\nexport const USE = defineBypassUse("platform.p785probe.elsewhere", { why: "w", routes: [], audit: "per-firm" });\n`);
+    await refusedAt("a *.bypass.ts file outside api/src", () => import(pathToFileURL(join(outside, "elsewhere.bypass.ts")).href), /only a <name>\.bypass\.ts file under api\/src may declare/);
+    await refusedAt("evaluated code naming a *.bypass.ts file (new Function with a sourceURL)", () => new Function("d", `return d("platform.p785probe.evaluated", { why: "w", routes: [], audit: "per-firm" });\n//# sourceURL=${join(live, "fake.bypass.ts")}`)(fs.defineBypassUse), /an unknown file/);
     const bad = async (file: string, name: string, extra: string, saying: RegExp, what: string) => { declare(file, name, extra); await refusedAt(what, () => import(pathToFileURL(join(live, file)).href), saying); };
     await bad("again.bypass.ts", "platform.p785probe.run", "", /already a bypass use/, "a second declaration of the same name");
     await bad("listed.bypass.ts", "platform.demo.inbox", "", /already a bypass use/, "a declaration of a listed name");
@@ -246,6 +266,9 @@ try {
   } finally { fs.onBypassLine(was); }
   const walls = readFileSync(WALLS, "utf8");
   ok("P-785 step 2 D pass: the API's start-up loads every api/src *.bypass.ts file, then closes the list (platform-firm-walls.ts onApplicationBootstrap)", /async onApplicationBootstrap\(\)\s*\{\s*await loadBypassUseFiles\(join\(import\.meta\.dirname, "\.\."\)\);\s*closeBypassUses\(\);\s*\}/.test(walls));
-} finally { rmSync(WORK, { recursive: true, force: true }); }
+} finally {
+  rmSync(WORK, { recursive: true, force: true });
+  for (const e of readdirSync(join(SRC, "platform"))) if (e.startsWith("__p785probe_")) rmSync(join(SRC, "platform", e), { recursive: true, force: true });
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

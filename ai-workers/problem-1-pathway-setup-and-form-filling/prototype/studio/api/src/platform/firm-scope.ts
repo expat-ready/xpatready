@@ -53,6 +53,8 @@ export function inFirm<T extends { firmId: string | null }>(firmId: string, row:
 // A query sets app.firm_id (and the role) on its pooled connection before it runs, so no firm can leak from one checkout
 // to the next. A transaction keeps the firm and role of the context that opened it (as SET LOCAL would).
 import { AsyncLocalStorage } from "node:async_hooks";
+import { dirname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { logPort, requestScope } from "./observability/log.ts";
 import { currentJobFirm } from "./jobs/pgboss-jobs.ts";
@@ -148,7 +150,7 @@ export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
   // Only a <name>.bypass.ts file may declare (review M1): the calling file is read from the call stack, so an alias, a
   // namespace import or a call through a variable from any other file is refused at run time, not only by the check.
   const from = callerFile();
-  if (!from || !/\.bypass\.ts$/.test(from)) throw new BypassRefused(`defineBypassUse: "${String(name)}" declared in ${from ?? "an unknown file"}; only a <name>.bypass.ts file may declare a bypass use`);
+  if (!from || !/\.bypass\.ts$/.test(from) || !from.startsWith(API_SRC)) throw new BypassRefused(`defineBypassUse: "${String(name)}" declared in ${from ?? "an unknown file"}; only a <name>.bypass.ts file under api/src may declare a bypass use`);
   if (closed) throw new BypassRefused(`defineBypassUse: "${name}" declared after start-up; the list closed when the API started (declare it in a <name>.bypass.ts file its module imports at load)`);
   if (typeof name !== "string" || !USE_NAME.test(name)) throw new BypassRefused(`defineBypassUse: "${String(name)}" is not a use name (area.what, or job:<queue>)`);
   if (Object.prototype.hasOwnProperty.call(BYPASS_USES, name) || declared.has(name)) throw new BypassRefused(`defineBypassUse: "${name}" is already a bypass use`);
@@ -167,16 +169,32 @@ export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
   routeSpecs.set(use, Object.freeze(spec.map((x) => Object.freeze(x))));
   return use;
 }
-/** The file that called the function calling this one (the first stack frame outside this file), or undefined. */
+/** The file that called defineBypassUse: the first stack frame outside this file, read as structured frames (review n1:
+ *  no text parsing, so any path works), or undefined when it cannot be known. A frame of evaluated code (eval, new
+ *  Function: it can name any file it likes) counts as unknown (review n2). */
 function callerFile(): string | undefined {
-  const here = import.meta.url.replace(/^file:\/\//, "");
-  for (const line of (new Error().stack ?? "").split("\n").slice(1)) {
-    const m = line.match(/\(?((?:file:\/\/)?\/[^():]+\.[cm]?[jt]sx?)(?::\d+){0,2}\)?\s*$/);
-    const f = m?.[1]?.replace(/^file:\/\//, "");
-    if (f && f !== here) return f;
+  const here = fileURLToPath(import.meta.url);
+  const holder: { stack?: unknown } = {};
+  const keepPrepare = Error.prepareStackTrace, keepLimit = Error.stackTraceLimit;
+  let raw: unknown;
+  try {
+    Error.stackTraceLimit = 20;
+    Error.prepareStackTrace = (_e, frames) => frames;
+    Error.captureStackTrace(holder, callerFile);
+    raw = holder.stack;   // formatted when first read: read it while our prepareStackTrace is in place
+  } finally { Error.prepareStackTrace = keepPrepare; Error.stackTraceLimit = keepLimit; }
+  const frames = Array.isArray(raw) ? (raw as NodeJS.CallSite[]) : [];
+  for (const f of frames) {
+    if (f.isEval()) return undefined;
+    const name = f.getFileName();
+    if (!name) return undefined;
+    const file = name.startsWith("file://") ? fileURLToPath(name) : name;
+    if (file !== here) return file;
   }
   return undefined;
 }
+/** The folder whose <name>.bypass.ts files may declare: api/src, worked out from this file's own place (review round 2). */
+const API_SRC = dirname(dirname(fileURLToPath(import.meta.url))) + sep;
 /** The API's start-up loads every <name>.bypass.ts file under `root` (api/src) before it closes the list (review M2): a
  *  use whose module is imported only later, at request time, is declared all the same. Returns the files loaded. */
 export async function loadBypassUseFiles(root: string): Promise<string[]> {
