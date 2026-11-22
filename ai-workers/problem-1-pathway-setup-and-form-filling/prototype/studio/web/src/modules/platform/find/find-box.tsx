@@ -104,7 +104,8 @@ export function FindBox() {
       e.preventDefault();
       enterWaits.current = false;   // Escape also cancels an Enter pressed during the pause (review r2 n2)
       // The bar across the header exists only while the Find button is shown (below 768 px); wider, the third Escape leaves (n1).
-      const phone = !!opener.current && getComputedStyle(opener.current).display !== "none";
+      // Decided by the window, not the Find button's display: the button is hidden while the bar is open (review r3-1).
+      const phone = !window.matchMedia("(min-width: 768px)").matches;
       if (showList) setOpen(false); else if (text) setText(""); else if (wide && phone) close(); else { setWide(false); input.current?.blur(); }
     } else if (e.key === "Tab") { enterWaits.current = false; setOpen(false); }
   };
@@ -133,7 +134,7 @@ export function FindBox() {
             onChange={(e) => { setText(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
-            className="h-9 w-full rounded-lg border border-border-strong bg-surface-raised pl-8 pr-8 text-sm text-text placeholder:text-text-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:w-48 lg:w-64"
+            className="h-9 w-full rounded-lg border border-border-strong bg-surface-raised pl-8 pr-3 text-sm lg:pr-8 text-text placeholder:text-text-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:w-48 lg:w-64"
           />
           <kbd aria-hidden className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border px-1 text-[11px] text-text-muted lg:block">/</kbd>
         </div>
