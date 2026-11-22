@@ -12,7 +12,8 @@
 // the Sample Owner, for a firm with no acceptance yet of the terms of service or the data-processing terms, accepts their
 // current versions (Sample acceptances, also for people a database kept from before PF-5 already holds: break M1). Only a
 // first acceptance of each kind: a later new version stays pending for the person to accept (PF-5t). Unconfirmed: no
-// counsel. Run: PLATFORM_ENVIRONMENT=local tsx api/src/platform/seed-sample-firms.ts
+// counsel. Run: PLATFORM_ENVIRONMENT=local tsx --tsconfig api/tsconfig.json api/src/platform/seed-sample-firms.ts (the settings
+// step loads a NestJS service: decorators; PF-8b F8). Runs as the database owner without superuser or BYPASSRLS too (RDS).
 import type { PlatformRole, Prisma, PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
