@@ -7,7 +7,8 @@
 #   staged <msg file>     the staged commit deletes more than LIMIT files and the message has no "BULK-DELETE-OK: <reason>"
 #   range <rev-list args> the same for every commit in the range (pre-push through push-guard.sh, and CI's guard job)
 # A file counts as deleted only when it is gone against EVERY parent (a merge of main that brings main's own deletions
-# is not counted) and its exact content is not added at another path in the same commit (a pure move is not a delete).
+# is not counted) and its exact content is not added at another path in the same commit (a pure move is not a delete;
+# an empty file never counts as moved).
 # Reads trees only (no blob), so CI's blob:none checkout needs no download. Hooks: .githooks/pre-commit, commit-msg,
 # pre-push. Limit: BULK_DELETE_LIMIT (default 50). Test: test-enf-803.sh. Exit 1 refused, 0 clean, 2 misuse.
 set -u
@@ -47,8 +48,8 @@ deleted_list() {
     else d=$(git diff-tree -r --no-renames --raw "$p" "$c" | awk '$5 == "D" {sub(/^[^\t]*\t/, ""); print}' | sort); fi
     if [ "$first" = 1 ]; then dels="$d"; first=0
       # exact moves against the first parent: deleted blob ids that come back under another path
-      if [ "$c" = --staged ]; then adds=$(git diff-index --cached --no-renames --raw "$p" | awk '$5 == "A" {print $4}' | sort -u)
-      else adds=$(git diff-tree -r --no-renames --raw "$p" "$c" | awk '$5 == "A" {print $4}' | sort -u); fi
+      if [ "$c" = --staged ]; then adds=$(git diff-index --cached --no-renames --raw "$p" | awk '$5 == "A" && $4 !~ /^e69de29bb2d1d6434b8b29ae775ad8c2e48c5391/ {print $4}' | sort -u)
+      else adds=$(git diff-tree -r --no-renames --raw "$p" "$c" | awk '$5 == "A" && $4 !~ /^e69de29bb2d1d6434b8b29ae775ad8c2e48c5391/ {print $4}' | sort -u); fi
       if [ -n "$adds" ] && [ -n "$dels" ]; then
         if [ "$c" = --staged ]; then moved=$(git diff-index --cached --no-renames --raw "$p" | awk '$5 == "D" {o = $3; sub(/^[^\t]*\t/, ""); print o "\t" $0}')
         else moved=$(git diff-tree -r --no-renames --raw "$p" "$c" | awk '$5 == "D" {o = $3; sub(/^[^\t]*\t/, ""); print o "\t" $0}'); fi

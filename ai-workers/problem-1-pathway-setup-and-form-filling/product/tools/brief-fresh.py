@@ -6,7 +6,7 @@ A lane brief (stdin) with a "Duplicate check:" line is refused (exit 1, one reas
   (1) names no origin/main commit: a 7-40 hex sha next to the word "main", which must be a commit on origin/main here;
   (2) names no exact clock time "HH:MM" (IST), or one more than 5 minutes ahead of TZ=Asia/Kolkata now (a guess);
 and when the brief cites a qa note ("qa/....md", or "qa notes of 18 Nov") older than the newest commit on origin/main
-touching the files on its "Touches:" line (touch-overlap.py's reader), or cites one with no "Touches:" line to check.
+touching the files on its "Touches:" line (touch-overlap.py's reader; first-parent, so a merge's time, not a lane's commit time), or cites one with no "Touches:" line to check.
 A brief without a "Duplicate check:" line is left to brief-check.sh. Called by brief-check.sh --brief.
 Env (tests): BRIEF_MAIN (default refs/remotes/origin/main), BRIEF_NOW (epoch, default now). Test: test-enf-803.sh."""
 import importlib.util, os, re, subprocess, sys, time
@@ -50,7 +50,8 @@ def main():
     now = datetime.fromtimestamp(float(os.environ.get("BRIEF_NOW") or time.time()), IST)
     # (1) the main sha
     rc, _ = git("rev-parse", "-q", "--verify", MAIN)
-    shas = re.findall(r"\bmain\b[^0-9a-f]{0,12}\b([0-9a-f]{7,40})\b", line) + re.findall(r"\b([0-9a-f]{7,40})\b[^0-9a-f]{0,6}\(?\bon main\b", line)
+    # every 7-40 hex token with a digit on a line that names main ("origin/main at 73c4e4dc", "main head 73c4e4dc", ...)
+    shas = [t for t in re.findall(r"\b([0-9a-f]{7,40})\b", line) if re.search(r"\d", t)] if re.search(r"\bmain\b", line) else []
     if rc != 0:
         bad.append(f"cannot read {MAIN} here: git fetch origin main, then check the brief again (ENF-803)")
     elif not shas:
@@ -70,7 +71,9 @@ def main():
             if 5 < ahead < 720:
                 bad.append(f'"Duplicate check:" time {h}:{m} IST is ahead of the clock ({now:%H:%M} IST): a guessed time; read TZ=Asia/Kolkata date (ENF-803)')
     # (3) qa notes against the newest merge on the row's files
-    paths = sorted(set(re.findall(r"(?<![\w/.-])((?:[\w.-]+/)*qa/[\w./-]+\.md)\b", brief)))
+    # qa notes: files under a qa/ folder, not its registers (qa/CAPABILITIES.md, qa/BUGS.md, qa/GRAPH.md: all-caps names in qa/ itself)
+    paths = sorted(p for p in set(re.findall(r"(?<![\w/.-])((?:[\w.-]+/)*qa/[\w./-]+\.md)\b", brief))
+                   if not re.search(r"(^|/)qa/[A-Z0-9_-]+\.md$", p))
     dated = re.findall(r"\bqa notes?\b[^\n]{0,20}?\b(\d{1,2}) (" + "|".join(MON) + r")[a-z]*\b", brief, re.I)
     if (paths or dated) and rc == 0:
         tl = touches(brief)
@@ -79,7 +82,7 @@ def main():
         else:
             files = git("ls-tree", "-r", "--name-only", MAIN)[1].splitlines()
             row = [f for f in resolve(tl, files) if "/qa/" not in "/" + f]
-            last = git("log", "-1", "--format=%H %ct", MAIN, "--", *row)[1].split() if row else []
+            last = git("log", "-1", "--first-parent", "--format=%H %ct", MAIN, "--", *row)[1].split() if row else []
             if last:
                 lsha, lt = last[0], int(last[1])
                 lwhen = datetime.fromtimestamp(lt, IST).strftime("%d %b %H:%M IST")
@@ -87,7 +90,7 @@ def main():
                     hit = resolve([p], files)
                     if not hit:
                         bad.append(f"qa note {p} is not on origin/main (ENF-803)"); continue
-                    q = git("log", "-1", "--format=%H %ct", MAIN, "--", hit[0])[1].split()
+                    q = git("log", "-1", "--first-parent", "--format=%H %ct", MAIN, "--", hit[0])[1].split()
                     if q and int(q[1]) < lt:
                         bad.append(f"qa note {p} (last changed {datetime.fromtimestamp(int(q[1]), IST):%d %b %H:%M} IST, {q[0][:9]}) is older than "
                                    f"{lsha[:9]} ({lwhen}) touching the row's files: read qa on main again (ENF-803)")

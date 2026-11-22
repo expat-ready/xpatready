@@ -27,6 +27,9 @@ fresh-lib.sh|s/if \[ "\$age" -gt "\$max" \]; then/if false; then/|10-minute cach
 brief-fresh.py|s/^    elif not shas:/    elif False:/|main sha in the Duplicate check
 brief-fresh.py|s/if q and int(q\[1\]) < lt:/if False:/|qa note older than the newest merge
 fresh-read.sh|s/^  echo "WARN  local copy/  : "WARN  local copy/|local copy differs warning
+brief-fresh.py|s/"--first-parent", "--format=%H %ct", MAIN, "--", \*row/"--format=%H %ct", MAIN, "--", *row/|merge time, not commit time
+bulk-delete-guard.sh|s/ \&\& \$4 !~ \/^e69de29bb2d1d6434b8b29ae775ad8c2e48c5391\///g|empty file is no move
+fresh-lib.sh|s/^fresh_now() { TZ=Asia\/Kolkata date/fresh_now() { TZ=UTC date/|IST clock
 MUT
   exit $bad
 fi
@@ -81,11 +84,14 @@ git -C "$R" checkout -q -b lane2 main; echo w > "$R/w.txt"; git -C "$R" add w.tx
 out=$(git -C "$R" merge --no-edit other 2>&1); r=$?
 ok "1m merging a branch whose own commit deleted 60 files (with its reason) passes the commit-msg hook" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 ok "1n ... and the range check counts the merge commit as 0 deletes" "$(cd "$R" && [ -n "$(git rev-list --merges -n1 HEAD)" ] && bash "$PRODREL/tools/bulk-delete-guard.sh" range -n1 HEAD >/dev/null 2>&1 && echo 1)" "refused, or HEAD is no merge"
+git -C "$R" checkout -qb empties main; mkdir -p "$R/e"; for i in $(seq 1 60); do : > "$R/e/x$i"; done; git -C "$R" add -A; git -C "$R" commit -qm "sixty empty files"
+git -C "$R" rm -rq e; : > "$R/one-empty"; git -C "$R" add one-empty; cm -m "drop the empty files"
+ok "1o 60 empty files deleted and one empty file added is still a 60-file delete (an empty file is no move)" "$([ $r != 0 ] && grep -q 'deletes 60 files' <<<"$out" && echo 1)" "exit $r: $out"
 
 # ---------- 2. freshness stamps and the 10-minute cache
 . "$TOOLS/fresh-lib.sh"
-o=$(fresh "GitHub (test)"); want=$(TZ=Asia/Kolkata date '+%H:%M')
-ok "2a fresh prints \"read HH:MM IST from <source>\" with TZ=Asia/Kolkata time" "$(grep -qE "read ($want|[0-2][0-9]:[0-5][0-9]) IST from GitHub \(test\)$" <<<"$o" && echo 1)" "$o"
+w1=$(TZ=Asia/Kolkata date '+%H:%M'); o=$(fresh "GitHub (test)"); w2=$(TZ=Asia/Kolkata date '+%H:%M')
+ok "2a fresh prints \"read HH:MM IST from <source>\" with the TZ=Asia/Kolkata time (never UTC or local)" "$(grep -qE "read ($w1|$w2) IST from GitHub \(test\)$" <<<"$o" && echo 1)" "$o (IST $w1-$w2)"
 echo '{}' > "$T/cache.json"; python3 -I -c 'import os,sys,time; t=time.time()-15*60; os.utime(sys.argv[1],(t,t))' "$T/cache.json"
 o=$(fresh_cache "$T/cache.json" "board (test)"); r=$?
 ok "2b a cached answer 15 min old is refused, not printed" "$([ $r = 1 ] && grep -q '^REFUSED stale: board (test) cached 15 min ago' <<<"$o" && ! grep -q ' IST from ' <<<"$o" && echo 1)" "exit $r: $o"
@@ -95,14 +101,23 @@ ok "2c a cached answer 2 min old is stamped with its read time" "$([ $r = 0 ] &&
 o=$(fresh_cache "$T/none.json" "board (test)"); r=$?
 ok "2d no cached answer is refused" "$([ $r = 1 ] && grep -q '^REFUSED stale' <<<"$o" && echo 1)" "exit $r: $o"
 LW="$TOOLS/lead-watch.sh"
-miss=$(awk '/^# [0-9]+\. / {if (s != "" && !f) print s; s = $2; f = 0; next} /^[^#]*(^|[ ;(])fresh(_cache)? / {f = 1} END {if (s != "" && !f) print s}' "$LW" | paste -sd ' ' -)
-ok "2e every numbered section of lead-watch.sh says when and from where it read (fresh / fresh_cache)" "$([ -z "$miss" ] && grep -q '^\. "$TOOLS/fresh-lib.sh"' "$LW" && echo 1)" "sections without a stamp: $miss"
+# a section or subsection heading ("# 2.", "# 2b.") that prints anything must also stamp it
+miss=$(awk 'function chk() {if (s != "" && o && !f) print s} /^# [0-9]+[a-z]?\. / {chk(); s = $2; f = 0; o = 0; next}
+  /^[^#]*(^|[ ;(])fresh(_cache)? / {f = 1; next} /^[^#]*(echo|say|ACT|tee|printf|python3)/ {o = 1} END {chk()}' "$LW" | paste -sd ' ' -)
+ok "2e every numbered section and subsection of lead-watch.sh says when and from where it read (fresh / fresh_cache)" "$([ -z "$miss" ] && grep -q '^\. "$TOOLS/fresh-lib.sh"' "$LW" && echo 1)" "sections without a stamp: $miss"
 ok "2f lead-watch.sh refuses a stale board answer: cockpit-data.py runs only after fresh_cache, known-failures reads the same" \
   "$(grep -q 'if bc=$(fresh_cache "$BOARD"' "$LW" && grep -q 'KF_BOARD="$BOARD"' "$LW" && ! grep -q 'cockpit-data.py" --watch "${COCKPIT_DATA' "$LW" && echo 1)" "the board block"
 bad=$(grep -hn 'IST' "$LW" "$TOOLS/fresh-lib.sh" | grep -E '(^|[^-])\bdate\b' | grep -v '^[0-9]*:[[:space:]]*#' | grep -vE '(TZ=Asia/Kolkata date[^)]*\)[^$]*)+$' | grep -E '\$\(date [^-]|\$\(date \+' | head -3)
 ok "2g every IST time lead-watch.sh and fresh-lib.sh print comes from TZ=Asia/Kolkata date" "$([ -z "$bad" ] && echo 1)" "$bad"
 ok "2h flow-measure.py's cached answer follows FRESH_MAX_MIN (10 under lead-watch.sh), and fresh-lib.sh exports it" \
   "$(grep -q 'os.environ.get("FRESH_MAX_MIN")' "$TOOLS/flow-measure.py" && grep -q '^export FRESH_MAX_MIN="${FRESH_MAX_MIN:-10}"' "$TOOLS/fresh-lib.sh" && echo 1)" "no FRESH_MAX_MIN"
+# the board block itself, run with a stale board: one ACT, nothing from the board printed, known-failures gets no board
+step=$(awk '/^# 11\. What the founder/ {f=1} f && (/^# 12\. / || /^exit/) {exit} f' "$LW")
+echo '{"first":{}}' > "$T/board.json"; python3 -I -c 'import os,sys,time; t=time.time()-20*60; os.utime(sys.argv[1],(t,t))' "$T/board.json"; mkdir -p "$T/st"
+w=$(act=0; seen() { :; }; ACT() { act=$((act+1)); echo "ACT   $1"; }; STATE_DIR="$T/st"; COCKPIT_DATA="$T/board.json"; prs='[]'; caps=""; merged=""
+    eval "$step"; echo "act=$act board=$BOARD")
+ok "2i lead-watch step 11 with a board 20 min old: one ACT \"REFUSED stale\", the board not printed, BOARD=/dev/null for known-failures" \
+  "$(grep -q '^ACT   board: REFUSED stale: the board.s data.json cached 20 min ago' <<<"$w" && grep -q '^act=1 board=/dev/null$' <<<"$w" && [ "$(grep -c . <<<"$w")" = 2 ] && echo 1)" "$w"
 
 # ---------- 3. fresh-read.sh
 O="$T/origin.git"; git init -q --bare -b main "$O"
@@ -120,6 +135,10 @@ o=$(cd "$W" && FRESH_REMOTE=nowhere bash "$TOOLS/fresh-read.sh" cfg/a.txt 2>"$T/
 ok "3e a failed fetch refuses (exit 2) and prints nothing from the old origin/main" "$([ $r = 2 ] && [ -z "$o" ] && grep -q '^REFUSED: git fetch' "$T/err" && echo 1)" "exit $r: $o $(cat "$T/err")"
 o=$(cd "$W" && bash "$TOOLS/fresh-read.sh" cfg/missing.txt 2>"$T/err"); r=$?
 ok "3f a path not on origin/main: exit 1, said" "$([ $r = 1 ] && grep -q '^NOT ON origin/main' "$T/err" && echo 1)" "exit $r: $(cat "$T/err")"
+o=$(cd "$W/cfg" && bash "$TOOLS/fresh-read.sh" cfg/a.txt 2>"$T/err"); r=$?
+ok "3g from a subfolder, a path from the repository root works too" "$([ $r = 0 ] && [ "$o" = v2 ] && echo 1)" "exit $r: $(cat "$T/err")"
+o=$(cd "$W/cfg" && bash "$TOOLS/fresh-read.sh" a.txt 2>"$T/err"); r=$?
+ok "3h ... and a path relative to the subfolder" "$([ $r = 0 ] && [ "$o" = v2 ] && echo 1)" "exit $r: $(cat "$T/err")"
 
 # ---------- 4. brief freshness (brief-fresh.py, through brief-check.sh --brief)
 B="$T/b"; git init -q -b main "$B"; gcfg "$B"; git -C "$B" config core.hooksPath /dev/null; mkdir -p "$B/app" "$B/p/qa/built"
@@ -150,6 +169,15 @@ ok "4h a qa note cited with no Touches: line is refused" "$([ $r = 1 ] && grep -
 git -C "$B" checkout -q main; echo newer > "$B/p/qa/built/FO-5.md"; git -C "$B" add -A; cm4 "2026-11-21T09:00:00+05:30" "qa re-read"; git -C "$B" update-ref refs/remotes/origin/main HEAD; MS=$(git -C "$B" rev-parse --short=9 HEAD)
 bf $'Duplicate check: read main '"$MS"$' at '"$NOW"$' IST; none\nTouches: app/rule.ts\nStart from p/qa/built/FO-5.md'
 ok "4i a qa note newer than the newest merge on the row's files passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+bf "Duplicate check: origin/main at $MS, read $NOW IST; none"
+ok "4l natural wording (\"origin/main at <sha>\") is read" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+bf $'Duplicate check: read main '"$MS"$' at '"$NOW"$' IST; none\nSee p/qa/CAPABILITIES.md for the row'
+ok "4m qa/CAPABILITIES.md is a register, not a qa note: no Touches: needed" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
+git -C "$B" checkout -qb lanex "$MS~1"; echo lane > "$B/app/rule.ts"; git -C "$B" add -A; cm4 "2026-11-19T10:00:00+05:30" "lane work"
+git -C "$B" checkout -q main; GIT_AUTHOR_DATE="2026-11-21T12:00:00+05:30" GIT_COMMITTER_DATE="2026-11-21T12:00:00+05:30" git -C "$B" merge -q --no-ff -X theirs -m "merge lanex" lanex
+git -C "$B" update-ref refs/remotes/origin/main HEAD; MS=$(git -C "$B" rev-parse --short=9 HEAD)
+bf $'Duplicate check: read main '"$MS"$' at '"$NOW"$' IST; none\nTouches: app/rule.ts\nStart from p/qa/built/FO-5.md'
+ok "4n a lane committed 19 Nov but merged 21 Nov 12:00 is newer than a qa note of 21 Nov 09:00 (merge time counts)" "$([ $r = 1 ] && grep -q 'qa note p/qa/built/FO-5.md' <<<"$out" && echo 1)" "exit $r: $out"
 bf $'Row X-1, no duplicate line here'
 ok "4j a text with no Duplicate check line is left to brief-check.sh (exit 0)" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 out=$(cd "$B" && printf '## What\nRow X-1.\nDuplicate check: searched BACKLOG; none\n\nDone when: check-x.sh exits 0\n' | bash "$TOOLS/brief-check.sh"); r=$?

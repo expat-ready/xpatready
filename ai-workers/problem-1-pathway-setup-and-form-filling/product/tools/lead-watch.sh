@@ -67,12 +67,15 @@ act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "
 gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName > "$STATE_DIR/prs-body.json" 2>/dev/null
 wp=$(python3 -I "$TOOLS/waves.py" wip --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$wp"; act=$((act + $(grep -c '^ACT' <<<"$wp"))); seen "$wp"
 grep -qE '^(wip   |ACT   wip:)' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
+fresh "waves.py wip: open PRs from GitHub (gh.sh), design/waves.tsv, the saved app view"
 # 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
 # on one "stale" line, never counted, never cancelled (P-371). 20 Nov: "4 waiting" were runs queued since 12 Nov.
 python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS_WAITING_JSON:+--runs "$RUNS_WAITING_JSON"} 2>&1 | tee -a "$SEEN"
+fresh "runs-waiting.py: GitHub Actions runs"
 # 2d. Proof and Lead-read waits (founder 20 Nov 23:1x IST, typed: "make them as a enforced rules and make them live"; STATE
 # hand-over Lead 4 -> Lead 5 item (3)): a merged "Completes:" capability with no qa PR after 30 min (type /qa capability
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
+fresh "proof-read-watch.py and human-sample.py (2e): GitHub PRs and qa files on origin/main"
 pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(grep -c '^ACT' <<<"$pw"))); seen "$pw"
 hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
 
@@ -82,6 +85,7 @@ for n in $qs; do
   hit=$(gh pr view "$n" --json comments -q "[.comments[]|select(.createdAt>=\"$since\")|select(.body|test(\"Question for the tech lead\"))]|length")
   [ "${hit:-0}" -gt 0 ] && ACT "#$n has a new question for the tech lead"
 done
+fresh "GitHub: open PRs with "Question for the tech lead" and their comments (gh.sh)"
 # 3b. Lane reports to the Lead (A85, 15 Nov: board v61 reported "ready for Lead 54 to merge" on records PR #1796 at
 # 11:19 IST and waited 1.5 h unseen across a hand-over). Any open PR comment in the window addressed to a Lead that is
 # not a question, and any lane branch the Lead merges here (board/*) with commits not on this branch.
@@ -97,13 +101,14 @@ for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/boa
   age=$(( ( $(date +%s) - $(git log -1 --format=%ct "$b") ) / 60 ))
   [ "${n:-0}" -gt 0 ] && [ "$age" -le 1440 ] && ACT "$b has $n commit(s) not on $here (last push ${age} min ago): merge, test, publish"
 done
+fresh "GitHub: open PRs with "ready for Lead" and their comments; origin board/* and tools/* after git fetch"
 # 3c. The "needs Lead" queue (P-611 (2), row G-1): LANE-REPORT first lines on open PRs and on #1796 (look-back 24 h,
 # idempotent) go into product/state/items.json; open and not acked over 45 min = ACT, over 90 min = FOUNDER line. 3b stays the
 # fallback for reports in free text. Ack with: python3 product/tools/items.py ack <id> --by "Lead N"; commit items.json.
 bash "$TOOLS/lead-queue.sh" > "$STATE_DIR/queue.txt" 2>&1; cat "$STATE_DIR/queue.txt"; cat "$STATE_DIR/queue.txt" >> "$SEEN"
 act=$((act + $(grep -c '^ACT' "$STATE_DIR/queue.txt")))
 git diff --quiet -- "$TOOLS/../state/items.json" 2>/dev/null || say "queue items.json changed: commit it with the records (P-557)"
-fresh "GitHub PR comments (gh.sh), origin after git fetch, product/state/items.json"
+fresh "lead-queue.sh: LANE-REPORT lines on open PRs (GitHub), product/state/items.json"
 
 # 4. Lanes alive: branches pushed in the last 90 minutes (a lane is working only if it pushed, lead skill).
 git fetch -q origin 2>/dev/null
@@ -135,7 +140,7 @@ for name in $busy; do case "$ok" in *" $name "*) ;; *) ACT "Mac builder still wo
 copies=$(lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '$9 ~ /:44[3-9][0-9]$/ {print $9}' | sort -u | grep -c .)
 suites=$(pgrep -f 'tools/run-suites.sh' 2>/dev/null | grep -c .)
 say "mac   builders working ${macb} · test copies ${copies} on 4430–4499 + ${suites} suite runs (cap 3) · load $(sysctl -n vm.loadavg | awk '{print $2}')"
-fresh "git worktrees, lsof and pgrep on this machine; qa/CAPABILITIES.md from origin/main below"
+fresh "git worktrees, lsof and pgrep on this machine; qa/CAPABILITIES.md from origin/main below; 5b flow-measure.py (GitHub, a cached answer only if under $FRESH_MAX_MIN min)"
 [ $((copies + suites)) -gt 3 ] && ACT "Mac copy cap: $((copies + suites)) copies or suite runs (cap 3, qa first): the newest builder copy waits"
 # The four numbers (founder target: 10 capabilities confirmed a day, quality never lowered).
 # P-500: capabilities confirmed are counted across every active milestone (M2, M3, M4, T) on main, not M2 alone.
@@ -183,6 +188,7 @@ fresh "git history (library-freshness.py)"
 cf=$(python3 -I "$TOOLS/conformance-check.py" --quiet 2>&1); nf=$?
 if [ "$nf" -gt 100 ] || ! grep -q '^enforced:' <<<"$cf"; then ACT "set-up check did not run (exit $nf): $(tail -1 <<<"$cf")"
 else while IFS= read -r l; do ACT "set-up: ${l#FAIL }"; done < <(grep '^FAIL' <<<"$cf"); say "set-up $(tail -1 <<<"$cf")"; fi
+fresh "conformance-check.py: origin/main against design/engineering-approved-setup.json"
 od=$(python3 "$TOOLS/outside-deps-watch.py" 2>&1); echo "$od"; act=$((act + $(grep -c '^ACT' <<<"$od")))   # 9. Outside dependencies (B192, P-618): start window, stuck 48 h, blocked without decision date or fallback
 seen "$od"
 fresh "outside-deps-watch.py"
@@ -232,6 +238,7 @@ fresh "this check's own reads above (known-facts.json) and tools/known-failures.
 
 # 12b. Merge-queue depth (CI-SPEED-3, founder A254): queue-depth.py reads the last 20 batches; exit 3 = a change is due.
 qd=$(python3 -I "$TOOLS/queue-depth.py" ${QUEUE_DEPTH_RUNS:+--runs "$QUEUE_DEPTH_RUNS"} ${QUEUE_DEPTH_MERGIFY:+--mergify "$QUEUE_DEPTH_MERGIFY"} 2>&1); qdr=$?; echo "$qd"; seen "$qd"; [ "$qdr" = 3 ] && ACT "queue depth: set max_parallel_checks to $(sed -nE '1s/.* want=([0-9]+) .*/\1/p' <<<"$qd") (rate $(sed -nE '1s/^rate=([0-9.]+)%.*/\1/p' <<<"$qd")% over last 20 batches)"
+fresh "queue-depth.py: the last 20 merge-queue batches on GitHub"
 
 # 13. Founder asks that are clicks (ENF-763, P-752/P-763): STATE's "For the founder", "Founder asks open" and "Needs you"
 # entries that are a GitHub or claude.ai step; one ACT each (the Lead does it in the built-in browser and drops the ask).
