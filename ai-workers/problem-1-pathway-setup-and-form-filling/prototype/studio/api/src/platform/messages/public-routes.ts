@@ -4,7 +4,8 @@
 //   POST /api/public/messages/ses-notices SNS's bounce and complaint notices (text/plain JSON), signature checked first
 // A link that does not work, whatever the reason, answers the public side's one not-found page (HTML: a person reads it);
 // too many tries of one link in a minute, 429.
-import { Body, Controller, Get, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpException, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { logPort } from "../observability/log.ts";
 import { OpenRead } from "../../core.ts";
 import { PUBLIC_NOT_FOUND_HTML } from "../web-address/host.ts";
 import { NoticeRefused, SesNotices } from "./channels/email/bounces.ts";
@@ -51,6 +52,11 @@ export class MessagesPublicController {
       const r = await this.n.receive(parsed);
       res.status(200); res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify({ result: r }));
     } catch (e) {
+      // PF-28: a signed notice whose envelope breaks the schema is the one rule's 422, answered here (this door writes its own answers).
+      if (e instanceof HttpException && e.getStatus() === 422) {
+        // Review m3: a notice SNS signed that the schema refuses means AWS's format moved: one warning, field names only.
+        logPort.warn("messages.sns_notice_refused_by_schema", { fields: Object.keys(((e.getResponse() as { fields?: object }).fields) ?? {}).slice(0, 20).join(",") });
+        res.status(422); res.setHeader("Content-Type", "application/problem+json; charset=utf-8"); res.end(JSON.stringify(e.getResponse())); return; }
       if (!(e instanceof NoticeRefused)) throw e;
       res.status(400); res.setHeader("Content-Type", "application/problem+json; charset=utf-8"); res.end(JSON.stringify({ type: "https://expatready.local/problems/notice-refused", title: "Not a verified notice", status: 400, detail: "This notice is not signed by Amazon SNS." }));
     }
