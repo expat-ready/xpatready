@@ -66,6 +66,8 @@ def main():
         caps_text = open(cp, encoding="utf-8").read()
     except OSError as e:
         print(f"focus-truth: cannot read {e.filename}: nothing was checked"); return 2
+    except UnicodeDecodeError as e:   # review: a file that is not UTF-8 is "not checked" (2), never a finding (1)
+        print(f"focus-truth: a file is not UTF-8 ({e.reason}): nothing was checked"); return 2
     caps, drop, missing = check(list_text, caps_text)
     if not caps:
         print(f"focus-truth: no R1 rows with a Status column in {cp}: nothing was checked"); return 2

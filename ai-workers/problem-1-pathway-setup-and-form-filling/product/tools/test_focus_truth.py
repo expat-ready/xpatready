@@ -47,6 +47,24 @@ class FocusTruth(unittest.TestCase):
         self.assertNotIn("missing: Partial, not listed  R1.5", out)   # listed (with R1.3)
         self.assertIn("1 proven line(s), 1 Partial item(s) missing", out)
 
+    def test_unlisted_not_built_is_not_missing(self):   # review: only Partial items are "missing"; Not built and Broken are not
+        caps = CAPS + "| R1.6 | 6 Sample unlisted unbuilt | Front office | Not built | — |\n| R1.7 | 7 Sample broken | Platform | Broken | — |\n"
+        rc, out, _ = self.run_tool(CLEAN, caps=caps)
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("R1.6", out)
+        self.assertNotIn("R1.7", out)
+
+    def test_caps_not_utf8_exits_2(self):
+        d = tempfile.mkdtemp(); cp = os.path.join(d, "c.md"); lp = os.path.join(d, "l.md")
+        with open(cp, "wb") as f:
+            f.write(b"| R1.1 | \xff\xfe | x | Works | - |\n")
+        with open(lp, "w") as f:
+            f.write(CLEAN)
+        r = subprocess.run([sys.executable, "-I", TOOL, "--list", lp, "--caps", cp], capture_output=True, text=True)
+        self.addCleanup(lambda: [os.remove(lp), os.remove(cp), os.rmdir(d)])
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("not UTF-8", r.stdout)
+
     def test_clean_list_exits_0(self):
         rc, out, _ = self.run_tool(CLEAN)
         self.assertEqual(rc, 0, out)
