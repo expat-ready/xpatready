@@ -12,8 +12,9 @@
 #            (.mergify.yml). Measured in design/merge-queue-causes-2026-11-16.md: when main merged a PR touching one of
 #            the same app files, or both add migrations, after this PR's green ci started, the PR failed in the queue 35%
 #            of the time (60% for two migrations), against 17% otherwise; plain age does not predict it. Such a PR gets
-#            "failure" and, when labelled, its ci run is re-run (a re-run tests today's main, D6; never a cancel,
-#            P-371); the re-run's green sets "success". A queued PR is left success: its batch is built on today's main.
+#            "failure" and, when labelled, its ci run is re-run (a re-run tests today's main, D6; this script never
+#            cancels a run, P-371; the head is read again first, since a re-run of an older head would supersede the
+#            newer head's ci, SPD-2 item 5); the re-run's green sets "success". A queued PR is left success: its batch is built on today's main.
 #            After 3 attempts it is success (the batch checks it). An unlabelled PR is "pending": the verdict is made
 #            when the label goes on (label() decides it before labelling; a person's label starts a run), so a label
 #            never meets an old success (review M2). Every 30 minutes the labelled PRs are judged again (a refused re-run), or by hand (workflow_dispatch).
@@ -217,6 +218,11 @@ fresh() {
   [ -n "$hit" ] || { status success "no merge since this ci started touches its files"; return; }
   status failure "main merged $hit after this ci started: re-check on today's main" || return 2
   if { has "$LABEL" || [ "${LABELLING:-}" = 1 ]; } && [ "$run_status" = completed ] && [ -n "$run_id" ]; then
+    # SPD-2 item 5 (review m2): a re-run of an older head now cancels the newer head's running ci (one group per PR,
+    # cancel-in-progress), so the head is read again just before the re-run; a moved head gets no re-run.
+    local now; now=$(api "$API/repos/$REPO/pulls/$PR" | jq -r '.head.sha // empty' 2>/dev/null)
+    [ -n "$now" ] || { echo "#$PR: the head could not be read again before the re-run: no re-run now (the next sweep tries again)"; return 0; }
+    [ "$now" = "$head" ] || { echo "#$PR: the head moved to ${now:0:9} after ${head:0:9} was read: no re-run (the new head's ci runs by itself)"; return 0; }
     api -X POST "$API/repos/$REPO/actions/runs/$run_id/rerun" >/dev/null && echo "#$PR: ci run $run_id re-run (attempt $((run_attempt + 1)))" || echo "#$PR: the re-run was refused"
   fi; }
 

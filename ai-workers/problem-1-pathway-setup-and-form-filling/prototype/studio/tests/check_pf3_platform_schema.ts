@@ -88,7 +88,7 @@ try {
     sql(DEMO, `select count(*) from platform_role_permission where permission_key not like 'agent/%'`) === "0"
     && sql(DEMO, `select string_agg(distinct role::text, ',') from platform_role_permission where permission_key in ('agent/subscription:cancel','agent/firm-profile:manage','agent/payment-rail:connect','agent/ai:switch')`) === "OWNER");
   ok("PF-3 fail: a key for a role that is not one of the six is refused", refused(DEMO, `insert into platform_role_permission values ('REPRESENTATIVE', 'agent/case:edit')`, /invalid input value for enum/));
-  ok("PF-3 pass: three Sample plans, trial 14 days, no price set", sql(DEMO, `select string_agg(code || ':' || seats_limit || ':' || trial_days || ':' || coalesce(monthly_price_cents::text, '-'), ',' order by seats_limit) from platform_plan`) === "solo:1:14:-,team:5:14:-,firm:20:14:-");
+  ok("PF-3 pass: three Sample plans, trial 14 days, each with its Sample monthly and yearly price (QA-741's seed)", sql(DEMO, `select string_agg(code || ':' || seats_limit || ':' || trial_days || ':' || coalesce(monthly_price_cents::text, '-') || ':' || coalesce(yearly_price_cents::text, '-'), ',' order by seats_limit) from platform_plan`) === "solo:1:14:4900:49000,team:5:14:9900:99000,firm:20:14:19900:199000");
 
   // ----------------------------------------------------------------------------------------- the seed (row lines 11-13)
   const db = client(DEMO); dbs.push(db);

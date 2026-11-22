@@ -48,7 +48,8 @@ on = d.get(True) or d.get("on") or {}
 out.append("pr-event" if set(on) == {"pull_request"} else "other-events")
 out.append("own-workflow" if "pr-suites-plan.sh" not in ci and "pr-suites" not in ci else "in-ci")
 c = d.get("concurrency") or {}
-out.append("never-cancelled" if c.get("cancel-in-progress") is False and "pr-suites-" in str(c.get("group")) else "cancels")
+cip = str(c.get("cancel-in-progress"))   # SPD-2 item 5: a newer push cancels the PR's older run; a batch is never cancelled
+out.append("supersedes-pr-not-batch" if "pr-suites-" in str(c.get("group")) and "pull_request" in cip and "mergify/" in cip else "cancel-rule")
 p, s = j.get("plan", {}), j.get("parts", {})
 cond = str(p.get("if", ""))
 out.append("no-draft-no-batch" if "draft" in cond and "mergify/" in cond else "drafts-or-batches")
@@ -65,7 +66,7 @@ PY
 )
 ok "pull_request only" "$(grep -qw pr-event <<< "$w" && echo 1)" "$w"
 ok "its own workflow: ci.yml (job \"ci\", the one required check, and its concurrency group) never waits on it" "$(grep -qw own-workflow <<< "$w" && echo 1)" "$w"
-ok "a newer push waits for the older run, never cancels it (P-371)" "$(grep -qw never-cancelled <<< "$w" && echo 1)" "$w"
+ok "a newer push supersedes the PR's older run; a merge-queue batch is never cancelled (SPD-2 item 5)" "$(grep -qw supersedes-pr-not-batch <<< "$w" && echo 1)" "$w"
 ok "drafts and Mergify's batch PRs run nothing" "$(grep -qw no-draft-no-batch <<< "$w" && echo 1)" "$w"
 ok "every step after checkout is continue-on-error (report only: never a red check)" "$(grep -qw report-only <<< "$w" && echo 1)" "$w"
 ok "the suites step is --changed, time-limited, and runs only after a good set-up" "$(grep -qw changed <<< "$w" && echo 1)" "$w"

@@ -71,8 +71,8 @@ ok("R1.30 DW1 pass: two sources return both, a comma source is one value; no sou
 const withStage = await get(tok.T, `prospects?type=INDIVIDUAL&stage=ENGAGED&${enc(PHONE)}`);
 ok("R1.30 DW1 pass: source combines with the other filters (stage)", withStage.status === 200 && same(ids(withStage.body), [P.tPhone.id]), [...ids(withStage.body)]);
 const bad = await get(tok.T, `prospects?type=INDIVIDUAL&${enc(REF, "FAX")}`), badBody = bad.body as { code?: string; detail?: string; allowed?: string[] };
-ok("R1.30 DW1 fail: an unknown source is refused 400 UNKNOWN_SOURCE naming it and the choices (never ignored, QA-533)",
-  bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /FAX/.test(badBody.detail ?? "") && (badBody.allowed ?? []).includes(REF), [bad.status, badBody]);
+ok("R1.30 DW1 fail: an unknown source is refused 422 UNKNOWN_SOURCE naming it and the choices (never ignored, QA-533)",
+  bad.status === 422 && badBody.code === "UNKNOWN_SOURCE" && /FAX/.test(badBody.detail ?? "") && (badBody.allowed ?? []).includes(REF), [bad.status, badBody]);
 
 // ------------------------------------------------------------------------------------------- DW2: the board route
 type B = { totals: { currency: string; valueCents: number }[]; stages: { key: string; totals: { currency: string; valueCents: number }[]; prospects: { id: string }[] }[] };
@@ -85,7 +85,7 @@ ok("R1.30 DW2 pass: the board's counts and totals follow the source (Referral: C
   engaged(bRef.b).prospects.length === bRef.b.stages.reduce((k, s) => k + s.prospects.length, 0) && cad(engaged(bRef.b).totals) === 100000 && cad(bRef.b.totals) === 100000
   && (bRef.b.totals.find((l) => l.currency === "USD")?.valueCents ?? 0) === 50000 && cad(bAll.b.totals) >= 800000, [bRef.b.totals, bAll.b.totals]);
 const bBad = await board(tok.T, enc("FAX"));
-ok("R1.30 DW2 fail: the board refuses an unknown source 400 UNKNOWN_SOURCE", bBad.status === 400 && (bBad.b as unknown as { code?: string }).code === "UNKNOWN_SOURCE", bBad.status);
+ok("R1.30 DW2 fail: the board refuses an unknown source 422 UNKNOWN_SOURCE (PF-28 part 3a: a field error is 422)", bBad.status === 422 && (bBad.b as unknown as { code?: string }).code === "UNKNOWN_SOURCE", bBad.status);
 
 // ------------------------------------------------------------------------------------------- DW3: own-only visibility
 await seesAll(false);
@@ -93,7 +93,7 @@ const oRef = await get(tok.O, `prospects?type=INDIVIDUAL&${enc(REF)}`), oBoard =
 ok("R1.30 DW3 pass: the source narrows inside the visibility: the Case Officer gets only their own Referral prospect, on the List and the board",
   same(ids(oRef.body), [P.oRef.id]) && same(oBoard.ids, [P.oRef.id]) && cad(oBoard.b.totals) === 0, [[...ids(oRef.body)], [...oBoard.ids]]);
 const oPhone = await get(tok.O, `prospects?type=INDIVIDUAL&${enc(COMMA)}`);
-ok("R1.30 DW3 fail: a source only on leads the Case Officer cannot see is unknown to them (400), never named in a list", oPhone.status === 400 && !((oPhone.body as { allowed?: string[] }).allowed ?? []).includes(COMMA), oPhone.status);
+ok("R1.30 DW3 fail: a source only on leads the Case Officer cannot see is unknown to them (422), never named in a list (PF-28 part 3a: a field error is 422)", oPhone.status === 422 && !((oPhone.body as { allowed?: string[] }).allowed ?? []).includes(COMMA), oPhone.status);
 await seesAll(true);
 
 // ------------------------------------------------------------------------------------------- DW4: the screens
