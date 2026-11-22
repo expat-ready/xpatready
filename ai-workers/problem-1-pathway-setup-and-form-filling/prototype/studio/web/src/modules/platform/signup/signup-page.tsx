@@ -37,6 +37,8 @@ export function SignUpPage() {
   React.useEffect(() => { document.title = `${sentTo ? "Check your email" : "Sign up"} · Expat Ready`; if (sentTo) checkHeading.current?.focus(); }, [sentTo]);
   const plans = q.data?.plans ?? [];
   const plan = plans.find((p) => p.code === v.plan) ?? plans.find((p) => p.code === q.data?.defaultPlan) ?? plans[0];
+  // QA-742 (SA-3-46, 0 = no trial): a 0-day plan is never offered as a free trial: the heading, button and refusals say "Sign up".
+  const action = plan && plan.trialDays === 0 ? "Sign up" : "Start free trial";
   const set = <K extends keyof Values>(k: K, value: Values[K]) => setV((x) => ({ ...x, [k]: value }));
   const focusSummary = () => requestAnimationFrame(() => summary.current?.focus());
 
@@ -72,7 +74,7 @@ export function SignUpPage() {
         // The versions on this page are no longer the current ones (or the page is too old): read them again; a tick counts
         // only for the versions the person saw, so it is cleared.
         await q.refetch(); setV((x) => ({ ...x, agree: false }));
-        if (p.code === "RELOAD") { setErrors({}); setRefused("The form was refreshed. Please tick the terms again and press Start free trial."); }
+        if (p.code === "RELOAD") { setErrors({}); setRefused(`The form was refreshed. Please tick the terms again and press ${action}.`); }
         else { setErrors(f); setRefused("The terms have changed since this page opened. Read the current versions and tick again."); }
       } else { setErrors(f); setRefused(Object.keys(f).length ? null : p.detail ?? "Not sent. Please try again."); }
       focusSummary();
@@ -87,7 +89,7 @@ export function SignUpPage() {
       // current versions are read again and the tick is cleared, as the main submit does.
       if (p.code === "RELOAD" || byField(p.errors).acceptedTerms) {
         await q.refetch(); setV((x2) => ({ ...x2, agree: false })); setSentTo(null);
-        setErrors(p.code === "RELOAD" ? {} : byField(p.errors)); setRefused("The terms have changed since you signed up. Read the current versions, tick again and press Start free trial.");
+        setErrors(p.code === "RELOAD" ? {} : byField(p.errors)); setRefused(`The terms have changed since you signed up. Read the current versions, tick again and press ${action}.`);
       } else setRefused(p.detail ?? "Not sent. Please try again.");
     } finally { inFlight.current = false; setBusy(false); }
   };
@@ -110,8 +112,8 @@ export function SignUpPage() {
     <Frame area="outside" title="Sign up">
       <Place label="Sign up" />
       <section aria-labelledby="signup-h" className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-sm" data-signup>
-        <h1 id="signup-h" className="text-lg font-semibold">Start your free trial</h1>
-        <p className="mt-1 text-sm text-text-muted">No card needed.{plan ? ` ${plan.trialDays} days free (Sample).` : ""}</p>
+        <h1 id="signup-h" className="text-lg font-semibold">{action === "Sign up" ? "Sign up" : "Start your free trial"}</h1>
+        <p className="mt-1 text-sm text-text-muted">No card needed.{plan && plan.trialDays > 0 ? ` ${plan.trialDays} days free (Sample).` : ""}</p>
         {q.isPending ? <p role="status" className="mt-4 text-sm text-text-muted">Loading the form…</p>
           : q.isError ? <Notice tone="danger" title="The form could not be loaded" className="mt-4">{(q.error as unknown as Problem).detail ?? "Please try again later."}</Notice>
             : (
@@ -140,7 +142,7 @@ export function SignUpPage() {
                 </div>
                 <Terms terms={q.data.terms} agree={v.agree} error={errors.acceptedTerms} onChange={(b) => { set("agree", b); if (b) setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== "acceptedTerms"))); }} />
                 <div aria-hidden className="absolute -left-[9999px] h-px w-px overflow-hidden"><input ref={trap} name={TRAP} type="text" tabIndex={-1} autoComplete="off" defaultValue="" /></div>
-                <Button type="submit" size="lg" busy={busy} className="self-start" data-signup-submit>Start free trial</Button>
+                <Button type="submit" size="lg" busy={busy} className="self-start" data-signup-submit>{action}</Button>
               </form>
             )}
         <p className="mt-4 text-sm">Already have an account? <Link className="text-text-link underline" to="/account">Sign in</Link></p>
