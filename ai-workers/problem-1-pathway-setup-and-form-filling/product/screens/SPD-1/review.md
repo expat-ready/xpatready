@@ -85,3 +85,38 @@ Mergify's live behaviour: docs.mergify.com cannot be reached from here, so I cou
 Reviewer: Changes 9cae9027007afb6db66bdb62c3103f4ec67b6c55
 
 Verdict: Changes. Fix Major 1 (ci step report-only, P-717 (2)) and Major 2 (approved set-up manifest); the Minors are recommended. Do not label `review: approved` for this commit.
+
+## Round 2 (diff `9cae902..88ce0cfd8`, commit `88ce0cfd8e0fbe627bb9dbe4d1f9ee6504330f31`)
+**What I ran at 88ce0cfd8:**
+* `test-spd-1.sh`: 18 passed, exit 0. `check-queue-rules.py`: 68 passed. `check-mergify-scopes.sh`: PASS, 101 checks.
+* `actionlint` on both workflows: exit 0. `track-route.py check`: PASS. `test_conformance_check.py`: 26 passed.
+* `conformance-check.py --root .`: manifest 1.6.0, 37 of 38 items pass. Every mergify item passes. The one FAIL left is `ci.triggers` (`workflow_dispatch`), which is on main already and is not from this PR.
+
+**Mutation run:** I ran `test-spd-1.sh` on a scratch copy of the tree with one change at a time. Each of these five was caught (1 failed, exit 1):
+* track-b `batch_max_wait_time` changed to 60 min.
+* track-a `batch_max_failure_resolution_attempts` changed to 0.
+* An extra key added to track-a (`allow_inplace_checks`).
+* detect checking out `head.sha` instead of `base.sha`.
+* prove given `contents: write`.
+
+**Findings:**
+
+| Finding | Status | What changed |
+|---|---|---|
+| M1 | closed | The step has `continue-on-error: true` (`ci.yml:281-282`), with the Lead's removal noted (P-717 (b)). A track glob that matches no file is now a WARN (`track-route.py:108-111`), so an app PR that deletes a file no longer turns `ci` red. Drift between `track-paths.txt` and `.mergify.yml` still fails. |
+| M2 | closed | `engineering-approved-setup.json` is at 1.6.0: a change_log row with the P-802 approval, the new `queue_order`, and `track-a` and `track-b` entries. Their required conditions are product's. Their merge conditions are `ci` only, the same as product's existing entry. |
+| m1, m3 | closed | The `.mergify.yml:168-178` comment now says that files of neither track may ride along. It names the shared `front-office` and `platform` scopes and the `audit.prisma` barrier, and states the priority order. |
+| m5 | closed | `download-artifact` has `continue-on-error`. The report then writes FAIL for each item ("no verdict file"). |
+| m7 | closed | detect emits `::warning::` when the batch body yields no PRs. |
+| m8 | closed | Every queue key is compared with product's. detect's checkout ref, `persist-credentials: false` and the detect/prove permissions are pinned (mutations above). |
+| m9 | closed | A base commit without `batch-proof.mjs` gives `items=[]` and exit 0, so detect is never red. The guard is safe under `bash -e`. |
+| m2, m4, m6, m10 | left to the Lead | Accepted. None is a Blocker or Major. |
+| m11 (new) | open, Minor | Nothing in the repository reminds the Lead to remove `continue-on-error` after 24 h or 10 runs (the same pattern P-717 (b) uses elsewhere). Add it to the Lead's hand-over or the row. |
+
+**Journey score:** 7.5 → 8.5/10. Error recovery is now 1 (m5, m7). Feedback stays ½ (m4, m6) and correct data stays ½ (m2). That is 7/8 applicable criteria, a pass with no 0.
+
+No Blocker or Major is open.
+
+Reviewer: Approve 88ce0cfd8e0fbe627bb9dbe4d1f9ee6504330f31
+
+Verdict: Approve
