@@ -53,6 +53,7 @@ execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_POOL_MFA_REQUIRED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default
 
 const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
 const { seedSampleFirms, readSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
@@ -129,7 +130,7 @@ try {
   ok("PF-4 fail: PLATFORM_IDENTITY=local is refused in the test environment and in production",
     await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "test" }), (e) => /never runs in the test environment or production/.test(String(e)))
     && await throwsLike(() => identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "production" }), (e) => /never runs/.test(String(e))));
-  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local" }).identity === "local");
+  ok("PF-4 pass: PLATFORM_IDENTITY=local is accepted where the environment is local (what this check sets)", identityConfig({ PLATFORM_IDENTITY: "local", PLATFORM_ENVIRONMENT: "local" }).identity === "local");
   // QA-476 (UX · Minor, R1.5; words agreed by Lead 61 on #1857): the form asks for a firm key and a work email, so a
   // refusal names those two, never a "name"; one combined message, so it does not tell which half was wrong.
   const QA476 = "No staff member signs in with that firm key and work email.";
@@ -243,7 +244,7 @@ try {
   const adminOwner = await call(L.base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tAdmin, body: { roles: ["CASE_MANAGER", "OWNER"], reason: "second owner" } });
   ok("PF-4 fail: only an Owner gives the Owner role (an Admin → 403 OWNER_ONLY)", adminOwner.status === 403 && adminOwner.body.code === "OWNER_ONLY", adminOwner);
   const noReason = await call(L.base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR, body: { roles: ["CASE_MANAGER", "OWNER"] } });
-  ok("PF-4 fail: giving the Owner role without a reason is refused (400 REASON_REQUIRED)", noReason.status === 400 && noReason.body.code === "REASON_REQUIRED", noReason);
+  ok("PF-4 fail: giving the Owner role without a reason is refused (422 REASON_REQUIRED; PF-28 part 2a: field errors are 422, Lead B rev 17.21)", noReason.status === 422 && noReason.body.code === "REASON_REQUIRED", noReason);
   clock.t += 6 * 60 * 1000;
   const stale = await call(L.base, "PATCH", `/api/platform/staff/${T}/roles`, { token: tR, body: { roles: ["CASE_MANAGER", "OWNER"], reason: "second owner" } });
   ok("PF-4 fail: giving the Owner role with an identity check older than 5 minutes is refused (401 STEP_UP_REQUIRED: sign in again, PF-4b)", stale.status === 401 && stale.body.code === "STEP_UP_REQUIRED", stale);
@@ -275,7 +276,7 @@ try {
   const signBack = await signIn(loser.actor);
   ok("PF-4 fail: a deactivated person cannot sign in", signBack.status === 401, signBack);
   const shortReason = await call(L.base, "POST", `/api/platform/staff/${loser.id}/reactivate`, { token: winner.token, body: { reason: "x".repeat(201) } });
-  ok("PF-4 fail: a reason over 200 characters is refused (400)", shortReason.status === 400 && shortReason.body.code === "REASON_TOO_LONG", shortReason);
+  ok("PF-4 fail: a reason over 200 characters is refused (422)", shortReason.status === 422 && shortReason.body.code === "REASON_TOO_LONG", shortReason);
   const back = await call(L.base, "POST", `/api/platform/staff/${loser.id}/reactivate`, { token: winner.token, body: { reason: "back from leave" } });
   ok("PF-4 pass: an Owner reactivates them (seat checked: 4 of 5 used); they sign in again", back.status === 200 && (await signIn(loser.actor)).status === 200, back);
   const oldAfterBack = await call(L.base, "GET", "/api/platform/me", { token: loser.id === R ? tR : tT });
@@ -294,7 +295,7 @@ try {
 
   // ------------------------------------------------------------------------------------- invitations and seats
   const bad = await Promise.all([" a@x.example.com", "a@x.example.com\u2003", "a\u200e@x.example.com", "a\u00ad@x.example.com", "a@x\u3000.example.com", "not-an-email"].map((email) => call(L.base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email, roles: ["CASE_OFFICER"] } })));
-  ok("PF-4 fail (PF-3 review m9): an email with a space, an em space, a direction mark, a soft hyphen, an ideographic space, or no @ is refused (400)", bad.every((b) => b.status === 400), bad.map((b) => b.status));
+  ok("PF-4 fail (PF-3 review m9): an email with a space, an em space, a direction mark, a soft hyphen, an ideographic space, or no @ is refused (422)", bad.every((b) => b.status === 422), bad.map((b) => b.status));
   ok("PF-4 pass (m9): an ordinary email is accepted and kept in lower case", emailOf("New.Person@Example.com") === "new.person@example.com");
   const inv1 = await call(L.base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email: "Invitee.One@example.com", roles: ["CASE_OFFICER"] } });
   ok("PF-4 pass: an invitation within the seat limit (5th of 5: 4 active + 1 invited); no token in the answer (only its hash is stored)",
@@ -380,9 +381,9 @@ try {
   ok("PF-4 fail (break m2): a request already past the guard when its session ended changes nothing (re-checked under the firm lock: 401)",
     inFlight?.getStatus?.() === 401 && inFlight.getResponse?.().code === "SESSION_REVOKED" && sql(DB, `select (revoked_at is null)::text from platform_invitation where id = '${ownerResend.body.id}'`) === "true", inFlight?.getResponse?.());
   const reasons = await Promise.all([ch(0x200b), ch(0x200b, 0x2060), `a${ch(0)}b`, `x${ch(0xd800)}`].map((reason) => call(L.base, "POST", `/api/platform/staff/${extra.id}/reactivate`, { token: tR, body: { reason } })));
-  ok("PF-4 fail (break m3, m4, m7): a reason of invisible characters only, with a NUL, or with broken text → 400 (never a 404 or a save)", reasons.every((r) => r.status === 400), reasons.map((r) => [r.status, r.body.code]));
+  ok("PF-4 fail (break m3, m4, m7): a reason of invisible characters only, with a NUL, or with broken text → 422 (never a 404 or a save)", reasons.every((r) => r.status === 422), reasons.map((r) => [r.status, r.body.code]));
   const emails = await Promise.all([`jose${ch(0x301)}@example.com`, `${ch(0xff41)}bc@example.com`, "<script>x@x.co", "a,b@x.co"].map((email) => call(L.base, "POST", "/api/platform/staff/invitations", { token: tR, body: { email, roles: ["READ_ONLY"] } })));
-  ok("PF-4 fail (break m5): an accent typed as a separate mark, full-width letters, <script> or a comma in an email → 400", emails.every((r) => r.status === 400 && r.body.code === "EMAIL_INVALID"), emails.map((r) => r.status));
+  ok("PF-4 fail (break m5): an accent typed as a separate mark, full-width letters, <script> or a comma in an email → 422", emails.every((r) => r.status === 422 && r.body.code === "EMAIL_INVALID"), emails.map((r) => r.status));
   ok("PF-4 pass (m5): the same address with its accent as one letter is a valid email", emailOf(`jos${ch(0xe9)}@example.com`) === `jos${ch(0xe9)}@example.com`);
   const tT2 = await tokenOf("user-T");
   const crossCred = await call(L.base, "PUT", `/api/platform/staff/${S}/credential`, { token: tT2, body: { representativeType: "RCIC", licensingBody: "CICC", licenceNumber: "R2222222" } });
@@ -493,10 +494,13 @@ try {
 
   // ---------------------------------------------------------------------------- the seed line (P-571 (2))
   let seedRuns = 0; const spy = async () => { seedRuns++; return {} as never; };
-  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }).run && (await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", PLATFORM_ENVIRONMENT: "production" }, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({}).run && (await seedSampleOnStart({}, spy)) === null && seedRuns === 0);
-  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name", await throwsLike(() => sampleSeedDecision({ PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED "yes"/.test(String(e))));
-  await seedSampleOnStart({ PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
+  // PF-24w: the seed reads PF-24's loader, so a production configuration is a complete one (every value made by this run).
+  const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+  const PROD = { PLATFORM_ENVIRONMENT: "production", DATABASE_URL: urlOf(DB), PLATFORM_COGNITO_USER_POOL_ID: `ca-central-1_${hex(9)}`, PLATFORM_COGNITO_CLIENT_ID: hex(26), PLATFORM_STRIPE_SECRET_KEY: ["sk", "test", hex(32)].join("_"), PLATFORM_STRIPE_WEBHOOK_SECRET: ["whsec", hex(32)].join("_"), PLATFORM_SES_REGION: "ca-central-1", PLATFORM_BOLDSIGN_API_KEY: hex(40), PLATFORM_ZOOM_CLIENT_ID: hex(22), PLATFORM_ZOOM_CLIENT_SECRET: hex(32), PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN: hex(22), PLATFORM_SECRET_BOX_KEYS: `1:${randomBytes(32).toString("base64")}`, PLATFORM_SECRET_BOX_KEY_VERSION: "1" };
+  ok("PF-4 fail (P-571 (2)): a production configuration never runs the Sample seed, even with the setting on", !sampleSeedDecision({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }).run && (await seedSampleOnStart({ ...PROD, PLATFORM_SAMPLE_SEED: "on" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: the setting defaults off (unset → no seed)", !sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local" }).run && (await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local" }, spy)) === null && seedRuns === 0);
+  ok("PF-4 fail: an unknown value of the setting stops the start-up with its name (never the value, PF-24w)", await throwsLike(() => sampleSeedDecision({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "yes" }), (e) => /PLATFORM_SAMPLE_SEED is set but not valid/.test(String(e)) && !/yes/.test(String(e))));
+  await seedSampleOnStart({ PLATFORM_ENVIRONMENT: "local", PLATFORM_SAMPLE_SEED: "on", DATABASE_URL: urlOf(DB) }, spy);
   ok("PF-4 pass: PLATFORM_SAMPLE_SEED=on (outside production) runs it", seedRuns === 1);
   const main = readFileSync(join(STUDIO, "api", "src", "main.ts"), "utf8");
   ok("PF-4 pass: main.ts runs it in one line after the features register (migrations ran before the API starts) and before the app is made",
@@ -527,7 +531,7 @@ else {
   const smokeWrong = smoke({ SMOKE_STAFF_FIRM: "no-such-firm" }).split("\n").find((l) => /^(PASS|FAIL) {2}me:/.test(l)) ?? "";
   ok("PF-4 fail: the smoke's me step still fails when the sign-in is refused (a firm that does not exist → 401, no token)", /^FAIL {2}me: the local sign-in .* answered 401 without a token/.test(smokeMe ? smokeWrong : ""), smokeWrong);
   const oldBody = await call(BASE, "POST", "/api/platform/session/local", { body: { email: "representative@sample-firm.example.com" } });
-  ok("PF-4 fail (the root cause, kept refused): the old smoke body {\"email\"} alone — no firm, no second step — is refused 400 FIRM_REQUIRED", oldBody.status === 400 && oldBody.body.code === "FIRM_REQUIRED", oldBody);
+  ok("PF-4 fail (the root cause, kept refused): the old smoke body {\"email\"} alone — no firm, no second step — is refused 422 naming firmKey (PF-28 part 2a: the one input rule)", oldBody.status === 422 && oldBody.body.code === "INVALID" && oldBody.body.fields?.firmKey === "This is required.", oldBody);
   const compose = readFileSync(join(STUDIO, "deploy", "compose.test.yml"), "utf8"), appEnv = compose.slice(compose.indexOf("\n  app:"));
   ok("PF-4 pass: the container test (deploy/compose.test.yml) runs the app with the local stand-in and the Sample seed, never as test or production",
     /PLATFORM_IDENTITY: local/.test(appEnv) && /PLATFORM_SAMPLE_SEED: "on"/.test(appEnv) && !/PLATFORM_ENVIRONMENT: *"?(test|production)/.test(appEnv), appEnv.slice(0, 600));

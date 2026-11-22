@@ -162,6 +162,7 @@ ok("S1 fail: one more .send( under any name in a listed file (support.ts) is rep
 type Provider = { provide?: unknown; useExisting?: unknown; useFactory?: (...a: unknown[]) => unknown; inject?: unknown[]; useValue?: unknown };
 const featureDir = join(API, "features");
 const providers: { feature: string; p: Provider }[] = [];
+process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: features/platform-messages.ts reads the loader at import (required, no default)
 for (const f of readdirSync(featureDir).filter((x) => x.endsWith(".ts")).sort()) {
   const feat = (await import(pathToFileURL(join(featureDir, f)).href)).default as { providers?: unknown[] } | undefined;
   for (const p of feat?.providers ?? []) if (p && typeof p === "object") providers.push({ feature: f, p: p as Provider });
@@ -222,8 +223,8 @@ const { render, layout } = await import("../ports/messages.ts");
 const sendSrc = readFileSync(join(API, "platform/messages/send/messages.ts"), "utf8");
 const firmMsg = render("o1", { firmId: "0f5a0000-0000-4000-8000-000000000001", channel: "EMAIL", class: "TRANSACTIONAL", address: "a@b.example.com", content: { subject: "S", text: "Body" }, idempotencyKey: "k", attachments: [] } as never, { name: "Maple Immigration", replyTo: "r@maple.example.com" }, { subject: "S", text: "Body" });
 const platMsg = render("o2", { platformAccount: true, channel: "EMAIL", class: "TRANSACTIONAL", address: "a@b.example.com", content: { subject: "S", text: "Code" }, idempotencyKey: "k" } as never, "account@expatready.example.com", { subject: "S", text: "Code" });
-ok("S3 pass: MessagePort renders every email with the one layout (the firm's name on top, \"Sent by …\"), a firm's and a platform account's",
-  /render\(/.test(sendSrc) && firmMsg.html.includes(">Maple Immigration</div>") && firmMsg.html.includes("Sent by Maple Immigration.") && platMsg.html.includes("Sent by ExpatReady.") && firmMsg.html === layout("Maple Immigration", "S", "Body"), { firm: firmMsg.html.slice(0, 200) });
+ok("S3 pass: MessagePort renders every email with the one layout (the firm's name on top, \"Sent by …\"), a firm's and a platform account's; the adapter stores the react-email layout for both (PF-13; the plain string is the fake's)",
+  /render\(/.test(sendSrc) && /html: await emailLayout\(brand, words\)/.test(sendSrc) && /emailLayout\(\{ name: PLATFORM_ACCOUNT_NAME/.test(sendSrc) && firmMsg.html.includes(">Maple Immigration</div>") && firmMsg.html.includes("Sent by Maple Immigration.") && platMsg.html.includes("Sent by ExpatReady.") && firmMsg.html === layout("Maple Immigration", "S", "Body"), { firm: firmMsg.html.slice(0, 200) });
 const stand = fakeMail(); await stand.send({ firmId: "0f5a0000-0000-4000-8000-000000000001", to: "a@b.example.com", replyTo: "r@maple.example.com", subject: "S", text: "Body", class: "TRANSACTIONAL" });
 ok("S3 fail: the same email through a stand-in (fakeMail, what sign-up used before this PR) carries no layout", !JSON.stringify(stand.sent).includes("Sent by"), stand.sent);
 

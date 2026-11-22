@@ -29,17 +29,22 @@ import { draftSourceProblems } from "./source-register.ts";
 import { Forms } from "./forms.ts";
 import { FormLibrary } from "./form-library.ts";
 import { releaseFillTrials } from "./fill-trials.ts"; // BK-11: each form's fill trial in the release
-import { fillCaseFirmIds, forgetFirmIds, whyNot } from "./firms.ts";
+import { fillCaseFirmIds, forgetFirmIds } from "./firms.ts";
 import { asBypass } from "./platform/firm-scope.ts";
 import { sampleSeedDecision } from "./platform/identity/sample-seed.ts";
 import { seedSampleFirms } from "./platform/seed-sample-firms.ts";
+import { logPort } from "./platform/observability/log.ts";
+import { dbRuleOf } from "./platform/observability/redact.ts";
+import { addSampleConsultationTypeSafely } from "./front-office/booking-seed.ts";
 /** CS-W1: PF-3's Sample seed (adds only what is missing) on the demo's bypass use (it writes both Sample firms' platform
  *  rows), then the cases' platform firm. Never in a production configuration (sampleSeedDecision's refusal; breaker m1). */
 const seedSampleFirmsAsDemo = async (db: Db) => {
-  if (!sampleSeedDecision({ ...process.env, PLATFORM_SAMPLE_SEED: "on" }).run) return;
-  await asBypass("platform.demo.reset", () => seedSampleFirms(db));
+  if (!sampleSeedDecision(process.env, { forceOn: true }).run) return;   // the loaded configuration (PF-24w break M1)
+  // DEMO-LINK: and the Sample firm's one Sample consultation type, in the same transaction (one bypass line per firm; a
+  // failure undoes only that step, behind a savepoint, and is logged).
+  await asBypass("platform.demo.reset", () => seedSampleFirms(db, undefined, (tx) => addSampleConsultationTypeSafely(tx, "demo")));
   // One case written past the database's rules must not block a reset or a load (breaker R2-m3): said in the log, in its words.
-  await fillCaseFirmIds(db).catch((e) => console.warn(`demo: could not fill the cases' platform firm (CS-W1): ${whyNot(e)}`));
+  await fillCaseFirmIds(db).catch((e) => logPort.error("case_firm_fill_failed", e, { at: "demo", rule: dbRuleOf(e) }));
 };
 export { BY_HAND_REASON, RELEASE, SAMPLES } from "./features/checkpoint/_constants.ts";
 

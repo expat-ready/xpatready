@@ -11,6 +11,7 @@ import { Db } from "../../core.ts";
 import { sees, visibilityOf } from "../../front-office/sales/common.ts";
 import { firmScope } from "../firm-scope.ts";
 import { AnyStaff, problem, staffOf, type StaffContext } from "../identity/keys.ts";
+import { parseInput, query } from "../http/input.ts";
 
 export const PAGE = 50;
 export const SUBJECT_KINDS = ["LEAD", "FO_PERSON", "CASE_PARTY"] as const;
@@ -99,5 +100,5 @@ const one = (v: unknown): string | undefined => (v === undefined ? undefined : t
 export class StaffMessagesController {
   constructor(@Inject(StaffMessages) private readonly x: StaffMessages) {}
   @Get("messages") @AnyStaff("the subject's own rule, checked by the service: agent/prospect:show with own-or-all for a lead or person, agent/case:show for a case party")
-  list(@Req() r: { platform?: StaffContext }, @Query() q: Record<string, unknown>) { return this.x.list(staffOf(r), { subjectKind: one(q.subjectKind), subjectId: one(q.subjectId), cursor: one(q.cursor) }); }
+  list(@Req() r: { platform?: StaffContext }, @Query() q: Record<string, unknown>) { parseInput(query("subjectKind", "subjectId", "cursor"), q); return this.x.list(staffOf(r), { subjectKind: one(q.subjectKind), subjectId: one(q.subjectId), cursor: one(q.cursor) }); }
 }
