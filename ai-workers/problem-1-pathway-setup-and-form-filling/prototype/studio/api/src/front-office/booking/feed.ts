@@ -7,6 +7,9 @@
 // Visibility is FO-3vr's filter, called, never written again: `view=team` reads `BookingService.readSeen` (the record
 // rule in SQL, `seenWhere`), `view=mine` the person's own as host (no key, AG-4-67 rule 2), and one booking `staffBooking` (its host,
 // or the list key and the record rule; else the one not-found).
+// QA-743 (R1.39 "own bookings and time off"): the list answer also carries `timeOff`, the Availability time-off periods
+// that overlap the window: `view=mine` the viewer's own ("Time off"), `view=team` (list key) every colleague's too, as
+// "Not available" with the name and the times only. A period has no reason and none is ever sent (`offItems`).
 import { Controller, Get, HttpException, Inject, Injectable, Param, Query, Req } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
@@ -46,7 +49,17 @@ export class BookingFeed {
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from } };
     const rows = q.view === "team" ? await this.b.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`, where, "startsAt")
       : await this.db.foBooking.findMany({ where: firmScope(ctx.firmId, { ...where, staffId: ctx.staffId }), orderBy: [{ startsAt: "asc" }, { id: "asc" }] });
-    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId, this.ports.offices), items: await this.items(ctx, rows) };
+    return { view: q.view, from: q.from.toISOString(), to: q.to.toISOString(), officeTimeZone: await hostZone(this.db, ctx.firmId, ctx.staffId, this.ports.offices), items: await this.items(ctx, rows), timeOff: await this.offItems(ctx, q.view, q.from, q.to) };
+  }
+
+  /** QA-743: the time-off periods overlapping the window, oldest first. Mine: the viewer's own. Team (the caller has
+   *  checked the list key): everyone's in the firm; a colleague's is "Not available". Only who and when leave here. */
+  async offItems(ctx: StaffContext, view: "mine" | "team", from: Date, to: Date) {
+    const rows = await this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { ...(view === "team" ? {} : { staffId: ctx.staffId }), startsAt: { lt: to }, endsAt: { gt: from } }), orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true, staffId: true, startsAt: true, endsAt: true } });
+    if (!rows.length) return [];
+    const staff = await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: [...new Set(rows.map((r) => r.staffId))] } }), select: { id: true, displayName: true } });
+    const names = new Map(staff.map((s) => [s.id, s.displayName]));
+    return rows.map((r) => { const mine = r.staffId === ctx.staffId; return { id: r.id, staff: { id: r.staffId, name: names.get(r.staffId) ?? "" }, mine, label: mine ? "Time off" : "Not available", startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString() }; });
   }
 
   /** `GET bookings/feed/:id`: one booking, for its host or within the record rule (Q4); else the one not-found. */
