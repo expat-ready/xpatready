@@ -101,9 +101,12 @@ export function fakeCardRail(opts: { webhookSecret?: string; now?: () => Date } 
       return once("refund", i.idempotencyKey, () => ({ id: `re_fake_${++n}`, status: "pending" }));
     },
     verifyEvent(rawBody, signature) {
-      const parts = new Map((signature ?? "").split(",").map((p) => p.trim().split("=", 2) as [string, string])), t = Number(parts.get("t")), v1 = parts.get("v1") ?? "";
-      const want = Number.isInteger(t) ? Buffer.from(mac(signing, t, rawBody)) : null, got = Buffer.from(v1);
-      if (!want || got.length !== want.length || !timingSafeEqual(got, want) || Math.abs(now().getTime() / 1000 - t) > SIGNATURE_TOLERANCE_SECONDS) throw new RailSignatureError();
+      // As Stripe's library reads the header (breaker m4): `t` a whole number of seconds, any one of the `v1` values may
+      // match (two during a secret roll), within 300 seconds either way.
+      const parts = (signature ?? "").split(",").map((p) => p.trim().split("=", 2)), ts = parts.find(([k]) => k === "t")?.[1] ?? "";
+      const t = /^\d{1,12}$/.test(ts) ? Number(ts) : NaN, want = Number.isInteger(t) ? Buffer.from(mac(signing, t, rawBody)) : null;
+      const match = !!want && parts.some(([k, v]) => k === "v1" && !!v && v.length === want.length && timingSafeEqual(Buffer.from(v), want));
+      if (!match || Math.abs(now().getTime() / 1000 - t) > SIGNATURE_TOLERANCE_SECONDS) throw new RailSignatureError();
       const e = EventEnvelope.parse(JSON.parse(rawBody));
       return { id: e.id, type: e.type, account: e.account ?? null };
     },

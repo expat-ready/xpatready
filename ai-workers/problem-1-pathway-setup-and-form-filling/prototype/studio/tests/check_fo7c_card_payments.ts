@@ -50,6 +50,10 @@ for (const [name, rail] of rails) {
     refusedSig(() => rail.verifyEvent(eventBody, undefined)) && refusedSig(() => rail.verifyEvent(eventBody, header(otherSecret))) && refusedSig(() => rail.verifyEvent(eventBody.replace("acct_1Sample", "acct_1Other0"), header(hookSecret)))
     && refusedSig(() => rail.verifyEvent(eventBody, header(hookSecret, eventBody, Date.now() - 6 * 60_000))));
 }
+{ const [, v1] = header(hookSecret).split(","), t = header(hookSecret).split(",")[0], junk = "v1=" + "0".repeat(64);
+  ok("FO-7c rail pass (both): a header with two v1 values, one right (a secret roll), is read; a non-integer t is refused (breaker m4)",
+    rails.every(([, r]) => r.verifyEvent(eventBody, `${t},${junk},${v1}`).id === "evt_1SampleFo7cActive" && r.verifyEvent(eventBody, `${t},${v1},${junk}`).id === "evt_1SampleFo7cActive")
+    && refusedSig(() => rails[0][1].verifyEvent(eventBody, `${t}.0,${v1}`)) && refusedSig(() => rails[0][1].verifyEvent(eventBody, `t=0x${Math.floor(Date.now() / 1000).toString(16)},${v1}`))); }
 ok("FO-7c rail pass: the fake signs as Stripe's library checks (its header passes the Stripe adapter with the same secret)", (rails[1][1].verifyEvent(eventBody, (rails[0][1] as ReturnType<typeof fakeCardRail>).sign(eventBody))).id === "evt_1SampleFo7cActive");
 ok("FO-7c fixtures: each file says it is not recorded from Stripe and names the type file and date it was built from", readdirSync(FIX).length === 4 && readdirSync(FIX).every((f) => /NOT recorded from Stripe.*Events\.d\.ts.*22 Nov 2026/.test((JSON.parse(readFileSync(join(FIX, f), "utf8")) as { source: string }).source)));
 
@@ -192,6 +196,29 @@ try {
   const r1 = await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never)), r2 = await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)));
   ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", r1?.status === 503 && r2?.status === 503 && made() === 3, [r1, r2]);
   ok("FO-7c fail: that 503 answer names no setting (plain words; the setting names go to the server log only)", ![r1, r2].some((r) => /PLATFORM_|STRIPE_|secret|key/i.test(r?.body ?? "")) && said.some((l) => l.includes("payment_account_not_set_up") && l.includes("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET")), [r1, r2]);
+
+  // Breaker m1: a break whose change rolls back sends no email. Through the real outbox sender (MessagesMail, PF-19r):
+  // the email is written in the change's transaction and dispatched only after it commits. Two Owners; the home item of
+  // the second throws, so the whole change rolls back after the first Owner's email was written.
+  {
+    const { MessagesMail } = await import("../api/src/platform/messages/send/mail.ts"), { LocalFiles } = await import("../api/src/front-office/files.ts");
+    const { mkdtempSync } = await import("node:fs"), { tmpdir } = await import("node:os");
+    let written = 0, dispatched = 0, notified = 0;
+    const rec = { send: async () => { written++; return { outboxId: crypto.randomUUID(), state: "QUEUED" }; }, dispatch: async () => { dispatched++; } };
+    const outbox = new MessagesMail({ db: nest.get(Db), messages: rec as never, files: new LocalFiles(mkdtempSync(join(tmpdir(), "fo7c-mm-"))) });
+    const shaky = { async notify() { if (++notified === 2) throw new Error("forced: the second Owner's home item"); } };
+    const svc = new PaymentAccounts(nest.get(Db), { rail, audit: auditEvent, clock: { now: () => new Date() }, mail: outbox, notifications: shaky as never, appUrl: "https://app.example.test", firmOfAccount: firmOfAccount(nest.get(Db)) });
+    sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${staff("user-T", A)}', 'OWNER', 'seed:FO-7c-1')`);
+    const post = (id: string, type: string) => { const b = JSON.stringify({ ...fixture("account.updated.charges-enabled").event, id, type, account: acctA2 }); return svc.receive(Buffer.from(b), rail.sign(b)); };
+    rail.set(acctA2, { chargesEnabled: true, payoutsEnabled: true, requirementsDue: false }); await post("evt_fo7c_m1a", "account.updated");
+    const before = row(); rail.set(acctA2, { chargesEnabled: false, payoutsEnabled: false });
+    const failed = await post("evt_fo7c_m1b", "account.updated").then(() => false, () => true);
+    ok("FO-7c DW2 fail (breaker m1): a break whose change rolls back (the second Owner's item fails) sends no email: written in the change, never dispatched; the account and its receipt as before",
+      failed && before === `ACTIVE:true:true:${acctA2}` && row() === before && written === 1 && dispatched === 0 && Number(sql(`select count(*) from webhook_receipt where event_id = 'evt_fo7c_m1b'`)) === 0, { failed, before, row: row(), written, dispatched });
+    notified = 10;   // the retry: every item now goes through
+    await post("evt_fo7c_m1b", "account.updated");
+    ok("FO-7c DW2 pass (breaker m1): the processor's retry of that event records the break once and dispatches one email per Owner after the commit", row() === `RESTRICTED:false:false:${acctA2}` && dispatched === 2 && written === 3, { row: row(), written, dispatched });
+  }
 
   // ------------------------------------------------------------------------------------------- DW10: no secret
   const columns = sql(`select coalesce(string_agg(t, ' '), '') from (select row_to_json(a)::text t from money_payment_account a union all select row_to_json(w)::text from webhook_receipt w union all select row_to_json(e)::text from audit_event e) x`);

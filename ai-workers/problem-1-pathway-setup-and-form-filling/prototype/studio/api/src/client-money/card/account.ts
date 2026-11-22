@@ -21,6 +21,7 @@ import { firmScope, withFirm } from "../../platform/firm-scope.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { SYSTEM_REPLY_TO } from "../../platform/identity/session/mail.ts";
 import { requireStepUp } from "../../platform/identity/session/step-up.ts";
+import { mailIn, mailReady } from "../../platform/messages/send/mail.ts";
 import { logPort } from "../../platform/observability/log.ts";
 import { RailAccountGone, RailSignatureError, type CardRail, type RailAccount, type RailEvent } from "./rail.ts";
 
@@ -112,17 +113,23 @@ export class PaymentAccounts {
   }
 
   private async handle(firmId: string, ev: RailEvent & { account: string }) {
-    return this.db.$transaction(async (tx) => {
+    if (this.ports.mail) await mailReady(this.ports.mail, firmId);   // before the firm's lock (PF-19r)
+    const after: (() => Promise<void>)[] = [];
+    const out = await this.db.$transaction(async (tx) => {
       await this.lock(tx, firmId);
       const stored = await tx.webhookReceipt.createMany({ data: [{ service: RECEIPT_SERVICE, eventId: ev.id, firmId }], skipDuplicates: true });
       if (stored.count === 0) return { received: true, duplicate: true };
-      const outcome = await this.apply(tx, firmId, ev);
+      const outcome = await this.apply(tx, firmId, ev, after);
       await tx.webhookReceipt.updateMany({ where: firmScope(firmId, { service: RECEIPT_SERVICE, eventId: ev.id }), data: { handledAt: this.ports.clock.now(), outcome: `${ev.type}: ${outcome}`.slice(0, 200) } });
       return { received: true };
     }, { timeout: 30_000 });
+    // Breaker m1: the break emails are written in the change's own transaction (the outbox) and sent only after it commits,
+    // so a change that rolls back sends nothing.
+    for (const d of after) await d();
+    return out;
   }
 
-  private async apply(tx: Tx, firmId: string, ev: RailEvent & { account: string }): Promise<string> {
+  private async apply(tx: Tx, firmId: string, ev: RailEvent & { account: string }, after: (() => Promise<void>)[]): Promise<string> {
     const row = await tx.moneyPaymentAccount.findFirst({ where: firmScope(firmId, { stripeAccountId: ev.account }) });
     if (!row) return "not this firm's account now: ignored";
     const prev: AccountState = { status: row.status, chargesEnabled: row.chargesEnabled, payoutsEnabled: row.payoutsEnabled };
@@ -139,21 +146,21 @@ export class PaymentAccounts {
     await this.ports.audit.record(tx, { firmId, actor: ACTOR, action: broke ? "payment_account.broke" : "payment_account.status_changed", entity: "money_payment_account", entityKey: firmId,
       summary: broke ? `The firm's payment account stopped taking card payments (${next.status === "DISCONNECTED" ? "disconnected" : "charges turned off"}).` : `The firm's payment account is now ${next.status}, charges ${next.chargesEnabled ? "on" : "off"}.`,
       detail: { eventId: ev.id, eventType: ev.type }, before: prev, after: next });
-    if (broke) await this.tellOwners(tx, firmId, ev.id);
+    if (broke) await this.tellOwners(tx, firmId, ev.id, after);
     return `${prev.status} → ${next.status}${broke ? " (break)" : ""}`;
   }
 
   /** AG-16-16 rules 2-4: one email and one home item per break, to the Owner only; nothing when it is fixed. The email's
    *  key is the event's id, so a retried event sends it once. */
-  private async tellOwners(tx: Tx, firmId: string, eventId: string) {
+  private async tellOwners(tx: Tx, firmId: string, eventId: string, after: (() => Promise<void>)[]) {
     const owners = await tx.platformStaff.findMany({ where: firmScope(firmId, { status: "ACTIVE" as const, grants: { some: { firmId, role: "OWNER" as const, endedAt: null } } }), select: { id: true, email: true }, orderBy: { id: "asc" } });
     for (const o of owners) {
       await this.ports.notifications?.notify(tx, { staffId: o.id }, NOTIFICATION_KIND.PAYMENT_ACCOUNT_DISCONNECTED, { kind: "firm", id: firmId });
-      // The email is tried inside the change; one that cannot be sent (refused, or the sender down) never holds back the
-      // status and the home item: the pay page must stop offering the card either way (AG-6-49). Logged by the event's id.
-      try { await this.ports.mail?.send({ firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "money.payment_account_disconnected", idempotencyKey: `payment-account-break:${eventId}:${o.id}`,
+      // An email refused by the sender never holds back the status and the home item: the pay page must stop offering the
+      // card either way (AG-6-49). Logged by the event's id.
+      try { if (this.ports.mail) after.push((await mailIn(this.ports.mail, tx, { firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "money.payment_account_disconnected", idempotencyKey: `payment-account-break:${eventId}:${o.id}`,
         subject: "Payment account disconnected",
-        text: `Your firm's payment account stopped taking card payments.\n\nUntil it is reconnected, clients cannot pay by card: they see your offline payment details instead. No payment is sent anywhere else.\n\nTo reconnect, sign in and open Settings, Payments: ${this.ports.appUrl}/settings/payments` }); }
+        text: `Your firm's payment account stopped taking card payments.\n\nUntil it is reconnected, clients cannot pay by card: they see your offline payment details instead. No payment is sent anywhere else.\n\nTo reconnect, sign in and open Settings, Payments: ${this.ports.appUrl}/settings/payments` })).dispatch); }
       catch (e) { logPort.error("payment_account_break_mail_failed", e, { eventId }); }
     }
   }
