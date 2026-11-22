@@ -2,7 +2,7 @@
 
 Run: `/qa capability R1.88` (re-walk check after #2916 AUD-4s merged as f198c943b) · main f198c943b · isolated copy :4471 (`j88`, `AI_LIVE=off PLATFORM_IDENTITY=local PLATFORM_SAMPLE_SEED=on`), fresh for each run, stopped · live AI off · US$0 · Sample data only.
 
-## Verdict: Pass (Works once the GitHub walk of j_88 on this PR's head is green and named in the row, P-339)
+## Verdict: Pass, R1.88 Works (P-339): GitHub walks runs 45019291303 and 45019288306, dispatched on main f198c943b, j_88 26/26, exit 0 in each
 
 Done when: "An Owner or Admin filters by person, record and date and exports; other roles refused". Every clause holds.
 
