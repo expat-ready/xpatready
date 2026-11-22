@@ -45,6 +45,9 @@ o=$(lm "$T/pulls.json" 2754 --reason "security fix, founder asked 12:20 IST")
 ok "with --reason it prints the steps and the reason, exit 0" "$(grep -q '^rc=0' <<< "$o" && grep -q '^Steps for #2754' <<< "$o" && grep -q 'reason given with 2 batch(es) running: security fix' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/none.json" 2754)
 ok "no batch running: the steps, no reason needed, exit 0" "$(grep -q '^rc=0' <<< "$o" && grep -q '^Steps for #2754' <<< "$o" && grep -q 'prefer the queue' <<< "$o" && echo 1)" "$o"
+jq -n '[range(100) as $i | {number: (100 + $i), state: "open", head: {ref: "claude/lane-\($i)", sha: "s50"}}]' > "$T/full.json"
+o=$(lm "$T/full.json" 2754)
+ok "100 open lane PRs (a full page, so a warn line comes first) and no batch: the steps, exit 0" "$(grep -q '^rc=0' <<< "$o" && grep -q '^Steps for #2754' <<< "$o" && grep -q '^warn  100 open PRs read' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/bad.json" 2754)
 ok "batches not countable and no --reason: refused (unknown is not safe)" "$(grep -q '^rc=1' <<< "$o" && grep -q 'could not be counted' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/none.json")

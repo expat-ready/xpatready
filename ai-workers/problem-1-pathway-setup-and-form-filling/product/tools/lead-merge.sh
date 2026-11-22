@@ -16,7 +16,7 @@ done
 case "$pr" in ''|*[!0-9]*) echo "refused: give the PR number: lead-merge.sh <PR> [--reason \"<text>\"]" >&2; exit 1;; esac
 line=$(python3 -I "$TOOLS/queue-batches.py" ${QB_PULLS:+--pulls "$QB_PULLS"} ${QB_CHECKS:+--checks "$QB_CHECKS"} 2>&1)
 echo "$line"
-n=$(sed -nE '1s/^batches ([0-9]+) merge-queue batch.*/\1/p' <<<"$line"); [ -n "$n" ] || n="?"   # anything else: not counted
+n=$(sed -nE 's/^batches ([0-9]+) merge-queue batch.*/\1/p' <<<"$line" | head -1); [ -n "$n" ] || n="?"   # any line (a warn may come first); none: not counted
 blank=$(tr -d '[:space:]' <<<"$reason")   # spaces, tabs or newlines alone are no reason
 if [ "$n" != 0 ] && [ -z "$blank" ]; then
   if [ "$n" = "?" ]; then echo "refused: the running batches could not be counted; a manual merge may restart them. Wait for the queue, or give --reason \"<why now>\" (P-791 (4))" >&2
