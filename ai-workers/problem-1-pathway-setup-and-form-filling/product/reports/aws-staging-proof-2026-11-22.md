@@ -316,3 +316,44 @@ platform_firm count 0
 
 * **Result: both 0, and no row was ever inserted.** The two data migrations that update nothing under FORCE (M1) have nothing to update on staging.
   The go condition holds for the deploy after #3060 merges.
+
+## Step 9: rebuild on main 93237d8d2 (PF-8b-f6 #3060 merged), service up with 2 tasks, proofs, 18:47-19:11 IST 22 Nov
+
+Go: Lead 5's "rebuild", 18:47 IST, with Step 8's pre-check (both tables 0, never inserted). The founder's CodeBuild OK stands (Lead 4, 14:4x).
+
+| Step | Exit / result | Time (IST) |
+|---|---|---|
+| CodeBuild `xr-staging-image-build:07618431-0f5c-4309-9776-baf2d65d83d0` on 93237d8d2 | SUCCEEDED, digest `sha256:5e5ca8661ca10c35b6888c93ac4d6f412a0ca94fecb693bf2c7aa84a5bff895c`; project, role policy and role deleted | 18:56:06 |
+| cdk diff 0 | rc=0: only AppMigrate and AppTask (replace), AppService | 18:57 |
+| cdk deploy 0 | rc=0, 87.39 s | 18:59:23 |
+| `migrate resolve --rolled-back 20261119170000_pf18bk_support_keys` | task exit 0, "marked as rolled back" | 19:02:03 |
+| `migrate deploy` (task def `xrstagingAppMigrateFE01F052:5`, task adbe67c4…) | exit 0, pf18bk through `20261122040000_pf8b_f6_pf18bk_checksum`: "All migrations have been successfully applied." | 19:03:30 |
+| `xr_app` sign-in with the APP_DATABASE_URL secret | first refused (password did not match), then `ALTER ROLE xr_app PASSWORD :'pw'` from the secret (value never shown, length 40) rc=0; sign-in as xr_app rc=0 | 19:04:43 |
+| cdk diff 2 / deploy 2 | rc=0 (only AppService), 132.58 s; service desired 2, running 2, rollout COMPLETED, task def `xrstagingAppTask7031B6E4:6`; target group `/api/health/live`: healthy, healthy | 19:07:50 |
+
+Cost: 2 tasks add about US$0.11/h (about US$0.29/h in all with the database, load balancer and NAT); the proof's total spend stays well under US$10.
+
+### R1.24 each firm's own web address: **Partial (AWS half Pass; a firm's 200 not provable: staging has no firm)**
+* Wildcard DNS and certificate: any `<name>.staging.lab.expatready.com` resolves; certificate `CN=*.staging.lab.expatready.com`, valid to 7 Jun 2027, `ssl_verify_result=0`.
+* The address suffix is the real one: task env `PLATFORM_ADDRESS_SUFFIX=staging.lab.expatready.com` (QA-642's hard-coded suffix gone).
+* `https://nosuchfirm.staging.lab.expatready.com/` → **404** "Not available" page (noindex); `Bad_Name.` → 404; `/api/health/live` on a firm host → 404 (firm hosts don't serve the API).
+* `www.` → 200 (platform app). `admin.` → **200, the platform app**: for qa to confirm that a reserved name is meant to fall through to the platform app.
+* **Named gap:** `platform_firm` has 0 rows on staging (Step 8), so no `<firm>.staging.lab…` can return 200. A firm comes only from self-serve sign-up (email verification, SES sandbox, a password typed), which this session must not do. Needs the Lead: a seed path for staging, or qa's sign-up walk.
+
+### R1.5 staff sign-in, AWS half (Lead 4's ruling): **Pass, one Minor finding**
+* Sign-in page over HTTPS from lab.: `GET https://www.staging.lab.expatready.com/sign-in` → 200, `ssl_verify_result=0`, `<title>Product Studio</title>`; `http://` → **301** to `https://…/sign-in`.
+* The real pool is in use: task env `PLATFORM_IDENTITY=cognito`, pool and client ids set (ids not copied here); Step 7: staff pools MFA ON, TOTP only, passkeys on staging.lab with user verification.
+* No session without a token: `GET /api/platform/me` → **401** "Sign in first: this needs a staff member's session (a bearer token)"; `POST /api/platform/session/callback {}` (no code typed) → **401** `sign-in-code-refused`, `cache-control: no-store`.
+* **Cookies: none to flag.** The app carries the session as `Authorization: Bearer` (`api/src/platform/identity/guard.ts:106-107`, `keys.ts:11`), not a cookie; `Set-Cookie` count 0 on `/`, `/sign-in`, `/api/health/live`, `/api/platform/me` and the callback.
+* **Finding (Minor):** no `Strict-Transport-Security` header on any response (HTTP→HTTPS redirect is there). Proposed: HSTS on the load balancer or app for staging and production.
+* Wrong code, expired code and lock-out: qa's local journey, per Lead 4's ruling (no password or code typed on staging).
+
+### R1.15 secrets in a managed store: **Pass (re-confirmed on the running service)**
+* Running task def `xrstagingAppTask7031B6E4:6`: 10 `secrets` (valueFrom Secrets Manager `xr/staging/*`): DATABASE_URL, APP_DATABASE_URL, PLATFORM_STRIPE_SECRET_KEY, PLATFORM_STRIPE_WEBHOOK_SECRET, PLATFORM_BOLDSIGN_API_KEY, PLATFORM_ZOOM_CLIENT_ID, PLATFORM_ZOOM_CLIENT_SECRET, PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN, PLATFORM_SECRET_BOX_KEYS, PLATFORM_SECRET_BOX_KEY_VERSION.
+* Plain `environment` holds only 6 non-secret names: PLATFORM_SES_REGION, PLATFORM_ADDRESS_SUFFIX, PLATFORM_IDENTITY, PLATFORM_COGNITO_USER_POOL_ID, PLATFORM_ENVIRONMENT, PLATFORM_COGNITO_CLIENT_ID.
+* The running app reads them: both tasks healthy against RDS as `xr_app` with the password only the secret holds.
+
+### R1.13 logs and alarms: **Pass (now including the app-emitted half)**
+* Both app tasks write to `/xr/staging/app` (streams `studio/studio/392dc7d3…`, `…/32ffbfde…`): 192 events in 10 minutes.
+* App-emitted metrics now reach CloudWatch through the metric filters: `ExpatReady/Alarms/staging/Requests` 56 data points, `JobAge` 6 (max 37,506 ms at 13:35Z vs threshold 1,800,000 ms); the other 9 filters had no matching line (no errors, no mail), as expected.
+* All 9 alarms `OK` at 19:10:35 IST; Step 4's test alarm proved delivery to SNS (delivered 2, failed 0). On-call address is still the placeholder (P-782, not decided).
