@@ -47,12 +47,12 @@ function ImageField({ kind, saved, pending, error, onChoose, onRemove, onUndo }:
         </div>
         <input ref={input} type="file" hidden accept="image/png,image/jpeg" data-image-input={kind}
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onChoose(f); }} />
-        <Button type="button" variant="outline" size="sm" aria-describedby={`${id}-n`} aria-invalid={error ? true : undefined} onClick={() => input.current?.click()} data-image-choose={kind}>Choose a {low} file</Button>
+        <Button type="button" variant="outline" size="sm" aria-describedby={error ? `${id}-n ${id}-e` : `${id}-n`} aria-invalid={error ? true : undefined} onClick={() => input.current?.click()} data-image-choose={kind}>Choose a {low} file</Button>
         {pending ? <Button type="button" variant="ghost" size="sm" aria-label={`Undo the ${low} change`} onClick={onUndo} data-image-undo={kind}>Undo</Button>
           : saved ? <Button type="button" variant="ghost" size="sm" aria-label={`Remove the ${low}`} onClick={onRemove} data-image-remove={kind}>Remove</Button> : null}
       </div>
-      <p id={`${id}-n`} className="text-xs text-text-muted">{w.hint}{state ? <> <span data-image-state={kind}>{state}</span></> : null}</p>
-      {error ? <p role="alert" className="text-xs text-text-danger" data-image-error={kind}>{error}</p> : null}
+      <p id={`${id}-n`} className="text-xs text-text-muted [overflow-wrap:anywhere]">{w.hint}{state ? <> <span data-image-state={kind}>{state}</span></> : null}</p>
+      {error ? <p id={`${id}-e`} role="alert" className="text-xs text-text-danger" data-image-error={kind}>{error}</p> : null}
     </div>
   );
 }
@@ -69,7 +69,7 @@ function BrandingBody() {
   } });
   const [draft, setDraft] = React.useState<Draft>(NONE), [errors, setErrors] = React.useState<Errors>({});
   const [busy, setBusy] = React.useState(false), [said, setSaid] = React.useState<{ tone: "ok" | "danger" | "info"; text: string } | null>(null);
-  const [goodColour, setGoodColour] = React.useState<string | null>(null);   // the last colour typed that may be saved (the preview keeps it)
+  const [goodColour, setGoodColour] = React.useState<{ colour: string | null } | null>(null);   // the last colour typed that may be saved, null inside it: the neutral one (the preview keeps it)
   const sending = React.useRef(false), form = React.useRef<HTMLFormElement>(null), urls = React.useRef(new Set<string>());
   React.useEffect(() => { const all = urls.current; return () => { for (const u of all) URL.revokeObjectURL(u); }; }, []);
   const d = read.data;
@@ -85,12 +85,12 @@ function BrandingBody() {
       <p className="mt-1 text-sm text-text-muted">How clients see your firm on its pages, emails and documents.</p></header>
   );
   if (!allowed) return <div className="mx-auto flex max-w-5xl flex-col gap-4">{header}<Notice tone="info" title="Not available"><span data-branding-refused>Only an Owner or Admin can change the firm's branding.</span></Notice></div>;
-  if (read.error) return <div className="mx-auto flex max-w-5xl flex-col gap-4">{header}<Notice tone="danger" title="Could not load the branding"><span data-branding-error>{read.error instanceof StaffApiError ? read.error.message : "Please reload the page."}</span></Notice></div>;
+  if (read.error && !d) return <div className="mx-auto flex max-w-5xl flex-col gap-4">{header}<Notice tone="danger" title="Could not load the branding"><span data-branding-error>{read.error instanceof StaffApiError ? read.error.message : "Please reload the page."}</span></Notice></div>;
   if (!d) return <div className="mx-auto flex max-w-5xl flex-col gap-4">{header}<p role="status" className="text-sm text-text-muted" data-loading>Loading the branding…</p></div>;
 
   const colourTyped = draft.colour ?? d.colour ?? "", senderTyped = draft.senderName ?? d.senderName ?? "";
   const colourNow = colourProblem(colourTyped) ? null : colourValue(colourTyped);
-  const previewColour = colourProblem(colourTyped) ? goodColour ?? d.colour ?? d.neutral.colour : colourNow ?? d.neutral.colour;
+  const previewColour = (colourProblem(colourTyped) ? (goodColour ? goodColour.colour : d.colour) : colourNow) ?? d.neutral.colour;
   const firmName = firm.data ?? "Your firm";
   const savedLink = (k: ImageKind) => (d.images[k] ? sameOrigin(d.images[k]!.link) : null);
   const shown = (k: ImageKind) => { const p = draft.images[k]; return p === "removed" ? null : p ? p.url : savedLink(k); };
@@ -102,7 +102,7 @@ function BrandingBody() {
   const typeColour = (v: string) => {
     setDraft((x) => ({ ...x, colour: v })); setSaid(null);
     const why = colourProblem(v);
-    if (why) setErrors((e) => ({ ...e, colour: why })); else { clearError("colour"); setGoodColour(colourValue(v)); }
+    if (why) setErrors((e) => ({ ...e, colour: why })); else { clearError("colour"); setGoodColour({ colour: colourValue(v) }); }
   };
   const typeSender = (v: string) => {
     setDraft((x) => ({ ...x, senderName: v })); setSaid(null);
@@ -160,6 +160,7 @@ function BrandingBody() {
       for (const k of IMAGE_KINDS) {
         const p = draft.images[k];
         if (!p) continue;
+        if (!staffToken()) { failed.push(k); continue; }   // break: the session ended during the save (a 401): nothing more is sent
         let why: string | null = null;
         try { why = await sendImage(k, p); } catch { lost = true; continue; }
         if (why) { failed.push(k); errs[k] = why; } else { done.push(k); const images = { ...next.images }; delete images[k]; next = { ...next, images }; }
@@ -183,10 +184,12 @@ function BrandingBody() {
       {header}
       <div className="grid gap-8 lg:grid-cols-2">
         <form ref={form} className="flex flex-col gap-5" onSubmit={(e) => void save(e)} noValidate data-branding-form>
+          {/* Review m5: nothing can be typed or chosen while a Save is on its way (Save itself stays outside, so it keeps focus). */}
+          <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-5 border-0 p-0" data-branding-fields>
           {IMAGE_KINDS.slice(0, 1).map((k) => <ImageField key={k} kind={k} saved={savedLink(k)} pending={draft.images[k]} error={errors[k]} onChoose={(f) => void choose(k, f)} onRemove={() => { clearError(k); setSaid(null); setImage(k, "removed"); }} onUndo={() => { clearError(k); setImage(k, undefined); }} />)}
           <div className="flex items-end gap-3">
             <Field label="Brand colour" className="min-w-0 flex-1" error={errors.colour} hint={colourNow ? <span data-colour-line>{contrastLine(colourNow)} At least 4.5:1 is needed.</span> : <span data-colour-line>Not set: the neutral colour {d.neutral.colour} is used. Write a colour as #rrggbb.</span>}>
-              <Input value={colourTyped} maxLength={7} spellCheck={false} autoComplete="off" placeholder={d.neutral.colour} onChange={(e) => typeColour(e.target.value)} data-colour-text />
+              <Input value={colourTyped} maxLength={40} spellCheck={false} autoComplete="off" placeholder={d.neutral.colour} onChange={(e) => typeColour(e.target.value)} data-colour-text />
             </Field>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -198,9 +201,10 @@ function BrandingBody() {
             <Input value={senderTyped} maxLength={200} autoComplete="off" onChange={(e) => typeSender(e.target.value)} data-sender-name />
           </Field>
           {IMAGE_KINDS.slice(1).map((k) => <ImageField key={k} kind={k} saved={savedLink(k)} pending={draft.images[k]} error={errors[k]} onChoose={(f) => void choose(k, f)} onRemove={() => { clearError(k); setSaid(null); setImage(k, "removed"); }} onUndo={() => { clearError(k); setImage(k, undefined); }} />)}
+          </fieldset>
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
             <Button type="submit" busy={busy} data-branding-save>Save</Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => { if (dirty && window.confirm("Discard your unsaved branding changes?")) discard(); }} aria-disabled={!dirty || undefined} data-branding-discard>Discard changes</Button>
+            <Button type="button" variant="ghost" disabled={busy} onClick={() => { if (!dirty) setSaid({ tone: "info", text: "Nothing to discard." }); else if (window.confirm("Discard your unsaved branding changes?")) discard(); }} data-branding-discard>Discard changes</Button>
             {dirty ? <span className="text-xs font-medium text-text" data-branding-unsaved>Unsaved changes</span> : null}
           </div>
           <div tabIndex={-1} data-branding-said className="rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-live="polite">

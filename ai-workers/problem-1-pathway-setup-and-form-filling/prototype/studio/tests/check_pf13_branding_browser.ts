@@ -15,6 +15,9 @@
 //   DW6g a partial save (challenge M1): the server refuses the logo after the colour saved → "Saved: brand colour. Not saved:
 //        logo.", the read has the colour, the logo is still marked changed, the next Save sends only the logo; an answer that
 //        never arrives → "Could not confirm every change; the form shows what is stored now.";
+//   DW6h (break report and review, round 1) no field is open while a Save is on its way (an edit made then was thrown away);
+//        "Nothing to discard."; a colour pasted with spaces; a very long file name wraps; a refusal is tied to its button; a failed
+//        read after Save keeps the form and says so;
 //   DW7  keyboard only (Tab to the fields and Save, Enter saves, focus lands on the field in error), axe-core clean (WCAG 2.2
 //        A/AA) in every state, 375, 1024 and 1440 px with no sideways scroll; fail: the same axe run finds a planted unlabelled button.
 // Sample firms only, on a fresh copy. US$0, no model call; live AI off.
@@ -248,6 +251,41 @@ try {
   await p.unroute("**/api/platform/branding/banner");
   ok("R1.23 PF-13 DW6g (challenge M1): an answer that never arrives → \"Could not confirm every change; the form shows what is stored now.\"; the form shows the stored banner again with no unsaved change",
     lostWords === "Could not confirm every change; the form shows what is stored now." && await p.locator("[data-preview-banner]").count() === 1 && await p.locator("[data-branding-unsaved]").count() === 0 && !!(await read()).images.banner, { lostWords });
+
+  // ---------------------------------------------------------------------------------------------- DW6h (break report, review m1, m2, m5, m6)
+  writes.length = 0;
+  let release: () => void = () => undefined; const held = new Promise<void>((r) => { release = r; });
+  await p.route("**/api/platform/branding/logo", async (r) => { if (r.request().method() === "PUT") await held; await r.continue(); });
+  await choose(p, "logo", file("slow.png", "image/png", PNG)); await state(p, "logo", "New: slow.png");
+  await p.locator("[data-branding-save]").click();
+  await p.locator('[data-branding-save][aria-busy="true"]').waitFor({ timeout: 15_000 });
+  const locked = { sender: await p.locator("[data-sender-name]").isDisabled(), colour: await p.locator("[data-colour-text]").isDisabled(), pick: await p.locator("[data-colour-pick]").isDisabled(), choose: await p.locator('[data-image-choose="favicon"]').isDisabled(), remove: await p.locator('[data-image-remove="banner"]').isDisabled() };
+  release(); await said(p, "Branding saved."); await p.unroute("**/api/platform/branding/logo");
+  const openAgain = await p.locator("[data-sender-name]").isEnabled();
+  await p.locator("[data-sender-name]").fill("After the save");
+  ok("R1.23 PF-13 DW6h (break Major): while a Save is on its way no field can be typed in or chosen (sender name, colour, picker, Choose and Remove are disabled), so no edit is thrown away; fail: once it ends they are open again and a new edit is marked unsaved",
+    Object.values(locked).every(Boolean) && openAgain && await p.locator("[data-branding-unsaved]").isVisible() && (await read()).senderName !== "After the save", locked);
+  p.once("dialog", (d) => void d.accept()); await p.locator("[data-branding-discard]").click(); await said(p, "Changes discarded. Nothing was saved.");
+  await p.locator("[data-branding-discard]").click(); const nothing = await said(p, "Nothing to discard.");
+  await p.locator("[data-colour-text]").fill("  #1F4E79  ");
+  const spaced = await p.locator('[data-colour-text][aria-invalid="true"]').count(), spacedPreview = await previewColour(p);
+  await p.locator("[data-colour-text]").fill((await read()).colour ?? "");
+  ok("R1.23 PF-13 DW6h (review m2, break): Discard changes with nothing changed says \"Nothing to discard.\"; a colour pasted with spaces around it is taken (trimmed), not cut and refused", nothing === "Nothing to discard." && spaced === 0 && spacedPreview === "#1f4e79", { spaced, spacedPreview });
+  await choose(p, "logo", file(`${"x".repeat(400)}.png`, "image/png", PNG)); await state(p, "logo", /not saved yet/);
+  const noScroll = await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  await choose(p, "logo", file("again.svg", "image/svg+xml", SVG)); await imageError(p, "logo");
+  const described = await p.locator('[data-image-choose="logo"]').evaluate((el) => (el.getAttribute("aria-describedby") ?? "").split(" ").map((i) => document.getElementById(i)?.textContent ?? "").join(" | "));
+  ok("R1.23 PF-13 DW6h (break, review m1): a 400-character file name wraps (no sideways scroll); a refusal is tied to its Choose button (its description holds the refusal's words)", noScroll && described.includes("Use a PNG or JPEG file."), { noScroll, described: described.slice(-80) });
+  await p.locator('[data-image-undo="logo"]').click();
+  let failRead = true;
+  await p.route("**/api/platform/branding", (r) => (r.request().method() === "GET" && failRead ? r.fulfill({ status: 500, contentType: "application/problem+json", body: JSON.stringify({ status: 500, title: "Error", detail: "Something went wrong on our side. Please try again." }) }) : r.continue()));
+  await p.locator("[data-sender-name]").fill("Stored but not read back");
+  await p.locator("[data-branding-save]").click();
+  const unread = await said(p, /Could not confirm/);
+  failRead = false; await p.unroute("**/api/platform/branding");
+  ok("R1.23 PF-13 DW6h (review m6, break): when the read after Save fails the form stays (never \"Could not load the branding\") and says \"Could not confirm every change. Please reload the page to see what is stored.\"; the value is in fact stored",
+    unread === "Could not confirm every change. Please reload the page to see what is stored." && await p.locator("[data-branding-form]").count() === 1 && await p.locator("[data-branding-error]").count() === 0 && (await read()).senderName === "Stored but not read back", { unread });
+  await open(p); await p.locator("[data-preview-sender]").filter({ hasText: "Stored but not read back" }).waitFor({ timeout: 15_000 });
 
   // ---------------------------------------------------------------------------------------------- DW6f
   writes.length = 0;

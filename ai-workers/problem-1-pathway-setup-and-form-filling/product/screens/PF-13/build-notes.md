@@ -15,3 +15,10 @@
 **Known gaps:** moving to another page inside the app with unsaved changes does not ask (challenge m3; as the app's other editors). No version on the branding API: two people saving at once, the last one wins (part 1a's design). §4b's Stripe note is unverified. D17 and D20 not self-scored.
 
 **AI cost:** US$0; live AI off.
+
+## Round 1 (review: Approve, 7 Minors; breaker: Changes, 1 Major, 5 Minors) — what changed
+* **Fixed, with a fail test (DW6h; it failed on the old code: every field was open during a Save):** break Major, review m5: the fields sit in a `fieldset` that is disabled while a Save is on its way (Save itself stays outside it, so it keeps focus).
+* **Fixed, tested in DW6h:** review m1 (a refusal is tied to its Choose button), m2 ("Nothing to discard."), m6 and the breaker's same point (a failed read after Save keeps the form and says so); break: a colour pasted with spaces, a very long file name wraps. Review m7: the concept now says an inline notice; the neutral colour is kept in the preview after "Use the neutral colour" then a refused colour.
+* **Fixed, not tested by the browser check:** break: after a 401 in the middle of a Save nothing more is sent (the sign-in card shows, as on every staff page).
+* **Not fixed, listed:** review m3 (loading is a line of text, as on Offices; no skeleton); review m4 (no conflict state: the merged API has no version; needs its own row); break: a PNG with a sound structure and garbage pixels is taken, as the server takes it; after a 401 mid-save the "Saved: … Not saved: …" line is not seen because the sign-in card replaces the page.
+* Check now 40/40, exit 0, on a fresh isolated copy.
