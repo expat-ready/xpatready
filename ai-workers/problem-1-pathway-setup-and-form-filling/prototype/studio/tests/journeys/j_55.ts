@@ -176,6 +176,7 @@ try {
   // The client opens the signing link from their email (FO-6's public door) and declines with a reason of their own.
   const REASON = `The fee is more than we agreed on the call (Sample ${run})`;
   const mails = (await (await fetch(`${BASE}/api/demo/platform-inbox?address=${encodeURIComponent(`j55.b.${run}@example.com`)}`)).json().catch(() => ({}))) as { messages?: { subject: string; body: string }[] };
+  // The demo inbox lists newest first (demo-inbox.ts: sentAt desc), so the first link is version 3's, not version 2's ended one.
   const link = (mails.messages ?? []).map((m) => m.body.match(/https?:\/\/[^\s)]+\/sign[^\s)]*/)?.[0]).find(Boolean);
   ok("J-55 W3 (parts missing: FO-6, the signing email and its public door): the client has a signing link for version 3 in their email", !!link, { mails: (mails.messages ?? []).map((m) => m.subject) });
   let declinedVia = "no link";
