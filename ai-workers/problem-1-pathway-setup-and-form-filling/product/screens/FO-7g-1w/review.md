@@ -69,3 +69,54 @@ Full `ci` (no PR yet; P-683 asks for the reviewer's verdict first). `check_pf28_
 **Verdict: Approve**. No Blocker, no Major. Minors 1 and 2 are optional.
 
 Reviewer: Approve edea9f68f975440cf43b67f2f4af0d875cde7794
+
+## Round 2 (diff edea9f68..825b9249)
+
+Reviewer and breaker for this diff (Opus 5.5, effort high; did not build it), 22 Nov. Code reviewed: `825b92496608177ef120d66da0c80d21316538e0`, diff only: `git diff edea9f68..825b9249 -- prototype/studio` (2 files: `api/src/client-money/invoices/drafts.ts` +8/-3, `tests/check_fo7g_tax_defaults.ts` +17/-1). The same commit adds the round 1 records (review.md and break-report.md); no other code changed.
+
+### Runs (PG 127.0.0.1:54329; isolated copy `rr1w` on :4473, stopped afterwards; never :4400)
+| Check | Result |
+|---|---|
+| `check_fo7g_tax_defaults.ts`, three runs in a row | 76/0, 76/0, 76/0, exit 0 each |
+| the same, a fourth run with all 4 cores busy (busy loops) | 76/0, exit 0 |
+| `check_fo7b_invoices.ts` | 107/0, exit 0 (R10, R10-fail, R12 and the race pass) |
+| `journeys/j_59.ts rr1w 4473` | 15/15, exit 0 |
+| Mutants, in a scratch worktree of 825b9249 (removed afterwards) | see the table below |
+
+### Each fix: is it correct, and does its test fail without it
+| Fix | Code | Mutant I planted | Result |
+|---|---|---|---|
+| Breaker m1: "Prices include tax" read again after the lock, in the same statement as registration and province | `drafts.ts:98-99` | `if (false && facts?.inclusive)` | 74/2: the m1 fail case gets `[201, …, "FEE:100000:130000:13000"]` and the m1 pass stand-in then sees two lines. Caught in 3 of 3 runs |
+| Breaker m2: `ratePpm: undefined` = not sent | `drafts.ts:84` | the old `Object.hasOwn(...)` alone | 75/1: the m2 case stores `FEE:100000:0:0` |
+| Reviewer minor 2: the refusal names "HST 13 %" | `drafts.ts:104` | the old words | 75/1: the minor-2 case fails |
+| Reviewer minor 1: case 5's words | `check_fo7g_tax_defaults.ts:333` | words only | Now says that the filter and PF-12's row rules each keep the case green on their own. That is accurate, and it was the wording I asked for |
+
+* **m1 is correct.** `inclusive`, `registered` and `address` come from one statement (`:98`), after the `for update` (`:91`). Any commit that lands while the line waits is therefore seen whole, and the result matches a serial order. The line itself takes no lock on `money_payment_settings` (`settingsOrRefuse`, `:133`, is a plain read), so a writer that holds the invoice and updates the settings cannot deadlock with it. A missing settings row still gives `null`, so it proceeds as before; that row cannot disappear here (no route deletes it). The 409 now takes precedence below 403/ISSUED, and every one of them writes nothing.
+* **m2 is correct.** `hasOwn && value !== undefined` means an absent key and `undefined` both count as "not sent". JSON cannot carry `undefined`, and `null` is still 422 through zod, so nothing changes over HTTP.
+* **`percent()` (`drafts.ts:52`)** works from the integer's digits: it truncates for the whole part and builds the fraction from `ppm % 10000` as a padded string with trailing zeros removed. No float is ever formatted. I ran it on its own: 50000 → "5 %", 130000 → "13 %", 140000 → "14 %", 150000 → "15 %", 9975 → "0.9975 %" (correct arithmetic: 9975 ppm is 0.9975 %; Quebec's 9.975 % would be 99750 → "9.975 %", and it is not in the GST/HST table anyway), 10000 → "1 %", 125000 → "12.5 %", 1 → "0.0001 %". It is only called with a cited table rate other than 0 (the `dflt.ratePpm === 0` branch takes the other words), so negative or fractional input cannot reach it.
+
+### Breaker, this diff (live HTTP on :4473, psql holding the invoice lock)
+* **Refusal words, firm in each province, `ratePpm: 1300` sent:** ON "(HST 13 %) … 130000 (parts per million)", NB "(HST 15 %) … 150000", NS "(HST 14 %) … 140000", AB and QC "(GST 5 %) … 50000". All 422, nothing written.
+* **The breaker's m1 reproduced over HTTP** (not registered, inclusive off; psql takes the lock, the POST waits (`pg_stat_activity` shows 1 lock waiter), then psql sets registered and inclusive in one statement and commits): **409 PRICES_INCLUDE_TAX, no rows** (in round 1 this gave 201 with tax on top). Turning on inclusive alone while 130000 is sent also gives 409, no rows. ON changed to NB while 130000 is sent gives 422, no rows (validated against the NB rate read after the lock). Registration turned off while nothing is sent gives 201 at `FEE:100000:0:0`. Every result matches a serial order.
+* **Audit after the run:** 0 lines whose `detail.ratePpm` differs from the stored rate, and 0 lines without an `invoice.line_added` entry.
+* **Is the new lock test flaky?** No in 4 green runs (one under full CPU load) and 3 of 3 red mutant runs. It uses fixed waits (`:339`, 300 ms then 700 ms), not a check that the request is actually waiting on the lock. Minor 1 below covers this.
+
+### No regression
+The round 1 cases (1w cases 1-5, audit, DW3), the race in fo7b (two lines, total 2.26), fo7b's R10/R12 and J-59 W1-W5/DW all pass, and their assertions are untouched by this diff (only the case 5 words changed). `git diff` of the check shows only additions after case 5 plus the one reworded message.
+
+### Journey test (API, reviewer role; no screen). Score **9/10**, pass
+Same journeys as round 1, plus the m1 race over HTTP and the refusal words for five provinces. Changes from 8.5: plain words goes from ½ to 1, because the refusal now says "HST 13 %" first and gives parts per million only as the value to send. Accessibility and visual quality stay ½ each (not applicable: no screen). Every other criterion stays 1 (task done; next step named; 422 at the field with "Nothing was saved."; correct data and audit; recovery by sending no rate; p95 well under 100 ms; rates only from the cited table).
+
+### Issues (round 2)
+1. **Minor** (optional): `tests/check_fo7g_tax_defaults.ts:337-339`. The lock test orders itself with `sleep(300)` and `sleep(700)`. If the POST ever reached `settingsOrRefuse` (`drafts.ts:133-135`) only after the locker committed, it would get the same 409 from there, and the m1 fail case would stay green without the fix. It did not happen in 7 runs. Polling `pg_stat_activity` for a `Lock` waiter before `release()` would make the case deterministic.
+2. **Minor** (optional): `drafts.ts:99` and `:135` carry the same PRICES_INCLUDE_TAX words twice. A shared constant would keep them from drifting.
+3. **Nit**: `drafts.ts:104` "send no rate, or 130000 (parts per million), for taxable, or 0 …" reads a little choppy. It is fine for an API; the future screen will use its own words.
+
+Housekeeping: my scratch worktree, the `rr1w` copy and its database are removed. The four `xr_studio_fo7g_scratch_*` databases the breaker noted are no longer on the server. Nothing committed.
+
+**Verdict: Approve**. No Blocker, no Major. The fixes are correct and each is caught by its test when disabled. Open items, all optional:
+* Minor: `studio/tests/check_fo7g_tax_defaults.ts:337-339`, fixed sleeps in the lock test (wait for the lock instead)
+* Minor: `studio/api/src/client-money/invoices/drafts.ts:99` and `:135`, the same refusal words twice
+* Nit: `studio/api/src/client-money/invoices/drafts.ts:104`, word order of the refusal
+
+Reviewer: Approve 825b92496608177ef120d66da0c80d21316538e0
