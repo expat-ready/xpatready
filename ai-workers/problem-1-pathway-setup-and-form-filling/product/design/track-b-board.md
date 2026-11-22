@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 18:2x IST 22 Nov:** #3036 FO-7b 1c read OK 9c4becfff (uncleared-refund fix as ruled; queue after #2953). #3073 CS-MV1 Lead read OK and queued (census line in, 49), but #2913 left the queue (shard 17 failed) and #3073 carries its files: told Lead 5 to clear #2913 first. #3042 round 5 running. Others unchanged.
+
 **Lead B 2 pass, 18:0x IST 22 Nov** (took over from Lead B at 18:03; passes at :17 and :47; open PRs read 18:0x).
 * #3073 CS-MV1 (new, stacked on #2913): Lead B read OK 7ebc43d7b. Census Q1 answered: one CS-W3 allow-list line for `client-money/visibility-adapter` (as Lead 5's Option A on #2999), for the Lead to confirm; `search/party-search` is #2913's. Merges after #2913. Follow-ups: `caseScope` ACTIVE-only (CS-S1); no-case invoice to a non-prospect party is seen by nobody (question for FO-7q's walk); binding line after #3001.
 * #3036 FO-7b 1c: one fix before the label at 4db6219c7: `/refunds` refuses an uncleared payment (NOT_CLEARED) as `/extra` does, one test, the comment labelled a reading (Unconfirmed: no accountant). Diff-only reviewer round. Queues after #2953.
