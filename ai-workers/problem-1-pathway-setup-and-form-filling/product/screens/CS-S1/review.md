@@ -73,3 +73,63 @@ Personas: case officer with `view.all`; case officer with `view.own`; firm B sta
 
 **Verdict: Block** at f61e49a6e195929bda2327d30cf39e035cf22909. Fix Major 1 and Major 2; Minors 1-2 should follow. No Blocker. The code's access rules held under every probe; what blocks is CI and one missing guard test.
 Reviewer: Changes f61e49a6e195929bda2327d30cf39e035cf22909
+
+## Round 2 (diff only: f61e49a6e → dc95fa3447616efaa63796e6a74026d561a0d177)
+Reviewer: Opus 5.5, fresh context; I did not build this. 22 Nov 2026. I read only `git diff f61e49a6e dc95fa344 -- prototype/studio`: 4 files, +50/−16 (`MODULE.cases.md`, `case-access.ts`, `search/party-search.ts`, `tests/check_css1_search.ts`). I did not re-review unchanged code.
+
+**What I ran** (scratch copy = dc95fa344 + #2884 merged, PostgreSQL 127.0.0.1:54329; US$0):
+* `tests/check_css1_search.ts`: **62 passed, 0 failed** (54 in round 1, plus 8).
+* `module-cards.py tree`: **PASS** (15 cards). `BASE=origin/main module-cards.py pr <11 changed paths> <PR body>`: **PASS**. The api-features file is covered by the body's line `Card unchanged: api-features — features/case-search.ts is one more registration file under the seam rule (one file per feature).` (I read the PR body through the REST API; the PR head is dc95fa344.)
+* Mutation runs in the scratch copy, each restored with `git checkout` afterwards (scratch tree clean). **6 of 6 caught:**
+
+| Mutant | Result |
+|---|---|
+| M2: `return [hits, rows.filter((r) => !r.visible).length]` (count taken after the cap) | FAIL "cap, review M2": `{"n":50,"hidden":0}` |
+| m4: `caseScope` membership check off and the `find` early return off | FAIL "breaker m4": firm A's people named |
+| m4: only `find`'s `if (!scope.member) return` off | FAIL "breaker m4": `hidden_count 2` (counts would leak, so the early return carries weight and is guarded) |
+| m1: SQL `case when char_length(...) >= 2 then k end` → `k` | FAIL "breaker m1": "d"+U+200B names people |
+| m3: NUL stripping removed | the run aborts with `invalid byte sequence for encoding "UTF8": 0x00` (red) |
+| review m1: `order by visible desc, prefix desc, by_email desc, by_phone desc` | both ranking checks FAIL |
+
+### Round 1 findings
+* **M1 fixed.** The cases card's second glob is now `{case-clients,case-deadlines,search}/*.ts` (`MODULE.cases.md:4`). It claims both files in `api/src/search/` (`case-finder.ts`, `party-search.ts`; there are no subfolders). The `Card unchanged:` line is in the PR body. Both checks pass locally. CI on dc95fa344 still has to go green for the merge.
+* **M2 fixed.** The test indexes 55 visible + 3 hidden "Bulkname" people (setup check: 58 indexed). A `view.own` viewer gets 50 named and 3 counted, with 2 confirmers. A `view.all` viewer gets 50 named and 0 counted. The count-after-cap mutant now fails it.
+* **Review m1 fixed.** Email over name, and phone over name, both on the port. The order mutant fails both checks. The door's own ranks (case-finder.ts) are still not tested on their own. That is unchanged code and Minor only.
+* **Breaker m1, m3, m4 fixed**, each with a test that fails under its mutant (table above).
+* Minor 2 (name scan at 20k rows) remains a recorded follow-up. Nothing in this diff touches it.
+
+### The two changes asked about
+* **`caseScope` membership (`case-access.ts:27-31`).** No new problem:
+  * The staff row is read under `firmScope(firmId, { id })`, so a staff id from another firm gives `member: false`, whatever `keys` the caller passes.
+  * The UUID regex runs before the query, so a non-UUID id gives no scope instead of a Prisma `@db.Uuid` error (`PlatformStaff.id` is `@db.Uuid`). It fails closed.
+  * `caseScopeWhere` and `caseVisibleSql` both treat `!member` as no case (`id in []` / `false`).
+  * `find` returns early with `hidden_count 0` (`party-search.ts:64`), so a non-member gets no count either (mutant above).
+  * `teamIds` is unchanged for members: it is empty unless own-only, and then holds the staff id plus the actor id.
+  * Cost: one indexed primary-key read per search, now also when `keys` are passed. Negligible.
+  * Blast radius: `caseScope` is called only by `party-search.ts` (and the test). `CaseFinder` goes through `find`, so the door gets the same rule. No other case list changes.
+* **SQL 2-character check after normalising (`party-search.ts:83`).**
+  * The name is now always bound and normalised by `case_party_index_norm`. If fewer than 2 non-space characters are left, `n` is NULL.
+  * Every use of `q.name` and `q.esc` is null-safe: `coalesce(word_similarity(...), 0)` and `coalesce(... like ..., false)`. A NULL name therefore matches no one by name, while email and phone still match (`by_email or by_phone` are coalesced). An empty name, which used to be passed as `''`, behaves the same.
+  * The JS gate `[...name].length >= 2` stays as a cheap pre-filter. The SQL check is the real one, because it counts after the same normaliser the index uses.
+  * Values stay bound parameters. LIKE escaping is unchanged. The 62 checks, including `%%`, `D_pont%` and the trigger checks, all pass.
+  * Not new: a 2-letter name with an inner space ("a b") is still searched, as it was before.
+
+### New findings
+None at Blocker, Major or Minor.
+* Nit (no fix required): `party-search.ts:125`. The audit's `fields` is taken from the raw query, so a name made only of NUL bytes is logged as "by name" while `find` searched nothing. The line is still truthful about counts (0 shown) and holds no value.
+* Note, not a regression: `case-access.ts:27` checks firm membership but not `PlatformStaff.status`. `holdsKey` never checked it either. Sign-in is where a deactivated person is stopped. Flagged only so CS-W1/CS-W4 keep it in view.
+
+### Journey test (reviewer), round 2
+I re-ran the round-1 journeys against the API, with the same personas. Journey 9 (the count survives the cap) is now guarded by a test. Added and held:
+* "d"+U+200B finds and counts nothing.
+* "Du\u0000pont" and a case number ending in NUL still find, with no database error and no `partial` on the door.
+* Firm A named with firm B's staff id gets nothing and counts nothing, even with `view.all` passed as keys.
+
+The scores are unchanged: "Feedback and state" stays ½ because the door still leaves hidden matches out silently (deviation 1, pending the tech lead).
+**Journey score: 9.4 / 10.** Pass, no criterion at 0.
+
+### Still not checked
+The HTTP route on an isolated copy, and the firm walls under the API's own database role (same reasons as round 1). CI on dc95fa344, which I could not see from here.
+
+**Verdict: Approve** at dc95fa3447616efaa63796e6a74026d561a0d177. Both Majors and all four Minors are fixed and guarded by tests; no new Blocker or Major. Merge on green CI for this commit.
+Reviewer: Approve dc95fa3447616efaa63796e6a74026d561a0d177
