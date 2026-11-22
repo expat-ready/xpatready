@@ -3,8 +3,18 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+#        bash product/tools/lead-watch.sh app-view-read <<'EOF' (app-view.js's answer) EOF   saves the app view (step 10)
 # Triggers follow the 10-minute check (P-798): steps 2f (flow-buffer.py, P-800), 2g (sle-watch.py) and 5c (step-age.py).
 set -uo pipefail
+# app-view-read (P-789 (2), founder 22 Nov): saves app-view.js's answer through app-view-save.sh, but only a summary whose
+# first line has "rows=N" (the sidebar's rows after every "Show more" was clicked); anything else is refused, exit 2.
+if [ "${1:-}" = app-view-read ]; then
+  body=$(tr -d '\r' | sed -e '/./,$!d'); first=$(printf '%s\n' "$body" | head -1)
+  if ! grep -qE '(^| )rows=[0-9]+' <<<"$first"; then
+    echo "refused: the app view summary has no rows=N (first line: ${first:-empty}); run the current tools/app-view.js, which clicks every \"Show more\" and counts the rows (P-789 (2))" >&2; exit 2
+  fi
+  printf '%s\n' "$body" | bash "$(cd "$(dirname "$0")" && pwd)/app-view-save.sh"; exit $?
+fi
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
 TOOLS="$(cd "$(dirname "$0")" && pwd)"; gh() { bash "$TOOLS/gh.sh" "$@"; }
@@ -208,7 +218,8 @@ seen "$od"
 fresh "outside-deps-watch.py"
 
 # 10. The app view (B197, founder A110, 16 Nov: "lead keep forgetting"; P-326, P-339): every lane on claude.ai/code, read in
-# the built-in browser with tools/app-view.js and saved by tools/app-view-save.sh. Over 15 min old = ACT (P-798); else one ACT per
+# the built-in browser with tools/app-view.js and saved by "lead-watch.sh app-view-read" (it refuses a summary without rows=N,
+# P-789 (2)). Over 15 min old = ACT (P-798); else one ACT per
 # flagged session (need_input, blocked, failed, idle over 10 min with work left (P-798), context over 45%).
 av=$(bash "$TOOLS/app-view-check.sh" 2>&1); echo "$av"; act=$((act + $(grep -c '^ACT' <<<"$av")))
 seen "$av"
