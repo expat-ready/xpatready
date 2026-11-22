@@ -38,9 +38,11 @@ function Menu({ me }: { me: Me }) {
       </NavLink>
       <NavLink to="/front-office/pipeline" className={item}>Pipeline</NavLink>
       {/* FO-4w: Settings for the people who may change them (Owner, Admin); the page says so to anyone else. */}
-      {can(me, "agent/prospect:configure-form") ? <>
+      {can(me, "agent/prospect:configure-form") || can(me, "agent/retainer:configure-template") ? <>
         <p className="px-3 pb-2 pt-4 text-xs font-medium text-text-muted">Settings</p>
-        <NavLink to="/front-office/settings/web-form" className={item}>Web form</NavLink>
+        {can(me, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className={item}>Web form</NavLink> : null}
+        {/* FO-5s part 2: the firm's retainer templates (Owner, Admin). */}
+        {can(me, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className={item}>Retainer templates</NavLink> : null}
       </> : null}
     </nav>
   );
@@ -68,7 +70,7 @@ export function SalesFrame({ crumbs, back, children }: { crumbs: Crumb[]; back?:
           : (
             <MeCtx.Provider value={who}>
               {/* The menu column is hidden below 768 px: the same two places as links, so a phone reaches Pipeline. */}
-              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}</nav>
+              <nav aria-label="Sales pages" className="mb-3 flex gap-4 text-sm md:hidden"><NavLink to="/front-office/leads" className="text-text-link hover:underline">Leads</NavLink><NavLink to="/front-office/pipeline" className="text-text-link hover:underline">Pipeline</NavLink>{can(who, "agent/prospect:configure-form") ? <NavLink to="/front-office/settings/web-form" className="text-text-link hover:underline">Web form</NavLink> : null}{can(who, "agent/retainer:configure-template") ? <NavLink to="/front-office/settings/retainer-templates" className="text-text-link hover:underline">Retainer templates</NavLink> : null}</nav>
               {children}
             </MeCtx.Provider>
           )}

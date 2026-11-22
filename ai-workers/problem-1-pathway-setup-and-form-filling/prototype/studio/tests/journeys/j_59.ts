@@ -7,7 +7,7 @@
 //   W2 AG-06's example: 850.00 FEE at 13 % → tax 110.50, total 960.50;
 //   W3 two 0.50 lines at 13 % → 0.06 + 0.06 = 0.12 (per line, half to even, then summed);
 //   W4 a 255.00 GOVERNMENT_FEE line beside 1,000.00 FEE at 13 % → 130.00 tax (the government fee untaxed);
-//   W5 a USD line on the CAD draft → 400 in plain words, and nothing saved;
+//   W5 a USD line on the CAD draft → 422 in plain words, and nothing saved;
 //   DW firm B gets 404 on firm A's draft; a client-sent taxMinor is ignored.
 //   Each with its stand-in that must fail (or the planted wrong figure the step would catch). The 13 % rate is Ontario's
 //   HST as CRA states it, used here as Sample (not cited in this file, P-701). US$0, no model call; live AI off.
@@ -64,7 +64,7 @@ try {
     w1.status === 201 && w1.body?.status === "DRAFT" && w1.body?.currency === "CAD" && w1.body?.number === null && sql(`select count(*) from audit_event where action = 'invoice.draft_created' and entity_key = '${w1.body?.id}' and actor like 'staff:%'`) === "1", w1.body);
   const drafts = () => sql(`select count(*) from money_invoice where firm_id = '${A}'`), d0 = drafts();
   const w1b = await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "EUR" });
-  ok("J-59 W1 fail (stand-in): a draft in a currency the firm can't hold (EUR) → 400 at currency, nothing saved", w1b.status === 400 && w1b.body?.errors?.[0]?.field === "currency" && drafts() === d0, w1b.body);
+  ok("J-59 W1 fail (stand-in): a draft in a currency the firm can't hold (EUR) → 422 at currency, nothing saved", w1b.status === 422 && w1b.body?.errors?.[0]?.field === "currency" && drafts() === d0, w1b.body);
 
   // ------------------------------------------------------------------------------------------- W2: AG-06's example
   const w2 = await add(w1.body.id, fee(85000));
@@ -88,8 +88,8 @@ try {
 
   // --------------------------------------------------------------------------------------- W5: another currency
   const n5 = lines(w1.body.id), w5 = await add(w1.body.id, fee(10000, { currency: "USD" }));
-  ok("J-59 W5 pass (API step): a USD line on the CAD draft → 400 \"This invoice is in CAD; a line in USD can't be added. Nothing was saved.\", and nothing saved",
-    w5.status === 400 && w5.body?.detail === "This invoice is in CAD; a line in USD can't be added. Nothing was saved." && lines(w1.body.id) === n5, w5.body);
+  ok("J-59 W5 pass (API step): a USD line on the CAD draft → 422 \"This invoice is in CAD; a line in USD can't be added. Nothing was saved.\", and nothing saved",
+    w5.status === 422 && w5.body?.detail === "This invoice is in CAD; a line in USD can't be added. Nothing was saved." && lines(w1.body.id) === n5, w5.body);
   ok("J-59 W5 fail (stand-in): the same line in CAD is added", (await add(w1.body.id, fee(10000, { currency: "CAD" }))).status === 201);
 
   // --------------------------------------------------------------------------------------------------- the DW line
@@ -99,7 +99,7 @@ try {
   const dw = await draft(), sent = await add(dw.body.id, fee(85000, { taxMinor: 1 }));
   ok("J-59 DW pass: a client-sent taxMinor (0.01) is ignored: the stored tax is 110.50", sent.status === 201 && lines(dw.body.id) === "FEE:85000:130000:11050:CAD", sent.body);
   const strict = await add(dw.body.id, fee(100, { totalMinor: 1 }));
-  ok("J-59 DW fail (stand-in): only the server's own figures are ignored; any other field (totalMinor) → 400 and nothing saved", strict.status === 400 && lines(dw.body.id) === "FEE:85000:130000:11050:CAD", strict.body);
+  ok("J-59 DW fail (stand-in): only the server's own figures are ignored; any other field (totalMinor) → 422 and nothing saved", strict.status === 422 && lines(dw.body.id) === "FEE:85000:130000:11050:CAD", strict.body);
 } finally {
   await db.$disconnect();
 }

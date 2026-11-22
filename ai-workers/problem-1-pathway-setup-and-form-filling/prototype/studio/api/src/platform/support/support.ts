@@ -50,7 +50,7 @@ export type SupportDeps = { db: PrismaClient; files: FilesPort; audit: AuditPort
 const problem = (status: number, code: string, title: string, detail: string, extra: Record<string, unknown> = {}): never => {
   throw new HttpException({ type: `https://expatready.local/problems/${code}`, title, status, detail, code: code.toUpperCase().replace(/-/g, "_"), ...extra }, status as HttpStatus);
 };
-const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
+export const notFound = (): never => problem(404, "not-found", "Not found", "No such support ticket.");
 const fieldErrors = (fields: Record<string, string>): never => problem(422, "support-fields", "Check the highlighted fields", "Some fields need a change.", { fields });
 const closedRefused = (): never => problem(409, "support-closed", "This ticket is closed", "A closed ticket takes no new message: raise a new ticket instead.");
 
@@ -75,7 +75,7 @@ const Raise = z.object({ body: Body, page: Page }).strict();
 const Message = z.object({ body: Body }).strict();
 
 const UUID_SHAPE = z.string().uuid();
-const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
+export const isUuid = (s: unknown): s is string => UUID_SHAPE.safeParse(s).success;
 
 function parse<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
   const r = schema.safeParse(input ?? {});

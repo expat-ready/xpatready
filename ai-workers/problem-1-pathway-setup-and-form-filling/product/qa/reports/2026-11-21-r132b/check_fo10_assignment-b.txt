@@ -1,0 +1,1 @@
+| check_fo10_assignment.ts | PASS | 11 s | FO-10 assignment rules: 42 passed, 0 failed |
