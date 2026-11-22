@@ -1,3 +1,46 @@
+Reviewer: Approve 91c33c747aef60d8ee58e8d657e8ba7206789aaa
+
+# Round 2 (diff only: `git diff 8de8403af 91c33c747 -- prototype/studio`; 7 files, +22/-8)
+
+Reviewer (Opus 5.5; I did not build it), 22 Nov. **Verdict: Approve** (Ship). No open Blocker or Major.
+
+## What I ran (PG 127.0.0.1:54329; no app started; never :4400)
+| Run | Result |
+|---|---|
+| `check_fo7g3_bill_to.ts` at 91c33c747 | **21/0**, exit 0 |
+| `check_pf8b_f4_migrations.ts` | 9/9 |
+| Mutant 1, in a scratch worktree (removed afterwards): the gate back to `IF OLD.issued_at IS NOT NULL AND …` | **20/1**: only the new "B3 fail (break m1)" case fails, so that case catches its own rule |
+| Mutant 2, same worktree: `billToProvince` ignores `stored` | **17/4**: B5 unit, B1 pass, B1 fail and B2 pass fail. This confirms the round 1 claim by running it |
+I did not re-run `check_fo7b_invoices.ts` (database-backed, not in the allowed list). The builder's 108/0 and the breaker's 101/7 → 108/0 stand as reported. I read the change line by line.
+
+## Each change
+* **Round 1 Minor 1, fixed:** `drafts.ts:108` now says "comes from this invoice's Bill-to province (HST 15 %)". This is correct in every case: when nothing is stored, the fallback (the firm's province) is what was stored as the draft's Bill-to.
+* **Round 1 Minor 5, fixed:**
+  * `ports/client-money.ts:82`: `z.enum(BILL_TO_PROVINCES).nullable()`. It is declared at `:34`, before its use, and the column's CHECK guarantees `InvoiceView.parse` cannot throw on stored data.
+  * `read()`'s comment is back at `drafts.ts:146`.
+* **Round 1 Minor 3, addressed in words:** `rollback.sql:3-5` now says that every invoice's value, issued ones included, is lost, and that the audit lines keep the province. This is acceptable: "recorded rollback" is met, and the issued figures are unaffected.
+* **Break m1 (gate):** `migration.sql:23` now also refuses when `NEW.issued_at IS NOT NULL`, so the issuing statement cannot change the province its lines were taxed in.
+  * Ordinary draft edits still pass, because `issued_at` stays null there.
+  * Issuing without touching the column passes. B3 pass still sees NB kept.
+  * `coalesce(OLD.number, 'an invoice being issued')` gives a readable message, because `OLD.number` is null while the invoice is being issued.
+  * The function owner, SECURITY DEFINER, `search_path` and the F4 pair are unchanged. 21/0 includes the gate-owner case.
+  * Side effect, recorded for the Lead: filling a null Bill-to at issue (round 1 Minor 2) would now also need this gate's condition changed. The PR comment hands Minor 2 to the Lead with that reasoning, which I accept. It stays Minor and open with the Lead, not a finding against this PR.
+* **`check_fo7b_invoices.ts:117,158` (breaker M1):** `taxOf` and R8 now start the draft inside `atRate`, so the draft's Bill-to is the province whose rate the case sends. This is setup only. Every assertion, figure and message is unchanged (compared line by line). It is the right fix: the suite was out of date against P-797's "a draft keeps its Bill-to", and the product is not at fault.
+* **Scope:** no new route, field or table. The only migration edit is the gate's condition and message, in this PR's own unmerged migration (not an applied one).
+
+## My round 1 miss, stated
+At 8de8403af I approved without running `check_fo7b_invoices.ts`. The breaker found it red (101/7): a Major I should have caught by reasoning about existing rate cases that move the firm after the draft starts. It is fixed at c915fffe1.
+
+## Still open (Minor, no change needed in this PR)
+* Round 1 Minor 2 (null frozen at issue): with the Lead.
+* Round 1 Minor 4 (B3 issues by SQL): unchanged, test strength only.
+* Round 1 Minor 6: the `j_56.ts:120` route shape is now told to qa in the PR comment.
+
+Reviewer: Approve 91c33c747aef60d8ee58e8d657e8ba7206789aaa
+
+---
+# Round 1
+
 Reviewer: Approve 8de8403af60f4878ac89b36ee228565ef7ab8a46
 
 # Review: FO-7g part 3 (R1.56, money; API only): the Bill-to province (P-797)
