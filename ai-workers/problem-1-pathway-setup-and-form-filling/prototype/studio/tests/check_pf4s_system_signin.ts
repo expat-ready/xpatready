@@ -430,8 +430,32 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const o1 = await signedNow(OWNER), o2 = await tokenOf(OWNER2), before2 = lines();
   const [r1, r2] = await Promise.all([call(A.base, "PUT", `${P2}/${OWNER2}/roles`, { token: o1, body: { roles: [], reason: "race" } }), call(A.base, "PUT", `${P2}/${OWNER}/roles`, { token: o2, body: { roles: [], reason: "race" } })]);
   const owners = Number(sql(`select count(*) from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`));
-  ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds, one active Owner stays, two lines",
-    [r1.status, r2.status].sort().join() === "200,409" && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  const refusedRace = [r1, r2].find((r) => r.status === 409);
+  ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds (the other 409 ROLES_CHANGED or LAST_OWNER), one active Owner stays, two lines",
+    [r1.status, r2.status].sort().join() === "200,409" && ["ROLES_CHANGED", "LAST_OWNER"].includes(refusedRace?.body.code) && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  // Review m2: the floor itself, asked directly (through the API it is a second wall: the sender is an active Owner and
+  // never the target, so two active Owners exist whenever it runs).
+  const soleOwner = sql(`select g.staff_id from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`);
+  const floorSole = await throwsLike(() => db.$transaction((tx) => SystemStaffAccess.lastOwner(tx as never, soleOwner)), (e) => (e as { getResponse?: () => { code?: string } }).getResponse?.().code === "LAST_OWNER");
+  const floorOther = !(await throwsLike(() => db.$transaction((tx) => SystemStaffAccess.lastOwner(tx as never, TSUP)), () => true));
+  ok("PF-4s DW7 fail/pass (SA-7-25): the floor refuses taking the last active Owner (409 LAST_OWNER) and lets anyone else go", floorSole && floorOther, { soleOwner, floorSole, floorOther });
+  // Review m1: a sender deactivated after the guard let the call through changes nothing (the check under the lock).
+  const OWNER3 = await person("Third Owner", ["platform-owner"]); clock.t = Math.ceil(clock.t / 1000) * 1000 + 1000;
+  const o3ctx = await A.app.get(SystemIdentity).authenticate(await tokenOf(OWNER3));
+  await db.platSystemStaff.update({ where: { id: OWNER3 }, data: { status: "DEACTIVATED" } });
+  const midBefore = lines(), tsupEnded = (await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).sessionsEndedAt?.getTime() ?? null;
+  const mid = await throwsLike(() => A.app.get(SystemStaffAccess).endAllSessions(o3ctx, { staff: { staffId: OWNER3, name: "Sample Third Owner" }, method: "POST", route: "/api/system/staff/:id/end-sessions", target: { id: TSUP }, reason: null, device: null }, TSUP, {}),
+    (e) => (e as { getResponse?: () => { code?: string } }).getResponse?.().code === "SESSION_REVOKED");
+  ok("PF-4s DW7 fail (review m1): a sender deactivated between the guard and the change changes nothing (401 SESSION_REVOKED under the lock), one REFUSED line",
+    mid && lines() - midBefore === 1 && lastLine().code === "SESSION_REVOKED" && ((await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).sessionsEndedAt?.getTime() ?? null) === tsupEnded, { mid });
+  // Breaker m2, n1, n2: invisible reasons and names; a reason too long is told so.
+  const o4 = await signedNow(soleOwner);
+  const filler = await one(() => call(A.base, "POST", `${P2}/${TSUP}/deactivate`, { token: o4, body: { reason: "\u3164\u115F" } }));
+  const long = await one(() => call(A.base, "PUT", `${P2}/${TSUP}/roles`, { token: o4, body: { roles: ["platform-support"], reason: "r".repeat(501) } }));
+  const blankName = await one(() => call(A.base, "POST", P2, { token: o4, body: { email: "blank.name@expatready.example", displayName: "\u200B\u3164", roles: [] } }));
+  ok("PF-4s part 2 fail (breaker m2, n1, n2): a reason of Hangul fillers is no reason (400), a 501-character one is 400 REASON_TOO_LONG, an invisible name is 422; one line each, nothing changed",
+    filler.r.status === 400 && filler.r.body.code === "REASON_REQUIRED" && long.r.status === 400 && long.r.body.code === "REASON_TOO_LONG" && blankName.r.status === 422 && filler.added + long.added + blankName.added === 3
+    && (await db.platSystemStaff.findUniqueOrThrow({ where: { id: TSUP } })).status === "ACTIVE" && !(await db.platSystemStaff.findUnique({ where: { email: "blank.name@expatready.example" } })), { filler: filler.r, long: long.r, blankName: blankName.r });
   // PF-28's rule on our own staff's routes (its sweep cannot sign in here, so it lists them NOT TESTED and they are asked
   // here): an unknown field 422 naming it, a wrong type 422, and a bad body changes nothing (one REFUSED line, code INVALID).
   const ow = await signedNow(OWNER), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);

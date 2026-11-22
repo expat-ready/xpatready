@@ -15,7 +15,8 @@ import { Db } from "../../core.ts";
 import { parseInput, strict } from "../http/input.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { forbidden, problem, unauthorized } from "../identity/keys.ts";
-import { SYSTEM_ROLES, type SystemStaffContext } from "./keys.ts";
+import { REASON_MAX, SYSTEM_ROLES, type SystemStaffContext } from "./keys.ts";
+import { lineText } from "./guard.ts";
 import { SystemIdentity, type SystemAuditLine } from "./service.ts";
 
 type Tx = Prisma.TransactionClient;
@@ -23,10 +24,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OWNER = "platform-owner", MANAGE = "system/platform-user:manage";
 const ROLE = z.enum(Object.keys(SYSTEM_ROLES) as [keyof typeof SYSTEM_ROLES, ...(keyof typeof SYSTEM_ROLES)[]]);
 const ROLES = z.array(ROLE).max(6).transform((r) => [...new Set(r)].sort());
-export const InviteBody = strict({ email: z.string().trim().toLowerCase().email().max(320), displayName: z.string().trim().min(1).max(200), roles: ROLES, reason: z.string().max(2000).optional() });
-export const RolesBody = strict({ roles: ROLES, reason: z.string().max(2000).optional() });
-export const ReasonBody = strict({ reason: z.string().max(2000).optional() });
-export const ResetMfaBody = strict({ reason: z.string().max(2000).optional(), verified: z.boolean().optional() });
+// The reason's length is the guard's (REASON_MAX, counted after cleaning: 400 REASON_TOO_LONG); here only its type.
+const REASON = z.string().max(REASON_MAX * 4).optional();
+/** A name a person can see: at least one letter or digit once invisible characters go (breaker n1). */
+const NAME = z.string().max(200).transform((v) => lineText(v, 200)).refine((v) => /[\p{L}\p{N}]/u.test(v), "Give a name a person can read.");
+export const InviteBody = strict({ email: z.string().trim().toLowerCase().email().max(320), displayName: NAME, roles: ROLES, reason: REASON });
+export const RolesBody = strict({ roles: ROLES, reason: REASON });
+export const ReasonBody = strict({ reason: REASON });
+export const ResetMfaBody = strict({ reason: REASON, verified: z.boolean().optional() });
 
 /** The guard's line, ready for this call (set on the request for change routes). */
 export type CallLine = Omit<SystemAuditLine, "outcome" | "code">;
@@ -74,10 +79,11 @@ export class SystemStaffAccess {
     if (!actor.roles.includes(OWNER)) forbidden("Only a Platform Owner gives or removes the Platform Owner role.", "OWNER_ONLY");
     if (!reason) problem(400, "Give a reason", "Giving or removing the Platform Owner role needs a written reason.", { code: "REASON_REQUIRED" });
   }
-  /** SA-7-25: the change would leave no active Owner. */
-  private static async lastOwner(tx: Tx, staffId: string) {
-    const owners = await tx.platSystemRoleGrant.findMany({ where: { roleCode: OWNER, endedAt: null, staff: { status: "ACTIVE" } }, select: { staffId: true } });
-    if (owners.length === 1 && owners[0].staffId === staffId) problem(409, "The last Platform Owner", "ExpatReady always keeps at least one active Platform Owner. Give the role to someone else first.", { code: "LAST_OWNER" });
+  /** SA-7-25: the change would leave no active Owner. Through the API it is a second wall: the sender is an active Owner
+   *  checked again under the lock and never the target, so two active Owners exist whenever it runs (review m2). */
+  static async lastOwner(tx: Tx, staffId: string) {
+    const owners = [...new Set((await tx.platSystemRoleGrant.findMany({ where: { roleCode: OWNER, endedAt: null, staff: { status: "ACTIVE" } }, select: { staffId: true } })).map((o) => o.staffId))];   // people, not grant rows (review n4)
+    if (owners.length === 1 && owners[0] === staffId) problem(409, "The last Platform Owner", "ExpatReady always keeps at least one active Platform Owner. Give the role to someone else first.", { code: "LAST_OWNER" });
   }
   /** Ends every session the person has (the guard refuses a session that signed in at or before this moment). */
   private static async endSessions(tx: Tx, staffId: string, now: Date) {
