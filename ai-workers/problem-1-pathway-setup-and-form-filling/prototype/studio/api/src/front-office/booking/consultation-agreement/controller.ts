@@ -10,6 +10,8 @@ import { Db } from "../../../core.ts";
 import { auditEvent } from "../../../platform/audit/audit-event.ts";
 import { AnyStaff, PermissionKeys, staffOf, type StaffContext } from "../../../platform/identity/keys.ts";
 import { PlatformJobs } from "../../../platform/jobs/platform-jobs.ts";
+import { idParam, parseInput, strict, text } from "../../../platform/http/input.ts";
+import { z } from "zod";
 import { fakeSigning, type SigningPort } from "../../signing/port.ts";
 import { ConsultationAgreementService, type AgreementPorts } from "./service.ts";
 
@@ -32,6 +34,9 @@ export class ConsultationAgreements extends ConsultationAgreementService impleme
 }
 
 type R = { platform?: StaffContext };
+/** PF-28's one input rule: each body through a strict schema before any lookup (an unknown, wrong or missing field → 422). */
+export const HostLinkBody = strict({ consent: z.literal(true) });
+export const OpenBody = strict({ token: text(200).min(1), consent: z.boolean().optional(), code: text(12).optional(), resend: z.boolean().optional() });
 const READ = "agent/booking:list";
 const SIGNS = "only the person the agreement names signs for the firm; the service checks it (403) and answers 404 for another firm's";
 
@@ -50,7 +55,7 @@ export class ConsultationAgreementController {
   @Get(":id") @PermissionKeys(READ)
   read(@Req() r: R, @Param("id") id: string) { return this.a.read(staffOf(r), id); }
   @Post(":id/host-link") @HttpCode(200) @AnyStaff(SIGNS)
-  hostLink(@Req() r: R, @Param("id") id: string, @Body() body: unknown) { return this.a.hostLink(staffOf(r), id, (body ?? {}) as { consent?: unknown }); }
+  hostLink(@Req() r: R, @Param("id") id: string, @Body() body: unknown) { const aid = idParam(id, "agreement"), b = parseInput(HostLinkBody, body ?? {}); return this.a.hostLink(staffOf(r), aid, b); }
 }
 
 @Controller("api/public/consultation-agreements")
@@ -60,7 +65,7 @@ export class ConsultationAgreementPublicController {
    *  code (P-564); `{ token, consent: true, code }` checks it and answers the signing link; `resend: true` sends a new code. */
   @Post("open") @HttpCode(200)
   open(@Body() body: unknown, @Req() req: { ip?: string; socket?: { remoteAddress?: string } }) {
-    const b = (body ?? {}) as { token?: unknown; consent?: unknown; code?: unknown; resend?: unknown };
+    const b = parseInput(OpenBody, body ?? {});
     return this.a.open(b.token, { consent: b.consent, code: b.code, resend: b.resend }, String(req.ip ?? req.socket?.remoteAddress ?? "unknown"));
   }
 }
