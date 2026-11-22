@@ -148,3 +148,69 @@ None.
 Then re-review the new head (diff only).
 
 Reviewer: Block 7e6e48c1f3222d282722c16ac16c8e40f8e54c7e
+
+## Round 3 (diff 7e6e48c1f..521e016ee)
+
+Same reviewer role, diff-only (Lead's "Lead allows round 3:" on #2953). **Commit reviewed: `521e016eeb4127e2648dda7b2da875f8ea80d28e`** on `claude/sleepy-archimedes-3a0op2`. I read `git diff 7e6e48c1f..521e016ee`: 4 code files (`documents.ts`, `money.ts`, `ports/client-money.ts`, `tests/check_fo7b_invoices.ts`), plus round 2 and `break-report.md` R2-F1 to F5. Still no screen, so no browser walk and no journey score. Paths below are under `prototype/studio/`.
+
+### Blocker
+None.
+
+### Major
+1. **A trust payment from a client who already holds money in trust takes that held money too, and the stored `extraMinor` goes negative.** This is new in this diff. It reopens the trust part of round-2 M1 and fails the "`extraMinor` never negative" check.
+   * Cause: `api/src/client-money/invoices/money.ts:115` is `applied = max(0, min(dueBefore, held))`, where `held` is the party's whole balance after the deposit. Round 2 capped `applied` at `min(amount, due)` first. This diff drops the cap at the payment's own amount, so `:118` `extra = amount − shortfall − applied` can be below zero.
+   * Probe, API only (throwaway copy of the suite under /tmp/r3probe, on its own scratch database at :54329):
+     * Client pp pays 130.00 into trust on a 100.00 invoice. 30.00 stays in trust, which is right, and the receipt says "kept in trust".
+     * The same client then pays **50.00** into trust on a new 100.00 invoice. The answer is 201 with `trust.appliedMinor 8000` and balance 0. The ledger reads `DEPOSIT 5000→8000, WITHDRAWAL_TO_INVOICE −8000→0`, and 20.00 is due.
+     * The audit line stores `extraMinor: -3000`. Its summary says "CAD **-30.00** is extra".
+     * Receipt R-0020 (emailed, and never changes) says "Received: CAD 50.00 … Balance due … after this payment: CAD 20.00 **CAD -30.00 is more than this invoice asked: kept in trust.**"
+   * So 30.00 that an earlier receipt told the client was "kept in trust" was moved to this invoice. Nobody asked for that, and the receipt calls it a negative extra. Using held trust money for an invoice without the client's instruction is also a trust-rule question (Unconfirmed: no counsel).
+   * **Fix:** `applied = max(0, min(dueBefore, p.amountMinor − shortfall))`. Then `extra ≥ 0` always holds, and this payment never moves more than it brought in. Add a pass case with a positive balance before (the API-only path above: expect applied 50.00, extra null, balance 30.00, and no "-" on the receipt). Add a fail case that asserts the stored `extraMinor ≥ 0` and the ledger's untouched 30.00.
+   * The suite missed it because every trust case starts at a balance of 0 or below. PK has no trust before `kTrust`.
+
+### Minor
+1. **Kept credit, partial** (`money.ts:219`). Refund · Keep as credit stays on offer while any of the extra is still waiting, but `extra.amountMinor` still shows the whole stored extra, not what is left. R2-F4's example (60.00 extra, 20.00 net kept) offers both choices against 60.00. This is latent, since no route writes KEPT yet. It needs no change before Approve; the KEPT route should show what is still waiting.
+2. **`paymentView` has no fallback for a line with no stored letterhead.** It prints an empty firm name, where `storedHead` falls back to the live one. Today this can't happen, because only `record()` writes `money_payment` and it always stores the letterhead.
+3. **Carried from round-2 Minor 3:** the stored address still prints the country key in lower case ("…, ON M5V 1A1, canada"). It is now frozen into each stored letterhead.
+
+### Each claimed fix (pass / fail)
+* **R2 M1 / R2-F2 (shortfall worded "kept in trust"): holds below zero, fails above zero** (Major 1). The stored figures from the probes:
+  * Balance −50.00, pays 100.00: shortfall 50.00, applied 50.00, extra 0, 50.00 due. The receipt has the shortfall sentence and no "kept in trust".
+  * Balance −150.00, pays 100.00: shortfall 100.00, applied 0, extra 0, and the balance is −50.00.
+  * Balance **−0.01**, pays 100.00: shortfall 0.01, applied 99.99, extra 0, 0.01 due. A further 50.00 then gives applied 0.01 and extra 49.99, kept in trust.
+  * Balance **0**: exact gives extra 0, and an overpay of 130.00 gives extra 30.00 kept in trust.
+  * Balance **positive**: wrong, as Major 1 shows.
+  * `shortfall = max(0, min(amount, −balanceBefore))` is right in all four cases.
+* **R2 M2 / R2-F1 (receipt read by `created_at`): holds.**
+  * The figures are decided under the invoice's lock in `record()` and stored in `audit_event.detail`. `paymentView` reads them back with `firm_id = ${firmId}`, `action = 'payment.recorded'`, `entity = 'money_payment'` and `entity_key = payment id`. That is one line per payment, so `limit 1` picks it.
+  * The as-of queries that depended on time order are deleted.
+  * The scripted race (a credit note opened first and saved after the payment) holds 700.00 on the emailed and the re-downloaded receipt, in 2 of 2 runs.
+  * The replay answers the stored figures. For a payment that was "Paid twice?", the replay matches the first answer exactly.
+* **R2 Minor 1 (weak fails, no F3): holds.** F3 now has a case (201 + 409 KEY_USED, one row). There are fail cases at −150.00 and for a replay after kept credit, and the `mailsBefore` order is fixed.
+* **R2 Minor 2 (every P2002 read as KEY_USED): holds.** KEY_USED now needs the error meta to name `idempotency_key`; anything else falls through.
+* **R2 Minor 3 / R2-F3 (letterhead read at download time): holds.** It is stored as `firmName_after`, `firmAddress_after`, `taxNumber_after` and `billTo_after` on `payment.recorded`, `invoice.issued` and `invoice.credit_note_issued`. The renamed-firm case passes. "How to pay" stays live (`invoiceOf`).
+* **R2-F4 (kept credit): holds for credit kept in full** (the replay offers no choices). Partial: Minor 1.
+* **R2-F5 (wording): holds**, as "from the year 2000 to 2999".
+
+### What held (rules from rounds 1 and 2, re-checked on the diff)
+* **Lock order:** unchanged. The only reads added inside the transaction are the letterhead reads, which take no locks.
+* **Idempotency:** read under the lock as before. A replay gets the stored figures.
+* **Overpayment is never refused.** An operating overpay of 120.00 on 100.00 gives extra 20.00 with Refund · Keep as credit. A second full payment gives applied 0 and extra 100.00, "Paid twice?". Below zero is never refused.
+* **R9:** the invoice still prints the stored lines.
+* **Firm walls:** both audit reads are scoped by `firm_id`.
+* **One audit line per change:** the suite's count case passes, now excluding the one credit note the race case seeds by SQL.
+* **Outbox last:** audit, then `module_event`, then the invoice event, in all three paths.
+* **Integers only:** the stored values are JSON integers read with `Number`.
+* **No secret field and no email in `after`.** The keys are firmName, firmAddress, taxNumber and billTo, and none matches `SECRET_FIELD`. The bill-to email from `letterhead()` is not stored. I checked the stored key list of a live line.
+
+### Checks run (on 521e016ee, in this checkout)
+* `check_fo7b_invoices.ts`: **101 passed, 0 failed**, twice.
+* `node studio/tools/check-port-contracts.mjs`: **exit 0**, 27 ports with 0 problems.
+* Probe: a copy of the suite plus the cases above, under /tmp/r3probe, on its own scratch database (dropped). With them it still reports 101/0, because the probes are prints and not cases.
+
+**Verdict: Block** `521e016eeb4127e2648dda7b2da875f8ea80d28e`. Fix before Approve:
+* Major 1: in the trust path, cap `applied` at what this payment brings after the shortfall (`money.ts:115`), so `extraMinor` is never negative and held trust money is never taken without being asked. Add pass and fail cases for a positive balance before.
+
+Then re-review the new head (diff only).
+
+Reviewer: Block 521e016eeb4127e2648dda7b2da875f8ea80d28e
