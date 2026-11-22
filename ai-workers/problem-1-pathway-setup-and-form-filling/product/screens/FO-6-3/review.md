@@ -162,3 +162,27 @@ The head moved to `e8dc29499` (the breaker's fixes) while I was reviewing. I did
 * Journeys 7 (concurrent events) and 8 (out-of-order signatures) now hold.
 * Out-of-order `completed` is stuck (R2-1), so task completed and correct data stay at ½. Error recovery rises to 1.
 * **6/7 applicable = 8.6/10 scaled, no 0. Blocked on R2-1.**
+
+## Round 3 (diff only, P-277): `e0d769765..29e8389042589c8950f39423bf389e4f3e40a6f0`
+**Reviewer: Approve 29e8389042589c8950f39423bf389e4f3e40a6f0.** **Verdict: Approve.** No Blocker or Major is open.
+
+**What I ran, at 29e8389:**
+* check_fo6_signing_api: **49/49, twice**. check_pf19r_every_sender: 21/21.
+* I restarted the local :54329 cluster first: it had stopped between rounds.
+* My round 2 probe, run again on a scratch database (dropped afterwards):
+  * `completed` delivered first, both with and without a `viewed` before it: **409 NOT_READY**, nothing kept. The two `signed` events then apply, and the redelivered `completed` applies: SIGNED/SIGNED, 1 evidence row, prospect won.
+  * Two different events at once: 0 errors in 8 runs.
+
+**Closed:**
+* **R2-1 (Major).** f2021fe (service.ts:165-173) treats only these as final: an ended request, a retainer that is WITHDRAWN, SIGNED_OFFLINE, DECLINED or EXPIRED, or a retainer at another version. SENT and VIEWED now answer 409.
+  * The new test fails on round 2's code: at e0d7697 my probe got 200 on the first `completed`, and the test expects 409.
+  * The withdraw case (test B, break m3) is still final and stored once.
+* **R2-2 (Minor).** `evidence/ai-orchestration/check_ai_orchestration.json` is now the same as on main (`git diff origin/main 29e838904` is empty for it).
+
+**Also in this range:**
+* 156832e adds a feature-file check (controllers and the Signing provider). Fine.
+* 29e8389 adds records only: `pr-body.md` and the break report's round 2 section.
+
+**Left to the Lead read, per Lead 5:** size, the touch list, and PF-28's webhook exception (R-M3). `check_pf28_inputs` (b) must still be green before merge.
+
+**Journey re-score:** the out-of-order `completed` now holds, so task completed and correct data rise to 1. **7/7 applicable = 10/10 scaled, no 0.**
