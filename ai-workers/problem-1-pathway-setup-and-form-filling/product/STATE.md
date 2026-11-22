@@ -14,6 +14,7 @@ updated: 2026-11-22 05:5x IST: Lead 18 handed over to Lead 19 (series 3) · mile
 Word for word in `product/history/STATE-2026-11-22-1050-lead21s3-lead19-lines-and-handover-18-19.md` (owed from it: PF-18s p2-3 and PF-28 p3a-5 lanes, now started; start.sh npm ci fix row; C11.15 flake; B194 permission-route gate gap; FO-9s founder questions).
 
 ## Lead 1 (new account) since 10:0x IST (newest first)
+* 10:5x **5 more cloud lanes requested (founder-typed turn, A279):** qa proof R1.89 + R1.39 · PF-4s (R1.5; unblocks R1.24, R1.90; Lead read before label) · PF-13 p2 panel (R1.23) · CS-S1 p2 (R1.102, after #2884) · QA-645 deploy-synth on main (Lead read). 11 builders + 1 qa of cap 12 (P-784). Collision map + near-done sweep running (read-only subagent) for A279 parts 1-3. AWS sign-in page opened in the Lead's browser pane for the founder.
 * 10:4x **A279 (10 parts): `product/design/A279-parts-2026-11-22.md`.** Renamed Lead 1. Lanes working: #2883 and #2885 queued; #2906 PF-18s p2 and #2904 PF-18s p3 open; #2884 lane pushing.
 * 10:25 check: #2883 PF-28 p6 (R1.10) full ci green on 00711e628 with Approve + Lead B read: labelled. #2884/#2885 still red, their lanes starting. No new lane PR yet.
 * 10:2x Plan validated by an independent reader (forecast 4 by 19:00, 9-11 by 07:00; corrected rows, drops and the lanes to start) and the 10:1x start line (first 7 lanes): word for word in `product/history/STATE-2026-11-22-1040-lead1-plan-validation-line.md`.
