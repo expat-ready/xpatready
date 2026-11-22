@@ -39,6 +39,7 @@ import { computeSlots, localDate, type HostWindow, type Range, type Slot } from 
 import { phoneE164Exact } from "../duplicates/phone.ts";
 import { windowsFor } from "./settings/hours.ts";
 import { hashVerifier, issueToken, liveToken, parseToken } from "./tokens.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 
 type Tx = Prisma.TransactionClient;
 type Status = "SCHEDULED" | "RESCHEDULED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
@@ -84,8 +85,13 @@ const problem = (status: number, slug: string, title: string, detail: string, ex
 /** The one answer for an unknown firm, an unknown or inactive type, and a bad, used, voided or expired link (AG-4-17, -21
  *  rule 3; AG-4-36): nothing in it tells which. */
 export const notFound = () => problem(404, "not-found", "Not found", "This booking page or link is not available.");
-const refused = (detail: string, issues: string[] = [], title = "Not booked") => problem(400, "booking-refused", title, detail, issues.length ? { issues } : {});
-/** The 400 titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
+/** A refused input (PF-28 part 4, Lead B rev 17.21): 422 with `code: "INVALID"`, each field named in `fields`, and the same
+ *  words as "<field>: <words>" in `issues` (the booking pages read those). 400 stays for a body that cannot be parsed. */
+const refused = (detail: string, issues: string[] = [], title = "Not booked", fields: Record<string, string> = Object.fromEntries(issues.map((i) => (i.includes(": ") ? [i.slice(0, i.indexOf(": ")) || "body", i.slice(i.indexOf(": ") + 2)] : ["body", i])))) =>
+  problem(FIELD_ERROR_STATUS, "booking-refused", title, detail, { code: "INVALID", fields, ...(issues.length ? { issues } : {}) });
+/** The honeypot and the form stamp (too fast, forged, too old) name no field on purpose: their words are the same, so a
+ *  bot learns nothing from which check refused it (review m2). */
+/** The refusal titles say what was refused (FO-3m DW4): a list or an attendance answer is not a booking. */
 const NOT_LISTED = "Bookings not listed", NOT_RECORDED = "Attendance not recorded";
 /** The time asked is not free (taken a moment ago, or never offered): one neutral answer with fresh times (AG-4-27). */
 const slotTaken = (slots: PublicSlot[]) => problem(409, "slot-taken", "That time is not available", "That time is not available any more. Please choose another time.", { code: "SLOT_TAKEN", slots });
@@ -163,13 +169,18 @@ const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[
  *  characters, so every reason taken here fits it). */
 export const CancelBody = z.strictObject({ reason: z.string().transform((v) => v.replace(/\r\n|[\r\n\u2028\u2029]/g, " ").trim()).pipe(z.string().max(500)
   .refine((v) => !LONE_SURROGATE.test(v) && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200b\u200e\u200f\u061c\ufeff]/.test(v), "no control or invisible characters")).optional() });
-export const SlotsQuery = z.object({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
+export const SlotsQuery = z.strictObject({ from: Instant.optional(), to: Instant.optional(), tz: Zone.optional() });
 
 const parse = <T extends z.ZodType>(schema: T, body: unknown, title?: string): z.output<T> => {
+  parseInput(z.unknown(), body);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
   const r = schema.safeParse(body ?? {});
-  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title);
+  if (!r.success) throw refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), title, fieldsOf(r.error));
   return r.data;
 };
+/** PF-28 part 4: a path value is checked before the body (a malformed id or link is the one not-found), and the body
+ *  before the record is looked up (a body probe with a random id is a field error, not a 404 that proves nothing). */
+const idShape = (id: string) => (UUID.test(id) ? id : notInFirm("booking"));
+const linkShape = (token: string) => { if (!parseToken(token)) throw notFound(); return token; };
 
 export type PublicSlot = { startsAt: string; endsAt: string; label: string };
 /** A type with its timings resolved (FO-3a1e: the type's, else the firm's, else the default); every reader takes this. */
@@ -261,7 +272,7 @@ export class BookingService {
     const tz = q.tz ?? firmZone;
     const now = this.ports.clock.now();
     const from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const slots = await this.slotsFor(this.db, firm.id, type, from, to);
     const consent = await this.ports.arrival.bookingConsentWording(this.db, firm.id);
     return {
@@ -321,18 +332,20 @@ export class BookingService {
   /** GET the times a self-service reschedule may move to (the same type's slots; the booking's own time is free to it). */
   async manageSlots(token: string, query: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
+    const q = parse(SlotsQuery, query);
     const { booking, type } = await this.byToken(this.db, token);
     if (!type.allowReschedule) throw notByLink("rescheduled");
     if (!this.selfServiceOpen(booking, type)) throw tooLate();
-    const q = parse(SlotsQuery, query);
     const now = this.ports.clock.now(), from = q.from ?? now, to = q.to ?? new Date(from.getTime() + 14 * DAY);
-    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.");
+    if (!(from < to) || to.getTime() - from.getTime() > 62 * DAY) throw refused("Ask for at most 62 days of times, from before to.", ["to: at most 62 days after from"]);
     const tz = q.tz ?? booking.bookerTimeZone;
     return { timeZone: tz, slots: (await this.slotsFor(this.db, booking.firmId, type, from, to, booking.id)).map((s) => this.publicSlot(s, tz)) };
   }
 
   async selfReschedule(token: string, body: unknown, ip: string) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
     const b = parse(RescheduleBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
     const out = await this.move(booking.firmId, booking.id, b.startsAt, b.timeZone, { word: "system:booking-link" }, token);
@@ -342,6 +355,7 @@ export class BookingService {
   /** POST a cancel by link, with the booker's optional reason (kept on the booking, FO-3pa DW7, DW10). */
   async selfCancel(token: string, ip: string, body?: unknown) {
     this.limit(`token:ip:${ip}`, this.limits.tokenPerIp);
+    linkShape(token);
     const c = parse(CancelBody, body);
     const { booking, type, firm } = await this.byToken(this.db, token);
     return this.publicAnswer(await this.cancelBooking(booking.firmId, booking.id, { word: "system:booking-link" }, token, c.reason || undefined), type, firm);
@@ -386,6 +400,7 @@ export class BookingService {
 
   async staffReschedule(ctx: StaffContext, bookingId: string, body: unknown) {
     need(ctx, "agent/booking:edit");
+    idShape(bookingId);
     const b = parse(StaffRescheduleBody, body);
     await this.staffBooking(ctx, bookingId);
     if (b.startsAt.getTime() <= this.ports.clock.now().getTime()) throw refused("Please choose a time that has not started yet.", ["startsAt: in the past"]);
@@ -402,6 +417,7 @@ export class BookingService {
    *  later. The host answers their own; others need agent/booking:edit. A cancelled booking is not-active before and
    *  after its start (FO-3m DW2: checked first). */
   async recordAttendance(ctx: StaffContext, bookingId: string, body: unknown) {
+    idShape(bookingId);
     const o = parse(AttendanceBody, body, NOT_RECORDED).outcome;
     const own = await this.staffBooking(ctx, bookingId);
     if (own.staffId !== ctx.staffId) need(ctx, "agent/booking:edit");
@@ -432,8 +448,8 @@ export class BookingService {
   /** The staff list (AG-4-67): with agent/booking:list, the firm's bookings the person may see (FO-3vr: the record rule or
    *  their own as host), else the person's own as host. */
   async staffList(ctx: StaffContext, query: unknown) {
-    const q = parse(z.object({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", [], NOT_LISTED);
+    const q = parse(z.strictObject({ from: Instant, to: Instant, staff: z.uuid().optional() }), query, NOT_LISTED);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > 92 * DAY) throw refused("Ask for at most 92 days, from before to.", ["to: at most 92 days after from"], NOT_LISTED);
     const all = ctx.keys.includes("agent/booking:list");
     const staffId = all ? q.staff?.toLowerCase() : ctx.staffId;
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from }, ...(staffId ? { staffId } : {}) };
