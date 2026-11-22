@@ -108,3 +108,16 @@ No new findings. The journey score of 8.5 / 10 (`journey-test-reviewer-2026-11-2
 **Verdict: Approve** `8373756792c10b0bde8e5ff464c5b68973cf6255` (code at `218d7dd4a`).
 
 Reviewer: Approve 8373756792c10b0bde8e5ff464c5b68973cf6255
+
+## Re-review round 3, 22 Nov 2026 (diff-only): head `6666ac70bceee38feb35f07e27088642a16abccc`
+I read `git diff 403d131ae 6666ac70b`: two files, +3, with no app code, schema or test change.
+* `.mergify.yml` adds `api/src/case-notes/*.ts` to the case-side scope (card api-cases). `check-mergify-scopes.sh` gives **PASS, 102 checks**.
+* The new `api/src/features/MODULE.rows/CS-NT1.md` has 2 lines (Entry points, Tests) in the fragment format. `module-cards.py tree` gives **PASS**. `module-cards.py pr` on the 19 changed files, with PR #2999's body (no "Card unchanged" line), gives **PASS, 2 modules touched**.
+* Main has moved 127 commits, to `17b002fc0`. Its newest migration is still `20261122033000`, and the only migration change is PF-8b F5's PF-12 grant fix plus `20261122030000_pf8b_f5_grant_loop`, both earlier than this row's stamp and unrelated to `case_note`. A trial merge is clean, and on it the scopes check (102) and the card tree both pass.
+* The Option A ruling (the one census line stays) and size exception P-805 are the Lead's; I did not re-check the PR body beyond the card line.
+
+No findings.
+
+**Verdict: Approve** `6666ac70bceee38feb35f07e27088642a16abccc`.
+
+Reviewer: Approve 6666ac70bceee38feb35f07e27088642a16abccc
