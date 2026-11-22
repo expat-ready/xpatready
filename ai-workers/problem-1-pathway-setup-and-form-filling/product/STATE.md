@@ -26,6 +26,7 @@ Lead 8 check lines: word for word in `history/STATE-2026-11-23-0021-lead8-check-
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A289 | 23 Nov 01:4x (typed, to Lead 8): make sure Track A and B pipelines run; why so behind; is progress made; what can we achieve tomorrow and day after (founder meeting); are you managing queues, blockers, manual steps; biggest problem and fix; anything waiting on your response in any lane | 01:52: answered in chat; 3 idle dequeued capability PRs found and sent next steps (#2999 R1.76 waited 8 h on a Lead read, #2933 R1.10, #3081 R1.102) |
 | A287-A288 | 22 Nov 14:4x-14:5x | word for word in `history/STATE-2026-11-23-0007-lead8-founder-asks-A287-A288.md` |
 | A283-A286 | 22 Nov 11:0x-14:2x | word for word in `history/STATE-2026-11-22-1500-lead4-founder-asks-A283-A286.md` |
 | A242-A282 | 21-22 Nov (A279 parts: `product/design/A279-parts-2026-11-22.md`) | word for word in `product/history/STATE-2026-11-22-1027-lead21s3-founder-asks-A272-A276.md` | |
