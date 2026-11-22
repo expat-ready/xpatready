@@ -9,6 +9,9 @@
 # missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh; the Item line and waves: check-lane-preflight.sh.
 set -u
 txt=$(tr -d '\r'); bad=""
+# ENF-803 (P-803): a start brief's "Duplicate check:" names the origin/main sha and the exact IST time it was read, and a
+# cited qa note is not older than the newest merge on the row's files (brief-fresh.py; test-enf-803.sh).
+[ "${1:-}" = --brief ] && { fr=$(printf '%s\n' "$txt" | python3 -I "$(dirname "$0")/brief-fresh.py" 2>&1) || bad="$bad $(printf '%s' "${fr:-brief-fresh.py could not run}" | paste -sd ';' -);"; }
 # Only the Done when's own text counts: its line, then lines up to a blank line, a heading or the Duplicate check line.
 done_when=$(printf '%s\n' "$txt" | awk 'f && (/Duplicate check:/ || /^#/) {exit} f && /^[[:space:]]*$/ {if (n) exit; next}
   !f && tolower($0) ~ /done when/ {f = 1; l = $0; sub(/.*[Dd][Oo][Nn][Ee] [Ww][Hh][Ee][Nn]/, "", l); print l; if (l ~ /[^[:space:]:*#]/) n = 1; next}
@@ -35,6 +38,11 @@ if [ "${1:-}" = --brief ] && { [ "$row" = 1 ] || printf '%s\n' "$txt" | grep -qE
     wave=$(python3 -I "$(dirname "$0")/waves.py" allow $(printf '%s' "$item" | tr ',' ' ') 2>&1) && wave="" || wave=${wave:-"OUTSIDE WAVE: waves.py could not run, so the item was not checked."}
   else bad="$bad an \"Item:\" line that is neither R1 items (\"Item: R1.4, R1.8\") nor \"none (tooling|qa|records)\" (got: $item);"; fi
 fi
+# P-801 (founder 14:4x and 15:1x IST 22 Nov; ENF-798): a brief stating a domain value needs a "Source:" line, and any
+# "Question for the founder" a "Sources checked:" line (source-check.py). Fails closed: a check that cannot run refuses.
+src=$(printf '%s\n' "$txt" | python3 -I "$(dirname "$0")/source-check.py" ${1:-} 2>&1); rc=$?
+if [ "$rc" = 1 ] && [ -n "$src" ]; then bad="$bad $src"
+elif [ "$rc" != 0 ]; then bad="$bad the P-801 source check could not run (exit $rc: ${src:0:80});"; fi
 [ -z "$bad$wave" ] && exit 0
 [ -n "$bad" ] && echo "MISSING:${bad%;}."
 [ -n "$wave" ] && echo "$wave"

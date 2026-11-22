@@ -1,0 +1,3 @@
+# Lead 15's working lines 17:0x-17:2x, moved word for word at 17:55 IST 21 Nov (STATE size, P-336)
+
+* 17:0x **Recovery plan to 15 (A269):** 4 proven + R1.14 (#2804) · R1.32 (Q5, nightly+#2804) · R1.47 (#2633→Q4) · R1.10 (#2619→Q5) · R1.4 (#2752 merged + PF-12b3) · R1.42 (#2750+#2782+hold removal→Q1) · R1.53 (#2802 + part 2) · R1.19 (#1959 conflict, Lead B) = 12; + **R1.13, R1.15 via PF-8b F3 no-domain mode** (briefed to pf8b lane, PR by 23:00, AWS deploy after) = 14; + R1.90 (#2763 TS2531 fix briefed; migration read safe; PF-16 part 1 still needed) or R1.3 reserve = 15. Rulings: overdue firms may book a lower plan; #2809 forecast counts merged rows with a qa owner; #2603 round 4 allowed + labelled.

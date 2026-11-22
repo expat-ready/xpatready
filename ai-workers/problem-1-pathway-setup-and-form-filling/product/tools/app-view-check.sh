@@ -1,10 +1,10 @@
 #!/bin/bash
 # The app view's ACT lines (B197 (3), founder A110, 16 Nov; P-326, P-339): run by lead-watch.sh every check and by
-# lead-check-guard.sh at a check turn's end. Reads product/state/app-view-latest.txt (app-view-save.sh): over 12 min old
-# (P-789 (2), 22 Nov: was 35) or missing = "ACT app view not read in N min"; otherwise one ACT per FLAG line in it, one for an UNREADABLE line and one for a "WARNING: list may be cut" line (B204).
+# lead-check-guard.sh at a check turn's end. Reads product/state/app-view-latest.txt (app-view-save.sh): over 15 min old
+# (P-798, 22 Nov: was 35) or missing = "ACT app view not read in N min"; otherwise one ACT per FLAG line in it, one for an UNREADABLE line and one for a "WARNING: list may be cut" line (B204).
 #   bash product/tools/app-view-check.sh [--stale-only]     exit = the number of ACT lines
 # Env (tests): APP_VIEW_FILE, NOW (epoch seconds). Test: check-app-view.sh.
-STALE_MIN=12   # P-789 (2) (founder, 22 Nov): was 35
+STALE_MIN=15   # P-798: one 10-minute check plus 5 min grace (was 35; P-789 (2) asked 12 before the 10-minute check)
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 f="${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}"; now="${NOW:-$(date +%s)}"
 how="run tools/app-view.js (it clicks every Show more) in the built-in browser on claude.ai/code, save it with lead-watch.sh app-view-read, act on each FLAG (P-326, A110)"

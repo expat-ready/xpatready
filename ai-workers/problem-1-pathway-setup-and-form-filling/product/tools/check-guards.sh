@@ -235,7 +235,7 @@ CS3 unread|product/tools/queue-depth.py|s/^        if len(found) < N:/        if
 CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ or c is None:/|check-queue-depth.sh
 CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
 CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh
-36 stale|product/tools/app-view-check.sh|s/^STALE_MIN=12 /STALE_MIN=35 /|check-app-view.sh
+36 stale|product/tools/app-view-check.sh|s/^STALE_MIN=15 /STALE_MIN=35 /|check-app-view.sh
 36 rows|product/tools/app-view-check.sh|s/^sed -n 2p "\$f" .*/true/|check-app-view.sh
 36 read|product/tools/lead-watch.sh|s/^  if ! grep -qE .(^. )rows=\[0-9\]+. <<<"\$first"; then$/  if false; then/|check-app-view.sh
 36 click|product/tools/app-view.js|s/targets.forEach((t) => { t.click(); clicks++; });/clicks++;/|check-app-view.sh

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Commit-msg guard (ENF-803, P-803): refuses a commit that deletes more than 50 files unless its message carries
+# "BULK-DELETE-OK: <reason>", and a commit made from a temp GIT_INDEX_FILE. Pre-push and CI check the same again.
+G="$(git rev-parse --show-toplevel)/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/bulk-delete-guard.sh"
+[ -f "$G" ] || { echo "bulk-delete guard missing at $G — commit refused (restore it or run lane.sh setup)"; exit 1; }
+exec bash "$G" staged "$1"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Saves the app view (B197 (2), founder A110, 16 Nov): app-view.js's text from stdin, with the IST time, to
 # product/state/app-view-latest.txt (gitignored, one per copy). lead-watch.sh (app-view-check.sh) reads its age and its
-# FLAG lines; lead-check-guard.sh will not let a check turn end while it is over 12 min old (P-789 (2)).
+# FLAG lines; lead-check-guard.sh will not let a check turn end while it is over 15 min old (P-798).
 # Save through "lead-watch.sh app-view-read", which refuses a summary with no rows=N.
 #   bash product/tools/app-view-save.sh <<'EOF'   (the page's answer)   EOF
 # Refused: empty input, or text that is not app-view.js's (first line "app view ..." or "UNREADABLE ..."): a check that
