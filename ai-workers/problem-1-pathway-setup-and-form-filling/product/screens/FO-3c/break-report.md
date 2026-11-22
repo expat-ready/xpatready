@@ -138,3 +138,35 @@ Round 2 held:
 - **Firm decline after the client signed:** gives WITHDRAWN with its reason. The item goes, the read says "not signed yet", and no second agreement is sent.
 
 Verdict: Changes e6365237a4a3f647ad14eae2c90b77940539a4f9
+
+## Round 3: `git diff e6365237a..0ccbd59c9 -- '*.ts'` (head 0ccbd59c98ac08a96b09ff245c14a090697822c7)
+
+Tested on a detached worktree with my own scratch databases, all dropped afterwards. The row test passes 37/37.
+
+Round 2 fixes confirmed:
+- **R2-1:** the link now needs a new code after 30 minutes. At 29 minutes a call from another IP with the token alone still gets the link; at 30 minutes it gets `codeNeeded`. A used code is spent, and a replaced code is wrong (422).
+- **R2-2:** a second code within a minute is 429 `CODE_TOO_SOON`. 600 resends at one per second from 50 IPs sent only 10 codes in 10 minutes.
+- **R2-3:** 60 000 addresses leave the map at 50 000 entries. The next 1 000 calls took 17 ms in total, and one address is still limited (its 31st call is 429).
+- **R2-4:** stuck seals are now retried first.
+
+**R3-1. The R2-1 fix wipes the code check from a client who has already signed at the provider, so their signature is refused for good. (Major)**
+- Steps:
+  1. The client consents and enters the code.
+  2. Five minutes later they sign at the provider. Our webhook is late (the provider retries, or our route is down).
+  3. 30 minutes after the code check, the client opens the emailed link again ("did it work?") with `open(token, {consent: true})`.
+  4. The provider's "signed" event then arrives, and the provider retries it.
+- Expected: the signature is applied (CLIENT_SIGNED). The code was checked before the client signed.
+- Actual:
+  - Step 3 answers `codeNeeded` and emails a new code. It also sets `code_verified_at` back to NULL (`service.ts:377`, `codeVerifiedAt: null`).
+  - The event is then refused as `NO_CODE` (`service.ts:477`), and the retry is a `REPEAT`.
+  - Our record stays at `VIEWED/VIEWED` with the client unsigned, while the provider holds the client's signature.
+  - Entering the new code answers 409 `SIGNING_ENDED`, and the host link answers 409 `CLIENT_SIGNS_FIRST`.
+  - Nothing moves it again, so the agreement can never be completed.
+- Nothing hostile is needed: a late webhook and a second click on our own email link are enough.
+
+**R3-2. The catch-up can still be starved. (Minor; not wired yet)**
+- The new filter (`service.ts:110`) asks only for *some* active person with a licence record. `signatory()` (`service.ts:148`) also needs the duty keys of the representative of record when the host has no licence record.
+- Steps: firm A has 205 future bookings hosted by user-O, who holds no licence record. The two licensed people's role grants are ended. Firm B has one later booking.
+- Actual: the send answers `NO_LICENSED`, the catch-up gives `{sent: 0}`, and firm B's booking never gets its agreement.
+
+Verdict: Changes 0ccbd59c98ac08a96b09ff245c14a090697822c7

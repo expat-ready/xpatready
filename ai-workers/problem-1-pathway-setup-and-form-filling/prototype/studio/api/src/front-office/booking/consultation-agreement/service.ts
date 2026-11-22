@@ -44,6 +44,10 @@ const CODE_MINUTES = 10, CODE_TRIES = 6, LOCK_MINUTES = 15;
 /** A checked code opens the signing link for 30 minutes (FO-6's signing session, Sample); after that a new code is asked
  *  (break R2-1: a forwarded link never signs on an old code). A new code at most once a minute per signer (R2-2). */
 const CODE_SESSION_MS = 30 * 60_000, RESEND_GAP_MS = 60_000;
+/** A code is unspent when it was sent after the last check (its send time is its expiry less its life). code_verified_at
+ *  is never cleared: it is the last time the client checked a code, which the provider's "signed" needs (break R3-1). */
+const unspent = (c: { codeExpiresAt: Date | null; codeVerifiedAt: Date | null }) =>
+  !c.codeVerifiedAt || (!!c.codeExpiresAt && c.codeExpiresAt.getTime() - CODE_MINUTES * 60_000 > c.codeVerifiedAt.getTime());
 /** The door's limiter keeps at most this many addresses (R2-3): the oldest go first. */
 const DOOR_MAX_KEYS = 50_000;
 /** The public door's limit per IP (contracts §0.6; Sample, sized as the booking door's token limit). */
@@ -106,8 +110,12 @@ export class ConsultationAgreementService {
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
          -- only a booking that can be sent (its person has an email), so unsendable ones never fill the batch (break m6)
          and exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)
-         -- and a licensed person can sign for the firm (R2-4: a firm with none never fills the batch)
-         and exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id where s.firm_id = b.firm_id and s.status = 'ACTIVE')
+         -- and someone can sign for the firm, by signatory()'s rule (R2-4, R3-2: a firm with none never fills the batch)
+         and (exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id where s.firm_id = b.firm_id and s.id = b.staff_id and s.status = 'ACTIVE')
+              or exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id
+                          where s.firm_id = b.firm_id and s.status = 'ACTIVE'
+                            and (select count(distinct rp.permission_key) from platform_role_grant g join platform_role_permission rp on rp.role = g.role
+                                  where g.firm_id = s.firm_id and g.staff_id = s.id and g.ended_at is null and rp.permission_key = any(${[...DUTY_KEYS.represent]})) = ${DUTY_KEYS.represent.length}))
          and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
                           where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
@@ -369,16 +377,16 @@ export class ConsultationAgreementService {
       const line = (summary: string, after: Record<string, string | number | boolean | null>) => this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.code", entity: "fo_retainer", entityKey: agreementId, summary,
         detail: { agreementId, signerId }, before: { codeFailures: cur.codeFailures, locked: !!cur.lockedUntil }, after });
       if (!given) {
-        const live = !!cur.codeSha256 && !!cur.codeExpiresAt && cur.codeExpiresAt > now && !cur.codeVerifiedAt;
+        const live = !!cur.codeSha256 && !!cur.codeExpiresAt && cur.codeExpiresAt > now && unspent(cur);
         if (live && body.resend !== true) return "SENT" as const;
         if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * 60_000 > now.getTime() - RESEND_GAP_MS) return "TOO_SOON" as const;
         send = String(randomInt(0, 1_000_000)).padStart(6, "0");
         const failures = cur.lockedUntil ? 0 : cur.codeFailures;
-        await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null, codeVerifiedAt: null } });
+        await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null } });   // code_verified_at stays: the client did check a code once (R3-1)
         await line("Consultation agreement: a one-time code was emailed to the client.", { codeFailures: failures, locked: false });
         return "SENT" as const;
       }
-      const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && !cur.codeVerifiedAt;   // a used code is spent
+      const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && unspent(cur);   // a used code is spent
       const right = !!live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));
       if (right) {
         await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null } });

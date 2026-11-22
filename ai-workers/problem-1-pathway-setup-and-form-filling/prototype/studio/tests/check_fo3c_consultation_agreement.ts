@@ -268,6 +268,31 @@ try {
   await clock.advance({ minutes: 1, seconds: 1 });
   const resent = await op(r3.tok, { consent: true, resend: true });
   ok("FO-3c R2-2 fail/pass: a second code within a minute is refused (429); after a minute a new one is sent", tooSoon && resent.codeNeeded === true);
+  // R3-1: a client who signed at the provider, whose event is late, clicks the email again after the session: the new code
+  // must not undo the check their signature rests on. r3-1: the new code is accepted after the session.
+  const r31 = await sendOne(T.staffId, kim, 18);
+  await withCode(r31.tok, "kim@client.example");
+  const late = await signing.act(A, r31.q.providerDocumentId, r31.cl.id, "signed");   // not delivered yet
+  await clock.advance({ minutes: 31 });
+  await fails(() => op(r31.tok, {}), 409);   // the provider ended the client's part: 409, and no code is touched
+  const r31b = await sendOne(T.staffId, kim, 19);
+  await withCode(r31b.tok, "kim@client.example");
+  await clock.advance({ minutes: 31 });
+  const again31 = await op(r31b.tok, {});   // a stale session on an unsigned agreement: a new code
+  const late31 = await svc.signingEvent(late[0]);
+  ok("FO-3c R3-1 pass: the late \"signed\" of a client who checked a code is applied (CLIENT_SIGNED) after a later visit", late31.applied && sql(`select status from fo_retainer where id = '${r31.id}'`) === "CLIENT_SIGNED", late31);
+  const [lateB] = await signing.act(A, r31b.q.providerDocumentId, r31b.cl.id, "signed");
+  const lateB31 = await svc.signingEvent(lateB);
+  const newCode = /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)!.text)![1];
+  ok("FO-3c R3-1 fail: a new code after a stale session does not clear the earlier check: the provider's later \"signed\" is applied, not refused NO_CODE",
+    again31.codeNeeded === true && lateB31.applied && lateB31.reason !== "NO_CODE", { again31, lateB31 });
+  const r31c = await sendOne(T.staffId, kim, 20);
+  await withCode(r31c.tok, "kim@client.example");
+  await clock.advance({ minutes: 31 });
+  await op(r31c.tok, {});
+  const code31 = /\b(\d{6})\b/.exec(mail.inbox("kim@client.example").filter((x) => x.templateKey === "consultation_agreement.code").at(-1)!.text)![1];
+  const ok31 = await op(r31c.tok, { consent: true, code: code31 });
+  ok("FO-3c r3-1 pass/fail: after a stale session the new code is accepted (the link opens), and the code used before it is refused", /^https:\/\/signing\.fake\.invalid\//.test(ok31.link?.url ?? "") && newCode !== code31, ok31);
   const r3b = await sendOne(T.staffId, kim, 15);
   await op(r3b.tok, { consent: true });   // consent recorded, code not checked
   const [noCode] = await signing.act(A, r3b.q.providerDocumentId, r3b.cl.id, "signed");
