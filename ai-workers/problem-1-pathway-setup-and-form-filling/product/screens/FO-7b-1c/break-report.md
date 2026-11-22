@@ -76,3 +76,24 @@ Method: a temporary harness copied from `tests/check_fo7b_refunds.ts` with about
 - **Races and records.** Four rounds of 8 mixed Keep, Refund and refund calls across two payments: never a 500, and kept credit stayed at or below the amount paid over. Each refund has one `payment.refunded` audit line and one event; each Keep has one `extra_kept` line. A Case Officer gets 403.
 
 Verdict: Approve on `872a2b8b5`. F1–F4 are fixed (F6 was not retested). F5 is fixed on the extra, but plain refunds bypass it (R2-2, for the Lead). R2-1 to R2-4 are Minor follow-ups.
+
+## Round 3 (diff 872a2b8b5..d5cb7512b)
+
+Method: a temporary copy of `tests/check_fo7b_refunds.ts` (psql path changed to `/usr/local/bin`), plus about 45 more cases on a scratch database on 127.0.0.1:54329. The database was dropped and the copy deleted afterwards. All 27 shipped cases pass in the copy.
+
+**R3-1: Minor (comes from the R2-4 fix).** A refund was recorded with an explicit past date (`refundedOn: yesterday`). The same key sent again with no date now gives 200 `replayed` and the refund still carries yesterday's date. Round 2 recorded this case as a 409 that held. A missing date means "today", so this is a different request. It is the same on the choice route. Cause: `refunds.ts:124` skips the date check whenever no date is sent, and the audit line does not record whether the first request sent a date. Nothing is paid twice.
+
+**What held**
+- **R2-1, the cap.** Each case compared the app's `leftMinor` with a rolled-back direct `INSERT` into `money_refund`. The database accepted exactly `left` and refused `left`+1, and the app answered 409 OVER_REFUND at `left`+1. `left` was never MONEY_RULE and never negative. Cases tested:
+  - two payments with Keep on one;
+  - a part refund then a partial Keep of 20.00, plus a second payment kept;
+  - a 50.00 KEPT then a REVERSED -20.00 by SQL, a refund of 20.00 after it, then a full reversal (130.00 left, and the extra waits again for exactly 30.00);
+  - a KEPT seeded on each of two payments, one partly reversed;
+  - a KEPT equal to the whole payment;
+  - a credit note after Keep;
+  - 12 refunds at once next to kept credit, and Keep racing two refunds (only 201 or 409 OVER_REFUND, never MONEY_RULE or a 500).
+- **R2-3, Keep's reason.** RLO, LRI, a lone high or low surrogate, 201 characters, `""`, spaces only, zero-width characters only, a soft hyphen only, a Hangul filler, NUL, a number and `null` all give 422 with nothing kept and no audit line. Exactly 200 characters, non-English text and emoji give 201. Parity: Keep's reason and a plain refund's reason give the same answer for each of 8 strings. Seen, not in this diff: `money_text_ok` accepts ZWSP, BOM, a word joiner, ALM, LRM and tag characters when visible text sits around them. It does so on both routes, although the 422 wording says "no hidden ... characters".
+- **R2-4, dates on retry.** A retry with no date, or with exactly the stored default date, gives 200 (`refunds.ts:124`). Another date gives 409 KEY_USED. With the clock moved 24 h forward: no date gives 200, the stored date gives 200, the new today gives 409, on both routes. A future date or one before 2000 on a retry still gives 422. One row per key.
+- **Regressions.** The same key sent 8 times at once wrote one row with no 500. A Case Officer gets 403 and firm B gets 404, Keep with a reason included. An uncleared cheque gives 409 NOT_CLEARED, and trust gives 409 TRUST_EXTRA, before the reason is read. Audit lines and events still equal refunds, and `extra_kept` lines still equal Keeps.
+
+Verdict: Approve on `d5cb7512b`. R2-1, R2-3 and R2-4 are fixed. R3-1 is a Minor follow-up.
