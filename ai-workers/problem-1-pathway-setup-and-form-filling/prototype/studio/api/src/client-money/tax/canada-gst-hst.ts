@@ -12,6 +12,8 @@
 //
 // No provincial tax (PST, RST, QST) is held or computed here: the PST column is quoted, never read into a rate.
 export const CRA_RATES_URL = "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/gst-hst-businesses/charge-collect-which-rate/calculator.html";
+/** The page's own "Date modified": a read before it cannot quote the page as it is now. */
+export const PAGE_MODIFIED = "2025-04-01";
 /** The date this lane read the page at source (a headless browser, HTTP 200). */
 const READ_ON = "2026-11-22";
 
@@ -92,6 +94,7 @@ export function tableProblems(table: unknown, today: string = new Date().toISOSt
     let host = ""; try { const u = new URL(String(s.url)); host = u.protocol === "https:" && !u.username && !u.password ? u.hostname : ""; } catch { /* not a URL */ }
     if (!text(s.url) || host !== "www.canada.ca") out.push(`${c}: the source has no URL on https://www.canada.ca`);
     if (!isDay(s.readOn)) out.push(`${c}: the source has no read date (YYYY-MM-DD)`);
+    else if (s.readOn < PAGE_MODIFIED || s.readOn > today) out.push(`${c}: the read date is not between the page's "Date modified" (${PAGE_MODIFIED}) and today`);
     if (r.province !== PROVINCE_NAMES[c as ProvinceCode]) out.push(`${c}: the province is not ${PROVINCE_NAMES[c as ProvinceCode]}`);
     if (typeof rate === "number" && rate < LOWEST_RATE_PPM) out.push(`${c}: the rate (${rate} ppm) is below the 5 % GST (a unit mistake: parts per million, never basis points)`);
     const q = text(s.quote) ? QUOTE.exec(s.quote) : null;

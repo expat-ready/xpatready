@@ -14,7 +14,7 @@ import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
 import { assertCited, CRA_RATES_URL, PROVINCE_CODES, PROVINCE_TAX_RATES, tableProblems, type ProvinceTaxTable } from "../api/src/client-money/tax/canada-gst-hst.ts";
@@ -62,6 +62,10 @@ ok("FO-7g DW1 fail (planted): an entry with no source, a 14th code, a missing pr
   && !DW1(planted("ON", { ...T.ON, ratePpm: 13.5 })) && !DW1(planted("ON", { ...T.ON, ratePpm: 1_000_001 })));
 ok("FO-7g load fail (review minor 1): the guard the module runs at load (assertCited) throws on an uncited table and on a mismatched rate, and returns the cited table unchanged",
   throws(() => assertCited(planted("ON", without(T.ON, "source")))) && throws(() => assertCited(planted("NS", { ...T.NS, ratePpm: 150000 }))) && assertCited(T) === T);
+ok("FO-7g load fail (round 2, minor A): the module calls assertCited on its own table at load, as a top-level statement",
+  /\nassertCited\(PROVINCE_TAX_RATES\);\s*$/.test(readFileSync(join(import.meta.dirname, "..", "api", "src", "client-money", "tax", "canada-gst-hst.ts"), "utf8")));
+ok("FO-7g source fail (planted, round 2 minor C): a read date after today, or before the page's \"Date modified\" (2025-04-01), is refused",
+  [["2099-01-01"], ["1900-01-01"], ["2025-03-31"]].every(([d]) => tableProblems(planted("ON", withSource(T.ON, { ...T.ON.source, readOn: d }))).some((p) => /ON: the read date is not between/.test(p))));
 ok("FO-7g DW1: the loaded table is frozen (an entry, its source and the table refuse a change)", Object.isFrozen(T) && Object.values(T).every((e) => Object.isFrozen(e) && Object.isFrozen(e.source))
   && throws(() => { (T.ON as { ratePpm: number }).ratePpm = 1; }, TypeError));
 
@@ -93,7 +97,7 @@ const nsLater = planted("NS", { ...T.NS, effectiveFrom: "2999-01-01" });
 ok("FO-7g source fail (planted, break m2): Alberta's whole entry under ON, and 13 % in basis points with its quote edited to \"0.13%\", are refused by the table's own check (not only by DW10)",
   tableProblems(onAsAlberta).some((p) => /ON: the province is not Ontario/.test(p)) && tableProblems(onBp).some((p) => /ON: the rate \(1300 ppm\) is below the 5 % GST/.test(p)), [tableProblems(onAsAlberta), tableProblems(onBp)]);
 ok("FO-7g source fail (planted, break m3): a start date after today is refused (a rate that has not begun is never charged); today's table passes as of its own start date",
-  tableProblems(nsLater).some((p) => /NS: the start date is after today/.test(p)) && tableProblems(T, "2025-04-01").length === 0 && tableProblems(T, "2025-03-31").some((p) => /NS: the start date is after today/.test(p)));
+  tableProblems(nsLater).some((p) => /NS: the start date is after today/.test(p)) && !tableProblems(T, "2025-04-01").some((p) => /start date/.test(p)) && tableProblems(T).length === 0 && tableProblems(T, "2025-03-31").some((p) => /NS: the start date is after today/.test(p)));
 
 // DW2 (pure): the firm's province.
 const DW2 = (t: ProvinceTaxTable) => PROVINCE_CODES.every((c) => { const d = taxDefault({ firmProvince: c, registered: true }, t); return d.source === "FIRM_PROVINCE" && d.taxName === T[c].taxName && d.ratePpm === T[c].ratePpm && d.registered && !d.outsideCanada && d.warning === null; });
@@ -134,6 +138,10 @@ ok("FO-7g DW6 fail: the rule takes no rate (a typed ratePpm beside the line chan
 ok("FO-7g DW6 fail (break m1): a default that is not 0 or a rate of the table (1300, 99, -1, text, nothing) and a missing line are refused, never passed through",
   [1300, 99, -1, "130000", undefined, NaN].every((ratePpm) => throws(() => lineRatePpm({ kind: "FEE" }, { ratePpm } as never), TaxRuleRefused))
   && throws(() => lineRatePpm(null as never, on), TaxRuleRefused) && throws(() => lineRatePpm({ kind: "FEE" }, null as never), TaxRuleRefused) && lineRatePpm({ kind: "FEE" }, { ratePpm: 0 }) === 0);
+
+{ let reads = 0; const getter = { get ratePpm() { return reads++ === 0 ? 0 : 1300; } };
+  const got = (() => { try { return lineRatePpm({ kind: "FEE" }, getter); } catch (e) { return e; } })();
+  ok("FO-7g DW6 fail (round 2, minor B): a default whose ratePpm changes between reads (0, then 1300) never yields 1300: it is read once", got === 0 && reads === 1, [got, reads]); }
 
 // --------------------------------------------------------------------------------------------- the scratch database
 execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);

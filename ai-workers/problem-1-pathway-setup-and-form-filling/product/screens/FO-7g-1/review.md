@@ -61,3 +61,87 @@ None.
 * Full `ci`, a real screen reader, and an intended user's unaided walk (D17 and D20 stay with the founder).
 
 **Verdict: Approve** (84a3e1ab: no open Blocker or Major). Minors to fix (not blocking): 1. `canada-gst-hst.ts:105-106` load-time refusal untested · 2. `check_fo7g_tax_defaults.ts:108` DW12 fail case does not test the code · 3. DW4 deviation (`check_fo7g_tax_defaults.ts:183`) missing from the PR body · 4. PR body "Checks and results" empty · 5. breaker m1-m3: fixed in 6730ec00d, re-review that diff.
+
+## Round 2 (diff 84a3e1ab..d87e1f41)
+Same reviewer, 22 Nov 2026. This round re-reviews the diff only (P-277), and I also act as the breaker for it (money). **Commit reviewed: `d87e1f41d2219d3cfa49a52d7b648c55eeaa95de`.** Scope: `git diff 84a3e1ab..d87e1f41 -- …/prototype/studio`, which touches 3 files: `canada-gst-hst.ts` (+23/-4), `defaults.ts` (+6/-1) and `check_fo7g_tax_defaults.ts` (+22/-4). No route, schema, migration, `invoices/` or `taxDefault` edit. The other two files in the commit range are the round-1 `review.md` and `break-report.md`.
+
+### What I ran (on d87e1f41)
+* `check_fo7g_tax_defaults.ts`: **56 passed, 0 failed, exit 0** (8.2 s). That is round 1's 52 plus 4 new cases. Unchanged: `check_fo7b_invoices` **44/0**, `check_fo7a_money_schema` **122/0** and `check_fo7ts_money_settings` **107/0**, each exit 0.
+* `typecheck.mjs` (CI's type job): api 15 known errors, 0 new; web 0. **PASS.**
+* **Boot:** importing the app's real `api/src/features.ts` and `features/client-money-tax.ts` under tsx works. `assertCited(PROVINCE_TAX_RATES)` runs at import and passes on today's table (default `today` = 2026-11-22 UTC). The check's own Nest app also boots with the feature.
+* **The new checks against the real table:** the table loads as of 2025-04-01, 2026-11-22 and 2099-12-31. It is refused as of 2025-03-31, because NS's real start date (2025-04-01) would then be after today, which is correct. All 13 `PROVINCE_NAMES` equal the real entries' `province` and their quotes' first column, so the code-to-name check passes on the real data.
+* **`lineRatePpm` still takes every answer `taxDefault` gives.** I tried 128 combinations: the 13 codes, no province, a spelled-out province and not registered, times FEE, DISBURSEMENT and GOVERNMENT_FEE, times taxable unset, true and false (a government fee set taxable is left out, because that is refused on purpose). **0 were wrong.**
+* **Mutation pass:** 11 plants, one at a time, run in a scratch copy whose three files are byte-identical to `git show d87e1f41:`. Each file was restored and compared afterwards. 10 were caught and 1 survived:
+
+| Plant | Result |
+|---|---|
+| M1: remove the load call `assertCited(PROVINCE_TAX_RATES)` (`canada-gst-hst.ts:121`) | **survived, 56/56** (Minor A) |
+| M2: `assertCited` never throws | caught (`:63` case) |
+| M3: remove the code-to-name check (`:95`) | caught (`:93`) |
+| M4: remove the lowest-rate check (`:96`) | caught (`:93`) |
+| M5: remove the start-date-after-today check (`:108`) | caught (`:95`) |
+| M6: default `today` set to 9999-12-31 | caught (`:95`) |
+| M7: remove `lineRatePpm`'s default check (`defaults.ts:59`) | caught (`:134`) |
+| M8: remove the null-line check (`defaults.ts:57`) | caught (`:134`) |
+| M9: allow any whole number as the default | caught (`:134`) |
+| M10: refuse 0 as a default | caught (the check stops with `TaxRuleRefused`) |
+| M11: `taxForLine` rounds half up | caught (DW12 pass, and DW12 stored) |
+
+### Each fix
+* **Breaker m1 (`defaults.ts:57-60`): correct.** 1300, 99, -1, "130000", undefined, NaN, a `Number` object, a null default and a null line are all refused with `TaxRuleRefused`. A government fee with a bad default is now refused instead of giving 0. That fails closed, and no real caller hits it, because `taxDefault` gives only 0 or a table rate. The fail test (`:134`) fails without the fix (M7, M8, M9). See Minor B for the one way past it.
+* **Breaker m2 (`canada-gst-hst.ts:20-25`, `:95-96`): correct.** Alberta's whole entry under ON is refused ("the province is not Ontario"). So is a trailing space in the name. The fail test (`:93`) fails without either half (M3, M4).
+* **Breaker m3, start date (`canada-gst-hst.ts:76`, `:108`): correct for `effectiveFrom`.** Tomorrow (2026-11-23), 2999 and a scheduled ON 15 % from 2030 are refused, today (2026-11-22) loads, and a `Date` object is refused as "not a date". `isDay` checks the format first, so the string comparison is safe. The fail test (`:95`) uses fixed dates for its pass half, so it will not drift, and it fails without the fix (M5, M6). The breaker's second half (a `readOn` of 2099) is not covered: see Minor C.
+* **Review minor 1 (`canada-gst-hst.ts:114-121`): partly fixed.** `assertCited` exists, is exported, is called at load, and has a fail test (M2 is caught). But deleting the call itself still passes the check (M1). This is exactly the fix I asked for in round 1, so the gap is mine as much as the builder's: Minor A.
+* **Review minor 2 (`tests/check_fo7g_tax_defaults.ts:117-120`): fixed.** DW12 is now a predicate over a rounding rule. It passes for `taxForLine` and refuses `halfUp` and a 15 % planted default. A half-up `taxForLine` fails the pass case (M11).
+* **Review minors 3-4 (PR body):** not in this diff. GitHub's REST API lists no pull request for `claude/sharp-tesla-7vrduw` yet, so they stay open for when the PR is opened.
+
+### Breaker pass on this diff (money): basis points and uncited rates
+* **Basis points: I could not get one past the load check.** I planted each of these, and each was refused by the module's own check (not only by DW10):
+  * ON 1300 with its quote set to "0.13%"
+  * ON 13 with "0.0013%"
+  * AB 500 with "0.05%"
+  * AB 49 999 with "4.9999%"
+  * ON 0 with "0%"
+  * ON 130 000 000
+  * ON 5 000 000 with "500%"
+  * ON as a bigint or as text
+
+  The rate must equal its quote's percentage in ppm. So a basis-point value either sits under 50 000 (refused by `:96`) or would need a quote of 500 % or more (refused by the 1,000,000 cap).
+* **Uncited but consistent values still load** (no change from round 1; not a new finding). These all pass `tableProblems`:
+  * ON 150 000 with the quote edited to "Ontario | 15% | N/A"
+  * AB 60 000 with "6%"
+  * a URL of `https://www.canada.ca/en/anything`
+
+  The quote is the builder's own copy and the load check never compares it with the page. **DW10** (the brief's table pinned in the check) is what fails them in CI. That stays the guard, so DW10 must never be edited to match a table change without a fresh read of the page.
+* **Two ways past the new checks:** a `readOn` in the future (Minor C), and a default whose value changes between reads (Minor B).
+
+### Journey score
+No route, guard, query or answer code changed (`routes.ts`, `taxDefault`, the feature file and the table values are byte-identical to 84a3e1ab). The check's route cases (DW2, DW4, DW7, keys and inputs, all with the API in the loop) ran green again on d87e1f41. I did not re-walk with curl. **Journey score: 9/10 (carried from round 1; nothing on the journey changed). Pass.**
+
+### Blocker
+None.
+
+### Major
+None.
+
+### Minor
+A. **The call at load still has no test** (`canada-gst-hst.ts:121`; test `tests/check_fo7g_tax_defaults.ts:63`). Removing `assertCited(PROVINCE_TAX_RATES);` leaves 56/56. CI would still fail an uncited table through the "source pass" case (`:42`), but would not show that the app refuses to load one. **Fix (one line):** assert that the module's source holds the call, for example `readFileSync(<canada-gst-hst.ts>).includes("\nassertCited(PROVINCE_TAX_RATES);")`, or import a planted copy in a child `tsx` and expect a non-zero exit.
+
+B. **`lineRatePpm` reads `dflt.ratePpm` more than once** (`defaults.ts:59` checks it, `:67` returns it). A getter or Proxy that answers 0 on the check and 1300 on the return gets **1300** out, and a Proxy gets **99** out. A JSON body cannot build a getter, and part 1w passes `taxDefault`'s plain object, so nothing realistic reaches this. It is still the same read-twice pattern the breaker tried on `kind` in round 1. **Fix:** read once (`const rate = dflt?.ratePpm;`), check `rate`, return `rate`. Add a getter case to `:134`.
+
+C. **A read date in the future still loads** (`canada-gst-hst.ts:94`; breaker m3's second half). `readOn: "2099-01-01"` passes. So does `1900-01-01`, which falls before the page's own "Date modified: 2025-04-01". A read date that has not happened yet is not a citation (AGENTS rule 4). **Fix:** give `readOn` the same `> today` refusal as `effectiveFrom` at `:108`, with one planted case beside `:95`.
+
+### Observations (not findings)
+1. **The load check now reads the clock.** A host whose clock is before 2025-04-01 refuses to boot. That fails closed, so it is acceptable. Also, a rate change can only be entered on or after its start day (UTC), so a scheduled change means a deploy on that day. The start date is compared in UTC, so near midnight it can be a day off from Canadian local time. Effective dating belongs to a later part; I note it so part 1w and part 3 do not assume the table can hold an announced change ahead of time.
+2. `lineRatePpm` accepts any table rate, not the firm's own: NS 140 000 passes for an Ontario firm. The doc (`defaults.ts:55`) says exactly this ("0 or one of the table's rates"). Part 1w must pass `taxDefault`'s answer for that firm and never a number from the request (round 1, Observation 3 still applies).
+3. `-0` passes as 0. That is harmless: `taxForLine` gives 0.
+
+### What I could not check
+* The CRA page at source (still blocked here; same as round 1).
+* The PR body: no PR exists yet.
+
+**Verdict: Approve** (d87e1f41: no open Blocker or Major; the five fixes asked for are in and correct, and none of them breaks boot, the real table or `taxDefault`'s answers). Minors to fix (not blocking):
+* A. `canada-gst-hst.ts:121`: the load call is untested (test at `tests/check_fo7g_tax_defaults.ts:63`).
+* B. `defaults.ts:59` and `:67`: `dflt.ratePpm` is read twice, so a getter gets 1300 past.
+* C. `canada-gst-hst.ts:94`: a future `readOn` is accepted.
+* Round-1 minors 3-4 (PR body) stay open until the PR exists.

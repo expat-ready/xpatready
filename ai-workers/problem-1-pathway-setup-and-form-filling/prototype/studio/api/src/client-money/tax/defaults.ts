@@ -56,7 +56,8 @@ export class TaxRuleRefused extends Error {}
 export function lineRatePpm(line: { kind: "FEE" | "GOVERNMENT_FEE" | "DISBURSEMENT"; taxable?: boolean }, dflt: Pick<TaxDefault, "ratePpm">): number {
   if (line === null || typeof line !== "object") throw new TaxRuleRefused("A line is needed.");
   // The default must be one taxDefault can give: 0 or a rate of the cited table, never a number from a request (break m1).
-  if (!dflt || typeof dflt !== "object" || !(dflt.ratePpm === 0 || Object.values(PROVINCE_TAX_RATES).some((e) => e.ratePpm === dflt.ratePpm)))
+  const rate: unknown = dflt !== null && typeof dflt === "object" ? dflt.ratePpm : undefined;   // read once (round 2, minor B)
+  if (!(rate === 0 || Object.values(PROVINCE_TAX_RATES).some((e) => e.ratePpm === rate)))
     throw new TaxRuleRefused("The default rate is not one of the cited table's rates (or 0).");
   if (line.taxable !== undefined && typeof line.taxable !== "boolean") throw new TaxRuleRefused("A line is taxable or not taxable: no other value is taken.");
   if (line.kind === "GOVERNMENT_FEE") {
@@ -64,5 +65,5 @@ export function lineRatePpm(line: { kind: "FEE" | "GOVERNMENT_FEE" | "DISBURSEME
     return 0;
   }
   if (line.kind !== "FEE" && line.kind !== "DISBURSEMENT") throw new TaxRuleRefused("This kind of line is not known.");
-  return line.taxable === false ? 0 : dflt.ratePpm;
+  return line.taxable === false ? 0 : (rate as number);
 }
