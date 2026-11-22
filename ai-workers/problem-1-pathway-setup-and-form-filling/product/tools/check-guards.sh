@@ -237,7 +237,8 @@ CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/
 36 stale|product/tools/app-view-check.sh|s/^STALE_MIN=12 /STALE_MIN=35 /|check-app-view.sh
 36 rows|product/tools/app-view-check.sh|s/^sed -n 2p "\$f" .*/true/|check-app-view.sh
 36 read|product/tools/lead-watch.sh|s/^  if ! grep -qE .(^. )rows=\[0-9\]+. <<<"\$first"; then$/  if false; then/|check-app-view.sh
-36 click|product/tools/app-view.js|s/btns.forEach((b) => { b.click(); clicks++; });/clicks++;/|check-app-view.sh
+36 click|product/tools/app-view.js|s/targets.forEach((t) => { t.click(); clicks++; });/clicks++;/|check-app-view.sh
+36 any|product/tools/app-view.js|s/if (ownText(el) === SHOW_MORE)/if (el.tagName === "BUTTON" \&\& ownText(el) === SHOW_MORE)/|check-app-view.sh
 36 jobs|product/tools/runs-waiting.py|s/ if x.get("status") == "in_progress")/)/|check-runs-waiting.sh'
 echo "--- each test without its guard (must FAIL)"
 while IFS='|' read -r g f edit t; do

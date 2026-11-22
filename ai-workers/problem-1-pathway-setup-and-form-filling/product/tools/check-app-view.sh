@@ -42,17 +42,39 @@ o=$(lv "$fifty"); ok "exactly 50 sessions (the API's cap): WARNING list may be c
 o=$(lv "$(jq -c '. + {resume_token: "rt"}' <<< "$fifty")"); ok "50 sessions plus a resume_token: the one 50-of-50 WARNING" "$(sed -n 2p <<< "$o" | grep -qx 'WARNING: list may be cut (50 of 50): archive ended sessions' && [ "$(grep -c '^WARNING' <<< "$o")" = 1 ] && echo 1)" "$(head -3 <<< "$o")"
 o=$(lv "$(jq -c '{data: .data[1:]}' <<< "$fifty")"); ok "49 sessions, no marker: no WARNING" "$(! grep -q WARNING <<< "$o" && echo 1)" "$(head -2 <<< "$o")"
 o=$(lv "$(cat "$T/sessions.json")" 7); ok "7 sessions at a limit of 7: WARNING (7 of 7)" "$(grep -qx 'WARNING: list may be cut (7 of 7)' <<< "$o" && echo 1)" "$o"
-# P-789 (2): the page clicks every button whose text is exactly "Show more" until none remains (~1 s between rounds), then counts rows.
-xp=$(node -e '
-const v = require(process.argv[1]); let shown = 0, waits = [];
-const mk = (t, f) => ({ textContent: t, click: f });
-const doc = { querySelectorAll: (sel) => sel === "button"
-  ? [mk("Show more results", () => { throw new Error("not exact"); }), mk(" Archive ", () => {}), ...(shown < 3 ? [mk(" Show more ", () => { shown++; })] : [])]
-  : Array.from({ length: 50 + shown * 10 }, (_, i) => ({ getAttribute: () => "/code/session_" + (i % (50 + shown * 10)) })) };
-v.expandAll(doc, async (ms) => { waits.push(ms); }).then((r) => console.log(JSON.stringify({ ...r, waits, rows: v.countRows(doc) })));
-' "$TOOLS/app-view.js" 2>&1)
-ok "app-view.js clicks Show more until none remains (3 rounds), 1 s apart, only the exact text, then counts 80 rows" "$(jq -e '.clicks == 3 and .done == true and .waits == [1000,1000,1000] and .rows == 80' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
-xp=$(node -e 'const v=require(process.argv[1]); const doc={querySelectorAll:()=>[{textContent:"Show more",click(){}}]}; v.expandAll(doc, async()=>{}).then(r=>console.log(JSON.stringify(r)))' "$TOOLS/app-view.js" 2>&1)
+# P-789 (2): the page clicks every "Show more" until none remains (~1 s between rounds), then counts rows. Lead read of
+# #2964: on claude.ai/code it is a plain element (generic), not a button: any element whose own text is exactly "Show more".
+# Stand-in DOM: el(tag, ownText, children, onClick); closest() walks up to a button/a/role=button/onclick/tabindex.
+SD='
+const el = (tag, own, kids = [], onClick = null, attrs = {}) => {
+  const e = { tagName: tag, attrs, kids, onClick, parent: null,
+    childNodes: [...(own == null ? [] : [{ nodeType: 3, textContent: own }]), ...kids],
+    click() { if (!this.onClick) throw new Error("clicked " + tag + " with no handler"); this.onClick(); },
+    closest() { for (let n = this; n; n = n.parent) if (n.tagName === "BUTTON" || n.tagName === "A" || n.attrs.role === "button") return n; return null; } };
+  kids.forEach((k) => { k.parent = e; }); return e; };
+const all = (root) => [root, ...root.kids.flatMap(all)];
+const docOf = (build, rows) => ({ querySelectorAll: (sel) => sel === "*" ? all(build()) : Array.from({ length: rows() }, (_, i) => ({ getAttribute: () => "/code/session_" + i })) });
+'
+sm() { node -e "const v=require(process.argv[1]); $SD; $1" "$TOOLS/app-view.js" 2>&1; }
+xp=$(sm 'let shown = 0, waits = [];
+const doc = docOf(() => el("DIV", null, [el("BUTTON", "Show more results", [], () => { throw new Error("not exact"); }),
+  el("DIV", null, [el("SPAN", " Archive ")]), ...(shown < 3 ? [el("DIV", null, [el("SPAN", " Show more ", [], () => { shown++; })])] : [])]), () => 50 + shown * 10);
+v.expandAll(doc, async (ms) => { waits.push(ms); }).then((r) => console.log(JSON.stringify({ ...r, waits, rows: v.countRows(doc) })));')
+ok "Show more as a plain span (claude.ai/code): clicked until none remains (3 rounds), 1 s apart, only the exact text, then 80 rows" "$(jq -e '.clicks == 3 and .done == true and .waits == [1000,1000,1000] and .rows == 80' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
+xp=$(sm 'let shown = 0;
+const doc = docOf(() => el("NAV", null, shown < 2 ? [el("DIV", "Show more", [], () => { shown++; })] : []), () => 1);
+v.expandAll(doc, async () => {}).then((r) => console.log(JSON.stringify(r)));')
+ok "Show more as a div with no clickable ancestor: the div itself is clicked (2 rounds)" "$(jq -e '.clicks == 2 and .done == true' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
+xp=$(sm 'let hits = 0;
+const doc = docOf(() => el("DIV", null, hits < 1 ? [el("BUTTON", null, [el("SPAN", "Show more")], () => { hits++; })] : []), () => 1);
+v.expandAll(doc, async () => {}).then((r) => console.log(JSON.stringify({ ...r, hits })));')
+ok "Show more in a span inside a button: the button is clicked, once a round" "$(jq -e '.clicks == 1 and .hits == 1 and .done == true' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
+xp=$(sm 'let shown = 0;
+const doc = docOf(() => el("UL", null, shown < 1 ? [el("BUTTON", " Show more ", [], () => { shown++; })] : []), () => 1);
+v.expandAll(doc, async () => {}).then((r) => console.log(JSON.stringify(r)));')
+ok "Show more as a real button still works" "$(jq -e '.clicks == 1 and .done == true' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
+xp=$(sm 'const doc = docOf(() => el("DIV", null, [el("SPAN", "Show more", [], () => {})]), () => 1);
+v.expandAll(doc, async () => {}).then((r) => console.log(JSON.stringify(r)));')
 ok "a Show more that never goes away stops after 100 rounds and says not done" "$(jq -e '.done == false and .rounds == 100' <<< "$xp" >/dev/null 2>&1 && echo 1)" "$xp"
 grep -q 'return expandAll(document' "$TOOLS/app-view.js" && grep -q 'lines(j, Date.now(), LIMIT, rows)' "$TOOLS/app-view.js"
 ok "in the browser, app-view.js expands before it counts and prints rows=N" "$([ $? = 0 ] && echo 1)"

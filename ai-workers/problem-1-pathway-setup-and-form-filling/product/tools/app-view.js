@@ -12,7 +12,7 @@
 // gives at most API_CAP (50) sessions plus a resume_token, whatever the limit, and no paging parameter reaches the rest;
 // so resume_token counts as a "more" marker, and exactly 50 sessions is "WARNING: list may be cut (50 of 50): archive
 // ended sessions" (the sidebar shows the same 50; archiving ended ones is the only way to see the rest).
-// P-789 (2) (founder, 22 Nov: what was agreed must be live): before it reads the list it clicks every button whose text is
+// P-789 (2) (founder, 22 Nov: what was agreed must be live): before it reads the list it clicks every element whose own text is
 // exactly "Show more" until none remains (a loop, SHOW_MORE_WAIT_MS between rounds, at most SHOW_MORE_MAX rounds), then
 // counts the session rows the sidebar shows. The header says "rows=N" (sidebar rows after the clicks); app-view-read in
 // lead-watch.sh refuses a summary without it. More sidebar rows than API sessions: "WARNING: list may be cut" (an ACT).
@@ -62,13 +62,21 @@
     return json.has_more === true || json.has_more === 'true'
       || ['next_page', 'next_cursor', 'next', 'next_page_token', 'resume_token'].some((k) => json[k] != null && json[k] !== '' && json[k] !== false);
   }
-  // P-789 (2): click every "Show more" until none remains; returns the rounds and clicks it took.
+  // P-789 (2): click every "Show more" until none remains; returns the rounds and clicks it took. Lead read of #2964: on
+  // claude.ai/code the sidebar's "Show more" is a plain element (accessibility tree: generic), not a button. So any element
+  // whose OWN text (its text nodes, not its children's) is exactly "Show more" counts; the click goes to its closest
+  // clickable ancestor (button, link, role=button, onclick, tabindex), else to the element itself; each target once a round.
+  const CLICKABLE = 'button, a, [role="button"], [onclick], [tabindex]';
+  const ownText = (el) => clean(Array.from(el.childNodes || []).filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' '));
   async function expandAll(doc, sleep) {
     let rounds = 0, clicks = 0;
     for (; rounds < SHOW_MORE_MAX; rounds++) {
-      const btns = Array.from(doc.querySelectorAll('button')).filter((b) => clean(b.textContent) === SHOW_MORE);
-      if (!btns.length) return { rounds, clicks, done: true };
-      btns.forEach((b) => { b.click(); clicks++; });
+      const targets = new Set();
+      for (const el of Array.from(doc.querySelectorAll('*'))) {
+        if (ownText(el) === SHOW_MORE) targets.add((typeof el.closest === 'function' && el.closest(CLICKABLE)) || el);
+      }
+      if (!targets.size) return { rounds, clicks, done: true };
+      targets.forEach((t) => { t.click(); clicks++; });
       await sleep(SHOW_MORE_WAIT_MS);
     }
     return { rounds, clicks, done: false };
