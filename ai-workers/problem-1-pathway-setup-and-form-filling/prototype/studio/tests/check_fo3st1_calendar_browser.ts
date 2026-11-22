@@ -279,6 +279,9 @@ try {
   };
   const wk = await offText("week", "mine", nextMonday);
   const shaded = await co.locator(`[data-cell^="${offDay}T"][data-off-hour]`).count(), shadedElsewhere = await co.locator(`[data-off-hour]:not([data-cell^="${offDay}T"])`).count();
+  // Break M1: the shading is seen, not only marked: an off hour's background differs from the same hour the day before.
+  const bg = (sel: string) => co.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  const [offBg, freeBg] = [await bg(`[data-cell="${offDay}T08"]`), await bg(`[data-cell="${plus(offDay, -1)}T08"]`)];
   await axe("QA-743 Mine week with a day off", co); await shot(co, "time-off-week-mine-1440");
   // Not a booking: no button or link in it, and a click opens nothing.
   const inert = await co.locator("[data-off-row] button, [data-off-row] a, [data-off-row] [role=button]").count();
@@ -291,15 +294,19 @@ try {
   await axe("QA-743 Mine list with a day off", co); await shot(co, "time-off-list-mine-1440");
   ok("QA-743 R1.39 fail (before): with no time off saved, Client C's own week shows none", offBefore === 0, { offBefore });
   ok("QA-743 R1.39 pass: a day off saved on Availability (201) shows on that day in Mine › Week (\"Time off · all day\", its hours shaded, no other day), Day and List, in office time; it is text, not a booking (a click opens nothing)",
-    savedOff.status === 201 && wk.mine === "Time off · all day" && wk.all === 1 && shaded > 0 && shadedElsewhere === 0 && dy.mine === "Time off · all day" && dyNone.all === 0 && ls.mine.includes(", all day") && ls.mine.includes("Client C") && ls.mine.includes("Time off") && inert === 0 && listInert === 0 && !openedByClick,
-    { saved: savedOff.status, wk, shaded, shadedElsewhere, dy, dyNone, ls, inert, listInert, openedByClick });
+    savedOff.status === 201 && wk.mine === "Time off · all day" && wk.all === 1 && shaded > 0 && shadedElsewhere === 0 && offBg !== freeBg && dy.mine === "Time off · all day" && dyNone.all === 0 && ls.mine.includes(", all day") && ls.mine.includes("Client C") && ls.mine.includes("Time off") && inert === 0 && listInert === 0 && !openedByClick,
+    { saved: savedOff.status, wk, shaded, shadedElsewhere, offBg, freeBg, dy, dyNone, ls, inert, listInert, openedByClick });
   const tm = await offText("week", "team", nextMonday);
   await axe("QA-743 Team week with time off", co); await shot(co, "time-off-week-team-1440");
   const tl = await offText("list", "team", nextMonday);
   const teamFeed = await feedOf(coToken, "team"), mineFeed = await feedOf(coToken, "mine");
   const theirs = teamFeed.timeOff.find((o) => o.id === colleagueOff.id);
-  ok("QA-743 R1.39 pass: with the list key, Team shows a colleague's time off as \"Client I: not available · 13:00–15:00\" (Week) and \"Not available\" (List); Mine never shows it; the feed sends who and when only",
-    tm.other === "Client I: not available · 13:00–15:00" && tm.mine === "Time off · all day" && wk.other === "" && tl.other.includes("13:00–15:00") && tl.other.includes("Client I") && tl.other.includes("Not available")
+  // Break m6: a deactivated colleague's time off is not listed (Availability treats them as not in the firm).
+  const goneStaff = await db.platformStaff.create({ data: { firmId: M.id, email: "clientx@maple.example", displayName: "Client X", status: "DEACTIVATED" as never } });
+  const goneOff = await db.foTimeOff.create({ data: { firmId: M.id, staffId: goneStaff.id, startsAt: wall(partDay, "09:00"), endsAt: wall(partDay, "10:00"), createdBy: "seed:fo3st1" } });
+  const teamAfter = await feedOf(coToken, "team");
+  ok("QA-743 R1.39 pass: with the list key, Team shows a colleague's time off as \"Client I: not available · 13:00–15:00\" (Week) and \"Not available\" (List); Mine never shows it; a deactivated colleague's is not sent; the feed sends who and when only",
+    tm.other === "Client I: not available · 13:00–15:00" && teamAfter.timeOff.some((o) => o.id === colleagueOff.id) && !teamAfter.timeOff.some((o) => o.id === goneOff.id) && tm.mine === "Time off · all day" && wk.other === "" && tl.other.includes("13:00–15:00") && tl.other.includes("Client I") && tl.other.includes("Not available")
       && mineFeed.timeOff.length === 1 && mineFeed.timeOff[0].id === myOff.id && !!theirs && theirs.label === "Not available" && !theirs.mine && Object.keys(theirs).sort().join() === "endsAt,id,label,mine,staff,startsAt" && Object.keys(theirs.staff).sort().join() === "id,name",
     { tm, tl, mineFeed: mineFeed.timeOff.length, theirs });
   // The host without the list key (Billing and finance): the team feed refuses; their own feed holds no colleague's.
@@ -310,7 +317,7 @@ try {
   ok("QA-743 R1.39 fail: a host without the list key never sees a colleague's time off (team feed 403; own feed empty while two colleagues have time off, then only their own once they add one, with no reason field)",
     bfTeam.status === 403 && bfMine0.status === 200 && bfMine0.timeOff.length === 0 && bfMine1.timeOff.length === 1 && bfMine1.timeOff[0].staff.id === BF.id && bfMine1.timeOff[0].mine && !JSON.stringify(bfMine1.timeOff).toLowerCase().includes("reason"),
     { team: bfTeam.status, before: bfMine0.timeOff.length, after: bfMine1.timeOff });
-  const offAxe: string[] = [], offFit: Record<number, number> = {};
+  const offAxe: string[] = [], offFit: Record<number, number> = {}, offCut: string[] = [];
   for (const w of [400, 1024, 1440]) {
     const p = await as(C.email, w);
     for (const v of ["week", "day", "list"]) {
@@ -318,11 +325,13 @@ try {
       await p.locator("[data-off], [data-off-row]").first().waitFor({ timeout: 20_000 });
       offAxe.push(...(await axeBad(p)).map((b) => `${v} ${w}: ${b}`));
       offFit[w] = Math.max(offFit[w] ?? 0, await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth));
+      // Review M1: every time-off label is shown whole (wrapped, never cut to "…").
+      offCut.push(...(await p.locator("[data-off]").evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent ?? ""))).map((t) => `${v} ${w}: ${t}`));
+      if (w === 400 || v === "week") await shot(p, `time-off-${v}-team-${w}`);
     }
-    if (w === 400) await shot(p, "time-off-day-400");
     await p.context().close();
   }
-  ok("QA-743 R1.39 pass: Week, Day and List with time off at 400, 1024 and 1440 px: nothing serious or critical from axe, no sideways page scroll", offAxe.length === 0 && Object.values(offFit).every((o) => o <= 1), { offAxe, offFit });
+  ok("QA-743 R1.39 pass: Week, Day and List with time off at 400, 1024 and 1440 px: nothing serious or critical from axe, no sideways page scroll, no time-off label cut", offAxe.length === 0 && Object.values(offFit).every((o) => o <= 1) && offCut.length === 0, { offAxe, offFit, offCut });
 
   // --------------------------------------------------------------------------------------------- DW10 (keyboard, widths)
   await go(ow, `/front-office/bookings${week}`);

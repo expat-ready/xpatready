@@ -74,7 +74,7 @@ function Calendar({ openId }: { openId: string | null }) {
   for (const b of [...(feed.data?.items ?? []), ...(pins.data?.items ?? [])]) names.current.set(b.host.id, b.host.name);
   for (const o of feed.data?.timeOff ?? []) names.current.set(o.staff.id, o.staff.name);
   // QA-743: the time off touching the days (and the hour) on screen, for the chosen host.
-  const offs = (feed.data?.timeOff ?? []).filter((o) => (!host || o.staff.id === host) && (hour ? offInHour(o, hour.slice(0, 10), Number(hour.slice(11, 13)), zone) : dates.some((d) => offOn(o, d, zone))));
+  const offs = (feed.data?.timeOff ?? []).filter((o) => (!host || o.staff.id === host) && dates.some((d) => offOn(o, d, zone)) && (!hour || offInHour(o, hour.slice(0, 10), Number(hour.slice(11, 13)), zone)));   // break m5: never outside the days shown
   const shown = (feed.data?.items ?? []).filter((b) => b.status !== "CANCELLED" && b.status !== "EXPIRED" && dates.includes(dayOf(b.startsAt, zone)) && (!host || b.host.id === host)
     && (!hour || (view === "list" && dayOf(b.startsAt, zone) === hour.slice(0, 10) && hourOf(b.startsAt, zone) === Number(hour.slice(11, 13)))));
   const hosts = [...names.current.entries()].concat(host && !names.current.has(host) ? [[host, "The chosen host"]] : []).sort((a, b) => a[1].localeCompare(b[1]));
@@ -106,7 +106,7 @@ function Calendar({ openId }: { openId: string | null }) {
         <Seg label="View" value={view} options={[["day", "Day"], ["week", "Week"], ["list", "List"]]} onChange={(v) => set({ view: v, hour: null })} />
         <Seg label="Whose" value={whose} options={[["mine", "Mine"], ["team", "Team"]]} onChange={(v) => set({ whose: v })} title="Mine: meetings you host. Team: every booking you may see." />
         <label className="text-sm"><span className="sr-only">Host</span>
-          <select className="h-9 rounded-md border border-border bg-surface-raised px-2 text-sm" value={host} onChange={(e) => set({ host: e.target.value || null })} data-host-filter>
+          <select className="h-9 max-w-[16rem] truncate rounded-md border border-border bg-surface-raised px-2 text-sm" value={host} onChange={(e) => set({ host: e.target.value || null })} data-host-filter>
             <option value="">Host: anyone</option>{hosts.map(([hid, name]) => <option key={hid} value={hid}>{name}</option>)}
           </select></label>
         <Button variant="outline" size="sm" onClick={() => set({ date: null, hour: null })}>Today</Button>
@@ -170,7 +170,7 @@ function Grid({ dates, items, offs, zone, open, more }: { dates: string[]; items
           <tr data-off-row><th scope="row" className="border-t border-border p-1 text-left align-top text-xs font-normal text-text-muted">Time off</th>
             {dates.map((d) => (
               <td key={d} className="border-l border-t border-border p-0.5 align-top" data-off-day={d}>
-                <div className="flex min-w-0 flex-col gap-0.5">{offs.map((o) => { const part = offOn(o, d, zone); return part ? <span key={o.id} className={cn(OFF_STYLE, "block truncate")} title={`${offWords(o)}, ${part} (${zone})`} data-off={o.id}><span className="font-medium">{offWords(o)}</span> · {part}</span> : null; })}</div>
+                <div className="flex min-w-0 flex-col gap-0.5">{offs.map((o) => { const part = offOn(o, d, zone); return part ? <span key={o.id} className={cn(OFF_STYLE, "block whitespace-normal break-words")} data-off={o.id}><span className="font-medium">{offWords(o)}</span> · {part}</span> : null; })}</div>
               </td>
             ))}
           </tr>
@@ -179,7 +179,7 @@ function Grid({ dates, items, offs, zone, open, more }: { dates: string[]; items
             {dates.map((d) => {
               const here = items.filter((b) => dayOf(b.startsAt, zone) === d && hourOf(b.startsAt, zone) === h);
               return (
-                <td key={d} className={cn("h-9 border-l border-t border-border p-0.5 align-top", offs.some((o) => offInHour(o, d, h, zone)) && "bg-surface")} data-off-hour={offs.some((o) => offInHour(o, d, h, zone)) || undefined} data-cell={`${d}T${String(h).padStart(2, "0")}`}>
+                <td key={d} className={cn("h-9 border-l border-t border-border p-0.5 align-top", offs.some((o) => offInHour(o, d, h, zone)) && "bg-text-muted/10")} data-off-hour={offs.some((o) => offInHour(o, d, h, zone)) || undefined} data-cell={`${d}T${String(h).padStart(2, "0")}`}>
                   {here.length ? <div className="flex min-w-0 flex-col gap-0.5">{here.slice(0, 3).map((b) => <Block key={b.id} b={b} zone={zone} open={open} />)}</div> : null}
                   {here.length > 3 ? <button type="button" onClick={() => more(d, h)} title={`${here.length - 3} more bookings at this time. Opens the list.`} className="text-xs text-text-link underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" data-more>+{here.length - 3} more</button> : null}
                 </td>

@@ -53,9 +53,10 @@ export class BookingFeed {
   }
 
   /** QA-743: the time-off periods overlapping the window, oldest first. Mine: the viewer's own. Team (the caller has
-   *  checked the list key): everyone's in the firm; a colleague's is "Not available". Only who and when leave here. */
+   *  checked the list key): everyone's in the firm but a deactivated person's (break m6, as Availability's `target`); a
+   *  colleague's is "Not available". Only who and when leave here. */
   async offItems(ctx: StaffContext, view: "mine" | "team", from: Date, to: Date) {
-    const rows = await this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { ...(view === "team" ? {} : { staffId: ctx.staffId }), startsAt: { lt: to }, endsAt: { gt: from } }), orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true, staffId: true, startsAt: true, endsAt: true } });
+    const rows = await this.db.foTimeOff.findMany({ where: firmScope(ctx.firmId, { ...(view === "team" ? { staff: { status: { not: "DEACTIVATED" as const } } } : { staffId: ctx.staffId }), startsAt: { lt: to }, endsAt: { gt: from } }), orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true, staffId: true, startsAt: true, endsAt: true } });
     if (!rows.length) return [];
     const staff = await this.db.platformStaff.findMany({ where: firmScope(ctx.firmId, { id: { in: [...new Set(rows.map((r) => r.staffId))] } }), select: { id: true, displayName: true } });
     const names = new Map(staff.map((s) => [s.id, s.displayName]));
