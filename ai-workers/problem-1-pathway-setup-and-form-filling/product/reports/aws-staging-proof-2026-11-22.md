@@ -297,3 +297,22 @@ xr-staging-clients    MFA OPTIONAL, TOTP on, first factor PASSWORD, password min
 
 * **R1.5 pool half: Pass** for "second step required for staff" (both staff pools MFA ON, TOTP only) and the passkey setting QA-643 asked for
   (WebAuthn on the real domain, user verification required). Still open until the service runs: page over HTTPS from lab. and cookie flags.
+
+## Step 8: Lead 5's pre-check for #3060 (breaker M1), 17:46 IST 22 Nov (read only, VPC CloudShell, owner URL from the managed store, never printed)
+
+* Lead 5 (17:44 IST): before the deploy after #3060, `count(*)` on `platform_subscription` and `fo_consultation_type` must both be 0.
+* Run as `xr_admin` (`rolsuper f`, `rolbypassrls f`). Both tables have row security forced (`relrowsecurity t`, `relforcerowsecurity t`), so a
+  plain count by xr_admin could be blind. Checked with PostgreSQL's table statistics too, which row security does not filter:
+
+```
+xr_admin | f | f
+count platform_subscription | 0
+count fo_consultation_type  | 0
+platform_subscription | rls t | force t | n_live_tup 0 | n_tup_ins 0 | n_tup_del 0
+fo_consultation_type  | rls t | force t | n_live_tup 0 | n_tup_ins 0 | n_tup_del 0
+platform_firm count 0
+2026-11-22 12:16:16Z (17:46:16 IST)
+```
+
+* **Result: both 0, and no row was ever inserted.** The two data migrations that update nothing under FORCE (M1) have nothing to update on staging.
+  The go condition holds for the deploy after #3060 merges.
