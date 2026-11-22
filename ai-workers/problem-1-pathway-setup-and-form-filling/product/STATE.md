@@ -26,6 +26,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 **Lead 9 02:5x IST:** #3042 (R1.29) dequeued before its batch (Lead B 2's catch, verified on f05ab1de3): migration stamp older than main's newest, and FKs re-added on walled fo_* tables outside F7's lift. Lane (session_01Ln6TiSBtR5PWM8nrYF9PUV) briefed on the PR and by prompt: merge main, re-stamp 20261123010000, lift shape, re-run checks, diff-only Approve, Lead B re-read; then Lead /run full + label.
 
+**Lead 9 check 02:5x IST:** #3081's label was removed by the guard (failed batch 45036239918: shard 14 check_forms_qa53 from #2927's routes, shard 2 check_pf21_complaints; neither its own): covered line posted, relabelled. #3001 full run 45070511287 going; #3041 full run attempt 2 going.
+
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
