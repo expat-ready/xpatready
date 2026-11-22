@@ -6,11 +6,12 @@ import type { MailPort } from "../../../ports/mail.ts";
 import type { Feature } from "../features.ts";
 import { BILLING_PORTS, BillingController, PaymentHoldGate, PlatformBillingAccount, PlatformBillingEvents, StripeHookController } from "../platform/billing/routes.ts";
 import { PlatformSignUp, PlatformSignUpController, SIGNUP_PORTS } from "../platform/firms/routes.ts";
+import { BillingStandInController, BillingStandInPageController, PlatformBillingStandIn } from "../platform/billing/stand-in.ts";
 import { runtimeBillingPorts, runtimeSignUpPorts } from "../platform/firms/runtime-ports.ts";
 import { MESSAGES_MAIL } from "./platform-messages.ts";
 
 export default {
-  controllers: [PlatformSignUpController, StripeHookController, BillingController],
+  controllers: [PlatformSignUpController, StripeHookController, BillingController, BillingStandInController, BillingStandInPageController],
   providers: [PlatformSignUp, { provide: SIGNUP_PORTS, useFactory: (mail: MailPort) => runtimeSignUpPorts(undefined, undefined, undefined, mail), inject: [MESSAGES_MAIL] }, { provide: BILLING_PORTS, useFactory: () => runtimeBillingPorts() },
-    PlatformBillingEvents, PlatformBillingAccount, PaymentHoldGate, { provide: APP_INTERCEPTOR, useExisting: PaymentHoldGate }],
+    PlatformBillingEvents, PlatformBillingAccount, PlatformBillingStandIn, PaymentHoldGate, { provide: APP_INTERCEPTOR, useExisting: PaymentHoldGate }],
 } satisfies Feature;

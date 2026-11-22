@@ -12,6 +12,13 @@ const idOf = (v: string | { id: string } | null | undefined) => (typeof v === "s
 const at = (s: number | null | undefined) => (typeof s === "number" ? new Date(s * 1000) : null);
 const PORTAL_TAG = "pf5-portal-v1";
 
+/** R1.21: the invoice's tax as Stripe Tax worked it out (`total_taxes`; null before it is worked out). The rate is not
+ *  expanded on a list, so each line is named "Tax" with no rate or province: never a guessed one. */
+export function taxOf(i: { subtotal: number; subtotal_excluding_tax: number | null; total_taxes?: Array<{ amount: number }> | null }) {
+  const lines = (i.total_taxes ?? []).map((t) => ({ name: "Tax", jurisdiction: null, ratePpm: null, amountCents: t.amount }));
+  return { subtotalCents: i.subtotal_excluding_tax ?? i.subtotal, taxCents: i.total_taxes ? lines.reduce((n, t) => n + t.amountCents, 0) : null, taxLines: lines };
+}
+
 export class StripeBilling implements BillingPort {
   private portalConfig: string | null = null;
   constructor(private readonly stripe: Stripe, private readonly webhookSecret: string | null = null) {}
@@ -55,7 +62,7 @@ export class StripeBilling implements BillingPort {
 
   async invoices(customerId: string) {
     const list = await this.stripe.invoices.list({ customer: CustomerId.parse(customerId), limit: 24 });
-    return list.data.filter((i) => i.id).map((i) => BillingInvoice.parse({ id: i.id, number: i.number ?? null, status: i.status, amountDueCents: i.amount_due, currency: i.currency, createdAt: at(i.created), hostedUrl: i.hosted_invoice_url ?? null }));
+    return list.data.filter((i) => i.id).map((i) => BillingInvoice.parse({ id: i.id, number: i.number ?? null, status: i.status, amountDueCents: i.amount_due, currency: i.currency, createdAt: at(i.created), hostedUrl: i.hosted_invoice_url ?? null, ...taxOf(i) }));
   }
 
   async updateCustomerAddress(customerId: string, address: BillingAddress) {
