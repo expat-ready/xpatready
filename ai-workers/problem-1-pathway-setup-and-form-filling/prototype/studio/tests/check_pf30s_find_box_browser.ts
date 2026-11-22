@@ -315,9 +315,11 @@ try {
       await p.locator("[data-find-close]").click(); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
       // Review r3-1: three Escapes from the open bar also give focus back to the Find button, never to the page.
-      await p.locator("[data-find-open]").click(); await box(p).pressSequentially("Le", { delay: 10 }); await p.waitForTimeout(600);
-      for (let k = 0; k < 3; k++) { await p.keyboard.press("Escape"); await p.waitForTimeout(60); }
-      await p.waitForTimeout(150);
+      await p.locator("[data-find-open]").click(); await p.waitForFunction(() => document.activeElement?.matches("[data-find-input]"));
+      await box(p).pressSequentially("Le", { delay: 10 }); await p.waitForTimeout(600);
+      await p.keyboard.press("Escape"); await p.keyboard.press("Escape"); await p.waitForTimeout(60);
+      ok(`PF-30s F10 (review r7-2): at ${w} px two Escapes keep focus in the box (closed list, cleared text)`, await box(p).evaluate((el) => el === document.activeElement) && (await box(p).inputValue()) === "");
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review r3-1): at ${w} px the third Escape gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
     } else {
       // Closed box: the input never covers the person's name (review M1: 640-719 px overlapped it).

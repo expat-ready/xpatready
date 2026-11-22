@@ -105,7 +105,7 @@ export function FindBox() {
       enterWaits.current = false;   // Escape also cancels an Enter pressed during the pause (review r2 n2)
       // The bar across the header exists only while the Find button is shown (below 768 px); wider, the third Escape leaves (n1).
       // Decided by the window, not the Find button's display: the button is hidden while the bar is open (review r3-1).
-      const phone = !window.matchMedia("(min-width: 768px)").matches;
+      const phone = !window.matchMedia("(min-width: 48rem)").matches;   // Tailwind's md is 48rem: the same edge at any default font size (review r7-1)
       if (showList) setOpen(false); else if (text) setText(""); else if (wide && phone) close(); else { setWide(false); input.current?.blur(); }
     } else if (e.key === "Tab") { enterWaits.current = false; setOpen(false); }
   };
