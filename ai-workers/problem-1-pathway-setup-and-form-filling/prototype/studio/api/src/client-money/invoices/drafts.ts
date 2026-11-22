@@ -9,23 +9,25 @@ import { HttpException } from "@nestjs/common";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { z } from "zod";
 import type { AuditPort } from "../../../../ports/audit.ts";
-import { DraftIn, InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
+import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
+import { DraftIn, type InvoiceView, LineIn, MINOR_MAX } from "../../../../ports/client-money.ts";
 import { problemFromZod } from "../../../../contracts/programs.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { FIELD_ERROR_STATUS, fieldsOf } from "../../platform/http/input.ts";
 import { holdsKey } from "../../platform/identity/catalogue.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import { dayOf, invoiceFacts } from "./facts.ts";
 import { taxForLine } from "./tax-round.ts";
 
 type Tx = Prisma.TransactionClient;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Minor units as "1,234.56", from the integer's digits (no float). */
-const MONEY = (n: number) => { const s = String(n).padStart(3, "0"); return `${s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${s.slice(-2)}`; };
+export const MONEY = (n: number) => { const s = String(n).padStart(3, "0"); return `${s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${s.slice(-2)}`; };
 
 /** PF-28 part 6 (R1.10, Lead B rev 17.21): a field error is FIELD_ERROR_STATUS (422) with `fields` naming each field in
  *  the one rule's words (an unknown one included), the money schemas' own `errors` list and words kept. A body that is not
  *  an object (a list, a number) is refused by its shape, "body: This must be an object.", never read as {}. */
-const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
+export const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
   if (input === null || typeof input !== "object" || Array.isArray(input)) badField("body", "This must be an object.");
   if (Object.hasOwn(input as object, "__proto__")) badField("__proto__", "This field is not allowed here.");   // never a field of ours (the one rule's break m2), in the money shape
   const r = schema.safeParse(input);
@@ -37,17 +39,17 @@ const parse = <S extends z.ZodType>(schema: S, input: unknown): z.infer<S> => {
   return r.data;
 };
 /** A field error naming one field (FIELD_ERROR_STATUS), in the same shape as a zod refusal. */
-const badField = (field: string, message: string): never => {
+export const badField = (field: string, message: string): never => {
   throw new HttpException({ type: "https://expatready.local/problems/validation", title: "Some details need fixing", status: FIELD_ERROR_STATUS, detail: message, code: "INVALID", errors: [{ field, message }], fields: { [field]: message } }, FIELD_ERROR_STATUS);
 };
-const notFound = (what: string): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
+export const notFound = (what: string): never => problem(404, "Not found", `No such ${what} in your firm.`, { code: "NOT_FOUND" });
 
 /** Adding to a draft someone else started needs this key (AG-06 C5: "Edit a DRAFT invoice"); one's own draft, :create. */
 export const EDIT_KEY = "agent/invoice:edit";
 
 export class InvoiceDrafts {
   /** `tax` is the one rule (taxForLine); a test passes a planted wrong rule to prove its cases catch it, never the app. */
-  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine) {}
+  constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly tax: (amountMinor: number, ratePpm: number) => number = taxForLine, private readonly clock: ClockPort = systemClock) {}
 
   /** POST /api/front-office/money/invoices. */
   async create(ctx: StaffContext, body: unknown): Promise<InvoiceView> {
@@ -115,13 +117,8 @@ export class InvoiceDrafts {
     return s;
   }
 
-  /** The invoice with its stored lines; the sums are of the stored figures, the total money_invoice_total's. */
+  /** The invoice with its stored lines; the sums are of the stored figures, the total money_invoice_total's (facts.ts). */
   private async view(tx: Tx, firmId: string, id: string): Promise<InvoiceView> {
-    const inv = await tx.moneyInvoice.findFirst({ where: firmScope(firmId, { id }), include: { lines: { orderBy: { position: "asc" } } } });
-    if (!inv) return notFound("invoice");
-    const [t] = await tx.$queryRaw<{ total: string }[]>`select money_invoice_total(${inv.firmId}::uuid, ${inv.id}::uuid)::text as total`;
-    const lines = inv.lines.map((x) => ({ id: x.id, position: x.position, kind: x.kind, description: x.description, quantity: x.quantity, unitMinor: x.unitAmountMinor, amountMinor: x.amountMinor, ratePpm: x.taxRatePpm, taxMinor: x.taxMinor, currency: x.currency }));
-    return InvoiceView.parse({ id: inv.id, status: inv.issuedAt ? "ISSUED" : "DRAFT", number: inv.number, personId: inv.personId, companyId: inv.companyId, currency: inv.currency, lines,
-      subtotalMinor: lines.reduce((s, x) => s + x.amountMinor, 0), taxMinor: lines.reduce((s, x) => s + x.taxMinor, 0), totalMinor: Number(t.total) });
+    return (await invoiceFacts(tx, firmId, id, dayOf(this.clock.now())))?.view ?? notFound("invoice");
   }
 }

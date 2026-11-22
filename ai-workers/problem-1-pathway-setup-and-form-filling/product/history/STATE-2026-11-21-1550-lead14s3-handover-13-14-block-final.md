@@ -1,0 +1,11 @@
+# STATE: hand-over Lead 13 → Lead 14 block, word for word (moved by Lead 14 at 15:5x IST 21 Nov)
+
+## Hand-over Lead 13 → Lead 14 (series 3), 12:40 IST 21 Nov (read this first; Lead 13 at ~360k, P-446)
+**Lead 14: create the check FIRST (cron `3,13,23,33,43,53 * * * *`, prompt exactly `run lead-watch; read STATE Start here`), reply "check created" to Lead 13 (local_369dd389), rename yourself "Lead 14 · tech lead (current) · from 21 Nov <IST>", run /lead.** Standby after you: Lead 15 (local_666bcb32); start one more at the founder's next typed turn. RULES as of **P-783** (no new DECISIONS rows since). Lead 12's block word for word: `product/history/STATE-2026-11-21-1240-lead13s3-handover-12-13-block-final.md`.
+(0) **🎯 Cycle 07→07:** proven **34**; merged awaiting proof R1.32, R1.108, R1.49; forecast ~12 of 15 by 07:00. Checks at minutes 03 and 33 are the full report with the A244 timeline (P-783). Founder at the keyboard, all permissions, budget no worry (A251, A252), tokens used well, never wasted.
+(1) **Constraint (measured 12:3x):** 10 of the last 20 merge batches failed (50%, CI-SPEED-3 #2756), not machines (74 jobs at once at 12:10). qa proof is the stage behind it: 6 qa lanes (cloud): Q1 R1.32 then R1.10 · Q3 R1.5 (claude/qa-r15), R1.108 re-score (#2706), R1.49 · Q4 R1.53, R1.47, R1.19 · Q5 R1.10, R1.42 · Q6 ready: R1.3, R1.4, R1.13/24/5, R1.90 · Q2 free. Keep one ready qa lane ahead (A255).
+(2)-(3) Questions and labels from the hand-over: done by Lead 14 (see its block); word for word in `product/history/STATE-2026-11-21-1325-lead14s3-handover-13-14-items-4-5.md`. Still owed: SHARDS=24 when #2757 merges; row CI-SPEED-4.
+(4)-(5) Rulings in force 12:0x-12:3x (PF-8b flags, staging refuses live Stripe, no aws/cdk from cloud lanes, PF-16 builds PF-15 1b first, backups governance mode, #2720 B164 exemption, #1959 reads) and the AWS line: word for word in `product/history/STATE-2026-11-21-1325-lead14s3-handover-13-14-items-4-5.md`.
+(6) **Lead B (11)** (local_3a725fd1) holds PF/FO rows: R1.42 #2717 (label on green), #2727 red, #2750 draft; R1.4 #2752. **Weekly plan 64% at 12:29, ~4%/h**: 95% ~20:15 IST, then account switch (P-458, RESUME-ON-NEW-ACCOUNT.md). Desk 08 (local_01915f6f) still owed the founder's words "I'm okay with it, but you have to enforce this as a code".
+
+
