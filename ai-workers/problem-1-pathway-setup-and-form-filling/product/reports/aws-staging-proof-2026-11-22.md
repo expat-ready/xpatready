@@ -207,3 +207,26 @@ and lock-out need the app's sign-in endpoint.
 ### Cost
 0 tasks, unchanged: about US$0.18/h (RDS, NAT, load balancer, public IPv4) + Route 53 zone US$0.50/month. 2 tasks will add ~US$0.11/h.
 Spent on this proof so far: CodeBuild two builds (~5 min small) < US$0.10.
+
+## For PF-8b-f5: the exact P3018 log (CloudWatch `/xr/staging/app`, stream `migrate/migrate/a082ba78496d436b9260d593d2bece3b`)
+Task def `xrstagingAppMigrateFE01F052:3`, image `xr-staging-studio@sha256:dabc0523c90a1c8d99ea9a84820d827482c55488b90d47b88ef8ed79ba179769`
+(main 5d866c746), RDS PostgreSQL 18.3, migration role `xr_admin` (the instance's admin user, not a superuser). Two `prisma:warn`
+OpenSSL-detection lines omitted (they precede every run, including the successful `resolve`).
+```
+Loaded Prisma config from prisma.config.ts.
+Prisma schema loaded from prisma/schema.
+Datasource "db": PostgreSQL database "postgres", schema "public" at "xr-staging-databaseb269d8bb-rzdhp2v9sbgn.cfq4s6mq8oun.ca-central-1.rds.amazonaws.com:5432"
+141 migrations found in prisma/migrations
+Applying migration `20261116013000_pf12_firm_walls`
+Error: P3018
+A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve
+Migration name: 20261116013000_pf12_firm_walls
+Database error code: 0LP01
+Database error:
+ERROR: role "xr_wall_reader" is a member of role "xr_admin"
+DbError { severity: "ERROR", parsed_severity: Some(Error), code: SqlState(E0LP01), message: "role \"xr_wall_reader\" is a member of role \"xr_admin\"", detail: None, hint: None, position: None, where_: Some("SQL statement \"GRANT xr_wall_reader TO xr_admin WITH INHERIT TRUE, SET TRUE\"\nPL/pgSQL function inline_code_block line 85 at EXECUTE"), schema: None, table: None, column: None, datatype: None, constraint: None, file: Some("user.c"), line: Some(1787), routine: Some("AddRoleMems") }
+```
+Reading: the failing statement is migration.sql line 113 (`GRANT xr_wall_reader TO <current_user>`); the membership it collides
+with is `xr_admin` → `xr_wall_reader` from line 91 (`GRANT xr_admin TO xr_wall_reader`), which RDS allowed. State left: the
+migration is recorded failed again; before the rerun, `prisma migrate resolve --rolled-back 20261116013000_pf12_firm_walls`.
+Service held at **0 tasks** until f5 merges (Lead 2, 12:3x).
