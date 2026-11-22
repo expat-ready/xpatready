@@ -27,6 +27,7 @@ execFileSync(bin("dropdb"), [...PG, "--if-exists", DB]); execFileSync(bin("creat
 for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(bin("psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
 process.env.DATABASE_URL = urlOf(DB);
 for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET"]) delete process.env[k];
+process.env.PLATFORM_ENVIRONMENT = "local";   // PF-24w: required, no default (the feature file loads the messages pipeline)
 
 const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
 const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
