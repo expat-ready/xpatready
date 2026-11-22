@@ -1,0 +1,149 @@
+# qa proof on the merge batch (SPD-1 part 2, founder 22 Nov to Lead 4; P-802). Before: an item's journey was walked
+# only after its last PR merged (item-proof.yml), so qa proof started after merge. Now, when Mergify opens or updates a
+# batch PR (mergify/merge-queue/*, opened by mergify[bot]) holding a PR whose body says "Completes: R1.n", this run
+# walks that item's journey studio/tests/journeys/j_<n>.ts on the batch tree (what main becomes) and reports it as the
+# check "batch-proof R1.n" on the batch, plus one comment on the PR that claims the item; qa signs the verdict after
+# merge from that run instead of re-walking from scratch. item-proof.yml still runs at merge (packs, suites, journey).
+#   * detect: the batch's PRs from Mergify's metadata block, each PR's body through the API (into files, never the
+#     shell), the items through product/tools/batch-proof.mjs (item-proof.mjs detect, one reader). Base commit's tools.
+#   * prove (one machine an item, fail-fast off): the batch head, set up like item-proof's prove job; its journey through
+#     walk.mjs (own isolated copy, never :4400). A missing journey is FAIL, never skipped (P-405). The recording is
+#     checked for key and secret values (item-proof.mjs scan) before upload; a PASS keeps the video, a FAIL the trace.
+#   * report: one comment on each claiming PR with the verdict and the run; runs no code from the batch.
+# Report-only (P-717 (b)): no queue or merge condition reads these checks, so they never hold a batch; the tech lead adds
+# "check-success" in its own PR after 24 h or 10 clean batch runs. No concurrency group: a run is never cancelled.
+# Live AI off, no model call, no secret; public repository: US$0. Test: product/tools/test-spd-1.sh (this file's shape).
+name: batch-proof
+run-name: "batch-proof · #${{ github.event.pull_request.number }} · ${{ github.event.pull_request.head.sha }}"
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+permissions: { contents: read }
+jobs:
+  detect:
+    # A batch only when Mergify opened it (as ci.yml, gate B break M2): a builder's branch named mergify/* is not one.
+    if: ${{ startsWith(github.event.pull_request.head.ref, 'mergify/merge-queue/') && github.event.pull_request.user.login == 'mergify[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, pull-requests: read }
+    outputs:
+      items: ${{ steps.d.outputs.items }}
+      claims: ${{ steps.d.outputs.claims }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+            ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools
+      - id: d
+        name: the batch's PRs and the items their Completes lines claim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.pull_request.body }}
+          P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+        run: |
+          printf '%s' "$BODY" > batch.md; mkdir -p bodies
+          prs=$(node "$P/tools/batch-proof.mjs" prs --body-file batch.md)
+          echo "batch PRs: $prs" | tee -a "$GITHUB_STEP_SUMMARY"
+          for n in $(node -p 'JSON.parse(process.argv[1]).join(" ")' "$prs"); do
+            curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$n" > pr.json || continue
+            node -e 'require("fs").writeFileSync(process.argv[1], require("./pr.json").body ?? "")' "bodies/$n.md"
+          done
+          claims=$(node "$P/tools/batch-proof.mjs" items --dir bodies)
+          items=$(node -p 'JSON.stringify(JSON.parse(process.argv[1]).map(c => c.item))' "$claims")
+          { echo "items=$items"; echo "claims=$claims"; } >> "$GITHUB_OUTPUT"
+          echo "items to prove on the batch: $items" | tee -a "$GITHUB_STEP_SUMMARY"
+  prove:
+    needs: detect
+    if: ${{ needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}
+    name: "batch-proof ${{ matrix.item }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions: { contents: read }
+    strategy:
+      fail-fast: false
+      matrix:
+        item: ${{ fromJSON(needs.detect.outputs.items) }}
+    env:
+      P: ai-workers/problem-1-pathway-setup-and-form-filling/product
+      S: ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio
+      ITEM: ${{ matrix.item }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.event.pull_request.head.sha }}", fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc }
+      - name: set up like a cloud session (cloud-setup.sh, as item-proof's prove job)
+        run: bash "$P/tools/cloud-setup.sh"
+      - name: Playwright's own Chromium
+        run: cd "$S" && ./node_modules/.bin/playwright install chromium
+      - name: its journey on the batch tree, recorded (walk.mjs; own copy, never :4400)
+        id: walk
+        env: { WALK_SHA: "${{ github.event.pull_request.head.sha }}" }
+        run: |
+          node "$S/tools/item-proof.mjs" plan "$ITEM" > "$RUNNER_TEMP/plan.json"
+          j=$(node -p 'const p=require(process.argv[1]); p.journeyExists ? p.journey : ""' "$RUNNER_TEMP/plan.json")
+          want=$(node -p 'require(process.argv[1]).journey' "$RUNNER_TEMP/plan.json")
+          st=0; fail=0
+          if [ -z "$j" ]; then echo "no $want on the batch tree: the verdict is FAIL (P-405)"; st=2
+          else
+            node "$S/tests/journeys/walk.mjs" "$S/$j" "$RUNNER_TEMP/walk" || st=$?
+            fail=$(node -p 'try{JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).fail??0}catch{1}' "$RUNNER_TEMP/walk/walk.json")
+          fi
+          scan=0; [ -d "$RUNNER_TEMP/walk" ] && { node "$S/tools/item-proof.mjs" scan "$RUNNER_TEMP/walk" || scan=$?; }
+          v=PASS; { [ "$st" = 0 ] && [ "$fail" = 0 ] && [ "$scan" = 0 ]; } || v=FAIL
+          [ "$v" = PASS ] && ! ls "$RUNNER_TEMP"/walk/video/*.webm >/dev/null 2>&1 && v=FAIL   # a PASS carries its video
+          mkdir -p "$RUNNER_TEMP/up" "$RUNNER_TEMP/verdict"
+          if [ "$scan" = 0 ] && [ -d "$RUNNER_TEMP/walk" ]; then
+            cp "$RUNNER_TEMP"/walk/walk.json "$RUNNER_TEMP"/walk/README.md "$RUNNER_TEMP/up/" 2>/dev/null || true
+            if [ "$v" = PASS ]; then cp -r "$RUNNER_TEMP/walk/video" "$RUNNER_TEMP/up/"; else cp -r "$RUNNER_TEMP"/walk/trace-*.zip "$RUNNER_TEMP/walk/steps" "$RUNNER_TEMP/walk/walk.log" "$RUNNER_TEMP/up/" 2>/dev/null || true; fi
+          fi
+          node -e 'const [i,j,s,v,e,f,sc]=process.argv.slice(1); require("fs").writeFileSync(process.env.RUNNER_TEMP+"/verdict/"+i+".json", JSON.stringify({item:i,journey:j,sha:s,verdict:v,exit:Number(e),fail:Number(f),scan:Number(sc)}))' "$ITEM" "$want" "$SHA" "$v" "$st" "$fail" "$scan"
+          echo "### $ITEM on the batch tree $SHA: $v (journey $want, exit $st, failed steps $fail, secret scan $scan)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "verdict=$v" >> "$GITHUB_OUTPUT"
+      - name: upload the recording (kept 90 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: "batch-proof-${{ matrix.item }}-${{ github.event.pull_request.head.sha }}", path: "${{ runner.temp }}/up", retention-days: 90, if-no-files-found: ignore, overwrite: true }
+      - name: keep the verdict for the report job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: "batch-verdict-${{ matrix.item }}", path: "${{ runner.temp }}/verdict", retention-days: 90, if-no-files-found: ignore, overwrite: true }
+      - name: the check is red when the journey did not pass on the batch
+        if: always()
+        env: { V: "${{ steps.walk.outputs.verdict }}" }
+        run: '[ "$V" = PASS ] || { echo "batch-proof $ITEM: ${V:-FAIL} (see the step above)"; exit 1; }'
+  report:
+    needs: [detect, prove]
+    if: ${{ always() && needs.detect.outputs.items != '' && needs.detect.outputs.items != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read, pull-requests: write, issues: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: "batch-verdict-*", merge-multiple: true, path: verdicts }
+      - name: one comment on each PR that claims an item (no batch code runs here)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAIMS: ${{ needs.detect.outputs.claims }}
+          BATCH: ${{ github.event.pull_request.number }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node -e '
+            const fs = require("fs"), claims = JSON.parse(process.env.CLAIMS), by = {};
+            for (const c of claims) {
+              if (!/^R1\.[1-9]\d{0,2}$/.test(c.item) || !Number.isInteger(c.pr)) continue;
+              let v = { verdict: "FAIL", journey: "?", sha: "?", why: "no verdict file: the prove job ended early" };
+              try { v = JSON.parse(fs.readFileSync(`verdicts/${c.item}.json`, "utf8")); } catch {}
+              (by[c.pr] ??= []).push(`* **${c.item}: ${v.verdict}**, journey \`${v.journey}\` on the batch tree \`${v.sha}\`${v.why ? ` (${v.why})` : ""}`);
+            }
+            for (const [pr, lines] of Object.entries(by)) fs.writeFileSync(`c-${pr}.json`, JSON.stringify({ body:
+              `## Batch proof (SPD-1): the journey on what main becomes\n\nMerge batch #${process.env.BATCH}, run ${process.env.RUN} (check \`batch-proof R1.n\`; recording: artifact \`batch-proof-<item>-<sha>\`):\n\n${lines.join("\n")}\n\nqa signs the verdict after merge from this run (report-only check, P-717 (b)).` }));'
+          for f in c-*.json; do [ -e "$f" ] || continue; pr=${f#c-}; pr=${pr%.json}
+            curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$pr/comments" --data @"$f" > /dev/null || echo "::warning::comment on #$pr failed"
+          done

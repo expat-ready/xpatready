@@ -158,9 +158,11 @@ def problems(cfg, have_script):
     out = []
     qs = cfg.get("queue_rules", [])
     names = [q.get("name") for q in qs]
-    if names != ["verdicts", "product", "pipeline", "records"]:
-        out.append(f"queue order is {names}: want verdicts, product, pipeline, records (the first listed has the highest "
-                   "priority; qa verdicts first (P-664), pipeline after product (P-717 (a)), records last)")
+    # SPD-1 (P-802): the track queues track-a and track-b sit between verdicts and the shared queue product.
+    if names != ["verdicts", "track-a", "track-b", "product", "pipeline", "records"]:
+        out.append(f"queue order is {names}: want verdicts, track-a, track-b, product, pipeline, records (the first listed "
+                   "has the highest priority; qa verdicts first (P-664), the track queues before the shared product queue "
+                   "(SPD-1), pipeline after product (P-717 (a)), records last)")
     for q in qs:
         conds = [c.replace(" ", "") for c in q.get("queue_conditions", []) if isinstance(c, str)]
         for need in ("base = main", "label = review: approved", "check-success = ci"):

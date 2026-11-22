@@ -275,6 +275,10 @@ jobs:
         # P-756 (2) (founder 20 Nov): guards.yml ran it only when tools paths changed, so the PR adding a module folder
         # passed and main went red after it (#2207, #2317). Reads files only. Notes PRs: job "ci". Test: the script itself.
         run: bash "$P/tools/check-mergify-scopes.sh"
+      - name: track routing of the merge queue (test-spd-1.sh; SPD-1, P-802; every PR and batch, seconds)
+        # Track A, Track B, both-tracks and records PRs join their queues, read from .mergify.yml; the track queues keep
+        # product's gates; .mergify.yml and track-paths.txt agree; batch-proof.yml stays report-only. Reads files only.
+        run: bash "$P/tools/test-spd-1.sh"
       - name: every route a pack's set-up calls has a screen (tools/route-has-screen.mjs, under a second)
         # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has
         # only screens. A mutating route acceptance/lib/ calls needs a caller in web/src or a reasoned line in

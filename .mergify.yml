@@ -165,6 +165,69 @@ queue_rules:
     merge_conditions:
       - check-success = ci
     merge_method: merge
+  # SPD-1 (founder 22 Nov to Lead 4: "separate queues for track A, B, C ... strongly enforced"; P-802): a PR is routed
+  # by the paths it touches (product/tools/track-paths.txt, the one list). Only Track A files: queue track-a. Only Track
+  # B files: queue track-b. Files of both tracks, or app files of neither: the shared queue product below. Each track
+  # queue batches only its own PRs (batch size 3), and with mode parallel and disjoint scopes its batches check and merge
+  # beside the other track's, so one track's failed batch never resets the other's. Separate queue rules, not Mergify
+  # partitions: the partition docs could not be read from the cloud lane (docs.mergify.com blocked), and these rules
+  # keep every condition product has, so no gate is lowered. Each keeps product's queue and merge conditions word for
+  # word (test-spd-1.sh checks it). Undo: delete the two queues (PRs fall back to product).
+  - name: track-a
+    batch_size: 3   # SPD-1 (P-802): its own batches, 3 a batch to start
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 5 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - -label=records
+      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+      - or:
+          - check-success = queue-fresh
+          - -files ~= /prototype/
+      # SPD-1: Track A (platform, audit, front-office sales and booking, web platform): a file of this track (product/tools/track-paths.txt) and none of the other track's.
+      # Generated: python3 -I product/tools/track-route.py regex track-a (test-spd-1.sh fails on drift).
+      - 'files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/(?!(?:api/src/platform/files/.*)$)(?:api/src/platform/.*|prisma/schema/platform\.prisma|prisma/schema/platform-[^/]*\.prisma|prisma/schema/audit\.prisma|ports/audit\.ts|api/src/features/platform-[^/]*\.ts|api/src/features/audit-[^/]*\.ts|api/src/front-office/sales/.*|api/src/front-office/booking/.*|api/src/front-office/booking-seed\.ts|prisma/schema/front-office-sales\.prisma|prisma/schema/front-office-booking\.prisma|web/src/modules/platform/.*|tests/check_pf[^/]*|tests/check_aud[^/]*)$'
+      - '-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/(?:api/src/client-money/.*|prisma/schema/client-money\.prisma|api/src/runtime\.ts|api/src/clients\.ts|api/src/case-[^/]*\.ts|api/src/case-clients/[^/]*\.ts|api/src/case-deadlines/[^/]*\.ts|api/src/assessments\.ts|api/src/team\.ts|api/src/person-link\.ts|api/src/employer-[^/]*\.ts|api/src/earlier-facts\.ts|api/src/findings\.ts|api/src/readiness\.ts|api/src/readiness-inputs\.ts|api/src/document-review-[^/]*\.ts|api/src/filing\.ts|api/src/filing-[^/]*\.ts|api/src/fill-case\.ts|api/src/submission\.ts|api/src/submission-record\.ts|api/src/sign-steps\.ts|api/src/review-rounds\.ts|api/src/review-runs\.ts|api/src/review-run-shapes\.ts|api/src/review-stamp\.ts|api/src/review-items\.ts|api/src/release-[^/]*\.ts|api/src/stage-scope\.ts|api/src/routes-data\.ts|prisma/schema/cases\.prisma|prisma/schema/case-search\.prisma|prisma/schema/filings\.prisma|prisma/schema/evidence\.prisma|prisma/schema/submission\.prisma|prisma/schema/review\.prisma|api/src/platform/files/.*|api/src/front-office/retainers/.*|api/src/front-office/signing/.*|prisma/schema/front-office-retainers\.prisma|prisma/schema/front-office-signing\.prisma|api/src/features/client-money-[^/]*\.ts|api/src/features/case-[^/]*\.ts|tests/check_cs[^/]*|tests/check_case_[^/]*)$'
+    merge_conditions:
+      - check-success = ci
+      - or:
+          - check-success = skeleton
+          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
+    merge_method: merge
+  - name: track-b
+    batch_size: 3   # SPD-1 (P-802): its own batches, 3 a batch to start
+    batch_max_failure_resolution_attempts: 2
+    batch_max_wait_time: 5 min
+    queue_conditions:
+      - base = main
+      - -draft
+      - "label = review: approved"
+      - check-success = ci
+      - -label=records
+      - files ~= ^(?!(\.github/|\.githooks/|\.mergify\.yml$|\.claude/|AGENTS\.md$|CLAUDE\.md$|ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/))
+      - or:
+          - check-success = xfa-engine
+          - -files ~= ^(packages/xfa-engine/|tsconfig\.base\.json$|\.nvmrc$|\.github/workflows/xfa-engine\.yml$)
+      - or:
+          - check-success = queue-fresh
+          - -files ~= /prototype/
+      # SPD-1: Track B (client money, case side, front-office retainers and signing, platform files): a file of this track (product/tools/track-paths.txt) and none of the other track's.
+      # Generated: python3 -I product/tools/track-route.py regex track-b (test-spd-1.sh fails on drift).
+      - 'files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/(?:api/src/client-money/.*|prisma/schema/client-money\.prisma|api/src/runtime\.ts|api/src/clients\.ts|api/src/case-[^/]*\.ts|api/src/case-clients/[^/]*\.ts|api/src/case-deadlines/[^/]*\.ts|api/src/assessments\.ts|api/src/team\.ts|api/src/person-link\.ts|api/src/employer-[^/]*\.ts|api/src/earlier-facts\.ts|api/src/findings\.ts|api/src/readiness\.ts|api/src/readiness-inputs\.ts|api/src/document-review-[^/]*\.ts|api/src/filing\.ts|api/src/filing-[^/]*\.ts|api/src/fill-case\.ts|api/src/submission\.ts|api/src/submission-record\.ts|api/src/sign-steps\.ts|api/src/review-rounds\.ts|api/src/review-runs\.ts|api/src/review-run-shapes\.ts|api/src/review-stamp\.ts|api/src/review-items\.ts|api/src/release-[^/]*\.ts|api/src/stage-scope\.ts|api/src/routes-data\.ts|prisma/schema/cases\.prisma|prisma/schema/case-search\.prisma|prisma/schema/filings\.prisma|prisma/schema/evidence\.prisma|prisma/schema/submission\.prisma|prisma/schema/review\.prisma|api/src/platform/files/.*|api/src/front-office/retainers/.*|api/src/front-office/signing/.*|prisma/schema/front-office-retainers\.prisma|prisma/schema/front-office-signing\.prisma|api/src/features/client-money-[^/]*\.ts|api/src/features/case-[^/]*\.ts|tests/check_cs[^/]*|tests/check_case_[^/]*)$'
+      - '-files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/(?!(?:api/src/platform/files/.*)$)(?:api/src/platform/.*|prisma/schema/platform\.prisma|prisma/schema/platform-[^/]*\.prisma|prisma/schema/audit\.prisma|ports/audit\.ts|api/src/features/platform-[^/]*\.ts|api/src/features/audit-[^/]*\.ts|api/src/front-office/sales/.*|api/src/front-office/booking/.*|api/src/front-office/booking-seed\.ts|prisma/schema/front-office-sales\.prisma|prisma/schema/front-office-booking\.prisma|web/src/modules/platform/.*|tests/check_pf[^/]*|tests/check_aud[^/]*)$'
+    merge_conditions:
+      - check-success = ci
+      - or:
+          - check-success = skeleton
+          - -files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/(studio/(api|web|engine|contracts|prisma|samples|deploy)/|studio/(package\.json|package-lock\.json|prisma\.config\.ts|Dockerfile|Dockerfile\.dockerignore|tools/skeleton-smoke\.sh)$|contracts/|p2/[^/]+\.ts$|p5/.*\.ts$|env/node/)
+    merge_method: merge
+  # The shared queue (SPD-1): a PR touching both tracks, or app files in neither track.
   - name: product
     batch_size: 2   # P-715: was 6; a failed batch bounces at most one other PR
     batch_max_failure_resolution_attempts: 2

@@ -1,0 +1,44 @@
+# Track paths (SPD-1, founder 22 Nov to Lead 4, P-802): which delivery track owns which app path, so the merge queue
+# routes a PR by the files it touches. The one list: product/tools/track-route.py turns it into the regexes in
+# .mergify.yml's queues "track-a" and "track-b" (test-spd-1.sh fails when the two drift apart).
+#   track-a: platform, audit, front-office sales and booking, web platform module.
+#   track-b: client money, case side, front-office retainers and signing, platform files.
+# A PR with a file of each track, or with app files in neither (web pages, engine, forms, tests outside these), goes
+# to the shared queue "product". Records, pipeline work and qa verdicts keep their own queues.
+# Replaced by the path owners of #2925 when that merges (scope:<name> lines below already read .mergify.yml's scopes).
+#
+# Line forms (one per line; "#" starts a comment):
+#   <track> <glob>          a glob relative to the studio folder (prefix below); ** any depth, * one name part
+#   <track> /<glob>         a glob relative to the repository root
+#   <track> scope:<name>    every include pattern of that Mergify scope in .mergify.yml (one source, no copy)
+#   <track> !<glob>         an exception: never this track (a file of the other track inside a folder of this one)
+prefix ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/
+
+# Track A
+track-a scope:platform
+track-a !api/src/platform/files/**
+track-a prisma/schema/audit.prisma
+track-a ports/audit.ts
+track-a api/src/features/platform-*.ts
+track-a api/src/features/audit-*.ts
+track-a api/src/front-office/sales/**
+track-a api/src/front-office/booking/**
+track-a api/src/front-office/booking-seed.ts
+track-a prisma/schema/front-office-sales.prisma
+track-a prisma/schema/front-office-booking.prisma
+track-a web/src/modules/platform/**
+track-a tests/check_pf*
+track-a tests/check_aud*
+
+# Track B
+track-b scope:money
+track-b scope:case-side
+track-b api/src/platform/files/**
+track-b api/src/front-office/retainers/**
+track-b api/src/front-office/signing/**
+track-b prisma/schema/front-office-retainers.prisma
+track-b prisma/schema/front-office-signing.prisma
+track-b api/src/features/client-money-*.ts
+track-b api/src/features/case-*.ts
+track-b tests/check_cs*
+track-b tests/check_case_*
