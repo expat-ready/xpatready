@@ -2,7 +2,7 @@
 
 current_lead: local_bdef7c01-a968-4dd8-9ee0-12c35aa45752 Lead 18 · 22 Nov 03:2x IST (series 3; took over from Lead 17 (series 3, local_74cdbff7) at ~490k, P-446)
 
-updated: 2026-11-22 04:0x IST: Lead 18 (series 3) current since 03:21 IST (check 28212e5f) · milestone: Release 1 proven 42 of 101 on main (10/15 this cycle) · rules: **`RULES.md`** (as of **P-783**) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 05:3x IST: Lead 18 (series 3) current since 03:21 IST (check 28212e5f) · milestone: Release 1 proven **43 of 101** on main (**11/15** this cycle: R1.19 Works #2891 merged 05:3x) · rules: **`RULES.md`** (as of **P-783**; P-784 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -15,12 +15,13 @@ updated: 2026-11-22 04:0x IST: Lead 18 (series 3) current since 03:21 IST (check
 (0) **Founder:** last typed 22:3x (A274; "Yes, start it"). Weekly **88%** at 03:1x (~1%/h); account switch at ~95% (A271, `RESUME-ON-NEW-ACCOUNT.md`), likely ~10:00 IST. Full approvals incl. AWS.
 (1) **Proven 10/15, 42/101** (R1.4 Works merged 00:4x via #2868). Forecast by 07:00: **11** (R1.19). R1.10 and R1.3 are Partial on real gaps (records #2858/#2859 merged): R1.10 needs PF-28 parts 2b-6 (#2794 2b-2c queued; Lead B's lane); R1.3 needs CS-W2, CS-W3 p2-3, CS-W4 (no PRs). 12-13 only via AWS (R1.13 logs/alarms, R1.15) after the founder signs in.
 (2) **Evidence route (now enforced by #2860, merged 02:4x):** the record PR carries the journey file + `Completes: R1.n` and the row stays Partial "held only on P-339"; after it merges item-proof runs pack + journey on the merge commit (now red if nothing ran) and the Lead dispatches walks j_N on main; then qa opens a one-line Works PR. Journeys must exit by themselves (process.exit via record.ts leave(), else exit 143). Lanes can't dispatch (P-439). Classifier refuses a lane posting its own Approve: run an independent Opus reviewer subagent yourself and post its verdict attributed to it.
-(3) **R1.19 next (→ 11):** **#2857** (qa Q9, session_01MXNda4hZgzXj4GgJnHZh5a; j_19 checks billing_period) independent Opus Approve + labelled, **in the merge queue**. On merge: check item-proof on its merge commit, dispatch `walks.yml` journeys=j_19 on main, tell Q9 to open the Works PR (close QA-483 in it; ruled closed 02:5x). #2870 PF-5 part 3 (billing_period column; Checkout uses the stored period) merged 02:2x.
+(3) **R1.19:** done, Works 05:3x (#2891); Lead 17's line in history file 0400.
 (4) **AWS (local_35aacb3f-3180-427e-a538-8dc51d38de14):** #2850 PF-8b F4 merged 00:2x; "redeploy" sent; **blocked on the founder's AWS sign-in** (red line above; push sent 00:3x). Its plan after sign-in: check log_error_verbosity=terse, migrate resolve --rolled-back pf12, CodeBuild main (founder approves CodeBuild again), deploy 0 tasks → migrate → xr_app password → 2 tasks → R1.13. RDS on, 0 tasks (~US$0.11/h). Note on #2870: its backfill relies on the RDS migration role holding BYPASSRLS.
 (5) **Open PRs and lanes (Lead 17, 03:2x):** word for word in the same history file; now: #2687 Lead B labels, #2866 queued, lanes in the Lead 18 lines.
 (6b)/(6) **Owed records (Lead 17, Lead 16):** word for word in `product/history/STATE-2026-11-22-0400-lead18s3-owed-6b-6-lines.md` (DECISIONS rows owed, BACKLOG rows, hot-file splits, gh-fallback.py own PR).
 
 ## Lead 18 since 03:21 IST (newest first)
+* 05:3x **11/15, 43/101: R1.19 Works (#2891 merged).** Merged since 05:0x: #2880 PF-4b (R1.5), #2881 PF-5s p2 (R1.90), #2882 FO-9a (R1.29). Drafts: #2883 PF-28 p6, #2884 PF-30a, #2885 QA-644. Weekly 92% (~1.4%/h → 95% ~07:40, 98% ~09:50). Lead 18 context 302k: hand over to Lead 19 at ~340k.
 * 05:1x **R1.19:** #2857 merged 04:54 (df1d8824e), item-proof success 44961670040, walk j_19 success 44962449459 (main 828263498); qa Q9 told to open the Works PR. #2687, #2866 merged. **Demo was down since ~02:3x** (6 demo-update runs red: `react-email` missing in demo-main's node_modules; start.sh runs npm ci only when node_modules is missing). Fixed 05:0x: npm ci with .tools/node-v24.21.0, demo-update re-run green, :4400 200 on 828263498. **Owed fix row:** start.sh runs npm ci when package-lock.json changes (stamp), and a flake row for `check_s5_slice3_browser.cjs` C11.15.
 * 03:2x-04:2x: took over (check 28212e5f); night plan (A275) and cap 12 (A276, P-784): 9 cloud lanes (R1.29 FO-9a, R1.102 CS-S1 p2 → PF-30a first (ruled on #2879), R1.105 AUD-5 p2, R1.92 PF-18a p2, #2038 FO-6 p1, R1.24 PF-25w, R1.5 PF-4b, PF-5s, PF-18s); R1.10 part 6 to the DEMO-LINK lane; **parts 3 (3a/3b), 4, 5 need cloud lanes at the founder's next typed turn**; standby Lead 20 local_29230626. Word for word: history file 0400.
 

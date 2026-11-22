@@ -24,3 +24,7 @@
 * 04:0x **Night plan (A275):** founder asleep, AWS tomorrow. 11 by 07:00 only via R1.19 (#2857 dequeued: shard 24 `check_s5_slice3_browser.cjs` C11.15, outside its code; /run full 44955768170 → relabel if green, else main fix row). Cloud lanes 03:5x: R1.29 FO-9a, R1.102 CS-S1 p2, R1.105 AUD-5 p2, R1.92 PF-18a p2, #2038 FO-6 p1 (R1.54). Standby Lead 20 local_29230626. Full line: history file 0400.
 * 03:2x took over (check 28212e5f).
 
+
+## Lead 17's hand-over line (3), word for word (done 05:3x)
+
+(3) **R1.19 next (→ 11):** **#2857** (qa Q9, session_01MXNda4hZgzXj4GgJnHZh5a; j_19 checks billing_period) independent Opus Approve + labelled, **in the merge queue**. On merge: check item-proof on its merge commit, dispatch `walks.yml` journeys=j_19 on main, tell Q9 to open the Works PR (close QA-483 in it; ruled closed 02:5x). #2870 PF-5 part 3 (billing_period column; Checkout uses the stored period) merged 02:2x.
