@@ -19,12 +19,13 @@ Offices: Sample immigration firm CA/ON/America/Toronto · Calgary downtown CA/AB
 `check_pf18s_offices_browser.ts 4443 xr_studio_review_pf18s` on three fresh copies: **24/25, 25/25, 25/25**. The failing line on run 1 was "Escape closes it and focus is back on Add" (`backOnAdd:false`): a flaky check (my own walk saw focus return every time, so the race is likely in the check reading focus right after the dialog detaches).
 
 ## Break-it findings
+* **Blocker (B1, found by the parallel breaker; confirmed in the code at f5a1ea6c, not walked by me):** Offices and Team share the cache key `["pf","staff","list",token]` with different parsers (`offices-page.tsx:19` `People.parse`, `team-page.tsx:22` `StaffList.parse`). Offices → Team gives a blank Team page; Team → Offices shows placed people as "No office". My walk never moved between the two pages, so it missed this.
+* **Major (M1, found by the breaker; confirmed in the code):** after a province, choosing "Your firm's time zone" (value `""`) is dropped by `office-panel.tsx:43`. The province's zone is saved, and the audit says `province`.
 * **Minor:** the London office (outside Canada) is saved on **America/Toronto**: before saving the panel shows only "Your firm's time zone", not which zone that is (build notes list it as a deviation). An Owner adding a London office can easily miss it; the toast names it afterwards. `office-panel.tsx:87-90`.
 * **Minor:** error words: "a country code on the ISO list" (`api/src/platform/settings/offices/service.ts:30`, PF-18a's text, now on screen) and "This is required." alone (shared `http/input.ts:40-42`); a duplicate name is not shown on the Office name field (`office-panel.tsx:61`, the 409 has no `fields`).
 * **Minor:** at 200 % / 400 px the tables squeeze rather than stack (concept §4 "tables become stacked rows"): names break mid-word ("immigratio n firm", "sponsorsh ip"); at 1024 px "Mon–Fri 09:00–17:00" wraps to three lines (`offices-page.tsx:127-133`).
 * **Minor:** after a 409 the panel title still reads "Edit Calgary" while the loaded name is "Calgary downtown" (`office-panel.tsx:68` uses the stale `office` prop).
 * **Minor:** the builder's focus-return check is flaky (1 of 3 runs).
-* No Blocker, no Major.
 
 ## Score (each 0 / ½ / 1)
 | Criterion | Score | Evidence |
@@ -32,16 +33,16 @@ Offices: Sample immigration firm CA/ON/America/Toronto · Calgary downtown CA/AB
 | Task completed | 1 | J1, J2: add, edit, place, take out, all by mouse and by keyboard |
 | Next step obvious | 1 | One filled button (Add an office); "2 people have no office yet … until you place them"; Change per row |
 | Plain words | ½ | Province codes (AB) and IANA ids are accepted gaps; error fragments in J4 |
-| Feedback and state | 1 | Toasts name the zone; Save disabled until a change; busy state; refusal says why |
-| Correct data | 1 | Database exactly as entered; one audit line per real change; no line for a repeat (builder DW6) |
+| Feedback and state | ½ | Toasts, disabled Save, busy and refusal are fine; stale "No office" rows after Team (B1) |
+| Correct data | ½ | What I entered was stored exactly, with one audit line each; but M1 saves a zone other than the one chosen, and B1 shows wrong offices |
 | Error recovery | ½ | Input kept, 409 explained; but focus not on the summary, duplicate not on the field, 409 drops the person's edit |
 | Accessibility and screen sizes | 1 | axe clean on all states; keyboard path; focus return with ring; no sideways scroll at 400/1024/200 % |
 | Speed | 1 | Open 133 ms, add → list 125 ms (local copy) |
 | Visual quality | ½ | Team components and tokens; mid-word breaks at 200 %, three-line hours at 1024 px |
-| Trust and sources | 1 | "Pre-filled from AB", "First office", audit `province`/`chosen`; no AI on this page |
-| **Total** | **8.5 / 10** | **Pass** (8 or more, no 0) |
+| Trust and sources | ½ | "Pre-filled from AB", "First office"; but the audit says `province` for a person's firm-zone choice (M1) |
+| **Total** | **7 / 10** | **Below the pass** (needs 8; no 0) |
 
-Fixes that raise the low criteria, most valuable first: name the firm's zone in the "Your firm's time zone" option (trust/plain words); rewrite the two server field messages and put the duplicate-name error on the field, focus the summary on a failed save (error recovery); stack the two tables below ~640 px and keep the hours on one line (visual).
+Fixes that raise the low criteria, most valuable first: separate the staff-list cache keys (B1) and send or hide the firm-zone choice (M1) (correct data, feedback, trust); then name the firm's zone in the "Your firm's time zone" option (trust/plain words); rewrite the two server field messages and put the duplicate-name error on the field, focus the summary on a failed save (error recovery); stack the two tables below ~640 px and keep the hours on one line (visual).
 
 ## Not tested
 A real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); an Admin persona (the Sample firm has none: Owner tested); native `<select>` opened by keyboard (headless; selected programmatically while focused).

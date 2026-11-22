@@ -69,3 +69,24 @@ A Case Officer, or anyone without `agent/settings:edit`, has no Offices line. Op
 * Province names.
 * The office's own hours in Home's zone line is PF-18h's.
 * Parts 2 ("?" and Help & support, with #2064's double-send guard) and 3 (Notifications) follow.
+
+## Round 1 (review Block and break Block at f5a1ea6c) and what changed
+* **B1:** "Who works where" now has its own cache entry, `["pf","staff","placements"]`. Before this, Team and Offices overwrote each other's staff list and Team went blank. The new check goes Offices → Team → Offices by the menu.
+* **M1:** while a province gives a zone, "Your firm's time zone" is not offered. The server would pre-fill the province's zone over an empty choice. When a province is picked after choosing the firm's zone, the province pre-fill comes back. Covered by a check line.
+* **Breaker's Minors:**
+  * m1: at 375 px, Where and Hours move under the name, and zones break only at the slash.
+  * m2: the panel title is "Edit office", which no longer overflows on a long name.
+  * m3: "Canada" typed as a country abroad is refused on the field.
+  * m4: after a refusal, focus moves to the field in error, else to the notice.
+  * m5: the place panel opens on the ticked office.
+* **Reviewer's Minors:**
+  * m-2: a name in use is shown on the name field.
+  * m-4: the check waits for focus to come back after the panel closes. This was the reviewer's 24/25 flake.
+  * m-5 and m-6 are covered by m4 and m2 above.
+  * The zone hint now says what happens when no province gives a zone.
+* **Left as Minors, with their reason:**
+  * The country and required-field words come from PF-18a's service and the shared `http/input.ts`, outside this part's files.
+  * Hours wrap at 1024 px.
+  * graph.mjs does not see `staffApi(` calls, a tool gap.
+  * Outside Canada, the firm's zone is not named on add, because no firm-settings read exists on this page.
+* `check_pf18s_offices_browser.ts` now has 28 checks: 28/28 on two fresh copies.

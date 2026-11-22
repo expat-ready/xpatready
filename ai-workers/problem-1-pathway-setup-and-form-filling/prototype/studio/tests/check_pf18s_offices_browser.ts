@@ -99,7 +99,7 @@ try {
   await dialog(p).waitFor();
   const onName = await p.locator("[data-office-name]").evaluate((el) => el === document.activeElement);
   await p.keyboard.press("Escape"); await dialog(p).waitFor({ state: "detached" });
-  const backOnAdd = await add.evaluate((el) => el === document.activeElement);
+  const backOnAdd = await p.waitForFunction(() => document.activeElement?.hasAttribute("data-office-add"), undefined, { timeout: 5_000 }).then(() => true, () => false);   // review m-4: focus returns after the close animation
   ok("PF-18s DW7: by keyboard, Enter on Add an office opens the panel on the name field; Escape closes it and focus is back on Add", onName && backOnAdd, { onName, backOnAdd });
   await add.click(); await dialog(p).waitFor();
   await p.locator("[data-office-name]").fill("Calgary office");
@@ -132,7 +132,7 @@ try {
   await p.locator("[data-office-add]").click(); await dialog(p).waitFor();
   await p.locator("[data-office-name]").fill("calgary OFFICE"); await p.locator("[data-office-save]").click();
   await p.locator("[data-office-problem]").waitFor();
-  const dup = await p.locator("[data-office-problem]").innerText();
+  const dup = await p.locator("[data-office-problem]").innerText(), dupOnName = await p.locator("[data-office-name]").getAttribute("aria-invalid");
   await p.locator("[data-office-name]").fill("Leeds"); await p.locator("[data-office-abroad]").check(); await p.locator("[data-office-country]").fill("Canada");
   await p.locator("[data-office-save]").click();
   await dialog(p).getByText("For an office in Canada, choose In Canada and its province.").waitFor();
@@ -144,7 +144,7 @@ try {
   ok("PF-18s DW4 (break m3, m4): \"Canada\" typed as a country abroad is refused on the field before sending; after a refusal focus is on the field in error",
     countryErr === "true" && sql(`select count(*) from platform_office where firm_id = '${A}' and name = 'Leeds'`) === "0");
   ok("PF-18s DW4: a name already used (any case) is refused in words, nothing saved; a country code not on the list is refused on the Country field",
-    dup === "An office with this name already exists." && countryErr === "true" && sql(`select count(*) from platform_office where firm_id = '${A}'`) === "3", { dup, countryErr });
+    dup === "An office with this name already exists." && dupOnName === "true" && countryErr === "true" && sql(`select count(*) from platform_office where firm_id = '${A}'`) === "3", { dup, countryErr });
   const vErr = await axe(p, true); ok("PF-18s DW7: the panel with a field error has no WCAG 2.2 A/AA violation", vErr.length === 0, ids(vErr));
   await shot(p, "4-field-error-1440");
   await dialog(p).locator("button", { hasText: "Close" }).click(); await dialog(p).waitFor({ state: "detached" });

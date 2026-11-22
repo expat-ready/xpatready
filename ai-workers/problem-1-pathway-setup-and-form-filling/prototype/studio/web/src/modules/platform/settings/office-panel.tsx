@@ -64,7 +64,8 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
         const s = fromOffice(cur); setF(s); setStart(s); setVersion(cur.version);
         setProblem(`${(x as StaffApiError).message} We've loaded the latest; make your change again and save.`);
         await qc.invalidateQueries({ queryKey: ["pf", "offices"] });
-      } else if (x instanceof StaffApiError) { setErrors(fieldErrors(x.problem.fields)); setProblem(x.message); }
+      } else if (x instanceof StaffApiError && x.status === 409) { setErrors({ ...fieldErrors(undefined), name: x.message }); setProblem(x.message); }   // review m-2: a name in use, on the name field
+      else if (x instanceof StaffApiError) { setErrors(fieldErrors(x.problem.fields)); setProblem(x.message); }
       else setProblem("Not saved. Please try again.");
       focusError();
     } finally { sending.current = false; setBusy(false); }
@@ -94,7 +95,7 @@ export function OfficePanel({ open, onOpenChange, office, provinces, returnFocus
         ) : (
           <Field label="Country (two-letter code, for example GB)" error={errors.country}><Input value={f.country} maxLength={10} onChange={(e) => set({ country: e.target.value })} data-office-country /></Field>
         )}
-        <Field label="Time zone" error={errors.timeZone} hint={fromProvince ?? (f.zone ? undefined : "Your firm's time zone is used unless you choose another.")}>
+        <Field label="Time zone" error={errors.timeZone} hint={fromProvince ?? (f.zone ? undefined : f.inCanada && !f.province ? "Pick a province to pre-fill its time zone, or choose one. Otherwise your firm's time zone is used." : "Choose this office's own time zone. Otherwise your firm's time zone is used.")}>
           <Select value={f.zone} onChange={(e) => setF((x) => ({ ...x, zone: e.target.value, zoneTouched: true }))} data-office-zone>
             {!office && !pre ? <option value={FIRM_ZONE}>Your firm's time zone</option> : null}
             {zones.map((z) => <option key={z} value={z}>{z}</option>)}
