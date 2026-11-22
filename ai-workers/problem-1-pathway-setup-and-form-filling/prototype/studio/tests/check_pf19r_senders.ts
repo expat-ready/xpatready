@@ -239,9 +239,9 @@ try {
   await run();
   const f50 = (await rowsTo("dw5.fiftieth@example.com"))[0], f51 = (await rowsTo("dw5.fiftyfirst@example.com"))[0];
   ok("DW5 pass: on a trial firm the 50th email of the day is sent and the 51st is held: QUEUED with the reason \"daily limit\", nothing in the inbox, one alert",
-    sentSoFar > 0 && b5.status === 201 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
+    sentSoFar > 0 && b5.status === 200 && f50?.state === "SENT" && f51?.state === "QUEUED" && f51.stateReason === HELD_DAILY_LIMIT && (await inbox.list("dw5.fiftyfirst@example.com", undefined)).messages.length === 0 && alerts.raised.some((a) => a.kind === "send_cap_reached"), { b5: b5.body, f50, f51, alerts: alerts.raised });
   const held = await db.msgOutbox.findMany({ where: { firmId: firmA.id, state: "QUEUED", stateReason: HELD_DAILY_LIMIT }, select: { address: true } });
-  const rowOf = (e: string) => (b5.body.invitations ?? []).find((x: { email: string }) => x.email === e);
+  const rowOf = (e: string) => (b5.body.invited ?? []).find((x: { email: string }) => x.email === e);
   ok("DW5 pass: the batch's answer reports the held row: heldRows [2], and row 2 says emailHeld \"daily limit\" (row 1 does not); the outbox holds exactly that one",
     held.length === 1 && held[0].address === "dw5.fiftyfirst@example.com" && JSON.stringify(b5.body.heldRows) === "[2]" && rowOf("dw5.fiftyfirst@example.com")?.emailHeld === HELD_DAILY_LIMIT && rowOf("dw5.fiftieth@example.com")?.emailHeld === undefined, { held, b5: b5.body });
   // The two-step reset notice at the cap (break M1): never left for tomorrow, so nothing is reset.

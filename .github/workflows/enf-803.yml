@@ -1,0 +1,37 @@
+# ENF-803 (P-803, founder 22 Nov: the Lead never acts on stale information): the bulk-delete and temp-index guard, the
+# freshness stamps and 10-minute cache refusal, fresh-read.sh and the brief freshness check, tested twice, then each
+# guard switched off must turn the test red. Runs only when one of them changes. No network, US$0, about 1 minute.
+name: enf-803
+on:
+  pull_request:
+    paths:
+      - ".githooks/**"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/bulk-delete-guard.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/push-guard.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/fresh-lib.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/fresh-read.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/brief-fresh.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/brief-check.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/touch-overlap.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-measure.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/test-enf-803.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/guard-test-lib.sh"
+      - ".github/workflows/enf-803.yml"
+permissions:
+  contents: read
+concurrency:
+  group: enf-803-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      T: ai-workers/problem-1-pathway-setup-and-form-filling/product/tools
+    steps:
+      - uses: actions/checkout@v4
+      - name: ENF-803 self-test, twice
+        run: bash "$T/test-enf-803.sh" && bash "$T/test-enf-803.sh"
+      - name: each guard switched off turns the test red
+        run: bash "$T/test-enf-803.sh" --mutate

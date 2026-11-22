@@ -87,7 +87,7 @@ t0=$(ms_now); run "{$FR,\"first\":{$TODAY,$REL,\"stuck\":[${many%,}]}}"; ms=$(( 
 step=$(awk '/^# 11\. What the founder/ {f=1} f && (/^# 12\. / || /^exit/) {exit} f' "$TOOLS/lead-watch.sh")   # awk: same on BSD (Mac) and GNU
 FRESH="\"freshness\":{\"generated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"   # step 11 reads the real clock: the board is fresh now
 printf '%s' "{$FRESH,\"first\":{$TODAY,$REL,\"stuck\":[$S_LQ]}}" > "$T/board.json"; mkdir -p "$T/st"
-w=$(act=0; seen() { :; }; STATE_DIR="$T/st"; COCKPIT_DATA="$T/board.json"; prs='[{"number":1901,"title":"a"}]'; caps=$(cat "$T/caps.md")
+w=$(act=0; seen() { :; }; . "$TOOLS/fresh-lib.sh"; STATE_DIR="$T/st"; COCKPIT_DATA="$T/board.json"; prs='[{"number":1901,"title":"a"}]'; caps=$(cat "$T/caps.md")
     merged=$'#1902 row b merged\n#1500 other'; eval "$step"; echo "act=$act")
 grep -q '^ACT   stuck: 2 pull requests' <<<"$w" && grep -q 'disagree: #1902 .* source says merged' <<<"$w" && grep -q '^act=2$' <<<"$w" \
   && ok "lead-watch step 11 prints the board and counts its 2 ACT lines" || no "lead-watch wiring" "$w"
