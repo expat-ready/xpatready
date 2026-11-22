@@ -49,3 +49,17 @@ Second pair (`qa_j76b`, aligned):
 Pass: W1 ×3 (a note on case A1, 201; listed with the Owner's name and time; `case_note` once with `staff:<id>` and the database's time); W2 ×3 (an edit writes version 2, the history shows both; the database keeps both; UPDATE and DELETE refused on `case_note` and on `fo_note`); W3 prospect note on its person (FO-2 part 4); W6 ×2 (the prospect timeline, and not another's); W7 ×2 (firm B's prospect note and case notes never shown; firm A reading firm B's is 404 while its own is 200); W8 the case page opens; no page errors.
 Fail, all on missing parts: W3 a note on the case client and W4 ×2, W7 the case timeline (CS-NT1 part 3); W5 a person's timeline (no BACKLOG row names one; Lead decision pending since the old lane's hand-over); W8 the case page panel (CS-NT1 part 4) and the prospect page timeline (FO-4 part 2b).
 **Verdict: Partial (was Not built), no score (P-606).**
+
+## R1.65: walked after #3041 (PF-F1b, the files adapter bound) merged
+#3041 merged 23:04Z 22 Nov (04:34 IST 23 Nov); walked on main `d28e1e97f` at ~04:40 IST, within 60 min. j_65 from draft #3043 (`claude/jolly-knuth-42casq-d`), isolated copy `qa_j65`, a fresh copy for each run.
+First pair (j_65 as on #3043): 7/13 twice. W3's restart with `PLATFORM_FILES=s3` did not start: PF-F1b stops the start-up on S3 without `PLATFORM_FILES_LINK_KEY` (a PF-24 secret, at least 32 characters; `api/src/platform/files/choose.ts`), by design. j_65 was written before #3041 and did not pass it. One line aligned (a random 72-character test key in the restart's settings; this PR carries j_65 with it).
+Second pair (aligned):
+
+| Run | Result |
+|---|---|
+| 1 | 12/13 |
+| 2 | 12/13, the same line |
+
+Pass: W1 (a PDF on a support ticket, its key kept, the same bytes back through the signed link); W2 (firm B refused by link and ticket, 404, no bytes); **W3 ×5 by the app on S3** (the copy restarted with `PLATFORM_FILES=s3` against the journey's own fake S3 on 127.0.0.1, no AWS call, US$0: one PUT signed for ca-central-1 into the bucket under `<firm A id>/support/<ticket>/1`, the database keeping only the file's key; SSE-KMS under the configured key; no copy on the server's disk; it downloads through the app's link; firm B refused again, now non-vacuous, `s3Put: 1`); W4 ×4 (the adapter: ca-central-1 host, firm prefix, SSE-KMS, the bucket policy's 403 on an unencrypted put, another firm's key absent, a region outside Canada refused).
+Fail, on the missing part: W5, the real bucket's versioning, region and default encryption (PF-F1c: waits on the founder's AWS account; the recorded answers' path `tests/fixtures/pff1c/` is the journey's guess).
+**Verdict: Partial (was Not built), no score (P-606). Part missing: PF-F1c.**
