@@ -33,7 +33,7 @@ await main("C8.1", "Signed PDFs: steps, signed scans and who signs (Visitor visa
   r = await call("POST", `/runtime/items/${it?.id}/sign-steps/signed`, {}, OFFICER);
   ok("C8.1-7 pass: marked signed by hand", r.status === 200);
   r = await sendFile(`/runtime/items/${it?.id}/signed-scan`, Buffer.from("not a pdf"), "scan.txt");
-  ok("C8.1-8 fail: a scan that is not a PDF or image is refused (422), nothing recorded", r.status === 422 && sql(`select count(*) from signed_scan where item_id='${it?.id}'`) === "0", r.status);
+  ok("C8.1-8 fail: a scan that is not a PDF or image is refused (415, PF-F4's check since QA-520), nothing recorded", r.status === 415 && sql(`select count(*) from signed_scan where item_id='${it?.id}'`) === "0", r.status);
   r = await sendFile(`/runtime/items/${it?.id}/signed-scan`, signedScan("IMM 5476"), "imm5476-signed.pdf", CLIENT);
   ok("C8.1-9 fail: a client cannot upload the signed scan here (403; the client's own upload is the client portal, after M3)", r.status === 403, r.status);
   r = await sendFile(`/runtime/items/${it?.id}/signed-scan`, signedScan("IMM 5476"), "imm5476-signed.pdf");

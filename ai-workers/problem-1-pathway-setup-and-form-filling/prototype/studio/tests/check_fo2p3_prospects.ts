@@ -15,6 +15,7 @@ import { seedSampleFirmsFrontOffice } from "../api/src/front-office/firm-seed.ts
 import { Corporate } from "../api/src/front-office/sales/corporate/service.ts";
 import { Leads } from "../api/src/front-office/sales/leads.ts";
 import { NOT_SIGNED, Prospects, WON_REFUSED } from "../api/src/front-office/sales/prospects.ts";
+import { clearingConflicts } from "./lib/conflict-clear.ts";
 import type { SalesPorts } from "../api/src/front-office/sales/public.ts";
 import { SalesController } from "../api/src/front-office/sales/routes.ts";
 import { auditEvent, platformAuditWorkspaceId } from "../api/src/platform/audit/audit-event.ts";
@@ -64,6 +65,7 @@ try {
 
   const ports: SalesPorts = { audit: auditEvent, consent: new ConsentStore(auditEvent), publicOrigin: "http://localhost:4400" };
   const leads = new Leads(db, ports), pros = new Prospects(db, ports), corp = new Corporate(db, ports);
+  clearingConflicts(db, { prospects: Prospects.prototype });   // FO-13c: the conflict check first
   let n = 0;
   const lead = async (given: string, who: StaffContext = R) => (await leads.add(who, { requestId: randomUUID(), givenNames: given, familyName: "Sample", email: `${given.toLowerCase()}${++n}@example.com`, source: "Phone call" })) as { id: string; number: string; person: { id: string } };
   const stage = (key: string, pipeline = "INDIVIDUAL", f = A) => sql(`select id from fo_stage where firm_id = '${f}' and pipeline = '${pipeline}' and key = '${key}'`);
@@ -135,8 +137,8 @@ try {
   const leadReason = await refusal(() => pros.lost(R, p1b.id, { reasonId: reason("LEAD_CLOSE", "NOT_INTERESTED") }));
   const bReason = await refusal(() => pros.lost(R, p1b.id, { reasonId: reason("PROSPECT_LOST", "PRICE", B) }));
   const mergeReason = await refusal(() => pros.lost(R, p1b.id, { reasonId: reason("PROSPECT_LOST", "COMBINED_PROSPECT") }));
-  ok("FO-2p3 DW3 fail: Mark lost without a reason → 400 at the field; a reason from the lead list, another firm's or a merge's → 400; nothing changed",
-    noReason?.status === 400 && (noReason.body.fields as Record<string, string>)?.reasonId !== undefined && leadReason?.status === 400 && bReason?.status === 400 && mergeReason?.status === 400
+  ok("FO-2p3 DW3 fail: Mark lost without a reason → 422 at the field; a reason from the lead list, another firm's or a merge's → 422; nothing changed",
+    noReason?.status === 422 && (noReason.body.fields as Record<string, string>)?.reasonId !== undefined && leadReason?.status === 422 && bReason?.status === 422 && mergeReason?.status === 422
       && sql(`select s.kind from fo_stage s join fo_prospect p on p.stage_id = s.id where p.id = '${p1b.id}'`) === "ACTIVE", { noReason, leadReason, bReason, mergeReason });
   const lost = await pros.lost(R, p1b.id, { reasonId: reason("PROSPECT_LOST", "DUPLICATE_PROSPECT"), note: "Two Engage clicks" });
   ok("FO-2p3 DW3 pass: Mark lost with a prospect reason (the system's Duplicate one may be chosen) → the LOST stage with the reason and note; audited; prospect.lost with the key, never the note",
@@ -153,7 +155,7 @@ try {
   const lostAgain = await refusal(() => pros.lost(R, p1b.id, { reasonId: reason("PROSPECT_LOST", "PRICE") }));
   ok("FO-2p3 DW3 fail: a lost prospect does not move and is not lost twice (409)", lostMove?.status === 409 && lostAgain?.status === 409, { lostMove, lostAgain });
   const badStage = await refusal(() => pros.list(R, { stage: "WHATEVER" }));
-  ok("FO-2p3 DW3 fail: an unknown stage filter → 400 naming the stages", badStage?.status === 400 && String(badStage.body.detail).includes("LOST"), badStage);
+  ok("FO-2p3 DW3 fail: an unknown stage filter → 422 naming the stages (PF-28 part 3a: a field error is 422)", badStage?.status === 422 && String(badStage.body.detail).includes("LOST"), badStage);
 
   // ------------------------------------------------------------------------------------- DW4: Convert and Undo
   const conv = await pros.convert(R, p1.id, {});
@@ -224,11 +226,11 @@ try {
   ok("FO-2p3 DW6 fail: the filters narrow inside the visibility: own-only O filtering on R's leads or prospects gets none", oWithR.length === 0 && oProspects.length === 0, { oWithR, oProspects });
   const bLeads = await leads.list(SOLO, "all", undefined, { from: "2026-11-01", to: "2030-01-01" }), bPros = await pros.list(SOLO, {});
   const bOwner = await refusal(() => leads.list(SOLO, "all", undefined, { owner: R.staffId }));
-  ok("FO-2p3 DW6 fail: firm B never sees firm A's leads or prospects, and naming firm A's staff as owner → 400",
-    !bLeads.some((l) => [tia.id, eli.id, fay.id].includes(l.id)) && !bPros.some((p) => p.id === p1.id) && bOwner?.status === 400 && bOwner.body.code === "UNKNOWN_OWNER", { bOwner });
+  ok("FO-2p3 DW6 fail: firm B never sees firm A's leads or prospects, and naming firm A's staff as owner → 422",
+    !bLeads.some((l) => [tia.id, eli.id, fay.id].includes(l.id)) && !bPros.some((p) => p.id === p1.id) && bOwner?.status === 422 && bOwner.body.code === "UNKNOWN_OWNER", { bOwner });
   const badDay = await refusal(() => leads.list(R, "all", undefined, { from: "2026-13-01" })), backwards = await refusal(() => leads.list(R, "all", undefined, { from: "2026-11-02", to: "2026-11-01" }));
   const year0 = await refusal(() => leads.list(R, "all", undefined, { from: "0000-01-01" })), year9 = await refusal(() => pros.list(R, { to: "9999-12-31" }));
-  ok("FO-2p3 DW6 fail: a date that is not a day, from after to, or a year outside 1900-2999 (break m2: was 500) → 400", badDay?.status === 400 && backwards?.status === 400 && year0?.status === 400 && year9?.status === 400, { badDay, backwards, year0, year9 });
+  ok("FO-2p3 DW6 fail: a date that is not a day, from after to, or a year outside 1900-2999 (break m2: was 500) → 422 (PF-28 part 3a: a field error is 422)", badDay?.status === 422 && backwards?.status === 422 && year0?.status === 422 && year9?.status === 422, { badDay, backwards, year0, year9 });
   ok("FO-2p3 DW6 pass: the prospects list filters by owner and engaged day too", (await pros.list(R, { owner: T.staffId })).every((p) => p.ownerStaffId === T.staffId) && (await pros.list(R, { from: "2000-01-01", to: "2000-01-02" })).length === 0);
   const readB = await refusal(() => pros.read(SOLO, p1.id));
   ok("FO-2p3 DW6 fail: firm B reading firm A's prospect → 404", readB?.status === 404, readB);

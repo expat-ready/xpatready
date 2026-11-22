@@ -1,7 +1,7 @@
 // P-728 (3), P-729 (1): the automatic proof at an item's last merge (.github/workflows/item-proof.yml, tools/item-proof.mjs).
 // Fixture PR bodies (tests/fixtures/item-proof/): one that completes R1.77 (detected), one that does not (an example in
 // a fence is no claim), one with unreadable lines (refused, never guessed); the plan read from a fixture row (packs from
-// its C ids, suites its Done when names, the journey j_<n>.ts); a PASS and a FAIL verdict's shape (a missing journey,
+// its C ids, suites its Done when names, the journey j_<n>.ts, or the J-row SHARED_JOURNEY names: R1.40 -> j_38.ts); a PASS and a FAIL verdict's shape (a missing journey,
 // pack or result line is FAIL, P-405); the comment and the founder's page; the secret scan (a planted key is caught, by
 // shape and by an env value, never printed); the video size fitting 800 x 800; and the workflow's shape.
 // No server, no database; US$0. Run from prototype/:
@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts } from "../tools/item-proof.mjs";
+import { detect, plan, verdict, comment, page, scan, scanText, packLine, readVerdicts, journeyOf } from "../tools/item-proof.mjs";
 import { videoSize } from "./journeys/video-size.ts";
 
 const F = join(import.meta.dirname, "fixtures", "item-proof"), TOOL = join(import.meta.dirname, "..", "tools", "item-proof.mjs");
@@ -36,6 +36,10 @@ ok("P1 R1.77: the C8.2 pack, the suite its Done when names, a named file that is
 ok("P2 R1.6: no pack or suite named; its journey j_6.ts exists on this tree", p6.found && !p6.packs.length && !p6.suites.length && p6.journeyExists, p6);
 ok("P3 a C id with no acceptance pack is listed as missing", JSON.stringify(p3.packsMissing) === '["C99.99"]', p3);
 ok("P4 an item with no row is not found; a bad id throws", !p9.found && (() => { try { plan("C8.2", caps); return false; } catch { return true; } })());
+// P5 (QA-570, tech lead 20 Nov): an item proven by another row's journey resolves to that file, never a copy; R1.40 is J-38.
+const p40 = JSON.parse(cli(["plan", "R1.40"]).stdout || "{}"), td = mkdtempSync(join(tmpdir(), "ip-")), v40 = cli(["verdict", "--item", "R1.40", "--plan", join(td, "none.json"), "--results", join(td, "none.jsonl"), "--sha", "abc1234", "--pr", "1", "--run-id", "1", "--run-url", "u"]);
+ok("P5 R1.40 (calendar invite files) is proven by J-38: plan from qa/CAPABILITIES.md names tests/journeys/j_38.ts, which exists; no j_40.ts is made", p40.found && p40.journey === "tests/journeys/j_38.ts" && p40.journeyExists && !existsSync(join(import.meta.dirname, "journeys", "j_40.ts")) && journeyOf("R1.77") === "tests/journeys/j_77.ts", p40);
+ok("P6 a verdict with no plan (set-up failed) for R1.40 still names j_38.ts", JSON.parse(v40.stdout || "{}").suites?.some((s: { name: string }) => s.name === "tests/journeys/j_38.ts"), v40.stdout.slice(0, 300));
 
 // V: verdict shape, PASS and FAIL.
 const base = { sha: "a".repeat(40), pr: 2200, runId: 123, runUrl: "https://example.test/run/123", artifactUrl: "https://example.test/art/9", repo: "o/r", at: "2026-11-19T10:00:00Z" };
@@ -114,6 +118,38 @@ ok("W5 verdicts go to the branch auto-verdicts, never main; one comment; CAPABIL
 ok("W6 no secret is read; the PR body reaches the shell only through env", !/secrets\./.test(wf) && !/run:[^\n]*github\.event\.pull_request\.body/.test(wf));
 const prr = readFileSync(join(ROOT, ".github", "workflows", "pr-rules.yml"), "utf8");
 ok("W7 pr-rules checks the Completes line with item-proof.mjs detect", /item-proof\.mjs detect/.test(prr));
+
+
+// K: the prove job is never green when it proved nothing (A274, 21 Nov: run 44921268206 showed "prove (R1.4)" success
+// while its verdict said FAIL "no J-test file on main" and no suite ran). gate exits 1 on a FAIL verdict, on zero runs
+// and on a missing verdict file, and says why.
+const kd = mkdtempSync(join(tmpdir(), "item-proof-gate-")), kf = (n: string, v: unknown) => { const f = join(kd, n); writeFileSync(f, typeof v === "string" ? v : JSON.stringify(v)); return f; };
+const vR14 = verdict({ item: "R1.4", plan: { ...p6, item: "R1.4", journey: "tests/journeys/j_4.ts", journeyExists: false }, results: [], ...base });
+const g1 = cli(["gate", kf("r14.json", vR14)]), g2 = cli(["gate", kf("pass.json", vPass)]);
+ok("K1 the 21 Nov R1.4 verdict (FAIL, no J-test file, nothing ran) makes gate exit 1, naming FAIL, the reason and zero runs", g1.status === 1 && /FAIL/.test(g1.stdout) && /no J-test file on main/.test(g1.stdout) && /0 of \d+ planned run/.test(g1.stdout), [g1.status, g1.stdout]);
+ok("K2 a PASS verdict with its journey run passes gate (exit 0)", g2.status === 0 && /PASS/.test(g2.stdout), [g2.status, g2.stdout]);
+const g3 = cli(["gate", kf("norun.json", { ...vPass, suites: vPass.suites.map((s: object) => ({ ...s, exit: null })) })]);
+ok("K3 a verdict marked PASS where no pack, suite or journey has an exit (nothing ran) still fails gate", g3.status === 1 && /nothing ran/.test(g3.stdout), [g3.status, g3.stdout]);
+const g4 = cli(["gate", join(kd, "missing.json")]), g5 = cli(["gate", kf("torn.json", "{")]);
+ok("K4 a missing or torn verdict file fails gate", g4.status === 1 && g5.status === 1 && /no verdict/.test(g4.stdout + g5.stdout), [g4.status, g5.status, g4.stdout]);
+const proveJob = wf.slice(wf.indexOf("\n  prove:"), wf.indexOf("\n  report:"));
+const gateAt = proveJob.indexOf('item-proof.mjs" gate'), keepAt = proveJob.indexOf("name: keep the verdict for the report job");
+ok("K5 item-proof.yml: the prove job's last step runs gate (if: always(), after the verdict is kept, its why in the summary)",
+  gateAt > keepAt && keepAt > 0 && /if: always\(\)\s*\n\s*run: \|[\s\S]*item-proof\.mjs" gate[^\n]*\n[^\n]*GITHUB_STEP_SUMMARY[^\n]*exit "\$st"/.test(proveJob.slice(keepAt)) && proveJob.lastIndexOf("\n      - ") < gateAt, proveJob.slice(keepAt, keepAt + 900));
+
+// Q: a runtime or screens PR whose title names an R1 row and whose body has no Completes line is told (A274; 21 Nov:
+// #2814 "runtime: PF-12b part 3 (R1.4)" had none, so item-proof skipped). A warning, exit 0, until the Lead adds --strict.
+const claim = (title: string, b: string, strict = false) => cli(["claim", "--title", title, ...(strict ? ["--strict", "on"] : [])], b);
+const q1 = claim("runtime: PF-12b part 3 (R1.4) — the three no-firm bypass uses write a firm-less audit line", "Done when: x\n");
+ok("Q1 #2814's title with no Completes line prints MISSING: \"Completes: R1.4\" as a warning, exit 0", q1.status === 0 && q1.stdout.includes('MISSING: "Completes: R1.4"') && /::warning/.test(q1.stdout), [q1.status, q1.stdout]);
+const q2 = claim("screens: FO-5 (R1 row 42) and R1.13, R1.15 cloud halves", "body\n```\nCompletes: R1.42\n```\n");
+ok("Q2 \"(R1 row n)\" and several ids are read; a Completes line inside a fence is no claim", q2.status === 0 && ["R1.13", "R1.15", "R1.42"].every((i) => q2.stdout.includes(`MISSING: "Completes: ${i}"`)), q2.stdout);
+const q3 = claim("runtime: PF-12b part 4 (R1.4)", "Completes: R1.4\n"), q4 = claim("qa: capability R1.47 — Works on main", "x\n"), q5 = claim("tooling: item-proof fixes", "x\n");
+ok("Q3 a body with a Completes line, a qa PR and a title naming no R1 row print nothing", q3.status === 0 && q4.status === 0 && q5.status === 0 && !/MISSING/.test(q3.stdout + q4.stdout + q5.stdout), [q3.stdout, q4.stdout, q5.stdout]);
+const q6 = claim("migration — runtime: PF-15 part 1b (for PF-16, R1.90)", "x\n", true);
+ok("Q6 with --strict on (the Lead's switch) the same miss exits 1", q6.status === 1 && q6.stdout.includes('MISSING: "Completes: R1.90"'), [q6.status, q6.stdout]);
+ok("Q7 pr-rules runs claim on the title and body as a warning (no --strict yet), the title only through env",
+  /TITLE: "\$\{\{ github\.event\.pull_request\.title \}\}"/.test(prr) && /item-proof\.mjs claim --title "\$TITLE"\s*$/m.test(prr) && !/claim[^\n]*--strict/.test(prr));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

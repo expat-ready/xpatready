@@ -1,0 +1,14 @@
+PASS  J-27 setup: firm A has a front office and its web form is on — []
+PASS  J-27 W1: the hosted form's enquiry is a WEB_FORM lead carrying the form's source — ["52442f75-6680-460b-a277-f02eeeaeb0aa","WEB_FORM","WEBSITE","-"]
+PASS  J-27 W2: an embedded send with a campaign is a WEB_FORM lead with the same source, its campaign kept — {"status":201,"w2":["013454d3-1f39-416d-aaf1-b3f7465eae3b","WEB_FORM","WEBSITE","-"]}
+PASS  J-27 W2: the lead's page shows its source and its campaign — "Back\nSales\n›\nLeads\n›\nLead\nEmimwprshyb Sample\nLead\nOpen\nL-00002\nPerson\nEmail\nemi.mwprshyb@j27.example\nPhone\nNot given\nEdit\nIdentity check\nRecord a check\n\nNo identity check is recorded for Emimwprshyb Sample.\n\nRecord a check before the reta
+PASS  J-27 W3 (fail): Add a lead with no source says "Pick a source." at the field and saves nothing
+PASS  J-27 W3: with "Phone call" it is a MANUAL lead with that source, owned by the Owner, and its page says so — ["5fa113d2-3f2c-42c7-8bf5-713927dae5bc","MANUAL","Phone call","6df6458d-7481-4b02-8aa7-35b113c1be93"]
+PASS  J-27 W4 (fail case): the database refuses a lead with no source (NULL) and one with a blank source
+PASS  J-27 W4: every lead of firm A carries a source
+PASS  J-27 W5: Leads › All open › Source "Phone call" shows the manual lead and neither web lead — "Miamwprshyb\nL-00003\n\tNot given\tPhone call\tRepresentative (Sample)\tNov 21, 2026, 2:09 a.m.\t"
+PASS  J-27 W5: Source "Website form" shows both web leads and not the manual one — "Emimwprshyb Sample\nL-00002\n\tNot given\tWebsite form\tNobody\tNov 21, 2026, 2:09 a.m.\tTake it\nWesmwprshyb Sample\nL-00001\n\tNot given\tWebsite form\tNobody\tNov 21, 2026, 2:09 a.m.\tTake it"
+PASS  J-27: no page error in the walk — []
+
+11/11 passed
+exit 0

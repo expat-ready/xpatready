@@ -5,7 +5,12 @@
 # are skipped. No "labeled": a label must never re-run the check the queue waits on (as ci.yml, review 6 Nov).
 # An item's last PR says "Completes: R1.77" on a line of its own (several: "Completes: R1.77, R1.78"); at its merge
 # item-proof.yml runs the item's pack and journey and posts the verdict (P-728 (3)); an unreadable line fails here.
+# A runtime/screens PR whose title names an R1 row and whose body has no such line gets a MISSING warning (A274).
 # The product queue does not wait for this check yet (Lead 58, 15 Nov: gate in a later small PR after a day). Reads only, US$0.
+# B204 (P-745): job outside-wave labels a PR naming an R1 item outside the open waves (design/waves.tsv) "outside-wave",
+# with a warning, never a failure (fixes still merge, P-214). It holds the only write token here, so it runs main's
+# waves.py from the base commit in a folder of its own, reads the PR's title and body as data only, and keeps no
+# token in .git/config (tools/write-token.py, ALLOW).
 # Test: product/tools/check-g4-rules.sh.
 name: pr-rules
 on:
@@ -27,11 +32,18 @@ jobs:
       BODY: "${{ github.event.pull_request.body }}"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # the merge commit and its first parent (main), for cleanup-pr-check.sh
       - name: body has a testable Done when and a Duplicate check line
         run: printf '%s\n' "$BODY" | bash "$T/brief-check.sh"
       - name: a "Completes:" line, if any, names R1 items only (P-728 (3); item-proof.yml proves them at the merge)
         if: "${{ !cancelled() }}"
         run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs detect
+      - name: a runtime/screens PR whose title names an R1 row has a "Completes:" line (A274; a warning until the Lead adds --strict on)
+        if: "${{ !cancelled() }}"
+        env:
+          TITLE: "${{ github.event.pull_request.title }}"
+        run: printf '%s\n' "$BODY" | node ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tools/item-proof.mjs claim --title "$TITLE"
       - name: under 800 changed lines of code and tests, or a recorded exception
         if: "${{ !cancelled() }}"
         env:
@@ -49,3 +61,41 @@ jobs:
       - name: reviewer and breaker agents on Opus high
         if: "${{ !cancelled() }}"
         run: bash "$T/agent-model-guard.sh"
+      - name: every R1 item of CAPABILITIES.md has one wave in design/waves.tsv (B204; a warning, never a failure)
+        if: "${{ !cancelled() }}"
+        run: python3 -I "$T/waves.py" ids || echo "::warning title=waves list::a new R1 row needs a wave in design/waves.tsv (P-745)"
+      # E16 (STANDARDS §1, P-553, P-587): a package added to any package.json needs a "STANDARDS §1:" line (the technology gate).
+      # Test: product/tools/check-deps-line.sh.
+      - name: a new package in any package.json carries a "STANDARDS §1:" line (E16)
+        if: "${{ !cancelled() }}"
+        run: printf '%s\n' "$BODY" | bash "$T/deps-line-check.sh" --base HEAD^1
+  outside-wave:
+    if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') && !contains(github.event.pull_request.labels.*.name, 'records') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: write   # the label outside-wave only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - name: an item outside the open waves is flagged with the label outside-wave, never failed (B204, P-745; P-214)
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          TITLE: "${{ github.event.pull_request.title }}"
+          BODY: "${{ github.event.pull_request.body }}"
+          N: "${{ github.event.pull_request.number }}"
+          HAS: "${{ contains(github.event.pull_request.labels.*.name, 'outside-wave') }}"
+        run: |
+          r=0; out=$(printf '%s\n%s\n' "$TITLE" "$BODY" | python3 -I base/ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/waves.py pr 2>&1) || r=$?
+          if [ "$r" = 1 ] && [ "${out#OUTSIDE WAVE}" != "$out" ]; then   # a crash (Python traceback) is not a flag
+            while IFS= read -r l; do echo "::warning title=outside-wave::$l"; done <<< "$out"
+            [ "$HAS" = true ] || gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$N/labels" -f 'labels[]=outside-wave' >/dev/null \
+              || echo "::warning title=outside-wave::the label could not be added"
+          elif [ "$r" = 0 ]; then
+            [ "$HAS" = true ] && { gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$N/labels/outside-wave" >/dev/null || true; }
+          else echo "::warning title=waves.py::could not check the waves ($out)"; fi
+          exit 0

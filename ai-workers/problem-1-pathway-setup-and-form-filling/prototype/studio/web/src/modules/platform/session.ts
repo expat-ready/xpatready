@@ -66,12 +66,12 @@ export class StaffApiError extends Error {
 }
 /** One call to a staff route with the bearer token. A 401 ends the session here (the sign-in card shows again).
  *  `headers` (PF-21i): extra request headers, passed through as given (e.g. a create's Idempotency-Key). */
-export async function staffApi<T>(path: string, init: { method?: string; json?: unknown; headers?: Record<string, string> } = {}): Promise<T> {
+export async function staffApi<T>(path: string, init: { method?: string; json?: unknown; /** PF-18s part 2: a multipart body (the browser sets its type). */ form?: FormData; headers?: Record<string, string> } = {}): Promise<T> {
   const token = staffToken();
   const headers: Record<string, string> = { ...init.headers, accept: "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
   if (init.json !== undefined) headers["content-type"] = "application/json";
-  const res = await fetch(`/api${path}`, { method: init.method ?? "GET", headers, body: init.json === undefined ? undefined : JSON.stringify(init.json) });
+  const res = await fetch(`/api${path}`, { method: init.method ?? "GET", headers, body: init.form ?? (init.json === undefined ? undefined : JSON.stringify(init.json)) });
   const text = await res.text();
   const data: unknown = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
   if (!res.ok) {

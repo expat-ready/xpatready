@@ -1,0 +1,42 @@
+NOTICE:  database "xr_studio_pf23w_1867" does not exist, skipping
+(node:1867) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS  PF-23w DW1 pass: on a copy running the worker, /api/health/ready is 200 with job_queue.ok true
+PASS  PF-23w DW1 fail: with pg-boss stopped, ready is 503 and names the job queue (failing [job_queue], in words)
+PASS  PF-23w DW1: job_queue.ok is never null (the probe is provided by features/platform-jobs.ts)
+PASS  PF-23w DW1 pass: started again, ready is 200 again
+PASS  PF-23w DW2 pass: one run writes one metric line with queue, outcome and age
+PASS  PF-23w DW2 fail: a failing job's run writes one failure line (outcome failed) and one error line, never its message
+PASS  PF-23w DW2 fail: the wrapper passes the throw on, so pg-boss retries the job (a second run, a second failure line)
+PASS  PF-23w DW2 pass: a handler registered through PlatformJobs.handle is wrapped by observeJob (one job line per run)
+PASS  PF-23w DW2 fail: a test handler registered around it (runner.handle) ran but fails the wrapped check
+PASS  PF-23w DW2 pass: no module in api/src registers a handler around PlatformJobs.handle (runner.handle, new PgBossJobs)
+PASS  PF-23w DW2 fail: the code check catches a planted `jobs.runner.handle(` and `new PgBossJobs(`
+PASS  PF-23w DW4: FO-3's booking reminders (24 h and 1 h) are rows in pg-boss's job table, waiting
+PASS  PF-23w DW4: the booking's JobPort is PF-14's PlatformJobs, not PF-0p's fake
+PASS  PF-23w DW4: the attendance question is a row in pg-boss's job table too
+PASS  PF-23w DW7: after the API restart the reminders and the attendance question are still queued
+PASS  PF-23w DW7: after the restart ready is ok
+PASS  PF-23w DW7: the 24 h reminder runs after the restart, at its due time on the clock (Mon 10:00 Toronto), and mails the booker
+PASS  PF-23w DW7 fail: the 1 h reminder has not run yet at that time (due Tue 09:00)
+PASS  PF-23w DW7: the 1 h reminder and the attendance question (30 min after the end) run after the restart
+PASS  PF-23w DW7: each booking job's run wrote its job line (observeJob on the real worker)
+PASS  PF-23w DW7: nothing ran twice (2 reminders and 1 question after the restart, none before it)
+PASS  PF-23w DW3 fail: a job waiting under STUCK_JOB_MS (29 min) raises nothing
+PASS  PF-23w DW3 pass: a job older than STUCK_JOB_MS raises one job_stuck alert naming its queue and job, from the cron check
+PASS  PF-23w DW3: the stuck check ran as a platform cron job through PlatformJobs (its runs have job lines)
+PASS  PF-23w DW3 fail: further checks within 5 minutes (the cron's and a direct one) raise none for that job
+PASS  PF-23w DW3 fail: a job due tomorrow is not stuck
+PASS  PF-23w DW3: after 5 minutes a job still stuck raises again (one alert per job per 5 minutes)
+PASS  PF-23w DW3 pass: a job in the retry state long past its due time is reported stuck too
+PASS  PF-23w DW3 fail: the dead-letter list (DW2's failed job, waiting with no worker) is never reported stuck
+    qa452| PASS  QA-452 (1): a module provides JOB_QUEUE_PROBE for /api/health/ready — features/platform-jobs.ts
+    qa452| PASS  QA-452 (2): PF-14's worker wraps job handlers with PF-23's observeJob — platform/jobs/platform-jobs.ts
+    qa452| PASS  QA-452 (3): the stuck-job alarm is fed from the real queue — platform/jobs/stuck-check.ts
+    qa452| 3 passed, 0 failed
+PASS  PF-23w DW5: qa's check_qa452_jobs_observed.ts passes
+    qa453| PASS  QA-453: no running-app module queues its jobs on PF-0p's in-memory fakeJobs
+    qa453| PASS  QA-453: some module outside platform/jobs injects PF-14's PlatformJobs (the real JobPort) — case-clients/live.ts, features/case-deadlines.ts, features/platform-complaints.ts, features/platform-entitlements.ts, features/platform-jobs.ts, features/platform-messages.ts, front-office/booking/public.controller.ts, front-office/booking/service.ts, platform/firms/routes.ts
+    qa453| 2 passed, 0 failed
+PASS  PF-23w DW6: qa's check_qa453_real_jobport.ts passes 2/2
+31 passed, 0 failed

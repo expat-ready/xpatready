@@ -138,7 +138,7 @@ function SignBlock({ caseId, item, f, filing }: { caseId: string; item: PrepItem
       toast.push({ tone: "ok", text: `${form}: signed scan received` }); await after();
     } catch (e) {
       // A refusal about the file (its type, size, emptiness) stays on the upload; any other (the order, a stale page) under the block.
-      if (e instanceof ApiError && [400, 413, 422].includes(e.status)) { setFileErr(e.message); setFocusTo("next"); }
+      if (e instanceof ApiError && [400, 413, 415, 422].includes(e.status)) { setFileErr(e.message); setFocusTo("next"); }
       else { await refresh(); setRefusal((e as Error).message); setFocusTo("heading"); }
     } finally { setBusy(false); if (file.current) file.current.value = ""; }
   }
