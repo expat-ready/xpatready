@@ -196,3 +196,32 @@ None.
 3. Round 2's Minor 4 (NOT_CLEARED on `/extra` only; the citation's strength) and Minor 6 (Lead items) are not in this diff and stay with Lead B and the PR.
 
 **Verdict: Approve** on `d5cb7512b7371f695e01af0f27c46b5d7a5de0f7` (part 1c): no open Blocker or Major. Round 2's Minors 1-3 are fixed in the code, and Minor 4 in part. Minor 1 above (make the R2-4 case catch the old bug) is cheap and should go in with the next push.
+
+## Lead B's fix (diff 4db6219c7..b2cae898f)
+Diff-only re-review of `b2cae898f084c803435d396f9f03b71b1178892d` on `claude/runtime-fo7b-1c`. It implements Lead B's ruling on #3036 (comment 7079217858, 12:35 UTC): `/refunds` refuses a payment that has not cleared, as `/extra` does. API-only row, so there is no browser walk and no journey score. Not in scope: #2953's merged fixes `2311bc168` and `3b0f5bb54`, which were approved there.
+
+### Runs
+- `studio/node_modules/.bin/tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7b_refunds.ts` from `prototype/`, on the scratch database at 127.0.0.1:54329: **29 passed, 0 failed**. The two new cases are "RF fail (Lead B's ruling)" and "RF pass (Lead B's ruling)".
+- Touch list: `git diff --stat 4db6219c7..b2cae898f` shows 2 files, +16/−2: `api/src/client-money/invoices/refunds.ts` and `tests/check_fo7b_refunds.ts`.
+
+### Checked against the ruling
+1. **The check and where it sits.** In `refund()` the order is now lock → `day()` → replay (returns) → `TRUST_REFUND` → `if (!p.cleared) refuse("NOT_CLEARED", "This cheque is not cleared yet: it can be refunded once it clears. Nothing was refunded.")` → `leftToRefund` / OVER_REFUND → write. That is after the replay check and the trust refusal, as ruled, and the words match the ruling exactly. The check comes before any write, and `refuse` throws inside the transaction, so nothing is written.
+2. **A replay still answers as a replay.** The `had` early return comes before the new check. A key whose refund already exists returns `refundView(..., true)` whatever `cleared` says now. That covers a refund written before this rule existed, and one whose cheque was later un-ticked. The replay lookup's payload has no `cleared` field, so a change to the tick cannot turn a retry into KEY_USED.
+3. **The new case would fail on the old code.** Payment `pQ` is a 120.00 cheque on a 100.00 invoice, uncleared, with no kept credit on the invoice. On `4db6219c7`, `leftToRefund` gives `left = 12000` (the invoice holds no kept credit, so the early return applies). No migration ties `money_refund` to `cleared`: I grepped the migrations that mention `money_refund` and none has a cleared rule. So the old code answers 201 and writes `2000:OFFLINE:Not arrived (Sample)`. The "RF fail" case would then fail on status, code and `refunds() === ""`. The "RF pass" case would also fail, because two refund rows would exist. After `cleared = true` is set, the same refund gives 201 with one OFFLINE row. That is the fail-first-then-pass pair the ruling asks for. The fail case also checks that no `payment.refunded` audit line and no module event were written.
+4. **Labelled a reading.** The new comment in `refund()` says "AG-6-63 r7 only warns on applying uncleared money; refusing refunds of it is Lead B's reading … Unconfirmed: no accountant". The `/extra` comment is reworded the same way: it drops the earlier "AG-6-63 rule 7, MS-D23(3)" framing as a rule and keeps the database fact. That is comment-only, and it closes the citation-strength half of Round 2's Minor 4.
+5. **Nothing else changed.** Apart from the new guard and the two comments, `refunds.ts` is byte-identical. The `/extra` logic line is untouched. The test diff adds 9 lines after the existing m1/F5 case and reuses `pQ`, which no later case uses. The other 27 cases are unchanged and pass.
+
+### Blocker
+None.
+
+### Major
+None.
+
+### Minor
+None.
+
+### Nits (no fix asked)
+1. No case pins check 2, a replay after the tick changes. It holds by code order today. A one-line case would keep a later reorder from breaking it unseen: retry `qAfter`'s key after setting `cleared = false` and expect 200 replayed. It can go in part 2.
+2. Round 3's Minor 1 (the R2-4 case) and Nits 1-2 are not in this diff and still stand as written.
+
+**Verdict: Approve** on `b2cae898f084c803435d396f9f03b71b1178892d` (part 1c): no open Blocker or Major. The fix matches Lead B's ruling in substance, placement and wording. Its case fails on the old code and passes on the new one. Nothing else changed.
