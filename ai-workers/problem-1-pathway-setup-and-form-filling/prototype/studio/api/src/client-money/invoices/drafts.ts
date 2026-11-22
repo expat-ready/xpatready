@@ -105,7 +105,7 @@ export class InvoiceDrafts {
       if (l.kind !== "GOVERNMENT_FEE" && sentRate && l.ratePpm !== 0 && l.ratePpm !== dflt.ratePpm)
         badField("ratePpm", dflt.ratePpm === 0
           ? "This firm adds no tax to this line (not registered for tax, or its province isn't set): send no rate, or 0. Nothing was saved."
-          : `The tax rate comes from your firm's province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
+          : `The tax rate comes from this invoice's Bill-to province (${dflt.taxName} ${percent(dflt.ratePpm)}): send no rate, or ${dflt.ratePpm} (parts per million), for taxable, or 0 for not taxable. Nothing was saved.`);
       const ratePpm = lineRatePpm({ kind: l.kind, taxable: l.kind === "GOVERNMENT_FEE" ? undefined : !(sentRate && l.ratePpm === 0) }, dflt);
       const taxMinor = this.tax(amountMinor, ratePpm);
       if (l.currency && l.currency !== inv.currency) badField("currency", `This invoice is in ${inv.currency}; a line in ${l.currency} can't be added. Nothing was saved.`);
@@ -123,7 +123,6 @@ export class InvoiceDrafts {
     });
   }
 
-  /** GET /api/front-office/money/invoices/:id. */
   /** PUT /api/front-office/money/invoices/:id/bill-to (agent/invoice:edit, AG-6-4 §8): the province the draft's tax
    *  follows (FO-7g part 3, P-797), one of the 13 codes. New lines take its rate; lines already added keep their stored
    *  tax. An issued invoice's is fixed (409, and the database's gate). */
@@ -144,6 +143,7 @@ export class InvoiceDrafts {
     });
   }
 
+  /** GET /api/front-office/money/invoices/:id. */
   async read(ctx: StaffContext, invoiceId: string): Promise<InvoiceView> {
     if (!UUID.test(invoiceId)) notFound("invoice");
     // One snapshot: the lines and the total are read as of the same moment (a line added between them never shows).

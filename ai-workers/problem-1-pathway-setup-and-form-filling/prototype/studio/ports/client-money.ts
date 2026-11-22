@@ -79,7 +79,7 @@ export function invoiceStatus(f: InvoiceFacts): StatusWord {
  *  money received past what the invoice asks (waiting for a person's "Refund · Keep as credit", never moved by itself). */
 export const InvoiceView = z.strictObject({
   id: z.string(), status: z.literal("DRAFT").or(z.literal("ISSUED")), number: z.string().nullable(),
-  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, billToProvince: z.string().nullable(), lines: z.array(LineView),
+  personId: z.string().nullable(), companyId: z.string().nullable(), currency: MoneyCurrency, billToProvince: z.enum(BILL_TO_PROVINCES).nullable(), lines: z.array(LineView),
   subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(),
   statusWord: StatusWord, dueDate: z.string().nullable(), paidMinor: z.number().int(), creditedMinor: z.number().int(),
   writtenOffMinor: z.number().int(), dueMinor: z.number().int(), extraMinor: z.number().int(),
