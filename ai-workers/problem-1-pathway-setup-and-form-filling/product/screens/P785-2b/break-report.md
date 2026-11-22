@@ -150,3 +150,67 @@ Nit: the FAIL text now says `'track-a scope:<name>'` even when the scope is know
 - A scope pattern that matches nothing is kept out of the comparison (`if m:`).
 - The same scope named twice by one track passes.
 - A plain duplicate key is refused. A merge override and merge lists pass.
+
+## Round 3: commit 5e1248808 (diff against 2383b5303, script only)
+
+Breaker, 22 Nov. Throwaway copy, nothing committed, each attack restored. Baseline run gives `PASS  mergify scopes: 199 checks`, exit 0, in 8.3 s. With #3006's list placed and staged, the run flags the same 8 lines, exit 1, in 9.1 s.
+
+**Verdict: Changes.** There is one Major, and its fix is one line: a self-test now ties every PR to the layout of `tests/`. There are four Minors.
+
+### Round-2 findings replayed
+- **R2-M1 fixed.** `track-b tests/check_fo6_signing*` is now a WARN only. So is `check_fo6_signing_port*` after `check_fo6_signing.ts` is deleted.
+- **R2-m1 fixed.** The FOLDERS literal edits `"cases": None` and `"platform-admin": None`, each with its folder planted, give `... is recorded with no scope, but ... is an area`, exit 1.
+- **R2-m2 fixed.** Case-side's 41 single-file includes, copied into track-b (which names case-side), give 41 FAILs. The rule is order-blind: a `scope:` line written after the file line, even under a later `prefix`, still gives FAIL. Copied into track-a, the same lines are allowed as a split.
+- **R2-m3 fixed.** Runtime is 25.2 s → 8.3 s. `rx` cache info shows 138 misses and 20.0 M hits.
+- **R2-m4 fixed.**
+  - `_cases/routes.tsx` plus `_cases/sub/routes.tsx` gives "names no area", exit 1, and so does `_shared/deep/routes.tsx`.
+  - `_cases/routes.tsx` alone passes.
+  - `_example/README.md` now needs a FOLDERS entry.
+- **R2-m6 fixed.** An empty file, a top-level list and a non-UTF-8 byte each give a FAIL line, exit 1. Two `<<:` keys, or two `!!merge`-tagged keys, give `gives the key '<<' twice`. A merge list and a merge override pass.
+- **R2-m5 partly fixed.** `real_list()` is tested on a temporary file. Removing its `files` argument (WARNs lost) still gives exit 0. The call site at line 286, `bad += fails` changed to `bad += []`, with #3006's files present also still gives exit 0.
+- **Held under gutting:**
+  - The one-file rule, the two-merge-key rule, `ambiguous()` on track lines and the YAMLError branch each give exit 1. The YAMLError case fails by crashing in the `a: [` row.
+  - `rx`'s cache is keyed by the glob string only, and `rx` is pure, so the `mutated()` copies in the self-test cannot see stale patterns.
+
+### New findings
+
+**R3-M1 (Major): the demo2 self-test (lines 322–328) depends on the real files, so an unrelated PR that adds a file turns ci red. No track list needs to exist.**
+- **Run:** plant `tests/qa/check_pf3_walk.ts` (qa keeps its own `check_*` files in `tests/qa/`; 145 files today), or `tests/fixtures/check_pf_data.json`, and `git add -f` it.
+- **Result:** `FAIL self-test: the one-source FAIL and WARN lines are not exactly as meant (...)`, exit 1.
+- **Cause:** demo2 expects `tests/**/check_pf*` to WARN. That holds only while no file named `check_pf*` sits in a sub-folder of `tests/`.
+- **Why it matters:** this is R2-M1's mechanism moved into the self-test, and it now fires on every PR even while the rule is dormant. A qa or builder PR is blocked by a message that says nothing about its own files. The commit's own promise is that "a PR … never turns ci red over the track list".
+- **Smallest fix:** give demo2 a fixed, made-up file list (for example `files=[ST+"tests/check_pf1.ts"]`) in place of the real `files`.
+
+**R3-m1 (Minor): the one-file rule refuses the `!` carve-out, so the split it allows never routes.**
+- **Run:** `track-b scope:case-side` + `track-b !api/src/clients.ts` + `track-a api/src/clients.ts`.
+- **Result:** `FAIL ... 'track-b !api/src/clients.ts' repeats a file of scope case-side, which track-b already names`.
+- **Why it matters:** without the `!` line, both tracks match `clients.ts`, and a PR touching it falls to "product". The `!` form is #3006's documented way to make a file another track's.
+- **Fix:** exempt `!` lines from the one-file rule (line 269), or allow one only when another track claims that file.
+
+**R3-m2 (Minor): `is_area()` (line 78) is too wide in one direction and too narrow in the other.**
+- **Too wide:** `"forms-kit": None` (shared widgets, not an area) gives `forms-kit is an area: give it its scope`, exit 1. The only ways out are renaming the folder or giving it a scope.
+- **Too narrow:** `"case": None` and `"frontoffice": None`, each with its folder planted, give exit 0.
+- **Not tested:** removing the `<area>-*` clause still gives exit 0, because there is no row for it.
+- **Fix:** add a row for `platform-admin: None`, and an explicit allow-list for `<area>-*` folders that are deliberately scope-less.
+
+**R3-m3 (Minor): some true copies now only WARN.**
+- `…/platform/**/**`, `/.github/**/**` and `tests/check_pf*.*` give WARN only. `dir/**/**` always names the same files as `dir/**`.
+- **Fix:** normalise `/**/**` to `/**` next to `/**/*` (line 267), so these stay FAIL.
+
+**R3-m4 (Minor): gutting these still passes, and some YAML shapes still crash.** Each gut gives exit 0:
+- The call site at line 286 (see R2-m5).
+- The not-a-mapping check; an empty file then crashes with a traceback.
+- WARN printing removed.
+- `encoding="latin-1"`.
+- Same-track redundant sub-parts, `track-b api/src/case-clients/live.ts` or `track-a api/src/platform/files/**`, pass. These are the general form of R2-m2.
+- **YAML shapes still crash with tracebacks** (exit 1, fail closed): `scopes: [x]`, an include entry `[a, b]` (`TypeError: unhashable`, now raised from the cache), and an include entry `5`.
+
+### Answers to the round-3 questions
+- **Can a real copy hide as a WARN?** Yes, the forms in R3-m3.
+- **Does a deleting PR still turn ci red some other way?**
+  - Yes, through R3-M1 (for an adding PR).
+  - Outside this diff: the "every scope pattern matches a tracked file" check fails if someone deletes `tests/check_case_feed.ts` or `tests/check_fo8_prospect_won.ts` (each the only match of its pattern). The `without("case-side", "tests/check_case_")` self-test row fails too.
+- **Order of `scope:` lines:** no effect (held).
+- **Temporary-file self-test:** works, but it does not pin the call site.
+- **lru_cache:** sound.
+- **YAML:** a BOM loads fine. Two `<<` keys, whether written plainly or as `!!merge` tags, are refused. A quoted `"<<"` key beside a merge passes, as plain YAML reads it.
