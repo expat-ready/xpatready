@@ -12,10 +12,14 @@ const HOPS = 20;
 export async function livePersonId(db: Tx | PrismaClient, firmId: string, personId: string): Promise<string | null> {
   let id = personId;
   for (let i = 0; i < HOPS; i++) {
-    const p = await db.foPerson.findFirst({ where: firmScope(firmId, { id }), select: { id: true, mergedIntoId: true } });
+    // A locking read (break M1): inside the writer's transaction a merge in flight (which holds the row FOR UPDATE) is
+    // waited for, and its tombstone then seen and followed; the row stays share-locked until the writer commits, so a
+    // later merge waits for the writer and moves what it wrote.
+    const [p] = await db.$queryRaw<{ id: string; merged_into_id: string | null }[]>`
+      select "id"::text as id, "merged_into_id"::text as merged_into_id from "fo_person" where "firm_id" = ${firmScope(firmId).firmId}::uuid and "id" = ${id}::uuid for key share`;
     if (!p) return null;
-    if (!p.mergedIntoId) return p.id;
-    id = p.mergedIntoId;
+    if (!p.merged_into_id) return p.id;
+    id = p.merged_into_id;
   }
   return null;
 }

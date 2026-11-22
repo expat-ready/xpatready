@@ -19,6 +19,7 @@ import { MERGE_FIELDS, MERGE_KEY, MergePersonsInput, PersonMergeRefused, resolve
 import type { StaffContext } from "../../../../../ports/staff.ts";
 import { firmScope } from "../../../platform/firm-scope.ts";
 import type { Tx } from "../../sales/common.ts";
+import { COLUMNS } from "./columns.ts";
 
 /** What the merge needs besides the transaction. `emit` writes the outbox row (a test may make it fail: DW6). */
 export type MergePorts = {
@@ -31,7 +32,7 @@ const outbox: NonNullable<MergePorts["emit"]> = async (tx, e) => { await tx.modu
 /** One changed cell: Undo sets `c` of row `id` in `t` back to `from` (`ts`: a timestamp column, else a uuid). */
 export type Change = { t: string; id: string; c: string; from: string | null; to: string | null; ts?: true };
 /** fo_dup_merge.loser_snapshot. */
-export type MergeSnapshot = { loser: Record<string, unknown>; changes: Change[]; copied: { consents: string[]; withdrawals: string[] } };
+export type MergeSnapshot = { loser: Record<string, unknown>; changes: Change[]; copied: { consents: string[]; withdrawals: string[] }; survivorAfter: Record<string, unknown> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TABLE: Record<MergeKind, "fo_person" | "fo_company"> = { PERSON: "fo_person", COMPANY: "fo_company" };
@@ -41,9 +42,11 @@ const column = (f: string) => f.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 const actorOf = (ctx: StaffContext, automatic: boolean) => (automatic ? "system:fo-duplicates" : `staff:${ctx.staffId}`);
 
 type Rec = { kind: MergeKind; row: Record<string, unknown> };
+/** Reads a record and locks its row to the end of the transaction: a writer adding a row that names it (the arrival
+ *  path's livePersonId, the database's fo_dup_live_party guard) waits, then sees the tombstone (review and break M1). */
 async function find(tx: Tx, firmId: string, id: string): Promise<Rec | null> {
   for (const kind of ["PERSON", "COMPANY"] as const) {
-    const [r] = await tx.$queryRawUnsafe<{ row: Record<string, unknown> }[]>(`select to_jsonb(x) as row from "${TABLE[kind]}" x where x."firm_id" = $1::uuid and x."id" = $2::uuid`, firmId, id);
+    const [r] = await tx.$queryRawUnsafe<{ row: Record<string, unknown> }[]>(`select to_jsonb(x) as row from "${TABLE[kind]}" x where x."firm_id" = $1::uuid and x."id" = $2::uuid for update`, firmId, id);
     if (r) return { kind, row: r.row };
   }
   return null;
@@ -58,7 +61,11 @@ const valuesOf = (kind: MergeKind, row: Record<string, unknown>) => {
 async function lockPair(tx: Tx, a: string, b: string) {
   for (const id of [a.toLowerCase(), b.toLowerCase()].sort()) await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`fo_dup_merge:${id}`}, 0))`;
 }
-const merging = (tx: Tx) => tx.$executeRaw`select set_config('fo_dup.merging', 'on', true)`;
+const merging = (tx: Tx, on: boolean) => (on ? tx.$executeRaw`select set_config('fo_dup.merging', 'on', true)` : tx.$executeRaw`select set_config('fo_dup.merging', 'off', true)`);
+/** The database's clock (never the app's): the merge time is compared with rows' database times (review m5). */
+const dbNow = async (tx: Tx) => (await tx.$queryRaw<{ at: Date }[]>`select clock_timestamp() as at`)[0].at;
+/** The cells Undo may write back: columns.ts MOVE, and a company link's end (review m6: a stored name is never trusted). */
+const UNDOABLE = new Set([...Object.entries(COLUMNS).filter(([, [k]]) => k === "MOVE").map(([tc]) => tc), "fo_company_contact.valid_to"]);
 const refuse = (code: ConstructorParameters<typeof PersonMergeRefused>[0], why: string): never => { throw new PersonMergeRefused(code, why); };
 const mayMerge = (ctx: StaffContext) => { if (!ctx.keys.includes(MERGE_KEY)) refuse("MISSING_PERMISSION", "You may not merge records."); };
 
@@ -105,8 +112,6 @@ async function movePerson(tx: Tx, firmId: string, s: string, l: string, changes:
 }
 async function moveCompany(tx: Tx, firmId: string, s: string, l: string, changes: Change[]) {
   await endDuplicateLinks(tx, firmId, changes, "company_id", l, s);
-  const [two] = await tx.$queryRawUnsafe<{ n: number }[]>(`select count(*)::int as n from "fo_company_contact" where "firm_id" = $1::uuid and "company_id" in ($2::uuid, $3::uuid) and "role" = 'PRIMARY' and "valid_to" is null`, firmId, s, l);
-  if (two.n > 1) refuse("INVALID_INPUT", "Both companies have a primary contact. End one of the two links first.");
   await move(tx, firmId, changes, "fo_company_contact", "company_id", l, s);
   await move(tx, firmId, changes, "fo_prospect", "subject_company_id", l, s);
 }
@@ -142,6 +147,10 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
   if (s.row.merged_into_id || l.row.merged_into_id) refuse("ALREADY_MERGED", "This record was already merged.");
   if (s.kind !== l.kind || s.kind !== input.kind) refuse("KIND_MISMATCH", "A person and a company cannot be merged.");
   const kind = input.kind, automatic = !!opts.automatic, actor = actorOf(ctx, automatic);
+  if (kind === "COMPANY") {   // refused before anything is written (review m1, break m2): two live primary contacts of two people
+    const [two] = await tx.$queryRawUnsafe<{ n: number }[]>(`select count(distinct "person_id")::int as n from "fo_company_contact" where "firm_id" = $1::uuid and "company_id" in ($2::uuid, $3::uuid) and "role" = 'PRIMARY' and "valid_to" is null`, firmId, sId, lId);
+    if (two.n > 1) refuse("INVALID_INPUT", "Both companies have a primary contact. End one of the two links first.");
+  }
 
   // 1. the chosen values to the survivor (AG-2-16 rule 1)
   const picks: Record<string, FieldPick> = resolvePicks(kind, { fields: fieldsOf(kind, s.row), updatedAt: new Date(String(s.row.updated_at)) }, { fields: fieldsOf(kind, l.row), updatedAt: new Date(String(l.row.updated_at)) }, input.choices);
@@ -156,17 +165,19 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
     else await tx.foCompany.updateMany({ where: firmScope(firmId, { id: sId }), data });
   }
   // 2. every row that names the loser (columns.ts MOVE), consent (COPY)
-  await merging(tx);
+  await merging(tx, true);
   const changes: Change[] = [];
   if (kind === "PERSON") await movePerson(tx, firmId, sId, lId, changes);
   else await moveCompany(tx, firmId, sId, lId, changes);
+  await merging(tx, false);   // off again for the rest of the caller's transaction (review m2)
   const copied = kind === "PERSON" ? await copyConsent(tx, ports, firmId, sId, lId, actor) : { consents: [], withdrawals: [] };
   // 3. the tombstone, the record, audit, the outbox row last
-  const at = new Date();
+  const at = await dbNow(tx);
   if (kind === "PERSON") await tx.foPerson.updateMany({ where: firmScope(firmId, { id: lId }), data: { mergedIntoId: sId, mergedAt: at } });
   else await tx.foCompany.updateMany({ where: firmScope(firmId, { id: lId }), data: { mergedIntoId: sId, mergedAt: at } });
   const ref = randomUUID();
-  const snapshot: MergeSnapshot = { loser: l.row, changes, copied };
+  const after = (await find(tx, firmId, sId))!.row;
+  const snapshot: MergeSnapshot = { loser: l.row, changes, copied, survivorAfter: valuesOf(kind, after) };
   await tx.foDupMerge.create({ data: { id: ref, firmId, kind, survivorId: sId, loserId: lId, loserSnapshot: snapshot as unknown as Prisma.InputJsonValue, survivorBefore: valuesOf(kind, s.row) as Prisma.InputJsonValue,
     choices: picks, automatic, reason: input.reason ?? null, by: actor, at } });
   const what = kind === "PERSON" ? "person" : "company";
@@ -192,40 +203,61 @@ export async function unmergeRecords(tx: Tx, ctx: StaffContext, ref: string, por
   const later = await tx.foDupMerge.findFirst({ where: firmScope(firmId, { id: { not: m.id }, undoneAt: null, at: { gt: m.at }, OR: [{ survivorId: { in: ids } }, { loserId: { in: ids } }] }), select: { id: true } });
   if (later) refuse("UNDO_REFUSED", "A later merge involves one of these records; undo that one first.");
   const snap = m.loserSnapshot as unknown as MergeSnapshot, s = m.survivorId, l = m.loserId;
-  // Anything new on the survivor since the merge (a note, a call, an arrival, a lead, a booking, a link, a prospect) may
-  // have come by the loser's email or phone: it cannot be told apart, so the Undo is refused (P-574 (2), AG-2-16 rule 5).
+  if (!snap?.changes?.every((c) => UNDOABLE.has(`${c.t}.${c.c}`) && UUID.test(c.id)) || !snap.survivorAfter) refuse("UNDO_REFUSED", "This merge record was not written by the merge; it cannot be undone.");
+  // Lock both records and every moved lead first (break m1): a writer adding to them either finished before (and is seen
+  // below) or waits for the Undo.
+  const sv = await find(tx, firmId, s);
+  await find(tx, firmId, l);
+  const leads = snap.changes.filter((c) => c.t === "fo_lead" && c.c === "person_id").map((c) => c.id);
+  if (leads.length) await tx.$queryRawUnsafe(`select 1 from "fo_lead" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) for update`, firmId, leads);
+  // The survivor edited since the merge (break M2): its values are not the merge's any more, so they are not overwritten.
+  const nowValues = sv ? valuesOf(kind, sv.row) : {};   // compared field by field (jsonb does not keep key order)
+  if (!sv || Object.keys(nowValues).some((k) => JSON.stringify(nowValues[k] ?? null) !== JSON.stringify(snap.survivorAfter[k] ?? null))) refuse("UNDO_REFUSED", "The merged record was edited after the merge; it cannot be undone.");
+  // A consent the merge copied is still live (review M2): consent rows are never removed, so the survivor would keep it.
+  if (snap.copied.consents.length && await tx.msgConsent.count({ where: firmScope(firmId, { id: { in: snap.copied.consents }, withdrawnAt: null }) }))
+    refuse("UNDO_REFUSED", "The merge copied a live consent to the merged record; consent records are never removed, so it cannot be undone.");
+  // Anything new on the survivor or a moved lead since the merge (a lead, note, call, arrival, booking, link, prospect or
+  // consent) may have come by the loser's email or phone: it cannot be told apart, so the Undo is refused (break M3).
   const fresh = kind === "PERSON"
     ? `select 1 from "fo_lead" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
        union all select 1 from "fo_note" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
        union all select 1 from "fo_call" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
        union all select 1 from "fo_arrival_receipt" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "received_at" > $3::timestamptz
        union all select 1 from "fo_booking" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "created_at" > $3::timestamptz
-       union all select 1 from "fo_company_contact" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "valid_from" > $3::timestamptz`
+       union all select 1 from "fo_company_contact" where "firm_id" = $1::uuid and "person_id" = $2::uuid and "valid_from" > $3::timestamptz
+       union all select 1 from "fo_prospect" where "firm_id" = $1::uuid and ("subject_person_id" = $2::uuid or "primary_contact_person_id" = $2::uuid or "lead_id" = any($4::uuid[])) and "created_at" > $3::timestamptz
+       union all select 1 from "msg_consent" where "firm_id" = $1::uuid and "subject_kind" = 'FO_PERSON' and "subject_id" = $2::uuid and "created_at" > $3::timestamptz
+       union all select 1 from "msg_consent_withdrawal" where "firm_id" = $1::uuid and "subject_kind" = 'FO_PERSON' and "subject_id" = $2::uuid and "created_at" > $3::timestamptz`
     : `select 1 from "fo_company_contact" where "firm_id" = $1::uuid and "company_id" = $2::uuid and "valid_from" > $3::timestamptz
-       union all select 1 from "fo_prospect" where "firm_id" = $1::uuid and "subject_company_id" = $2::uuid and "created_at" > $3::timestamptz`;
-  if ((await tx.$queryRawUnsafe<unknown[]>(`select exists (${fresh}) as x`, firmId, s, m.at) as { x: boolean }[])[0].x)
+       union all select 1 from "fo_prospect" where "firm_id" = $1::uuid and "subject_company_id" = $2::uuid and "created_at" > $3::timestamptz and cardinality($4::uuid[]) >= 0`;
+  if ((await tx.$queryRawUnsafe<{ x: boolean }[]>(`select exists (${fresh}) as x`, firmId, s, m.at, leads))[0].x)
     refuse("UNDO_REFUSED", "Something reached the merged record after the merge (it may have come by the other record's contact details); it cannot be undone.");
-  for (const c of snap.changes) {
-    const [now] = await tx.$queryRawUnsafe<{ v: string | null }[]>(`select "${c.c}"::text as v from "${c.t}" where "firm_id" = $1::uuid and "id" = $2::uuid`, firmId, c.id);
-    if (now?.v !== c.to) refuse("UNDO_REFUSED", "A record the merge moved has changed since; it cannot be undone.");
+  // Every moved cell still holds what the merge wrote (typed comparison, one query per table and column; break m5).
+  const byCell = new Map<string, Change[]>();
+  for (const c of snap.changes) { const k = `${c.t}.${c.c}.${c.to}`; byCell.set(k, [...(byCell.get(k) ?? []), c]); }
+  for (const g of byCell.values()) {
+    const [{ n }] = await tx.$queryRawUnsafe<{ n: number }[]>(`select count(*)::int as n from "${g[0].t}" where "firm_id" = $1::uuid and "id" = any($2::uuid[]) and "${g[0].c}" is not distinct from $3::${g[0].ts ? "timestamptz" : "uuid"}`, firmId, g.map((c) => c.id), g[0].to);
+    if (n !== g.length) refuse("UNDO_REFUSED", "A record the merge moved has changed since; it cannot be undone.");
   }
-  await merging(tx);
-  // In reverse order; neighbouring cells of one row go back in one statement (a prospect's subject and primary contact).
+  // The tombstone ends first (the database refuses a row naming a tombstone), then every cell goes back in reverse order:
+  // neighbouring cells of one prospect in one statement (its subject and primary contact), else one statement per run of
+  // one column and value.
+  if (kind === "PERSON") await tx.foPerson.updateMany({ where: firmScope(firmId, { id: l }), data: { mergedIntoId: null, mergedAt: null } });
+  else await tx.foCompany.updateMany({ where: firmScope(firmId, { id: l }), data: { mergedIntoId: null, mergedAt: null } });
+  await merging(tx, true);
   const groups: Change[][] = [];
   for (const c of [...snap.changes].reverse()) {
-    const g = groups[groups.length - 1];
-    if (g && g[0].t === c.t && g[0].id === c.id) g.push(c); else groups.push([c]);
+    const g = groups[groups.length - 1], row = c.t === "fo_prospect";
+    if (g && g[0].t === c.t && (row ? g[0].id === c.id : g[0].c === c.c && g[0].from === c.from)) g.push(c); else groups.push([c]);
   }
-  for (const g of groups)
-    await tx.$executeRawUnsafe(`update "${g[0].t}" set ${g.map((c, i) => `"${c.c}" = $${i + 3}::${c.ts ? "timestamptz" : "uuid"}`).join(", ")} where "firm_id" = $1::uuid and "id" = $2::uuid`, firmId, g[0].id, ...g.map((c) => c.from));
+  for (const g of groups) {
+    if (g[0].t === "fo_prospect") await tx.$executeRawUnsafe(`update "fo_prospect" set ${g.map((c, i) => `"${c.c}" = $${i + 3}::uuid`).join(", ")} where "firm_id" = $1::uuid and "id" = $2::uuid`, firmId, g[0].id, ...g.map((c) => c.from));
+    else await tx.$executeRawUnsafe(`update "${g[0].t}" set "${g[0].c}" = $3::${g[0].ts ? "timestamptz" : "uuid"} where "firm_id" = $1::uuid and "id" = any($2::uuid[])`, firmId, g.map((c) => c.id), g[0].from);
+  }
+  await merging(tx, false);
   const back = m.survivorBefore as Record<string, unknown>;
-  if (kind === "PERSON") {
-    await tx.foPerson.updateMany({ where: firmScope(firmId, { id: s }), data: back });
-    await tx.foPerson.updateMany({ where: firmScope(firmId, { id: l }), data: { mergedIntoId: null, mergedAt: null } });
-  } else {
-    await tx.foCompany.updateMany({ where: firmScope(firmId, { id: s }), data: back });
-    await tx.foCompany.updateMany({ where: firmScope(firmId, { id: l }), data: { mergedIntoId: null, mergedAt: null } });
-  }
+  if (kind === "PERSON") await tx.foPerson.updateMany({ where: firmScope(firmId, { id: s }), data: back });
+  else await tx.foCompany.updateMany({ where: firmScope(firmId, { id: s }), data: back });
   const actor = `staff:${ctx.staffId}`;
   await tx.foDupMerge.update({ where: { id: m.id }, data: { undoneAt: new Date(), undoneBy: actor } });
   const line = { firmId, actor, action: EVENT.PERSON_UNMERGED, entityKey: l,

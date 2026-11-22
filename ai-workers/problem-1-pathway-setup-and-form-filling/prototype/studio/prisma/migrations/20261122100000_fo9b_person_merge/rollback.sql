@@ -7,6 +7,12 @@ DO $$ BEGIN
     RAISE EXCEPTION 'FO-9b rollback: a merge still stands; undo it first';
   END IF;
 END $$;
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['fo_lead', 'fo_note', 'fo_call', 'fo_arrival_receipt', 'fo_booking', 'fo_company_contact', 'fo_prospect'] LOOP
+    EXECUTE format('DROP TRIGGER "fo_dup_live_party" ON %I', t);
+  END LOOP;
+END $$;
+DROP FUNCTION fo_dup_live_party();
 DROP POLICY "pf12_firm" ON "fo_dup_merge";
 DROP TABLE "fo_dup_merge";
 DROP FUNCTION fo_dup_merge_write(), fo_dup_merge_no_delete();

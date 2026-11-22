@@ -11,6 +11,8 @@
 --         while the merge transaction has set fo_dup.merging to 'on' with set_config(…, true) (transaction-local). Every
 --         other update, every delete and truncate, and every update of fo_lead_attribution and fo_stage_move is still
 --         refused; a note's text, author, time, lead and visibility never change (AG-13-21, -24).
+--   * fo_dup_live_party: a row written or re-pointed onto a merged-away record is refused (rule 5), on the seven tables of
+--     columns.ts's MOVE list (P-600 (b) exception too: new triggers on FO-1a's, FO-1b's and FO-2b's tables).
 --   * fo_dup_merge: the merge record, written once; its only change is the Undo stamp (undone_at and undone_by from
 --     empty, together, once); never deleted or truncated (fo_dup_merge_write, fo_dup_merge_no_delete). PF-12's wall.
 -- Rollback: rollback.sql in this folder.
@@ -90,6 +92,38 @@ CREATE TRIGGER "fo_dup_merge_write" BEFORE UPDATE ON "fo_dup_merge" FOR EACH ROW
 CREATE TRIGGER "fo_dup_merge_no_delete" BEFORE DELETE ON "fo_dup_merge" FOR EACH ROW EXECUTE FUNCTION fo_dup_merge_no_delete();
 CREATE TRIGGER "fo_dup_merge_no_truncate" BEFORE TRUNCATE ON "fo_dup_merge" FOR EACH STATEMENT EXECUTE FUNCTION fo_dup_merge_no_delete();
 
+-- AG-2-16 rule 5 "No row ever points to a tombstone", held by the database (review and break M1): a row written or
+-- re-pointed onto a person or company record reads that record with a row lock (FOR KEY SHARE), so a merge in flight
+-- (which holds the record FOR UPDATE) is waited for; a tombstone is then refused. The guarded columns are columns.ts's
+-- MOVE list (arguments: the table's person columns, then '|', then its company columns).
+CREATE FUNCTION fo_dup_live_party() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE i int; col text; v uuid; m uuid; company boolean := false;
+BEGIN
+  FOR i IN 0 .. TG_NARGS - 1 LOOP
+    col := TG_ARGV[i];
+    IF col = '|' THEN company := true; CONTINUE; END IF;
+    v := (to_jsonb(NEW) ->> col)::uuid;
+    CONTINUE WHEN v IS NULL;
+    IF TG_OP = 'UPDATE' AND v IS NOT DISTINCT FROM (to_jsonb(OLD) ->> col)::uuid THEN CONTINUE; END IF;
+    IF company THEN
+      SELECT c."merged_into_id" INTO m FROM "fo_company" c WHERE c."firm_id" = NEW."firm_id" AND c."id" = v FOR KEY SHARE;
+    ELSE
+      SELECT p."merged_into_id" INTO m FROM "fo_person" p WHERE p."firm_id" = NEW."firm_id" AND p."id" = v FOR KEY SHARE;
+    END IF;
+    IF m IS NOT NULL THEN
+      RAISE EXCEPTION '%: % names a merged-away record (merged into %): use that record', TG_TABLE_NAME, col, m USING ERRCODE = 'foreign_key_violation';
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id", "possible_match_person_id" ON "fo_lead" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', 'possible_match_person_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_note" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_call" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_arrival_receipt" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id" ON "fo_booking" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "person_id", "company_id" ON "fo_company_contact" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('person_id', '|', 'company_id');
+CREATE TRIGGER "fo_dup_live_party" BEFORE INSERT OR UPDATE OF "subject_person_id", "primary_contact_person_id", "subject_company_id" ON "fo_prospect" FOR EACH ROW EXECUTE FUNCTION fo_dup_live_party('subject_person_id', 'primary_contact_person_id', '|', 'subject_company_id');
+
 -- PF-12's wall (forced policy naming the session's firm; the firm-first gate before the area's own triggers); the trigger
 -- functions run as xr_wall_reader (tests/check_pf12_walls.ts).
 ALTER TABLE "fo_dup_merge" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
@@ -101,7 +135,7 @@ GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $readers$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['fo_sales_insert_only()', 'fo_dup_merge_write()', 'fo_dup_merge_no_delete()'] LOOP
+  FOREACH f IN ARRAY ARRAY['fo_sales_insert_only()', 'fo_dup_merge_write()', 'fo_dup_merge_no_delete()', 'fo_dup_live_party()'] LOOP
     EXECUTE format('ALTER FUNCTION %s SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp', f);
     EXECUTE format('ALTER FUNCTION %s OWNER TO xr_wall_reader', f);
   END LOOP;
