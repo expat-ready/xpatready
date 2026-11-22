@@ -5,13 +5,15 @@
 -- address, or a row of the insert-only address history) stops the migration with its id instead of being left with rows
 -- the rule refuses. Changing the address cannot clear it (the change writes a history row naming staging): that case needs
 -- a data repair the tech lead and the founder decide (none is known: no deployed firm has used the address).
--- One DO block (one transaction, also when psql applies the file without one): the two tables are locked first, so no
--- sign-up can take staging between the check and the replaced rule.
+-- One DO block (one transaction, also when psql applies the file without one): the two tables are locked first (history
+-- first, as the address change does; a 5 s lock timeout), so no sign-up can take staging between the check and the rule.
 -- Rollback: CREATE OR REPLACE the function with the nine names of 20261114230000_pf25_web_address (nothing else changes).
 DO $$
 DECLARE held text;
 BEGIN
-  LOCK TABLE "platform_firm_web_address", "platform_firm_address_history" IN SHARE ROW EXCLUSIVE MODE;
+  SET LOCAL lock_timeout = '5s';   -- a long open transaction fails the deploy loudly instead of queueing every sign-up behind it
+  -- History first, the order WebAddresses.change takes them (service.ts), so the two never deadlock.
+  LOCK TABLE "platform_firm_address_history", "platform_firm_web_address" IN SHARE ROW EXCLUSIVE MODE;
   SELECT string_agg(DISTINCT firm_id::text, ', ') INTO held FROM (
     SELECT firm_id FROM "platform_firm_web_address" WHERE "address" = 'staging'
     UNION ALL SELECT firm_id FROM "platform_firm_address_history" WHERE "old_address" = 'staging' OR "new_address" = 'staging'
