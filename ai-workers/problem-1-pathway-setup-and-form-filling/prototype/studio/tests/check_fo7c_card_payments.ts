@@ -188,8 +188,10 @@ try {
   // ------------------------------------------------------------------- with no Stripe key: nothing connects (the feature)
   process.env.PLATFORM_ENVIRONMENT = "local";
   const bare = await (feature.providers[0] as { useFactory: (db: unknown) => PaymentAccounts }).useFactory(nest.get(Db));
-  const refusal = async (f: () => Promise<unknown>) => { try { await f(); return null; } catch (e) { return (e as { getStatus?: () => number }).getStatus?.() ?? 0; } };
-  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", (await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never))) === 503 && (await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)))) === 503 && made() === 3);
+  const refusal = async (f: () => Promise<unknown>) => { try { await f(); return null; } catch (e) { const x = e as { getStatus?: () => number; getResponse?: () => unknown }; return { status: x.getStatus?.() ?? 0, body: JSON.stringify(x.getResponse?.() ?? null) }; } };
+  const r1 = await refusal(() => bare.onboard({ firmId: A, staffId: staff("user-R", A), authTime: Date.now() / 1000 } as never)), r2 = await refusal(() => bare.receive(Buffer.from(eventBody), header(hookSecret)));
+  ok("FO-7c pass: a server with no Stripe key and connect secret makes no account and takes no event (503 on both)", r1?.status === 503 && r2?.status === 503 && made() === 3, [r1, r2]);
+  ok("FO-7c fail: that 503 answer names no setting (plain words; the setting names go to the server log only)", ![r1, r2].some((r) => /PLATFORM_|STRIPE_|secret|key/i.test(r?.body ?? "")) && said.some((l) => l.includes("payment_account_not_set_up") && l.includes("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET")), [r1, r2]);
 
   // ------------------------------------------------------------------------------------------- DW10: no secret
   const columns = sql(`select coalesce(string_agg(t, ' '), '') from (select row_to_json(a)::text t from money_payment_account a union all select row_to_json(w)::text from webhook_receipt w union all select row_to_json(e)::text from audit_event e) x`);

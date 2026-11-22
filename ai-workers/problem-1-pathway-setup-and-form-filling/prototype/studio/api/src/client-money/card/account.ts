@@ -28,7 +28,8 @@ type Tx = Prisma.TransactionClient;
 export type AccountPorts = {
   rail: CardRail; audit: AuditPort<Tx>; clock: ClockPort; appUrl: string;
   mail?: MailPort | null; notifications?: NotificationPort<Tx> | null;
-  /** Why card payments cannot be set up on this server (no Stripe key): onboarding and the door answer 503. */
+  /** Why card payments cannot be set up on this server (no Stripe key), for the server log only: onboarding and the door
+   *  answer a plain 503 that names no setting (Lead B on #2938). */
   notReady?: string | null;
   /** The firm that holds a connected account, or null: the one read made before the firm is known (a narrow lookup). */
   firmOfAccount: (account: string) => Promise<string | null>;
@@ -54,7 +55,11 @@ export function stateFrom(prev: AccountState, snap: Pick<RailAccount, "chargesEn
 export class PaymentAccounts {
   constructor(private readonly db: PrismaClient, private readonly ports: AccountPorts) {}
 
-  private ready() { if (this.ports.notReady) throw problem(503, "PAYMENT_ACCOUNT_NOT_SET_UP", "Card payments are not set up here", this.ports.notReady); }
+  private ready() {
+    if (!this.ports.notReady) return;
+    logPort.warn("payment_account_not_set_up", { why: this.ports.notReady });
+    throw problem(503, "PAYMENT_ACCOUNT_NOT_SET_UP", "Card payments are not set up here", "Card payments are not set up on this server yet. Nothing was changed.");
+  }
   private lock(tx: Tx, firmId: string) { return tx.$executeRaw`select pg_advisory_xact_lock(hashtext(${`money_payment_account:${firmId}`}))`; }
 
   /** POST /payment-account/onboarding. */
