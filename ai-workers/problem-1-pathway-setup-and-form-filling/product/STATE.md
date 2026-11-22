@@ -24,6 +24,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 **Lead 9 check 02:4x IST:** #3029 merged: R1.102 Works on main (proven +1 today). #3081 full run 45068049653 green → labelled. #3041 full run 45069778762 all parts cancelled → re-ran (attempt 2); label on green. #3136 (duplicate R1.102 report, now carries run 45069874951) dequeued: qa lane decides. #2933 ci red (walk j_104 not its own + ci): lane's.
 
+**Lead 9 02:5x IST:** #3042 (R1.29) dequeued before its batch (Lead B 2's catch, verified on f05ab1de3): migration stamp older than main's newest, and FKs re-added on walled fo_* tables outside F7's lift. Lane (session_01Ln6TiSBtR5PWM8nrYF9PUV) briefed on the PR and by prompt: merge main, re-stamp 20261123010000, lift shape, re-run checks, diff-only Approve, Lead B re-read; then Lead /run full + label.
+
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
