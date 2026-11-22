@@ -339,7 +339,7 @@ try {
     insert into money_trust_entry (id, firm_id, person_id, case_id, kind, amount_minor, currency, payment_id, created_by) values ('${eid}', '${A}', '${who}', ${caseId ? `'${caseId}'` : "null"}, 'DEPOSIT', ${minor}, 'CAD', '${pid}', 'seed:FO-7b-1b');`;
   const entry = (cols: string, vals: string) => `insert into money_trust_entry (firm_id, person_id, currency, created_by, ${cols}) values ('${A}', '${who}', 'CAD', 'seed:FO-7b-1b', ${vals});`;
   sql(`begin; ${dep(pa, ea, 10000, null)} ${dep(pb, eb, 5000, CASE)} commit;`);
-  sql(entry("case_id, kind, amount_minor, reason", `'${CASE}', 'REFUND_TO_CLIENT', -5000, 'Sample refund'`)); sql(entry("case_id, kind, amount_minor, reason, corrects_entry_id, correction_kind", `'${CASE}', 'CORRECTION', -5000, 'Recorded twice (Sample)', '${eb}', 'RECORDED_BY_MISTAKE'`));
+  sql(entry("case_id, kind, amount_minor, reason, refund_method, refunded_on", `'${CASE}', 'REFUND_TO_CLIENT', -5000, 'Sample refund', 'E_TRANSFER', current_date`)); sql(entry("case_id, kind, amount_minor, reason, corrects_entry_id, correction_kind", `'${CASE}', 'CORRECTION', -5000, 'Recorded twice (Sample)', '${eb}', 'RECORDED_BY_MISTAKE'`));
   sql(`begin; ${entry("id, kind, amount_minor", `'${em}', 'MOVE_TO_CASE', -10000`)} ${entry("case_id, kind, amount_minor, moved_from_entry_id", `'${CASE}', 'MOVE_TO_CASE', 10000, '${em}'`)} commit;`);
   const invM = await issued(3000, 0, {}, PM), mPay = await pay(invM.id, 3000, { receivedInto: "TRUST" });
   const halfRow = Number(sql(`select balance_after_minor from money_trust_entry where id = '${em}'`)), plantedShort = (rows: number[]) => rows.some((b) => b < 0);
@@ -350,7 +350,7 @@ try {
   // Break report d6948072e F1 (Major): a client already below zero in trust (a reversal, P-634) pays into trust. The money
   // is recorded and only what the ledger then holds is applied; it was a 409 that recorded nothing.
   const PZ = person(A, "z"), [pz, ez] = [randomUUID(), randomUUID()]; who = PZ;
-  sql(`begin; ${dep(pz, ez, 5000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -5000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -5000, 'Recorded twice (Sample)', '${ez}', 'RECORDED_BY_MISTAKE'`));
+  sql(`begin; ${dep(pz, ez, 5000, null)} commit;`); sql(entry("kind, amount_minor, reason, refund_method, refunded_on", `'REFUND_TO_CLIENT', -5000, 'Sample refund', 'E_TRANSFER', current_date`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -5000, 'Recorded twice (Sample)', '${ez}', 'RECORDED_BY_MISTAKE'`));
   const invZ = await issued(10000, 0, {}, PZ), zPay = await pay(invZ.id, 10000, { receivedInto: "TRUST" });
   const zRec = await pdfText(`${invZ.id}/payments/${zPay.body.id}/receipt.pdf`);
   ok("FO-7b P pass (break F1; R2 review M1, break R2-F2): a client at −50.00 in trust pays 100.00 into trust on a 100.00 invoice → 201: 50.00 makes up the shortfall, 50.00 is applied, 50.00 stays due, no extra; the receipt says so and never says \"kept in trust\"",
@@ -369,7 +369,7 @@ try {
   ok("FO-7b P fail (round 3 M1, planted): the round-3 rule, fed this payment's stored facts, applies 150.00 (an extra of −50.00) and so differs from what was stored; the case catches it",
     planted3 === 15000 && planted3 !== hPay.body.trust.appliedMinor && 10000 - planted3 < 0, [planted3, hPay.body.trust]);
   const PY = person(A, "y"), [py, ey] = [randomUUID(), randomUUID()]; who = PY;
-  sql(`begin; ${dep(py, ey, 15000, null)} commit;`); sql(entry("kind, amount_minor, reason", `'REFUND_TO_CLIENT', -15000, 'Sample refund'`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -15000, 'Recorded twice (Sample)', '${ey}', 'RECORDED_BY_MISTAKE'`));
+  sql(`begin; ${dep(py, ey, 15000, null)} commit;`); sql(entry("kind, amount_minor, reason, refund_method, refunded_on", `'REFUND_TO_CLIENT', -15000, 'Sample refund', 'E_TRANSFER', current_date`)); sql(entry("kind, amount_minor, reason, corrects_entry_id, correction_kind", `'CORRECTION', -15000, 'Recorded twice (Sample)', '${ey}', 'RECORDED_BY_MISTAKE'`));
   const invY = await issued(10000, 0, {}, PY), yPay = await pay(invY.id, 10000, { receivedInto: "TRUST" });
   ok("FO-7b P fail (break R2-F2): at −150.00, 100.00 into trust all goes to the shortfall: nothing applied, nothing \"kept\", 100.00 still due, the balance −50.00 (shown red by money_trust_shortfall), never a refusal",
     yPay.status === 201 && yPay.body.trust?.shortfallCoveredMinor === 10000 && yPay.body.trust.appliedMinor === 0 && yPay.body.trust.balanceMinor === -5000 && yPay.body.extra === null && yPay.body.invoice.dueMinor === 10000 && sql(`select count(*) from money_trust_shortfall where person_id = '${PY}'`) === "1", yPay.body);
