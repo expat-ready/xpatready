@@ -85,3 +85,35 @@ None.
 **Verdict: Changes 6b8ca678d23bf2e20b26b9344fe10b2487f0d5e5.** Not an Approve: do not label until M1 is fixed. To fix: M1 (must); m1, m2 (should); n1 (optional).
 
 Reviewer: Changes 6b8ca678d23bf2e20b26b9344fe10b2487f0d5e5
+
+## Round 2 (head 3afa09afabf236f5b01314f4cc3a66b0281f52ab)
+
+Scope: only `git diff 6b8ca678d 3afa09afa`, leaving out the records commit `cc74e9644`. The four `fo3st1-*.png` files are back to main's copies; the PR's only images are now the `part-4-walk` shots. I re-ran everything on a fresh copy `rev_pf28p4` on :4491 (now stopped).
+
+- **Sweep:** **45/45**, with the new case "PF-28 part 4 fail (review M1, m1, m2)" passing. Code half: 44/44 listed. Probes: 504, of which 102 are not as the rule says (91 listed + 11 exceptions). No 500.
+- **My journey script:** 20/20 again. J1–J6: a public refusal then booked, reschedule by link, a cut-short link, a reserved slug, time off back to front, the calendar. axe clean; no page errors; the only refused calls were the provoked ones.
+
+**M1: fixed.**
+- `consult/service.ts:121-124` now checks the id's shape first (`UUID` is declared at `:32`), then the `__proto__` guard, then the object check.
+- Live: `not-a-uuid` gives **404** with `{"x":1}`, with `[]`, and with no body.
+- A random uuid with `[]` still gives 422 ("Send the record as a JSON object."), and with `{}` gives 404. That is unchanged and correct.
+- The new sweep case would fail if the check were removed.
+
+**m1: fixed.**
+- Each booking parser now runs `parseInput(z.unknown(), …)` first: `service.ts:175` (every booking door's `parse`), `feed.ts:42`, `types.ts:105` and the preview (`:235`), `availability.ts:67`, `timings.ts:141`, and the consult put.
+- Live: a `__proto__` key is refused **422** naming it on staff create, type PATCH, firm timings, attendance, the consult record (random id), the preview query, the public booking and the public cancel. Two of those, the cancel and time off, are in the sweep case.
+- With `z.unknown()`, the guard does nothing else, so no other answer changed. Every body that is not `__proto__` reaches the door's own schema as before. A valid feed query still answers 200.
+- Accepted as it is: the `__proto__` answer uses the rule's own Problem shape ("Check the details", no `issues`), not the door's title or slug. Only a crafted request meets it. The public page shows its detail through the refusal line.
+
+**m2: fixed.**
+- The three range refusals now pass `["to: at most N days after from"]` (`service.ts:275`, `:341`, `:452`). Live: the public slots over 62 days, and the staff list over 92 days in the sweep, both name `to`.
+- The `refused` default now maps a line without `": "` to `body: <the whole line>` (`:90`).
+- The anti-bot comment is added at `:92-93`. Small nit: it sits as a loose doc comment above `NOT_LISTED`'s, rather than on `refused`, which is the function it describes. No action needed.
+
+**Nits:** fixed (`feed.ts:29`; `check_fo3a_hours_timings.ts:246`).
+
+**New issues:** none. The guard adds no look-up, the order is still id → body → record, and the permission checks are untouched. In `timings.write` the body was already read before the per-field permission check; that is unchanged.
+
+**Verdict: Approve 3afa09afabf236f5b01314f4cc3a66b0281f52ab** (no open Blocker or Major).
+
+Reviewer: Approve 3afa09afabf236f5b01314f4cc3a66b0281f52ab
