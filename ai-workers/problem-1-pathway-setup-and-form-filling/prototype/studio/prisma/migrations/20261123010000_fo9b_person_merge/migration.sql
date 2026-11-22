@@ -20,19 +20,40 @@
 -- CreateEnum
 CREATE TYPE "FoDupKind" AS ENUM ('PERSON', 'COMPANY');
 
--- (1) the three lead-level keys cascade on update
+-- (1) the three lead-level keys cascade on update: dropped here, re-added in the lifted block below
 ALTER TABLE "fo_arrival_receipt" DROP CONSTRAINT "fo_arrival_receipt_firm_id_lead_id_person_id_fkey";
 ALTER TABLE "fo_call" DROP CONSTRAINT "fo_call_firm_id_lead_id_person_id_fkey";
 ALTER TABLE "fo_note" DROP CONSTRAINT "fo_note_firm_id_lead_id_person_id_fkey";
-ALTER TABLE "fo_arrival_receipt" ADD CONSTRAINT "fo_arrival_receipt_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "fo_call" ADD CONSTRAINT "fo_call_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "fo_note" ADD CONSTRAINT "fo_note_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- the tombstone (slot lines in front-office-sales.prisma)
 ALTER TABLE "fo_person" ADD COLUMN "merged_at" TIMESTAMPTZ, ADD COLUMN "merged_into_id" UUID;
 ALTER TABLE "fo_company" ADD COLUMN "merged_at" TIMESTAMPTZ, ADD COLUMN "merged_into_id" UUID;
-ALTER TABLE "fo_person" ADD CONSTRAINT "fo_person_firm_id_merged_into_id_fkey" FOREIGN KEY ("firm_id", "merged_into_id") REFERENCES "fo_person"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
-ALTER TABLE "fo_company" ADD CONSTRAINT "fo_company_firm_id_merged_into_id_fkey" FOREIGN KEY ("firm_id", "merged_into_id") REFERENCES "fo_company"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+-- PF-8b F7 (Amazon RDS: the admin is neither superuser nor BYPASSRLS; Lead 9 on #3042): adding a foreign key validates
+-- the existing rows of a walled table, so the five keys are added with FORCE lifted inside this one statement (ACCESS
+-- EXCLUSIVE first, so nobody sees the walls lifted) and put back after, in F7's lift shape. A superuser or BYPASSRLS
+-- runner does exactly what it did. tests/check_pf8b_f7_data_walls.ts fails when a key on a walled table is added without
+-- this. fo_lead is the referenced table of the three lead-level keys and is lifted with them.
+DO $pf8b_f7$
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['fo_arrival_receipt', 'fo_call', 'fo_company', 'fo_lead', 'fo_note', 'fo_person']; gated text[] := '{}';
+BEGIN
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
+  ALTER TABLE "fo_arrival_receipt" ADD CONSTRAINT "fo_arrival_receipt_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  ALTER TABLE "fo_call" ADD CONSTRAINT "fo_call_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  ALTER TABLE "fo_note" ADD CONSTRAINT "fo_note_firm_id_lead_id_person_id_fkey" FOREIGN KEY ("firm_id", "lead_id", "person_id") REFERENCES "fo_lead"("firm_id", "id", "person_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  ALTER TABLE "fo_person" ADD CONSTRAINT "fo_person_firm_id_merged_into_id_fkey" FOREIGN KEY ("firm_id", "merged_into_id") REFERENCES "fo_person"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ALTER TABLE "fo_company" ADD CONSTRAINT "fo_company_firm_id_merged_into_id_fkey" FOREIGN KEY ("firm_id", "merged_into_id") REFERENCES "fo_company"("firm_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+END $pf8b_f7$;
 ALTER TABLE "fo_person" ADD CONSTRAINT "fo_dup_person_tombstone" CHECK (("merged_into_id" IS NULL) = ("merged_at" IS NULL) AND "merged_into_id" IS DISTINCT FROM "id");
 ALTER TABLE "fo_company" ADD CONSTRAINT "fo_dup_company_tombstone" CHECK (("merged_into_id" IS NULL) = ("merged_at" IS NULL) AND "merged_into_id" IS DISTINCT FROM "id");
 
@@ -86,8 +107,8 @@ BEGIN
     RAISE EXCEPTION 'fo_dup_merge: a merge record is written once; only its Undo stamp is added, once' USING ERRCODE = 'insufficient_privilege';
   END IF;
   -- The stamp only after the tombstone has ended (break m4: no Undo stamp on a merge that still stands).
-  IF EXISTS (SELECT 1 FROM "fo_person" WHERE "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id")
-     OR EXISTS (SELECT 1 FROM "fo_company" WHERE "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id") THEN
+  IF EXISTS (SELECT 1 FROM "fo_person" WHERE "firm_id" = OLD."firm_id" AND "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id")
+     OR EXISTS (SELECT 1 FROM "fo_company" WHERE "firm_id" = OLD."firm_id" AND "id" = OLD."loser_id" AND "merged_into_id" = OLD."survivor_id") THEN
     RAISE EXCEPTION 'fo_dup_merge: the Undo stamp is written only once the merge is undone (the record is still merged)' USING ERRCODE = 'insufficient_privilege';
   END IF;
   RETURN NEW;

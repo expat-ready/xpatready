@@ -1,6 +1,6 @@
 -- FO-9b part 1 rollback (not a migration: Prisma reads only migration.sql). Run in one transaction, after the code is
 -- rolled back, and only while no merge stands (a standing merge's tombstone would lose its survivor; undo it first):
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261122100000_fo9b_person_merge/rollback.sql
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f prisma/migrations/20261123010000_fo9b_person_merge/rollback.sql
 -- The merge records (fo_dup_merge) are dropped with their table: keep a copy first if any exist.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM "fo_person" WHERE "merged_into_id" IS NOT NULL) OR EXISTS (SELECT 1 FROM "fo_company" WHERE "merged_into_id" IS NOT NULL) THEN
@@ -34,4 +34,4 @@ GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 ALTER FUNCTION fo_sales_insert_only() SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp;
 ALTER FUNCTION fo_sales_insert_only() OWNER TO xr_wall_reader;
 REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
-DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261122100000_fo9b_person_merge';
+DELETE FROM "_prisma_migrations" WHERE "migration_name" = '20261123010000_fo9b_person_merge';

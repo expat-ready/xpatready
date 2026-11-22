@@ -35,7 +35,7 @@ import { seedSampleFirms } from "../api/src/platform/seed-sample-firms.ts";
 import { EVERYONE_SEES_ALL, writeSetting } from "../api/src/platform/settings.ts";
 import { clearingConflicts } from "./lib/conflict-clear.ts";
 
-const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261122100000_fo9b_person_merge";
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), NEW = "20261123010000_fo9b_person_merge";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_fo9b_${process.pid}`, URL_ = `postgresql://xr_studio@127.0.0.1:54329/${DB}`;
