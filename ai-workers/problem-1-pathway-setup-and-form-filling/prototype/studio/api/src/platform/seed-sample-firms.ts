@@ -18,7 +18,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registeredSettings, syncSettingDefinitions } from "./settings.ts";
-import { touchFirm } from "./firm-scope.ts";
+import { firmInTransaction, firmOfKey, touchFirm } from "./firm-scope.ts";
+import { randomUUID } from "node:crypto";
 
 type Office = { country?: string | null } & Record<string, unknown>;
 type SampleUser = { id: string; name: string; family_name?: string; given_names?: string; email?: string; duties: string[]; licence: { body: string; category: string; number: string } | null };
@@ -62,10 +63,15 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
       const owner = f.users.find((u) => u.duties.includes("firm_admin")) ?? f.users[0];
       const country = COUNTRY[String(f.office?.country ?? "").toLowerCase()];
       if (!country) throw new Error(`seed-sample-firms: firm ${f.key} has no known country (${String(f.office?.country)})`);
-      let firm = await tx.platformFirm.findUnique({ where: { key: f.key } });
+      // PF-8b F8: every row of this firm is read and written as this firm (PF-12's walls), so the seed runs as the
+      // database's owner without superuser or BYPASSRLS (Amazon RDS); a new firm gets its id first, to be that firm.
+      const known = await firmOfKey(tx, f.key, async () => (await tx.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } }))?.id ?? null);
+      const firmId = known ?? randomUUID();
+      await firmInTransaction(tx, firmId);
+      let firm = known ? await tx.platformFirm.findUnique({ where: { id: known } }) : null;
       if (!firm) {
         firm = await tx.platformFirm.create({ data: {
-          key: f.key, operatingName: f.name, countryCode: country, status: "ACTIVE",
+          id: firmId, key: f.key, operatingName: f.name, countryCode: country, status: "ACTIVE",
           ownerName: owner.name, ownerEmail: emailOf(owner, f.key), billingEmail: emailOf(owner, f.key), contactEmail: emailOf(owner, f.key),
           businessAddress: (f.office ?? null) as Prisma.InputJsonValue,
         } });
@@ -98,6 +104,7 @@ export async function seedSampleFirms(db: PrismaClient, firms: SampleFirm[] = re
         }
       }
     }
+    await firmInTransaction(tx, null);   // PF-8b F8: no firm for what follows (as before the loop)
     if (then) await then(tx);
     r.unmatchedCaseFirmKeys = await unmatchedCaseFirmKeys(tx);
     return r;
@@ -129,8 +136,13 @@ export async function seedSampleSettings(db: PrismaClient, firms: SampleFirm[] =
   const { seedSampleSettingValues } = await import("./keep-period/service.ts");
   let n = 0;
   for (const f of firms) {
-    const firm = await db.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } });
-    if (firm) n += await db.$transaction((tx) => seedSampleSettingValues(tx, firm.id, SAMPLE_SETTING_VALUES));
+    n += await db.$transaction(async (tx) => {
+      // PF-8b F8: found across the walls by its key, then written as that firm (see seedSampleFirms)
+      const id = await firmOfKey(tx, f.key, async () => (await tx.platformFirm.findUnique({ where: { key: f.key }, select: { id: true } }))?.id ?? null);
+      if (!id) return 0;
+      await firmInTransaction(tx, id);
+      return seedSampleSettingValues(tx, id, SAMPLE_SETTING_VALUES);
+    });
   }
   return n;
 }

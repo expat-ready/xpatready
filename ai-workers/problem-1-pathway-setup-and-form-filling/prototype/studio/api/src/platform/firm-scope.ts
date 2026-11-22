@@ -80,6 +80,22 @@ export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T
   const firm = firmScope(firmId).firmId;
   return scope.run({ route: scope.getStore()?.route, firmId: firm }, async () => await fn());
 }
+/** PF-8b F8 (Amazon RDS: a seed run by the database's owner, neither superuser nor BYPASSRLS): the firm whose rows this
+ *  transaction reads and writes, set in the transaction itself (set_config's is_local: it ends at commit or rollback, so a
+ *  pooled connection never keeps it). PF-12's walls (app.firm_id) then accept that firm's rows and no other, with no bypass
+ *  role; for a superuser or BYPASSRLS runner nothing changes (the walls and the firm gate let it through anyway). */
+export async function firmInTransaction(tx: { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number> }, firmId: string | null): Promise<void> {
+  await tx.$executeRaw`select set_config('app.firm_id', ${firmId === null ? "" : firmScope(firmId).firmId}, true)`;
+}
+/** PF-8b F8: a firm key → its firm id across the walls, through PF-12b's narrow definer lookup (platform_firm_of_key: the id
+ *  only, null for an unknown key); on a database migrated only up to before that lookup (a check's earlier schema), the
+ *  caller's own read. */
+export async function firmOfKey(tx: { $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T> }, key: string, fallback: () => Promise<string | null>): Promise<string | null> {
+  const [{ has }] = await tx.$queryRaw<{ has: boolean }[]>`select to_regprocedure('platform_firm_of_key(text)') is not null as has`;
+  if (!has) return fallback();
+  const [{ id }] = await tx.$queryRaw<{ id: string | null }[]>`select platform_firm_of_key(${key})::text as id`;
+  return id;
+}
 /** A door (a sign-in, a public page, a link): the firm it resolved through its narrow lookup, for the rest of its request.
  *  Refused inside a job's or a bypass's scope; on a direct call with no scope (a suite, a tool) there is nothing to set
  *  and the caller's own client decides what it reads. */
