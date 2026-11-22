@@ -85,7 +85,7 @@ ALTER TABLE "money_party_tax_treatment" ADD CONSTRAINT "money_party_tax_treatmen
 -- Invoices issued before this part: what issuing would have chosen (no party treatment exists yet), set while FO-7ts
 -- part 1's freeze does not yet name the column (break m2), so none is left null for good.
 DO $issued$
-DECLARE t text; forced text[] := '{}';
+DECLARE t text; forced text[] := '{}'; f uuid; was text := coalesce(current_setting('app.firm_id', true), '');
 BEGIN
   -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
   -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
@@ -100,7 +100,13 @@ BEGIN
     SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_invoice']::regclass[]) AND c.relforcerowsecurity;
     FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
   END IF;
-  UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
+  -- One firm at a time, as that firm (review R7-1): PF-12's firm-first trigger refuses a row that is not the session's
+  -- firm for a runner that is neither superuser nor BYPASSRLS, and lifting FORCE does not lift a trigger.
+  FOR f IN SELECT DISTINCT "firm_id" FROM "money_invoice" WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL LOOP
+    PERFORM set_config('app.firm_id', f::text, true);
+    UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "firm_id" = f AND "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
+  END LOOP;
+  PERFORM set_config('app.firm_id', was, true);
   FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
 END
 $issued$;

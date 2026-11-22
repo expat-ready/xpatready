@@ -133,6 +133,33 @@ try {
         insert into money_trust_entry (firm_id, person_id, kind, amount_minor, currency, reason, created_by) values ('${firmA}', '${P1}', 'REFUND_TO_CLIENT', -1000, 'CAD', 'Returned', 'user-R');
         ${text3}`, /trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead/)
       && sql(T, `select count(*) from money_trust_entry where firm_id = '${firmA}'`) === "0" && sql(T, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0"); }
+  // PF-8b F6 / review R7-1: a runner that is neither superuser nor BYPASSRLS (Amazon RDS's admin), owning the tables
+  // through membership, over issued invoices of two firms with no treatment yet: part 3 applies, fills each firm's as
+  // that firm (PF-12's firm-first trigger refuses any other), and leaves FORCE as it found it. A planted copy without
+  // the per-firm session firm is refused (42501).
+  { const RDS = `${T}_rds`, ROLE = `xr_fo7ts_rds_${process.pid}`;
+    execFileSync(join(BIN, "createdb"), [...PG, "-T", T, RDS]);
+    try {
+      const firmR = firm(RDS, "firm-ts-rds");
+      for (const f of [firmA, firmR]) sql(RDS, `set session_replication_role = replica; insert into money_invoice (firm_id, person_id, currency, due_date, created_by, updated_at, number, issued_at, issued_by)
+        values ('${f}', gen_random_uuid(), 'CAD', '2026-12-15', 'user-R', now(), 'RDS-1', now(), 'user-R')`);
+      sql(RDS, `create role ${ROLE} nologin nosuperuser nobypassrls; grant xr_studio to ${ROLE}; grant xr_wall_reader to ${ROLE}`);
+      const asRds = (text: string) => { writeFileSync(join(WORK, "rds.sql"), `set role ${ROLE};\n${text}`); return psql(RDS, ["-1", "-f", join(WORK, "rds.sql")]); };
+      mkdirSync(WORK, { recursive: true });
+      const planted = text3.replace(/^\s*PERFORM set_config\('app\.firm_id', f::text, true\);\n/m, "");
+      let plantedErr = "";
+      try { asRds(planted); } catch (e) { plantedErr = String((e as { stderr?: string }).stderr ?? e); }
+      ok("FO-7ts part 3 fail (planted, review R7-1): without the per-firm session firm, the RDS-shaped runner is refused by PF-12's firm-first trigger (42501), nothing changed",
+        planted !== text3 && /violates row-level security policy for table "money_invoice"/.test(plantedErr) && sql(RDS, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0", plantedErr.split("\n")[0]);
+      let err = ""; try { asRds(text3); } catch (e) { err = String((e as { stderr?: string }).stderr ?? e); }
+      ok("FO-7ts part 3 pass (PF-8b F6, review R7-1): as a runner that is neither superuser nor BYPASSRLS, the migration applies over issued invoices of two firms, sets both TAXABLE and leaves FORCE on money_invoice and money_trust_entry",
+        err === "" && sql(RDS, `select count(*) filter (where tax_treatment = 'TAXABLE') || ':' || count(*) from money_invoice where number = 'RDS-1'`) === "2:2"
+        && sql(RDS, `select bool_and(relforcerowsecurity) from pg_class where relname in ('money_invoice', 'money_trust_entry')`) === "t", err.split("\n").slice(0, 3));
+    } finally {
+      execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", RDS], { stdio: "ignore" });
+      try { sql(EMPTY, `drop role if exists ${ROLE}`); } catch { /* best effort */ }
+    }
+  }
   psql(T, ["-1", "-f", join(MIG, NEW3, "migration.sql")]);
   ok("FO-7ts DW10 pass (part 3): right after its own migration it adds and drops no function, replaces money_trust_entry_write, money_invoice_write and (Lead 96's rulings) FO-7lk's money_credit_note_write, money_move_batch_owed_back and money_move_line_write, all CREATE OR REPLACE and money_, all still run as PF-12's wall reader",
     JSON.stringify(fns(T)) === JSON.stringify(fnBefore3) && src3(T).split(",").every((x, i) => x !== srcBefore3.split(",")[i])

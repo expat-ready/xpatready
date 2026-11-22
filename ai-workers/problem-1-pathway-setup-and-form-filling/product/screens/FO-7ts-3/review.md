@@ -1,4 +1,103 @@
-Reviewer: Approve 2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f
+Reviewer: Block c561f07e7ac0de125f809e957d7c402ab48c8649
+
+# Round 7 (diff-only, head c561f07e7)
+
+**Base:** b2706bedf, the last head approved (2fb4965eb plus records only). Head c561f07e7 has two parts:
+* e30ca33a1 merges origin/main 265d622ca.
+* c561f07e7 is the fix for merge-queue batch 45042056199.
+
+**What I read:**
+* `git diff -M b2706bedf c561f07e7` for `prisma/migrations/2026112217*/`, `tests/check_fo7b_invoices.ts` and `tests/check_fo7ts_money_settings.ts`.
+* `git diff origin/main c561f07e7 -- tests/check_fo7b_invoices.ts`.
+* `git diff origin/main...c561f07e7 --stat`.
+* As asked, I did no database work. The answers below come from the migration text and the trigger bodies on this head.
+
+**The scope holds.**
+* `origin/main...c561f07e7` lists the same 15 files as the round-6 file list (merge-base 73c4e4dcd...b2706bedf), plus one more: `tests/check_fo7b_invoices.ts` (+3 −3).
+* Against main, that file differs only in the three `REFUND_TO_CLIENT` inserts (lines 332, 343, 362). Each gains `refund_method 'E_TRANSFER'` and `refunded_on current_date`. No assertion changed.
+* `migration.sql` was renamed at 95% similarity. The only changes are the two DO blocks.
+* `rollback.sql` was renamed at 73% similarity. The changes are its first block and the psql path in the header.
+* `check_fo7ts_money_settings.ts` changes only `NEW3`.
+* `20261122170000_fo7ts_part3` is the only folder with that stamp, and it is the newest migration.
+* No code outside `product/screens/FO-7ts-3/` (records only) still names `20261122040000_fo7ts_part3`.
+* No other file on this head writes a `REFUND_TO_CLIENT` row. The other four tests were updated in earlier rounds.
+
+## Q1: the RLS pattern
+
+**The pattern is correct for reads.** It matches pf18bk's F6 block (`20261119170000_pf18bk_support_keys:26-42`) line for line:
+* The ownership test runs before the lock (break m2), so a runner without rights gets the block's own message, not a lock wait.
+* `pg_has_role(…, 'USAGE')` is the same rule PostgreSQL applies for both the owner's RLS bypass and `ALTER TABLE` (`has_privs_of_role`). A member of the owner role through INHERIT passes. A member without INHERIT is refused with the block's message.
+
+**Locks and lock order:**
+* ACCESS EXCLUSIVE is taken at once, before `forced` is read. FORCE cannot change between the read and the ALTER, and the lock is never upgraded.
+* The rollback locks its three tables in one statement.
+* In the no-bypass path, `money_trust_entry` is locked before `money_invoice`. In the bypass path, the later Prisma DDL locks `money_invoice` first. Both orders run in one session, so the migration cannot deadlock with itself. A clash with live traffic would end in 40P01 and roll everything back. That risk existed before this change (the old path upgraded an AccessShare lock on `money_trust_entry` to ACCESS EXCLUSIVE). Not a finding.
+
+**FORCE is put back on every path:**
+* On success, the closing `FOREACH` restores it.
+* Every error path is a `RAISE` (or a statement error) with no `EXCEPTION` handler and no early `RETURN` or `EXIT`. The DO block fails as a whole, and the transactional DDL undoes `NO FORCE`.
+* In the superuser/BYPASSRLS path `forced` stays `'{}'`, so nothing is touched.
+
+**A table that was never forced stays unforced.** Only tables with `relforcerowsecurity` go into `forced`, and only those get FORCE back.
+
+**The UPDATE on `money_invoice` while FORCE is lifted.** Three BEFORE UPDATE row triggers fire, in name order:
+* `money_invoice_credit_pinned` (FO-7ts ledgers): it reads only when the party, case or currency changes, and none does. It is SECURITY DEFINER, owned by `xr_wall_reader`. No effect.
+* `money_invoice_write` (FO-7ts part 1 text): `OLD.issued_at IS NOT NULL` takes the frozen-fields branch. That tuple does not name `tax_treatment` yet (part 3's replacement adds it after this block, line 396), so it returns NEW. No effect.
+* **`"0_pf12_firm_first"`** (PF-12): this one refuses the update. See R7-1.
+
+### R7-1 (Major): `$issued$` still fails for the RDS-shaped runner once any issued invoice exists
+
+* **Where:** `prisma/migrations/20261122170000_fo7ts_part3/migration.sql:87-106`, at the `UPDATE` on line 103.
+* **Cause:** PF-12 forces RLS on `money_invoice` (`20261116013000_pf12_firm_walls`, `$walls$` list). Its `$gate$` (line 269) then creates `"0_pf12_firm_first" BEFORE INSERT OR UPDATE` on every forced `money_*` table.
+* **What that trigger does** (`platform_firm_first()`, line 255; not SECURITY DEFINER, so it checks the runner):
+  ```
+  IF (SELECT r.rolbypassrls OR r.rolsuper FROM pg_roles r WHERE r.rolname = current_user) THEN RETURN NEW; END IF;
+  IF TG_ARGV[0] = '' OR platform_session_firm() IS NULL OR … THEN
+    RAISE EXCEPTION 'new row violates row-level security policy for table "%"', TG_TABLE_NAME USING ERRCODE = '42501';
+  ```
+  It is a trigger, not a policy, so lifting FORCE does not switch it off.
+* **Result:** the runner is neither superuser nor BYPASSRLS, and a migration session has no `app.firm_id`. The first issued invoice with a null treatment is refused with 42501 "new row violates row-level security policy for table money_invoice". The whole migration then rolls back.
+* **What the fix delivers:** in the no-bypass path, the read blocks (`$refunds$`, the rollback) work. The update works only on a database with no issued invoice.
+* **Why the tests did not catch it:** `check_pf8b_f6_pg18_nobypass.ts` deploys onto empty databases (it seeds support rows only). The UPDATE touches no rows there, so the trigger never fires. The data-bearing cases in `check_fo7ts_money_settings.ts` run as `xr_studio` (BYPASSRLS). No case covers a no-bypass runner with an issued invoice.
+* **Impact:** RDS keeps state across deploys. If this migration reaches it after any invoice has been issued, the deploy fails. Nothing is corrupted: the failure is clean and the migration can still be edited, because a failed migration records no checksum. But the PR states that it supports this runner, and its message would mislead whoever deploys.
+* **Fix (the builder's choice):**
+  * Preferred: inside the `ELSE` branch, after lifting FORCE, keep the current `app.firm_id`, then loop over `SELECT DISTINCT firm_id FROM "money_invoice" WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL`. For each firm, run `set_config('app.firm_id', f::text, true)` and the UPDATE limited to that firm. Then set `app.firm_id` back. The wall's own check stays in force.
+  * Or: `ALTER TABLE "money_invoice" DISABLE TRIGGER "0_pf12_firm_first"` and `ENABLE` it again, handled like FORCE. The owner may do this, and ACCESS EXCLUSIVE is already held.
+* **A failing-first case to add** (in the no-bypass check or in FO-7ts's own suite):
+  1. Deploy up to `20261122040000` with the admin BYPASSRLS.
+  2. Seed one firm with an issued invoice.
+  3. Take BYPASSRLS away, then deploy part 3.
+  4. Expect: exit 0, the invoice is `TAXABLE`, `money_invoice.relforcerowsecurity` is true again, and `app.firm_id` is empty after the block.
+
+  A second case: a hidden `REFUND_TO_CLIENT` row is refused there with the `$refunds$` message. This proves the read with FORCE lifted sees rows the walls hide.
+
+## Q2: `current_date` as the trust-refund date in FO-7b's test
+
+**It is valid on both sides of the rule** (`migration.sql:171-177`):
+* **The upper bound** is `refunded_on > current_date + 1`. `current_date` passes.
+* **The lower bound** is `refunded_on < min(created_at)::date − 1` over the party's entries in that currency.
+  * Each party's DEPOSIT is written earlier in the same run, and `created_at` is the database's `now()` (the trigger sets it).
+  * Both dates come from the same psql settings, so `current_date ≥ deposit::date`.
+  * The one-day slack also covers midnight or time-zone skew between calls.
+* PZ and PY have no case, and their refund matches the deposit's party and currency. In the first insert, PB's deposit is on `CASE`, and the rule reads every entry of the party.
+* `E_TRANSFER` is an offline `MoneyPaymentMethod`, so `money_trust_entry_refund_check` and the no-card rule pass. The payee is the entry's own party, so no `payee_reason` is required.
+* Each refund's amount and balance are unchanged, so the later assertions see the same ledger.
+
+## Q3: anything else a money or schema reviewer would block
+
+Nothing besides R7-1:
+* The SQL outside the blocks is byte-identical to the approved head.
+* The rollback writes no rows, so R7-1 does not apply to it.
+* The superuser/BYPASSRLS path still runs exactly the earlier text.
+
+**Screen review and journey test:** not applicable, as in rounds 1-6. This part has no route, screen or `ports/` change. No journey score is given.
+
+**Verdict: Block** for `c561f07e7ac0de125f809e957d7c402ab48c8649`. To fix:
+1. **R7-1 (Major):** `$issued$` must deploy for a runner that is neither superuser nor BYPASSRLS on a database holding issued invoices. Use per-firm `app.firm_id` or disable `"0_pf12_firm_first"` around the update, and add the seeded no-bypass case.
+
+---
+
+Round 6b line (superseded): Reviewer: Approve 2fb4965eb66a08eb95a8e88a2efb0d2d265c8c6f
 
 # Round 6b (diff-only, 4ac4e8b1a..2fb4965eb)
 
