@@ -58,6 +58,10 @@ grep -q 'return expandAll(document' "$TOOLS/app-view.js" && grep -q 'lines(j, Da
 ok "in the browser, app-view.js expands before it counts and prints rows=N" "$([ $? = 0 ] && echo 1)"
 o=$(node -e 'const v=require(process.argv[1]); console.log(v.lines({data:[{title:"a"},{title:"b"}]},0,0,9))' "$TOOLS/app-view.js")
 ok "more sidebar rows than API sessions: WARNING list may be cut (sidebar rows=9, API 2)" "$(grep -qx 'WARNING: list may be cut (sidebar rows=9, API 2)' <<< "$o" && echo 1)" "$o"
+o=$(node -e 'const v=require(process.argv[1]); console.log(v.lines({data:[{title:"a"},{title:"b"}]},0,0,0))' "$TOOLS/app-view.js")
+ok "rows=0 while the API gives sessions: WARNING (the row selector found nothing), never a silent pass" "$(grep -q '^WARNING: list may be cut (sidebar rows=0 while the API gave 2' <<< "$o" && echo 1)" "$o"
+o=$(node -e 'const v=require(process.argv[1]); console.log(JSON.stringify([v.afterFirst("h\na\nb","W"), v.afterFirst("h","W")]))' "$TOOLS/app-view.js")
+ok "a Show more left after 100 rounds: its WARNING goes second, under the header" "$([ "$o" = '["h\nW\na\nb","h\nW"]' ] && grep -q 'ex.done ? t : afterFirst(t, ' "$TOOLS/app-view.js" && echo 1)" "$o"
 u=$(node -e 'console.log(require(process.argv[1]).lines({error:"x"},0))' "$TOOLS/app-view.js"); ok "app-view.js: no sessions array is UNREADABLE" "$(grep -q '^UNREADABLE' <<< "$u" && echo 1)" "$u"
 o=$(echo "hello" | NOW=$NOW bash "$TOOLS/app-view-save.sh" 2>&1); r=$?
 ok "app-view-save.sh refuses text that is not app-view.js's" "$([ $r = 2 ] && [ ! -e "$APP_VIEW_FILE" ] && echo 1)" "rc=$r $o"
