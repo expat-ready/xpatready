@@ -59,10 +59,23 @@ export async function prepareRetainerSigning(db: PrismaClient, files: FilesPort,
     signers: [{ signerId: clientSigner, role: "CLIENT", name: nameOf(person) || "Client" }, { signerId: firmSigner, role: "FIRM", name: rep.displayName }] });
   // The link tokens: only their sha256 is kept (part 4 emails the client's link; FO-3c's token shape, the firm first).
   const token = () => `${firmId.replace(/-/g, "").toLowerCase()}.${randomBytes(32).toString("base64url")}`;
+  const endedEnvelopes: string[] = [];
   return {
     requestId,
+    /** After the commit: the envelopes of the requests this send ended (never throws). */
+    async afterCommit() { for (const d of endedEnvelopes.splice(0)) { try { await port.cancel(firmId, d); } catch { /* ended at the provider already */ } } },
     async record(tx: Tx) {
       const now = o.now();
+      // An Edit made a newer version and ended the old one's FO-5 request (UPDATED) but left its signing request live
+      // (FO-5d cancels it at the Edit): the next Send ends it first (one live request per document), and cancels its
+      // envelope once this transaction commits.
+      const stale = await tx.foSignatureRequest.findMany({ where: { firmId, documentKind: "RETAINER", documentId: r.id, status: { in: ["SENT", "VIEWED", "CLIENT_SIGNED"] } }, select: { id: true, providerDocumentId: true, documentVersion: true, status: true } });
+      for (const s of stale) {
+        await tx.foSignatureRequest.update({ where: { id: s.id }, data: { status: "CANCELLED", cancelReason: "UPDATED", endedAt: now } });
+        await audit.record(tx, { firmId, actor: `staff:${ctx.staffId}`, action: "signing.request_cancelled", entity: "fo_signature_request", entityKey: s.id, summary: `Signing request for version ${s.documentVersion} ended: version ${version.n} was sent`,
+          detail: { requestId: s.id, retainerId: r.id, version: s.documentVersion, reason: "UPDATED" }, before: { status: s.status }, after: { status: "CANCELLED", cancelReason: "UPDATED" } });
+        endedEnvelopes.push(s.providerDocumentId);
+      }
       await tx.foSignatureRequest.create({ data: { id: requestId, firmId, documentKind: "RETAINER", documentId: r.id, documentVersionId: version.id, documentVersion: version.n, provider: port.provider, providerDocumentId, sentBy: ctx.staffId, sentAt: now, expiresAt: new Date(now.getTime() + EXPIRES_DAYS * DAY) } });
       await tx.$queryRaw`select id from fo_signature_request where firm_id = ${firmId}::uuid and id = ${requestId}::uuid for update`;   // review m10: the request before its signers
       await tx.foSigner.create({ data: { id: clientSigner, firmId, requestId, role: "CLIENT", signOrder: 1, personId: person.id, linkTokenSha256: sha(token()) } });

@@ -594,6 +594,7 @@ export class Retainers {
       await signing?.record(tx);
       await this.event(tx, ctx.firmId, EVENT.RETAINER_SENT, { retainerId: r.id, kind: r.kind, prospectId: r.prospectId, version: r.currentVersion });
     }).catch(async (e) => { await signing?.cancel(); throw e; });
+    await signing?.afterCommit();
     return { ...(await this.read(ctx, id)), warnings };
   }
 

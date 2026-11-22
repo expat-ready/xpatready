@@ -6,6 +6,8 @@
 // the JSON parser's object is written back with JSON.stringify, which gives the fake's bytes exactly (it writes its body
 // with JSON.stringify); FO-6v mounts express.raw for this path as PF-5 did for Stripe, and a Buffer body is used as is.
 import { Body, Controller, HttpCode, Inject, Param, Post, Req } from "@nestjs/common";
+import { z } from "zod";
+import { parseInput } from "../../platform/http/input.ts";
 import { problem } from "../../platform/identity/keys.ts";
 import { Signing } from "./service.ts";
 
@@ -27,6 +29,8 @@ export function hookBytes(body: unknown): Uint8Array | null {
   return null;
 }
 
+const HookBody = z.union([z.instanceof(Buffer), z.record(z.string().max(64), z.unknown())]);
+
 @Controller("api/hooks/signing")
 export class SigningHooksController {
   constructor(@Inject(Signing) private readonly signing: Signing) {}
@@ -34,7 +38,9 @@ export class SigningHooksController {
   @Post(":provider") @HttpCode(200)
   async receive(@Param("provider") provider: string, @Req() req: { ip?: string; headers: Record<string, string | string[] | undefined> }, @Body() body: unknown) {
     if (limited(req.ip ?? "unknown")) problem(429, "Too many requests", "Too many requests. Please wait a minute and try again.", { code: "TOO_MANY_REQUESTS" });
-    const bytes = hookBytes(body);
+    // PF-28: the body is a JSON object or raw bytes, nothing else; its fields are the provider's, checked by the adapter
+    // after the signature (port.ts verifyWebhook's strict schema). Nothing is stored before both.
+    const bytes = hookBytes(parseInput(HookBody, body));
     if (!bytes?.length) problem(400, "Not signed", "This call is not the signing provider's own.", { code: "SIGNATURE" });
     const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), Array.isArray(v) ? undefined : v]));
     return this.signing.receive(provider, { headers, body: bytes! });
