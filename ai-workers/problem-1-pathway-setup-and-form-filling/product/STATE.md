@@ -2,7 +2,7 @@
 
 current_lead: local_82fee93b-b0a3-4572-a5d8-6f2d1652b634 Lead 8 · 22 Nov 23:59 IST (took over from Lead 7 (local_d7cc573e) at ~420k, ~280k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-23 01:57 IST: Lead 8 took over (check f2718581 created 00:00) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-23 02:05 IST: Lead 8 took over (check f2718581 created 00:00) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -21,11 +21,12 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Standbys:** Lead 9 (local_482034a7) first, Lead 10 (local_d4a6b1cd, started 01:3x IST 23 Nov) second.
 **Habits (Lead 7) and the old AWS waiting line:** `history/STATE-2026-11-22-2358-lead7-lead6-handover-block.md`.
 Lead 8 check lines: word for word in `history/STATE-2026-11-23-0021-lead8-check-lines.md`.
-**Lead 8 now (01:57):** #2927 (R1.5) merged 01:5x. Queued #2368 (R1.58), #2602 (nightly fix). #3041 Approve + Lead B OK on 98bc7e023, `/run full` posted 02:0x (label on green). Lanes sent next steps: #3073, #2999 (R1.76), #2933 (R1.10), #3081 (R1.102); each → Approve → Lead read/`/run full` → label. When #2368 merges: label #3042, requeue #3001.
+**Lead 8 now (02:05):** #3029 (qa: R1.102 Works) labelled after body fix + records Approve. Track B qa lane had stopped at its limit (note on #3045): qa Track B 2 requested in the cloud (task_23b41272). qa Track A 2 told to walk R1.5, R1.92, R1.21. #3043-#3045 approved qa drafts await ready. #2927 (R1.5) merged 01:5x. Queued #2368 (R1.58), #2602 (nightly fix). #3041 Approve + Lead B OK on 98bc7e023, `/run full` posted 02:0x (label on green). Lanes sent next steps: #3073, #2999 (R1.76), #2933 (R1.10), #3081 (R1.102); each → Approve → Lead read/`/run full` → label. When #2368 merges: label #3042, requeue #3001.
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A290 | 23 Nov 02:0x (typed, to Lead 8): plain terms; Track A, B: did we achieve, gain or lose; anything in the browser or GitHub to fast-track tonight; what is our target; why this night not 10 like other nights | 02:05: #3029 R1.102 unblocked, Track B qa lane restarted, Track A qa sent to walk merged rows; answered in chat |
 | A289 | 23 Nov 01:4x (typed, to Lead 8): make sure Track A and B pipelines run; why so behind; is progress made; what can we achieve tomorrow and day after (founder meeting); are you managing queues, blockers, manual steps; biggest problem and fix; anything waiting on your response in any lane | 01:52: answered in chat; 3 idle dequeued capability PRs found and sent next steps (#2999 R1.76 waited 8 h on a Lead read, #2933 R1.10, #3081 R1.102) |
 | A287-A288 | 22 Nov 14:4x-14:5x | word for word in `history/STATE-2026-11-23-0007-lead8-founder-asks-A287-A288.md` |
 | A283-A286 | 22 Nov 11:0x-14:2x | word for word in `history/STATE-2026-11-22-1500-lead4-founder-asks-A283-A286.md` |
