@@ -57,12 +57,12 @@ try {
   const invited = `invited.r190i.${run}@example.com`, ask = { email: invited, countryCode: "CA", planCode: PLAN, period: "YEARLY", reason: "Sales-led firm (Sample)" };
 
   // ------------------------------------------------------------------------------------------ IS1 who makes a link
-  const auditBefore = Number(sql(`select count(*) from plat_system_audit where staff_id = '${OWNER.id}'`));
   const bySupport = await call("POST", "/api/system/signup-links", { token: tSupport, body: ask });
   const byFirm = await call("POST", "/api/system/signup-links", { token: firmTok, body: ask });
   const noReason = await call("POST", "/api/system/signup-links", { token: tOwner, body: { ...ask, reason: undefined } });
   const notCA = await call("POST", "/api/system/signup-links", { token: tOwner, body: { ...ask, countryCode: "US" } });
   ok("R1.90 IS1 fail: Support (no system/signup-link:manage) → 403; a firm's Owner token → 403; no reason → 400; country US → 422 on countryCode; no link stored", bySupport.status === 403 && byFirm.status === 403 && noReason.status === 400 && notCA.status === 422 && JSON.stringify(notCA.body).includes("countryCode") && sql(`select count(*) from platform_signup_link where email = '${invited}'`) === "0", { bySupport: bySupport.status, byFirm: byFirm.status, noReason: noReason.status, notCA: notCA.status });
+  const auditBefore = Number(sql(`select count(*) from plat_system_audit where staff_id = '${OWNER.id}'`));   // after the refused calls (each writes its own line)
   const made = await call("POST", "/api/system/signup-links", { token: tOwner, body: ask });
   const token = tokenOf(made.body?.link);
   ok("R1.90 IS1 pass: a Platform Owner makes the link → 201 with the link (token shown once) and its 14-day end", made.status === 201 && !!token && Math.abs(Date.parse(made.body?.expiresAt) - (Date.now() + 14 * 86_400_000)) < 120_000, made);
