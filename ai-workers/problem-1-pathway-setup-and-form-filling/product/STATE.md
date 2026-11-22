@@ -1,6 +1,6 @@
 # State — one page (rewritten by the tech lead, P-188; the history is git)
 
-current_lead: local_69eeb2bd-5add-46f8-820b-8e6366f0eede Lead 19 · 22 Nov 05:5x IST (series 3; took over from Lead 18 (series 3, local_bdef7c01) at ~335k, P-446)
+current_lead: this-session Lead 21 · 22 Nov 10:1x IST (series 3, new account after the 22 Nov switch; standby Lead 20 local_29230626 never took over; old-account local sessions not visible on this account)
 
 updated: 2026-11-22 05:5x IST: Lead 18 handed over to Lead 19 (series 3) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-783**; P-784 newer) · this branch: `lead/2026-11-07-lead31`
 
@@ -12,6 +12,10 @@ updated: 2026-11-22 05:5x IST: Lead 18 handed over to Lead 19 (series 3) · mile
 
 ## Hand-over Lead 18 → Lead 19 (series 3), 05:5x IST 22 Nov
 Word for word in `product/history/STATE-2026-11-22-0640-lead19s3-handover-18-19-block.md`. Still open from it: at the founder's next typed turn start cloud lanes for R1.10 PF-28 parts 3a, 3b, 4, 5 and the owed fix rows (start.sh npm ci on lockfile change; check_s5_slice3_browser C11.15 flake); start one more standby (Lead 20 local_29230626 is first); weekly 95% → `RESUME-ON-NEW-ACCOUNT.md` 22 Nov block; Lead B (local_3a725fd1) reads every PF PR before the label.
+
+## Lead 21 since 10:15 IST (new account; newest first)
+* 10:3x **New account: weekly 0% (resets 27 Nov 04:29 IST).** list_sessions shows no other session on this account (Lead B (11), AWS session, Lead 20 not visible). Check created (60490617, `run lead-watch; read STATE Start here`). Nightly 44966816530 red: `check_b78_section_names.ts` passed 11/11 then hung to the 20-min limit (exit 124); previous nightly red at `plan`. #2883 full ci running; #2884 red (module-cards, fast); #2885 red (module-cards) since #2900 changed module-cards. Independent plan validation started (Opus subagent). **Cloud lanes requested (founder-typed turn, A278):** fix-nightly-b78 · #2884 PF-30a → PF-30s (R1.102) · #2885 QA-644 (R1.24) · PF-28 3a→3b (R1.10) · PF-28 4→5 (R1.10) · PF-18s p2 (R1.92) · PF-18s p3 (R1.92). 7 of cap 12 (P-784); the other 5 after the validation.
+* Last cycle evidence: 97 PR merges + ~70 "merge main into branch" commits on main 07:00 21 Nov → 07:00 22 Nov for 11 capabilities proven.
 
 ## Lead 19 since 05:55 IST (newest first)
 * 09:59 **Account switch (founder: "Yes, switching now").** Lead 19 deleted its check and ended. The new account's Lead starts from RESUME block "Switch of 22 Nov, part 2", validates the plan, and sets `current_lead:` to itself first. Lead B (11), the AWS session and standby Lead 20 told.
@@ -29,6 +33,7 @@ Word for word in `product/history/STATE-2026-11-22-0615-lead19s3-lead18-lines.md
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
 |---|---|---|
+| A278 | 22 Nov 10:1x (typed, new account): read the hand-over and set up; my next steps and what you need from me; 15 capabilities by 07:00 23 Nov without missing the time; lessons from yesterday's 11; can parts be built and merged in parallel; why two strong developers would still give 15 (what limits scaling: Mac, queues, lanes?); can I get the productivity of two people or another machine; is the pipeline/main strong; how open-source projects let anyone contribute by PR within rules, can we do the same and make it hard to miss anything; anything else to think about | In progress 10:3x: 7 lanes started; plan validation running; answers in chat |
 | A277 | 22 Nov 09:5x (typed): weekly 95%, plan the move to the new account; lose no work (walk claude.ai lanes, save, resume); new account does AWS + Cloudflare + GoDaddy with the founder's credentials; review #2883/#2884/#2885 and finish them in the browser; full action list with tooling/records status; a detailed plan to reach 15 a day (8 by 19:00 + 7 by 07:00) since we plateau at 10; the new account's Lead validates the whole plan first | Done 09:5x: #2883 Approve posted + #2883/#2884/#2885 marked ready in the browser; no work lost (no lane running; all on GitHub); switch block "Switch of 22 Nov, part 2" in RESUME-ON-NEW-ACCOUNT.md; plan `product/design/plan-15-a-day-2026-11-22.md` (8+7, 12 lanes, tooling status), to be validated by the new account's Lead |
 | A276 | 22 Nov 04:0x (typed): a plan for 15 in the next 24 h; is the build ready for the next phase? | Answered 04:1x: not ready, 6-9; cap 12 chosen (P-784), 4 lanes |
 | A275 | 22 Nov 03:5x (typed): work all night on other capabilities; AWS tomorrow (bring it back to him); clean up browser, claude.ai, GitHub; drain the queue; standbys as needed; plan to reach the goal (15 by 07:00) | Night plan 04:0x (Lead 18 line above); AWS waits for him |
