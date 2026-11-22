@@ -6,9 +6,10 @@ export type FindHit = { kind: string; id: string; title: string; subtitle: strin
 /** PF-30a's answer: hits grouped by kind in rank order, and the partial line when a module was dropped. */
 export type FindAnswer = { groups: { kind: string; hits: FindHit[] }[]; partial: boolean; message: string | null };
 
-/** Each kind's group words (BR-3). PF-30a answers person, prospect and company today; the case kinds come with CS-S1
- *  part 2 (CS-30c) and get their words then. A kind not named here shows under "Other", never hidden (challenge M2). */
-export const GROUP_OF: Readonly<Record<string, string>> = { person: "Leads and prospects", prospect: "Leads and prospects", company: "Companies" };
+/** Each kind's group words (BR-3): PF-30a's front-office finder answers person, prospect and company; CS-S1 part 2's
+ *  case finder (#2913) answers case and case_person. Clients get their words when a finder answers a client kind. A kind
+ *  not named here shows under "Other", never hidden (challenge M2). */
+export const GROUP_OF: Readonly<Record<string, string>> = { person: "Leads and prospects", prospect: "Leads and prospects", company: "Companies", case: "Cases", case_person: "People on cases" };
 export const OTHER = "Other";
 
 /** What matched, in words (BR-4). */
