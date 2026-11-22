@@ -77,7 +77,7 @@ async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[
 }
 const box = (p: Page) => p.locator("[data-find-input]");
 const hits = (p: Page) => p.locator("[data-find-hit]");
-async function home(p: Page) { await p.goto(`${BASE}/home`); await box(p).waitFor({ timeout: 30_000 }); }
+async function home(p: Page) { await p.goto(`${BASE}/home`); await p.locator("[data-find]").waitFor({ state: "attached", timeout: 30_000 }); }
 /** Types like a person (key by key) into the box and waits until the answer for this text has been drawn. */
 async function find(p: Page, text: string) {
   if (!(await box(p).isVisible())) await p.locator("[data-find-open]").click();
@@ -201,6 +201,7 @@ try {
   const openedId = o.url().split("/").pop();
   const want = secondTitle.includes("Birch") ? k2.body?.id : k1.body?.id;
   ok("PF-30s F9 pass: Enter opens the marked row, not the first", openedId === want, { openedId, want, secondTitle });
+  await o.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 30_000 }); await box(o).waitFor({ timeout: 30_000 });
   await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   await o.keyboard.press("Escape");

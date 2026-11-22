@@ -34,7 +34,11 @@ export function FindBox() {
   const [state, setState] = React.useState<State>({ at: "idle" });
   const [active, setActive] = React.useState(0);
 
-  const focusBox = React.useCallback(() => { setWide(true); setOpen(true); requestAnimationFrame(() => { input.current?.focus(); input.current?.select(); }); }, []);
+  // Focus at once, so a quick typist's next keys land in the box; below 640 px the box shows only after the render, so try again then.
+  const focusBox = React.useCallback(() => {
+    const take = () => { if (input.current && document.activeElement !== input.current) { input.current.focus(); input.current.select(); } };
+    setWide(true); setOpen(true); take(); requestAnimationFrame(take);
+  }, []);
   // "/" from anywhere on the page, unless the person is typing in a field or a dialog is open (BR-1).
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (slashOpens(e, document)) { e.preventDefault(); focusBox(); } };
