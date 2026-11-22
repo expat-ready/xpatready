@@ -170,10 +170,11 @@ export async function mergeRecords(tx: Tx, ctx: StaffContext, raw: unknown, port
   await tx.foDupMerge.create({ data: { id: ref, firmId, kind, survivorId: sId, loserId: lId, loserSnapshot: snapshot as unknown as Prisma.InputJsonValue, survivorBefore: valuesOf(kind, s.row) as Prisma.InputJsonValue,
     choices: picks, automatic, reason: input.reason ?? null, by: actor, at } });
   const what = kind === "PERSON" ? "person" : "company";
-  await ports.audit.record(tx, { firmId, actor, action: EVENT.PERSON_MERGED, entity: TABLE[kind], entityKey: lId,
+  const line = { firmId, actor, action: EVENT.PERSON_MERGED, entityKey: lId,
     summary: `${automatic ? "Merged by itself" : "Merged"}: ${what} record ${lId} into ${sId} (merge ${ref}); ${changes.length} row${changes.length === 1 ? "" : "s"} moved.`,
-    detail: { mergeRef: ref, kind, survivorId: sId, loserId: lId, automatic, fieldsFromLoser: fromLoser, rowsChanged: changes.length, consentsCopied: copied.consents.length, withdrawalsCopied: copied.withdrawals.length },
-    before: { mergedIntoId: null }, after: { mergedIntoId: sId } });
+    detail: { mergeRef: ref, kind, survivorId: sId, loserId: lId, automatic, fieldsFromLoser: fromLoser, rowsChanged: changes.length, consentsCopied: copied.consents.length, withdrawalsCopied: copied.withdrawals.length } };
+  if (kind === "PERSON") await ports.audit.record(tx, { entity: "fo_person", ...line, before: { mergedIntoId: null }, after: { mergedIntoId: sId } });
+  else await ports.audit.record(tx, { entity: "fo_company", ...line, before: { mergedIntoId: null }, after: { mergedIntoId: sId } });
   await (ports.emit ?? outbox)(tx, { firmId, type: EVENT.PERSON_MERGED, subjectId: sId, payload: { mergeRef: ref, kind, survivorId: sId, loserId: lId } });
   return { merge_ref: ref };
 }
@@ -227,10 +228,11 @@ export async function unmergeRecords(tx: Tx, ctx: StaffContext, ref: string, por
   }
   const actor = `staff:${ctx.staffId}`;
   await tx.foDupMerge.update({ where: { id: m.id }, data: { undoneAt: new Date(), undoneBy: actor } });
-  await ports.audit.record(tx, { firmId, actor, action: EVENT.PERSON_UNMERGED, entity: TABLE[kind], entityKey: l,
+  const line = { firmId, actor, action: EVENT.PERSON_UNMERGED, entityKey: l,
     summary: `Merge ${m.id} undone: ${kind === "PERSON" ? "person" : "company"} record ${l} is live again; ${snap.changes.length} row${snap.changes.length === 1 ? "" : "s"} moved back.`,
-    detail: { mergeRef: m.id, kind, survivorId: s, loserId: l, rowsRestored: snap.changes.length, consentCopiesKept: snap.copied.consents.length },
-    before: { mergedIntoId: s }, after: { mergedIntoId: null } });
+    detail: { mergeRef: m.id, kind, survivorId: s, loserId: l, rowsRestored: snap.changes.length, consentCopiesKept: snap.copied.consents.length } };
+  if (kind === "PERSON") await ports.audit.record(tx, { entity: "fo_person", ...line, before: { mergedIntoId: s }, after: { mergedIntoId: null } });
+  else await ports.audit.record(tx, { entity: "fo_company", ...line, before: { mergedIntoId: s }, after: { mergedIntoId: null } });
   await (ports.emit ?? outbox)(tx, { firmId, type: EVENT.PERSON_UNMERGED, subjectId: s, payload: { mergeRef: m.id, kind, survivorId: s, loserId: l } });
   return { restored: true };
 }
