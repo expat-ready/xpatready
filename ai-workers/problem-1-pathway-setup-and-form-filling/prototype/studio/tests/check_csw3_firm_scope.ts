@@ -264,18 +264,18 @@ async function api() {
 }
 
 // ------------------------------------------------------------------------------------------------- 4. the census
-// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3), plus five merged on main after the
+// The 42 files of the spike's re-census (cs-w3-spike-2026-11-16.md, revision 3), plus seven merged on main after the
 // spike: case-clients/prospect-won (FO-8), case-clients/client-link and case-clients/live (CS-K1 part 2; live.ts already
-// sets its firm per client), case-deadlines/reminders and features/case-milestones (CS-DL3 part 1), and search/party-search (CS-S1 part 2: the case party search reads runtime_case firm-first, c.firm_id = the caller's firm; ruled by Lead 5 on #2913); then client-money/visibility-adapter (CS-MV1: case ids through case-access.ts caseScope and caseScopeWhere, firm = ctx.firmId; the tech lead's ruling on #3073). Paths relative to api/src. Only shrinks: part 2 and part 3 take files off as their areas run
+// sets its firm per client), case-deadlines/reminders and features/case-milestones (CS-DL3 part 1), and search/party-search (CS-S1 part 2: the case party search reads runtime_case firm-first, c.firm_id = the caller's firm; ruled by Lead 5 on #2913), and case-notes/service (CS-NT1 part 1; its staff routes take their firm from PF-4's session; Option A, Lead 5 on #2999), and client-money/visibility-adapter (CS-MV1: case ids through case-access.ts caseScope and caseScopeWhere, firm = ctx.firmId; the tech lead's ruling on #3073). Paths relative to api/src. Only shrinks: part 2 and part 3 take files off as their areas run
 // with the walls on.
-const ALLOW = `search/party-search client-money/visibility-adapter case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
+const ALLOW = `case-notes/service search/party-search client-money/visibility-adapter case-clients/prospect-won case-clients/client-link case-clients/live case-deadlines/reminders features/case-milestones assessments case-changes case-checklist case-close case-count case-documents case-filings case-prepare case-stages case-work clients
   core demo document-review-counts earlier-facts employer-link filing-changes filing-record fill-case findings finished-story form-additions
   form-library health person-link readiness-inputs readiness release-update review-rounds review-runs review-stamp routes-data runtime
   sample-case sample-validated sign-steps stage-scope studio submission-record submission team where-used`.split(/\s+/).map((f) => `api/src/${f}.ts`);
 function census() {
   const listed = () => execFileSync("bash", [join(STUDIO, "tests", "fixtures", "csw3", "csw3-spike.sh"), "census"], { encoding: "utf8" }).split("\n").slice(2).filter(Boolean).map((l) => l.split("\t")[0]);
   const now = listed(), extra = now.filter((f) => !ALLOW.includes(f));
-  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-MV1)", ALLOW.length === 49 && extra.length === 0, extra);
+  ok("CS-W3 census pass: every case-side file that queries a case table is on the allow-list (47 at part 1, 48 with CS-S1 part 2, 49 with CS-NT1 part 1, 50 with CS-MV1)", ALLOW.length === 50 && extra.length === 0, extra);
   const planted = join(STUDIO, "api", "src", `zz-csw3-planted-${process.pid}.ts`);
   writeFileSync(planted, "// a throwaway file the census must catch\nexport const x = (db: any) => db.case.findMany({});\n");
   try {
