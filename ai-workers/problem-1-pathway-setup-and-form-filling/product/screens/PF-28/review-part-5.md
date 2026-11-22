@@ -79,3 +79,24 @@ Read: `git diff 9e04ee71c..7663cec51 -- '*retainers/service.ts' '*check_pf28_inp
 **Verdict: Approve** (no open Blocker or Major; m1 and m2 closed).
 
 Reviewer: Approve 7663cec51a6de80854acef7c06fb7e1956b505f8
+
+## Round 3 (head ea989942f735fc851a32225421b74bcb7efd991b; diff-only review of the merge of part 4 into part 5)
+The merge is ea989942f, with parents 807861db5 (part 5 after round 2) and a16cca452 (part 4 with main after parts 3a and 3b). I read it with read-only git commands only.
+- **Part 5's own code came through unchanged.** For `retainers/service.ts`, `check_fo5_retainers.ts` and `MODULE.rows/PF-28-part5.md`, the changed lines of `a16cca452..ea989942f` match the changed lines of part 5 (`5d866c746..807861db5`) exactly. `git diff 807861db5 ea989942f` does not touch `front-office/retainers/*`, `check_fo5*`, `platform/http/input.ts` or the MODULE.rows fragment.
+- **The sweep test** (`check_pf28_inputs.ts`): the part-5 block, both named cases and the round-2 case "(review m1, m2)", is identical to 807861db5's. The only other changed line is the ceiling line, `:108`, now 0 / 1 / 19, with its note.
+- **The allow-list**, checked by script against part 4's list (a16cca452):
+  - **Removed:** exactly 8 `unparsed` and 23 `probes` entries, each one naming "PF-28 part 5 (retainers)".
+  - **Added:** nothing to `unparsed` or `probes`. The two exceptions are byte-identical to part 5's: Prepare retainer `missing` and download-link `missing`.
+  - **Kept:** all 17 of part 4's exceptions, unchanged.
+  - **Result:** 1 / 0 / 19, which is exactly the ceilings. The one entry left is part 2's SNS body, still named for part 2. No part-5 entry remains.
+- **What main brought in (parts 3a and 3b and others).**
+  - Nothing in `front-office/retainers/`, `platform/http/input.ts` or the conflict gate changed.
+  - `sales/prospects.ts` changed: `bad()` moved from 400 to 422 (part 3a). The retainer service uses only `winProspect` from it (`service.ts:737`). Nothing in the retainer service or `check_fo5_retainers` tests for a 400 from it (grep).
+  - The 400 to 422 edits in `check_fo13c_conflict.ts` and `check_fo13i_identity.ts` are part 3b's own compliance doors, not retainer doors.
+  - The two new migrations do not mention retainers.
+- **Not re-run by me:** the sweep and suites. I relied on the builder's fresh copy of ea989942f: the sweep passed 50/50 with 19 failing probes, all exceptions, and 21 retainer-area suites passed. When #2908 merges, this PR's diff shrinks back to part 5 alone.
+- **No new finding.** m1 and m2 stay closed, and n1 (`input.ts:40`) stays with the owner of the shared rule. The journey score of 9/10 stands, since no screen changed.
+
+**Verdict: Approve** (no open Blocker or Major; the merge resolution is exactly part 5 on top of part 4).
+
+Reviewer: Approve ea989942f735fc851a32225421b74bcb7efd991b
