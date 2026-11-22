@@ -53,8 +53,9 @@ export class SystemIdentity implements OnModuleInit {
   }
 
   /** Whether this bearer token is a session of our own staff (the wall on every other path asks, guard.ts). */
-  async isSystemSession(token: string): Promise<boolean> {
-    try { await this.port.verify(token); return true; } catch (e) { if (e instanceof IdentityRefused) return false; throw e; }
+  async isSystemSession(token: string): Promise<{ staffId: string } | null> {
+    try { const id = await this.port.verify(token); return { staffId: "staffId" in id.lookup ? id.lookup.staffId.slice(0, 64) : "cognito" }; }
+    catch (e) { if (e instanceof IdentityRefused) return null; throw e; }
   }
 
   /** The guard's work: a bearer token → the staff member, or a refusal at once. A firm staff member's session is a 403

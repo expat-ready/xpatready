@@ -41,6 +41,7 @@ model PlatSystemStaff {
   createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz
 
   grants PlatSystemRoleGrant[]
+  audits PlatSystemAudit[]
 
   @@map("plat_system_staff")
 }
@@ -72,7 +73,7 @@ model PlatSystemRolePermission {
 }
 
 /// One line per /api/system call by a signed-in staff member, allowed or refused (SA-7-3, SA-7-20). Insert-only.
-/// No foreign key: a line outlives what it names. Never on a firm's trail (audit_event): it has no firm.
+/// Its staff member is a real one (foreign key; staff are never deleted). Never on a firm's trail (audit_event): no firm.
 model PlatSystemAudit {
   id        String                 @id @default(uuid()) @db.Uuid
   at        DateTime               @default(now()) @db.Timestamptz
@@ -92,6 +93,8 @@ model PlatSystemAudit {
   requestId String                 @map("request_id")
   /// The caller's User-Agent, at most 300 characters (SA-7-20 "device").
   device    String?
+
+  staff PlatSystemStaff @relation(fields: [staffId], references: [id], onDelete: Restrict)
 
   @@index([staffId, at])
   @@map("plat_system_audit")

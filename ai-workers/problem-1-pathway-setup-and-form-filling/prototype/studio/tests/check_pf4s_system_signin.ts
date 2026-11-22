@@ -30,6 +30,10 @@ let pass = 0, fail = 0;
 const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
 const throwsLike = async (f: () => unknown, test: (e: unknown) => boolean) => { try { await f(); return false; } catch (e) { return test(e); } };
 
+// Everything this process prints (the wall's log line is read from it).
+let printed = "";
+for (const st of [process.stdout, process.stderr]) { const w = st.write.bind(st); st.write = ((chunk: unknown, ...a: unknown[]) => { printed += String(chunk); return (w as (...x: unknown[]) => boolean)(chunk, ...a); }) as typeof st.write; }
+
 type Res = { status: number; body: any; requestId: string | null };
 const call = async (base: string, method: string, path: string, o: { token?: string; actor?: string; body?: unknown; requestId?: string } = {}): Promise<Res> => {
   const headers: Record<string, string> = { "content-type": "application/json", "user-agent": "pf4s-check/1" };
@@ -150,6 +154,8 @@ try {
   const firmOnRefund = await call(A.base, "POST", "/api/system/test/refunds/r-1", { token: firmToken, body: {} });
   ok("PF-4s DW1 fail: a firm token on a keyed /api/system route → 403, and the handler never runs", firmOnRefund.status === 403 && handled === 0, firmOnRefund);
   const onPlatform = await call(A.base, "GET", "/api/platform/me", { token: owner }), onFrontOffice = await call(A.base, "GET", "/api/front-office/pf4s-probe", { token: owner });
+  const wallLines = printed.split("\n").filter((l) => l.includes('"event":"system_session_elsewhere"'));
+  ok("PF-4s DW1 pass (breaker m1): each wall refusal leaves one log line naming the staff member's id (it runs before PF-23's request lines)", wallLines.length === 2 && wallLines.every((l) => l.includes(OWNER) && !l.includes(owner)), wallLines);
   ok("PF-4s DW1 fail (SA-7-1, SA-6-4): a system token on /api/platform/me → 403 SYSTEM_SESSION_ELSEWHERE", onPlatform.status === 403 && onPlatform.body.code === "SYSTEM_SESSION_ELSEWHERE", onPlatform);
   ok("PF-4s DW1 fail: a system token on a front-office route → 403 SYSTEM_SESSION_ELSEWHERE", onFrontOffice.status === 403 && onFrontOffice.body.code === "SYSTEM_SESSION_ELSEWHERE", onFrontOffice);
   const onCase = await call(A.base, "GET", "/api/probe", { token: owner, actor: "user-A" }), onMixedCase = await call(A.base, "GET", "/API/Platform/Me", { token: owner });
@@ -300,6 +306,13 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   n = lines();
   const withReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "  A report of a stolen Owner account  " } });
   ok("PF-4s DW5 pass: with a reason the call goes through and its one line carries the reason and the firm it affected", withReason.status === 201 && handled === 1 && lines() === n + 1 && lastLine().reason === "A report of a stolen Owner account" && lastLine().target.id === firmId && lastLine().outcome === "ALLOWED", lastLine());
+  n = lines(); handled = 0;
+  const invisible = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "\u200b\u202e" } });
+  ok("PF-4s DW5 fail (breaker m4): a reason of invisible characters only is no reason (400 REASON_REQUIRED), one line", invisible.status === 400 && invisible.body.code === "REASON_REQUIRED" && handled === 0 && lines() === n + 1, invisible);
+  n = lines();
+  const nul = await call(A.base, "POST", "/api/system/test/refunds/a%00b", { token: support, body: {} }), nulReason = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: owner, body: { reason: "stolen\u0000 account" } });
+  ok("PF-4s DW5 fail (breaker m2): a NUL in a path parameter or a reason still leaves its one line (cleaned), the refusal stays a 403, the call with a reason goes through",
+    nul.status === 403 && nulReason.status === 201 && lines() === n + 2 && lastLine().reason === "stolen account" && !sql(`select target::text from plat_system_audit where code = 'MISSING_PERMISSION' order by at desc limit 1`).includes("\\u0000"), { nul, nulReason, line: lastLine() });
   n = lines();
   const adminLock = await call(A.base, "POST", `/api/system/test/firms/${firmId}/lock`, { token: admin, body: { reason: "trying" } });
   ok("PF-4s DW5 fail (SA7-D53): an Admin cannot apply a security lock (403), and that refusal is one line", adminLock.status === 403 && lines() === n + 1 && lastLine().code === "MISSING_PERMISSION" && lastLine().staff_id === ADMIN, adminLock);
@@ -325,6 +338,10 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
     asApp(firmId, `select count(*) from plat_system_staff`) === "0" && asApp(firmId, `select count(*) from plat_system_role_permission`) === "0" && asApp(firmId, `select count(*) from plat_system_audit`) === "0"
     && Number(asApp(null, `select count(*) from plat_system_staff`)) >= 7 && Number(asApp(null, `select count(*) from plat_system_role_permission`)) > 0
     && refusedBySql(`begin; select set_config('app.firm_id', '${firmId}', true); insert into plat_system_role_grant (id, staff_id, role_code) values (gen_random_uuid(), '${NOBODY}', 'platform-owner'); commit`, /row-level security/, "xr_app"));
+  ok("PF-4s DW4 fail (breaker m3; SA7-D2): the app's role, even acting for no firm, cannot change a role or its keys (a release does), nor write a line for a staff member who does not exist",
+    refusedBySql(`begin; select set_config('app.firm_id', '', true); insert into plat_system_role_permission (role_code, permission_key) values ('platform-support', 'system/platform-user:manage'); commit`, /permission denied/, "xr_app")
+    && refusedBySql(`begin; select set_config('app.firm_id', '', true); update plat_system_role set display_name = 'Boss'; commit`, /permission denied/, "xr_app")
+    && refusedBySql(`insert into plat_system_audit (id, staff_id, staff_name, method, route, target, outcome, request_id) values (gen_random_uuid(), gen_random_uuid(), 'x', 'GET', '/x', '{}', 'ALLOWED', 'r')`, /plat_system_audit_staff_id_fkey/));
   ok("PF-4s DW3 fail (SA7-D58): a staff member is never deleted, and holds a role at most once at a time",
     refusedBySql(`delete from plat_system_staff where id = '${NOBODY}'`, /plat_system_staff_kept/) && refusedBySql(`insert into plat_system_role_grant (id, staff_id, role_code) values (gen_random_uuid(), '${OWNER}', 'platform-owner')`, /plat_system_role_grant_open_once/));
 

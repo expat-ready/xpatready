@@ -16,12 +16,18 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { HttpAdapterHost, ModulesContainer, Reflector } from "@nestjs/core";
 import { PLATFORM_ACCESS, forbidden, problem } from "../identity/keys.ts";
 import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_REASON, type SystemAccess, type SystemStaffContext } from "./keys.ts";
+import { logPort } from "../observability/log.ts";
 import { SystemIdentity } from "./service.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
 const bearerOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" ? /^Bearer\s+(\S+)$/i.exec(a.trim())?.[1] : undefined; };
-const deviceOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; return typeof a === "string" && a.trim() ? a.trim().slice(0, 300) : null; };
+/** Text that goes on an audit line: control and invisible format characters dropped (a NUL would make the line
+ *  impossible to write, so a refused call would leave none; breaker m2), at most `max` characters. */
+export const lineText = (v: string, max: number) => v.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, max);
+const deviceOf = (h: string | string[] | undefined) => { const a = Array.isArray(h) ? h[0] : h; const t = typeof a === "string" ? lineText(a, 300) : ""; return t || null; };
+/** A written reason: after the invisible characters go, at least one letter or digit, at most REASON_MAX (breaker m4). */
+export const reasonOf = (v: unknown): string | null => { if (typeof v !== "string") return null; const t = lineText(v, REASON_MAX + 1); return /[\p{L}\p{N}]/u.test(t) && t.length <= REASON_MAX ? t : null; };
 
 export type SystemRoute = { name: string; method: string; path: string; access: SystemAccess | undefined; firmAccess: boolean };
 
@@ -86,9 +92,9 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const staff = await this.identity.authenticate(bearerOf(req.headers.authorization));
     const missing = access.kind === "keys" ? access.keys.filter((k) => !staff.keys.includes(k)) : [];
     const wantsReason = this.reflector.getAllAndOverride<boolean>(SYSTEM_REASON, [ctx.getHandler(), ctx.getClass()]) === true;
-    const given = (req.body as { reason?: unknown } | null | undefined)?.reason, reason = typeof given === "string" && given.trim() && given.trim().length <= REASON_MAX ? given.trim() : null;
+    const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
     const code = missing.length ? "MISSING_PERMISSION" : wantsReason && !reason ? "REASON_REQUIRED" : null;
-    const target = Object.fromEntries(Object.entries(req.params ?? {}).filter((e): e is [string, string] => typeof e[1] === "string").map(([k, v]) => [k, v.slice(0, 200)]));
+    const target = Object.fromEntries(Object.entries(req.params ?? {}).filter((e): e is [string, string] => typeof e[1] === "string").map(([k, v]) => [k, lineText(v, 200)]));
     // One line per call, allowed or refused, before the handler: a line that cannot be written stops the call (fail-closed).
     await this.identity.audit({ staff, method: req.method, route: this.routeOf(ctx), target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason ? reason : null, device: deviceOf(req.headers["user-agent"]) });
     if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
@@ -98,7 +104,7 @@ export class SystemGuard implements CanActivate, OnModuleInit {
   }
 }
 
-type WallReq = { path?: string; url?: string; headers: Record<string, string | string[] | undefined> };
+type WallReq = { method?: string; path?: string; url?: string; headers: Record<string, string | string[] | undefined> };
 type WallRes = { status(code: number): WallRes; type(t: string): WallRes; json(body: unknown): unknown };
 export const SYSTEM_SESSION_ELSEWHERE = "An ExpatReady staff session works only in the staff console (/api/system). It cannot be used here.";
 
@@ -110,6 +116,8 @@ export function systemPlaneWall(identity: Pick<SystemIdentity, "isSystemSession"
     if (!token || SYSTEM_PATH.test(req.path ?? req.url ?? "")) return next();
     identity.isSystemSession(token).then((ours) => {
       if (!ours) return next();
+      // It runs before PF-23's request middleware, so it leaves its own trace (breaker m1): one log line, ids only.
+      logPort.warn("system_session_elsewhere", { staffId: ours.staffId, method: req.method ?? "?", status: 403 });
       res.status(403).type("application/problem+json").json({ type: "https://expatready.local/problems/system-session-elsewhere", title: "Not allowed", status: 403, detail: SYSTEM_SESSION_ELSEWHERE, message: SYSTEM_SESSION_ELSEWHERE, code: "SYSTEM_SESSION_ELSEWHERE" });
     }, next);
   };

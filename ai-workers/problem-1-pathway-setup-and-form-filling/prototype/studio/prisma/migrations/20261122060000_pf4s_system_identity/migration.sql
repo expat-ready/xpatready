@@ -6,7 +6,8 @@
 -- Walls: none of these is under PF-12's firm policy (no firm_id). Each is instead closed to a session that acts for a
 -- firm: FORCE row-level security with one policy, platform_session_firm() IS NULL, so a firm's request reads and writes
 -- nothing here, whatever its code does. The bypass role (PF-12) passes, as everywhere.
--- Audit lines are insert-only at the database (no UPDATE, DELETE or TRUNCATE for anyone), as audit_event (AUD-1a).
+-- Audit lines are insert-only at the database (no UPDATE, DELETE or TRUNCATE for anyone), as audit_event (AUD-1a), and
+-- each names a real staff member (foreign key). The roles and keys are read-only to the app's roles (a release changes them).
 --
 -- Seed: the six roles with SA7-D8's codes and final display names, and for each system/* key a Release 1 route uses, the
 -- roles Appendix A ticks on the row named beside it (columns Own · Adm · Sup · Bil · Con · Aud). The key-to-row mapping
@@ -102,6 +103,9 @@ ALTER TABLE "plat_system_role_grant" ADD CONSTRAINT "plat_system_role_grant_role
 -- AddForeignKey
 ALTER TABLE "plat_system_role_permission" ADD CONSTRAINT "plat_system_role_permission_role_code_fkey" FOREIGN KEY ("role_code") REFERENCES "plat_system_role"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "plat_system_audit" ADD CONSTRAINT "plat_system_audit_staff_id_fkey" FOREIGN KEY ("staff_id") REFERENCES "plat_system_staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 
 -- Rules Prisma cannot say.
 -- The six role codes of SA7-D8, and no other.
@@ -145,6 +149,10 @@ BEGIN
     EXECUTE format('CREATE POLICY "plat_system_no_firm" ON %I USING (platform_session_firm() IS NULL) WITH CHECK (platform_session_firm() IS NULL)', t);
   END LOOP;
 END $$;
+
+-- The roles and their keys change only by a release (SA7-D2: no editor): the app's roles (xr_data: xr_app and the bypass
+-- role) read them and never write them (breaker m3 on #2927). The migration role, which owns them, seeds them below.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "plat_system_role", "plat_system_role_permission" FROM xr_data;
 
 -- Seed: the six roles (SA7-D8).
 INSERT INTO "plat_system_role" ("code", "display_name") VALUES
