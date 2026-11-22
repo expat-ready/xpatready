@@ -84,3 +84,81 @@ P1: for a loser with 400 leads and 400 notes, merge takes 127 ms (snapshot 70.9 
 - A guided merge of a case client leaves `case_client.fo_person_id` on the tombstone. The case side is responsible for that column (CS-K2), and "a client with a case is never merged here" is part 2's DW7.
 
 Verdict: Changes — commit 4f36b1f031b459966d8fd2f20d4804cf27a98d7b. Fix M1–M3 before approval; m1–m5 can go into the same PR or be recorded as follow-ups.
+
+## Round 2 (ae52eabd6)
+
+Commit `ae52eabd60b9c22715b5880c46485fb5ea38b5f4`. This is a diff pass with the same method as round 1: scratch databases `xr_brk_fo9b_*`, all dropped; port 4400 never used; US$0. To check whether a problem is new, I ran the same script against an extracted copy of `4f36b1f03`. The repo check (`tests/check_fo9b_merge.ts`, run on a scratch copy with the database renamed) gives 66 passed, 0 failed.
+
+### Round-1 findings, re-run
+- **M1 fixed.** R1: 0 rows on the tombstone. R1b: the merge waits for the in-flight Add, then moves its lead and receipt.
+- **M2 fixed.** U1 is refused and the staff phone edit is kept. N7: an edit that sets the same value still allows Undo. N8: an edit made during a merge waits for it, and Undo is then refused.
+- **M3 fixed.** A prospect (U2) and a consent (U3) added after the merge each make Undo refuse.
+- **m1 fixed.** R2: Undo waits for the note writer's lock, sees the note, and refuses.
+- **m2 fixed.** K1 now refuses before anything is written: the name and links are unchanged.
+- **m4 partly fixed.** A crafted column name is now refused. Still open, from the app role:
+  - N6: a crafted record whose "loser" is live and whose change names another person's lead passes every check. Undo moved person V's lead to X and wrote the crafted `survivor_before` onto Y (now named "PWNED", with an attacker's email).
+  - G2: a forged Undo stamp is still accepted.
+  - Stays Minor (it needs code that writes `fo_dup_merge`).
+- **m5 fixed.** 400 leads + 400 lead notes: Undo 154 ms (was 895). Q1, with 400 leads, 400 person-only notes and 50 flags: merge 152 ms, Undo 131 ms, all restored.
+- **m3 by design.** G1 behaves as in round 1.
+
+### Findings
+**B1 — Blocker (in unchanged code; round 1 and DW1 missed it). The usual merge fails: keep the older record when the newer one's lead is flagged as its possible match.**
+- Repro (N0, Q0):
+  1. S exists. Add a lead with S's email (or phone) and `confirmedNew: true`. `arrive()` flags the new lead `possible_match_person_id = S`, and every web or booking arrival does the same.
+  2. `mergePersons(S ← L)`.
+- Actual: raw `23514 fo_lead_links_check` (no PersonMergeRefused, so a 500). Nothing is merged. The reverse direction (L ← S) works and clears the flag.
+- Cause:
+  - `service.ts:93` moves L's leads to S while one still has `possible_match_person_id = S`, which breaks `possible_match_person_id IS DISTINCT FROM person_id` (fo1a migration :739).
+  - The clean-up at `:98` (`s → null where person_id = l`) runs after the leads have moved, so it can never match.
+- Expected: the flag is cleared (rule 10, as `:95` says) and the merge succeeds. It must happen before `:93`; Undo then reverses it in order.
+
+**M1 — Major (new in this commit). Merge and Undo now deadlock with ordinary writers on the same person; most often the writer loses, with a raw 500.**
+- Lock order:
+  - The merge and Undo lock the person rows first (`find … for update`, `service.ts:49`), then lead rows (`:93`, and Undo `:212`).
+  - The writers lock the lead first: `prospects.ts:169` (engage), `leads.ts:240` `change()` (close or reopen with a note), `calls.ts:54` (addNote, logCall). They then lock the person through `fo_dup_live_party`'s `FOR KEY SHARE` (migration `:111`) on their insert.
+- Deterministic repro (N3a):
+  1. A second session holds L's company-link row `FOR UPDATE`, so the merge stops after locking S and L.
+  2. `Activity.addNote(lead of L)`: it locks the leads, then waits on L.
+  3. Release the link row. addNote fails with `deadlock detected` (40P01; no HTTP status, so a 500); the merge commits.
+- Random-offset races, 12 of each (N3b):
+
+| Race | At ae52eabd6 | At 4f36b1f03 |
+|---|---|---|
+| engage vs merge | 6 deadlocks | 0 |
+| close + note vs merge | 5 | 0 |
+| addNote vs merge | 5 | 0 |
+| logCall vs merge | 6 | 0 |
+| addNote vs Undo | 2 | 0 |
+
+  Of the 24 deadlocks, the writer lost 13 and the merge or Undo lost 11.
+- Same class (Q2): `livePersonId` locks L and then S (`follow.ts:19`), while Undo locks S and then L, so the Undo got 40P01.
+- None of these writers turns 40P01 into a 409 or a retry. A `busy.ts` pattern for that already exists.
+- No data was wrong in any run: no row on a tombstone.
+
+**m1 — Minor (new). A legitimate Add is refused when its possible match is merged while the Add is in flight.**
+- Repro (N2): a merge S ← L is held open after tombstoning L (a slow `emit`). Meanwhile, Add a lead with `confirmedNew: true` and L's email.
+- What happens: `possibleMatch` (`arrival.ts:47`, read without a lock) still sees L as live. The lead insert (`:119`) then waits in the trigger, sees the tombstone and gets `foreign_key_violation`. The Add fails (500).
+- At 4f36b1f03 the same race added the lead with its flag on the tombstone. Web and booking arrivals share `arrive()`, so a public enquiry can fail this way. A retry succeeds.
+
+**m2 — Minor (new). Undo's "after the merge" test mixes two clocks.**
+- The merge time is the database's `clock_timestamp()` (`service.ts:66`). Rows' `created_at` comes from the app: Prisma fills `@default(now())`. N4 shows it: a lead from a transaction begun before the merge got `created_at > at`.
+- Q3: with the app clock simulated 2 s behind the database, a note added right after the merge has `created_at < at`. Undo returns `{restored:true}` and the note stays on S.
+- N4b: a writer that leaves the database default (`now()` = its transaction start) is missed the same way.
+- The window equals the clock difference (zero on one host).
+
+**m3 — Minor (new; the tech lead's call). Once the loser had any live consent, Undo can never succeed.**
+- N5: Undo is refused while the copy is live (as review M2 asked). After withdrawing the copy on S, it is still refused, now by the `msg_consent_withdrawal` line of `fresh`.
+- The second message is misleading: "Something reached the merged record … may have come by the other record's contact details".
+- The review said "while any consent copy … is still live"; the code makes it "forever".
+
+### What held (new)
+- **Trigger matrix (N1).** On fo_lead (person and flag), fo_note, fo_call, fo_arrival_receipt, fo_company_contact (person and company) and a re-point on update, every row naming a tombstone is refused. Ending a live link (`valid_to`) passes.
+- **Locks run as `xr_wall_reader`.** It has BYPASSRLS, so the trigger sees the row whatever the firm setting.
+- **Merges among themselves.** R3 crossed merges ×10 and R4 random merge and Undo stress: no deadlock, 0 rows on tombstones, every tombstone has its record.
+- **Undo.**
+  - Batched writes restore exactly (DW5, K1's shared PRIMARY, K2 prospects, B1 booking, Z1 chain order).
+  - A caller cannot keep the partial B1 state: the failed statement aborts its transaction (Q0).
+- **Unchanged from round 1.** F1 walls, I1 inputs, C1 consent.
+
+Verdict: Block ae52eabd60b9c22715b5880c46485fb5ea38b5f4
