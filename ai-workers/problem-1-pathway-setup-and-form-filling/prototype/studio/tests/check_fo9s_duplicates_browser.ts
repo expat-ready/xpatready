@@ -19,7 +19,7 @@ import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -108,7 +108,8 @@ try {
   ok("FO-9s D3 pass (BR-2): editing a key clears the hint at once", (await o.locator("[data-dup-hint]").count()) === 0);
   await field(o, "Phone").press("Tab"); await settle(o);
   ok("FO-9s D3 pass (BR-2): leaving the edited field checks again, once", checks.length === before + 1, checks.slice(before));
-  const webForm = readdirSync(join(STUDIO, "web", "src", "modules", "front-office", "sales")).filter((f) => f.startsWith("web-form")).map((f) => readFileSync(join(STUDIO, "web", "src", "modules", "front-office", "sales", f), "utf8")).join("\n");
+  // The two public web-form files by name (a folder listing would make the suite selector treat this suite as reading all of web/src).
+  const webForm = ["web-form-page.tsx", "web-form-settings-page.tsx"].map((f) => readFileSync(join(STUDIO, "web", "src", "modules", "front-office", "sales", f), "utf8")).join("\n");
   ok("FO-9s D3 fail (BR-2, FO-2): the public web form pages never call the duplicate check", !/duplicates|DuplicateHint|useDuplicateCheck/.test(webForm));
 
   // D1 fail: a first name alone names no one (the hint for Lena Parks is gone after the edit; start again).
