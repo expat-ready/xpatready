@@ -149,6 +149,9 @@ export class S3Files implements FilesPort {
     return { key: FileKey.parse(key), bytes, contentType, sha256: meta.sha256 };
   }
 
+  /** PF-F1b (EntitledFiles): the key was ever written for the firm, live or retired (a tombstone is an object too). */
+  async known(firmId: string, key: string): Promise<boolean> { return !!await this.head("known", objectKey(firmId, key)); }
+
   async exists(firmId: string, key: string): Promise<boolean> {
     const h = await this.head("exists", objectKey(firmId, key));
     return !!h && h.Metadata?.retired === undefined;
@@ -201,10 +204,9 @@ export type OpenedLink = { status: 200; url: string; expiresAt: string } | { sta
  * end time, which the S3 address needs.)
  */
 export class S3FileLinks {
-  private readonly macKey: Buffer;
-  constructor(private readonly files: Pick<S3Files, "exists" | "signedGetUrl">, linkKey: Secret, private readonly now: () => number) {
-    this.macKey = Buffer.from(linkKey.reveal(), "utf8");
-    if (this.macKey.length < 32) throw new Error("files: the link key needs at least 32 characters");
+  /** Held as the PF-24 Secret, revealed only inside `mac`: a dump of this object never shows the key (PF-F1b break m3). */
+  constructor(private readonly files: Pick<S3Files, "exists" | "signedGetUrl">, private readonly linkKey: Secret, private readonly now: () => number) {
+    if (Buffer.byteLength(linkKey.reveal(), "utf8") < 32) throw new Error("files: the link key needs at least 32 characters");
   }
 
   /** A token for the firm's key, for the person who asked for it. */
@@ -232,5 +234,5 @@ export class S3FileLinks {
     return { status: 200, url: await this.files.signedGetUrl(p.f, p.k, nowMs, left), expiresAt: new Date(p.e * 1000).toISOString() };
   }
 
-  private mac(body: string) { return createHmac("sha256", this.macKey).update(`pf-s3-file-link:${body}`).digest("base64url"); }
+  private mac(body: string) { return createHmac("sha256", Buffer.from(this.linkKey.reveal(), "utf8")).update(`pf-s3-file-link:${body}`).digest("base64url"); }
 }
