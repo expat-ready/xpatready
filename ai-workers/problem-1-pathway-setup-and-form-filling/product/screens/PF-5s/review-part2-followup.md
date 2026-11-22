@@ -55,3 +55,36 @@ No Blocker or Major. R2-m1, R2-m2 and R2-m3 are fixed as recorded, each with a t
 **Verdict: Approve** (no open Blocker or Major), for this commit only.
 
 Reviewer: Approve 6677f50c1bc97cc8e50cefe9f8fd5652e05a5ae0
+
+## Round 2 (head `9ecfd7060062a59f19e5426d281b4c0fa2d202db`, diff from `6677f50c1` only)
+* **Run:** a fresh copy `rev_pf5s3` on :4702 (`PLATFORM_IDENTITY=local`). `check_pf5s2_billing_browser.ts`: **55/55 passed**. The copy is stopped and the 6 PNGs the test rewrote are restored. The working tree is clean except this section.
+* **Fails without the fix?** I swapped in the 6677f50c1 sources (the test stayed at head), rebuilt, ran the test and restored the files each time.
+  * With `billing-contract.ts` and `address-panel.tsx` swapped: the follow-up m1 check at l.110 FAILS with `["…Your subscription is set to cancel then…","Cancels on 19 Nov 2026"]`. The run then stops with a TypeError because the old contract has no `WORDS.retryStripe`.
+  * With only `billing-page.tsx` swapped: the R2-m3 check ("saying why") FAILS, and the run stops with a `TimeoutError` at the follow-up m2 hand-off, because the old code reopens the panel instead of going on.
+  * Every new check fails when its rule is removed.
+* **Fixes:**
+  * **m1:** holds, with "was set to cancel then" and "Trial ended <date> (set to cancel)".
+  * **Nit 4:** holds; `billing-page.tsx:75` uses one `now` for both lines.
+  * **Nit 3:** holds; the header and the DW3 comment are updated.
+  * **m2:** holds for the loop. The retry happens once, the panel says why ("We couldn't send your address to Stripe last time…"), and a press after a second warning goes on to Stripe.
+
+### Retry state, walked (fake BillingPort, the server warns on every save unless rewritten)
+1. **Portal path, no address:** press, then the panel says "Before you add a card…". Save warns. Press, then the panel shows the retry words. Save warns again and focus returns to Manage plan. Press: the Portal opens. Pass.
+2. **Edit-button save that warns (1024 px):** Edit, then save warns. Pressing Add a card opens the retry panel. Closing it unchanged asks nothing and the retry stays due, so the next press reopens it. Save warns. Press: Checkout opens. Pass, and no loop.
+3. **Reload while the retry is due:** one press goes straight to the Portal. The retry lives in page state, so a reload drops it. This is round 1's accepted residual (the webhook's held draft keeps the tax), unchanged.
+4. **Retry used up, then a new address:** Edit save warns (due). An Edit save succeeds (`retry` becomes "done", not null). Edit to city Ottawa warns. Add a card then goes **straight to Checkout** while Stripe still holds Toronto (database: Ottawa). At 6677f50c1 this press reopened the panel (Finding R2-1).
+No page errors.
+
+### Findings (round 2)
+1. **Minor: `web/src/modules/platform/saas/billing-page.tsx:102`. A clean save leaves `retry` at "done" for the rest of the page's life, so a later warned save gets no retry.** `setRetry(retry === "due" ? "done" : next && retry === null ? "due" : retry)`: "done" is never reset.
+   * **Scenario:** a save warns, then a save reaches Stripe, then the person changes the address and that save warns. The next card or portal press goes straight to Stripe, and Stripe still has the old address (walk 4).
+   * **Impact:** because Stripe holds an address, PF-5's hold-for-missing-address does not apply, so a first invoice could be taxed for the old province. This is narrower than before the PR but new for this path; the reload case is equivalent and already accepted.
+   * **Fix:** reset on a clean save, e.g. `setRetry(!next ? null : retry === "due" ? "done" : "due")`. "done" still lets the press after a warned retry go on, so there is still no loop. Add a test: a warn, then a clean save, then a warn, then a press opens the retry panel.
+2. **Nit: `web/src/modules/platform/saas/billing-contract.ts:61`.** The new non-trial branch, "Set to cancel on <past date>" (an Active firm set to cancel whose period end passed before the webhook), has no test. The wording is acceptable.
+3. **Nit: `tests/check_pf5s2_billing_browser.ts`, the last DW3 pass check.** Its failure detail prints `posts`, not `posts2`, so a failure would show the wrong list.
+
+No Blocker or Major. Round 1's findings 1 to 4 are fixed. R2-1 is a Minor for the builder to fix or record in `challenge.md`.
+
+**Verdict: Approve** (no open Blocker or Major), for this commit only.
+
+Reviewer: Approve 9ecfd7060062a59f19e5426d281b4c0fa2d202db
