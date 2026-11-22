@@ -303,6 +303,8 @@ try {
     const { p } = await pageAs(tok.O, w); await home(p);
     await find(p, `Kit${run}`);
     await p.screenshot({ path: join(SHOTS, `pf30s-05-open-${w}.png`) });
+    const small = await p.evaluate(() => [...document.querySelectorAll("header button, header a")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.width < 24 || r.height < 24); }).map((el) => el.getAttribute("aria-label") ?? el.textContent));
+    ok(`PF-30s F10 (WCAG 2.5.8): at ${w} px no control in the top bar is under 24 px (the box never squeezes the help button)`, small.length === 0, small);
     ok(`PF-30s F10: no sideways page scroll with the list open at ${w} px, and the list fits the window`,
       !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) && await p.locator("[data-find-popup]").evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }));
     if (w < 768) {
