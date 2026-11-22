@@ -20,7 +20,7 @@ const s = (max: number) => z.string().max(max).nullish();
  *  refuses it with its own sentence ("Send only the last 4 characters …"); the service keeps every other rule. */
 const RECORD = strict({ requestId: z.string().max(100),   // always needed, so {} is refused before the person is looked up
   method: s(100), methodDetail: s(2000), documentType: s(100), issuingCountry: s(100), documentExpiry: s(100),
-  documentNumberLast4: s(100), details: z.union([z.string().max(100), list(z.string().max(100), 20)]).nullish(), documentNumber: z.unknown().optional() });
+  documentNumberLast4: s(100), details: z.union([z.string().max(100), list(z.string().max(100), 20)], { error: "Each corroborated detail is one of NAME, HOME_ADDRESS, PHONE, EMAIL, BUSINESS_DETAILS." }).nullish(), documentNumber: z.unknown().optional() });
 
 @Controller("api/front-office")
 export class IdentityChecksController {

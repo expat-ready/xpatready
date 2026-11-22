@@ -20,7 +20,7 @@ import { SALES_PORTS, type SalesPorts } from "./public.ts";
 /** The audit action of a value edit (an audit line only; not an outbox event name). */
 export const VALUE_SET = "prospect.value_set";
 /** PF-28 part 3b (R1.10): the body through a strict schema (an unknown field 422, named); the value and currency rules stay below. */
-const VALUE = strict({ value: z.union([z.number(), z.string().max(40), z.null()]).optional(), currency: z.string().max(40).nullish() });
+const VALUE = strict({ value: z.union([z.number(), z.string().max(40), z.null()], { error: "The value is an amount, like 1500 or 1500.50, or empty." }).optional(), currency: z.string().max(40).nullish() });
 const refused = (field: string, detail: string) => problem(422, "Check the details", detail, { code: "INVALID", fields: { [field]: detail } });
 
 @Injectable()
