@@ -123,3 +123,46 @@ No Blocker and no Major. The schema accepts every real SNS envelope. The order i
 **Verdict: Approve**
 
 Reviewer: Approve cae19c55c6334098fbe38a01a37683346c811c5a
+
+---
+
+## Round 2: diff only, `cae19c55c..f38f63567a125f0e36fdf945382b8996a1e27493`
+I read `git diff cae19c55c f38f63567` read-only. The two records files are ignored, as asked (`screens/PF-28/exceptions-status-2026-11-22.md`, and this review, now committed as `screens/PF-28/review-sns.md`). The code diff covers 3 files, +23/-3.
+`bounces.ts` is unchanged, so round 1's schema probes still hold.
+I did not re-run the suites. The builder reports check_pf19b2_ses 46/46 and check_pf28_inputs 48/48 on `f38f63567`.
+
+* **m1: fixed.**
+  * Where: `tests/check_pf28_inputs.ts:71-76`. A new "PF-28 HOOK pass" check reads `bounces.ts` and requires `parseInput(SnsNotice, n)` after `await this.verify(n);` (`p > v`, both found).
+  * It also requires `check_pf19b2_ses.ts` to keep both named cases ("PF-28 fail: a signed notice whose envelope breaks the schema" and "PF-28 pass: AWS's documented").
+  * What it catches: deleting or renaming either case, removing the parse, or moving it above `verify`. Any of these now fails check_pf28 itself, the same way DW6 guards Stripe's exemption in-file.
+  * The check matches text with `indexOf`. That is enough here: no comment in `bounces.ts` contains either literal.
+* **m2: fixed.**
+  * Where: `tests/check_pf19b2_ses.ts:249-258`. Two cases are signed with SignatureVersion 2, the test's own key, as the file already does:
+    * a Notification with `Subject` ("Amazon SES Email Event Notification", 35 characters) and an `UnsubscribeURL` in AWS's form;
+    * an UnsubscribeConfirmation with a 256-character Token, a SubscribeURL and an AWS-style Message. It is re-signed after the Message is set, so the signature matches.
+  * Both expect 200. A 200 can only follow a passed schema: the Notification then ends "ignored" (a random outbox), the confirmation "confirmation". Any of these tightenings would turn either answer into 422 and fail the case:
+    * Subject made required, or capped under 35;
+    * a stricter UnsubscribeURL or SubscribeURL;
+    * a Token cap under 256;
+    * UnsubscribeConfirmation dropped from `Type`.
+  * The Token is a repeated plain pattern rather than AWS's hex. The schema bounds only its length, so this proves the same thing.
+  * It uses its own address and outbox, so DW10's counts are untouched.
+* **m3: fixed.**
+  * Where: `public-routes.ts:56-59`. A single `logPort.warn("messages.sns_notice_refused_by_schema", { fields })` on the 422 branch only.
+  * What is logged: field names only, at most 20, joined with commas, never values. The names come from `fieldsOf`, which caps each at 64 characters. They pass through PF-23's redaction (`observability/log.ts:44`) and the line carries the correlation id.
+  * It does not log the MessageId I suggested. The field names are what show that AWS's format has moved, so this is enough. Optional: add `MessageId` for tracing a single delivery.
+  * The 400 and rethrow paths are unchanged; nothing is swallowed.
+* **m4:** a note for the merge only. Nothing in the diff. It still applies: whichever of #3039 and #2933 merges second sets `UNPARSED_CEILING` to 0.
+* **Nit (citation): fixed.**
+  * Where: `check_pf28_inputs.ts:67`. It now cites "Lead 4 16:02 IST 22 Nov, done in #3039", which matches the PR body.
+  * The other two nits (no `message` key in the local 422 body; the `.fifo` and other-partition TopicArn) were left as noted. Neither needs a change.
+
+New issues in the round 2 diff: none.
+* The new import (`../observability/log.ts`) is the app's one logger; other API code already calls `logPort.warn` the same way (people-ai.ts:291, plain-run-text.ts:9).
+* There is no new route, no new field and no new dependency.
+
+The journey score stands at **9.5 / 10** (adapted, machine door). The ½ on error recovery could rise to 1 now that a refused signed notice leaves a warning. I keep 9.5, because I did not watch the line appear on a running copy.
+
+**Verdict: Approve.** No Blocker or Major is open; m1, m2, m3 and the citation nit are fixed; m4 is only a note for the merge.
+
+Reviewer: Approve f38f63567a125f0e36fdf945382b8996a1e27493
