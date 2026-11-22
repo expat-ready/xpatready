@@ -20,10 +20,8 @@ permissions:
   contents: read
   pull-requests: read   # the PR's file list, to count code and test lines only (P-610 reading, Lead 58 15 Nov)
 concurrency:
-  # SPD-2 item 5 (Lead 4, 22 Nov 15:10 IST; P-802): a newer push to the same PR supersedes its older run here; a merge-queue
-  # batch (head mergify/...) and a run by hand are never cancelled. P-371's "never cancel" is about cancelling runs by hand.
   group: pr-rules-${{ github.event.pull_request.number }}
-  cancel-in-progress: "${{ github.event_name == 'pull_request' && !startsWith(github.event.pull_request.head.ref, 'mergify/') }}"
+  cancel-in-progress: true
 jobs:
   pr-rules:
     if: "${{ !startsWith(github.event.pull_request.head.ref, 'mergify/') && !contains(github.event.pull_request.labels.*.name, 'records') }}"

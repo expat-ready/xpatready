@@ -3,7 +3,8 @@
 # 15:0x IST), largely with PR runs a newer push had already made stale. This check keeps the two settings that cut them:
 #   (a) each PR workflow (ci, pr-suites, walks, module-cards, pr-rules, review-rounds) has one concurrency group per PR
 #       and cancels that PR's older run when a newer one starts, while a merge-queue batch (head mergify/...) and a run
-#       by hand (workflow_dispatch) are never cancelled. The expression is evaluated here for each kind of event;
+#       by hand (workflow_dispatch) are never cancelled (or every job of the workflow skips a batch, as pr-rules does).
+#       The expression is evaluated here for each kind of event;
 #   (b) a draft runs only the light checks: guards, trace, cockpit-tests, lead-tools-tests and cycle-timeline skip a
 #       draft (but not a merge-queue batch, which is a draft too) and run again on ready_for_review; ci on a draft runs
 #       only its guard job; pr-suites and walks skip drafts.
@@ -52,6 +53,8 @@ for f, event in A.items():
             got = ev(c.get("cancel-in-progress", False), ctx); grp = tmpl(c["group"], ctx)
         except Exception as e:
             bad.append(f"{f}: cannot read its concurrency ({e})"); break
+        if not want and all(not ev(j.get("if", "true"), ctx) for j in (d.get("jobs") or {}).values()):
+            continue   # every job skips a merge-queue batch (pr-rules): no batch run exists to cancel
         if bool(got) is not want: bad.append(f"{f}: {why} {'is not' if want else 'is'} cancelled by a newer run")
         if want and "7" not in str(grp): bad.append(f"{f}: {why}: the group {grp!r} is not the PR's own")
     if "workflow_dispatch" in on:
