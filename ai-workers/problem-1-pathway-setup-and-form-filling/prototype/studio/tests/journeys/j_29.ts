@@ -146,11 +146,31 @@ try {
   await new Promise((r) => setTimeout(r, 1500));   // any automatic merge runs after the add
   const hasTomb = sql(`select count(*) from information_schema.columns where table_name = 'fo_person' and column_name = 'merged_into_id'`) === "1";
   const bothStay = sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2 || OMAR}')`) === "2" && (!hasTomb || sql(`select count(*) from fo_person where id in ('${OMAR}', '${OMAR2}') and merged_into_id is null`) === "2");
-  ok("R1.29 W4 fail: a person with money (a draft invoice) is never merged by itself: both Omar records stay, neither a tombstone",
+  ok("R1.29 W4 fail: a person with money (a draft invoice) is never merged by itself: both Omar records stay, neither a tombstone (vacuous until FO-9b part 2 merges: no merge runs today)",
     inv.status === 201 && omar2.status === 201 && !!OMAR2 && bothStay, { invoice: inv.status, add: omar2.status, hasTomb });
   const list4 = await api(tR, "GET", "/front-office/duplicates/review");
   ok("R1.29 W4 (part missing: FO-9b part 2, the review list): the Omar pair waits on the review list for a person to decide",
     list4.status === 200 && JSON.stringify(list4.body).includes(OMAR) && JSON.stringify(list4.body).includes(OMAR2), { status: list4.status });
+
+  // A person with a case (the case side's client row linked to the front-office person, CS-K1; seeded as its row, Sample)
+  // and a new lead with the same phone: never merged by itself, and the pair waits on the review list.
+  const kim = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.${run}@example.org`, phone: "+1 416 555 0188", confirmedNew: true });
+  const KIM = personOf(`kim.${run}@example.org`);
+  let caseSeeded = "";
+  try {
+    sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', 9290, 'Kim Sample', 'PERSON', '${KIM}', 'user-R')`);
+    caseSeeded = "yes";
+  } catch (e) { caseSeeded = String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; }
+  const kim2 = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.other.${run}@example.org`, phone: "416.555.0188", confirmedNew: true });
+  const KIM2 = personOf(`kim.other.${run}@example.org`);
+  await new Promise((r) => setTimeout(r, 1500));
+  const kimStay = !!KIM && !!KIM2 && sql(`select count(*) from fo_person where id in ('${KIM}', '${KIM2}')`) === "2" && (!hasTomb || sql(`select count(*) from fo_person where id in ('${KIM}', '${KIM2}') and merged_into_id is null`) === "2");
+  ok("R1.29 W4 fail: a person with a case (the case side's client row) is never merged by itself: both Kim records stay (vacuous until FO-9b part 2 merges: no merge runs today)",
+    kim.status === 201 && kim2.status === 201 && caseSeeded === "yes" && kimStay, { caseSeeded, add: [kim.status, kim2.status] });
+  const list4c = await api(tR, "GET", "/front-office/duplicates/review");
+  const kimPair = (list4c.body?.items ?? list4c.body?.pairs ?? []).find((x: unknown) => JSON.stringify(x).includes(KIM) && JSON.stringify(x).includes(KIM2));
+  ok("R1.29 W4 (part missing: FO-9b part 2, the review list with needsCaseSide): the Kim pair waits on the review list, marked as needing the case side, and its merge here is refused with the reason",
+    list4c.status === 200 && !!kimPair && kimPair.needsCaseSide === true, { status: list4c.status });
 
   // --------------------------------------------------------------------------- W5: undo from the review list
   const mergesList = await api(tR, "GET", "/front-office/duplicates/merges");
@@ -179,7 +199,8 @@ try {
   await p.goto(`${BASE}/front-office/leads?view=all`); await p.getByRole("heading", { level: 1, name: "Leads" }).waitFor({ timeout: 30_000 });
   await p.waitForTimeout(800);
   const listWords = (await p.locator("main").innerText()).replace(/\s+/g, " ");
-  ok("R1.29 W7: the walk ends at R1.30's first step: the Leads list shows Lena Park's leads (filters on the page)", listWords.includes(`Lena${run}`), listWords.slice(0, 160));
+  const filters = await p.locator("main select, main [role='combobox'], main input[type='search']").count();
+  ok("R1.29 W7: the walk ends at R1.30's first step: the Leads list (all open) shows Lena Park's lead and offers its filters", listWords.includes(`Lena${run} Park`) && filters >= 1, { filters, words: listWords.slice(0, 160) });
   ok("R1.29: no page error in the browser", errors.length === 0, errors);
   await ctx.close();
 } finally {

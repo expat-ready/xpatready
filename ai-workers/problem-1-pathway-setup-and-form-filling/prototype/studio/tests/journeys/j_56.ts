@@ -168,10 +168,10 @@ try {
     await p.locator("[data-account], [data-terms-page]").first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await p.goto(`${BASE}/money/invoices`); await p.waitForLoadState("networkidle").catch(() => undefined);
     const words = (await p.locator("body").innerText()).replace(/\s+/g, " ");
-    const num = String(w7.body?.number ?? "INV-");
+    const num = String(w7.body?.number ?? "");   // empty when the invoice did not issue: the step cannot pass on "INV-" alone
     await p.screenshot({ path: join(SHOTS, "w9-money-invoices-1440.png"), fullPage: true });
     ok("R1.56 W9 (parts missing: FO-7s1 the invoice screens, FO-7q the invoice reads): Money › Invoices lists the issued invoice with its number and its tax",
-      words.includes(num) && /tax|hst/i.test(words) && (await p.locator("[data-invoice]").count()) >= 1, words.slice(0, 200));
+      /^INV-\d/.test(num) && words.includes(num) && /\bHST\b/.test(words) && (await p.locator("[data-invoice]").count()) >= 1, words.slice(0, 200));
     ok("R1.56 W9: the walk ends at R1.57's first step: the invoice offers the client a card payment link (parts missing: FO-7c, FO-7s1)",
       (await p.getByRole("button", { name: /pay(ment)? link|card/i }).count()) >= 1);
     await ctx.close();
