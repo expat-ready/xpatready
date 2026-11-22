@@ -25,16 +25,35 @@ export function darker(hex: string): string {
   return `#${c(1)}${c(3)}${c(5)}`;
 }
 
-/** The firm's brand for its public pages (the frame draws it only once the page has found the firm). */
-export function usePublicBrand(firmKey: string, enabled: boolean) {
-  const q = useQuery({ queryKey: ["public-brand", firmKey], enabled: enabled && !!firmKey, retry: false, refetchOnWindowFocus: false, staleTime: 60_000,
+/** The firm's brand for its public pages: the read and whether it has ended (an answer, a refusal or a failure). */
+export function usePublicBrand(firmKey: string) {
+  const q = useQuery({ queryKey: ["public-brand", firmKey], enabled: !!firmKey, retry: false, refetchOnWindowFocus: false, staleTime: 60_000,
     queryFn: () => publicCall(`firms/${encodeURIComponent(firmKey)}/branding`, PublicBrand) });
-  return q.data && HEX.test(q.data.colour) ? q.data : null;   // a read that fails or does not fit: the neutral look as before
+  return { brand: q.data && HEX.test(q.data.colour) ? q.data : null, settled: !q.isPending || !firmKey };   // a read that does not fit: no brand
 }
 
-/** The page's primary colour and the header rule's colour, as CSS custom properties on the frame. */
+/** How long a page that has found its firm waits for the brand before it draws without one (break M2). */
+export const BRAND_WAIT_MS = 3000;
+/** The brand a page draws, decided once per firm: the read's, when it has ended in time and names this page's firm (the booking
+ *  read gives the firm's name, never its key: a manage link opened under another firm's address must not wear that firm's
+ *  brand, break M1); else none. `waiting` while the page has its firm but not yet the decision (it shows its loading state). */
+export function useDrawnBrand(firmKey: string, firm: string | undefined) {
+  const { brand, settled } = usePublicBrand(firmKey);
+  const [late, setLate] = React.useState<string | null>(null);
+  const decided = React.useRef<{ key: string; firm: string; brand: PublicBrand | null } | null>(null);
+  React.useEffect(() => {
+    if (firm === undefined || settled) return;
+    const t = setTimeout(() => setLate(firmKey), BRAND_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [firmKey, firm, settled]);
+  if (decided.current && (decided.current.key !== firmKey || decided.current.firm !== firm)) decided.current = null;
+  if (!decided.current && firm !== undefined && (settled || late === firmKey)) decided.current = { key: firmKey, firm, brand: brand && brand.name === firm ? brand : null };
+  return { brand: decided.current?.brand ?? null, waiting: firm !== undefined && !decided.current };
+}
+
+/** The page's primary colour, its focus ring (break m1) and the header rule's colour, as CSS custom properties on the frame. */
 export const brandStyle = (b: PublicBrand | null): React.CSSProperties | undefined =>
-  b ? ({ "--color-primary": b.colour, "--color-primary-hover": darker(b.colour), "--brand-rule": b.colour } as React.CSSProperties) : undefined;
+  b ? ({ "--color-primary": b.colour, "--color-primary-hover": darker(b.colour), "--color-ring": b.colour, "--brand-rule": b.colour } as React.CSSProperties) : undefined;
 
 /** The tab's icon while the page is open; the app's own icon comes back when it closes or the firm has none. */
 export function useFavicon(link: string | null) {

@@ -7,7 +7,12 @@
 //   BB2 the same brand on the type page /book/sample-firm/free and, after a real booking, on the manage page by its link;
 //   BB3 firm B's page never shows firm A's brand: no image of firm A's, no #7a1f4e, no request to firm A's branding, the app's
 //       own favicon; and B shows the neutral look (ExpatReady's neutral colour #1f4e79, no image, no tagline; AG-16-2);
+//   BB3b firm A → firm B inside the app (no reload), then Back: B shows nothing of A's, the app's favicon; A's brand comes back;
 //   BB4 a page that is not found (/book/no-such-firm) shows no brand (its branding read, started with the page's, answers 404);
+//   BB4b the page's own read refused (429): no brand, although the brand's read answers;
+//   BB7 firm B's booking opened under firm A's address (manage link): no brand of A's; fail: under its own address, B's;
+//   BB8 a slow brand read: loading state, then drawn once (1.5 s: with the brand); fail: slower than the 3 s wait, drawn
+//       without it, and the late answer changes nothing;
 //   BB5 a replaced logo: the page that still holds the old link shows no broken image;
 //   BB6 keyboard (Tab reaches the first choice; the brand images take no focus), axe-core WCAG 2.2 A/AA (colour contrast of the
 //       brand buttons included) at 375, 1024 and 1440 px with no sideways scroll, on A's and B's pages; fail: the same axe run
@@ -102,7 +107,22 @@ const drawn = (p: Page) => p.evaluate(() => {
   };
 });
 /** Waits until the brand's read has been drawn (its colour attribute appears), or ms. */
-const branded = async (p: Page, ms = 15_000) => { const s = await seen(p.locator("[data-brand-colour]"), ms); await p.waitForTimeout(400); return s; };   // colours read after any transition
+/** Waits until the page has decided its brand (drawn or none), then reads colours after any transition. */
+const branded = async (p: Page, ms = 15_000) => { const s = await seen(p.locator('[data-brand-state="brand"], [data-brand-state="none"]'), ms); await p.waitForTimeout(400); return s; };
+const state = (p: Page) => p.locator("[data-brand-state]").first().getAttribute("data-brand-state");
+/** A visitor books firm <key>'s type "free" on its page; the manage link from the confirmation. */
+async function book(p: Page, key: string): Promise<string> {
+  await list(p, key); await p.locator(`a[href="/book/${key}/free"]`).click(); await p.getByRole("heading", { name: "Choose a time" }).waitFor({ timeout: 20_000 });
+  const days = p.locator('[role="group"] button:not([disabled])');
+  for (let i = 0; i < 3 && (await days.count()) === 0; i++) { await p.getByRole("button", { name: "Next month" }).click(); await wait(800); }
+  await days.first().click(); await p.locator("[data-day-times] li button").first().click();
+  await p.getByRole("heading", { name: "Your details" }).waitFor({ timeout: 20_000 });
+  await p.getByLabel("Given names").fill("Visitor"); await p.getByLabel("Family name").fill("Sample PF13c"); await p.getByLabel("Email").fill(`pf13c-${key}-${Date.now()}@example.com`);
+  await wait(3500);   // the form's minimum fill time
+  await p.getByRole("button", { name: "Book this time" }).click();
+  await p.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 });
+  return (await p.locator('a[href*="/manage#"]').first().getAttribute("href")) ?? "";
+}
 const reach = async (p: Page, target: Locator, max = 40) => {
   for (let i = 0; i < max; i++) { if (await target.evaluate((el) => el === document.activeElement).catch(() => false)) return true; await p.keyboard.press("Tab"); }
   return false;
@@ -139,15 +159,7 @@ try {
   const d2 = await drawn(p);
   const vT = await axe(p); ok("R1.23 PF-13c BB6: firm A's branded type page has no WCAG 2.2 A/AA violation", vT.length === 0, ids(vT));
   await shot(p, "2-firm-a-type-1440");
-  const days = p.locator('[role="group"] button:not([disabled])');
-  for (let i = 0; i < 3 && (await days.count()) === 0; i++) { await p.getByRole("button", { name: "Next month" }).click(); await wait(800); }
-  await days.first().click(); await p.locator("[data-day-times] li button").first().click();
-  await p.getByRole("heading", { name: "Your details" }).waitFor({ timeout: 20_000 });
-  await p.getByLabel("Given names").fill("Visitor"); await p.getByLabel("Family name").fill("Sample PF13c"); await p.getByLabel("Email").fill(`pf13c-${Date.now()}@example.com`);
-  await wait(3500);   // the form's minimum fill time
-  await p.getByRole("button", { name: "Book this time" }).click();
-  await p.locator('[data-public-state="booked"]').waitFor({ timeout: 20_000 });
-  const manage = await p.locator('a[href*="/manage#"]').first().getAttribute("href");
+  const manage = await book(p, "sample-firm");
   await p.goto(`${BASE}${manage}`); await p.locator('[data-public-state="manage"]').waitFor({ timeout: 20_000 });
   await branded(p); await p.locator("[data-brand-logo]").waitFor({ timeout: 15_000 });
   const d3 = await drawn(p);
@@ -166,12 +178,62 @@ try {
   const vB = await axe(p); ok("R1.23 PF-13c BB6: firm B's neutral page has no WCAG 2.2 A/AA violation", vB.length === 0, ids(vB));
   await shot(p, "4-firm-b-neutral-1440");
 
+  // ---------------------------------------------------------------------------------------------- BB3b firm A → firm B inside the app
+  // Review finding 1: a leak could only come from the client: the brand's cache (keyed by the firm) or a favicon left behind.
+  await list(p, "sample-firm"); await branded(p); await p.locator("[data-brand-logo]").waitFor({ timeout: 15_000 });
+  await p.evaluate(() => { history.pushState({}, "", "/book/sample-solo"); dispatchEvent(new PopStateEvent("popstate")); });
+  await p.locator("[data-firm-name]", { hasText: B.name }).waitFor({ timeout: 20_000 }); await branded(p);
+  const dS = await drawn(p);
+  await p.goBack(); await p.locator("[data-firm-name]", { hasText: A.name }).waitFor({ timeout: 20_000 }); await branded(p); await p.locator("[data-brand-logo]").waitFor({ timeout: 15_000 });
+  const dBack = await drawn(p);
+  ok("R1.23 PF-13c BB3b: moving from firm A's page to firm B's inside the app (no reload): B shows no image of A's, not #7a1f4e, the neutral colour and the app's own favicon; Back shows A's brand again",
+    dS.logo.length === 0 && !dS.banner && !dS.icon.includes("/branding/") && dS.rule !== RGB && dS.button !== RGB && dS.colourAttr === NEUTRAL && dBack.logo.length === 1 && dBack.rule === RGB && dBack.icon.includes("/sample-firm/branding/favicon"), { dS, back: { logo: dBack.logo.length, rule: dBack.rule, icon: dBack.icon } });
+
+  // ---------------------------------------------------------------------------------------------- BB7 a manage link under another firm's address
+  // Break M1, review finding 2: the booking read names its firm, never its key; a firm B booking opened under firm A's address
+  // must not wear firm A's brand.
+  const manageB = await book(p, "sample-solo");
+  await p.goto(`${BASE}${manageB}`); await p.locator('[data-public-state="manage"]').waitFor({ timeout: 20_000 }); await branded(p);
+  const own = await drawn(p), ownState = await state(p);
+  await p.goto(`${BASE}${manageB.replace("/book/sample-solo/", "/book/sample-firm/")}`); await p.locator('[data-public-state="manage"]').waitFor({ timeout: 20_000 }); await branded(p);
+  const cross = await drawn(p), crossState = await state(p);
+  ok("R1.23 PF-13c BB7: firm B's booking opened under firm A's address (/book/sample-firm/manage#<B's token>) shows no brand of A's: no logo, banner or tagline, no #7a1f4e, the app's own favicon; fail: under its own address it shows B's brand (neutral)",
+    crossState === "none" && cross.logo.length === 0 && !cross.banner && cross.tagline === null && cross.rule !== RGB && cross.button !== RGB && !cross.icon.includes("/branding/") && cross.name === B.name
+      && ownState === "brand" && own.colourAttr === NEUTRAL, { crossState, cross: { logo: cross.logo.length, rule: cross.rule, icon: cross.icon, name: cross.name }, ownState, own: own.colourAttr });
+  await shot(p, "6-cross-firm-manage-1440");
+
   // ---------------------------------------------------------------------------------------------- BB4 not found
   requests.length = 0;
   await p.goto(`${BASE}/book/no-such-firm`); await p.locator('[data-public-state="not-found"]').waitFor({ timeout: 20_000 }); await wait(500);
   const dN = await drawn(p);
   ok("R1.23 PF-13c BB4: a page that is not found shows no brand (its one branding read answers 404 and draws nothing)", dN.colourAttr === null && dN.logo.length === 0 && !dN.icon.includes("/branding/"), { requests: requests.filter((r) => r.includes("/branding")), dN });
+
+  // ---------------------------------------------------------------------------------------------- BB4b the page's own read refused
+  // Review finding 3: the brand is drawn only once the page has found its firm, even when the brand's own read answers.
+  await p.route("**/api/public/firms/sample-firm/book", (r) => r.fulfill({ status: 429, contentType: "application/problem+json", body: JSON.stringify({ status: 429, title: "Too many requests" }) }));
+  await p.goto(`${BASE}/book/sample-firm`); await p.locator('[data-public-state="error"]').waitFor({ timeout: 20_000 }); await wait(1500);
+  const dE = await drawn(p), brandOk = (await api(null, "GET", "/public/firms/sample-firm/branding")).status;
+  ok("R1.23 PF-13c BB4b: when the page's own read is refused (429) it draws no brand, although firm A's brand read answers 200", brandOk === 200 && dE.colourAttr === null && dE.logo.length === 0 && !dE.banner && !dE.icon.includes("/branding/"), { brandOk, dE });
+  await p.unroute("**/api/public/firms/sample-firm/book");
   await p.context().close();
+
+  // ---------------------------------------------------------------------------------------------- BB8 a slow brand read
+  // Break M2: the page waits for the brand behind its loading state, then draws once; nothing changes colour or moves after.
+  for (const [delay, drawsBrand] of [[1500, true], [4500, false]] as const) {
+    const s8 = await tab();
+    await s8.route("**/api/public/firms/sample-firm/branding", async (r) => { await wait(delay); await r.continue(); });
+    await s8.goto(`${BASE}/book/sample-firm`);
+    await wait(800); const early = { cards: await s8.locator("[data-type-card]").count(), st: await state(s8) };
+    await s8.locator("[data-type-card]").first().waitFor({ timeout: 20_000 }); await wait(400);
+    const at = async () => ({ y: (await s8.locator("[data-type-card]").first().boundingBox())?.y ?? -1, ...(await drawn(s8)) });
+    const first = await at(); await wait(delay + 1500); const later = await at();
+    ok(drawsBrand
+      ? "R1.23 PF-13c BB8: with the brand read slowed to 1.5 s the page shows its loading state, then draws the cards once with the brand; later the cards have not moved and the colour has not changed"
+      : "R1.23 PF-13c BB8 fail: a brand read slower than the wait (4.5 s) draws the page without the brand at about 3 s, and the late answer changes nothing",
+      early.cards === 0 && early.st === "waiting" && first.y === later.y && first.button === later.button && first.logo.length === later.logo.length && (drawsBrand ? first.button === RGB && first.logo.length === 1 : first.button !== RGB && first.logo.length === 0 && first.colourAttr === null),
+      { early, first: { y: first.y, button: first.button, logo: first.logo.length }, later: { y: later.y, button: later.button, logo: later.logo.length } });
+    await s8.context().close();
+  }
 
   // ---------------------------------------------------------------------------------------------- BB5 a logo link that stops answering
   // A replaced image's old link answers 404 (part 1b); a page opened before the change still names it. Browsers keep the old

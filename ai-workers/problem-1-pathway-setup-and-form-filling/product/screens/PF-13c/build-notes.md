@@ -26,3 +26,11 @@
 * The client portal (PF-4ps, not on main): it can reuse `brand.tsx`.
 * Generated PDFs.
 * The accent colour (the read has it; nothing on these pages uses a second colour).
+
+## Round 1 (reviewer Changes, breaker Changes) — what changed
+* **Break M1 / review finding 2 (manage link under another firm's address).** The frame draws a brand only when the branding read's name equals the page's firm name. The booking read gives a name, never a key; both are the firm's `operatingName`. Fail test BB7: firm B's booking under `/book/sample-firm/manage#…` shows none of A's; under its own address it shows B's. Residual: two firms with the same operating name. Recommendation: the booking read could return the firm's key (API, not this part's touch list).
+* **Break M2 (first paint).** Once the page has found its firm, it waits for the brand read behind its loading state, at most 3 s (`BRAND_WAIT_MS`). It then draws once, with the brand or without it; a late answer changes nothing (`useDrawnBrand`, `data-brand-state`). Fail test BB8: 1.5 s → loading, then branded, nothing moves after; 4.5 s → drawn without the brand at about 3 s and stays so.
+* **Review finding 1 (BB3 could not fail).** New BB3b: firm A → firm B inside the app (pushState + popstate, no reload), then Back. The favicon restore and the per-firm cache are both exercised.
+* **Review finding 3 (rule 3 untested).** New BB4b: the page's own read answers 429 → no brand, although the brand read answers 200.
+* **Break m1:** the focus ring takes the brand colour (`--color-ring`). **Break m3:** `dir="auto"` on the firm's name and tagline. **Break m2 (extreme logo shapes), not fixed, listed:** a 2000×40 logo draws as a thin line; the image is the firm's own.
+* Check now 28/28, exit 0 (`run-suites.sh --only`). On the round-1 code it fails (exit 1: it stops at the first wait for the brand decision).
