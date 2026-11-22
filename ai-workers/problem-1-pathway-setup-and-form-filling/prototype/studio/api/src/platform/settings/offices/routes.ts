@@ -27,7 +27,7 @@ export class OfficesController {
 
 /** PF-18s part 1 (rev 16.78 amendment; challenge m1): placing a staff member in an office, or in none. A staff-profile change
  *  (AG-16 §3.18 "the office field … in staff profiles"), so it takes agent/staff:manage (Owner and Admin today, the same holders as
- *  agent/settings:edit). The body is read first (PF-28), then the path id; another firm's person or office is 404. No version: two
+ *  agent/settings:edit). A malformed path id is 404 first, then the body is read (PF-28); another firm's person or office is 404. No version: two
  *  people placing the same person at once, the last one wins and both are audited (build notes). */
 export const PlaceStaff = strict({ officeId: z.string().uuid().nullable() });
 @Controller("api/platform/staff")
@@ -35,7 +35,7 @@ export class StaffOfficeController {
   constructor(@Inject(Offices) private readonly offices: Offices) {}
   @Put(":staffId/office") @PermissionKeys("agent/staff:manage")
   place(@Req() r: R, @Param("staffId") staffId: string, @Body() b: unknown) {
-    const { officeId } = parseInput(PlaceStaff, b);
-    return this.offices.setStaffOffice(staffOf(r), idParam(staffId, "staff member"), officeId);
+    const id = idParam(staffId, "staff member");
+    return this.offices.setStaffOffice(staffOf(r), id, parseInput(PlaceStaff, b).officeId);
   }
 }
