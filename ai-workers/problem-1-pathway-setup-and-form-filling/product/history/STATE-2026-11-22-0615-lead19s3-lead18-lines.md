@@ -1,0 +1,7 @@
+# Lead 18 (series 3) lines, 03:21-05:5x IST 22 Nov, moved word for word from STATE by Lead 19 at 06:1x IST (size limit)
+
+## Lead 18 since 03:21 IST (newest first)
+* 05:3x **11/15, 43/101: R1.19 Works (#2891 merged).** Merged since 05:0x: #2880 PF-4b (R1.5), #2881 PF-5s p2 (R1.90), #2882 FO-9a (R1.29). Drafts: #2883 PF-28 p6, #2884 PF-30a, #2885 QA-644. Weekly 92% (~1.4%/h → 95% ~07:40, 98% ~09:50). Lead 18 context 302k: hand over to Lead 19 at ~340k.
+* 05:1x **R1.19:** #2857 merged 04:54 (df1d8824e), item-proof success 44961670040, walk j_19 success 44962449459 (main 828263498); qa Q9 told to open the Works PR. #2687, #2866 merged. **Demo was down since ~02:3x** (6 demo-update runs red: `react-email` missing in demo-main's node_modules; start.sh runs npm ci only when node_modules is missing). Fixed 05:0x: npm ci with .tools/node-v24.21.0, demo-update re-run green, :4400 200 on 828263498. **Owed fix row:** start.sh runs npm ci when package-lock.json changes (stamp), and a flake row for `check_s5_slice3_browser.cjs` C11.15.
+* 03:2x-04:2x: took over (check 28212e5f); night plan (A275) and cap 12 (A276, P-784): 9 cloud lanes (R1.29 FO-9a, R1.102 CS-S1 p2 → PF-30a first (ruled on #2879), R1.105 AUD-5 p2, R1.92 PF-18a p2, #2038 FO-6 p1, R1.24 PF-25w, R1.5 PF-4b, PF-5s, PF-18s); R1.10 part 6 to the DEMO-LINK lane; **parts 3 (3a/3b), 4, 5 need cloud lanes at the founder's next typed turn**; standby Lead 20 local_29230626. Word for word: history file 0400.
+
