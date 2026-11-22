@@ -40,9 +40,10 @@ const idOf = (invoiceId: string) => (UUID.test(invoiceId) ? invoiceId.toLowerCas
 export class InvoiceMoney {
   constructor(private readonly db: PrismaClient, private readonly audit: AuditPort<Tx>, private readonly clock: ClockPort, private readonly mail: MailPort | null, private readonly docs: DocumentRenderPort = new MoneyDocuments()) {}
 
-  /** POST …/invoices/:id/issue: the next INV- number, the lines frozen, a due date (the firm's "Due in N days" when none is sent). */
-  async issue(ctx: StaffContext, invoiceId: string, body: unknown): Promise<IssuedView> {
-    const id = idOf(invoiceId), b = parse(IssueIn, body ?? {}), today = dayOf(this.clock.now());
+  /** POST …/invoices/:id/issue[?dueDate=YYYY-MM-DD]: the next INV- number, the lines frozen, a due date (the firm's "Due in
+   *  N days" when none is sent). The query is parsed before anything is read. */
+  async issue(ctx: StaffContext, invoiceId: string, query: unknown): Promise<IssuedView> {
+    const b = parse(IssueIn, query ?? {}), id = idOf(invoiceId), today = dayOf(this.clock.now());
     const view = await this.write(async (tx) => {
       const inv = await this.lock(tx, ctx.firmId, id);
       if (inv.issued) refuse("ISSUED", `This invoice is already issued (${inv.number}). Nothing was changed.`);

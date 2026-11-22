@@ -3,7 +3,7 @@
 // Starting a draft and adding to one's own draft are agent/invoice:create (SA-06 v3.15 §10b: "Bill this … make a draft
 // with agent/invoice:create"); adding to another person's draft also needs agent/invoice:edit (AG-06 C5, checked by the
 // service on the draft's creator); reading it is agent/invoice:show. The firm is the session's, never the request's.
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { PermissionKeys, staffOf, type StaffContext } from "../../platform/identity/keys.ts";
 import { InvoiceDrafts } from "./drafts.ts";
@@ -31,8 +31,11 @@ export class InvoiceDraftsController {
 export class InvoiceMoneyController {
   constructor(@Inject(InvoiceMoney) private readonly money: InvoiceMoney) {}
 
+  /** The due date, when it is not the firm's "Due in N days", is `?dueDate=YYYY-MM-DD` (its one, optional, input: a query,
+   *  read by the same strict parse, so an unknown or malformed one is 422 before the invoice is looked up; batch #3016,
+   *  check_pf28_inputs: a body whose every field is optional cannot be told from a missing one). */
   @Post(":id/issue") @HttpCode(200) @PermissionKeys("agent/invoice:issue")
-  issue(@Req() r: R, @Param("id") id: string, @Body() b: unknown) { return this.money.issue(staffOf(r), id, b); }
+  issue(@Req() r: R, @Param("id") id: string, @Query() q: unknown) { return this.money.issue(staffOf(r), id, q); }
 
   @Post(":id/send") @HttpCode(200) @PermissionKeys("agent/invoice:issue")
   send(@Req() r: R, @Param("id") id: string) { return this.money.send(staffOf(r), id); }
