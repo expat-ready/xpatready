@@ -2,32 +2,34 @@
 
 Run: `/qa capability R1.104` (re-walk check after #2922 FO-3c merged as bc1f39c08) · main bc1f39c08 · isolated copy :4404 (`j104`, `PLATFORM_IDENTITY=local`), fresh for each run, stopped · live AI off · US$0 · no live mail (the local email adapter; SigningPort's fake). Legal points: Unconfirmed: no counsel.
 
-## Verdict: Fail, so the row moves to Partial (was Not built); four parts missing (QA-750 to QA-753)
+## Status: Partial (was Not built); parts missing FO-6, FO-5s and J-104; no verdict (P-606)
 
-Done when: "A booking whose type needs it cannot start until signed; the reminder goes; the signed copy is on the person." #2922 is the agreement service on SigningPort's fake, API only. Its service holds; how bookings reach it, the start gate and the screens are not built.
+J-104 joins FO-3c, FO-6 and FO-5s (BACKLOG J-104). Only FO-3c has merged, so the row gets no verdict yet. This walk shows what the merged part does, and two findings in merged code.
 
-## j_104, twice on fresh copies of main's head: 11/20, exit 1, same lines
-Held:
-* W1: a Case Officer signs in on screen, opens Bookings and books a lead two days ahead: "Booked".
-* W4 setup and W6, with the agreement sent to the service directly (stand-in): the client signs through the emailed link with consent and the one-time code, then the licensed host; the agreement is sealed and the signed copy is emailed to the client once, attached.
-* W5: no reminder an hour before the 24-hour mark (fail-before), and "needs you" lists the unsigned agreement.
-* W7 (API): by-person reads "Agreement signed" with the copy's sha256.
-* W8: another firm reads 404 (by person and by id), a host without the list key gets 403, and the route answers its own firm.
-* W10: the booking panel has no serious axe violation; no page error.
+Done when: "A booking whose type needs it cannot start until signed; the reminder goes; the signed copy is on the person."
 
-Failed:
-* **W2, W5 (running copy): QA-752.** The booking made on screen sends no agreement ("No agreement was sent"), queues no reminder and mails nothing; the booking's hand-off to the service is not wired.
-* **W3, W7 (screen): QA-753.** The booking panel says nothing about the agreement, and the person's page neither says "Agreement signed" nor offers the copy.
-* **W4 (screen and API), W9: QA-750.** Attended is saved and the consult record accepted while unsigned. The consultation can start, which is the row's first clause.
-* **W4b: QA-751.** A Follow-up gets an agreement too; there is no per-type switch.
-* **W5 (recipient):** the 24-hour reminder goes to the firm's representative (`consultation-agreement/service.ts:247`), not the client. That is a question for the tech lead, raised on #2945 and in QA-753.
+## j_104 on main's head
+* Twice: 11/20, exit 1, same lines.
+* Then once more: 12/20, after W5 was set to judge the host as the reminder's recipient. FO-3c's row reads: "the host gets one 'needs you' item and the reminder 24 h before the meeting while it is unsigned". qa had first expected the client; the independent review corrected it.
 
-## Journey score: 5 / 10 (no pass)
-Task completed 0 · next step obvious ½ · plain words 1 · feedback and state 0 · correct data ½ · error recovery ½ · accessibility and sizes 1 · speed 1 · visual quality ½ · trust and sources 0 (a regulated agreement invisible on screen).
+Held, on FO-3c's service (called directly, as J-104 will wire it):
+* the client signs through the emailed link with consent and the one-time code, then the licensed host;
+* the agreement is sealed and the signed copy is emailed to the client once, attached;
+* by-person reads "Agreement signed" with the copy's sha256;
+* the 24-hour reminder goes to the host once, and none goes an hour before;
+* "needs you" lists the unsigned agreement;
+* firm B reads 404, and a host without the list key gets 403.
+
+Red, by missing part:
+* **J-104's hand-off (W2, W5 running copy):** a booking made in the app reaches no agreement and queues no reminder; `features/front-office-consultation-agreement.ts:3-5` says it is not wired.
+* **FO-5s (W3, W7 screen):** nothing about the agreement shows on the booking panel or the person's page.
+
+Red in merged code:
+* **QA-750 (W4, W9):** Attended and the consult record are accepted while the agreement is unsigned, so the consultation can start. No listed part names this gate, so it has no owner yet.
+* **QA-751 (W4b):** a Follow-up gets the agreement too; there is no per-type switch.
 
 ## Could not test
-A real e-signature provider (SigningPort's fake only); the client portal; the shared demo :4400 (cloud session); a real screen reader; D17/D20.
+A real e-signature provider; the client portal; the shared demo :4400 (cloud session); a real screen reader; D17/D20.
 
 ## Questions for the tech lead
-1. Who builds QA-750 to QA-753? They read as one FO-3c follow-up: the booking hand-off, the start gate on attendance and the consult record, the per-type switch, and the screens.
-2. The reminder's recipient: the client (AG-4-15 "the reminders still go") or the firm's representative (as built)?
+1. QA-750 (the start gate on attendance and the consult record) belongs to no listed part of J-104. Which row builds it: an FO-3c follow-up, or J-104?
