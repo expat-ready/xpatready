@@ -1,5 +1,5 @@
 // PF-21b part 2 (map row 85; SA-11 §3.5, SA-11-40, BR-7, BR-12; brief design/briefs/track-b/PF-21b-2.md): LegalHoldPort's
-// real adapter over plat_legal_hold (migration 20261122070000_pf21b_legal_holds). It keeps the port file's four rules
+// real adapter over plat_legal_hold (migration 20261122180000_pf21b_legal_holds). It keeps the port file's four rules
 // (ports/legal-hold.ts), proven by its shared contract in tests/check_pf21b_holds.ts:
 // 1. isHeld runs inside the caller's open transaction (a root client is refused) and answers through the port's one
 //    matching rule (`answer`): every matching active hold, each once, oldest first.

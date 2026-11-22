@@ -22,7 +22,7 @@ import { legalHoldPortContract, type LegalHoldHarness } from "../ports/contracts
 import { LegalHoldRefused } from "../ports/legal-hold.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations"), SCHEMA = join(STUDIO, "prisma", "schema");
-const NEW = "20261122070000_pf21b_legal_holds";
+const NEW = "20261122180000_pf21b_legal_holds";
 const BIN = ["/opt/homebrew/opt/postgresql@18/bin", "/usr/lib/postgresql/18/bin"].find((b) => existsSync(join(b, "psql"))) ?? "";
 const PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
 const DB = `xr_studio_pf21b_${process.pid}`, EMPTY = `xr_studio_pf21b_empty_${process.pid}`, DEMO = `xr_studio_pf21b_demo_${process.pid}`;

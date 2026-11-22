@@ -131,7 +131,26 @@ END $fn$;
 
 -- Seed (P-601 (1)): SA-07 v2.17 Appendix A "Place and release legal holds (`system/compliance:legal-hold` — G-Q5)" — Own
 -- only (SA7-D74 (a) "Place and release legal holds — Platform Owner only"; SA2-D25).
-INSERT INTO "plat_system_role_permission" ("role_code", "permission_key") VALUES ('platform-owner', 'system/compliance:legal-hold');
+-- The seed runs in its own DO statement (PF-8b F7, #3068; the shape of 20261122060000_pf4s_system_identity): a runner
+-- that is neither superuser nor BYPASSRLS owns this walled table but, under FORCE ROW LEVEL SECURITY, would write none of
+-- its rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back at its end. PF-12's firm gate
+-- steps aside the same way while plainly enabled (this table has none, so that step finds nothing; F7's one shape).
+DO $$
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['plat_system_role_permission']; gated text[] := '{}';
+BEGIN
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
+  INSERT INTO "plat_system_role_permission" ("role_code", "permission_key") VALUES ('platform-owner', 'system/compliance:legal-hold');
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+END $$;
 
 -- Our console's writes and reads (system plane only: refused inside a firm's session).
 CREATE FUNCTION plat_legal_hold_system_only() RETURNS void LANGUAGE plpgsql STABLE SET search_path = pg_catalog, public, pg_temp AS $fn$

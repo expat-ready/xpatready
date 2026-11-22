@@ -135,7 +135,7 @@ model PlatComplaintEvent {
 // adapter (api/src/platform/register/holds/adapter.ts) reads this table; every deleter asks it first. Our own register:
 // row-level security forced with no policy (PF-12's OWN list), so only the bypass role reads or writes it, and a firm's
 // deleter reads its own firm's active holds through the definer plat_legal_hold_active(firm) only. Rules Prisma cannot
-// say are in the migration 20261122070000_pf21b_legal_holds: the scope's shape, the firm must exist (a check, not a
+// say are in the migration 20261122180000_pf21b_legal_holds: the scope's shape, the firm must exist (a check, not a
 // relation: PlatformFirm's file is not this row's), the times are the database's, never deleted, released once.
 // Legal reading Unconfirmed: no counsel.
 
