@@ -135,7 +135,10 @@ try {
   const rows = () => sql(`select coalesce(string_agg(relname || ':' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', relname), false, true, '')))[1]::text, ',' order by relname), '') from pg_stat_user_tables where (relname ~ '^(platform_|fo_|money_|msg_|plat_|auto_)' or relname in ('module_event', 'webhook_receipt')) and relname not in ('platform_session', 'msg_firm')`);
   const before = rows();
   const REAL: Record<string, string> = { ":firmKey": "sample-firm", ":kind": "logo", ":slug": sql(`select coalesce(min(slug), '') from fo_consultation_type where firm_id = (select id from platform_firm where key = 'sample-firm') and active and show_on_booking_page and deleted_at is null`) };
-  const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[m] || randomUUID()));
+  const formToken = sql(`select coalesce(min(public_token), '') from fo_web_form where firm_id = (select id from platform_firm where key = 'sample-firm')`);
+  const keyOf = (path: string, m: string) => (m === ":token" && path.startsWith("/api/public/forms/") ? ":formToken" : m);
+  if (formToken) REAL[":formToken"] = formToken;
+  const fill = (path: string, bad?: string) => path.replace(/:[A-Za-z_]+/g, (m) => (m === bad ? "not-a-uuid" : REAL[keyOf(path, m)] || randomUUID()));
   const MB = "a".repeat(1024 * 1024), LONG = "a".repeat(20_000);
   // The reviewed by-design exceptions (each with its written reason, awaiting the tech lead) are not counted as failing.
   const excepted = new Set(Object.keys((JSON.parse(readFileSync(join(STUDIO, "tests", "pf28-allow-list.json"), "utf8")) as { exceptions?: { probes?: Record<string, string> } }).exceptions?.probes ?? {}));
