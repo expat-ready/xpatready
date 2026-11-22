@@ -35,6 +35,39 @@ if [ "${1:-}" = --brief ] && { [ "$row" = 1 ] || printf '%s\n' "$txt" | grep -qE
     wave=$(python3 -I "$(dirname "$0")/waves.py" allow $(printf '%s' "$item" | tr ',' ' ') 2>&1) && wave="" || wave=${wave:-"OUTSIDE WAVE: waves.py could not run, so the item was not checked."}
   else bad="$bad an \"Item:\" line that is neither R1 items (\"Item: R1.4, R1.8\") nor \"none (tooling|qa|records)\" (got: $item);"; fi
 fi
+# P-801 (founder 14:4x and 15:1x IST 22 Nov; ENF-798): domain values come from sources, never from a founder question.
+# (a) A brief (--brief) that states a domain value (a rate, fee, day count, threshold, province rule, form or program name)
+# needs a "Source:" line naming a requirement path, an official URL with a quoted line and a date, or a market-research
+# note. (b) Any text with a "Question for the founder" needs a "Sources checked:" line. Tests: test-enf-798.sh.
+plain=$(printf '%s\n' "$txt" | sed -E 's/US\$ ?[0-9][0-9.,]*//g')
+dom=$(printf '%s\n' "$plain" | grep -vE '^[[:space:]*>-]*Sources?( checked)?[*]*:' | python3 -I -c '
+import re, sys
+P = [("form", r"\b(IMM|EMP|CIT|PRC)[ -]?\d{4}[A-Z]?\b", 0),
+  ("program", r"\b(express entry|federal skilled (worker|trades)|canadian experience class|provincial nominee|PNP|OINP|start-?up visa|super visa|study permit|work permit|visitor visa|post-graduation work permit|PGWP|spous(al|e) sponsorship|family sponsorship|caregiver program|LMIA|temporary resident visa|permanent resident card)\b", re.I),
+  ("province rule", r"\b(ontario|quebec|québec|british columbia|alberta|manitoba|saskatchewan|nova scotia|new brunswick|newfoundland|prince edward island|yukon|nunavut|northwest territories)\b", re.I),
+  ("fee", r"(\bfees?\b[^\n]{0,40}\$ ?\d|\bCA?\$ ?\d|\bCAD ?\d|\d ?CAD\b)", re.I),
+  ("rate", r"(?=.*\b(tax|GST|HST|PST|QST|rate|interest)\b).*\d+(\.\d+)? ?%", re.I),
+  ("day count", r"(?=.*\b(processing|valid(ity)?|deadline|expir\w*|biometric\w*|stay|residen\w*|physically present|IRCC|ESDC|refund|notice period|retention)\b).*\b\d+ ?(calendar |business |working )?days?\b", re.I),
+  ("threshold", r"(\b(CRS|CLB|NCLC|NOC|TEER|LICO|IELTS|CELPIP|TEF)\b.*\d|\bminimum (score|income|funds)\b)", 0)]
+hits = []
+for line in sys.stdin:
+    for name, rx, fl in P:
+        m = re.search(rx, line, fl)
+        if m and name not in [h[0] for h in hits]:
+            hits.append((name, m.group(0).strip()[:30]))
+print("; ".join(f"{n} \"{v}\"" for n, v in hits))')
+if [ "${1:-}" = --brief ] && [ -n "$dom" ]; then
+  src=$(printf '%s\n' "$txt" | grep -m1 -E '^[[:space:]*>-]*Sources?[*]*:' | sed -E 's/^[[:space:]*>-]*Sources?[*]*:[[:space:]*]*//')
+  if [ -z "$src" ]; then bad="$bad states a domain value ($dom) with no \"Source:\" line (a requirement path, an official URL with quote and date, or a market-research note; P-801);"
+  elif ! printf '%s' "$src" | grep -qiE 'requirements-|drive-snapshot|domain/|market[- ]research' \
+    && ! { printf '%s' "$src" | grep -qE 'https?://[^ ]+' && printf '%s' "$src" | grep -qE '["“”]' \
+           && printf '%s' "$src" | grep -qE '[0-9]{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* [0-9]{4}|[0-9]{4}-[0-9]{2}-[0-9]{2}'; }; then
+    bad="$bad a \"Source:\" line that is neither a requirement path, an official URL with a quoted line and a date, nor a market-research note (got: ${src:0:80}; P-801);"
+  fi
+fi
+if printf '%s\n' "$txt" | grep -iE '^[[:space:]#*>0-9.-]*questions? for the founder' | grep -qviE 'founder[*]*:?[[:space:]*]*(none|no)\b' && ! printf '%s\n' "$txt" | grep -qE '^[[:space:]*>-]*Sources checked[*]*:[[:space:]*]*[^[:space:]*]'; then
+  bad="$bad a \"Question for the founder\" with no \"Sources checked:\" line (requirements, official pages, market research checked first; P-801);"
+fi
 [ -z "$bad$wave" ] && exit 0
 [ -n "$bad" ] && echo "MISSING:${bad%;}."
 [ -n "$wave" ] && echo "$wave"

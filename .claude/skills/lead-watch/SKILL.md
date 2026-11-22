@@ -33,7 +33,7 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 
 ## Unblock playbook (each line points to its rule; read the failed log or Mergify's summary first, P-502)
 1. Dequeued after a failed batch: the "Batch failures covered" line for every failed suite, then relabel on the exact head's reviewer Approve (P-731, P-385).
-2. Approved, not queued over 60 min, Mergify's summary shows no unmet condition: a bare `@mergifyio requeue` comment (it can reset a batch: never in a running one).
+2. Approved, not queued over 20 min, Mergify's summary shows no unmet condition: a bare `@mergifyio requeue` comment (it can reset a batch: never in a running one).
 3. pr-rules ran before a DECISIONS row reached main: `tools/lead-pr.sh reopen <n>` (it re-runs every check: only for that cause).
 4. Check-only fixes holding the queue: merge in the built-in browser at the first check (P-757, P-758) only with no product code, carry the reviewer's or the Lead's Approve and green `ci`, after the Lead's read (P-423); a classifier refusal in the shell is never routed around (P-504).
 5. Labels, Ready for review, reopen refused in the shell: do them in the built-in browser after the Lead's read; a label needs the exact head's reviewer Approve (P-423, P-752, P-385).
@@ -52,8 +52,8 @@ Run the same check, plus `waves.py active`, `wip` and `gen --stdout`, `flow-meas
 | Your context | 200k beyond your start read (P-446) | refresh `RULES.md`, then hand over to the first standby (P-286) |
 | Burn per hour | over 3%/h at two checks | read each working session's context share; end idle ones, hand over any over 250k; tell the founder the cause in one line (P-440) |
 | Disk free | under 10 GB · under 4 GB | drop test databases idle **at two checks in a row** (the script lists them; file times are copied from the template, so one idle reading is not proof) · tell Mac builders to pause suite runs |
-| Approved, not merged | over 60 min | find what holds it; dequeued → its owner merges main, or give it to a spare |
-| Lane | no push in 90 min with work left | message "continue" plus its next step; a cloud lane silent after that → replace it |
+| Approved, not merged | over 20 min | find what holds it; dequeued → its owner merges main, or give it to a spare |
+| Lane | no push in 30 min with work left | message "continue" plus its next step; a cloud lane silent after that → replace it |
 | Batch failure | over 10% | keep PRs that touch the same checks out of one batch (3 Nov: #735 and #744 failed together) |
 | Paid AI | each run | worst case in the ledger first, cheapest first, one attempt (P-295, P-300); report the paid total from the paid runner's own report |
 

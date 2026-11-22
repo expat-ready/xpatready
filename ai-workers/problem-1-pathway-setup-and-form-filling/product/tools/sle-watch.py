@@ -4,12 +4,12 @@ design/rule-enforcement-research-2026-11-15.md). Industry basis: Google SRE serv
 alerts, Kanban service level expectations and item age.
 
 Three targets, read from GitHub every check (read-only; the Lead acts on each MISS in the same check):
-  Q  a "Question for the tech lead" on an open PR gets a tech-lead answer within 30 min;
-  A  a PR labelled `review: approved` is in the merge queue (label `queued`) within 30 min of the label; after 15 min
+  Q  a "Question for the tech lead" on an open PR gets a tech-lead answer within 10 min (P-798);
+  A  a PR labelled `review: approved` is in the merge queue (label `queued`) within 20 min of the label (P-798); after 15 min
      the cause is named (step 2): a skipped `ci` from another PR's run on the same commit shadowing the pass (seen on
      #1811, 15 Nov: drafts #1828 and #1830 had pushed #1811's own head; a job re-run, `@mergifyio refresh` and
      `@mergifyio queue` did not clear it; one new commit on the PR, a pure main merge, did);
-  L  an open, unlabelled PR shows activity within 90 min, unless its body or last comment says it waits on something;
+  L  an open, unlabelled PR shows activity within 30 min (P-798), unless its body or last comment says it waits on something;
   R  a PR whose current head has a `Reviewer: Approve <sha>` comment (by someone with write access, read as
      label-guard.sh reads it) and a green `ci` carries `review: approved` within 30 min of both being true (B193, P-619:
      on 15 Nov two approved green PRs sat unlabelled);
@@ -23,7 +23,9 @@ Exit code = number of MISS lines (0 = every target met). Test: check-sle-watch.s
 import json, os, re, subprocess, sys
 from datetime import datetime, timedelta, timezone
 
-Q_MIN, A_MIN, A_DIAG_MIN, L_MIN, STALE_MIN, R_MIN, B_MIN = 30, 30, 15, 90, 3 * 24 * 60, 30, 45
+# P-798 (22 Nov): the 10-minute check sets the targets: a question at the next check (10), approved not queued for two
+# checks (20), a lane with work left and no push 30 (were 30, 30 and 90, from the 30-minute check of early November).
+Q_MIN, A_MIN, A_DIAG_MIN, L_MIN, STALE_MIN, R_MIN, B_MIN = 10, 20, 15, 30, 3 * 24 * 60, 30, 45
 IST = timezone(timedelta(hours=5, minutes=30))
 TEAM = ("OWNER", "MEMBER", "COLLABORATOR")  # as label-guard.sh: anyone can comment on a public repository
 APPROVE = re.compile(r"\breviewer:\s*approve[sd]?\b", re.I)
@@ -211,7 +213,7 @@ def main(a):
         print(f"{kind:<5} {text}")
     miss = sum(1 for k, _ in lines if k == "MISS")
     if not lines:
-        print("ok    SLE: every target met (questions 30 min, approved to queued 30 min, lanes 90 min, Approve+green to label 30 min, board 45 min)")
+        print(f"ok    SLE: every target met (questions {Q_MIN} min, approved to queued {A_MIN} min, lanes {L_MIN} min, Approve+green to label 30 min, board 45 min)")
     return miss
 
 

@@ -3,6 +3,7 @@
 # Read-only. Pairs with get_usage (weekly plan, context) and list_sessions, which only the Lead's tools can read.
 # Exit code = number of ACT lines (0 = nothing to act on). Skill: .claude/skills/lead-watch.
 # Usage: bash product/tools/lead-watch.sh [minutes since last check, default 30]
+# Triggers follow the 10-minute check (P-798): steps 2f (flow-buffer.py, P-800), 2g (sle-watch.py) and 5c (step-age.py).
 set -uo pipefail
 SINCE="${1:-30}"
 # gh through gh.sh: on a TLS failure the same reads go through curl with gh auth token (P-363; founder, 6 Nov).
@@ -60,7 +61,7 @@ act=$((act + $(grep -c '^ACT' "$STATE_DIR/q.txt"))); cat "$STATE_DIR/q.txt" >> "
 # 2b. WIP against the caps (B204, P-745, founder 20 Nov: "enforceable and ... followed mandatory by the agents through the
 # hooks"): items building (an open non-draft PR or a lane naming the item; lanes from the saved app view) against 8 and
 # Built-not-Proven against 12; ACT over either cap and for each item building outside the open waves (waves.py wip).
-gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName > "$STATE_DIR/prs-body.json" 2>/dev/null
+gh pr list --state open --limit 200 --json number,title,body,isDraft,headRefName,createdAt,labels > "$STATE_DIR/prs-body.json" 2>/dev/null
 wp=$(python3 -I "$TOOLS/waves.py" wip --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$wp"; act=$((act + $(grep -c '^ACT' <<<"$wp"))); seen "$wp"
 grep -qE '^(wip   |ACT   wip:)' <<<"$wp" || ACT "wip not counted: waves.py wip did not run ($(head -1 <<<"$wp")): fix design/waves.tsv or qa/CAPABILITIES.md"
 # 2c. Runs waiting for a machine (B206 part 1, P-751): only runs created under 6 h ago count; older queued runs are listed
@@ -71,6 +72,11 @@ python3 -I "$TOOLS/runs-waiting.py" --save "$STATE_DIR/runs-waiting.json" ${RUNS
 # <id> into its qa lane), and an approved PR on a Lead-read path with no "Lead read the diff: <head>" (P-423), with its age.
 pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(grep -c '^ACT' <<<"$pw"))); seen "$pw"
 hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
+# 2f. Flow buffer (P-800, ENF-798): each track board holds 2+ days, every open part names a lane, every Partial capability is on a board.
+fb=$(python3 -I "$TOOLS/flow-buffer.py" 2>&1); echo "$fb"; act=$((act + $(grep -c '^ACT' <<<"$fb"))); seen "$fb"
+# 2g. Wait targets at the 10-minute check (P-798, ENF-798): a question 10 min, approved not queued 20 min, a lane quiet
+# 30 min with work left; sle-watch.py's MISS lines become ACT (known-failures.tsv reuses "ACT   SLE ").
+sl=$(python3 -I "$TOOLS/sle-watch.py" 2>&1 | sed -E 's/^MISS  /ACT   SLE /; s/^(due|wait|ok)  +/sle   \1 /'); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -141,6 +147,9 @@ hour=$(gh pr list --state merged --search "merged:>=$(date -u -v-60M '+%Y-%m-%dT
 back=$(grep -cE '^ACT   #[0-9]+ (dequeued|red after approval)' "$STATE_DIR/q.txt")
 say "four  Works on main ${works}/${active} (${bym% }) (+$((works - $(cat "$day"))) today, target +10) · app-code merges last hour ${hour:-?} · Mac builders ${macb} · approved then red or dequeued ${back}"
 FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead 2>&1 | tee -a "$SEEN"   # 5b. ENF-782b (P-782 (3)): start→Proven, review rounds, first-time proof, reverse plan, queue bounces; answer cached 30 min
+# 5c. Step age (P-798, ENF-798): a step older than twice its median today gets a builder added or moved (the same cached answer, as JSON).
+FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead --json > "$STATE_DIR/flow.json" 2>/dev/null
+sa=$(python3 -I "$TOOLS/step-age.py" --flow "$STATE_DIR/flow.json" --prs "$STATE_DIR/prs-body.json" 2>&1); echo "$sa"; act=$((act + $(grep -c '^ACT' <<<"$sa"))); seen "$sa"
 
 # 6. Private backup (P-589 (1), P-590): the backup repository's last push, read from GitHub (read-only here). Over 24 h:
 # the Lead runs tools/backup-refresh.sh (needs allowed_domains github.com). Unreadable = said, never a silent pass.

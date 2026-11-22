@@ -16,7 +16,7 @@ s() {  # $1 title, $2 category, $3 minutes idle, $4 used tokens, $5 needs_action
     '{title:$t, environment_kind:$e, last_event_at:$at, external_metadata:{post_turn_summary:{status_category:$c, needs_action:$n, status_detail:"d"}, context_usage:{used_tokens:$u}}}'; }
 { s "Lane quiet" completed 200 100000 "" ; s "Lane asks" need_input 5 100000 "pick an option"; s "Lane stuck" blocked 5 100000 ""
   s "Lane broke" failed 5 100000 ""; s "Lane idle" review_ready 114 100000 ""; s "Lane full" completed 3 460000 "" bridge
-  s "Lane fine" review_ready 20 200000 ""; } | jq -s '{data:.}' > "$T/sessions.json"
+  s "Lane fine" review_ready 5 200000 ""; } | jq -s '{data:.}' > "$T/sessions.json"
 view=$(node -e 'const v=require(process.argv[1]); console.log(v.lines(JSON.parse(require("fs").readFileSync(process.argv[2],"utf8")), process.argv[3]*1000))' "$TOOLS/app-view.js" "$T/sessions.json" "$NOW")
 ok "app-view.js: one line per session and a header" "$(grep -q '^app view 7 sessions · 5 flagged' <<< "$view" && [ "$(grep -cE '^(FLAG|ok) ' <<< "$view")" = 7 ] && echo 1)" "$view"
 for k in "Lane asks.*-> need_input" "Lane stuck.*-> blocked" "Lane broke.*-> failed" "Lane idle.*idle 114 min with work left" "Lane full · mac.*context 46%"; do
