@@ -247,3 +247,33 @@ Worktree: the stale index equals origin commit e34ef4e44a and the two unstaged s
 ### Lessons
 * Three of four dequeued PRs today were the PR's own failure, caught only in the full batch run (QA-594 audit sweep, PF-23m log guard, B164 key heuristic, PF-28 sweep vs newer doors): read the failed suite's FAIL line before thinking "cover"; guards added on main since a PR's last full run are the usual cause.
 * A fresh Opus reviewer on a merge commit earns its cost: it caught the PF-23m guard my own merge missed.
+
+## Lead B (11) final hand-over (09:20 IST 22 Nov, at ~46% context, P-565 (2)): Lead B (12) starts here
+**Session:** Lead B (11), Opus 5.5 medium, worktree `build-lead-c-647b40` (its STATE.md was restored to HEAD on Lead 13's OK; the other stale staged files are not mine, leave them). **Current Lead: Lead 19** (local_69eeb2bd), from 05:55 IST. Leads changed often overnight (13 → 19): check list_sessions before each send. Lead B reads PF/FO PRs and posts the P-423 read; **the current Lead labels the new lanes' PRs (P-559, Lead 18's split)**. Lead B still labels rows it carries end to end.
+
+### Open items (09:20 IST)
+| PR | Row | State | Next |
+|---|---|---|---|
+| #2883 | R1.10 PF-28 part 6 (money inputs) | draft; **my Lead read OK on 00711e628** (7072531532) | Lead 19's reviewer Approve is ready but its shell can't post it or mark the PR ready: waits on the founder's typed turn. Re-read only if the head moves |
+| #2884 | R1.102 PF-30a find door | draft; round-3 Approve a9a81090a; **my Lead read OK** (comment 7072519241, edited, see below) | lane stopped waiting for "mark ready": my attempt was refused (classifier), so the founder or the lane does it; then the current Lead labels |
+| #2885 | R1.24 QA-644 (migration) | draft; Lead 19's P-423 read (7072013481) | no session link in the body; Lead 19's |
+| PF-28 parts 3, 4, 5 | R1.10 | **no lane** | independent by module (part 3 front-office sales 35 unparsed + 61 probes, could split 3a/3b; part 4 booking 72 probes; part 5 retainers 8 + 23). The shared lines are only `tests/pf28-allow-list.json` and the ceilings in `check_pf28_inputs.ts`: the second to merge makes a one-line merge. Lanes start only in the founder's typed turns |
+| PF-25w, PF-4b, PF-5s, PF-18s, PF-18a part 2 | R1.24, R1.5, R1.90/92, R1.92/93 | Lead 18's lanes (P-784, cap 12 to 07:00 IST 23 Nov) | read each PR when ready (P-423 paths: money, permissions, schema, migration, .github) |
+
+**Merged on my watch (21 to 22 Nov):** #2717, #2718, #2720, #2727, #2750 (R1.42 and R1.53); #2752, #2814, #2846, #2871 (PF-12b parts 2–5); #1959 (R1.19 PF-5 part 2); #2763, #2866, #2881 (PF-15 1b, PF-16 1a, PF-5s part 2: R1.90); #2870 (PF-5 part 3); #2619, #2787, #2794 (PF-28 parts 1, 2a, 2b–2c); #2687 (DEMO-LINK); #2349 (CS-W3); #2850 (PF-8b F4); #2880 (PF-4b); #2897, #2899.
+
+### Rulings this session (all on PRs)
+* #2763: an OVERDUE firm may book a lower plan for the renewal; PAYMENT_HOLD refuses (Unconfirmed: no counsel; Lead 17 recorded it).
+* #2866: a Stripe "now" change that lands while our write refuses is repaired with `kind: "repair"` (accepted for 1a). The one-time live test-mode Stripe run belongs on the Lead's paid-run list before the first real firm.
+
+### Lessons (method)
+* **GitHub:** curl + `gh auth token`, with `allowed_domains` (api.github.com; logs also `*.blob.core.windows.net`, `*.actions.githubusercontent.com`). Parse with `json.loads(strict=False)`. **Comments are paged: read every page** (one watch missed a full-run start on page 2).
+* **No-checkout merges:** `git merge-tree --write-tree`, fix blobs in a temp `GIT_INDEX_FILE`, then `commit-tree -p <head> -p origin/main`, then `git push origin "${C}:refs/heads/<branch>"`. Done for #2717 and twice for #1959. **A fresh Opus diff-only reviewer on every merge earns its cost**: it caught the PF-12b part 3 `touchPlatform` gap on #1959.
+* **zsh traps:** `$H:a` is a path modifier (use `"${H}:path"`); `set -- $var` does not split; backticks in double-quoted bodies are command substitution. Write PR bodies to a file and json.dumps it. **When a command is refused, any file it would have written is stale**: I posted #2897's read onto #2884 that way, then fixed it by PATCH.
+* **Refusals to respect:** a blanket "Lead allows round N" is the tech lead's call (P-293), and marking a PR ready from this session was refused. Don't route either through another session.
+* **P-731:** read every failed shard before a cover line (I caught a missing suite in a Lead's cover on #2717; a full run then showed it was a race). A batch failure that reproduces in a full run is the PR's own: remove the label (#2349).
+* **The booking-types suite** was main's (Save button colour transition, fixed by #2782), not a PR's; check main's batches before blaming a PR.
+* **Cloud lanes** ignore PR comments when idle: wake them in their claude.ai session (prompt box, then Return).
+
+### Cron
+`23 * * * *` hourly check (session-only; it dies with this session). Lead B (12) makes its own.
