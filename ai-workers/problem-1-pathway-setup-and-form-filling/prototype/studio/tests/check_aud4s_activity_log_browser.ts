@@ -337,7 +337,7 @@ try {
     ok(`AUD-4s review m1: a ${key.length}-character record filter's chip is cut short at ${w} px: the page does not scroll sideways`, fits && chipW, { fits, chipW });
     if (w === 1024) {
       // fail: the same judge on the chip with its width limit taken away widens the page
-      await q.evaluate(() => { const li = document.querySelector('[data-audit-chip="entityKey"]')!.parentElement!; li.className = ""; li.style.whiteSpace = "nowrap"; li.querySelector("button")!.className = "inline-flex"; });
+      await q.evaluate(() => { const li = document.querySelector('[data-audit-chip="entityKey"]')!.parentElement!; li.className = ""; li.style.whiteSpace = "nowrap"; li.querySelector("button")!.className = "inline-flex"; li.querySelector("span")!.className = ""; li.querySelector("span")!.textContent = "x".repeat(400); });   // fonts differ between machines: the stand-in is wide on any of them
       ok("AUD-4s review m1 fail: without the width limit the same chip widens the page (the judge can fail)", await q.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
     }
     await q.context().close();

@@ -9,7 +9,8 @@
 import * as React from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
+import { FoldArrow, FoldOut } from "@/components/fold-out";
 import { Button, Dialog, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { PlatformFrame, usePlatformStaff } from "../frame";
@@ -51,15 +52,15 @@ function OpenLine({ line, zone, person, onOnlyPerson }: { line: Line; zone: stri
         <dd className="flex flex-wrap items-center gap-x-3 gap-y-1"><span>{DONE_BY[a.actorType] ?? a.actorType} · {line.who}{person && !person.active ? " (left the firm)" : ""}</span>
           {line.staffId ? <Button variant="outline" size="sm" onClick={() => onOnlyPerson(line.staffId!)} data-audit-only-person>{COPY.onlyPerson}</Button> : null}</dd>
       </dl>
-      <details className="rounded-lg border border-border bg-surface px-3 py-2" data-audit-raw>
-        <summary className="cursor-pointer text-xs font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">{COPY.raw}</summary>
+      <FoldOut className="rounded-lg border border-border bg-surface px-3 py-2" data-audit-raw summary={COPY.raw}
+        summaryClassName="text-xs font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
         <dl className="mt-2 grid gap-x-4 gap-y-1 font-mono text-xs sm:grid-cols-[max-content_1fr]">
           {([["action", a.action], ["record type", a.entity], ["record", a.entityKey], ["case", a.caseId], ["actor", a.actor], ["support session", a.supportSessionId], ["correlation id", a.correlationId]] as const)
             .filter(([, v]) => v).map(([k, v]) => <React.Fragment key={k}><dt className="text-text-muted">{k}</dt><dd className="[overflow-wrap:anywhere]">{v}</dd></React.Fragment>)}
         </dl>
         {/* Focusable, so a keyboard can scroll a long detail (WCAG 2.1.1). */}
         <pre tabIndex={0} aria-label="Raw detail" className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-surface-raised p-2 font-mono text-xs outline-none [overflow-wrap:anywhere] focus-visible:ring-[3px] focus-visible:ring-ring/50" data-audit-detail>{a.detail === null || a.detail === undefined ? "No detail on this line." : JSON.stringify(a.detail, null, 2)}</pre>
-      </details>
+      </FoldOut>
     </div>
   );
 }
@@ -207,7 +208,7 @@ function ActivityLog({ owner }: { owner: string }) {
         </div>
         <div>
           <Button variant="ghost" size="sm" aria-expanded={advanced} aria-controls="audit-advanced" onClick={() => setAdvanced((o) => !o)} data-audit-advanced-toggle>
-            {advanced ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}Advanced filters{advancedSet ? ` (${advancedSet} set)` : ""}</Button>
+            <FoldArrow open={advanced} />Advanced filters{advancedSet ? ` (${advancedSet} set)` : ""}</Button>
           <div id="audit-advanced" hidden={!advanced} className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-audit-advanced>
             <Field label="Action"><Select value={f.action} onChange={(e) => set({ action: e.target.value })} data-audit-filter="action">
               <option value="">Any action</option>
@@ -264,7 +265,7 @@ function ActivityLog({ owner }: { owner: string }) {
                           {/* The When cell is the line's disclosure (concept §4): never a control hidden after a long summary. */}
                           <button type="button" aria-expanded={isOpen} aria-controls={`audit-open-${l.id}`} aria-label={`${t}: details of this line by ${l.who}`} onClick={() => toggle(l.id)} data-audit-when={l.id}
                             className="inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-left text-text-link outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50">
-                            <time dateTime={l.at}>{t}</time>{isOpen ? <ChevronDown className="size-4 shrink-0" aria-hidden /> : <ChevronRight className="size-4 shrink-0" aria-hidden />}</button>
+                            <time dateTime={l.at}>{t}</time><FoldArrow open={isOpen} /></button>
                         </td>
                         <td className="hidden w-40 min-w-40 max-w-48 sm:table-cell" data-audit-who><span className="block [overflow-wrap:break-word]">{l.who}</span>
                           {p && !p.active ? <span className="block text-xs text-text-muted">(left the firm)</span> : null}
