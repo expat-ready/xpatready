@@ -115,7 +115,7 @@ try {
     const iss = await api(TA, "POST", `${M}/invoices/${id}/issue`, {});
     if (!sql(`select issued_at is not null from money_invoice where id = '${id}'`).startsWith("t")) {
       note(`invoice issued by SQL (POST ${M}/invoices/:id/issue answered ${iss.status}; FO-7b part 1b, #2953)`);
-      rawSql(`update money_invoice set issued_at = now(), issued_by = 'seed:J-58' where id = '${id}'`);
+      rawSql(`update money_invoice set issued_at = now(), issued_by = 'seed:J-58', due_date = coalesce(due_date, current_date + 14) where id = '${id}'`);
     }
     return id;
   };
