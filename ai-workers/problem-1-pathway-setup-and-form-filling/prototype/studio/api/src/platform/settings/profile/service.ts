@@ -130,13 +130,13 @@ export class FirmProfile {
   /** Saves the named fields, all or nothing. Returns the profile as saved and which fields changed. */
   async save(a: ProfileActor, body: unknown): Promise<{ profile: ProfileView; changed: string[] }> {
     const raw = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+    // Every bad field named at once (review m4): read-only fields, unknown fields, the version and each value's own rule, then one
+    // refusal; nothing written.
     const locked = Object.keys(raw).filter((k) => Object.hasOwn(READ_ONLY, k));   // break m2: never an inherited key (constructor)
-    if (locked.length) refused("Some of these details are not changed here.", Object.fromEntries(locked.map((k) => [k, READ_ONLY[k]])));
-    const p = SaveProfile.safeParse(raw);
-    if (!p.success) refused("Please check the highlighted details.", fieldsOf(p.error));
-    const input = p.data!;
-    // Each value against its own rule first, every bad field named at once (nothing written).
-    const bad: Record<string, string> = {}, values: Partial<Record<DetailName, unknown>> = {};
+    const bad: Record<string, string> = Object.fromEntries(locked.map((k) => [k, READ_ONLY[k]])), values: Partial<Record<DetailName, unknown>> = {};
+    const p = SaveProfile.safeParse(Object.fromEntries(Object.entries(raw).filter(([k]) => !locked.includes(k))));
+    if (!p.success) Object.assign(bad, fieldsOf(p.error));
+    const input = (p.success ? p.data : Object.fromEntries(Object.entries(raw).filter(([k]) => Object.hasOwn(SaveProfile.shape, k)))) as z.output<typeof SaveProfile>;
     for (const k of Object.keys(DETAILS) as DetailName[]) {
       if (!(k in input)) continue;
       const v = input[k] === "" ? null : input[k];
@@ -149,7 +149,7 @@ export class FirmProfile {
       const r = Email.safeParse(input.billingEmail);
       if (r.success) billingEmail = r.data.toLowerCase(); else bad.billingEmail = plain(r.error.issues[0]?.message, "an email address like office@firm.ca");
     }
-    if (Object.keys(bad).length) refused("Please check the highlighted details.", bad);
+    if (Object.keys(bad).length) refused(locked.length && Object.keys(bad).length === locked.length ? "Some of these details are not changed here." : "Please check the highlighted details.", bad);
     if (Object.keys(values).length && !a.keys.includes("agent/settings:edit")) forbidden("You can read the firm profile but not change it.", "NOT_ALLOWED");
 
     return this.deps.db.$transaction(async (tx) => {

@@ -88,7 +88,7 @@ ok("R1.92 P2 fail: the same save again changes nothing and writes no audit line"
 // ------------------------------------------------------------------------------------------------ P3 refusals
 const v = back.body.version; t0 = now();
 const bad = await api(TOWNER, "PUT", PROFILE, { version: v, timeZone: "Mars/Olympus", website: "ftp://sample.example.ca", publicPhone: "call us", currency: "EUR" });
-ok("R1.92 P3: a zone not on the list, a website without https, a phone with letters and EUR are refused on their fields (422), in words",
+ok("R1.92 P3: a zone not on the list, an ftp:// website, a phone with letters and EUR are refused on their fields (422), in words",
   bad.status === 422 && ["timeZone", "website", "publicPhone", "currency"].every((f) => typeof bad.body?.fields?.[f] === "string") && /time zone/i.test(bad.body.fields.timeZone), bad.body);
 const names = await api(TOWNER, "PUT", PROFILE, { version: v, legalName: "Renamed Ltd", operatingName: "Renamed", countryCode: "US" });
 ok("R1.92 P3: legal name, trading name and country are \"not changed here\" (422, each named, support named)", names.status === 422 && /support/i.test(names.body?.fields?.legalName ?? "") && /support/i.test(names.body?.fields?.operatingName ?? "") && !!names.body?.fields?.countryCode, names.body);
@@ -144,8 +144,25 @@ ok("R1.92 P4 pass: the Admin changes the website (agent/settings:edit), audited 
   const pA = await api(TADM, "GET", PROFILE);
   const m6 = await api(TADM, "PUT", PROFILE, { version: pA.body.version, billingEmail: pA.body.ownerOnly.billingEmail, website: `https://admin2-${run}.example.ca` });
   ok("R1.92 BR m6: an Admin's save carrying the unchanged billing email goes through (only a change is Owner only)", m6.status === 200 && m6.body.changed?.join() === "website", [m6.status, m6.text.slice(0, 200)]);
+  // The reviewer's round 1 (review m1, m3, m4, m6).
+  const dash = await api(TOWNER, "PUT", PROFILE, { version: await ver(), publicPhone: "--------1234567" });
+  ok("R1.92 BR review m3: a phone of dashes only is refused", dash.status === 422 && !!dash.body?.fields?.publicPhone, dash.body?.fields);
+  const all = await api(TOWNER, "PUT", PROFILE, { version: await ver(), legalName: "X Ltd", key: "x", businessAddress: {}, timeZone: "Mars/Olympus", website: "ftp://x.example.ca", firmId: B });
+  ok("R1.92 BR review m4/m6: every bad field is named at once: legal name, key and business address (not changed here), the zone, the website, the unknown field",
+    all.status === 422 && ["legalName", "key", "businessAddress", "timeZone", "website", "firmId"].every((f) => typeof all.body?.fields?.[f] === "string") && /Billing/.test(all.body.fields.businessAddress), all.body?.fields);
+  const fr = await api(TOWNER, "PUT", PROFILE, { version: await ver(), language: "fr" });
+  const en = await api(TOWNER, "PUT", PROFILE, { version: await ver(), language: "en" });
+  ok("R1.92 BR review m6: language is saved and read back (fr, then en)", fr.status === 200 && fr.body.profile?.details?.language === "fr" && en.status === 200 && en.body.profile?.details?.language === "en", [fr.status, en.status]);
+  const tB2 = now(), oldBilling = sql(`select billing_email from platform_firm where id = '${A}'`), newBilling = `billing2-${run}@sample-firm.example.ca`;
+  const b2 = await api(TOWNER, "PUT", PROFILE, { version: await ver(), billingEmail: newBilling });
+  ok("R1.92 BR review m6: the billing email's audit line holds the before value as well as the after",
+    b2.status === 200 && sql(`select count(*) from audit_event where at > '${tB2}' and action = 'platform.firm.billing_email_changed' and detail::text like '%${oldBilling}%' and detail::text like '%${newBilling}%'`) === "1", [b2.status, oldBilling]);
+  const tPar = now(), vPar = await ver();
+  const par = await Promise.all([1, 2, 3, 4, 5].map((i) => api(TOWNER, "PUT", PROFILE, { version: vPar, website: `https://par${i}-${run}.example.ca` })));
+  ok("R1.92 BR review m1: five saves at once from one version: exactly one 200, four 409, one audit line (the row lock and the transaction)",
+    par.filter((r) => r.status === 200).length === 1 && par.filter((r) => r.status === 409).length === 4 && sql(`select count(*) from audit_event where at > '${tPar}' and entity_key = '${A}:platform.website'`) === "1", par.map((r) => r.status));
   const co = await api(TOFF, "GET", PROFILE);
-  ok("R1.92 BR m1: the Case Officer does not read the billing email or the business address; the Admin does", co.status === 200 && co.body.ownerOnly?.billingEmail === null && co.body.ownerOnly?.businessAddress === null && pA.body.ownerOnly?.billingEmail === upper.toLowerCase(), [co.body?.ownerOnly, pA.body?.ownerOnly?.billingEmail]);
+  ok("R1.92 BR m1: the Case Officer does not read the billing email or the business address; the Admin does", co.status === 200 && co.body.ownerOnly?.billingEmail === null && co.body.ownerOnly?.businessAddress === null && pA.body.ownerOnly?.billingEmail === upper.toLowerCase() && co.body.canChange?.ownerOnly === false, [co.body?.ownerOnly, pA.body?.ownerOnly?.billingEmail]);
 }
 
 // ------------------------------------------------------------------------------------------------ O1 offices with their time zones
