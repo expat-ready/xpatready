@@ -174,9 +174,11 @@ try {
   ok("P-785 step 2 A fail: a spread of more uses into the list is refused", spread.findings.some((l) => /an entry that is not a written name: \.\.\.MORE_USES/.test(l)), spread.findings);
 
   // B, C: the tree as it is.
-  const ROOTS = ["api/src", "ports", "engine", "contracts", "web/src"].map((d) => join(STUDIO, d));
+  // The folders the API loads code from (browser code is not among them and cannot reach firm-scope.ts; scanning it would
+  // also make the suite selector run this check for every page change).
+  const ROOTS = ["api/src", "ports", "engine", "contracts"].map((d) => join(STUDIO, d));
   const tree = declarationFindings(ROOTS, STUDIO);
-  ok(`P-785 step 2 B, C pass: ${tree.declared.size} use(s) declared in *.bypass.ts files (api/src, ports, engine, contracts, web/src), each well formed and once, none on the list`, tree.findings.length === 0, tree.findings);
+  ok(`P-785 step 2 B, C pass: ${tree.declared.size} use(s) declared in *.bypass.ts files (api/src, ports, engine, contracts), each well formed and once, none on the list`, tree.findings.length === 0, tree.findings);
   const PROTOTYPE = join(STUDIO, ".."), stray = strayUseFiles(PROTOTYPE, SRC);
   ok("P-785 step 2 B pass: no *.bypass.ts file in prototype/ outside studio/api/src (p2, p5, contracts and the rest)", stray.length === 0, stray);
 
