@@ -12,7 +12,7 @@ import { PDF, RenderData, type DocumentRenderPort, type RenderedDocument } from 
 import { MONEY } from "./drafts.ts";
 
 const WORDING = join(import.meta.dirname, "..", "..", "..", "..", "samples", "client-money-wording");
-export const MONEY_TEMPLATES = { "money.invoice": "invoice.txt", "money.receipt": "receipt.txt", "money.credit_note": "credit-note.txt" } as const;
+export const MONEY_TEMPLATES = { "client_money.invoice": "invoice.txt", "client_money.receipt": "receipt.txt", "client_money.credit_note": "credit-note.txt" } as const;
 export type MoneyTemplate = keyof typeof MONEY_TEMPLATES;
 
 /** The wording with its names filled; a name the data lacks stops the render (never a blank on a money document). */

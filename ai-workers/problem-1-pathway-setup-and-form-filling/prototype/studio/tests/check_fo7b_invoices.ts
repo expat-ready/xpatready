@@ -282,7 +282,7 @@ try {
   ok("FO-7b R9 pass: for R2's line (0.50 at 13 %), the invoice PDF, the receipt PDF and the invoice.issued payload show the stored 0.06 and total 0.56",
     row9 === "6:56" && pdf9.status === 200 && pdf9.pdf && pdf9.type === "application/pdf" && rec9.pdf && R9(pdf9.text, rec9.text, ev9), [row9, pdf9, rec9.text, ev9]);
   const refloat = { ...inv9, lines: inv9.lines.map((l: { amountMinor: number; ratePpm: number }) => ({ ...l, taxMinor: halfUp(l.amountMinor, l.ratePpm) })), taxMinor: halfUp(50, 130000), totalMinor: 50 + halfUp(50, 130000) };
-  const planted9 = documentText("money.invoice", invoiceData(refloat, { firmName: "Sample", taxNumber: null, billTo: "Client", issuedOn: today, operatingDetails: null }));
+  const planted9 = documentText("client_money.invoice", invoiceData(refloat, { firmName: "Sample", taxNumber: null, billTo: "Client", issuedOn: today, operatingDetails: null }));
   ok("FO-7b R9 fail (planted): a document whose tax is recomputed from a float (half up) prints 0.07 and 0.57, and the case catches it; so does a payload of 7", /= 0\.07$/m.test(planted9) && !R9(planted9, rec9.text, ev9) && !R9(pdf9.text, rec9.text, { taxMinor: 7, totalMinor: 57 }), planted9);
 
   // ----------------------------------------------------------------------------- P: payments recorded by hand
@@ -462,7 +462,7 @@ try {
   // Review M1 on d6948072e: MoneyDocuments is a DocumentRenderPort adapter, so it runs that port's shared contract (PF-0c).
   const cn = { firmName: "Sample Firm", firmAddress: "", taxLine: "", billTo: "Client A", number: "CN-0001", issuedOn: today, invoiceNumber: "INV-0001", currency: "CAD", total: "1.13", amount: "0.13", reason: "Goodwill" };
   const pdfReader = (bytes: Uint8Array) => [...Buffer.from(bytes).toString("latin1").matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1]).join("\n");
-  await runContract(documentRenderPortContract, "MoneyDocuments", () => ({ render: new MoneyDocuments(), template: "money.credit_note", data: cn, reordered: Object.fromEntries(Object.entries(cn).reverse()), other: { ...cn, amount: "0.14" }, text: pdfReader }), ok);
+  await runContract(documentRenderPortContract, "MoneyDocuments", () => ({ render: new MoneyDocuments(), template: "client_money.credit_note", data: cn, reordered: Object.fromEntries(Object.entries(cn).reverse()), other: { ...cn, amount: "0.14" }, text: pdfReader }), ok);
 
   // ------------------------------------------------------------------------------------- walls, inputs, audit
   const wall = await Promise.all([post(`${invP.id}/payments`, { method: "CASH", amountMinor: 100, idempotencyKey: "fo7b-wall-1" }, tB), post(`${invP.id}/credit-notes`, { full: true, reason: "x" }, tB), post(`${invP.id}/send`, {}, tB), call(tB, "GET", `${M}/${invP.id}/pdf`), call(tA, "GET", `${M}/${invP.id}/payments/${tPay.body.id}/receipt.pdf`), post("not-a-uuid/issue")]);
