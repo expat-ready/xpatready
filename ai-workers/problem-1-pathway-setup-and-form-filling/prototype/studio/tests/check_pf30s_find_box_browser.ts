@@ -282,7 +282,7 @@ try {
     ok(`PF-30s F10: no sideways page scroll with the list open at ${w} px, and the list fits the window`,
       !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) && await p.locator("[data-find-popup]").evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }));
     if (w < 768) {
-      await p.locator("[data-find-close]").click();
+      await p.locator("[data-find-close]").click(); await p.waitForTimeout(150);
       ok(`PF-30s F10 (review m4): at ${w} px Close gives focus back to the Find button`, await p.locator("[data-find-open]").evaluate((el) => el === document.activeElement));
     } else {
       // Closed box: the input never covers the person's name (review M1: 640-719 px overlapped it).
