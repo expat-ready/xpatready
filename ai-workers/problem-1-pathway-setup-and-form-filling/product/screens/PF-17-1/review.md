@@ -93,4 +93,46 @@ Not done: concept fit; the walk as a user, keyboard-only, at 1024 px and 200 %; 
 
 m1-m3 are worth fixing in this PR, but they do not block it.
 
-Verdict: Changes
+Round 1 result (27e8b406a): Changes.
+
+## Round 2: head `b6965705f91b9c6567da454d3d6f4571594a0827`, diff only
+Scope: `git diff 27e8b406a..b6965705f -- prototype/studio`, which touches only `firms.ts` (+36/-12) and `check_pf17_console.ts` (+22/-2).
+I ran everything in my own `git archive` copy of `b6965705f`, never in the shared checkout, with scratch databases on :54329.
+
+**Check:** 38 passed, 0 failed, exit 0, on two runs. `tsc` shows no error in either changed file.
+
+**Every round-1 finding is fixed, and each fix has a test that fails when the fix is removed.** I removed each fix in turn, ran the check, then restored the file from the archive:
+
+| Finding | Fix | Mutation | Result |
+|---|---|---|---|
+| M1 | publisher gets 403 on `:id` | `:id` key changed to `@AnySystemStaff` | red, 37/38 (DW1 fail) |
+| m1 | page-level `failedJobsNote` | put the per-firm reason back | red |
+| m1 | page-level `failedJobsNote` | drop the note | red (2 checks) |
+| m2 | at the 10 000 cap: count null and a note | remove the cap rule | red |
+| m3 | `likeText` escapes `%`, `_`, `\` | make it a no-op | red (`?q=%` matched 56 firms) |
+| m3 | unknown query keys → 400 | allow them | red |
+| m5 | status reasons | drop them | red |
+| m5 | "no live subscription" reason | drop it | red |
+| m5 | status reasons | give a reason to ACTIVE firms too | red: DW3 fail and m1 |
+
+**Extra probes** (a temporary file, deleted afterwards). A firm named `Fifty_Fifty 100% Back\slash Firm` is still found by:
+- `_Fifty`, `Fifty_F`, `y_F`
+- `100%`
+- `back\slash`
+
+`0%25` finds nothing, which is correct. So the escaping keeps literal search working.
+
+Other probes:
+- An empty `q` and `page=1` → 200.
+- One firm with an extra query key → 200. The key rule applies to the list only, which is right: `one()` takes no query.
+
+**Notes for the PR body (not findings):**
+- `firms.ts:166-178` widens the brief's ATTENTION list. A `DELETED` or `ABANDONED` firm now stays in ATTENTION for good: its status reason and "no live subscription" both apply. The tech lead may prefer to leave them out; that is a product choice, not a defect.
+- At exactly 10 000 dead letters the count is reported unavailable, even though nothing was cut off. That errs on the safe side; keep it.
+- m4, m6 and the paging note still belong in the PR body, as agreed.
+
+**Choice (a), one audit line per firm (`firm-scope.ts:122`):** unchanged, and I still agree with it. The brief asks the tech lead to decide this, and the ruling is still pending. Do not add the label before the ruling is in the PR. If the ruling changes the audit mode, the code changes and needs another review.
+
+No Blocker or Major is open. Head reviewed: b6965705f91b9c6567da454d3d6f4571594a0827.
+
+Verdict: Approve
