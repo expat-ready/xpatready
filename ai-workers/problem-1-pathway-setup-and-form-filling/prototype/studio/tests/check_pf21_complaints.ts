@@ -252,7 +252,7 @@ try {
   ok("PF-21 fail (database): a staff member who handles a complaint (and nothing else) cannot be deleted or change id (RESTRICT: 23001)",
     refusedCode(DEMO, `delete from platform_staff where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/) && refusedCode(DEMO, `update platform_staff set id = gen_random_uuid() where id='${handlerOnly}'`, "23001", /plat_complaint_firm_id_handler_staff_id_fkey/));
   ok("PF-21 pass: the three foreign keys of the register are RESTRICT on delete and on update",
-    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_%'`)
+    sql(DEMO, `select string_agg(conname || ':' || confdeltype::text || confupdtype::text, ',' order by conname) from pg_constraint where contype = 'f' and conrelid::regclass::text like 'plat\\_complaint%'`)
       === "plat_complaint_event_firm_id_complaint_id_fkey:rr,plat_complaint_firm_id_fkey:rr,plat_complaint_firm_id_handler_staff_id_fkey:rr");
 
   // -------------------------------------------------------------------- line 6: every change through AuditPort
