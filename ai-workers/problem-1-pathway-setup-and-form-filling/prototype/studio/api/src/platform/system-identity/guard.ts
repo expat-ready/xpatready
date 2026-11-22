@@ -15,13 +15,14 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext, type OnMod
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { HttpAdapterHost, ModulesContainer, Reflector } from "@nestjs/core";
 import { PLATFORM_ACCESS, forbidden, problem } from "../identity/keys.ts";
-import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_REASON, SYSTEM_STEP_UP, type SystemAccess, type SystemStaffContext } from "./keys.ts";
+import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_CHANGE, SYSTEM_REASON, SYSTEM_STEP_UP, type SystemAccess, type SystemStaffContext } from "./keys.ts";
 import { correlationOf } from "../observability/hook.ts";
 import { logPort } from "../observability/log.ts";
 import { requestLine } from "../observability/metrics.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { STEP_UP_SECONDS, requireStepUp } from "../identity/session/step-up.ts";
 import { SystemIdentity } from "./service.ts";
+import type { CallLine } from "./staff.ts";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
 const join = (...p: string[]) => `/${p.map((s) => s.replace(/^\/+|\/+$/g, "")).filter(Boolean).join("/")}`;
@@ -73,7 +74,7 @@ export function assertSystemRoutesDeclared(routes: SystemRoute[]) {
   if (other.length) throw new Error(`Routes under /api/system accept only system/* keys, at least one (SA-6-4): ${other.join(", ")}`);
 }
 
-type Req = { method: string; path?: string; url?: string; headers: Record<string, string | string[] | undefined>; params?: Record<string, unknown>; body?: unknown; route?: { path?: unknown }; systemStaff?: SystemStaffContext };
+type Req = { method: string; path?: string; url?: string; headers: Record<string, string | string[] | undefined>; params?: Record<string, unknown>; body?: unknown; route?: { path?: unknown }; systemStaff?: SystemStaffContext; systemLine?: CallLine };
 
 @Injectable()
 export class SystemGuard implements CanActivate, OnModuleInit {
@@ -107,7 +108,10 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
     const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : wantsReason && !reason ? "REASON_REQUIRED" : null;
     // One line per call, allowed or refused, before the handler: a line that cannot be written stops the call (fail-closed).
-    await this.identity.audit({ staff, method: req.method, route, target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason ? reason : null, device });
+    // An allowed change writes its own line instead, in the change's transaction (staff.ts).
+    const change = this.reflector.getAllAndOverride<boolean>(SYSTEM_CHANGE, targets) === true;
+    if (change && !code) req.systemLine = { staff, method: req.method, route, target, reason, device };
+    else await this.identity.audit({ staff, method: req.method, route, target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason || change ? reason : null, device });
     if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
     if (stale) requireStepUp(staff, now, "this change");
     if (code === "REASON_REQUIRED") problem(400, "Give a reason", `This needs a written reason (reason, up to ${REASON_MAX} characters).`, { code });

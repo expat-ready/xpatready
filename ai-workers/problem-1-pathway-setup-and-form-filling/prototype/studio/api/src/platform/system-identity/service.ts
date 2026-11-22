@@ -11,6 +11,7 @@
 // before the handler runs; fail-closed: no line, no call). Not audit_event: that trail's lines belong to a firm and its
 // adapter has no word for our staff yet (audit/audit-event.ts "until PF-4s"; asked of the tech lead on the PR).
 import { Inject, Injectable, Optional, type OnModuleInit } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Db } from "../../core.ts";
@@ -38,7 +39,7 @@ export function systemIdentityPortFromConfig(clock: PlatformClock): IdentityPort
   return { via: "cognito", async verify() { throw new IdentityRefused("Sign-in for ExpatReady staff is not set up on this server (PLATFORM_SYSTEM_IDENTITY is not set).", "SIGN_IN_NOT_SET_UP"); } };
 }
 
-export type SystemAuditLine = { staff: Pick<SystemStaffContext, "staffId" | "name">; method: string; route: string; target: Record<string, string>; outcome: "ALLOWED" | "REFUSED"; code: string | null; reason: string | null; device: string | null };
+export type SystemAuditLine = { staff: Pick<SystemStaffContext, "staffId" | "name">; method: string; route: string; target: Record<string, unknown>; outcome: "ALLOWED" | "REFUSED"; code: string | null; reason: string | null; device: string | null };
 
 @Injectable()
 export class SystemIdentity implements OnModuleInit {
@@ -113,8 +114,8 @@ export class SystemIdentity implements OnModuleInit {
   /** One audit line (SA-7-3, SA-7-20): ExpatReady staff, the person's id and name, the route, what it affected and the
    *  request id (PF-23's, the X-Request-Id the answer carries; a new one outside a request scope). Throws when it cannot
    *  be written, so the call it stands for does not happen. */
-  async audit(l: SystemAuditLine): Promise<void> {
+  async audit(l: SystemAuditLine, tx?: Pick<Db, "platSystemAudit">): Promise<void> {
     const requestId = requestScope.getStore()?.correlationId ?? randomUUID();
-    await this.db.platSystemAudit.create({ data: { staffId: l.staff.staffId, staffName: l.staff.name, method: l.method, route: l.route, target: l.target, outcome: l.outcome, code: l.code, reason: l.reason, requestId, device: l.device } });
+    await (tx ?? this.db).platSystemAudit.create({ data: { staffId: l.staff.staffId, staffName: l.staff.name, method: l.method, route: l.route, target: l.target as Prisma.InputJsonObject, outcome: l.outcome, code: l.code, reason: l.reason, requestId, device: l.device } });
   }
 }
