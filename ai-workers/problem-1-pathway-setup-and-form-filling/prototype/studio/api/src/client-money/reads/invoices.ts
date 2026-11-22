@@ -1,7 +1,7 @@
 // FO-7q (R1.56; brief design/briefs/FO-7q.md): the invoice reads the money screens use, paged on the server (AG-6-30,
 // AG-6-37). GET …/money/invoices: filters on the derived status (in SQL, status-sql.ts), party, case, issued from/to
 // and overdue; newest issued first, then drafts by created time; keyset paging, 50 by default, at most 200 (more is
-// 400 in words, AG-6-37 rule 3). GET …/money/invoices/:id/detail: the invoice (facts.ts, the one view), its payments,
+// 422 naming the field, AG-6-37 rule 3 by PF-28's one rule). GET …/money/invoices/:id/detail: the invoice (facts.ts, the one view), its payments,
 // credit notes and write-off, and allowedActions (actions.ts). Both firm-scoped (PF-12's walls and firmScope) and
 // scoped by C5 (visibility.ts: fail closed on main). Amounts carry their currency; nothing is summed across currencies.
 // A trust figure is answered only while trust shows (AG-6-59 rules 5-6). Reads only: no audit line.
@@ -10,6 +10,7 @@ import { z } from "zod";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
 import type { InvoiceView } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { parseInput } from "../../platform/http/input.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "../invoices/facts.ts";
 import { UUID, notFound } from "../invoices/drafts.ts";
@@ -51,13 +52,11 @@ export class InvoiceReads {
 
   /** The list's one query (its check EXPLAINs exactly this, DW1); null when the filters can match nothing. */
   async listSql(ctx: StaffContext, query: unknown): Promise<{ sql: Prisma.Sql | null; pageSize: number }> {
-    const r = Query.safeParse(query ?? {});
-    if (!r.success) return bad(`Some filters are not understood: ${r.error.issues.map((i) => i.path.join(".") || "query").join(", ")}.`);
-    const q = r.data, pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, InvoiceCursor);
+    const q = parseInput(Query, query ?? {}), pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, InvoiceCursor);
     const codes = q.status === undefined ? [] : q.status.split(",");
-    if (codes.length > 8 || codes.some((c) => !Object.hasOwn(STATUS_CODES, c))) return bad(`status is one or more of ${Object.keys(STATUS_CODES).join(", ")}, separated by commas.`);
-    if ((q.partyKind === undefined) !== (q.partyId === undefined)) return bad("partyKind and partyId go together.");
-    if (q.issuedFrom && q.issuedTo && q.issuedFrom > q.issuedTo) return bad("issuedFrom is after issuedTo.");
+    if (codes.length > 8 || codes.some((c) => !Object.hasOwn(STATUS_CODES, c))) return bad("status", `status is one or more of ${Object.keys(STATUS_CODES).join(", ")}, separated by commas.`);
+    if ((q.partyKind === undefined) !== (q.partyId === undefined)) return bad("partyId", "partyKind and partyId go together.");
+    if (q.issuedFrom && q.issuedTo && q.issuedFrom > q.issuedTo) return bad("issuedTo", "issuedFrom is after issuedTo.");
     // overdue=true narrows to the Overdue word; with a status filter both must hold (no Overdue in it: an empty page)
     let want: string[] | null = codes.length ? codes.map((c) => STATUS_CODES[c as StatusCode] as string) : null;
     if (q.overdue === "true") want = want ? want.filter((w) => w === "Overdue") : ["Overdue"];

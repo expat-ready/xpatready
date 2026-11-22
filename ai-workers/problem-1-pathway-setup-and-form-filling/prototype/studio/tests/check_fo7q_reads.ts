@@ -105,7 +105,8 @@ try {
   // ---------------------------------------------------------------- the invoices of the status table, through FO-7b's routes
   const M = "/front-office/money/invoices";
   const make = async (unitMinor: number, person = PA, currency = "CAD") => { const d = await call(tA, "POST", M, { personId: person, currency }); await call(tA, "POST", `${M}/${d.body.id}/lines`, { kind: "FEE", description: "Fee (Sample)", unitMinor, ratePpm: 0 }); return d.body.id as string; };
-  const issue = async (id: string, dueDate?: string) => (await call(tA, "POST", `${M}/${id}/issue`, dueDate ? { dueDate } : {})).body;
+  // the due date is issue's query (?dueDate=, batch #3016 on main), never its body
+  const issue = async (id: string, dueDate?: string) => (await call(tA, "POST", `${M}/${id}/issue${dueDate ? `?dueDate=${dueDate}` : ""}`)).body;
   let key = 0; const pay = async (id: string, amountMinor: number) => (await call(tA, "POST", `${M}/${id}/payments`, { method: "CASH", amountMinor, idempotencyKey: `fo7q-pay-${++key}` })).body;
   const S: Record<string, string> = {};
   S.Draft = await make(1000);
@@ -138,16 +139,17 @@ try {
   const pPA2 = await listA({ partyKind: "PERSON", partyId: PA2 }), issuedToday = await listA({ issuedFrom: today, issuedTo: today, status: "DRAFT" });
   ok("FO-7q pass: the party filter gives that party's invoices only; issued from/to never holds a draft", pPA2.items.length === 1 && pPA2.items[0].id === usd && issuedToday.items.length === 0);
 
-  // ---------------------------------------------------------------------------------------- bad queries (AG-6-37 r3)
+  // ------------------------------------------------- bad queries (AG-6-37 r3, in PF-28's one rule: 422 naming the field)
   const bad = await Promise.all([{ status: "FOO" }, { pageSize: "500" }, { pageSize: "0" }, { pageSize: "abc" }, { colour: "red" }, { after: "not-a-cursor" }, { partyKind: "PERSON" }, { issuedFrom: "2026-02-01", issuedTo: "2026-01-01" },
     { issuedFrom: "2026-02-30" }, { issuedFrom: "2026-13-45" }, { issuedTo: "0000-01-01" }, { overdue: "false" }, ...["2026-99-99T00:00:00.000000", "2026-02-30T00:00:00.000000", "0000-01-01T00:00:00.000000", "2026-01-01T25:00:00.000000"]
       .map((t) => ({ after: Buffer.from(JSON.stringify({ d: 0, t, id: "00000000-0000-4000-8000-000000000000" })).toString("base64url") }))]
     .map((q) => call(tA, "GET", `${M}?${new URLSearchParams(q as unknown as Record<string, string>)}`)));
-  ok("FO-7q DW2 fail: page size 500 → 400 \"pageSize is at most 200\"; a bad status, size, field, cursor or date range → 400 in words, before any read",
-    bad.every((r) => r.status === 400 && r.body?.code === "BAD_QUERY" && typeof r.body.detail === "string") && /at most 200/.test(bad[1].body.detail), bad.map((r) => [r.status, r.body?.detail]));
+  const named = (r: Res) => r.status === 422 && r.body?.code === "INVALID" && typeof r.body.fields === "object" && Object.keys(r.body.fields).length >= 1;
+  ok("FO-7q DW2 fail: page size 500 → 422 naming pageSize, \"at most 200\"; a bad status, size, unknown field, cursor, date or date range → 422 naming its field (PF-28's one rule), before any read",
+    bad.every(named) && /at most 200/.test(bad[1].body.fields?.pageSize ?? "") && bad[4].body.fields?.colour !== undefined && bad[0].body.fields?.status !== undefined, bad.map((r) => [r.status, r.body?.fields]));
   const badPay = await Promise.all([{ from: "2026-02-30" }, { to: "2026-13-01" }, { after: Buffer.from(JSON.stringify({ t: "2026-02-30T00:00:00.000000", id: "00000000-0000-4000-8000-000000000000" })).toString("base64url") }]
     .map((q) => call(tA, "GET", `/front-office/money/payments?${new URLSearchParams(q as unknown as Record<string, string>)}`)));
-  ok("FO-7q fail (review M2, break B2): a date or cursor time that does not exist → 400 in words on both lists, never a database 500", badPay.every((r) => r.status === 400 && r.body?.code === "BAD_QUERY"), badPay.map((r) => [r.status, r.body?.detail]));
+  ok("FO-7q fail (review M2, break B2): a date or cursor time that does not exist → 422 naming its field on both lists, never a database 500", badPay.every(named) && badPay[0].body.fields?.from !== undefined, badPay.map((r) => [r.status, r.body?.detail]));
 
   // --------------------------------------------------------------------------------------- DW5: trust off, then on
   const scanTrust = (v: unknown) => /"(receivedInto|trustRequestId|trustPaidMinor|trust[A-Za-z]*)"\s*:/.test(JSON.stringify(v));

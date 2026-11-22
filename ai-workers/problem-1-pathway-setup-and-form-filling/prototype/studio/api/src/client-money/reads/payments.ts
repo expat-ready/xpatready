@@ -6,6 +6,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { HandMethod } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
+import { parseInput } from "../../platform/http/input.ts";
 import type { StaffContext } from "../../platform/identity/keys.ts";
 import { UUID, notFound } from "../invoices/drafts.ts";
 import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "./common.ts";
@@ -57,10 +58,8 @@ export class PaymentReads {
 
   /** GET /api/front-office/money/payments. */
   async list(ctx: StaffContext, query: unknown): Promise<{ items: PaymentRow[]; pageSize: number; next: string | null }> {
-    const r = Query.safeParse(query ?? {});
-    if (!r.success) return bad(`Some filters are not understood: ${r.error.issues.map((i) => i.path.join(".") || "query").join(", ")}.`);
-    const q = r.data, pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, PaymentCursor);
-    if (q.from && q.to && q.from > q.to) return bad("from is after to.");
+    const q = parseInput(Query, query ?? {}), pageSize = pageSizeOf(q.pageSize), after = cursorOf(q.after, PaymentCursor);
+    if (q.from && q.to && q.from > q.to) return bad("to", "from is after to.");
     const scope = await this.scopeOf(ctx);
     const rows = await this.db.$transaction(async (tx) => paymentRows(tx, ctx.firmId, { invoiceId: q.invoiceId?.toLowerCase(), trustRequestId: q.trustRequestId?.toLowerCase(), method: q.method, from: q.from, to: q.to, after, scope, limit: pageSize + 1 }, await trustShows(tx, ctx.firmId)),
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
