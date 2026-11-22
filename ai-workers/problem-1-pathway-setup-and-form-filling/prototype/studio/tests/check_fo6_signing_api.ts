@@ -347,6 +347,10 @@ try {
   ok("FO-6 B pass (break R2-M1): completed first → 409 NOT_READY, nothing kept; after both signatures its redelivery completes (SIGNED, evidence)",
     first?.status === 409 && second.applied === true && reqOf(r12)[2] === "SIGNED" && count("fo_signing_evidence", `request_id = '${q12}'`) === 1, { first, second });
 
+  process.env.PLATFORM_ENVIRONMENT ??= "local";   // the feature imports the platform's mail feature, which reads the settings at load
+  const signingFeature = (await import("../api/src/features/front-office-signing.ts")).default;
+  ok("FO-6 G pass: the feature file registers the state read and the webhook door and provides the Signing service",
+    (signingFeature.controllers as unknown[]).includes(SigningController) && (signingFeature.controllers as unknown[]).includes(SigningHooksController) && JSON.stringify((signingFeature.providers as { provide?: { name?: string } }[]).map((p) => p.provide?.name)) === '["Signing"]');
   // ------------------------------------------------------------- G: retired names, the bypass use
   const grep = (() => { try { return execFileSync("grep", ["-rlE", "retainer\\.executed|envelope\\.completed", join(STUDIO, "api", "src"), join(STUDIO, "ports"), join(STUDIO, "web", "src"), join(STUDIO, "engine")], { encoding: "utf8" }).trim(); } catch { return ""; } })();
   ok("FO-6 G pass: no retainer.executed or envelope.completed name anywhere in the code (A51 §12: signing.completed is the one)", grep === "", grep);
