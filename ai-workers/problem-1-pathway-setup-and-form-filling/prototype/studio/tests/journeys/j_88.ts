@@ -17,13 +17,20 @@
 //   W4 filter by record: Advanced › Record type fo_lead, Record reference j88-lead-1 (Person cleared) → exactly L2; fails on the
 //      fake (the list before).
 //   W5 filter by date: From 30 days ago → L2 and L4 (the record filter kept); fails on the fake (the 7-day list).
-//   W6 export: Export CSV, confirm, the file: its data rows are the filtered lines (L2 and L4, not L3), its count equals the
-//      list's and the X-Export-Rows header, and the export is itself one new `audit.exported` line by the Owner.
+//   W6 export: Export CSV, confirm, the file: its data rows are the filtered lines (L2 and L4, not L3), row by row (when and
+//      what), its count equals the list's and the X-Export-Rows header, and the export is itself one new `audit.exported` line by the Owner.
 //   W7 keyboard: Tab to the first line's When cell and Enter opens it (its change in words and the raw detail).
-//   W8 the Admin signs in, finds Activity log in the menu and filters by person (the Owner): exactly the Owner's lines.
-//   W9 other roles refused: the Case Officer has no Activity log entry, the page by its address says "You do not have access to
-//      the activity log" (never a blank or a list), and the API answers 403 to the read and to the export.
-//   W10 400, 1024 and 1440 px: no sideways scroll, no WCAG 2.2 A/AA violation (axe) on the list; no page error.
+//   W8 the Admin signs in and finds Activity log in the menu; filters by person (the Owner): exactly the Owner's lines; by
+//      record (j88-lead-1, Person back to Everyone): L2; by date, From 30 days back and To 2 days back: only L4 (the To date
+//      leaves out L2); exports: the file's rows are those lines, row by row (when and what), and one new audit.exported line
+//      by the Admin.
+//   W9 other roles refused, each of the four roles without agent/audit:read (Case Officer, Case Manager, Billing and finance,
+//      Read-only; the last three are Sample staff added here with that one role): no Activity log entry, the page by its
+//      address says "You do not have access to the activity log" (never a blank or a list), the API answers 403 to the read
+//      and to the export.
+//   W10 375, 1024 and 1440 px: no sideways scroll, no WCAG 2.2 A/AA violation (axe) on the list; no page error.
+// Every fail-before-filter judge needs a list that shows lines (an empty or missing list never passes it). The export judges
+// match the file to the filtered lines row by row: each row's "When (UTC)" and "What" against audit_event, in order.
 // What is a stand-in (said, not hidden): the five lines are Sample rows written to the copy's database; the sign-in is PF-4's
 // local stand-in (firm key and work email, PLATFORM_IDENTITY=local); times are UTC as the page shows them until AUD-4's answer
 // carries the firm's zone (AUD-4s build notes, C9). The next capability's first step: none named in the row (the walk ends at
@@ -58,6 +65,14 @@ const staff = (actor: string) => sql(`select id || '|' || email || '|' || displa
 const [OWNER, OWNER_EMAIL, OWNER_NAME] = staff("user-R"), [ADMIN, ADMIN_EMAIL, ADMIN_NAME] = staff("user-T"), [CO, CO_EMAIL] = staff("user-O");
 if (sql(`select count(*) from audit_event where summary like 'J-88:%'`) !== "0") { console.error("STOP  this copy already holds J-88's lines: start a fresh copy"); process.exit(2); }
 sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${ADMIN}', 'ADMIN', 'seed:j88') on conflict do nothing`);
+// The roles without agent/audit:read beyond the Case Officer: one Sample person each, with that one role.
+const person = (name: string, role: string) => {
+  const email = `j88.${role.toLowerCase()}@sample-firm.example.com`;
+  const id = sql(`insert into platform_staff (id, firm_id, email, display_name, actor_id, updated_at) values (gen_random_uuid(), '${A}', '${email}', '${name} (Sample)', 'j88-${role.toLowerCase()}', now()) returning id`);
+  sql(`insert into platform_role_grant (id, firm_id, staff_id, role, granted_by) values (gen_random_uuid(), '${A}', '${id}', '${role}', 'seed:j88')`);
+  return email;
+};
+const REFUSED: [string, string][] = [["Case Officer", CO_EMAIL], ["Case Manager", person("Case manager J-88", "CASE_MANAGER")], ["Billing and finance", person("Billing J-88", "BILLING_FINANCE")], ["Read-only", person("Read-only J-88", "READ_ONLY")]];
 const WS = sql(`select id from workspace where key = 'platform-audit'`);
 const line = (firm: string, actor: string, entity: string, key: string, summary: string, ago: string) =>
   sql(`insert into audit_event (id, workspace_id, at, actor, action, entity, entity_key, summary, firm_id) values (gen_random_uuid(), '${WS}', now() - interval '${ago}', '${actor}', 'j88.sample_change', '${entity}', '${key}', $s$${summary}$s$, '${firm}') returning id`);
@@ -66,11 +81,38 @@ const L2 = line(A, `staff:${ADMIN}`, "fo_lead", "j88-lead-1", "J-88: the Admin c
 const L3 = line(A, `staff:${ADMIN}`, "fo_lead", "j88-lead-2", "J-88: the Admin changed lead j88-lead-2 (Sample).", "3 days");
 const L4 = line(A, `staff:${OWNER}`, "fo_lead", "j88-lead-1", "J-88: the Owner changed lead j88-lead-1 (Sample), 20 days ago.", "20 days");
 const L5 = line(B, "system:j88", "fo_lead", "j88-lead-1", "J-88: a line of the other firm (Sample).", "1 hour");
-ok("J-88 setup: the Sample firm with its Owner, an Admin and a Case Officer; five Sample lines (four in firm A, one in firm B)", !!A && !!B && !!OWNER && !!ADMIN && !!CO && !!WS && [L1, L2, L3, L4, L5].every(Boolean));
+ok("J-88 setup: the Sample firm with its Owner, an Admin, a Case Officer and one Sample person each as Case Manager, Billing and finance and Read-only; five Sample lines (four in firm A, one in firm B)", !!A && !!B && !!OWNER && !!ADMIN && !!CO && !!WS && [L1, L2, L3, L4, L5].every(Boolean) && REFUSED.every(([, e]) => !!e));
 /** Firm A's lines for a filter, newest first, as AUD-4 orders them (at desc, id desc). */
 const dbIds = (where: string, from = FROM7, to = TODAY) => rows(`select id from audit_event where firm_id = '${A}' and at >= '${from}T00:00:00Z' and at < ${after(to)} ${where} order by at desc, id desc`);
 const byPerson = (id: string, actor: string) => `and actor in ('staff:${id}', '${actor}')`;
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+/** The lines' "When (UTC)" and "What" as AUD-4 writes them in the file, from audit_event, in the given order. */
+const whenWhat = (ids: string[]) => ids.map((id) => sql(`select to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') || '|' || summary from audit_event where id = '${id}'`));
+/** A CSV file's data rows (RFC 4180 quotes), as "When (UTC)|What" (columns 1 and 6 of AUD-4's header). */
+function csvWhenWhat(text: string): string[] {
+  const out: string[][] = []; let row: string[] = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; }
+    else if (ch === '"') q = true; else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); cell = ""; if (row.some((c) => c !== "")) out.push(row); row = []; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); if (row.some((c) => c !== "")) out.push(row); }
+  return out.slice(1).map((r) => `${r[0]}|${r[5]}`);
+}
+/** Export CSV, confirm, the file: its rows as "When|What", X-Export-Rows, and how many audit.exported lines by `actor` it made. */
+async function exportNow(p: Page, actor: string) {
+  const count = () => Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported' and actor = 'staff:${actor}'`));
+  const before = count();
+  const rowsHeader = p.waitForResponse((r) => r.url().includes("/api/platform/audit/export"), { timeout: 20_000 }).then((r) => r.headers()["x-export-rows"], () => undefined);
+  await p.locator("[data-audit-export]").click({ timeout: 10_000 });
+  await p.locator("[data-audit-export-confirm]").waitFor({ timeout: 10_000 });
+  const [download] = await Promise.all([p.waitForEvent("download", { timeout: 30_000 }), p.locator("[data-audit-export-confirm]").click()]);
+  const text = readFileSync((await download.path())!, "utf8").replace(/^\uFEFF/, ""), header = await rowsHeader;
+  await p.waitForTimeout(500);
+  return { rows: csvWhenWhat(text), header, made: count() - before, file: download.suggestedFilename() };
+}
 
 // ------------------------------------------------------------------------------------------------------------ helpers
 const browser = await chromium.launch({ headless: !process.env.HEADED, slowMo: process.env.HEADED ? 200 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
@@ -112,7 +154,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W3 person
   const wantAdmin = dbIds(byPerson(ADMIN, "user-T"));
-  await step("J-88 W3 fail (before the filter, P-606): the unfiltered list is not the Admin's lines alone", async () => ({ pass: !same(await shown(o), wantAdmin) }));
+  await step("J-88 W3 fail (before the filter, P-606): the unfiltered list is not the Admin's lines alone", async () => { const s = await shown(o); return { pass: s.length > 0 && !same(s, wantAdmin), detail: { shown: s.length } }; });
   await step(`J-88 W3: Person = ${ADMIN_NAME} (the Admin) shows exactly the Admin's lines in the range, as audit_event holds them (L2 and L3 among them; nothing of the Owner's)`, async () => {
     await o.locator('[data-audit-filter="person"]').selectOption(ADMIN, { timeout: 10_000 }); await settled(o);
     const s = await allShown(o); return { pass: s.length > 0 && same(s, wantAdmin) && s.includes(L2) && s.includes(L3) && !s.includes(L1), detail: { shown: s.length, want: wantAdmin.length, url: o.url() } };
@@ -121,7 +163,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W4 record
   const wantRecord = dbIds(`and entity = 'fo_lead' and entity_key = 'j88-lead-1'`);
-  await step("J-88 W4 fail (before the filter): the list is not the one record's lines alone", async () => ({ pass: !same(await shown(o), wantRecord) }));
+  await step("J-88 W4 fail (before the filter): the list is not the one record's lines alone", async () => { const s = await shown(o); return { pass: s.length > 0 && !same(s, wantRecord), detail: { shown: s.length } }; });
   await step("J-88 W4: Person back to Everyone, Advanced › Record type fo_lead and Record reference j88-lead-1: exactly that record's line in the range (L2), as audit_event holds it", async () => {
     await o.locator('[data-audit-filter="person"]').selectOption("", { timeout: 10_000 }); await settled(o);
     if (!(await o.locator('[data-audit-filter="entity"]').isVisible())) await o.locator("[data-audit-advanced-toggle]").click({ timeout: 10_000 });
@@ -133,7 +175,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- W5 date
   const wantDated = dbIds(`and entity = 'fo_lead' and entity_key = 'j88-lead-1'`, FROM30);
-  await step("J-88 W5 fail (before the date change): the 7-day list does not hold the 20-day-old line", async () => ({ pass: !(await shown(o)).includes(L4) && wantDated.includes(L4) }));
+  await step("J-88 W5 fail (before the date change): the 7-day list does not hold the 20-day-old line", async () => { const s = await shown(o); return { pass: s.length > 0 && !s.includes(L4) && wantDated.includes(L4), detail: { shown: s.length } }; });
   await step(`J-88 W5: From ${FROM30} (30 days back), the record filter kept: L2 and the 20-day-old L4, newest first, as audit_event holds them`, async () => {
     await o.locator('[data-audit-filter="from"]').fill(FROM30, { timeout: 10_000 }); await settled(o);
     const s = await shown(o); return { pass: same(s, wantDated) && same(s, [L2, L4]), detail: { shown: s, url: o.url() } };
@@ -141,18 +183,9 @@ try {
   await shot(o, "w5-date-1440");
 
   // ---------------------------------------------------------------------------------------------- W6 export
-  const exportedBefore = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported' and actor = 'staff:${OWNER}'`));
-  await step("J-88 W6: Export CSV, confirm: the file's data rows are the filtered lines (L2 and L4, not L3), as many as the list shows and as X-Export-Rows says; the export is one new audit.exported line by the Owner", async () => {
-    const listed = (await shown(o)).length;
-    const rowsHeader = o.waitForResponse((r) => r.url().includes("/api/platform/audit/export"), { timeout: 20_000 }).then((r) => r.headers()["x-export-rows"], () => undefined);
-    await o.locator("[data-audit-export]").click({ timeout: 10_000 });
-    await o.locator("[data-audit-export-confirm]").waitFor({ timeout: 10_000 });
-    const [download] = await Promise.all([o.waitForEvent("download", { timeout: 30_000 }), o.locator("[data-audit-export-confirm]").click()]);
-    const text = readFileSync((await download.path())!, "utf8").replace(/^﻿/, ""), data = text.split(/\r?\n/).filter(Boolean).slice(1), header = await rowsHeader;
-    await o.waitForTimeout(500);
-    const exportedAfter = Number(sql(`select count(*) from audit_event where firm_id = '${A}' and action = 'audit.exported' and actor = 'staff:${OWNER}'`));
-    return { pass: data.length === listed && listed === 2 && header === "2" && text.includes("lead j88-lead-1 (Sample).") && text.includes("20 days ago") && !text.includes("j88-lead-2") && exportedAfter === exportedBefore + 1,
-      detail: { rows: data.length, listed, header, exported: exportedAfter - exportedBefore, file: download.suggestedFilename() } };
+  await step("J-88 W6: Export CSV, confirm: the file's rows are the filtered lines row by row (when and what of L2, then L4; not L3), as many as the list shows and as X-Export-Rows says; the export is one new audit.exported line by the Owner", async () => {
+    const listed = await shown(o), e = await exportNow(o, OWNER);
+    return { pass: same(listed, [L2, L4]) && same(e.rows, whenWhat(listed)) && e.header === "2" && e.made === 1, detail: { rows: e.rows.length, listed: listed.length, header: e.header, exported: e.made, file: e.file } };
   });
   await shot(o, "w6-exported-1440");
 
@@ -175,28 +208,53 @@ try {
     const s = await allShown(a); return { pass: s.length > 0 && same(s, dbIds(byPerson(OWNER, "user-R"))) && s.includes(L1) && !s.includes(L2), detail: { shown: s.length, want: wantOwner.length } };
   });
   await shot(a, "w8-admin-person-1440");
+  const wantAdminRecord = dbIds(`and entity = 'fo_lead' and entity_key = 'j88-lead-1'`);
+  await step("J-88 W8 fail (before the record filter): the Admin's list is not the one record's lines alone", async () => { const s = await shown(a); return { pass: s.length > 0 && !same(s, wantAdminRecord), detail: { shown: s.length } }; });
+  await step("J-88 W8: the Admin, Person back to Everyone, Advanced › Record type fo_lead and Record reference j88-lead-1: exactly L2, as audit_event holds it", async () => {
+    await a.locator('[data-audit-filter="person"]').selectOption("", { timeout: 10_000 }); await settled(a);
+    if (!(await a.locator('[data-audit-filter="entity"]').isVisible())) await a.locator("[data-audit-advanced-toggle]").click({ timeout: 10_000 });
+    await a.locator('[data-audit-filter="entity"]').fill("fo_lead", { timeout: 10_000 }); await a.keyboard.press("Enter");
+    await a.locator('[data-audit-filter="entityKey"]').fill("j88-lead-1", { timeout: 10_000 }); await a.keyboard.press("Enter"); await settled(a);
+    const s = await shown(a); return { pass: same(s, wantAdminRecord) && same(s, [L2]), detail: { shown: s } };
+  });
+  const TO2 = ymd(Date.now() - 2 * DAY), wantAdminDated = dbIds(`and entity = 'fo_lead' and entity_key = 'j88-lead-1'`, FROM30, TO2);
+  await step("J-88 W8 fail (before the date change): the Admin's list holds L2 and not L4", async () => { const s = await shown(a); return { pass: s.length > 0 && s.includes(L2) && !s.includes(L4) && same(wantAdminDated, [L4]), detail: { shown: s.length } }; });
+  await step(`J-88 W8: the Admin sets From ${FROM30} and To ${TO2} (the record filter kept): only the 20-day-old L4; the To date leaves out yesterday's L2`, async () => {
+    await a.locator('[data-audit-filter="from"]').fill(FROM30, { timeout: 10_000 }); await settled(a);
+    await a.locator('[data-audit-filter="to"]').fill(TO2, { timeout: 10_000 }); await settled(a);
+    const s = await shown(a); return { pass: same(s, wantAdminDated), detail: { shown: s, url: a.url() } };
+  });
+  await step("J-88 W8: the Admin exports: the file's rows are the filtered lines row by row (L4 only: its when and what), as X-Export-Rows says; one new audit.exported line by the Admin", async () => {
+    const listed = await shown(a), e = await exportNow(a, ADMIN);
+    return { pass: same(listed, [L4]) && same(e.rows, whenWhat(listed)) && e.header === "1" && e.made === 1, detail: { rows: e.rows, header: e.header, exported: e.made, file: e.file } };
+  });
+  await shot(a, "w8-admin-exported-1440");
   await a.context().close();
 
   // ---------------------------------------------------------------------------------------------- W9 other roles
-  const c = await signIn(CO_EMAIL);
-  const coMenu = await menuEntry(c).count();
-  await c.goto(`${BASE}${PAGE}`); await c.locator("main").waitFor(); await c.waitForTimeout(1500);
-  const coText = await c.locator("main").innerText(), coLines = await c.locator("[data-audit-line]").count(), coToken = await tokenOf(c);
-  const [readStatus, exportStatus] = [await api(coToken ?? null, `/platform/audit?from=${FROM7}T00:00:00Z&to=${TODAY}T23:59:59Z`), await api(coToken ?? null, `/platform/audit/export?from=${FROM7}T00:00:00Z&to=${TODAY}T23:59:59Z`)];
-  ok("J-88 W9 (API): the Case Officer's session is refused the read and the export (403)", readStatus === 403 && exportStatus === 403, { readStatus, exportStatus });
-  ok(`J-88 W9 (screen): the Case Officer has no "Activity log" menu entry and the page by its address says "${NO_ACCESS}" (no line shown)`, coMenu === 0 && coText.includes(NO_ACCESS) && coLines === 0, { coMenu, coLines, said: coText.replace(/\s+/g, " ").slice(0, 160) });
-  await shot(c, "w9-case-officer-1440");
-  await c.context().close();
+  for (const [role, email] of REFUSED) {
+    await step(`J-88 W9 (${role}): no "Activity log" menu entry; the page by its address says "${NO_ACCESS}" (no line shown); the API refuses the read and the export (403)`, async () => {
+      const c = await signIn(email);
+      try {
+        const menu = await menuEntry(c).count();
+        await c.goto(`${BASE}${PAGE}`); await c.locator("main").waitFor(); await settled(c); await c.waitForTimeout(500);
+        const text = await c.locator("main").innerText(), lines = await c.locator("[data-audit-line]").count(), token = await tokenOf(c);
+        const q = `from=${FROM7}T00:00:00Z&to=${TODAY}T23:59:59Z`, read = await api(token ?? null, `/platform/audit?${q}`), exp = await api(token ?? null, `/platform/audit/export?${q}`);
+        if (role === "Case Officer") await shot(c, "w9-case-officer-1440");
+        return { pass: menu === 0 && text.includes(NO_ACCESS) && lines === 0 && read === 403 && exp === 403, detail: { menu, lines, read, exp, said: text.replace(/\s+/g, " ").slice(0, 120) } };
+      } finally { await c.context().close(); }
+    });
+  }
 
   // ---------------------------------------------------------------------------------------------- W10 sizes, axe
-  for (const width of [400, 1024, 1440]) {
+  for (const width of [375, 1024, 1440]) {
     await step(`J-88 W10: at ${width} px the Activity log has no sideways scroll and no WCAG 2.2 A/AA violation (axe)`, async () => {
       const p = await signIn(OWNER_EMAIL, width);
       try {
         await openLog(p);
         const listed = await p.locator("[data-audit-line]").count(), fits = await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
         const v = (await new AxeBuilder({ page: p }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze()).violations;
-        if (width === 400) await shot(p, "w10-400");
+        if (width === 375) await shot(p, "w10-375");
         return { pass: listed > 0 && fits && v.length === 0, detail: { listed, fits, axe: v.map((x) => x.id) } };
       } finally { await p.context().close(); }
     });
