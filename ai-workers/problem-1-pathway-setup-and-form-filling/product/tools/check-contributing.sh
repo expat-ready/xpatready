@@ -19,7 +19,7 @@ for f in AGENTS.md WAY-OF-WORKING.md RULES.md BACKLOG.md lead-read-paths.txt .me
 ok "CONTRIBUTING.md says how to ask (Question for the tech lead)" "$(grep -q 'Question for the tech lead' "$C" && echo 1)"
 ok "CONTRIBUTING.md names the read line the hook and the gate accept (Lead read the diff: <full head SHA>)" "$(grep -q 'Lead read the diff: <full head SHA>' "$C" && echo 1)"
 ok "CONTRIBUTING.md names the reviewer line the label guard reads (Reviewer: Approve <full head SHA>)" "$(grep -q 'Reviewer: Approve <full head SHA>' "$C" && echo 1)"
-ok "CONTRIBUTING.md says to mark the PR ready (a draft never joins the queue; review M2)" "$(grep -qi 'mark the PR ready' "$C" && grep -qi 'draft never joins the queue' "$C" && echo 1)"
+ok "CONTRIBUTING.md follows P-683: the Approve on the branch first, then the PR opened not as a draft (Lead 2, 22 Nov)" "$(grep -q 'P-683' "$C" && grep -qi 'Approve on the branch first, then open the PR, not as a draft' "$C" && grep -qi 'draft never joins the queue' "$C" && echo 1)"
 ok "CONTRIBUTING.md stays one page (under 60 lines)" "$([ "$(wc -l < "$C")" -lt 60 ] && echo 1)" "$(wc -l < "$C") lines"
 for l in '^\*\*Done when:\*\*' '^Duplicate check:' '^\*\*Before and after:\*\*' '^\*\*On the demo:\*\*' '^\*\*Cost:\*\*' '^\*\*Questions\*\*'; do
   ok "the template carries the line $l" "$(grep -qE "$l" "$TPL" && echo 1)"; done
