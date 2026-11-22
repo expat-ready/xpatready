@@ -59,7 +59,7 @@ export function DuplicateHint({ state, choice, onChoose, keep, onKeep, typed, di
       {state.out.hidden ? <p data-dup-hidden className="text-xs text-text-muted">{state.out.hiddenLine ?? "Possible match with a record you cannot open — ask a manager"}</p> : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-text-muted">None of these? A new person is made.</span>
-        <Button type="button" size="sm" disabled={disabled} onClick={() => onChoose({ kind: "new" })}>Add as new</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onChoose({ kind: "new" })}>Add as new</Button>
       </div>
     </div>
   );
