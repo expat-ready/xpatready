@@ -46,9 +46,12 @@ Walked within 10 min of #2916's merge (17:18 IST).
 ## R1.102 interim (22 Nov 18:3x IST, main after #2921; no verdict, P-606)
 One `j_102` run on a fresh isolated copy (:4472), exit 1. The find box works now: "/" opens it, "No matches" before the records exist, the lead found by name and by email ("Matched: Email"), firm B's records never shown to firm A, a hidden lead never shown to user-O, records closed by their own routes, and 400/1024/1440 axe clean. **Failing only on CS-S1 part 2 (#2913, the case finder):** W1 and W2 case principal by name and email, W3 by file number (firm A's and firm B's searches name no case), W4 firm B's case, W5 keyboard (needs the case as the second row).
 
+## Duplicate scoring of R1.23 and R1.88 (found 20:5x IST)
+Another qa lane (`claude/qa-r123-walk` #3057, `claude/qa-r188-walk` #3062) scored the same two rows and merged first: R1.23 Partial on 0fb27300c (W4, **QA-746**), R1.88 Works on f198c943b citing the same walks runs this lane dispatched (45019288306, 45019291303). Same verdicts, same evidence. The rows on main are theirs; this lane's QA-743 is withdrawn as a duplicate of QA-746 (removed from BUGS.md, never on main). Lead 4's 14:3x IST duplicate check listed R1.23 and R1.88 for this lane only, so the two lanes overlapped.
+
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
-2. R1.23 W4 is now QA-743 (Gap, Major): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
+2. R1.23 W4 is QA-746 on main (Gap, Major; this lane's QA-743 withdrawn as its duplicate): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
 3. (answered: #2916 merged 17:18 IST; R1.88 Works.)
 
 ## Suggestions
