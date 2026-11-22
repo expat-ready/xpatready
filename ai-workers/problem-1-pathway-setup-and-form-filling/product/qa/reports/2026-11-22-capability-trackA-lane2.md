@@ -19,7 +19,7 @@ All five were already on main before this lane started (no new journey written; 
 | R1.88 | AUD-4 #2339, AUD-4s part 2 #2916 (17:18 IST) | — |
 | R1.102 | PF-30a #2884, CS-S1 part 1 #2035, PF-30s #2921 (18:29 IST) | CS-S1 part 2 #2913 |
 | R1.23 | PF-13 parts 1a, 1b, part 2 #2910 (16:34 IST) | — |
-| R1.104 | FO-5 parts 1-2 | FO-3c #2922 |
+| R1.104 | FO-5 parts 1-2, FO-3c #2922 (20:45 IST) | none open; poller, screens and FO-6 API part not built |
 No row has all its parts merged: **no verdict yet (P-606)**; CAPABILITIES rows unchanged.
 
 ## Baseline on main 68f74620b (one run each, isolated copy)
@@ -49,9 +49,17 @@ One `j_102` run on a fresh isolated copy (:4472), exit 1. The find box works now
 ## Duplicate scoring of R1.23 and R1.88 (found 20:5x IST)
 Another qa lane (`claude/qa-r123-walk` #3057, `claude/qa-r188-walk` #3062) scored the same two rows and merged first: R1.23 Partial on 0fb27300c (W4, **QA-746**), R1.88 Works on f198c943b citing the same walks runs this lane dispatched (45019288306, 45019291303). Same verdicts, same evidence. The rows on main are theirs; this lane's QA-743 is withdrawn as a duplicate of QA-746 (removed from BUGS.md, never on main). Lead 4's 14:3x IST duplicate check listed R1.23 and R1.88 for this lane only, so the two lanes overlapped.
 
+## Verdict R1.104 — Partial (22 Nov 21:0x IST, main bc1f39c08)
+Walked within 20 min of #2922's merge (20:45 IST). `j_104` on fresh isolated copies :4478 and :4479: exit 1 twice, the same 9 FAIL / 12 PASS. #2922 itself says it is not R1.104's last part.
+* PASS: setup; W1 booking on screen; W2 fail-before; W4 setup (agreement sent, unsigned); W5 fail-before; W5 host's "needs you" lists it; W6 client then host sign, sealed, signed copy emailed once; W7 by-person "Agreement signed" with sha256; W8 firm B 404, no key 403; W10 axe; no page error.
+* FAIL, parts not built (no open PR): W2 a booking made in the app sends no agreement (by-booking "No agreement was sent"; the booking-event poller is unwired); W3 the booking panel shows nothing; W5 running copy: no reminder queued; W7 screen: the person's page shows no "Agreement signed" or signed copy.
+* FAIL, findings: **QA-747** (Gap, Major): Attended saved and consult record accepted while unsigned (W4, W9): "cannot start until signed" has no part. **QA-748** (Bug, Major): a Follow-up booking is sent an agreement (W4b). **QA-749** (Ambiguity): the reminder goes to the host, not the person who booked (W5).
+* Unconfirmed: no counsel.
+
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
 2. R1.23 W4 is QA-746 on main (Gap, Major; this lane's QA-743 withdrawn as its duplicate): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
+4. R1.104: which row gates the consultation start (QA-747), and who gets the reminder (QA-749)? The poller and the two screens (W2, W3, W7) have no open PR.
 3. (answered: #2916 merged 17:18 IST; R1.88 Works.)
 
 ## Suggestions
