@@ -388,3 +388,15 @@ message: 'new row violates row-level security policy for table "platform_firm"'
 * Next (Lead 6): when **PF-8b-f8** (RDS-safe Sample seed: each firm inserted under a firm context the walls accept, no bypass role) merges,
   scale to 2, run `seed-sample-firms.ts` then `firm-seed.ts` with app task def :6, and prove R1.24 (`sample-firm.staging.lab.expatready.com` 200,
   an unknown name 404). PF-8b-f7 is #3068. Idle until then: no other AWS step.
+
+## Step 12: R1.24 seed run deferred (founder), 23 Nov 00:0x IST
+
+* #3097 (PF-8b F8, RDS-safe Sample seeds) merged as main f5a5ed868 (22 Nov 22:3x IST). Lead 7 agreed: seeds run with the task's own
+  `PLATFORM_ENVIRONMENT=test`; if refused, read and report the exact refusal line before trying `local`.
+* Blocked: the built-in browser pane's AWS console session expired ("You have been signed out"); after the founder's sign-in elsewhere the
+  pane still lands on the AWS sign-in page. No password or code typed. Nothing ran.
+* Founder (23 Nov): "lets do this later". Staging stays at 0 tasks, RDS on.
+* **To resume:** founder signs in (root + MFA) in this session's browser pane; then `~/d-build.sh <main sha>` → `~/d-cdk.sh deploy 2 <digest>` →
+  `~/d-seed.sh resolve api/src/platform/seed-sample-firms.ts` → `~/d-seed.sh resolve api/src/front-office/firm-seed.ts` (logs: `/xr/staging/app`,
+  stream `studio/studio/<taskid>`) → curl `https://sample-firm.staging.lab.expatready.com/` (expect 200) and an unknown name (expect 404) →
+  `~/d-cdk.sh deploy 0 <digest>`.
