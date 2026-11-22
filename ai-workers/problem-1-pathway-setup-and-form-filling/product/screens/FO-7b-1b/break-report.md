@@ -123,3 +123,31 @@ Where: `money.ts:226-227`.
 - **Regressions.** 12 payments at once sum to exactly 1,000.00, with invoice.paid written once. One key 8 times at once gives one 201 and seven 200s. A Case Officer gets 403, and firm B gets 404 on a receipt. There is one audit line per payment, and no storm produced a 500, a 40P01 or a 40001.
 
 Verdict: Changes. Commit `7e6e48c1f3222d282722c16ac16c8e40f8e54c7e` has two Majors (R2-F1 and R2-F2).
+
+## Round 3 (diff 7e6e48c1f..521e016ee)
+
+Commit broken: `521e016eeb4127e2648dda7b2da875f8ea80d28e`, diff only. How I tested: a scratch copy of `tests/check_fo7b_invoices.ts` plus about 45 attacks, on `xr_studio_brk7b3_scratch_*` at :54329. The databases were dropped and the copy deleted. The shipped check passes 101/101. Oracles: the emailed PDF bytes against every later download, and each invoice's audit lines (payments and credit notes) sorted into one before→after chain from the total down to today's due.
+
+**R3-F1, Major (new in this diff): a trust payment from a client who already has money in trust takes that money too, and the receipt prints a negative extra.**
+- What I did: a client with +50.00 in trust (the 50.00 extra from an earlier trust payment) pays 100.00 into trust on a 300.00 invoice.
+- Expected: 100.00 applied, 200.00 due, the 50.00 stays in trust.
+- Actual: 201 with **150.00** applied (`trust.appliedMinor` 150.00 against `depositedMinor` 100.00). The WITHDRAWAL_TO_INVOICE is −150.00, so the balance is 0 and nobody chose to use the held 50.00. 150.00 stays due. The audit line has `extraMinor` −5000 and the summary says "CAD −50.00 is extra". The receipt says "**CAD -50.00 is more than this invoice asked: kept in trust.**"
+- The same happens in USD (+20.00: 120.00 applied, "USD -20.00 …"), with a company bill-to, and in 3 of 3 runs of two trust payments at once (one applies 150.00, the other 100.00).
+- Where: `api/src/client-money/invoices/money.ts:115` (`applied = min(dueBefore, held)` caps by the balance, not by this payment's amount minus the shortfall), `:118`, and `documents.ts:45` (prints any non-zero `extraMinor`, including a negative one). The fix test only covers balances ≤ 0.
+
+**R3-F2, Minor: the receipt and the replay trust whichever audit row is earliest, and don't check its fields.**
+- Two rows: I seeded by SQL a second `payment.recorded` row for the same payment in the same firm, backdated by a day. The receipt then printed "Forged Firm", "Paid by: Mallory", 1,234.56 due and 999.99 extra. The replay of the key answered `appliedMinor` 1 and "Paid twice?". A later-dated row and another firm's row changed nothing.
+- Bad fields: a row without the new keys (the shape before this commit) prints "Paid by: Client", an empty letterhead and 0.00 due. A row with non-number fields prints "CAD N.aN" and "1..5". The replay of that key gets a **500**.
+- Only reachable through SQL, because audit_event takes inserts only. Where: `money.ts:214` (`order by at limit 1`, with no check on actor or `paymentId`), `:216` (`Number(…)` with no integer check).
+
+**R3-F3, Minor (latent, R2-F4 only partly fixed):** with 20.00 of a 60.00 extra seeded KEPT, the replay still offers 60.00 with Refund · Keep as credit, while the view says 40.00. Choices disappear only when every cent is kept. Where: `money.ts:226` (`amountMinor: extraThen`, not `waiting`).
+
+### What held (round 3)
+- **R2-F1.** Operating payment, trust payment and credit note at once, 20 runs: no 500. Every emailed PDF is byte-identical to the download after later writes, every "after this payment" equals its audit line, and every chain is unbroken. 8 storms of 24 writes gave the same, with no 500 (one 409 TRUST_PAID). The shipped overlapping credit note case passes.
+- **R2-F2 (trust at zero and below).** Balances of 0, −0.01, exactly −payment and −150.00, in CAD, USD and for a company: never a negative extra, never "kept in trust" on shortfall money, the balance after = before + paid − applied. A paid invoice at −50.00 with 100.00 into trust: 50.00 made up and 50.00 kept, both said. Two trust payments at once at −50.00 (5 runs) and six at once over six invoices (4 runs): the shortfall is made up exactly once, with no 500.
+- **Audit read.** A payment with no audit line (seeded): receipt 404 and replay 404, and the invoice can still be read and paid.
+- **Letterhead (R2-F3).** After renaming the firm, moving it, changing its tax number, turning tax registration off and renaming the client, the issued invoice prints the old name, address, tax number and bill-to, with the new "How to pay". The receipt and the credit note are byte-identical. A receipt issued after the change prints the new letterhead.
+- **P2002.** The same key on two parties' invoices at once: 201 + 409 KEY_USED, 6 of 6.
+- **Regressions.** 12 payments at once sum to 1,000.00 with 200.00 extra and paid once. One key 8 times gives 201 + 7×200. A Case Officer gets 403 and firm B gets 404 on a receipt. R2-F5's message now says 2000 to 2999.
+
+Verdict: Changes. Commit `521e016eeb4127e2648dda7b2da875f8ea80d28e` has one Major (R3-F1).

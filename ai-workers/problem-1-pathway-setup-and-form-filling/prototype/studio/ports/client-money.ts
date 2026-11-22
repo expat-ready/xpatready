@@ -103,12 +103,13 @@ export type PaymentIn = z.infer<typeof PaymentIn>;
 export const CreditNoteIn = z.strictObject({ full: z.boolean().optional(), amountMinor: whole("The amount (in cents)", 1, MINOR_MAX).optional(), reason: words("The reason", 200) })
   .refine((c) => (c.full === true) !== (c.amountMinor !== undefined), { message: "Give an amount, or choose a full credit note: one of the two.", path: ["amountMinor"] });
 
-/** What a recorded payment answers. `extra` is money past what the invoice asked: a person chooses (amendment 1). `trust`
+/** What a recorded payment answers. `extra` is money past what the invoice asked, as recorded; `waitingMinor` is the part
+ *  not yet kept as credit, for which a person chooses Refund · Keep as credit (amendment 1). `trust`
  *  only for money received into trust: `shortfallCoveredMinor` is the part that made up a balance below zero (P-634); the party's balance is its newest ledger entry's, never one row of a paired move. */
 export const PaymentView = z.strictObject({
   id: z.string(), invoiceId: z.string(), method: HandMethod, amountMinor: z.number().int(), currency: MoneyCurrency, receivedInto: ReceivedInto,
   receivedOn: z.string(), reference: z.string().nullable(), cleared: z.boolean(), receiptNumber: z.string(), replayed: z.boolean(),
-  appliedMinor: z.number().int(), extra: z.strictObject({ amountMinor: z.number().int(), choices: z.array(z.enum(["REFUND", "KEEP_AS_CREDIT"])), note: z.string().nullable() }).nullable(),
+  appliedMinor: z.number().int(), extra: z.strictObject({ amountMinor: z.number().int(), waitingMinor: z.number().int(), choices: z.array(z.enum(["REFUND", "KEEP_AS_CREDIT"])), note: z.string().nullable() }).nullable(),
   trust: z.strictObject({ depositedMinor: z.number().int(), appliedMinor: z.number().int(), shortfallCoveredMinor: z.number().int(), balanceMinor: z.number().int() }).nullable(),
   receiptEmail: z.enum(["SENT", "NO_ADDRESS", "NOT_SENT"]), invoice: InvoiceView,
 });
