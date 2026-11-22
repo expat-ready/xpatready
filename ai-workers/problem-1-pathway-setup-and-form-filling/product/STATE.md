@@ -2,7 +2,7 @@
 
 current_lead: local_6efc4ae3-9526-4c00-9dd0-3fe31705e8c5 Lead 3 · 22 Nov 13:0x IST (took over from Lead 2 (local_d718f32a) at ~430k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 05:5x IST: Lead 18 handed over to Lead 19 (series 3) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-783**; P-784 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 13:27 IST: Lead 3 (new account) is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
