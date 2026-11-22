@@ -224,3 +224,27 @@ Kept. PLATFORM_ENVIRONMENT still comes only from `platformConfig()`, and a serve
 Open: m7 (Minor), for the PR body or a one-line follow-up.
 
 **Verdict: Approve** at commit b66e603f484637e752cad6c966497cc81582515a.
+
+## Merge with main (035006146..7e32663cc)
+
+Diff-only review of the merge of `origin/main` (cff0a6c24, with PF-F1 #2955 in it) into the branch, no rebase. Head 7e32663ccc7843dde2301482e9fc2607d644be27; parent 1 is 035006146, parent 2 is cff0a6c24, which is the current `origin/main` and the merge base. The journey test does not apply: this is a runtime row with no screen.
+
+**1. PF-F1b's own files across the merge.** `git diff 035006146 7e32663cc` over the 16 PR files changes two of them, and in each case the change is only main's lines. b66e603f4 to 035006146 is records only (break-report.md, review.md).
+- `api/src/platform/config/settings.ts`: main's FO-7c part 1 (61c335aa9, d429395d2) adds `opt("stripe", "PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET", true, …)`, `stripe.connectWebhookSecret?` in `PlatformConfig`, and its `secret(...)` in `loadPlatformConfig`. These are different lines from PF-F1b's (the `files` opt after `PLATFORM_SAMPLE_SEED`, `files: { linkKey }` in the type and the loader). `git diff origin/main 7e32663cc -- settings.ts` is exactly PF-F1b's three insertions, the same as at round 3. Both settings are optional and both are secret, so `SECRET_SETTING_NAMES` now holds 10 names (the two new ones are `PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET` and `PLATFORM_FILES_LINK_KEY`). The combined file is correct.
+- `tests/check_pf24_secrets.ts`: main adds `PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET` to `generated()`, and PF-F1b's `PLATFORM_FILES_LINK_KEY: key32()` line is unchanged. The generator now covers every secret setting in the merged SETTINGS list. Nothing else from main is in the other 14 files.
+
+**2. Main's changes at the same seams, outside the PR files.**
+- Feature files main added or changed: client-money-card, client-money-invoices, client-money-tax, front-office-consultation-agreement, platform-billing-exit, platform-find and platform-firms. None provides `LocalFiles` or `S3FileLinks`, and none builds `new LocalFiles(`. `front-office-consultation-agreement.ts` (FO-3c) is the only one that touches the seam. It **injects** `LocalFiles` (`inject: [MESSAGES_MAIL, LocalFiles]`) and passes it to `runtimeAgreementPorts` as its FilesPort. It provides nothing, so it gets whichever provider wins the `LocalFiles` name. That is the retainers' `EntitledFiles(…, boundFiles())` or a `filesProviders` entry, and both are the bound store. So it follows `PLATFORM_FILES` and does not bypass the binding. It uses no download links (no `FileLinks`/`S3FileLinks`).
+- `api/src/features.ts` (`registerFeatures`, file-name order) is unchanged by main, as are `front-office/files.ts`, `ports/files.ts` and `platform/files/*`. The new file sorts before `front-office-identity-check.ts` and `front-office-retainers.ts` and adds no provider, so the order of the files that provide `LocalFiles` is the same as at round 3. `main.ts` gains only FO-7c's `connectRawBody` line.
+- New secret setting: only `PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET`, and main's own commit d429395d2 added it to the generator.
+- New FilesPort callers in main: only `consultation-agreement/{controller,service}.ts`, and they get the store through the feature above. `client-money/` and `platform/find|billing` do not use FilesPort.
+
+**3. PR diff.** The three-dot and two-dot diffs against `origin/main` list the same 16 files (749 insertions, 22 deletions), all of them PF-F1b's own (code, tests, the row file and the two records). Nothing from main leaks into the PR.
+
+**Runs at 7e32663cc** (database on 54329 not used, `run-suites.sh` not run):
+- `tests/check_pff1b_bind.ts`: **33 passed, 0 failed**.
+- `tests/check_pf24_secrets.ts` sections 1 to 5a (loader, Secret, SecretBoxPort contract, re-encrypt, and the two servers that must refuse to start): **78 passed, 0 failed**. This includes "PF-23's redaction list names every secret setting and no plain one" and "break M1". I ran these from a scratch copy that stops before section 5b, the isolated copy that would create a database. 5b was not run here, so it is left to the builder's suites and CI.
+
+Findings: none new. Open from earlier rounds: m7 (Minor), unchanged.
+
+**Verdict: Approve** at commit 7e32663ccc7843dde2301482e9fc2607d644be27.
