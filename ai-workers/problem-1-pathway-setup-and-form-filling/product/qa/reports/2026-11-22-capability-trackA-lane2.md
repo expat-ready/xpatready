@@ -59,8 +59,8 @@ Walked within 5 min of #2922's merge (20:45 IST). `j_104` on fresh isolated copi
 ## Duplicate scoring of R1.104 (found 01:1x IST 23 Nov)
 The other qa lane also scored R1.104 on bc1f39c08 and merged first (~21:3x IST): Partial, the same red steps. Its QA-750 = this lane's QA-747 (start not gated) and QA-751 = QA-748 (Follow-up sent an agreement); it set j_104 W5 to FO-3c's row (the host gets the reminder), which settles QA-749. Main's row and bugs stand; QA-747, QA-748 and QA-749 are withdrawn as duplicates (never on main).
 
-## Verdict R1.102 — Works (23 Nov 01:5x IST, main 0e244033e)
-Walked within 15 min of #2913's merge (01:10 IST). No other lane had scored it.
+## Verdict R1.102 — Works (23 Nov 01:1x IST, main 0e244033e)
+Walked within 10 min of #2913's merge (01:10 IST). No other lane had scored it.
 * First two runs (fresh isolated copies :4472, :4473): 19/20, exit 1, the same line: W3 "Enter opens the case page … which shows C-2026-00001". The URL was right; the page showed grey placeholders (screenshot). A probe copy (a throwaway journey copy, deleted) saw the number at 5 s, 15 s and 30 s: the journey's `settle` waits for `[data-loading]`, which the case page does not use, and reads at 250 ms. **Journey fix** (`j_102.ts`, 2 lines): wait up to 15 s for the number in `main`. Not a product defect; whether the case page should mark its loading with `[data-loading]` like the rest is a *Later · Scaffolding* suggestion.
 * With the fix: 20/20, exit 0, twice (:4475, :4476). GitHub: walks.yml 45062509290 (job 137331525901) success on 4358824eb (main 0e244033e's app code + the fix).
 * All of the Done when holds: name, email and file number find the firm's people and cases; firm B never sees firm A's (same name, email and case number); a person sees only what their rights allow (own leads only); keyboard; 400/1024/1440 axe clean. Screenshots: `R1.102-0e244033e/`.
