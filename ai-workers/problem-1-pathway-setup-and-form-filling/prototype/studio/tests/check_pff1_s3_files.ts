@@ -5,7 +5,7 @@
 //   tsx studio/tests/check_pff1_s3_files.ts
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runContract } from "../ports/contracts/contract.ts";
 import { filesPortContract } from "../ports/contracts/files-port.contract.ts";
@@ -151,8 +151,12 @@ try {
     const said = (f: () => unknown) => { try { f(); return ""; } catch (e) { return (e as Error).message; } };
     ok("R1.65 PF-F1 case 5 fail: PLATFORM_FILES unset with NODE_ENV=production refuses to start, naming the setting", /^configuration: PLATFORM_FILES is not set/.test(said(() => chooseFiles({ NODE_ENV: "production" }))) && /PLATFORM_FILES is not set/.test(said(() => chooseFiles({ NODE_ENV: "production", PLATFORM_FILES: "  " }))) && /PLATFORM_FILES is not set/.test(said(() => chooseFiles({ PLATFORM_ENVIRONMENT: "production" }))), said(() => chooseFiles({ NODE_ENV: "production" })));
     // The same refusal in a real process: the start-up stops with a non-zero exit.
-    const child = spawnSync(process.execPath, ["--import", "tsx", "-e", `import("${join(STUDIO, "api/src/platform/files/choose.ts")}").then((m) => { m.chooseFiles(); console.log("STARTED"); })`], { cwd: STUDIO, encoding: "utf8", env: { ...process.env, NODE_ENV: "production", PLATFORM_FILES: "", PLATFORM_ENVIRONMENT: "", FO_FILES_DIR: join(WORK, "child") } });
-    ok("R1.65 PF-F1 case 5 fail: a process started so exits non-zero and never reaches its next line", child.status !== 0 && !/STARTED/.test(child.stdout) && /PLATFORM_FILES is not set/.test(child.stderr), { status: child.status, err: child.stderr.slice(-300) });
+    // Started as run-suites.sh starts a suite (the tsx binary with the app's tsconfig, a file, not -e): the batch on
+    // Node 24.21.0 failed inside tsx's loader on `--import tsx -e` before the refusal (#2955, merge batch shard 22).
+    const startFile = join(WORK, "start.ts");
+    writeFileSync(startFile, `import { chooseFiles } from ${JSON.stringify(join(STUDIO, "api/src/platform/files/choose.ts"))};\nchooseFiles();\nconsole.log("STARTED");\n`);
+    const child = spawnSync(join(STUDIO, "node_modules/.bin/tsx"), ["--tsconfig", join(STUDIO, "api/tsconfig.json"), startFile], { cwd: STUDIO, encoding: "utf8", env: { ...process.env, NODE_ENV: "production", PLATFORM_FILES: "", PLATFORM_ENVIRONMENT: "", FO_FILES_DIR: join(WORK, "child") } });
+    ok("R1.65 PF-F1 case 5 fail: a process started so exits non-zero and never reaches its next line", child.status !== 0 && !/STARTED/.test(child.stdout) && /PLATFORM_FILES is not set/.test(child.stderr), { status: child.status, err: child.stderr.slice(0, 600) });
     ok("R1.65 PF-F1 case 5 pass: unset outside production is the local adapter; PLATFORM_FILES=local is the local adapter, in production too", chooseFiles({ FO_FILES_DIR: WORK }) instanceof LocalFiles && filesAdapterOf({ NODE_ENV: "test" }) === "local" && filesAdapterOf({ PLATFORM_FILES: "local", NODE_ENV: "production" }) === "local" && filesAdapterOf({}) === "local");
     const env = { NODE_ENV: "production", PLATFORM_FILES: "s3", PLATFORM_FILES_BUCKET: BUCKET, PLATFORM_FILES_KMS_KEY_ID: KMS };
     const chosen = chooseFiles(env, { credentials: creds, requestHandler: fakeS3({ bucket: BUCKET, region: "ca-central-1", requireKmsKeyId: KMS }).handler as never });
@@ -168,9 +172,14 @@ try {
     const local = () => chooseFiles({ PLATFORM_FILES: "local", FO_FILES_DIR: join(WORK, "local", crypto.randomUUID()) });
     const r = await runContract(filesPortContract, "chooseFiles(local)", local, null);
     ok("R1.65 PF-F1 case 6 pass: the chooser's local adapter is FO-5's LocalFiles and keeps every case of the FilesPort contract", local() instanceof LocalFiles && r.failed.length === 0 && r.passed.length === all.passed.length, r.failed);
-    const diff = spawnSync("git", ["diff", "--name-only", "origin/main...HEAD", "--", "api/src/front-office", "ports", "tests/check_fo5_retainers.ts", "tests/check_fo5b_retainer_checklist.ts", "tests/check_pffd_delete.ts", "tests/check_pffp_pdf.ts", "tests/check_pf0p_ports.ts"], { cwd: STUDIO, encoding: "utf8" });
-    if (diff.status === 0) ok("R1.65 PF-F1 case 6 pass: this row changed no file of FO-5, of the ports, or of their tests", diff.stdout.trim() === "", diff.stdout);
-    else console.log("NOT TESTED  R1.65 PF-F1 case 6: origin/main is not in this copy, so the unchanged-files comparison did not run");
+    // This row's own commits only: from the merge-base of the commit that last changed this check and origin/main, to that
+    // commit. Never HEAD: in a merge batch HEAD also holds the other PRs of the batch (#2955, batch shard 22). Once the row
+    // is on main the range is empty.
+    const git = (...a: string[]) => spawnSync("git", a, { cwd: STUDIO, encoding: "utf8" });
+    const own = git("log", "-1", "--format=%H", "--", "tests/check_pff1_s3_files.ts").stdout.trim(), base = own ? git("merge-base", own, "origin/main") : null;
+    const diff = own && base?.status === 0 ? git("diff", "--name-only", `${base.stdout.trim()}..${own}`, "--", "api/src/front-office", "ports", "tests/check_fo5_retainers.ts", "tests/check_fo5b_retainer_checklist.ts", "tests/check_pffd_delete.ts", "tests/check_pffp_pdf.ts", "tests/check_pf0p_ports.ts") : null;
+    if (diff?.status === 0) ok("R1.65 PF-F1 case 6 pass: this row changed no file of FO-5, of the ports, or of their tests", diff.stdout.trim() === "", diff.stdout);
+    else console.log("NOT TESTED  R1.65 PF-F1 case 6: origin/main or this row's history is not in this copy, so the unchanged-files comparison did not run");
     const noRetry = (): FilesPort => { const f = local(); return { put: async (firm, k, b, c) => { if (await f.exists(firm, k)) throw new FileKeyTaken(k); return f.put(firm, k, b, c); }, get: (firm, k) => f.get(firm, k), exists: (firm, k) => f.exists(firm, k), delete: (firm, k) => f.delete(firm, k), usedBytes: (firm) => f.usedBytes(firm) }; };
     const broken = await runContract(filesPortContract, "LocalFiles refusing a retry", noRetry, null);
     ok("R1.65 PF-F1 case 6 fail: a local adapter changed to refuse the same bytes again fails the contract", broken.failed.length >= 1, broken.failed);
