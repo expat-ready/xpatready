@@ -56,6 +56,7 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
   // always kept as well (web-address/rules.ts).
+  opt("files", "PLATFORM_FILES_LINK_KEY", true, z.string().min(32), "at least 32 characters (unset: no S3 download links; PLATFORM_FILES=s3 then refuses to start, PF-F1b)"),
   opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
 ]);
 
@@ -79,6 +80,7 @@ export type PlatformConfig = Readonly<{
   sampleSeed: boolean;
   /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
   addressSuffix: string;
+  /** PF-F1b: the key the S3 download links are signed with (PLATFORM_FILES_LINK_KEY; null: none). */ files: Readonly<{ linkKey: Secret | null }>;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -170,6 +172,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     identity: Object.freeze({ via: (plain("PLATFORM_IDENTITY") ?? "none") as "local" | "cognito" | "none", poolMfaRequired: plain("PLATFORM_POOL_MFA_REQUIRED") !== "false", localSecret: secret("PLATFORM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
+    files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") }),
   });
 }
 

@@ -4,11 +4,12 @@
 import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import { LocalFiles } from "../front-office/files.ts";
+import { filesProviders } from "../platform/files/choose.ts";
 import { publicBaseUrl } from "../platform/branding/image-setting.ts";
 import { BrandingImages } from "../platform/branding/images.ts";
 import { BrandingController, BrandingPublicController } from "../platform/branding/routes.ts";
 
 export default {
   controllers: [BrandingController, BrandingPublicController],
-  providers: [LocalFiles, { provide: BrandingImages, useFactory: (db: Db, files: LocalFiles) => new BrandingImages({ db, files, publicBase: publicBaseUrl() }), inject: [Db, LocalFiles] }],
+  providers: [...filesProviders, { provide: BrandingImages, useFactory: (db: Db, files: LocalFiles) => new BrandingImages({ db, files, publicBase: publicBaseUrl() }), inject: [Db, LocalFiles] }],
 } satisfies Feature;

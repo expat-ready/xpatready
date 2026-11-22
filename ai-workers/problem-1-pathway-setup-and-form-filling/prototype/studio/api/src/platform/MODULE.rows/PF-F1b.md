@@ -1,0 +1,2 @@
+Entry points: `files/choose.ts` `filesProviders` (PF-F1b: the app's FilesPort under the `LocalFiles` name the routes inject, as `PLATFORM_FILES` names it, and `S3FileLinks` beside it: null on the local adapter, on S3 signed with `PLATFORM_FILES_LINK_KEY`, without which `s3` stops the start-up) and `boundFiles()` (the same store for the features that build services by hand: messages, entitlements, retainers); `EntitledFiles` (PF-15) wraps whichever store is bound. The six features that bound `LocalFiles` themselves take it from here.
+Tests: tests/check_pff1b_bind.ts

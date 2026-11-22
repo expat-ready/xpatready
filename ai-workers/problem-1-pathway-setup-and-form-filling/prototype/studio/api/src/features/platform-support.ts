@@ -6,6 +6,7 @@ import type { Feature } from "../features.ts";
 import { Db } from "../core.ts";
 import type { MailPort } from "../../../ports/mail.ts";
 import { FileLinks, LocalFiles } from "../front-office/files.ts";
+import { filesProviders } from "../platform/files/choose.ts";
 import { auditEvent } from "../platform/audit/audit-event.ts";
 import { MAIL_PORT } from "../platform/identity/session/mail.ts";
 import { SupportController } from "../platform/support/routes.ts";
@@ -14,7 +15,7 @@ import { SupportService } from "../platform/support/support.ts";
 export default {
   controllers: [SupportController],
   providers: [
-    LocalFiles, FileLinks,
+    ...filesProviders, FileLinks,
     { provide: SupportService, useFactory: (db: Db, files: LocalFiles, mail: MailPort) => new SupportService({ db, files, audit: auditEvent, mail }),
       inject: [Db, LocalFiles, MAIL_PORT] },
   ],

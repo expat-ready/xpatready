@@ -149,6 +149,9 @@ export class S3Files implements FilesPort {
     return { key: FileKey.parse(key), bytes, contentType, sha256: meta.sha256 };
   }
 
+  /** PF-F1b (EntitledFiles): the key was ever written for the firm, live or retired (a tombstone is an object too). */
+  async known(firmId: string, key: string): Promise<boolean> { return !!await this.head("known", objectKey(firmId, key)); }
+
   async exists(firmId: string, key: string): Promise<boolean> {
     const h = await this.head("exists", objectKey(firmId, key));
     return !!h && h.Metadata?.retired === undefined;
