@@ -158,7 +158,7 @@ try {
   const KIM = personOf(`kim.${run}@example.org`);
   let caseSeeded = "";
   try {
-    sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', 9290, 'Kim Sample', 'PERSON', '${KIM}', 'user-R')`);
+    sql(`insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, created_by) values (gen_random_uuid(), (select id from workspace order by created_at limit 1), 'sample-firm', '${A}', (select coalesce(max(client_number), 9000) + 1 from case_client where firm_key = 'sample-firm'), 'Kim Sample', 'PERSON', '${KIM}', 'user-R')`);
     caseSeeded = "yes";
   } catch (e) { caseSeeded = String((e as { stderr?: string }).stderr ?? e).split("\n")[0]; }
   const kim2 = await addLead(tR, { givenNames: `Kim${run}`, familyName: "Sample", email: `kim.other.${run}@example.org`, phone: "416.555.0188", confirmedNew: true });
@@ -169,7 +169,7 @@ try {
     kim.status === 201 && kim2.status === 201 && caseSeeded === "yes" && kimStay, { caseSeeded, add: [kim.status, kim2.status] });
   const list4c = await api(tR, "GET", "/front-office/duplicates/review");
   const kimPair = (list4c.body?.items ?? list4c.body?.pairs ?? []).find((x: unknown) => JSON.stringify(x).includes(KIM) && JSON.stringify(x).includes(KIM2));
-  ok("R1.29 W4 (part missing: FO-9b part 2, the review list with needsCaseSide): the Kim pair waits on the review list, marked as needing the case side, and its merge here is refused with the reason",
+  ok("R1.29 W4 (part missing: FO-9b part 2, the review list with needsCaseSide): the Kim pair waits on the review list, marked as needing the case side",
     list4c.status === 200 && !!kimPair && kimPair.needsCaseSide === true, { status: list4c.status });
 
   // --------------------------------------------------------------------------- W5: undo from the review list

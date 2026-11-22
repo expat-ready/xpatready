@@ -8,8 +8,8 @@
 // table; the government fee is its own untaxed line; totals in integer cents".
 //   W1 (an invoice from a signed retainer): a draft started from the client's signed retainer carries its fee rows.
 //   W2 (the cited table): the tax default for the client is read from the cited CRA table (URL, quote, read date).
-//   W3 (the client's province): a client whose address is in Nova Scotia gets Nova Scotia's HST (14 %), not the
-//       Ontario firm's 13 %; source PARTY_PROVINCE.
+//   W3 (the client's province, P-797): a client whose Canadian address is in Nova Scotia gets Nova Scotia's HST (14 %),
+//       not the Ontario firm's 13 %, through the editable Bill-to province; source PARTY_PROVINCE (FO-7g part 3).
 //   W4 (the tax is added): a fee line sent with no rate takes the default; a rate in the request is never used.
 //   W5 (the government fee is its own untaxed line): stored at 0 tax; asking to tax it is refused in words.
 //   W6 (totals in integer cents): every figure on the invoice and in the database is a whole number of cents, and the
@@ -96,7 +96,7 @@ try {
 
   // ------------------------------------------------------------------------------- W1: from the signed retainer
   const w1 = await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "CAD", retainerId: RET });
-  ok("R1.56 W1 (parts missing: FO-7b's draft from a signed retainer's fee rows, FO-7s1 'Start from retainer'): a draft started from the client's signed retainer carries its 1,500.00 fee row",
+  ok("R1.56 W1 (part missing: invoice from retainer (row to be named by Lead B); FO-7s1 'Start from retainer'): a draft started from the client's signed retainer carries its 1,500.00 fee row",
     w1.status === 201 && /FEE:150000:/.test(lines(w1.body?.id ?? "00000000-0000-0000-0000-000000000000")), { status: w1.status, detail: w1.body?.detail ?? w1.body?.errors ?? null, retainerSeeded: !!RET });
   // The rest of the walk drafts by hand (FO-7b part 1a) so each later step is scored on its own part.
   const d = w1.status === 201 ? w1 : await api(TA, "POST", "/front-office/money/invoices", { personId: PA, currency: "CAD" });
@@ -112,12 +112,15 @@ try {
   ok("R1.56 W2 fail: a rate in the request is refused (422), never used", t2b.status === 422, t2b.body);
 
   // -------------------------------------------------------------------------------- W3: the client's province
-  // The client lives in Nova Scotia. No person has an address on main (FO-7g brief, contract gap): the address is sent
-  // the way the person page would save it; until a row adds it, the address cannot be stored.
+  // P-797 (CRA GST/HST Memorandum 3-3-6, para 20 and Example 6; Unconfirmed: no counsel): the tax follows the client's
+  // province, read from the client's Canadian address on the record through an editable Bill-to province; with no
+  // Canadian address it falls back to the firm's province (W2). FO-7g part 3 adds the Bill-to province (a migration);
+  // the field names below are this journey's reading of P-797, aligned when part 3 merges.
   const addr = await api(TA, "PATCH", `/front-office/people/${PA}`, { address: { city: "Halifax", provinceState: "NS", postalCode: "B3H 1A1", country: "CA" } });
+  const billTo = await api(TA, "PATCH", `/front-office/money/invoices/${INV}`, { billToProvince: "NS" });
   const t3 = await api(TA, "GET", `/front-office/money/tax-default?partyKind=PERSON&partyId=${PA}`);
-  ok("R1.56 W3 (parts missing: FO-7g part 3 and the row that gives a person an address): a client in Nova Scotia gets Nova Scotia's HST (14 %), not the Ontario firm's 13 %, source PARTY_PROVINCE",
-    t3.body?.ratePpm === NS.ratePpm && t3.body?.source === "PARTY_PROVINCE", { addressSave: addr.status, default: t3.body });
+  ok("R1.56 W3 (part missing: FO-7g part 3, the Bill-to province, P-797): a client whose Canadian address is in Nova Scotia gets Nova Scotia's HST (14 %), not the Ontario firm's 13 %, source PARTY_PROVINCE",
+    t3.body?.ratePpm === NS.ratePpm && t3.body?.source === "PARTY_PROVINCE", { addressSave: addr.status, billToSave: billTo.status, default: t3.body });
 
   // ------------------------------------------------------------------------------------- W4: the tax is added
   const w4 = await api(TA, "POST", `/front-office/money/invoices/${INV}/lines`, { kind: "FEE", description: "Professional fee: application (Sample)", unitMinor: 150000 });
