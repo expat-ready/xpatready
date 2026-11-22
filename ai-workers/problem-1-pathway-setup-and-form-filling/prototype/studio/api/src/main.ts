@@ -242,6 +242,7 @@ async function main() {
   (await import("./front-office/sales/public.ts")).publicFormBodyLimit(app);   // FO-2 (AG-2-49 rule 2): the web form's 32 KB, before the app-wide parser (Lead B's OK on #1813; the release holder's asked)
   (await import("./platform/http/input.ts")).inputBodyLimit(app);   // PF-28 (R1.10): the platform and front-office doors' JSON limit (Sample 256 KB), after FO-2's 32 KB and before the app-wide 5 MB; /api/hooks keeps its raw body
   (await import("./platform/billing/routes.ts")).stripeRawBody(app);   // PF-5 part 2: Stripe signs the raw bytes, so its door reads them before the JSON parser (asked of the tech lead on the PR)
+  (await import("./client-money/card/routes.ts")).connectRawBody(app);   // FO-7c part 1: the connected-accounts door reads its raw bytes too (Lead 2's ruling on #2938)
   app.useBodyParser("json", { limit: "5mb" });
   // PF-0bp: Nest turns the parser's SyntaxError into a 400 that quotes the bad text (routes-resolver mapExternalException);
   // pass on only its type, so ProblemErrors answers BODY_NOT_JSON and nothing of the body is repeated.

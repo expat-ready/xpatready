@@ -56,6 +56,9 @@ Walked within 5 min of #2922's merge (20:45 IST). `j_104` on fresh isolated copi
 * FAIL, findings: **QA-747** (Gap, Major): Attended saved and consult record accepted while unsigned (W4, W9): "cannot start until signed" has no part. **QA-748** (Bug, Major): a Follow-up booking is sent an agreement (W4b). **QA-749** (Ambiguity): the reminder goes to the host, not the person who booked (W5).
 * Unconfirmed: no counsel.
 
+## Duplicate scoring of R1.104 (found 01:1x IST 23 Nov)
+The other qa lane also scored R1.104 on bc1f39c08 and merged first (~21:3x IST): Partial, the same red steps. Its QA-750 = this lane's QA-747 (start not gated) and QA-751 = QA-748 (Follow-up sent an agreement); it set j_104 W5 to FO-3c's row (the host gets the reminder), which settles QA-749. Main's row and bugs stand; QA-747, QA-748 and QA-749 are withdrawn as duplicates (never on main).
+
 ## Questions for the Lead
 1. R1.10: after #2933, j_10 is still red on platform, FO sales and booking routes, run-time schemas (20 > 19), the case side's malformed ids and QA-507. Which parts own these (PF-28 part 2 residue, part 4 follow-up)? Without them R1.10 is Partial, not Works.
 2. R1.23 W4 is QA-746 on main (Gap, Major; this lane's QA-743 withdrawn as its duplicate): which lane draws the brand on the public booking page (PF-13 follow-up or FO-3w)? R1.104 W2/W3/W5 (poller, panel, queued reminder) have no part in an open PR. Are they backlog rows, or does the row's Done when accept the email-only / API-only scope?
