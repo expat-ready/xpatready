@@ -3,22 +3,28 @@
 // port, never :4400), with the API and the database read underneath. Done when (qa/CAPABILITIES R1.92): "Profile and offices save with
 // a valid IANA zone; a licence number in the wrong shape refused on the field; office times shown in each office's zone". Lead 4 (22 Nov
 // 15:39 IST, on #3003) and AG-1-34: the licence check is a WARNING on the field, never a refusal.
-//   W1 Firm profile by screens: My account offers "Firm profile" and the page saves an IANA zone. FAILS today: no Firm profile page
-//      (PF-5s S5, the next row); the step names the missing part.
+//   W1 Firm profile by screens: My account offers "Firm profile"; on it the Owner changes the firm's time zone (AG-01 §3.1: "language and
+//      timezone pickers"), saves, and the setting and its one audit line change. FAILS today: no Firm profile page (PF-5s S5, the next
+//      row). Once the page exists with no time-zone field, it fails naming that (the PF-5s concept's field list names none: a question for
+//      the tech lead on #3028).
 //   W2 the profile's API (PF-5fp, #3003): GET, then PUT a valid IANA zone, read back; a zone not on the list refused on its field (422),
 //      nothing written. Fails until #3003 is merged (404 before it).
 //   W3 Offices by screens (PF-18s part 1 over PF-18a): the Owner adds an office in Alberta: America/Edmonton is pre-filled before
 //      saving; saved, the list shows it with its zone; a BC office gets America/Vancouver.
-//   W4 office times in each office's zone: each office row shows its own zone and its own hours, and the API agrees (OfficeClockPort's
-//      data); the firm's first office keeps the firm's zone.
-//   W5 a zone not on the list is refused on the office's field in words (the API's 422; the screen offers only listed zones).
-//   W6 Licence by screens (PF-6 part 2b): My account → Licence; a College member's number in the wrong shape is saved and WARNED on the
-//      field ("doesn't look like …"), never refused. FAILS today where no licensing body carries a `numberPattern` (PF-4c part 2, the
-//      next row): the step names it. The record itself is saved and read back on Licences (Owner) either way.
-//   W7 400 and 1440 px: Offices and Licence have no sideways scroll and no WCAG 2.2 A/AA violation (axe); no page error.
+//   W4 office times in each office's zone: Vancouver's hours are changed to 08:00-16:00 (the API, as the Edit panel saves them); each
+//      office's row shows its own zone and its own hours (Vancouver 08:00-16:00, Calgary 09:00-17:00), as the API holds them; the
+//      firm's first office keeps the firm's zone.
+//   W5 a zone not on the list is refused on the office's timeZone field in words (the API's 422; the screen offers only listed zones).
+//   W6 Licence by screens (PF-6 part 2b): My account → Licence; a number in the wrong shape for its body is saved and WARNED on the
+//      field ("doesn't look like …"), never refused. Two parts are missing and the step names both: (a) PF-4c part 2, each body's
+//      `numberPattern` and the save's `warning` (API only, its brief's touch list); (b) the licence form showing that warning on the
+//      field (licence-form.tsx drops the save's answer; no row's touch list holds it yet: a question for the tech lead on #3028). The
+//      wrong value is one the body's pattern refuses (never assumed). The record is saved and read back on Licences either way.
+//   W7 400, 1024 and 1440 px: Offices and Licence have no sideways scroll and no WCAG 2.2 A/AA violation (axe); keyboard only, the
+//      licence is saved (Tab to the number, type, Enter); no page error.
 // Re-runnable on one copy (offices are never removed: each run adds its own names). Sample firms and values only. US$0, no model call,
 // live AI off. Screenshots: product/screens/J-92/screenshots/. Run from prototype/ (HEADED=1 opens a visible browser):
-//   zsh studio/tools/isolated.sh j92 4492 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j92 4492 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_92.ts j92 4492
+//   zsh studio/tools/isolated.sh j92 4436 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh j92 4436 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_92.ts j92 4436
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -26,7 +32,7 @@ import { chromium, type Page } from "playwright";
 import { client, recorder } from "../runtime/api.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
-const NAME = process.argv[2] ?? "j92", PORT = Number(process.argv[3] ?? 4492), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
+const NAME = process.argv[2] ?? "j92", PORT = Number(process.argv[3] ?? 4436), DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`;
 if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo on :4400"); process.exit(2); }
 const STUDIO = join(import.meta.dirname, "..", "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-92", "screenshots"); mkdirSync(SHOTS, { recursive: true });
@@ -71,8 +77,25 @@ try {
   const sections = await p.locator('nav[aria-label="My account"] [data-account-section]').allInnerTexts();
   const profileEntry = sections.find((s) => /firm profile/i.test(s));
   await shot(p, "w1-my-account-1440");
-  ok("R1.92 W1: My account offers \"Firm profile\" to the Owner, a page that saves the firm's IANA time zone. FAILS today: no Firm profile page on main (PF-5s S5, the next row)",
-    !!profileEntry, { sections });
+  if (!profileEntry) ok("R1.92 W1: My account offers \"Firm profile\" to the Owner, where the firm's IANA time zone is changed and saved. FAILS today: no Firm profile page on main (PF-5s S5, the next row)", false, { sections });
+  else {
+    await p.locator('nav[aria-label="My account"] [data-account-section]', { hasText: /firm profile/i }).first().click();
+    const field = p.getByLabel(/time zone/i).first();
+    await field.waitFor({ timeout: 20_000 }).catch(() => undefined);
+    if (!(await field.count())) ok("R1.92 W1: the Firm profile page offers the firm's time zone (AG-01 §3.1). FAILS: the page has no time-zone field (the PF-5s concept lists none: question for the tech lead on #3028)", false, { url: p.url() });
+    else {
+      const was = sql(`select coalesce((select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.time_zone'), 'America/Toronto')`);
+      const to = was === "America/Halifax" ? "America/Regina" : "America/Halifax", t1 = sql(`select clock_timestamp()::text`);
+      if (await field.evaluate((el) => el.tagName === "SELECT")) await field.selectOption(to); else await field.fill(to);
+      await p.getByRole("button", { name: /^save/i }).first().click();
+      const savedZone = await (async () => { for (let i = 0; i < 40; i++) { const z = sql(`select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.time_zone'`); if (z === to) return z; await p.waitForTimeout(250); } return null; })();
+      await shot(p, "w1-firm-profile-saved-1440");
+      ok("R1.92 W1: on Firm profile the Owner changes the firm's time zone and saves: the setting holds it and one audit line records it", savedZone === to
+        && sql(`select count(*) from audit_event where at > '${t1}' and entity_key = '${A}:platform.time_zone'`) === "1", { to, savedZone });
+      const g1 = await api(TOWNER, "GET", "/platform/firm/profile");
+      await api(TOWNER, "PUT", "/platform/firm/profile", { version: g1.body?.version, timeZone: was });   // put the Sample firm's zone back
+    }
+  }
 
   // ------------------------------------------------------------------------------------------ W2 the profile's API
   const g = await api(TOWNER, "GET", "/platform/firm/profile");
@@ -112,6 +135,10 @@ try {
     cal.replace(/\s/g, "") === "America/Edmonton" && van.replace(/\s/g, "") === "America/Vancouver" && await p.locator("[data-office-row]").count() === (before ? before + 2 : 3), { cal, van, before });
 
   // ------------------------------------------------------------------------------------------ W4 office times in each office's zone
+  const van0 = ((await api(TOWNER, "GET", "/platform/offices")).body?.offices ?? []).find((o: { name: string }) => o.name === `Vancouver ${run}`);
+  const early = ["MON", "TUE", "WED", "THU", "FRI"].map((day) => ({ day, opens: "08:00", closes: "16:00" }));
+  const ch = await api(TOWNER, "PATCH", `/platform/offices/${van0?.id}`, { version: van0?.version, businessHours: early });
+  await p.reload(); await p.locator(`[data-office-row="Vancouver ${run}"]`).waitFor({ timeout: 30_000 });
   const list = await api(TOWNER, "GET", "/platform/offices");
   const offices = (list.body?.offices ?? []) as { name: string; timeZone: string; businessHours: { day: string; opens: string; closes: string }[]; isFirst: boolean }[];
   const firmZone = sql(`select coalesce((select value #>> '{}' from platform_firm_setting where firm_id = '${A}' and key = 'platform.time_zone'), 'America/Toronto')`);
@@ -121,47 +148,64 @@ try {
     const text = (await row.innerText()).replace(/\s+/g, " ");
     rowsOk.push(text.includes(o.timeZone.split("/").pop()!.replace(/_/g, " ").split(" ")[0]) && o.businessHours.every((h) => text.includes(h.opens)));
   }
-  ok("R1.92 W4: each office's row shows its own zone and its own opening hours, as the API holds them (the times are the office's, never converted)", rowsOk.length === 2 && rowsOk.every(Boolean), { rowsOk });
+  const calText = await p.locator(`[data-office-row="Calgary ${run}"]`).innerText(), vanText = await p.locator(`[data-office-row="Vancouver ${run}"]`).innerText();
+  await shot(p, "w4-offices-own-hours-1440");
+  ok("R1.92 W4: each office's row shows its own zone and its own opening hours, as the API holds them (Vancouver 08:00-16:00 after its change, Calgary 09:00-17:00; the times are the office's, never converted)",
+    ch.status === 200 && rowsOk.length === 2 && rowsOk.every(Boolean) && /08:00.16:00/.test(vanText) && !/08:00/.test(calText) && /09:00.17:00/.test(calText), { ch: ch.status, rowsOk, calText, vanText });
   const first = offices.find((o) => o.isFirst);
   ok("R1.92 W4: the firm's first office keeps the firm's own zone", !!first && first.timeZone === firmZone, { first: first?.timeZone, firmZone });
 
   // ------------------------------------------------------------------------------------------ W5 a zone not on the list
   const badOffice = await api(TOWNER, "POST", "/platform/offices", { name: `Nowhere ${run}`, province: "AB", timeZone: "Mars/Olympus" });
   ok("R1.92 W5: an office with a zone not on the list is refused in words (422, \"Choose a time zone from the list\") and not saved",
-    badOffice.status === 422 && /time zone/i.test(badOffice.text) && sql(`select count(*) from platform_office where firm_id = '${A}' and name = 'Nowhere ${run}'`) === "0", [badOffice.status]);
+    badOffice.status === 422 && /time zone/i.test(String(badOffice.body?.fields?.timeZone ?? "")) && sql(`select count(*) from platform_office where firm_id = '${A}' and name = 'Nowhere ${run}'`) === "0", [badOffice.status]);
 
   // ------------------------------------------------------------------------------------------ W6 Licence by screens
-  const withPattern = BODIES.bodies.find((b) => b.numberPattern);
+  // A body with a pattern, and a value its pattern refuses (never assumed: review m4); else the College and a value no number has.
+  const candidates = (pat: string) => [`X-${run}`, `${run}${run}`, "0", "ABC DEF GHI", `R${"9".repeat(12)}`].filter((v) => { try { return !new RegExp(pat).test(v); } catch { return false; } });
+  const withPattern = BODIES.bodies.find((b) => b.numberPattern && candidates(b.numberPattern).length);
   const body = withPattern ?? BODIES.bodies.find((b) => b.kind === "CICC")!;
   const type = BODIES.types.find((t) => t.bodies.includes(body.kind))!.label;
-  const wrong = `X-${run}`;   // letters and a dash: no licence-number shape we know
+  const wrong = withPattern ? candidates(withPattern.numberPattern!)[0] : `X-${run}`;
   await p.goto(`${BASE}/account/licence`); await p.locator("[data-licence-form]").waitFor({ timeout: 60_000 });
   await p.locator("[data-licence-type]").selectOption(type);
   if (await p.locator("[data-licence-body]").inputValue() !== body.name) await p.locator("[data-licence-body]").selectOption(body.name);
   await p.locator("[data-licence-number]").fill(wrong);
-  await p.locator("[data-licence-save]").click();
+  // Wait for the save's own answer, then for the form to settle (review m3: no fixed wait).
+  const [put] = await Promise.all([p.waitForResponse((r) => /\/api\/platform\/(staff\/[^/]+\/credential|me\/account)/.test(r.url()) && r.request().method() === "PUT", { timeout: 30_000 }), p.locator("[data-licence-save]").click()]);
   await p.waitForFunction(() => !document.querySelector("[data-licence-save][aria-busy='true']"), undefined, { timeout: 30_000 });
-  await p.waitForTimeout(500);
   const formText = await p.locator("[data-licence-form]").innerText();
   await shot(p, "w6-licence-wrong-shape-1440");
   const saved = sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`);
-  ok("R1.92 W6: a number in the wrong shape is saved, never refused (AG-1-34: an input typo check, not a block)", saved === wrong && !/Not saved/.test(formText), { saved, formText: formText.slice(0, 200) });
-  ok(`R1.92 W6: the wrong shape is WARNED on the field ("doesn't look like …"). FAILS today: ${withPattern ? "the warning is missing" : "no licensing body in samples/representative-bodies-ca.json carries a numberPattern (PF-4c part 2, the next row)"}`,
-    !!withPattern && /doesn.t look like/i.test(formText), { body: body.name, pattern: withPattern?.numberPattern ?? null });
+  ok("R1.92 W6: a number in the wrong shape is saved, never refused (AG-1-34: an input typo check, not a block)", put.status() === 200 && saved === wrong && !/Not saved/.test(formText), { put: put.status(), saved, formText: formText.slice(0, 200) });
+  const answer = await put.json().catch(() => null) as { warning?: unknown } | null;
+  const missing = [!withPattern ? "(a) no licensing body in samples/representative-bodies-ca.json carries a numberPattern and the save returns no warning (PF-4c part 2, the next row)" : !answer?.warning ? "(a) the save returns no warning for a number its body's pattern refuses (PF-4c part 2)" : "",
+    "(b) the licence form does not show a save's warning on the field (licence-form.tsx drops the answer; no row holds it yet)"].filter((x, i) => x && (i === 0 || !/doesn.t look like/i.test(formText)));
+  ok(`R1.92 W6: the wrong shape is WARNED on the field ("doesn't look like …"), never refused.${missing.length ? ` FAILS today: ${missing.join("; ")}` : ""}`,
+    !!withPattern && !!answer?.warning && /doesn.t look like/i.test(formText), { body: body.name, pattern: withPattern?.numberPattern ?? null, warning: answer?.warning ?? null });
   const lics = await api(TOWNER, "GET", "/platform/licences");
   await p.goto(`${BASE}/platform/licences`); await p.locator(`[data-licence-row="${OWNER}"]`).waitFor({ timeout: 60_000 });
   ok("R1.92 W6: the record reads back on Licences (screen and API), with its type and body", (await p.locator(`[data-licence-row="${OWNER}"] [data-licence-number-cell]`).innerText()) === wrong
     && (lics.body?.licences ?? []).some((l: { staffId: string; licenceNumber: string; licensingBody: string }) => l.staffId === OWNER && l.licenceNumber === wrong && l.licensingBody === body.name), [lics.status]);
 
   // ------------------------------------------------------------------------------------------ W7 sizes and axe
-  for (const width of [400, 1440]) for (const path of ["/platform/offices", "/account/licence"]) {
+  for (const width of [400, 1024, 1440]) for (const path of ["/platform/offices", "/account/licence"]) {
     const q = await tab(width);
     await q.goto(`${BASE}${path}`); await q.locator("[data-office-row], [data-one-office], [data-licence-form]").first().waitFor({ timeout: 60_000 });
     const v = await axe(q); const fits = await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-    if (width === 400) await shot(q, `w7-${path.split("/").pop()}-400`);
+    if (width !== 1440) await shot(q, `w7-${path.split("/").pop()}-${width}`);
     ok(`R1.92 W7: ${path} at ${width} px has no sideways scroll and no WCAG 2.2 A/AA violation (axe)`, fits && v.length === 0, { fits, axe: v.map((x) => `${x.id}: ${x.nodes[0]?.target}`) });
     await q.context().close();
   }
+  const k = await tab();
+  await k.goto(`${BASE}/account/licence`); await k.locator("[data-licence-form]").waitFor({ timeout: 60_000 });
+  const typed = `K-${run}`;
+  let reached = false;
+  for (let i = 0; i < 60 && !reached; i++) { await k.keyboard.press("Tab"); reached = await k.locator("[data-licence-number]").evaluate((el) => el === document.activeElement); }
+  if (reached) { await k.keyboard.press("ControlOrMeta+a"); await k.keyboard.type(typed); }
+  const [kput] = reached ? await Promise.all([k.waitForResponse((r) => r.request().method() === "PUT" && /credential|me\/account/.test(r.url()), { timeout: 30_000 }), k.keyboard.press("Enter")]) : [null];
+  ok("R1.92 W7: keyboard only: Tab reaches the licence number, typing and Enter save it", reached && kput?.status() === 200 && sql(`select licence_number from platform_staff_credential where staff_id = '${OWNER}'`) === typed, { reached, status: kput?.status() });
+  await k.context().close();
   ok("R1.92 W7: no page error on any page walked", errs.length === 0, errs.slice(0, 3));
 } finally {
   await browser.close();
