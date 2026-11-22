@@ -2,7 +2,7 @@
 
 current_lead: local_bcc6ed82-631c-44af-bb92-b7e04a629acd Lead 4 · 22 Nov 14:18 IST (took over from Lead 3 (local_6efc4ae3) at ~315k, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 14:18 IST: Lead 3 handed over to Lead 4 · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 15:00 IST: Lead 4 is the Lead · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
@@ -27,10 +27,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 |---|---|---|
 | A288 | 22 Nov 14:5x (typed, to Lead 4): implement and enforce everything now (track queues, speed changes, Lead-missed-Track-B rule, no stale information); restore the branch yourself; two standby Leads; one question at a time | 15:00: branch restored (7ea0d81f3); lanes Speed 1 (track queues, qa proof on batch), Speed 2 (migration slots per area, affected tests), Enforcement 2 (ENF-803 stale info, bulk-delete guard) started; P-802, P-803 on #2952; Lead 6 standby started |
 | A287 | 22 Nov 14:4x (typed, to Lead 4): never ask domain questions, settle them from government sources, RCIC documents and industry practice; recommended button first; do the AWS CodeBuild OK yourself; every Track B capability gets lanes now with Track A's step board, qa and proven-by, kept in a shared library; steps 1-4 green fast for both tracks; are the 30/60/90-min triggers measured or blind? | P-797 tax = client's province (CRA 3-3-6); AWS told with his words; 10 lanes started + 3 cards (app cap 10); board `design/board-lead-b-2026-11-22.md`, page `design/two-track-plan-2026-11-22.html`; triggers tightened (P-798 owed: lead-watch.sh enforcer change) |
-| A286 | 22 Nov 14:4x (typed, to Lead 4): drive Track B to 12-15 capabilities like Track A, allocate builders and qa lanes to both goals, else running two tracks wastes tokens; run the full lead-watch; a visual page: whole pipeline, plan A 12-15 and B 12-15, strategy, how we monitor and adjust, how we are doing now, the timeline view and the lead-watch report | 14:3x: full watch done; plan page https://claude.ai/artifact/2aNo4YH89N7CcJG7Jnx2Dn (source `reports/two-track-plan-2026-11-22.html`); Track B re-pointed at 12 nearest rows (R1.56, R1.29, R1.55, R1.105, R1.85, R1.93, R1.58, R1.61, R1.106, R1.65, R1.76, R1.54), Lead B shaping 7 new rows' next parts within 60 min; qa lanes started: Track B (journeys ahead, R1.56 walk) and Track A 2 (R1.10, R1.88, R1.102, R1.23, R1.104); builders start one per part as briefs land. Track B honest forecast: 1 by 09:00 23 Nov, ~12 by 26 Nov |
-| A285 | 22 Nov 14:3x (typed, to Lead 4): R1.21 "Yes, re-word" (prove with the billing stand-in, no Stripe key) | P-796 on #2952's branch; build row for the tax on the invoice next; Q1 tax province asked next |
-| A284 | 22 Nov ~11:2x (typed): tokens are not the limit, be mindful; run Track B and everything agreed even if it proves nothing today; why the `staging.` prefix, is the address configurable; AWS build approved | P-786; Track B's 4 builders started; AWS told "B ok"; prefix answer in chat |
-| A283 | 22 Nov 11:0x (typed): every lane on Opus 5.5 medium, decide for Lead 1 too; AWS and Cloudflare are signed in, set both up; forecast must be at least 12, else say why; the Lead checks every 10 minutes what each lane needs and that skills and enforcement work; extra enforcement goes to the parallel lane | In progress 11:1x: board for 12, AWS session, model switch running |
+| A283-A286 | 22 Nov 11:0x-14:2x | word for word in `history/STATE-2026-11-22-1500-lead4-founder-asks-A283-A286.md` |
 | A242-A282 | 21-22 Nov (A279 parts: `product/design/A279-parts-2026-11-22.md`) | word for word in `product/history/STATE-2026-11-22-1027-lead21s3-founder-asks-A272-A276.md` | |
 
 
