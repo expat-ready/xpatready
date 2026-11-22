@@ -6,7 +6,8 @@ import { APP_INTERCEPTOR } from "@nestjs/core";
 import { Observable } from "rxjs";
 import { Db } from "../core.ts";
 import type { Feature } from "../features.ts";
-import { appRoleProblems, closeBypassUses, inRequest, wallUnscopedQueries } from "../platform/firm-scope.ts";
+import { join } from "node:path";
+import { appRoleProblems, closeBypassUses, inRequest, loadBypassUseFiles, wallUnscopedQueries } from "../platform/firm-scope.ts";
 
 // Loaded by registerFeatures before the app is built: from here on, in the API server, a query outside every scope reads
 // nothing (breaker m8: no start-up query runs on the bypass by default).
@@ -22,8 +23,9 @@ export class FirmWallsInterceptor implements NestInterceptor, OnModuleInit, OnAp
     if (problems.length) throw new Error(`PF-12: the API refuses to start: its database role could pass the firm walls (${problems.join("; ")}). Connect as xr_app (APP_DATABASE_URL); migrations run as the owner.`);
   }
 
-  /** P-785 (2): every module is loaded, so every declared bypass use is in; the list closes before the API listens. */
-  onApplicationBootstrap() { closeBypassUses(); }
+  /** P-785 (2): every <name>.bypass.ts file under api/src is loaded (a use whose module is imported only at request time
+   *  is declared too), then the list closes, before the API listens. */
+  async onApplicationBootstrap() { await loadBypassUseFiles(join(import.meta.dirname, "..")); closeBypassUses(); }
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (ctx.getType() !== "http") return next.handle();

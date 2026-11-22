@@ -62,7 +62,7 @@ import type { PrismaClient } from "@prisma/client";
 
 /** The role the API connects as (migration pf12_firm_walls). */
 export const APP_ROLE = "xr_app";
-/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES. */
+/** Our own staff's bypass role (BYPASSRLS): only asBypass reaches it, for a use on BYPASS_USES or declared (defineBypassUse). */
 export const BYPASS_ROLE = "xr_staff_bypass";
 
 type Scope = { firmId?: string; bypass?: string; route?: string };
@@ -125,10 +125,11 @@ export const BYPASS_USES: Readonly<Record<string, BypassEntry>> = Object.freeze(
   "platform.demo.reset": { why: "the demo reset puts every Sample firm's settings back (P-571 (1)); demo routes, and the reset tools outside a request", routes: [/^POST \/api\/demo\//i], outside: true, audit: "per-firm" },
 });
 
-/** A job with no firm (a platform-wide sweep): on the named list as "job:<queue>" it runs on the bypass; otherwise with no
+/** A job with no firm (a platform-wide sweep): on the named list, or declared, as "job:<queue>" it runs on the bypass; otherwise with no
  *  firm, so it reads no firm's rows (platform-jobs.ts). */
 export function asJob<T>(queue: string, fn: () => Promise<T>): Promise<T> {
-  return entryOf(`job:${queue}`) ? asBypass(`job:${queue}`, fn) : fn();
+  const name = `job:${queue}`, mine = declared.get(name);
+  return Object.prototype.hasOwnProperty.call(BYPASS_USES, name) ? asBypass(name, fn) : mine ? asBypass(mine, fn) : fn();
 }
 
 // ------------------------------------------------------------------- P-785 (2): uses declared beside their modules
@@ -142,6 +143,10 @@ const USE_NAME = /^(job:)?[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/;
  *  (required, as on the list). Refused (BypassRefused) once the API has started (closeBypassUses), for a name already on
  *  the list or declared, or a malformed one. A job's use is named "job:<queue>", as on the list (asJob finds it). */
 export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
+  // Only a <name>.bypass.ts file may declare (review M1): the calling file is read from the call stack, so an alias, a
+  // namespace import or a call through a variable from any other file is refused at run time, not only by the check.
+  const from = callerFile();
+  if (!from || !/\.bypass\.ts$/.test(from)) throw new BypassRefused(`defineBypassUse: "${String(name)}" declared in ${from ?? "an unknown file"}; only a <name>.bypass.ts file may declare a bypass use`);
   if (closed) throw new BypassRefused(`defineBypassUse: "${name}" declared after start-up; the list closed when the API started (declare it in a <name>.bypass.ts file its module imports at load)`);
   if (typeof name !== "string" || !USE_NAME.test(name)) throw new BypassRefused(`defineBypassUse: "${String(name)}" is not a use name (area.what, or job:<queue>)`);
   if (Object.prototype.hasOwnProperty.call(BYPASS_USES, name) || declared.has(name)) throw new BypassRefused(`defineBypassUse: "${name}" is already a bypass use`);
@@ -150,6 +155,26 @@ export function defineBypassUse(name: string, entry: BypassEntry): BypassUse {
   const use: BypassUse = Object.freeze({ name, entry: Object.freeze({ ...entry, routes: Object.freeze([...entry.routes]), ...(entry.inside ? { inside: Object.freeze([...entry.inside]) } : {}) }) });
   declared.set(name, use);
   return use;
+}
+/** The file that called the function calling this one (the first stack frame outside this file), or undefined. */
+function callerFile(): string | undefined {
+  const here = import.meta.url.replace(/^file:\/\//, "");
+  for (const line of (new Error().stack ?? "").split("\n").slice(1)) {
+    const m = line.match(/\(?((?:file:\/\/)?\/[^():]+\.[cm]?[jt]sx?)(?::\d+){0,2}\)?\s*$/);
+    const f = m?.[1]?.replace(/^file:\/\//, "");
+    if (f && f !== here) return f;
+  }
+  return undefined;
+}
+/** The API's start-up loads every <name>.bypass.ts file under `root` (api/src) before it closes the list (review M2): a
+ *  use whose module is imported only later, at request time, is declared all the same. Returns the files loaded. */
+export async function loadBypassUseFiles(root: string): Promise<string[]> {
+  const { readdirSync } = await import("node:fs"), { join } = await import("node:path"), { pathToFileURL } = await import("node:url");
+  const files: string[] = [];
+  const walk = (d: string) => { for (const e of readdirSync(d, { withFileTypes: true })) { if (e.name === "node_modules") continue; const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith(".bypass.ts")) files.push(p); } };
+  walk(root);
+  for (const f of files.sort()) await import(pathToFileURL(f).href);
+  return files;
 }
 /** The API's start-up closes the list (features/platform-firm-walls.ts, once every module is loaded): from then on no use
  *  can be declared, so nothing loaded later grants itself the bypass. */
@@ -172,7 +197,7 @@ export function wallUnscopedQueries() { unscoped = "walled"; }
 export const unscopedMode = () => unscoped;
 let saidDirect = false;
 
-/** A bypass use that is not on BYPASS_USES, or not for this route. A programming error: the request stops (500). */
+/** A bypass use that is neither on BYPASS_USES nor declared, or not for this route. A programming error: the request stops (500). */
 export class BypassRefused extends Error {}
 
 /** The operations line for a bypass use (PF-23): one platform_bypass line through the one logger (redacted, with the
@@ -189,16 +214,17 @@ export function onBypassLine(f: (use: string, route: string | undefined) => void
 export function mayRunInside(entry: { audit: BypassAudit; inside?: readonly string[] }, outer: string): boolean {
   return entry.audit === "platform" && (entry.inside ?? []).includes(outer);
 }
-/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES and
+/** Runs fn as our own staff's bypass role: every walled table is readable and writable. Only for a use on BYPASS_USES (by
+ *  its name) or a declared one (by the value defineBypassUse returned: review m1, a declared use never runs by name), and
  *  a route on that use's list; every use writes its operations line, and a "per-firm" use one platform.bypass audit line
  *  per firm it touches (touchFirm). */
 export async function asBypass<T>(given: string | BypassUse, fn: () => Promise<T> | T): Promise<T> {
   // A declared use is honoured only as the very value defineBypassUse returned (a look-alike object is refused).
   if (typeof given !== "string" && (typeof given !== "object" || given === null || declared.get(given.name) !== given)) throw new BypassRefused(`asBypass: "${String((given as { name?: unknown } | null)?.name)}" is not a declared bypass use`);
   const use = typeof given === "string" ? given : given.name;
-  const entry = entryOf(use);
+  const entry = typeof given === "string" ? (Object.prototype.hasOwnProperty.call(BYPASS_USES, use) ? BYPASS_USES[use] : undefined) : given.entry;
   const store = scope.getStore(), route = store?.route;
-  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES) nor declared (defineBypassUse)`);
+  if (!entry) throw new BypassRefused(`asBypass: "${use}" is not on the named list (firm-scope.ts BYPASS_USES) nor passed as a declared use (defineBypassUse)`);
   // A direct call (no scope at all) only in a suite or tool process: in the API server every request and job has its scope.
   const allowed = route !== undefined ? entry.routes.some((r) => r.test(route)) : store === undefined ? !!(entry.outside || (entry.direct && unscoped === "direct")) : !!entry.outside;
   if (!allowed) throw new BypassRefused(`asBypass: "${use}" is not allowed ${route === undefined ? "outside a request" : `on ${route}`}`);
