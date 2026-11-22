@@ -29,7 +29,10 @@
 //      whose fields are all of that kind is listed as having no string field, not counted as passed. Path keys that
 //      are strings (firm key, slug, token, kind) are sent at 600 characters: 404 (or 410 for a token) or a field error,
 //      never 2xx or 500. W3 schema: a body or query that reaches no zod parse FAILS that line, named; one that reaches a
-//      schema this walk cannot take apart (built at run time) is named in a NOTE, its required fields still probed.
+//      schema this walk cannot take apart (built at run time) is named in a NOTE, with what is still probed (a body's
+//      required fields, a query's required keys); W3 run-time schemas FAILS if their count grows past the reviewed 19.
+//      Every field is probed, no cap. A field probe answered 429 is left unjudged (NOT TESTED) only on the sign-up door,
+//      whose own rate limit is by design; a 429 anywhere else counts as not as ruled.
 //      Path keys with no Sample value (a booking link's token, an invitation's token) get a random value, so their
 //      body and query probes answer 404 and count as not passing: a builder who seeds a real Sample value for such a
 //      key adds it to REAL below (as ":formToken" is today).
@@ -207,6 +210,11 @@ const areaOf = (path: string) => /\/money\//.test(path) ? "money" : /retainer/.t
   : /booking|availability|time-off|consult|\/api\/public\/(firms|bookings)/.test(path) ? "booking"
     : /front-office|\/api\/public\/(forms|embed)/.test(path) ? "front-office sales" : "platform";
 const AREAS = ["platform", "front-office sales", "booking", "retainers", "money"];
+/** The only door whose own rate limit (10 a client in 10 minutes, by design) may leave a field probe unjudged; a 429
+ *  anywhere else is judged like any other answer (not as ruled). */
+const SIGN_UP = /^\/api\/public\/signup(\/|$)/;
+/** Reviewed 22 Nov (round 2 of #2937): inputs whose schema is built at run time; the line fails if the count grows. */
+const RUNTIME_SCHEMAS = 19;
 
 let browser: Browser | null = null;
 const errors: string[] = [];
@@ -287,14 +295,14 @@ try {
       const big = await call(method, fill(d.path), { token, body: JSON.stringify({ pf28: MB }) }); probed[area]++;
       if (big.status !== 413) bad("1mb", big);
       // One field of the wrong type at a time: each declared field and each required one, sent alone as an object.
-      const decl = declared.get(route)?.body ?? null, fields = [...new Set([...(decl ?? []), ...required])].slice(0, 10);
+      const decl = declared.get(route)?.body ?? null, fields = [...new Set([...(decl ?? []), ...required])];   // every field, no cap
       const how = declared.get(route)?.bodyHow ?? "unparsed";
       if (how === "unparsed") unparsed.push(route); else if (how === "unread") unread.push(route);
       for (const f of [...fields]) {
         let t = await call(method, fill(d.path), { token, body: JSON.stringify({ [f]: { pf28: 1 } }) }); probed[area]++;
         // A field that is itself an object (the answer names "<f>.<inner>") gets a number as its wrong type instead.
         if (Object.keys((t.body?.fields as object) ?? {}).some((k) => k.startsWith(`${f}.`))) t = await call(method, fill(d.path), { token, body: JSON.stringify({ [f]: 12345 }) });
-        if (t.status === 429) { limited.push(`${route} ${f}`); fields.splice(fields.indexOf(f), 1); continue; }
+        if (t.status === 429 && SIGN_UP.test(d.path)) { limited.push(`${route} ${f}`); fields.splice(fields.indexOf(f), 1); continue; }
         // A field only the missing probe named, which the JSON body refuses as unknown, is a multipart part (a file):
         // not a JSON field; named in the note line, not probed further.
         if (!decl?.includes(f) && NOT_ALLOWED.test(wordsOf(t, f))) { multipart.push(`${route} ${f}`); fields.splice(fields.indexOf(f), 1); continue; }
@@ -305,7 +313,7 @@ try {
       let strings = 0;
       for (const f of fields) {
         const l = await call(method, fill(d.path), { token, body: JSON.stringify({ [f]: LONG }) });
-        if (l.status === 429) { limited.push(`${route} long:${f}`); continue; }
+        if (l.status === 429 && SIGN_UP.test(d.path)) { limited.push(`${route} long:${f}`); continue; }
         if (l.status === FIELD_ERROR_STATUS && named(l, f) && NOT_TEXT.test(wordsOf(l, f))) continue;
         strings++; overLongTried++;
         if (!fieldError(l, f)) { overLong.push(`${route} ${f} → ${l.status}${wordsOf(l, f) ? ` "${wordsOf(l, f).slice(0, 60)}"` : ""}`); if (l.status >= 500) five.push(`${route} long:${f}`); }
@@ -318,9 +326,13 @@ try {
       const qd = declared.get(route)?.query ?? null;
       const qhow = declared.get(route)?.queryHow ?? "unparsed";
       if (qhow === "unparsed") unparsed.push(`${route} (query)`); else if (qhow === "unread") unread.push(`${route} (query)`);
-      for (const f of (qd ?? []).slice(0, 10)) {
-        overLongTried++;
+      // A query schema built at run time: its required keys, as the route names them when the query is sent empty.
+      let qfields = qd ?? [];
+      if (qd === null && qhow === "unread") { const e = await call(method, fill(d.path), { token, body: d.body ? "{}" : undefined }); qfields = e.status === FIELD_ERROR_STATUS ? Object.keys((e.body?.fields as object) ?? {}) : []; }
+      for (const f of qfields) {   // every key, no cap
         const l = await call(method, `${fill(d.path)}?${f}=${QLONG}`, { token, body: d.body ? "{}" : undefined });
+        if (l.status === FIELD_ERROR_STATUS && named(l, f) && NOT_TEXT.test(wordsOf(l, f))) continue;   // a number or list key, not text
+        overLongTried++;
         if (!fieldError(l, f)) { overLong.push(`${route} ?${f} → ${l.status}${wordsOf(l, f) ? ` "${wordsOf(l, f).slice(0, 60)}"` : ""}`); if (l.status >= 500) five.push(`${route} long:?${f}`); }
       }
     }
@@ -345,7 +357,8 @@ try {
   if (multipart.length) console.log(`NOTE  J-10 W2/W3: multipart file parts (required, refused in a JSON body as not a field), not probed as JSON fields: ${multipart.join(", ")}`);
   if (overLong.length) console.log(`  over-long, every field not as ruled: ${overLong.join(" | ")}`);
   if (unparsed.length) console.log(`  input reaching no zod parse: ${unparsed.join(" | ")}`);
-  if (unread.length) console.log(`NOTE  J-10 W3: ${unread.length} inputs reach a zod parse whose fields this walk cannot take apart (a schema built at run time, e.g. Object.fromEntries); only their required fields (named by the missing probe) were probed: ${unread.join(", ")}`);
+  if (unread.length) console.log(`NOTE  J-10 W3: ${unread.length} inputs reach a zod parse whose fields this walk cannot take apart (a schema built at run time, e.g. Object.fromEntries); probed: a body's required fields (named by its missing probe), a query's required keys (named when it is sent empty): ${unread.join(", ")}`);
+  ok(`J-10 W3 run-time schemas: at most ${RUNTIME_SCHEMAS} inputs (the reviewed count, 22 Nov) reach a schema this walk cannot take apart; more means a new one came in unread`, unread.length <= RUNTIME_SCHEMAS, unread.length);
   ok(`J-10 W3: every string field (body, query, path key) sent at its over-long length answers a field error naming it, or 404 for a path key — ${overLongTried} fields tried; ${noString.length} routes with a body declare no string field (listed, not counted as passed: ${noString.slice(0, 15).join(", ")})`, overLongTried > 0 && overLong.length === 0, overLong.slice(0, 15));
   ok(`J-10 W3 schema: every body and query reaches a zod schema (${unparsed.length} reach none: their fields cannot be known or checked)`, unparsed.length === 0, unparsed.slice(0, 20));
   const after = rows();
