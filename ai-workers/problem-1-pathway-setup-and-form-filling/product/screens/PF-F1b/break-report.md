@@ -91,3 +91,55 @@ row's own check `tests/check_pff1b_bind.ts` passes 26/0 here.
 
 **Verdict: Block** (commit 4f6e08001). B1: in the merged app the S3 links are never bound, and `PLATFORM_FILES=s3` starts
 without `PLATFORM_FILES_LINK_KEY`.
+
+## Round 2 (diff 4f6e08001..4ae0c919e)
+
+Diff only, code level. The working tree had the builder's uncommitted edits to settings.ts and choose.ts, so every run
+used a `git archive` copy of head `4ae0c919ec7efa73206482b313f57a9ab070b552`, with node_modules linked. No app server;
+port 54329 not touched. Scripts are in the scratchpad `breaker-f1b/`: `r2_drive.ts` + `r2_child.ts` (all 71 feature
+files merged by `registerFeatures`), `r2_keys.ts`, `r2_pf24.ts`, `r2_seam.ts`. Row check on head: 30/0.
+
+### M1 (Major): the variety rule breaks PF-24's suite about 3 runs in 4 and refuses strong hex keys
+- **Did:** ran `tests/check_pf24_secrets.ts`'s own `generated()` (lines 26-45) 1000 times against the head's loader
+  (`r2_pf24.ts`). It makes `PLATFORM_FILES_LINK_KEY: rand(40)`, which is 40 hex characters (line 44).
+- **Expected:** the assertion "PLATFORM_ENVIRONMENT=test with every setting loads" (line 55) passes, as it did before
+  this diff.
+- **Actual:** 751 of 1000 sets were refused with "PLATFORM_FILES_LINK_KEY is set but not valid: … 16 or more different
+  ones". Hex has only 16 symbols, so `new Set(v).size >= 16` (settings.ts:57) needs every hex digit to appear. The suite
+  is in CI (`suite-times.tsv:336`), so the merge-queue batch goes red about 75% of the time, or main becomes flaky.
+- **The same root cause refuses real keys** (`r2_keys.ts`, 2000 draws each): `openssl rand -hex 32` 25.4%,
+  `-hex 24` 55.8%, `-hex 16` 93.0%, two UUIDs 2.0%. `openssl rand -base64 32` 0%.
+
+### m1 (Minor): round 1's m4 is only partly closed; patterned keys still pass
+- Accepted: `"abcdefghijklmnop"×2`, `"0123456789abcdef"×2`, `"abcdefghijklmnop"+"a"×16`,
+  `"Expat-Ready-Files-Link-Key-2026!!"`, `"correct horse battery staple 2026!"`, 16 emoji ×2, and `"a"` followed by
+  31 combining marks. A count of different characters measures neither randomness nor length in bytes.
+
+### m2 (Minor): on the seam, the store and the links are different S3Files instances
+- In `r2_child.ts`, local with the seam: `links.files === store.store` is false, and so is `=== boundFiles()`.
+  choose.ts:77 rebuilds on every call while `recorded` is set. Both use the same handler, so links still work (own
+  firm 200, other firm 404). In production `links.files === store.store === boundFiles()` is true. Because of this,
+  the row check (case 2 and case 4) cannot pin that the links are bound to the store's own instance.
+
+### Held in round 2
+- **B1 fixed (merged app, all 71 features, `r2_drive.ts`):**
+  - Local adapter, no key: EntitledFiles over LocalFiles, links null. The same happens in production with
+    `PLATFORM_FILES=local`.
+  - s3 without a key is refused at start: local with the seam, test, and production. An empty key and a key of 40
+    spaces are refused the same way.
+  - s3 with a key: EntitledFiles over S3Files, S3FileLinks bound. Own firm 200, other firm 404.
+  - One merged S3FileLinks provider; PlatformClock is a default-scope singleton, so the links factory runs eagerly.
+  - Round 1's `b1_merged.ts` now gives the named refusal.
+- **Seam only on local (`r2_seam.ts`):**
+  - Refused: `PLATFORM_ENVIRONMENT=test` or `production` (at feature import, by platform-messages); local with
+    `NODE_ENV=production` or `' Prod '`; and, given directly to `boundFiles`, `Local`, `' local '`, unset or empty.
+  - A seam planted after a clean production bind is refused on the next call, and the cache is kept.
+  - No code in `api/src` passes its own env to `boundFiles` or changes `PLATFORM_FILES*` at run time.
+- **Key hidden:**
+  - No sign of the key, as text, hex or base64, in `inspect(showHidden)`, `JSON.stringify`, `String`,
+    `Object.entries` or `structuredClone` of the links, nor in tokens, signed URLs or the sign error.
+  - Refusals and their inspect/JSON never contain the value. 15 different characters (×3) are refused.
+- **No regression** in round 1's fail-closed, cache and link checks; the diff does not touch them.
+
+**Verdict: Block** (head `4ae0c919ec7efa73206482b313f57a9ab070b552`). M1: settings.ts:57 makes
+`tests/check_pf24_secrets.ts` fail about 75% of runs and refuses strong hex keys.
