@@ -15,6 +15,7 @@ Word for word in `product/history/STATE-2026-11-22-0640-lead19s3-handover-18-19-
 
 ## Lead 21 since 10:15 IST (new account; newest first)
 * 10:3x **New account: weekly 0% (resets 27 Nov 04:29 IST).** list_sessions shows no other session on this account (Lead B (11), AWS session, Lead 20 not visible). Check created (60490617, `run lead-watch; read STATE Start here`). Nightly 44966816530 red: `check_b78_section_names.ts` passed 11/11 then hung to the 20-min limit (exit 124); previous nightly red at `plan`. #2883 full ci running; #2884 red (module-cards, fast); #2885 red (module-cards) since #2900 changed module-cards. Independent plan validation started (Opus subagent). **Cloud lanes requested (founder-typed turn, A278):** fix-nightly-b78 · #2884 PF-30a → PF-30s (R1.102) · #2885 QA-644 (R1.24) · PF-28 3a→3b (R1.10) · PF-28 4→5 (R1.10) · PF-18s p2 (R1.92) · PF-18s p3 (R1.92). 7 of cap 12 (P-784); the other 5 after the validation.
+* 10:4x **Founder chose: set up the staging domain today** (R1.24 back in the 15; reverses A266 no-domain mode for today). Owed from him: domain name, on-call role email (P-782), AWS root sign-in + CodeBuild, Cloudflare/GoDaddy sign-in, all in the Lead's built-in browser pane.
 * Last cycle evidence: 97 PR merges + ~70 "merge main into branch" commits on main 07:00 21 Nov → 07:00 22 Nov for 11 capabilities proven.
 
 ## Lead 19 since 05:55 IST (newest first)
