@@ -18,6 +18,7 @@ import { AnyStaff, staffOf, type StaffContext as Ctx } from "../../platform/iden
 import { Booking, BOOKING_PORTS } from "./public.controller.ts";
 import { partyOf } from "./consult/service.ts";
 import { hostZone, type GivenBookingPorts } from "./service.ts";
+import { firmTimings, resolveTimings } from "./settings/timings.ts";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN, MAX_DAYS = 62;
 const LIST = "agent/booking:list", EDIT = "agent/booking:edit";
@@ -62,6 +63,7 @@ export class BookingFeed {
     const uniq = (xs: (string | null)[]) => [...new Set(xs.filter((x): x is string => !!x))];
     const pieces = async <T>(xs: string[], read: (part: string[]) => Promise<T[]>) => { const out: T[] = []; for (let i = 0; i < xs.length; i += PIECE) out.push(...await read(xs.slice(i, i + PIECE))); return out; };
     const personIds = uniq(rows.map((r) => r.personId)), leadPeople = uniq(rows.filter((r) => !r.prospectId).map((r) => r.personId));
+    const firm = await firmTimings(this.db, f);   // FO-3a1e: a type's empty self-service limit is the firm's
     const [zones, vis, types, hosts, people, prospects, leads, records, lines] = await Promise.all([
       // PF-18a: each booking's office zone is its host's office's (the firm's when the host has no office), as the host's mail states it.
       Promise.all(uniq(rows.map((r) => r.staffId)).map(async (h) => [h, await hostZone(this.db, f, h, this.ports.offices)] as const)).then((z) => new Map(z)), visibilityOf(this.db, ctx),
@@ -102,7 +104,7 @@ export class BookingFeed {
       const party = partyOf({ personId: r.personId, prospectId: r.prospectId, type: { purpose: type?.purpose ?? "" } });   // 2a's one rule
       const caseCall = party?.kind === "client";
       const warnings = saved.get(r.id)?.warnings, by = cancelled.get(r.id);
-      const limit = type?.selfServiceLimitMinutes ?? 0;
+      const limit = type ? resolveTimings(type, firm).selfServiceLimitMinutes : 0;
       return {
         id: r.id, status: r.status, mode: r.mode, startsAt: r.startsAt.toISOString(), endsAt: r.endsAt.toISOString(),
         officeTimeZone: zones.get(r.staffId) ?? "", bookerTimeZone: r.bookerTimeZone,

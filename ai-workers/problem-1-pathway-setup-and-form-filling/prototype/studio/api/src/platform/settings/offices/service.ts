@@ -7,6 +7,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { z } from "zod";
+import { FIELD_ERROR_STATUS, fieldsOf } from "../../http/input.ts";
 import type { AuditPort } from "../../../../../ports/audit.ts";
 import { firmScope, notInFirm } from "../../firm-scope.ts";
 import { BUSINESS_HOURS, CLOSED_DAYS, readSetting, TIME_ZONE } from "../../settings.ts";
@@ -17,7 +18,10 @@ type Hours = z.infer<typeof BUSINESS_HOURS.schema>;
 export type OfficeActor = { firmId: string; staffId: string };
 export const ZONE_REFUSED = "Choose a time zone from the list";
 export const PROVINCE_REFUSED = "Choose a province or territory from the list";
-const refused = (detail: string, issues: string[] = []): never => { throw new HttpException({ type: "https://expatready.local/problems/office-refused", title: "Office not saved", status: 400, detail, issues }, HttpStatus.BAD_REQUEST); };
+/** PF-28 part 2b (R1.10): a refused office is a field error (FIELD_ERROR_STATUS, 422), each field named in `fields`; the
+ *  `issues` list stays as it was. */
+const fieldsFrom = (issues: string[]) => Object.fromEntries(issues.map((x) => { const k = x.indexOf(": "); return k < 0 ? ["body", x] : [x.slice(0, k).slice(0, 64), x.slice(k + 2)]; }));
+const refused = (detail: string, issues: string[] = [], fields: Record<string, string> = fieldsFrom(issues)): never => { throw new HttpException({ type: "https://expatready.local/problems/office-refused", title: "Office not saved", status: FIELD_ERROR_STATUS, detail, code: "INVALID", issues, fields }, FIELD_ERROR_STATUS); };
 const conflict = (detail: string): never => { throw new HttpException({ type: "https://expatready.local/problems/office-conflict", title: "Office not saved", status: 409, detail }, HttpStatus.CONFLICT); };
 // Break B6: one spelling (NFC), no invisible or direction characters, at most 120 characters as people count them.
 const Name = z.string().transform((s) => s.normalize("NFC").trim()).pipe(z.string().min(1, "a name").refine((s) => [...s].length <= 120, "at most 120 characters").refine((s) => !/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/.test(s), "no control or invisible characters"));
@@ -31,7 +35,7 @@ export const AddOffice = z.strictObject(Fields);
 export const ChangeOffice = z.strictObject({ ...Fields, name: Name.optional(), version: z.string() });
 const parse = <T extends z.ZodType>(schema: T, body: unknown): z.output<T> => {
   const r = schema.safeParse(body ?? {});
-  return r.success ? r.data : refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`));
+  return r.success ? r.data : refused("Please check the highlighted details.", r.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`), fieldsOf(r.error));
 };
 const zoneOf = (v: unknown): string => { const r = TIME_ZONE.schema.safeParse(v); return r.success ? r.data : refused(ZONE_REFUSED, ["timeZone: not a time zone on the list"]); };
 const hoursOf = (v: unknown): Hours => { const r = BUSINESS_HOURS.schema.safeParse(v); return r.success ? r.data : refused("Please check the opening hours.", r.error.issues.map((i) => `businessHours.${i.path.join(".")}: ${i.message}`)); };
@@ -149,7 +153,7 @@ export class Offices {
       return view(after);
     });
   }
-  /** Puts a staff member in one of the firm's offices, or in none (null). No route yet: PF-18s's screen wires it. */
+  /** Puts a staff member in one of the firm's offices, or in none (null): PUT /api/platform/staff/:staffId/office (PF-18s part 1). */
   async setStaffOffice(a: OfficeActor, staffId: string, officeId: string | null): Promise<{ staffId: string; officeId: string | null }> {
     const firmId = firmScope(a.firmId).firmId;
     if (!UUID.test(staffId)) return notInFirm("staff member");
@@ -158,6 +162,7 @@ export class Offices {
       const staff = await tx.platformStaff.findFirst({ where: firmScope(firmId, { id: staffId.toLowerCase() }), select: { id: true } });
       if (!staff) return notInFirm("staff member");
       await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended('platform_office:' || ${firmId}, 0))`; const before = await tx.platformStaffOffice.findUnique({ where: { staffId: staff.id } });
+      if ((before?.officeId ?? null) === (officeId?.toLowerCase() ?? null)) return { staffId: staff.id, officeId: before?.officeId ?? null };   // PF-18s (challenge m1): no change, nothing written or audited
       if (officeId === null) {
         if (before) await tx.platformStaffOffice.delete({ where: { staffId: staff.id } });
       } else {
@@ -168,7 +173,7 @@ export class Offices {
       await this.deps.audit.record(tx, { firmId, actor: actor(a), action: "platform.office.staff", entity: "platform_staff_office", entityKey: staff.id,
         summary: officeId ? "Staff member placed in an office" : "Staff member taken out of their office", detail: { fromOffice: before?.officeId ?? null, toOffice: officeId?.toLowerCase() ?? null },
         before: before ? { officeId: before.officeId } : null, after: officeId ? { officeId: officeId.toLowerCase() } : null });
-      return { staffId: staff.id, officeId };
+      return { staffId: staff.id, officeId: officeId?.toLowerCase() ?? null };
     });
   }
 }

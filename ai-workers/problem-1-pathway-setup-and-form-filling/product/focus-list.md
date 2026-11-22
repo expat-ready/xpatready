@@ -34,7 +34,7 @@ Seeded 19 Nov from the two nearest-to-done lists: Lead B's lane order of 19 Nov 
 | R1.100 | PF-19e, PF-5v, J-100 | Lead B | PF-19e, then PF-5v part 2 with J-100 |
 | R1.110 | FO-13i, FO-13i2, FO-13s, FO-13s1, J-110, QA-510 | Lead B | FO-13i part 2 (QA-510), then FO-13s part 1 with J-110 |
 | R1.23 | PF-13 | Lead B | PF-13 part 1, then part 2 |
-| R1.38 | FO-3st1, J-38 | Lead B | FO-3st1, then J-38 extended by its staff-zone step |
+| R1.38 | FO-3st1, J-38, DEMO-LINK | Lead B | FO-3st1, then J-38 extended by its staff-zone step; DEMO-LINK (#2687, founder A245 and A258; reaches the booking page from :4400) fixes its Home target-size failure |
 | R1.92 | PF-18a, PF-18s, PF-18np | Lead B | PF-18a part 2, then PF-18s (PF-18np first if it is not on main) |
 | R1.53 | FO-5, FO-5b, FO-5s, J-53 | Lead B | FO-5b, then FO-5s with J-53 |
 | R1.49 | QA-495, J-49 | Lead B | QA-495's remainder (case-side link emails: Build Lead C), then J-49 |
