@@ -6,7 +6,7 @@
 //   B4 a Case Officer → 403 on the read and no banner (the page never asks); an Admin → 200 and the banner.
 //   B5 Home with the banner at 400, 1024 and 1440 px: no sideways scroll, axe WCAG 2.2 A/AA: no violation at all.
 // The Sample firm's subscription is put back at the end; extra staff get their grants ended. Wording Sample. US$0.
-//   zsh studio/tools/isolated.sh runtime_pf16b 4431 start PLATFORM_IDENTITY=local && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf16_banner_browser.ts 4431 xr_studio_runtime_pf16b
+//   zsh studio/tools/isolated.sh runtime_pf16b 4431 start PLATFORM_IDENTITY=local && tsx studio/tests/check_pf16_banner_browser.ts 4431 xr_studio_runtime_pf16b
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
