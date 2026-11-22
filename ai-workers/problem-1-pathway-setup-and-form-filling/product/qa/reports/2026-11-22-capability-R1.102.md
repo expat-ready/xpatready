@@ -2,7 +2,7 @@
 
 Run: `/qa capability R1.102` (re-walk check after the last part, #2913 CS-S1 part 2, merged as 0e244033e; #2884 PF-30a and #2921 PF-30s merged before) · main 0e244033e · isolated copy :4473 (`j102`, `PLATFORM_IDENTITY=local`), fresh for each run, stopped · live AI off · US$0 · Sample data only.
 
-## Verdict: Pass (Works once a GitHub walk of j_102 on main is green and named in the row, P-339)
+## Verdict: Pass, R1.102 Works (P-339): GitHub walks run 45069874951, dispatched on main 884d1a1ec, j_102 20/20, exit 0
 
 Done when: "A search by name, email or file number finds the firm's people and cases only, within the person's rights". Every clause holds.
 
