@@ -35,6 +35,9 @@ BEGIN  -- run from another folder, sed reads nothing: refuse (the transaction un
     RAISE EXCEPTION 'FO-7ts part 3 rollback: the earlier function texts were not read; run it from the studio folder';
   END IF;
 END $restored$;
+-- PF-8b F4 (RDS): hand a function to xr_wall_reader only while it holds CREATE on public; taken back after
+-- (a no-op pair on a superuser cluster; tests/check_pf8b_f4_migrations.ts; review R6-1).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $readers$
 DECLARE f text;
 BEGIN
@@ -44,6 +47,7 @@ BEGIN
   END LOOP;
 END
 $readers$;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 ALTER TABLE "money_trust_entry" DROP CONSTRAINT "money_trust_entry_refund_check", DROP CONSTRAINT "money_trust_entry_pick_check",
   DROP COLUMN "payee_company_id", DROP COLUMN "payee_name", DROP COLUMN "payee_person_id", DROP COLUMN "payee_reason",
   DROP COLUMN "picked_other_funds_at", DROP COLUMN "picked_other_funds_by", DROP COLUMN "picked_other_funds_reason",

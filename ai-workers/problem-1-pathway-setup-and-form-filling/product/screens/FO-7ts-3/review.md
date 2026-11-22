@@ -1,4 +1,75 @@
-Reviewer: Approve a8f388459601623315cf15285b87cf43f8bd25d8
+Reviewer: Block 4ac4e8b1ab36a438ebdbeca28a6584f28e5b5c6d
+
+# Round 6 (diff-only, head 4ac4e8b1a)
+
+**Base:** a8f388459, the last code head I approved (fac444ff5 added only the round-5 records). Head 4ac4e8b1a is one merge commit: first parent fac444ff5, second parent origin/main 73c4e4dcd.
+
+**What changed in this PR's own diff (checked):**
+* `git diff -M a8f388459 4ac4e8b1a -- prisma/migrations/*fo7ts_part3*`:
+  * `migration.sql` is a pure rename, 20261119170000 → 20261122040000 (similarity 100 %, SQL unchanged).
+  * `rollback.sql` changes one line, its own path in the usage comment.
+* I compared the PR's own diff before (23f68d924..a8f388459) with after (origin/main..4ac4e8b1a), with the stamp normalised. Besides the rename, the only differences are:
+  * the `NEW3` constant;
+  * the round-5 records in `review.md`;
+  * `MODULE.md`, where context comes from main. The PR still adds exactly one rule line (the pick line). Main's FO-7b `taxForLine` line and the `Tables.` line are both kept.
+* Nothing else in the PR changed, so a full re-review is not needed.
+* The stamp is later than every migration on main: main's newest is 20261122033000_qa644_reserve_staging. No file still names the old folder.
+* `module-cards.py tree` and `pr` pass.
+
+## Blocker
+
+**R6-1: the re-stamp puts this migration under PF-8b F4's hand-over rule, and the migration breaks it. `tests/check_pf8b_f4_migrations.ts` now fails.**
+* **Where:** `prisma/migrations/20261122040000_fo7ts_part3/migration.sql:629-637`. The `$readers$` block runs `ALTER FUNCTION … OWNER TO xr_wall_reader` on the five functions, with no `GRANT CREATE ON SCHEMA public TO xr_wall_reader` before it and no `REVOKE` after it.
+* **The rule** (main, `20261121230000_pf8b_f4_reader_create`): "A later migration that hands xr_wall_reader a function in public on RDS grants CREATE first and revokes it after." The test checks this for every folder stamped after `F4_STAMP = "20261121230000"` (`tests/check_pf8b_f4_migrations.ts:37-47`).
+* **Why it shows up now:** under the old stamp, 20261119170000, this folder came before F4 and was exempt. The new stamp is what exposes it.
+* **Evidence:** I ran it at 4ac4e8b1a. It reads files only and starts no database.
+  ```
+  FAIL every migration after F4 that hands xr_wall_reader a function grants it CREATE on public first and revokes it after (6 later): ["20261122040000_fo7ts_part3"]
+  1 failed
+  ```
+  This suite is not quarantined, so the merge-queue / CI-PRE suite run goes red.
+* **Effect at runtime:** none today. The five functions are already owned by `xr_wall_reader`:
+  * `money_invoice_write` since `20261118200000:251`;
+  * the other four since `20261118210000:354`.
+  CREATE OR REPLACE keeps the owner, and PostgreSQL skips the owner checks, including CREATE on the schema, when the owner does not change. So the hand-over is a no-op even on RDS. It is still a red required suite and a written rule not followed.
+* **Fix (migration text only):** wrap lines 629-637 the way `20261122020000_fo6_signing_tables:369-381` does: `GRANT CREATE ON SCHEMA public TO xr_wall_reader;` before the `DO $readers$` block, and `REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;` after it, with the same PF-8b F4 comment.
+  * Dropping the `OWNER TO` line would also pass, but keep the PF-12 pattern.
+  * `rollback.sql:38-46` has the same hand-over. The test does not scan rollbacks, and there it is also a no-op. Wrapping it the same way would be consistent; it is optional.
+* **Re-check:** after the fix, re-run `check_pf8b_f4_migrations` and `check_fo7ts_money_settings` (the migration text changes). Then a diff-only Approve is enough.
+
+## What main adds and this PR meets (question 2): no conflict found
+* **No function is overwritten.**
+  * No migration on main later than 20261119170000 touches any of the five functions, `money_invoice`, `money_trust_entry`, `money_invoice_line` or any tax object. Only two mention "money", and only in comments (`csdl3_case_milestone:13`, `fo3a1e_firm_timings:13`).
+  * Main did not change `client-money.prisma`.
+  * This PR's CREATE OR REPLACE bodies replace the latest versions: `money_invoice_write` from 20261118200000, the rest from 20261118210000 / 20261119080000. The rollback reads those same files.
+* **Main edited two applied migrations** (PF-8b F4: `pf12_firm_walls`, `csw1_firm_id`). Both changes are about role attributes and RDS. They touch no money object. The only interaction is R6-1.
+* **Tax: no second source of truth.**
+  * Main's FO-7b part 1a (`invoices/drafts.ts:73-97`, `tax-round.ts`) stores each line's *amount*: `tax_rate_ppm`, and `tax_minor` from `taxForLine`.
+  * Main's FO-7g part 1 (`tax/defaults.ts`, `canada-gst-hst.ts`, `tax/routes.ts`) gives the *default rate* from the firm's province.
+  * This PR stores the invoice's *classification* (Taxable / Zero-rated / Exempt). It is null on a draft, and at issue it is fixed to the invoice's own value, else the party's, else Taxable (`migration.sql:397-402`).
+  * That is the split the FO-7g brief draws (`design/briefs/FO-7g.md:7, 32`): part 2 "the draft takes the invoice's treatment, else the party's, else Taxable … Zero-rated and Exempt give 0 on every line … the schema is FO-7ts's".
+  * The PR keeps a draft's own choice, because it fills only when null. That matches "the invoice wins".
+  * Nothing on main reads or writes `tax_treatment` or `money_party_tax_treatment` (grep of api/src, ports, web/src, tests).
+* **Invoice issuing on main still works.**
+  * Main has no issue route. The only code that issues is `check_fo7g_tax_defaults.ts:271`, a raw `update money_invoice set due_date…, issued_at = now(), issued_by…`.
+  * Under this PR's trigger, that update gets `tax_treatment = 'TAXABLE'` (the party has no row) and is not refused. Its DW5 then compares only lines and frozen rates, which this PR does not touch.
+  * `check_fo7b_invoices.ts` never issues an invoice.
+  * Prisma's `moneyInvoice.create` in `drafts.ts:61` is unaffected, because `taxTreatment` is optional (`client-money.prisma:296`).
+* **DW27 (refund method and date required on REFUND_TO_CLIENT):** no route, port, screen or acceptance file writes REFUND_TO_CLIENT. The only tests that do are fo7a, fo7a2, fo7mv (already adjusted in round 1) and this PR's own. Main has not changed any of them since a8f388459.
+
+## Note for FO-7g part 2 (not this PR's scope; does not block)
+* Until FO-7g part 2 lands, the database accepts an issued invoice whose treatment is Exempt or Zero-rated while its lines carry `tax_minor > 0`.
+* Main's `addLine` takes the line's `ratePpm` from the request and does not read the treatment.
+* Today nothing can produce that state: no route writes a party treatment or issues an invoice.
+* FO-7g part 2's brief should name who enforces "Zero-rated and Exempt give 0 on every line" at issue: the route, or a trigger, which would need a schema owner since that part "writes no schema". It should also name a test with a fail case: an Exempt party whose draft has a 13 % line is issued.
+
+**Screen review and journey test:** not applicable, as in round 1. This part has no route, screen or `ports/` change. No journey score is given.
+
+**Verdict: Block** for `4ac4e8b1ab36a438ebdbeca28a6584f28e5b5c6d`. Fix R6-1, the GRANT/REVOKE pair around `migration.sql:629-637`. Nothing else is open. After that, a diff-only check of that change is enough to Approve.
+
+---
+
+Round 5 line (superseded): Reviewer: Approve a8f388459601623315cf15285b87cf43f8bd25d8
 
 # Round 5: diff-only re-read of a15e5f7ec..a8f388459 (one commit: the test only, plus the round-4 records)
 

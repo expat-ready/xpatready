@@ -626,6 +626,9 @@ END $$;
 
 
 -- PF-12: CREATE OR REPLACE keeps the owner but resets these settings, so they are set again.
+-- PF-8b F4 (RDS): hand a function to xr_wall_reader only while it holds CREATE on public; taken back after
+-- (a no-op pair on a superuser cluster; tests/check_pf8b_f4_migrations.ts; review R6-1).
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 DO $readers$
 DECLARE f text;
 BEGIN
@@ -635,3 +638,4 @@ BEGIN
   END LOOP;
 END
 $readers$;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
