@@ -30,6 +30,20 @@ import type { BillingPorts } from "./webhook.ts";
 export const STAND_IN_PAGE = "/api/demo/billing/invoices";
 export const STAND_IN_WORDS = "Stand-in invoice: issued by our billing stand-in for testing, not by Stripe. Prices are Sample. Tax: GST/HST from the Canada Revenue Agency's rate table; no provincial sales tax is charged. Unconfirmed: no counsel, no accountant.";
 
+/** R1.21 follow-up (Lead 4, 22 Nov): our GST/HST registration number on the invoice, from PLATFORM_GST_HST_NUMBER; unset,
+ *  a Sample that cannot be mistaken for a real number. Never guessed (AGENTS rule 4). */
+export const SAMPLE_GST_HST_NUMBER = "000000000 RT 0000";
+export const gstHstLine = (n: string | null | undefined) => (n ? `GST/HST registration number: ${n}` : `GST/HST registration number: ${SAMPLE_GST_HST_NUMBER} (Sample: not our real number)`);
+
+/** R1.21 follow-up (review m8): an old, unknown or wrong invoice link opens this page in words (404), never raw JSON. It
+ *  is the same for every such link, so it never says whether an invoice exists. */
+export const OLD_LINK_WORDS = "This invoice link has expired or is not valid.";
+export const OLD_LINK_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Invoice link not valid</title>
+<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;color:#1a1a1a}</style></head>
+<body><main data-invoice-link-not-valid><h1>${OLD_LINK_WORDS}</h1>
+<p>Open <a href="/settings/billing">Plan and billing</a> to see your invoices. Sign in first if you are asked to.</p>
+</main></body></html>`;
+
 const problem = (status: number, code: string, title: string, detail: string) => new HttpException({ type: `https://expatready.local/problems/${code.toLowerCase().replace(/_/g, "-")}`, title, status, detail, code }, status);
 const notHere = () => problem(404, "NOT_FOUND", "Not found", "There is no billing stand-in on this server.");
 
@@ -43,7 +57,7 @@ export function standInTax(subtotalCents: number, province: ProvinceCode): Invoi
 
 export class BillingStandIn {
   private readonly kept = new Map<string, Kept>();
-  constructor(private readonly db: PrismaClient, private readonly ports: Pick<BillingPorts, "standIn" | "clock" | "appUrl">) {}
+  constructor(private readonly db: PrismaClient, private readonly ports: Pick<BillingPorts, "standIn" | "clock" | "appUrl" | "gstHstNumber">) {}
   private fake(): FakeBilling { if (!this.ports.standIn) throw notHere(); return this.ports.standIn; }
 
   private readonly issuing = new Map<string, Promise<unknown>>();
@@ -99,6 +113,7 @@ export class BillingStandIn {
 <style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;color:#1a1a1a;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.4rem;border-bottom:1px solid #ccc}td{text-align:right}.note{font-size:.85rem;color:#444}</style></head>
 <body><main data-stand-in-invoice="${esc(id)}"><h1>Invoice ${esc(number)}</h1>
 <p>ExpatReady (Sample) to <strong>${esc(k.firmName)}</strong><br>${k.addressLines.map(esc).join("<br>")}</p>
+<p data-gst-hst-number>${esc(gstHstLine(this.ports.gstHstNumber))}</p>
 <p>Date: <time datetime="${day}">${day}</time> · Status: ${esc(inv.status)}</p>
 <table><caption class="note">Amounts in CAD</caption><tbody>
 <tr><th scope="row">${esc(k.planName)} plan, ${k.period === "YEARLY" ? "one year" : "one month"} (Sample price)</th><td>${cad(inv.subtotalCents ?? 0)}</td></tr>
@@ -128,13 +143,18 @@ export class BillingStandInPageController {
   constructor(@Inject(PlatformBillingStandIn) private readonly x: PlatformBillingStandIn) {}
   @Get("invoices/:id")
   open(@Param("id") id: string, @Query("t") t: string | undefined, @Query("download") download: string | undefined, @Res() res: Response) {
-    const p = this.x.page(id, t);
     res.setHeader("content-type", "text/html; charset=utf-8");
     res.setHeader("cache-control", "no-store");
     res.setHeader("referrer-policy", "no-referrer");
     res.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
     res.setHeader("x-content-type-options", "nosniff");
     res.removeHeader("x-powered-by");   // review m5
+    let p: { html: string; number: string };
+    try { p = this.x.page(id, t); } catch (e) {
+      // Review m8: an old, unknown or wrong link (or no stand-in here) is one page in words, 404, never JSON.
+      if (e instanceof HttpException && e.getStatus() === 404) { res.status(404).send(OLD_LINK_PAGE); return; }
+      throw e;
+    }
     if (download === "1") res.setHeader("content-disposition", `attachment; filename="invoice-${p.number.replace(/[^A-Za-z0-9-]/g, "")}.html"`);
     res.send(p.html);
   }
