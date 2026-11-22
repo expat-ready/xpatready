@@ -46,7 +46,18 @@ export class BillingStandIn {
   constructor(private readonly db: PrismaClient, private readonly ports: Pick<BillingPorts, "standIn" | "clock" | "appUrl">) {}
   private fake(): FakeBilling { if (!this.ports.standIn) throw notHere(); return this.ports.standIn; }
 
+  private readonly issuing = new Map<string, Promise<unknown>>();
+  /** One issue per firm at a time: a second call made while the first runs gets the same answer (never two invoices). */
   async issue(s: StaffContext) {
+    this.fake();
+    const running = this.issuing.get(s.firmId);
+    if (running) return running;
+    const p = this.issueOnce(s).finally(() => this.issuing.delete(s.firmId));
+    this.issuing.set(s.firmId, p);
+    return p;
+  }
+
+  private async issueOnce(s: StaffContext) {
     const fake = this.fake(), customer = standInCustomer(s.firmId);
     const had = (fake.invoiceList.get(customer) ?? [])[0];
     if (had) return { created: false, invoice: had, standIn: STAND_IN_WORDS };
