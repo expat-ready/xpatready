@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 23:2x IST 22 Nov:** **#3048 FO-7g part 1w and #3036 FO-7b part 1c merged.** #3041 PF-F1b Lead B re-read OK 497134613, Lead 7 labelled, queued. #2368 waits its full run. #3001 FO-7q in conflict with main: lane text sent (merge main, own files, re-run, diff-only Approve, ready, Lead B re-read; visibility stays fail closed until CS-MV1's binding line). #3073 waits #2913 (fix e379f7a9a, unlabelled).
+
 **Lead B 2 pass, 22:5x IST 22 Nov:** **#2955 PF-F1 and #2938 FO-7c part 1 merged** (17:15 UTC). #2368 Lead B read OK 048bbee68 (per-firm fill, R7-1), reviewer Approve; waits the Lead's read and label; #3042 next in the slot. #3041 PF-F1b: lane text sent (merge main, diff-only Approve, ready, Lead B re-read). Queued: #3036, #3048. #3073 waits #2913.
 
 **Lead B 2 pass, 22:2x IST 22 Nov:** #2368 FO-7ts part 3 and #2913 CS-S1 part 2 left the queue (each failed a shard alone on main). #2368's fix c561f07e7 Lead B read OK (re-stamp 20261122170000; PF-8b F6 owner-lifts-FORCE pattern; part 1b test seeds carry refund method/date); needs a diff-only Approve, then the Lead's read and label. #2913's fix is the find-box race (#3109 on main) and a main merge. Queued: #2955, #2938, #3036, #3048. #3073 waits #2913; #3042 waits #2368.
