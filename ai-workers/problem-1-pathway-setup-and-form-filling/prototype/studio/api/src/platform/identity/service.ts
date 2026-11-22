@@ -15,6 +15,7 @@ import { FIELD_ERROR_STATUS, parseInput, strict } from "../http/input.ts";
 import { z } from "zod";
 import { actorWord, auditInvitation, auditStaff } from "./audit.ts";
 import { batchRowsOf, flagOf, overSeatWords } from "./batch-invite.ts";
+import { bodyNamed, licenceWarning } from "./licence-format.ts";
 import { readCatalogue } from "./catalogue.ts";
 import { CognitoIdentity } from "./cognito.ts";
 import { FIRM_KEY, dutiesOf, forbidden, problem, unauthorized, type StaffContext } from "./keys.ts";
@@ -361,7 +362,10 @@ export class PlatformIdentity implements OnModuleInit {
       await auditStaff(tx, { firmId: actor.firmId, firmKey: actor.firmKey, actor: actorWord(actor.staffId), action: "platform.staff.credential_saved", entityKey: t.id, summary: `a licence record was ${before ? "changed" : "added"} (${own ? "their own" : "by an Owner or Admin"})`, detail: { staffId: t.id, fieldsChanged: changed, own },
         before: before ? { representativeType: before.representativeType, licensingBody: before.licensingBody } : null,
         after: { representativeType: data.representativeType, licensingBody: data.licensingBody, licenceNumberChanged: !before || before.licenceNumber !== data.licenceNumber } });
-      return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true };
+      // PF-4c part 2 (AG-1-34): a number that does not match the body's format in the pack is saved with a soft warning,
+      // never refused; no validity, expiry or register look-up (AG1-D19). The warning names the body, never the number.
+      const warning = licenceWarning(bodyNamed(data.licensingBody), data.licenceNumber);
+      return { staffId: t.id, representativeType: data.representativeType, licensingBody: data.licensingBody, saved: true, ...(warning ? { warning } : {}) };
     });
   }
 
