@@ -44,7 +44,12 @@ except (OSError, UnicodeDecodeError) as e: cfg, why = None, f".mergify.yml canno
 if not why and not isinstance(cfg, dict): why = ".mergify.yml is not a mapping of keys (break 2971 round 2 m6)"
 if why: print(f"FAIL  {why}\nFAIL  mergify scopes: 0 checks"); sys.exit(1)   # on stdout like every FAIL (review round 2 R2-4)
 files = [f for f in subprocess.run(["git", "-C", root, "ls-files", "-z"], capture_output=True, text=True, check=True).stdout.split("\0") if f]   # -z: spaces and accents (break m2)
-sc = (cfg.get("scopes") or {}); src = ((sc.get("source") or {}).get("files") or {})
+sc = (cfg.get("scopes") or {}); src = ((sc.get("source") or {}).get("files") or {}) if isinstance(sc, dict) and isinstance(sc.get("source") or {}, dict) else None
+shape = [] if isinstance(src, dict) else ["scopes.source.files is not a mapping of scopes"]
+for k, v in (src or {}).items():
+    inc = (v or {}).get("include") if isinstance(v, dict) else None
+    if not isinstance(inc, list) or not all(isinstance(g, str) for g in inc): shape.append(f"scope {k}: include is not a list of glob strings")
+if shape: print("\n".join(f"FAIL  {x} (break 2971 round 3 m4)" for x in shape) + "\nFAIL  mergify scopes: 0 checks"); sys.exit(1)
 CARDS = {"platform": "api-platform", "front-office": "api-front-office", "money": "api-client-money",
          "case-side": "api-cases", "forms-engine": "api-forms"}
 for scope, card in CARDS.items():
@@ -264,9 +269,9 @@ def track_copies(text, scopes, files=None):
             i, k = who[-1]; out.append((i, k, f"scope:{sc}", f"scope {sc} is named by tracks {sorted({k for _, k in who})}: one track per scope", "FAIL"))
     for i, k, v, g in rows:
         if ambiguous(g): out.append((i, k, v, "uses glob syntax this script and Mergify may read differently", "FAIL")); continue
-        g2 = re.sub(r"/\*\*/\*$", "/**", g)   # dir/**/* names the same files as dir/**
+        g2 = re.sub(r"/\*\*/\*\*?$", "/**", g)   # dir/**/* and dir/**/** name the same files as dir/** (round 3 m3)
         if g in own or g2 in own: out.append((i, k, v, f"repeats scope {own.get(g) or own[g2]}'s own pattern", "FAIL")); continue
-        if g in one and k in {t for _, t in named.get(one[g], [])}:
+        if g in one and not v.startswith("!") and k in {t for _, t in named.get(one[g], [])}:   # a ! line carves the file out (round 3 m1)
             out.append((i, k, v, f"repeats a file of scope {one[g]}, which {k} already names", "FAIL")); continue
         if files is not None and "*" in g:
             m = frozenset(f for f in files if rx(g).match(f))
@@ -321,9 +326,11 @@ if got != [("track-a", "tests/check_pf*"), ("track-b", f"/{ST}tests/check_cs*")]
 n += 1   # break 2971 m4e, m6, m7, m8a: a feature copy, copies spelled differently, one scope in two tracks, one file of a scope
 demo2 = (f"prefix {ST}\ntrack-a api/src/features/platform-*.ts\ntrack-a tests/check_pf**\ntrack-a tests/**/check_pf*\n"
          f"track-a scope:case-side\ntrack-b scope:case-side\ntrack-c api/src/clients.ts\ntrack-a api/src/front-office/sales/**\n"
-         f"track-a api/src/front-office/sales**\ntrack-c scope:money\ntrack-c api/src/client-money/x.ts\n")
-f2, w2 = one_source(demo2, mutated(lambda c: c["money"]["include"].append(ST + "api/src/client-money/x.ts")), files)
-want_f = ["features/platform-*.ts", "check_pf**", "scope:case-side", "front-office/sales**", "client-money/x.ts"]
+         f"track-a api/src/front-office/sales**\ntrack-c scope:money\ntrack-c api/src/client-money/x.ts\n"
+         f"track-a web/src/modules/platform/**/**\ntrack-b !api/src/clients.ts\n")
+DEMO_FILES = [ST + "tests/check_pf1_a.ts", ST + "tests/check_pf2_b.ts", ST + "api/src/clients.ts"]   # made up: today's tests/ layout never matters (break 2971 round 3 M1)
+f2, w2 = one_source(demo2, mutated(lambda c: c["money"]["include"].append(ST + "api/src/client-money/x.ts")), DEMO_FILES)
+want_f = ["features/platform-*.ts", "check_pf**", "scope:case-side", "front-office/sales**", "client-money/x.ts", "platform/**/**"]
 if len(f2) != len(want_f) or not all(any(x in l for l in f2) for x in want_f) or not any("tests/**/check_pf*" in l for l in w2) or any("clients.ts" in l for l in f2 + w2):
     bad.append(f"self-test: the one-source FAIL and WARN lines are not exactly as meant (FAIL {f2}; WARN {w2})")
 n += 1   # break 2971 round 2 m5: the wiring to the real file, and YAML read errors
@@ -339,6 +346,9 @@ n += 1   # round 2 m1, m4
 FOLDERS["cases"] = None
 if not any("is an area" in x for x in owners_bad(src, files + [ST + "web/src/modules/cases/page.tsx"])): bad.append("self-test: FOLDERS cases: None still passes")
 FOLDERS["cases"] = "case-side"
+FOLDERS["platform-admin"] = None
+if not any("is an area" in x for x in owners_bad(src, files + [ST + "web/src/modules/platform-admin/page.tsx"])): bad.append("self-test: FOLDERS platform-admin: None still passes")
+del FOLDERS["platform-admin"]
 if not any("_shared/" in x for x in owners_bad(src, files + [ST + "web/src/modules/_shared/deep/routes.tsx"])): bad.append("self-test: a _ folder with a nested routes.tsx is skipped")
 for b in bad: print(f"FAIL  {b}")
 print(f"{'PASS' if not bad else 'FAIL'}  mergify scopes: {n} checks")
