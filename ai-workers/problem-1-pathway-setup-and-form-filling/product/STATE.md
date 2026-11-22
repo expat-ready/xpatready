@@ -21,6 +21,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Standbys:** Lead 9 (local_482034a7) is the only one left after this: start one more at the founder's next typed turn (P-286).
 **Habits (Lead 7) and the old AWS waiting line:** `history/STATE-2026-11-22-2358-lead7-lead6-handover-block.md`.
 **Lead 8 (00:00-00:03 IST 23 Nov):** #3001 money read OK + "Lead allows round 3" + labelled (queues after #2368). #2927 `/run full` posted on 1145476e6 + Lead read OK posted: **label it when that run is green** (gate won't, P-423 paths). Waiting: #2368 merge → label #3042; #2913 merge → send #3073 lane its draft; #3104 run 45053508643 going.
+**Lead 8 00:1x check:** weekly 72%; my context 17%; disk 11 GB. #2927 `/run full` re-posted short (first refused, over 200 chars). #3001 in queue; review-rounds re-run (job 137304309680) after the round-3 line; its module-cards red (no `features/` card) is not a queue condition. #3104 full run green → `@mergifyio requeue` posted. #3081 dequeued 15:06Z (checks failed, module-cards): owner lane owed. App view: 56 sessions, none awaiting input, failed or in conflict. Tooling quiet ACTs left for later (P-792 capability first).
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
