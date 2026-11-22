@@ -6,7 +6,7 @@ Run: `/qa capability R1.39` (Lead 3, task LX939) · main 71984ae8a (#2929 merged
 
 Done when: "Day, week and list views of own bookings and time off; open a booking; another person's calendar only with the key". Every clause holds.
 
-## j_39, twice on fresh copies of main's head: 20/20, exit 0, same lines
+## j_39, three times on fresh copies of main's head (twice, then once more after the W4 fail-before fix in 836ec50b7): 20/20, exit 0, same lines; GitHub walks run 45001401036: 20/20
 * W1: a Case Officer signs in on the sign-in card and opens Home › Bookings calendar. New booking for a lead at a free time says "Booked Client P Sample for Mon 23 November 09:00 America/Toronto.", stored once.
 * W2: Mine › Week, Day and List each show the booking in office time, with the zone named. The week is empty before the booking.
 * W3: the block opens the booking (person, time, type, host); so do focus and Enter.
