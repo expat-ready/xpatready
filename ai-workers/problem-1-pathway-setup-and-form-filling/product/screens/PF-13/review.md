@@ -133,3 +133,29 @@ Diff-only re-read of `branding-page.tsx`, `check_pf13_branding_browser.ts` (DW6h
 **Verdict: Approve** (no open Blocker or Major; r2-m1 and r2-m2 are Should, fix in a follow-up or in this PR at the builder's choice)
 
 Reviewer: Approve 7c17c4b93bc0e506a66134af1cff8a71c00550bc
+
+## Round 3 (diff 7ddd1fa87..54eb2781b)
+
+Diff-only re-review under the Lead's standing permission A277. 7ddd1fa87 is records-only on top of the approved 7c17c4b93 (review.md and build-notes.md only). Since then: the merge of origin/main fa452613d, which GitHub showed as a conflict, and one fix, 54eb2781b. Not re-run: the builder reports check_pf13_branding_browser.ts 40/40, exit 0, on a fresh isolated copy, typecheck.mjs PASS and `web` `tsc --noEmit` clean, and nothing in this diff changes runtime behaviour.
+
+**1. Conflict resolution in `web/src/modules/platform/routes.tsx`:**
+* Both sides are kept. This PR's `BrandingPage` import and its `/platform/branding` route are there, and so are main's (PF-18s part 3) `NotificationsPage` import and its `/account/notifications` route.
+* Compared with main's side (`fa452613d^2`), the only difference is this PR's two lines. Nothing from main was lost, and nothing is duplicated (16 routes, one import each).
+* No path appears twice across all `modules/*/routes.tsx`. The two new paths sit in different prefixes (`/platform/…` and `/account/…`).
+* `account-sections.ts` has one entry for each, with the right keys and no duplicate path: Notifications uses `agent/notification:manage-preferences` and Branding uses `agent/settings:edit`.
+
+**2. Test fix in `tests/check_pf13_branding_browser.ts:53`:**
+* `new Blob([new Uint8Array(bytes)], { type })` copies the same bytes into a fresh `ArrayBuffer`-backed view. That satisfies TS 5.7+'s `BlobPart` (TS2322 on `Uint8Array<ArrayBufferLike>`).
+* The upload sends the same content. For callers that pass a `subarray` (the cut-short files), the copy holds exactly the view's bytes, not the whole parent buffer, so it is no looser than before. The field name, file name, type, method, URL and headers are unchanged.
+
+**3. Panel files:**
+* `git diff --stat 7ddd1fa87 54eb2781b` on `branding/` shows no change.
+* It shows one line in `account-sections.ts`: main's Notifications entry. `git diff fa452613d^2 fa452613d` confirms the merge kept main's file plus only this PR's own Branding line from before.
+
+**Findings:** none. r2-m1 and r2-m2 from round 2 are still open as Should, as recorded there. Neither is touched by this diff.
+
+**Journey score:** 9.5 / 10 stays. No behaviour changed.
+
+**Verdict: Approve**
+
+Reviewer: Approve 54eb2781b631fe23c7dd96a2a7dca303d33bde53
