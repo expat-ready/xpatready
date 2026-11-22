@@ -47,8 +47,10 @@ const SENDERS: Record<string, Entry> = {
   "platform/support/support.ts": { counts: { mailSend: 1, anySend: 1 }, route: "support ticket mail: MAIL_PORT (MESSAGES_MAIL) (features/platform-support.ts)" },
   "platform/entitlements/storage.ts": { counts: { mailSend: 2, anySend: 2 }, route: "storage-over emails: MAIL_PORT (MESSAGES_MAIL) (features/platform-entitlements.ts; PF-15 part 1a)" },
   "platform/entitlements/limit-changes.ts": { counts: { mailSend: 1, anySend: 1 }, route: "live-plan removal notice: the MailPort its caller gives (no caller in api/src: no route until PF-4s)" },
+  "platform/billing/exit-notices.ts": { counts: { mailSend: 1, anySend: 1 }, route: "payment-hold notice and deletion warnings: MESSAGES_MAIL (features/platform-billing-exit.ts; PF-5 part 4)" },
   "front-office/booking/service.ts": { counts: { mailSend: 3, anySend: 3 }, route: "booking mail: BOOKING_PORTS.mail = MESSAGES_MAIL (features/front-office-booking.ts; PF-19b)" },
   "platform/firms/signup.ts": { counts: { mailSend: 1, anySend: 1 }, route: "\"You already have an account\": SIGNUP_PORTS.mail = MESSAGES_MAIL, as a platform account email (PF-19p: no firm, so it never spends a firm's daily cap) (features/platform-firms.ts; PF-5v part 2)" },
+  "client-money/invoices/money.ts": { counts: { mailSend: 1, anySend: 1 }, route: "invoice and receipt emails: MAIL_PORT (MESSAGES_MAIL), optional (features/client-money-invoices.ts; FO-7b part 1b, the tech lead's ruling on #2953)" },
   "person-link.ts": { counts: { messagePort: 1, demoCopy: 3, anySend: 2 }, route: "the case side's link and code emails: MESSAGE_PORT, each demo_message copy written only after MessagePort accepts (PF-19r part 2); its 2nd .send( is the controller calling PersonLinks.send (the link door, no mail)" },
   // Files that hold a port or a stand-in and send nothing themselves (a .send( appearing here fails until classified).
   "front-office/booking/runtime-ports.ts": { counts: {}, route: "builds BOOKING_PORTS from the MailPort it is given (MESSAGES_MAIL)" },
