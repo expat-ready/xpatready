@@ -248,3 +248,32 @@ Diff-only review of the merge of `origin/main` (cff0a6c24, with PF-F1 #2955 in i
 Findings: none new. Open from earlier rounds: m7 (Minor), unchanged.
 
 **Verdict: Approve** at commit 7e32663ccc7843dde2301482e9fc2607d644be27.
+
+## Merge with main 2 (497134613..e019ae83c, settings.ts conflict)
+
+Diff-only review of the second merge of `origin/main` into the branch, with no rebase. The head is e019ae83cab8c7a7be157b5320e85a19f7a21c54. Parent 1 is 497134613 (records only since 7e32663cc) and parent 2 is 5a9e98b6d, which is the current `origin/main`. Main's side of the merge runs from cff0a6c24 (the main I last merged in, at 7e32663cc) to 5a9e98b6d. The journey test does not apply: this is a runtime row with no screen.
+
+**1. The conflict resolution in `api/src/platform/config/settings.ts`.**
+- The combined diff (`git show e019ae83c`) has two hunks. Each keeps main's R1.21 follow-up line (`billing` in `PlatformConfig`, `billing: Object.freeze({ gstHstNumber: plain("PLATFORM_GST_HST_NUMBER") })` in `loadPlatformConfig`) and adds PF-F1b's `files` line directly after it. Nothing else is touched.
+- `git diff origin/main e019ae83c -- settings.ts` holds exactly PF-F1b's three insertions and no deletions. These are the `opt("files", "PLATFORM_FILES_LINK_KEY", true, …)` entry after `PLATFORM_SAMPLE_SEED`, the `files: Readonly<{ linkKey: Secret | null }>` field in the type, and `files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") })` in the returned object. Each is byte-identical to the line at 497134613 (comment and field still share one line, as before).
+- Main's lines are all intact. The `+`/`-` lines of `git diff cff0a6c24 origin/main -- settings.ts` match those of `git diff 497134613 e019ae83c -- settings.ts` exactly (13 insertions): `GST_HST_NUMBER_SHAPE`, the `opt("billing", "PLATFORM_GST_HST_NUMBER", false, …)` entry with its comment, `billing` in the type and `billing` in the returned object.
+- Nothing is duplicated or lost. The merged `SETTINGS` has 20 entries and 20 distinct names.
+- The type and the returned object agree. I loaded the merged module with `PLATFORM_ENVIRONMENT=local`, a GST/HST number and a link key. It gives `billing: { gstHstNumber: '123456789 RT 0001' }` and `files.linkKey` printing as `[secret PLATFORM_FILES_LINK_KEY]`, and both inner objects are frozen. `tsc --noEmit -p api/tsconfig.json` reports no error in settings.ts or any other PR file. The 24 lines it prints are all in unrelated tests (check_c18_age_case, check_c69_runs, check_cost_check, check_vv_checklist, check_x2b_bulk_apply).
+
+**2. PF-F1b's other 15 files across the merge.** `git diff --stat 497134613 e019ae83c` over the 16 PR files lists settings.ts alone (+13, main's lines above). Main changed none of the other 15 between cff0a6c24 and 5a9e98b6d: the overlap of main's changed files with the PR's files is settings.ts only. They are carried over unchanged and are still correct, as approved at 7e32663cc.
+
+**3. Main's changes at PF-F1b's seams (cff0a6c24..5a9e98b6d).**
+- Feature files: main adds `client-money-refunds.ts` and `platform-firm-profile.ts` and changes `platform-firm-walls.ts`. None of them provides, injects or builds `LocalFiles`, `S3FileLinks`, `FileLinks` or `FilesPort`: main's added lines under `api/src` and `ports` have 0 matches for those names. `platform-firm-walls.ts` gains P-785 (2)'s `loadBypassUseFiles`/`closeBypassUses`. PF-F1b's added lines use no bypass (no `asBypass`, `defineBypassUse` or unscoped query), so main's frozen `BYPASS_USES` and `check_bypass_uses.ts` do not affect it.
+- New secret setting: there is none. `PLATFORM_GST_HST_NUMBER` is declared `secret: false` (confirmed from the merged `SETTINGS`). The merged `SECRET_SETTING_NAMES` is the same 10 names as at 7e32663cc, and `PLATFORM_FILES_LINK_KEY` is still one of them. `check_pf24_secrets.ts` is unchanged by main, and its `generated()` still covers every secret setting (the `PLATFORM_FILES_LINK_KEY: key32()` line is unchanged). The GST/HST number is plain and optional, so it is not needed there.
+- `registerFeatures` / `platformConfig`: main changes neither `api/src/features.ts`, `core.ts` nor `main.ts`. The only `platformConfig` line in main's diff is `runtimeBillingPorts`, whose `config` parameter widens to `& Partial<Pick<PlatformConfig, "billing">>`. That is main's own reader of `billing` and does not touch `files`. `front-office/files.ts`, `ports/files.ts` and `platform/files/*` are unchanged by main.
+
+**4. PR diff.** `git diff --stat origin/main...e019ae83c` and the two-dot `git diff --name-only origin/main e019ae83c` both list the same 16 files: 773 insertions and 22 deletions, the 749 at 7e32663cc plus 497134613's 24 record lines. All 16 are PF-F1b's own. Nothing from main leaks into the PR.
+
+**Runs at e019ae83c** (Node 24, no database: the database on 54329 was not used and `run-suites.sh` was not run):
+- `tests/check_pff1b_bind.ts`: **33 passed, 0 failed**.
+- The settings load probe and the typecheck above.
+- The builder's `check_pf24_secrets` 84/0, `check_pf24w_environment` 28/0 and `check_pff1_s3_files` 74/0 were not re-run here (they need a database or isolated copies). Section 1's check above is the static equivalent for the secret list.
+
+Findings: none new. The resolution is exactly what the tech lead asked for (main's lines plus PF-F1b's `PLATFORM_FILES_LINK_KEY` setting and `files.linkKey`). Open from earlier rounds: m7 (Minor), unchanged.
+
+**Verdict: Approve** at commit e019ae83cab8c7a7be157b5320e85a19f7a21c54.
