@@ -20,10 +20,12 @@ export type Person = z.infer<typeof Person>;
 /** One page. The first page (no cursor) also carries the filters' sources: the people with a line in the firm's log
  *  (deactivated kept, C3), the actions it holds and the areas. `timeZone` is not in AUD-4's answer today (C9, asked of
  *  the tech lead on the PR): when it arrives the page uses it; until then every time is UTC and says so. */
+/** A time zone the browser can show times in (break round 2 m1: an unknown name threw while the page drew). */
+const isZone = (z: string) => { try { new Intl.DateTimeFormat("en-CA", { timeZone: z }); return true; } catch { return false; } };
 export const Page = z.object({
   lines: z.array(Line), next: z.string().nullable(),
   people: z.array(Person).optional(), actions: z.array(z.object({ action: z.string(), words: z.string().nullable() })).optional(),
-  areas: z.array(z.object({ code: z.string(), words: z.string() })).optional(), timeZone: z.string().optional(),
+  areas: z.array(z.object({ code: z.string(), words: z.string() })).optional(), timeZone: z.string().refine(isZone).optional(),
 });
 export type Page = z.infer<typeof Page>;
 /** AUD-5's read: only the activity log's sentence is used here (C6). */

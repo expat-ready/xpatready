@@ -7,7 +7,7 @@
 // sentence is AUD-5's field (C6). The page holds only the signed-in person's firm: every answer is keyed by the session and the
 // body is keyed by the person, so a session's end clears it (BR-13). The server decides every rule.
 import * as React from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { Button, Dialog, Field, Input, Notice, Pill, Select, Table } from "@/components/ui/controls";
@@ -64,7 +64,15 @@ function OpenLine({ line, zone, person, onOnlyPerson }: { line: Line; zone: stri
   );
 }
 
-function ActivityLog() {
+/** BR-13 (break M2, round 2): who an address's filters belong to. Each history entry of this page is stamped with the
+ *  signed-in person who set or first read its filters (history state, never the address, so a link sent to a colleague
+ *  carries no one's id). An entry stamped for someone else (Back after a sign-out and a new sign-in in the same tab) is
+ *  opened without its filters; an unstamped one (a link from mail, a new tab) keeps them: its sender chose them. */
+type Stamp = { auditOwner?: string; auditCleared?: boolean } | null;
+const ownerOf = (state: unknown) => (state && typeof state === "object" && typeof (state as Stamp & object).auditOwner === "string" ? (state as { auditOwner: string }).auditOwner : null);
+
+function ActivityLog({ owner }: { owner: string }) {
+  const location = useLocation(), cleared = !!(location.state as Stamp)?.auditCleared;
   const token = useStaffToken(), qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   // C9: the log's zone. AUD-4's answer carries none today, so times are UTC and the sentence says so; never the browser's zone.
@@ -87,7 +95,8 @@ function ActivityLog() {
   const lines = React.useMemo(() => q.data?.pages.flatMap((p) => p.lines) ?? [], [q.data]);
 
   const [said, setSaid] = React.useState("");
-  const set = (patch: Partial<Filters>) => setParams(writeFilters({ ...f, ...patch }, zone), { replace: true });
+  const [tipHidden, setTipHidden] = React.useState(false);
+  const set = (patch: Partial<Filters>) => setParams(writeFilters({ ...f, ...patch }, zone), { replace: true, state: { auditOwner: owner } });
   // Removing a chip or clearing the filters keeps the keyboard where it was (review round 1, Minor 2): on the chip that took the
   // removed one's place, else the one before it, else the filters' own box, never the page's start.
   const filtersBox = React.useRef<HTMLElement>(null), refocus = React.useRef<number | "box" | null>(null);
@@ -188,10 +197,13 @@ function ActivityLog() {
             {f.area && !names.areas.some((a) => a.code === f.area) ? <option value={f.area}>{f.area}</option> : null}
             {names.areas.map((a) => <option key={a.code} value={a.code}>{a.words}</option>)}
           </Select></Field>
-          <div className="relative flex flex-col gap-1.5"><span className="text-xs font-medium text-text" aria-hidden>Shortcut</span>
-            <Button variant={f.ours ? "default" : "outline"} aria-pressed={f.ours} aria-describedby="audit-shortcut-tip" onClick={shortcut} data-audit-shortcut className="peer">{COPY.shortcut}</Button>
-            {/* The tip shows on hover and on keyboard focus (review round 1, Minor 3), and is the button's description. */}
-            <span id="audit-shortcut-tip" role="tooltip" className="pointer-events-none invisible absolute z-10 mt-12 max-w-64 rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-md peer-hover:visible peer-focus-visible:visible" data-audit-shortcut-tip>{COPY.shortcutTip}</span></div>
+          {/* The tip shows on hover of the button or the tip itself and on keyboard focus, stays while the pointer is on it, and
+              Escape hides it until focus or the pointer leaves (WCAG 1.4.13; review round 1 m3, round 2 R2-1). */}
+          <div className="group relative flex flex-col gap-1.5" onMouseLeave={() => setTipHidden(false)} onBlur={() => setTipHidden(false)}
+            onKeyDown={(e) => { if (e.key === "Escape" && !tipHidden) { e.stopPropagation(); setTipHidden(true); } }}><span className="text-xs font-medium text-text" aria-hidden>Shortcut</span>
+            <Button variant={f.ours ? "default" : "outline"} aria-pressed={f.ours} aria-describedby="audit-shortcut-tip" onClick={shortcut} data-audit-shortcut>{COPY.shortcut}</Button>
+            <span id="audit-shortcut-tip" role="tooltip" className={cn("invisible absolute top-full z-10 mt-1 max-w-64 rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-md",
+              !tipHidden && "group-hover:visible group-has-[:focus-visible]:visible")} data-audit-shortcut-tip>{COPY.shortcutTip}</span></div>
         </div>
         <div>
           <Button variant="ghost" size="sm" aria-expanded={advanced} aria-controls="audit-advanced" onClick={() => setAdvanced((o) => !o)} data-audit-advanced-toggle>
@@ -217,6 +229,7 @@ function ActivityLog() {
             <span className="min-w-0 truncate">{c.words}</span><X className="size-3 shrink-0" aria-hidden /></button></li>)}</ul> : null}
       </section>
 
+      {cleared ? <Notice tone="info" title="Filters cleared"><span data-audit-filters-cleared>The filters in this address were set in an earlier session on this tab, so the page starts from the last 7 days.</span></Notice> : null}
       {exportError ? <Notice tone="danger" title={exportError.title}><span data-audit-export-error>{exportError.words}</span></Notice> : null}
       <p role="status" className="sr-only" data-audit-said>{said}</p>
 
@@ -285,16 +298,19 @@ function ActivityLog() {
 }
 
 function Gate() {
-  const me = usePlatformStaff();
-  // Keyed by the person: nothing a page held for one session is shown to the next (BR-13).
-  return me.keys.includes(AUDIT_KEY) ? <ActivityLog key={`${me.firmId}:${me.staffId}`} /> : <NoAccess />;
+  const me = usePlatformStaff(), location = useLocation(), navigate = useNavigate();
+  const owner = `${me.firmId}:${me.staffId}`, stamped = ownerOf(location.state), foreign = stamped !== null && stamped !== owner;
+  // Stamp this entry for this person (an unstamped one keeps its filters); an entry of someone else's opens without them.
+  React.useLayoutEffect(() => {
+    if (foreign) navigate({ pathname: location.pathname, search: "" }, { replace: true, state: { auditOwner: owner, auditCleared: location.search !== "" } });
+    else if (stamped === null) navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: { auditOwner: owner } });
+  }, [foreign, stamped, owner, location.pathname, location.search, navigate]);
+  if (!me.keys.includes(AUDIT_KEY)) return <NoAccess />;
+  // Nothing is drawn from another person's address, not even for one frame. Keyed by the person: nothing a page held for one
+  // session is shown to the next (BR-13).
+  return foreign ? null : <ActivityLog key={owner} owner={owner} />;
 }
 
 export function ActivityLogPage() {
-  const token = useStaffToken(), [params, setParams] = useSearchParams();
-  // BR-13 (break M2): the filters live in the address, which outlives the session; while nobody is signed in here (signed
-  // out, expired, signed in elsewhere, or a tab opened on an ended session) they are taken out, so the next person, of this
-  // firm or another, starts from their own default and never sees the last person's ids, records or words.
-  React.useEffect(() => { if (!token && params.toString()) setParams(new URLSearchParams(), { replace: true }); }, [token, params, setParams]);
   return <PlatformFrame crumbs={[{ label: "Activity log" }]}><Gate /></PlatformFrame>;
 }

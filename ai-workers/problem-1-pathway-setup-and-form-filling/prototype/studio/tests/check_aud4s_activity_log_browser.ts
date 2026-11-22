@@ -28,7 +28,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Download, type Locator, type Page } from "playwright";
 import { client, recorder } from "./runtime/api.ts";
 import { ACCOUNT_SECTIONS, visibleSections } from "../web/src/modules/platform/account-sections.ts";
-import { addDays, apiQuery, COPY, dayStart, dayWords, defaults, rangeProblem, sentence, spanWords, today } from "../web/src/modules/platform/audit/contract.ts";
+import { addDays, apiQuery, COPY, dayStart, dayWords, defaults, Page as AuditPage, rangeProblem, sentence, spanWords, today } from "../web/src/modules/platform/audit/contract.ts";
 const { default: AxeBuilder } = createRequire(import.meta.url)("@axe-core/playwright") as typeof import("@axe-core/playwright");
 
 const [PORT, DBNAME] = [Number(process.argv[2] ?? 4442), process.argv[3] ?? "xr_studio_aud4s"];
@@ -69,6 +69,9 @@ const signIn = async (firmKey: string, who: { actorId?: string; email?: string }
   ok("AUD-4s break m7 (pure): where a clock change skips midnight (America/Santiago, 6 Sep 2026) the day starts at its first moment, 01:00 local; fail: the day before's midnight rule (Toronto) is unchanged",
     dayStart("2026-09-06", "America/Santiago").toISOString() === "2026-09-06T04:00:00.000Z" && today("America/Santiago", dayStart("2026-09-06", "America/Santiago").getTime()) === "2026-09-06"
       && today("America/Santiago", dayStart("2026-09-06", "America/Santiago").getTime() - 1) === "2026-09-05" && dayStart("2026-11-01", "America/Toronto").toISOString() === "2026-11-01T04:00:00.000Z");
+  const page = { lines: [], next: null, people: [], actions: [], areas: [] };
+  ok("AUD-4s break round 2 m1 (pure): a time zone the browser cannot use is refused at the edge (the page says it could not load) instead of throwing while it draws; fail: a real zone is read",
+    !AuditPage.safeParse({ ...page, timeZone: "Mars/Olympus_Mons" }).success && AuditPage.safeParse({ ...page, timeZone: "America/Toronto" }).success && AuditPage.safeParse(page).success);
   ok("AUD-4s DW1 (C5): the menu entry is one ACCOUNT_SECTIONS line, shown only with agent/audit:read",
     ACCOUNT_SECTIONS.filter((s) => s.path === "/platform/activity-log" && s.label === "Activity log" && s.key === "agent/audit:read").length === 1
       && visibleSections(ACCOUNT_SECTIONS, ["agent/audit:read"]).some((s) => s.path === "/platform/activity-log") && !visibleSections(ACCOUNT_SECTIONS, ["agent/staff:manage"]).some((s) => s.path === "/platform/activity-log"));
@@ -358,8 +361,13 @@ try {
   const hiddenBefore = !(await tip.isVisible());
   await p.locator("[data-audit-shortcut]").focus(); await p.keyboard.press("Shift+Tab"); await p.keyboard.press("Tab");
   const onFocus = await tip.isVisible(), described = await p.locator("[data-audit-shortcut]").evaluate((el) => document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent);
-  ok("AUD-4s review m3: the shortcut's tip shows when the button gets keyboard focus (not only on hover) and is its description; fail: before focus it is not shown",
-    hiddenBefore && onFocus && described === COPY.shortcutTip, { hiddenBefore, onFocus, described });
+  await p.keyboard.press("Escape"); const escHides = !(await tip.isVisible()), stillFocused = await focused(p.locator("[data-audit-shortcut]"));
+  await p.keyboard.press("Shift+Tab"); await p.keyboard.press("Tab"); const backOnRefocus = await tip.isVisible();
+  await p.locator("main h1").click(); await p.locator("[data-audit-shortcut]").hover(); const onHover = await tip.isVisible();
+  const box = await tip.boundingBox(); await p.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2); const stays = await tip.isVisible();
+  ok("AUD-4s review m3, R2-1 (WCAG 1.4.13): the shortcut's tip shows on keyboard focus and on hover and is its description; it stays while the pointer moves onto it; Escape hides it without moving focus, and it comes back on the next focus; fail: before focus it is not shown",
+    hiddenBefore && onFocus && described === COPY.shortcutTip && escHides && stillFocused && backOnRefocus && onHover && stays, { hiddenBefore, onFocus, described, escHides, stillFocused, backOnRefocus, onHover, stays });
+  await p.mouse.move(0, 0);
   await shot(p, "15-shortcut-tip-on-focus-1440");
 
   // ---------------------------------------------------------------------------------------------- break round 1: M1, M3, m3, m6
@@ -458,6 +466,36 @@ try {
     await q.context().close();
   }
 
+  // ---------------------------------------------------------------------------------------------- break round 2: R2-M1, R2-M2
+  const bare = async (width = 1440) => { const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1, reducedMotion: "reduce" }); const q = await ctx.newPage(); q.on("pageerror", (e) => errs.push(e.message)); return q; };
+  const signInHere = async (q: Page, firmKey: string, email: string) => { await q.locator("[data-sign-in-card]").waitFor({ timeout: 30_000 }); await q.getByLabel("Firm key").fill(firmKey); await q.getByLabel("Work email").fill(email); await q.getByRole("button", { name: "Sign in" }).click(); };
+  const T_EMAIL = sql(`select email from platform_staff where id = '${T}'`);   // the Admin: signing the Owner in here would end the Owner's own tab (one session at a time)
+  {
+    const q = await bare(); await q.goto(`${BASE}/platform/activity-log?action=audit.exported&person=${R}`); await signInHere(q, "sample-firm", T_EMAIL);
+    await q.locator('[data-audit-chip="action"]').waitFor({ timeout: 30_000 }); await settled(q);
+    const kept = new URL(q.url()).searchParams, note = await q.locator("[data-audit-filters-cleared]").count();
+    ok("AUD-4s break R2-M2: a link with filters opened in a new tab before sign-in (a link from mail) keeps them once the person signs in: chips, address and list follow it, and no \"Filters cleared\" note",
+      kept.get("action") === "audit.exported" && kept.get("person") === R && note === 0 && await q.locator('[data-audit-chip="person"]').count() === 1, { search: q.url(), note });
+    // R2-M1: firm A's Owner leaves the filtered page for Team, signs out there; firm B's Owner signs in on the same tab and presses Back.
+    await q.locator('nav[aria-label="My account"] [data-account-section="/platform/team"]').click(); await q.waitForURL(/\/platform\/team/);
+    await q.getByRole("button", { name: "Sign out" }).click(); await signInHere(q, "sample-solo", B_EMAIL);
+    await q.locator('nav[aria-label="My account"]').waitFor({ timeout: 30_000 });
+    await q.goBack(); await q.locator("[data-audit-filters-cleared]").waitFor({ timeout: 30_000 }); await settled(q);
+    const domBack = await q.locator("body").innerText() + q.url(), chipsBack = await q.locator("[data-audit-chip]").count();
+    ok("AUD-4s break R2-M1 (BR-13): after firm A signs out on another page and firm B signs in on the same tab, Back to A's filtered Activity log opens it without A's filters (address, chips, fields, sentence) and says the filters were cleared; fail: the same judge on A's own filtered page",
+      chipsBack === 0 && new URL(q.url()).search === "" && noFirmText(domBack, [R, RNAME, "audit.exported", "Exported the activity log"]) && domBack.includes("FIRM-B-ONLY")
+        && !noFirmText(await p.locator("body").innerText().then(async (t) => (await log(p, `?action=audit.exported&person=${R}`), t + p.url())), [R]), { chipsBack, url: q.url() });
+    await q.context().close();
+  }
+  {
+    const z = await tab(TOWNER);
+    await z.route("**/api/platform/audit?*", async (r) => { const res = await r.fetch(), j = await res.json(); await r.fulfill({ response: res, json: { ...j, timeZone: "Mars/Olympus_Mons" } }); });
+    await z.goto(`${BASE}/platform/activity-log`); await z.locator("[data-audit-error]").waitFor({ timeout: 30_000 });
+    ok("AUD-4s break round 2 m1: an answer with a zone the browser cannot use shows \"The activity log could not load\" with the frame, menu and Sign out kept (never a blank app)",
+      (await z.locator("main").innerText()).includes(COPY.loadFailed) && await z.getByRole("button", { name: "Sign out" }).isVisible());
+    await z.context().close();
+  }
+
   // ---------------------------------------------------------------------------------------------- DW1b (last: it ends the Owner's session)
   await log(p, `?person=${R}&area=team&actorType=FIRM_STAFF`); await p.locator(`[data-audit-when="${ROLE}"]`).click(); await p.locator(`#audit-open-${ROLE}`).waitFor();
   const A_WORDS = [RNAME, R, "Case officer B (Sample)", "Gave the Admin role", "hard bounce", "Activity log exported:"], domA = await p.locator("body").innerText() + p.url();
@@ -471,9 +509,10 @@ try {
   const domWaiting = await p.locator("body").innerText(), loadingB = await p.locator("[data-audit-loading]").count();
   const vl = await axe(p); await shot(p, "14-loading-1440");
   release(); await p.locator("[data-audit-line]").first().waitFor({ timeout: 30_000 });
+  const clearedB = await p.locator("[data-audit-filters-cleared]").isVisible();
   const domB = await p.locator("body").innerText() + p.url(), chipsB = await p.locator("[data-audit-chip]").count(), personB = await p.locator('[data-audit-filter="person"]').inputValue();
   ok("AUD-4s DW1b (BR-13): firm A's Owner signs out on the page and firm B's Owner signs in in the same tab: no firm A text in the DOM at the sign-in card, nor while B's first answer is awaited (the loading state, no WCAG violation), nor after it (B's own lines, FIRM-B-ONLY among them); fail: the same judge on firm A's own page",
-    noFirmText(domOut, A_WORDS) && urlOut.pathname === "/platform/activity-log" && urlOut.search === "" && chipsB === 0 && personB === "" && bAsked >= 1 && loadingB === 1 && noFirmText(domWaiting, A_WORDS) && domWaiting.includes("Activity log") && vl.length === 0 && noFirmText(domB, A_WORDS) && domB.includes("FIRM-B-ONLY") && !noFirmText(domA, A_WORDS), { bAsked, loadingB, search: urlOut.search, chipsB, v: ids(vl) });
+    noFirmText(domOut, A_WORDS) && urlOut.pathname === "/platform/activity-log" && new URL(p.url()).search === "" && chipsB === 0 && personB === "" && clearedB && bAsked >= 1 && loadingB === 1 && noFirmText(domWaiting, A_WORDS) && domWaiting.includes("Activity log") && vl.length === 0 && noFirmText(domB, A_WORDS) && domB.includes("FIRM-B-ONLY") && !noFirmText(domA, A_WORDS), { bAsked, loadingB, search: urlOut.search, chipsB, v: ids(vl) });
   await p.context().close();
   ok("AUD-4s: no page error in any tab", errs.length === 0, errs);
 } catch (e) {
