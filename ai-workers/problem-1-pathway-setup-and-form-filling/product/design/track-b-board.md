@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 20:5x IST 22 Nov:** **#2953 FO-7b part 1b merged** (15:03 UTC, 3264e2510). #3036 FO-7b 1c merged main, own 9 files as read, re-approved, queued. #3048 FO-7g 1w now conflicts with main: lane text sent to Lead 6 (merge main, re-run, diff-only Approve, ready, Lead B re-read). Queue checking: #2955, #2938, #2913, #2368, #3036.
+
 **Lead B 2 pass, 20:2x IST 22 Nov:** no Track B head moved. The base batch failure (#3093: FO-8 DW4 client number twice, PF-30s find box timeout; neither in #2955's files) is Lead 6's; batches #3093-#3096 gone; five Track B PRs back to "checking". FO-8 DW4 not seen on any other Track B head.
 
 **Lead B 2 pass, 19:5x IST 22 Nov:** no Track B head moved. Queued with no Track B merge since ~18:50: #2953, #2955, #2938, #2913, #2368; waiting on them: #3036, #3048, #3073.
