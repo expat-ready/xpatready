@@ -35,8 +35,9 @@ const s = (service: string, name: string, secret: boolean, rule: z.ZodType<strin
 const opt = (service: string, name: string, secret: boolean, rule: z.ZodType<string>, expects: string): Setting => ({ ...s(service, name, secret, rule, expects), optional: true });
 
 /** PLATFORM_GST_HST_NUMBER's plain shape (not the CRA's format rule, which is not yet cited): digits, capital letters and
- *  single spaces, 9 to 20 characters, starting and ending with a digit or letter. */
-export const GST_HST_NUMBER_SHAPE = /^(?=.{9,20}$)[0-9A-Z]+(?: [0-9A-Z]+)*$/;
+ *  single spaces, 9 to 20 characters, at least one digit, and never the invoice's Sample number (break m1: the Sample set
+ *  as the setting would print unlabelled, as if real). */
+export const GST_HST_NUMBER_SHAPE = /^(?=.{9,20}$)(?=.*[0-9])(?!0{9} ?RT ?0{4}$)[0-9A-Z]+(?: [0-9A-Z]+)*$/;
 
 /** Every setting, in the order a refusal lists them. */
 export const SETTINGS: readonly Setting[] = Object.freeze([
@@ -65,7 +66,7 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   // invoice shows a Sample number, labelled so. Only a plain shape is checked here (digits, capital letters, spaces): the
   // CRA's own description of the number's format is not yet read and cited (canada.ca is not reachable from a cloud lane;
   // the Mac reads it, P-601 (5)), so no stricter rule is guessed (AGENTS rule 4).
-  opt("billing", "PLATFORM_GST_HST_NUMBER", false, z.string().regex(GST_HST_NUMBER_SHAPE), "the platform's GST/HST registration number as the CRA issued it: 9 to 20 digits, capital letters and single spaces (unset: the invoice shows a Sample number)"),
+  opt("billing", "PLATFORM_GST_HST_NUMBER", false, z.string().regex(GST_HST_NUMBER_SHAPE), "the platform's own GST/HST registration number: 9 to 20 characters of capital letters, digits (at least one) and single spaces, never the invoice's Sample number (the CRA's own format is not checked yet; unset: the invoice shows a Sample number)"),
 ]);
 
 /** The names whose values are secret: PF-23's log redaction drops them by name (and their values, wherever they appear). */

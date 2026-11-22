@@ -33,7 +33,7 @@ export const STAND_IN_WORDS = "Stand-in invoice: issued by our billing stand-in 
 /** R1.21 follow-up (Lead 4, 22 Nov): our GST/HST registration number on the invoice, from PLATFORM_GST_HST_NUMBER; unset,
  *  a Sample that cannot be mistaken for a real number. Never guessed (AGENTS rule 4). */
 export const SAMPLE_GST_HST_NUMBER = "000000000 RT 0000";
-export const gstHstLine = (n: string | null | undefined) => (n ? `GST/HST registration number: ${n}` : `GST/HST registration number: ${SAMPLE_GST_HST_NUMBER} (Sample: not our real number)`);
+export const gstHstLine = (n: string | null | undefined) => (n ? `ExpatReady's GST/HST registration number: ${n}` : `ExpatReady's GST/HST registration number: ${SAMPLE_GST_HST_NUMBER} (Sample: not our real number)`);   // review m3: ours, not the firm's
 
 /** R1.21 follow-up (review m8): an old, unknown or wrong invoice link opens this page in words (404), never raw JSON. It
  *  is the same for every such link, so it never says whether an invoice exists. */
@@ -100,7 +100,7 @@ export class BillingStandIn {
   /** The invoice's page (no session: the token is the key, as Stripe's hosted link). Unknown id or wrong token: 404. */
   page(id: string, token: string | undefined): { html: string; number: string } {
     const fake = this.fake(), k = this.kept.get(id);
-    const same = (x: string, y: string) => x.length === y.length && timingSafeEqual(Buffer.from(x), Buffer.from(y));
+    const same = (x: string, y: string) => { const a = Buffer.from(x), b = Buffer.from(y); return a.length === b.length && timingSafeEqual(a, b); };   // review m1: byte lengths (a non-ASCII token of the same character length threw a 500)
     if (!k || typeof token !== "string" || !same(token, k.token)) throw problem(404, "NOT_FOUND", "Not found", "No such invoice.");
     const inv = (fake.invoiceList.get(standInCustomer(k.firmId)) ?? []).find((i) => i.id === id);
     if (!inv) throw problem(404, "NOT_FOUND", "Not found", "No such invoice.");

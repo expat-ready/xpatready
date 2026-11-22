@@ -14,6 +14,7 @@ import { fakeBilling } from "../ports/billing.ts";
 import { ConfigRefused, loadPlatformConfig } from "../api/src/platform/config/settings.ts";
 import { runtimeBillingPorts } from "../api/src/platform/firms/runtime-ports.ts";
 import { BillingStandIn, BillingStandInPageController, gstHstLine, OLD_LINK_WORDS, SAMPLE_GST_HST_NUMBER } from "../api/src/platform/billing/stand-in.ts";
+import { HttpException } from "@nestjs/common";
 import { recorder } from "./runtime/api.ts";
 
 const PORT = Number(process.argv[2] ?? 4728), BASE = `http://localhost:${PORT}`, SET = "000000001RT0001";
@@ -27,13 +28,13 @@ const good = ["123456789 RT 0001", "123456789RT0001", " 123456789 RT 0001 "].map
 ok("R1.21 number: PLATFORM_GST_HST_NUMBER in a plain shape loads into the platform's settings (trimmed, as the loader trims every setting)", good.every((c) => !(c instanceof Error)) && (good[0] as { billing: { gstHstNumber: string } }).billing.gstHstNumber === "123456789 RT 0001" && (good[2] as { billing: { gstHstNumber: string } }).billing.gstHstNumber === "123456789 RT 0001");
 const unset = load();
 ok("R1.21 number: unset, the setting is null (the invoice then shows a Sample)", !(unset instanceof Error) && unset.billing.gstHstNumber === null);
-const bads = ["123456789 rt 0001", "<b>123456789</b>", "123456789  RT 0001", "12345678", "1234567890 RT 0001 99999", "123456789-RT-0001"];
+const bads = ["123456789 rt 0001", "<b>123456789</b>", "123456789  RT 0001", "12345678", "1234567890 RT 0001 99999", "123456789-RT-0001", SAMPLE_GST_HST_NUMBER, "000000000RT0000", "ABCDEFGHI", "NOT A REAL NUMBER"];
 const refused = bads.map((v) => ({ v, e: load(v) }));
-ok("R1.21 number fail: lower case, markup, a double space, too short, too long or other marks is refused, naming the setting and never the value",
+ok("R1.21 number fail: lower case, markup, a double space, too short, too long, other marks, no digit, or the Sample number itself is refused, naming the setting and never the value",
   refused.every(({ v, e }) => e instanceof ConfigRefused && e.invalid.some((i) => i.name === "PLATFORM_GST_HST_NUMBER") && !e.message.includes(v.trim())), refused.map(({ v, e }) => `${JSON.stringify(v)}: ${e instanceof Error ? e.message.slice(0, 90) : "loaded"}`));
 const passed = runtimeBillingPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null }, billing: { gstHstNumber: "123456789 RT 0001" } } as never, {});
 ok("R1.21 number: the billing ports carry the number set to the stand-in; none set carries null", passed.gstHstNumber === "123456789 RT 0001" && runtimeBillingPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } } as never, {}).gstHstNumber === null);
-ok("R1.21 number: the invoice line says the number set, or the Sample labelled as not our real number", gstHstLine("123456789 RT 0001") === "GST/HST registration number: 123456789 RT 0001" && gstHstLine(null).includes(SAMPLE_GST_HST_NUMBER) && /Sample: not our real number/.test(gstHstLine(null)));
+ok("R1.21 number: the invoice line says the number set, or the Sample labelled as not our real number", gstHstLine("123456789 RT 0001") === "ExpatReady's GST/HST registration number: 123456789 RT 0001" && gstHstLine(null).includes(SAMPLE_GST_HST_NUMBER) && /Sample: not our real number/.test(gstHstLine(null)));
 
 // ---------------------------------------------------------------------------------------------- the invoice, in process
 const firmId = "33333333-3333-4333-8333-333333333333";
@@ -47,8 +48,8 @@ const pageOf = async (n: string | null) => {
   return { x, id: issued.invoice.id, token: new URL(issued.invoice.hostedUrl).searchParams.get("t") ?? "", html: x.page(issued.invoice.id, new URL(issued.invoice.hostedUrl).searchParams.get("t") ?? "").html };
 };
 const withSet = await pageOf("123456789 RT 0001"), withSample = await pageOf(null), withMarkup = await pageOf("<script>x</script>");
-ok("R1.21 number: the invoice prints our GST/HST registration number as set", /data-gst-hst-number>GST\/HST registration number: 123456789 RT 0001</.test(withSet.html));
-ok("R1.21 number: with none set, the invoice prints the Sample number, labelled Sample", withSample.html.includes(`GST/HST registration number: ${SAMPLE_GST_HST_NUMBER} (Sample: not our real number)`));
+ok("R1.21 number: the invoice prints our GST/HST registration number as set", /data-gst-hst-number>ExpatReady&#39;s GST\/HST registration number: 123456789 RT 0001</.test(withSet.html));
+ok("R1.21 number: with none set, the invoice prints the Sample number, labelled Sample", withSample.html.includes(`GST/HST registration number: ${SAMPLE_GST_HST_NUMBER} (Sample: not our real number)`) && withSample.html.includes("ExpatReady&#39;s GST/HST"));
 ok("R1.21 number fail: markup in the number is printed as text, never as markup (the loader refuses it anyway)", !withMarkup.html.includes("<script>") && withMarkup.html.includes("&#60;script&#62;"));
 
 // The page's controller on a fake response: an old link is the page in words, 404, HTML, never JSON.
@@ -64,6 +65,12 @@ const right = call(withSet.x, withSet.id, withSet.token);
 ok("R1.21 old link: the right link still opens the invoice (200, with the number)", right.status === 200 && right.body.includes("123456789 RT 0001"));
 const olds = { wrongToken: call(withSet.x, withSet.id, "wrong"), unknownId: call(withSet.x, "in_standin000000000000000000000000", withSet.token), noToken: call(withSet.x, withSet.id, undefined), downloadWrong: call(withSet.x, withSet.id, "wrong", "1") };
 ok("R1.21 old link fail: a wrong token, an unknown id, no token, or a download with a wrong token → the same page in words (404, HTML, no attachment), never JSON", Object.values(olds).every(isOldLinkPage) && new Set(Object.values(olds).map((s) => s.body)).size === 1, Object.fromEntries(Object.entries(olds).map(([k, s]) => [k, `${s.status} ${s.headers["content-type"]} ${s.body.slice(0, 60)}`])));
+const nonAscii = call(withSet.x, withSet.id, "é".repeat(withSet.token.length));   // review m1: same character length, other byte length
+ok("R1.21 old link fail: a token of the right length in other characters is the same page in words, never a 500", isOldLinkPage(nonAscii), `${nonAscii.status} ${nonAscii.body.slice(0, 60)}`);
+// Review m2: only a 404 becomes the page; any other error still goes out as itself (never hidden).
+const broken = { page: () => { throw new HttpException("boom", 500); } };
+const other = (() => { try { call(broken as never, withSet.id, withSet.token); return "page"; } catch (e) { return e instanceof HttpException ? e.getStatus() : String(e); } })();
+ok("R1.21 old link fail: an error that is not a 404 is never turned into the page (it stays a 500)", other === 500, other);
 const noStandIn = call(new BillingStandIn(db as never, { standIn: null, clock: { now: () => new Date() }, appUrl: BASE, gstHstNumber: null }), withSet.id, withSet.token);
 ok("R1.21 old link fail: on a server with no stand-in, an invoice link is the same page in words (never says why)", isOldLinkPage(noStandIn) && noStandIn.body === olds.wrongToken.body);
 
@@ -88,7 +95,7 @@ await j("PUT", "/api/platform/billing/address", { street_number: "100", street_n
 const issued = await j("POST", "/api/platform/billing/stand-in/invoice", {}, tok);
 const link: string = issued.body?.invoice?.hostedUrl ?? "";
 const opened = link ? await fetch(link) : null, html = opened ? await opened.text() : "";
-ok(`R1.21 number (copy): the invoice opened from its link prints the number set on the server (${SET})`, issued.status === 200 && opened?.status === 200 && html.includes(`GST/HST registration number: ${SET}`) && !html.includes("Sample: not our real number"), { issued: issued.status, open: opened?.status ?? null });
+ok(`R1.21 number (copy): the invoice opened from its link prints the number set on the server (${SET})`, issued.status === 200 && opened?.status === 200 && html.includes(`GST/HST registration number: ${SET}`) && html.includes("ExpatReady&#39;s GST/HST") && !html.includes("Sample: not our real number"), { issued: issued.status, open: opened?.status ?? null });
 const stale = link ? await fetch(link.replace(/t=[^&]+/, "t=an-old-token")) : null, staleText = stale ? await stale.text() : "";
 const unknown = await fetch(`${BASE}/api/demo/billing/invoices/in_standinffffffffffffffffffffffff?t=x`), unknownText = await unknown.text();
 ok("R1.21 old link fail (copy): an old or unknown invoice link opens the page in words (404, HTML), not raw JSON", stale?.status === 404 && /text\/html/.test(stale.headers.get("content-type") ?? "") && staleText.includes(OLD_LINK_WORDS) && unknown.status === 404 && unknownText.includes(OLD_LINK_WORDS) && !/^\s*\{/.test(staleText + unknownText), { stale: stale?.status ?? null, type: stale?.headers.get("content-type") ?? null, unknown: unknown.status });
