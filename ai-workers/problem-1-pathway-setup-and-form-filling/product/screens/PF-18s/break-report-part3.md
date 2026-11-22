@@ -98,3 +98,59 @@ There is no Blocker. One Major breaks challenge m2, which was marked *Needed for
 * **Security row:** "Always on", with no control.
 * **Leaving with unsaved changes:** `beforeunload` asks while dirty (DN6). An in-app menu click is not blocked, as m2 accepts.
 * **Not applicable on this page:** uploads, rules, the 100-program budget, and free text. The labels are the server's pack, so long or non-English input has nowhere to go.
+
+## Round 2: re-break of the fixes
+
+**SHA:** `b2154d65c641c6eb1bf8f095c7cd99bfe0e260fa`. **Read:** only `git diff dc04e9a7f b2154d65c -- ':!*.png'`. **Copy:** a fresh `pf18snb` on :4447, `AI_LIVE=off PLATFORM_IDENTITY=local`, stopped afterwards. US$0. Same scratch script, plus new cases. user-O was restored to CASE_OFFICER after each role case. No repo file other than this one was changed.
+
+### Verdict: **Ship** (no Blocker, no Major)
+M1 and m1–m5 are fixed. Three new Minors remain, two of them from the new background-adopt effect (`notifications-page.tsx:29`). Fix them or list them in the PR.
+
+### Round-1 findings, re-run
+* **M1, fixed.** Case Officer: unticked Payments email and Mentions email, then was demoted to READ_ONLY (200), then pressed Save.
+  * PUTs were 422 then 200. The first 422 re-read the view, Payments left the table, and the notice reads "This group no longer reaches you, so its changes were removed: Payments. … Save again."
+  * "1 unsaved change" stayed. The second Save wrote `MENTIONS:true/false` only.
+* **M1, re-read fails, held.** Aborting the GET gives "…We could not load your latest settings: reload the page." The 2 changes stay. With the network back, the PUTs went 422, 422, 200, with the same end state.
+* **M1, role gained while open, held.** Promoted to Owner, then saved: 200. The table grows to 8 groups.
+* **m1, fixed.** No raw codes are listed now. A tampered 422 that is not about roles (a repeated group) shows "Each group may be named once." and keeps the change.
+* **m2, fixed.** A 409 whose re-read fails says "reload the page", not "loaded the latest". PUTs went 409, 409 (re-read), 200. The database has the other tab's Needs you value and the person's Mentions value.
+* **m3, fixed.** When the other tab saved the same change, the notice says "…nothing left to save." and Save is disabled.
+* **m4, fixed.**
+  * During the send, focus stays on Save (`aria-disabled="true"`, "Saving…"). Enter, Space, a forced click and a dispatched click during an 1.2 s PUT sent **1** PUT (the `busy` ref).
+  * After success, focus is on the `h1`.
+  * The boxes are `disabled` while sending: a click on one mid-send is ignored, so no change is lost to the reset.
+* **m5, fixed.** Coming back with Back after another tab saved shows the newer value (Needs you in app unticked, matching the database).
+
+### New findings
+**N1 (Minor): a background read that started before a save and lands after it puts the old values back on screen.**
+* **Did:** returned to the page in the app (the cache is shown and a background GET starts). That GET was held 1.5 s after the server answered. Meanwhile the person unticked Mentions email and pressed Save.
+  * Same result through the reconnect refetch (offline, then online) just before the Save.
+* **Expected:** the saved value stays on screen.
+* **Actual:**
+  * PUT 200 and the toast "Notification settings saved". Then the old GET lands and Mentions email **ticks itself back**.
+  * The page looks clean (Save disabled, no count) while the database has `MENTIONS:true/false`. `base.version` is now the old one, so the next Save is a 409 "changed elsewhere", although nothing else changed. Nothing is lost, because the version guard holds.
+* **Why:** `setQueryData` at `:54` does not cancel a fetch already in flight. TanStack writes that fetch's older data when it resolves. The effect at `:29` then adopts it because `!dirty && version !== base.version`. Before this diff, `base` never changed, so this is new. The 409 re-read at `:66` has the same exposure. Scratch `R2-race.png`.
+
+**N2 (Minor): undoing a change adopts a newer view, and the box just ticked flips back with no notice.**
+* **Did:**
+  1. Unticked Mentions email, so the page has an unsaved change.
+  2. Another tab saved Mentions email off and Needs you in app off. The reconnect refetch read that view, and it was not adopted while the change was unsaved (correct).
+  3. The person ticked Mentions email back.
+* **Actual:**
+  * Nothing is unsaved now, so `:29` adopts the newer view. The box the person just ticked shows **unticked**, and Needs you in app also changes.
+  * No notice says another tab changed them. A person who meant "keep email on" now sees it off, and Save is disabled.
+* **Held:** no loop. There was 0 GET in 3 s idle after the adopt, and no React depth error.
+
+**N3 (Minor): a role change that removed the only changed group says "it already matches your changes".**
+* **Did:** unticked Payments email only, was demoted, then pressed Save.
+* **Actual:** the notice reads "…its changes were removed: Payments. We've loaded the latest; it already matches your changes, so there is nothing left to save."
+* The person's change was removed, not matched, so the two sentences contradict each other. `tail` at `:67` uses the 409 wording for both cases.
+
+### Held in round 2
+* **Per-box overlay.**
+  * Another tab set Needs you in app off; this tab unticked Needs you email. After the 409 the row shows in app off and email off, and the save wrote `NEEDS_YOU:false/false`, so the other tab's box was not re-saved.
+  * The other tab's Mentions in app off also shows.
+  * When both tabs changed the same box, the person's value wins, and the other box takes the latest.
+* **Layout and axe.** At 1024 px and 200 % zoom (720 CSS px at ×2), with the "Your groups changed" notice and the "Saving…" state: no sideways scroll, and axe (WCAG 2.2 A/AA) found 0 violations on `main`.
+* **The aria-disabled Save** takes the team's grey `aria-disabled:` style (`controls.tsx:20`).
+* **Not re-checked (outside the diff):** hostile bodies, other people's settings, the session ending mid-save, and `beforeunload`. Round 1's results stand.
