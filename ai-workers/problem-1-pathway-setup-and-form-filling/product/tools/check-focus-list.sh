@@ -143,6 +143,11 @@ Build CS-D1t with J-67 inside, from CS-D1t.md, branched from main.
 Build AUD-1m part 2a, then 2b with J-8 inside, from AUD-1m-2.md, back to back in one lane.
 LINES
 ok "the real list passes Lead B's and Build Lead C's $n lane lines of 19 Nov" "$([ $n = 13 ] && [ -z "$badl" ] && echo 1)" "$badl"
-real "$M Build CS-NT1 part 1 for R1.76 notes from CS-NT1-1.md."
-ok "the real list refuses CS-NT1 (R1.76 notes, four parts left), naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'CS-NT1' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
+# The default list path (no FOCUS_LIST) on a fixture tree, so this case cannot go red when the real list changes
+# (ENF-798b: CS-NT1 joined the real list on 22 Nov): focus-check.py (the copy under test, mutated or not) finds
+# product/focus-list.md next to its tools folder and names that path in the refusal.
+mkdir -p "$T/p/product/tools"; cp "$TOOLS/focus-check.py" "$T/p/product/tools/"; cp "$T/focus-list.md" "$T/p/product/focus-list.md"
+{ cat "$T/BACKLOG.md"; echo '| CS-NT1 | runtime (case side: notes) | case notes, four parts |'; } > "$T/p/product/BACKLOG.md"
+out=$(printf '%s\n' "$M Build CS-NT1 part 1 for R1.76 notes from CS-NT1-1.md." | env -u FOCUS_LIST -u FOCUS_BACKLOG_DIR python3 -I "$T/p/product/tools/focus-check.py" 2>&1); r=$?
+ok "the default list (product/focus-list.md, a fixture without R1.76) refuses CS-NT1, naming product/focus-list.md" "$([ $r = 1 ] && echo "$out" | grep 'CS-NT1' | grep -q 'ai-workers/problem-1-pathway-setup-and-form-filling/product/focus-list.md' && echo 1)" "exit $r: $out"
 finish
