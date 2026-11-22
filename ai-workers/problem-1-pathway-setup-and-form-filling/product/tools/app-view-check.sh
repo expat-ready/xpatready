@@ -4,7 +4,7 @@
 # or missing = "ACT app view not read in N min"; otherwise one ACT per FLAG line in it, one for an UNREADABLE line and one for a "WARNING: list may be cut" line (B204).
 #   bash product/tools/app-view-check.sh [--stale-only]     exit = the number of ACT lines
 # Env (tests): APP_VIEW_FILE, NOW (epoch seconds). Test: check-app-view.sh.
-STALE_MIN=35
+STALE_MIN=15   # P-798: one 10-minute check plus 5 min grace (was 35, from the 30-minute check)
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 f="${APP_VIEW_FILE:-$TOOLS/../state/app-view-latest.txt}"; now="${NOW:-$(date +%s)}"
 how="run tools/app-view.js in the built-in browser on claude.ai/code, save it with tools/app-view-save.sh, act on each FLAG (P-326, A110)"

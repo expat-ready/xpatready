@@ -7,6 +7,8 @@
 #   bash product/tools/check-focus-list.sh
 set -u
 . "$(dirname "$0")/guard-test-lib.sh"
+# ENF-803: a start brief's Duplicate check names the main sha and the exact IST time (brief-fresh.py); HEAD stands for main here
+export BRIEF_MAIN=HEAD; FRESH_DUP="read main $(git rev-parse --short=9 HEAD) at $(TZ=Asia/Kolkata date +%H:%M) IST;"
 command -v jq >/dev/null || { echo "jq is missing; nothing was checked"; exit 2; }
 T=$(mktemp -d "${TMPDIR:-/tmp}/guard.XXXXXXXX") && [ -d "$T" ] || { echo "no temp dir: nothing was checked"; exit 2; }; trap 'rm -rf "$T"' EXIT
 cat > "$T/focus-list.md" <<'L'
@@ -106,7 +108,7 @@ ok "no focus list: a builder brief is refused, with the path it looked at" "$([ 
 fc "$M Run /next runtime ENF-733." "$T/none.md"
 ok "no focus list: a tooling brief still passes" "$([ $r = 0 ] && echo 1)" "exit $r: $out"
 # The hook, fed the JSON Claude Code sends on start_session and create_session (lane-preflight.sh --hook).
-G4=$'\nDuplicate check: searched BACKLOG; none\nDone when: check-x.sh exits 0'
+G4=$'\nDuplicate check: '"$FRESH_DUP"$' searched BACKLOG; none\nDone when: check-x.sh exits 0'
 # B204: each hook brief carries its Item line; a throwaway waves list puts R1.37 and R1.76 in the active wave, so the focus list is what is tested here.
 printf '| # | Map row | Status |\n|---|---|---|\n| R1.37 | x | Partial |\n| R1.76 | x | Partial |\n| R1.1 | x | Partial |\n| R1.2 | x | Partial |\n' > "$T/caps.md"
 printf 'R1.37\t1\tJ5\nR1.76\t1\tJ7\nR1.1\t1\tJ0\nR1.2\t1\tJ0\n' > "$T/waves.tsv"; export WAVES_TSV="$T/waves.tsv" WAVES_CAPS="$T/caps.md"

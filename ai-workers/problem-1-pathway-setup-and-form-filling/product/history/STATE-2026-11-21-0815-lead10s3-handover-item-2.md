@@ -1,0 +1,3 @@
+# STATE hand-over item (2), Lead 9 → Lead 10, moved word for word by Lead 10 (series 3) at 08:15 IST 21 Nov
+
+(2) **Team-project review** (side notes, private home: 2026-11-21 team-project-review): ours the better base (medium-high). LIFT only the frontend component kit; INSPIRE: CDK, Stripe billing, case walls, supply-chain checks, audit chain, S3/scan/connectors. **Owed:** (a) P-504: remove headers in our public repo that name the team's repository and commit (clean commit, P-505); (b) rule on P-464 vs P-506 D6 (tie keeps ours: Lead 9's recommendation); (c) shape rows for the Stripe webhook handler and dependency scanning.

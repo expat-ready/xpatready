@@ -1,0 +1,6 @@
+# Lead 13: starts owed at the founder's next typed turn (21 Nov 12:2x IST)
+Cards refused (founder on Remote Control); start these with start_session "user_asked" when the founder types.
+1. **Lead B (11)** (local, cwd `.claude/worktrees/build-lead-c-647b40`, use_worktree false; Model: Opus 5.5, effort: medium): take over from Lead B (10) (local_85784f46) per `lead-b-handover-2026-11-19.md` on lead-b-front-office (4c13b57bc+), section "Lead B (10) final hand-over".
+2. **E2 #2603 rescue** (cloud; Model: Opus 5.5, effort: medium): merge main into `tools/e2-pr-suites`, resolve `check-guards.sh` (keep both lists), run check-guards.sh + check-pr-suites-job.sh, Opus re-Approve of the merge only (P-277), no label (Lead reads .github/).
+3. **Tooling rescue** (cloud; Model: Opus 5.5, effort: medium; one session for four main merges, Lead exception): #2595 (`pr-rules.yml` conflict), #2431 (`check-guards.sh` conflict), #2434 and #2445 (guards red only from stale main: `case-deadlines/*.ts` scope now on main). Each: merge main, tests, re-Approve, no label.
+Why not done by the Lead: `PUT /pulls/n/update-branch` on #2434/#2445 refused by the permission check (12:2x); the original lanes are gone from claude.ai.
