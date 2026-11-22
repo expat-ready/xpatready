@@ -1,0 +1,42 @@
+// front-office-duplicates.prisma — the merge records of two person or two company records. Owner: Lead B (front office).
+// One file per area (DB-SPLIT, studio/DEVELOPING.md): never edit another area's file without its owner.
+//
+// FO-9b part 1 (BACKLOG row FO-9b; brief design/lead-b-briefs/FO-9b.md "Part 1"; P-574 (2); AG-2-16 rules 1, 2, 2b, 4, 5,
+// 8, 10, 11, §10). The tombstone mark itself is on fo_person / fo_company (merged_into_id, merged_at, their slot lines in
+// front-office-sales.prisma). firm_id, survivor_id and loser_id are plain uuids checked by the merge service (so this area
+// edits no other file's back-relations). Rules Prisma cannot say are in the migration (fo_dup_ functions): a merge record
+// is written once; its only change is the Undo stamp (undone_at, undone_by from empty, once); never deleted or truncated.
+// Part 2 adds fo_dup_review (the review list) here.
+
+/// Which kind of record a merge joined (AG-2-16 rule 8: two persons or two companies, never one of each).
+enum FoDupKind {
+  PERSON
+  COMPANY
+}
+
+/// One merge (AG-2-16 rule 11; P-574 (2) "logged and undoable"): who merged which record into which, with the loser's
+/// full row, the survivor's replaced values and every row the merge moved, copied or changed, so Undo puts back exactly
+/// those. Written once; Undo stamps undone_at and undone_by once.
+model FoDupMerge {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firmId         String    @map("firm_id") @db.Uuid
+  kind           FoDupKind
+  survivorId     String    @map("survivor_id") @db.Uuid
+  loserId        String    @map("loser_id") @db.Uuid
+  /// The loser's row as it was, and every row moved, copied or changed by table (service.ts MergeSnapshot).
+  loserSnapshot  Json      @map("loser_snapshot")
+  /// The survivor's merge fields before the merge (Undo puts them back).
+  survivorBefore Json      @map("survivor_before")
+  /// Field → SURVIVOR | LOSER, as applied (the caller's choices, defaults elsewhere).
+  choices        Json
+  automatic      Boolean   @default(false)
+  reason         String?
+  by             String
+  at             DateTime  @default(now()) @db.Timestamptz
+  undoneAt       DateTime? @map("undone_at") @db.Timestamptz
+  undoneBy       String?   @map("undone_by")
+
+  @@index([firmId, survivorId])
+  @@index([firmId, loserId])
+  @@map("fo_dup_merge")
+}

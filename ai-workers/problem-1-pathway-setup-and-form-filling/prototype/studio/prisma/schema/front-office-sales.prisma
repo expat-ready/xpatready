@@ -185,6 +185,9 @@ model FoPerson {
   createdBy     String   @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  // tombstone slot: duplicates (FO-9b) — a merged-away person names its survivor (AG-2-16 §10; front-office-duplicates.prisma)
+  mergedIntoId  String?  @map("merged_into_id") @db.Uuid
+  mergedAt      DateTime? @map("merged_at") @db.Timestamptz
 
   setup            FoSalesSetup       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   receipts         FoArrivalReceipt[]
@@ -195,6 +198,8 @@ model FoPerson {
   primaryContactOf FoProspect[]       @relation("ProspectPrimaryContact")
   calls            FoCall[]
   notes            FoNote[]
+  mergedInto       FoPerson?          @relation("PersonMergedInto", fields: [firmId, mergedIntoId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom       FoPerson[]         @relation("PersonMergedInto")
 
   @@unique([firmId, id])
   @@index([firmId, email])
@@ -223,7 +228,7 @@ model FoArrivalReceipt {
 
   setup   FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   webForm FoWebForm?   @relation(fields: [firmId, webFormId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead    FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead    FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   person  FoPerson?    @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([firmId, door, intakeKey])
@@ -327,10 +332,15 @@ model FoCompany {
   createdBy      String   @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  // tombstone slot: duplicates (FO-9b) — a merged-away company names its survivor (AG-2-16 §10)
+  mergedIntoId   String?   @map("merged_into_id") @db.Uuid
+  mergedAt       DateTime? @map("merged_at") @db.Timestamptz
 
   setup     FoSalesSetup       @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   contacts  FoCompanyContact[]
   prospects FoProspect[]
+  mergedInto FoCompany?        @relation("CompanyMergedInto", fields: [firmId, mergedIntoId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedFrom FoCompany[]        @relation("CompanyMergedInto")
 
   @@unique([firmId, id])
   @@index([firmId, normalisedName])
@@ -474,7 +484,7 @@ model FoCall {
 
   setup    FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   person   FoPerson     @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead     FoLead?      @relation("CallLead", fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead     FoLead?      @relation("CallLead", fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   prospect FoProspect?  @relation("CallProspect", fields: [firmId, prospectId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, personId, startedAt])
@@ -496,7 +506,7 @@ model FoNote {
 
   setup    FoSalesSetup @relation(fields: [firmId], references: [firmId], onDelete: Restrict, onUpdate: Restrict)
   person   FoPerson     @relation(fields: [firmId, personId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
-  lead     FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Restrict)
+  lead     FoLead?      @relation(fields: [firmId, leadId, personId], references: [firmId, id, personId], onDelete: Restrict, onUpdate: Cascade) // FO-9b: a merge moves the lead and its rows
   prospect FoProspect?  @relation(fields: [firmId, prospectId], references: [firmId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([firmId, personId, createdAt])
