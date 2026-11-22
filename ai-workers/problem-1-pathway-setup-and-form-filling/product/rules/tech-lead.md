@@ -215,3 +215,4 @@ Moved by Lead 99, 20 Nov, word for word:
 ## IDX-25 (moved 22 Nov, Lead 2)
 To 07:00 IST 23 Nov: P-784 cap 12 → P-785 cap 16 (structural changes now, each step backward compatible and merged alone; queue/CI config only after the Lead's read, never 19:00-07:00; staging under `lab.`) → P-786 cap follows the work, Track B builds today, tokens not the limit (be mindful) → P-787 keep all lanes, the founder adds usage himself; the Lead measures the rate each check and asks again at 90%. Word for word in DECISIONS.
 Also folded here (was IDX-24, word for word): | IDX-24 | P-782, P-783 stand as in DECISIONS. | script: ENF-782b (owed) | 21 Nov |
+P-788 (Opus 5.5 medium everywhere, never silently), P-789 (Lead mental model; Show more every 10-min check; agreed rules made live), P-790 (size exceptions #2927, #2953, #2955), P-791 (unclog playbook: never merge by hand while batches run) stand, word for word in DECISIONS (folded 22 Nov, Lead 2).
