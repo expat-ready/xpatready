@@ -161,6 +161,18 @@ Every finding below separates **Fact** (file:line or quote) from **Judgment**, w
 The concept's questions 1 (keys) and 3 (Merged-tab API) move to the tech lead as M5 and M6: the requirement and the code on `main` decide them.
 
 ## Lead response
+Lead 19, 22 Nov (PR #2896 comment 7072122159; P-223 (4)), written in by the runtime lane as the Lead asked:
+* **Part 1 (S1, the warning on Add a lead): approved to build**, once M1 and M2 and Minors 1, 2, 4 and 5 are in concept.md (done in r3).
+  * M1: one place to choose. The hint's last line becomes the "Add as new" button, which sends `confirmedNew`; Save does not ask again; a key edit clears it; one ordering, visible people first (BR-5).
+  * M2: "Use this person" keeps the typed email and phone as offered additions, never silently dropped (BR-5b).
+  * Minor 4: "Could not merge. Nothing changed." word for word.
+  * Build on a fresh branch from origin/main on FO-9a's `POST duplicates/check`, with an Opus reviewer and a breaker (new screen).
+* **M5 and M6 are the Lead's, not founder questions.**
+  * Keys follow main: `agent/prospect:merge` for the list and merge, and `agent/prospect:edit` for Keep separate only if the list route is split so Case Officers can read it.
+  * The Merged-tab data and Undo go into FO-9b part 2's brief.
+  * M3, M4, M7 and M8 also go into FO-9b's brief lines, which the Lead shapes.
+* **Parts 2-3 wait** on FO-9b part 2 and the founder's answers to the three questions: Add as new vs automatic merge (B1), similar-name pairs on the list, and the list at Sales › People to merge. The Lead asks the founder at his next typed turn, with the challenge's recommendations.
+* **Builder's reading of M2, for the Lead to confirm:** fo_person has one email column and main has no route to edit an email (FO-9a-ph edits the phone only). So "offered additions" is built as a pre-ticked offer to keep the unmatched typed email and phone in the lead's first note ("Also gave: …"); unticked, the box says "Not saved: …". Writing them onto the person record would need a new edit route, which is not in this row.
 
 ## Agreement
 

@@ -82,7 +82,7 @@
   <h2>S1 · Add a lead: the warning as details are typed (part 1, buildable now)</h2>
   <div class="note">The check runs when First name + Last name, Email or Phone loses focus (FO-9a <code>POST duplicates/check</code>). Warn, don't block: Save lead stays enabled. An exact email or phone still gets the server's 409 choice on Save (today's behaviour). Sample data.</div>
   <div class="shell">
-    <nav class="menu"><a class="on" href="#s1">Leads</a><a href="#s1">Pipeline</a><a href="#s2">People to merge <span class="count">3</span></a></nav>
+    <nav class="menu"><a class="on" href="#s1">Leads</a><a href="#s1">Pipeline</a></nav>
     <div class="page">
       <div class="crumbs">Sales › Leads</div>
       <div class="title">Leads</div>
@@ -105,7 +105,7 @@
               <button class="btn sm outline">Use this person</button>
             </div>
             <div class="why">Possible match with a record you cannot open — ask a manager.</div>
-            <div class="row" style="justify-content:space-between"><span class="why">None of these? Add as new: a new person is made, and these pairs are kept separate.</span><button class="btn sm">Add as new</button></div>
+            <div class="row" style="justify-content:space-between"><span class="why">None of these? A new person is made.</span><button class="btn sm">Add as new</button></div>
           </div>
           <label class="f">Source<span class="h">Where the enquiry came from, in your words.</span><input class="i" value="Phone call"></label>
         </div>
@@ -113,7 +113,7 @@
       </div>
     </div>
   </div>
-  <div class="note">States: idle (no box) · checking (a quiet "Checking for people on file…" line, no spinner over the form) · no match (no box; nothing said) · matches (as above, strongest first, at most 10) · hidden only (the nameless line alone) · check failed (nothing shown; Save still works and the server's own check on Save still applies) · after "Use this person" (the box becomes "Adding to Lena Park's record. <u>Change</u>" and names typed details that will not be saved, e.g. "lp.work@example.org will not be added to Lena Park. Add it on her record after saving."; Save reads "Add lead to Lena Park") · a 409 on Save replaces this box (one box, never two) · a key edited after a match (box clears, check runs again).</div>
+  <div class="note">States: idle (no box) · checking (a quiet "Checking for people on file…" line, no spinner over the form) · no match (no box; nothing said) · matches (as above, strongest first, at most 10) · hidden only (the nameless line alone) · check failed (nothing shown; Save still works and the server's own check on Save still applies) · after "Use this person" (the box becomes "Adding to Lena Park's record. <u>Change</u>" and offers the typed email and phone that were not matched, pre-ticked: "Also keep in the lead's first note: lp.work@example.org" (unticked: "Not saved: …"); Save reads "Add lead to Lena Park") · a 409 on Save replaces this box (one box, never two) · a key edited after a match (box clears, check runs again).</div>
 </section>
 
 <section class="board" id="s2">
