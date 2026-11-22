@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FO-9s boards — duplicate warning, People to merge, guided merge</title>
+<!-- FO-9s concept boards (R1.29). Self-contained: the team's tokens copied from web/src/styles/tokens.css (ERv2).
+     All names, emails and numbers are Sample. Not for porting: the board chrome (board titles, notes in dashed boxes). -->
+<style>
+  :root {
+    --primary: #0862c5; --primary-hover: #054e9c; --surface: #f7f7f7; --raised: #fff; --border: #d9d9d9; --border-strong: #bfbfbf;
+    --text: #2d2d2d; --muted: #737373; --link: #054e9c; --danger: #991b1b; --warn: #663200; --warn-fill: #fff4e5; --ok: #0f5c2e;
+    --info-fill: #eef5fd; --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 Inter, system-ui, sans-serif; color: var(--text); background: var(--surface); }
+  h1, h2, h3 { font-family: "Proxima Nova", Inter, system-ui, sans-serif; margin: 0; }
+  .board { max-width: 1440px; margin: 0 auto 48px; padding: 24px 16px; }
+  .board > h2 { font-size: 18px; margin-bottom: 4px; }
+  .note { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 8px 12px; color: var(--muted); font-size: 12px; margin: 8px 0 16px; background: #fff; }
+  .shell { display: grid; grid-template-columns: 200px 1fr; min-height: 560px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  .menu { background: #fff; border-right: 1px solid var(--border); padding: 16px 12px; font-size: 14px; }
+  .menu a { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  .menu a.on { background: var(--info-fill); color: var(--link); font-weight: 600; }
+  .menu .count { font-size: 12px; background: var(--warn-fill); color: var(--warn); border-radius: 999px; padding: 0 8px; }
+  .page { padding: 20px 24px; position: relative; }
+  .crumbs { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .title { font-size: 24px; font-weight: 600; }
+  .desc { color: var(--muted); margin: 2px 0 16px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary); color: #fff; font: inherit; font-weight: 500; cursor: pointer; }
+  .btn.outline { background: #fff; color: var(--primary); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text); }
+  .btn.sm { height: 28px; font-size: 13px; padding: 0 10px; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .pill { display: inline-block; font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--border); background: #fff; white-space: nowrap; }
+  .pill.info { background: var(--info-fill); border-color: #c6dcf5; color: var(--link); }
+  .pill.warn { background: var(--warn-fill); border-color: #ffd29a; color: var(--warn); }
+  .pill.ok { background: #e9f7ee; border-color: #b9e2c8; color: var(--ok); }
+  .notice { border: 1px solid #c6dcf5; background: var(--info-fill); border-radius: var(--radius); padding: 10px 12px; }
+  .notice.warn { border-color: #ffd29a; background: var(--warn-fill); }
+  .notice b { display: block; margin-bottom: 2px; }
+  .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 520px; background: #fff; border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.08); display: flex; flex-direction: column; }
+  .panel header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .panel header h3 { font-size: 18px; }
+  .panel .body { padding: 16px 20px; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .panel footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  label.f { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+  label.f span.h { font-weight: 400; color: var(--muted); font-size: 12px; }
+  input.i { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; padding: 0 10px; font: inherit; }
+  .hint { border: 1px solid #ffd29a; background: var(--warn-fill); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .match { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  .why { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: #fafafa; }
+  .tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .tabs span { padding: 6px 0; color: var(--muted); }
+  .tabs span.on { color: var(--text); font-weight: 600; border-bottom: 2px solid var(--primary); }
+  .dialog { width: 880px; margin: 24px auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.12); }
+  .dialog header, .dialog footer { padding: 16px 20px; }
+  .dialog header { border-bottom: 1px solid var(--border); }
+  .dialog footer { border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .steps { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .steps .on { color: var(--link); font-weight: 600; }
+  .grid3 { display: grid; grid-template-columns: 140px 1fr 1fr; gap: 0; padding: 12px 20px; }
+  .grid3 > div { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .grid3 .hd { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .pick { display: flex; gap: 8px; align-items: flex-start; }
+  .pick.chosen { background: var(--info-fill); border-radius: 6px; }
+  .moves { padding: 12px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .moves ul { margin: 4px 0 0; padding-left: 18px; }
+  .toast { position: absolute; left: 24px; bottom: 16px; background: var(--text); color: #fff; border-radius: 8px; padding: 10px 14px; display: flex; gap: 16px; align-items: center; }
+  .toast a { color: #9cc7f6; }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .menu { display: none; } .panel { position: static; width: auto; } .dialog { width: auto; margin: 12px 0; } .grid3 { grid-template-columns: 1fr; } .moves { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<section class="board" id="s1">
+  <h2>S1 · Add a lead: the warning as details are typed (part 1, buildable now)</h2>
+  <div class="note">The check runs when First name + Last name, Email or Phone loses focus (FO-9a <code>POST duplicates/check</code>). Warn, don't block: Save lead stays enabled. An exact email or phone still gets the server's 409 choice on Save (today's behaviour). Sample data.</div>
+  <div class="shell">
+    <nav class="menu"><a class="on" href="#s1">Leads</a><a href="#s1">Pipeline</a><a href="#s2">People to merge <span class="count">3</span></a></nav>
+    <div class="page">
+      <div class="crumbs">Sales › Leads</div>
+      <div class="title">Leads</div>
+      <div class="desc">New enquiries, newest first.</div>
+      <div class="panel" role="dialog" aria-label="Add a lead">
+        <header><h3>Add a lead</h3><div class="muted">For a phone call, a walk-in or an email. You will own the lead.</div></header>
+        <div class="body">
+          <label class="f">First name<input class="i" value="Lena"></label>
+          <label class="f">Last name (optional)<input class="i" value="Parks"></label>
+          <label class="f">Email<input class="i" value="lp.work@example.org"></label>
+          <label class="f">Phone<input class="i" value="416.555.0101"></label>
+          <div class="hint" role="status" aria-live="polite">
+            <b>2 people on file look like this person.</b>
+            <div class="match">
+              <div><div><b>Lena Park</b></div><div class="why">Same phone · Similar name</div></div>
+              <button class="btn sm outline">Use this person</button>
+            </div>
+            <div class="match">
+              <div><div><b>Lena Parkes</b></div><div class="why">Similar name (78%)</div></div>
+              <button class="btn sm outline">Use this person</button>
+            </div>
+            <div class="why">Possible match with a record you cannot open — ask a manager.</div>
+            <div class="why">Not the same person? Carry on and save: a new person is made.</div>
+          </div>
+          <label class="f">Source<span class="h">Where the enquiry came from, in your words.</span><input class="i" value="Phone call"></label>
+        </div>
+        <footer><button class="btn ghost">Cancel</button><button class="btn">Save lead</button></footer>
+      </div>
+    </div>
+  </div>
+  <div class="note">States: idle (no box) · checking (a quiet "Checking for people on file…" line, no spinner over the form) · no match (no box; nothing said) · matches (as above, strongest first, at most 10) · hidden only (the nameless line alone) · check failed (nothing shown; Save still works and the server's own check on Save still applies) · after "Use this person" (the box becomes "Adding to Lena Park's record. <u>Change</u>", Save reads "Add lead to Lena Park") · a key edited after a match (box clears, check runs again).</div>
+</section>
+
+<section class="board" id="s2">
+  <h2>S2 · People to merge (part 2, after FO-9b part 2)</h2>
+  <div class="note">Sales menu item with a count of open pairs. Only pairs whose both people the viewer may open (AG-2-68 rule 17). Merge only with the merge key; Keep separate with <code>agent/prospect:edit</code>. Sample data.</div>
+  <div class="shell">
+    <nav class="menu"><a href="#s1">Leads</a><a href="#s1">Pipeline</a><a class="on" href="#s2">People to merge <span class="count">3</span></a></nav>
+    <div class="page">
+      <div class="crumbs">Sales › People to merge</div>
+      <div class="title">People to merge</div>
+      <div class="desc">Pairs that may be one person. Nothing merges here until you choose. Merged people can be split again while nothing new was added.</div>
+      <div class="tabs"><span class="on">To review (3)</span><span>Merged (2)</span><span>Kept separate (1)</span></div>
+      <table aria-label="People to merge">
+        <thead><tr><th>People</th><th>What matched</th><th>Match</th><th>First seen</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><b>Lena Park</b> · L-00012<br><b>Lena Parks</b> · L-00044</td><td>Same phone · Similar name</td><td><span class="pill warn" title="An exact email or phone is a 100 match. A similar name alone scores its likeness.">100 · strong</span></td><td>21 Nov, 10:14</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
+          <tr><td><b>Omar Haddad</b> · L-00007<br><b>O. H.</b> · L-00051</td><td>Same email</td><td><span class="pill warn">100 · strong</span></td><td>21 Nov, 15:02</td><td class="row"><button class="btn sm">Merge…</button><button class="btn sm ghost">Keep separate</button></td></tr>
+          <tr><td><b>Ana Silva</b> · client C-2026-4<br><b>Ana Silva</b> · L-00053</td><td>Same email</td><td><span class="pill warn">100 · strong</span></td><td>22 Nov, 08:40</td><td><button class="btn sm" disabled title="This person has a case; merge them from the client record.">Merge…</button> <button class="btn sm ghost">Keep separate</button><div class="why">This person has a case; merge them from the client record.</div></td></tr>
+        </tbody>
+      </table>
+      <div class="note">Merged tab rows: both people, "Merged by Representative, 21 Nov 16:20" or "Merged automatically (same email; no case, document or money)", and <b>Undo merge</b> while allowed; when refused, the server's reason replaces the button ("Something new reached Lena Park from this email after the merge."). Empty To review: "No pairs to review. When two records look like one person, they appear here." No key: the menu item is not shown; a typed URL shows "You need access to People to merge. Ask an Owner or Admin."</div>
+    </div>
+  </div>
+</section>
+
+<section class="board" id="s3">
+  <h2>S3 · Guided merge (part 3, after FO-9b part 2): one dialog, 3 steps</h2>
+  <div class="note">Step 1 Keep (which record stays and each field's value; defaults pre-picked by AG-2-16 rule 1 and said why) · Step 2 What moves (FO-9b preview) · Step 3 Confirm. Sample data.</div>
+  <div class="dialog" role="dialog" aria-label="Merge Lena Park and Lena Parks">
+    <header><h3>Merge Lena Park and Lena Parks</h3><div class="steps"><span class="on">1 · Choose what to keep</span><span>2 · What moves</span><span>3 · Confirm</span></div></header>
+    <div class="grid3">
+      <div class="hd">Field</div><div class="hd">Lena Park · L-00012 <span class="pill info">stays</span></div><div class="hd">Lena Parks · L-00044 <button class="btn sm ghost">Keep this one instead</button></div>
+      <div>First name</div><div class="pick chosen"><input type="radio" checked aria-label="Keep Lena"> Lena</div><div class="pick"><input type="radio" aria-label="Keep Lena"> Lena</div>
+      <div>Last name</div><div class="pick chosen"><input type="radio" checked> Park</div><div class="pick"><input type="radio"> Parks</div>
+      <div>Email</div><div class="pick"><input type="radio"> <span class="muted">Not given</span></div><div class="pick chosen"><input type="radio" checked> lp.work@example.org <span class="why">only value</span></div>
+      <div>Phone</div><div class="pick chosen"><input type="radio" checked> +1 416 555 0101</div><div class="pick"><input type="radio"> +1 416 555 0101 <span class="why">same</span></div>
+      <div>Language</div><div class="pick chosen"><input type="radio" checked> English <span class="why">newer</span></div><div class="pick"><input type="radio"> French</div>
+      <div>Time zone</div><div class="pick chosen"><input type="radio" checked> America/Toronto</div><div class="pick"><input type="radio"> <span class="muted">Not given</span></div>
+    </div>
+    <div class="moves">
+      <div><b>Step 2 · What moves to Lena Park</b><ul><li>1 lead (L-00044) with its 2 notes and 1 call</li><li>1 consent record (copied, kept as it was)</li><li>Stage history and where they came from: kept</li></ul></div>
+      <div><b>Stays as it is</b><ul><li>Identity and conflict checks stay on their record and show on Lena Park</li></ul><div class="notice" style="margin-top:8px"><b>Both records have an open prospect for Express Entry.</b>Both stay as they are.</div></div>
+    </div>
+    <footer><span class="why">Nothing is deleted. You can undo this merge while nothing new reaches Lena Park from Lena Parks's email or phone.</span><span class="row"><button class="btn ghost">Cancel</button><button class="btn outline">Back</button><button class="btn">Next</button></span></footer>
+  </div>
+  <div class="note">Step 3 (Confirm): one sentence "Lena Parks will be merged into Lena Park. 1 lead, 2 notes, 1 call and 1 consent record move." and the button <b>Merge 2 people</b>. After: toast "Merged into Lena Park. <u>Undo</u>" (10 s), the pair moves to the Merged tab, focus goes to the next pair. Errors: someone merged or changed either record meanwhile → "One of these records changed. Reload to see it." with Reload; a pair with a case → never reaches this dialog.</div>
+</section>
+
+</body>
+</html>
