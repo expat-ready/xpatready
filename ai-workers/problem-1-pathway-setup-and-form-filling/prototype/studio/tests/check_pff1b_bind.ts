@@ -27,6 +27,8 @@ const { EntitledFiles } = await import("../api/src/platform/entitlements/storage
 const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
 const { Db } = await import("../api/src/core.ts");
 const { fakeS3 } = await import("./fixtures/pff1-s3/fake-s3.ts");
+const { runContract } = await import("../ports/contracts/contract.ts");
+const { filesPortContract } = await import("../ports/contracts/files-port.contract.ts");
 
 const FIRM_A = "0c0c0c0c-0000-4000-8000-0000000000a1", FIRM_B = "0c0c0c0c-0000-4000-8000-0000000000b2", PERSON = "5a5a5a5a-0000-4000-8000-000000000001";
 const BUCKET = "pff1b-recorded-bucket", KMS = "arn:aws:kms:ca-central-1:000000000000:key/00000000-0000-4000-8000-00000000f1f1";
@@ -44,7 +46,7 @@ const stubDb = new Proxy({}, { get: (_t, p) => (typeof p !== "string" || p === "
 /** A Nest context of the files bindings as the app merges them: the shared providers once, then the retainers' own. */
 async function context(retainersProvider: Provider) {
   class FilesOnly {}
-  Module({ providers: [...filesProviders, retainersProvider, PlatformClock, { provide: Db, useValue: stubDb }] })(FilesOnly);
+  Module({ providers: [...filesProviders, retainersProvider, PlatformClock, { provide: Db, useValue: stubDb }] as never })(FilesOnly);
   return NestFactory.createApplicationContext(FilesOnly, { logger: false, abortOnError: false });
 }
 const withEnv = async <T>(env: Record<string, string | undefined>, f: () => Promise<T>): Promise<T> => {
@@ -61,9 +63,22 @@ try {
   /** A feature that binds its own store: it makes a LocalFiles, or lists the LocalFiles class as a provider. */
   const bindsOwnStore = (text: string, providers: readonly unknown[]) => /new LocalFiles\(/.test(text) || providers.includes(LocalFiles);
   ok("R1.65 PF-F1b one place pass: none of the six feature files makes or provides LocalFiles itself any more", FEATURES.every((f) => !bindsOwnStore(src[f]!, features[f]!.providers)), FEATURES.filter((f) => bindsOwnStore(src[f]!, features[f]!.providers)));
-  ok("R1.65 PF-F1b one place pass: the features that injected the store by name take the one shared provider list (the same objects), the rest call boundFiles()", ["front-office-identity-check", "platform-branding", "platform-support"].every((f) => filesProviders.every((p) => features[f]!.providers.includes(p))) && ["platform-entitlements", "platform-messages", "front-office-retainers"].every((f) => /boundFiles\(\)/.test(src[f]!)));
+  ok("R1.65 PF-F1b one place pass: the features that injected the store by name take the one shared provider list (the same objects), the rest call boundFiles()", ["front-office-identity-check", "platform-branding", "platform-support"].every((f) => filesProviders.every((p: unknown) => features[f]!.providers.includes(p as Provider))) && ["platform-entitlements", "platform-messages", "front-office-retainers"].every((f) => /boundFiles\(\)/.test(src[f]!)));
   ok("R1.65 PF-F1b one place fail: the scan finds a feature as it was before (main's identity-check and messages lines)", bindsOwnStore("", [LocalFiles, FileLinks]) && bindsOwnStore("const files = new LocalFiles();", []) && !bindsOwnStore("const files = boundFiles();", [...filesProviders]));
-  const retainersProvider = features["front-office-retainers"]!.providers.find((p) => typeof p === "object" && p.provide === LocalFiles)!;
+  // The shared FilesPort contract (P-606 (8); the port-contract guard): EntitledFiles over each store, with a database
+  // whose limit is Unlimited (null), and boundFiles in each mode, each make an empty store.
+  const unlimited = { $queryRaw: async () => [{ firmId: FIRM_A, code: "sample", name: "Sample", seats: null, value: null, hasRow: true, hard: false }] };
+  const recordedS3 = () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: fakeS3({ bucket: BUCKET, region: DEFAULT_FILES_REGION, requireKmsKeyId: KMS }).handler }; };
+  const contracts = [
+    await runContract(filesPortContract, "EntitledFiles", () => new EntitledFiles(unlimited as never, () => Date.now(), null, join(WORK, "c-entitled", randomBytes(6).toString("hex"))), null),
+    await withEnv(S3_ENV, async () => runContract(filesPortContract, "EntitledFiles over S3Files", () => { recordedS3(); return new EntitledFiles(unlimited as never, () => Date.now(), null, boundFiles()); }, null)),
+    await withEnv({ PLATFORM_FILES: "local" }, async () => runContract(filesPortContract, "boundFiles", () => { process.env.FO_FILES_DIR = join(WORK, "c-bound", randomBytes(6).toString("hex")); return boundFiles(); }, null)),
+    await withEnv(S3_ENV, async () => runContract(filesPortContract, "boundFiles (s3)", () => { recordedS3(); return boundFiles(); }, null)),
+  ];
+  delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; process.env.FO_FILES_DIR = join(WORK, "files");
+  for (const r of contracts) ok(`R1.65 PF-F1b contract: ${r.adapter} keeps every case of the FilesPort contract`, r.failed.length === 0 && r.passed.length >= 11, r.failed);
+
+  const retainersProvider = features["front-office-retainers"]!.providers.find((p: Provider) => typeof p === "object" && p.provide === LocalFiles)!;
 
   // Case 1: unset outside production gives the local adapter.
   {

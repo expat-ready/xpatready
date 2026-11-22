@@ -129,7 +129,7 @@ export class EntitledFiles implements FilesPort {
   delete(firmId: string, key: string): Promise<{ deleted: boolean }> { return this.store.delete(firmId, key); }
   usedBytes(firmId: string): Promise<number> { return this.store.usedBytes(firmId); }
 
-  override async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
+  async put(firmId: string, key: string, bytes: Uint8Array, contentType: string): Promise<{ key: string; sha256: string }> {
     if (!await this.known(firmId, key)) {   // a retry of a stored key always goes through; a retired one gets FileKeyTaken (break m4)
       const used = await this.usedBytes(firmId);
       const r = await new PgEntitlements(this.db, this.now).check(firmId, "storage_mb", mbOf(used));
