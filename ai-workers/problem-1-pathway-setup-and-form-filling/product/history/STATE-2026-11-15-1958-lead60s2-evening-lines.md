@@ -1,7 +1,0 @@
-# STATE lines moved by Lead 60 at 19:58 IST 15 Nov (word for word)
-
-🟥 **19:13 queue reset:** CS-C1a #1818 pushed 77920580d while queued; batches #1837-#1839 thrown away (~1 h lost), Mergify rebuilding. Enforcement candidate (A92 step 3): refuse a push to a PR labelled `queued` (pre-push guard + brief line).
-🟩 **Lead 60 check 19:10:** PF-19b #1824 merged 18:43. 8 queued (incl. #1810, #1808). #1811 green on e4f6598f9 with Approve on that head but the lane slept: Lead labelled 19:1x. **Gap found:** sle-watch has no target for "Approve on head + ci green + no label" (#1808, #1811): add it as target R (30 min). Library 3 masters behind.
-🟩 **A92 steps 1-2 built (18:4x-19:0x):** `tools/sle-watch.py` + `check-sle-watch.sh`, lead-watch section 9; full line word for word in `history/STATE-2026-11-15-1912-lead60s2-a92-steps-line.md`. **Done 19:1x on his "Close them":** 8 stale PRs closed (#669 #671 #945 #1074 #1086 #1523 #1568 #1572), branches kept, each with a reopen note.
-🟩 **Earlier Lead 60 lines (sweep 18:1x pointer, PF-21v feed after #1823, check 18:40):** word for word in `history/STATE-2026-11-15-1850-lead60s2-check-1840-and-feed-lines.md`. Owed to BACKLOG: CS-C1a's two follow-ups (#1818 body), FO-2's qa53 decorator-call scan row (#1813).
-🟩 **Earlier lines today (Lead 59 hand-over items on #1834, Lead 60 checks 17:13 and 17:40, #1834 labelled on the founder's word 17:4x):** word for word in `history/STATE-2026-11-15-1817-lead60s2-check-lines.md`.

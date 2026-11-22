@@ -1,4 +1,0 @@
-# STATE founder-asks rows A100-A105, word for word, moved by Lead 63 at 07:3x IST 16 Nov (STATE size limit)
-
-| A100-A103 | 16 Nov night (qa lanes, Microsoft deferred, buy-not-build, pipeline simplified, overnight goal) | answered; P-621 to P-624; rows word for word in `history/STATE-2026-11-16-0045-lead61s2-asks-A100-A103.md` |
-| A104-A105 | 00:5x-01:0x IST 16 Nov: is the hooks-for-every-rule work done; seamless staging without cheap workarounds (Vercel?); why so few built; built vs specified vs proven; turn all specified ready to build; enough contracts for parallel work; nothing silently dropped | A104 partly done (B192, B193 part 1 merged; B194 #1861; B193 parts 2 and 5 started). A105: P-625 (staging on AWS's own address); 86 specified, 6 built, 9 proven, 7 ready rows: two shaping lanes started with a parallel-safety line per brief; B193 part 8 (dropped-ask check) |

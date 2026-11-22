@@ -1,4 +1,0 @@
-# STATE hand-over items 4 and 6 (Lead 50 → 51 block), moved word for word by Lead 51 at 08:15 IST 15 Nov (STATE size limit)
-
-4. **Nightly:** 15 Nov run 43655888932 parts 1-7 green (33-51 min), **part 8 timed out at 59 min twice** (not a test failure) → pipeline fix ahead of the queue: rebalance the 8 parts from a fresh `tools/suite-times.tsv` (P-436 (7)).
-6. **Sessions:** **Lead B (4)** `local_64f5d828` started 07:4x (rows owner; Lead B (3) `local_cc58440f` parked); standbys **Lead 51** `local_7e5e5b99` (taking over), **Lead 52** `local_e0cd21a4` (first standby after the hand-over; start Lead 53 at his next typed turn). Strategy desk 05 `local_3f793d6b` idle. **Lead to-do:** records PR to `main`; BACKLOG lines from Lead B rows rev 16.7 (migration tests measure after their own migration) and #1777's FO-8 catch-up + size limits; board's 4 review Minors; College complaint pages for PF-21's citations (P-601 (5)); CS- rows draft 2; 28 Dependabot alerts.

@@ -25,4 +25,4 @@ Steps: B build · R review · Q queue · J journey written · P qa proof. ✔ do
 **After these 12:** R1.3 walls (10 database parts), R1.98 corporate and LMIA, R1.96, R1.111, R1.75, R1.64, R1.66, R1.68-70, R1.57.
 **Why Track B was behind (14:2x):** it was planned on 15 deep rows (3-10 parts each) with 4 builders; seven partly built rows had no track; qa worked Track A only. Fixed 14:3x-14:4x: re-pointed at the nearest rows, one lane per part, its own qa lane.
 
-**15:0x corrections (Lead B's duplicate check against main 68f74620b):** lanes redirected to Lead B's briefs on `lead-b/2026-11-22-track-b` @ fbe24aa20. Migration slot order: #2968 → #2368 → FO-9b p1 → PF-21b p2 → FO-5d. Effort high allowed for FO-9b-1, FO-5d, PF-17-1, FO-7ts-3 (schema, money, cross-firm reads; named to the founder, P-788).
+**14:4x corrections (Lead B's duplicate check against main 68f74620b):** lanes redirected to Lead B's briefs on `lead-b/2026-11-22-track-b` @ fbe24aa20. Migration slot order: #2968 → #2368 → FO-9b p1 → PF-21b p2 → FO-5d. Effort high allowed for FO-9b-1, FO-5d, PF-17-1, FO-7ts-3 (schema, money, cross-firm reads; named to the founder, P-788).

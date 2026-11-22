@@ -1,1 +1,0 @@
-Configured checkpoint loaded in 101.5 s

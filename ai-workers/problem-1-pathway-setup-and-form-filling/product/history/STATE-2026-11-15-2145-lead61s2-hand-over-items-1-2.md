@@ -1,4 +1,0 @@
-# STATE hand-over items 1-2 (Lead 60 → 61) moved word for word by Lead 61, 21:4x IST 15 Nov
-
-1. **New this evening (A92):** `tools/sle-watch.py` runs as lead-watch section 9 (questions to the Lead 30 min, approved to queued 30 min with the cause named, lanes 90 min, stale 3 days); each MISS is an ACT line. Research and plan: `design/rule-enforcement-research-2026-11-15.md`; founder approved steps 1-2 only. **Add target R** (reviewer Approve on head + ci green + no label, 30 min: #1808 and #1811 stalled that way). Step 3 candidates: refuse a push to a PR labelled `queued` (19:13 reset); P-423 read before label.
-2. **Queue at 20:10:** 7 queued (#1823 PF-21w, #1816 PF-4b, #1811 FO-3sr, #1813 FO-2, #1815 PF-5, #1810 BK-383 Critical, #1808 PF-6b); #1834 records merged. #1818 CS-C1a new head 77920580d (re-review; Lead 60's P-423 OK was on 8604382: read the diff since). PF-21s #1821: Lead 60 told its cloud lane 20:1x to land the concept via the records queue.
