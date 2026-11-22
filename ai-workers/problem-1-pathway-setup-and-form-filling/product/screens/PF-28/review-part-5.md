@@ -100,3 +100,28 @@ The merge is ea989942f, with parents 807861db5 (part 5 after round 2) and a16cca
 **Verdict: Approve** (no open Blocker or Major; the merge resolution is exactly part 5 on top of part 4).
 
 Reviewer: Approve ea989942f735fc851a32225421b74bcb7efd991b
+
+## Round 4 (head dbe64f864418f1e5d99cd6b3a4abb9e89a643cab; diff-only: `git diff 83dba23e7 dbe64f864`, minus main's own work)
+Two commits since my last Approve (83dba23e7). I used read-only git only and did not re-run any suite.
+1. **b695c36e8, a merge of origin/main** (its main parent is 0e244033e). The resolution is exact.
+   - `git diff 0e244033e b695c36e8` touches only part 5's 7 files.
+   - For `retainers/service.ts`, `check_fo5_retainers.ts` and the MODULE.rows fragment, the changed lines match part 5's own changes against its base exactly.
+   - The part-5 block in `check_pf28_inputs.ts` is identical to 83dba23e7's.
+   - The ceiling line (`:108`) is now 0 / 0 / 19.
+   - The allow-list, checked by script against main's: exactly 8 `unparsed` and 23 `probes` entries leave, each naming "PF-28 part 5 (retainers)". Nothing else is added to either. The two added exceptions are byte-identical to part 5's. All 17 of main's exceptions are kept unchanged.
+   - The list holds 0 / 0 / 19, exactly the ceilings. The SNS line (#3039) and the firm-profile fix (e51814db3) are main's.
+   - Main changed nothing in `front-office/retainers/`, `platform/http/`, `sales/prospects.ts`, the conflict gate, `check_fo5_retainers.ts` or the retainer web screens since round 3, so there is nothing that could break part 5.
+2. **dbe64f864: `check_c83_review_browser.cjs:140-143`, four test-only lines.**
+   - **Root cause, confirmed in the source.** `@radix-ui/react-tooltip/dist/index.mjs:316-325` closes an open tooltip on any capture-phase scroll whose target contains the trigger. The test's programmatic `focus()` scrolled the page; the browser dispatches that scroll event at the next rendering step. A Tab pressed about 12 ms later opened the tooltip, and the late event closed it. The builder's evidence (scrollY 9 → 460, scroll at 919 ms after the Tab at 909-921 ms, flaky in 2 of 17 runs) fits this exactly.
+   - **The fix is a sync, not a sleep.** Two animation frames is the shortest wait that guarantees the pending scroll event has been dispatched, and it costs nothing when there is no scroll. Waiting for the scroll event itself would hang on a run with no scroll.
+   - **Nothing is weakened.** The Tab is still a real key press, `getByRole("tooltip").waitFor` and the text assertion are unchanged, and a tooltip that never opens, or closes for any other reason, still fails.
+   - Part 5 does not touch c83's screen; the selector picks c83 only through its "every browser suite" rule.
+   - Editing another owner's suite is acceptable here, because it is test-only and explained in place.
+   - **Product follow-up (not this PR; for the owner of the C8.3 review screen).** A real keyboard user whose own Tab scrolls an off-screen chip into view very likely hits the same Radix rule: the tooltip opens on focus, then the scroll from that same focus closes it. This is inferred from the code above; I did not walk it in a browser. A person who arrives by Tab from a chip already on screen, as in walk 10, is not affected. It would fail BIC-14 and WCAG 1.4.13 (content on focus stays visible) for chips below the fold. A possible fix in the screen: open the tooltip after the focus scroll has landed, or ignore scroll-close while the trigger has keyboard focus.
+- **The batch.** In 45015083775, shard (20) failed on c83 alone (covered above), and the ci summary job failed only because of it. No sweep job failed there. The other batch's check_pf28 failure (run 45019127633, `PUT /api/platform/firm/profile` unparsed) belonged to the profile PR and is fixed on main (e51814db3). On this head the code list is empty and the ceiling is 0. Builder's results on b695c36e8: check_pf28_inputs 51/51, the retainer-area suites PASS, c83 24/24.
+- **No new finding against part 5.** m1 and m2 stay closed, and n1 (`input.ts:40`) stays with the owner of the shared rule. The journey score of 9/10 stands.
+
+**Verdict: Approve** (no open Blocker or Major; the merge is exactly part 5 on main; the c83 change fixes the test's own race at its root).
+
+Reviewer: Approve dbe64f864418f1e5d99cd6b3a4abb9e89a643cab
+Batch failures covered: 45015083775: shard (20), sweep, ci
