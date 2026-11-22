@@ -9,25 +9,25 @@
 DO $$
 BEGIN
   IF to_regclass('_prisma_migrations') IS NOT NULL THEN   -- absent when the files are run without Prisma (psql -f, tests)
-    UPDATE _prisma_migrations SET checksum = 'd4fca72d62f331685cb75bc727864f888ddbe233b32c2df389af19b6e5419d4f'
-      WHERE migration_name = '20261116030000_fo7mv_move_list' AND finished_at IS NOT NULL AND checksum <> 'd4fca72d62f331685cb75bc727864f888ddbe233b32c2df389af19b6e5419d4f';
-    UPDATE _prisma_migrations SET checksum = '93a57aeb5cc5724b97be3357d06c4c6461e702af631c72bfb281646032bda192'
-      WHERE migration_name = '20261117030000_fo9a_duplicate_match' AND finished_at IS NOT NULL AND checksum <> '93a57aeb5cc5724b97be3357d06c4c6461e702af631c72bfb281646032bda192';
-    UPDATE _prisma_migrations SET checksum = '6f8d94e2985c1346815460402971332adf5bf6c89370ecf4a91b9f62556d9f3a'
-      WHERE migration_name = '20261118200000_fo7ts_money_settings' AND finished_at IS NOT NULL AND checksum <> '6f8d94e2985c1346815460402971332adf5bf6c89370ecf4a91b9f62556d9f3a';
-    UPDATE _prisma_migrations SET checksum = 'fb9297b3adc960da44936e2670017eec2ab4a679676de5bbb6496b1a0296bfc5'
-      WHERE migration_name = '20261118200100_fo7ts_card_terminal_trust' AND finished_at IS NOT NULL AND checksum <> 'fb9297b3adc960da44936e2670017eec2ab4a679676de5bbb6496b1a0296bfc5';
-    UPDATE _prisma_migrations SET checksum = '9ffa345cf057793a8a20f9c44fbbce771b8993233ea52f6dafb3990a27b1fbc6'
-      WHERE migration_name = '20261119031000_fo3a_hour_sets' AND finished_at IS NOT NULL AND checksum <> '9ffa345cf057793a8a20f9c44fbbce771b8993233ea52f6dafb3990a27b1fbc6';
-    UPDATE _prisma_migrations SET checksum = '5690217af2a2bce783eead4ad8500f93d8ca82f0b7357918c04cbd71811e4b93'
-      WHERE migration_name = '20261119081500_fo3a_set_name_unique' AND finished_at IS NOT NULL AND checksum <> '5690217af2a2bce783eead4ad8500f93d8ca82f0b7357918c04cbd71811e4b93';
-    UPDATE _prisma_migrations SET checksum = 'e07951956d46f18f5e7386d81e794667fba77458145b801aff41ddc5c8f157cc'
-      WHERE migration_name = '20261121090000_fo10p2_least_recent_turns' AND finished_at IS NOT NULL AND checksum <> 'e07951956d46f18f5e7386d81e794667fba77458145b801aff41ddc5c8f157cc';
-    UPDATE _prisma_migrations SET checksum = '092d1fe12aca662c3310031028f29c0241bc6317697af6f20364adfaf5e3c1df'
-      WHERE migration_name = '20261121110000_fo3a1e_firm_timings' AND finished_at IS NOT NULL AND checksum <> '092d1fe12aca662c3310031028f29c0241bc6317697af6f20364adfaf5e3c1df';
-    UPDATE _prisma_migrations SET checksum = 'b56520d34b823b7a95a8d3efb8369f97cc50fb7df8d371a5dca6dabc651e9ac0'
-      WHERE migration_name = '20261122000000_pf5p3_billing_period' AND finished_at IS NOT NULL AND checksum <> 'b56520d34b823b7a95a8d3efb8369f97cc50fb7df8d371a5dca6dabc651e9ac0';
-    UPDATE _prisma_migrations SET checksum = 'c7694a1bb0848e2e453450e2734a6bd40eb673a15e1bcd4e625a65907eca5a24'
-      WHERE migration_name = '20261122033000_qa644_reserve_staging' AND finished_at IS NOT NULL AND checksum <> 'c7694a1bb0848e2e453450e2734a6bd40eb673a15e1bcd4e625a65907eca5a24';
+    UPDATE _prisma_migrations SET checksum = 'a6b4c4e17cb173ebaa42a9257e830d662b8ddc2231583db68418db251ea6623f'
+      WHERE migration_name = '20261116030000_fo7mv_move_list' AND finished_at IS NOT NULL AND checksum <> 'a6b4c4e17cb173ebaa42a9257e830d662b8ddc2231583db68418db251ea6623f';
+    UPDATE _prisma_migrations SET checksum = '09686c7eddb5797df4bcebc2fb3366f733bfa112e93644cd8aeefdc64447fd6f'
+      WHERE migration_name = '20261117030000_fo9a_duplicate_match' AND finished_at IS NOT NULL AND checksum <> '09686c7eddb5797df4bcebc2fb3366f733bfa112e93644cd8aeefdc64447fd6f';
+    UPDATE _prisma_migrations SET checksum = '61e13041c85c645bfa87070103d462f30b1d88c2b65d18417dfa24548146bc6b'
+      WHERE migration_name = '20261118200000_fo7ts_money_settings' AND finished_at IS NOT NULL AND checksum <> '61e13041c85c645bfa87070103d462f30b1d88c2b65d18417dfa24548146bc6b';
+    UPDATE _prisma_migrations SET checksum = '93f899a0d46239096981dc87518671b67e5b689cce24ed418365edf29fcc991b'
+      WHERE migration_name = '20261118200100_fo7ts_card_terminal_trust' AND finished_at IS NOT NULL AND checksum <> '93f899a0d46239096981dc87518671b67e5b689cce24ed418365edf29fcc991b';
+    UPDATE _prisma_migrations SET checksum = '6beb89733004052e93c59f3a8105b69d97cccc4ac9f6a18bf35de7b89e447fe6'
+      WHERE migration_name = '20261119031000_fo3a_hour_sets' AND finished_at IS NOT NULL AND checksum <> '6beb89733004052e93c59f3a8105b69d97cccc4ac9f6a18bf35de7b89e447fe6';
+    UPDATE _prisma_migrations SET checksum = '7f347a59aa91ab26f381014359e8c3126c4cc6bf12b2d5b5009d342285bf08f8'
+      WHERE migration_name = '20261119081500_fo3a_set_name_unique' AND finished_at IS NOT NULL AND checksum <> '7f347a59aa91ab26f381014359e8c3126c4cc6bf12b2d5b5009d342285bf08f8';
+    UPDATE _prisma_migrations SET checksum = '077c70a3eea7641e153bb59ac330bb3eb54a82be18b91f58ec28a5275ae46763'
+      WHERE migration_name = '20261121090000_fo10p2_least_recent_turns' AND finished_at IS NOT NULL AND checksum <> '077c70a3eea7641e153bb59ac330bb3eb54a82be18b91f58ec28a5275ae46763';
+    UPDATE _prisma_migrations SET checksum = '1c127a52f5b5673b24627b274196759b9360963fbfa46535d1a7b6b8c0bcb775'
+      WHERE migration_name = '20261121110000_fo3a1e_firm_timings' AND finished_at IS NOT NULL AND checksum <> '1c127a52f5b5673b24627b274196759b9360963fbfa46535d1a7b6b8c0bcb775';
+    UPDATE _prisma_migrations SET checksum = '798eec97f5c5e7a8d982eb436a17cdcaeb91d3079d75ce38d49b4c3a53258cfe'
+      WHERE migration_name = '20261122000000_pf5p3_billing_period' AND finished_at IS NOT NULL AND checksum <> '798eec97f5c5e7a8d982eb436a17cdcaeb91d3079d75ce38d49b4c3a53258cfe';
+    UPDATE _prisma_migrations SET checksum = 'fe42534af640b8313202fa5bef0eeb6ed3804ddd37bdbd7a70c477c9496a8af0'
+      WHERE migration_name = '20261122033000_qa644_reserve_staging' AND finished_at IS NOT NULL AND checksum <> 'fe42534af640b8313202fa5bef0eeb6ed3804ddd37bdbd7a70c477c9496a8af0';
   END IF;
 END $$;

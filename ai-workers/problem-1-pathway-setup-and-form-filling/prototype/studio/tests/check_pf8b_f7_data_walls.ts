@@ -7,8 +7,10 @@
 //   back after it; the rule's own self-tests; every edited migration's checksum is written by the F7 migration.
 //   Database (PostgreSQL 18): the walls the text says exist are exactly the forced tables of a migrated database; seeded
 //   rows are changed by each data migration run as a non-BYPASSRLS owner, a data check still stops, and FORCE is back.
+//   Limits of the text rule (none used by any migration today, reviewed on #3068): a data statement inside a function or
+//   view the migration itself calls, a ';' or '--' inside a string literal before the table's name, a lift under IF false.
 // Throwaway cluster (initdb; as the postgres user when run as root), removed at the end. US$0.
-//   tsx studio/tests/check_pf8b_f7_data_walls.ts [port]     (default 15461; uses port..port+1; PGBIN=<PostgreSQL 18 bin>)
+//   tsx studio/tests/check_pf8b_f7_data_walls.ts [port]     (default 15461; one port; PGBIN=<PostgreSQL 18 bin>)
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chownSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -34,35 +36,61 @@ function runnable(sql: string): string {
   }
   return out.replace(/CREATE\s+(?:OR\s+REPLACE\s+)?VIEW[^;]*;/gi, blank);
 }
-type Finding = { migration: string; table: string[]; statement: string };
-/** Walls in order, and every data statement on a walled table that is not inside a lifting DO block. */
+type Finding = { migration: string; table: string; statement: string };
+/** Reviewed mentions that read no row of a walled table, each with its reason (anything else must be lifted). */
+export const EXEMPT: { migration: string; table: string; text: RegExp; why: string }[] = [
+  { migration: "20261116133000_fo7a2_ledger_rules", table: "money_credit_note", text: /FOREIGN KEY/i, why: "the key is on a column this migration adds, NULL in every existing row: nothing to validate" },
+  { migration: "20261119080000_fo7ts_ledgers", table: "money_trust_entry", text: /FOREIGN KEY/i, why: "the key is on a column this migration adds, NULL in every existing row: nothing to validate" },
+  { migration: "20261119031000_fo3a_hour_sets", table: "fo_availability", text: /FOREIGN KEY/i, why: "set_id was filled by this migration's lifted backfill just before, and is NOT NULL" },
+  { migration: "20261119031000_fo3a_hour_sets", table: "fo_availability_set", text: /FOREIGN KEY/i, why: "the table was made empty by this migration and filled by its lifted backfill" },
+];
+const DDL = /^(?:ALTER|CREATE|DROP|GRANT|REVOKE|COMMENT|LOCK|REINDEX|ANALYZE|VACUUM|CLUSTER|DECLARE|FOREACH|SET|RESET|SECURITY|OWNER)\b/i;
+const WRITE = /^(?:UPDATE|INSERT|DELETE|MERGE|TRUNCATE|COPY)\b/i;
+/**
+ * Walls in order, and every mention of a walled table that is data access (any statement that is not DDL, in any case,
+ * in an EXECUTE string too; a foreign key or VALIDATE CONSTRAINT on an existing walled table) and is not inside a
+ * lifting DO block. Function and view bodies run later, as their callers, and are not read.
+ */
 function audit(files: [string, string][]): { walled: Set<string>; unguarded: Finding[]; guarded: Finding[] } {
   const walled = new Set<string>(); const unguarded: Finding[] = []; const guarded: Finding[] = [];
   for (const [name, sql] of files) {
     const run = runnable(sql);
     const forcedAt: [string, number][] = [];
-    for (const x of run.matchAll(/ALTER TABLE\s+"?(\w+)"?\s+(?:ENABLE ROW LEVEL SECURITY,\s*)?FORCE ROW LEVEL SECURITY/gi)) forcedAt.push([x[1], x.index!]);
+    for (const x of run.matchAll(/ALTER TABLE\s+(?:ONLY\s+)?"?(\w+)"?\s+(?:ENABLE ROW LEVEL SECURITY,\s*)?FORCE ROW LEVEL SECURITY/gi)) forcedAt.push([x[1].toLowerCase(), x.index!]);
     // DO blocks: [start, end, body]. One that sets FORCE over an ARRAY and never lifts it walls those tables (PF-12's loop).
     const blocks: [number, number, string][] = [];
     for (const d of run.matchAll(/\bDO\s+(\$\w*\$)/g)) { const e = run.indexOf(d[1], d.index! + d[0].length); if (e > 0) blocks.push([d.index!, e, run.slice(d.index!, e)]); }
-    for (const [s, e, body] of blocks) if (/'ALTER TABLE %I FORCE ROW LEVEL SECURITY'/.test(body) && !/NO FORCE ROW LEVEL SECURITY/.test(body))
-      for (const a of body.matchAll(/ARRAY\[([\s\S]*?)\]/g)) for (const t of a[1].matchAll(/'(\w+)'/g)) forcedAt.push([t[1], e]);
-    for (const st of run.matchAll(/(?<=(?:^|;|\bBEGIN|\bTHEN|\bELSE|\bLOOP|\$\w*\$|\bIN|\bAS)\s*)(UPDATE|INSERT\s+INTO|DELETE\s+FROM|SELECT|PERFORM|WITH)\b[^;]*/gi)) {
-      const at = st.index!;
-      const live = new Set([...walled, ...forcedAt.filter(([, p]) => p < at).map(([t]) => t)]);
-      const text = st[0].replace(/'(?:[^']|'')*'/g, "''");   // a name inside a string literal is not a table read
-      const refs = [...live].filter((t) => new RegExp(`(^|[^\\w])"?${t}"?([^\\w]|$)`).test(text));
-      if (!refs.length) continue;
-      const f: Finding = { migration: name, table: refs, statement: st[0].replace(/\s+/g, " ").trim().slice(0, 100) };
-      const b = blocks.find(([s, e]) => s < at && at < e);
+    for (const [, e, body] of blocks) if (/'ALTER TABLE %I FORCE ROW LEVEL SECURITY'/.test(body) && !/NO FORCE ROW LEVEL SECURITY/.test(body))
+      for (const a of body.matchAll(/ARRAY\[([\s\S]*?)\]/g)) for (const t of a[1].matchAll(/'(\w+)'/g)) forcedAt.push([t[1].toLowerCase(), e]);
+    const tables = new Set([...walled, ...forcedAt.map(([t]) => t)]);
+    for (const t of tables) for (const o of run.matchAll(new RegExp(`(?<![\\w$])"?${t}"?(?![\\w])`, "gi"))) {
+      const at = o.index!;
+      if (!walled.has(t) && !forcedAt.some(([w, p]) => w === t && p < at)) continue;   // not walled yet here
+      const b = blocks.find(([bs, be]) => bs < at && at < be);
+      if (b && at - b[0] < b[2].search(/\bBEGIN\b/)) continue;   // a DO block's DECLARE section (its walls array)
+      // the statement around the mention: from the last ;, BEGIN, THEN, ELSE, LOOP or DO tag before it to the next ;
+      const from = Math.max(b ? b[0] + b[2].indexOf("$", 3) + 1 : 0, ...[...run.slice(b ? b[0] : 0, at).matchAll(/;|\bBEGIN\b|\bTHEN\b|\bELSE\b|\bLOOP\b|\bDO\s+\$\w*\$/gi)].map((m) => (b ? b[0] : 0) + m.index! + m[0].length));
+      const to = run.indexOf(";", at);
+      const stmt = run.slice(from, to < 0 ? run.length : to).trim();
+      const head = stmt.replace(/^(?:EXECUTE\s+(?:format\s*\(\s*)?(?:\$\w*\$|')\s*)/i, "");   // an EXECUTE's own SQL
+      const fk = /^ALTER TABLE\s+(?:ONLY\s+)?"?(\w+)"?[\s\S]*(?:FOREIGN KEY|VALIDATE CONSTRAINT)/i.exec(head);
+      if (fk ? fk[1].toLowerCase() !== t : DDL.test(head)) continue;   // DDL; a key's validation counts on its own table
+      // a name inside a string literal is a value (an audit line's entity, a catalog pattern), unless the string is run
+      const inString = ((run.slice(from, at).match(/'/g) ?? []).length % 2) === 1;
+      if (inString && head === stmt) continue;
+      const f: Finding = { migration: name, table: t, statement: stmt.replace(/\s+/g, " ").slice(0, 100) };
+      if (EXEMPT.some((x) => x.migration === name && x.table === t && x.text.test(stmt))) continue;
       const ok = !!b && (() => {
-        const [s, , body] = b; const rel = at - s;
-        const named = [...body.matchAll(/ARRAY\[([^\]]*)\]/g)].flatMap((a) => [...a[1].matchAll(/'(\w+)'/g)].map((x) => x[1]));
-        const lift = body.search(/'ALTER TABLE %I NO FORCE ROW LEVEL SECURITY'/), back = body.lastIndexOf("'ALTER TABLE %I FORCE ROW LEVEL SECURITY'");
-        const write = /^(UPDATE|INSERT|DELETE)/i.test(st[1]);
+        const [bs, , body] = b; const rel = at - bs;
+        const decl = /\b(?:walls|four)\s+\w+\[\]\s*:=\s*ARRAY\[([^\]]*)\]/i.exec(body);
+        const named = decl ? [...decl[1].matchAll(/'(\w+)'/g)].map((x) => x[1].toLowerCase()) : [];
+        const lock = body.search(/IN ACCESS EXCLUSIVE MODE/), lift = body.search(/'ALTER TABLE %I NO FORCE ROW LEVEL SECURITY'/);
+        const back = body.lastIndexOf("'ALTER TABLE %I FORCE ROW LEVEL SECURITY'");
         const gate = body.search(/DISABLE TRIGGER "0_pf12_firm_first"/), ungate = body.lastIndexOf('ENABLE TRIGGER "0_pf12_firm_first"');
-        return /\.rolsuper OR \w+\.rolbypassrls FROM pg_roles/.test(body) && lift >= 0 && lift < rel && back > rel && refs.every((t) => named.includes(t))
-          && (!write || (gate >= 0 && gate < rel && ungate > rel));
+        const when = /IF NOT \(SELECT \w+\.rolsuper OR \w+\.rolbypassrls FROM pg_roles/.test(body)   // the lift for the others only
+          || /IF \(SELECT \w+\.rolsuper OR \w+\.rolbypassrls FROM pg_roles[^;]*\) THEN\s+LOCK TABLE[^;]*IN SHARE ROW EXCLUSIVE MODE;\s+ELSE/.test(body);   // pf18bk's form
+        return when && /INTO \w+ FROM pg_class[\s\S]*relforcerowsecurity/.test(body) && lock >= 0 && lock < lift && lift < rel && back > rel && named.includes(t)
+          && (!WRITE.test(head) || (gate >= 0 && gate < rel && ungate > rel));
       })();
       (ok ? guarded : unguarded).push(f);
     }
@@ -77,22 +105,50 @@ check(`every data statement on a walled table runs with FORCE lifted in its own 
   result.unguarded.length === 0, result.unguarded);
 // the rule itself, on made-up migrations
 const WALL = ["0_walls", `CREATE TABLE "w" (id int); ALTER TABLE "w" ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;`] as [string, string];
-const lift = (inner: string, walls = "'w'", back = true, gate = true) => `DO $x$\nDECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY[${walls}];\nBEGIN\n  IF NOT (SELECT q.rolsuper OR q.rolbypassrls FROM pg_roles q WHERE q.rolname = current_user) THEN\n    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;\n${gate ? `    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;\n` : ""}  END IF;\n  ${inner}\n${gate ? `  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;\n` : ""}  ${back ? "FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;" : ""}\nEND $x$;`;
+const lift = (inner: string, walls = "'w'", back = true, gate = true) => `DO $x$\nDECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY[${walls}];\nBEGIN\n  IF NOT (SELECT q.rolsuper OR q.rolbypassrls FROM pg_roles q WHERE q.rolname = current_user) THEN\n    EXECUTE 'LOCK TABLE w IN ACCESS EXCLUSIVE MODE';\n    SELECT coalesce(array_agg(c.relname::text), '{}') INTO lifted FROM pg_class c WHERE c.relname = ANY (walls) AND c.relforcerowsecurity;\n    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;\n${gate ? `    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;\n` : ""}  END IF;\n  ${inner}\n${gate ? `  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;\n` : ""}  ${back ? "FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;" : ""}\nEND $x$;`;
 const bad = (sql: string) => audit([WALL, ["1_data", sql]]).unguarded.length > 0;
-check("the rule flags a bare UPDATE, a DO block without the lift, a lift naming another table, a lift without the way back, a blind count, and a write with the firm gate left on",
-  bad(`UPDATE "w" SET id = 1;`) && bad(`DO $$ BEGIN UPDATE "w" SET id = 1; END $$;`) && bad(lift(`UPDATE "w" SET id = 1;`, "'v'"))
-  && bad(lift(`UPDATE "w" SET id = 1;`, "'w'", false)) && bad(`DO $$ DECLARE n int; BEGIN SELECT count(*) INTO n FROM "w"; END $$;`)
-  && bad(lift(`UPDATE "w" SET id = 1;`, "'w'", true, false)), null);
-check("…and passes the lift, a statement before the wall exists, a trigger function's body, a read without the gate, and a name in a string",
-  !bad(lift(`UPDATE "w" SET id = 1;`)) && audit([["0", `UPDATE "w" SET id = 1; ALTER TABLE "w" FORCE ROW LEVEL SECURITY;`]]).unguarded.length === 0
-  && !bad(`CREATE FUNCTION f() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN UPDATE "w" SET id = 1; RETURN NULL; END $$;`)
-  && !bad(lift(`SELECT count(*) INTO t FROM "w";`, "'w'", true, false)) && !bad(`DO $$ BEGIN PERFORM 'w is a word'; END $$;`), null);
+const flags: [string, string][] = [
+  ["a bare UPDATE", `UPDATE "w" SET id = 1;`], ["a DO block without the lift", `DO $$ BEGIN UPDATE "w" SET id = 1; END $$;`],
+  ["a lift naming another table", lift(`UPDATE "w" SET id = 1;`, "'v'")], ["a lift without the way back", lift(`UPDATE "w" SET id = 1;`, "'w'", false)],
+  ["a blind count", `DO $$ DECLARE n int; BEGIN SELECT count(*) INTO n FROM "w"; END $$;`],
+  ["a write with the firm gate left on", lift(`UPDATE "w" SET id = 1;`, "'w'", true, false)],
+  ["IF EXISTS (SELECT …)", `DO $$ BEGIN IF EXISTS (SELECT 1 FROM "w") THEN RAISE 'x'; END IF; END $$;`],
+  ["an assignment from a query", `DO $$ DECLARE n int; BEGIN n := (SELECT count(*) FROM w); END $$;`],
+  ["IF (SELECT count(*) …) > 0", `DO $$ BEGIN IF (SELECT count(*) FROM w) > 0 THEN RAISE 'x'; END IF; END $$;`],
+  ["EXIT WHEN NOT EXISTS", `DO $$ BEGIN LOOP EXIT WHEN NOT EXISTS (SELECT 1 FROM w); END LOOP; END $$;`],
+  ["RAISE with a query", `DO $$ BEGIN RAISE NOTICE '%', (SELECT count(*) FROM w); END $$;`],
+  ["EXECUTE of a string", `DO $$ BEGIN EXECUTE 'UPDATE w SET id = 1'; END $$;`],
+  ["EXECUTE format with the name", `DO $$ BEGIN EXECUTE format('UPDATE %I SET id = 1', 'w'); END $$;`],
+  ["MERGE", `MERGE INTO w USING (SELECT 1 AS id) s ON w.id = s.id WHEN MATCHED THEN DELETE;`],
+  ["an unquoted mixed-case name", `update W set id = 1;`],
+  ["a foreign key on an existing walled table", `ALTER TABLE "w" ADD CONSTRAINT k FOREIGN KEY (id) REFERENCES x(id);`],
+  ["VALIDATE CONSTRAINT on it", `ALTER TABLE w VALIDATE CONSTRAINT k;`],
+  ["a lift run for the superuser instead (inverted test)", lift(`UPDATE "w" SET id = 1;`).replace("IF NOT (SELECT", "IF (SELECT")],
+  ["a lift whose list of forced tables is never filled", lift(`UPDATE "w" SET id = 1;`).replace(/    SELECT coalesce[^\n]*\n/, "")],
+  ["a lift whose exclusive lock comes after it", lift(`UPDATE "w" SET id = 1;`).replace("    EXECUTE 'LOCK TABLE w IN ACCESS EXCLUSIVE MODE';\n", "").replace("  END IF;\n", "  END IF;\n  EXECUTE 'LOCK TABLE w IN ACCESS EXCLUSIVE MODE';\n")],
+];
+const missed = flags.filter(([, sql]) => !bad(sql)).map(([what]) => what);
+check(`the rule flags each of ${flags.length} ways to read or write a walled table without the lift (${flags.map(([w]) => w).join("; ")})`, missed.length === 0, missed);
+const passes: [string, boolean][] = [
+  ["the lift", !bad(lift(`UPDATE "w" SET id = 1;`))],
+  ["a statement before the wall exists", audit([["0", `UPDATE "w" SET id = 1; ALTER TABLE "w" FORCE ROW LEVEL SECURITY;`]]).unguarded.length === 0],
+  ["a trigger function's body", !bad(`CREATE FUNCTION f() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN UPDATE "w" SET id = 1; RETURN NULL; END $$;`)],
+  ["a read without the gate", !bad(lift(`SELECT count(*) INTO t FROM "w";`, "'w'", true, false))],
+  ["DDL on the table", !bad(`ALTER TABLE "w" ADD COLUMN x int; CREATE INDEX i ON w (id); GRANT SELECT ON w TO PUBLIC;`)],
+  ["a key referencing it from a new table", !bad(`ALTER TABLE "n" ADD CONSTRAINT k FOREIGN KEY (id) REFERENCES "w"(id);`)],
+  ["a longer name that only starts with it", !bad(`DO $$ BEGIN PERFORM 1 FROM w_other; END $$;`)],
+];
+check(`…and passes ${passes.map(([w]) => w).join("; ")}`, passes.every(([, ok]) => ok), passes.filter(([, ok]) => !ok).map(([w]) => w));
 // checksums of the migrations F7 edited (every one with an F7 lift)
 const f7 = readFileSync(join(MIG, F7, "migration.sql"), "utf8");
-const edited = files.filter(([d, s]) => d !== F7 && /PF-8b F7/.test(s)).map(([d]) => d);
+// named, not found by a phrase: a later migration that copies the block, comments included, is not one F7 edited
+const edited = ["20261116030000_fo7mv_move_list", "20261117030000_fo9a_duplicate_match", "20261118200000_fo7ts_money_settings",
+  "20261118200100_fo7ts_card_terminal_trust", "20261119031000_fo3a_hour_sets", "20261119081500_fo3a_set_name_unique",
+  "20261121090000_fo10p2_least_recent_turns", "20261121110000_fo3a1e_firm_timings", "20261122000000_pf5p3_billing_period",
+  "20261122033000_qa644_reserve_staging"];
 const missing = edited.filter((d) => { const h = createHash("sha256").update(readFileSync(join(MIG, d, "migration.sql"))).digest("hex");
   return !new RegExp(`SET checksum = '${h}'\\s+WHERE migration_name = '${d}' AND finished_at IS NOT NULL AND checksum <> '${h}'`).test(f7); });
-check(`the ${edited.length} migrations F7 edited: each sha256 is the checksum ${F7} writes`, edited.length >= 10 && missing.length === 0, missing);
+check(`the ${edited.length} migrations F7 edited: each sha256 is the checksum ${F7} writes`, missing.length === 0, missing);
 
 // ------------------------------------------------------------------------------------------------------------ database
 const which = spawnSync("bash", ["-c", "command -v initdb"], { encoding: "utf8" }).stdout.trim();
@@ -146,6 +202,9 @@ const windows: { m: string; tbl: string; seedSql: string; want: string; got: str
   { m: "20261119031000_fo3a_hour_sets", tbl: "fo_availability", what: "fo3a gives a hidden staff member's hours their default set",
     seedSql: `INSERT INTO fo_availability (id, firm_id, staff_id, weekday, start_minute, end_minute, time_zone) VALUES (gen_random_uuid(), '${FIRM}', '${STAFF}', 1, 540, 1020, 'America/Toronto')`,
     got: "select (select count(*) from fo_availability_set) || ',' || (select count(*) from fo_availability where set_id is not null)", want: "1,1" },
+  { m: "20261119081500_fo3a_set_name_unique", tbl: "fo_availability_set", what: "fo3a_set_name_unique renames a hidden duplicate set name",
+    seedSql: `INSERT INTO fo_availability_set (id, firm_id, staff_id, name, is_default, time_zone) VALUES (gen_random_uuid(), '${FIRM}', '${STAFF}', 'Normal hours', false, 'America/Toronto')`,
+    got: "select string_agg(name, ',' order by name) from fo_availability_set", want: "Normal hours,Normal hours (2)" },
   { m: "20261121090000_fo10p2_least_recent_turns", tbl: "fo_assignment_rule", what: "fo10p2 carries over a hidden rule's turn",
     seedSql: `INSERT INTO fo_assignment_rule (id, firm_id, criteria_key, strategy, eligible_staff_ids, created_by, updated_by, last_staff_id) VALUES (gen_random_uuid(), '${FIRM}', 'ANY:ANY', 'ROUND_ROBIN', ARRAY['${STAFF}']::uuid[], 'system:test', 'system:test', '${STAFF}')`,
     got: "select count(*) from fo_assignment_rule where turn_no = 1", want: "1" },
@@ -184,6 +243,15 @@ try {
   }
   bypass(true); m = migrate("xr_w"); bypass(false);
   check("…the rest applies too, and every walled table is forced again at the end", m.status === 0 && forcedInDb("xr_w") === parsed, out(m));
+
+  // a data check before pf18bk (card terminal payments into trust) still stops on a hidden row
+  psql("postgres", "CREATE DATABASE xr_t OWNER xr_admin", "postgres");
+  bypass(true); m = migrate("xr_t", before("20261118200100_fo7ts_card_terminal_trust"));
+  const ts = seed("xr_t", `${FIRM_ROWS}; INSERT INTO money_payment (id, firm_id, method, amount_minor, currency, received_into, received_at, idempotency_key, recorded_by, cleared) VALUES (gen_random_uuid(), '${FIRM}', 'CARD_TERMINAL', 100, 'CAD', 'TRUST', now(), 'f7-card-terminal-1', 'staff:test', true)`);
+  bypass(false); m = migrate("xr_t", "20261118200100_fo7ts_card_terminal_trust");
+  check("fo7ts's check stops on a hidden card terminal payment into trust (FO-7ts message), money_payment still forced",
+    m.status !== 0 && /FO-7ts: payment .* is a card terminal payment received into trust/.test(m.stdout + m.stderr)
+      && q("postgres", "select relforcerowsecurity from pg_class where relname = 'money_payment'", "xr_t") === "t", { seed: ts.slice(0, 300), deploy: out(m) });
 
   // a data check (qa644) still stops when the row it looks for is hidden; FORCE is back after the rollback
   psql("postgres", "CREATE DATABASE xr_c OWNER xr_admin", "postgres");

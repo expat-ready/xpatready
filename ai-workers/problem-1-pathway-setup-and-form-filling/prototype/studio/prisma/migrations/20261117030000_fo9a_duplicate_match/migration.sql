@@ -61,9 +61,10 @@ BEGIN
       WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
     FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
     -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
-    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too while plainly enabled (an ALWAYS gate stays and
+    -- refuses loudly; a REPLICA one does not fire): the runner then writes as those do, and each comes back as it was.
     SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
-      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
     FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
   END IF;
   UPDATE "fo_person" SET "phone_e164" = fo_sales_phone_e164("phone", "phone_readable"), "name_key" = fo_sales_name_key("given_names", "family_name");
