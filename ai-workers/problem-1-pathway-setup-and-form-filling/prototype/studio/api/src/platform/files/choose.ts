@@ -13,7 +13,7 @@
 // tests/check_pff1b_bind.ts.
 import { LocalFiles } from "../../front-office/files.ts";
 import type { FilesPort } from "../../../../ports/files.ts";
-import { platformConfig } from "../config/settings.ts";
+import { ConfigRefused, platformConfig } from "../config/settings.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { BUCKET_NAME, CANADA_REGIONS, DEFAULT_FILES_REGION, KMS_KEY, S3FileLinks, S3Files, type S3FilesOptions } from "./s3-files.ts";
 
@@ -64,7 +64,14 @@ let s3Bound: { settings: string; files: S3Files } | null = null;
 /** The settings the binding reads. PLATFORM_ENVIRONMENT comes from the one loader (PF-24w: read once per process, by
  *  config/settings.ts), never from process.env again; the files settings and NODE_ENV are read here. */
 const FILES_SETTINGS = ["PLATFORM_FILES", "PLATFORM_FILES_BUCKET", "PLATFORM_FILES_KMS_KEY_ID", "PLATFORM_FILES_REGION", "FO_FILES_DIR", "NODE_ENV"] as const;
-const appEnv = (): FilesEnv => ({ ...Object.fromEntries(FILES_SETTINGS.map((n) => [n, process.env[n]])), PLATFORM_ENVIRONMENT: platformConfig().environment });
+const appEnv = (): FilesEnv => ({ ...Object.fromEntries(FILES_SETTINGS.map((n) => [n, process.env[n]])), PLATFORM_ENVIRONMENT: loadedEnvironment() });
+/** The loader's environment. Unset is not this binding's refusal to make: the server's own start-up (PF-24w) refuses it,
+ *  and an app built from a feature alone (FO-13i's, PF-18b's tests) keeps working as before this row; NODE_ENV=production
+ *  still fails closed. Any other configuration fault stops here. */
+function loadedEnvironment(): string | undefined {
+  try { return platformConfig().environment; }
+  catch (e) { if (e instanceof ConfigRefused && e.environment === "unset") return undefined; throw e; }
+}
 
 /** The app's FilesPort, as PLATFORM_FILES names it: a LocalFiles each call (as the features made before), or one S3Files
  *  per process (one client, one connection pool). `env` is for tests; the app passes none. */

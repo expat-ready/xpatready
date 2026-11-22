@@ -93,3 +93,74 @@ To fix before Approve: M1 and M2. The Minors are for the Lead.
 **Verdict: Block** at commit 4f6e08001c7fd6d852a0617113ca80f5d7fbf91e.
 
 Reviewer: Block 4f6e08001c7fd6d852a0617113ca80f5d7fbf91e
+
+## Round 2 (diff 4f6e08001..4ae0c919e)
+
+Reviewer: Opus 5.5, same fresh-context reviewer. I read only the diff `git diff 4f6e08001 4ae0c919ec7efa73206482b313f57a9ab070b552 -- . ':(exclude)*/product/screens/*'`: 4 files, +53/-23 (settings.ts, choose.ts, s3-files.ts, check_pff1b_bind.ts). Journey test: N/A, as in round 1 (runtime row, no screen). I used no database, did not run run-suites.sh and started no server.
+
+**Verdict: Block.** M1 and M2 are fixed, and their tests fail without the fix. But the new link-key rule (break m4) refuses the key that this branch's own `check_pf24_secrets.ts` generates in about 3 runs out of 4, so the PF-24 suite turns red. There is also one Minor: the m3 test passes without its fix.
+
+### Checks I ran (Node 24.22.3)
+- `tests/check_pff1b_bind.ts` at head: **30 passed, 0 failed.**
+- Mutations, each in a scratch copy of studio outside the repo. I checked that the copy's five touched files are byte-identical to `4ae0c919e`. Baseline in the copy: 30/0.
+
+| Fix removed (in the scratch copy) | Result |
+|---|---|
+| choose.ts at `4f6e08001` (the builder's claim) | 3 FAIL (case 2 links `null`; case 3 no-key `status 0`; break m2), then case 4 crashes `links.sign` on null (non-zero exit). Confirmed. |
+| Only `filesProviders[1]` reverted to `inject: [LocalFiles, PlatformClock]` | case 2 links FAIL, case 3 no-key FAIL, case 4 crash. M1 is caught by three tests. |
+| m2: `env.PLATFORM_ENVIRONMENT !== "local"` back to `isProduction(env.PLATFORM_ENVIRONMENT)`, with the new message kept | break m2 FAIL (29/1): `seam("test")` returns "used". |
+| m3: s3-files.ts at `4f6e08001` | **30/0: the m3 test does not catch it** (see m5 below). |
+| m4: `.refine(...)` removed | break m4 FAIL (29/1). |
+
+### Each fix
+- **M1 / B1: fixed.** choose.ts:95 is `useFactory: (clock) => boundLinks(boundFiles(), …), inject: [PlatformClock]`. On S3, `boundFiles()` returns the single per-process `s3Bound.files`, which is the same object that sits inside the retainers' `EntitledFiles`. With the recorded seam there is a new `S3Files` per call, but on the same handler, so that is test-only and harmless. On local it returns null, as before.
+- **M2: fixed. The real-merge test mirrors main.ts.** `appFiles()` calls the real `registerFeatures` (features.ts:17-29, the function main.ts:238 calls) over a folder of one-line re-exports of the six features. It keeps only the `LocalFiles` / `S3FileLinks` entries of the merged list.
+  - Order: `registerFeatures` sorts file names, so a subset keeps the full folder's relative order. Each object is added once, as main.ts does.
+  - Completeness: on main, only identity-check, retainers, branding and support name these tokens in `api/src/features/`. main.ts's own `@Module` list names neither. So the filtered list is exactly the app's: `[filesProviders[0], filesProviders[1], retainers' EntitledFiles]`, and the last one wins `LocalFiles`.
+  - Case 3's child process does the same merge, so "s3 with no key refuses" now runs through the app's order.
+  - Case 4 now uses that same context, with its own clock.
+- **Breaker m2: fixed.** choose.ts:75 refuses the seam unless `PLATFORM_ENVIRONMENT` is `local`. The value comes from `platformConfig()` (validated `local|test|production`, read once), so the exact string comparison is safe. Nothing else in the repo uses `RECORDED_S3`, so no other suite loses it.
+- **Breaker m3: fixed in the code.** s3-files.ts:208 holds `linkKey: Secret`. `reveal()` is called in the constructor's length check and in `mac` (:237); there is no field holding the bytes. My probe: the dump at head shows `linkKey: [secret X]`. At `4f6e08001` it showed `macKey: <Buffer 4b 4b …>`.
+- **Breaker m4: works as written, but see M3 and m6.** settings.ts:57 is `z.string().min(32).refine((v) => new Set(v).size >= 16)`.
+- **My round-1 m2: fixed.** settings.ts:57 now sits above the PF-8b F2b comment (:58-59) and its entry (:60).
+
+### Regressions
+- **PF-15:** none. Cases 1-2 still show the limit check reached and FileKeyTaken kept on both stores, now under the app's real order.
+- **Contract:** none. The four FilesPort contract runs pass, and the diff does not touch them.
+- **PF-24 read-once:** kept. The new code reads `platformConfig()` (once per process), and `S3FileLinks` now holds the `Secret`. **But the new rule breaks the PF-24 suite: M3.**
+
+### Findings
+**M3 (Major, new in this diff): the link-key rule refuses the key that `check_pf24_secrets.ts` generates in about 76% of runs.**
+- `check_pf24_secrets.ts:44` (this branch's line, round-1 m2) sets `PLATFORM_FILES_LINK_KEY: rand(40)`, and `rand` is `randomBytes(n).toString("hex").slice(0, n)` (:26). That is 40 characters from a 16-letter alphabet. ">= 16 different" therefore means every hex digit must appear.
+- P(all 16 appear in 40) = 0.243 (inclusion-exclusion). Probe in the scratchpad: `loadPlatformConfig` with `rand(40)` keys was refused **153/200**.
+- That makes section 1's "pass: PLATFORM_ENVIRONMENT=test/production with every setting loads" and the later uses of `generated()` fail about 3 runs in 4. The batch's single retry still leaves the suite red about 57% of the time.
+- The builder's 30/0 does not cover this suite. I did not run it, because it uses ports and 54329. The loader probe is the same call that its section 1 makes.
+- Fix: make the generator line a base64 key (`key32()`, already in that file) or a longer key. Or change the rule (m6). Then show `check_pf24_secrets.ts` green.
+
+**m5 (Minor): the break m3 test does not fail without its fix.**
+- check_pff1b_bind.ts:172-174 looks for the key text and for `Buffer.from(key).toString("hex").slice(0, 32)` as one unbroken string.
+- The old leak printed `macKey: <Buffer 4b 4b 4b …>`: spaced hex in `inspect`, and decimal `data:[…]` in JSON. So the "nor its bytes" claim is never tested. With s3-files.ts at `4f6e08001` the run is 30/0.
+- Fix: also check that the dump has no `<Buffer` / spaced hex of the key, or check that the dump shows `[secret PLATFORM_FILES_LINK_KEY]` and no other field from the key.
+
+**m6 (Minor, for the Lead): ">= 16 different characters" refuses strong random keys written in hex.**
+- `openssl rand -hex 32` (64 characters, 256 bits) is refused **23%** of the time.
+- `openssl rand -hex 16` (32 characters, 128 bits) is refused **93%** of the time.
+- The `expects` text points to base64, so an operator gets a named refusal, not a silent fault. But the rule rejects keys by their alphabet, not by their strength.
+- A lower bound would still refuse "aaaa…"-style keys while letting any random hex key pass. For example, 10 different characters: P(a random 32-hex key has fewer than 10) is about 1e-6. That would also fix M3 without touching the test.
+- The threshold itself is the breaker's proposal, not a cited rule, which is fine for a security heuristic. Nothing else new was invented.
+
+**Note (no change asked): `FEATURES` is a hard-coded six.**
+- A future feature that binds `LocalFiles` itself and sorts after the retainers would not appear in the merge test.
+- One line could catch that: assert that only these six files in `api/src/features/` mention `LocalFiles` / `filesProviders`.
+
+### Left for the PR body (agreed, not re-judged)
+- Round-1 m1 (r4-m2 in this PR, per the Lead at 15:53 IST).
+- m3 / breaker m1 (the files settings outside the loader, PF-F1's design).
+- m4 (line counts).
+
+### Working tree
+During this review, uncommitted edits to `settings.ts` and `choose.ts` appeared in the shared working tree (the threshold changed to 10, and a `loadedEnvironment()` helper added). I did not make them, did not review them, and did not touch them. This verdict covers the commit only.
+
+To fix before Approve: **M3**, then show `check_pf24_secrets.ts` green. Fix m5 in the same commit if cheap. m6 is for the Lead, or it is the M3 fix itself.
+
+**Verdict: Block** at commit 4ae0c919ec7efa73206482b313f57a9ab070b552.

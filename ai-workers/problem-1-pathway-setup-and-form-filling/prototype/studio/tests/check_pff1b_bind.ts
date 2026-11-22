@@ -50,6 +50,11 @@ const stubDb = new Proxy({}, { get: (_t, p) => (typeof p !== "string" || p === "
 const FEATURE_DIR = join(WORK, "features");
 mkdirSync(FEATURE_DIR, { recursive: true });
 for (const f of FEATURES) writeFileSync(join(FEATURE_DIR, `${f}.ts`), `export { default } from ${JSON.stringify(join(STUDIO, "api/src/features", `${f}.ts`))};\n`);
+/** PF-18b's own test builds its app from the support feature alone, with no PLATFORM_ENVIRONMENT (platform-messages reads
+ *  the configuration at import on main, so an app holding it needs the environment with or without this row). */
+const SUPPORT_ONLY = join(WORK, "features-support");
+mkdirSync(SUPPORT_ONLY, { recursive: true });
+writeFileSync(join(SUPPORT_ONLY, "platform-support.ts"), `export { default } from ${JSON.stringify(join(STUDIO, "api/src/features/platform-support.ts"))};\n`);
 /** The merged module's files bindings (LocalFiles and S3FileLinks, in the app's order) on PlatformClock and the stub database. */
 async function appFiles(): Promise<Provider[]> {
   class AppLike {}
@@ -143,7 +148,7 @@ try {
       `import { S3FileLinks } from ${JSON.stringify(join(STUDIO, "api/src/platform/files/s3-files.ts"))};`,
       `import { registerFeatures } from ${JSON.stringify(join(STUDIO, "api/src/features.ts"))};`,
       `import { PlatformClock } from ${JSON.stringify(join(STUDIO, "api/src/platform/identity/port.ts"))};`,
-      `class AppLike {} await registerFeatures(AppLike, ${JSON.stringify(FEATURE_DIR)});`,
+      `class AppLike {} await registerFeatures(AppLike, process.env.PFF1B_FEATURES || ${JSON.stringify(FEATURE_DIR)});`,
       `const files = Reflect.getMetadata("providers", AppLike).filter((p) => typeof p === "object" && (p.provide === LocalFiles || p.provide === S3FileLinks));`,
       `import { Db } from ${JSON.stringify(join(STUDIO, "api/src/core.ts"))};`,
       `class App {} Module({ providers: [...files, PlatformClock, { provide: Db, useValue: {} }] })(App);`,
@@ -156,6 +161,12 @@ try {
     ok("R1.65 PF-F1b case 3 fail: production with PLATFORM_FILES=s3 and no link key refuses to start, naming PLATFORM_FILES_LINK_KEY", noKey.status !== 0 && !/STARTED/.test(noKey.stdout) && /PLATFORM_FILES_LINK_KEY/.test(noKey.stderr), { status: noKey.status, err: noKey.stderr.slice(0, 600) });
     const local = run({ NODE_ENV: "production", PLATFORM_FILES: "local", FO_FILES_DIR: join(WORK, "prod-local") });
     ok("R1.65 PF-F1b case 3 pass: production with PLATFORM_FILES=local starts (no link key needed)", local.status === 0 && /STARTED/.test(local.stdout), { status: local.status, err: local.stderr.slice(0, 600) });
+    const noEnv = run({ PLATFORM_ENVIRONMENT: "", PFF1B_FEATURES: SUPPORT_ONLY });
+    ok("R1.65 PF-F1b case 3 pass: an app built from one feature with PLATFORM_ENVIRONMENT unset (as FO-13i's and PF-18b's tests build theirs) still starts on the local adapter: unset is the server loader's refusal, not the binding's", noEnv.status === 0 && /STARTED/.test(noEnv.stdout), { status: noEnv.status, err: noEnv.stderr.slice(0, 600) });
+    const noEnvProd = run({ PLATFORM_ENVIRONMENT: "", NODE_ENV: "production", PFF1B_FEATURES: SUPPORT_ONLY });
+    ok("R1.65 PF-F1b case 3 fail: the same with NODE_ENV=production and PLATFORM_FILES unset still refuses to start", noEnvProd.status !== 0 && !/STARTED/.test(noEnvProd.stdout) && /PLATFORM_FILES is not set/.test(noEnvProd.stderr), { status: noEnvProd.status, err: noEnvProd.stderr.slice(0, 600) });
+    const badKey = run({ PLATFORM_FILES_LINK_KEY: "too short" });
+    ok("R1.65 PF-F1b case 3 fail: any other configuration fault (a malformed link key) still stops the start-up, naming the setting", badKey.status !== 0 && !/STARTED/.test(badKey.stdout) && /PLATFORM_FILES_LINK_KEY/.test(badKey.stderr), { status: badKey.status, err: badKey.stderr.slice(0, 600) });
     const dev = run({});
     ok("R1.65 PF-F1b case 3 pass: outside production, unset starts on the local adapter", dev.status === 0 && /STARTED/.test(dev.stdout), { status: dev.status, err: dev.stderr.slice(0, 600) });
     ok("R1.65 PF-F1b case 3 fail: the recorded S3 client is refused in production (a test seam never reaches a real server)", await withEnv({ NODE_ENV: "production", ...S3_ENV }, async () => { (globalThis as Record<symbol, unknown>)[RECORDED_S3] = { requestHandler: {} }; try { return await refused(() => boundFiles(), (e) => /recorded S3 client/.test(String(e))); } finally { delete (globalThis as Record<symbol, unknown>)[RECORDED_S3]; } }));
@@ -171,7 +182,9 @@ try {
     const key = randomBytes(32).toString("base64"), { Secret } = await import("../api/src/platform/config/secret.ts"), { inspect } = await import("node:util");
     const links = new S3FileLinks({ exists: async () => true, signedGetUrl: async () => "" }, new Secret("PLATFORM_FILES_LINK_KEY", key), () => Date.now());
     const dump = inspect(links, { depth: 5, showHidden: true }) + JSON.stringify(links);
-    ok("R1.65 PF-F1b break m3 fail: a dump of the bound links never shows the key (neither its text nor its bytes)", !dump.includes(key) && !dump.includes(Buffer.from(key).toString("hex").slice(0, 32)) && links.sign(FIRM_A, PERSON, "a/b.txt").token.length > 40);
+    const kb = [...Buffer.from(key, "utf8").subarray(0, 6)], spaced = kb.map((b) => b.toString(16).padStart(2, "0")).join(" "), decimal = kb.join(",");
+    const old = inspect({ macKey: Buffer.from(key, "utf8") }) + JSON.stringify({ macKey: Buffer.from(key, "utf8") });   // the leak round 1 found
+    ok("R1.65 PF-F1b break m3 fail: a dump of the bound links never shows the key: not its text, its bytes as inspect prints them (spaced hex) or as JSON does (decimal); the same check sees the old Buffer leak", !dump.includes(key) && !dump.replace(/\s+/g, " ").includes(spaced) && !dump.includes(decimal) && !/Buffer/.test(dump) && old.includes(spaced) && old.includes(decimal) && links.sign(FIRM_A, PERSON, "a/b.txt").token.length > 40);
   }
 
   // Case 4: a link opened through the bound links for another firm gives 404.
