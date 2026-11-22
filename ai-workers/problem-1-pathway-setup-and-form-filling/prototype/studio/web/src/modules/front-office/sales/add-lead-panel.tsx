@@ -18,7 +18,7 @@ import { useToast } from "@/lib/api";
 import { KnownMatches, Lead, words } from "./contract";
 import { useSources } from "./source-filter";
 import { staffApi, StaffApiError } from "./session";
-import { DuplicateHint, keptLine, unmatchedDetails, type DupChoice } from "../duplicates/duplicate-hint";
+import { DuplicateHint, hintAnnouncement, keptLine, unmatchedDetails, type DupChoice } from "../duplicates/duplicate-hint";
 import { checkBody, useDuplicateCheck } from "../duplicates/use-duplicate-check";
 /** Sample (no source list in AG-02 for a typed-in lead): offered after the sources the adder already sees. */
 const SAMPLE_SOURCES = ["Phone call", "Walk-in", "Email", "Referral"];
@@ -106,7 +106,7 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
       confirmClose={() => !save.isPending && (Object.values(f).every((v) => !v.trim()) || window.confirm("Discard this lead? What you typed is not saved."))} title="Add a lead" description="For a phone call, a walk-in or an email. You will own the lead."
       footer={<>
         <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={save.isPending}>Cancel</Button>
-        <Button type="button" busy={save.isPending && !matches} disabled={!!matches} title={matches ? "Choose above: use the person on file, or add as new." : undefined} onClick={() => send()}>{choice?.kind === "person" ? `Add lead to ${choice.name}` : "Save lead"}</Button>
+        <Button type="button" busy={save.isPending && !matches} disabled={!!matches} title={matches ? "Choose above: use the person on file, or add as new." : undefined} className="h-auto min-h-9 min-w-0 max-w-full shrink whitespace-normal py-1.5 text-left [overflow-wrap:anywhere]" onClick={() => send()}>{choice?.kind === "person" ? `Add lead to ${choice.name}` : "Save lead"}</Button>
       </>}>
       <form data-add-lead noValidate className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (!matches) send(); }}>
         {/* While a save is out, the details cannot change under it (break m1: a match shown for details no longer there). */}
@@ -116,7 +116,9 @@ export function AddLeadPanel({ open, onOpenChange }: { open: boolean; onOpenChan
         <Field label="Last name (optional)" error={err("familyName")}><Input autoComplete="off" maxLength={100} value={f.familyName} onChange={set("familyName")} onBlur={checkNow} /></Field>
         <Field label="Email" hint={err("email") ? undefined : "An email or a phone number is needed."} error={err("email")}><Input type="email" autoComplete="off" maxLength={254} value={f.email} onChange={set("email")} onBlur={checkNow} /></Field>
         <Field label="Phone" error={err("phone")}><Input type="tel" inputMode="tel" autoComplete="off" maxLength={40} value={f.phone} onChange={set("phone")} onBlur={checkNow} /></Field>
-        {matches ? null : <DuplicateHint state={dup.state} choice={choice} onChoose={choose} keep={keep} onKeep={setKeep} typed={f} disabled={save.isPending} />}
+        {matches ? null : <DuplicateHint state={dup.state} choice={choice} onChoose={choose} keep={keep} onKeep={(k) => { setKeep(k); if (errors.note) setErrors({ ...errors, note: "" }); }} typed={f} disabled={save.isPending} />}
+        {/* Review m1: one live region, always mounted, says each change of the hint once (the boxes hold buttons). */}
+        <p data-dup-live className="sr-only" aria-live="polite">{matches ? "" : hintAnnouncement(dup.state, choice)}</p>
         <Field label="Source" hint={err("source") ? undefined : "Where the enquiry came from, in your words. Pick one or type your own."} error={err("source")}>
           <Input list="fo-add-lead-sources" autoComplete="off" maxLength={60} value={f.source} onChange={set("source")} />
         </Field>

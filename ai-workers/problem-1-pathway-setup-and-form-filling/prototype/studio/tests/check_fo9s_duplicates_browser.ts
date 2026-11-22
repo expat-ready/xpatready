@@ -182,6 +182,60 @@ try {
     else ok("FO-9s D6 fail (BR-5b): unticked, the box says \"Not saved\" and the note does not keep it", said.includes(`Not saved: ${mail}`) && !note.includes(mail), { said, note });
   }
 
+  // ---------------------------------------------------------------- D8: review round 1 (M1, M2, m1-m4)
+  // m2: two different phones left within the 400 ms wait → one check, for the newest details.
+  await openPanel(o);
+  await typeIn(o, "First name", "Zed");
+  const c0 = checks.length;
+  await field(o, "Phone").fill("416 555 0177"); await field(o, "Phone").press("Tab");
+  await field(o, "Phone").fill("416 555 0101"); await field(o, "Phone").press("Tab");
+  await settle(o);
+  const sent = checks.slice(c0);
+  ok("FO-9s D8 m2 (BR-2): two numbers left within the wait send one check, with the newest number", sent.length === 1 && sent[0].includes("416 555 0101"), sent);
+  // M2 focus and m1 the live region.
+  await o.locator("[data-dup-hint]").waitFor({ timeout: 10_000 });
+  ok("FO-9s D8 m1: the always-mounted live region says the hint's title once", (await o.locator("[data-dup-live]").innerText()) === "1 person on file looks like this person.", await o.locator("[data-dup-live]").innerText());
+  await o.getByRole("button", { name: `Use this person: Lena${run} Park` }).click();
+  ok("FO-9s D8 M2: after Use this person, focus is on Change (not lost to the dialog)", await o.evaluate(() => document.activeElement?.textContent === "Change"), await o.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+  await o.keyboard.press("Enter");
+  ok("FO-9s D8 M2: after Change, focus is on the first Use this person", await o.evaluate(() => (document.activeElement?.getAttribute("aria-label") ?? "").startsWith("Use this person")), await o.evaluate(() => document.activeElement?.outerHTML.slice(0, 120)));
+  // m2: a key edited after a pick drops the pick (no personId would be sent).
+  await o.keyboard.press("Enter");
+  await o.locator("[data-dup-choice]").waitFor({ timeout: 5_000 });
+  await field(o, "Phone").fill("416 555 0178");
+  ok("FO-9s D8 m2 (BR-5): editing a key after a pick drops it: no choice box, Save reads Save lead again",
+    (await o.locator("[data-dup-choice]").count()) === 0 && (await o.getByRole("button", { name: "Save lead" }).count()) === 1);
+  // m2: the phone is offered too, when the pick did not match it.
+  await field(o, "Phone").press("Tab");
+  await field(o, "First name").fill(`Lena${run}`); await field(o, "Last name (optional)").fill("Parke"); await field(o, "Last name (optional)").press("Tab");
+  await o.locator("[data-dup-hint]").getByRole("button", { name: `Use this person: Lena${run} Park` }).waitFor({ timeout: 10_000 });
+  await o.getByRole("button", { name: `Use this person: Lena${run} Park` }).click();
+  const offerPhone = await o.locator("[data-dup-choice]").innerText();
+  ok("FO-9s D8 m2 (BR-5b): a typed phone the pick did not match is offered too", offerPhone.includes("416 555 0178"), offerPhone);
+  // m2, m3: the 5000-character guard: a long note plus the kept line is caught on the note, nothing sent; unticking clears it.
+  await typeIn(o, "Source", "Email");
+  await field(o, "First note (optional)").fill("x".repeat(4990));
+  const s0 = leadStatuses.length;
+  await o.getByRole("button", { name: `Add lead to Lena${run} Park` }).click(); await o.waitForTimeout(500);
+  const noteErr = await o.locator("[data-add-lead]").innerText();
+  ok("FO-9s D8 m2 (BR-5b): a 4990-character note plus the kept details is refused on the note, nothing sent",
+    noteErr.includes("The first note is too long to also keep the details below.") && leadStatuses.length === s0, leadStatuses.slice(s0));
+  await o.locator("[data-dup-keep]").uncheck();
+  ok("FO-9s D8 m3: unticking the details clears the note's error at once", !(await o.locator("[data-add-lead]").innerText()).includes("The first note is too long"));
+  o.once("dialog", (d) => void d.accept()); await o.keyboard.press("Escape"); await o.waitForTimeout(300);
+  // M1: a long name without spaces wraps in the choice box and on Save at 375 px (no sideways scroll).
+  const longGiven = `Maximiliana${"x".repeat(40)}`;
+  await post(tok.O, { requestId: randomUUID(), givenNames: longGiven, familyName: "Park", email: `long.${run}@example.org`, source: "Phone call", confirmedNew: true });
+  const { p: narrow } = await pageAs(tok.O, 375); await openPanel(narrow);
+  await typeIn(narrow, "First name", longGiven); await typeIn(narrow, "Email", `long.${run}@example.org`);
+  await narrow.locator("[data-dup-hint]").waitFor({ timeout: 10_000 });
+  await narrow.getByRole("button", { name: `Use this person: ${longGiven} Park` }).click();
+  await narrow.locator("[data-dup-choice]").waitFor({ timeout: 5_000 });
+  const fits = await narrow.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent?.startsWith("Add lead to")); const r = b?.getBoundingClientRect(); return { page: document.documentElement.scrollWidth <= window.innerWidth, button: !!r && r.right <= window.innerWidth + 1, box: (document.querySelector("[data-dup-choice]") as HTMLElement).scrollWidth <= (document.querySelector("[data-dup-choice]") as HTMLElement).clientWidth + 1 }; });
+  await narrow.screenshot({ path: join(SHOTS, "fo9s-06-long-name-375.png") });
+  ok("FO-9s D8 M1: a 55-character name wraps at 375 px: the Save button and the choice box stay inside the panel, no sideways scroll", fits.page && fits.button && fits.box, fits);
+  await narrow.context().close();
+
   // ---------------------------------------------------------------- D7: keyboard, axe, widths
   await openPanel(o);
   await typeIn(o, "First name", `Lena${run}`); await typeIn(o, "Last name (optional)", "Parks"); await typeIn(o, "Phone", "416 555 0101");

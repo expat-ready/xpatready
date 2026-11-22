@@ -34,7 +34,8 @@ export function useDuplicateCheck() {
       const out = DuplicateCheckOut.parse(await staffApi("/front-office/duplicates/check", { method: "POST", json: body }));
       if (mine === seq.current) setState({ status: "done", out });
     } catch {
-      if (mine === seq.current) setState({ status: "failed" });
+      // Review m4: a failed check may be asked again for the same details (leaving the field retries).
+      if (mine === seq.current) { setState({ status: "failed" }); last.current = ""; }
     } finally {
       busy.current = false;
       const next = queued.current; queued.current = null;
