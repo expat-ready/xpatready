@@ -29,12 +29,13 @@ BEGIN
   IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
     LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN SHARE ROW EXCLUSIVE MODE;
   ELSE
-    -- PF-8b F6 review m1: ALTER TABLE below needs ACCESS EXCLUSIVE, so it is taken at once (no lock upgrade, no deadlock)
-    LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN ACCESS EXCLUSIVE MODE;
+    -- PF-8b F6: the owner of the four tables (break m2: checked before the lock, so a runner without rights gets this message)
     IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (four) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
-      RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % cannot see every support row (row level security); run migrations as the database owner', current_user
+      RAISE EXCEPTION 'PF-18bk stopped, nothing changed: % cannot see every support row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of the four tables', current_user
         USING ERRCODE = 'insufficient_privilege';
     END IF;
+    -- review m1: ALTER TABLE below needs ACCESS EXCLUSIVE, so it is taken at once (no lock upgrade, no deadlock)
+    LOCK TABLE "platform_firm", "platform_staff", "platform_support_ticket", "platform_support_message" IN ACCESS EXCLUSIVE MODE;
     -- PF-8b F6: the owner sees every row once FORCE is lifted; only the tables that had it get it back
     SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (four) AND c.relforcerowsecurity;
     FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
