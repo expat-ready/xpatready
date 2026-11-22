@@ -103,3 +103,21 @@ Scope: `sales/routes.ts` (2 lines), `source-filter.ts:4`, `MODULE.rows/R1-30.md`
 **Verdict: Approve** for cda522f1f34a80f2bba0767e7a8f5eddc10b37ec (no open Blocker or Major).
 
 Reviewer: Approve cda522f1f34a80f2bba0767e7a8f5eddc10b37ec
+
+## Round 3 (head a9fc53bfa291b9aef258d8bbb051401db7bb780c, diff `cda522f1f..a9fc53bfa` only; Lead's standing permission A277)
+Two commits since the Approve: b9ba036f5 adds my round-2 notes, and a9fc53bfa merges origin/main (part 6, #2883, money). I ran nothing new beyond counting the allow-list.
+
+- **The ceilings line (the one conflict) is resolved correctly.**
+  - `git show a9fc53bfa --cc` takes main's comment history and part 3a's reductions: `PROBES_CEILING = 124, UNPARSED_CEILING = 24, EXCEPTIONS_CEILING = 10`.
+  - The merged `pf28-allow-list.json` holds exactly **24 code, 124 probe and 10 exception** lines, so each ceiling is met with no slack. Main holds 44/154; this PR's 20 code lines and 30 probes leave on top of part 6's 7.
+  - No `sales/routes.ts` line and no money line is left. What remains is part 4 (70), part 3 for 3b's files (46), part 5 (31) and part 2 (1).
+- **The rest of the merge is main's.**
+  - Against main (5d866c746), the branch differs only in part 3a's reviewed files: routes, prospects, source-filter, the MODULE lines, the three suites, the ceilings line and the allow-list.
+  - Part 6's money files (`drafts.ts`, `tax-round.ts`, `ports/client-money.ts`, fo7b, j_59) touch no sales route.
+- **Sweep:** the builder reports 43/43 on a fresh copy of a9fc53bf; I did not re-run it.
+
+**Round-3 findings:** none.
+
+**Verdict: Approve** for a9fc53bfa291b9aef258d8bbb051401db7bb780c.
+
+Reviewer: Approve a9fc53bfa291b9aef258d8bbb051401db7bb780c
