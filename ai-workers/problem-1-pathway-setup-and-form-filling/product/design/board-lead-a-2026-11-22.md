@@ -4,8 +4,8 @@ Kept by Lead 1; one line per capability; updated at each check that changes it. 
 
 | # | Capability | Left to build | Lane / PR | Waits on | Walk | Risk |
 |---|---|---|---|---|---|---|
-| 1 | R1.89 public pricing page | QA-741 prices from the plan table, QA-742 | #2926 building | none | j_89 exists (#2912) | low |
-| 2 | R1.39 staff calendar | QA-743 time off on the calendar | lane started 11:0x | none | j_39 exists (#2914) | low |
+| 1 | ✅ PROVEN 16:59 (#2978) R1.89 public pricing page | QA-741 prices from the plan table, QA-742 | #2926 building | none | j_89 exists (#2912) | low |
+| 2 | ✅ PROVEN 16:34 (#2979) R1.39 staff calendar | QA-743 time off on the calendar | lane started 11:0x | none | j_39 exists (#2914) | low |
 | 3 | R1.88 firm reads its audit log | AUD-4s page | #2916 building | none | j_88 to write | medium |
 | 4 | R1.10 checking every input | p6 merged 11:01 (#2883); p3a #2909, p4 #2908 in review; then p3b, p5 | 2 lanes | shared allow-list between the parts | j_10 to write | medium |
 | 5 | R1.102 find a person or case | #2884 in the queue; CS-S1 p2 #2913; PF-30s #2921 | 3 lanes | #2884 merging | j_102 to write | medium |
