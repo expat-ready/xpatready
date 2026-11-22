@@ -139,3 +139,34 @@ No new findings.
 **Verdict: Approve 04b72b8b39904d77cec0e72a9082bdd52bb35430** (no open Blocker or Major).
 
 Reviewer: Approve 04b72b8b39904d77cec0e72a9082bdd52bb35430
+
+## Round 4 (merge of main after parts 3a-3b; head a16cca4529b2ff33fbdf578edf57a466938b1f6e)
+
+Scope: only the merge `a16cca452`, whose parents are `a061cfbe8` (records only, after round 3's `04b72b8b3`) and main at `71984ae8a`. No copy started: the diffs settle it. The builder reports the sweep at 47/47 and 26 booking suites passing on a fresh copy of this head.
+
+**Resolution: the two files are exactly main plus part 4's own changes** (`git diff 71984ae8a a16cca452`).
+- `check_pf28_inputs.ts`: only the ceiling line, the `:linkToken` filler and part 4's cases (round 2's included).
+- `pf28-allow-list.json`:
+  - The 70 `PF-28 part 4 (booking)` probe lines leave.
+  - Part 4's two by-design exceptions join (cancel by link, consult record `missing`).
+  - The last retainers line loses its trailing comma. That is the JSON, not a change of entry.
+  - Main had already dropped part 3's lines, and none came back. The file parses.
+
+**Ceilings: probes 23, unparsed 9, exceptions 17.** These are main's 93 − 70, 9, and 15 + 2.
+- The list holds exactly 9 unparsed, 23 probes and 17 exceptions, so each ceiling is met exactly.
+- 0 entries name part 3 or part 4.
+
+**Main's work against part 4's files.**
+- `git diff --name-only a061cfbe8 a16cca452` (168 files) shares only three files with part 4's own: the two above, and `api/src/front-office/booking/feed.ts`.
+- **`feed.ts`** auto-merged QA-743 (R1.39), which adds `timeOff` to the list answer through a new `offItems`.
+  - It sits after part 4's checks, which are unchanged: the `__proto__` guard, the strict `FeedQuery`, and the 422 field and range errors.
+  - It reads firm-scoped rows only after the query is parsed and the `team` key is checked.
+  - No conflict with part 4's precedence.
+- The feed's callers on this head (`calendar-page.tsx:37`, `check_fo3st1_calendar_browser.ts:266`, `j_39.ts:196`) send only `view`, `from` and `to`, all in the strict schema.
+- None of main's changed tests expects 400 from a booking door. The one 400 near "stamp" is sign-up's own (`check_pf5_signup_billing.ts:322`), not part 4's.
+
+No new findings.
+
+**Verdict: Approve a16cca4529b2ff33fbdf578edf57a466938b1f6e** (no open Blocker or Major).
+
+Reviewer: Approve a16cca4529b2ff33fbdf578edf57a466938b1f6e
