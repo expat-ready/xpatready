@@ -111,7 +111,7 @@ export function SignUpPage() {
       <Place label="Sign up" />
       <section aria-labelledby="signup-h" className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-surface-raised p-6 shadow-sm" data-signup>
         <h1 id="signup-h" className="text-lg font-semibold">Start your free trial</h1>
-        <p className="mt-1 text-sm text-text-muted">No card needed.{plan ? ` ${plan.trialDays} days free (Sample).` : ""}</p>
+        <p className="mt-1 text-sm text-text-muted">No card needed.{plan && plan.trialDays > 0 ? ` ${plan.trialDays} days free (Sample).` : ""}</p>
         {q.isPending ? <p role="status" className="mt-4 text-sm text-text-muted">Loading the form…</p>
           : q.isError ? <Notice tone="danger" title="The form could not be loaded" className="mt-4">{(q.error as unknown as Problem).detail ?? "Please try again later."}</Notice>
             : (

@@ -193,7 +193,23 @@ try {
   const team = plans.plans.find((p) => p.code === "team"), solo = plans.plans.find((p) => p.code === "solo");
   ok("PF-5 pass: GET plans reads Stripe's prices through BillingPort, marked \"+ applicable taxes\", with the current terms",
     team?.monthly?.amountCents === 4900 && team.yearly?.interval === "year" && plans.taxNote === TAX_NOTE && plans.terms.length === 3 && plans.defaultPlan === "team", plans);
-  ok("PF-5 fail: a plan with no Stripe price shows no price (never an invented one)", solo?.monthly === null && solo?.yearly === null);
+  // QA-741 (R1.89; the tech lead's ruling on #2912): the price is Stripe's when a key is present and the plan carries a
+  // price id; otherwise the plan table's own cents; neither → no price. Prices Sample.
+  ok("R1.89 QA-741 pass: a plan with no Stripe price id shows the plan table's monthly and yearly cents and currency (solo, the Sample seed)",
+    solo?.monthly?.amountCents === 4900 && solo.monthly.currency === "CAD" && solo.monthly.interval === "month" && solo.yearly?.amountCents === 49000 && solo.yearly.interval === "year", solo);
+  sql(`update platform_plan set monthly_price_cents = null, yearly_price_cents = null where code = 'solo'`);
+  const bare = (await s.plans()).plans.find((p) => p.code === "solo");
+  ok("R1.89 QA-741 fail: a plan with no Stripe price id and no cents in the table shows no price (never an invented one)", bare?.monthly === null && bare?.yearly === null, bare);
+  sql(`update platform_plan set monthly_price_cents = 12300 where code = 'solo'`);
+  const half = (await s.plans()).plans.find((p) => p.code === "solo");
+  ok("R1.89 QA-741 fail: cents for one period only → that period's price and none for the other", half?.monthly?.amountCents === 12300 && half.yearly === null, half);
+  sql(`update platform_plan set monthly_price_cents = 4900, yearly_price_cents = 49000 where code = 'solo'`);
+  ok("R1.89 QA-741 pass: with a key, a plan that carries a Stripe price id shows Stripe's price, not the table's cents (team: 4900 from Stripe, 9900 in the table)", team?.monthly?.amountCents === 4900 && team.yearly?.amountCents === 49000, team);
+  let asked = 0;
+  const keyless = await new FirmSignUp(db, { ...ports, stripePrices: false, billing: { ...billing, prices: async (ids: string[]) => { asked++; return billing.prices(ids); } } }).plans();
+  const kTeam = keyless.plans.find((p) => p.code === "team");
+  ok("R1.89 QA-741 pass: with no Stripe key the price ids are not read (no call to the billing port) and every plan shows the table's cents",
+    asked === 0 && kTeam?.monthly?.amountCents === 9900 && kTeam.yearly?.amountCents === 99000 && keyless.pricesAvailable === true && keyless.plans.every((p) => p.monthly !== null && p.yearly !== null), { asked, plans: keyless.plans });
   const terms = plans.terms.map((t) => t.id);
   const form = async (over: Record<string, unknown> = {}) => { const p = await s.plans(); await clock.advance({ seconds: 5 }); return { email: "owner@maple.example.com", password: PASSWORD, firmName: "Maple Immigration", countryCode: "CA", acceptedTerms: terms, formStamp: p.formStamp, ...over }; };
   const pendingCount = (email: string) => sql(`select count(*) from platform_signup_pending where email = '${email}'`);
