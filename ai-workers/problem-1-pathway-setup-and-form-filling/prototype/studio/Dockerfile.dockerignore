@@ -5,6 +5,7 @@
 *
 !ai-workers/problem-1-pathway-setup-and-form-filling/prototype
 !ai-workers/problem-1-pathway-setup-and-form-filling/official-sources
+!AGENTS.md
 **/node_modules
 **/.DS_Store
 **/*.log
@@ -14,6 +15,8 @@ ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/var
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/web/dist
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/evidence
+# PF-8a: the cloud estate as code is tooling outside the app (its own package); never in the image, nor its cdk.out.
+ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/deploy/cdk
 ai-workers/problem-1-pathway-setup-and-form-filling/prototype/tests
 # What git ignores but a developer copy (the Mac) has on disk: never in an image built there (review Minor 5). Each line
 # names only files git does not track (a tracked file, even one force-added under a .gitignore rule, stays in the image:

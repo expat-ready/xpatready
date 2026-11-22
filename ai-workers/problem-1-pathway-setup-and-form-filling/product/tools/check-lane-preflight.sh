@@ -59,4 +59,6 @@ ROOTD="$(cd "$TOOLS/../../../.." && pwd)"
 jq -e '[.hooks.PreToolUse[] | select(.matcher | test("start_session")) | .hooks[].command | select(test("lane-preflight.sh --hook"))] | length == 1' "$ROOTD/.claude/settings.json" >/dev/null
 ok "settings.json runs the preflight hook on start_session" "$([ $? = 0 ] && echo 1)"
 grep -q 'lane-preflight.sh' "$ROOTD/.claude/skills/lead/SKILL.md"; ok "skill lead runs lane-preflight.sh before start_session" "$([ $? = 0 ] && echo 1)"
+# E10: the touch-list overlap has its own test, run from here so check-guards.sh needs no new line.
+tout=$(bash "$TOOLS/check-touch-overlap.sh" 2>&1); ok "check-touch-overlap.sh passes (E10, the touch list): $(echo "$tout" | tail -1)" "$([ $? = 0 ] && echo 1)" "$(echo "$tout" | grep '^FAIL')"
 finish

@@ -12,10 +12,12 @@ export type LineKind = z.infer<typeof LineKind>;
 
 /** The largest amount one column holds (FO-7a's integer columns): 21,474,836.47. */
 export const MINOR_MAX = 2_147_483_647;
+/** A UTF-16 surrogate with no partner (not a character; jsonb and the audit line refuse it). */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id = (what: string) => z.string().regex(UUID, `${what} is not an id.`);
 const whole = (what: string, min: number, max: number) => z.number({ error: `${what} must be a whole number.` }).int(`${what} must be a whole number.`).min(min, `${what} is at least ${min}.`).max(max, `${what} is at most ${max}.`);
-/** Ignored on input: the server computes it (QA-482). Read so that sending it is never a 400. */
+/** Ignored on input: the server computes it (QA-482). Read so that sending it is never refused. */
 const ignored = z.unknown().optional().transform(() => undefined);
 
 /** POST /api/front-office/money/invoices: a draft for one client (a person or a company of the firm) in one currency; the
@@ -32,7 +34,7 @@ export type DraftIn = z.infer<typeof DraftIn>;
  *  a government fee is never taxed. The currency, when sent, must be the invoice's. */
 export const LineIn = z.strictObject({
   kind: LineKind,
-  description: z.string().trim().min(1, "Describe the line.").refine((t) => [...t].length <= 500, "At most 500 characters.").regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters."),
+  description: z.string().trim().min(1, "Describe the line.").refine((t) => [...t].length <= 500, "At most 500 characters.").regex(/^[^\u0000-\u001f\u007f\u2028\u2029]*$/, "One line, no tabs or control characters.").refine((t) => !LONE_SURROGATE.test(t), "Use only whole characters: this text has a broken character in it."),   // a lone surrogate (PF-28 part 6; was a 500 at the audit line's jsonb)
   quantity: whole("The quantity", 1, 100_000).default(1),
   unitMinor: whole("The unit amount (in cents)", 0, MINOR_MAX),
   ratePpm: whole("The tax rate (parts per million)", 0, 1_000_000).default(0),

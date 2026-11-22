@@ -1,0 +1,13 @@
+PASS  J-32 setup: firm A has a front office and its web form is on — []
+PASS  J-32 W1: the new enquiry is in the Case Manager's Unassigned leads, owner Nobody
+PASS  J-32 W2: the Case Manager assigns it to the Case Officer by screens; the history says who, to whom and when — "Arrived\nNov 21, 2026, 6:11 a.m.\nSecond representative (Sample) assigned it to Case officer (Sample)\nNov 21, 2026, 6:11 a.m."
+PASS  J-32 W2: underneath, the audit line names who assigned it, to whom, from nobody, with its time
+PASS  J-32 W3: the Case Officer finds it under Mine, sees no Assign or Reassign, and the server refuses theirs (403) — 403
+PASS  J-32 W4: reassigned to the Owner, who reads both lines in the history, oldest first — "Arrived\nNov 21, 2026, 6:11 a.m.\nSecond representative (Sample) assigned it to Case officer (Sample)\nNov 21, 2026, 6:11 a.m.\nSecond representative (Sample) assigned it to Representative (Sample)\nNov 21, 2026, 6:11 a.m."
+PASS  J-32 W5: the Case Officer takes the second enquiry from Unassigned leads; its history reads "<Case Officer> took it" — "Arrived\nNov 21, 2026, 6:11 a.m.\nCase officer (Sample) took it\nNov 21, 2026, 6:11 a.m."
+PASS  J-32 W6: the Owner sets a web-form rule for one service (the Case Officer); an enquiry for no service matches no rule and waits in Unassigned leads, owner Nobody — {"status":200,"svcLabel":"Sample service (J-32)"}
+PASS  J-32 W7: an enquiry for that service follows the rule: on the Case Officer's Mine list as theirs, not in Unassigned leads, its lead.created line naming the rule — {"inUnassigned":0,"row":"Ravimwq0f0v6 Sample\nL-00008\n\tSample service (J-32)\tWebsite form\tCase officer (Sample)\tNov 21, 2026, 6:11 a.m.\t"}
+PASS  J-32 W7: the Case Officer opens it from Mine; the walk ends on the lead's page (R1.33's first step) — "http://localhost:4473/front-office/leads/e2e6e054-c5e8-47a8-8607-d76df9f01d08"
+PASS  J-32: no page error in the walk — []
+
+11/11 passed
