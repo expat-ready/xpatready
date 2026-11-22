@@ -1,0 +1,188 @@
+// FO-7b part 1c (written first, before the code; the row and brief are Lead B's, asked on the draft PR): refunds of a
+// payment recorded by hand (AG-6-23: a reason, never more than the payment less its refunds, the refund key
+// agent/refund:create, separate from recording payments, BR-11) and a person's choice on a payment's extra (AG-6-21 rules
+// 3, 5; FO-7b amendment 1: "Refund · Keep as credit"; Keep writes FO-7ts's credit ledger, KEPT). Each rule a pass and a
+// fail, through the routes, read back from money_refund and money_credit_entry. Cases marked "pending Lead B" follow
+// AG-6-23 as written until the row says otherwise. Legal and tax readings: Unconfirmed: no counsel / no accountant.
+// A scratch database (every migration), a Nest app of PF-4's guard, PF-12's walls and the client-money feature, with the
+// local sign-in stand-in; the API connects as xr_app. No network, no model call (US$0). Dropped at the end.
+//   tsx studio/tests/check_fo7b_refunds.ts
+import "reflect-metadata";
+import { Module } from "@nestjs/common";
+import { APP_GUARD, APP_INTERCEPTOR, NestFactory } from "@nestjs/core";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
+import { FakeClock } from "../ports/clock.ts";
+import { MONEY_EVENT, fakeClientMoney, invoiceStatus, type ClientMoneyPort, type InvoiceFacts } from "../ports/client-money.ts";
+import { fakeMail } from "../ports/mail.ts";
+import { runContract } from "../ports/contracts/contract.ts";
+import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
+import { clientMoneyPortContract } from "../ports/contracts/client-money-port.contract.ts";
+
+const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
+const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
+const DB = `xr_studio_fo7c_scratch_${process.pid}`, urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
+const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+let pass = 0, fail = 0;
+const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++; console.log(`${c ? "PASS" : "FAIL"}  ${name}${!c && detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 600)}` : ""}`); };
+const throws = (f: () => unknown) => { try { f(); return false; } catch { return true; } };
+
+// --------------------------------------------------------------------------------------- the rule alone (no database)
+/** The planted wrong implementations the cases must catch: half up through a float, and tax on the subtotal. */
+const halfUp = (amount: number, ppm: number) => Math.round(amount * ppm / 1_000_000);
+ok("FO-7b rule: JavaScript's Math.round(6.5) is 7 (half up), the reason taxForLine never uses it", Math.round(6.5) === 7 && halfUp(50, 130000) === 7);
+ok("FO-7b rule pass: taxForLine is whole-number only: a float amount or rate, a negative, or a rate past 1,000,000 throws",
+  [() => taxForLine(0.5, 130000), () => taxForLine(50, 0.13), () => taxForLine(-1, 130000), () => taxForLine(50, -1), () => taxForLine(50, 1_000_001), () => taxForLine(Number.MAX_SAFE_INTEGER + 1, 1)].every(throws)
+  && taxForLine(0, 130000) === 0 && taxForLine(12345, 0) === 0 && taxForLine(100, 1_000_000) === 100);
+
+// --------------------------------------------------------------------------------------------- the scratch database
+execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", DB]); execFileSync(join(BIN, "createdb"), [...PG, DB]);
+for (const d of readdirSync(MIG).filter((x) => /^\d{14}_/.test(x)).sort()) execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-f", join(MIG, d, "migration.sql")], { stdio: ["ignore", "ignore", "pipe"] });
+process.env.DATABASE_URL = urlOf(DB);
+for (const k of ["PLATFORM_IDENTITY", "PLATFORM_ENVIRONMENT", "PLATFORM_SAMPLE_SEED", "PLATFORM_LOCAL_SECRET", "APP_DATABASE_URL"]) delete process.env[k];
+
+const { ConfigReadGuard, Db } = await import("../api/src/core.ts");
+const { seedSampleFirms } = await import("../api/src/platform/seed-sample-firms.ts");
+const { seedSampleFirmsFrontOffice } = await import("../api/src/front-office/firm-seed.ts");
+const { PlatformClock } = await import("../api/src/platform/identity/port.ts");
+const { LocalIdentity } = await import("../api/src/platform/identity/local.ts");
+const { IDENTITY_PORT, PlatformIdentity } = await import("../api/src/platform/identity/service.ts");
+const { PlatformGuard } = await import("../api/src/platform/identity/guard.ts");
+const { PlatformIdentityController } = await import("../api/src/platform/identity/routes.ts");
+const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
+const { InvoiceDrafts } = await import("../api/src/client-money/invoices/drafts.ts");
+const { InvoiceDraftsController, InvoiceMoneyController } = await import("../api/src/client-money/invoices/routes.ts");
+const { MoneyDocuments, documentText, invoiceData } = await import("../api/src/client-money/invoices/documents.ts");
+const { ClientMoney } = await import("../api/src/client-money/port.ts");
+const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
+const feature = (await import("../api/src/features/client-money-invoices.ts")).default;
+const { withFirm } = await import("../api/src/platform/firm-scope.ts");
+const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
+
+const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
+const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
+const local = new LocalIdentity("fo7b-check-signing-key-0123456789abcdef", () => clock.now());
+type Res = { status: number; body: any };   // eslint-disable-line @typescript-eslint/no-explicit-any -- API answers are read loosely, as in the other checks
+let app: { close(): Promise<void> } | null = null;
+const mail = fakeMail();
+try {
+  const providers = [Db, { provide: APP_GUARD, useClass: ConfigReadGuard }, { provide: PlatformClock, useValue: clock }, { provide: IDENTITY_PORT, useValue: local }, PlatformIdentity, PlatformGuard,
+    { provide: APP_GUARD, useExisting: PlatformGuard }, { provide: APP_INTERCEPTOR, useClass: FirmWallsInterceptor }, { provide: MAIL_PORT, useValue: mail }, ...feature.providers];
+  @Module({ controllers: [PlatformIdentityController, ...feature.controllers] as never[], providers: providers as never[] }) class TestApp {}
+  const nest = await NestFactory.create(TestApp, { logger: false }); await nest.listen(0, "127.0.0.1"); app = nest;
+  const base = `http://127.0.0.1:${(nest.getHttpServer().address() as { port: number }).port}`;
+  ok("setup: the feature registers the invoice controller and its service", feature.controllers.length === 2 && feature.controllers[0] === InvoiceDraftsController && feature.controllers[1] === InvoiceMoneyController && (feature.providers[0] as { provide: unknown }).provide === InvoiceDrafts);
+  const call = async (token: string | undefined, method: string, path: string, body?: unknown): Promise<Res> => {
+    const r = await fetch(`${base}/api${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const t = await r.text(); let b: unknown = t; try { b = JSON.parse(t); } catch { /* text */ } return { status: r.status, body: b };
+  };
+
+  await seedSampleFirms(owner); await seedSampleFirmsFrontOffice(owner);
+  const A = sql(`select id from platform_firm where key = 'sample-firm'`), B = sql(`select id from platform_firm where key = 'sample-solo'`);
+  const person = (firm: string, n: string) => sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firm}', 'Client ${n}', 'Sample', 'fo7b.${n}@example.org', 'seed:FO-7b-1a', now()) returning id`);
+  const PA = person(A, "a"), PB = person(B, "b");
+  const signIn = async (actorId: string, firmKey: string) => { const r = await call(undefined, "POST", "/platform/session/local", { firmKey, actorId, secondStep: true }); if (r.status !== 200) throw new Error(JSON.stringify(r.body)); return r.body.token as string; };
+  const tA = await signIn("user-R", "sample-firm"), tB = await signIn("user-S", "sample-solo"), tO = await signIn("user-O", "sample-firm");
+  const staffA = sql(`select id from platform_staff where actor_id = 'user-R' and firm_id = '${A}'`);
+
+  const noSettings = await call(tA, "POST", "/front-office/money/invoices", { personId: PA });
+  ok("FO-7b setup fail: before the firm's payment settings exist, a draft is refused in words (409 PAYMENTS_NOT_SET_UP), nothing written",
+    noSettings.status === 409 && noSettings.body?.code === "PAYMENTS_NOT_SET_UP" && sql(`select count(*) from money_invoice`) === "0", noSettings.body);
+  for (const f of [A, B]) sql(`insert into money_payment_settings (firm_id, updated_by, updated_at) values ('${f}', 'seed:FO-7b-1a', now())`);
+
+  const draft = async (body: Record<string, unknown> = { personId: PA, currency: "CAD" }, t = tA) => call(t, "POST", "/front-office/money/invoices", body);
+  const line = (id: string, body: Record<string, unknown>, t = tA) => call(t, "POST", `/front-office/money/invoices/${id}/lines`, body);
+  const stored = (id: string) => sql(`select string_agg(position || ':' || kind || ':' || amount_minor || ':' || tax_rate_ppm || ':' || tax_minor || ':' || currency, ',' order by position) from money_invoice_line where invoice_id = '${id}'`);
+  const fee = (unitMinor: number, ratePpm: number, extra: Record<string, unknown> = {}) => ({ kind: "FEE", description: "Professional fee (Sample)", unitMinor, ratePpm, ...extra });
+  /** One FEE line on a fresh CAD draft: the stored tax read back from money_invoice_line. */
+  const taxOf = async (unitMinor: number, ratePpm: number) => { const d = await draft(); const r = await line(d.body.id, fee(unitMinor, ratePpm)); return { r, tax: Number(sql(`select tax_minor from money_invoice_line where invoice_id = '${d.body.id}'`)) }; };
+
+  // ======================================================================================== FO-7b part 1b
+  const M = "/front-office/money/invoices", post = (path: string, body: unknown = {}, t = tA) => call(t, "POST", `${M}/${path}`, body);
+  const auditN = (action: string, key: string) => sql(`select count(*) from audit_event where action = '${action}' and (entity_key = '${key}' or detail->>'invoiceId' = '${key}')`);
+  const events = (type: string, subject: string) => sql(`select count(*) from module_event where type = '${type}' and subject_id = '${subject}'`);
+  const today = new Date().toISOString().slice(0, 10), plus = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  /** An issued invoice of one FEE line for a client of firm A. */
+  const issued = async (unitMinor: number, ratePpm = 130000, body: Record<string, unknown> = {}, personId = PA) => { const d = await draft({ personId, currency: "CAD" }); await line(d.body.id, fee(unitMinor, ratePpm)); return (await post(`${d.body.id}/issue`, body)).body.invoice; };
+  let key = 0; const pay = (id: string, amountMinor: number, extra: Record<string, unknown> = {}, t = tA) => post(`${id}/payments`, { method: "E_TRANSFER", amountMinor, idempotencyKey: `fo7b-1b-${++key}`, ...extra }, t);
+  const pdfText = async (path: string) => { const r = await fetch(`${base}/api${M}/${path}`, { headers: { authorization: `Bearer ${tA}` } }); const b = Buffer.from(await r.arrayBuffer()).toString("latin1");
+    return { status: r.status, type: r.headers.get("content-type"), pdf: b.startsWith("%PDF-1.4") && b.trimEnd().endsWith("%%EOF"), text: [...b.matchAll(/^\((.*)\) Tj T\*$/gm)].map((m) => m[1].replace(/\\([\\()])/g, "$1")).join("\n") }; };
+
+  // ======================================================================================== FO-7b part 1c
+  sql(`update money_payment_settings set operating_details = 'Payee: Sample Firm (Sample)' where firm_id = '${A}'`);
+  const refund = (inv: string, payment: string, body: Record<string, unknown>, t = tA) => post(`${inv}/payments/${payment}/refunds`, body, t);
+  const choose = (inv: string, payment: string, body: Record<string, unknown>, t = tA) => post(`${inv}/payments/${payment}/extra`, body, t);
+  let rk = 0; const rkey = () => `fo7c-refund-${++rk}`;
+  const refunds = (payment: string) => sql(`select coalesce(string_agg(amount_minor || ':' || route || ':' || reason, ',' order by refund_ordinal), '') from money_refund where payment_id = '${payment}'`);
+  const kept = (payment: string) => sql(`select coalesce(sum(amount_minor), 0) from money_credit_entry where payment_id = '${payment}' and kind = 'KEPT'`);
+  const tO2 = tO;   // user-O (Case Officer): agent/invoice:create, :list, :show; no agent/payment:record, no agent/refund:create
+
+  // ------------------------------------------------------------------- RF: refund of a payment recorded by hand
+  const invF = await issued(10000, 0), pF = await pay(invF.id, 10000);
+  const rNoWhy = await refund(invF.id, pF.body.id, { amountMinor: 3000, method: "E_TRANSFER", idempotencyKey: rkey() });
+  const rOver = await refund(invF.id, pF.body.id, { amountMinor: 10001, method: "E_TRANSFER", reason: "Too much (Sample)", idempotencyKey: rkey() });
+  const rKey = await refund(invF.id, pF.body.id, { amountMinor: 3000, method: "E_TRANSFER", reason: "No key (Sample)", idempotencyKey: rkey() }, tO2);
+  const rB = await refund(invF.id, pF.body.id, { amountMinor: 3000, method: "E_TRANSFER", reason: "Other firm (Sample)", idempotencyKey: rkey() }, tB);
+  ok("FO-7c RF fail (AG-6-23 r4, r9): no reason → 422 at reason; more than the payment → 409 OVER_REFUND with what is left; without agent/refund:create → 403; another firm → 404; nothing refunded",
+    rNoWhy.status === 422 && rNoWhy.body.fields?.reason && rOver.status === 409 && rOver.body.code === "OVER_REFUND" && rOver.body.leftMinor === 10000 && rKey.status === 403 && rB.status === 404 && refunds(pF.body.id) === "", [rNoWhy.body, rOver.body, rKey.status, rB.status]);
+  const k1 = rkey(), r1 = await refund(invF.id, pF.body.id, { amountMinor: 3000, method: "E_TRANSFER", reference: "88213", reason: "Withdrawn (Sample)", idempotencyKey: k1 });
+  ok("FO-7c RF pass (AG-6-23 r2): 30.00 refunded offline by e-Transfer with a reason → 201, one OFFLINE refund row, one audit line, payment.refunded written; the payment row is never edited (BR-9)",
+    r1.status === 201 && refunds(pF.body.id) === "3000:OFFLINE:Withdrawn (Sample)" && sql(`select count(*) from audit_event where action = 'payment.refunded' and detail->>'paymentId' = '${pF.body.id}'`) === "1"
+    && sql(`select count(*) from module_event where type = 'payment.refunded' and subject_id = '${pF.body.id}'`) === "1" && sql(`select amount_minor from money_payment where id = '${pF.body.id}'`) === "10000", r1.body);
+  ok("FO-7c RF pass (AG-6-23 r7, pending Lead B): a refund does not make the invoice due again: nothing due, the status word is not Open or Part paid",
+    r1.body.invoice?.dueMinor === 0 && !["Open", "Part paid", "Overdue"].includes(r1.body.invoice?.statusWord), r1.body.invoice);
+  const again = await refund(invF.id, pF.body.id, { amountMinor: 3000, method: "E_TRANSFER", reason: "Withdrawn (Sample)", idempotencyKey: k1 }), other = await refund(invF.id, pF.body.id, { amountMinor: 4000, method: "E_TRANSFER", reason: "Withdrawn (Sample)", idempotencyKey: k1 });
+  ok("FO-7c RF pass and fail (idempotent): the same key again → 200, the same refund (one row); the same key with another amount → 409 KEY_USED",
+    again.status === 200 && again.body.id === r1.body.id && other.status === 409 && other.body.code === "KEY_USED" && refunds(pF.body.id).split(",").length === 1, [again.body, other.body]);
+  const race = await Promise.all([refund(invF.id, pF.body.id, { amountMinor: 7000, method: "CASH", reason: "Race (Sample)", idempotencyKey: rkey() }), refund(invF.id, pF.body.id, { amountMinor: 7000, method: "CASH", reason: "Race (Sample)", idempotencyKey: rkey() })]);
+  ok("FO-7c RF fail (two at once): two refunds of 70.00 on what is left (70.00) → one 201, one 409 OVER_REFUND; refunds never exceed the payment",
+    race.map((x) => x.status).sort().join() === "201,409" && sql(`select sum(amount_minor) from money_refund where payment_id = '${pF.body.id}'`) === "10000", race.map((x) => [x.status, x.body.code]));
+  ok("FO-7c RF pass (AG-6-23 r7, pending Lead B): fully refunded, the invoice reads Refunded", (await call(tA, "GET", `${M}/${invF.id}`)).body.statusWord === "Refunded");
+
+  // ------------------------------------------------------------------------ RT: money received into trust
+  sql(`update money_payment_settings set trust_answer = 'YES', trust_answered_by = 'seed:FO-7b-1c' where firm_id = '${A}'`);
+  const invT = await issued(10000, 0), pT = await pay(invT.id, 10000, { receivedInto: "TRUST" }), rT = await refund(invT.id, pT.body.id, { amountMinor: 1000, method: "E_TRANSFER", reason: "Trust (Sample)", idempotencyKey: rkey() });
+  ok("FO-7c RT fail (FO-7a: trust money goes back as a trust entry): refunding a payment received into trust here → 409 TRUST_REFUND in words, never the database's 500; nothing refunded",
+    rT.status === 409 && rT.body.code === "TRUST_REFUND" && refunds(pT.body.id) === "", rT.body);
+
+  // ------------------------------------------------------------- KC: "Keep as credit" on a payment's extra
+  const invK = await issued(10000, 0), pK = await pay(invK.id, 13000);
+  const kOver = await choose(invK.id, pK.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 3001 }), kTrust = await choose(invT.id, pT.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 100 }), kNone = await choose(invF.id, pF.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 100 });
+  ok("FO-7c KC fail: keeping more than is waiting → 409 with what is waiting; a payment received into trust has no Keep (409); a payment with no extra → 409; nothing kept",
+    kOver.status === 409 && kOver.body.waitingMinor === 3000 && kTrust.status === 409 && kNone.status === 409 && kept(pK.body.id) === "0", [kOver.body, kTrust.body, kNone.body]);
+  const kc = await choose(invK.id, pK.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 3000 });
+  ok("FO-7c KC pass (AG-6-21 r3, r5): 30.00 of extra kept as credit → one KEPT entry of 30.00 on the client, nothing waiting, no choices left, one audit line; no trust entry",
+    kc.status === 201 && kept(pK.body.id) === "3000" && kc.body.extra?.waitingMinor === 0 && kc.body.extra.choices.length === 0 && sql(`select count(*) from money_trust_entry where payment_id = '${pK.body.id}'`) === "0"
+    && sql(`select count(*) from audit_event where action = 'payment.extra_kept' and detail->>'paymentId' = '${pK.body.id}'`) === "1", kc.body);
+  const kTwice = await choose(invK.id, pK.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 1 });
+  ok("FO-7c KC fail: keeping again once nothing waits → 409, still one KEPT entry", kTwice.status === 409 && kept(pK.body.id) === "3000", kTwice.body);
+
+  // ------------------------------------------------------------- RX: "Refund" on a payment's extra
+  const invX = await issued(10000, 0), pX = await pay(invX.id, 12500);
+  const xNoWhy = await choose(invX.id, pX.body.id, { choice: "REFUND", amountMinor: 2500, method: "E_TRANSFER", idempotencyKey: rkey() }), xKey = await choose(invX.id, pX.body.id, { choice: "REFUND", amountMinor: 2500, method: "E_TRANSFER", reason: "Extra (Sample)", idempotencyKey: rkey() }, tO2);
+  ok("FO-7c RX fail: refunding the extra with no reason → 422; without agent/refund:create → 403; nothing refunded", xNoWhy.status === 422 && xKey.status === 403 && refunds(pX.body.id) === "", [xNoWhy.body, xKey.status]);
+  const rx = await choose(invX.id, pX.body.id, { choice: "REFUND", amountMinor: 2500, method: "E_TRANSFER", reason: "Paid 25.00 too much (Sample)", idempotencyKey: rkey() });
+  ok("FO-7c RX pass: 25.00 of extra refunded → one OFFLINE refund of 25.00, nothing waiting, the invoice stays Paid with nothing due",
+    rx.status === 201 && refunds(pX.body.id) === "2500:OFFLINE:Paid 25.00 too much (Sample)" && rx.body.extra?.waitingMinor === 0 && rx.body.invoice?.statusWord === "Paid" && rx.body.invoice.dueMinor === 0, rx.body);
+  const mixed = await pay(invK.id, 0 + 1, { idempotencyKey: "fo7c-mixed-1" });   // a later 0.01: all extra, waiting
+  const both = await Promise.all([choose(invK.id, mixed.body.id, { choice: "KEEP_AS_CREDIT", amountMinor: 1 }), choose(invK.id, mixed.body.id, { choice: "REFUND", amountMinor: 1, method: "CASH", reason: "Race (Sample)", idempotencyKey: rkey() })]);
+  ok("FO-7c KC/RX fail (two choices at once on 0.01 waiting): one wins, the other 409; never both kept and refunded",
+    both.map((x) => x.status).sort().join() === "201,409" && Number(kept(mixed.body.id)) + Number(sql(`select coalesce(sum(amount_minor), 0) from money_refund where payment_id = '${mixed.body.id}'`)) === 1, both.map((x) => [x.status, x.body.code]));
+
+  ok("FO-7c audit pass: one line per refund and per choice, each by a typed staff actor",
+    sql(`select count(*) from audit_event where action in ('payment.refunded', 'payment.extra_kept') and actor not like 'staff:%'`) === "0" && sql(`select count(*) from audit_event where action = 'payment.refunded'`) === sql(`select count(*) from money_refund`));
+
+} catch (e) {
+  ok("FO-7b: the check ran to the end", false, e instanceof Error ? e.stack : String(e));
+} finally {
+  await app?.close(); await owner.$disconnect();
+  execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", DB], { stdio: "ignore" });
+}
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
