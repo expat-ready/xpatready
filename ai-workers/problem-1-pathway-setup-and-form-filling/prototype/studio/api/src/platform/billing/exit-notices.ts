@@ -27,7 +27,7 @@ const ACTOR = "system:platform.billing.exit_notices";
 export type ExitNoticeDeps = { db: PrismaClient; mail: MailPort | null; audit: AuditPort<Tx>; now: () => Date; appUrl: string };
 type Recipient = { email: string; staffId: string | null };
 
-const dateWords = (d: Date) => d.toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const dateWords = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });   // "14 Jan 2027", SA-2-38's form
 
 /** The words (SA-2-38's facts only). Exported for the test that reads them. */
 export function exitNoticeWords(day: ExitNoticeDay, deletionDate: Date, appUrl: string) {
