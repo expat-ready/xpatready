@@ -36,5 +36,6 @@ export const authorLine = (m: Message, myId: string) =>
 export const fieldOf = (fields: unknown, key: "body" | "files") => {
   if (!fields || typeof fields !== "object") return undefined;
   const f = fields as Record<string, unknown>, hit = Object.entries(f).find(([k]) => k === key || k.startsWith(`${key}.`));
-  return typeof hit?.[1] === "string" ? hit[1] : undefined;
+  // Review m-2: the server's words are lower-case fragments ("write what you need help with"): shown as a sentence.
+  return typeof hit?.[1] === "string" ? `${hit[1].charAt(0).toUpperCase()}${hit[1].slice(1)}${/[.!?]$/.test(hit[1]) ? "" : "."}` : undefined;
 };

@@ -96,14 +96,14 @@ try {
   await shot(p, "1-ask-for-help-1440");
   const raise = await hold(p, /\/api\/platform\/support\/tickets$/, "POST");
   await p.locator("[data-raise-send]").click();
-  await p.locator("[data-raise-send]").click({ force: true, timeout: 2_000 }).catch(() => undefined);   // a second click inside the guard window
+  await p.locator("[data-raise-send]").click({ force: true, timeout: 2_000 }).catch(() => undefined);   // a second click inside the guard window (the busy button is disabled, so it never reaches the handler: review m-5)
   await p.evaluate(() => { const f = document.getElementById("raise-form") as HTMLFormElement; f.requestSubmit(); f.requestSubmit(); });   // two submits in one moment: only the ref stops these
   await p.waitForTimeout(400);
   const seenWhileHeld = raise.seen; raise.release();
   await p.locator("[data-raise-sent]").waitFor({ timeout: 30_000 });
   await p.waitForTimeout(500);
   const t1 = sql(`select id from platform_support_ticket where raised_by = '${OFF}' order by created_at desc limit 1`);
-  ok("PF-18s DW2: with the first POST held, a second click and two more submits send nothing: one POST at the network, one ticket, \"Ticket sent\" shown",
+  ok("PF-18s DW2: with the first POST held, a second click on the busy Send and two submits in one moment (which only the guard's ref can stop) send nothing: one POST at the network, one ticket, \"Ticket sent\" shown",
     seenWhileHeld === 1 && raise.seen === 1 && tickets(OFF) === before + 1 && sql(`select page from platform_support_ticket where id = '${t1}'`) === "/account/licence", { seenWhileHeld, seen: raise.seen, made: tickets(OFF) - before });
   await shot(p, "2-ticket-sent-1440");
   await p.unroute(/\/api\/platform\/support\/tickets$/);
@@ -152,19 +152,34 @@ try {
   await p.locator("[data-reply-body]").fill("Thanks, found it (Sample).");
   const reply = await hold(p, /\/messages$/, "POST");
   await p.locator("[data-reply-send]").focus();
-  await p.keyboard.press("Enter"); await p.keyboard.press("Enter");   // Enter twice on the focused Send
+  await p.keyboard.press("Enter"); await p.keyboard.press("Enter");   // Enter twice on the focused Send (the second meets a disabled button)
   await p.evaluate(() => { const f = document.querySelector("[data-reply-form]") as HTMLFormElement; f.requestSubmit(); });
   await p.waitForTimeout(400);
   const replySeen = reply.seen; reply.release();
   await p.waitForFunction(() => document.querySelectorAll("[data-message]").length === 3, null, { timeout: 30_000 });
-  ok("PF-18s DW5: Enter twice on the focused Send and a second submit, under a held response, land one reply; the status is \"Waiting on support\"",
+  ok("PF-18s DW5: Enter twice on the focused Send and a second submit (only the guard's ref can stop it), under a held response, land one reply; the status is \"Waiting on support\"",
     replySeen === 1 && reply.seen === 1 && msgs() === m0 + 1 && sql(`select status from platform_support_ticket where id = '${t1}'`) === "WAITING_ON_SUPPORT", { replySeen, seen: reply.seen, added: msgs() - m0 });
   await p.unroute(/\/messages$/);
   const byOwner = await api(TOWNER, "POST", `/platform/support/tickets/${t1}/messages`, { body: "Owner here: shout if not (Sample)." });
   await p.reload(); await p.locator("[data-message]").nth(3).waitFor({ timeout: 30_000 });
   const lastAuthor = (await p.locator("[data-message-author]").allInnerTexts())[3];
   ok("PF-18s DW5: the Owner's reply on the Case Officer's ticket shows the Owner's name to the Case Officer", byOwner.status === 200 && lastAuthor.startsWith(OWNNAME), { status: byOwner.status, lastAuthor });
+  // Review M-1: an attachment opens as a download with the bearer, never a 401 page.
+  const fd = new FormData(); fd.set("body", "Screenshot attached (Sample)"); fd.set("page", "/home");
+  fd.append("files", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64")], { type: "image/png" }), "shot.png");
+  const withFile = await (await fetch(`${BASE}/api/platform/support/tickets`, { method: "POST", headers: { authorization: `Bearer ${TOFF}` }, body: fd })).json() as { id: string };
+  await go(p, `/platform/support/${withFile.id}`, "[data-message-file]");
+  const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 30_000 }), p.locator("[data-message-file]").first().click()]);
+  const dlPath = await dl.path(), dlBytes = dlPath ? (await import("node:fs")).readFileSync(dlPath) : Buffer.alloc(0);
+  ok("PF-18s DW5: \"Attachment 1\" downloads the file (a PNG, its bytes) and the person stays on the ticket", dlBytes[0] === 0x89 && dlBytes[1] === 0x50 && p.url().endsWith(`/platform/support/${withFile.id}`), { first: dlBytes[0], url: p.url() });
+  ok("PF-18s DW5 fail: the file route without the bearer is refused (401), so a plain link would have failed", (await fetch(`${BASE}${(await api(TOFF, "POST", `/platform/support/tickets/${withFile.id}/files/1/link`)).body.url}`)).status === 401);
+  // Review m-1: closed while the person types: the text and "Not sent" stay, read-only, with no Send.
+  await go(p, `/platform/support/${t1}`, "[data-reply-body]");
+  await p.locator("[data-reply-body]").fill("A last note (Sample).");
   sql(`update platform_support_ticket set status = 'CLOSED' where id = '${t1}'; select 1`);   // scaffolding for PF-17 (no close route yet)
+  await p.locator("[data-reply-send]").click(); await p.locator("[data-reply-problem]").waitFor({ timeout: 30_000 });
+  await p.waitForFunction(() => !document.querySelector("[data-reply-send]"), null, { timeout: 30_000 });
+  ok("PF-18s DW5: a ticket closed while the person types keeps the text (read-only) and says why it was not sent", (await p.locator("[data-reply-body]").inputValue()) === "A last note (Sample)." && await p.locator("[data-reply-body]").getAttribute("readonly") !== null && /closed/i.test(await p.locator("[data-reply-problem]").innerText()));
   await p.reload(); await p.locator("[data-ticket-closed]").waitFor({ timeout: 30_000 });
   const closedMsg = await api(TOFF, "POST", `/platform/support/tickets/${t1}/messages`, { body: "One more (Sample)" });
   ok("PF-18s DW5 fail: a Closed ticket has no reply box, says to raise a new one, and the API refuses a message (409)", await p.locator("[data-reply-form]").count() === 0 && closedMsg.status === 409);

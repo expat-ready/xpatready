@@ -41,7 +41,7 @@ export function RaisePanel({ open, onOpenChange, returnFocus }: { open: boolean;
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !dirty || window.confirm("Discard your message?")}
       title="Ask for help" description="Tell us what you need. We answer in Help & support."
       footer={sent ? <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-        : <><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="raise-form" busy={busy} data-raise-send>Send</Button></>}>
+        : <><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="raise-form" busy={busy} disabled={!body.trim()} data-raise-send>Send</Button></>}>
       {sent ? (
         <div ref={done} tabIndex={-1} className="outline-none" data-raise-sent>
           <Notice tone="ok" title="Ticket sent">We'll answer in Help & support. <Link className="text-text-link underline" to={`/platform/support/${sent}`} onClick={() => onOpenChange(false)} data-raise-open-ticket>Open your ticket</Link></Notice>
