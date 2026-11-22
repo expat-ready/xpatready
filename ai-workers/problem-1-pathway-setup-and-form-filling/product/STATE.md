@@ -31,6 +31,7 @@ Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/histo
 
 
 ## Start here (next Lead)
+**Next records batch (after #2952 merges):** take Lead B's branch `lead-b/2026-11-22-track-b` commits 64434d1dc (8 briefs, plan, rows FO-7g part 1w, J-61, CS-NT1t) and d84797c45 (BACKLOG PF-F1b, PF-Fw after PF-F1); records only.
 **12:1x IST (Lead 2):** #2754 merged by hand in the browser (P-757; shell refused): merge queue checks 12 batches at once (was 6), 79a91c7. Measured 99 CI jobs running at once: machines are not the limit. Cloudflare `staging.lab` NS replaced with the new zone Z10188462TUE6DHK5P3ZY (founder's yes). Enforcement lane `enf-land` (cloud) lands 13 conflicted tooling PRs one at a time + app-view Show-more fix. Lead's calls: #2372 closed-for-now (no write token in CI), #2459 after 07:00 23 Nov, #2925/#2920 fix Majors then Lead read.
 **P-789 (founder 12:0x IST 22 Nov): Lead mental model (organise by capabilities → resources → pre-mortem → constraint first → add resources at the constraint → watch every 10 min → enforce by code, manual until live). Every check: claude.ai/code with "Show more" fully expanded, count rows, act on every waiting/failed/conflict lane, read model labels, record with the count.**
 **P-788 (founder, 12:0x IST 22 Nov): everything on Opus 5.5 medium; any other model or higher effort only when needed, named to him with reason and place when used, never silently. After every cloud start read the model label in claude.ai/code and fix it; each check lists sessions not on Opus 5.5 medium.**
