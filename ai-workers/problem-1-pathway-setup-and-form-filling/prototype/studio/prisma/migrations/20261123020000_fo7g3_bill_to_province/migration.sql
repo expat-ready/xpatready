@@ -19,8 +19,9 @@ ALTER TABLE "money_invoice" ADD CONSTRAINT "money_invoice_bill_to_province_check
 -- of fixed fields is left as it is (no function of another part is replaced); this one gate fixes the new column.
 CREATE FUNCTION money_invoice_bill_to_frozen() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF OLD.issued_at IS NOT NULL AND NEW.bill_to_province IS DISTINCT FROM OLD.bill_to_province THEN
-    RAISE EXCEPTION 'money_invoice: issued invoices can''t be edited — use a credit note (% is fixed)', OLD.number USING ERRCODE = 'check_violation';
+  -- Issued, or being issued by this very statement (break m1): the province the lines were taxed in is the one kept.
+  IF (OLD.issued_at IS NOT NULL OR NEW.issued_at IS NOT NULL) AND NEW.bill_to_province IS DISTINCT FROM OLD.bill_to_province THEN
+    RAISE EXCEPTION 'money_invoice: issued invoices can''t be edited — use a credit note (% is fixed)', coalesce(OLD.number, 'an invoice being issued') USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;

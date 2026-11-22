@@ -124,6 +124,9 @@ try {
   ok("FO-7g3 B3 fail: after issue the route refuses (409 ISSUED), the Bill-to stays ON, no audit line", s3.status === 409 && s3.body.code === "ISSUED" && stored(d3.body.id) === "ON" && audits(d3.body.id) === "0", s3.body);
   ok("FO-7g3 B3 fail (the database's gate, AG-6-4 rule 7): writing an issued invoice's Bill-to around the route is refused, and so is clearing it",
     refused(`update money_invoice set bill_to_province = 'NB' where id = '${d3.body.id}'`, /issued invoices can't be edited/) && refused(`update money_invoice set bill_to_province = null where id = '${d3.body.id}'`, /issued invoices can't be edited/) && stored(d3.body.id) === "ON");
+  const d3b = await draft(); await fee(d3b.body.id);
+  ok("FO-7g3 B3 fail (break m1): the issuing statement itself cannot change the Bill-to (the lines were taxed in ON), nothing issued",
+    refused(`update money_invoice set issued_at = now(), issued_by = 'user-R', due_date = current_date + 14, bill_to_province = 'QC' where id = '${d3b.body.id}'`, /issued invoices can't be edited/) && sql(`select coalesce(bill_to_province, '-') || ':' || (issued_at is null) from money_invoice where id = '${d3b.body.id}'`) === "ON:true");
   ok("FO-7g3 B3 pass: a draft's Bill-to may be written (the gate is for issued invoices only), and issuing keeps it", stored(d1.body.id) === "NB" && (sql(`update money_invoice set issued_at = now(), issued_by = 'user-R', due_date = current_date + 14 where id = '${d1.body.id}'`), stored(d1.body.id)) === "NB");
 
   // ---------------------------------------------------------------------------------------- B4: outside the 13 → 422
