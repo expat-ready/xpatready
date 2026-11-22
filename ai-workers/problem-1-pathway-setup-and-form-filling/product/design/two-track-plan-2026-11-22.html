@@ -62,8 +62,35 @@ small{color:var(--muted)}
   <p class="sub">Your ask at 14:2x IST: drive Track A and Track B each to 12-15 proven capabilities, put builders and qa lanes where the goal is, and show the whole pipeline, the plan, how we watch it and how we adjust. Numbers come from GitHub, qa's capability board on main and claude.ai/code, read 14:20-14:29 IST. Times marked "Lead estimate" are my forecasts, not measurements.</p>
 </header>
 
+<section class="card" style="border-color:var(--accent)">
+  <div class="eyebrow">Update · Lead 7 · 22 Nov, 23:5x IST · read from qa's board on main and GitHub</div>
+  <h2>Where we are tonight</h2>
+  <div class="kpis">
+    <div class="kpi"><b>46 / 101</b><span>Release 1 capabilities proven on main (qa's independent verdict)</span></div>
+    <div class="kpi"><b>+8</b><span>Proven since 00:00 IST today: R1.4, R1.19, R1.39, R1.42, R1.47, R1.53, R1.88, R1.89</span></div>
+    <div class="kpi"><b>24 · 31</b><span>Partly built · not built yet (55 left)</span></div>
+    <div class="kpi"><b>2 → 46</b><span>Proven on 16 Nov (first scored board) → tonight</span></div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>Day (00:00 IST)</th><th>16 Nov</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>now</th></tr></thead>
+    <tbody><tr><td>Proven</td><td class="num">2</td><td class="num">11</td><td class="num">11</td><td class="num">11</td><td class="num">12</td><td class="num">23</td><td class="num">38</td><td class="num"><b>46</b></td></tr></tbody>
+  </table></div>
+  <h3>Merged today (in the queue since this morning's plan)</h3>
+  <p>R1.21 our invoices with tax (#2987), R1.92 firm profile API (#3003), FO-7g 1w tax default on every invoice line (#3048), FO-7b 1c refunds (#3036), FO-7c 1 payment account (#2938), PF-F1 private file storage on AWS (#2955), PF-8b F7 and F8 (AWS database and sample seeds, #3068, #3097), PF-30s find-box fix (#3109), FO-3c consultation agreement (#2922).</p>
+  <h3>In the queue or one step away</h3>
+  <ul>
+    <li><b>Queued:</b> R1.5 staff sign-in part 1 (#2927), P-785 step 2 (#3032), R1.58 trust ledger part 3 (#2368), PF-F1b files binding (#3041, after #2927).</li>
+    <li><b>Full test run going, then labelled:</b> R1.102 case finder (#2913, then #3073 invoice visibility), R1.92 profile version (#3104).</li>
+    <li><b>Lanes re-pointed tonight:</b> R1.56 money reads (#3001, merge main), FO-7c lane handing over (78% context), CS-W3 part 2 to a fresh lane.</li>
+  </ul>
+  <div class="alert amber">
+    <strong>AWS is still the open risk</strong>
+    <p>R1.1 hosting, R1.13 alarms, R1.15 secrets, R1.24 firm web address and R1.65 file storage wait on the staging proof. The proof is ready to run; it needs the founder's root sign-in with MFA inside the AWS session's own browser pane (a sign-in in Chrome does not reach it).</p>
+  </div>
+</section>
+
 <div class="kpis">
-  <div class="kpi"><b>43 / 101</b><span>Release 1 capabilities proven on main (qa board)</span></div>
+  <div class="kpi"><b>43 / 101</b><span>Release 1 capabilities proven on main (qa board) · at 14:29 IST</span></div>
   <div class="kpi"><b>0 + 2</b><span>Proven since 07:00 IST · R1.39 and R1.89 passed qa's walk, their records are merging</span></div>
   <div class="kpi"><b>10-12</b><span>Track A forecast by 07:00 IST 23 Nov (Lead estimate, needs AWS today)</span></div>
   <div class="kpi"><b>0-1</b><span>Track B forecast by 09:00 IST 23 Nov (R1.106 if its re-walk passes); R1.56 moved to 24 Nov</span></div>
