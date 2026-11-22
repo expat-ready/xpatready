@@ -80,3 +80,12 @@ Replay: the builder's check 98/98 twice. No page errors.
 | Accessibility and screen sizes | 1 | r7-1 fixed |
 
 **Score 10 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.
+
+## Follow-up PR round 3 (029d82322), reviewer
+This round is a merge of origin/main only. The merge brings PF-30s-fix's `onSales()` wait and the `PF30S_CPU_SLOWDOWN` option into the check. No UI change on this screen, so there is no new journey to walk. Replay on an isolated copy on 4578: the builder's check at `PF30S_CPU_SLOWDOWN=6` gave **98/98 three times**, and **98/98** at normal speed. These cover journeys 1 to 5, including the F1, F2 and F9 openings from `/home` into the Sales frame where the batch timed out. No page errors.
+
+| Criterion | Score | Change from round 2 |
+|---|---|---|
+| All ten criteria | 1 each | unchanged |
+
+**Score 10 / 10, pass.** Not tested: a real screen reader, Firefox and Safari, an intended user's unaided walk.

@@ -210,3 +210,30 @@ Accessibility and screen sizes goes from ½ to **1**: the larger-font walk (jour
 
 **Verdict: Approve.** No Blocker, Major or open Minor from round 1 remains. r7-1 and r7-2 are fixed, and n4 stays a follow-up row.
 Reviewer: Approve a0e830170852a406c22ad3ad933f1eaab5bb79e2
+
+## Follow-up PR round 3 (diff-only, 029d82322)
+Reviewer: a fresh agent that did not build PF-30s, 22 Nov 2026. Diff-only re-review (P-277). The only new commit is the merge 029d82322 (parents 082e42abd and origin/main 0e244033e, which is still main's tip). The PR body gains a `Card unchanged:` line. I read `git diff 082e42abd 029d82322 -- '*check_pf30s_find_box_browser.ts'` and `git diff origin/main...029d82322`. Running copy: `isolated.sh rv3_fu 4578`, PLATFORM_IDENTITY=local. Rewritten screenshots restored, copy stopped, worktree clean apart from this section and the journey report.
+
+### The three questions
+| Question | Answer | Evidence |
+|---|---|---|
+| Does the merge sit correctly in the check? | **Yes.** Main's PF-30s-fix (#3109) comes in whole and unchanged. It adds the `PF30S_CPU_SLOWDOWN` CDP throttle in `pageAs()` (line 75) and `onSales()` (lines 83-90: waits for `header [aria-label="Sales home"]`, then the box). `onSales()` is called after the three in-app openings: F1 Enter (113), F2 click (127) and F9 Enter (218). At 218 it replaces the old h1-and-box wait, so that wait is replaced, not doubled. All three openings start on `/home` (`home(o)` at 103, 121 and 201). The old page is the PlatformFrame, whose brand link is not labelled "Sales home" (`components/frame.tsx:95` builds `${title} home`), so the wait cannot match the old page. This PR's r3-1 and r7-2 checks (F10 at 327-333) and r5-1 and r5-2 checks (F12 at 351-354) are in different blocks. They open each page with `pageAs` and `home(p)` and never move inside the app, so they do not interact with `onSales()`. No conflict markers, no lost lines. | diff; code read |
+| Is any other in-app opening in the merged file still open to the race? | **No.** The only other in-app opening is F11 review m5 (279-281): Enter opens the lead, and the check reads only `o.url()`. The next step is `home(o)`, a full `goto`, so nothing is typed into a box that is about to unmount. Line 231 is a `goto` too: the whole document is replaced before `box().waitFor`. | code read |
+| Is this PR's diff against main still only its fixes? | **Yes.** `git diff origin/main...029d82322 --stat` lists 4 files: `find-box.tsx` (+3/-2, r3-1 and r7-1 Escape rule, r5-2 padding), `check_pf30s_find_box_browser.ts` (+11: r3-1, r7-2, r5-1, r5-2), `review.md` and the journey report. The merge brings main's `case-finder.ts` and `review-fix.md`. They are not this PR's, and `find/` is unchanged by main. | `--stat` |
+
+Runs: `PF30S_CPU_SLOWDOWN=6` builder's check **98/98 three times out of three**, and **98/98** at normal speed. `static-sweeps.mjs --base origin/main`: **17 PASS**. PR body (REST, head 029d82322): it carries the exact `Card unchanged: web-shell — …` line that module-cards needed. The claim holds: the diff changes no entry point, table, test file or invariant.
+
+### Findings
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| r8-1 | Nit, carried | The `find-box.tsx:106` comment still says "below 768 px". | round 2 | Optional, as round 2. |
+| n4 | Should (Minor), carried | Break m1, break m6 and the PlatformFrame terms clause have no test, and review m7 (graph) is open. This PR does not change them. | round 3 of the screen | As before. |
+
+The record is over its 100-line guide. Earlier rounds are kept (P-188).
+
+### Journey score (reviewer, round 3): **10 / 10, pass**
+No change from round 2. The merge changes no element, page, route or word on this screen. The replay (journey 1 to 5 as the builder's check) holds under 6x CPU slowdown. Details are in `journey-test-reviewer-2026-11-22.md` under "Follow-up PR round 3". Not tested: a real screen reader, Firefox and Safari.
+
+**Verdict: Approve.** No Blocker, Major or open Minor. The merge closes the batch's timeout race without losing or doubling a wait.
+Batch failures covered: 45033584442: shard (21), ci
+Reviewer: Approve 029d82322382b15191702583faf6e2bfc27761fc
