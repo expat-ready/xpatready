@@ -8,6 +8,9 @@
 # filter, so main's head always has its own run for the cloud lines to cite (QA-645, P-339) and a merge combination
 # that breaks the synth shows on main. The push run starts after the merge: it adds nothing to a pull request or to a
 # merge-queue batch, so no batch waits for it. Still no secret, key or token: main's code only, read-only.
+# Known effect: a failed push run is a failed check on main's head, so the board's "main CI" item turns red
+# (cockpit-data.py), though the check stays report-only; the audit step can do that on a newly published advisory with
+# no code change. Re-run the failed part first (P-371); a real break of the synth on main is what this run is for.
 # US$0 (public repository), no model spend.
 name: deploy-synth
 on:
@@ -22,8 +25,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  # One group per pull request, one per pushed commit: two pushes to main never share a group, so a waiting run is
-  # never replaced by a newer one (P-371: no run is cancelled).
+  # One group per pull request (as before), one per pushed commit: two pushes to main never share a group, so a
+  # waiting push run is never replaced by a newer one (P-371: no run on main is cancelled).
   group: deploy-synth-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: false
 jobs:
