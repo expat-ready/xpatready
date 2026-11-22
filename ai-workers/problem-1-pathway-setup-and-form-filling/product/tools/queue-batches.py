@@ -33,6 +33,8 @@ def running(pulls, checks_of):
         runs = checks_of((p.get("head") or {}).get("sha"))
         if not isinstance(runs, dict) or not isinstance(runs.get("check_runs"), list):
             raise ValueError(f"checks of #{p.get('number')} unreadable")
+        if (runs.get("total_count") or 0) > len(runs["check_runs"]):   # one page only: unfinished runs may be on the next
+            raise ValueError(f"checks of #{p.get('number')}: only {len(runs['check_runs'])} of {runs['total_count']} read")
         if not runs["check_runs"] or any(r.get("status") != "completed" for r in runs["check_runs"]):
             out.append(p.get("number"))
     return sorted(out)
@@ -44,7 +46,9 @@ def main(argv):
         if x in a and i + 1 < len(argv):
             a[x] = argv[i + 1]
     try:
-        pulls = json.load(open(a["--pulls"])) if a["--pulls"] else gh("repos/{owner}/{repo}/pulls?state=open&per_page=100")
+        pulls = json.load(open(a["--pulls"])) if a["--pulls"] else gh("repos/{owner}/{repo}/pulls?state=open&sort=created&direction=desc&per_page=100")
+        if isinstance(pulls, list) and len(pulls) >= 100:   # a full page: the oldest open PRs are unread (batches are new)
+            print("warn  100 open PRs read, older ones not; batches are among the newest", file=sys.stderr)
         if a["--checks"]:
             table = json.load(open(a["--checks"]))
             checks_of = lambda sha: table.get(sha)

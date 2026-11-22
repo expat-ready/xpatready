@@ -27,6 +27,8 @@ out=$(python3 -I "$Q" --pulls "$T/none.json" --checks "$T/checks.json")
 ok "no batch: 0, and the line still says what a manual merge restarts" "$(grep -qx 'batches 0 merge-queue batch(es) running · a manual merge to main now restarts 0 batches' <<< "$out" && echo 1)" "$out"
 out=$(python3 -I "$Q" --pulls "$T/bad.json" --checks "$T/checks.json"); r=$?
 ok "an error from GitHub: not measured (exit 3), never 0" "$([ $r = 3 ] && grep -q '^batches not measured' <<< "$out" && echo 1)" "exit $r: $out"
+jq '.s901.total_count = 150' "$T/checks.json" > "$T/c3.json"; out=$(python3 -I "$Q" --pulls "$T/pulls.json" --checks "$T/c3.json"); r=$?
+ok "a batch with more check runs than one page read (2 of 150): not measured, never a false 0" "$([ $r = 3 ] && grep -q 'only 2 of 150 read' <<< "$out" && echo 1)" "exit $r: $out"
 jq 'del(.s901)' "$T/checks.json" > "$T/c2.json"; out=$(python3 -I "$Q" --pulls "$T/pulls.json" --checks "$T/c2.json" --count); r=$?
 ok "a batch whose checks cannot be read: \"?\", exit 3" "$([ $r = 3 ] && [ "$out" = "?" ] && echo 1)" "exit $r: $out"
 ok "lead-watch.sh prints the line every check (step 2f)" "$(grep -q 'qb=$(python3 -I "$TOOLS/queue-batches.py"' "$TOOLS/lead-watch.sh" && grep -q 'say "$qb"' "$TOOLS/lead-watch.sh" && echo 1)" "no step 2f in lead-watch.sh"
@@ -37,6 +39,8 @@ o=$(lm "$T/pulls.json" 2754)
 ok "lead-merge.sh refuses while 2 batches run and no --reason (exit 1, says it restarts 2)" "$(grep -q '^rc=1' <<< "$o" && grep -q 'refused: 2 merge-queue batch(es) running; a manual merge to main now restarts 2 batches' <<< "$o" && ! grep -q '^Steps for' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/pulls.json" 2754 --reason "   ")
 ok "a blank --reason is no reason: refused" "$(grep -q '^rc=1' <<< "$o" && echo 1)" "$o"
+o=$(lm "$T/pulls.json" 2754 --reason "$(printf '\t\n ')")
+ok "a --reason of tabs and newlines only is no reason: refused" "$(grep -q '^rc=1' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/pulls.json" 2754 --reason "security fix, founder asked 12:20 IST")
 ok "with --reason it prints the steps and the reason, exit 0" "$(grep -q '^rc=0' <<< "$o" && grep -q '^Steps for #2754' <<< "$o" && grep -q 'reason given with 2 batch(es) running: security fix' <<< "$o" && echo 1)" "$o"
 o=$(lm "$T/none.json" 2754)

@@ -235,7 +235,8 @@ CS3 cancel|product/tools/queue-depth.py|s/ or c not in ("success",) + FAILED:/ o
 CS3 trace|product/tools/queue-depth.py|s/    except (Unreadable, OSError, TypeError, ValueError, AttributeError) as e:/    except Unreadable as e:/|check-queue-depth.sh
 CS3 watch|product/tools/lead-watch.sh|s/\[ "\$qdr" = 3 \] \&\& ACT "queue depth/[ "$qdr" = 9 ] \&\& ACT "queue depth/|check-queue-depth.sh
 37 count|product/tools/queue-batches.py|s/ or any(r.get("status") != "completed" for r in runs\["check_runs"\]):/:/|check-lead-merge.sh
-37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\${reason\/\/ \/}" \]; then$/if false; then/|check-lead-merge.sh
+37 refuse|product/tools/lead-merge.sh|s/^if \[ "\$n" != 0 \] \&\& \[ -z "\$blank" \]; then$/if false; then/|check-lead-merge.sh
+37 page|product/tools/queue-batches.py|s/ > len(runs\["check_runs"\]):   # one page only/ < 0:   # one page only/|check-lead-merge.sh
 37 unread|product/tools/queue-batches.py|s/^        return 3$/        return 0/|check-lead-merge.sh
 37 watch|product/tools/lead-watch.sh|s/; say "\$qb"$//|check-lead-merge.sh'
 echo "--- each test without its guard (must FAIL)"
