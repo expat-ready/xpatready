@@ -75,3 +75,51 @@ Full report: `screens/FO-9s/journey-test-reviewer-2026-11-22.md`. Scores of ½: 
 **Verdict: Block** (ship after fixes). To fix: M1 (the footer button and choice box wrap at 375 px and 200 %), M2 (focus after a pick or Change). Recommended in the same round: m2 to m4.
 
 Reviewer: Block 4eda1fc4ebfe08f2989bf6e547a81b0657679add
+
+## Re-review (round 2): head 60af218c7f7a20d5fe9993faaa4932e2632336a9
+Diff read only (P-277): `git diff 4eda1fc4e 60af218c7 -- …/prototype` and build-notes "Review round 1". Same isolated copy, `rv_dup` on :4571; Sample data, US$0.
+
+**Ran:**
+* `check_fo9s_duplicates_browser.ts`: 32/32, exit 0.
+* My round-1 probe, re-run unchanged: every earlier finding now passes. Its one "fail" looks for a live-region *ancestor*; the fix uses a sibling `data-dup-live` region, which D8 asserts.
+* The long-name probe: exit 0.
+* Start and stop: exit 0. The re-shot screenshots are restored.
+
+**Round-1 findings:**
+
+| Finding | Status | Evidence |
+|---|---|---|
+| M1 | Fixed | The "Maria Fernanda Guadalupe … Gonzalez-Rodriguez de la Cruz" Save button is 246 px wide at 375 px and 370 px wide at 200 % (CSS 512 px). Both fit, wrap normally, and show "…" with the full name as the tooltip. A 90-character name with no spaces wraps in the choice box. D8 asserts it at 375 px. |
+| M2 | Fixed | Focus: Use this person → Change; Add as new → Change; Change → the first "Use this person"; the next Tab after a pick → Source. Edits that clear a pick move nothing. D8 asserts it. |
+| m1 | Fixed | One always-mounted `sr-only aria-live=polite` region carries the title or choice line only (`add-lead-panel.tsx`), and `role=status` is dropped from the boxes that hold buttons. |
+| m2 | Fixed | D8 now fails if the 400 ms wait goes (two numbers within the wait → one check, the newest), if the clear-after-pick goes, if the phone offer goes, or if the guard goes. The queue still has no check of its own; my slow-route probe passes. |
+| m3 | Fixed | Unticking clears the note error, in both the hint and the 409 box. |
+| m4 | Fixed | `last` is reset on a failed check. |
+| m5 | Fixed | Fixed through the breaker's F1. |
+
+**The breaker's F1 (409 "Use existing person" offers the additions): sound.**
+* `extraFor` reuses the hint's reasons for that person, so only unmatched details are offered. D9 shows the matched email is left out, and the note holds "Also gave: +1 604 555 0142" on Lena's person.
+* The 5000-character guard covers this path too, because `noteOf` now uses `extraFor`.
+* Hidden matches (`personId` null) get no offer.
+* `keep` resets to ticked on each 409.
+
+**The breaker's F2 (lead number per named person): sound and safe.**
+* The number comes from the caller's newest lead they may open. It uses the same `sees(...)` rule, with an inactive owner counting as unassigned, as Add a lead's 409 (`leads.ts`), so no number leaks beyond what the 409 already shows.
+* It costs two set queries (active staff, and the leads of at most 10 people), with no per-row requests.
+* `ports/matching.ts` gains `lead: string | null | undefined`, so existing consumers still parse (FO-9a 53/53, won 25/25 and FO-13c 46/46, per the builder).
+* The row and the accessible name carry "· L-…", and D9 asserts two Wren Hales read apart.
+
+**F3:** a 404 on a pick drops it, says "<name> can no longer be opened. Choose again, or add as new." and re-checks. D9 asserts it. **F4 and F5** are recorded as known gaps. Neither breaks a BR in scope: BR-5 says Save does not ask again after Add as new.
+
+**New Minors (do not block):**
+* n1 (Should): `build-notes.md` "Deviations" still says "There is no lead number … on a match row", which F2 made untrue.
+* n2 (Could): when the hint never ran (a failed or pending check), the 409 box offers *both* typed details, including the key that matched exactly. Keeping it in the note is harmless.
+* n3 (Could): the one-at-a-time queue has no test of its own.
+
+**Journey score, round 2: 9.5/10 (pass).** Feedback and state, accessibility and screen sizes, and visual quality each go from ½ to 1. Feedback and state is still ½, because a real screen reader was not used for the new live region. D13 goes from 2 to 4, D12 from 3 to 4, D11 from 3 to 4, and D16 from 3 to 4.
+
+**Not checked:** a real screen reader, a visible browser, the CI-wide suite set, and the FO-9a/FO-13c suites (the builder ran them).
+
+**Verdict: Approve** (no open Blocker or Major; n1 to n3 are Minors).
+
+Reviewer: Approve 60af218c7f7a20d5fe9993faaa4932e2632336a9
