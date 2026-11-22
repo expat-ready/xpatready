@@ -432,6 +432,19 @@ ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/Sy
   const owners = Number(sql(`select count(*) from plat_system_role_grant g join plat_system_staff s on s.id = g.staff_id where g.role_code = 'platform-owner' and g.ended_at is null and s.status = 'ACTIVE'`));
   ok("PF-4s DW7 fail (SA-7-25): two Owners removing each other's Owner role at once: exactly one succeeds, one active Owner stays, two lines",
     [r1.status, r2.status].sort().join() === "200,409" && owners === 1 && lines() - before2 === 2, { r1, r2, owners });
+  // PF-28's rule on our own staff's routes (its sweep cannot sign in here, so it lists them NOT TESTED and they are asked
+  // here): an unknown field 422 naming it, a wrong type 422, and a bad body changes nothing (one REFUSED line, code INVALID).
+  const ow = await signedNow(OWNER), probeId = TSUP, staffBefore = sql(`select count(*) from plat_system_staff`);
+  const p28: [string, string, unknown][] = [["POST", P2, { pf28Unknown: "x" }], ["PUT", `${P2}/${probeId}/roles`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/deactivate`, { reason: "x", pf28Unknown: "x" }],
+    ["POST", `${P2}/${probeId}/reactivate`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/end-sessions`, { pf28Unknown: "x" }], ["POST", `${P2}/${probeId}/reset-mfa`, { reason: "x", verified: true, pf28Unknown: "x" }]];
+  const p28Wrong: string[] = [];
+  for (const [m, path, body] of p28) {
+    const u = await one(() => call(A.base, m, path, { token: ow, body })), w = await call(A.base, m, path, { token: ow, body: [1] });
+    if (u.r.status !== 422 || !Object.hasOwn(u.r.body.fields ?? {}, "pf28Unknown") || u.added !== 1 || u.line.code !== "INVALID" || w.status !== 422) p28Wrong.push(`${m} ${path}: unknown ${u.r.status} (+${u.added} ${u.line.code}), wrong type ${w.status}`);
+  }
+  const rolesTyped = await call(A.base, "PUT", `${P2}/${probeId}/roles`, { token: ow, body: { roles: "platform-owner" } });
+  ok("PF-4s part 2 (PF-28): each staff route answers an unknown field 422 naming it and a wrong type 422, writes one REFUSED line (INVALID) and changes nothing",
+    p28Wrong.length === 0 && rolesTyped.status === 422 && sql(`select count(*) from plat_system_staff`) === staffBefore, { p28Wrong, rolesTyped });
   ok("PF-4s part 2: audit text is cut by code point, never splitting a character", lineText("😀😀😀", 2) === "😀😀" && lineText("a\u0000b", 5) === "ab");
 
   // ------------------------------------------------------------------------ DW8: everything else is as it was

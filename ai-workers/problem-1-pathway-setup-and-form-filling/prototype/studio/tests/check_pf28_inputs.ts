@@ -146,9 +146,10 @@ ok("PF-28 rule fail (break m3): an unknown key's name is cut to 64 characters an
 process.env.PLATFORM_ENVIRONMENT ??= "local";   // PF-24w: required, no default (the feature files read the loader at import)
 const { registerFeatures } = await import("../api/src/features.ts");
 const { PLATFORM_ACCESS } = await import("../api/src/platform/identity/keys.ts");
+const { SYSTEM_ACCESS } = await import("../api/src/platform/system-identity/keys.ts");
 const { FIELD_ERROR_STATUS } = await import("../api/src/platform/http/input.ts");
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
-type Door = { method: string; path: string; body: boolean; query: boolean; keys: string[] | null; open: boolean };
+type Door = { method: string; path: string; body: boolean; query: boolean; keys: string[] | null; open: boolean; system: boolean };
 /** Every route the app serves under the doors, with what it reads (Nest's own argument metadata: @Body 3, @Query 4). */
 export function doors(controllers: unknown[]): Door[] {
   const out: Door[] = [], reflector = new Reflector();
@@ -159,9 +160,12 @@ export function doors(controllers: unknown[]): Door[] {
       if (key === "constructor" || typeof h !== "function" || Reflect.getMetadata(METHOD_METADATA, h) === undefined) continue;
       const args = Object.keys(Reflect.getMetadata(ROUTE_ARGS_METADATA, c, key) ?? {}).map((k) => Number(k.split(":")[0]));
       const access = reflector.getAllAndOverride<{ kind: string; keys?: string[] }>(PLATFORM_ACCESS, [h as () => unknown, c]);
+      // PF-4s: our own staff's routes (SystemGuard) need a session of our own staff pool, which no Sample firm token is;
+      // their sign-in door (kind "sign-in") is open and probed as any open door.
+      const sys = reflector.getAllAndOverride<{ kind: string }>(SYSTEM_ACCESS, [h as () => unknown, c]);
       for (const p of ([] as string[]).concat(Reflect.getMetadata(PATH_METADATA, h) ?? "")) {
         const path = `/${[base, p].join("/")}`.replace(/\/+/g, "/").replace(/(.)\/$/, "$1");
-        if (DOORS.test(path)) out.push({ method: METHODS[Reflect.getMetadata(METHOD_METADATA, h) as number] ?? "?", path, body: args.includes(3), query: args.includes(4), keys: access?.kind === "keys" ? access.keys! : null, open: !access });
+        if (DOORS.test(path)) out.push({ method: METHODS[Reflect.getMetadata(METHOD_METADATA, h) as number] ?? "?", path, body: args.includes(3), query: args.includes(4), keys: access?.kind === "keys" ? access.keys! : null, open: !access && (!sys || sys.kind === "sign-in"), system: !!sys && sys.kind !== "sign-in" });
       }
     }
   }
@@ -227,6 +231,7 @@ const failing: string[] = [], seen: string[] = [], skipped: string[] = [];
 const answers = new Map<string, Answer>();
 for (const d of all) {
   if (d.keys && !d.keys.every((k) => keysR.has(k))) { skipped.push(`${d.method} ${d.path}`); continue; }   // no Sample token holds them: NOT TESTED, named below
+  if (d.system) { skipped.push(`${d.method} ${d.path}`); continue; }   // PF-4s: our own staff's session only: NOT TESTED here; the same probes are asked in check_pf4s_system_signin.ts
   const token = d.open ? undefined : tR, method = d.method === "ALL" ? "POST" : d.method;
   const probes: [string, string, string | undefined][] = [];
   if (d.body) probes.push(["unknown", fill(d.path), JSON.stringify({ pf28Unknown: "x" })], ["wrong-type", fill(d.path), "[1]"], ["missing", fill(d.path), "{}"], ["1mb", fill(d.path), JSON.stringify({ pf28: MB })]);

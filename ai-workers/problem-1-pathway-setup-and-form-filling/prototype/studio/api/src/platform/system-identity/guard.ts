@@ -19,6 +19,7 @@ import { REASON_MAX, SYSTEM_ACCESS, SYSTEM_KEY, SYSTEM_PATH, SYSTEM_CHANGE, SYST
 import { correlationOf } from "../observability/hook.ts";
 import { logPort } from "../observability/log.ts";
 import { requestLine } from "../observability/metrics.ts";
+import { FIELD_ERROR_STATUS } from "../http/input.ts";
 import { PlatformClock } from "../identity/port.ts";
 import { STEP_UP_SECONDS, requireStepUp } from "../identity/session/step-up.ts";
 import { SystemIdentity } from "./service.ts";
@@ -106,7 +107,9 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     // SA-7-10: a sign-in at most 5 minutes old (exactly 5 passes, as PF-4b's requireStepUp).
     const stale = this.reflector.getAllAndOverride<boolean>(SYSTEM_STEP_UP, targets) === true && now / 1000 - staff.authTime > STEP_UP_SECONDS;
     const reason = reasonOf((req.body as { reason?: unknown } | null | undefined)?.reason);
-    const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : wantsReason && !reason ? "REASON_REQUIRED" : null;
+    // PF-28: a body that is not an object is a wrong type (422) before its reason is looked for.
+    const notObject = wantsReason && (typeof req.body !== "object" || req.body === null || Array.isArray(req.body));
+    const code = missing.length ? "MISSING_PERMISSION" : stale ? "STEP_UP_REQUIRED" : notObject ? "INVALID" : wantsReason && !reason ? "REASON_REQUIRED" : null;
     // One line per call, allowed or refused, before the handler: a line that cannot be written stops the call (fail-closed).
     // An allowed change writes its own line instead, in the change's transaction (staff.ts).
     const change = this.reflector.getAllAndOverride<boolean>(SYSTEM_CHANGE, targets) === true;
@@ -114,6 +117,7 @@ export class SystemGuard implements CanActivate, OnModuleInit {
     else await this.identity.audit({ staff, method: req.method, route, target, outcome: code ? "REFUSED" : "ALLOWED", code, reason: wantsReason || change ? reason : null, device });
     if (missing.length) forbidden(`Your roles do not include the permission this needs (${missing.join(", ")}).`, "MISSING_PERMISSION");
     if (stale) requireStepUp(staff, now, "this change");
+    if (notObject) problem(FIELD_ERROR_STATUS, "Check the details", "Send the details as one JSON object. Nothing was saved.", { code: "INVALID", fields: {} });
     if (code === "REASON_REQUIRED") problem(400, "Give a reason", `This needs a written reason (reason, up to ${REASON_MAX} characters).`, { code });
     req.systemStaff = staff;
     return true;
