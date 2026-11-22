@@ -170,3 +170,29 @@ Round 2 fixes confirmed:
 - Actual: the send answers `NO_LICENSED`, the catch-up gives `{sent: 0}`, and firm B's booking never gets its agreement.
 
 Verdict: Changes 0ccbd59c98ac08a96b09ff245c14a090697822c7
+
+## Round 4: `git diff 0ccbd59c9..8a09b9609 -- '*.ts'` (head 8a09b9609ae6fcc25883a338a1668fcaa0035c30)
+
+Tested on a detached worktree with my own scratch databases, all dropped afterwards. The row test passes 40/40.
+
+What held:
+- **R3-1, the late signature:** the client checks a code, signs at the provider 5 minutes later, and reopens the link 30 minutes after the check (a new code is asked for and emailed). The late "signed" event is then applied (CLIENT_SIGNED), and the host gets the "needs you" item.
+- **Old code replays:**
+  - The checked code after the 30-minute session is refused: 422 `CODE_EXPIRED` (it is spent).
+  - The same code while a newer code is pending is refused: 422 `CODE_WRONG`.
+  - The token alone while a code is pending gets `codeNeeded` and no link.
+  - The new code replayed inside its session returns the session's link and changes nothing. Replayed after the session it is refused: 422 `CODE_EXPIRED`.
+- **Same instant:** a code sent and checked at the same clock instant (the fake clock was frozen) works once. A code counts as unspent only if it was sent *after* the last check (strictly), so it is spent from that moment.
+- **R3-2 filter:**
+  - A licensed host who has been deactivated, in a firm whose representative of record holds the keys: the booking is picked up and sent, and the representative signs (the same answer as `signatory()`).
+  - Once that representative's grants end, the firm's booking is no longer picked up (`send` answers `NO_LICENSED`), even with 205 such bookings ahead. Firm B's later booking is sent.
+- **Declined:** a request that has ended DECLINED still refuses any later event (`NO_CHANGE`). This path is unchanged since round 1.
+
+Not new in this diff (behaviour since round 1):
+- A provider "signed" event for the client after the booking was cancelled is still applied (CLIENT_SIGNED). The host can still get the signing link.
+- The "needs you" item does not show, and the client's link answers 404.
+- The client's link could only have been opened before the cancel. I record this only so it is not mistaken for a regression.
+
+No Blocker or Major in this round's diff.
+
+Verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
