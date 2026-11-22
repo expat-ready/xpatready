@@ -28,7 +28,7 @@
 -- NOCREATEDB NOCREATEROLE NOREPLICATION, xr_app LOGIN INHERIT NOBYPASSRLS, only xr_staff_bypass and xr_wall_reader
 -- BYPASSRLS. A target the migration role cannot reach stops the migration naming the role, never a weaker wall.
 DO $$
-DECLARE s text; n int; r record; want record; fix text; su boolean := (SELECT rolsuper FROM pg_roles WHERE rolname = current_user);
+DECLARE s text; n int; r record; want record; fix text; held text; su boolean := (SELECT rolsuper FROM pg_roles WHERE rolname = current_user);
 BEGIN
   -- PF-8b F5 (RDS 18.3): the reader and the migration role are members of each other in one direction only. A
   -- non-superuser migration role must be a member of the reader (below), so a reader left over (another run, a manual
@@ -40,7 +40,8 @@ BEGIN
                         SELECT 1 FROM up JOIN pg_roles g ON g.oid = up.oid WHERE g.rolname = current_user) THEN
     BEGIN EXECUTE 'DROP ROLE xr_wall_reader';
     EXCEPTION WHEN insufficient_privilege OR dependent_objects_still_exist THEN
-      RAISE EXCEPTION 'PF-12 stopped: role xr_wall_reader is a member of role % and cannot be made afresh (%)', current_user, SQLERRM
+      GET STACKED DIAGNOSTICS held = PG_EXCEPTION_DETAIL;   -- what holds the reader (break m2)
+      RAISE EXCEPTION 'PF-12 stopped: role xr_wall_reader is a member of role % and cannot be made afresh (%; %)', current_user, SQLERRM, coalesce(nullif(held, ''), 'no detail')
         USING ERRCODE = 'insufficient_privilege', HINT = format('A role with ADMIN OPTION on %I (a superuser, or on RDS the admin that made the grant) runs REVOKE %I FROM xr_wall_reader once; the reader must not hold the migration role.', current_user, current_user);
     END;
   END IF;

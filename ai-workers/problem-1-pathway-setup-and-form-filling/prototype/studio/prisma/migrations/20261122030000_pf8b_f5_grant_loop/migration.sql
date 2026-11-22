@@ -12,7 +12,7 @@
 DO $$
 BEGIN
   IF to_regclass('_prisma_migrations') IS NOT NULL THEN   -- absent when the files are run without Prisma (psql -f, tests)
-    UPDATE _prisma_migrations SET checksum = 'b1afbd457e4d1404819c9f4e6899f12adccda894ec596eeb0760bcb35f497635'
-      WHERE migration_name = '20261116013000_pf12_firm_walls' AND finished_at IS NOT NULL AND checksum <> 'b1afbd457e4d1404819c9f4e6899f12adccda894ec596eeb0760bcb35f497635';
+    UPDATE _prisma_migrations SET checksum = '81af13d2b4e2818d90b5f782fbd24cfd004fa99648ad8815adcc8d69b9c58725'
+      WHERE migration_name = '20261116013000_pf12_firm_walls' AND finished_at IS NOT NULL AND checksum <> '81af13d2b4e2818d90b5f782fbd24cfd004fa99648ad8815adcc8d69b9c58725';
   END IF;
 END $$;

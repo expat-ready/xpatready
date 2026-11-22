@@ -93,7 +93,7 @@ try {
   q(PORT + 2, "postgres", "GRANT CONNECT ON DATABASE postgres TO xr_wall_reader", "postgres");
   m = migrate(PORT + 2);
   check("C: a reader that holds something stops PF-12 with its message (exit non-zero, no raw 0LP01)",
-    m.status !== 0 && /PF-12 stopped: role xr_wall_reader is a member of role xr_admin and cannot be made afresh/.test(m.stdout + m.stderr), (m.stdout + m.stderr).match(/(PF-12|0LP01|P3018)[^\n]*/g)?.slice(0, 3));
+    m.status !== 0 && /PF-12 stopped: role xr_wall_reader is a member of role xr_admin and cannot be made afresh \(.*privileges for database postgres/.test(m.stdout + m.stderr), (m.stdout + m.stderr).match(/(PF-12|0LP01|P3018)[^\n]*/g)?.slice(0, 3));
   check("C: …and leaves the reader and its right as they were (the block is one statement)",
     q(PORT + 2, "postgres", "select has_database_privilege('xr_wall_reader','postgres','CONNECT')||','||(select count(*) from pg_roles where rolname = 'xr_app')", "postgres") === "true,0");
 } catch (e) { if (!failed) check("ran", false, String(e)); }
