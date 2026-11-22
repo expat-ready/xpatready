@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
-import { CRA_RATES_URL, PROVINCE_CODES, PROVINCE_TAX_RATES, tableProblems, type ProvinceTaxTable } from "../api/src/client-money/tax/canada-gst-hst.ts";
+import { assertCited, CRA_RATES_URL, PROVINCE_CODES, PROVINCE_TAX_RATES, tableProblems, type ProvinceTaxTable } from "../api/src/client-money/tax/canada-gst-hst.ts";
 import { lineRatePpm, NO_PROVINCE_WARNING, provinceCode, taxDefault, TaxRuleRefused } from "../api/src/client-money/tax/defaults.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -60,6 +60,8 @@ ok("FO-7g DW1 fail (planted): an entry with no source, a 14th code, a missing pr
   !DW1(planted("NS", without(T.NS, "source"))) && !DW1(planted("XX", T.ON)) && !DW1(Object.fromEntries(Object.entries(T).filter(([c]) => c !== "YT")) as unknown as ProvinceTaxTable)
   && !DW1(planted("ON", { ...T.ON, ratePpm: 1300 })) && tableProblems(planted("ON", { ...T.ON, ratePpm: 1300 })).some((p) => /ON: the rate \(1300 ppm\) is not the quoted/.test(p))
   && !DW1(planted("ON", { ...T.ON, ratePpm: 13.5 })) && !DW1(planted("ON", { ...T.ON, ratePpm: 1_000_001 })));
+ok("FO-7g load fail (review minor 1): the guard the module runs at load (assertCited) throws on an uncited table and on a mismatched rate, and returns the cited table unchanged",
+  throws(() => assertCited(planted("ON", without(T.ON, "source")))) && throws(() => assertCited(planted("NS", { ...T.NS, ratePpm: 150000 }))) && assertCited(T) === T);
 ok("FO-7g DW1: the loaded table is frozen (an entry, its source and the table refuse a change)", Object.isFrozen(T) && Object.values(T).every((e) => Object.isFrozen(e) && Object.isFrozen(e.source))
   && throws(() => { (T.ON as { ratePpm: number }).ratePpm = 1; }, TypeError));
 
@@ -112,8 +114,10 @@ ok("FO-7g DW4 fail: anything but true (\"true\", 1, \"false\", null, nothing) is
 // DW12 (pure): the default goes through QA-482's rounding (FO-7b's taxForLine, read only).
 const halfUp = (amount: number, ppm: number) => Math.round(amount * ppm / 1_000_000);
 const on = taxDefault({ firmProvince: "ON", registered: true });
-ok("FO-7g DW12 pass: taxForLine(50, taxDefault({ firmProvince: \"ON\", registered: true }).ratePpm) is 6 (0.50 at Ontario's default → 0.06, a half to even)", taxForLine(50, on.ratePpm) === 6, [on, taxForLine(50, on.ratePpm)]);
-ok("FO-7g DW12 fail (planted): half up (Math.round) on the same default gives 7 (0.07), and the case catches it", halfUp(50, on.ratePpm) === 7 && halfUp(50, on.ratePpm) !== 6);
+const DW12 = (rule: (amount: number, ppm: number) => number, dflt = on) => rule(50, dflt.ratePpm) === 6;
+ok("FO-7g DW12 pass: taxForLine(50, taxDefault({ firmProvince: \"ON\", registered: true }).ratePpm) is 6 (0.50 at Ontario's default → 0.06, a half to even)", DW12(taxForLine), [on, taxForLine(50, on.ratePpm)]);
+ok("FO-7g DW12 fail (planted): the case refuses half up (Math.round, 0.07) in place of taxForLine, and a default from a planted table with Ontario at 15 %",
+  !DW12(halfUp) && !DW12(taxForLine, taxDefault({ firmProvince: "ON", registered: true }, planted("ON", { ...T.ON, ratePpm: 150000 }))));
 
 // DW3 and DW6 (pure): rule 3 for a draft line, the function FO-7g part 1w's draft step calls.
 ok("FO-7g DW3 pass (the rule alone): a GOVERNMENT_FEE line is 0; AG-6-4 §11's example (government fee 255.00 and service 1,000.00, firm in Ontario) → tax only on the service line",

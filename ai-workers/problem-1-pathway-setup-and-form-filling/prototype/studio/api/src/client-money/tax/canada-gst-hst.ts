@@ -112,5 +112,10 @@ export function tableProblems(table: unknown, today: string = new Date().toISOSt
 }
 
 // Fail closed: a table with an uncited or mismatched value never loads, so no route can answer from it.
-const PROBLEMS = tableProblems(PROVINCE_TAX_RATES);
-if (PROBLEMS.length) throw new Error(`client-money/tax/canada-gst-hst.ts: the rate table is refused (${PROBLEMS.join("; ")}). Every value needs its source (AGENTS rule 4).`);
+/** Throws, naming every problem, unless the table passes tableProblems; returns it unchanged otherwise. */
+export function assertCited<T>(table: T, today?: string): T {
+  const problems = tableProblems(table, today);
+  if (problems.length) throw new Error(`client-money/tax/canada-gst-hst.ts: the rate table is refused (${problems.join("; ")}). Every value needs its source (AGENTS rule 4).`);
+  return table;
+}
+assertCited(PROVINCE_TAX_RATES);
