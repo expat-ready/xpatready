@@ -14,7 +14,8 @@
 //       finds an unlabelled button we add.
 // Sample firms only. US$0, no model call; live AI off. Screenshots (deviceScaleFactor 1) in product/screens/PF-13c/screenshots/.
 // Run from prototype/:
-//   zsh studio/tools/isolated.sh pf13c 4442 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh pf13c 4442 stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/check_pf13c_booking_brand_browser.ts 4442 xr_studio_pf13c
+//   zsh studio/tools/isolated.sh pf13c 4442 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_pf13c_booking_brand_browser.ts 4442 xr_studio_pf13c
+// (run-suites.sh reads that line; by hand, stop the copy afterwards: zsh studio/tools/isolated.sh pf13c 4442 stop)
 import "reflect-metadata";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
