@@ -20,6 +20,10 @@ on:
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-watch.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/lead-queue.sh"
       - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/local-lanes.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/source-check.py"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/app-view-check.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/app-view-save.sh"
+      - "ai-workers/problem-1-pathway-setup-and-form-filling/product/tools/flow-measure.py"
       - ".github/workflows/lead-tools-tests.yml"
       - ".github/workflows/review-rounds.yml"
 permissions:

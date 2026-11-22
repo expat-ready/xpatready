@@ -152,5 +152,63 @@ Questions for the founder: none
 The study permit pack (IMM 1294) is unchanged."
 ok "P-801 clean PR body: \"Questions for the founder: none\" and a form name (PR bodies are not briefs) pass" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
 
+# ---------- review round 1 (reviewer on 54b7ef4): live wiring and real phrasing ----------
+# P-798: the saved app view lead-watch reads is fresh for one 10-min check plus grace (was 35 min).
+export APP_VIEW_FILE="$T/app-view.txt"; AN=1763270000
+printf 'app view 1 sessions · 1 flagged\nFLAG  Lane asks · cloud · need_input · needs: x · d · idle 2 min · context ?\n' | NOW=$AN bash "$TOOLS/app-view-save.sh" >/dev/null
+out=$(NOW=$((AN + 16 * 60)) bash "$TOOLS/app-view-check.sh"); rc=$?
+ok "P-798 an app view 16 min old is an ACT (lead-watch would miss a waiting lane for 35 min before)" "$([ $rc = 1 ] && has "$out" '^ACT   app view not read in 16 min' && echo 1)" "exit $rc: $out"
+out=$(NOW=$((AN + 9 * 60)) bash "$TOOLS/app-view-check.sh"); rc=$?
+ok "P-798 a 9-min-old view passes its flag on: the lane waiting for input is an ACT" "$([ $rc = 1 ] && has "$out" '^ACT   app view: Lane asks' && echo 1)" "exit $rc: $out"
+unset APP_VIEW_FILE
+# P-798: sle-watch --grouped (lead-watch 2g): one ACT per target naming its PRs, the detail on sle lines.
+printf '%s' "{$NOW,\"prs\":[$(pr 3 '[]' 2026-11-22T09:20:00Z '[]'),$(pr 4 '[]' 2026-11-22T09:25:00Z '[]'),$(pr 5 '[]' 2026-11-22T09:58:00Z "[$(Q 2026-11-22T09:45:00Z)]")]}" > "$T/s.json"
+out=$(python3 -I "$TOOLS/sle-watch.py" --grouped --snapshot "$T/s.json")
+ok "P-798 --grouped: one ACT for two quiet lanes, one for the question, detail lines start sle" "$([ "$(grep -c '^ACT' <<<"$out")" = 2 ] && has "$out" '^ACT   SLE L 2 over target \(P-798\): #3 #4$' && has "$out" '^ACT   SLE Q 1 over target' && has "$out" '^sle   miss L #3' && hasnt "$out" '^MISS' && echo 1)" "$out"
+printf '%s' "{$NOW,\"prs\":[$(pr 5 '[]' 2026-11-22T09:58:00Z '[]')]}" > "$T/s.json"
+out=$(python3 -I "$TOOLS/sle-watch.py" --grouped --snapshot "$T/s.json")
+ok "P-798 --grouped clean: one sle ok line, no ACT (known-failures.tsv reads ^sle )" "$(has "$out" '^sle   ok SLE: every target met \(questions 10 min, approved to queued 20 min, lanes 30 min' && hasnt "$out" '^ACT' && echo 1)" "$out"
+ok "lead-watch.sh runs sle-watch --grouped with a dump that step-age reads" "$(grep -q 'sle-watch.py" --grouped --dump "$STATE_DIR/sle.json"' "$TOOLS/lead-watch.sh" && grep -q 'step-age.py" .*--sle "$STATE_DIR/sle.json"' "$TOOLS/lead-watch.sh" && echo 1)"
+# P-798 step age, live shapes: approval time from sle-watch's dump (gh pr list has no approvedAt); records PRs left out.
+echo '{"start_to_proven":{"median_days":1.0},"approved_to_merged_min":{"n":4,"median":30}}' > "$T/flow.json"
+echo '{"prs":[{"number":11,"approved_at":"2026-11-22T08:50:00Z"}]}' > "$T/sle.json"
+echo "[$(P 11 'x' '' 2026-11-22T08:00:00Z '[{"name":"review: approved"},{"name":"queued"}]'),$(P 12 'lead: records 22 Nov' 'Item: R1.92' 2026-11-15T08:00:00Z '[]')]" > "$T/prs.json"
+out=$(python3 -I "$TOOLS/step-age.py" --flow "$T/flow.json" --prs "$T/prs.json" --sle "$T/sle.json" --now 2026-11-22T10:00:00Z); rc=$?
+ok "P-798 a queued PR approved 70 min ago (time from the sle dump) ACTs; a records PR naming R1.92 does not" "$([ $rc = 1 ] && has "$out" '^ACT   step approved→merged: #11 approved 70 min' && hasnt "$out" 'R1.92' && echo 1)" "exit $rc: $out"
+ok "flow-measure --lead gives today's approved→merged median (step-age's second step)" "$(grep -q 'out\["approved_to_merged_min"\] = {"n": len(waits), "median"' "$TOOLS/flow-measure.py" && echo 1)"
+# P-800: a capability named only in a board's prose is not on the board.
+printf '# Lead A board\n\n## Day 1\n%s\n| 1 | R1.3 | p2 | #10 | none |\n## Day 2\n%s\n| 2 | R1.8 | p1 | lane 2 | none |\n\nNote: R1.7 waits for Track B.\n' "$HEAD" "$HEAD" > "$T/d3.md"; mkdir -p "$T/d3"; mv "$T/d3.md" "$T/d3/board-lead-a-2026-11-22.md"; cp "$T/d2/board-lead-b-2026-11-22.md" "$T/d3/"
+sed -i 's/R1.7/R1.11/' "$T/d3/board-lead-b-2026-11-22.md"
+out=$(python3 -I "$TOOLS/flow-buffer.py" --design "$T/d3" --caps "$T/caps.md"); rc=$?
+ok "P-800 R1.7 named only in a board's prose counts as on no board" "$([ $rc = 1 ] && has "$out" 'Partial capability on no track board: R1.7:' && echo 1)" "exit $rc: $out"
+# P-801 with the house's own citations and phrasing.
+bc "$B
+IMM 1294 asks for the passport.
+Source: AG-6-4@374fb7a9 rule 1" --brief
+ok "P-801 a requirement card (AG-6-4@374fb7a9) as Source: passes" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
+for fake in 'no market research done' 'see domain/ somewhere' 'https://example.com/x "anything" 2026-11-22'; do
+  bc "$B
+IMM 1294 asks for the passport.
+Source: $fake" --brief
+  ok "P-801 a fake Source: ($fake) is refused" "$([ $rc = 1 ] && has "$out" 'neither a requirement path or card' && echo 1)" "exit $rc: $out"
+done
+bc "$B
+* **FO-3c — question for the founder:** which wording?" --brief
+ok "P-801 a founder question in the middle of a line is seen" "$([ $rc = 1 ] && has "$out" 'Sources checked' && echo 1)" "exit $rc: $out"
+bc "$B
+Question for the founder: no-code or code for the intake?" --brief
+ok "P-801 'Question for the founder: no-code ...' is a question, not 'no'" "$([ $rc = 1 ] && has "$out" 'Sources checked' && echo 1)" "exit $rc: $out"
+bc "$PRB
+## Questions for the founder
+None."
+ok "P-801 a 'Questions for the founder' heading with 'None.' under it passes" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
+bc "$B
+Make CI flake rate under 2%; rate limiting at 100%; keep lead-watch logs 30 days (retention).
+Sample fee on the demo: CAD 1,500 (Sample)." --brief
+ok "P-801 tooling rates, a log retention and a Sample amount are no domain values" "$([ $rc = 0 ] && echo 1)" "exit $rc: $out"
+mkdir -p "$T/fc"; cp "$TOOLS/brief-check.sh" "$T/fc/"; printf 'import sys\nsys.exit(5)\n' > "$T/fc/source-check.py"
+out=$(printf '%s\nIMM 1294.\n' "$B" | bash "$T/fc/brief-check.sh" --brief); rc=$?
+ok "P-801 fails closed: a source check that cannot run refuses the brief" "$([ $rc = 1 ] && has "$out" 'source check could not run' && echo 1)" "exit $rc: $out"
+
 echo "test-enf-798: $pass passed, $fail failed"
 [ "$fail" = 0 ]

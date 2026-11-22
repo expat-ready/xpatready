@@ -16,9 +16,10 @@ Three targets, read from GitHub every check (read-only; the Lead acts on each MI
   B  the founder's board is refreshed within 45 min: the newest `taken_at` in `cockpit/history.jsonl`, or the
      published data time the Lead passes with --board-time (B193; on 15 Nov the board went six hours unrefreshed).
 
-Usage:  python3 sle-watch.py [--repo owner/name] [--snapshot file.json] [--dump file.json]
+Usage:  python3 sle-watch.py [--repo owner/name] [--snapshot file.json] [--dump file.json] [--grouped]
                             [--board-time ISO-8601] [--board-file history.jsonl]
-Exit code = number of MISS lines (0 = every target met). Test: check-sle-watch.sh (fixtures, no network).
+Exit code = number of MISS lines (0 = every target met). --grouped (lead-watch.sh step 2g, P-798): every line starts
+"sle   ", and one "ACT   SLE <target> <n> over target (P-798): #a #b" per target with a MISS, so a check reads one line per target. Test: check-sle-watch.sh (fixtures, no network).
 """
 import json, os, re, subprocess, sys
 from datetime import datetime, timedelta, timezone
@@ -100,6 +101,10 @@ def fetch(repo):
                           for s in approve_shas(c["body"])],
              "same_head": [m for m in heads[p["head"]["sha"]] if m != n]}
         on_head = any(p["head"]["sha"].startswith(a["sha"]) for a in e["approves"])
+        if "review: approved" in labels and "queued" in labels:   # P-798: step-age.py ages queued PRs from the label too (--dump)
+            ev = api(f"repos/{repo}/issues/{n}/events?per_page=100")
+            lab = [x["created_at"] for x in ev if x.get("event") == "labeled" and x.get("label", {}).get("name") == "review: approved"]
+            e["approved_at"] = lab[-1] if lab else None
         if ("review: approved" in labels and "queued" not in labels) or ("review: approved" not in labels and on_head):
             if "review: approved" in labels:
                 ev = api(f"repos/{repo}/issues/{n}/events?per_page=100")
@@ -184,7 +189,7 @@ def diagnose(p):
 
 
 def main(a):
-    repo, snapf, dump, btime = origin_repo(), None, None, None
+    repo, snapf, dump, btime, grouped = origin_repo(), None, None, None, False
     bfile = os.path.join(TOOLS, "..", "cockpit", "history.jsonl")
     while a:
         k = a.pop(0)
@@ -193,11 +198,12 @@ def main(a):
         elif k == "--dump": dump = a.pop(0)
         elif k == "--board-time": btime = a.pop(0)
         elif k == "--board-file": bfile = a.pop(0)
+        elif k == "--grouped": grouped = True
         else: print(f"unknown argument {k}", file=sys.stderr); return 99
     try:
         snap = json.load(open(snapf)) if snapf else fetch(repo)
     except Exception as e:  # a failed read is said, never read as "all met"
-        print(f"MISS  SLE: could not read GitHub ({e}); targets unchecked")
+        print(f"{'ACT   SLE' if grouped else 'MISS  SLE:'} could not read GitHub ({e}); targets unchecked")
         return 1
     try:  # the Lead's published data time wins; else history.jsonl, unless a snapshot already carries one
         if btime:
@@ -210,10 +216,18 @@ def main(a):
         json.dump(snap, open(dump, "w"), indent=1)
     lines = evaluate(snap)
     for kind, text in lines:
-        print(f"{kind:<5} {text}")
+        print(f"sle   {kind.lower()} {text}" if grouped else f"{kind:<5} {text}")
+    if grouped:
+        by = {}
+        for kind, text in lines:
+            if kind == "MISS":
+                by.setdefault(text.split()[0], []).append(text)
+        for k, v in by.items():
+            ids = sorted({int(x) for t in v for x in re.findall(r"#(\d+)", t)})
+            print(f"ACT   SLE {k} {len(v)} over target (P-798): " + (" ".join(f"#{x}" for x in ids) or v[0][:100]))
     miss = sum(1 for k, _ in lines if k == "MISS")
     if not lines:
-        print(f"ok    SLE: every target met (questions {Q_MIN} min, approved to queued {A_MIN} min, lanes {L_MIN} min, Approve+green to label 30 min, board 45 min)")
+        print(("sle   ok" if grouped else "ok   ") + f" SLE: every target met (questions {Q_MIN} min, approved to queued {A_MIN} min, lanes {L_MIN} min, Approve+green to label 30 min, board 45 min)")
     return miss
 
 

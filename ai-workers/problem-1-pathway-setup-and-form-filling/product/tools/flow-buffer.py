@@ -5,7 +5,8 @@ completely or queue or overflowed completely"; ENF-798). Read-only; lead-watch.s
      2 days of capabilities, or a track has no board;
   2. an open part on a board has no lane named (the row's "Left to build" is not "none", its "Lane" cell is empty,
      "none", "none yet", "-" or "?");
-  3. a capability marked Partial in qa/CAPABILITIES.md (an R1 row) is on neither board (one ACT naming them all).
+  3. a capability marked Partial in qa/CAPABILITIES.md (an R1 row) is in no table row of either board (one ACT naming
+     them all; a mention in the board's prose does not count).
 Days on a board: each heading (a line starting with #) that names a day ("Day 2", "tomorrow", "day after", "cycle")
 starts a day section; a day counts when at least one capability row (a table row naming R1.n) sits under it. A board
 with rows but no such heading is 1 day. A "Buffer: N days" line is text and never counted.
@@ -35,9 +36,9 @@ def cells(line):
 
 
 def read_board(path):
-    """-> (days, rows) where rows = [(capability text, left to build, lane)]."""
+    """-> (days, rows, ids) where rows = [(capability text, left to build, lane)] and ids the R1 ids in table rows."""
     days, cur_has, cur_day, rows, head = 0, False, False, [], None
-    any_heading_day = False
+    any_heading_day, ids = False, set()
     for line in open(path, encoding="utf-8"):
         if line.startswith("#"):
             if cur_day and cur_has:
@@ -58,6 +59,7 @@ def read_board(path):
         if not any(R1.search(x) for x in c):
             continue
         cur_has = True
+        ids |= set(R1.findall(line))
         if head:
             li = next((i for i, x in enumerate(head) if "left to build" in x), None)
             ni = next((i for i, x in enumerate(head) if x.startswith("lane")), None)
@@ -70,7 +72,7 @@ def read_board(path):
         days += 1
     if not any_heading_day and rows:
         days = 1
-    return days, rows
+    return days, rows, ids
 
 
 def partial_r1(caps):
@@ -93,15 +95,15 @@ def main(argv=None):
     ap.add_argument("--design", default=os.path.join(HERE, "..", "design"))
     ap.add_argument("--caps", default=os.path.join(HERE, "..", "qa", "CAPABILITIES.md"))
     a = ap.parse_args(argv)
-    acts, text = [], ""
+    acts, on = [], set()
     for track in ("a", "b"):
         f = newest(a.design, track)
         T = track.upper()
         if not f:
             acts.append(f"buffer: Track {T} has no board (design/board-lead-{track}-<date>.md): plan its next 2-3 days of capabilities (P-800)")
             continue
-        days, rows = read_board(f)
-        text += open(f, encoding="utf-8").read()
+        days, rows, ids = read_board(f)
+        on |= ids   # a capability counts as on a board only in a table row, never in the board's prose
         name = os.path.basename(f)
         print(f"buffer {name}: {days} day(s), {len(rows)} capabilities")
         if days < MIN_DAYS:
@@ -115,7 +117,6 @@ def main(argv=None):
     except OSError as e:
         acts.append(f"buffer: qa/CAPABILITIES.md unreadable ({e}): Partial capabilities not checked (P-800)")
         part = []
-    on = set(R1.findall(text))
     off = [p for p in part if p not in on]
     if off:
         acts.append(f"buffer: {len(off)} Partial capabilit{'y' if len(off) == 1 else 'ies'} on no track board: {' '.join(off)}: put each on Track A or B (P-800)")

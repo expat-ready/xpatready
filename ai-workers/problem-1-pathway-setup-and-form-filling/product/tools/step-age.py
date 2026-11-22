@@ -4,16 +4,19 @@ gets a builder added or moved. Read-only; lead-watch.sh step 5c. Medians come fr
 --lead shape or its full shape); ages from the open PRs lead-watch already read.
   start→Proven   each R1 item named by an open PR (title, or an "Item:" / "Completes:" line): age since its oldest open
                  PR was created, against start_to_proven.median_days (days)
-  approved→merged each open PR labelled `review: approved` that carries "approvedAt" (the label time): age against
-                 approved_to_merged_min.median (minutes)
+  approved→merged each open PR labelled `review: approved`: age since its label (the PR's "approvedAt", else the
+                 "approved_at" of sle-watch.py --dump, given with --sle) against approved_to_merged_min.median (minutes;
+                 flow-measure.py --lead gives it for PRs merged since 00:00 IST)
+Records PRs (title "qa:", "lead:" or "records", branch lead/* or board/*) are no builds and are left out.
 A step with no median in the JSON prints "warn", never ACT and never ok. An unreadable JSON is one ACT.
-Usage: python3 -I step-age.py --flow FLOW.json --prs PRS.json [--now ISO]     Exit code = number of ACT lines.
+Usage: python3 -I step-age.py --flow FLOW.json --prs PRS.json [--sle SNAPSHOT.json] [--now ISO]     Exit code = number of ACT lines.
 Test: test-enf-798.sh (planted and clean cases, no network).
 """
 import argparse, json, re, sys
 from datetime import datetime, timezone
 
 R1 = re.compile(r"\bR1\.\d+\b")
+RECORDS = re.compile(r"(?i)^\s*(qa|lead|records?)\b")
 ITEM = re.compile(r"(?im)^[\s*>-]*(?:Item|Completes)[*]*:\s*(.*)$")
 
 
@@ -32,12 +35,23 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--flow", required=True)
     ap.add_argument("--prs", required=True)
+    ap.add_argument("--sle")
     ap.add_argument("--now")
     a = ap.parse_args(argv)
     now = t(a.now) if a.now else datetime.now(timezone.utc)
     try:
         flow = json.load(open(a.flow))
-        prs = [p for p in json.load(open(a.prs)) if not (p.get("headRefName") or "").startswith("mergify/")]
+        prs = [p for p in json.load(open(a.prs)) if not re.match(r"(mergify|lead|board)/", p.get("headRefName") or "")
+               and not RECORDS.match(p.get("title") or "")]
+        sle = {}
+        if a.sle:
+            try:
+                sle = {s["number"]: s.get("approved_at") for s in json.load(open(a.sle)).get("prs", [])}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                print("warn  step-age: sle-watch's dump unreadable; approval times only from the PR list")
+        for p in prs:
+            if not p.get("approvedAt") and sle.get(p.get("number")):
+                p["approvedAt"] = sle[p["number"]]
     except (OSError, ValueError) as e:
         print(f"ACT   step-age did not run ({e}): read flow-measure.py --json and the open PRs (P-798)")
         return 1
