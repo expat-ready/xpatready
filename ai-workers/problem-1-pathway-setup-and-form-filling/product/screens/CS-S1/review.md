@@ -155,3 +155,30 @@ CI on 25c882bb6, which I cannot see from here.
 
 **Verdict: Approve** at 25c882bb630e85e4578c4252f9c90cddc12a655f. Merge on green CI for this commit.
 Reviewer: Approve 25c882bb630e85e4578c4252f9c90cddc12a655f
+
+## Round 4 (diff only: ad853d7972bf3a4288d76a20f1212367052a46fb → 8ef2e0926c23bf2103ae7011b543d47de0a09865)
+The tech lead allowed this round. Merge batch #3070 failed on shard 17: CS-W3's census (`tests/check_csw3_firm_scope.ts`, section 4) found `api/src/search/party-search.ts` querying a case table without being on `ALLOW`. The tech lead ruled (PR comment 7079535941) that the entry goes on the list in this PR, because the file is firm-scoped. One commit, 8ef2e0926, one file, 3 lines in and 3 out.
+
+### The change
+* **Exactly what was ruled, nothing else.** The diff touches only `check_csw3_firm_scope.ts`:
+  * `search/party-search` is now the first word of `ALLOW` (line 271);
+  * the assertion now reads `ALLOW.length === 48`, and its label says "47 at part 1, 48 with CS-S1 part 2" (line 278);
+  * the section comment names the file, the reason and the ruling (line 269).
+  * The `extra.length === 0` check, the planted-file probe and the rest of the file are unchanged.
+* **Spelling matches the census.** The census prints `api/src/search/party-search.ts`. `ALLOW` maps each word `f` to `api/src/${f}.ts`, so `search/party-search` gives exactly that path. It is written like the other subfolder entries (`case-clients/live`, `features/case-milestones`).
+* **The reason holds.** `api/src/search/party-search.ts:90-91` joins `case_party_index i` to `runtime_case c on ... c.firm_id = i.firm_id` with `where i.firm_id = ${s.firmId}::uuid`. Line 113 reads `runtime_case` with `where c.firm_id = ${s.firmId}::uuid`. Both are firm-first, as the ruling says.
+
+### Checks run (at HEAD 8ef2e0926, clean tree)
+* `bash .../tests/fixtures/csw3/csw3-spike.sh census`: exit 0, `files: 48`. `api/src/search/party-search.ts` is one of them (1 `$transaction`, 2 raw SQL calls, 0 firm sets).
+* Census list against the expanded `ALLOW`: both have 48 entries with no duplicates. `comm` finds no census file missing from `ALLOW` and no `ALLOW` entry missing from the census. So `ALLOW.length === 48 && extra.length === 0` holds, and the census assertion would now pass.
+* I did not run the full `check_csw3_firm_scope.ts` suite, which needs a running API on an isolated copy. The builder reports 48/48 there.
+
+### Findings
+* Nit, not blocking (`tests/check_csw3_firm_scope.ts:267-270`): the comment still says "plus five merged on main after the spike" but now names six files, and "Only shrinks" is no longer true now that the list grew by a ruling. Reword both when this comment is next touched. Nothing to fix in this PR.
+* None at Blocker, Major or Minor. The code, deviations and journey score (9.4 / 10) from rounds 2 and 3 still stand: no product file changed.
+
+### Not checked
+CI and the merge batch on 8ef2e0926, which I cannot see from here.
+
+**Verdict: Approve** at 8ef2e0926c23bf2103ae7011b543d47de0a09865. Merge on green CI for this commit.
+Reviewer: Approve 8ef2e0926c23bf2103ae7011b543d47de0a09865
