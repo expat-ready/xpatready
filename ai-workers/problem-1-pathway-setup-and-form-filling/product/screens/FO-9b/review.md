@@ -156,3 +156,97 @@ Kept as is, per the brief: size (P-805), the three edits outside the touch list,
 **Verdict: Changes** on `4bcbf9c4119fb844ebf91e6f07628a01995cd586`. Fix M1 (company-side lock order, or retry on 40P01), with a race case that fails without the fix. Fix m1-m4 or list them in the PR. Do not add `review: approved` for this commit.
 
 Reviewer: Changes 4bcbf9c4119fb844ebf91e6f07628a01995cd586
+
+## Round 4 (c5b957bb7)
+
+This is a diff-only re-review (Opus 5.5, effort high; round 4 allowed by the tech lead on PR #3042, Lead 4 17:09 IST) of commit `c5b957bb73ddca910a8e14a33b4e09a799ad6e76`. I read `git diff 4bcbf9c41 c5b957bb7 -- …/prototype/studio` (service.ts, arrival.ts, the migration and rollback, the check), plus the writers it orders against: `corporate/service.ts` (engage, link, addContact, changeRole, endContact, changeType), `calls.ts`, `arrival.ts`, `arrival-port.ts`, `people/edit.ts`, `booking/service.ts`, and the FO-1a triggers. **Journey test: not applicable, no score.** There is still no screen and no route; R1.29's step comes after part 2 and FO-9s.
+
+**What I ran.** Postgres 127.0.0.1:54329. The cluster was down when I started (a stale `postmaster.pid`), so I started it with `pg_ctl` and left it running. I used my own scratch databases (`xr_rv4_*`, plus the check's own), all dropped. No app port, never :4400. US$0.
+* `check_fo9b_merge.ts` from `prototype/`: **81/81, exit 0**.
+* **Mutations** on an extracted copy of c5b957bb7: one change at a time, then the whole check.
+
+  | Mutation | Result |
+  |---|---|
+  | Company merge takes rows before records | **red**: the company race case, plus a round-2 race case |
+  | Person merge without the company lock | **red**: the loser's-company case |
+  | `ROW_ORDER` with prospects after leads | **red**: the prospect→lead case |
+  | Tombstone `merged_at` comparison removed | **red**: its own new case |
+  | `possibleMatch` without the locking re-read | **red**: DW1m (`ForeignKeyConstraintViolation`) |
+  | `fo_dup_merge_one_standing` dropped from the migration | **red** |
+  | Person Undo without the company lock (`lockRowsByOrder` instead of `lockForPersons`) | **green** (m1) |
+  | Company Undo with rows before records | **green** (m1) |
+
+* **Migration.** I built a database from every migration and ran `prisma migrate diff --from-config-datasource --to-schema prisma/schema`: **"No difference detected."** The index is `UNIQUE (firm_id, loser_id) WHERE undone_at IS NULL`. Rollback test: every migration, then `rollback.sql` in one transaction (with a stub `_prisma_migrations`), compared with a database built without this migration. The catalog hash (indexes, constraints, triggers, functions with owner, config, definer and source, columns, policies, types) is **identical**. No `fo_dup_merge_one_standing` is left.
+* **Probes.** I wrote my own script (not committed) and ran it on c5b957bb7 and on an extracted 4bcbf9c41, so I can tell new problems from old ones. A raw "holder" takes lock 1, waits 500 ms, then takes lock 2, as the round-3 cases do. Real-service races were run 12 or 30 times.
+
+  | Probe | 4bcbf9c41 | **c5b957bb7** |
+  |---|---|---|
+  | P1 Engage-as-Corporate order (lead FOR UPDATE, then company FOR UPDATE) vs person merge; company linked to the loser | ok | **merge 40P01** |
+  | P1 same; company linked to the survivor | ok | **merge 40P01** |
+  | P1r real `Corporate.engage(lead of L, {companyId: C})`, C linked to S, vs person merge ×12 | 12 ok | **12/12 deadlock** (engage lost 8, merge lost 4) |
+  | P2 change-type order (Individual prospect FOR UPDATE, then company) vs person merge | ok | **merge 40P01** |
+  | P2r real `Corporate.changeType(P, CORPORATE, {companyId: C})` vs person merge ×12 | 12 ok | **8/12 deadlock** (4 each side) |
+  | P3 company Undo vs changeRole order on the survivor company (company, then the moved link) | 40P01 | ok |
+  | P3b company Undo vs a holder of the loser company, then the moved link | 40P01 | ok |
+  | P4 person Undo vs changeRole order (company, then the moved link) | 40P01 | ok |
+  | P4b person Undo vs prospect-writer order (moved prospect, then its lead) | 40P01 | ok |
+  | P5 company merge coS ← coL plus person merge S ← L at once, S linked to coS, L to coL, id(coL) > id(coS), ×30 | 30 ok | **15/30 deadlock** (person merge lost) |
+  | Rows naming a merged-away person after all of the above | 0 | 0 |
+
+### The tech lead's ruling, checked
+* **The three race cases exist and each fails without its fix** (mutations above). The builder's 80/81 revert matches mine.
+* **Undo: fixed, but no case.** P3, P3b, P4 and P4b all deadlocked at 4bcbf9c41 and all finish now. But no Undo race case exists (m1).
+* **Merge for persons follows the ruling** (companies, prospects, links, leads and the rest, then loser, then survivor): `service.ts:72-76, :194`.
+* **Merge for companies takes the records first** (`:193`), but in loser-then-survivor order, not sorted. See M2.
+* **The ruling's order cannot be met for person merges.** See M1. The builder applied it faithfully, so this goes back to the tech lead as well as to the code.
+
+### Round-3 Minors
+* **m1 (`possibleMatch`): fixed.** It takes a `FOR KEY SHARE` re-read with `merged_into_id is null` (`arrival.ts:51`) and falls back to the next match.
+  * The recursion ends. Under READ COMMITTED, the re-read waits for the merge, then re-checks the row (the tombstone drops out). The next `findFirst` is a new statement, so it sees the committed tombstone and excludes it. Under REPEATABLE READ the locking read raises a serialization error instead of looping.
+  * The two callers that pass `this.db` (`corporate/service.ts:224`, `leads.ts:157`) run it as an autocommit statement. The lock only makes them wait, which is fine.
+  * The new lock makes no cycle: the booking door holds prospects before it, as the merge does.
+* **m2 (deferred guard comment): fixed.** The comment now says FK columns lock at the statement and `fo_booking.person_id` has none.
+* **m3 (tombstone check): fixed, with its own case.** `merged_at` must equal the record's `at` (`service.ts:263`). Both columns are `TIMESTAMPTZ` and both are written from the same JS `Date`, and `Date.parse` reads the offset, so the server's time zone does not matter. Removing the comparison turns the new case red. The `merged_into_id` half is still covered by the `merged_at` half: the tombstone CHECK makes a live loser's `merged_at` null, so it is refused anyway.
+* **Break m4′: fixed.** The partial unique index refuses a second standing record for a loser (mutation red). Migration and rollback are clean, as above.
+* **Consent message:** it no longer advises a withdrawal that would cancel the survivor's own consent. The code comment at `:267-268` still says "Withdrawing the copy first lets the Undo run". That is true, but it is the path the message now avoids. A nit.
+
+### New findings
+**Blocker**: none.
+
+**Major**
+* **M1. Person merges now deadlock with Corporate Engage and with Change type to Corporate (new in this commit).** `lockForPersons` takes every company either person is linked to (live or ended), FOR UPDATE, before the leads and prospects (`service.ts:73`). Two writers take those locks the other way round:
+  * Engage locks the lead (`corporate/service.ts:118`), then the company in `link()` (`:95`).
+  * Change type locks the Individual prospect (`:331`), then the company (`:95`).
+
+  So when staff engage a lead of S or L as Corporate, or change S's or L's prospect to Corporate, picking a company either person is already a contact of, during a merge of the pair, one side gets a raw 40P01 (500).
+
+  Evidence: P1/P2 are deterministic. With the real services, P1r deadlocked 12/12 and P2r 8/12; at 4bcbf9c41 both were 0/12. The losing side is often the writer (the Engage lost 8 of 12), so mapping the merge's own error does not cover it. The comment at `:61-66` ("So no cycle forms") is wrong.
+
+  **No fixed order can work.** Engage takes lead → company. changeRole takes company → Corporate prospect (`:269` → `:282`). A note or call on a Corporate prospect takes prospect → lead (`calls.ts:43` → `:54`). Whatever order the merge uses for a company, a Corporate prospect and a lead, it disagrees with one of those three writers.
+
+  Fix options, the builder's or the tech lead's choice:
+  * (a) Make the merge and Undo never wait while holding a lock. Take the lock phase with `NOWAIT` inside a savepoint; on 55P03 roll back to the savepoint, back off and retry a few times, then refuse with a worded 409/503 Busy. The writers then only ever wait for the merge, and the merge never waits for them.
+  * (b) Keep the order but turn 40P01 into Busy for the merge and for these writers (`busy.ts` `isBusy` already recognises it). This touches writers outside the touch list.
+
+  Either way, add a race case for Engage-as-Corporate and for Change type against a person merge, and raise the ruling's gap in the PR or `challenge.md` (never deviate silently).
+* **M2. A company merge and a person merge at once deadlock (new in this commit).** A company merge (and its Undo) locks the loser company, then the survivor (`service.ts:193, :260`). A person merge locks the same companies `order by id` (`:73`). When the two persons are contacts of the two companies and the loser company's id is the higher one, each merge holds one company and waits on the other: **15/30 runs deadlocked** in P5, against 0/30 at 4bcbf9c41.
+
+  Fix: take the two company records in id order, in merge and in Undo (for example, sort `[lId, sId]` and `find` in that order, then assign `l`/`s`). Add a case for it (two merges at once, linked across).
+
+**Minor**
+* **m1. No Undo race case.** The ruling says every race has its own test and names merge and Undo. Person Undo without the company lock stays **green**, and so does company Undo with rows first. My probes P3, P3b, P4 and P4b show the code is right: they deadlocked at 4bcbf9c41 and finish now. Add at least the changeRole-order holder against a person Undo and against a company Undo.
+* **m2. `lockIds` (`service.ts:68-70`) is never called.** Remove it.
+* **m3. A small window remains.** `lockForPersons` reads the company set in one statement and locks the link rows in a later one. Under READ COMMITTED, a link to a new company C2 committed between the two is locked as a row without C2 being locked. At commit, FO-1a's `fo_company_contact_still_linked` then takes C2 FOR NO KEY UPDATE, which is round 3's changeRole cycle again. The window is microseconds, and fix (a) of M1 closes it too. Note it if (b) is chosen.
+
+**Not a defect (checked).** The company lock is FOR UPDATE where FOR NO KEY UPDATE would do. Only `fo_company_contact` and `fo_prospect` reference `fo_company`. Every app writer that inserts or re-points those rows already takes the company FOR UPDATE first (`link()`, addContact, changeRole, endContact). So no KEY SHARE holder now waits longer than it did before; the wait is the merge's length (about 0.2-1 s for large histories). These writers held no cycle with the merge in my probes:
+* staff phone edit (person only);
+* close lead (no prospect lock);
+* the booking door (prospects, then persons);
+* booking status writers (booking row, then person at commit);
+* `livePersonId` (loser, then survivor).
+
+Kept as is, per the brief: size (P-805), the edits outside the touch list, STAYS, consent and flag items, and the `calls.ts` 404 race (part 2).
+
+**Verdict: Changes** on `c5b957bb73ddca910a8e14a33b4e09a799ad6e76`. Fix M1 and M2, each with a race case that fails without the fix; for M1, take the ruling's gap back to the tech lead. Fix m1-m3 or list them in the PR. Do not add `review: approved` for this commit.
+
+Reviewer: Changes c5b957bb73ddca910a8e14a33b4e09a799ad6e76
