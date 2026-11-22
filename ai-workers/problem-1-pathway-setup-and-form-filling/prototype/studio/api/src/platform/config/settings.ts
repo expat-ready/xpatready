@@ -34,6 +34,11 @@ const s = (service: string, name: string, secret: boolean, rule: z.ZodType<strin
 /** A setting never required, in any environment (unset has a meaning of its own, written in `expects`'s setting). */
 const opt = (service: string, name: string, secret: boolean, rule: z.ZodType<string>, expects: string): Setting => ({ ...s(service, name, secret, rule, expects), optional: true });
 
+/** PLATFORM_GST_HST_NUMBER's plain shape (not the CRA's format rule, which is not yet cited): digits, capital letters and
+ *  single spaces, 9 to 20 characters, at least one digit, and never the invoice's Sample number (break m1: the Sample set
+ *  as the setting would print unlabelled, as if real). */
+export const GST_HST_NUMBER_SHAPE = /^(?=.{9,20}$)(?=.*[0-9])(?!0{9} ?RT ?0{4}$)[0-9A-Z]+(?: [0-9A-Z]+)*$/;
+
 /** Every setting, in the order a refusal lists them. */
 export const SETTINGS: readonly Setting[] = Object.freeze([
   s("database", "DATABASE_URL", true, z.string().regex(/^postgres(ql)?:\/\/\S+$/), "a postgresql:// address"),
@@ -64,6 +69,11 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
   // always kept as well (web-address/rules.ts).
   opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
+  // R1.21 follow-up (Lead 4, 22 Nov): our own GST/HST registration number, printed on our invoices to firms. Unset: the
+  // invoice shows a Sample number, labelled so. Only a plain shape is checked here (digits, capital letters, spaces): the
+  // CRA's own description of the number's format is not yet read and cited (canada.ca is not reachable from a cloud lane;
+  // the Mac reads it, P-601 (5)), so no stricter rule is guessed (AGENTS rule 4).
+  opt("billing", "PLATFORM_GST_HST_NUMBER", false, z.string().regex(GST_HST_NUMBER_SHAPE), "the platform's own GST/HST registration number: 9 to 20 characters of capital letters, digits (at least one) and single spaces, never the invoice's Sample number (the CRA's own format is not checked yet; unset: the invoice shows a Sample number)"),
 ]);
 
 /** The names whose values are secret: PF-23's log redaction drops them by name (and their values, wherever they appear). */
@@ -88,6 +98,8 @@ export type PlatformConfig = Readonly<{
   sampleSeed: boolean;
   /** PF-8b F2b: the domain firm addresses live under (PLATFORM_ADDRESS_SUFFIX, unset: expatready.com). */
   addressSuffix: string;
+  /** R1.21 follow-up: our own GST/HST registration number (PLATFORM_GST_HST_NUMBER); null: the invoice shows a Sample. */
+  billing: Readonly<{ gstHstNumber: string | null }>;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -188,6 +200,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     systemIdentity: Object.freeze({ via: (plain("PLATFORM_SYSTEM_IDENTITY") ?? "none") as "local" | "cognito" | "none", userPoolId: plain("PLATFORM_SYSTEM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_SYSTEM_COGNITO_CLIENT_ID"), localSecret: secret("PLATFORM_SYSTEM_LOCAL_SECRET") }),
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
+    billing: Object.freeze({ gstHstNumber: plain("PLATFORM_GST_HST_NUMBER") }),
   });
 }
 

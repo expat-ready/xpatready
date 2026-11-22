@@ -21,7 +21,9 @@ import { currentAlerts } from "../observability/alerts.ts";
 type Tx = Prisma.TransactionClient;
 /** `standIn` (R1.21, P-796): the fake BillingPort on a local server with no Stripe key (the same object as `billing`),
  *  so the billing stand-in (stand-in.ts) can issue invoices on it; null or absent everywhere else. */
-export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null; standIn?: FakeBilling | null };
+export type BillingPorts = { audit: AuditPort<Tx>; billing: BillingPort; clock: ClockPort; jobs?: JobPort | null; appUrl: string; notReady?: string | null; standIn?: FakeBilling | null;
+  /** R1.21 follow-up: our own GST/HST registration number for the stand-in's invoice (PLATFORM_GST_HST_NUMBER); null or absent: a Sample. */
+  gstHstNumber?: string | null };
 export const SWEEP_JOB = "platform.billing.webhook_sweep";
 /** A signed Stripe event's envelope (PF-28): the raw bytes are one JSON object naming an event. Not strict: Stripe adds
  *  fields to its events over time, and the signature already proves who sent them. */
