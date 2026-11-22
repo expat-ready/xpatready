@@ -250,3 +250,86 @@ Kept as is, per the brief: size (P-805), the edits outside the touch list, STAYS
 **Verdict: Changes** on `c5b957bb73ddca910a8e14a33b4e09a799ad6e76`. Fix M1 and M2, each with a race case that fails without the fix; for M1, take the ruling's gap back to the tech lead. Fix m1-m3 or list them in the PR. Do not add `review: approved` for this commit.
 
 Reviewer: Changes c5b957bb73ddca910a8e14a33b4e09a799ad6e76
+
+## Round 5 (ade4a847c)
+
+This is a diff-only re-review (Opus 5.5, effort high; round 5 allowed by the tech lead on PR #3042, Lead 5 17:4x IST) of commit `ade4a847c369f4d564e4046620e923ad660a3543`. I read `git diff c5b957bb7 ade4a847c -- …/prototype/studio`, which covers `duplicates/merge/service.ts` and `tests/check_fo9b_merge.ts`. For context I also read what runs after the lock phase or at commit: the FO-1a deferred triggers, `fo_dup_live_party`, `ConsentStore.record`/`withdraw`, `ensureMessagesFirm`, `AuditEventAdapter.record`, `module_event_next_seq`, and the booking door (`booking/service.ts:535-570`, `arrival-port.ts:83-170`). No file outside the touch list changed, so the other writers are untouched. **Journey test: not applicable, no score.** There is still no screen and no route; R1.29's step comes after part 2 and FO-9s.
+
+**What I ran.** Postgres 127.0.0.1:54329. The cluster was running and I left it running; I never stopped it. I used my own scratch databases (`xr_rv5_*`, `xr_rv5old_*`, plus the check's own), all dropped afterwards. No app port, never :4400. US$0.
+* `check_fo9b_merge.ts` from `prototype/`: **88/88, exit 0**.
+* **Mutations** on an extracted copy of ade4a847c. I made each change, ran the whole check, then restored the file.
+
+  | Mutation | Result |
+  |---|---|
+  | NOWAIT reverted to FOR UPDATE (all three statements) | **85/88**: engage-order, change-type-order and Busy cases red (the builder saw 84/88; the round-2 race is timing-dependent) |
+  | No NOWAIT, and person Undo without `lockCompaniesOf` | **84/88**: adds the Undo contact-edit case |
+  | No NOWAIT, and `ROW_ORDER` with leads before prospects | **83/88**: adds the round-3 note case and the Undo note-on-prospect case |
+  | No NOWAIT, and company records in loser-then-survivor order (no sort) | **85/88**: the round-4 M2 cross-merge case stays **green** (m4) |
+  | ALREADY_MERGED pre-check removed | **87/88**: the crafted-record case red |
+
+* **Probes.** I wrote my own script (scratchpad, not committed) and ran it on ade4a847c. I ran the A probes on an extracted c5b957bb7 as well, so I can tell new problems from old ones.
+
+  | Probe | Result at ade4a847c |
+  |---|---|
+  | A: staff-booking order (booking `person_id` = L with no FK, outbox row, held 400 ms, commit) vs person merge S ← L, ×3 | **3/3 deadlock** (merge lost). Same 3/3 at c5b957bb7 |
+  | A3: the same with the outbox row and commit back to back, during a 3000-note merge, ×4 | **3/4 deadlock** (writer lost; in the 4th run the writer committed before the merge's locks). Same 3/4 at c5b957bb7 |
+  | A2: any module-event writer holding the outbox lock for 1.5 s | the merge waits **1.4 s** while holding every lock |
+  | B: two person merges of different pairs sharing one company, at once, ×20 | **40 ok, 0 Busy**, slowest pair 145 ms |
+  | B2: a big merge (2000 person notes, 40 leads), then 20 ms later a small merge sharing its company | big ok at 276 ms; small ok at 446 ms (it backed off, then went through) |
+  | C: KEY SHARE on the loser (livePersonId's lock) held 0.5 s / 2 s | ok at 913 ms / **Busy** at 888 ms, then ok when tried again |
+  | D: a merge that succeeds after retries (a lead held for 120 ms) | complete: 1 record, 1 event, 0 loser leads, 0 rows on a tombstone. **A `fo_dup_locks` savepoint is left open** (m2) |
+  | D2: the caller's own `savepoint fo_dup_locks`, then a retried merge, then the caller's `rollback to savepoint fo_dup_locks` | the rollback lands on the merge's leftover savepoint. The merge is undone, but **the caller's own work after its savepoint survives** (m2) |
+  | E: a pause of 400 ms injected between the row locks and the record locks (probe only); a lead of L committed in it, then locked by a lead writer that next takes L | **merge 40P01** (m3) |
+  | F: Undo against a lead held for 1.5 s | Busy; the caller's transaction is still usable; ok when tried again |
+  | Rows naming a merged-away person, after every probe | 0 |
+
+### The tech lead's ruling, checked
+* **Every lock is NOWAIT inside a savepoint.** `find` (`service.ts:49`), `lockCompaniesOf` (`:86`) and `lockRowsByOrder` (`:117`) all use NOWAIT, and they run only inside `lockAll` (`:74-84`).
+  * `take` only locks; it writes nothing. So rolling back to the savepoint drops the locks and leaves no partial state (D).
+  * A non-lock error also rolls back to the savepoint, then is thrown again.
+  * `lockHeld` matches 55P03 in the message or in `meta`. The PrismaPg adapter's 55P03 is caught (C, F, and the Busy case).
+* **The back-off is bounded.** `BACKOFF_MS` adds up to 775 ms of sleep over 6 tries; observed Busy came at about 890 ms.
+  * Under ordinary use it is not Busy too often. Two merges sharing a company went through 40/40, and a small merge queued behind a 276 ms big merge still went through (B, B2).
+  * A merge cannot succeed while any transaction holds KEY SHARE (or a row lock) on its rows for more than about 0.8 s (C). This is by design, and asking again works. I found no front-office path that holds such a lock that long: arrival, booking door and Add are request-scoped.
+* **Busy leaves the caller's transaction usable** (the check's case, and F for Undo), and nothing is merged. `isBusy(new MergeBusy())` is true.
+* **Company records are taken in id order** (`:97`).
+* **Round 4's items are fixed:**
+  * The crafted standing record now gives ALREADY_MERGED (`:229`); the mutation turns its case red.
+  * `lockIds` is gone.
+  * The company read-then-lock window is closed by the second `lockCompaniesOf` after the record locks. Any link that commits later needs the record's key, which is now locked.
+* **Undo race cases exist.** Both turn red once the order they test is broken as well as NOWAIT. They cannot turn red on NOWAIT alone, because the order still serves them.
+* **After the lock phase, one statement can still wait on another session: the outbox row.** See m1. The rest cannot wait:
+  * The deferred triggers at commit (`fo_dup_live_party`, `fo_prospect_contact_linked`, `fo_company_contact_still_linked`; `fo_prospect_lead_engaged` does not fire) only lock persons, companies and link rows that the lock phase already holds.
+  * The consent copy, the audit line and `fo_dup_merge` take no row or advisory lock. `msg_firm`'s upsert could wait only on a firm's very first messages write.
+  * The second `find` (`:260`) re-locks a row the merge already holds.
+* **The savepoint name.** A nested savepoint with the same name as a caller's is legal, but a retry leaves one behind. See m2.
+
+### Findings
+**Blocker**: none.
+
+**Major**: none.
+
+**Minor**
+* **m1. The outbox row can still make the merge wait while it holds every lock, and that wait closes a deadlock (old: the same at c5b957bb7).** `emit` (`:271`, Undo `:340`) inserts into `module_event`. Its trigger `module_event_next_seq` takes one global advisory lock, held until commit, with no NOWAIT.
+  * The cycle needs a writer that writes its outbox row and then, at commit, waits on a lock the merge holds. The staff booking does exactly that (`booking/service.ts:547-557`). For a person with no prospect, `bookingForPerson` takes no lock on the person (`arrival-port.ts:87-89`). `fo_booking.person_id` has no FK. So the booking's first lock on the person is `fo_dup_live_party`'s KEY SHARE at commit, after its outbox row.
+  * Probes A (3/3) and A3 (3/4) deadlock, and either side can lose.
+  * No data was wrong. When the booking loses, it retries on 40P01 (`isContention`): for the survivor it then succeeds; for the loser it then fails on the tombstone, as it would without the deadlock (the m5′ class, part 2). When the merge loses, it gets a raw 40P01, which `busy.ts` reads as Busy (part 2's 503).
+  * So the harm is a 1 s stall and an occasional Busy merge. But the comment at `:61-66` ("A transaction that never waits cannot be part of a deadlock, so the other writers always finish") is not true as written, and A2 shows the merge waiting 1.4 s with every lock held.
+  * Fix options, the builder's or the tech lead's choice, since the outbox is shared and the booking is outside the touch list:
+    * (a) Before the outbox row, take the outbox lock with `pg_try_advisory_xact_lock(hashtext('module_event_seq'))` under the same back-off, and on failure give Busy. The whole merge then needs to sit in a savepoint so "nothing merged" holds.
+    * (b) Have the staff booking take KEY SHARE on the person before its outbox row, or give `fo_booking.person_id` its FK. Both are outside the touch list.
+    * (c) At least, reword the comment and record the gap in the PR.
+* **m2. A retry leaves a savepoint open in the caller's transaction (new).** `ROLLBACK TO SAVEPOINT` keeps the savepoint. The next try's `SAVEPOINT fo_dup_locks` nests a second one, and `RELEASE` (`:77`) frees only the newest. So after any retry, one `fo_dup_locks` stays open until the transaction ends (D).
+  * It is harmless unless the caller uses the same name. D2 shows what happens then: the caller's `rollback to savepoint fo_dup_locks` lands on the merge's leftover savepoint and keeps the caller's own work.
+  * Fix: `release savepoint fo_dup_locks` right after the `rollback to savepoint` in the catch (`:78`), or a name with a random suffix.
+* **m3. The row-lock/record-lock window is still open for rows (new remainder of round 4's m3).** `lockPairFor` locks the rows (`:103`) before the records (`:104`). A lead of L that commits between the two is not locked, because the inserter's KEY SHARE on L is already gone when `find(L)` runs. A lead writer that then locks that lead and next needs L makes the merge's `move` UPDATE wait on it: a deadlock (E, which needed an injected pause to widen the window).
+  * Without the pause, the window is the few milliseconds between those statements, and a second writer is needed. So this is Minor.
+  * Fix, as for companies: run `lockRowsByOrder` once more after the record locks. Or, since NOWAIT makes the order irrelevant to deadlocks, take the two records first.
+* **m4. The round-4 M2 cross-merge case (`check:390-401`) never fails.** It stayed green with NOWAIT reverted (two runs), and with NOWAIT reverted plus the id-order sort removed. Ten `Promise.all` pairs do not overlap enough to show the round-4 deadlock (my round-4 P5 used 30 runs with a holder). It adds no coverage. Either make it overlap (a holder on the higher-id company, as in P5) or say in the PR that it only smoke-tests.
+* **Nit (carried from round 4).** The comment at `:298` still says "Withdrawing the copy first lets the Undo run".
+
+Kept as is, per the brief: the addContact/engage foreign-key errors (a Minor row for part 2), size (P-805), STAYS, consent and flag items, and the `calls.ts` 404 race (part 2).
+
+**Verdict: Approve** on `ade4a847c369f4d564e4046620e923ad660a3543`. No Blocker or Major is open. m1 to m4 go in the PR, or get fixed in a follow-up. m1 should go to the tech lead, because it is the one place where the ruling's "never waits" does not hold.
+
+Reviewer: Approve ade4a847c369f4d564e4046620e923ad660a3543
