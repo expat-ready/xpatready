@@ -71,6 +71,8 @@ async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: "light", reducedMotion: "reduce" }), p = await ctx.newPage();
   await ctx.addInitScript((x) => sessionStorage.setItem("xr-staff-session", JSON.stringify({ token: x, expiresAt: Date.now() + 3_600_000 })), t);
   p.on("pageerror", (e) => errors.push(String(e)));
+  // PF-30s-fix: PF30S_CPU_SLOWDOWN=6 slows the page's CPU like a busy CI runner, to replay the race onSales() closes.
+  if (process.env.PF30S_CPU_SLOWDOWN) await (await ctx.newCDPSession(p)).send("Emulation.setCPUThrottlingRate", { rate: Number(process.env.PF30S_CPU_SLOWDOWN) });
   const asks: string[] = [];
   p.on("request", (r) => { if (r.url().includes("/api/platform/find")) asks.push(new URL(r.url()).searchParams.get("q") ?? ""); });
   p.on("requestfinished", (r) => { if (r.url().includes("/api/platform/find")) { const t = r.timing(); if (t.responseEnd > 0 && !stubbed) took.push(t.responseEnd - t.requestStart); } });
@@ -78,6 +80,14 @@ async function pageAs(t: string, width = 1440): Promise<{ p: Page; asks: string[
 }
 const box = (p: Page) => p.locator("[data-find-input]");
 const hits = (p: Page) => p.locator("[data-find-hit]");
+/** After a hit opens a record: the address changes at once, but the old page (PlatformFrame on /home, with its own h1
+ *  and find box) stays on screen until React draws the new route. Waiting for the URL, an h1 or the box can therefore
+ *  match the old page, and "/" and the typing then land in a box that is about to be unmounted (PF-30s-fix: two merge
+ *  batches on main 5dd56f9 timed out so on slower runners). Wait for the Sales frame itself: only it carries "Sales home". */
+async function onSales(p: Page) {
+  await p.locator('header [aria-label="Sales home"]').waitFor({ state: "attached", timeout: 30_000 });
+  await box(p).waitFor({ timeout: 30_000 });
+}
 async function home(p: Page) { await p.goto(`${BASE}/home`); await p.locator("[data-find]").waitFor({ state: "attached", timeout: 30_000 }); }
 /** Types like a person (key by key) into the box and waits until the answer for this text has been drawn. */
 async function find(p: Page, text: string) {
@@ -100,7 +110,7 @@ try {
     (await hits(o).count()) >= 1 && (await o.locator("[data-find-group='Leads and prospects']").count()) === 1 && (await row.locator("mark").innerText()).toLowerCase() === `lena${run}` && (await row.innerText()).includes("Matched: Name") && (await row.innerText()).includes("Lead L-"), await row.innerText().catch(() => ""));
   await o.screenshot({ path: join(SHOTS, "pf30s-01-by-name-1440.png") });
   await box(o).press("Enter");
-  await o.waitForURL(`**/front-office/leads/${LENA_LEAD}`, { timeout: 15_000 }).catch(() => undefined);
+  await o.waitForURL(`**/front-office/leads/${LENA_LEAD}`, { timeout: 15_000 }).catch(() => undefined); await onSales(o);
   ok("PF-30s F1 pass (BR-5): Enter opens the first row, the lead's page, and the box is cleared", o.url().endsWith(`/front-office/leads/${LENA_LEAD}`) && (await box(o).inputValue()) === "", o.url());
   await find(o, `Zzqx${run}`);
   ok("PF-30s F1 fail: a name nobody has shows \"No matches. Try an email, phone or file number\" and no row",
@@ -114,7 +124,7 @@ try {
   ok("PF-30s F2 pass: the prospect's file number (typed in lower case) lists it, \"Matched: File number\"", (await prow.count()) === 1 && (await prow.innerText()).includes(PNUM) && (await prow.innerText()).includes("Matched: File number"), await prow.innerText().catch(() => ""));
   await o.screenshot({ path: join(SHOTS, "pf30s-03-by-number-1440.png") });
   await prow.click();
-  await o.waitForURL(`**/front-office/prospects/${PID}`, { timeout: 15_000 }).catch(() => undefined);
+  await o.waitForURL(`**/front-office/prospects/${PID}`, { timeout: 15_000 }).catch(() => undefined); await onSales(o);
   ok("PF-30s F2 pass: a click opens the prospect's page", o.url().endsWith(`/front-office/prospects/${PID}`), o.url());
   await find(o, "P-99999999");
   ok("PF-30s F2 fail: a file number nobody has shows the empty line", (await hits(o).count()) === 0 && (await o.locator("[data-find-line='done']").innerText()) === WORDS.empty);
@@ -205,7 +215,7 @@ try {
   const openedId = o.url().split("/").pop();
   const want = secondTitle.includes("Birch") ? k2.body?.id : k1.body?.id;
   ok("PF-30s F9 pass: Enter opens the marked row, not the first", openedId === want, { openedId, want, secondTitle });
-  await o.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 30_000 }); await box(o).waitFor({ timeout: 30_000 });
+  await onSales(o);
   await o.keyboard.press("/"); await o.keyboard.type(`Kit${run}`, { delay: 20 });
   await o.waitForFunction(() => (document.querySelector("[data-find-live]")?.textContent ?? "").includes("result"), undefined, { timeout: 15_000 });
   await o.keyboard.press("Escape");
