@@ -96,7 +96,6 @@ const NOT_SEEDED = new Set(["DELETED", "ABANDONED"]);
 export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR): Promise<FirmSeedResult> {
   const id = firmScope(firmId).firmId;
   const none: FirmSeedResult = { firmId: id, seeded: false, stages: 0, reasons: 0, webForms: 0, services: 0 };
-  await firmInTransaction(tx, id);   // PF-8b F8: as this firm, so the walls accept it with no bypass role (Amazon RDS's owner)
   // Named here in words (the database refuses it too, fo_sales_setup_firm_exists, but Prisma reports only "foreign key").
   const firm = await tx.platformFirm.findUnique({ where: { id }, select: { status: true } });
   if (!firm) throw new Error(`firm-seed: ${id} is no platform firm`);
@@ -139,7 +138,6 @@ export async function seedFirmFrontOffice(tx: Prisma.TransactionClient, firmId: 
 export const SAMPLE_BOOKING_WORDING = "Yes, the firm may send me news and updates at the address above. I can stop at any time. (Sample wording)";
 export async function ensureBookingWording(tx: Prisma.TransactionClient, firmId: string, actor = SEED_ACTOR, consent: ConsentPort<Prisma.TransactionClient> = new ConsentStore(auditEvent)): Promise<boolean> {
   const id = firmScope(firmId).firmId, where = firmScope(id, { channel: "EMAIL" as const, purpose: "MARKETING" as const });
-  await firmInTransaction(tx, id);   // PF-8b F8 (see seedFirmFrontOffice)
   if (await tx.msgConsentWording.findFirst({ where, select: { id: true } })) return false;
   await ensureMessagesFirm(tx, id);
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`msg_consent_wording:${id}:EMAIL:MARKETING:en-CA`}))`;
@@ -172,10 +170,18 @@ export async function seedCreatedFirms(db: PrismaClient): Promise<FirmSeedResult
   const out: FirmSeedResult[] & { failed?: { firmId: string; error: string }[] } = [];
   const failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { out.push((await onFirmCreated(db, { type: EVENT.FIRM_CREATED, firmId: f.firm_id }))!); } catch (e) { failed.push({ firmId: f.firm_id, error: String(e).slice(0, 300) }); }
+    try { out.push(await seedAsFirm(db, f.firm_id)); } catch (e) { failed.push({ firmId: f.firm_id, error: String(e).slice(0, 300) }); }
   }
   if (failed.length) out.failed = failed;
   return out;
+}
+
+/** PF-8b F8: onFirmCreated as the seed command runs it, each transaction written as that firm (firmInTransaction: a seed
+ *  command only, never the app's own calls of seedFirmFrontOffice or ensureBookingWording, review B1 on #3097). */
+async function seedAsFirm(db: PrismaClient, firmId: string): Promise<FirmSeedResult> {
+  const seeded = await db.$transaction(async (tx) => { await firmInTransaction(tx, firmId); return seedFirmFrontOffice(tx, firmId); });
+  await db.$transaction(async (tx) => { await firmInTransaction(tx, firmId); return ensureBookingWording(tx, firmId); });
+  return seeded;
 }
 
 /** PF-8b F8: the firms with a `firm.created` event whose front office is not seeded and which are not deleted or abandoned,
@@ -209,8 +215,8 @@ export async function seedSampleFirmsFrontOffice(db: PrismaClient): Promise<{ re
   }
   const results: FirmSeedResult[] = [], failed: { firmId: string; error: string }[] = [];
   for (const f of firms) {
-    try { results.push(await db.$transaction((tx) => seedFirmFrontOffice(tx, f.id))); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
-    try { await db.$transaction((tx) => ensureBookingWording(tx, f.id)); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
+    try { results.push(await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return seedFirmFrontOffice(tx, f.id); })); } catch (e) { failed.push({ firmId: f.id, error: String(e).slice(0, 300) }); }
+    try { await db.$transaction(async (tx) => { await firmInTransaction(tx, f.id); return ensureBookingWording(tx, f.id); }); } catch (e) { failed.push({ firmId: f.id, error: `booking wording: ${String(e).slice(0, 280)}` }); }
   }
   return { results, missing: SAMPLE_FIRM_KEYS.filter((k) => !firms.some((f) => f.key === k)), failed };
 }

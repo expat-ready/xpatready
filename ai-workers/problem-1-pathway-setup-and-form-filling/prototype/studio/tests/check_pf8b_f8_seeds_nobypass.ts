@@ -9,6 +9,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chownSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { firmInTransaction, withFirm } from "../api/src/platform/firm-scope.ts";
+import { ensureBookingWording, seedFirmFrontOffice } from "../api/src/front-office/firm-seed.ts";
 
 const STUDIO = join(import.meta.dirname, "..");
 const PORT = Number(process.argv[2] ?? 15481);
@@ -92,6 +96,28 @@ try {
   const refused = q("xr_admin", "insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values (gen_random_uuid(), 'f8-probe', 'Probe', 'CA', 'p@example.test', now())", "xr_rds");
   check("the walls still refuse that owner a firm row with no firm in its transaction (42501): the seeds pass only as each firm", /row-level security policy for table "platform_firm"/.test(refused), refused);
   check("…and the owner reads no seeded staff with no firm (the walls hold after the seeds)", q("xr_admin", "select count(*) from platform_staff", "xr_rds") === "0", q("xr_admin", "select count(*) from platform_staff", "xr_rds"));
+
+  // a firm with a firm.created event (firm-seed's catch-up) is seeded by the owner, as itself; a second run seeds nothing
+  const NEW = "33333333-3333-3333-3333-333333333333";
+  q("postgres", `insert into platform_firm (id, key, operating_name, country_code, contact_email, updated_at) values ('${NEW}', 'f8-new', 'New firm', 'CA', 'n@example.test', now());
+    insert into module_event (id, firm_id, type, subject_id, payload) values (gen_random_uuid(), '${NEW}', 'firm.created', '${NEW}', '{}')`, "xr_rds");
+  const c1 = json(seedFront("xr_admin", "xr_rds")), c2 = json(seedFront("xr_admin", "xr_rds"));
+  check("firm-seed's catch-up seeds a firm.created firm as itself for that owner, and a second run seeds nothing",
+    c1?.created?.length === 1 && c1.created[0].firmId === NEW && c1.created[0].seeded && c1.failed?.length === 0 && c2?.created?.length === 0
+      && q("postgres", `select count(*) from fo_stage where firm_id = '${NEW}'`, "xr_rds") === "16", { first: c1, second: c2 });
+
+  // review B1 on #3097: the app (xr_app, inside firm A's scope) still cannot write firm B's front office, and cannot switch
+  const A = q("postgres", "select id from platform_firm where key = 'sample-firm'", "xr_rds"), B = q("postgres", "select id from platform_firm where key = 'sample-solo'", "xr_rds");
+  const app = new PrismaClient({ adapter: new PrismaPg({ connectionString: url("xr_app", "xr_rds"), options: "-c TimeZone=UTC" }) });
+  const asA = <T>(fn: (tx: Parameters<Parameters<typeof app.$transaction>[0]>[0]) => Promise<T>) =>
+    withFirm(A, () => app.$transaction(async (tx) => { await tx.$executeRaw`select set_config('app.firm_id', ${A}, true)`; return fn(tx); })).then(() => "done", (e) => String(e).slice(0, 200));
+  const intoB = await asA((tx) => seedFirmFrontOffice(tx, NEW));
+  const wordB = await asA((tx) => ensureBookingWording(tx, B));
+  const switchB = await asA((tx) => firmInTransaction(tx, B));
+  await app.$disconnect();
+  check("the app in firm A's scope cannot seed another firm's front office (B is no platform firm to it) nor its booking wording",
+    /is no platform firm/.test(intoB) && wordB !== "done" && q("postgres", `select count(*) from msg_consent_wording where firm_id = '${B}' and text like '%Sample wording%'`, "xr_rds") === "1", { intoB, wordB });
+  check("…and firmInTransaction refuses inside a firm's scope (only a seed command sets its own firm)", /only a seed command sets its firm/.test(switchB), switchB);
 
   // the superuser path gives the same rows
   const sa = seedFirms("postgres", "xr_su"), sb = seedFront("postgres", "xr_su");
