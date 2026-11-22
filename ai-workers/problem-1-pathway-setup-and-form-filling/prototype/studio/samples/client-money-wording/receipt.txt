@@ -1,0 +1,15 @@
+# Sample wording. Unconfirmed: no accountant.
+{{firmName}}
+{{firmAddress}}
+{{taxLine}}
+
+PAYMENT RECEIPT {{number}}
+Date {{issuedOn}}
+Paid by: {{billTo}}
+
+For invoice {{invoiceNumber}} (total {{currency}} {{total}}, of which tax {{currency}} {{tax}})
+Received: {{currency}} {{amount}} by {{method}} on {{receivedOn}}{{reference}}
+{{cleared}}
+Balance due on {{invoiceNumber}} after this payment: {{currency}} {{balance}}
+{{extra}}
+Thank you.
