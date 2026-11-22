@@ -114,10 +114,13 @@ try {
   const intoB = await asA((tx) => seedFirmFrontOffice(tx, NEW));
   const wordB = await asA((tx) => ensureBookingWording(tx, B));
   const switchB = await asA((tx) => firmInTransaction(tx, B));
+  // …nor with no scope at all on the app's own role (review r2 m7)
+  const bare = await app.$transaction((tx) => firmInTransaction(tx, B)).then(() => "done", (e) => String(e).slice(0, 200));
   await app.$disconnect();
   check("the app in firm A's scope cannot seed another firm's front office (B is no platform firm to it) nor its booking wording",
     /is no platform firm/.test(intoB) && wordB !== "done" && q("postgres", `select count(*) from msg_consent_wording where firm_id = '${B}' and text like '%Sample wording%'`, "xr_rds") === "1", { intoB, wordB });
-  check("…and firmInTransaction refuses inside a firm's scope (only a seed command sets its own firm)", /only a seed command sets its firm/.test(switchB), switchB);
+  check("…and firmInTransaction refuses inside a firm's scope, and on the app's role with no scope (only a seed command sets its own firm)",
+    /only a seed command sets its firm/.test(switchB) && /never the app's role/.test(bare), { switchB, bare });
 
   // the superuser path gives the same rows
   const sa = seedFirms("postgres", "xr_su"), sb = seedFront("postgres", "xr_su");

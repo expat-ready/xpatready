@@ -84,11 +84,14 @@ export function withFirm<T>(firmId: string, fn: () => T | Promise<T>): Promise<T
  *  transaction reads and writes, set in the transaction itself (set_config's is_local: it ends at commit or rollback, so a
  *  pooled connection never keeps it). PF-12's walls (app.firm_id) then accept that firm's rows and no other, with no bypass
  *  role; for a superuser or BYPASSRLS runner nothing changes (the walls and the firm gate let it through anyway). */
-export async function firmInTransaction(tx: { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number> }, firmId: string | null): Promise<void> {
+export async function firmInTransaction(tx: { $executeRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<number>; $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T> }, firmId: string | null): Promise<void> {
   // Only a seed command or the start-up seed (no scope), or a bypass use, sets its own firm (review B1 on #3097): inside a
-  // request's, job's or firm's scope the caller's firm stands, so a wrong firm id is still refused by the walls.
+  // request's, job's (with or without a firm: break r2 m2) or firm's scope the caller's firm stands, so a wrong firm id is
+  // still refused by the walls; and never on the app's own role, whatever the scope (review r2 m7).
   const s = scope.getStore();
-  if (s && !s.bypass) throw new FirmScopeError("firmInTransaction: only a seed command sets its firm; inside a request, job or firm scope the caller's firm stands");
+  if ((s && !s.bypass) || currentJobFirm() !== undefined) throw new FirmScopeError("firmInTransaction: only a seed command sets its firm; inside a request, job or firm scope the caller's firm stands");
+  const [{ app }] = await tx.$queryRaw<{ app: boolean }[]>`select current_user = ${APP_ROLE} as app`;
+  if (app) throw new FirmScopeError("firmInTransaction: only a seed command sets its firm; never the app's role");
   await tx.$executeRaw`select set_config('app.firm_id', ${firmId === null ? "" : firmScope(firmId).firmId}, true)`;
 }
 /** PF-8b F8: a firm key → its firm id across the walls, through PF-12b's narrow definer lookup (platform_firm_of_key: the id

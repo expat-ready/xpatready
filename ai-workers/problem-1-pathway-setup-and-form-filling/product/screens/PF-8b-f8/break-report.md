@@ -71,3 +71,29 @@ Scope: the two Sample seeds, the two new helpers, and the `seedCreatedFirms` cha
 - Two `seedSampleSettings` runs at once write two `platform.setting.change` lines for one stored value (`keep-period/service.ts:44-45`, check-then-write). Same code on main.
 
 Verdict: Changes
+
+## Round 2 (diff `ebb81df9..0528e402`; fresh PostgreSQL 18.3 cluster on :15772, PR check on :15773)
+
+- **The PR's check:** 15/15 at `0528e402`. CI `module-cards`: success.
+- **M1 fixed.** Rerun of my app-scope attack through the real `WalledPool` as `xr_app` (`r2.mts`, DB `r1`), inside `withFirm(A)`, aimed at a fresh firm C:
+  - `seedFirmFrontOffice(tx, C)` gives "C is no platform firm".
+  - `ensureBookingWording(tx, C)` gives 42501 (row-level security).
+  - `firmInTransaction(tx, C)`, and `(tx, null)`, give `FirmScopeError`. So does a call from a `setTimeout` inside the scope.
+  - `seedSampleFirmsFrontOffice(app)` inside the scope fails each firm by name: `FirmScopeError` for the seed and for the wording.
+  - Firm C afterwards: 0 setup rows, 0 wording rows.
+  - `inRequest` with no firm (a public door): `FirmScopeError`.
+  - The app's own-firm path still works (`own.mts`): `withFirm(D)` seeds D's front office and wording.
+- **M2 fixed:** `MODULE.rows/PF-8b-f8.md` for both cards.
+- **Demo reset** (bypass use, `demo.mts`, empty DB `r2`, two runs): firms, the Sample type and the wording are written; 1 `platform.bypass` line per Sample firm per run (1/1, then 2/2).
+- **Start-up seed** (`seedSampleOnStart`, no scope, `PLATFORM_SAMPLE_SEED=on`, no-bypass owner, DB `r3`): completes (`firmsAdded 2`), and its snapshot equals the CLI seed's (`r4`). The consultation type step still skips, as noted in round 1.
+### Minor (new)
+
+**m2. The guard misses firm-less jobs.**
+- Where: `firm-scope.ts:90-91` checks only the firm scope's AsyncLocalStorage. A firm-less (recurring or platform) job with no `job:<queue>` bypass use runs as `asJob(name, …)` → `fn()` with no firm scope at all (`platform-jobs.ts:69`).
+- Repro (`r2.mts` step 5): `wallUnscopedQueries()`, then `asJob("r2.no-bypass-queue", () => $transaction(tx => { firmInTransaction(tx, C); seedFirmFrontOffice(tx, C) }))` as `xr_app`. It succeeds with `current_user xr_app, role none, app.firm_id = C` and writes C's `fo_sales_setup`.
+- The new card row says "refused inside a request's, job's or firm's scope", which is wrong for these jobs.
+- No job calls a seed function today, so nothing exploits it.
+- Possible fix: also refuse when `currentJobFirm() !== undefined` (any job, firm-less included).
+**m1** is unchanged and stays a known limit (disclosed in the PR body).
+
+Verdict: Approve
