@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 05:2x IST 23 Nov:** **#3073 CS-MV1 merged** (23:26 UTC); its binding line follows #3001. #3157 (PF-21b DW6 test fix) Lead B read OK db799f6fa, queued; #3042 waits it. #3156 FO-7g part 3: one fix before the label (re-rate existing taxed lines on a Bill-to change, or refuse while taxed lines exist); lane text sent. #3155 PF-17 part 1 draft. #3001 queued.
+
 **Lead B 2 pass, 04:5x IST 23 Nov:** **#3041 PF-F1b and #3017 PF-21b part 2 merged** (23:04 UTC). Queued: #3001, #3042, #3073. Next rows sent to Lead 9 for the three free lanes: PF-21b lane → PF-17 part 1 (brief PF-17-1.md, ready); PF-F1b lane → PF-Fw (no migration); FO-7ts part 3 lane → FO-7g part 3 (migration, slot after #3042). Held: FO-7q part 2 (after #3001), FO-9b part 1m (after #3042), both waiting on the records PR decision.
 
 **Lead B 2 pass, 04:2x IST 23 Nov:** **#2999 CS-NT1 part 1 merged** (R1.76). #3001 FO-7q OVERDUE fix: Lead B re-read OK 84b4ab16e (chunked candidates, facts once per row; limit noted: rare status in a very large firm). #3073 merged main again (343981ef3), own 6 files, queued. #3042 labelled; #3041, #3017 queued. Records branch lead-b/2026-11-23-track-b-records @a1c2ce3ae waits the founder's decision (PR open refused in this session).
