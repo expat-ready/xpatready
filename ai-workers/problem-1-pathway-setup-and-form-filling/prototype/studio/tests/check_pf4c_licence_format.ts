@@ -7,7 +7,7 @@
 //   DW6b the number in no log line, no audit line and no answer other than the saved record's own read; the warning
 //        names the body, never the number
 //   DW6c the pack's patterns: every numberPattern carries its source (url, page, quote, date) and compiles; a pattern
-//        without a source, or one that does not compile, stops the pack loading (bodiesOf throws)
+//        without a source, one that does not compile, or one with a nested repeat (review m1) stops the pack loading
 // The committed pack holds no pattern yet (no body's official page could be read from a cloud lane, P-601 (5)), so the
 // HTTP cases give one body a TEST-ONLY pattern in memory ("R" and 6 digits, marked Sample, never written to the file).
 // A scratch database (every migration, the Sample firms) and a Nest app of PF-4's classes with the local stand-in, a test
@@ -66,6 +66,10 @@ const throws = (raw: unknown) => { try { bodiesOf(raw); return null; } catch (e)
 const unsourced = throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: "R\\d{6}" }] });
 const halfSourced = throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: "R\\d{6}", source: { url: "https://example.org", page: "Register", quote: "" , date: "2026-11-22" } }] });
 const broken = throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: "R(\\d{6", source: { url: "https://example.org", page: "Register", quote: "a quote", date: "2026-11-22" } }] });
+const nested = ["(a+)+", "R(\\d+)*", "(R\\d{1,})+"].map((pat) => throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: pat, source: { url: "https://example.org", page: "Register", quote: "a quote", date: "2026-11-22" } }] }));
+const flat = ["R\\d{6}", "(R|Q)\\d{6}", "[A-Z]{2}-\\d{4,6}"].map((pat) => throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: pat, source: { url: "https://example.org", page: "Register", quote: "a quote", date: "2026-11-22" } }] }));
+ok("PF-4c review m1 fail: a pattern repeating a group that already repeats ((a+)+, R(\\d+)*, (R\\d{1,})+) stops the pack loading; flat patterns (R\\d{6}, (R|Q)\\d{6}, [A-Z]{2}-\\d{4,6}) load",
+  nested.every((m) => /repeats a group/.test(m ?? "")) && flat.every((m) => m === null), { nested, flat });
 const sourced = throws({ bodies: [{ name: "Test body", kind: "TEST", numberPattern: "R\\d{6}", source: { url: "https://example.org", page: "Register", quote: "a quote", date: "2026-11-22" } }] });
 ok("PF-4c DW6c fail: a pattern with no source, a source with an empty quote, or a pattern that does not compile stops the pack loading, naming the body; a sourced one loads",
   /Test body/.test(unsourced ?? "") && /Test body/.test(halfSourced ?? "") && /Test body/.test(broken ?? "") && sourced === null, { unsourced, halfSourced, broken, sourced });

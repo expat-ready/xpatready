@@ -14,6 +14,8 @@ export type LicensingBody = { name: string; kind: string; numberPattern?: string
 export const BODIES_FILE = join(import.meta.dirname, "..", "..", "..", "..", "samples", "representative-bodies-ca.json");
 
 const filled = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+/** A group holding a repeat (+, *, {n,}) that is itself repeated: the shape behind slow regular expressions. */
+const NESTED_REPEAT = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d*,\d*\})(?:[^()\\]|\\.)*\)(?:[+*]|\{\d*,\d*\})/;
 
 /** Reads the pack's bodies. A pattern with no complete source, or one that does not compile, stops the load (a pattern
  *  nobody can cite is never used to warn anyone). */
@@ -28,6 +30,9 @@ export function bodiesOf(raw: unknown): LicensingBody[] {
     if (!filled(b.numberPattern) || !s || !filled(s.url) || !filled(s.page) || !filled(s.quote) || !filled(s.date))
       throw new Error(`samples/representative-bodies-ca.json, ${body.name}: a numberPattern needs its source (url, page, quote, date) from the body's own official page`);
     try { new RegExp(String(b.numberPattern), "u"); } catch { throw new Error(`samples/representative-bodies-ca.json, ${body.name}: the numberPattern does not compile`); }
+    // Review m1: a repeated group that itself repeats ("(a+)+") can take seconds on one number; a licence format never
+    // needs one, so the pack refuses it.
+    if (NESTED_REPEAT.test(String(b.numberPattern))) throw new Error(`samples/representative-bodies-ca.json, ${body.name}: the numberPattern repeats a group that already repeats; write it without nesting`);
     return { ...body, numberPattern: String(b.numberPattern), source: { url: s.url!, page: s.page!, quote: s.quote!, date: s.date! } };
   });
 }
