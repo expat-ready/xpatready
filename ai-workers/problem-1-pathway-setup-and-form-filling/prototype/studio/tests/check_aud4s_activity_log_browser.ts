@@ -20,7 +20,8 @@
 // No integrity pill is drawn and none is tested (C2: row AUD-4s-i). Sample firms and Sample lines only (written straight into the
 // copy's audit_event, as check_aud4_firm_log.ts does). US$0, no model call; live AI off.
 // Screenshots (deviceScaleFactor 1) in product/screens/AUD-4s/screenshots/. Run from prototype/:
-//   zsh studio/tools/isolated.sh aud4s 4442 start AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh aud4s 4442 stop' EXIT && studio/node_modules/.bin/tsx studio/tests/check_aud4s_activity_log_browser.ts 4442 xr_studio_aud4s
+//   zsh studio/tools/isolated.sh aud4s 4442 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_aud4s_activity_log_browser.ts 4442 xr_studio_aud4s
+// (the form run-suites.sh reads; it starts and stops the copy itself. By hand, stop it after: isolated.sh aud4s 4442 stop)
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
