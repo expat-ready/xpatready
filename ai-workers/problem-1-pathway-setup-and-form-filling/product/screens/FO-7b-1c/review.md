@@ -225,3 +225,35 @@ None.
 2. Round 3's Minor 1 (the R2-4 case) and Nits 1-2 are not in this diff and still stand as written.
 
 **Verdict: Approve** on `b2cae898f084c803435d396f9f03b71b1178892d` (part 1c): no open Blocker or Major. The fix matches Lead B's ruling in substance, placement and wording. Its case fails on the old code and passes on the new one. Nothing else changed.
+
+## Merge of main after #2953 (diff 9c4becfff..2c3564b9c)
+
+Diff-only re-review of `2c3564b9c5f5c0faaad1a2d892f570b9900d8738` on `claude/runtime-fo7b-1c`. It is API-only, so there is no browser walk and no journey score. The commit is a merge of `origin/main` (parents `9c4becfff`, the last Approve, and `3264e2510`, the #2953 merge, which is current `origin/main`).
+
+**1. Part 1c's own files are unchanged.** `git diff 9c4becfff 2c3564b9c` on `api/src/client-money`, `ports/client-money.ts`, `tests/check_fo7b_refunds.ts` and `features/client-money-refunds.ts` touches only four files. They are main's FO-7g part 1 tax files (`client-money/tax/canada-gst-hst.ts`, `tax/defaults.ts`, `tax/routes.ts`, `MODULE.rows/FO-7g-1.md`), added by `84a3e1ab2`..`9baa5e301` on main. All are additions, and none touches `invoices/` or the port. `refunds.ts`, `refund-routes.ts`, the feature, the port and the check are byte-identical to the approved code `b2cae898f`.
+
+**2. The PR's diff against main is part 1c only.** `git diff origin/main...2c3564b9c --stat` lists 9 files, all additions (839+): `refunds.ts`, `refund-routes.ts`, `features/client-money-refunds.ts`, `ports/client-money.ts` (+41), `MODULE.rows/FO-7b-1c.md`, `tests/check_fo7b_refunds.ts`, `screens/FO-7b-1c/{review,break-report}.md` and `screens/FO-7b-1b/review.md`. Nothing else is in it.
+
+**3. The merge took no conflict resolution, and main's changes do not touch what part 1c relies on.**
+* `git show --cc 2c3564b9c` and `git show --remerge-diff 2c3564b9c` are both empty, so the merge is exactly git's automatic result. There was no hand resolution, and reading `9c4becfff^2...` is not needed.
+* No change in `9c4becfff..2c3564b9c` reaches any of these: `ports/client-money.ts`, `invoices/` (`facts.ts`, `drafts.ts`, `routes.ts`), `platform/identity/keys.ts`, `catalogue.ts`, `port.ts`, `guard.ts`, `local.ts`, `platform/audit/` (`audit-event.ts`), `core.ts`, `features.ts` or `features/client-money-invoices.ts`.
+* `platform/firm-scope.ts` gains one `BYPASS_USES` entry (`job:platform.billing.exit_notices`). `firmScope`, which `refunds.ts` imports, is untouched.
+* `identity/service.ts` and `identity/routes.ts` change only the batch invite (PF-4c 1b: partial success, 200) and the licence warning. The check uses `PlatformIdentity` and its controller only to sign staff in, and neither is changed there.
+* `ports/events.ts` was split into `ports/events/*`. `ports/client-money.ts` imports only `zod`, and `refunds.ts` takes `MONEY_EVENT` from the port, so the split does not reach it.
+* Main's six migration edits (PF-12 walls, PF-18bk keys and checksum, PF-8b grant loop, QA-741 plan prices, QA-644 staging) do not mention refunds, payments, invoices or audit.
+
+**Run** (from `prototype/`, scratch database 127.0.0.1:54329, not :4400): `studio/node_modules/.bin/tsx --tsconfig studio/api/tsconfig.json studio/tests/check_fo7b_refunds.ts` gives **29 passed, 0 failed** on the merged tree. This includes the migrations main changed.
+
+### Blocker
+None.
+
+### Major
+None.
+
+### Minor
+None.
+
+### Nits (no fix asked)
+1. The earlier nits still stand as written: round 4's Nit 1 (a replay after the cleared tick changes) and round 3's Minor 1 and Nits 1-2.
+
+**Verdict: Approve** on `2c3564b9c5f5c0faaad1a2d892f570b9900d8738`. It is a clean automatic merge of main. Part 1c's code is unchanged from the approved `b2cae898f`, the diff against main is part 1c only, and the check passes 29/0. Lead 5's money read (P-423) on `9c4becfff` still holds for this code.
