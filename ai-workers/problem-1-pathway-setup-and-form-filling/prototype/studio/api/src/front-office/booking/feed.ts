@@ -22,15 +22,16 @@ import { Booking, BOOKING_PORTS } from "./public.controller.ts";
 import { partyOf } from "./consult/service.ts";
 import { hostZone, type GivenBookingPorts } from "./service.ts";
 import { firmTimings, resolveTimings } from "./settings/timings.ts";
+import { FIELD_ERROR_STATUS, fieldsOf, parseInput } from "../../platform/http/input.ts";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN, MAX_DAYS = 62;
 const LIST = "agent/booking:list", EDIT = "agent/booking:edit";
 const ACTIVE = ["SCHEDULED", "RESCHEDULED"], PIECE = 10_000;
 const problem = (status: number, slug: string, title: string, detail: string, extra: Record<string, unknown> = {}) =>
   new HttpException({ type: `https://expatready.example/problems/${slug}`, title, status, detail, ...extra }, status);
-// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 400, never a 500 (break F1).
+// The same bounds as FO-3sr's list (service.ts Instant): a year outside 2000-2099 is a 422 field error, never a 500 (break F1; PF-28 part 4).
 const Instant = z.iso.datetime({ offset: true }).transform((s) => new Date(s)).refine((d) => d.getTime() >= Date.UTC(2000, 0, 1) && d.getTime() < Date.UTC(2100, 0, 1), "a time between 2000 and 2100");
-const FeedQuery = z.object({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
+const FeedQuery = z.strictObject({ from: Instant, to: Instant, view: z.enum(["mine", "team"]).default("mine") });
 
 type Row = Awaited<ReturnType<PrismaClient["foBooking"]["findFirstOrThrow"]>>;
 export type FeedItem = Awaited<ReturnType<BookingFeed["items"]>>[number];
@@ -41,10 +42,12 @@ export class BookingFeed {
 
   /** `GET bookings/feed?from&to&view=mine|team`: at most 62 days, from before to; `team` needs agent/booking:list. */
   async list(ctx: StaffContext, query: unknown) {
+    parseInput(z.unknown(), query);   // PF-28 part 4 (review m1): a "__proto__" key is refused as the one rule refuses it
     const p = FeedQuery.safeParse(query ?? {});
-    if (!p.success) throw problem(400, "booking-refused", "Bookings not listed", "Ask with from and to as ISO times, and view mine or team.", { issues: p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
+    // PF-28 part 4: a field error is 422 with the fields named (an unknown query key among them), the issues as before.
+    if (!p.success) throw problem(FIELD_ERROR_STATUS, "booking-refused", "Bookings not listed", "Ask with from and to as ISO times, and view mine or team.", { code: "INVALID", fields: fieldsOf(p.error), issues: p.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
     const q = p.data;
-    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > MAX_DAYS * DAY) throw problem(400, "booking-refused", "Bookings not listed", `Ask for at most ${MAX_DAYS} days, from before to.`);
+    if (!(q.from < q.to) || q.to.getTime() - q.from.getTime() > MAX_DAYS * DAY) throw problem(FIELD_ERROR_STATUS, "booking-refused", "Bookings not listed", `Ask for at most ${MAX_DAYS} days, from before to.`, { code: "INVALID", fields: { to: `at most ${MAX_DAYS} days after from` } });
     if (q.view === "team" && !ctx.keys.includes(LIST)) throw problem(403, "forbidden", "Not allowed", `This needs the permission ${LIST}.`, { code: "MISSING_PERMISSION" });
     const where = { startsAt: { lt: q.to }, endsAt: { gt: q.from } };
     const rows = q.view === "team" ? await this.b.readSeen(ctx, Prisma.sql`b.starts_at < ${q.to} AND b.ends_at > ${q.from}`, where, "startsAt")
