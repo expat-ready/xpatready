@@ -1,0 +1,2 @@
+Entry points: PF-5fp (R1.92): `GET|PUT /api/platform/firm/profile` (read: agent/settings:list; change: agent/settings:edit, the billing email Owner only by agent/firm-profile:manage; a `version` on every save, stale 409; legal name, trading name, country and web address refused as "not changed here"); new firm settings `platform.public_phone`, `platform.public_email` (personal), `platform.website` (`settings/profile/service.ts`).
+Tests: tests/check_r192_firm_profile.ts
