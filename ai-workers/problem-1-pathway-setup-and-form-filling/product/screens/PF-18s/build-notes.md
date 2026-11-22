@@ -74,7 +74,7 @@ A Case Officer, or anyone without `agent/settings:edit`, has no Offices line. Op
 * **B1:** "Who works where" now has its own cache entry, `["pf","staff","placements"]`. Before this, Team and Offices overwrote each other's staff list and Team went blank. The new check goes Offices → Team → Offices by the menu.
 * **M1:** while a province gives a zone, "Your firm's time zone" is not offered. The server would pre-fill the province's zone over an empty choice. When a province is picked after choosing the firm's zone, the province pre-fill comes back. Covered by a check line.
 * **Breaker's Minors:**
-  * m1: at 375 px, Where and Hours move under the name, and zones break only at the slash.
+  * m1: at 375 px, Where moves under the name, and zones break only at the slash. Below 768 px Hours is hidden and shown nowhere else (round 2 Minor: breaker m6, reviewer r2-m1).
   * m2: the panel title is "Edit office", which no longer overflows on a long name.
   * m3: "Canada" typed as a country abroad is refused on the field.
   * m4: after a refusal, focus moves to the field in error, else to the notice.

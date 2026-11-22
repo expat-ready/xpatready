@@ -64,3 +64,61 @@ A real screen reader; an intended user's walk (D17, D20: the founder); an Admin 
 **Verdict: Block** (commit f5a1ea6c40c2a208d0de5009ce749a280c18fa44). To fix: **Blocker** B1 (the shared staff-list cache key); **Major** M1 (the firm-zone choice dropped after a province); **Minor** m-1 to m-7 (fix or list as follow-ups). Re-review the new head (90f7f5c38 or later) before labelling.
 
 Reviewer: Block f5a1ea6c40c2a208d0de5009ce749a280c18fa44
+
+## Round 2 (df35afdd)
+Commit reviewed: **df35afddccb17e10158aa5f93c07847eca882628**. Scope (P-277): `git diff f5a1ea6c..df35afdd`, i.e. `offices-page.tsx`, `office-panel.tsx`, `place-panel.tsx` and `check_pf18s_offices_browser.ts`, plus the build notes' "Round 1" section. Fresh isolated copy `review2_pf18s` on :4446 (`PLATFORM_IDENTITY=local AI_LIVE=off`), stopped afterwards. US$0. Builder's check: **28/28** (12.7 s). I restored the screenshots it rewrote. Web `tsc --noEmit`: clean. I then walked it with my own headless script in the scratchpad (not committed), reading the database underneath. The breaker's round 2 (`break-report.md`, written in parallel and not mine) agrees on every point below.
+
+**B1: fixed.** "Who works where" now uses its own key, `["pf","staff","placements",token]` (`offices-page.tsx:20`). No other page uses it. Placing still invalidates the prefix `["pf","staff"]` (`place-panel.tsx:26`), and so do Team's person and invite panels, so both entries refresh.
+* Browser, step (a): Offices, then Team by the menu. The seat line shows straight away and is still there after 2.5 s. No page or console error.
+* Browser, step (b): a fresh load on Team, then Offices within 122 ms. All placements are correct ("Case officer = Calgary downtown", "Representative = Sample immigration firm"), and still correct 3 s later. The notice says "1 person", not 3.
+* Browser, after taking the Case Officer out: the row reads "No office" at once. Team, then back to Offices, still reads "No office". The database has 0 rows.
+* The test would fail without the fix: the new DW6 line waits for `[data-seat-line]` after Offices → Team. The old shared entry crashed Team (`seats.line` undefined), so that wait times out.
+
+**M1: fixed.** "Your firm's time zone" is offered only on add, and only while no province gives a zone (`office-panel.tsx:83, 100`). A firm choice made before a province is replaced by the province's pre-fill, shown as "Pre-filled from AB" (`:34`). In every state I tried, the zone the panel shows is the zone the server saves:
+* Firm option chosen, then AB: Edmonton, with no firm option left.
+* A zone picked, then the province changed: the picked zone is kept.
+* Province cleared: the firm option comes back, and the picked zone is kept.
+* Abroad (FR): firm option, empty zone, saved as America/Toronto.
+* Edit: no firm option.
+* Saving after picking a zone: audit `chosen`.
+* The test would fail without the fix: the new DW3 line asserts `withProvince === 0`, and the old code always rendered the option. That line does not exercise the "explicit firm choice, then province" branch; my walk covered it.
+
+**No new Blocker or Major.**
+* **Focus:**
+  * A duplicate name on edit (409) and a blank name both put focus on Office name, with `aria-invalid`.
+  * A refusal with no field error focuses the `tabIndex=-1` "Not saved" box.
+  * The place panel opens on the ticked radio ("Calgary downtown"), with Save disabled.
+  * Escape or Close returns focus to the opener (Edit, Change).
+* **375 px:** the page and both table regions are 375/341/341 with no inner scroll, Edit buttons stay inside the viewport, and Where shows under the name. The edit panel with a 120-character name is 374/374.
+* **1024 px:** Hours now stays on one line. Round 1's three-line wrap is gone (scratchpad `r2-offices-1024.png`).
+
+**Minors (Should; none blocks)**
+1. **r2-m1 Hours is hidden below 768 px and shown nowhere else.** `offices-page.tsx:77, 80` (`hidden md:table-cell`). Concept §4 lists Hours in the list, and "375 px: tables become stacked rows". The build notes say "Where and Hours move under the name", but only Where does. Measured at 375 and 700 px: no hours text on the page. Fix: add `hoursLine` under the name with `md:hidden`, as Where already is, or correct the build notes and list it as a follow-up. This is the breaker's m6.
+2. **r2-m2 A 409 that is neither a duplicate name nor a reloaded stale copy lands on the name field.** `office-panel.tsx:67`. This happens when the re-read after a stale 409 fails. It is rare and saves nothing wrong. This is the breaker's m7.
+3. **Carried over, with the build notes' reasons accepted as follow-ups:**
+   * m-1: the firm's zone is not named on add outside Canada.
+   * m-2 (part): the server's words "a country code on the ISO list" and "This is required." remain.
+   * m-7: graph blind spot. I did not re-run `graph.mjs`: no routes changed in this diff.
+   * m-3: the 200 % name breaks are now covered by the stacked Where line, so only r2-m1 remains of it.
+4. m-4, m-5 and m-6 are fixed (focus wait in the check, focus on the field, the "Edit office" title).
+
+**Journey score (reviewer, round 2): 8.5 / 10, pass.** This replaces round 1's 7, and it is put here instead of a new journey file because this round's brief allows one file. It is the reviewer's own score for this check.
+
+| Criterion | Score | Evidence |
+|---|---|---|
+| Task completed | 1 | Add, edit, place, take out |
+| Next step obvious | 1 | One filled button and the unplaced notice |
+| Plain words | ½ | Province codes and IANA ids; the server's field words |
+| Feedback and state | 1 | B1 gone: rows right across Team ↔ Offices |
+| Correct data | 1 | The zone shown is the zone saved; audit origin right |
+| Error recovery | 1 | Focus on the field in error; a duplicate name on the field |
+| Accessibility and screen sizes | 1 | Check: axe clean and no sideways scroll at 375/1024/1440 |
+| Speed | 1 | Offices after Team in 122 ms |
+| Visual quality | ½ | Hours hidden below 768 px (r2-m1) |
+| Trust and sources | ½ | The firm's zone is not named outside Canada (m-1) |
+
+**Not checked this round:** a real screen reader, an intended user's walk (D17, D20), and the Admin persona.
+
+**Verdict: Approve** (commit df35afddccb17e10158aa5f93c07847eca882628). B1 and M1 are fixed, each with a test that fails without the fix, and there is no open Blocker or Major. Fix the Minors r2-m1 and r2-m2 and the carried m-1, m-2 and m-7, or list them in the PR.
+
+Reviewer: Approve df35afddccb17e10158aa5f93c07847eca882628
