@@ -45,3 +45,28 @@ founder's approval again. The failed `pf12_firm_walls` migration must be marked 
 db.t4g.medium ~0.09, NAT ~0.05 + data, load balancer ~0.025, 3 public IPv4 ~0.015, 0 tasks).
 **Added by the domain move:** a Route 53 hosted zone US$0.50/month; ACM certificate free; SES identity free; the load balancer
 is replaced (CDK-named in domain mode), same price. **Two tasks later:** ~US$0.11/h. **CodeBuild:** ~US$0.01-0.02 per minute of build.
+
+## Step 2: domain move (track A) and image build (track B), from 11:13 IST
+
+**Checkout in CloudShell:** `~/xr-setup.sh origin/main` → 5d866c7464957f96551fefa2d7a9fab59e4c7a76 (2026-11-22 05:31Z), Node v22.23.5.
+Script `~/d-cdk.sh diff|deploy <tasks> <digest>` (copy of 21 Nov `p2-cdk.sh` with `-c xr:domain=lab.expatready.com` and no cert ARN;
+on-call address read from the stack, never printed).
+
+**Diff (`cdk diff`, tasks 0, digest sha256:ed1b52f0…, rc=0), summary:**
+* Added: Route 53 hosted zone, SES email identity + 3 DKIM CNAMEs + MAIL FROM MX/TXT + DMARC TXT, ACM wildcard certificate,
+  the `*.staging.lab.expatready.com` alias record, the task role's SES send policy (IAM statement change).
+* Changed in place: the three Cognito pools and two app clients (WebAuthn relying party now the domain).
+* Replaced: the task definition (container settings: address suffix) and the load balancer (no fixed name in domain mode),
+  its two listeners follow. Data (RDS, buckets, secrets, logs) untouched.
+* Outputs: `LoadBalancerHost` removed, `NameServers` added.
+
+**Deploy A started 11:15 IST** (`d-cdk.sh deploy 0 sha256:ed1b52f0…`, nohup, log `~/d-deploy-0.log`).
+* Zone `staging.lab.expatready.com` = `/hostedzone/Z0301963960X9VWH68EH`, name servers
+  `ns-1430.awsdns-50.org`, `ns-871.awsdns-44.net`, `ns-440.awsdns-55.com`, `ns-1678.awsdns-17.co.uk`: **sent to Lead 1 11:1x**
+  for 4 NS records named `staging.lab` in Cloudflare.
+* 11:17 IST: stack 7/23; certificate `arn:aws:acm:ca-central-1:581508167097:certificate/2c5572c6-ee3d-4a7e-b48d-e9ca2ae5736e`
+  PENDING_VALIDATION (waits for the delegation).
+
+**Track B (image build):** the founder approved a temporary build project and its service role (relayed by Lead 1, ~11:2x).
+This session's permission check **refused `iam create-role`** because the approval reached it only through another session,
+not typed here. Nothing was created. Waits for the founder's own approval in this session (or his own click).
