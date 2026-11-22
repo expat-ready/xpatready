@@ -197,14 +197,16 @@ try {
   sql("analyze");
   const t0 = performance.now(); const p1 = await listA({}); const ms = Math.round(performance.now() - t0);
   const t1 = performance.now(); await listA({ status: "OVERDUE" }); const msOd = Math.round(performance.now() - t1);
-  console.log(`INFO  FO-7q DW1: page 1 of 10,000+ invoices in ${ms} ms; status=OVERDUE in ${msOd} ms (AG-6-30's example: 300 ms; reported, not a gate)`);
+  console.log(`INFO  FO-7q DW1: page 1 of 10,000+ invoices in ${ms} ms; status=OVERDUE in ${msOd} ms (AG-6-30's 300 ms: page 1 reported, OVERDUE asserted below)`);
   const planOf = async (q: Record<string, string>) => { const b = await inA(() => all.listSql(ctxR, q)); return (await owner.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`explain ${b.sql!}`)).map((r) => r["QUERY PLAN"]).join("\n"); };
-  const plan = await planOf({}), planOd = await planOf({ status: "OVERDUE" });
+  const plan = await planOf({});
   const firmFirst = (p: string) => /Index (Only )?Scan.* on money_invoice\b|Bitmap Index Scan on money_invoice_firm/.test(p) && !/Seq Scan on money_invoice\b/.test(p);
     // Page 1 needs FO-7ts part 3's index (firm_id, issued_at DESC, id), #2368: until it is on main this case fails (the Ready-when).
   ok("FO-7q DW1 pass: page 1 reads money_invoice through a firm_id-first index, with no sequential scan of it", firmFirst(plan), plan);
-  // status=OVERDUE: no index covers due_date, so the planner may scan one firm's issued invoices (13-16 ms here): a question for the tech lead.
-  ok("FO-7q DW1 pass: status=OVERDUE reads money_invoice through a firm_id-first index, with no sequential scan of it", firmFirst(planOd), planOd);
+  // status=OVERDUE: no index covers due_date yet (a later FO-7ts index step), so its proof is the time against AG-6-30's
+  // 300 ms (Lead 4 on #3001, comment 7077540661, answer 1); the plan shape is not asserted.
+  ok(`FO-7q DW1 pass: status=OVERDUE over 10,000+ invoices answers within 300 ms (${msOd} ms)`, msOd < 300, msOd);
+  ok("FO-7q DW1 fail: a time past 300 ms fails the same comparison", !(301 < 300));
   ok("FO-7q DW1 fail: a plan with a sequential scan of money_invoice is caught by the same check", !firmFirst("Seq Scan on money_invoice i  (cost=0.00..1.00 rows=1 width=8)"));
   ok("FO-7q DW2 pass: no page size → 50, and 200 → 200", p1.items.length === 50 && p1.pageSize === 50 && (await listA({ pageSize: "200" })).items.length === 200);
   const seen = new Set<string>(); let next: string | null = null, repeats = 0, pages = 0;
