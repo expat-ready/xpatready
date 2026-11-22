@@ -48,11 +48,10 @@ export function phoneOf(text: string, country: string): string | null {
 type PartyRow = { id: string; case_id: string; case_number: string; client_id: string; kind: string; role_on_case: string; display_name: string; by_email: boolean; by_phone: boolean; sim: number; prefix: boolean; visible: boolean };
 type CaseRow = { id: string; case_number: string; status: string; client: string; visible: boolean };
 
-@Injectable()
 export class CasePartySearch implements PartySearchPort {
   /** The audit port (a test may pass a fake). */
   audit: AuditPort<Prisma.TransactionClient> = auditEvent;
-  constructor(@Inject(Db) private readonly db: PrismaClient) {}
+  constructor(private readonly db: PrismaClient) {}
 
   /** The search itself: read-only, on the given client or transaction. */
   async find(ctx: CaseViewer, q: CaseSearchIn, db: Reader = this.db): Promise<CaseSearchOut> {
@@ -125,3 +124,6 @@ export class CasePartySearch implements PartySearchPort {
     });
   }
 }
+// Decorators as calls: this folder is outside api/tsconfig.json's decorator files (as case-clients/live.ts does).
+Injectable()(CasePartySearch);
+Inject(Db)(CasePartySearch, undefined, 0);

@@ -15,9 +15,8 @@ import { CasePartySearch } from "./party-search.ts";
 const roleWords = (role: string) => { const w = role.toLowerCase().replace(/_/g, " "); return w.charAt(0).toUpperCase() + w.slice(1); };
 const statusWord = (status: string) => (status === "CLOSED" ? "Closed case" : "Case");
 
-@Injectable()
 export class CaseFinder implements OnModuleInit {
-  constructor(@Inject(FindRegistry) private readonly registry: FindRegistry, @Inject(CasePartySearch) private readonly search: CasePartySearch) {}
+  constructor(private readonly registry: FindRegistry, private readonly search: CasePartySearch) {}
 
   onModuleInit() { this.registry.register("case", (ctx, q) => this.find(ctx, q)); }
 
@@ -40,3 +39,6 @@ export class CaseFinder implements OnModuleInit {
     return out.sort((a, b) => b.rank - a.rank || a.title.localeCompare(b.title) || a.id.localeCompare(b.id)).slice(0, FINDER_MAX_HITS).map(({ rank: _rank, ...h }) => h);
   }
 }
+// Decorators as calls: this folder is outside api/tsconfig.json's decorator files (as case-clients/live.ts does).
+Injectable()(CaseFinder);
+[FindRegistry, CasePartySearch].forEach((t, i) => Inject(t)(CaseFinder, undefined, i));
