@@ -13,6 +13,7 @@ import { ACCOUNT_SECTIONS, visibleSections } from "./account-sections";
 import { endSession, staffApi, StaffApiError, useLocalSignIn, useMe, useSessionEnd, useStaffToken } from "./session";
 import { SignedInElsewhere } from "./signed-in-elsewhere";
 import { TermsPage, useTermsPending } from "./terms/terms-gate";
+import { TrialBanner } from "./trial-banner";
 
 /** FO-4's sign-in card (moved here from sales-frame.tsx): PF-4's local stand-in until the provider's sign-in pages. */
 export function SignInCard({ failed, focus, embedded }: { failed?: string | null; /** Moves focus to the card when it appears in place of a page (break m6). */ focus?: boolean;
@@ -95,6 +96,7 @@ export function PlatformFrame({ crumbs = [], back = null, area, intro, children 
       controls={who ? <><span className="min-w-0 truncate text-sm font-medium" data-staff-name>{who.displayName}</span><Button variant="ghost" size="sm" busy={leaving} onClick={() => void signOut()}>Sign out</Button></> : null}
       menu={who ? (area ? area.menu(who) : <AccountMenu me={who} />) : null}>
       <Place crumbs={crumbs} back={back} area={area} />{intro}
+      {who && pending.checked && !pending.terms ? <TrialBanner me={who} /> : null}
       {!token ? (because === "SIGNED_IN_ELSEWHERE" ? <SignedInElsewhere /> : <SignInCard focus={had.current} />)
         : me.isError && !who ? <SignInCard failed={refused} />
           : !who || !pending.checked ? <p role="status" className="text-sm text-text-muted" data-loading>Checking who is signed in…</p>
