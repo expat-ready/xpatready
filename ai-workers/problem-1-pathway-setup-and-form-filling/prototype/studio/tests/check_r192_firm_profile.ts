@@ -24,10 +24,12 @@
 //      settings, firm A's office is 404 to it and firm A's person's licence is 404 to it.
 // Re-runnable on the same copy (each run's values are new; offices are never removed, so each run adds its own). US$0, no model call,
 // live AI off. Run from prototype/:
-//   zsh studio/tools/isolated.sh r192 4792 start --ttl 30 AI_LIVE=off PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh r192 4792 stop' EXIT && tsx studio/tests/check_r192_firm_profile.ts 4792 xr_studio_r192
+// (the usage line run-suites.sh reads: an isolated copy on its own port, 4793, used by no other suite; #3003's batch failed on shard 10
+// when this line carried --ttl and a trap, so the runner did not recognise it and ran the check with no copy)
+//   zsh studio/tools/isolated.sh r192 4793 start AI_LIVE=off PLATFORM_IDENTITY=local && tsx studio/tests/check_r192_firm_profile.ts 4793 xr_studio_r192
 import { client, recorder } from "./runtime/api.ts";
 
-const [PORT, DBNAME] = [Number(process.argv[2] ?? 4792), process.argv[3] ?? "xr_studio_r192"];
+const [PORT, DBNAME] = [Number(process.argv[2] ?? 4793), process.argv[3] ?? "xr_studio_r192"];
 if (PORT === 4400 || DBNAME === "xr_studio_demo") { console.log("refused: never the demo on :4400"); process.exit(2); }
 const BASE = `http://localhost:${PORT}`;
 const { ok, summary } = recorder();

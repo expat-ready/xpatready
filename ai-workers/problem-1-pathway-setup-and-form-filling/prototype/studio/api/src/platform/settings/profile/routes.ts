@@ -2,10 +2,15 @@
 // (Owner and Admin) at the door, and the billing email Owner only (agent/firm-profile:manage) in the service. The guard's firm is the only
 // firm: there is no firm in the path, so another firm's profile cannot be named.
 import { Body, Controller, Get, Inject, Put, Req } from "@nestjs/common";
+import { z } from "zod";
+import { parseInput } from "../../http/input.ts";
 import { PermissionKeys, staffOf, type StaffContext } from "../../identity/keys.ts";
 import { FirmProfile } from "./service.ts";
 
 type R = { platform?: StaffContext };
+/** PF-28 (the one input rule): the body is an object of named fields, parsed here (an array, a string or a key over 64 characters is
+ *  422). Each field is then checked by its own rule in the service, every bad one named at once (SaveProfile, READ_ONLY). */
+export const ProfileBody = z.record(z.string().max(64), z.unknown());
 
 @Controller("api/platform/firm/profile")
 export class FirmProfileController {
@@ -13,5 +18,5 @@ export class FirmProfileController {
   @Get() @PermissionKeys("agent/settings:list")
   get(@Req() r: R) { return this.profile.get(staffOf(r)); }
   @Put() @PermissionKeys("agent/settings:edit")
-  save(@Req() r: R, @Body() b: unknown) { return this.profile.save(staffOf(r), b); }
+  save(@Req() r: R, @Body() b: unknown) { return this.profile.save(staffOf(r), parseInput(ProfileBody, b ?? {})); }
 }
