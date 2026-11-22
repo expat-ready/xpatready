@@ -12,7 +12,7 @@ import { PlatformFrame } from "../frame";
 import { staffApi, StaffApiError, useStaffToken } from "../session";
 import { changedGroups, draftOf, isDefault, overlay, PrefsView, type Draft } from "./notifications-contract";
 
-type Problem = { tone: "warn" | "danger"; title: string; text: string; issues?: string[] };
+type Problem = { tone: "warn" | "danger"; title: string; text: string };
 const KEY = (t: string | null) => ["pf", "notifications", "prefs", t];
 
 function NotificationsBody() {
@@ -22,10 +22,11 @@ function NotificationsBody() {
   const [draft, setDraft] = React.useState<Draft>({});
   const [problem, setProblem] = React.useState<Problem | null>(null);
   const [sending, setSending] = React.useState(false);
-  const busy = React.useRef(false), notice = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => { if (q.data && !base) { setBase(q.data); setDraft(draftOf(q.data)); } }, [q.data, base]);
+  const busy = React.useRef(false), notice = React.useRef<HTMLDivElement>(null), heading = React.useRef<HTMLHeadingElement>(null);
   const changes = base ? changedGroups(base, draft) : [];
   const dirty = changes.length > 0;
+  // The first view, and any newer one read in the background while nothing is unsaved (break m5: coming back to the page in the app).
+  React.useEffect(() => { if (q.data && (!base || (!dirty && q.data.version !== base.version))) { setBase(q.data); setDraft(draftOf(q.data)); } }, [q.data, base, dirty]);
   React.useEffect(() => {
     if (!dirty) return;
     const ask = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
@@ -35,7 +36,7 @@ function NotificationsBody() {
 
   const header = (
     <header>
-      <h1 className="text-2xl font-semibold">Notifications</h1>
+      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">Notifications</h1>
       <p className="mt-1 text-sm text-text-muted">Choose how you hear about your work. You only see the groups that can reach you.</p>
     </header>
   );
@@ -46,20 +47,29 @@ function NotificationsBody() {
 
   const set = (group: string, field: "inApp" | "email", on: boolean) => { setProblem(null); setDraft((d) => ({ ...d, [group]: { ...d[group], [field]: on } })); };
   const save = async () => {
-    if (busy.current || !dirty) return;   // one save in flight (the Save button is also disabled while it runs)
+    if (busy.current || !dirty) return;   // one save in flight (Save is aria-disabled while it runs; it keeps focus, break m4)
     busy.current = true; setSending(true); setProblem(null);
     try {
       const saved = PrefsView.parse(await staffApi("/platform/me/notifications", { method: "PUT", json: { version: base.version, groups: changes } }));
       qc.setQueryData(KEY(token), saved); setBase(saved); setDraft(draftOf(saved));
       toast.push({ tone: "ok", text: "Notification settings saved" });
+      heading.current?.focus();   // Save is now disabled (nothing to save): focus goes to the page's heading, not <body> (review m4)
     } catch (e) {
-      if (e instanceof StaffApiError && e.status === 409) {
-        // The shared Problem parser keeps only the known fields (not the 409's `current`), so the latest view is read again.
+      if (e instanceof StaffApiError && (e.status === 409 || e.status === 422)) {
+        // A stale view (409), or a refusal (422) that may come from a role change while the page was open (the version hashes only the
+        // saved rows, so a role change is never a 409: break M1). Either way the latest view is read again (the shared Problem parser
+        // keeps no `current`) and the person's own changes are laid on top; a group that no longer reaches them is dropped.
         const current = await staffApi("/platform/me/notifications").then((v) => PrefsView.safeParse(v)).catch(() => null);
-        if (current?.success) { setDraft(overlay(current.data, base, draft)); setBase(current.data); qc.setQueryData(KEY(token), current.data); }
-        setProblem({ tone: "warn", title: "Changed elsewhere", text: `${e.message} We've loaded the latest; your unsaved changes are kept on top. Save again.` });
+        if (!current?.success) { setProblem({ tone: "danger", title: "Not saved", text: `${e.message} We could not load your latest settings: reload the page.` }); return; }
+        const next = overlay(current.data, base, draft), left = changedGroups(current.data, next).length;
+        const gone = changes.filter((c) => !current.data.groups.some((g) => g.group === c.group)).map((c) => base.groups.find((g) => g.group === c.group)?.label ?? c.group);
+        setDraft(next); setBase(current.data); qc.setQueryData(KEY(token), current.data);
+        const tail = left ? "We've loaded the latest; your unsaved changes are kept on top. Save again." : "We've loaded the latest; it already matches your changes, so there is nothing left to save.";
+        if (gone.length) setProblem({ tone: "warn", title: "Your groups changed", text: `${gone.length === 1 ? "This group no longer reaches you" : "These groups no longer reach you"}, so ${gone.length === 1 ? "its" : "their"} changes were removed: ${gone.join(", ")}. ${tail}` });
+        else if (e.status === 409) setProblem({ tone: "warn", title: "Changed elsewhere", text: `${e.message} ${tail}` });
+        else setProblem({ tone: "danger", title: "Not saved", text: e.message });
       } else if (e instanceof StaffApiError && e.status >= 400 && e.status < 500) {
-        setProblem({ tone: "danger", title: "Not saved", text: e.message, issues: Object.values(e.problem.fields ?? {}) });
+        setProblem({ tone: "danger", title: "Not saved", text: e.message });
       } else {
         setProblem({ tone: "danger", title: "Not saved", text: "Your changes are still here; try again." });
       }
@@ -72,8 +82,7 @@ function NotificationsBody() {
   );
   return wrap(<>
     {problem ? <div ref={notice} tabIndex={-1} className="outline-none" data-prefs-problem={problem.tone}>
-      <Notice tone={problem.tone} title={problem.title}><span data-prefs-problem-text>{problem.text}</span>
-        {problem.issues?.length ? <ul className="mt-1 list-disc pl-5" data-prefs-issues>{problem.issues.map((i, n) => <li key={n}>{i}</li>)}</ul> : null}</Notice></div> : null}
+      <Notice tone={problem.tone} title={problem.title}><span data-prefs-problem-text>{problem.text}</span></Notice></div> : null}
     <Table label="Notification settings" head={["Group", "In app", "Email"]} headClass={[undefined, "w-20 text-center", "w-20 text-center"]}>
       {base.groups.map((g) => <tr key={g.group} data-pref-row={g.group}>
         <td className="[overflow-wrap:anywhere]"><span className="font-medium">{g.label}</span>
@@ -89,7 +98,7 @@ function NotificationsBody() {
     </Table>
     <div className="flex flex-wrap items-center justify-end gap-3">
       <p className="text-sm text-text-muted" data-prefs-hint>{dirty ? `${changes.length} unsaved ${changes.length === 1 ? "change" : "changes"}. ` : ""}Changes apply when you press Save.</p>
-      <Button onClick={() => void save()} disabled={!dirty || sending} busy={sending} data-prefs-save>Save</Button>
+      <Button onClick={() => void save()} disabled={!dirty} aria-disabled={sending || undefined} aria-busy={sending || undefined} data-prefs-save>{sending ? "Saving…" : "Save"}</Button>
     </div>
   </>);
 }

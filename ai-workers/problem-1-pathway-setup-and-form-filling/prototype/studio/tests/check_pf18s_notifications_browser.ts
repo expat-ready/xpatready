@@ -11,6 +11,11 @@
 //   DN4 a refusal (422, the server's real answer to a repeated group) shows the server's words, the switches kept, nothing written;
 //   DN5 a failed send keeps the changes and re-enables Save; a double click sends one PUT; a failed load offers Try again;
 //   DN6 leaving with unsaved changes asks (beforeunload), and not when saved;
+//   DN8 (break M1) a role change while the page is open: Save is refused (422), the page re-reads, drops the group that no longer
+//       reaches the person (by its label), keeps the other change, and the next Save goes through; fail: the same save straight to the
+//       API is refused as a whole, so the page's re-read is what recovers; (break m2, m3, review m4) a 409 whose re-read fails says
+//       "reload the page"; a 409 where the other tab saved the same change says there is nothing left to save; after a Save focus is
+//       on the heading;
 //   DN7 keyboard only (Tab to a checkbox, Space, Tab to Save, Enter), axe clean (WCAG 2.2 A/AA) on every state, 375, 1024 and 1440 px
 //       with no sideways scroll; fail: the same axe run finds an unlabelled button we add;
 //   API fail lines: no token 401, an unknown field 422, a stale version 409 (nothing written).
@@ -50,6 +55,7 @@ await api(null, "GET", "/platform/me");   // the app seeds the Sample firms at s
 const A = sql(`select id from platform_firm where key = 'sample-firm'`);
 const TOWNER = await signIn("sample-firm", { actorId: "user-R" }), TOFF = await signIn("sample-firm", { actorId: "user-O" });
 const OFF = sql(`select id from platform_staff where actor_id = 'user-O' and firm_id = '${A}'`);
+await api(TOWNER, "PATCH", `/platform/staff/${OFF}/roles`, { roles: ["CASE_OFFICER"], reason: "PF-18s part 3 setup: a stopped run may have left DN8's role" });   // no change is fine
 rawSql(`delete from platform_notification_preference where staff_id = '${OFF}'`);   // a reused copy starts from the §3.3 defaults
 const rows = (where = "") => Number(sql(`select count(*) from platform_notification_preference where staff_id = '${OFF}' ${where}`));
 ok("PF-18s part 3 setup: the Owner (user-R) and the Case Officer (user-O) signed in; the Case Officer has no saved switch", !!A && !!OFF && rows() === 0);
@@ -143,6 +149,10 @@ try {
   const ov = overlay(latest, loaded, { ...draftOf(loaded), MENTIONS: { inApp: false, email: true }, TEAM_WATCH: { inApp: false, email: false } });
   ok("PF-18s DN3 (challenge m2, pure): the overlay keeps the person's change, shows the other tab's on a group they did not touch, and drops a group the latest view no longer has",
     JSON.stringify(ov) === JSON.stringify({ MENTIONS: { inApp: false, email: true }, NEEDS_YOU: { inApp: true, email: false } }), ov);
+  const latest2 = PrefsView.parse({ version: "c", groups: [g("MENTIONS", true, false)], security: { label: "s", email: true, switchable: false } });
+  const ov2 = overlay(latest2, loaded, { ...draftOf(loaded), MENTIONS: { inApp: false, email: true } });
+  ok("PF-18s DN3 (review m2, pure): per box: the person's In app change is kept and the other tab's Email change on the same group shows",
+    JSON.stringify(ov2) === JSON.stringify({ MENTIONS: { inApp: false, email: false } }), ov2);
 
   // ---------------------------------------------------------------------------------------------- DN4 422 refusal (the server's real answer)
   const before = rawSql(`select string_agg("group" || in_app || email, ',' order by "group") from platform_notification_preference where staff_id = '${OFF}'`);
@@ -190,6 +200,46 @@ try {
   await reach(p, box(p, "CLIENT_MESSAGED_ME.email")); await p.keyboard.press("Space");
   await reach(p, save(p)); await saving(p, () => p.keyboard.press("Enter"));
   ok("PF-18s DN7: keyboard only: Tab to Email for A client or lead messaged me, Space unticks it, Tab to Save, Enter saves", rows("and \"group\" = 'CLIENT_MESSAGED_ME' and not email") === 1);
+  ok("PF-18s DN8 (review m4): after a Save, focus is on the page's heading, not lost to the page", await p.locator("main h1").evaluate((el) => el === document.activeElement));
+
+  // ---------------------------------------------------------------------------------------------- DN8 409 edges
+  const problemText = async (tone: string) => { await p.locator(`[data-prefs-problem="${tone}"]`).waitFor({ timeout: 15_000 }); return p.locator("[data-prefs-problem-text]").innerText(); };
+  await box(p, "MENTIONS.inApp").uncheck();
+  const c1 = await api(TOFF, "GET", "/platform/me/notifications");
+  await api(TOFF, "PUT", "/platform/me/notifications", { version: c1.body.version, groups: [{ group: "MENTIONS", inApp: false, email: false }] });
+  await save(p).click(); const same = await problemText("warn");
+  ok("PF-18s DN8 (break m3): the other tab saved the same change → the page says there is nothing left to save, and Save is disabled",
+    same.endsWith("it already matches your changes, so there is nothing left to save.") && !same.includes("Save again") && await save(p).isDisabled(), same);
+  await box(p, "MENTIONS.inApp").check();
+  const c2 = await api(TOFF, "GET", "/platform/me/notifications");
+  await api(TOFF, "PUT", "/platform/me/notifications", { version: c2.body.version, groups: [{ group: "NEEDS_YOU", inApp: true, email: true }] });
+  await p.route("**/api/platform/me/notifications", (r) => (r.request().method() === "GET" ? r.abort("connectionreset") : r.continue()));
+  await save(p).click(); const noReread = await problemText("danger");
+  ok("PF-18s DN8 (break m2): a 409 whose re-read fails never says it loaded the latest: it says to reload the page; nothing written",
+    noReread.startsWith(STALE) && noReread.endsWith("reload the page.") && !noReread.includes("loaded the latest") && rows("and \"group\" = 'MENTIONS' and not in_app") === 1, noReread);
+  await p.unroute("**/api/platform/me/notifications");
+
+  // ---------------------------------------------------------------------------------------------- DN8 (break M1) role change
+  await p.reload(); await p.locator("[data-pref-row]").first().waitFor({ timeout: 30_000 });
+  ok("PF-18s DN8 setup: the Sample Case Officer sees Payments (holds agent/invoice:list)", holdsInvoices && await p.locator('[data-pref-row="PAYMENTS"]').count() === 1);
+  await box(p, "PAYMENTS.email").uncheck(); await box(p, "MENTIONS.inApp").check();
+  const demote = await api(TOWNER, "PATCH", `/platform/staff/${OFF}/roles`, { roles: ["READ_ONLY"], reason: "PF-18s DN8: a role change while the page is open" });
+  try {
+    const afterRole = await api(TOFF, "GET", "/platform/me/notifications");
+    const direct = await api(TOFF, "PUT", "/platform/me/notifications", { version: afterRole.body?.version, groups: [{ group: "PAYMENTS", inApp: true, email: false }, { group: "MENTIONS", inApp: true, email: false }] });
+    ok("PF-18s DN8 fail (break M1): after the role change Payments no longer reaches the person, and the same save straight to the API is refused as a whole (422), nothing written",
+      demote.status < 300 && !afterRole.body?.groups?.some((x: { group: string }) => x.group === "PAYMENTS") && direct.status === 422 && rows("and \"group\" = 'PAYMENTS'") === 0 && rows("and \"group\" = 'MENTIONS' and not in_app") === 1,
+      { demote: demote.status, direct: direct.status });
+    await save(p).click(); const roleText = await problemText("warn");
+    ok("PF-18s DN8 (break M1): Save after the role change → the page says by label which group no longer reaches the person and that its change was removed; Payments leaves the table; the Mentions change stays; Save stays enabled",
+      roleText.startsWith("This group no longer reaches you, so its changes were removed: Payments.") && !roleText.includes("PAYMENTS") && await p.locator('[data-pref-row="PAYMENTS"]').count() === 0
+        && await box(p, "MENTIONS.inApp").isChecked() && await save(p).isEnabled(), roleText);
+    await saving(p, () => save(p).click());
+    ok("PF-18s DN8 (break M1): the next Save goes through: Mentions in app on is saved, and nothing is written for Payments", rows("and \"group\" = 'MENTIONS' and in_app") === 1 && rows("and \"group\" = 'PAYMENTS'") === 0);
+  } finally {
+    const back = await api(TOWNER, "PATCH", `/platform/staff/${OFF}/roles`, { roles: ["CASE_OFFICER"], reason: "PF-18s DN8: restore" });
+    ok("PF-18s DN8: the Case Officer's role is restored", back.status < 300, back.status);
+  }
   await p.context().close();
 
   // ---------------------------------------------------------------------------------------------- API fail lines
