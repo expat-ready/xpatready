@@ -7,8 +7,7 @@
   "front-office/retainers/routes.ts POST /api/front-office/retainers/:id/download-link body": "PF-28 part 5 (retainers)",
   "front-office/retainers/routes.ts POST /api/front-office/retainers/:id/send body": "PF-28 part 5 (retainers)",
   "front-office/retainers/routes.ts POST /api/front-office/retainers/:id/signed-offline body": "PF-28 part 5 (retainers)",
-  "front-office/retainers/routes.ts POST /api/front-office/retainers/:id/withdraw body": "PF-28 part 5 (retainers)",
-  "platform/messages/public-routes.ts POST /api/public/messages/ses-notices body": "PF-28 part 2 (platform)"
+  "front-office/retainers/routes.ts POST /api/front-office/retainers/:id/withdraw body": "PF-28 part 5 (retainers)"
  },
  "probes": {
   "PATCH /api/front-office/retainer-templates/:id missing": "PF-28 part 5 (retainers)",
