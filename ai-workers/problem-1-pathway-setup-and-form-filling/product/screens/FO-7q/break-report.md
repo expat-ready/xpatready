@@ -70,3 +70,30 @@ Refund `createdAt` is `2026-11-22T10:12:02.037262+00:00` (from `json_build_objec
 - **Payments list timing:** 10,000+ rows, page 1 or 200 rows in 24-38 ms.
 
 Verdict: Changes on 1693e1149
+
+## Round 2 (diff only, P-277): 1693e1149..77713d8e8
+
+Commit `77713d8e87c7875b308c5a4c36f796b42c89b3b5`. Same scratch script plus new cases; `xr_studio_fo7q_break_<pid>` dropped after each run. Fixture: 10,000 issued invoices in A (all due 2026-01-05, 5,000 paid) and 10,000 in B. Each timing 3 times: no index, then with `(firm_id, issued_at desc, id)` added in my scratch database only, then with 10,000 drafts added to A.
+
+**Fixed and held:**
+- **B2:** all 9 round-1 cases now 400 BAD_QUERY. So do `issuedFrom=1999-12-31` or `2026-02-29`, `from=1999-01-01`, cursor times `T24:00:00` or `T23:59:60`, and cursor years 0000, 1999, 9999. `2028-02-29` and `T23:59:59.999999` are accepted.
+- **B3:** with trust No and nothing held, the refunded deposit is gone from INV-0016's `/detail` (`payments: []`, Open, due 700), the list and `…/payments/:id` (404). The no-invoice deposit 404s; `trustRequestId=` gives 0 rows.
+  Consequence of rule 5, not a finding: the invoice paid from trust shows `paidMinor: 1000` with `payments: []`.
+- **B4:** trust-paid INV-0015 has `creditableMinor: 0` and offers only `DOWNLOAD_PDF`, matching FO-7b's TRUST_PAID refusal.
+- **B5:** Refunded offers `CREDIT_NOTE` (1000 creditable); Credited and Written off still only the PDF. **B6:** no `t` in the detail. **B7:** `[:edit, :show]` gives `[]`.
+- **B8:** `overdue=false` gets a 400. **B9:** refund `createdAt` is `…T10:23:10.923Z`, as credit notes; a valid `trustRequestId` gets 200, a bad one 400.
+
+**The new half/union query (regressions looked for, none found):**
+- Small fixture, page sizes 1-4: same order as one 200-row page, no repeat or skip. Filters: `{}`, `OVERDUE`, `DRAFT`, `DRAFT,OVERDUE`, `PAID,DRAFT`, `DRAFT,OPEN,PART_PAID`, `WRITTEN_OFF,DRAFT,REFUNDED`, `overdue=true`, and `OVERDUE,DRAFT` with a party filter; with 5 drafts on one `created_at`, 5 issued on one `issued_at`, and the issued/draft seam.
+- Big fixture at page size 200, checked against `(d, t desc, id)` and a direct count through `statusSql`: `OVERDUE,DRAFT` 76 pages, 15,012 rows; no filter 101 pages, 20,022 rows; `PAID,DRAFT` 76 pages, 15,008 rows. All in order, none repeated or skipped, each equal to the count.
+- The SQL word equals FO-7b's on every fixture row; each of the 8 codes returns exactly its set. Walls and cursors from another firm hold as in round 1.
+
+**B1: partly fixed. The rest is for the tech lead's open question (same cause), not a new finding.**
+- With the index (ms): page 1 23-27 · `PAID` 33-49 · `DRAFT` 10-14. After 10,000 drafts: page 1 39-47, `DRAFT` 32-41, `PAID,DRAFT` 44-100.
+- Still slow: **`status=OVERDUE` 510-805 ms** for a full page of 50 (page 2: 529-759). EXPLAIN ANALYZE: index scan, "Rows Removed by Filter: 5000", 417 ms before the first row.
+  Cause: all 10,000 share one `issued_at` (the database stamps it), so the 5,000 paid ones come first in index order; each passes `due_date < today` and has its facts computed.
+  A real firm looks like this: most past-due invoices are paid and newer than the unpaid overdue ones. With #2368's index the test's OVERDUE case passes on its own interleaved seed, not on this one. Without the index: `OVERDUE` 1017-1419, `PAID` 1530-1614, `OPEN` (2 matches) 1076-1452, `REFUNDED` (1 match) 961-1287.
+  Fixing it needs an index this row may not add, or a different design. Please add "OVERDUE with many paid past-due invoices ahead of it" to the rare-word question.
+No new Blocker, Major or Minor in the diff.
+
+Verdict: Approve on 77713d8e8
