@@ -161,3 +161,27 @@ Builder's runs at dfced959f (not re-run here; diff-only scope): check_pf13c_book
 No Blocker, Major or Minor opened.
 
 **Verdict: Approve** (dfced959f073fafc08e1c88d30ec8e1f4d616266)
+
+## Card row, merge of main and the PF-30s flake fix (diff 9f2938573..90436aa81)
+
+Diff-only re-review of the three commits after the last Approve (9f2938573): 016069619 (card row), 814389b1a (merge of origin/main at 3264e2510) and 90436aa81 (PF-30s suite fix). Checked with git at 90436aa81. Suites not re-run.
+
+1. **Scope.** `git diff --name-only 3264e2510 90436aa81` lists this PR's files (`booking-public/frame.tsx`, `brand.tsx`, `tests/check_pf13c_booking_brand_browser.ts`, `product/screens/PF-13c/*`), plus `web/src/MODULE.rows/PF-13c.md` and `tests/check_pf30s_find_box_browser.ts`. Nothing else. 3264e2510 is an ancestor of origin/main. Held.
+2. **Approved code unchanged.** `git diff 9f2938573 90436aa81` lists no path under `booking-public/` and no `check_pf13c*` path: empty for this PR's code. Held.
+3. **Card row (016069619).** `MODULE.rows/PF-13c.md` is a new fragment of 2 lines. One starts `Entry points:` and one starts `Tests:`. No frozen card line is touched (P-712). The facts match the code:
+   - Routes: `/book/:firmKey`, `/book/:firmKey/:slug` and `/book/:firmKey/manage` (`front-office/routes.tsx` l.39–41).
+   - Exports: `usePublicBrand`, `useDrawnBrand`, `useFavicon`, `BrandImage` and `BRAND_WAIT_MS = 3000` (`brand.tsx` l.29, 36, 40, 59, 70).
+   - `useDrawnBrand` decides once. It waits until the read settles or `BRAND_WAIT_MS` passes, and keeps a brand only when `brand.name === firm` (l.50). That matches "draws once; only a brand naming the page's own firm".
+   - `PublicFrame` in `frame.tsx` calls `useDrawnBrand` and holds `data-brand-slot` (l.17, 26). The read goes to `firms/:firmKey/branding` through `publicCall`, which is `GET /api/public/firms/:firmKey/branding`.
+   - Both named tests exist.
+   - Nit, not a finding: the banner and logo are drawn by `PublicFrame` around `data-brand-slot`, not inside it. "into `data-brand-slot`" is shorthand.
+4. **Merge (814389b1a).** The merge is clean. First parent 9f2938573, second parent 3264e2510 (main). Main's side brings in no change to this PR's files (point 2).
+5. **PF-30s suite fix (90436aa81), +13/−2 against the merged tree.** The `slash(p)` helper is used only at the two F9 keyboard steps that press "/" and then type `Kit…`.
+   - **Is it a legitimate test fix?** Yes. F9 tests choosing a row with the keyboard (BR-3/Enter/Escape), not BR-1. A person presses "/", sees the box take focus, then types. They do not type into a box that never opened. The waits are tied to a condition (`document.activeElement` has `data-find-input`), not a fixed sleep. The builder's evidence shows the flake is on main without this PR (1/8 on 5dd56f9e7). The failure was at the step after `Enter` opens the lead page (old l.209–210), which fits "a '/' pressed as the new page appears is lost".
+   - **Does it fail loudly?** Yes. If the second press also leaves the box without focus, the helper throws `"/" pressed twice and the find box never took the focus`. The suite body is `try { … } finally { browser.close() }` with no `catch`, so the error rejects the top-level await and the run exits non-zero. Only `waitForFunction`'s timeout is turned into a boolean, and that boolean is checked every time.
+   - **Can it mask a BR-1 regression?** No. If "/" stopped opening the box, both presses fail and the helper throws. F4 (l.140–143) still presses "/" once on a settled page and asserts focus with an empty box, with no retry. F4's fail case (a "/" in another field stays there) and the F10 step (l.293) still press "/" directly. The only thing the retry can hide is a "/" lost in the first instant after a route change. That is not what BR-1 or F9 test.
+   - **Is there a product question left?** Yes, a small one. The cause on the product side is not pinned down (no repro under the in-page recorder in 23 runs). From `find-box.tsx`, one plausible cause is this: `FindBox` is mounted by both `platform/frame.tsx` and `front-office/sales/sales-frame.tsx`. A "/" handled by an instance that then unmounts or `reset()`s as the lead page settles would leave focus on BODY with an empty box, which is what the probe saw. This is a hypothesis, not verified. For a person it would mean a "/" pressed in the same instant a page appears is sometimes ignored, and the next "/" works. That is Minor at most and belongs to the PF-30s lane, not this PR. Recommendation for the tech lead: log a qa row ("'/' pressed in the first instant after a route change can be lost; pin the mechanism") so the retry does not become the permanent explanation. It does not block this PR.
+
+No Blocker or Major opened. One recommendation for the PF-30s lane (point 5, qa row), outside this PR's scope.
+
+**Verdict: Approve** (90436aa81bec5d33f67a2e7128c5c3009b7a32b0)
