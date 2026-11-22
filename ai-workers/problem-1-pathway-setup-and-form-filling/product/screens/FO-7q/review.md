@@ -98,3 +98,51 @@ The details are in `journey-test-reviewer-2026-11-22.md`. The score is 5.5 out o
 - Behaviour under a non-C collation on another machine (reasoned above, not run).
 
 Verdict: Changes on 1693e1149
+
+## Round 2: diff-only re-review of 77713d8e8 (P-277; `git diff 1693e1149..77713d8e8`, studio paths)
+
+**Verdict: Ship.** M1 and M2 are fixed, and so are m1, m2, m3 and m6. No Blocker and no Major is open.
+
+**Suite as committed:** 35 passed, 2 failed, exit 1. Both failures are DW1 cases waiting on #2368's index `(firm_id, issued_at DESC, id)`:
+- the page-1 plan check, which is ruling 1's known failure;
+- OVERDUE taking 759 ms. The status filter now relies on the index to stop early, so without it the filter reads every candidate row.
+
+**Probe with that index added in a scratch database:** 37 passed, 0 failed. Times on the fixed day 1 Mar 2027:
+- `OVERDUE` 31-38 ms, `OPEN` 41-45 ms, page 1 20-44 ms, `OPEN&pageSize=200` 121 ms.
+- The plan for OVERDUE reads `money_invoice_firm_id_issued_at_id_idx`, with no seq scan.
+
+**Fixes checked**
+- **M1, fixed.**
+  - Each half now filters on the status inside its own `order by … limit pageSize+1` (`invoices.ts` `half()`), so with the index it stops after a page of matches.
+  - The seed spreads due dates over 120 days, and the case reads on a `FakeClock` set to 2027-03-01: about half the rows are overdue and half open, so the assertion does real work. It also asserts `n === 50`.
+  - Paging under a filter, with the index, gives the right counts:
+    - `OVERDUE`: 4×200 = 800 rows, 0 repeats, 0 wrong words.
+    - `OPEN`: 4×200 = 800 rows, 0 repeats, 0 wrong words.
+  - The cursor and both sort orders are unchanged from round 1, where they held.
+- **M2, fixed.** `common.ts` `Day` and `Stamp` now refuse dates and times that do not exist. The suite's 400 list includes them, on both lists.
+  - My probe: `issuedFrom=2026-02-29` and `1999-12-31` give 400; `2028-02-29` gives 200.
+- **m1, fixed.** The `trustRequestId` filter is added. With trust off it answers an empty page (only operating payments on an invoice are read).
+- **m2, fixed.** CREDIT_NOTE is now offered on any issued invoice except a written-off one, while something is creditable. That includes Refunded, as FO-7b's credit route allows. Both the pass and the fail case are present.
+- **m3, fixed.** `creditableMinor = open − trustPaid`, and 0 when Written off. The detail test shows 1,000 − 600 = 400.
+- **m6, fixed.** `overdue` accepts only `true`; `false` is 400.
+- **Breaker B3, B6 and B7: correct.**
+  - B3: trust-received payments are not answered while trust does not show.
+  - B6: no `t` in the detail payments; refund `createdAt` is an ISO string.
+  - B7: EDIT needs `:create`, as the line route does.
+
+**Still open (Minor, do not block)**
+- **R2-m1: rare status words still read every candidate row, 1.2-1.7 s with the index.** Probe on 10,000 rows: `PAID` 1412 ms, `PART_PAID` 1624 ms, `CREDITED` 1460 ms, `REFUNDED` 1409 ms, `WRITTEN_OFF` 1239 ms.
+  - Raising this rather than fixing it here is right. The brief says "if the plan still needs another index, stop and ask". Stored facts or an index are schema, outside this row's touch list. DW1 gates only OVERDUE (ruling 1).
+  - Condition: the question must be posted on #3001 as "Question for the tech lead", quoting these times, before the label is applied.
+  - Note: in a real firm, Paid is the common word and would stop early. The words that stay rare (Part paid, Credited, Written off) are the slow case.
+- **m4, partly fixed.** The trust-paid fixture now exercises the trust column. Still not covered: a credit-applied fixture (the `applied` column) and trust No with money held (`trustShows`' true branch).
+- **m5, accepted as is.** The two constant fail cases test the checker. DW1's real failure is caught by the plan case and now by the 300 ms / `n === 50` assertion.
+
+**Journey score, round 2 (reviewer): 8.75 / 10 (7 out of the 8 criteria that apply), pass.**
+- Next step, plain words and error recovery go to 1.
+- Task completed stays at ½: in the app every list is empty, because C5 fails closed (ruled).
+- Speed stays at ½: the rare words in R2-m1, and every filtered read is 0.7-1.5 s until #2368.
+
+**Merge note:** CI cannot be green until #2368 merges, which is already the Ready-when. Both failing cases pass with that index.
+
+Verdict: Approve on 77713d8e8
