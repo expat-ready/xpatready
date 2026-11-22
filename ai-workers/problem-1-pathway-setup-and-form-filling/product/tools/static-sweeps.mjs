@@ -8,7 +8,8 @@
 // seconds was first run in the batch, after the label.
 // This runs, on the PR merged onto today's main (ci.yml job "fast", after tools/pr-base.sh), every studio suite that is
 //   * tests/check_*.ts that starts nothing (ci-memory.mjs startsSomething, the one rule; imported, not copied), and
-//   * a sweep of the source tree: its text calls readdirSync and names api/src or web/src (or a folder "src").
+//   * a sweep of the source tree: its text calls readdirSync and names api/src or web/src (or a folder "src"), or the
+//     events contract's folder ports/events (P-785 (2): tests/check_ports_events.ts, a re-added event refused before the label).
 // The list is found by that rule each run, never kept by hand. A suite that fails is run again on the base (main as the
 // merge saw it, --base, in a git worktree): failing there too, it is main's failure, not this PR's: a warning, never a
 // failure (a red main must not hold every label). Failing only with the PR: exit 1, the suite and its FAIL lines named.
@@ -26,7 +27,7 @@ import { startsSomething } from "./ci-memory.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUDIO = resolve(process.env.SWEEPS_STUDIO || join(HERE, "..", "..", "prototype", "studio"));
 const TIMEOUT_MS = 180_000;
-const SWEEP = /readdirSync/, TREE = /\b(api|web)\/src\b|["'`]src["'`]/;
+const SWEEP = /readdirSync/, TREE = /\b(api|web)\/src\b|["'`]src["'`]|\bports\/events\b/;   // ports/events: P-785 (2)'s guard of the shared events folder
 
 /** The suites the rule picks in a studio folder. */
 export function pick(studio = STUDIO) {

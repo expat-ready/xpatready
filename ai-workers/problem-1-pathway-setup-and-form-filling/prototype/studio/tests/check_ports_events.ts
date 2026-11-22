@@ -16,6 +16,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { z } from "zod";
 
 const STUDIO = join(import.meta.dirname, ".."), OLD = join(STUDIO, "ports/events.ts"), DIR = join(STUDIO, "ports/events");
 const FIXTURE = join(STUDIO, "tests/fixtures/ports-events/old-file-with-a-new-event.ts.txt");
@@ -50,7 +51,7 @@ export function oldFileFindings(text: string): string[] {
   const src = ts.createSourceFile("events.ts", text, ts.ScriptTarget.ES2023, true), out: string[] = [];
   const at = (n: ts.Node) => `line ${src.getLineAndCharacterOfPosition(n.getStart(src)).line + 1}`;
   const said = (n: ts.Node) => n.getText(src).split("\n")[0].slice(0, 90);
-  const splitPath = (n: ts.Expression | undefined) => { const m = n && ts.isStringLiteral(n) ? /^\.\/events\/([a-z-]+)\.ts$/.exec(n.text) : null; return m && m[1] in SPLIT ? m[1] : null; };
+  const splitPath = (n: ts.Expression | undefined) => { const m = n && ts.isStringLiteral(n) ? n.text.match(/^\.\/events\/([a-z-]+)\.ts$/) : null; return m && m[1] in SPLIT ? m[1] : null; };
   const imported = new Set<string>(), starred = new Set<string>(), spread: string[] = [];
   let events = 0, names = 0;
   for (const st of src.statements) {
@@ -63,9 +64,14 @@ export function oldFileFindings(text: string): string[] {
       if (mod && !st.exportClause && !st.isTypeOnly) starred.add(mod); else out.push(`${at(st)}: an export that is not \`export * from\` one of the split's files: ${said(st)}`);
     } else if (ts.isVariableStatement(st) && st.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) && st.declarationList.declarations.length === 1 && ts.isIdentifier(st.declarationList.declarations[0].name) && st.declarationList.declarations[0].name.text === "EVENT") {
       events++;
-      let init = st.declarationList.declarations[0].initializer;
-      if (init && ts.isAsExpression(init)) init = init.expression;
-      if (!init || !ts.isObjectLiteralExpression(init)) { out.push(`${at(st)}: EVENT is not an object of the split's spreads`); continue; }
+      const decl = st.declarationList.declarations[0], whole = decl.initializer;
+      // Exactly `export const EVENT = { ... } as const` (breaker M1): a `let`, a type annotation or any other type after
+      // `as` would change what EVENT means to the type checker (a name only the types know, or no literal types at all).
+      if (!(st.declarationList.flags & ts.NodeFlags.Const) || decl.type || !whole || !ts.isAsExpression(whole) || !ts.isConstTypeReference(whole.type)) {
+        out.push(`${at(st)}: EVENT is not written \`export const EVENT = { ... } as const\` (no let, no type annotation, no other type after as): ${said(st)}`); continue;
+      }
+      const init = whole.expression;
+      if (!ts.isObjectLiteralExpression(init)) { out.push(`${at(st)}: EVENT is not an object of the split's spreads`); continue; }
       for (const p of init.properties) {
         if (ts.isSpreadAssignment(p) && ts.isIdentifier(p.expression) && Object.values(SPLIT).includes(p.expression.text)) spread.push(p.expression.text);
         else out.push(`${at(p)}: written in EVENT here: ${said(p)}`);
@@ -105,10 +111,11 @@ export async function folderFindings(dir: string): Promise<{ findings: string[];
     const foreign = importsOf(readFileSync(join(dir, f), "utf8")).filter((s) => s !== "zod" && !/^\.\/[a-z0-9-]+\.ts$/.test(s));
     if (foreign.length) { findings.push(`${f}: imports ${foreign.join(", ")} (only zod and files of ports/events/)`); continue; }
     const mod = await import(`${pathToFileURL(join(dir, f)).href}?t=${process.pid}-${Math.random()}`) as Record<string, unknown>;
-    const objects = Object.entries(mod).filter(([k]) => /_EVENT$/.test(k));
+    const objects = Object.entries(mod).filter(([k, v]) => /_EVENT$/.test(k) && typeof v === "object" && v !== null && !(v instanceof z.ZodType));
     if (objects.length > 1) findings.push(`${f}: exports ${objects.length} objects named <MODULE>_EVENT (one file, one module: at most one holds its names)`);
     for (const [objectName, object] of objects) {
       if (!/^[A-Z][A-Z0-9_]*_EVENT$/.test(objectName) || typeof object !== "object" || object === null) { findings.push(`${f}: ${objectName} is not an object of names`); continue; }
+      for (const sym of Object.getOwnPropertySymbols(object)) findings.push(`${f}: ${objectName} has a symbol key (${String(sym)}): names are plain keys`);
       for (const [k, v] of Object.entries(object)) {
         if (!/^[A-Z][A-Z0-9_]*$/.test(k) || typeof v !== "string" || !/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/.test(v)) findings.push(`${f}: ${objectName}.${k} = ${JSON.stringify(v)} (keys are UPPER_SNAKE, names lower case with at least one dot)`);
         if (typeof v === "string") { if (names.has(v)) findings.push(`the event name "${v}" is in ${names.get(v)} and in ${f}: a name belongs to one module`); else names.set(v, f); }
@@ -125,7 +132,7 @@ if (oldFileArg > 0) {
   if (!file) { console.log("--old-file wants a file; nothing was checked"); process.exit(2); }
   const found = oldFileFindings(readFileSync(file, "utf8"));
   for (const f of found) console.log(`REFUSED  ${f}`);
-  console.log(found.length ? `\n${file}: ${found.length} thing(s) that are not re-exports. ${WHERE}` : `${file}: only re-exports`);
+  console.log(found.length ? `\n${file}: ${found.length} thing(s) that are not re-exports. ${WHERE}. A file written before the split (a branch from before 22 Nov) shows every old line here: keep main's ports/events.ts as it is and move only your new event and its shape to ports/events/<module>.ts (the module that writes it: firms, staff, booking, complaints, support, retainers, compliance, sales, cases, person-merge, or a new file). A name in an existing module's file shows in EVENT by itself; a name in a new module's file does not: import it from that file.` : `${file}: only re-exports`);
   process.exit(found.length ? 1 : 0);
 }
 
@@ -143,6 +150,12 @@ try {
   refused("a new module spread into EVENT", oldText.replace("  ...FIRM_EVENT,", "  ...FIRM_EVENT,\n  ...INVOICE_EVENT,"), /written in EVENT here: \.\.\.INVOICE_EVENT/);
   refused("a new module re-exported from the old file", `${oldText}export * from "./events/invoices.ts";\n`, /not `export \* from` one of the split's files/);
   refused("an import from outside the split", `import { z } from "zod";\n${oldText}`, /an import that is not one of the split's files/);
+  const spreads = Object.values(SPLIT).map((c) => `typeof ${c}`).join(" & ");
+  refused("EVENT retyped after `as` with a name only the types know", oldText.replace("} as const;", `} as ${spreads} & { readonly INVOICE_ISSUED: "invoice.issued" };`), /EVENT is not written `export const EVENT = \{ \.\.\. \} as const`/);
+  refused("EVENT retyped as Record<string, string> (no literal types)", oldText.replace("} as const;", "} as Record<string, string>;"), /EVENT is not written/);
+  refused("EVENT with a type annotation", oldText.replace("export const EVENT = {", "export const EVENT: Record<string, string> = {"), /EVENT is not written/);
+  refused("EVENT made a let", oldText.replace("export const EVENT = {", "export let EVENT = {"), /EVENT is not written/);
+  refused("EVENT with no as const", oldText.replace("} as const;", "};"), /EVENT is not written/);
   refused("a split file dropped from the re-exports", oldText.replace('export * from "./events/booking.ts";\n', ""), /no longer imported and re-exported/);
 
   // B, C: the folder as it is.
@@ -206,6 +219,8 @@ try {
     const f = await folderFindings(copy);
     ok(`P-785 step 1 B pass: ${what}`, f.findings.length === 0, f.findings);
   };
+  await folderRefuses("a symbol key in a names object", "p785-other.ts", `export const P785_OTHER_EVENT = { P785_OTHER: "${PROBE2}", [Symbol("x")]: "${PROBE}" } as const;\n`, /P785_OTHER_EVENT has a symbol key/);
+  await allowed("a number constant whose name ends in _EVENT is not a second names object", "p785-other.ts", `export const P785_OTHER_EVENT = { P785_OTHER: "${PROBE2}" } as const;\nexport const MAX_LINES_PER_EVENT = 50;\n`);
   await allowed("a name with three parts or a dash, as the requirements write them (case.stage.changed, firm.trial-ending)", "p785-other.ts", `export const P785_OTHER_EVENT = { P785_A: "p785probe.stage.changed", P785_B: "p785probe.trial-ending" } as const;\n`);
   await allowed("a doc comment naming another file is not an import", "p785-other.ts", `// Read from "ports/matching.ts" and from "../events.ts" (text only).\nexport const P785_OTHER_EVENT = { P785_OTHER: "${PROBE2}" } as const;\n`);
   fresh(); writeFileSync(join(copy, "p785-probe.ts"), probeFile("P785_PROBE_EVENT", "P785_PROBE", PROBE));
