@@ -48,3 +48,28 @@ To raise it, most valuable first: honest 409 text when the re-read fails and a 4
 
 ## Could not test
 A real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); a Billing role; two different people (the route is `me`-only, so no cross-person case exists).
+
+## Round 2 (22 Nov, b2154d65c, diff-only)
+Copy pf18snr :4446, check 40/40, then a scratch probe of the fixed paths (Case Officer user-O, Owner user-R for the role change).
+* **P1 keyboard Save, PUT held 800 ms:** focus stays on Save ("Saving…", aria-disabled); Enter + Enter + Space → 1 PUT; after → heading; toast. Held.
+* **P5 two tabs, same group, other box:** other tab Needs you in-app off, I untick Email → 409 notice (focused), row shows off/off, Save writes off/off. Held (per box).
+* **P3 leave and come back:** other tab changes My deadlines while I am on another page; Back shows the new value, Save disabled. Held.
+* **P2 role change, only the removed group changed:** notice names Payments by label, Save disabled, focus on notice; text ends "it already matches your changes", which is untrue (review r2-m1).
+* **DN8 role change with another change:** Payments dropped, Mentions kept, next Save 200. Held.
+* **P7 role restored while open:** next Save's answer brings Payments back. Held.
+
+| Criterion | R1 | R2 | Evidence |
+|---|---|---|---|
+| Task completed | 1 | 1 | DN2, P1 |
+| Next step obvious | 1 | 1 | one Save, hint, "nothing left to save" when so |
+| Plain words | ½ | ½ | raw code gone; P2 sentence contradicts itself (r2-m1) |
+| Feedback and state | 1 | 1 | "Saving…", notices, toast |
+| Correct data | 1 | 1 | per-box overlay (P5), nothing written for a dropped group (DN8) |
+| Error recovery | ½ | 1 | 409, 422 role change, failed re-read ("reload the page") all leave a way forward |
+| Accessibility and sizes | ½ | 1 | focus kept while sending and on the heading after; axe clean 375/1024/1440 |
+| Speed | 1 | 1 | unchanged paths; one extra GET only on 409/422 |
+| Visual quality | 1 | 1 | busy Save grey without spinner (nit) |
+| Trust and sources | 1 | 1 | unchanged |
+| **Total** | 8.5 | **9.5 / 10** | **Pass** (≥ 8, no 0) |
+
+Could not test: a real screen reader; an intended user's unaided walk (D17, D20); a Billing role.

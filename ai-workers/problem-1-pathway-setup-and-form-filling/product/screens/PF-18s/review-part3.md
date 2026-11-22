@@ -44,3 +44,45 @@ N/A as a whole: personal settings, not a case-side screen (concept §4c, EXPERIE
 A real screen reader; an intended user's unaided walk (D17, D20 stay with the founder); a Billing role (no Sample user); the 409 `current` body use (by design not read).
 
 Reviewer: Approve dc04e9a7f792ed52a86ae73a379b4a964519759b
+
+## Round 2 (diff-only re-review)
+
+Commit reviewed: **b2154d65c641c6eb1bf8f095c7cd99bfe0e260fa**. Read only `git diff dc04e9a7f b2154d65c -- ':!*.png'` (code: `notifications-page.tsx`, `notifications-contract.ts`, `check_pf18s_notifications_browser.ts`; records: `build-notes.md` "Part 3", module row path; the rest are the round-1 records). Check run on isolated pf18snr :4446 (fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`), **40/40, exit 0**; copy stopped, re-shot PNGs restored. Plus a scratch Playwright probe (outside the repo) of the changed paths, P1-P7 below. US$0, no model call. Journey test: `journey-test-reviewer-part3-2026-11-22.md` "Round 2" (**9.5/10, pass**).
+
+### Verdict: Ship (Approve) for b2154d65c. No Blocker, no Major. Two new Minors, two Nits.
+
+### The breaker's M1 (role change → every Save refused): fixed
+* `notifications-page.tsx:58-70`: a 422 now re-reads the view like a 409, overlays the draft (groups that left are dropped) and names the dropped group by its label from the old view (`:65`); the person's other changes stay and the next Save carries the latest version.
+* Fail test DN8: the API line proves the same save is refused as a whole (422, nothing written), and the browser lines need "This group no longer reaches you … Payments.", no Payments row, Mentions kept, then a 200 that writes Mentions and no Payments row. On the dc04e9a7f code the old 4xx branch shows "This group cannot reach you …" and keeps Payments, so the browser line fails: the test guards the fix. Run: PASS (demote 200, direct 422). Role restored in `finally` and at setup (a stopped run cannot leave the Case Officer demoted).
+* P7 (probe): role restored while the page is open → the next Save's answer brings Payments back to the table.
+
+### Round-1 Minors (mine m1-m7, breaker m1-m5)
+| Item | State | Evidence |
+|---|---|---|
+| R m1 / B m2 failed re-read said "loaded the latest" | Fixed | `:63` danger "We could not load your latest settings: reload the page."; DN8 (break m2) PASS |
+| R m2 overlay per group | Fixed | `overlay` per box (`notifications-contract.ts:27-32`); DN3 pure line PASS; P5 browser: other tab Needs you in-app off + my Email off → row off/off, Save writes `NEEDS_YOU:false:false` |
+| R m3 / B m1 raw code, only last field | Fixed | issues list removed (only `detail`); a dropped group is named by label; DN8 asserts no `PAYMENTS` in the text |
+| R m4 / B m4 focus to `<body>` | Fixed | Save `aria-disabled` + `aria-busy` + "Saving…" while sending, heading (`tabIndex=-1`) after success; DN8 (review m4) PASS; P1: during an 800 ms PUT focus is `BUTTON "Saving…" aria-disabled=true`, Enter + Enter + Space → 1 PUT, after → `H1`, next Tab → the table |
+| R m5 375 px table | Recorded | build notes "Kept as is" |
+| R m6 Billing leg | Recorded | build notes "Kept as is" (no Sample Billing user); not named in the check header as I asked, the build-notes record is enough |
+| R m7 no part-3 build notes | Fixed | `build-notes.md` "Part 3" |
+| B m3 "Save again" with nothing to save | Fixed | `:67` "it already matches your changes, so there is nothing left to save"; DN8 (break m3) PASS, Save disabled |
+| B m5 stale cached view on return | Fixed | adoption effect `:29` (newer version, nothing unsaved); P3: leave, other tab saves My deadlines in-app off, Back → box unticked, Save disabled |
+
+### New in the fixes
+1. **r2-m1 (Minor) The dropped-group notice contradicts itself when the dropped group was the only change.** P2: only Payments Email unticked, role → READ_ONLY, Save → "This group no longer reaches you, so its changes were removed: Payments. We've loaded the latest; **it already matches your changes**, so there is nothing left to save." The change was removed, not matched (`:67-68`: `tail` is chosen without `gone`). EXPERIENCE §5 plain, true words. Fix: when `gone.length && !left`, end with "There is nothing left to save." Save is disabled and focus is on the notice, so nothing goes wrong; wording only.
+2. **r2-m2 (Minor) Two of the fixes have no check line.** Focus kept on Save *while sending* (break m4) and the background-view adoption (break m5) work (P1, P3), but no DN line fails if either goes (STANDARDS §7: a rule test fails when the rule goes). DN8's focus line covers only after the Save. Fix: add both lines to the check, or list them in build notes.
+3. Nit n-a: while sending, Save takes the grey `aria-disabled` look with no spinner (controls.tsx: a busy primary "keeps its colour and the spinner"), and "Save" → "Saving…" widens the button so the hint line shifts. Accessible and clear; a look difference only.
+4. Nit n-b: the adoption effect would take an older view if a mount-time background GET started before a Save finished after it (React Query lets the late fetch overwrite `setQueryData`). Not reproduced: needs a Save within the GET's ~100 ms after coming back (`refetchOnWindowFocus` is off); a later Save would 409 and recover.
+
+Checked and held: the 422 re-read on a non-role refusal keeps the person's boxes and shows the server's words (DN4 PASS); the notice takes focus on 409/422 (P2, P5); no page error in any tab; axe clean 375/1024/1440 (DN7).
+
+### D1–D20 changes from round 1
+D5 4 → 5 (409, 422, failed re-read, role change all recover) · D10 4 (raw code gone; r2-m1 wording) · D13 4 → 5 (focus kept while sending and placed after) · D16 4 (40/40, every M1 path a pass + fail line; r2-m2 two fixes untested). Others as round 1.
+
+### Could not check
+A real screen reader (the "Saving…" name change while focused is announced or not); an intended user's unaided walk (D17, D20 stay with the founder); a Billing role.
+
+**Verdict: Approve** (no open Blocker or Major; r2-m1, r2-m2 to fix or list).
+
+Reviewer: Approve b2154d65c641c6eb1bf8f095c7cd99bfe0e260fa
