@@ -79,16 +79,26 @@ const person = (tag: string) => {
   const pid = sql(`insert into fo_person (id, firm_id, given_names, family_name, email, created_by, updated_at) values (gen_random_uuid(), '${firmId}', '${given}', 'Sample', '${email}', 'test', now()) returning id`);
   return { pid, email, given };
 };
-/** An engaged individual prospect: subject and primary contact (two people on it when they differ). */
-const prospect = (subject: ReturnType<typeof person>, contact = subject) => {
+/** An engaged individual prospect (its one person is subject and primary contact, the database's rule). */
+const prospect = (subject: ReturnType<typeof person>) => {
   sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${firmId}', '${subject.pid}', 'MANUAL', 'WEBSITE', '${ownerId}', 'ENGAGED', now(), 'test', 'test', now())`);
   const id = sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_person_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
-    select gen_random_uuid(), '${firmId}', l.id, 'INDIVIDUAL', (select id from fo_stage where firm_id = '${firmId}' and pipeline = 'INDIVIDUAL' and key = 'ENGAGED'), '${subject.pid}', '${contact.pid}', '${ownerId}', 'test', now() from fo_lead l where l.person_id = '${subject.pid}' returning id`);
+    select gen_random_uuid(), '${firmId}', l.id, 'INDIVIDUAL', (select id from fo_stage where firm_id = '${firmId}' and pipeline = 'INDIVIDUAL' and key = 'ENGAGED'), '${subject.pid}', '${subject.pid}', '${ownerId}', 'test', now() from fo_lead l where l.person_id = '${subject.pid}' returning id`);
   sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${id}'`);
   return { id, ...subject };
 };
+/** An engaged Corporate prospect (Sample company) with two people on it: its primary contact and a signatory. */
+const corporate = (primary: ReturnType<typeof person>, signatory: ReturnType<typeof person>) => {
+  const co = sql(`insert into fo_company (id, firm_id, operating_name, normalised_name, created_by, updated_at) values (gen_random_uuid(), '${firmId}', 'Sample Employer ${run}', 'sample employer ${run}', 'test', now()) returning id`);
+  sql(`insert into fo_company_contact (firm_id, company_id, person_id, role, created_by) values ('${firmId}', '${co}', '${primary.pid}', 'PRIMARY', 'test'), ('${firmId}', '${co}', '${signatory.pid}', 'SIGNATORY', 'test'); select 1`);
+  sql(`insert into fo_lead (id, firm_id, person_id, door, source, owner_staff_id, state, engaged_at, engaged_by, created_by, updated_at) values (gen_random_uuid(), '${firmId}', '${primary.pid}', 'MANUAL', 'WEBSITE', '${ownerId}', 'ENGAGED', now(), 'test', 'test', now())`);
+  const id = sql(`insert into fo_prospect (id, firm_id, lead_id, type, stage_id, subject_company_id, primary_contact_person_id, owner_staff_id, created_by, updated_at)
+    select gen_random_uuid(), '${firmId}', l.id, 'CORPORATE', (select id from fo_stage where firm_id = '${firmId}' and pipeline = 'CORPORATE' and key = 'ENGAGED'), '${co}', '${primary.pid}', '${ownerId}', 'test', now() from fo_lead l where l.person_id = '${primary.pid}' returning id`);
+  sql(`insert into fo_stage_move (firm_id, prospect_id, to_stage_id, cause, by_actor) select firm_id, id, stage_id, 'PERSON', 'test' from fo_prospect where id = '${id}'`);
+  return { id };
+};
 const PA = person("A"), PB = person("B"), PC = person("C");
-const A = prospect(PA), B = prospect(PB, PC);   // B has two people on it: its subject (B) and its contact (C)
+const A = prospect(PA), B = corporate(PB, PC);   // B (Corporate) has two people on it: its primary contact (B) and a signatory (C)
 const tok = (await api("POST", "/api/platform/session/local", { firmKey: "sample-firm", email: ownerEmail, secondStep: true })).body?.token as string | undefined;
 if (!tok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
 sql(`update fo_retainer_template set active = false where firm_id = '${firmId}'`);   // re-runnable: one active template
