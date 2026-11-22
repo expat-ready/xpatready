@@ -192,7 +192,7 @@ function Details({ d, zone, slot, stampedAt, firmKey, slug, onBack, onPick, onBo
       if (p.status === 429) setRefused({ text: TRY_LATER });
       else if (p.slug === "slot-taken") { setRefused({ text: "This time was just booked.", next: p.slots.slice(0, 4) }); onStale(); }
       else if (p.slug === "consent-wording-changed") { set("consent", false); setRefused({ text: p.detail ?? "The firm's agreement text has changed. Please reload the page and tick the box again." }); onStale(); }
-      else if (p.status === 400 && Object.keys(fields).length) setErrors(fields);
+      else if (p.status === 422 && Object.keys(fields).length) setErrors(fields);   // field errors are 422 (PF-28 part 4)
       else setRefused({ text: p.detail ?? "We could not take this booking. Please try again." });
       focusSummary();
     } finally { sending.current = false; setBusy(false); }
