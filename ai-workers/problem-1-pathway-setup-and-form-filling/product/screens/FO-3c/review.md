@@ -191,6 +191,39 @@ All of these still hold:
 
 **Journey score, round 3:** unchanged, **8.5/10**. A pass with no criterion at 0.
 
-Reviewer: Approve 0ccbd59c98ac08a96b09ff245c14a090697822c7
+Round 3 verdict: Approve 0ccbd59c98ac08a96b09ff245c14a090697822c7
 
-Verdict: Approve 0ccbd59c98ac08a96b09ff245c14a090697822c7
+## Round 4: diff 0ccbd59c9..8a09b9609ae6fcc25883a338a1668fcaa0035c30
+
+Scope: only the diff, which changes `service.ts` and the test. The record files in the range are the round-3 sections, mine and the breaker's. The committed `review.md` matched mine.
+
+**Environment note:** the local PostgreSQL on 127.0.0.1:54329 had stopped: its log ended with no shutdown line and a stale `postmaster.pid`. I started it again with `start.sh`'s own `pg_ctl … start` line. Nothing else was changed.
+
+**What I ran**
+* Suite on a `git archive` copy of 8a09b9609: **40 passed, 0 failed**.
+* Four mutations on that copy:
+
+  | Mutation | Result |
+  |---|---|
+  | Clear `code_verified_at` again when a new code is sent | The two R3-1 cases go red, as the PR says |
+  | `unspent()` false after any check | The suite stops (the new code is refused): my r3-1 is now covered |
+  | `unspent()` always true | Still 40/40 (see r4-1) |
+  | R3-2's filter back to "any licensed person" | Still 40/40 (see r4-2) |
+
+**The fixes**
+* **R3-1, closed.** `service.ts:47-50`, `:380`, `:385`, `:389`. `code_verified_at` is never cleared; it records the last time a code was checked. That is what the provider's "signed" event depends on (`apply`'s NO_CODE check), so a late "signed" after a fresh code is applied.
+  - `unspent()` treats a code as live only when it was sent after the last check. Its send time is its expiry less its 10-minute life.
+  - The forwarded-link protection holds: a fresh check within 30 minutes is still needed before the provider link is handed out (`open`).
+  - This also settles my round-3 r3-3, the late "signed" from an old tab.
+* **R3-2, closed.** `:113-118`. The catch-up's filter now follows `signatory()`'s rule: the booking's host is active and licensed, or an active licensed person holds every `DUTY_KEYS.represent` key.
+* **r3-1 (mine), closed.** The test "r3-1 pass/fail" checks that the new code is accepted after a stale session (mutation 2 above).
+
+**Minors (not blocking)**
+* r4-1. That test's "the code used before it is refused" only compares two codes from different agreements (`newCode !== code31`). The "spent" rule remains defence in depth that cannot be seen through the door, as in round 3's r3-2.
+* r4-2. No case exercises R3-2's filter (mutation 4). It only matters once the catch-up is wired (m1, J-104). Add one case there: an unlicensed host with no representative of record is skipped, and the next booking in the batch is still sent.
+
+**Journey score, round 4:** unchanged, **8.5/10**. A pass with no criterion at 0.
+
+Reviewer: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
+
+Verdict: Approve 8a09b9609ae6fcc25883a338a1668fcaa0035c30
