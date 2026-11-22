@@ -73,8 +73,8 @@ const tSources = await sourcesOf(tok.T);
 ok("FO-4sf DW1 pass: the choices are the stored sources, A to Z", ["Event, Toronto", "Phone call", "Referral", "WEBSITE"].every((x) => tSources.includes(x)) && [...tSources].sort().join("|") === tSources.join("|"), tSources);
 const bad = await list(tok.T, enc("Phone call", "MANUAL")), lower = await list(tok.T, enc("phone call"));
 const badBody = bad.body as { detail?: string; code?: string; allowed?: string[] };
-ok("FO-4sf DW1 fail: an unknown value (here a door, MANUAL) → 400 naming the allowed ones, and no rows", bad.status === 400 && badBody.code === "UNKNOWN_SOURCE" && /Unknown source: MANUAL/.test(badBody.detail ?? "") && /Phone call/.test(badBody.detail ?? "") && badBody.allowed?.includes("Referral") === true, bad.body);
-ok("FO-4sf DW1 fail: a value in the wrong case is unknown too (400), never a silent match", lower.status === 400, lower.status);
+ok("FO-4sf DW1 fail: an unknown value (here a door, MANUAL) → 422 naming the allowed ones, and no rows (PF-28 part 3a: a field error is 422)", bad.status === 422 && badBody.code === "UNKNOWN_SOURCE" && /Unknown source: MANUAL/.test(badBody.detail ?? "") && /Phone call/.test(badBody.detail ?? "") && badBody.allowed?.includes("Referral") === true, bad.body);
+ok("FO-4sf DW1 fail: a value in the wrong case is unknown too (422), never a silent match (PF-28 part 3a: a field error is 422)", lower.status === 422, lower.status);
 
 // ------------------------------------------------------------------------------------------- DW2: inside FO-2v's visibility
 await seesAll(false);   // own-only: FO-2v, all = view.all AND the setting on
@@ -82,7 +82,7 @@ const oPhone = await list(tok.O, enc("Phone call")), oAll = await list(tok.O, en
 ok("FO-4sf DW2 pass: an own-only Case Officer filtering by Phone call sees only their own leads of that source", oPhone.status === 200 && same(oPhone.ids, [L.oMan, L.oBook]), [...oPhone.ids]);
 ok("FO-4sf DW2 fail: no filter widens it: the sources the Case Manager shares still show none of their leads", same(oAll.ids, [L.oMan, L.oBook, L.oWeb]) && ![L.tWeb, L.tMan].some((x) => oAll.ids.has(x)), [...oAll.ids]);
 const oSources = await sourcesOf(tok.O), oHidden = await list(tok.O, enc("Event, Toronto"));
-ok("FO-4sf DW2 fail: another person's source is never named: not in the choices, and asking for it is the same 400 as any unknown value", !oSources.includes("Event, Toronto") && !oSources.includes("Referral") && oHidden.status === 400 && !((oHidden.body as { allowed?: string[] }).allowed ?? []).includes("Event, Toronto"), [oSources, oHidden.status]);
+ok("FO-4sf DW2 fail: another person's source is never named: not in the choices, and asking for it is the same 422 as any unknown value (PF-28 part 3a: a field error is 422)", !oSources.includes("Event, Toronto") && !oSources.includes("Referral") && oHidden.status === 422 && !((oHidden.body as { allowed?: string[] }).allowed ?? []).includes("Event, Toronto"), [oSources, oHidden.status]);
 const tOwn = await list(tok.T, enc("Phone call"));
 ok("FO-4sf DW2 pass: the setting off narrows the Case Manager too: only their own Phone call lead", same(tOwn.ids, [L.tMan]), [...tOwn.ids]);
 const mine = await fetch(`${BASE}/api/front-office/leads?view=mine${enc("WEBSITE")}`, { headers: { authorization: `Bearer ${tok.O}` } }).then((r) => r.json()) as { id: string }[];
