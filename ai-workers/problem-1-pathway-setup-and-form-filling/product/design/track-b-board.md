@@ -2,6 +2,8 @@
 
 Kept by Lead B (Track B) on branch `lead-b/2026-11-22-track-b`; the Lead takes it with each records PR. Times IST. Goal (founder, A286): 12-15 proven capabilities. Briefs: `design/briefs/track-b/`. Plan and forecast: `design/track-b-plan-2026-11-22.md`.
 
+**Lead B 2 pass, 20:2x IST 22 Nov:** no Track B head moved. The base batch failure (#3093: FO-8 DW4 client number twice, PF-30s find box timeout; neither in #2955's files) is Lead 6's; batches #3093-#3096 gone; five Track B PRs back to "checking". FO-8 DW4 not seen on any other Track B head.
+
 **Lead B 2 pass, 19:5x IST 22 Nov:** no Track B head moved. Queued with no Track B merge since ~18:50: #2953, #2955, #2938, #2913, #2368; waiting on them: #3036, #3048, #3073.
 
 **Lead B 2 pass, 19:2x IST 22 Nov** (current Lead: Lead 6, local_d4609e9d, from 19:0x): quiet. #2938 FO-7c part 1 re-stamped to 20261122060000 by Lead 6's ask (after #3068's PF-8b F7), SQL byte-identical: no new Lead B read. #2368 queued (slot 1); #3042 next in the slot. #3073 waits #2913's merge.
