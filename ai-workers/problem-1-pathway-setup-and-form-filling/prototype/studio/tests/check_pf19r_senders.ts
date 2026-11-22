@@ -110,7 +110,7 @@ try {
   const r1 = await rowsTo("dw1.invitee@example.com"), m1 = (await inbox.list("dw1.invitee@example.com", undefined)).messages[0];
   ok("DW1 pass: an invitation from the app's providers lands in msg_outbox (TRANSACTIONAL, SENT by the local adapter) with the one layout: the firm's name on top, the \"Sent by\" line, the firm's sender name and Reply-To",
     inv1.status === 201 && inv1.body.emailed === true && r1.length === 1 && r1[0].class === "TRANSACTIONAL" && r1[0].state === "SENT"
-    && !!m1 && m1.html.includes(`font-weight:bold">${firmA.operatingName}</div>`) && m1.html.includes(`Sent by ${firmA.operatingName}.`) && m1.from.startsWith(firmA.operatingName) && m1.reply_to === firmA.contactEmail && /\/invitation#t=[A-Za-z0-9_-]{43}/.test(m1.body), { inv1: inv1.body, r1, m1 });
+    && !!m1 && m1.html.includes(`>${firmA.operatingName}</p>`) && m1.html.includes('role="presentation"') && m1.html.includes(`Sent by ${firmA.operatingName}.`) && m1.from.startsWith(firmA.operatingName) && m1.reply_to === firmA.contactEmail && /\/invitation#t=[A-Za-z0-9_-]{43}/.test(m1.body), { inv1: inv1.body, r1, m1 });
   // Fail: today's main (LocalMail bound to MAIL_PORT) writes no outbox row.
   const legacy = new LocalMail(() => clock.now());
   const old = await appWith([{ provide: MAIL_PORT, useValue: legacy }]);
@@ -292,7 +292,7 @@ try {
   const r7 = await rowsTo(ownerEmail), m7 = (await inbox.list(ownerEmail, undefined)).messages.find((m: { subject: string }) => m.subject === "You already have an ExpatReady account");
   ok("DW7 pass: sign-up with a known staff email → \"You already have an account\" through MessagePort as a platform account email (review M1): one outbox row with no firm (PLATFORM_ACCOUNT, TRANSACTIONAL, SENT), the one layout from ExpatReady, and the firm's daily count unchanged",
     signupBinding.inject?.[0] === MESSAGES_MAIL && built.mail === appMail && a7.message === ACCEPTED && r7.length === 1 && r7[0].firmId === null && r7[0].audience === "PLATFORM_ACCOUNT" && r7[0].class === "TRANSACTIONAL" && r7[0].state === "SENT"
-    && !!m7 && m7.html.includes(`font-weight:bold">ExpatReady</div>`) && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/account") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
+    && !!m7 && m7.html.includes(">ExpatReady</p>") && m7.html.includes('role="presentation"') && m7.html.includes("Sent by ExpatReady.") && !m7.html.includes(firmA.operatingName) && m7.body.includes("/account") && (await firmCount()) === before7, { a7, r7, m7, before7, after: await firmCount() });
   // Fail: the same email as the firm's (main's shape with firmId, which this PR's first commit sent) spends the firm's cap.
   await appMail.send({ firmId: firmA.id, to: "dw7.firm.shape@example.com", replyTo: "no-reply@expatready.com", subject: "You already have an ExpatReady account", text: "x", class: "TRANSACTIONAL" }); await run();
   ok("DW7 fail: the firm-shaped send (firmId) is counted against the firm's daily cap (the check above is not blind)", (await firmCount()) === before7 + 1, { before7, after: await firmCount() });

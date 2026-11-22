@@ -106,3 +106,48 @@ Verdict: Block
 **Verdict: Approve.** No Blocker or Major is open at c343a64.
 
 Verdict: Approve c343a6497b1619dbb64770139d661a117f54ee1e
+
+---
+
+## Re-review, diff only (P-277): c313afc38..1cd42b133 (merge of main, P-270; this PR's CI causes)
+
+**The merge.** Read with `git show --remerge-diff 1cd42b133`. Both conflicts keep both sides:
+* `features/front-office-sales.ts` lists FO-4b's `EmbedController` and FO-10's `AssignmentRulesController`/`AssignmentRules`, and both header lines.
+* `sales/arrival.ts` keeps FO-10's summary and `assignmentRule*` detail, and R1.8's `before: null, after: {…}`.
+  * `after.ownerStaffId` is `owner` after `owner ??= placed.ownerStaffId`, so it records the owner the rule chose.
+* Nothing else of this PR's changed in the merge.
+
+**Cause 1: the import cycle.**
+* What moved: `placeNewLead`, `eligible`, `NO_RULE`, `SALES_KEY`, `RULE_DOORS` and `Placement` moved verbatim to `assignment/place.ts`. A diff of the old block against the new file is empty, apart from `export` added on `eligible` and `Strategy`.
+* `place.ts` imports only `firm-scope` and a type from `sales/common.ts`. `arrival.ts:12` imports `place.ts`. Only `features/front-office-sales.ts` and the test import `rules.ts`, which re-exports the moved names. So public.ts → arrival.ts → place.ts no longer loops back.
+* The new fail test works:
+  * At 1cd42b133, `tests/lib/load-first.ts` prints "loaded" for public.ts, people/edit.ts and features/front-office-sales.ts.
+  * On an archive copy with `arrival.ts` pointed back at `rules.ts`, public.ts and people/edit.ts each give `ReferenceError: Cannot access 'SALES_PORTS' before initialization`. The copy was deleted after.
+
+**Cause 2: R1.8 (before/after on audit writes).**
+* Save records the previous rule (or `null`) as before, and the new values as after.
+* Off records `{active:true}` → `{active:false}`, and is written only when the rule actually switches off.
+* The test asserts `strategy_after = ROUND_ROBIN` and no `strategy_before`.
+
+**Cause 3:** `api/src/features/MODULE.rows/FO-10.md` added; the front-office row now names `place.ts`.
+
+**Ran at 1cd42b133:**
+| Suite | Result |
+|---|---|
+| check_fo10_assignment | 42/42 |
+| check_aud_values | 14/14 |
+| check_fo9a_phone_edit | 37/37 |
+| check_fo9b_phone_doors | 26/26 |
+| check_fo2p4_calls_timeline | 30/30 |
+
+The last three are the suites that failed in batches #2500 and #2506.
+
+**Minor (does not block)**
+* **r2-m1.** `rules.ts:57`: the save reads `was` with an unlocked `findUnique` before the upsert.
+  * Scenario: two people save the same criteria at the same moment. Both read the same `was`, so the second audit line's `before` shows the values from before the first save, not the first save's values. Only the audit text is affected; the rule row itself is correct.
+  * Fix (when convenient): read the existing row `FOR UPDATE` (raw select by `firm_id` and `criteria_key`) before the upsert.
+* **r-m1** (no test for the re-pick branch) and the earlier minors stay as recorded.
+
+**Verdict: Approve.** No Blocker or Major is open at 1cd42b133. The journey score is unchanged at 9½/10.
+
+Verdict: Approve 1cd42b133d3701f7c0aa4ee8fab1e5d3f00dd7b9

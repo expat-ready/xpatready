@@ -10,6 +10,9 @@ qa/CAPABILITIES.md (Works = Proven). Stdlib only, US$0, no network except `wip`,
   waves.py allow R1.x ...   exit 0 only when every item may start a lane: wave 0 (already Proven: fixes, P-214), the
                             active wave, the next one, a wave below the active one (finishing its last 3 or fewer
                             items), or a note "allow: <reason>"; else one "OUTSIDE WAVE" line
+  waves.py pr               stdin: a PR's title (first line) and body; one "OUTSIDE WAVE" line per item it names
+                            (title R1.x, body "Item:" or "Completes:" lines) outside the open waves; exit 1 when any
+                            (pr-rules.yml flags it with the label outside-wave and a warning, never a failure, P-214)
   waves.py none-ok          stdin: a lane brief whose Item line says "none"; exit 0 when the row it is for (after
                             "/next <area>" or "Row") has a tooling, qa, records or Lead area in BACKLOG*.md, or it
                             names no row; else exit 1 with the reason (brief-check.sh --brief; focus-check.py's rule)
@@ -258,6 +261,15 @@ def main(argv):
         if norm(old) != norm(gen_block(rows, st)):
             print(f"WAVES PAGE: the generated block of {MD} differs from design/waves.tsv; run tools/waves.py gen and commit"); return 1
         return 0
+    if cmd == "pr":
+        title, _, body = sys.stdin.read().replace("\r", "").partition("\n")
+        wave = {i: (w, note) for i, w, _, note in rows}
+        active, ok = open_waves(rows, st)
+        out = [f"OUTSIDE WAVE: {i} is in wave {wave[i][0]}; open waves {', '.join(map(str, sorted(ok)))} (P-745). A fix still merges (P-214); new work on it waits for its wave."
+               for i in sorted(pr_items({"title": title, "body": body}, {}), key=num)
+               if i in wave and wave[i][0] not in ok and not wave[i][1].startswith("allow:")]
+        print("\n".join(out)) if out else None
+        return 1 if out else 0
     if cmd == "active":
         active, ok = open_waves(rows, st)
         print(f"active wave {active or 'none'}; lane starts open for waves {', '.join(map(str, sorted(ok)))}"); return 0
