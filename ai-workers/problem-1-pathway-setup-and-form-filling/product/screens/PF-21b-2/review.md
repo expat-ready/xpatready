@@ -121,3 +121,31 @@ Read: `git diff 78861110ae7926c0d6cea7289112503c9012eae6 5fda25666d9937f65d2c816
 No open Blocker or Major.
 
 Verdict: Approve 5fda25666d9937f65d2c8165b10655fef9673af0
+
+---
+
+# Round 3 (diff only, P-277): `5fda25666..16da2b10e` (reviewer, 22 Nov 2026)
+
+Read the 24-line diff the coordinator named (`git diff -M` over the migration folder, schema, `register/`, `MODULE.rows/PF-21b-2.md`, the test). I ran it in a detached worktree of 16da2b10e (removed afterwards) and dropped the scratch databases.
+
+**What changed:**
+- **(a) Re-stamp.** The migration is renamed `20261122070000` → `20261122180000_pf21b_legal_holds` (87 % similarity; the only body change is (b)). The four references (schema comment, adapter header, MODULE row, test `NEW`) all follow. On the branch it is the newest folder, after `20261122060000_pf4s_system_identity`. The test's "own stamp, later than every one before it" case still holds.
+- **(b) Seed wrapped in a PF-8b F7 lifting statement.** The DO block is the same, line for line, as `origin/main:…/20261122060000_pf4s_system_identity/migration.sql:162-173`, with `walls` narrowed to `plat_system_role_permission`. It does nothing on a superuser or BYPASSRLS runner. Otherwise it:
+  1. locks the table ACCESS EXCLUSIVE;
+  2. lifts FORCE only if it was set, and disables the firm gate only if it is enabled;
+  3. inserts the one row;
+  4. restores both in the same statement.
+
+  The migration is one transaction, so a failure rolls the lift back too. The seeded row is unchanged: Platform Owner only, P-601 (1).
+- **(c) Merge of `origin/main`.** #2927 is on main, so `git diff origin/main...16da2b10e` is the row's 9 files.
+
+**Runs on 16da2b10e:**
+- `check_pf21b_holds.ts`: 67 passed, 0 failed, exit 0, **twice**.
+- Also exit 0: `check_pf8b_f7_data_walls` (17/17), `check_pf8b_f4_migrations` (9/9), `check_pf4s_system_signin` (78/78).
+- Not re-run by me (the builder reports them green on this head): `check_pf21_complaints` (main narrowed its FK filter, so round 1's #2927 note is closed), `check_forms_qa53` on :4432, and the other named suites.
+
+**Findings:** none new. No code outside the stamp references and the seed statement changed. Rounds 1 and 2 stay as approved. Still open as PR questions: m2 (the firm sees "The system"), breaker m3 (duplicate holds), and the Lead's word on the size (now 894 insertions over 9 files against main) and on departure 4.
+
+No open Blocker or Major.
+
+Verdict: Approve 16da2b10e1375193240ce0108479c53be44a4359
