@@ -38,6 +38,7 @@ import { seedSampleFirms } from "../../api/src/platform/seed-sample-firms.ts";
 import { client, recorder } from "../runtime/api.ts";
 
 const [NAME, PORT] = [process.argv[2] ?? "j85", Number(process.argv[3] ?? 4485)];
+if (PORT === 4400) { console.log("refused: never the demo on :4400"); process.exit(2); }
 const DBNAME = `xr_studio_${NAME}`, BASE = `http://localhost:${PORT}`, STUDIO = join(import.meta.dirname, "..", "..");
 const SHOTS = join(STUDIO, "..", "..", "product", "screens", "J-85", "screenshots"); mkdirSync(SHOTS, { recursive: true });
 const HEADED = process.env.HEADED === "1";
@@ -65,6 +66,10 @@ const personId = sql(`insert into fo_person (id, firm_id, given_names, family_na
 const signIn = await fetch(`${BASE}/api/platform/session/local`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ firmKey: "sample-firm", email: ownerEmail, secondStep: true }) });
 const firmTok = ((await signIn.json()) as { token?: string }).token;
 if (!firmTok) { console.error("STOP  local sign-in refused (start the copy with PLATFORM_IDENTITY=local)"); process.exit(2); }
+// Our own Platform Owner's session (PF-4s part 1, #2927: POST /api/system/session/local, plat_system_staff). Until it
+// merges there is no token: every console call below then fails and names PF-4s part 1 too.
+const ourEmail = table("plat_system_staff") ? sql(`select coalesce(min(email), '') from plat_system_staff`) : "";
+const ourTok: string | undefined = ourEmail ? (await j("POST", "/api/system/session/local", { email: ourEmail, secondStep: true })).body?.token : undefined;
 const browser = await chromium.launch({ headless: !HEADED, slowMo: HEADED ? 250 : 0, ...(process.platform === "darwin" ? { channel: "chrome" } : existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}) });
 const errors: string[] = [];
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light", reducedMotion: "reduce" });
@@ -84,26 +89,34 @@ try {
   ok("J-85 W1 (parts missing: PF-21b part 2, plat_data_request): the register table exists with type, requester, received, target date, status", table("plat_data_request") && ["type", "received", "target", "status"].every((c) => reqCols.includes(c)), reqCols || "no table");
   ok("J-85 W1 (parts missing: PF-21b part 2): a request's type is ACCESS | CORRECTION | DELETION and its status PENDING | IN_PROGRESS | COMPLETED | OVERDUE | HELD",
     enumValues("plat_data_request", "type") === "ACCESS,CORRECTION,DELETION" && ["PENDING", "IN_PROGRESS", "COMPLETED", "OVERDUE", "HELD"].every((s) => enumValues("plat_data_request", "status").split(",").includes(s)), { type: enumValues("plat_data_request", "type"), status: enumValues("plat_data_request", "status") });
-  const logged = await j("POST", "/api/system/privacy/requests", { type: "ACCESS", requester: `Requester${run} Sample`, requesterEmail: `j85.${run}@example.com`, receivedOn: "2026-11-02" });
+  const logged = await j("POST", "/api/system/privacy/requests", { type: "ACCESS", requester: `Requester${run} Sample`, requesterEmail: `j85.${run}@example.com`, receivedOn: "2026-11-02" }, ourTok);
   const dbReq = table("plat_data_request") ? sql(`select count(*) || '|' || coalesce(max((target_date - received_on::date)::text), '') from plat_data_request where requester_email = 'j85.${run}@example.com'`) : "no table";
+  ok("J-85 W1 (parts missing: PF-4s part 1 #2927): our Platform Owner signs in to the console (a system session token)", !!ourTok, { ourStaff: ourEmail || "no plat_system_staff" });
   ok("J-85 W1 (parts missing: PF-21b part 2, PF-21rs): the request is logged, stored once with its target date received + 30 days, and one audit line", (logged.status === 200 || logged.status === 201) && dbReq === "1|30", { status: logged.status, dbReq });
 
   // ---------------------------------------------------------------------------------------------- W2 worked to an outcome
   const reqId = typeof logged.body === "object" ? logged.body?.id : undefined;
-  const moved = reqId ? [await j("POST", `/api/system/privacy/requests/${reqId}/status`, { status: "IN_PROGRESS" }), await j("POST", `/api/system/privacy/requests/${reqId}/status`, { status: "COMPLETED", actionsTaken: "Sent the person's records (Sample)" })] : [];
-  const evs = table("plat_data_request_event") ? sql(`select count(*) from plat_data_request_event`) : "no table";
+  const moved = reqId ? [await j("POST", `/api/system/privacy/requests/${reqId}/status`, { status: "IN_PROGRESS" }, ourTok), await j("POST", `/api/system/privacy/requests/${reqId}/status`, { status: "COMPLETED", actionsTaken: "Sent the person's records (Sample)" }, ourTok)] : [];
+  const evs = table("plat_data_request_event") && reqId ? sql(`select count(*) from plat_data_request_event where request_id = '${reqId}'`) : "no table";
   ok("J-85 W2 (parts missing: PF-21b part 2): the request moves In progress then Completed, each change an insert-only event (plat_data_request_event)", moved.length === 2 && moved.every((m) => m.status === 200) && Number(evs) >= 3, { moved: moved.map((m) => m.status), evs });
   if (reqId) { await p.goto(`${BASE}/system/privacy/requests/${reqId}`); await p.waitForLoadState("networkidle").catch(() => undefined); }
   const reqPage = reqId ? (await p.locator("main").innerText().catch(() => "")).replace(/\s+/g, " ") : "";
   ok("J-85 W2 (parts missing: PF-21rs): the request's page lists each event and its outcome", !!reqId && /in progress/i.test(reqPage) && /completed/i.test(reqPage) && reqPage.includes("Sent the person's records"), reqPage.slice(0, 200) || "no request to open (PF-21b part 2)");
 
   // ---------------------------------------------------------------------------------------------- W3 within its time
-  ok("J-85 W3 (parts missing: PF-21b part 2): on the fake clock a request past its target date reads OVERDUE and raises one alert (NFR5-14)", table("plat_data_request") && sql(`select count(*) from plat_data_request where status::text = 'OVERDUE'`) === "1", "no register on main");
+  // A request received 40 days before today: past its 30-day target, so it reads OVERDUE with one alert for it.
+  const oldDay = new Date(Date.now() - 40 * 86_400_000).toISOString().slice(0, 10);
+  const late = await j("POST", "/api/system/privacy/requests", { type: "CORRECTION", requester: `Late${run} Sample`, requesterEmail: `j85.late.${run}@example.com`, receivedOn: oldDay }, ourTok);
+  const lateId = typeof late.body === "object" ? late.body?.id : undefined;
+  const lateRead = lateId ? await j("GET", `/api/system/privacy/requests/${lateId}`, undefined, ourTok) : { status: 0, body: null };
+  const alerts = lateId ? sql(`select count(*) from audit_event where entity_key = '${lateId}' and action ilike '%overdue%'`) : "0";
+  ok("J-85 W3 (parts missing: PF-21b part 2, PF-4s part 1): a request received 40 days ago is past its target date: it reads OVERDUE and raises one alert for that request (NFR5-14)",
+    !!lateId && lateRead.body?.status === "OVERDUE" && alerts === "1", { logged: late.status, status: lateRead.body?.status ?? null, alerts });
 
   // ---------------------------------------------------------------------------------------------- W4 a legal hold stops deletion
   const holdCols = columns("plat_legal_hold");
   ok("J-85 W4 (parts missing: PF-21b part 2, plat_legal_hold): the hold table exists with scope, target, reason, placed and released by/at", table("plat_legal_hold") && ["scope", "reason", "placed_by", "placed_at", "released_by", "released_at"].every((c) => holdCols.includes(c)), holdCols || "no table");
-  const placed = await j("POST", "/api/system/legal-holds", { firmId, scope: { kind: "PERSON", id: personId }, reason: "Sample litigation (J-85)" });
+  const placed = await j("POST", "/api/system/legal-holds", { firmId, scope: { kind: "PERSON", id: personId }, reason: "Sample litigation (J-85)" }, ourTok);
   ok("J-85 W4 (parts missing: PF-21b part 2, PF-4s part 1): our Platform Owner places a PERSON hold with a reason (one audit line)", placed.status === 200 || placed.status === 201, placed.status);
   // The running app's one delete check (AUD-5 part 2): it asks the hold port first; with no adapter wired it refuses.
   const keep = new KeepPeriods(db as never);
@@ -124,8 +137,13 @@ try {
     !before.held && during.held && during.holds[0]?.reason === "Sample litigation (J-85)" && during.holds[0]?.placedBy === "seed:J-85" && !otherFirm.held && !after.held, { before, during, otherFirm, after });
 
   // ---------------------------------------------------------------------------------------------- W5 erasure (PF-21d)
-  const erasure = sql(`select count(*) from information_schema.tables where table_name like '%erasure%'`);
-  ok("J-85 W5 (parts missing: PF-21d): an approved DELETION request is erased 7 days after approval behind the \"Data erasure\" switch; a held person answers HELD and nothing is erased", erasure !== "0", `${erasure} erasure tables; no ErasurePort on main`);
+  // A DELETION request for the held person, approved, then the erasure run for it: HELD, and the person's row stays.
+  const del = await j("POST", "/api/system/privacy/requests", { type: "DELETION", requester: `Requester${run} Sample`, requesterEmail: `j85.${run}@example.com`, receivedOn: new Date().toISOString().slice(0, 10), firmId, subject: { kind: "PERSON", id: personId } }, ourTok);
+  const delId = typeof del.body === "object" ? del.body?.id : undefined;
+  const approved = delId ? await j("POST", `/api/system/privacy/requests/${delId}/approve`, {}, ourTok) : { status: 0, body: null };
+  const erased = delId ? await j("POST", `/api/system/privacy/requests/${delId}/erase-now`, {}, ourTok) : { status: 0, body: null };
+  ok("J-85 W5 (parts missing: PF-21d, PF-21b part 2): an approved DELETION request for a held person is carried out as HELD: nothing erased, the person's row stays, the request says so",
+    approved.status === 200 && JSON.stringify(erased.body ?? "").includes("HELD") && sql(`select count(*) from fo_person where id = '${personId}'`) === "1", { logged: del.status, approved: approved.status, erased: erased.status });
 
   // ---------------------------------------------------------------------------------------------- W6 roles
   const firmReg = await j("GET", "/api/system/privacy/requests", undefined, firmTok), firmHold = await j("POST", "/api/system/legal-holds", { firmId, scope: { kind: "FIRM" }, reason: "x" }, firmTok);
