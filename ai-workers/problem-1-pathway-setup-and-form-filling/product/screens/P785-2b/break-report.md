@@ -77,3 +77,76 @@ Commit 71d225edd, diff against 9ddd8bdd6, script only. Breaker, 22 Nov. Throwawa
 - **Self-test catches these guts:** `"case-side": None`, skipping any folder containing `_` or `-`, and dropping the one-source root form or prefix.
 
 Out of this diff, noted only: feature folders (`api/src/features/case-foo/index.ts`) are owned by no one and pass. Scope `exclude:` lists are ignored by the whole script.
+
+## Round 2: commit 2383b5303 (diff against 71d225edd, script only)
+
+Breaker, 22 Nov. Throwaway copy, nothing committed, each attack restored. Baseline run gives `PASS  mergify scopes: 196 checks`, exit 0. With #3006's `track-paths.txt` + `track-route.py` placed and staged, the run flags the same 8 lines (22, 29, 30, 31, 41, 42, 43, 44), exit 1. The check count fell from 300 to 196 only because the glob loop now counts as one check.
+
+**Verdict: Changes.** There is one Major: the file-set comparison makes a builder's app PR fail over the track list. There are six Minors.
+
+### Round-1 findings replayed
+- **Now fail as they should:**
+  - M1: `FOLDERS.get(area)`, or `if not want`, gives `FAIL self-test: a new web module folder that names no area`, exit 1.
+  - m2: partly fixed (see R2-m1). `"forms": None` fails its self-test row. `billing: None` held by platform and case-side gives `... recorded with no scope, yet scope(s) ['case-side', 'platform'] hold it`. A `None` for `pipeline` gives "is an area".
+  - m3: `_platform-pages/page.tsx` gives "names no area".
+  - m4 a–d: real violations are still refused even with each gut in place, because the new loop at lines 103–107 holds every test and feature file to one scope. Removing that loop fails its own row (`visitor-visa-filings.ts`).
+  - m4e: caught by the demo row.
+  - m5: with a typo in `TP` and #3006's files present, the run gives `track-route.py exists but track-paths.txt does not`, exit 1.
+- **Respellings (m6), `!` copies and two tracks per scope (m7):** `**/*`, `**/**`, `check_pf**`, `tests/**/check_pf*`, `/.github/**/*`, `check_pf*.*`, `!api/src/platform/**`, its `!/` root form, `!…/platform/**/*` and `scope:case-side` named in both tracks are all refused. A legitimate sub-folder line and the money split (`invoices/**` and `tax/**`) pass.
+- **m8:**
+  - (a) one file of a scope in the other track: now passes.
+  - (d) a YAML syntax error, a scalar merge and a list used as a key: now print `FAIL .mergify.yml cannot be read as YAML: …`, exit 1.
+  - (b) merge override: now passes, as intended.
+  - (c) two `<<:` keys: still pass, left as agreed.
+- **Gutting the new rules is caught by the self-test:** `_` by name only, the AREA_NAMES test dropped, the held test dropped, one scope per track relaxed to `> 2`, the exact-file exemption removed, the set comparison turned off. Each gives exit 1 with its own row.
+
+### New findings
+
+**R2-M1 (Major): the file-set comparison (lines 241–242, 259–260) makes an unrelated app PR fail over the Lead-owned track list.**
+- **Run:** `fast.py` executes the script's own functions; `rx` is cached, which does not change any result.
+  - Today, `track-b tests/check_fo6_signing_port*` passes.
+  - Remove `tests/check_fo6_signing.ts` from the file list, as a front-office PR deleting that test would. The same line then gives `FAIL one source: ... matches exactly the files of scope front-office's pattern tests/check_fo6*`.
+  - The natural line for #3006's signing split, `track-b tests/check_fo6_signing*`, is refused today. Both fo6 tests happen to start with `signing`. The advice to "name the scope or a sub-folder" cannot be followed for test files, and the line would pass again as soon as someone adds `check_fo6_other.ts`.
+- **Why it matters:** the outcome depends on the file count, not on what the line intends. A builder lane's delete or rename PR, or a batch carrying one, goes red over a list it does not own. `track-route.py:110` deliberately made this kind of failure a WARN (its review M1, "an app PR that deletes a file must not turn ci red over a Lead-owned list").
+- **Smallest fix:** keep exact text, the `/**/*` normalisation and `ambiguous()` as FAILs. Print equality of matched file sets as a WARN only, or apply it only when `track-paths.txt` itself changes.
+
+**R2-m1 (Minor): AREA_NAMES (line 72) is built from FOLDERS itself, so a `None` on an alias with no sibling erases that alias.**
+- **Edit:** `"cases": None` in the FOLDERS literal.
+- **Result:** PASS, exit 0. Adding `web/src/modules/cases/page.tsx` in no scope also passes, exit 0. `client-money: None` is caught only by an unrelated row ("only partly in money").
+- **Also:** `"platform-admin": None` with a `platform-admin/` folder passes. The name says platform, but the check cannot know.
+- **Fix:** write AREA_NAMES as a separate literal (`platform, front-office, client-money, money, case-side, cases, forms, forms-engine`), add one self-test row per alias, and refuse `None` for `<area>-*` names.
+
+**R2-m2 (Minor): the exact-file exemption lets a scope's file list be copied.**
+- **Result:** case-side's 41 single-file includes, copied verbatim into track-a, pass. `track-b scope:case-side` plus `track-b api/src/clients.ts`, a pure redundant copy, also passes, and demo2 (line 305) asserts that it passes.
+- **Fix:** exempt a single-file line only when another track names that file's scope (the split case), and refuse it when its own track names that scope.
+
+**R2-m3 (Minor): the check is now five times slower.**
+- **Timings:** 5.0 s at 71d225edd becomes 25.2 s on this commit while the rule is dormant, and 41.9 s with #3006's list (this machine, CPU shared with another session).
+- **Cause:** cProfile shows `rx()` rebuilt 713,476 times inside `track_copies` (lines 241 and 259, once per file × pattern), which is 103 of 123 profiled seconds. demo2 alone triggers it on every run.
+- **Impact:** the run is on every PR and batch in jobs "fast" and "ci", and the step's name says "seconds".
+- **Fix:** add `@functools.lru_cache` on `rx`, or compile once per glob. With the cache, the same run takes 7.0 s.
+
+**R2-m4 (Minor): the `_` rule (line 88) also accepts nested `routes.tsx` files.**
+- **Result:** `_cases/routes.tsx` plus `_cases/sub/routes.tsx`, or `_shared/deep/routes.tsx` alone, gives PASS, exit 0.
+- **Why it matters:** Vite's exclusion covers only `modules/_*/routes.tsx`. A nested `routes.tsx` is never globbed, and if a real module imports it, it ships.
+- **Fix:** skip the folder only when `mine == [<modules>/<area>/routes.tsx]`.
+
+**R2-m5 (Minor): four guts still pass with the self-test green.** Each gives exit 0:
+- `if os.path.exists(TP): pass` (line 267), with #3006's files present. The real file is never checked.
+- The real-file call made without `files`. Respellings in the real list would then pass.
+- `ambiguous()` turned off for track lines. A non-copy such as `api/src/{a,b}.ts` would no longer be refused.
+- The `except yaml.YAMLError` branch removed.
+- **Fix:** move the wiring into a function and test it on a temporary file holding one respelled copy. Add a row for an ambiguous non-copy track glob and a row for `load_once("a: [")`.
+
+**R2-m6 (Minor): read errors other than YAML errors still crash.**
+- An empty `.mergify.yml`, a top-level list (`AttributeError`) and a non-UTF-8 byte (`UnicodeDecodeError`, line 40 opens the file without an encoding) each print a traceback on stderr, exit 1. They fail closed but print no FAIL line.
+- **Fix:** add `isinstance(cfg, dict)`, and open with `encoding="utf-8"` inside the `try`.
+
+Nit: the FAIL text now says `'track-a scope:<name>'` even when the scope is known; round 1 printed `scope:platform`.
+
+### Held in round 2
+- The `./` and case-changed forms are dead lines (they match 0 files), not copies.
+- `tests/check_p*` and `/**/check_pf*` are supersets that match other files, and pass as such.
+- A scope pattern that matches nothing is kept out of the comparison (`if m:`).
+- The same scope named twice by one track passes.
+- A plain duplicate key is refused. A merge override and merge lists pass.

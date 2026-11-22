@@ -132,3 +132,71 @@ The one-source rule is correct for how `track-route.py` reads the list, and catc
 To fix: Major 1. Minors 1–6 are recommended; Minor 1 is the rest of #2925's Minor 2.
 
 Reviewer: Changes 71d225edd3a579fca5aea382c61e0d36b869f0e4
+
+---
+
+## Round 2 (diff only, P-277): `71d225edd..2383b5303`, `product/tools/check-mergify-scopes.sh`
+
+Same reviewer. I read the breaker's round 1 report, `P785-2b/break-report.md`. The commit also adds that report and my round 1 review; the script is the only file that changes code.
+
+### Runs (exit codes)
+
+- `bash product/tools/check-mergify-scopes.sh`: `PASS  mergify scopes: 196 checks`, exit 0, so no false refusals on today's tree.
+  - The count fell from 300 because the glob refusal is now one check rather than one per pattern. It is not comparable to round 1.
+  - `_example/` holds only `routes.tsx`, so the narrower `_` skip still skips it.
+- `python3 -I product/screens/B119/check-queue-rules.py`: `68 passed, 0 failed`, exit 0.
+- **#3006's `track-paths.txt` in place:** exit 1 on exactly lines 22, 29, 30, 31, 41, 42, 43 and 44. That is the same 8 as round 1, and the new same-files and two-track rules add no false refusal on that list.
+
+### Each fix with its rule switched off
+
+I switched off one rule at a time in a throwaway copy of the script's Python body, never committing. The harness is in my session scratch folder.
+
+| Fix | Rule switched off | Result |
+|---|---|---|
+| Major 1, missing scope | `missing()` returns nothing | exit 1: caught |
+| Major 1, glob refusal | `globs_bad()` returns nothing | exit 1: caught |
+| Major 1, names no area | the "names no area" line; also the breaker's `FOLDERS.get(area)` edit | exit 1 for both: caught |
+| m1 (mine), one scope per held test or feature file | the `len(held) > 1` loop | exit 1 (`visitor-visa-filings.ts` row): caught |
+| m2 (mine), merge override allowed | merge key counted again | exit 1 (the merge and override rows): caught |
+| m3 (mine), `!` copies | `!` lines skipped again | exit 1: caught |
+| m3 (mine), `/**/*` collapse | collapse removed | exit 1: caught |
+| m4 (mine), fails loudly without its list | `track-paths.txt` path mistyped, with `track-route.py` beside it | exit 1 ("track-route.py exists but track-paths.txt does not"): caught |
+| breaker m2, no-scope entry checked | "is an area" check; "yet scope(s) hold it" check | exit 1 for each: caught |
+| breaker m3, `_` folders | skip any `_` folder again; no skip at all | exit 1 for each (`_cases/page.tsx` row; `_demo/routes.tsx` row): caught |
+| breaker m6, same tracked files | same-file-set rule removed | exit 1 (`tests/**/check_pf*`): caught |
+| breaker m7, one scope in two tracks | two-track rule removed | exit 1: caught |
+| breaker m8a, one file of a scope allowed | single-file includes no longer exempt | exit 1 (`api/src/clients.ts`): caught |
+| breaker m8d, YAML errors as FAIL lines | probe: a list used as a key | `FAIL .mergify.yml cannot be read as YAML: …` on stdout |
+| breaker m8b | probe: merge list `<<: [*a, *b]` with overlapping keys | loads; correct |
+| breaker m4 a–c | the old exceptions put back in the `twice` rule (fo7 in front-office; tests only; pipeline exempt) | exit 0. Not a gap: the new one-scope loop (lines 103–107) catches the same violations, so the m4 rows prove the protection. The `twice` block (lines 81–83) and the named-feature `other` check are now redundant (nit 4) |
+
+My m5 was answered as an order note in the PR comment "Reviewer: Changes 71d225edd…": #3006 writes `scope:` in place of the 8 lines in its own regeneration, so this PR stays one file. That is acceptable. My m6 is fixed: the wording is present tense at line 57.
+
+### Findings, round 2
+
+**Blocker:** none. **Major:** none.
+
+**Minor** (none blocks)
+
+1. **Refusing ambiguous globs on track lines has no proof.**
+   - **Where:** `check-mergify-scopes.sh:255`.
+   - **Evidence:** switched off, the script exits 0. The only ambiguous demo line, `tests/check_pf**`, is also caught by the same-file-set rule, which hides the gap.
+   - **Smallest fix:** add one `demo2` line that is ambiguous and matches no scope's files, for example `track-a api/src/front-office/sales**`, to the expected list.
+2. **The YAML-error catch has no self-test row.**
+   - **Where:** line 39.
+   - **Evidence:** with the catch removed, the script exits 0. A broken file still fails closed, but with a traceback on stderr.
+   - **Smallest fix:** assert that `load_once("a: [")[1]` is not `None`.
+3. **Two items from the breaker's report stay open; they were not claimed in this round.**
+   - m8c: two `<<:` keys in one mapping still load (probe: `None`).
+   - m8e: `demo` and `demo2` are still built on the real `src`.
+   
+   **Smallest fix:** refuse a second merge key, for example `[k for k, _ in node.value if k.tag == "tag:yaml.org,2002:merge"]` of length 2 or more. Build the demos from a fixed scope dict.
+4. **Nits.**
+   - Lines 81–83 (`twice`) and the named-feature `other` check are now covered by the one-scope loop; they could go.
+   - Two call sites are not self-tested: `if os.path.exists(TP): bad += one_source_bad(...)` (line 267) and the "track-route.py exists" FAIL (line 268–269). Disabling either passes. The mistyped-path and `if False and …` edits from the breaker are now caught, through the second of these.
+
+### Verdict, round 2
+
+Major 1 is closed: missing scope, glob refusal and names no area each now fail the script when switched off. My Minors 1–4 and 6 are fixed, each proven by switching its rule off; m5 is settled by the order note. The breaker's M1, m2, m3, m5, m6, m7, m8a, m8b and m8d are fixed and proven the same way. There are no new false refusals on today's tree or on #3006's list. The remaining items are Minors and nits.
+
+Reviewer: Approve 2383b5303a0d3cbb2d6023fb966810e5b3426c94
