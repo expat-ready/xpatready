@@ -41,6 +41,7 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   s("cognito", "PLATFORM_COGNITO_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9]{1,128}$/), "an app client id (letters and digits)"),
   s("stripe", "PLATFORM_STRIPE_SECRET_KEY", true, z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{8,255}$/), "a Stripe secret or restricted key (sk_… or rk_…)"),
   s("stripe", "PLATFORM_STRIPE_WEBHOOK_SECRET", true, z.string().regex(/^whsec_[A-Za-z0-9+/=]{8,255}$/), "a Stripe webhook signing secret (whsec_…)"),
+  opt("stripe", "PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET", true, z.string().regex(/^whsec_[A-Za-z0-9+/=]{8,255}$/), "the signing secret of Stripe's connected-accounts webhook endpoint (whsec_…; FO-7c; unset: card payments are not set up on this server)"),
   s("ses", "PLATFORM_SES_REGION", false, z.string().regex(/^[a-z]{2}-[a-z]+-[0-9]$/), "an AWS region such as ca-central-1 (SES signs with the task's role: no key)"),
   s("boldsign", "PLATFORM_BOLDSIGN_API_KEY", true, z.string().regex(/^[A-Za-z0-9+/=_-]{16,512}$/), "a BoldSign API key (16 or more characters)"),
   s("zoom", "PLATFORM_ZOOM_CLIENT_ID", false, z.string().regex(/^[A-Za-z0-9_-]{8,128}$/), "the Zoom app's client id"),
@@ -67,7 +68,7 @@ export type PlatformConfig = Readonly<{
   environment: PlatformEnvironment;
   databaseUrl: Secret;
   cognito: Readonly<{ userPoolId: string | null; clientId: string | null }>;
-  stripe: Readonly<{ secretKey: Secret | null; webhookSecret: Secret | null }>;
+  stripe: Readonly<{ secretKey: Secret | null; webhookSecret: Secret | null; connectWebhookSecret?: Secret | null }>;
   ses: Readonly<{ region: string | null }>;
   boldsign: Readonly<{ apiKey: Secret | null }>;
   zoom: Readonly<{ clientId: string | null; clientSecret: Secret | null; webhookSecretToken: Secret | null }>;
@@ -162,7 +163,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     environment,
     databaseUrl: secret("DATABASE_URL") ?? new Secret("DATABASE_URL", LOCAL_DATABASE_URL),
     cognito: Object.freeze({ userPoolId: plain("PLATFORM_COGNITO_USER_POOL_ID"), clientId: plain("PLATFORM_COGNITO_CLIENT_ID") }),
-    stripe: Object.freeze({ secretKey: secret("PLATFORM_STRIPE_SECRET_KEY"), webhookSecret: secret("PLATFORM_STRIPE_WEBHOOK_SECRET") }),
+    stripe: Object.freeze({ secretKey: secret("PLATFORM_STRIPE_SECRET_KEY"), webhookSecret: secret("PLATFORM_STRIPE_WEBHOOK_SECRET"), connectWebhookSecret: secret("PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET") }),
     ses: Object.freeze({ region: plain("PLATFORM_SES_REGION") }),
     boldsign: Object.freeze({ apiKey: secret("PLATFORM_BOLDSIGN_API_KEY") }),
     zoom: Object.freeze({ clientId: plain("PLATFORM_ZOOM_CLIENT_ID"), clientSecret: secret("PLATFORM_ZOOM_CLIENT_SECRET"), webhookSecretToken: secret("PLATFORM_ZOOM_WEBHOOK_SECRET_TOKEN") }),
