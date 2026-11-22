@@ -166,10 +166,13 @@ queue_rules:
       - check-success = ci
     merge_method: merge
   # SPD-1 (founder 22 Nov to Lead 4: "separate queues for track A, B, C ... strongly enforced"; P-802): a PR is routed
-  # by the paths it touches (product/tools/track-paths.txt, the one list). Only Track A files: queue track-a. Only Track
-  # B files: queue track-b. Files of both tracks, or app files of neither: the shared queue product below. Each track
-  # queue batches only its own PRs (batch size 3), and with mode parallel and disjoint scopes its batches check and merge
-  # beside the other track's, so one track's failed batch never resets the other's. Separate queue rules, not Mergify
+  # by the paths it touches (product/tools/track-paths.txt, the one list). A Track A file and no Track B file: queue
+  # track-a; a Track B file and no Track A file: queue track-b (files of neither track may ride along). Files of both
+  # tracks, or app files of neither: the shared queue product below. Each track queue batches only its own PRs (batch
+  # size 3); with mode parallel, a track batch whose scopes differ from the other track's checks and merges beside it.
+  # Not yet everywhere: front-office (sales and booking in A, retainers and signing in B) and platform (files in B) are
+  # one scope each, and audit.prisma is a barrier file, so such batches still serialize (a scope split is its own PR).
+  # Priority is file order: track-a, then track-b, then product (both tracks or neither). Separate queue rules, not Mergify
   # partitions: the partition docs could not be read from the cloud lane (docs.mergify.com blocked), and these rules
   # keep every condition product has, so no gate is lowered. Each keeps product's queue and merge conditions word for
   # word (test-spd-1.sh checks it). Undo: delete the two queues (PRs fall back to product).

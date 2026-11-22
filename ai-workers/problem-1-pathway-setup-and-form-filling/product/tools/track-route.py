@@ -8,7 +8,7 @@ in file order whose queue_conditions all hold).
   python3 -I product/tools/track-route.py tracks < files            the tracks a list of files touches
   python3 -I product/tools/track-route.py route [--title T] < files the queue an approved, green PR with these files joins
   python3 -I product/tools/track-route.py check                     .mergify.yml uses the regexes of track-paths.txt;
-                                                                    every track glob matches a tracked file
+                                                                    a track glob matching no tracked file is a WARN
 Exit 0 ok, 1 a failed check, 2 a usage or input error. US$0, no network. Test: product/tools/test-spd-1.sh."""
 import importlib.util, os, re, subprocess, sys
 
@@ -92,8 +92,8 @@ def route(files, title="evidence: something", mergify=MERGIFY):
     return cqr.queue_of(cfg, pr)
 
 
-def check(d, mergify=MERGIFY):
-    bad = []
+def check(d, mergify=MERGIFY, warn=None):
+    bad, warn = [], (warn if warn is not None else [])
     cfg = yaml.safe_load(open(mergify, encoding="utf-8"))
     conds = {q["name"]: [c.strip() for c in q.get("queue_conditions") or [] if isinstance(c, str)] for q in cfg.get("queue_rules") or []}
     for t, other in (("track-a", "track-b"), ("track-b", "track-a")):
@@ -107,7 +107,8 @@ def check(d, mergify=MERGIFY):
     for t in TRACKS:
         for g in d[t][0] + d[t][1]:
             r = re.compile("^" + glob_rx(g) + "$")
-            if not any(r.match(f) for f in files): bad.append(f"{t}: {g} matches no tracked file")
+            # A warning only (review M1): an app PR that deletes a file must not turn ci red over a Lead-owned list.
+            if not any(r.match(f) for f in files): warn.append(f"{t}: {g} matches no tracked file (update track-paths.txt and .mergify.yml)")
     return bad
 
 
@@ -125,7 +126,9 @@ def main(argv):
         if not files: print("route: no files on stdin"); return 2
         print(route(files, title) or "no queue"); return 0
     if cmd == "check":
-        bad = check(d)
+        warn = []
+        bad = check(d, warn=warn)
+        for w in warn: print("WARN", w)
         for b in bad: print("FAIL", b)
         print("track-route check:", "PASS" if not bad else f"FAIL ({len(bad)})")
         return 1 if bad else 0

@@ -45,8 +45,11 @@ jobs:
           BODY: ${{ github.event.pull_request.body }}
           P: ai-workers/problem-1-pathway-setup-and-form-filling/product
         run: |
+          # The base commit predates this tool (the batch that adds it): nothing to prove, never red (review m9).
+          [ -f "$P/tools/batch-proof.mjs" ] || { echo "items=[]" >> "$GITHUB_OUTPUT"; echo "base has no batch-proof.mjs yet: nothing to prove" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
           printf '%s' "$BODY" > batch.md; mkdir -p bodies
           prs=$(node "$P/tools/batch-proof.mjs" prs --body-file batch.md)
+          [ "$prs" != "[]" ] || echo "::warning::no pull_requests metadata in this batch PR's body: nothing to prove (review m7)"
           echo "batch PRs: $prs" | tee -a "$GITHUB_STEP_SUMMARY"
           for n in $(node -p 'JSON.parse(process.argv[1]).join(" ")' "$prs"); do
             curl -fsS -H "Authorization: Bearer $GH_TOKEN" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$n" > pr.json || continue
@@ -125,6 +128,7 @@ jobs:
     permissions: { contents: read, pull-requests: write, issues: write }
     steps:
       - uses: actions/download-artifact@v4
+        continue-on-error: true   # no verdict file: each item is reported FAIL below, never silent (review m5)
         with: { pattern: "batch-verdict-*", merge-multiple: true, path: verdicts }
       - name: one comment on each PR that claims an item (no batch code runs here)
         env:

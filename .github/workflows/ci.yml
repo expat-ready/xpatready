@@ -278,6 +278,8 @@ jobs:
       - name: track routing of the merge queue (test-spd-1.sh; SPD-1, P-802; every PR and batch, seconds)
         # Track A, Track B, both-tracks and records PRs join their queues, read from .mergify.yml; the track queues keep
         # product's gates; .mergify.yml and track-paths.txt agree; batch-proof.yml stays report-only. Reads files only.
+        # Report-only for its first 24 h or 10 PR runs (P-717 (b)); the tech lead removes continue-on-error after that.
+        continue-on-error: true
         run: bash "$P/tools/test-spd-1.sh"
       - name: every route a pack's set-up calls has a screen (tools/route-has-screen.mjs, under a second)
         # Founder 5 Nov (P-348; QA-234): green packs hid dead ends, because a pack's set-up calls routes and a person has

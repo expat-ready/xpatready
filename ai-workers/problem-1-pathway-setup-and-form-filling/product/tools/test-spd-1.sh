@@ -26,7 +26,7 @@ ok "a records PR joins records"                              "$(route $R/STATE.m
 ok "pipeline work alone joins pipeline"                      "$(route .mergify.yml $R/tools/track-paths.txt)" pipeline
 
 echo "## one list, kept in step"
-python3 -I "$TOOLS/track-route.py" check > "$TMP/check.log" 2>&1; ok ".mergify.yml uses track-paths.txt's regexes; every track glob matches a file" "$?" 0
+python3 -I "$TOOLS/track-route.py" check > "$TMP/check.log" 2>&1; ok ".mergify.yml uses track-paths.txt's regexes (a glob matching no file is only a WARN)" "$?" 0
 { cat "$TOOLS/track-paths.txt"; echo "track-a web/src/pages/start.tsx"; } > "$TMP/paths.txt"
 TRACK_PATHS="$TMP/paths.txt" python3 -I "$TOOLS/track-route.py" check > "$TMP/drift.log" 2>&1; ok "a path added to track-paths.txt but not to .mergify.yml is caught" "$?" 1
 python3 -I "$ROOTD/$R/screens/B119/check-queue-rules.py" > "$TMP/b119.log" 2>&1; ok "B119's queue rules still hold (check-queue-rules.py)" "$?" 0
@@ -39,7 +39,8 @@ bad = []
 strip = lambda cs: [c for c in cs if not (isinstance(c, str) and c.lstrip("-").startswith("files ~= ^ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/"))]
 for t in ("track-a", "track-b"):
     if strip(q[t]["queue_conditions"]) != q["product"]["queue_conditions"]: bad.append(f"{t}: queue_conditions differ from product's")
-    if q[t]["merge_conditions"] != q["product"]["merge_conditions"]: bad.append(f"{t}: merge_conditions differ from product's")
+    for k in sorted(set(q[t]) | set(q["product"])):   # every other key word for word (review m8): wait, attempts, method
+        if k not in ("name", "batch_size", "queue_conditions") and q[t].get(k) != q["product"].get(k): bad.append(f"{t}: {k} differs from product's")
     if q[t].get("batch_size") != 3: bad.append(f"{t}: batch_size {q[t].get('batch_size')}, want 3")
     if len(q[t]["queue_conditions"]) != len(q["product"]["queue_conditions"]) + 2: bad.append(f"{t}: not exactly two track lines")
 for b in bad: print(b)
@@ -70,6 +71,9 @@ if "pull_request" not in on: bad.append("not started by pull_request")
 j = w["jobs"]
 if "mergify[bot]" not in j["detect"]["if"] or "mergify/merge-queue/" not in j["detect"]["if"]: bad.append("detect is not limited to Mergify's batch PRs")
 if j["prove"].get("name") != "batch-proof ${{ matrix.item }}": bad.append("the check is not named batch-proof R1.n")
+co = j["detect"]["steps"][0].get("with", {})
+if co.get("ref") != "${{ github.event.pull_request.base.sha }}" or co.get("persist-credentials") is not False: bad.append("detect must check out the base commit's tools without keeping the token")
+if j["detect"].get("permissions") != {"contents": "read", "pull-requests": "read"} or j["prove"].get("permissions") != {"contents": "read"}: bad.append("detect and prove must stay read-only")
 steps = " ".join(str(s) for s in j["prove"]["steps"])
 for need in ("pull_request.head.sha", "walk.mjs", "item-proof.mjs\" scan", "item-proof.mjs\" plan"):
     if need not in steps: bad.append(f"prove lacks {need}")
