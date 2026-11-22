@@ -22,7 +22,6 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Habits (Lead 7) and the old AWS waiting line:** `history/STATE-2026-11-22-2358-lead7-lead6-handover-block.md`.
 **Lead 8 (00:00-00:03 IST 23 Nov):** #3001 money read OK + "Lead allows round 3" + labelled (queues after #2368). #2927 `/run full` posted on 1145476e6 + Lead read OK posted: **label it when that run is green** (gate won't, P-423 paths). Waiting: #2368 merge → label #3042; #2913 merge → send #3073 lane its draft; #3104 run 45053508643 going.
 Lead 8 check lines: word for word in `history/STATE-2026-11-23-0021-lead8-check-lines.md`.
-**Lead 8 00:28 (Lead B 2 pass):** #2368 left the queue 18:52Z (shard 8: F7 lift shape on its migration): lane told (session_01Ln6TiRjLFXAwjtLpSFnzsE), Lead B re-reads, then Lead labels. #3001 dequeued until #2368 is on main, then **requeue it**. #3041 settings.ts conflict: lane told (session_01Ln6TiPi24A7rSZpcekbGd6).
 **Lead 8 00:33 check:** #2927 full run 45057495072 running (label on green). #2913 labelled (full run green, Approve on e379f7a9a); when it merges send #3073 lane its draft. #2368 lane pushed 3e5b947c8, #3041 lane pushed e019ae83c: both await Lead B re-read + Approve. #3104 queued.
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
