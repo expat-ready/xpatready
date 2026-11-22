@@ -216,7 +216,8 @@ try {
     for (const h of await signing.act(M.id, req.providerDocumentId, client.id, "signed")) await svc.signingEvent(h);
     await svc.hostLink(ctxOf(C, KEY), a2, { consent: true });
     for (const h of await signing.act(M.id, req.providerDocumentId, firmSigner.id, "signed")) await svc.signingEvent(h);
-    sealedOk = await svc.seal(M.id, req.id);
+    await svc.seal(M.id, req.id);   // the provider's "completed" may already have sealed it; a second seal changes nothing
+    sealedOk = (await db.foRetainer.findFirst({ where: { firmId: M.id, id: a2 } }))?.status === "SIGNED";
     await clock.set(new Date(clock.now().getTime() + 5 * MIN));
     copyMails = (mail.inbox(P.email!) as { templateKey?: string; attachments?: unknown[] }[]).filter((m) => m.templateKey === "consultation_agreement.signed_copy" && (m.attachments?.length ?? 0) === 1).length;
     sealedSha = (await db.foSigningEvidence.findFirst({ where: { firmId: M.id, requestId: req.id } }))?.sealedSha256 ?? "";
