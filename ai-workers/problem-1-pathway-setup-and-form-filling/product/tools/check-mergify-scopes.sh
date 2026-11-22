@@ -51,6 +51,9 @@ OWN = {"platform": [r"web/src/modules/platform/", r"tests/check_(pf|aud)", r"api
        "money": [r"tests/check_fo7", r"api/src/features/client-money-[^/]*\.ts$"],
        "case-side": [r"tests/check_(cs|case_)", r"api/src/features/case-[^/]*\.ts$"],
        "forms-engine": [r"tests/check_forms", r"api/src/features/form-[^/]*\.ts$"]}
+for need in ("platform", "front-office", "money", "case-side", "forms-engine", "migrations", "pipeline"):
+    n += 1
+    if need not in src: bad.append(f"scope {need} is missing from .mergify.yml (break m5)")
 FOLDERS = {"platform": "platform", "front-office": "front-office", "client-money": "money", "money": "money",
            "case-side": "case-side", "cases": "case-side", "forms": "forms-engine", "forms-engine": "forms-engine"}
 def owners_bad(src, files):
@@ -101,13 +104,13 @@ if not owners_bad(src, files + [ST + "web/src/modules/case-side/routes.tsx"]): b
 n += 1
 if owners_bad(src, files + [ST + "api/src/features/platform-new-thing.ts", ST + "tests/check_pf99_new.ts"]) != owners_bad(src, files): bad.append("self-test: a new platform feature file and test, held by the scope's patterns, fail the path-owners check")
 n += 1   # break M1: a new module folder filed under the wrong area's scope
-c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; c["case-side"]["include"].append(ST + "web/src/modules/client-money/**")
+c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; c.setdefault("case-side", {"include": []})["include"].append(ST + "web/src/modules/client-money/**")
 if not any("client-money" in x for x in owners_bad(c, files + [ST + "web/src/modules/client-money/index.tsx"])): bad.append("self-test: web/src/modules/client-money/ filed under case-side still passes")
 n += 1   # ... or in a second scope as well
-c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; c["money"]["include"].append(ST + "web/src/modules/platform/**")
+c = {k: {"include": list((v or {}).get("include") or [])} for k, v in src.items()}; c.setdefault("money", {"include": []})["include"].append(ST + "web/src/modules/platform/**")
 if not owners_bad(c, files): bad.append("self-test: web/src/modules/platform/ also in money still passes")
 n += 1   # break m1 G1: a folder only partly held
-c = {k: {"include": [g for g in (v or {}).get("include") or [] if not g.endswith("web/src/modules/platform/**")]} for k, v in src.items()}; c["platform"]["include"].append(ST + "web/src/modules/platform/*.tsx")
+c = {k: {"include": [g for g in (v or {}).get("include") or [] if not g.endswith("web/src/modules/platform/**")]} for k, v in src.items()}; c.setdefault("platform", {"include": []})["include"].append(ST + "web/src/modules/platform/*.tsx")
 if not owners_bad(c, files): bad.append("self-test: web/src/modules/platform/ only partly in platform still passes")
 for t in ("tests/check_fo0_x.ts", "tests/check_FO3_x.ts", "web/src/modules/_money/x.tsx", "web/src/modules/client money/x.tsx"):
     n += 1
