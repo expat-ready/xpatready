@@ -214,3 +214,56 @@ None.
 Then re-review the new head (diff only).
 
 Reviewer: Block 521e016eeb4127e2648dda7b2da875f8ea80d28e
+
+## Round 4 (diff 521e016ee..7c3c0b5ba)
+
+Same reviewer role, diff-only (the Lead's "Lead allows round 4: diff-only from 521e016ee" on #2953). **Commit reviewed: `7c3c0b5baae55ceb9b0751035283ab7e52d9b959`** on `claude/sleepy-archimedes-3a0op2`. I read `git diff 521e016ee..7c3c0b5ba`: 3 code files (`api/src/client-money/invoices/money.ts`, `ports/client-money.ts`, `tests/check_fo7b_invoices.ts`). There is still no screen, so no browser walk and no journey score. Paths below are under `prototype/studio/`.
+
+### Blocker
+None.
+
+### Major
+1. **The new `xmin` match makes a receipt return 404 after a cheque is ticked "Cleared", and after a backup restore.** This is new in this diff (the R3-F2 fix).
+   * Cause: `money.ts:216` finds the receipt's audit line with `e.xmin::text = m.xmin::text`, which compares it against the `money_payment` row's *current* `xmin`. But the payment row is allowed to change once. The FO-7a trigger (`prisma/migrations/20261115042334_fo7a_client_money_tables/migration.sql:991-994`) lets an uncleared cheque be ticked `cleared = true`, once. That UPDATE writes a new row version with the clearing transaction's `xmin`. From then on no audit line matches, and `paymentView` returns `notFound("payment")`.
+   * Probe (a throwaway copy of the suite under /tmp, on its own scratch database at :54329, dropped afterwards): I took the cheque `c1` (500.00, ref 4471) and fetched its receipt, which gave **200**. I then ran the update the trigger permits (`update money_payment set cleared = true, cleared_at = now(), cleared_by = 'user-R' where id = c1`). The same receipt then gave **404**. The suite still reported 104/0, because the probe printed its result rather than running as a case.
+   * The same thing happens to a replay. `record()` ends in `paymentView` (`money.ts:129`), so a retry with the cheque's idempotency key after clearing also gets 404. A receipt has to stay readable and unchanged (AG-6-63 rule 8), and clearing a cheque is a normal step for that payment.
+   * Backup restore: the official drill (`tools/restore-drill.sh:130`, NFR5-04) runs `pg_restore` without `--single-transaction`. Each table's data is then loaded in its own transaction, so the restored `money_payment` and `audit_event` rows get different `xmin`s, and every receipt and replay would return 404 on a restored database. The drill checks row counts and the smoke test, not receipts, so it would still pass. I could not run pg_dump here (the local client is 16 and the server is 18), so this part is reasoned from how pg_restore works, not measured. The cheque case above was measured.
+   * **Fix (the builder's choice):** link the receipt to its audit line by something that survives an UPDATE and a dump, never by `xmin`. For example, both rows' insert-transaction timestamp, or a key stored when the payment is written. Add a case: tick a cheque Cleared, then fetch its receipt and replay it (expect 200, word for word the same).
+
+### Minor
+1. **The planted fail for round-3 M1 cannot fail on its own** (`tests/check_fo7b_invoices.ts:353`). `Math.min(30000, 15000) - 10000 === 5000` is constant arithmetic, and `appliedMinor !== 15000` is already implied by the pass case's `=== 10000`. It never runs the old rule. A real plant would check that the stored `extraMinor ≥ 0` and that the held 50.00 is untouched in the ledger, with the old formula expected to fail that check.
+2. **The new figure check is never reached by a test** (`money.ts:218`). The forged line's `"x"` is filtered out by the `xmin` match before the loop runs, so no case reaches the 404 for a stored figure that is not a non-negative whole number. That is acceptable as a defensive check. Say so, or add a case.
+3. **Carried, not changed by this diff:** round-3 Minor 2 (no letterhead fallback in `paymentView`) and Minor 3 (lower-case country key in the stored address).
+
+### Each claimed fix (pass / fail)
+* **R3 M1 / R3-F1 (trust payment spending held money): holds.** Let B be the balance before and A the amount. The deposit row's `balanceAfterMinor` is B + A, so `shortfall = max(0, min(A, −B))` and `applied = max(0, min(due, A − shortfall))`:
+  * B > 0 or B = 0: shortfall 0, applied min(due, A), extra A − applied ≥ 0. Balance after is B + A − applied ≥ B, so held money is never taken.
+  * −A < B < 0 (for example −0.01): shortfall −B, applied min(due, A + B), extra A + B − applied ≥ 0. Balance after ≥ 0.
+  * B = −A: shortfall A, applied 0, extra 0. Balance after 0.
+  * B < −A: shortfall A, applied 0, extra 0. Balance after B + A < 0 (P-634 allows that), and it is never driven lower.
+  * due ≤ 0 ("Paid twice?"): applied 0, extra A − shortfall ≥ 0.
+  * In every case `shortfall + applied + extra = A` (extra is defined as the remainder) and every term is ≥ 0. `dueMinor` is clamped at 0 (`facts.ts:37`), so the operating path's `min(A, due)` is ≥ 0 too. The new +50.00 case passes: applied 100.00, 200.00 due, balance 50.00, no extra, no negative `extraMinor` in the audit table.
+* **R3-F2 (forged second audit line): holds against the forged line, at the cost of Major 1.**
+  * One transaction: `write()` is a single Prisma interactive `$transaction(fn)` (`money.ts:183`). Nothing between `moneyPayment.create` (`:110`) and `audit.record` (`:122`) opens a savepoint: `writeAuditWithAlarm` only retries the closure (1 attempt here), and `AuditEventAdapter.record` inserts with the same `tx`. Measured on PG 18.3: two inserts in one transaction share `xmin`, and inserts on either side of a SAVEPOINT do not. So the "same transaction" premise holds today, but it would silently break if a savepoint were ever added around the audit write.
+  * Freezing is not a risk. Since 9.4, freezing sets the infomask bits and keeps the stored xid, and the `xmin` column returns that raw value. Measured: `xmin` 196404 before and after `VACUUM FREEZE` on both tables, still equal. Xid wraparound (the 32-bit `xmin` repeats after about 4.3 billion transactions) would only matter for a forger who already has SQL, which is negligible.
+  * The real risks are an UPDATE of the payment row and a logical restore (Major 1).
+* **R3 Minor 1 (partial kept credit): holds.** `extra.waitingMinor` = extra − net kept (0 for trust), it is in the port's strict schema, and the replay case after a full keep asserts `waitingMinor === 0`.
+
+### What held (rules from rounds 1-3, re-checked on the diff)
+* **Lock order, idempotency under the lock, outbox last:** unchanged by the diff.
+* **Firm walls:** the new audit query is scoped by `m.firm_id = firmId` and `e.firm_id = m.firm_id`. The walls case passes.
+* **The receipt is never recomputed:** the figures still come from the stored line. The renamed-firm and race cases still pass. A forged backdated line leaves the receipt word for word the same.
+* **One audit line per change:** the count case now leaves out only the forged `"x"` line the suite plants.
+* **Integers only, overpayment never refused, and below zero never refused:** unchanged.
+
+### Checks run (on 7c3c0b5ba, in this checkout)
+* `check_fo7b_invoices.ts`: **104 passed, 0 failed** (exit 0).
+* The suite copy with the cleared-cheque probe: 104/0, plus the probe's print "receipt before clearing: 200; after the permitted Cleared tick: 404".
+* The SQL probe on its own scratch database (`xmin` with and without a savepoint, after `VACUUM FREEZE`, after an UPDATE). Both scratch databases were dropped, and /tmp was cleaned. A leftover `xr_studio_fo7b_scratch_24427` (created 06:23 UTC, not by this review) was left alone.
+
+**Verdict: Block** `7c3c0b5baae55ceb9b0751035283ab7e52d9b959`. Fix before Approve:
+* Major 1: the receipt's audit line must still be found after the permitted "Cleared" UPDATE and after a pg_dump/pg_restore. Do not match on `money_payment.xmin`. Add a case that ticks a cheque Cleared and then reads its receipt and replay.
+
+Then re-review the new head (diff only).
+
+Reviewer: Block 7c3c0b5baae55ceb9b0751035283ab7e52d9b959
