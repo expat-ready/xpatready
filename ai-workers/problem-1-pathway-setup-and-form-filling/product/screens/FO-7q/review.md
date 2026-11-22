@@ -182,3 +182,58 @@ Verdict: Approve on 77713d8e8
 **Still standing from round 2:** R2-m1 (rare status words 1.2-1.7 s with the index). It is now posted on #3001 as "Question for the tech lead", so that condition is met. m4 (partly fixed) and m5 (accepted) remain Minor. The journey score is unchanged: **8.75 / 10, pass.**
 
 Verdict: Approve on 2b1b85a40
+
+## Round 4: diff-only re-review of 343542fa2 (P-277; `git diff 85d577218 343542fa2`: reads/invoices.ts, reads/status-sql.ts)
+
+**Verdict: Ship.** No Blocker and no Major.
+
+**Why it changed:** run 45070511287 on main with #2368 failed DW1: OVERDUE took 696 ms because of a sort plan.
+
+**The fix:**
+- `list` reads each half (issued, then drafts) in candidate chunks: 200, doubling up to 2,000.
+- Query A (`candidates`) reads only ids and sort keys, in the half's index order, under every where and scope condition.
+- Query B (`statuses`) works out the facts and status of exactly those ids. It reads them by `unnest(...) with ordinality` joined on (firm_id, id), keeps the asked words, and orders by the ordinality.
+- `FACTS_LATERAL` gets `offset 0`, so each row's facts are computed once.
+
+**What I checked**
+
+**Logic (by reading):**
+- The cursor between calls is the last returned row (a match). Within a call, `from` is the last *candidate*, so non-matches already read are never read again in that call. The next call restarts after the last match, so matches past the page come back on the next page, never skipped.
+- A chunk's matches are all pushed before the page is cut. A chunk ending mid-page continues from its last candidate. `cands.length < chunk` ends the half.
+- A cursor in the drafts skips the issued half (`half.d < after.d`). A cursor in the issued half reads the drafts from their start.
+- Query A compares ids as uuids (`i.id > from.id::uuid`) and orders by `i.id` as uuid. B keeps A's order through the ordinality. The old outer text sort is gone, so round 1's collation question no longer applies.
+- The where and scope conditions sit in A only. B reads within the caller's firm (`i.firm_id = firmId`) and only ids that A returned.
+- One interactive RepeatableRead transaction keeps A and B on one snapshot.
+- `status-sql.ts`'s CASE and the facts columns are unchanged; only `offset 0` was added.
+
+**Probe** (the suite plus a walk oracle, run once without #2368's index and once with it). The oracle walks the unfiltered list at pageSize 200 to the end, then checks each filtered walk against it.
+- **Unfiltered walk:** 10,014 rows in 51 calls, in exactly the order of `order by (issued_at is null), coalesce(issued_at, created_at) desc, id`, with every row unique. It crosses the issued-to-drafts seam.
+- **Filtered walks**, each equal *in order* to the oracle's subsequence of its words:
+
+| Filter | Page size | Rows | Calls |
+|---|---|---|---|
+| `OVERDUE` | 200 | 4,943 | 25 |
+| `OPEN,DRAFT` (crosses the seam with a filter) | 173 | 5,067 | 30 |
+| `PAID,CREDITED,WRITTEN_OFF` | 2 | 3 | – |
+| `REFUNDED` | 1 | 1 | – |
+| `PART_PAID` | 50 | 0 | – |
+| `DRAFT` (the cursor is in the drafts on every call) | 1 | 4 | – |
+
+- **Times, fixed day 1 Mar 2027:**
+
+| Read | Without the index | With the index |
+|---|---|---|
+| OVERDUE | 29-35 ms | 21-23 ms |
+| OPEN | 31 ms | 19-27 ms |
+| page 1 | 16-57 ms | 7-15 ms |
+| OPEN with pageSize=200 | 74 ms | 55 ms |
+| rare words (PAID, PART_PAID, CREDITED, REFUNDED, WRITTEN_OFF) | 0.79-0.85 s | 0.70-0.73 s |
+
+  Rare words were 1.2-1.7 s in round 2.
+- **Suite:** 36 passed, 1 failed without the index (only the page-1 plan case, which waits on #2368). With the index: 37 passed, 0 failed.
+
+**Minor**
+- **R4-n1: DW1's plan check now EXPLAINs only query A**, the first issued-half candidate read, which is the one that touches the 10,000 rows. Query B's plan is not asserted. B is a by-id join on the unique `(firm_id, id)` for at most 2,000 ids, so the risk is low. A one-line EXPLAIN of B with no seq scan of `money_invoice` would close it.
+- **R2-m1 remains the tech lead's open question** (rare words 0.7-0.85 s; the breaker's firm-like OVERDUE seed of mostly paid past-due invoices is the same question). m4 and m5 are unchanged. The journey score is unchanged: **8.75 / 10, pass**.
+
+Verdict: Approve on 343542fa2
