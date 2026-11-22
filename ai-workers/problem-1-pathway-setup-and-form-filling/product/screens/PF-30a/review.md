@@ -71,3 +71,25 @@ Fix M1 (with its test); m1-m6 at the builder's choice.
 Reviewed sha: 62fe3273d8a5c81e81e4f550d8a0cabbe7592dfb
 
 Reviewer: Changes 62fe3273d8a5c81e81e4f550d8a0cabbe7592dfb
+
+## Round 4 (diff-only, 4eff9b296)
+Scope (P-277): the last Approve was on a9a81090a. Since then the branch has a merge of origin/main (not reviewed), 4eff9b296 and 57b022e39. The coordinator changed the scope mid-review: 57b022e39 reverts 4eff9b296's edit to `product/tools/check-module-cards.sh`, which is the tech lead's file. So the reviewed change is `git diff 4eff9b296^1 57b022e39`, which touches `api/src/platform/find/routes.ts` and `api/src/platform/MODULE.rows/PF-30a.md` only. The diff for `product/tools/` is empty, so the tool is back to main.
+
+**What changed**
+1. `find/routes.ts:19`: the `@AnyStaff` purpose changed from "the find box: …" to "the one find door: …". This is the QA-182 fix (P-63). The purpose names the route; it is not a form field. "Door" is the word the review already used for this route (round 1, deviation 4). Only the string changed: same route, same guard, same behaviour.
+2. `MODULE.rows/PF-30a.md`: the path `ports/find.ts` is no longer in backticks and now reads as plain words ("studio ports/find.ts"). module-cards only checks backticked paths against its fixture tree, and that tree copies api/src, web/src and tests, not studio/ports. FO-9s part 1 fixed the same problem the same way (round 3 B1, b7888d35b, `ports/matching.ts`), so this follows that precedent.
+
+**What I ran at 57b022e39 (US$0)**
+* `bash product/tools/check-module-cards.sh`: exit 0, 45 PASS lines, "module cards: 44 fixtures". The `exists` mutant is still caught: a fragment naming a test that does not exist still fails.
+* `python3 product/tools/module-cards.py tree` on the real repo (CI's own step): "15 cards, tree checked", PASS.
+* `tsx tests/check_qa182_no_box_words.ts`: 8/8. No "find box" is left in api/src or web/src.
+* Earlier, at 4eff9b296, I had checked that the tool edit was also correct: with studio/ports added to the fixture copy, 44 fixtures and every mutant were still caught. That edit is now withdrawn and has gone to the lead as a proposal. No check is weakened by either version.
+
+**Findings**
+* No Blocker, no Major.
+* m1 (no action on this PR). Without backticks, module-cards no longer checks that `ports/find.ts` exists. The file does exist (`studio/ports/find.ts`), and the contract guard and `tests/check_fd1_find.ts` both use it, so nothing is lost today. The real fix is the lead's: add `$S/ports` to the self-test's fixture copy, as 4eff9b296 did. After that, both this row and FO-9s's `ports/matching.ts` can go back to backticks.
+
+Verdict: Approve
+Reviewed sha: 57b022e392f83ade27824ec82972421e677ac03c
+
+Reviewer: Approve 57b022e392f83ade27824ec82972421e677ac03c
