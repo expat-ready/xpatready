@@ -6,20 +6,22 @@
 -- left it, and money_credit_note_write, money_move_batch_owed_back and money_move_line_write exactly as FO-7lk left them (each read from its own migration's text, PF-12's reader settings set again), and drops the rest. Then
 -- delete this folder's row from _prisma_migrations.
 DO $$
-DECLARE t text; forced text[] := '{}';
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['money_trust_entry', 'money_party_tax_treatment', 'money_invoice']; gated text[] := '{}';
 BEGIN
-  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
-  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
-  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
-    PERFORM set_config('row_security', 'off', true);
-  ELSE
-    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry', 'money_party_tax_treatment', 'money_invoice']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
-      RAISE EXCEPTION 'FO-7ts part 3 rollback stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_trust_entry, money_party_tax_treatment, money_invoice', current_user
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    LOCK TABLE "money_trust_entry", "money_party_tax_treatment", "money_invoice" IN ACCESS EXCLUSIVE MODE;
-    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry', 'money_party_tax_treatment', 'money_invoice']::regclass[]) AND c.relforcerowsecurity;
-    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too while plainly enabled (an ALWAYS gate stays and
+    -- refuses loudly; a REPLICA one does not fire): the runner then writes as those do, and each comes back as it was.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
   END IF;
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "picked_other_funds_by" IS NOT NULL OR "refund_method" IS NOT NULL) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: picks or trust refunds with their details are recorded; they cannot be rolled back silently';
@@ -27,7 +29,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "money_party_tax_treatment") OR EXISTS (SELECT 1 FROM "money_invoice" WHERE "tax_treatment" IS NOT NULL AND ("tax_treatment" <> 'TAXABLE' OR "issued_at" IS NULL)) THEN
     RAISE EXCEPTION 'FO-7ts part 3 rollback: tax treatments are recorded; they cannot be rolled back silently';
   END IF;
-  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END $$;
 \set tew `sed -n '/^CREATE OR REPLACE FUNCTION money_trust_entry_write()/,/^END \$\$;/p' prisma/migrations/20261119080000_fo7ts_ledgers/migration.sql`
 \set iw `sed -n '/^CREATE OR REPLACE FUNCTION money_invoice_write()/,/^END \$\$;/p' prisma/migrations/20261118200000_fo7ts_money_settings/migration.sql`

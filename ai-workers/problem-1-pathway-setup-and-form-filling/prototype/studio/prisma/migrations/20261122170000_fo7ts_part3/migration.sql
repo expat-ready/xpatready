@@ -15,25 +15,28 @@
 
 -- Trust refunds recorded before this part carry no method or date; they are never filled in silently.
 DO $refunds$
-DECLARE t text; forced text[] := '{}';
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['money_trust_entry']; gated text[] := '{}';
 BEGIN
-  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
-  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
-  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
-    PERFORM set_config('row_security', 'off', true);
-  ELSE
-    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
-      RAISE EXCEPTION 'FO-7ts part 3 stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_trust_entry', current_user
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    LOCK TABLE "money_trust_entry" IN ACCESS EXCLUSIVE MODE;
-    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_trust_entry']::regclass[]) AND c.relforcerowsecurity;
-    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too while plainly enabled (an ALWAYS gate stays and
+    -- refuses loudly; a REPLICA one does not fire): the runner then writes as those do, and each comes back as it was.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
   END IF;
   IF EXISTS (SELECT 1 FROM "money_trust_entry" WHERE "kind" = 'REFUND_TO_CLIENT') THEN
     RAISE EXCEPTION 'FO-7ts part 3: trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead' USING ERRCODE = 'check_violation';
   END IF;
-  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END
 $refunds$;
 
@@ -85,29 +88,26 @@ ALTER TABLE "money_party_tax_treatment" ADD CONSTRAINT "money_party_tax_treatmen
 -- Invoices issued before this part: what issuing would have chosen (no party treatment exists yet), set while FO-7ts
 -- part 1's freeze does not yet name the column (break m2), so none is left null for good.
 DO $issued$
-DECLARE t text; forced text[] := '{}'; f uuid; was text := coalesce(current_setting('app.firm_id', true), '');
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['money_invoice']; gated text[] := '{}';
 BEGIN
-  -- PF-8b F6 (RDS: the runner is neither superuser nor BYPASSRLS): as the tables' owner it sees every row once FORCE is
-  -- lifted inside this one statement, under its lock, and puts FORCE back before the end (an error rolls both back).
-  IF (SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user) THEN
-    PERFORM set_config('row_security', 'off', true);
-  ELSE
-    IF EXISTS (SELECT 1 FROM pg_class c WHERE c.oid = ANY (ARRAY['money_invoice']::regclass[]) AND NOT pg_has_role(current_user, c.relowner, 'USAGE')) THEN
-      RAISE EXCEPTION 'FO-7ts part 3 stopped, nothing changed: % cannot see every row (row level security): run migrations as a superuser, a BYPASSRLS role or the owner of money_invoice', current_user
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    LOCK TABLE "money_invoice" IN ACCESS EXCLUSIVE MODE;
-    SELECT coalesce(array_agg(c.relname::text ORDER BY c.relname), '{}') INTO forced FROM pg_class c WHERE c.oid = ANY (ARRAY['money_invoice']::regclass[]) AND c.relforcerowsecurity;
-    FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too while plainly enabled (an ALWAYS gate stays and
+    -- refuses loudly; a REPLICA one does not fire): the runner then writes as those do, and each comes back as it was.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled = 'O' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
   END IF;
-  -- One firm at a time, as that firm (review R7-1): PF-12's firm-first trigger refuses a row that is not the session's
-  -- firm for a runner that is neither superuser nor BYPASSRLS, and lifting FORCE does not lift a trigger.
-  FOR f IN SELECT DISTINCT "firm_id" FROM "money_invoice" WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL LOOP
-    PERFORM set_config('app.firm_id', f::text, true);
-    UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "firm_id" = f AND "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
-  END LOOP;
-  PERFORM set_config('app.firm_id', was, true);
-  FOREACH t IN ARRAY forced LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+  UPDATE "money_invoice" SET "tax_treatment" = 'TAXABLE' WHERE "issued_at" IS NOT NULL AND "tax_treatment" IS NULL;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END
 $issued$;
 

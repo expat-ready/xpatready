@@ -134,9 +134,9 @@ try {
         ${text3}`, /trust refunds are recorded without a method or date: no route writes these yet, so only a test database holds one: ask the tech lead/)
       && sql(T, `select count(*) from money_trust_entry where firm_id = '${firmA}'`) === "0" && sql(T, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0"); }
   // PF-8b F6 / review R7-1: a runner that is neither superuser nor BYPASSRLS (Amazon RDS's admin), owning the tables
-  // through membership, over issued invoices of two firms with no treatment yet: part 3 applies, fills each firm's as
-  // that firm (PF-12's firm-first trigger refuses any other), and leaves FORCE as it found it. A planted copy without
-  // the per-firm session firm is refused (42501).
+  // through membership, over issued invoices of two firms with no treatment yet: part 3 applies, fills both firms' with
+  // PF-12's firm gate stepped aside (PF-8b F7's lift), and leaves FORCE and the gate as it found them. A planted copy that
+  // leaves PF-12's firm gate on is refused (42501).
   { const RDS = `${T}_rds`, ROLE = `xr_fo7ts_rds_${process.pid}`;
     execFileSync(join(BIN, "createdb"), [...PG, "-T", T, RDS]);
     try {
@@ -146,15 +146,16 @@ try {
       sql(RDS, `create role ${ROLE} nologin nosuperuser nobypassrls; grant xr_studio to ${ROLE}; grant xr_wall_reader to ${ROLE}`);
       const asRds = (text: string) => { writeFileSync(join(WORK, "rds.sql"), `set role ${ROLE};\n${text}`); return psql(RDS, ["-1", "-f", join(WORK, "rds.sql")]); };
       mkdirSync(WORK, { recursive: true });
-      const planted = text3.replace(/^\s*PERFORM set_config\('app\.firm_id', f::text, true\);\n/m, "");
+      const planted = text3.replace(/^\s*FOREACH t IN ARRAY gated LOOP EXECUTE format\('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t\); END LOOP;\n/gm, "");
       let plantedErr = "";
       try { asRds(planted); } catch (e) { plantedErr = String((e as { stderr?: string }).stderr ?? e); }
-      ok("FO-7ts part 3 fail (planted, review R7-1): without the per-firm session firm, the RDS-shaped runner is refused by PF-12's firm-first trigger (42501), nothing changed",
+      ok("FO-7ts part 3 fail (planted, review R7-1): with PF-12's firm gate left on, the RDS-shaped runner is refused by PF-12's firm-first trigger (42501), nothing changed",
         planted !== text3 && /violates row-level security policy for table "money_invoice"/.test(plantedErr) && sql(RDS, `select count(*) from pg_class where relname = 'money_party_tax_treatment'`) === "0", plantedErr.split("\n")[0]);
       let err = ""; try { asRds(text3); } catch (e) { err = String((e as { stderr?: string }).stderr ?? e); }
-      ok("FO-7ts part 3 pass (PF-8b F6, review R7-1): as a runner that is neither superuser nor BYPASSRLS, the migration applies over issued invoices of two firms, sets both TAXABLE and leaves FORCE on money_invoice and money_trust_entry",
+      ok("FO-7ts part 3 pass (PF-8b F6, review R7-1): as a runner that is neither superuser nor BYPASSRLS, the migration applies over issued invoices of two firms, sets both TAXABLE and leaves FORCE and PF-12's firm gate on money_invoice and money_trust_entry",
         err === "" && sql(RDS, `select count(*) filter (where tax_treatment = 'TAXABLE') || ':' || count(*) from money_invoice where number = 'RDS-1'`) === "2:2"
-        && sql(RDS, `select bool_and(relforcerowsecurity) from pg_class where relname in ('money_invoice', 'money_trust_entry')`) === "t", err.split("\n").slice(0, 3));
+        && sql(RDS, `select bool_and(relforcerowsecurity) from pg_class where relname in ('money_invoice', 'money_trust_entry')`) === "t"
+        && sql(RDS, `select string_agg(distinct tgenabled::text, '') from pg_trigger where tgname = '0_pf12_firm_first' and tgrelid in ('money_invoice'::regclass, 'money_trust_entry'::regclass)`) === "O", err.split("\n").slice(0, 3));
     } finally {
       execFileSync(join(BIN, "dropdb"), [...PG, "--if-exists", "--force", RDS], { stdio: "ignore" });
       try { sql(EMPTY, `drop role if exists ${ROLE}`); } catch { /* best effort */ }
