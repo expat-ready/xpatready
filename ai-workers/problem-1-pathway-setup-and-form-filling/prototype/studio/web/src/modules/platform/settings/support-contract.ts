@@ -35,7 +35,9 @@ export const authorLine = (m: Message, myId: string) =>
 /** The 422's `fields` map (support.ts), the body's and the files' words. */
 export const fieldOf = (fields: unknown, key: "body" | "files") => {
   if (!fields || typeof fields !== "object") return undefined;
-  const f = fields as Record<string, unknown>, hit = Object.entries(f).find(([k]) => k === key || k.startsWith(`${key}.`));
-  // Review m-2: the server's words are lower-case fragments ("write what you need help with"): shown as a sentence.
-  return typeof hit?.[1] === "string" ? `${hit[1].charAt(0).toUpperCase()}${hit[1].slice(1)}${/[.!?]$/.test(hit[1]) ? "" : "."}` : undefined;
+  const f = fields as Record<string, unknown>, hits = Object.entries(f).filter(([k, v]) => (k === key || k.startsWith(`${key}.`)) && typeof v === "string") as [string, string][];
+  // Review m-2: the server's words are lower-case fragments ("write what you need help with"): shown as sentences. Break m7: each
+  // refused file is named by its number ("File 2: …").
+  const sentence = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.!?]$/.test(s) ? "" : "."}`;
+  return hits.length ? hits.map(([k, v]) => (/\.\d+$/.test(k) ? `File ${Number(k.split(".").pop()) + 1}: ${sentence(v)}` : sentence(v))).join(" ") : undefined;
 };

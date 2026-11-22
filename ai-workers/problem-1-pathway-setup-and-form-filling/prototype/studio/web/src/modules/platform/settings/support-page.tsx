@@ -55,7 +55,7 @@ function ListBody() {
           : !list.data.items.length ? <Empty>{list.data.allFirm ? "No one in the firm has raised a ticket yet." : "No tickets yet. Press ? on any page, or Raise a ticket here."}</Empty>
             : <Table label="Support tickets" head={["Ticket", "Status", ...(list.data.allFirm ? ["Raised by"] : []), "Last change"]} headClass={[undefined, undefined, ...(list.data.allFirm ? ["hidden sm:table-cell"] : []), "hidden md:table-cell"]}>
               {list.data.items.map((t) => <tr key={t.id} data-ticket-row={t.id}>
-                <td className="min-w-40 [overflow-wrap:anywhere]"><Link to={`/platform/support/${t.id}`} className="font-medium text-text-link underline-offset-4 hover:underline" data-ticket-link>{t.subject || "Support ticket"}</Link>
+                <td className="min-w-40 [overflow-wrap:anywhere]"><Link to={`/platform/support/${t.id}`} className="font-medium text-text-link underline-offset-4 hover:underline" data-ticket-link><bdi>{t.subject || "Support ticket"}</bdi></Link>
                   <span className="block text-xs text-text-muted">Raised {when(t.createdAt)}</span></td>
                 <td><StatusWord status={t.status} /></td>
                 {list.data!.allFirm ? <td className="hidden sm:table-cell [overflow-wrap:anywhere]" data-ticket-raised-by>{t.raisedBy === me.staffId.toLowerCase() ? "You" : t.raisedByName ?? "A colleague"}</td> : null}
@@ -75,9 +75,10 @@ function Reply({ ticket }: { ticket: Ticket }) {
     e.preventDefault();
     if (sending.current) return;   // the double-send guard (#2064, challenge M3): one reply in flight
     sending.current = true; setBusy(true); setProblem(null); setError(undefined);
+    const text = body;
     try {
-      await staffApi(`/platform/support/tickets/${ticket.id}/messages`, { method: "POST", json: { body } });
-      setBody("");
+      await staffApi(`/platform/support/tickets/${ticket.id}/messages`, { method: "POST", json: { body: text } });
+      setBody((b) => (b.startsWith(text) ? b.slice(text.length).trimStart() : b));   // break m4: text added while sending stays
       await qc.invalidateQueries({ queryKey: ["pf", "support"] });
       requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-message]:last-of-type")?.focus());   // m4: on success, the new message
     } catch (x) {
@@ -117,7 +118,7 @@ function TicketBody({ id }: { id: string }) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold [overflow-wrap:anywhere]" data-ticket-subject>{d.subject || "Support ticket"}</h1>
+        <h1 className="text-2xl font-semibold [overflow-wrap:anywhere]" data-ticket-subject><bdi>{d.subject || "Support ticket"}</bdi></h1>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1"><StatusWord status={d.status} /><span aria-hidden className="text-sm text-text-muted" data-ticket-status-tip>{STATUS[d.status].tip}</span>
           <span className="text-sm text-text-muted [overflow-wrap:anywhere]" data-ticket-page>Raised from {d.page}{d.raisedBy !== me.staffId.toLowerCase() && d.raisedByName ? ` by ${d.raisedByName}` : ""}</span></div>
       </header>

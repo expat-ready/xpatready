@@ -135,3 +135,16 @@ Part 2 of 3 (concept #2332, approved by Lead 19 with the challenge's Majors; the
 * `check_pf18s_help_browser.ts`: 25/25 on a fresh isolated copy (`pf18s2`, :4721), exit 0. Guard removed: red (above).
 * `--changed` selected 333 suites (the shared `session.ts` and `frame.tsx`), so only the touched files' suites ran here through `run-suites.sh --only`; the PR check runs the rest. Results are in the PR body.
 * `graph.mjs --check` exit 0. `count-any`: 416, the same as the base. `module-cards.py pr` and `tree`: PASS. Web and API `tsc --noEmit`: clean.
+
+## Part 2, round 1 (reviewer Block, breaker Changes, both at 2ed09e07)
+* **M-1 (both): attachments.** `window.location.assign` carried no bearer, so the file route answered 401 on a raw page. Now the file is fetched with the bearer and saved from a blob (identity-panel.tsx's way). DW5 adds a download of a PNG (checks its bytes, and that the person stays on the ticket), and a fail line: the same link without the bearer is 401.
+* **Reviewer m-1 / breaker m5:** a ticket closed while the person types keeps their text, read-only, with "Not sent" and why. There is no Send (DW5).
+* **Reviewer m-2 / breaker m8:** the server's field words show as sentences, and Raise's Send is off on an empty box.
+* **Reviewer m-3:** the list's heading classes follow its columns. The status dot no longer squeezes.
+* **Reviewer m-4:** the ticket page shows the status's meaning as visible text next to it. The list keeps the tooltip and the screen-reader words.
+* **Reviewer m-5:** the check's names now say that a click or Enter on the busy Send never reaches the handler. Only the guard's ref stops the one-moment submits.
+* **Breaker m1:** `support.ts` counts and stores a multipart CRLF as one character (DW1: a 4,999-character body with breaks is accepted, stored 4,999).
+* **Breaker m2:** the footer's Close asks before discarding a typed message (DW1). **m3:** reopened during a send, the panel keeps that message and its busy Send. **m4:** text added to a reply while it is sending stays.
+* **Breaker m6:** direction marks are dropped from the subject; the list and heading wrap it in `<bdi>`; the 80 cut is by grapheme.
+* **Breaker m7:** each refused file is named ("File 2: …"), and a 413 shows on the files field.
+* Check: 30/30 on a fresh copy (`pf18s4`). `check_pf18b_support` 41/41 and `check_pf28_inputs` 41/41 through `run-suites.sh --only`, exit 0.

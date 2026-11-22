@@ -18,7 +18,8 @@ export function RaisePanel({ open, onOpenChange, returnFocus }: { open: boolean;
   const [busy, setBusy] = React.useState(false), [problem, setProblem] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<{ body?: string; files?: string }>({}), [sent, setSent] = React.useState<string | null>(null);
   const sending = React.useRef(false), fileInput = React.useRef<HTMLInputElement>(null), done = React.useRef<HTMLDivElement>(null), box = React.useRef<HTMLTextAreaElement>(null);
-  React.useEffect(() => { if (open) { setBody(""); setFiles([]); setProblem(null); setErrors({}); setSent(null); } }, [open]);
+  // Break m3: reopened while a send is still on its way, the panel keeps that message and its busy Send.
+  React.useEffect(() => { if (open && !sending.current) { setBody(""); setFiles([]); setProblem(null); setErrors({}); setSent(null); } }, [open]);
   React.useEffect(() => { if (sent) done.current?.focus(); }, [sent]);
   const send = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -31,17 +32,19 @@ export function RaisePanel({ open, onOpenChange, returnFocus }: { open: boolean;
       await qc.invalidateQueries({ queryKey: ["pf", "support"] });
     } catch (x) {
       const fields = x instanceof StaffApiError ? x.problem.fields : undefined;
-      setErrors({ body: fieldOf(fields, "body"), files: fieldOf(fields, "files") });
+      // Break m7: an upload over the server's limit (413) is the files' problem, said on the field.
+      setErrors({ body: fieldOf(fields, "body"), files: fieldOf(fields, "files") ?? (x instanceof StaffApiError && x.status === 413 ? "A file is too large: attach files of 10 MB or less." : undefined) });
       setProblem(x instanceof StaffApiError && x.status < 500 && x.status !== 404 ? x.message : "Not sent. Your message is still here; try again.");
       requestAnimationFrame(() => box.current?.focus());   // m4: Send was disabled while sending, so focus goes back to the box
     } finally { sending.current = false; setBusy(false); }
   };
   const dirty = !sent && (!!body.trim() || files.length > 0);
+  const close = () => { if (!dirty || window.confirm("Discard your message?")) onOpenChange(false); };   // break m2: the footer's Close asks too
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={() => !dirty || window.confirm("Discard your message?")}
       title="Ask for help" description="Tell us what you need. We answer in Help & support."
       footer={sent ? <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-        : <><Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button><Button type="submit" form="raise-form" busy={busy} disabled={!body.trim()} data-raise-send>Send</Button></>}>
+        : <><Button variant="ghost" onClick={close}>Close</Button><Button type="submit" form="raise-form" busy={busy} disabled={!body.trim()} data-raise-send>Send</Button></>}>
       {sent ? (
         <div ref={done} tabIndex={-1} className="outline-none" data-raise-sent>
           <Notice tone="ok" title="Ticket sent">We'll answer in Help & support. <Link className="text-text-link underline" to={`/platform/support/${sent}`} onClick={() => onOpenChange(false)} data-raise-open-ticket>Open your ticket</Link></Notice>

@@ -88,6 +88,15 @@ try {
   const onLicence = await p.locator("[data-raise-page]").innerText(), panelText = await dialog(p).innerText();
   ok("PF-18s DW1: the \"?\" opens Ask for help on Home and on Licence, each noting its own path; Escape returns focus to the \"?\"", onHome === "/home" && onLicence === "/account/licence" && backOnHelp, { onHome, onLicence, backOnHelp });
   ok("PF-18s DW1 fail: the query and fragment never reach the panel", !/secret-token|frag/.test(panelText), panelText.slice(0, 200));
+  await p.locator("[data-raise-body]").fill("half a thought");
+  let asked = false; p.once("dialog", (d) => { asked = true; void d.dismiss(); });
+  await dialog(p).getByRole("button", { name: "Close", exact: true }).last().click(); await p.waitForTimeout(300);
+  ok("PF-18s DW1 (break m2): the footer's Close asks before discarding a typed message; dismissed, the panel and the text stay", asked && await dialog(p).count() === 1 && (await p.locator("[data-raise-body]").inputValue()) === "half a thought", { asked });
+  const lines = Array.from({ length: 50 }, () => "x".repeat(99)).join("\n");   // 4,999 characters with 49 line breaks
+  const fdl = new FormData(); fdl.set("body", lines); fdl.set("page", "/home");
+  const longR = await fetch(`${BASE}/api/platform/support/tickets`, { method: "POST", headers: { authorization: `Bearer ${TOFF}` }, body: fdl });
+  const longId = ((await longR.json()) as { id?: string }).id;
+  ok("PF-18s DW1 (break m1): a 4,999-character message with line breaks, sent as multipart (CRLF), is accepted and stored with one character per break", longR.status === 201 && sql(`select char_length(body) from platform_support_message where ticket_id = '${longId}'`) === "4999", { status: longR.status });
   ok("PF-18s DW1: the Case Officer's My account menu has Help & support", await p.locator('nav[aria-label="My account"] [data-account-section="/platform/support"]').count() === 1);
 
   // ---------------------------------------------------------------------------------------------- DW2 one send (#2064)

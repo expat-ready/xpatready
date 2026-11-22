@@ -66,7 +66,8 @@ const CONTROL = new RegExp("[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f
 export const hasText = (s: string) => /[\p{L}\p{Nl}\p{P}\p{S}0-9]/u.test(s.replace(BLANK, "")) && !CONTROL.test(s);
 /** A string's length in characters (code points), as the database's char_length counts it (break m4). */
 const chars = (s: string) => [...s].length;
-const Body = z.string({ error: "write what you need help with" }).refine((s) => chars(s) <= BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
+/** Break m1 (PF-18s part 2): a multipart field arrives with CRLF line breaks; counted and stored as one character each. */
+const Body = z.string({ error: "write what you need help with" }).transform((s) => s.replace(/\r\n?/g, "\n")).refine((s) => chars(s) <= BODY_MAX, `at most ${BODY_MAX} characters`).refine(hasText, "write what you need help with, without control characters");
 /** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). */
 /** The app path the ticket was raised from: its query string and fragment are cut off (they can hold a token). An app
  *  path only (break m3): letters, digits and - . _ ~ / %, not starting with // (another site), no backslash, no @ (a
@@ -113,9 +114,13 @@ export type MessageView = { id: string; authorKind: PlatformSupportMessage["auth
 export type TicketView = Omit<PlatformSupportTicket, "firmId"> & { messages?: MessageView[]; subject?: string; raisedByName?: string | null };
 /** A ticket's subject (PF-18s part 2, challenge M5): the first line with words of its first message, cut to 80 characters. */
 export const SUBJECT_MAX = 80;
+/** Break m6: direction overrides and isolates are dropped from the subject (they could reverse a list's words), and the cut
+ *  never splits a character a person sees as one (a flag, a family emoji). */
+const BIDI = /[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g;
 export const subjectOf = (body: string) => {
-  const line = body.split(/\r\n|\r|\n/).map((l) => l.trim()).find(hasText) ?? body.trim(), cs = [...line];
-  return cs.length > SUBJECT_MAX ? `${cs.slice(0, SUBJECT_MAX - 1).join("").trimEnd()}…` : line;
+  const line = (body.split(/\r\n|\r|\n/).map((l) => l.trim()).find(hasText) ?? body.trim()).replace(BIDI, "");
+  const gs = [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(line)].map((g) => g.segment);
+  return gs.length > SUBJECT_MAX ? `${gs.slice(0, SUBJECT_MAX - 1).join("").trimEnd()}…` : line;
 };
 const fileNumber = (key: string) => Number(key.split("/").pop());
 const messageView = (m: PlatformSupportMessage, names?: Map<string, string>): MessageView => ({ id: m.id, authorKind: m.authorKind, authorId: m.authorId,
