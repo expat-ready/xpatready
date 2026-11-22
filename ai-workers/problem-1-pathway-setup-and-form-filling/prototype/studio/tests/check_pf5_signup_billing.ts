@@ -27,6 +27,7 @@ import { fakeMail } from "../ports/mail.ts";
 import { randomUUID } from "node:crypto";
 import { asBypass } from "../api/src/platform/firm-scope.ts";
 import { runtimeSignUpPorts } from "../api/src/platform/firms/runtime-ports.ts";
+import { Secret } from "../api/src/platform/config/secret.ts";
 import { Runtime, RuntimeController } from "../api/src/runtime.ts";
 import { auditEvent } from "../api/src/platform/audit/audit-event.ts";
 import { StripeBilling } from "../api/src/platform/billing/stripe.ts";
@@ -193,7 +194,23 @@ try {
   const team = plans.plans.find((p) => p.code === "team"), solo = plans.plans.find((p) => p.code === "solo");
   ok("PF-5 pass: GET plans reads Stripe's prices through BillingPort, marked \"+ applicable taxes\", with the current terms",
     team?.monthly?.amountCents === 4900 && team.yearly?.interval === "year" && plans.taxNote === TAX_NOTE && plans.terms.length === 3 && plans.defaultPlan === "team", plans);
-  ok("PF-5 fail: a plan with no Stripe price shows no price (never an invented one)", solo?.monthly === null && solo?.yearly === null);
+  // QA-741 (R1.89; the tech lead's ruling on #2912): the price is Stripe's when a key is present and the plan carries a
+  // price id; otherwise the plan table's own cents; neither → no price. Prices Sample.
+  ok("R1.89 QA-741 pass: a plan with no Stripe price id shows the plan table's monthly and yearly cents and currency (solo, the Sample seed)",
+    solo?.monthly?.amountCents === 4900 && solo.monthly.currency === "CAD" && solo.monthly.interval === "month" && solo.yearly?.amountCents === 49000 && solo.yearly.interval === "year", solo);
+  sql(`update platform_plan set monthly_price_cents = null, yearly_price_cents = null where code = 'solo'`);
+  const bare = (await s.plans()).plans.find((p) => p.code === "solo");
+  ok("R1.89 QA-741 fail: a plan with no Stripe price id and no cents in the table shows no price (never an invented one)", bare?.monthly === null && bare?.yearly === null, bare);
+  sql(`update platform_plan set monthly_price_cents = 12300 where code = 'solo'`);
+  const half = (await s.plans()).plans.find((p) => p.code === "solo");
+  ok("R1.89 QA-741 fail: cents for one period only → that period's price and none for the other", half?.monthly?.amountCents === 12300 && half.yearly === null, half);
+  sql(`update platform_plan set monthly_price_cents = 4900, yearly_price_cents = 49000 where code = 'solo'`);
+  ok("R1.89 QA-741 pass: with a key, a plan that carries a Stripe price id shows Stripe's price, not the table's cents (team: 4900 from Stripe, 9900 in the table)", team?.monthly?.amountCents === 4900 && team.yearly?.amountCents === 49000, team);
+  let asked = 0;
+  const keyless = await new FirmSignUp(db, { ...ports, stripePrices: false, billing: { ...billing, prices: async (ids: string[]) => { asked++; return billing.prices(ids); } } }).plans();
+  const kTeam = keyless.plans.find((p) => p.code === "team");
+  ok("R1.89 QA-741 pass: with no Stripe key the price ids are not read (no call to the billing port) and every plan shows the table's cents",
+    asked === 0 && kTeam?.monthly?.amountCents === 9900 && kTeam.yearly?.amountCents === 99000 && keyless.pricesAvailable === true && keyless.plans.every((p) => p.monthly !== null && p.yearly !== null), { asked, plans: keyless.plans });
   const terms = plans.terms.map((t) => t.id);
   const form = async (over: Record<string, unknown> = {}) => { const p = await s.plans(); await clock.advance({ seconds: 5 }); return { email: "owner@maple.example.com", password: PASSWORD, firmName: "Maple Immigration", countryCode: "CA", acceptedTerms: terms, formStamp: p.formStamp, ...over }; };
   const pendingCount = (email: string) => sql(`select count(*) from platform_signup_pending where email = '${email}'`);
@@ -284,7 +301,8 @@ try {
 
   failBilling = true;
   const down = await s.plans();
-  ok("PF-5 fail: Stripe unreachable → the plans still show, without prices, saying so", down.pricesAvailable === false && down.plans.length === 3 && down.plans.every((p) => p.monthly === null), down);
+  ok("PF-5 fail: Stripe unreachable → the plans still show, saying so; the plan priced in Stripe shows no price (the table's cents never stand in for it, QA-741), the plans with no price id keep the table's",
+    down.pricesAvailable === false && down.plans.length === 3 && down.plans.every((p) => p.code === "team" ? p.monthly === null && p.yearly === null : p.monthly !== null), down);
   await up(await form({ email: "nostripe@firm.example.com", firmName: "No Stripe Law" }), "10.0.0.8");
   const ns = verifyMails("nostripe@firm.example.com")[0].text;
   const nsOut = await s.verify({ token: /token=([A-Za-z0-9_-]{43})/.exec(ns)?.[1], code: /code=(\d{6})/.exec(ns)?.[1] }, "10.0.1.8");
@@ -336,6 +354,9 @@ try {
   const localPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: null, webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
   ok("PF-5 fail (review Major 1): a server without the identity provider's sign-up or Stripe answers 503, never a \"check your email\" that sends nothing; local runs the stand-ins",
     shutUp?.status === 503 && shutUp.body.code === "SIGNUP_NOT_SET_UP" && pendingCount("shut@firm.example.com") === "0" && localPorts.notReady === null, shutUp);
+  const keyedPorts = runtimeSignUpPorts({ environment: "local", stripe: { secretKey: new Secret("PLATFORM_STRIPE_SECRET_KEY", "sk_test_recordedOnly000000"), webhookSecret: null } }, { identity: "local", environment: "local", cognito: { userPoolId: null, clientId: null, mfaRequired: true }, localSecret: null }, {});
+  ok("R1.89 QA-741 (review m2): the running app reads Stripe's price ids only with a key: no key → stripePrices false (the table's cents), a key → true (no Stripe call made here)",
+    localPorts.stripePrices === false && keyedPorts.stripePrices === true, { local: localPorts.stripePrices, keyed: keyedPorts.stripePrices });
 
   const routes = Object.getOwnPropertyNames(PlatformSignUpController.prototype).filter((k) => k !== "constructor").map((k) => {
     const h = (PlatformSignUpController.prototype as unknown as Record<string, () => unknown>)[k];

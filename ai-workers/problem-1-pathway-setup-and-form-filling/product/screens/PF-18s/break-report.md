@@ -1,169 +1,144 @@
-# PF-18s part 1 (My account → Offices): break report
+# PF-18s part 2 ("?" and Help & support, R1.92): break report
 
-Breaker: a fresh context that did not build it. Commit `f5a1ea6c4` on `claude/affectionate-cerf-jw9hv7` (PR #2897). Scope: `git diff origin/main...f5a1ea6c` only, checked against `concept-draft.md` and `challenge.md` on `origin/claude/runtime-pf18s-concept` (Lead 19: part 1, with the challenge's Majors) and `build-notes.md`. Ran on an isolated copy `break_pf18s` on :4445 (`PLATFORM_IDENTITY=local AI_LIVE=off`), restarted once for a one-office state, then stopped. The web bundle was checked to be current with the source. Headless Chromium through the studio's playwright; curl for the API; psql for `audit_event` and `platform_staff_office`. US$0, no model call. Paths below are under `prototype/studio/web/src/modules/platform/`.
+Breaker: a fresh context that did not build it. Commit `2ed09e077` on `claude/gallant-pascal-kks7vc` (draft PR #2906). Scope: `git diff origin/main...2ed09e07`, read against `build-notes.md` (part 2) and AG-16-63. There is no `concept.md` in this folder; concept and challenge are on #2332. Part 1's break report is in git history.
+
+**How it ran.** While I was testing, the shared working tree moved on to `05646e6d7` (the builder's round-1 fix), and `web/dist` was rebuilt at 05:18. So every result below was re-run on a detached worktree at exactly `2ed09e077`, on the isolated copy `break_pf18s2` on :4741 (`AI_LIVE=off PLATFORM_IDENTITY=local`).
+* The bundle served was `index-DDIB9PhM.js` (the first run's hash; no 05646e6d `data-ticket-status-tip`). The copy was then stopped and the worktree removed.
+* Tools: headless Chromium (studio playwright), Node `fetch`/`FormData`, psql. People: Sample firm Owner `user-R`, Case Officer `user-O`, Case Manager `user-T`, and `sample-solo`'s Owner `user-S`. US$0, no model call.
+
+Paths are under `prototype/studio/`, at `2ed09e077`.
 
 ## Findings
 
-**B1 (Blocker): the Offices page shares the Team page's query cache entry with a narrower parser. Team then goes blank, and "Who works where" shows the wrong offices.**
-* Cause: `settings/offices-page.tsx:19` uses the key `["pf","staff","list",token]`, the same key as `staff/team-page.tsx:22`, `staff/licences-page.tsx:24`, `booking/settings/types-page.tsx:33` and `availability-page.tsx:51`.
-  * The two pages parse the data differently. Offices uses `People.parse`, which drops `email`, `roles` and the top-level `seats`. The others use `StaffList.parse`, which drops `officeId`.
-  * Whichever page fetches last writes its stripped shape into the shared cache.
-* (a) Steps: sign in as Owner (user-R). Open `/platform/offices` and wait for "Who works where". Then click **Team** in the My account menu (client navigation).
-  * Expected: the Team page.
-  * Actual: a blank white page. The browser reports `pageerror: Cannot read properties of undefined (reading 'line')`, from `staff/team-page.tsx:39,44` (`list.data.seats.line`).
-  * Happens every time, both straight away and after the 2 s staleTime. A reload recovers. This breaks an existing screen one click from the new one.
-* (b) Steps: place the Case Officer in Calgary and the Owner in the first office (API, 200). Open `/platform/team`, then click **Offices** within 2 s.
-  * Expected: Calgary and the first office in "Who works where".
-  * Actual: all three rows say "No office", with the notice "3 people have no office yet". It is still wrong 8 s later; nothing refetches until a reload.
-  * Pressing Change on the Case Officer opens the panel with "No office" checked. Save is disabled for "No office", so the person cannot be taken out of an office they are shown not to have.
-  * This is the "Who works where" fact the part exists to show (DW4 "reload shows it", challenge m1).
+**M1 (Major): no attachment can be opened from the ticket page. "Attachment 1" leaves the app for a raw 401 JSON page.**
+* Steps:
+  1. As the Case Officer, open "?" on /home.
+  2. Attach a valid PDF, Send, then "Open your ticket".
+  3. Click "Attachment 1".
+* Expected: the file downloads, as "attachments by a short-lived link" says in the build notes.
+* Actual: the browser goes to `/api/platform/support/files/<token>` and shows `{"type":".../not-signed-in","title":"Sign in again","status":401,...}`. The person is now outside the app.
+* The same link with `Authorization: Bearer` answers 200 with `attachment; filename="support-1"`.
+* Cause: `web/.../settings/support-page.tsx:90` calls `window.location.assign(l.url)`. A navigation carries no bearer token, and the download route is behind PF-4's bearer guard (`api/src/platform/identity/guard.ts:106`).
+* The check never opens a file. Fixed in `05646e6d7` ("M-1"); not re-verified here.
 
-**M1 (Major): choosing "Your firm's time zone" after picking a province saves the province's zone, and the audit says "province".**
-* Steps: Add an office, name it, pick province AB. The zone shows `America/Edmonton` with "Pre-filled from AB". Open Time zone and choose **Your firm's time zone**.
-  * The hint now reads "Your firm's time zone is used unless you choose another." Press Add office.
-* Expected: the firm's zone (`America/Toronto`), or the option is not offered while a province is set; audit `chosen`.
-* Actual: the office is saved as `America/Edmonton`. The audit line reads `timeZoneFrom: province`, "pre-filled from the province".
-* Cause: `settings/office-panel.tsx:43` sends `timeZone` only when `f.zoneTouched && f.zone`. The firm option's value is `""` (`FIRM_ZONE`, `:89`), so the person's explicit choice is dropped and the server pre-fills from the province again.
-* Why Major: this is challenge M2's path ("the person confirms or edits it", AG-16-75 §10; "chosen when picked", build notes). The saved zone, which runs that office's deadlines and bookings, differs from what the panel told the person would be used. The toast shows the real zone only after saving.
+**m1 (Minor): a message of up to 5,000 characters that has line breaks is refused as "at most 5000 characters".**
+* Steps: type 50 lines of 99 characters each into "What do you need help with?". The box allows exactly 5,000. Send.
+* Actual: "Not sent / Some fields need a change", with the field error "at most 5000 characters".
+* Cause: multipart sends each line break as CRLF, so 5,000 becomes 5,050 on the server (`help-button.tsx:27`; `support.ts:68-69` counts code points). The same body sent as a reply (JSON) is accepted. A single-line 4,993 still sends.
 
-**m1 (Minor): at 375 px the offices table scrolls inside itself and is not stacked.**
-* Concept §4 "States drawn": "375 px: tables become stacked rows, the page never scrolls sideways".
-* Actual: the page does not scroll (`scrollWidth` 375). The Offices table region is 437 px wide inside 341 px, so the Hours column and the **Edit** buttons are off-screen to the right. They can be reached only by scrolling the table (it is focusable, so the keyboard works).
-* Names break letter by letter ("Calg|ary", "Lond|on", "Sam|ple immi|grati|on firm").
-* `settings/offices-page.tsx:76` uses the shared `Table`, unchanged; the builder's own `pf18s-7-offices-375.png` shows the same layout.
+**m2 (Minor): the footer's "Close" throws away a typed message with no question asked.**
+* Steps: type a message, press the footer's "Close". Actual: it closes with no confirm; reopening shows an empty box.
+* Escape and × do ask "Discard your message?". The footer calls `onOpenChange(false)` directly and bypasses `confirmClose` (`help-button.tsx:43-44`).
 
-**m2 (Minor): a 120-character unbroken office name makes the edit panel scroll sideways.**
-* Steps: an office named "W"×120 (allowed). Press Edit at 375 px.
-* Actual: the panel title "Edit WWW…" does not wrap. The dialog's `scrollWidth` is 2276 px inside 374 px. The concept lists "long content (120-char office name)" among the states.
-* `settings/office-panel.tsx:68`; the list cells wrap correctly with `[overflow-wrap:anywhere]`.
+**m3 (Minor): Close during a slow send, then reopen. The second message is silently dropped, and "Ticket sent" shows for the first one.**
+* Steps:
+  1. Hold the POST.
+  2. Send "first try slow", then press the footer Close. No confirm appears.
+  3. Reopen "?". Send stays busy with no word why. Type "second try".
+  4. Release the POST.
+* Actual: the reopened panel switches to "Ticket sent". "second try" is gone, and only one ticket ("first try slow") exists.
+* Cause: `busy`, `sending` and the late `setSent(t.id)` outlive the reset at `help-button.tsx:21` and `:30`. The guard did hold: one POST.
 
-**m3 (Minor): with "Outside Canada" and country `ca` (or `Canada`), the office is saved as a Canadian office with no province.**
-* It gets the firm's zone and the Where column says "Canada".
-* The radio says abroad, yet no field error appears. `settings/office-panel.tsx:40` sends the typed country as-is, and the service maps `canada`/`CA` to `CA`.
+**m4 (Minor): words added to a reply while its send is slow are wiped.**
+* Steps: hold the reply POST, Send "reply once", then add a second line to the box. Release.
+* Actual: the box is empty, and only "reply once" is stored (`support-page.tsx:63` runs `setBody("")` unconditionally).
 
-**m4 (Minor): after a refused save, focus stays on the panel container (a `DIV`), not on the error summary or the first field in error.**
-* Steps: Outside Canada, empty country, Add office.
-* What does work: the summary "Please check the highlighted details." shows, and Country gets `aria-invalid=true` and its message. But a keyboard or screen-reader user is not taken to either.
-* The concept cites BIC-13 (errors on the field plus a summary).
-* Secondary: the Country message reads "This is not in the expected format." It does not say "a two-letter country code", which is what the service says in `issues`.
+**m5 (Minor): a reply typed into a ticket that support closed meanwhile is lost without its words.**
+* Steps: the ticket is open, and it is set to CLOSED by SQL while the Case Officer types. Send.
+* Actual: the API answers 409. The refetch swaps the form for the Closed notice. The typed text and the "This ticket is closed" problem vanish (`support-page.tsx:69` and `:113`).
+* Fixed in `05646e6d7` ("m-1"); not re-verified.
 
-**m5 (Minor): the place panel opens with focus on the first office's radio, not on the checked one.**
-* Steps: Change on a person with "No office". Focus lands on "Sample immigration firm", which is unchecked.
-* Pressing Space, or Down then Up, checks that office. Opening and pressing Enter does nothing (Save is disabled), so no wrong placement happens without a further key press.
-* `settings/place-panel.tsx` relies on the Panel's default first-focusable element.
+**m6 (Minor): subjects can spoof their text, and the 80-character cut breaks emoji.**
+* Bidi spoofing: a first line `U+202E evil U+202C text` shows as **"live text"** in the Owner's list and as the heading. There is no `<bdi>` or `dir="auto"` at `support-page.tsx:41` and `:101`, and the server keeps the override.
+* Arabic: the first line "مرحبا، لدي مشكلة في النموذج!" renders with the "!" on the wrong side in the LTR heading.
+* Emoji: `subjectOf` cuts by code point (`support.ts:118`). 50 Canadian flags end in a lone regional indicator "🇨…", and a family emoji is cut after a ZWJ ("👨‍…").
+
+**m7 (Minor): file refusals do not always say which file, or say it on the field.**
+* With two files where the second is a fake PDF, the field shows "the file is not a PDF as its type says". It does not say which one (`fieldOf` keeps the first `files.N`).
+* A 21 MB file gives a 413 "This file is too large for this upload." in the top notice only, with nothing on the file field. An 11 MB file is shown on the field.
+
+**m8 (Minor): an empty or whitespace-only box gets "write what you need help with, without control characters".**
+* Send is enabled on an empty box, and there is no control character in it. The word "control" misleads, and the sentence starts in lower case (`support.ts:69`).
+* The reply's Send is disabled for spaces, but not for U+200B, which gets the same message. Fixed in `05646e6d7` ("m-2"); not re-verified.
 
 ## What held
-* **Roles:**
-  * A Case Officer has no Offices menu line.
-  * `/platform/offices` by address shows "Only an Owner or Admin can manage the firm's offices." with no list and no Add (M1).
-  * As the Case Officer, `GET offices/provinces` returns 403 (`agent/settings:edit`), `PUT staff/:id/office` returns 403 (`agent/staff:manage`), and `GET /staff` returns 403. With no token, the PUT returns 401.
-* **Cross-firm:**
-  * Firm A's Owner placing firm B's staff member → 404.
-  * Placing A's Case Officer in B's office → 404.
-  * Firm B placing A's Case Officer → 404.
-  * Nil UUID office → 404.
-  * `officeId` on staff rows is firm-scoped.
-* **Malformed input:**
-  * A bad path id returns 404 before the body is read, even when the body is also bad.
-  * Extra field, missing `officeId`, non-UUID, number, or array body → 422 with `fields`.
-  * `null` or invalid JSON → 400. A body over 2 MB → 413.
-  * Upper-case UUIDs in the path and the body are accepted and lower-cased.
-* **Audit (m1):**
-  * Repeat placements, including an upper-case repeat, and taking out someone who already has no office write no line.
-  * Place, move and take out write one line each.
-  * Ten concurrent identical PUTs write exactly one line.
-  * Six concurrent alternating PUTs leave a consistent from→to chain (advisory lock).
-* **Zone pre-fill (M2):**
-  * Picking AB pre-fills `America/Edmonton` before saving.
-  * Saved untouched, the audit says `province`. A picked zone is audited `chosen`. "Mountain" is refused with "Choose a time zone from the list".
-  * `provinces` is served from the pack only (13 codes with their zones).
-* **Duplicates:**
-  * "  CALGARY " against "Calgary" → 409, shown in the panel.
-  * Three concurrent first adds ("Calgary", "calgary ", "Halifax") on a one-office firm give 201, 201 and 409. Exactly one first office is written.
-* **Names:**
-  * A zero-width space or RLO in a name is refused, with the message on the name field.
-  * Arabic, and mixed Arabic/Latin names, save and render.
-  * 120 code points are accepted; 121 are refused; a 120-emoji ZWJ name is refused.
-* **Double submit:** a double click plus two Enters on Add office, with a 1.5 s held response, sends one POST and creates one office.
-* **Stale version:**
-  * A second-tab PATCH, then Save, gives 409. The text reads "Someone changed this office since you opened it. We've loaded the latest; make your change again and save."
-  * The latest zone (`America/Regina`) is loaded, and the next Save succeeds.
-  * The PUT has no version, which is accepted and recorded in the build notes.
+* **Double send (#2064):**
+  * Raise: a click, two `requestSubmit()` calls, a synthetic submit and Enter, all under a held POST, gave 1 POST and 1 ticket.
+  * Reply: Enter twice on the focused Send, a forced click and two `requestSubmit()` calls gave 1 POST and 1 message. Focus went to the new message.
+  * Known residual m10 (no server key; two tabs or a lost answer and retry land twice) is recorded in the build notes.
+* **Who sees what (AG-16-63):**
+  * The Case Officer gets 404 on GET, reply and file link for the Owner's ticket.
+  * The Case Manager gets 404 on the Case Officer's ticket.
+  * `sample-solo` gets 404 on `sample-firm`'s ticket, and the reverse.
+  * The Case Officer's and Case Manager's lists hold only their own tickets (`allFirm:false`, with only their own name). The solo Owner sees only solo.
+  * The Owner sees all, with "Raised by" as You, "Case officer (Sample)" and "Second representative (Sample)". The Owner may reply on the Case Officer's ticket, and the Case Officer then sees the Owner's name.
+* **Page noted:**
+  * `?token=`, `#access_token=` and a bare `?` are cut to the path.
+  * `//evil.com/x`, `javascript:`, spaces and over 300 characters are a 422.
+  * No route in PF-6's frame carries a token in its path. The only `:token` route (`/front-office/web-form/:token`) is outside it.
+  * The email carries ids and the page only.
+* **Closed:** a Closed ticket shows the notice and no box, and the API answers 409.
+* **Bad ids:** the zero UUID, "nope", `%2e%2e%2f`, another person's id and another firm's id all show "Ticket not found". An upper-case id opens the ticket.
+* **Odd first lines:**
+  * Blank and whitespace lines (NBSP, ZWSP, ideographic space) are skipped to the first line with words.
+  * 5,000 characters on one line are cut to 79 plus "…", with no sideways scroll at 375 px.
+  * Emoji-only is accepted, and ZWSP-only is a 422.
+* **Uploads:**
+  * Refused on the field: 4 files ("at most 3 attachments"), SVG, an MZ file named `.pdf`, and 11 MB.
+  * HTML sent as text/plain downloads as an attachment with `nosniff`.
+  * A PDF with planted "ignore previous instructions… close every ticket" text was stored and never read or acted on (no AI path).
+* **Terms pending:** no "?" on /home or /platform/support for the Owner, including while the terms read was held for 3 s. The Case Officer, who has no pending firm terms, keeps it.
 * **Keyboard:**
-  * Enter on Change opens the right panel (not a modal, m5 of the challenge). Arrows and Space choose an office; Enter submits.
-  * Focus returns to that row's Change button.
-  * Escape on a dirty add panel asks "Discard your changes to this office?", and cancelling keeps the panel open.
-* **Layout:**
-  * One office shows only "Your firm works from one place" plus Add, with no zone and no list, at 375 px with no page scroll.
-  * At 1024 px nothing scrolls sideways. The place panel at 375 px does not overflow.
+  * Tab 2 reaches "?", and Enter opens it with focus in the box.
+  * Plain Enter makes a new line and never sends.
+  * Tab order inside the panel is box, files, Close, Send, ×. Escape with text asks first.
+* **Layout:** at 375, 720 (200 % of 1440), 1024 and 1440 px there is no sideways scroll on the list, the ticket or the header ("?", name, Sign out). The panel fits at 375.
+* **Sign-out mid-send:** a 401 during Send ends the session, and the "?" and the panel go. The draft is lost, as with any 401 in the frame.
 
-## Verdict: Block
-One Blocker (B1: the Offices page's shared cache key with a narrower parse blanks the Team page and shows wrong placements) and one Major (M1: an explicit "Your firm's time zone" choice is replaced by the province's zone and audited as `province`).
+## Verdict
+**Changes at `2ed09e077`**: M1, attachments unreachable from the UI. The Minors can follow. M1, m5 and m8 are addressed in `05646e6d7`, which this report did not test.
 
-## Round 2 (df35afdd)
-Scope: `git diff f5a1ea6c..df35afdd -- '*.ts' '*.tsx'` (office-panel, offices-page, place-panel, the browser check). Ran on a fresh copy `break2_pf18s` on :4447 (`PLATFORM_IDENTITY=local AI_LIVE=off`), then stopped it. The web bundle was checked to hold the new code (`["pf","staff","placements"]`, the new hints). Headless Chromium through the studio's playwright, with and without reduced motion; curl/fetch for the API; psql for `audit_event`. US$0, no model call.
+## Round 2 (at 5ee13db4)
+Scope `git diff 2ed09e07..5ee13db4`, read against build notes "Part 2, round 1". Run on a detached worktree at exactly `5ee13db4`, isolated copy `break2_pf18s2` on :4742 (`AI_LIVE=off PLATFORM_IDENTITY=local`, plus a known `FO_FILES_LINK_KEY` to forge an expired link). Bundle `index-D5DtsbAP.js`. Headless Chromium, Node `fetch`, psql. US$0, no model call. The builder's `check_pf18s_help_browser.ts` gave 30/30 on this copy. The copy was then stopped and the worktree removed. Paths are under `prototype/studio/`.
 
-**Round-1 items re-run**
-* **B1: fixed.**
-  * Offices → Team by the menu shows the seat line, with no page error.
-  * With the Case Officer in Calgary and the Owner in the first office, Team → Offices within 2 s shows both correctly. Three fast round trips stay correct.
-  * A placement made in the panel shows on the row at once and is still there after Team → Offices.
-  * Team actions invalidate the prefix `["pf","staff"]` (`staff/person-panel.tsx:41,109`, `invite-panel.tsx:42`), which covers the new key. Placing invalidates the same prefix (`place-panel.tsx:26`), which also refreshes Team's entry.
-* **M1: fixed.**
-  * AB → `America/Edmonton`, and "Your firm's time zone" is no longer offered. That round-1 path cannot be built any more.
-  * Saves, read from the audit:
-    * AB untouched → `province America/Edmonton`.
-    * No province, firm option → `firm America/Toronto`.
-    * Firm option chosen, then BC → `province America/Vancouver`.
-    * AB, Regina picked, province cleared → `chosen America/Regina`.
-    * NS, then abroad GB → `firm America/Toronto`.
-* **m1: partly fixed** (see m6). At 375 px the table no longer scrolls inside itself (341/341). Where moves under the name, Edit buttons are inside the viewport, and zones break at "/" (`America/North_Dakota/New_Salem` wraps on three lines).
-* **m2: fixed.** The edit title is "Edit office". With a 120 × "W" name at 375 px, the edit dialog's scrollWidth equals its clientWidth (374/374), and so does the add dialog's.
-* **m3: fixed** for every value the server maps to CA:
-  * `ca`, ` CANADA `, `Ca` and `Canada` + NBSP are refused on Country with "For an office in Canada, choose In Canada and its province.", with no POST sent and no row written. Enter in the field does the same, and so does Edit on an abroad office.
-  * The server takes only two letters or "canada" (`service.ts:29`), so the client check covers everything it maps. `can`, `Canadá`, `C A` and full-width `ＣＡ` go to the server and are refused 422.
-* **m4: fixed.** Focus goes to the first field in error:
-  * Country after the Canada check, after 422 `ZZ`, and after `ca` + Enter.
-  * Name after a 409 on the name, also with a response held 1.5 s. Name first when both Name and Country are wrong.
-  * The "Not saved" box after a network abort and after a stale 409.
-  * Held with and without reduced motion.
-  * Secondary not fixed (outside the diff): the Country message is still "This is not in the expected format." for `can`, and the raw "a country code on the ISO list" for `ZZ`.
-* **m5: fixed.** Change opens with focus on the ticked radio: "Calgary" for a placed person, "No office" for an unplaced one. It held on 5 of 5 opens at delays of 0–600 ms. ArrowUp + Enter moves the person, and focus returns to their Change button.
+**Retest of round 1**
+* **M1, fixed.** "Attachment 1" saves `support-1.pdf` (`%PDF` bytes), and the person stays on the ticket. When the file route is forced to answer 410, 404, 500 or a dropped connection, each shows "File not opened" with words; a forced 401 ends the session to the sign-in page.
+  * API: an Officer's link fetched with the Owner's, the Case Manager's or `sample-solo`'s bearer answers 404. With no bearer it is 401; altered it is 404.
+  * A forged expired link answers 410. The same link fetched by another person is 404, not 410.
+* **m1, fixed.** 50 lines joined by CRLF, 5,000 characters in all, are accepted and stored as 5,000; 5,001 is a 422. A lone CR is stored as LF, and so is a CRLF in a JSON reply.
+* **m2, fixed.** The footer's Close asks first.
+* **m3, fixed as reported.** When the panel is reopened during a held send, "slow one" is still there, Send stays busy, and one ticket is written. But see R2-m1 and R2-m2.
+* **m4, fixed for added text.** "reply once" plus a new line typed during the send leaves "more words" in the box. But see R2-m3.
+* **m5, fixed.** After a 409, the box is read-only and keeps the text. "Not sent" shows the server's words, the hint says to copy the text into a new ticket, and there is no Send. Focus is on the box, and axe is clean at 375 and 1440. Typing does not change the text.
+  * Raising from "?" and choosing "Open your ticket" opens the new ticket with an empty box (no carry-over). Back on the closed ticket, the Closed notice shows.
+* **m6, fixed for direction marks and emoji.** The RLO subject reads "evil text" in the list and the heading. With LRI/PDI, RLM, LRM and ALM it reads "abc def". Fifty flags stay whole, and the family emoji is not split. The Arabic heading, in `<bdi>`, ends with "!" on its left, the right end for right-to-left text.
+* **m7, fixed.** The field says "File 2: The file is not a PDF as its type says." With two bad files it says "File 1: … File 2: …", and the numbers match the server's `files.0` and `files.1`. A 21 MB file now shows on the field too. Three 9.5 MB files are accepted.
+* **m8, partly fixed.** See R2-m5.
 
-**Attacks on what the diff adds**
-* **Zone options** (add panel; each step reads zone / firm option / hint):
-  * Blank → `""`, firm option offered, hint "Pick a province…".
-  * AB → Edmonton, no firm option, "Pre-filled from AB".
-  * Province cleared → `""`, firm option back.
-  * Firm option chosen explicitly, then BC → Vancouver, firm option gone. This is the round-1 M1 path the other way round, and it holds.
-  * AB with Regina picked, then BC → Regina kept. Cleared → Regina kept, firm option offered.
-  * NS untouched, then abroad → `""`, firm option, hint "Choose this office's own time zone…". Back to In Canada → Halifax again.
-  * London picked, then abroad, then back, then QC → London kept throughout.
-  * Province chosen by arrow keys pre-fills its zone. Home on Zone picks the first named zone, which saves as `chosen`.
-  * No state found where the panel shows one zone and the server saves another.
-* **New cache key:** held (B1 above).
+**New findings (all Minor)**
+* **R2-m1: text typed into "Ask for help" while it sends is dropped, and closing mid-send says "Discard" but sends.**
+  * Steps: hold the POST, Send "slow one", then Close; the prompt asks "Discard your message?" and is accepted. Reopen; the box is editable. Add a line, then release.
+  * Actual: "Ticket sent" shows, but the stored body is only "slow one", so the added line is lost. The "discarded" message was sent anyway.
+  * Cause: the box is never read-only while `busy` (`help-button.tsx:56`), and `close`/`confirmClose` ask "Discard" during a send (`:42`, `:44`). This is the Raise side of round-1 m4, and the m3 fix makes it easier to reach.
+* **R2-m2: after reopening mid-send, a failed send's retry carries a file the panel no longer shows.**
+  * Steps: attach `keep.pdf`, Send (held), Close (accept), reopen. The file input shows 0 files. Fail the POST with a 500, then press Send again.
+  * Actual: the stored message has 1 attachment. The `files` state survives the reset guard (`help-button.tsx:22`), but the remounted `<input type=file>` (`:59`) is empty.
+* **R2-m3: a reply corrected at its start while it sends looks unsent.**
+  * Steps: Send "Teh second reply" (held), fix it to "The second reply", release.
+  * Actual: "Teh second reply" is stored, and the box still holds the whole "The second reply" with an enabled Send, inviting a near-duplicate.
+  * Cause: `support-page.tsx:81` keeps the whole box unless it starts with the sent text.
+* **R2-m4: cutting by grapheme leaves the subject unbounded.**
+  * The subject of 80 × ("a" + 60 combining marks) is 4,880 code points. One grapheme of "a" + 4,900 marks is kept whole at 4,901. Before, the cut was 80 code points; now 21 list items come to 15.9 kB.
+  * The marks paint over four rows above it in the Owner's list at 1440. At 375 they cover the ticket's breadcrumbs and the My account tabs. No sideways scroll.
+  * Cause: `support.ts:122-123` counts graphemes and has no code-point cap.
+* **R2-m5 (round-1 m8 residual): a box holding only U+200B still enables Send.** It gets "Write what you need help with, without control characters." There are no control characters in it. `help-button.tsx:47` and the reply's Send use `body.trim()`; `support.ts:70` words it.
 
-**New finding (Minor)**
-* **m6 (Minor): below 768 px the Hours column is hidden and not shown anywhere else.**
-  * Steps: open Offices at 375, 640 or 767 px, or at 512 px CSS (200 % zoom).
-  * Expected: concept §4 board C lists "Hours" as a column of the list, and "375 px: tables become stacked rows". The hours summary stays readable.
-  * Actual: `hidden md:table-cell` on the Hours column and its header (`settings/offices-page.tsx:77-80`). No hours text appears on the page or in the edit panel.
-  * The page still never scrolls sideways (375/375, 512/512).
-* **m7 (Minor): an edit's stale 409 whose re-read fails is shown as a Name-field error.**
-  * Steps: open Edit on Calgary. In another session, PATCH Calgary. Then make the re-read `GET /platform/offices` fail (route abort) and press Save.
-  * Expected: the "Not saved" notice with the stale message.
-  * Actual: Name gets `aria-invalid=true` with "Someone changed this office since you opened it." under it, and focus goes to Name. Every 409 that is not a loaded stale copy now lands on the name (`settings/office-panel.tsx:67`).
-  * This needs a failed GET straight after a 409, so it is rare. Nothing is saved wrongly.
+**Held**
+* Who can use a link: the signed link names both firm and person, so another person's or another firm's bearer is 404. An expired link is 410 only for its own person.
+* The download path: `nosniff` and `no-store` on the file, and no navigation. The blob is revoked after 10 s.
+* Two bad files map to their own numbers. Four files are refused as a group ("At most 3 attachments"). A 413 shows on the field and in the notice.
+* An empty box or one of only NBSP or ideographic spaces keeps Send off (Raise).
+* The Owner's list at 720 px (200 % zoom) shows Ticket, Status and Raised by, with no sideways scroll. The status meaning is visible on the ticket at 375, 1024 and 1440, with no sideways scroll.
+* The read-only text of a closed reply never leaks into another ticket (see m5).
 
-**What held (new)**
-* Arabic office name at 375 px: it renders right to left and wraps.
-* No page errors in any run.
-* The place panel and both office panels do not overflow at 375 px.
-
-### Verdict: Approve
-Commit `df35afddccb17e10158aa5f93c07847eca882628` has no Blocker and no Major:
-* B1, M1, m2, m3, m4 and m5 are fixed.
-* m1 is partly fixed: Hours is now hidden below 768 px (m6).
-* m7 is new and Minor.
-
-Note: the round-2 section takes the file over 100 lines; round 1 already used 101.
+**Verdict: Approve at `5ee13db4ec1c158a23db7962793c4ffcdf3976ee`.** M1 and round-1 m1, m2, m3, m5, m6 and m7 are fixed. m4 is fixed and m8 partly fixed. The five new Minors (R2-m1 to R2-m5) can follow in a later item.
