@@ -54,8 +54,9 @@ function NotificationsBody() {
       toast.push({ tone: "ok", text: "Notification settings saved" });
     } catch (e) {
       if (e instanceof StaffApiError && e.status === 409) {
-        const current = PrefsView.safeParse((e.problem as { current?: unknown }).current);
-        if (current.success) { setDraft(overlay(current.data, base, draft)); setBase(current.data); qc.setQueryData(KEY(token), current.data); }
+        // The shared Problem parser keeps only the known fields (not the 409's `current`), so the latest view is read again.
+        const current = await staffApi("/platform/me/notifications").then((v) => PrefsView.safeParse(v)).catch(() => null);
+        if (current?.success) { setDraft(overlay(current.data, base, draft)); setBase(current.data); qc.setQueryData(KEY(token), current.data); }
         setProblem({ tone: "warn", title: "Changed elsewhere", text: `${e.message} We've loaded the latest; your unsaved changes are kept on top. Save again.` });
       } else if (e instanceof StaffApiError && e.status >= 400 && e.status < 500) {
         setProblem({ tone: "danger", title: "Not saved", text: e.message, issues: Object.values(e.problem.fields ?? {}) });
