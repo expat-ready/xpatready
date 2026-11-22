@@ -329,3 +329,42 @@ Diff only: `git diff f7ce263ad 0df34a67e939d10603627a416f620372e23dc8c4`, 3 file
 Findings: none open from this diff. Open from earlier rounds: m7 (Minor), unchanged.
 
 **Verdict: Approve** at commit 0df34a67e939d10603627a416f620372e23dc8c4.
+
+## Merge with main 3 (98bc7e023..f48cc09fa, check_pf24_secrets.ts conflict)
+
+Diff-only check of a pure merge. `f48cc09fa`'s parents are `98bc7e023` (the last head; since my Approve on `0df34a67e` it adds only this review file) and main `9787e68ae` (#2927 PF-4s, with #2913 CS-S1 part 2 and #3104 already in). This is a runtime row with no screen, so there is no journey test and no journey score.
+
+**1. The conflict is resolved correctly.**
+- The combined diff of `tests/check_pf24_secrets.ts` keeps both sides in `generated()`: main's `PLATFORM_SYSTEM_LOCAL_SECRET: rand(40)` line (PF-4s) and PF-F1b's `PLATFORM_FILES_LINK_KEY: key32()` line. Nothing else changed.
+- `git diff origin/main f48cc09fa` on this file is exactly one added line, `PLATFORM_FILES_LINK_KEY: key32()`, after main's `PLATFORM_SYSTEM_LOCAL_SECRET` line.
+- **The generator covers every secret setting.** I loaded `settings.ts` at the head. `SECRET_SETTING_NAMES` has 11 names: DATABASE_URL, the 3 Stripe secrets, BOLDSIGN_API_KEY, ZOOM_CLIENT_SECRET, ZOOM_WEBHOOK_SECRET_TOKEN, SECRET_BOX_KEYS, LOCAL_SECRET, SYSTEM_LOCAL_SECRET and FILES_LINK_KEY. `generated()` sets all 11. So `secretValues()` still looks for every secret in messages, logs and responses, including #2927's and PF-F1b's.
+
+**2. It is a pure merge.**
+- `git diff 98bc7e023 f48cc09fa` on the PR's 17 files changes only 2 of them: `settings.ts` (+17) and `check_pf24_secrets.ts` (+1).
+- For both files, the lines added are identical to main's own change since the merge base `5a9e98b6d`. I checked this by diffing the added and removed lines of each side against each other: they match. No PF-F1b line was dropped or edited.
+- `settings.ts` came in as main's PF-4s lines (four `system-identity` settings, the `systemIdentity` config type and its load, and the stand-in, pool and key-separation refusals). Git merged it cleanly because those lines are in a different hunk from PF-F1b's.
+- **`settings.ts` against main is still exactly PF-F1b's 3 lines:** the `opt("files", "PLATFORM_FILES_LINK_KEY", true, …)` setting, the `files: Readonly<{ linkKey: Secret | null }>` type line, and `files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") })`.
+- `check_qa621_persona_door_production.ts` against main is still the batch fix's one line, `PLATFORM_FILES: "local"`.
+
+**3. #2927 does not touch PF-F1b's seams.**
+- #2927's feature changes are two new files:
+  - `features/platform-system-identity.ts` registers the system-identity controller, the port factory, `SystemIdentity`, the wall and the guard (APP_GUARD).
+  - `features/case-search.ts` (CS-S1) registers the finder and party search.
+- Neither names `LocalFiles`, `S3FileLinks`, `FilesPort` or `boundFiles`.
+- Nothing in main's side of the merge changes `registerFeatures`, `platform/files/*`, `choose.ts` or the files features PF-F1b rebinds. I searched main's diff from the merge base for `LocalFiles|S3FileLinks|FilesPort|registerFeatures|choose|platformConfig`. The only matches are the new `system-identity/service.ts`, which imports and calls `platformConfig().systemIdentity` the same way every adapter factory does.
+- `platformConfig`'s read-once rule and the loader's scrub are not changed by #2927. It adds settings only.
+- **#2927's new secret is handled on its own, without PF-F1b.**
+  - `PLATFORM_SYSTEM_LOCAL_SECRET` is declared `secret: true`, so it is in `SECRET_SETTING_NAMES` (derived by `SETTINGS.filter(x => x.secret)`, `settings.ts:81`).
+  - It is also in `SCRUBBED_FROM_ENV`, which I printed at the head: the 10 secret names other than DATABASE_URL, both new secrets included.
+  - It reaches the app only as a `Secret` (`secret("PLATFORM_SYSTEM_LOCAL_SECRET")`).
+
+**4. The PR diff.** `git diff --name-only origin/main...f48cc09fa` lists 17 files. These are PF-F1b's 16 (2 records, 6 features, the MODULE row, `settings.ts`, `storage.ts`, `choose.ts`, `s3-files.ts`, and the `check_pf24_secrets`, `check_pff1_s3_files` and `check_pff1b_bind` tests) plus qa621's one line. This is the same list as at `98bc7e023`.
+
+**Checks I ran at f48cc09fa (Node 24, no database, no run-suites.sh).**
+- `tsx --tsconfig api/tsconfig.json tests/check_pff1b_bind.ts` passed 33/0 three times: with this container's AWS variables set, with every `AWS_*` unset, and with made-up AWS keys.
+- `tsc --noEmit -p api/tsconfig.json` shows no error in any touched file, in `settings.ts` or in `features/platform-system-identity.ts`. Its 15 errors are all in unrelated tests: `check_c18_age_case`, `check_c69_runs`, `check_cost_check`, `check_vv_checklist` and `check_x2b_bulk_apply`. None of these is in the PR.
+- I did not run `check_pf24_secrets` myself, because it boots isolated copies against the database. The builder reports 84/0 with the AWS variables unset. The static check in section 1 (11 secret names, 11 generated) is what that suite's leak checks need.
+
+Findings: none from this merge. Open from earlier rounds: m7 (Minor), unchanged.
+
+**Verdict: Approve** at commit f48cc09fac222b0c71ff79ba2ec217f1f67274cb.
