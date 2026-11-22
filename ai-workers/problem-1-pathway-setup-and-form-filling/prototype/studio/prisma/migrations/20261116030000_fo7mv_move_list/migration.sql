@@ -19,14 +19,30 @@
 -- A correction of a deposit written before this migration says nothing about why it was made (B-19): the migration
 -- stops before changing anything. The same guard runs again at the end of the file (below).
 DO $$
-DECLARE n integer;
+DECLARE n integer; t text; lifted text[] := '{}'; walls text[] := ARRAY['money_trust_entry']; gated text[] := '{}';
 BEGIN
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
   LOCK TABLE "money_trust_entry" IN SHARE ROW EXCLUSIVE MODE;
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT';
   IF n > 0 THEN
     RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); they were written before correction kinds existed and, being insert-only, cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)', n USING ERRCODE = 'check_violation';
   END IF;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END $$;
 
 -- Prisma's DDL (prisma migrate diff), then the rules.
@@ -313,14 +329,30 @@ CREATE OR REPLACE VIEW "money_to_move" AS
 -- guard locks the table and runs last, after money_trust_entry_moves exists, so a correction written while the file
 -- runs is counted or refused, under one transaction or statement by statement (break B-6; review m11).
 DO $$
-DECLARE n integer;
+DECLARE n integer; t text; lifted text[] := '{}'; walls text[] := ARRAY['money_trust_entry']; gated text[] := '{}';
 BEGIN
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
   LOCK TABLE "money_trust_entry" IN SHARE ROW EXCLUSIVE MODE;
   SELECT count(*) INTO n FROM "money_trust_entry" c JOIN "money_trust_entry" d ON d.firm_id = c.firm_id AND d.id = c.corrects_entry_id
     WHERE c.kind = 'CORRECTION' AND d.kind = 'DEPOSIT' AND c.correction_kind IS NULL;
   IF n > 0 THEN
     RAISE EXCEPTION 'fo7mv_move_list: % correction(s) of a deposit have no correction kind (RETURNED, RECORDED_BY_MISTAKE, WRONG_CLIENT, OTHER or WRONG_ACCOUNT); they were written before correction kinds existed and, being insert-only, cannot be given one: ask the tech lead (restore without them, or a reviewed one-off)', n USING ERRCODE = 'check_violation';
   END IF;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END $$;
 
 -- ------------------------------------------------------------------------------------------- PF-12's walls (#1910)

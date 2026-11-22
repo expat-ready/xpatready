@@ -11,4 +11,26 @@ ADD COLUMN     "turns" JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE "fo_assignment_rule" ADD CONSTRAINT "fo_assignment_rule_turns_check" CHECK (jsonb_typeof("turns") = 'object' AND "turn_no" >= 0);
 -- A rule that already gave leads under part 1's cursor keeps that knowledge (review m4): its last person counts as given
 -- most recently, so the first lead after this change goes to someone else.
-UPDATE "fo_assignment_rule" SET "turn_no" = 1, "turns" = jsonb_build_object("last_staff_id"::text, 1) WHERE "last_staff_id" IS NOT NULL;
+-- PF-8b F7 (Amazon RDS: the admin is neither superuser nor BYPASSRLS): every rule's turns are carried over. Such a runner owns the walled tables but,
+-- under FORCE ROW LEVEL SECURITY, would read and change none of their rows; it lifts FORCE on them inside this one statement
+-- (ACCESS EXCLUSIVE first, so nobody sees the walls lifted) and puts it back after. A superuser or BYPASSRLS runner does
+-- exactly what it did. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+DO $pf8b_f7$
+DECLARE t text; lifted text[] := '{}'; walls text[] := ARRAY['fo_assignment_rule']; gated text[] := '{}';
+BEGIN
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
+  UPDATE "fo_assignment_rule" SET "turn_no" = 1, "turns" = jsonb_build_object("last_staff_id"::text, 1) WHERE "last_staff_id" IS NOT NULL;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;
+END
+$pf8b_f7$;

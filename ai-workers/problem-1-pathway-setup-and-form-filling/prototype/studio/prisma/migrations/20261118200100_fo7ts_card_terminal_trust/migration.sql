@@ -10,13 +10,29 @@
 -- A card terminal payment already recorded into trust stops the migration (none can exist outside a test database:
 -- no route records CARD_TERMINAL yet).
 DO $$
-DECLARE p uuid;
+DECLARE p uuid; t text; lifted text[] := '{}'; walls text[] := ARRAY['money_payment']; gated text[] := '{}';
 BEGIN
-  PERFORM set_config('row_security', 'off', true);  -- a role that does not bypass the walls fails here (review Nit 2)
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
+  PERFORM set_config('row_security', 'off', true);  -- a role that neither bypasses the walls nor owns the table (PF-8b F7 above) fails here (review Nit 2)
   SELECT x.id INTO p FROM "money_payment" x WHERE x.method = 'CARD_TERMINAL' AND x.received_into <> 'OPERATING' ORDER BY x.id LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION 'FO-7ts: payment % is a card terminal payment received into trust; card money goes to operating only, and payments are never changed or removed: ask the tech lead (a reviewed one-off), then rerun', p USING ERRCODE = 'check_violation';
   END IF;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END $$;
 
 ALTER TABLE "money_payment" DROP CONSTRAINT "money_payment_card_not_trust",

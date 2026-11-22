@@ -9,9 +9,23 @@
 -- first, as the address change does; a 5 s lock timeout), so no sign-up can take staging between the check and the rule.
 -- Rollback: CREATE OR REPLACE the function with the nine names of 20261114230000_pf25_web_address (nothing else changes).
 DO $$
-DECLARE held text;
+DECLARE held text; t text; lifted text[] := '{}'; walls text[] := ARRAY['platform_firm_address_history', 'platform_firm_web_address']; gated text[] := '{}';
 BEGIN
   SET LOCAL lock_timeout = '5s';   -- a long open transaction fails the deploy loudly instead of queueing every sign-up behind it
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
   -- History first, the order WebAddresses.change takes them (service.ts), so the two never deadlock.
   LOCK TABLE "platform_firm_address_history", "platform_firm_web_address" IN SHARE ROW EXCLUSIVE MODE;
   SELECT string_agg(DISTINCT firm_id::text, ', ') INTO held FROM (
@@ -28,5 +42,7 @@ BEGIN
          AND a <> ALL (ARRAY['www', 'api', 'app', 'admin', 'mail', 'status', 'help', 'book', 'portal', 'staging'])
     $body$
   $fn$;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END
 $$;

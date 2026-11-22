@@ -24,10 +24,25 @@
 
 -- The mapping refusal comes first: a firm already saying "trust on" cannot be mapped to a three-state answer silently.
 DO $map$
-DECLARE f uuid;
+DECLARE f uuid; t text; lifted text[] := '{}'; walls text[] := ARRAY['money_payment_settings']; gated text[] := '{}';
 BEGIN
+  -- PF-8b F7: a runner that is neither superuser nor BYPASSRLS owns these walled tables but, under FORCE ROW LEVEL
+  -- SECURITY, would read none of their rows; it lifts FORCE inside this statement (ACCESS EXCLUSIVE first) and puts it back
+  -- below. tests/check_pf8b_f7_data_walls.ts fails when a data statement on a walled table runs without this.
+  IF NOT (SELECT pf8b_role.rolsuper OR pf8b_role.rolbypassrls FROM pg_roles pf8b_role WHERE pf8b_role.rolname = current_user) THEN
+    EXECUTE (SELECT 'LOCK TABLE ' || string_agg(format('%I', pf8b_w), ', ') || ' IN ACCESS EXCLUSIVE MODE' FROM unnest(walls) pf8b_w);
+    SELECT coalesce(array_agg(pf8b_c.relname::text ORDER BY pf8b_c.relname), '{}') INTO lifted FROM pg_class pf8b_c
+      WHERE pf8b_c.relnamespace = 'public'::regnamespace AND pf8b_c.relname = ANY (walls) AND pf8b_c.relforcerowsecurity;
+    FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', t); END LOOP;
+    -- …and PF-12's firm gate, which refuses a write by such a runner with no session firm and lets a superuser or
+    -- BYPASSRLS one through (platform_firm_first), steps aside on them too: the runner then writes as those do.
+    SELECT coalesce(array_agg(pf8b_g.tgrelid::regclass::text ORDER BY 1), '{}') INTO gated FROM pg_trigger pf8b_g
+      WHERE pf8b_g.tgname = '0_pf12_firm_first' AND pf8b_g.tgenabled <> 'D' AND pf8b_g.tgrelid::regclass::text = ANY (walls);
+    FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I DISABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  END IF;
   -- No writer between this read and the ALTER below (break F2 on facc5231: a trust_enabled = true committed in between
-  -- was mapped silently), and a role that does not bypass the walls fails here instead of reading no rows (review Nit 2).
+  -- was mapped silently), and a role that neither bypasses the walls nor owns the table (PF-8b F7 above) fails here instead
+  -- of reading no rows (review Nit 2).
   LOCK TABLE "money_payment_settings" IN SHARE ROW EXCLUSIVE MODE;
   PERFORM set_config('row_security', 'off', true);
   SELECT s.firm_id INTO f FROM "money_payment_settings" s WHERE s.trust_enabled ORDER BY s.firm_id LIMIT 1;
@@ -35,6 +50,8 @@ BEGIN
     RAISE EXCEPTION 'FO-7ts: firm % has trust_enabled = true, which has no three-state answer: set the trust answer by hand, then rerun', f
       USING ERRCODE = 'check_violation';
   END IF;
+  FOREACH t IN ARRAY gated LOOP EXECUTE format('ALTER TABLE %I ENABLE TRIGGER "0_pf12_firm_first"', t); END LOOP;
+  FOREACH t IN ARRAY lifted LOOP EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t); END LOOP;   -- PF-8b F7: the walls back
 END
 $map$;
 
