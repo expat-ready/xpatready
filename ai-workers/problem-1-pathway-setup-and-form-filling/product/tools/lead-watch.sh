@@ -81,10 +81,12 @@ pw=$(python3 -I "$TOOLS/proof-read-watch.py" 2>&1); echo "$pw"; act=$((act + $(g
 hs=$(python3 -I "$TOOLS/human-sample.py" 2>&1); echo "$hs"; act=$((act + $(grep -c '^ACT' <<<"$hs"))); seen "$hs"   # 2e. P-782 (1): weekly human sample (ENF-782b): due, Needs you at 7 days, reopen on a "no"
 # 2f. Flow buffer (P-800, ENF-798): each track board holds 2+ days, every open part names a lane, every Partial capability is on a board.
 fb=$(python3 -I "$TOOLS/flow-buffer.py" 2>&1); echo "$fb"; act=$((act + $(grep -c '^ACT' <<<"$fb"))); seen "$fb"
+fresh "flow-buffer.py: design/board-lead-a-*.md and board-lead-b-*.md (newest by date) and qa/CAPABILITIES.md on $(git rev-parse --abbrev-ref HEAD)"
 # 2g. Wait targets at the 10-minute check (P-798, ENF-798): a question 10 min, approved not queued 20 min, a lane quiet
 # 30 min with work left; sle-watch.py's MISS lines become ACT (known-failures.tsv reuses "ACT   SLE ").
 # One ACT per target (Q, A, L, R, B) naming its PRs, the detail on "sle" lines; --dump feeds step-age.py (5c) approval times.
 sl=$(python3 -I "$TOOLS/sle-watch.py" --grouped --dump "$STATE_DIR/sle.json" 2>&1); echo "$sl"; act=$((act + $(grep -c '^ACT' <<<"$sl"))); seen "$sl"
+fresh "sle-watch.py: GitHub open PRs, their comments, label events and ci check runs; cockpit/history.jsonl for the board time"
 
 # 3. Questions for the tech lead in the window.
 qs=$(gh search prs --repo "$(gh repo view --json nameWithOwner -q .nameWithOwner)" --state open "Question for the tech lead" --json number -q '.[].number' 2>/dev/null)
@@ -163,6 +165,7 @@ FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow
 # 5c. Step age (P-798, ENF-798): a step older than twice its median today gets a builder added or moved (the same cached answer, as JSON).
 FLOW_TOKEN="${FLOW_TOKEN:-$(gh auth token 2>/dev/null)}" python3 -I "$TOOLS/flow-measure.py" --since today --lead --json > "$STATE_DIR/flow.json" 2>/dev/null
 sa=$(python3 -I "$TOOLS/step-age.py" --flow "$STATE_DIR/flow.json" --prs "$STATE_DIR/prs-body.json" --sle "$STATE_DIR/sle.json" 2>&1); echo "$sa"; act=$((act + $(grep -c '^ACT' <<<"$sa"))); seen "$sa"
+fresh "step-age.py: flow-measure.py --lead --json (GitHub, a cached answer only if under $FRESH_MAX_MIN min), open PRs read in 2b (gh.sh), sle-watch's dump from 2g"
 
 # 6. Private backup (P-589 (1), P-590): the backup repository's last push, read from GitHub (read-only here). Over 24 h:
 # the Lead runs tools/backup-refresh.sh (needs allowed_domains github.com). Unreadable = said, never a silent pass.
