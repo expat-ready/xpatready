@@ -16,17 +16,12 @@ import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { taxForLine } from "../api/src/client-money/invoices/tax-round.ts";
-import { FakeClock } from "../ports/clock.ts";
-import { MONEY_EVENT, fakeClientMoney, invoiceStatus, type ClientMoneyPort, type InvoiceFacts } from "../ports/client-money.ts";
+import { invoiceStatus } from "../ports/client-money.ts";
 import { fakeMail } from "../ports/mail.ts";
-import { runContract } from "../ports/contracts/contract.ts";
-import { documentRenderPortContract } from "../ports/contracts/document-render-port.contract.ts";
-import { clientMoneyPortContract } from "../ports/contracts/client-money-port.contract.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
 const BIN = "/opt/homebrew/opt/postgresql@18/bin", PG = ["-h", "127.0.0.1", "-p", "54329", "-U", "xr_studio"];
-const DB = `xr_studio_fo7c_scratch_${process.pid}`, urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
+const DB = `xr_studio_fo7b1c_scratch_${process.pid}`, urlOf = (db: string) => `postgresql://xr_studio@127.0.0.1:54329/${db}`;
 const sql = (q: string) => execFileSync(join(BIN, "psql"), [urlOf(DB), "-v", "ON_ERROR_STOP=1", "-q", "-Atc", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 let pass = 0, fail = 0;
@@ -50,13 +45,9 @@ const { PlatformIdentityController } = await import("../api/src/platform/identit
 const { FirmWallsInterceptor } = await import("../api/src/features/platform-firm-walls.ts");
 const { InvoiceDrafts } = await import("../api/src/client-money/invoices/drafts.ts");
 const { InvoiceDraftsController, InvoiceMoneyController } = await import("../api/src/client-money/invoices/routes.ts");
-const { MoneyDocuments, documentText, invoiceData } = await import("../api/src/client-money/invoices/documents.ts");
-const { ClientMoney } = await import("../api/src/client-money/port.ts");
 const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts");
 const feature = (await import("../api/src/features/client-money-invoices.ts")).default;
 const refundsFeature = (await import("../api/src/features/client-money-refunds.ts")).default;
-const { withFirm } = await import("../api/src/platform/firm-scope.ts");
-const { auditEvent } = await import("../api/src/platform/audit/audit-event.ts");
 
 const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: urlOf(DB), options: "-c TimeZone=UTC" }) });
 const clock = new (class extends PlatformClock { override now() { return Date.now(); } })();
@@ -199,6 +190,17 @@ try {
   const qRefund = await choose(pQ.body.id, { choice: "REFUND", method: "CASH", reason: "Not arrived (Sample)", idempotencyKey: rkey() }), qKeep = await choose(pQ.body.id, { choice: "KEEP_AS_CREDIT" });
   ok("FO-7b 1c RX/KC fail (review m1, break F5): an uncleared cheque's 20.00 extra → Refund 409 NOT_CLEARED and Keep 409 (never paid back before it arrives); nothing refunded or kept",
     qRefund.status === 409 && qRefund.body.code === "NOT_CLEARED" && qKeep.status === 409 && refunds(pQ.body.id) === "" && kept(pQ.body.id) === "0", [qRefund.body, qKeep.body]);
+  // Round 2 Minors (review m1-m3, break R2-1, R2-3, R2-4).
+  const invS = await issued(10000, 0), pS1 = await pay(invS.id, 20000), pS2 = await pay(invS.id, 5000), kS = await choose(pS2.body.id, { choice: "KEEP_AS_CREDIT" });
+  const rS = await refund(pS2.body.id, { amountMinor: 1, method: "CASH", reason: "Own kept (Sample)", idempotencyKey: rkey() });
+  ok("FO-7b 1c RF fail (break R2-1): a payment whose own 50.00 extra was kept has nothing left to refund: 409 OVER_REFUND (left 0.00, naming the kept credit), not the database's MONEY_RULE",
+    kS.status === 201 && rS.status === 409 && rS.body.code === "OVER_REFUND" && rS.body.leftMinor === 0 && pS1.status === 201, [kS.body, rS.body]);
+  const invB = await issued(10000, 0), pB2 = await pay(invB.id, 13000), badWhy = await choose(pB2.body.id, { choice: "KEEP_AS_CREDIT", reason: "\u202egnp.exe \u200b" });
+  ok("FO-7b 1c KC fail (break R2-3): Keep with a reason the database's text rule refuses (a direction override) → 422 at reason; nothing kept", badWhy.status === 422 && badWhy.body.fields?.reason && kept(pB2.body.id) === "0", badWhy.body);
+  const kD = rkey(), rD1 = await refund(pS1.body.id, { amountMinor: 1, method: "CASH", reason: "Dated (Sample)", idempotencyKey: kD }), yesterday = sql(`select to_char(now() at time zone 'UTC' - interval '1 day', 'YYYY-MM-DD')`);
+  const rD2 = await refund(pS1.body.id, { amountMinor: 1, method: "CASH", reason: "Dated (Sample)", idempotencyKey: kD }), rD3 = await refund(pS1.body.id, { amountMinor: 1, method: "CASH", reason: "Dated (Sample)", refundedOn: yesterday, idempotencyKey: kD });
+  ok("FO-7b 1c RF pass and fail (break R2-4): the same refund retried with no date is the same request (200 replayed, whatever day it is retried); sent with another date it is 409 KEY_USED",
+    rD2.status === 200 && rD2.body.replayed === true && rD2.body.id === rD1.body.id && rD3.status === 409 && rD3.body.code === "KEY_USED", [rD1.status, rD1.body?.code, rD2.status, rD3.status]);
   // AG-6-23 r2 (review m6): the refund's date is stored (today when none is sent); a date in the future → 422.
   const future = await refund(pY.body.id, { amountMinor: 1, method: "CASH", reason: "Future (Sample)", refundedOn: "2999-01-01", idempotencyKey: rkey() });
   ok("FO-7b 1c RF fail and pass (AG-6-23 r2): a refund date in the future → 422 at refundedOn; the earlier refunds carry their date in the audit line",

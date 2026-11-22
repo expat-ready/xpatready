@@ -36,7 +36,7 @@ export class Refunds {
     return this.write(async (tx) => {
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = this.day("refundedOn", r.refundedOn);
-      const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn });
+      const had = await this.replay(tx, ctx.firmId, r.idempotencyKey, { paymentId: id, fromExtra: false, amountMinor: r.amountMinor, reason: r.reason, method: r.method, reference: r.reference ?? null, refundedOn: r.refundedOn ?? null });
       if (had) return this.refundView(tx, ctx.firmId, had, p, true);   // a double click or a retry: the one refund, never a second
       if (p.receivedInto === "TRUST") refuse("TRUST_REFUND", TRUST_WORDS);
       const { left, heldAsCredit } = await this.leftToRefund(tx, ctx.firmId, p);
@@ -56,7 +56,7 @@ export class Refunds {
       const p = await this.lock(tx, ctx.firmId, id);
       const refundedOn = c.choice === "REFUND" ? this.day("refundedOn", c.refundedOn) : null;
       if (c.choice === "REFUND") {   // the same key again: the one refund of the extra, answered again (never a plain refund's key)
-        const had = await this.replay(tx, ctx.firmId, c.idempotencyKey!, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason!, method: c.method!, reference: c.reference ?? null, refundedOn });
+        const had = await this.replay(tx, ctx.firmId, c.idempotencyKey!, { paymentId: id, fromExtra: true, amountMinor: null, reason: c.reason!, method: c.method!, reference: c.reference ?? null, refundedOn: c.refundedOn ?? null });
         if (had) return this.choiceView(tx, ctx.firmId, p, "REFUND", (await tx.moneyRefund.findFirst({ where: firmScope(ctx.firmId, { id: had }) }))!.amountMinor, had, null, true);
       }
       if (p.receivedInto === "TRUST") refuse("TRUST_EXTRA", "Money received into trust stays in the trust ledger: there is no Refund · Keep as credit choice here. Nothing was changed.");
@@ -68,6 +68,10 @@ export class Refunds {
       if (c.choice === "REFUND") {
         const refundId = await this.writeRefund(tx, ctx, p, waiting, c.reason!, c.idempotencyKey!, c.method!, c.reference ?? null, refundedOn!, true);
         return this.choiceView(tx, ctx.firmId, p, "REFUND", waiting, refundId, null);
+      }
+      if (c.reason !== undefined) {
+        const [t] = await tx.$queryRaw<{ ok: boolean }[]>`select money_text_ok(${c.reason}, 200) as ok`;
+        if (!t.ok) badField("reason", "The reason needs a visible letter, number or punctuation, with no hidden or direction-changing characters. Nothing was changed.");
       }
       const entry = await tx.moneyCreditEntry.create({ data: { firmId: firmScope(ctx.firmId).firmId, personId: p.personId, companyId: p.companyId, caseId: p.caseId, kind: "KEPT", amountMinor: waiting, currency: p.currency, paymentId: id, createdBy: `staff:${ctx.staffId}` }, select: { id: true } });
       await this.audit.record(tx, { firmId: ctx.firmId, actor: `staff:${ctx.staffId}`, action: "payment.extra_kept", entity: "money_credit_entry", entityKey: entry.id,
@@ -110,14 +114,14 @@ export class Refunds {
     return v;
   }
   /** The refund an idempotency key already wrote, when the request is the same one again; another request under the same
-   *  key (another payment, the other route, another amount, reason, method, reference or date) is 409 KEY_USED (break F1,
+   *  key (another payment, the other route, another amount, reason, method, reference, or a date that differs from the one sent) is 409 KEY_USED (break F1,
    *  F2; review M1 on 5f49018bf). `amountMinor` null: the choice's amount is the extra, not the request's. */
   private async replay(tx: Tx, firm: string, key: string, want: { paymentId: string; fromExtra: boolean; amountMinor: number | null; reason: string; method: string; reference: string | null; refundedOn: string | null }): Promise<string | null> {
     const had = await tx.moneyRefund.findFirst({ where: firmScope(firm, { idempotencyKey: key }) });
     if (!had) return null;
     const [a] = await tx.$queryRaw<{ d: Record<string, unknown> }[]>`select detail as d from audit_event where firm_id = ${firmScope(firm).firmId}::uuid and action = 'payment.refunded' and entity = 'money_refund' and entity_key = ${had.id}`;
     const same = !!a && had.paymentId === want.paymentId && a.d.fromExtra === want.fromExtra && (want.amountMinor === null || had.amountMinor === want.amountMinor) && had.reason === want.reason
-      && a.d.method_after === want.method && (a.d.reference_after ?? null) === want.reference && (a.d.refundedOn_after ?? null) === want.refundedOn;
+      && a.d.method_after === want.method && (a.d.reference_after ?? null) === want.reference && (want.refundedOn === null || a.d.refundedOn_after === want.refundedOn);   // no date sent: the stored default is not compared (a retry next day is the same request; break R2-4)
     if (!same) refuse("KEY_USED", "This idempotency key already recorded a different refund. Nothing was refunded.");
     return had.id;
   }
@@ -125,7 +129,7 @@ export class Refunds {
    *  invoice's payments, no more than the invoice is still paid over beyond that credit (the database's
    *  money_credit_kept_holds: kept credit stays backed; reverse the credit first). */
   private async leftToRefund(tx: Tx, firm: string, p: Pay): Promise<{ left: number; heldAsCredit: number }> {
-    const own = p.amountMinor - (await this.refunded(tx, firm, p.id));
+    const own = p.amountMinor - (await this.refunded(tx, firm, p.id)) - (await this.kept(tx, firm, p.id));   // what was kept from this payment stays backed by it (break R2-1)
     const [k] = await tx.$queryRaw<{ n: string }[]>`select money_invoice_credit(${firmScope(firm).firmId}::uuid, ${p.invoiceId}::uuid, 'KEPT')::text as n`;
     const heldAsCredit = Number(k.n);
     if (heldAsCredit <= 0) return { left: Math.max(0, own), heldAsCredit: 0 };
