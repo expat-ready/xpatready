@@ -335,3 +335,80 @@ Each answers a raw `ForeignKeyConstraintViolation` (500) rather than a 409:
 Nit: `lockIds` (`service.ts:68`) is never used.
 
 Verdict: Changes c5b957bb73ddca910a8e14a33b4e09a799ad6e76
+
+## Round 5 (ade4a847c)
+
+Commit `ade4a847c369f4d564e4046620e923ad660a3543`. This is a diff pass (`git diff c5b957bb7 ade4a847c -- …/studio`: `lockAll`, `lockPairFor`, `MergeBusy`, the standing-record check). Method as before: scratch databases `xr_brk_fo9b_*`, all dropped; port 4400 never used; the cluster was never stopped; US$0. The script is `scratchpad/brk/break6.mts`. The repo check (`tests/check_fo9b_merge.ts`, run on an extracted copy with the database renamed) gives 88 passed, 0 failed.
+
+### Round-4 findings, re-run
+- **M1″ fixed. No deadlocks in any re-run.**
+
+| Attack | At c5b957bb7 | At ade4a847c |
+|---|---|---|
+| X1 deterministic, lower id = survivor / loser | person merge 40P01 / both finish | both merges ok / both ok |
+| X1r random ×20 (company merge vs person merge) | 8 deadlocks | 20 of 20 both ok |
+| X2 deterministic (Corporate.engage vs merge) | engage 40P01 | engage ok, merge ok (within its back-off) |
+| X3 deterministic (changeType vs merge) | changeType 40P01 | both ok |
+| X23r ×12: engage / changeType vs merge | 9 / 2 deadlocks | 0 / 0 (all ok) |
+| X23r ×12: engage / changeType vs Undo | 2 deadlocks | 0; Undo is refused when engage added a row first (by design) |
+
+  0 rows on any tombstone after any run.
+- **m6 (X4) fixed in its round-4 form.** A link inserted before the merge holds a KEY SHARE on L, so `find(L)` NOWAIT fails and the merge backs off.
+  - Insert committed after 300 ms: the merge finishes at 1268 ms and moves the new link to S. The company writer then waits, ends the link, and finishes.
+  - Insert held 1500 ms: the merge answers Busy after 844 ms. The link stays on L and the writer finishes.
+  - The same gap remains for rows other than links: see m6′.
+- **m4″ fixed.** A crafted standing record for a live loser X now gets `409 ALREADY_MERGED` ("This record has a merge that is not undone."), both for Y ← X and for Z ← X. Nothing is written: X's lead stays on X and no audit line is added. Merging W into X (X as survivor) still works, which is correct.
+
+### Findings
+**m6′ — Minor. A row naming L that commits between `lockRowsByOrder` and `find(L)` is not locked, and the merge's move then waits on it.** `service.ts:101-104` re-locks companies after the records, but not rows. The comment at `:91` ("none can commit after") holds only from `find` on.
+- Repro G1. A Proxy on `tx` adds 400 ms before `find(L)` (the natural gap is a few round trips: the fo_note, fo_call, fo_arrival_receipt and fo_booking lock statements, then `find`), plus 700 ms before `fo_dup.merging` is set.
+  1. Session H inserts a lead NL for L and does not commit.
+  2. Start `merge(S ← L)`.
+  3. After 150 ms, H commits.
+  4. After 500 ms more, `Prospects.engage(R, NL)` locks NL, then waits on L's KEY SHARE.
+  5. The merge's `update fo_lead set person_id` reaches NL.
+- Observed: engage dies with 40P01. The merge commits and moves NL to S.
+- Control without the delay: H's KEY SHARE makes `find(L)` fail, the merge retries, sees NL, and both finish.
+- Three concurrent actions in a window of milliseconds are needed, so it is Minor (the same class as m6).
+- With NOWAIT the order no longer matters for deadlocks. Taking the two records first, or running `lockRowsByOrder` again after `find`, would close the gap.
+
+**m7 — Minor. Three statements after the lock phase can still wait while the merge holds every lock.**
+- **The outbox insert waits on the global `pg_advisory_xact_lock(hashtext('module_event_seq'))`**, which every firm's event writer holds until it commits (`pf3_platform_tables/migration.sql:435`; called at `service.ts:271` and `:340`).
+  - N1: another firm's open transaction held it for 2 s. The merge waited, sitting on all its locks, and finished at 2059 ms. A note on S's lead queued behind it for 1.5 s.
+  - N1b (shape only): a transaction that writes an event and then a note on S, while a merge is in flight, gives the merge a raw 40P01.
+  - I found no app writer that writes after its event. Arrival and booking, Corporate, Prospects, Retainers and Booking all emit last, and each locks the shared rows first. So this is a latent trap, not a live deadlock.
+- **The consent copy (`copyConsent`, `:254`) updates S's live consents.** N2: a withdrawal on S in flight made the merge wait 1.2 s (`Lock:transactionid`).
+- **`ensureMessagesFirm`'s insert can wait**, but only on a firm's first messages write.
+- The comment at `:65-66` ("a transaction that never waits cannot be part of a deadlock") therefore overstates what the code guarantees.
+
+**m8 — Minor. Savepoints from a failed attempt are never released (`:78`).** `rollback to savepoint` keeps the savepoint, so each Busy attempt leaves one nested `fo_dup_locks` behind. A caller that uses the same name gets the wrong savepoint.
+- N7, Busy case: the caller runs `savepoint fo_dup_locks`, writes a note, gets Busy from the merge, then runs `rollback to savepoint fo_dup_locks`. Its note is still there after the rollback, and it commits.
+- N7, Busy-then-ok case (holder 120 ms): the merge succeeds after a back-off. The caller's rollback-to goes to the merge's stale savepoint: the merge is undone, but the caller's note is kept and committed.
+- Releasing the savepoint after rolling back to it (or a unique name) would fix both.
+
+**m9 — Minor (contract). `MergeBusy` is not part of the port.**
+- `ports/person-merge.ts:74` still says "Refuses with PersonMergeRefused", and `MERGE_REFUSAL` has no Busy code.
+- The case side's ClientMergePort (CS-K2) can only import the class from `service.ts`; otherwise it must rely on `busy.ts`'s regex. `isBusy(new MergeBusy())` is true.
+
+### What held (new)
+- **Busy leaves nothing (N6, N8b).**
+  - Merge Busy after 806 ms. The caller's transaction stays usable: its earlier write and a later write both commit. Nothing moved, and the loser stays live.
+  - Undo Busy after 805–846 ms for each kind of holder (company, prospect, lead, link, a KEY SHARE on S). The state is unchanged (leads, tombstone, `undone_at`), and a retry succeeds.
+  - Row locks from a failed attempt are released: the other session's later merge succeeds.
+  - One more wait: the pair's advisory locks stay held until the caller's transaction ends, so another session's merge of the same pair waited 2088 ms on `pg_advisory_xact_lock` (no NOWAIT) without answering Busy. It holds no row locks while it waits.
+- **Undo under the holders (N8), 300 ms holds on company, prospect, lead and link, in both orders:** holder ok, Undo ok, 0 deadlocks.
+- **Deferred triggers at commit (N3).** S ← L where L's lead flags P, raced against Q ← P, and the same with the Undo of S ← L: ×12 each, all ok, 0 deadlocks. The KEY SHARE on a third person at commit cannot meet a merge, because that merge would lock the same lead.
+- **Mixed stress (N9).** 8 jobs × 8 rounds of person and company merges, Undos and link writers over shared people and companies: 0 deadlocks, 0 Busy, 0 rows on tombstones. 5 of the writers' inserts on a tombstone gave a raw FK error (the known part-2 Minor).
+- **Starvation needs a long lock or traffic far above normal.**
+  - One open transaction holding any lock in the set (an uncommitted note on S, or a plain FOR KEY SHARE on S): Busy every time, after about 840 ms. That is the ruling as written.
+  - Steady traffic, 10 merges each:
+
+| Traffic | Rate | Merges |
+|---|---|---|
+| addNote on S's lead, 2 writers back-to-back | 162/s | 8 Busy, 2 ok |
+| addNote on S's lead | 21/s, 6/s, 2/s | 10 of 10 ok |
+| Link inserts on the loser's company, back-to-back | 393/s | 7 Busy, 3 ok |
+| Link inserts on the loser's company | 5/s | 10 of 10 ok |
+| Corporate.engage with that company | 13/s | 10 of 10 ok |
+
+Verdict: Approve ade4a847c369f4d564e4046620e923ad660a3543
