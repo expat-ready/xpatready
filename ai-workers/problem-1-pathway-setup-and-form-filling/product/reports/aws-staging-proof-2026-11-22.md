@@ -128,3 +128,24 @@ not typed here. Nothing was created. Waits for the founder's own approval in thi
 * **Deploy 2 started ~12:10 IST:** `d-cdk.sh deploy 0 sha256:dabc0523…` (main 5d866c746 image), log `~/d-deploy-0.log`, rc in
   `~/d-deploy-0b.rc`. New zone **Z10188462TUE6DHK5P3ZY**, name servers `ns-796.awsdns-35.net`, `ns-1711.awsdns-21.co.uk`,
   `ns-28.awsdns-03.com`, `ns-1442.awsdns-52.org`: **sent to Lead 2 12:1x** to replace the 4 Cloudflare records.
+
+## Step 3: domain stack complete; migration blocked by a code fault (12:21-12:26 IST)
+
+* NS records replaced in Cloudflare at 12:2x IST (Lead 2, founder's typed yes in its session). **Stack `xr-staging` UPDATE_COMPLETE
+  12:21:45 IST** (`cdk deploy` total 650 s, rc 0) with `xr:domain=lab.expatready.com`, image `sha256:dabc0523…` (main 5d866c746),
+  0 tasks. Output `NameServers` = `ns-796.awsdns-35.net,ns-1711.awsdns-21.co.uk,ns-28.awsdns-03.com,ns-1442.awsdns-52.org`.
+* `d-migrate.sh resolve` (task def `xrstagingAppMigrateFE01F052:3`, image `@sha256:dabc0523…`, task 835369d9…): exit **0**,
+  "Migration 20261116013000_pf12_firm_walls marked as rolled back."
+* `d-migrate.sh deploy` (task a082ba78…, 12:25 IST): exit **1**. "141 migrations found … Applying migration
+  `20261116013000_pf12_firm_walls` … Error: P3018 … Database error code: 0LP01 … ERROR: role "xr_wall_reader" is a member of role
+  "xr_admin"".
+* **Root cause (code, PF-8b F4's migration on RDS PostgreSQL 18.3):** the loop at migration.sql line 89-107 runs
+  `GRANT xr_admin TO xr_wall_reader` (`format('GRANT %I TO xr_wall_reader …', current_user)`); F4 expects RDS to refuse it
+  (insufficient_privilege → fallback grants), but on this instance it **succeeds**. Line 112-113 then runs
+  `GRANT xr_wall_reader TO xr_admin` because the admin is not yet a member of the reader: that would make a membership loop,
+  which PostgreSQL refuses (0LP01). Prisma does not wrap this migration in one transaction, so statements before the error
+  may have stayed applied; the migration is written to be re-run (roles and grants only when missing).
+* **Effect:** no migration after pf12 runs, so the service cannot start on main's head: R1.5 (sign-in through the app) and the
+  parts of R1.13 that need the running service wait on a code fix (proposed row **PF-8b F5**: make line 112-113 skip, or the
+  line-91 grant not run, when the other grant already holds; prove on PostgreSQL 18 with a non-superuser CREATEROLE admin as on
+  RDS). Before the rerun: `migrate resolve --rolled-back 20261116013000_pf12_firm_walls` again.
