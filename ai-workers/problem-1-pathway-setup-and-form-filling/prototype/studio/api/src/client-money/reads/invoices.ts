@@ -10,39 +10,21 @@ import { z } from "zod";
 import { systemClock, type ClockPort } from "../../../../ports/clock.ts";
 import type { InvoiceView } from "../../../../ports/client-money.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
-import { problem, type StaffContext } from "../../platform/identity/keys.ts";
+import type { StaffContext } from "../../platform/identity/keys.ts";
 import { dayOf, invoiceFacts } from "../invoices/facts.ts";
 import { UUID, notFound } from "../invoices/drafts.ts";
 import { allowedActions, type Action } from "./actions.ts";
 import { DUE_SQL, FACTS_LATERAL, PAID_SQL, STATUS_CODES, type StatusCode, statusSql } from "./status-sql.ts";
 import { failClosed, scopeSql, type ScopeOf } from "./visibility.ts";
 import { paymentRows, type PaymentRow } from "./payments.ts";
+import { Day, Stamp, bad, cursorOf, cursorText, pageSizeOf, trustShows } from "./common.ts";
+export { trustShows };
 
-type Tx = Prisma.TransactionClient;
-export const PAGE_DEFAULT = 50, PAGE_MAX = 200;
-const bad = (detail: string): never => problem(400, "Check the request", detail, { code: "BAD_QUERY" });
-const day = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The page size: none → 50; a whole number 1-200; anything else 400 in words. */
-export function pageSizeOf(raw: unknown): number {
-  if (raw === undefined) return PAGE_DEFAULT;
-  if (typeof raw !== "string" || !/^\d{1,6}$/.test(raw)) return bad(`pageSize must be a whole number from 1 to ${PAGE_MAX}.`);
-  const n = Number(raw);
-  if (n < 1 || n > PAGE_MAX) return bad(`pageSize is at most ${PAGE_MAX} (and at least 1).`);
-  return n;
-}
-/** A cursor is the last row's sort key, base64url JSON; anything else is 400 (a cursor never widens the firm). */
-export const cursorOf = <T>(raw: unknown, shape: z.ZodType<T>): T | null => {
-  if (raw === undefined) return null;
-  try { return shape.parse(JSON.parse(Buffer.from(String(raw), "base64url").toString("utf8"))); } catch { return bad("after is not a cursor this list gave."); }
-};
-export const cursorText = (v: unknown) => Buffer.from(JSON.stringify(v), "utf8").toString("base64url");
-const Stamp = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$/);
 const InvoiceCursor = z.strictObject({ d: z.union([z.literal(0), z.literal(1)]), t: Stamp, id: z.string().regex(UUID) });
 
 const Query = z.strictObject({
   status: z.string().optional(), partyKind: z.enum(["PERSON", "COMPANY"]).optional(), partyId: z.string().regex(UUID).optional(), caseId: z.string().regex(UUID).optional(),
-  issuedFrom: z.string().regex(day).optional(), issuedTo: z.string().regex(day).optional(), overdue: z.enum(["true", "false"]).optional(), pageSize: z.string().optional(), after: z.string().optional(),
+  issuedFrom: Day.optional(), issuedTo: Day.optional(), overdue: z.literal("true").optional(), pageSize: z.string().optional(), after: z.string().optional(),
 });
 
 export type InvoiceRow = { id: string; number: string | null; statusWord: string; personId: string | null; companyId: string | null; caseId: string | null; currency: "CAD" | "USD";
@@ -51,19 +33,6 @@ export type InvoicePage = { items: InvoiceRow[]; pageSize: number; next: string 
 export type InvoiceDetail = { invoice: InvoiceView; caseId: string | null; issuedOn: string | null; creditableMinor: number; allowedActions: Action[];
   payments: PaymentRow[]; creditNotes: { id: string; number: string | null; full: boolean; amountMinor: number; currency: string; reason: string; createdAt: string }[];
   writeOff: { amountMinor: number; currency: string; reason: string; createdAt: string } | null; trustPaidMinor?: number };
-
-/** Trust shows (AG-6-59 rules 5-6; concept-invoices.md (a)): the answer is YES, or NO while any party's trust balance is
- *  not zero or the To move list is not empty. Unanswered: never. */
-export async function trustShows(tx: Tx, firmId: string): Promise<boolean> {
-  const s = await tx.moneyPaymentSettings.findFirst({ where: firmScope(firmId), select: { trustAnswer: true } });
-  if (s?.trustAnswer === "YES") return true;
-  if (s?.trustAnswer !== "NO") return false;
-  const f = firmScope(firmId).firmId;
-  const [r] = await tx.$queryRaw<{ held: boolean }[]>`select exists (select 1 from (select distinct on (coalesce(person_id, company_id), currency) balance_after_minor b
-      from money_trust_entry where firm_id = ${f}::uuid order by coalesce(person_id, company_id), currency, seq desc) x where x.b <> 0)
-    or exists (select 1 from money_to_move where firm_id = ${f}::uuid) as held`;
-  return r?.held === true;
-}
 
 export class InvoiceReads {
   constructor(private readonly db: PrismaClient, private readonly scopeOf: ScopeOf = failClosed, private readonly clock: ClockPort = systemClock) {}
@@ -105,20 +74,22 @@ export class InvoiceReads {
     if (want) conds.push(Prisma.sql`(${Prisma.join(want.map((w) => w === "Draft" ? Prisma.sql`i.issued_at is null` : w === "Overdue" ? Prisma.sql`(i.issued_at is not null and i.due_date < ${today}::date)` : Prisma.sql`i.issued_at is not null`), " or ")})`);
     const status = statusSql(today);
     // Newest issued first (issued_at desc, id: the firm-first index's own order, FO-7ts part 3), then drafts newest
-    // first (created_at desc, id). The cursor (d, t, id): d = 0 issued, 1 draft; t the issued (or created) time.
-    // With no status filter each half is cut to the page before any facts are read.
-    const where = Prisma.join(conds, " and "), cut = want ? Prisma.empty : Prisma.sql`limit ${pageSize + 1}`, at = after ? Prisma.sql`(${after.t}::timestamp at time zone 'UTC')` : null;
+    // first (created_at desc, id). The cursor (d, t, id): d = 0 issued, 1 draft; t the issued (or created) time. Each
+    // half filters on the status word inside its own ordered, limited read, so it stops after a page of matches and
+    // reads the facts only of the rows it passes over (review M1, break B1).
+    const where = Prisma.join(conds, " and "), at = after ? Prisma.sql`(${after.t}::timestamp at time zone 'UTC')` : null;
     const issuedAfter = !after ? Prisma.sql`true` : after.d === 1 ? Prisma.sql`false` : Prisma.sql`(i.issued_at < ${at} or (i.issued_at = ${at} and i.id > ${after.id}::uuid))`;
     const draftAfter = !after || after.d === 0 ? Prisma.sql`true` : Prisma.sql`(i.created_at < ${at} or (i.created_at = ${at} and i.id > ${after.id}::uuid))`;
-    const rowsOf = Prisma.sql`(select * from (select i.* from money_invoice i where ${where} and i.issued_at is not null and ${issuedAfter} order by i.issued_at desc, i.id ${cut}) a
-        union all select * from (select i.* from money_invoice i where ${where} and i.issued_at is null and ${draftAfter} order by i.created_at desc, i.id ${cut}) b)`;
-    return { pageSize, sql: Prisma.sql`
-      select * from (select i.id::text as id, i.number, i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId", i.currency::text as currency,
+    const words = want ? Prisma.sql`${status} in (${Prisma.join(want)})` : Prisma.sql`true`;
+    const half = (which: Prisma.Sql, order: Prisma.Sql) => Prisma.sql`(select i.id::text as id, i.number, i.person_id::text as "personId", i.company_id::text as "companyId", i.case_id::text as "caseId", i.currency::text as currency,
           to_char(i.issued_at at time zone 'UTC', 'YYYY-MM-DD') as "issuedOn", to_char(i.due_date, 'YYYY-MM-DD') as "dueDate",
           f.total, ${PAID_SQL} as paid, ${DUE_SQL} as due, ${status} as "statusWord",
           (i.issued_at is null)::int as d, to_char(coalesce(i.issued_at, i.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t
-        from ${rowsOf} i cross join ${FACTS_LATERAL}) x
-      ${want ? Prisma.sql`where x."statusWord" in (${Prisma.join(want)})` : Prisma.empty}
+        from money_invoice i cross join ${FACTS_LATERAL}
+        where ${where} and ${which} and ${words} order by ${order} limit ${pageSize + 1})`;
+    return { pageSize, sql: Prisma.sql`
+      select * from (${half(Prisma.sql`i.issued_at is not null and ${issuedAfter}`, Prisma.sql`i.issued_at desc, i.id`)}
+        union all ${half(Prisma.sql`i.issued_at is null and ${draftAfter}`, Prisma.sql`i.created_at desc, i.id`)}) x
       order by x.d, x.t desc, x.id limit ${pageSize + 1}` };
   }
 
@@ -133,11 +104,12 @@ export class InvoiceReads {
       const showTrust = await trustShows(tx, ctx.firmId);
       const credits = await tx.moneyCreditNote.findMany({ where: firmScope(ctx.firmId, { invoiceId: id }), orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, number: true, full: true, amountMinor: true, currency: true, reason: true, createdAt: true } });
       const w = await tx.moneyWriteOff.findFirst({ where: firmScope(ctx.firmId, { invoiceId: id }), select: { amountMinor: true, currency: true, reason: true, createdAt: true } });
-      const creditableMinor = f.view.status === "ISSUED" ? Math.max(0, f.openMinor) : 0;
+      // what FO-7b's credit route would take: not credited or written off, less what was paid from trust (TRUST_PAID)
+      const creditableMinor = f.view.status === "ISSUED" && f.view.statusWord !== "Written off" ? Math.max(0, f.openMinor - f.trustPaidMinor) : 0;
       return {
         invoice: f.view, caseId: f.caseId, issuedOn: f.issuedOn, creditableMinor,
         allowedActions: allowedActions({ status: f.view.statusWord, keys: ctx.keys, startedByCaller: seen.by === `staff:${ctx.staffId}`, creditableMinor }),
-        payments: await paymentRows(tx, ctx.firmId, { invoiceId: id }, showTrust),
+        payments: (await paymentRows(tx, ctx.firmId, { invoiceId: id }, showTrust)).map(({ t: _t, ...p }) => p),
         creditNotes: credits.map((c) => ({ ...c, currency: c.currency as string, createdAt: c.createdAt.toISOString() })),
         writeOff: w ? { ...w, currency: w.currency as string, createdAt: w.createdAt.toISOString() } : null,
         ...(showTrust ? { trustPaidMinor: f.trustPaidMinor } : {}),

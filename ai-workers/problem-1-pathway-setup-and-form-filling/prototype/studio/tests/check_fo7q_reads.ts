@@ -15,6 +15,7 @@ import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fakeMail } from "../ports/mail.ts";
+import { FakeClock } from "../ports/clock.ts";
 import { allowedActions, type ActionFacts } from "../api/src/client-money/reads/actions.ts";
 
 const STUDIO = join(import.meta.dirname, ".."), MIG = join(STUDIO, "prisma", "migrations");
@@ -29,16 +30,19 @@ const ok = (name: string, c: unknown, detail?: unknown) => { c ? pass++ : fail++
 const facts = (status: ActionFacts["status"], keys: string[], extra: Partial<ActionFacts> = {}): ActionFacts => ({ status, keys, startedByCaller: false, creditableMinor: 1000, ...extra });
 const ALL = ["agent/invoice:create", "agent/invoice:edit", "agent/invoice:issue", "agent/invoice:void", "agent/invoice:show", "agent/payment:record"];
 const eq = (a: string[], b: string[]) => JSON.stringify(a) === JSON.stringify(b);
-ok("FO-7q DW4 pass: Draft with :edit and :issue → EDIT, ISSUE; Open with :payment:record → RECORD_PAYMENT", eq(allowedActions(facts("Draft", ["agent/invoice:edit", "agent/invoice:issue"])), ["EDIT", "ISSUE"])
+ok("FO-7q DW4 pass: Draft with :create, :edit and :issue → EDIT, ISSUE; Open with :payment:record → RECORD_PAYMENT", eq(allowedActions(facts("Draft", ["agent/invoice:create", "agent/invoice:edit", "agent/invoice:issue"])), ["EDIT", "ISSUE"])
   && eq(allowedActions(facts("Open", ["agent/payment:record"])), ["RECORD_PAYMENT"]));
 ok("FO-7q DW4 pass: a draft's creator with only :create may EDIT it; someone else with only :create may not", eq(allowedActions(facts("Draft", ["agent/invoice:create"], { startedByCaller: true })), ["EDIT"])
   && eq(allowedActions(facts("Draft", ["agent/invoice:create"])), []));
+ok("FO-7q DW4 fail (break B7): :edit without :create gives no EDIT (FO-7b's line route needs :create)", eq(allowedActions(facts("Draft", ["agent/invoice:edit"])), []) && eq(allowedActions(facts("Draft", ["agent/invoice:edit"], { startedByCaller: true })), []));
 ok("FO-7q DW4 fail: without agent/payment:record no status ever gives RECORD_PAYMENT; Paid gives no RECORD_PAYMENT and no credit note once nothing is creditable",
   (["Draft", "Open", "Part paid", "Paid", "Overdue", "Credited", "Refunded", "Written off"] as const).every((s) => !allowedActions(facts(s, ALL.filter((k) => k !== "agent/payment:record"))).includes("RECORD_PAYMENT"))
   && !allowedActions(facts("Paid", ALL)).includes("RECORD_PAYMENT") && !allowedActions(facts("Paid", ALL, { creditableMinor: 0 })).includes("CREDIT_NOTE"));
-ok("FO-7q DW4 fail: Written off, Credited and Refunded offer no credit note and nothing but the PDF; no action names a pay link (no deposit invoice can get one)",
-  (["Written off", "Credited", "Refunded"] as const).every((s) => eq(allowedActions(facts(s, ALL)), ["DOWNLOAD_PDF"]))
+ok("FO-7q DW4 fail: Written off (even with an amount left), and Credited or Refunded with nothing creditable, offer only the PDF; no action names a pay link (no deposit invoice can get one)",
+  eq(allowedActions(facts("Written off", ALL)), ["DOWNLOAD_PDF"]) && (["Credited", "Refunded"] as const).every((s) => eq(allowedActions(facts(s, ALL, { creditableMinor: 0 })), ["DOWNLOAD_PDF"]))
   && (["Draft", "Open", "Part paid", "Paid", "Overdue"] as const).every((s) => !allowedActions(facts(s, ALL)).some((a) => /PAY_LINK/.test(a))));
+
+ok("FO-7q DW4 pass (review m2, break B5): a Refunded invoice with an amount creditable offers CREDIT_NOTE, as FO-7b's credit route takes it", eq(allowedActions(facts("Refunded", ALL)), ["CREDIT_NOTE", "DOWNLOAD_PDF"]));
 
 /** DW6's scan: any field whose name says total, sum or all, outside one invoice's own figures, is a sum across currencies. */
 const sumsAcross = (page: Record<string, unknown>) => Object.keys(page).some((k) => /total|sum|all/i.test(k));
@@ -62,7 +66,7 @@ const { MAIL_PORT } = await import("../api/src/platform/identity/session/mail.ts
 const invoicesFeature = (await import("../api/src/features/client-money-invoices.ts")).default;
 const readsFeature = (await import("../api/src/features/client-money-reads.ts")).default;
 const { InvoiceReads } = await import("../api/src/client-money/reads/invoices.ts");
-const { PaymentReads } = await import("../api/src/client-money/reads/payments.ts");
+const { PaymentReads, paymentRows } = await import("../api/src/client-money/reads/payments.ts");
 const { InvoiceReadsController } = await import("../api/src/client-money/reads/routes.ts");
 const { invoiceFacts, dayOf } = await import("../api/src/client-money/invoices/facts.ts");
 const { withFirm } = await import("../api/src/platform/firm-scope.ts");
@@ -135,10 +139,15 @@ try {
   ok("FO-7q pass: the party filter gives that party's invoices only; issued from/to never holds a draft", pPA2.items.length === 1 && pPA2.items[0].id === usd && issuedToday.items.length === 0);
 
   // ---------------------------------------------------------------------------------------- bad queries (AG-6-37 r3)
-  const bad = await Promise.all([{ status: "FOO" }, { pageSize: "500" }, { pageSize: "0" }, { pageSize: "abc" }, { colour: "red" }, { after: "not-a-cursor" }, { partyKind: "PERSON" }, { issuedFrom: "2026-02-01", issuedTo: "2026-01-01" }]
-    .map((q) => call(tA, "GET", `${M}?${new URLSearchParams(q as Record<string, string>)}`)));
+  const bad = await Promise.all([{ status: "FOO" }, { pageSize: "500" }, { pageSize: "0" }, { pageSize: "abc" }, { colour: "red" }, { after: "not-a-cursor" }, { partyKind: "PERSON" }, { issuedFrom: "2026-02-01", issuedTo: "2026-01-01" },
+    { issuedFrom: "2026-02-30" }, { issuedFrom: "2026-13-45" }, { issuedTo: "0000-01-01" }, { overdue: "false" }, ...["2026-99-99T00:00:00.000000", "2026-02-30T00:00:00.000000", "0000-01-01T00:00:00.000000", "2026-01-01T25:00:00.000000"]
+      .map((t) => ({ after: Buffer.from(JSON.stringify({ d: 0, t, id: "00000000-0000-4000-8000-000000000000" })).toString("base64url") }))]
+    .map((q) => call(tA, "GET", `${M}?${new URLSearchParams(q as unknown as Record<string, string>)}`)));
   ok("FO-7q DW2 fail: page size 500 → 400 \"pageSize is at most 200\"; a bad status, size, field, cursor or date range → 400 in words, before any read",
     bad.every((r) => r.status === 400 && r.body?.code === "BAD_QUERY" && typeof r.body.detail === "string") && /at most 200/.test(bad[1].body.detail), bad.map((r) => [r.status, r.body?.detail]));
+  const badPay = await Promise.all([{ from: "2026-02-30" }, { to: "2026-13-01" }, { after: Buffer.from(JSON.stringify({ t: "2026-02-30T00:00:00.000000", id: "00000000-0000-4000-8000-000000000000" })).toString("base64url") }]
+    .map((q) => call(tA, "GET", `/front-office/money/payments?${new URLSearchParams(q as unknown as Record<string, string>)}`)));
+  ok("FO-7q fail (review M2, break B2): a date or cursor time that does not exist → 400 in words on both lists, never a database 500", badPay.every((r) => r.status === 400 && r.body?.code === "BAD_QUERY"), badPay.map((r) => [r.status, r.body?.detail]));
 
   // --------------------------------------------------------------------------------------- DW5: trust off, then on
   const scanTrust = (v: unknown) => /"(receivedInto|trustRequestId|trustPaidMinor|trust[A-Za-z]*)"\s*:/.test(JSON.stringify(v));
@@ -149,13 +158,27 @@ try {
   ok("FO-7q DW5 fail: trust Yes → the detail answers trustPaidMinor and a payment its receivedInto (so the scan finds what is there)", scanTrust(on) && onPay.receivedInto === "OPERATING" && on.trustPaidMinor === 0, { on, onPay });
   sql(`update money_payment_settings set trust_answer = 'NO' where firm_id = '${A}'`);
   ok("FO-7q DW5 pass: trust No with nothing held → no trust field again", !scanTrust(await inA(() => all.detail(ctxR, S.Paid))));
+  // A payment received into trust on an invoice (trust Yes): applied to it, so the invoice is paid from trust (review m4).
+  sql(`update money_payment_settings set trust_answer = 'YES' where firm_id = '${A}'`);
+  const tInv = await make(1000); await issue(tInv);
+  const tPay = (await call(tA, "POST", `${M}/${tInv}/payments`, { method: "BANK_TRANSFER", amountMinor: 600, receivedInto: "TRUST", idempotencyKey: "fo7q-trust-1" })).body;
+  const tRow = (await listA({ partyKind: "PERSON", partyId: PA, status: "PART_PAID" })).items.find((r) => r.id === tInv);
+  const tView = (await inA(() => db.$transaction((tx) => invoiceFacts(tx, A, tInv, today))))!;
+  ok("FO-7q DW3 pass (review m4): an invoice part paid from trust: the SQL word and paid figure equal FO-7b's (the trust facts column is read)", tPay?.receivedInto === "TRUST" && tView.trustPaidMinor === 600
+    && tRow?.statusWord === tView.view.statusWord && tRow?.paidMinor === tView.view.paidMinor, { tPay, tRow, w: tView.view.statusWord });
+  const tDet = await inA(() => all.detail(ctxR, tInv));
+  ok("FO-7q DW4 pass (review m3, break B4): creditableMinor leaves out what was paid from trust (FO-7b refuses it as TRUST_PAID): 1,000 open less 600 from trust = 400", tDet.creditableMinor === 400 && tDet.allowedActions.includes("CREDIT_NOTE"), tDet.creditableMinor);
+  const rowsWith = (show: boolean) => inA(() => db.$transaction((tx) => paymentRows(tx, A, { invoiceId: tInv }, show)));
+  const shown = await rowsWith(true), hidden = await rowsWith(false);
+  ok("FO-7q DW5 fail (break B3): money received into trust is a payment row only while trust shows; with trust off the row is not answered at all (not just its field)",
+    shown.length === 1 && shown[0].receivedInto === "TRUST" && hidden.length === 0, { shown: shown.length, hidden: hidden.length });
 
   // ------------------------------------------------------------------------------------------- DW4 on the detail
   const dR = await inA(() => all.detail(ctxR, S.Open)), dO = await inA(() => all.detail(ctxO, S.Open)), dPaid = await inA(() => all.detail(ctxR, S.Paid));
   ok("FO-7q DW4 pass: an Open invoice for an Owner and Case Manager → RECORD_PAYMENT, SEND, CREDIT_NOTE, DOWNLOAD_PDF (keys read from the role grants)", eq(dR.allowedActions, ["RECORD_PAYMENT", "SEND", "CREDIT_NOTE", "DOWNLOAD_PDF"]), dR.allowedActions);
   ok("FO-7q DW4 fail: a Case Officer (no agent/payment:record) never gets RECORD_PAYMENT; a Paid invoice offers no RECORD_PAYMENT", !dO.allowedActions.includes("RECORD_PAYMENT") && !dPaid.allowedActions.includes("RECORD_PAYMENT"), { o: dO.allowedActions, p: dPaid.allowedActions });
   ok("FO-7q pass: the detail holds the invoice's payments and credit notes (Paid: one CASH payment with its receipt; Credited: one full credit note)",
-    dPaid.payments.length === 1 && dPaid.payments[0].receiptNumber?.startsWith("R-") && (await inA(() => all.detail(ctxR, S.Credited))).creditNotes[0]?.full === true, dPaid.payments);
+    dPaid.payments.length === 1 && dPaid.payments[0].receiptNumber?.startsWith("R-") && !("t" in dPaid.payments[0]) && (await inA(() => all.detail(ctxR, S.Credited))).creditNotes[0]?.full === true, dPaid.payments);
 
   // ---------------------------------------------------------------------------------------------- DW6: currencies
   const mixed = await listA({});
@@ -189,14 +212,18 @@ try {
 
   // ------------------------------------------------------------------------- DW1 + DW2: 10,000 invoices per firm
   for (const [f, p] of [[A, PA], [B, PB]]) {
-    sql(`insert into money_invoice (firm_id, person_id, currency, due_date, created_by, updated_at) select '${f}', '${p}', 'CAD', '2026-12-31', 'seed:FO-7q-bulk', now() from generate_series(1, 10000)`);
+    // due dates spread over 120 days from 1 Jan 2027: on the fixed day 1 Mar 2027 about half are overdue and half open, so
+    // every status filter does real work (review M1, break B1: a seed all due later skipped it)
+    sql(`insert into money_invoice (firm_id, person_id, currency, due_date, created_by, updated_at) select '${f}', '${p}', 'CAD', date '2027-01-01' + (g % 120), 'seed:FO-7q-bulk', now() from generate_series(1, 10000) g`);
     sql(`insert into money_invoice_line (firm_id, invoice_id, position, kind, description, quantity, unit_amount_minor, amount_minor, tax_rate_ppm, tax_minor, currency)
       select firm_id, id, 1, 'FEE', 'Fee (Sample)', 1, 1000, 1000, 0, 0, 'CAD' from money_invoice where created_by = 'seed:FO-7q-bulk' and firm_id = '${f}'`);
     sql(`update money_invoice set issued_at = now(), issued_by = 'seed:FO-7q' where created_by = 'seed:FO-7q-bulk' and firm_id = '${f}'`);
   }
   sql("analyze");
   const t0 = performance.now(); const p1 = await listA({}); const ms = Math.round(performance.now() - t0);
-  const t1 = performance.now(); await listA({ status: "OVERDUE" }); const msOd = Math.round(performance.now() - t1);
+  const perf = new InvoiceReads(db, async () => "ALL" as const, new FakeClock("2027-03-01T12:00:00Z")), timed = async (q: Record<string, string>) => { const t = performance.now(); const r = await inA(() => perf.list(ctxR, q)); return { ms: Math.round(performance.now() - t), n: r.items.length }; };
+  const odT = await timed({ status: "OVERDUE" }), open = await timed({ status: "OPEN" }), rare = await timed({ status: "REFUNDED" }), msOd = odT.ms;
+  console.log(`INFO  FO-7q DW1 (fixed day 1 Mar 2027): status=OVERDUE ${odT.ms} ms (${odT.n} rows), OPEN ${open.ms} ms (${open.n}), REFUNDED ${rare.ms} ms (${rare.n}: a word with almost no matches reads every candidate)`);
   console.log(`INFO  FO-7q DW1: page 1 of 10,000+ invoices in ${ms} ms; status=OVERDUE in ${msOd} ms (AG-6-30's 300 ms: page 1 reported, OVERDUE asserted below)`);
   const planOf = async (q: Record<string, string>) => { const b = await inA(() => all.listSql(ctxR, q)); return (await owner.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`explain ${b.sql!}`)).map((r) => r["QUERY PLAN"]).join("\n"); };
   const plan = await planOf({});
@@ -205,7 +232,8 @@ try {
   ok("FO-7q DW1 pass: page 1 reads money_invoice through a firm_id-first index, with no sequential scan of it", firmFirst(plan), plan);
   // status=OVERDUE: no index covers due_date yet (a later FO-7ts index step), so its proof is the time against AG-6-30's
   // 300 ms (Lead 4 on #3001, comment 7077540661, answer 1); the plan shape is not asserted.
-  ok(`FO-7q DW1 pass: status=OVERDUE over 10,000+ invoices answers within 300 ms (${msOd} ms)`, msOd < 300, msOd);
+  // With #2368's index each half stops after a page of matches; until then this case fails with page 1's plan (the Ready-when).
+  ok(`FO-7q DW1 pass: status=OVERDUE over 10,000+ invoices, half of them overdue, answers a full page within 300 ms (${msOd} ms)`, msOd < 300 && odT.n === 50, odT);
   ok("FO-7q DW1 fail: a time past 300 ms fails the same comparison", !(301 < 300));
   ok("FO-7q DW1 fail: a plan with a sequential scan of money_invoice is caught by the same check", !firmFirst("Seq Scan on money_invoice i  (cost=0.00..1.00 rows=1 width=8)"));
   ok("FO-7q DW2 pass: no page size → 50, and 200 → 200", p1.items.length === 50 && p1.pageSize === 50 && (await listA({ pageSize: "200" })).items.length === 200);
