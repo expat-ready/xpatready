@@ -145,3 +145,93 @@ C. **A read date in the future still loads** (`canada-gst-hst.ts:94`; breaker m3
 * B. `defaults.ts:59` and `:67`: `dflt.ratePpm` is read twice, so a getter gets 1300 past.
 * C. `canada-gst-hst.ts:94`: a future `readOn` is accepted.
 * Round-1 minors 3-4 (PR body) stay open until the PR exists.
+
+## Round 3 (diff d87e1f41..03796f94)
+Same reviewer, 22 Nov 2026. This round re-reviews the diff only, under the Lead's standing permission (A277: round 2 fixed only Minors). I also act as the breaker for it (money). During the review the builder pushed one more commit, `9baa5e30`, and asked for it to be included. **Commit reviewed: `9baa5e3012febf1e6ae2d4c08c127c1f2980a991`.**
+
+Scope is `git diff d87e1f41..9baa5e30 -- …/prototype/studio`, which touches 4 files:
+* `03796f94`: `canada-gst-hst.ts` (+3), `defaults.ts` (+3/-2) and `check_fo7g_tax_defaults.ts` (+10/-2).
+* `9baa5e30`: `routes.ts` (+7/-6), which only renames locals.
+
+No schema, migration, `invoices/`, `taxDefault` or table value changed.
+
+### What I ran
+All runs used a scratch copy under `scratchpad/rr3/`. Its four changed files are byte-identical to `git show 9baa5e30:` (checked with `cmp`). I also ran the check once on the checkout at `03796f94`.
+* **`check_fo7g_tax_defaults.ts`: 59 passed, 0 failed, exit 0** on both `03796f94` and `9baa5e30` (about 8 s). That is round 2's 56 plus 3 new cases.
+* **Boot.** Importing `api/src/features.ts` and `features/client-money-tax.ts` under tsx works at `9baa5e30`, and the check's own Nest app boots with the feature (the "setup" case).
+  * The load call now also checks the read date. It passes on today's real table: host clock 2026-11-22 06:57 UTC, every `readOn` is `2026-11-22`, and the check finds 0 problems.
+  * As of 2026-11-21 and as of 2025-04-01 the real table is refused (13 problems, one per entry). That is correct, because the read had not happened yet on those days.
+  * No clock override exists anywhere in the studio (searched for faketime, `useFakeTimers` and `Date.now =`), so nothing can boot the app with a clock in the past.
+* **`lineRatePpm` still accepts every answer `taxDefault` gives.** I tried 136 combinations: the 13 codes, no province and a spelled-out province, registered or not, times FEE, DISBURSEMENT and GOVERNMENT_FEE, times taxable unset, true and false. I left out a government fee set taxable, because that is refused on purpose. **0 were wrong.**
+* **CS-W3 census at `9baa5e30`.** I exported the commit into a throwaway git repo in scratch and ran the real script there: `bash studio/tests/fixtures/csw3/csw3-spike.sh census`, exit 0, `files: 47`, **no `client-money` file**. The 47 equal `check_csw3_firm_scope.ts`'s `ALLOW` exactly (no extra). The same census run on `03796f94`'s tree lists 48 files, and the 48th is `api/src/client-money/tax/routes.ts`, so this commit is what fixes the census. I did not run `check_csw3_firm_scope.ts` itself, because it builds a whole walled app copy. Its census case is the comparison above.
+* **Types.** `tsc --noEmit` on the scratch api project reports 0 errors in `client-money/**` or the check. The other errors it reports are missing modules, because the scratch copy does not hold the whole studio. I did not run the full `typecheck.mjs` at `9baa5e30`.
+* **Mutation pass:** 15 plants, one at a time. After each, the file was restored and its hash compared.
+
+| Plant | Result |
+|---|---|
+| A1: remove `assertCited(PROVINCE_TAX_RATES);` (`canada-gst-hst.ts:124`) | caught (`:65`) |
+| A2: call it with a fixed `today` of 2099 | caught (`:65`) |
+| A3: replace the call with dead code | caught (`:65`) |
+| C1: remove the read-date bound (`canada-gst-hst.ts:97`) | caught (`:67`) |
+| C2: drop the `> today` half | caught (`:67`, 2099) |
+| C3: drop the `< PAGE_MODIFIED` half | caught (`:67`, 1900 and 2025-03-31) |
+| C4: `<= PAGE_MODIFIED` (off by one) | **survived** (Nit 1) |
+| C5: `>= today` (off by one) | caught: the app's own load refuses the real table and the check cannot start |
+| C6: `PAGE_MODIFIED` set to 2026-11-23 | caught: the same refusal at load |
+| B1: put back the read-twice code (`defaults.ts:59-60`) | caught (`:144`) |
+| B2: check `rate` but return `dflt.ratePpm` (`defaults.ts:68`) | caught (`:144`, which gets 1300 after 2 reads) |
+| B3: `(dflt as any)?.ratePpm` instead of the object guard | survived. This plant changes nothing that matters: a primitive or null default still reads `undefined` and is refused |
+| R1: the route answers `partyId: rawId` instead of `found.id` (`routes.ts:33`) | **survived** (Nit 2; the same gap existed before this diff) |
+| R2: the route swaps PERSON and COMPANY (`routes.ts:26`) | caught (12 route cases) |
+| R3: the route looks up `rawId` instead of the lower-cased id | survived. This plant changes nothing that matters: PostgreSQL's `uuid` ignores case |
+
+### Each fix
+* **Minor A (`canada-gst-hst.ts:124`; test `tests/check_fo7g_tax_defaults.ts:65-66`): fixed.** The test reads the module's source and requires `\nassertCited(PROVINCE_TAX_RATES);` as the file's last statement. Removing the call fails it (A1). So does adding a fixed date (A2) or putting dead code in its place (A3).
+  * Hiding the call inside a comment, a string or a block needs closing text after it, which the anchored `$` refuses. An unclosed comment or template literal does not compile.
+  * The test reads text, so moving the call elsewhere would fail it even when the call is still correct. That fails closed, so it is acceptable.
+* **Minor B (`defaults.ts:59`, `:68`): fixed.** `ratePpm` is read exactly once and then checked and returned as a primitive.
+  * The round-2 getter (0, then 1300) now gives **0 after 1 read**. A Proxy whose `get` answers 0 then 1300 also gives 0 after 1 read.
+  * A function, an array, a bigint and `null` are refused as before. A `ratePpm` inherited from a prototype with a table rate passes. That is harmless, because it is a real table rate, and it passed before the fix too.
+  * The fail test (`:142-144`) fails without the fix (B1, B2).
+* **Minor C (`canada-gst-hst.ts:16`, `:97`): fixed.** `readOn` must now fall between the page's "Date modified" (`PAGE_MODIFIED`, 2025-04-01) and today, both days included.
+  * 2099-01-01, 1900-01-01 and 2025-03-31 are refused. `isDay` runs first, so the string comparison only ever sees a real YYYY-MM-DD.
+  * The fail test (`:67-68`) fails without either half (C1-C3).
+  * The break-m3 case (`:99-100`) changed honestly. "As of 2025-04-01" now asserts only that no start-date problem appears, because a read on 22 Nov 2026 is correctly refused as of 2025-04-01. It also gained `tableProblems(T).length === 0`, which asserts that the real table loads as of today.
+* **`9baa5e30` (`routes.ts:22-33`): no behaviour change.** The diff renames `q.partyKind` to `kind`, `q.partyId` to `rawId`, `partyId` to `id` and `party` to `found`.
+  * The `where` filters (`firmScope(ctx.firmId, { id })`), the 404 text and the answer's keys (`partyKind`, `partyId: found.id`) are the same as before.
+  * All 23 cases that run with the app (setup, DW2, DW3, DW4, DW5, DW6, DW7, DW12 stored, keys, inputs and read only) pass, and they catch a real swap (R2).
+
+### Breaker pass on this diff (money)
+* **Boot and the clock.** The load check now needs the host's UTC date to be on or after `READ_ON`, which is today, 2026-11-22. Round 2's observation said 2025-04-01; it is now 2026-11-22.
+  * A host whose clock runs behind by a day refuses to boot. That fails closed. It also cannot happen on a correct clock from now on, because UTC is used regardless of the host's time zone.
+  * The next re-read of the CRA page must set `READ_ON` to the actual read day, never a day ahead. Otherwise the app stops booting until that day comes (C5 and C6 show the refusal).
+* **The check depends on the clock in two places.** `tableProblems(T)` at `:100` and the 2099 plant at `:67` use the real date. The first is the point of the case. The second only goes stale in 2099.
+* **Basis points and uncited values:** nothing in this diff touches them. Round 2's result stands: a basis-point value cannot get past the load check, and DW10 stays the guard against a consistent but uncited value.
+
+### Journey score
+The route is unchanged in behaviour. `9baa5e30` renames locals only, the 23 cases that run with the app (API in the loop) pass at `9baa5e30`, and the R2 plant shows they bite. I did not re-walk with curl. **Journey score: 9/10 (carried from round 1; nothing on the journey changed). Pass.**
+
+### Blocker
+None.
+
+### Major
+None.
+
+### Minor
+None.
+
+### Nits (optional; not blocking)
+1. **The lower bound of the read-date check is untested on its exact day** (`canada-gst-hst.ts:97`, test `tests/check_fo7g_tax_defaults.ts:67`). Changing `<` to `<=` survives (C4). That would refuse a read made on the page's own "Date modified" day. A pass case with `readOn: "2025-04-01"` beside `:67` would close it.
+2. **The answer's `partyId` is not checked against the canonical id** (`routes.ts:33`, test `:236`). Answering `rawId` instead of `found.id` survives (R1): an upper-case request would echo the upper-case id. This gap existed before this diff, but the rename now puts `rawId` and `found.id` side by side, so a swap is an easy typo. Asserting `partyId === PA` in the upper-case case at `:236` would close it.
+
+### What I could not check
+* The CRA page at source (blocked here, same as rounds 1 and 2).
+* The full `typecheck.mjs` and a full run of `check_csw3_firm_scope.ts` at `9baa5e30`. I ran its census case, and tsc on the changed files, as described above.
+* The PR body: round-1 minors 3-4 stay open until the PR exists.
+
+**Verdict: Approve** (9baa5e30: no open Blocker or Major). Minors A, B and C are fixed correctly, and each fail test fails without its fix. The read-date bound passes on today's real table at load and does not stop the app booting. `lineRatePpm` still accepts every `taxDefault` answer (136/136). `9baa5e30` changes no behaviour and takes `client-money` off CS-W3's census. Nothing left to fix. These are optional:
+* Nit 1: `canada-gst-hst.ts:97`: no case on the exact `PAGE_MODIFIED` day (test `tests/check_fo7g_tax_defaults.ts:67`).
+* Nit 2: `routes.ts:33`: the answer's `partyId` is not asserted (test `tests/check_fo7g_tax_defaults.ts:236`).
+* Round-1 minors 3-4 (PR body) stay open until the PR exists.
+
+Reviewer: Approve 9baa5e3012febf1e6ae2d4c08c127c1f2980a991
