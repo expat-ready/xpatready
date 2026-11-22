@@ -64,6 +64,11 @@ const signIn = async (firmKey: string, who: { actorId?: string; email?: string }
   ok("AUD-4s BR-12: the sentence names every filter, Advanced included, and the zone once",
     sentence(f, none, "UTC") === "everyone's changes in all areas, from 9 Nov 2026 to 16 Nov 2026 (UTC)"
       && sentence({ ...f, ours: true, area: "team", action: "x.y", actorType: "SYSTEM" }, { ...none, areas: [{ code: "team", words: "Team and settings" }] }, "America/Toronto") === "ExpatReady staff changes in Team and settings, action x.y, done by The system (Advanced), from 9 Nov 2026 to 16 Nov 2026 (Toronto time)");
+  ok("AUD-4s break M3 (pure): 31 Dec 9999 is not a day the page reads (it has no next day), so it is stopped on its field and never reaches the date sums; 31 Dec 9998 is read",
+    rangeProblem({ ...f, to: "9999-12-31" }, "UTC")?.field === "to" && rangeProblem({ ...f, from: "9999-06-01", to: "9999-12-31" }, "UTC")?.field === "from" && rangeProblem({ ...f, from: "9998-01-01", to: "9998-12-31" }, "UTC") === null);
+  ok("AUD-4s break m7 (pure): where a clock change skips midnight (America/Santiago, 6 Sep 2026) the day starts at its first moment, 01:00 local; fail: the day before's midnight rule (Toronto) is unchanged",
+    dayStart("2026-09-06", "America/Santiago").toISOString() === "2026-09-06T04:00:00.000Z" && today("America/Santiago", dayStart("2026-09-06", "America/Santiago").getTime()) === "2026-09-06"
+      && today("America/Santiago", dayStart("2026-09-06", "America/Santiago").getTime() - 1) === "2026-09-05" && dayStart("2026-11-01", "America/Toronto").toISOString() === "2026-11-01T04:00:00.000Z");
   ok("AUD-4s DW1 (C5): the menu entry is one ACCOUNT_SECTIONS line, shown only with agent/audit:read",
     ACCOUNT_SECTIONS.filter((s) => s.path === "/platform/activity-log" && s.label === "Activity log" && s.key === "agent/audit:read").length === 1
       && visibleSections(ACCOUNT_SECTIONS, ["agent/audit:read"]).some((s) => s.path === "/platform/activity-log") && !visibleSections(ACCOUNT_SECTIONS, ["agent/staff:manage"]).some((s) => s.path === "/platform/activity-log"));
@@ -323,7 +328,7 @@ try {
 
   // ---------------------------------------------------------------------------------------------- review round 1, Minors 1-3
   const LONGKEY = "記録".repeat(30), LONGASCII = "r".repeat(120);
-  for (const [w, key] of [[1024, LONGKEY], [375, LONGASCII]] as const) {
+  for (const [w, key] of [[1024, LONGKEY], [375, LONGASCII], [1440, "x".repeat(200)]] as const) {
     const q = await tab(TOWNER, w); await log(q, `?entityKey=${encodeURIComponent(key)}&person=${R}`);
     const fits = await q.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), chipW = await q.locator('[data-audit-chip="entityKey"]').evaluate((el) => el.getBoundingClientRect().right <= window.innerWidth);
     ok(`AUD-4s review m1: a ${key.length}-character record filter's chip is cut short at ${w} px: the page does not scroll sideways`, fits && chipW, { fits, chipW });
@@ -356,6 +361,35 @@ try {
   ok("AUD-4s review m3: the shortcut's tip shows when the button gets keyboard focus (not only on hover) and is its description; fail: before focus it is not shown",
     hiddenBefore && onFocus && described === COPY.shortcutTip, { hiddenBefore, onFocus, described });
   await shot(p, "15-shortcut-tip-on-focus-1440");
+
+  // ---------------------------------------------------------------------------------------------- break round 1: M1, M3, m3, m6
+  // A name is never broken inside a word: it takes no more lines than it has words, in a column at least 150 px wide.
+  const whoFits = async (q: Page) => q.locator("[data-audit-who]").evaluateAll((els) => els.length > 0 && els.every((e) => {
+    const name = e.firstElementChild as HTMLElement, range = document.createRange(); range.selectNodeContents(name);
+    const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    return e.getBoundingClientRect().width >= 150 && lines <= (name.textContent ?? "").trim().split(/\s+/).length;
+  }));
+  for (const query of ["?actorType=FIRM_STAFF", `?person=${R}`]) {
+    await log(p, query); await settled(p);
+    const pillless = await p.locator("[data-audit-who] .rounded-md").count() === 0, fits = await whoFits(p);
+    ok(`AUD-4s break M1: with no Support session pill on screen (${query.slice(1, 12)}…) the Who column keeps its width (at least 150 px) and never breaks a name inside a word`, pillless && fits, { pillless, fits });
+  }
+  await p.locator("[data-audit-who]").first().evaluate((el) => { document.querySelectorAll("[data-audit-who]").forEach((td) => { td.className = "hidden max-w-48 sm:table-cell"; (td.firstElementChild as HTMLElement).className = "block [overflow-wrap:anywhere]"; }); });
+  ok("AUD-4s break M1 fail: the same judge on the column as it was (no width, break anywhere) fails", !(await whoFits(p)));
+  for (const query of ["?to=9999-12-31", "?from=9999-06-01&to=9999-12-31"]) {
+    await p.goto(`${BASE}/platform/activity-log${query}`); await p.locator('[data-audit-filters] [role="alert"]').waitFor({ timeout: 30_000 });
+    const alertWords = await p.locator('[data-audit-filters] [role="alert"]').innerText(), framed = await p.getByRole("button", { name: "Sign out" }).isVisible();
+    ok(`AUD-4s break M3: ${query} is stopped on its field ("${alertWords}") and the page, its menu and Sign out stay; nothing is asked of the API`, framed && alertWords.length > 0 && await p.locator("[data-audit-list]").count() === 0, { alertWords, framed });
+  }
+  await log(p, `?to=${TODAY}`);
+  ok("AUD-4s break M3 fail: a real To date shows no field error", await p.locator('[data-audit-filters] [role="alert"]').count() === 0 && (await lineIds(p)).length === 50);
+  await p.route("**/api/platform/audit/export?*", (r) => r.fulfill({ status: 413, contentType: "application/problem+json", body: JSON.stringify({ title: "Narrow the dates", code: "EXPORT_TOO_LARGE", rows: 212000, limit: 100000 }) }));
+  await p.locator("[data-audit-export]").focus(); await p.keyboard.press("Enter"); await p.locator('[role="dialog"]').waitFor(); await p.locator("[data-audit-export-confirm]").click();
+  await p.locator("[data-audit-export-error]").waitFor();
+  await p.locator('[data-audit-filter="area"]').selectOption("team"); await settled(p);
+  const errGone = await p.locator("[data-audit-export-error]").count() === 0, saidGone = (await said(p)) === "";
+  ok("AUD-4s break m3, m6: narrowing the filters takes away the last export's refusal and the last status words; fail side: they showed before the change", errGone && saidGone, { errGone, saidGone });
+  await p.unroute("**/api/platform/audit/export?*");
 
   // ---------------------------------------------------------------------------------------------- DW8, C9
   await log(p);
@@ -425,10 +459,10 @@ try {
   }
 
   // ---------------------------------------------------------------------------------------------- DW1b (last: it ends the Owner's session)
-  await log(p); await p.locator(`[data-audit-when="${ROLE}"]`).click(); await p.locator(`#audit-open-${ROLE}`).waitFor();
-  const A_WORDS = [RNAME, "Case officer B (Sample)", "Gave the Admin role", "hard bounce", "Activity log exported:"], domA = await p.locator("body").innerText();
+  await log(p, `?person=${R}&area=team&actorType=FIRM_STAFF`); await p.locator(`[data-audit-when="${ROLE}"]`).click(); await p.locator(`#audit-open-${ROLE}`).waitFor();
+  const A_WORDS = [RNAME, R, "Case officer B (Sample)", "Gave the Admin role", "hard bounce", "Activity log exported:"], domA = await p.locator("body").innerText() + p.url();
   await p.getByRole("button", { name: "Sign out" }).click(); await p.locator("[data-sign-in-card]").waitFor({ timeout: 30_000 });
-  const domOut = await p.locator("body").innerText();
+  const domOut = await p.locator("body").innerText(), urlOut = new URL(p.url());
   let release: () => void = () => undefined; const held = new Promise<void>((r) => { release = r; }); let bAsked = 0;
   await p.route("**/api/platform/audit?*", async (r) => { bAsked++; await held; await r.continue(); });
   await p.getByLabel("Firm key").fill("sample-solo"); await p.getByLabel("Work email").fill(B_EMAIL); await p.getByRole("button", { name: "Sign in" }).click();
@@ -437,9 +471,9 @@ try {
   const domWaiting = await p.locator("body").innerText(), loadingB = await p.locator("[data-audit-loading]").count();
   const vl = await axe(p); await shot(p, "14-loading-1440");
   release(); await p.locator("[data-audit-line]").first().waitFor({ timeout: 30_000 });
-  const domB = await p.locator("body").innerText();
+  const domB = await p.locator("body").innerText() + p.url(), chipsB = await p.locator("[data-audit-chip]").count(), personB = await p.locator('[data-audit-filter="person"]').inputValue();
   ok("AUD-4s DW1b (BR-13): firm A's Owner signs out on the page and firm B's Owner signs in in the same tab: no firm A text in the DOM at the sign-in card, nor while B's first answer is awaited (the loading state, no WCAG violation), nor after it (B's own lines, FIRM-B-ONLY among them); fail: the same judge on firm A's own page",
-    noFirmText(domOut, A_WORDS) && bAsked >= 1 && loadingB === 1 && noFirmText(domWaiting, A_WORDS) && domWaiting.includes("Activity log") && vl.length === 0 && noFirmText(domB, A_WORDS) && domB.includes("FIRM-B-ONLY") && !noFirmText(domA, A_WORDS), { bAsked, loadingB, v: ids(vl) });
+    noFirmText(domOut, A_WORDS) && urlOut.pathname === "/platform/activity-log" && urlOut.search === "" && chipsB === 0 && personB === "" && bAsked >= 1 && loadingB === 1 && noFirmText(domWaiting, A_WORDS) && domWaiting.includes("Activity log") && vl.length === 0 && noFirmText(domB, A_WORDS) && domB.includes("FIRM-B-ONLY") && !noFirmText(domA, A_WORDS), { bAsked, loadingB, search: urlOut.search, chipsB, v: ids(vl) });
   await p.context().close();
   ok("AUD-4s: no page error in any tab", errs.length === 0, errs);
 } catch (e) {

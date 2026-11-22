@@ -106,7 +106,7 @@ function ActivityLog() {
   const shortcut = () => {
     if (f.ours) return set({ ours: false });
     const cleared = [f.person ? "Person filter cleared." : "", f.actorType ? "Done by filter cleared." : ""].filter(Boolean).join(" ");
-    set({ ours: true, person: "", actorType: "" }); setSaid(cleared);
+    sayAfter.current = cleared; set({ ours: true, person: "", actorType: "" });
   };
 
   const [open, setOpen] = React.useState<ReadonlySet<string>>(new Set());
@@ -134,7 +134,12 @@ function ActivityLog() {
     if (!asked.current) return;
     asked.current = false; const t = setTimeout(() => exportButton.current?.focus(), 0); return () => clearTimeout(t);
   }, [asking]);
-  const canExport = !!read && !problem && !q.isError;
+  // m3, m6: a change of filters takes away the last export's refusal and the last status words; words said for the change
+  // itself (the shortcut's "Person filter cleared.") are said after it.
+  const sayAfter = React.useRef("");
+  React.useEffect(() => { setExportError(null); setSaid(sayAfter.current); sayAfter.current = ""; }, [key]);
+  // m4: the confirm repeats the sentence in words, so it opens only once the list (and its names) has loaded.
+  const canExport = !!read && !problem && !q.isError && !!q.data && !q.isPlaceholderData;
   const exportNow = async () => {
     if (busy.current || !read) return;
     busy.current = true; setExporting(true); setAsking(false); setExportError(null);
@@ -248,7 +253,7 @@ function ActivityLog() {
                             className="inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-left text-text-link outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50">
                             <time dateTime={l.at}>{t}</time>{isOpen ? <ChevronDown className="size-4 shrink-0" aria-hidden /> : <ChevronRight className="size-4 shrink-0" aria-hidden />}</button>
                         </td>
-                        <td className="hidden max-w-48 sm:table-cell" data-audit-who><span className="block [overflow-wrap:anywhere]">{l.who}</span>
+                        <td className="hidden w-40 min-w-40 max-w-48 sm:table-cell" data-audit-who><span className="block [overflow-wrap:break-word]">{l.who}</span>
                           {p && !p.active ? <span className="block text-xs text-text-muted">(left the firm)</span> : null}
                           {l.advanced.supportSessionId ? <Pill tone="info" className="mt-0.5">Support session</Pill> : null}</td>
                         <td className="hidden whitespace-nowrap lg:table-cell">{l.areaWords}</td>
@@ -286,5 +291,10 @@ function Gate() {
 }
 
 export function ActivityLogPage() {
+  const token = useStaffToken(), [params, setParams] = useSearchParams();
+  // BR-13 (break M2): the filters live in the address, which outlives the session; while nobody is signed in here (signed
+  // out, expired, signed in elsewhere, or a tab opened on an ended session) they are taken out, so the next person, of this
+  // firm or another, starts from their own default and never sees the last person's ids, records or words.
+  React.useEffect(() => { if (!token && params.toString()) setParams(new URLSearchParams(), { replace: true }); }, [token, params, setParams]);
   return <PlatformFrame crumbs={[{ label: "Activity log" }]}><Gate /></PlatformFrame>;
 }

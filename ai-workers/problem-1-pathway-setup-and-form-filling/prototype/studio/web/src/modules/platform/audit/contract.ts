@@ -47,11 +47,12 @@ export const COPY = {
 
 // ------------------------------------------------------------------------------------------------ dates in a zone
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
-/** A real calendar day "2026-11-22" (no 31 February), from 1970. */
+/** A real calendar day "2026-11-22" (no 31 February), from 1970 to 9998 (break M3: 31 Dec 9999 has no next day to end
+ *  the range on, and threw while the page drew). */
 export function isDay(v: string): boolean {
   const m = DAY.exec(v); if (!m) return false;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  return y >= 1970 && mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  return y >= 1970 && y <= 9998 && mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(Date.UTC(y, mo, 0)).getUTCDate();
 }
 const parts = (at: number, zone: string) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
   .formatToParts(new Date(at)).map((x) => [x.type, Number(x.value)]));
@@ -63,6 +64,9 @@ export function dayStart(day: string, zone: string): Date {
   const [y, m, d] = day.split("-").map(Number), wall = Date.UTC(y, m - 1, d);
   const offset = (at: number) => { const p = parts(at, zone); return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - at; };
   let at = wall - offset(wall); at = wall - offset(at);
+  // Midnight skipped (break m7, America/Santiago 6 Sep 2026): the sum lands on the day before; the first moment of the day is
+  // that far ahead (a gap is at most an hour, 30 minutes at Lord Howe), found in 15-minute steps.
+  for (let i = 0; i < 8 && today(zone, at) < day; i++) at += 15 * 60_000;
   return new Date(at);
 }
 /** "Toronto time" for America/Toronto; "UTC" for UTC. Named once, in the sentence (BR-11). */
