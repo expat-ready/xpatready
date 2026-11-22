@@ -1,0 +1,12 @@
+# Sample wording. Unconfirmed: no accountant.
+{{firmName}}
+{{firmAddress}}
+{{taxLine}}
+
+CREDIT NOTE {{number}}
+Date {{issuedOn}}
+To: {{billTo}}
+
+On invoice {{invoiceNumber}} (total {{currency}} {{total}})
+Credited: {{currency}} {{amount}}
+Reason: {{reason}}

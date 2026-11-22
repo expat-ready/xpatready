@@ -1,0 +1,17 @@
+# Sample wording. Unconfirmed: no accountant.
+{{firmName}}
+{{firmAddress}}
+{{taxLine}}
+
+INVOICE {{number}}
+Issued {{issuedOn}} - Due {{dueDate}}
+Bill to: {{billTo}}
+
+{{lines}}
+
+Subtotal: {{currency}} {{subtotal}}
+Tax: {{currency}} {{tax}}
+Total: {{currency}} {{total}}
+{{settled}}
+How to pay
+{{operatingDetails}}
