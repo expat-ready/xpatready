@@ -36,3 +36,38 @@ Capability or scaffolding: all capability; the demo step runs through the produc
 A real screen reader (live region read as DOM text). Firefox and Safari. An input-method composition (code read). A terms-pending person in SalesFrame. Whether CI's item proof picks up the check (named only in `MODULE.rows/PF-30s.md`). D17 and D20 (founder's walk).
 
 **Verdict: Block** (Ship after fixes; the reviewer line is "Changes"). To fix before `review: approved`: **1** (Must). In the same round, if cheap: 2, 4, 5 and 6a. Then 3 and 7, or list them as follow-ups in the PR.
+
+## Round 2 (diff-only, 58c28bc34)
+Reviewer: the same fresh agent, 22 Nov 2026. Read only `git diff bd0b4da2e..58c28bc34` (P-277). Running copy: worktree `local/pf30s-run` (the find files and the check match 58c28bc34, plus a local merge of PF-30a #2884), `isolated.sh run_pf30s 4564`, PLATFORM_IDENTITY=local. Re-run of the builder's check: **64/64**. I added 10 Sample leads ("Rvw… Scrolly", 4 engaged) so that 8 rows scroll. Screenshots and scripts are in the reviewer's scratchpad `walk/`, not committed.
+
+### Round-1 items: fixed, and a test that fails on the old code?
+| Item | Fixed (walked) | Test that fails on bd0b4da2e |
+|---|---|---|
+| Review M1 = break M1 (640 to 719 px) | **Yes.** Below 768 px it is now the Find button; scan 640 to 1280 px: the closed header never covers `[data-staff-name]` (`elementFromPoint` = the name). The list stays inside the window at every width (at 768 it spans 71 to 519), with no sideways scroll. | Yes. F10 at 640 (old list left −21 px). The name check at 768, 1024 and 1440 passes on the old code too; 640 and 700 are now button mode. |
+| Break M2 (marked row out of view) | **Yes.** At 640×400, "Scrolly" gives 8 rows. ArrowDown ×8: rows 1 to 8 are each inside the list (it scrolls to `scrollTop` 42 and on), and the wrap brings row 1 back to the top. Enter opens the row that is shown as marked. Hovering the half-shown last row scrolls once and does not loop. | Yes. F11 at 1440×400 (`scrollIntoView` removed → row 8 outside). |
+| Break M3 (Tab under the 375 px bar) | **Yes.** At 375 and 640: Find, "Ph", then Tab ×2 lands on Sign out, which is visible (the bar has closed, the Find button is back). Shift+Tab returns to Find. | Yes. F10 at 375, 640 and 700. |
+| Review m2 = break m2 (dialogs keep "/") | Yes. `[role=dialog]` is now counted. On `/home`, the leads list, the pipeline and a lead page no `role=dialog` is left in the DOM, so "/" still opens the box. | Yes. F11 adds a role=dialog element, and "/" does not open the box. |
+| Review m3 (clauses with no test) | Mostly. Tests now cover Other, partial with and without hits, cap, 101 characters, accents, email with no mark, Ctrl and Alt, and 401. | Yes, each with a stub. **Still none** for "no box while terms are pending" (PlatformFrame). |
+| Review m4 = break m3 (focus after Close) | Yes. | Yes. F10 at 375, 640 and 700. |
+| Review m5 = break m4 (Enter in the pause) | Yes. | Yes. F11 pass and fail. |
+| Review m6a, b, c | Yes. The comment is true; "best matches" only when a cut is seen; stubbed times are left out of p95 (n 23, p95 35 ms). | 6b: yes (9 rows across 2 kinds). But see n3. |
+| Review m7 (graph) | **No.** With PF-30a merged, `graph.mjs` still lists `GET /platform/find` under G3 "no page uses it" (G3 204). It is not noted in the PR body or the build notes. `build-notes.md` now exists. | n/a |
+| Break m1 (terms pending in SalesFrame) | Yes, as concept r2 BR-6 now says (the builder changed it in this PR, which is visible). Walked with a real pending notice: the box shows "Please accept the updated terms to continue.", and Enter does not ask again. | **No test.** |
+| Break m5 (Enter retries) | Yes. | Yes. F7: Enter on the error line sends 1 new request. |
+| Break m6 (`isContentEditable`) | Yes, by reading the code. | **No test** (latent: no such element in the app). |
+
+### New in the fix lines (all Minor, none blocks)
+| # | Must/Should | Issue | Evidence | Fix |
+|---|---|---|---|---|
+| n1 | Should (Minor) | **After "/" at 768 px and wider, Escape needs 4 presses to leave, not 3 (BR-5).** `focusBox` sets `wide` at every width (`find-box.tsx:44`), so the third Escape goes to `close()` (`:105`). The Find button is `display:none` there, so focus stays in the input. The path through clicking the box still takes 3. | 1440: "/", "Scrolly", then Escape ×4. The box has focus after Escape 1, 2 and 3. | In the Escape branch, call `close()` only when the opener is shown; otherwise blur, as before. Add a "/" then Escape ×3 test. |
+| n2 | Should (Minor) | **Escape does not cancel a pending Enter.** Enter during the pause, then Escape (close the list), and the record still opens when the answer arrives. | Answer delayed 1.2 s: Enter, then Escape, and the page goes to `/front-office/prospects/…`. `:101`, `:105`. | Clear `enterWaits` on Escape, Tab and blur. Add a fail test. |
+| n3 | Should (Minor) | **`capped()` misses a cut answer that spans kinds.** PF-30a's one front-office finder returns person, prospect and company together, cut to 8 (`api/src/front-office/find.ts:140`). For example, 6 leads plus 2 companies says "8 results" with no "Type more to narrow", although there are more. Before m6b that answer said best matches (EXPERIENCE §2.7). | Code read (`find-words.ts:21` checks per group); not seeded live. | Add up the hits of the kinds that share a finder (person, prospect and company; case and case_person) against `FINDER_CAP`, or ask PF-30a for a `cut` flag. Add a stub test of 6 person and 2 company hits. |
+| n4 | Should (Minor) | Carried: break m1 and m6 and the PlatformFrame terms clause have no test. Review m7 (graph) is open. | above | Add the tests, or list them as follow-ups in the PR. |
+
+Note, not counted: below 768 px, a tap on a group heading inside the list now closes the whole bar (the wrapper's `onBlur`, `:116`) instead of only the list. The text is kept, and Find reopens the bar with it. Focus went to BODY before this change as well.
+
+### Journey score (reviewer, round 2): **9.5 / 10, pass**
+J1, J3 and J4 from round 1 are fixed, so Feedback, Visual quality and the screen-size part are now 1. Accessibility and screen sizes stays at **½** because of n1 (BR-5's three-step Escape after "/") and n2. The other criteria are unchanged from round 1. The earlier report is `journey-test-reviewer-2026-11-22.md`.
+
+**Verdict: Ship** (no open Blocker or Major). The Minors n1 to n4 go in the next round or become follow-up rows. n1 and n2 are one-line fixes.
+Reviewer: Approve 58c28bc34bf6db3aee918e1671097cc5a1ae6222

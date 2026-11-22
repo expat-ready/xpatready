@@ -17,8 +17,15 @@ export const MATCHED_WORDS = { NAME: "Name", EMAIL: "Email", PHONE: "Phone", NUM
 
 /** One finder answers at most this many hits (PF-30a's FINDER_MAX_HITS) and one answer at most FIND_MAX_HITS. */
 export const FINDER_CAP = 8, ANSWER_CAP = 20;
-/** True when the answer may have been cut: a kind at a finder's cap, or the whole answer at its cap (review m6b). */
-export const capped = (a: FindAnswer) => a.groups.some((g) => g.hits.length >= FINDER_CAP) || a.groups.reduce((n, g) => n + g.hits.length, 0) >= ANSWER_CAP;
+/** Which finder answers each kind: a finder's cap counts all its kinds together (review r2 n3: the front office's one
+ *  finder returns people, prospects and companies cut to 8 in all). An unknown kind counts as its own finder. */
+const FINDER_OF: Readonly<Record<string, string>> = { person: "front-office", prospect: "front-office", company: "front-office", case: "cases", case_person: "cases" };
+/** True when the answer may have been cut: a finder at its cap, or the whole answer at its cap (review m6b). */
+export function capped(a: FindAnswer): boolean {
+  const per = new Map<string, number>();
+  for (const g of a.groups) { const f = FINDER_OF[g.kind] ?? g.kind; per.set(f, (per.get(f) ?? 0) + g.hits.length); }
+  return [...per.values()].some((n) => n >= FINDER_CAP) || [...per.values()].reduce((x, y) => x + y, 0) >= ANSWER_CAP;
+}
 
 export const WORDS = {
   label: "Find a person, company or file",

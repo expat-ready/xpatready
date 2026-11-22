@@ -102,8 +102,11 @@ export function FindBox() {
       else if (state.at === "error" && !state.words) { e.preventDefault(); setTries((x) => x + 1); }
     } else if (e.key === "Escape") {
       e.preventDefault();
-      if (showList) setOpen(false); else if (text) setText(""); else if (wide) close(); else input.current?.blur();
-    } else if (e.key === "Tab") setOpen(false);
+      enterWaits.current = false;   // Escape also cancels an Enter pressed during the pause (review r2 n2)
+      // The bar across the header exists only while the Find button is shown (below 768 px); wider, the third Escape leaves (n1).
+      const phone = !!opener.current && getComputedStyle(opener.current).display !== "none";
+      if (showList) setOpen(false); else if (text) setText(""); else if (wide && phone) close(); else { setWide(false); input.current?.blur(); }
+    } else if (e.key === "Tab") { enterWaits.current = false; setOpen(false); }
   };
 
   const line = state.at === "searching" && !answer ? WORDS.searching
@@ -113,7 +116,7 @@ export function FindBox() {
   // "Searching…" is shown, never announced on every key (challenge m11).
   const said = open && state.at !== "searching" ? [answer?.message, line].filter(Boolean).join(". ") : "";
   return (
-    <div className="min-w-0 md:relative" data-find onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setOpen(false); setWide(false); } }}>
+    <div className="min-w-0 md:relative" data-find onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { enterWaits.current = false; setOpen(false); setWide(false); } }}>
       <button ref={opener} type="button" onClick={focusBox} aria-label={WORDS.label} title={`${WORDS.label} (press /)`} data-find-open
         className={cn("inline-flex size-11 items-center justify-center rounded-lg text-text-muted outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden", wide && "hidden")}>
         <Search className="size-5" aria-hidden />

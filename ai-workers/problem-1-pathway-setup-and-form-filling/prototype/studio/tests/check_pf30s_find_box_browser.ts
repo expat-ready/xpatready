@@ -251,7 +251,10 @@ try {
   await o.setViewportSize({ width: 1440, height: 900 });
   await stub({ groups: [{ kind: "person", hits: Array.from({ length: 5 }, (_, i) => hit("person", `Many ${i}`, i)) }, { kind: "company", hits: Array.from({ length: 4 }, (_, i) => hit("company", `Many co ${i}`, i)) }], partial: false, message: null });
   await find(o, "Many c");
-  ok("PF-30s F11 fail (review m6b): 9 rows with no kind at its cap say \"9 results\", not best matches", (await live(o)).includes("9 results") && !(await live(o)).includes("best"), await live(o));
+  ok("PF-30s F11 fail (review r2 n3): 5 people + 4 companies (one finder, 9 rows over its cap of 8) say \"9 best matches\"", (await live(o)).includes(WORDS.count(9, true)), await live(o));
+  await stub({ groups: [{ kind: "person", hits: Array.from({ length: 4 }, (_, i) => hit("person", `Many ${i}`, i)) }, { kind: "case", hits: Array.from({ length: 3 }, (_, i) => hit("case", `Many case ${i}`, i)) }], partial: false, message: null });
+  await find(o, "Many ca");
+  ok("PF-30s F11 fail (review m6b): 7 rows from two finders, neither at its cap, say \"7 results\"", (await live(o)).includes("7 results") && !(await live(o)).includes("best"), await live(o));
   await stub({ groups: [{ kind: "person", hits: [hit("person", "Zoë Ångström")] }], partial: false, message: null });
   await find(o, "zoe");
   ok("PF-30s F11 pass (BR-4): the highlight ignores case and accents (\"zoe\" marks \"Zoë\")", (await hits(o).first().locator("mark").innerText()) === "Zoë");
@@ -269,6 +272,16 @@ try {
   await home(o);
   await box(o).click(); await box(o).pressSequentially(`Zzqx${run}`, { delay: 10 }); await box(o).press("Enter"); await o.waitForTimeout(900);
   ok("PF-30s F11 fail (review m5): Enter before an empty answer opens nothing; the empty line shows", new URL(o.url()).pathname === "/home" && (await o.locator("[data-find-line='done']").innerText()) === WORDS.empty);
+  // Review r2 n2: Escape cancels an Enter pressed during the pause.
+  await o.route("**/api/platform/find**", async (r) => { await new Promise((res) => setTimeout(res, 1200)); await r.continue(); });
+  await box(o).fill(""); await box(o).pressSequentially(`Lena${run}`, { delay: 10 }); await box(o).press("Enter"); await box(o).press("Escape"); await o.waitForTimeout(2000);
+  ok("PF-30s F11 fail (review r2 n2): Enter during the pause, then Escape, opens nothing", new URL(o.url()).pathname === "/home", o.url());
+  await o.unroute("**/api/platform/find**");
+  // Review r2 n1: at 1440 px, after "/", three Escapes leave the box (close the list, clear, leave).
+  await box(o).press("Escape"); await box(o).press("Escape"); await o.locator("main").click({ position: { x: 5, y: 5 } });
+  await o.keyboard.press("/"); await o.keyboard.type("Le"); await o.waitForTimeout(700);
+  await o.keyboard.press("Escape"); await o.keyboard.press("Escape"); await o.keyboard.press("Escape");
+  ok("PF-30s F11 pass (review r2 n1): at 1440 px three Escapes leave the box, and its text is cleared", !(await box(o).evaluate((el) => el === document.activeElement)) && (await box(o).inputValue()) === "");
   // BR-1: modifier keys and an open dialog keep "/" for the page.
   await box(o).press("Escape"); await box(o).press("Escape"); await o.locator("main").click({ position: { x: 5, y: 5 } });
   await o.keyboard.press("Control+/"); await o.keyboard.press("Alt+/");
