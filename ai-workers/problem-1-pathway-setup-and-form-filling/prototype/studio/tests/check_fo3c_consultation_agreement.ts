@@ -349,6 +349,15 @@ try {
   ok("FO-3c DW9 pass: the outbox row is written last: at each sent and signed audit line its event was not there yet, and after the commit there is exactly one of each",
     eventsAtAudit.length >= 4 && eventsAtAudit.every((n) => n === 0) && events(AGREEMENT_EVENT.SENT, a1) === 1 && events(AGREEMENT_EVENT.SIGNED, a1) === 1 && events(AGREEMENT_EVENT.SENT, a4) === 1, eventsAtAudit);
   ok("FO-3c DW9 fail: an agreement not signed has no signed event, and the rolled-back send left no event", events(AGREEMENT_EVENT.SIGNED, a4) === 0 && Number(sql(`select count(*) from module_event where payload->>'bookingId' = '${b8.id}'`)) === 0);
+  // PF-19r S1/S2 for this feature (Lead 4 on #2922): its mail is the app's MESSAGES_MAIL (MailPort over MessagePort).
+  process.env.PLATFORM_ENVIRONMENT ??= "local";   // features/platform-messages.ts reads the loader at import (as check_pf19r does)
+  const feature = (await import("../api/src/features/front-office-consultation-agreement.ts")).default as { providers: { provide?: unknown; useFactory?: (...a: unknown[]) => unknown; inject?: unknown[] }[] };
+  const { CONSULTATION_AGREEMENT_PORTS } = await import("../api/src/front-office/booking/consultation-agreement/controller.ts");
+  const { MESSAGES_MAIL } = await import("../api/src/features/platform-messages.ts");
+  const prov = feature.providers.find((x) => x.provide === CONSULTATION_AGREEMENT_PORTS), given = { send: async () => ({ messageId: "x" }) };
+  const made = prov?.useFactory?.(given, files) as { mail?: unknown } | undefined;
+  ok("FO-3c PF-19r pass: the feature's ports take MESSAGES_MAIL and carry that same mail (every agreement email goes through MessagePort)", prov?.inject?.[0] === MESSAGES_MAIL && made?.mail === given, { inject: prov?.inject?.map(String) });
+  ok("FO-3c PF-19r fail: a factory given another mail carries that one, not MESSAGES_MAIL's (the check tells them apart)", (prov?.useFactory?.(mail, files) as { mail?: unknown }).mail !== given);
 } catch (e) {
   fail++; console.log(`FAIL  the suite stopped: ${String((e as Error)?.stack ?? e).slice(0, 1500)}`);
 } finally {
