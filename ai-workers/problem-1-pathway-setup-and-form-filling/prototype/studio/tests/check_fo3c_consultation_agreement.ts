@@ -257,6 +257,17 @@ try {
   ok("FO-3c M3 pass: after the lock a new code is sent, the right code gives the signing link once checked, and only its sha256 is stored",
     fresh.codeNeeded && /^https:\/\/signing\.fake\.invalid\//.test(good.link?.url ?? "") && sql(`select code_verified_at is not null and code_sha256 ~ '^[0-9a-f]{64}$' from fo_signer where id = '${r3.cl.id}'`) === "t"
     && Number(sql(`select count(*) from fo_signer where code_sha256 = '${code3}'`)) === 0, good);
+  // R2-1: a checked code opens the link for 30 minutes only; then a new code is asked, from any address. R2-2: one new code a minute.
+  const within = await op(r3.tok, {}, "198.51.100.7");
+  await clock.advance({ minutes: 31 });
+  const later = await op(r3.tok, {}, "198.51.100.8");
+  ok("FO-3c R2-1 pass: within 30 minutes of the right code the link opens again without a code", /^https:\/\/signing\.fake\.invalid\//.test(within.link?.url ?? ""), within);
+  ok("FO-3c R2-1 fail: 31 minutes later the same link (another address) gets no signing link: a new code is emailed and the old one is spent",
+    later.codeNeeded === true && later.link === null && await fails(() => op(r3.tok, { consent: true, code: code3 }), 422), later);
+  const tooSoon = await fails(() => op(r3.tok, { consent: true, resend: true }), 429, /CODE_TOO_SOON/);
+  await clock.advance({ minutes: 1, seconds: 1 });
+  const resent = await op(r3.tok, { consent: true, resend: true });
+  ok("FO-3c R2-2 fail/pass: a second code within a minute is refused (429); after a minute a new one is sent", tooSoon && resent.codeNeeded === true);
   const r3b = await sendOne(T.staffId, kim, 15);
   await op(r3b.tok, { consent: true });   // consent recorded, code not checked
   const [noCode] = await signing.act(A, r3b.q.providerDocumentId, r3b.cl.id, "signed");

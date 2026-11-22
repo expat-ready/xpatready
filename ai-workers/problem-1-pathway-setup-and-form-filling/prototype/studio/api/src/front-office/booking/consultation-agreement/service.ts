@@ -41,6 +41,11 @@ const EXPIRES_DAYS = 14, DAY = 24 * 60 * 60_000;
 /** P-564 (on by default): a one-time email code before signing. Sample: 10 minutes, the sixth wrong code locks 15 minutes
  *  (FO-6's fo_signer columns and check). The firm's switch to turn it off is FO-6's setting (not on main): always on here. */
 const CODE_MINUTES = 10, CODE_TRIES = 6, LOCK_MINUTES = 15;
+/** A checked code opens the signing link for 30 minutes (FO-6's signing session, Sample); after that a new code is asked
+ *  (break R2-1: a forwarded link never signs on an old code). A new code at most once a minute per signer (R2-2). */
+const CODE_SESSION_MS = 30 * 60_000, RESEND_GAP_MS = 60_000;
+/** The door's limiter keeps at most this many addresses (R2-3): the oldest go first. */
+const DOOR_MAX_KEYS = 50_000;
 /** The public door's limit per IP (contracts §0.6; Sample, sized as the booking door's token limit). */
 const DOOR_PER_IP = 30, DOOR_WINDOW_MS = 10 * 60_000;
 export const PRO_BONO = "No fee: this consultation is provided pro bono.";   // Sample wording
@@ -60,13 +65,18 @@ export type SendResult = { sent: true; agreementId: string } | { sent: false; re
 
 export class ConsultationAgreementService {
   private readonly door = new Map<string, number[]>();
+  private swept = 0;
   constructor(protected readonly db: PrismaClient, protected readonly ports: AgreementPorts) {}
   /** A rolling window per IP on the public door (review M3): over it → 429, nothing read. */
   private limit(ip: string) {
     const now = this.ports.clock.now().getTime(), key = ip.slice(0, 64), hits = (this.door.get(key) ?? []).filter((t) => t > now - DOOR_WINDOW_MS);
     if (hits.length >= DOOR_PER_IP) { this.door.set(key, hits); fail(429, "Too many tries", "Too many tries from here. Wait a few minutes and open the link again.", "TOO_MANY"); }
-    hits.push(now); this.door.set(key, hits);
-    if (this.door.size > 10_000) for (const [k, v] of this.door) if (!v.some((t) => t > now - DOOR_WINDOW_MS)) this.door.delete(k);
+    this.door.delete(key); hits.push(now); this.door.set(key, hits);   // re-inserted: the map's order is oldest use first
+    if (this.door.size > DOOR_MAX_KEYS && now - this.swept > 60_000) {   // at most one sweep a minute (R2-3)
+      this.swept = now;
+      for (const [k, v] of this.door) if (!v.some((t) => t > now - DOOR_WINDOW_MS)) this.door.delete(k);
+    }
+    for (const k of this.door.keys()) { if (this.door.size <= DOOR_MAX_KEYS) break; this.door.delete(k); }
   }
 
   /** The job workers. Call once at start-up. */
@@ -96,6 +106,8 @@ export class ConsultationAgreementService {
        where b.status in ('SCHEDULED', 'RESCHEDULED') and b.starts_at > ${this.ports.clock.now()}
          -- only a booking that can be sent (its person has an email), so unsendable ones never fill the batch (break m6)
          and exists (select 1 from fo_person p where p.firm_id = b.firm_id and p.id = b.person_id and p.email is not null)
+         -- and a licensed person can sign for the firm (R2-4: a firm with none never fills the batch)
+         and exists (select 1 from platform_staff s join platform_staff_credential c on c.firm_id = s.firm_id and c.staff_id = s.id where s.firm_id = b.firm_id and s.status = 'ACTIVE')
          and exists (select 1 from fo_retainer_template t where t.firm_id = b.firm_id and t.kind = 'CONSULTATION' and t.active)
          and not exists (select 1 from fo_retainer_version v join fo_retainer r on r.firm_id = v.firm_id and r.id = v.retainer_id
                           where v.firm_id = b.firm_id and r.kind = 'CONSULTATION' and v.merge_values->>${BOOKING_ID} = b.id::text)
@@ -108,7 +120,7 @@ export class ConsultationAgreementService {
         from fo_signature_request q where q.document_kind = 'CONSULTATION' and (
           (q.status = 'CLIENT_SIGNED' and not exists (select 1 from fo_signer s where s.firm_id = q.firm_id and s.request_id = q.id and s.signed_at is null))
           or (q.status = 'SIGNED' and q.ended_at > ${new Date(this.ports.clock.now().getTime() - 7 * DAY)}))
-       order by q.sent_at limit 200`;
+       order by (q.status = 'CLIENT_SIGNED') desc, q.sent_at limit 200`;   // the stuck seals first (R2-4)
     for (const q of unsealed) {
       try {
         if (!q.sealed) { if (await each(q.firm_id, () => this.seal(q.firm_id, q.id))) out.sealed++; }
@@ -335,7 +347,8 @@ export class ConsultationAgreementService {
     });
     const base = { agreementId: s0.request.documentId, consentText: CONSENT_TEXT, consentTextVersion: CONSENT_TEXT_VERSION, consented: !!s.consentedAt };
     if (!s.consentedAt) return { ...base, codeNeeded: false, link: null };
-    const verified = s.codeVerifiedAt ? true : await this.code(firmId, s0.id, s0.request.documentId, body);
+    const fresh = !!s.codeVerifiedAt && now.getTime() - s.codeVerifiedAt.getTime() < CODE_SESSION_MS;
+    const verified = fresh ? true : await this.code(firmId, s0.id, s0.request.documentId, body);
     if (!verified) return { ...base, codeNeeded: true, codeSentTo: "the email address this link was sent to", link: null };
     return { ...base, codeNeeded: false, link: await this.providerLink(firmId, s0.request.providerDocumentId, s.id) };
   }
@@ -351,19 +364,21 @@ export class ConsultationAgreementService {
       const r = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId }, include: { request: true } });
       await tx.$queryRaw`select 1 from fo_signature_request where firm_id = ${firmId}::uuid and id = ${r.requestId}::uuid for update`;
       const cur = await tx.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
-      if (cur.codeVerifiedAt) return "OK" as const;
+      if (cur.codeVerifiedAt && now.getTime() - cur.codeVerifiedAt.getTime() < CODE_SESSION_MS) return "OK" as const;
       if (cur.lockedUntil && cur.lockedUntil > now) return "LOCKED" as const;
       const line = (summary: string, after: Record<string, string | number | boolean | null>) => this.ports.audit.record(tx, { firmId, actor: SYSTEM, action: "consultation_agreement.code", entity: "fo_retainer", entityKey: agreementId, summary,
         detail: { agreementId, signerId }, before: { codeFailures: cur.codeFailures, locked: !!cur.lockedUntil }, after });
       if (!given) {
-        if (cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && body.resend !== true) return "SENT" as const;
+        const live = !!cur.codeSha256 && !!cur.codeExpiresAt && cur.codeExpiresAt > now && !cur.codeVerifiedAt;
+        if (live && body.resend !== true) return "SENT" as const;
+        if (cur.codeExpiresAt && cur.codeExpiresAt.getTime() - CODE_MINUTES * 60_000 > now.getTime() - RESEND_GAP_MS) return "TOO_SOON" as const;
         send = String(randomInt(0, 1_000_000)).padStart(6, "0");
         const failures = cur.lockedUntil ? 0 : cur.codeFailures;
-        await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null } });
+        await tx.foSigner.update({ where: { id: cur.id }, data: { codeSha256: sha(send), codeExpiresAt: new Date(now.getTime() + CODE_MINUTES * 60_000), codeFailures: failures, lockedUntil: null, codeVerifiedAt: null } });
         await line("Consultation agreement: a one-time code was emailed to the client.", { codeFailures: failures, locked: false });
         return "SENT" as const;
       }
-      const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now;
+      const live = cur.codeSha256 && cur.codeExpiresAt && cur.codeExpiresAt > now && !cur.codeVerifiedAt;   // a used code is spent
       const right = !!live && timingSafeEqual(Buffer.from(sha(given), "hex"), Buffer.from(cur.codeSha256!, "hex"));
       if (right) {
         await tx.foSigner.update({ where: { id: cur.id }, data: { codeVerifiedAt: now, codeFailures: 0, lockedUntil: null } });
@@ -373,7 +388,7 @@ export class ConsultationAgreementService {
       const failures = (cur.lockedUntil ? 0 : cur.codeFailures) + 1, lock = failures >= CODE_TRIES ? new Date(now.getTime() + LOCK_MINUTES * 60_000) : null;
       await tx.foSigner.update({ where: { id: cur.id }, data: { codeFailures: Math.min(failures, CODE_TRIES), lockedUntil: lock } });
       await line(lock ? "Consultation agreement: a sixth wrong code locked the link for 15 minutes." : "Consultation agreement: a wrong or expired code.", { codeFailures: Math.min(failures, CODE_TRIES), locked: !!lock });
-      return (lock ? "LOCKED" : live ? "WRONG" : "EXPIRED") as "LOCKED" | "WRONG" | "EXPIRED";
+      return (lock ? "LOCKED" : live ? "WRONG" : "EXPIRED") as "LOCKED" | "WRONG" | "EXPIRED" | "TOO_SOON";
     });
     if (send) {
       const s = await this.db.foSigner.findFirstOrThrow({ where: { firmId, id: signerId } });
@@ -383,6 +398,7 @@ export class ConsultationAgreementService {
         idempotencyKey: `consultation-agreement:${agreementId}:code:${sha(send!).slice(0, 16)}`, templateKey: "consultation_agreement.code",
         subject: `Your code to sign with ${firm.operatingName}`.slice(0, 200), text: `Your one-time code is ${send}. It works for ${CODE_MINUTES} minutes. If you did not ask for it, ignore this email.\n` }));
     }
+    if (verdict === "TOO_SOON") fail(429, "Wait a minute", "A code was sent less than a minute ago. Check your email, or ask again in a minute.", "CODE_TOO_SOON");
     if (verdict === "LOCKED") fail(423, "Locked for now", `Too many wrong codes. Try again in ${LOCK_MINUTES} minutes.`, "CODE_LOCKED");
     if (verdict === "WRONG") fail(422, "Wrong code", "That code is not right. Check the email and try again.", "CODE_WRONG");
     if (verdict === "EXPIRED") fail(422, "Code expired", "That code has expired. Ask for a new one.", "CODE_EXPIRED");

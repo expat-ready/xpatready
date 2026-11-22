@@ -91,3 +91,50 @@ Not exercised: the suite and my scripts connect as `xr_studio`, a superuser with
   - The audit line comes before the outbox row in `send` and `seal` (DW9). Every applied, refused or noted event writes exactly one audit line, in its transaction.
 
 Verdict: Changes be10e6d24ee1efbc06a0fa8e4a8d59dfa86a3000
+
+## Round 2: what changed since be10e6d24 (head e6365237a4a3f647ad14eae2c90b77940539a4f9)
+
+I ran `git diff be10e6d24..e6365237a` and attacked only that diff, on a detached worktree with fresh scratch databases (all dropped afterwards). The row test passes 34/34.
+
+Round 1 re-checked and fixed:
+- M1: a firm decline after the client signed now gives DECLINED on the request and WITHDRAWN on the agreement, with no 500.
+- M2: the door and the host link answer 409 `SIGNING_ENDED`, not a 500.
+- m3: a repeated event now reseals.
+- m4: three parallel host links all answer, with one consent line.
+- m5: after a cancel, the client's link is the one 404 and the "needs you" item is gone.
+- m9: a reschedule with no agreement answers `NO_AGREEMENT`.
+
+**R2-1. One code check opens the signing link for good, for anyone holding the token. (Major)**
+- Steps: consent, then the emailed code; the link is answered. Three days later, from another IP, call `open(token, {})` with no consent and no code.
+- Expected (P-564: the client "types a single-use code … before signing"; FO-6's door rule: "a forwarded link in a fresh browser needs the code", with the check bound to a 30-minute browser session): a later or forwarded opening needs a fresh code.
+- Actual: the provider's signing link is answered straight away (`codeNeeded: false`, no new code email).
+- Cause: `code_verified_at` is permanent, and `service.ts:338` skips the code whenever it is set.
+- Effect: from the first check until signing (up to 14 days), whoever holds the forwarded email signs as the client. The record still shows "the client's one-time code was right", so the identity evidence becomes false.
+
+**R2-2. Resending is limited only per IP. (Minor)**
+- Steps: 150 calls with `resend: true` from 5 IPs inside 10 minutes.
+- Actual: 151 code emails and 151 audit lines, no 429.
+- Cause: there is no cap per signer (`service.ts:359`), and the limit is per address (`ip.slice(0,64)`), so a single IPv6 /64 gets past it. It needs the link's token, so only the client or whoever they forwarded the email to can do this.
+
+**R2-3. The limiter's map has no upper bound, and every call scans it once it passes 10 000 entries. (Minor)**
+- Steps: 60 000 distinct addresses (`2001:db8::<n>`) in one window, no token needed.
+- Actual: the map holds 61 000 entries. The 10 000-entry prune (`service.ts:69`) deletes nothing because every entry is inside the window, so each call scans the whole map. That took 2.2 ms per call at 61k entries, the heap stood at 143 MB, and both grow linearly.
+- This is the same design as the booking and web-form doors (`booking/service.ts:914`, threshold 50 000), but here it kicks in five times sooner.
+
+**R2-4. The catch-up is still starved. (Minor; the catch-up is not wired yet)**
+- Steps for sends: firm B has 205 future bookings, the person has an email, but there is no licensed person (the host is deactivated, so the answer is `NO_LICENSED`). Firm A has one later booking.
+- Actual: two runs give `{sent: 0}`, and firm A never gets its agreement (`service.ts:102`). The email filter fixed only the no-email case of round 1's m6.
+- Steps for reseals: 200 requests SIGNED within the last 7 days, then one stuck seal sent later.
+- Actual: the reseal query (`service.ts:111`, `order by q.sent_at limit 200`, which re-reads every SIGNED row from the last 7 days) never reaches the stuck seal. It was resealed only once the clock moved 8 days on. The provider's repeat still reseals it, so this is only the fallback.
+
+Round 2 held:
+- **Brute force:** 8 wrong codes from 8 IPs give five 422s, then 423 (the lock is per signer, so changing IP does not help). A resend while locked is 423. The right code 1 ms before the unlock is 423; at the unlock, the old code has expired (422).
+- **After an unlock:** the try count restarts, and 6 more wrong codes lock it again.
+- **Races:** two right codes plus a wrong one sent together give one "right" audit line and no 500.
+- **Another signer's code** is refused with 422 `CODE_WRONG`.
+- **Codes and resends** after the client signed, or after a booking cancel, get the one 404.
+- **Stored state:** only the code's sha256 is stored, and audit detail holds ids only.
+- **Events:** `NO_CODE` refuses an unchecked client "signed" event.
+- **Firm decline after the client signed:** gives WITHDRAWN with its reason. The item goes, the read says "not signed yet", and no second agreement is sent.
+
+Verdict: Changes e6365237a4a3f647ad14eae2c90b77940539a4f9
