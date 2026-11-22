@@ -9,6 +9,9 @@
 # missing. Used by lane-preflight.sh --hook (briefs) and .github/workflows/pr-rules.yml (PR bodies). Tests: check-g4-rules.sh; the Item line and waves: check-lane-preflight.sh.
 set -u
 txt=$(tr -d '\r'); bad=""
+# ENF-803 (P-803): a start brief's "Duplicate check:" names the origin/main sha and the exact IST time it was read, and a
+# cited qa note is not older than the newest merge on the row's files (brief-fresh.py; test-enf-803.sh).
+[ "${1:-}" = --brief ] && { fr=$(printf '%s\n' "$txt" | python3 -I "$(dirname "$0")/brief-fresh.py" 2>&1) || bad="$bad $(printf '%s' "${fr:-brief-fresh.py could not run}" | paste -sd ';' -);"; }
 # Only the Done when's own text counts: its line, then lines up to a blank line, a heading or the Duplicate check line.
 done_when=$(printf '%s\n' "$txt" | awk 'f && (/Duplicate check:/ || /^#/) {exit} f && /^[[:space:]]*$/ {if (n) exit; next}
   !f && tolower($0) ~ /done when/ {f = 1; l = $0; sub(/.*[Dd][Oo][Nn][Ee] [Ww][Hh][Ee][Nn]/, "", l); print l; if (l ~ /[^[:space:]:*#]/) n = 1; next}

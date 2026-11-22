@@ -473,7 +473,7 @@ def main():
     if a.lead:
         cache = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"flow-measure-lead-{a.since[:13]}.json")
         age = (time.time() - os.path.getmtime(cache)) / 60 if os.path.exists(cache) else None
-        if age is not None and age < (30 if a.cache_min is None else a.cache_min):
+        if age is not None and age < (int(os.environ.get("FRESH_MAX_MIN") or 30) if a.cache_min is None else a.cache_min):   # lead-watch.sh: 10 (ENF-803)
             m = json.load(open(cache))
         else:
             m = new_measures(since, until, now)
