@@ -12,7 +12,7 @@
 | `j_29.ts` R1.29 | 1 | 12/22 | W2: FO-9b part 2 (`GET duplicates/review`), FO-9s part 2 (People to merge menu) · W3 ×2: FO-9b part 1 (merge, tombstone, audit) · W4 ×2: FO-9b part 2 (the money pair and the case pair on the review list, needsCaseSide) · W5 ×3: FO-9b part 1 Undo, part 2 `GET duplicates/merges`, FO-9s parts 2-3 · W6: FO-9b part 2 (401/403 on review and merge) |
 | `j_55.ts` R1.55 | 2 | 27/34 | W1 ×3: FO-6 signing request, FO-5s Withdraw, FO-6 withdraw stops the link · W3 ×3: FO-6 decline reason, FO-6 public signing door, FO-5s Declined state · W4: FO-5s Signed offline panel |
 | `j_85.ts` R1.85 | 2 | 4/19 | PF-4s part 1 (#2927, `/api/system`) · PF-21b part 2 (`plat_data_request`, `plat_legal_hold`: log, move, overdue, hold, Owner 403) · PF-21d (erasure) · PF-21rs and PF-17 (console Privacy pages); W7 also PF-21c |
-| `j_105.ts` R1.105 | 3 | 17/20 | W2: AUD-5's callers (PF-21d erasure, PF-11c purge) · W4: PF-11 data download, PF-11s panel · W5: PF-11c close at 90 days, with AUD-2 |
+| `j_105.ts` R1.105 | 3 | 17/21 | W3: Conflict "read-only" vs 402 on reads (Lead B settles from SA-02) · W2: AUD-5's callers (PF-21d erasure, PF-11c purge) · W4: PF-11 data download, PF-11s panel · W5: PF-11c close at 90 days, with AUD-2 |
 | `j_106.ts` R1.106 | 3 | 4/10 | W1 ×2: AS-1g, AS-1c (FSW assessable, grid tables) · W2: AS-1s, AS-1c (score lines) · W3: AS-1s, AS-1c (missing answer line) · W4: FO-15a, FO-15b, FO-15s · W5: CS-106c |
 
 Run (from `prototype/`): `zsh studio/tools/isolated.sh jNN <port> start --ttl 30 PLATFORM_IDENTITY=local && trap 'zsh studio/tools/isolated.sh jNN <port> stop' EXIT && tsx --tsconfig studio/api/tsconfig.json studio/tests/journeys/j_NN.ts jNN <port>`.
@@ -44,7 +44,13 @@ Minors left as they are:
 ## New finding
 * **QA-745** (Bug · Minor, test isolation; from the tech lead): `check_fo9s_duplicates_browser.ts` fails at D8 when re-run on the same copy. Not yet reproduced by qa.
 
-## Questions for the Lead
+## Answers from the tech lead (Lead 4, 15:04 IST, on #2992)
+1. **Province:** settled as P-797 (CRA GST/HST Memorandum 3-3-6, para 20 and Example 6). The tax follows the client's province, read from the client's Canadian address through an editable Bill-to province, and falls back to the firm's province. The part is FO-7g part 3. j_56's W3 is written to P-797 and names it. The Done-when stands.
+2. **From a signed retainer:** a missing part. j_56's W1 names "invoice from retainer (row to be named by Lead B)".
+3. **FO-7g part 1w:** the Lead posts on #2992 when its PR opens.
+4. **R1.105:** PF-11 and PF-11s are added to checklist row 105 (this PR). "Read-only" vs 402 is Lead B's to settle from SA-02, so j_105's W3 read step fails as the named Conflict until then.
+
+## Questions for the Lead (as asked, 14:4x IST)
 1. **R1.56 "the client's province":** FO-7g part 1 reads the firm's province only. The client's province is FO-7g part 3, and part 3 waits on a row that gives a person or company an address. The brief says no BACKLOG row adds one. So R1.56 cannot be Works after FO-7b part 1b and FO-7g part 1w alone. Should the address row be shaped, or should the Done-when read "the firm's province" (P-701)? The founder decides.
 2. **R1.56 "from a signed retainer":** no part on main or in #2953 drafts from a retainer's fee rows. Which row builds it (FO-7b later part, or FO-7s1's "Start from retainer" with an API)?
 3. **R1.105 checklist:** row 105 names neither PF-11 nor PF-11s, but "exported" needs them, and PF-11c needs AUD-2. Should they be added to the checklist row?

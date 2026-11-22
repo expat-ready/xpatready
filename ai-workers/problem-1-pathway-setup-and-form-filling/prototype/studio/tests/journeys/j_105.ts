@@ -127,6 +127,9 @@ try {
   const write = await j("POST", "/api/front-office/leads", { requestId: globalThis.crypto.randomUUID(), givenNames: "Client", familyName: "A", email: `client.a.${Date.now()}@example.com`, source: "Phone call (Sample)" }, tL);
   ok("R1.105 W3 fail: a write by the leaving firm is refused (402) in plain words; nothing is stored", write.status === 402 && /on hold/.test(write.body?.detail ?? "") && sql(`select count(*) from fo_lead where firm_id = '${firmL}'`) === leadsBefore, { status: write.status, detail: write.body?.detail });
 
+  const read = await j("GET", "/api/front-office/leads", undefined, tL);
+  ok("R1.105 W3 (Conflict: \"read-only\" vs 402 on reads, for Lead B to settle from SA-02; tech lead on #2992): the leaving firm can still read its own records (the Leads list answers 200)", read.status === 200, { status: read.status, detail: read.body?.detail });
+
   // ------------------------------------------------------------------------------------------ W4: exported
   const exportRead = await j("GET", "/api/platform/firm-export", undefined, tL);
   const exportAsk = await j("POST", "/api/platform/firm-export", {}, tL);
