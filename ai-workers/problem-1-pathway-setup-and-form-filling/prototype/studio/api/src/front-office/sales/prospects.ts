@@ -9,6 +9,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { FoPipeline, FoStageKind, Prisma, PrismaClient } from "@prisma/client";
 import type { AuditValues } from "../../../../ports/audit.ts";
 import { EVENT, LeadEventPayload, ProspectEventPayload, ProspectMovePayload, ProspectWonPayload, type EventName } from "../../../../ports/events.ts";
+import { wonDuplicates } from "../duplicates/service.ts";
+import { logPort } from "../../platform/observability/log.ts";
 import { Db } from "../../core.ts";
 import { firmScope } from "../../platform/firm-scope.ts";
 import { problem, type StaffContext } from "../../platform/identity/keys.ts";
@@ -107,6 +109,13 @@ async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, sig
     signed ? tx.foRetainer.findFirst({ where: firmScope(ctx.firmId, { prospectId: p.id, kind: "RETAINER" as const, status: { in: [...SIGNED] }, ...(retainerId ? { id: retainerId } : {}) }), select: { id: true, representativeStaffId: true }, orderBy: { createdAt: "desc" } }) : null,
     wonSubjectOf(tx, ctx.firmId, p.id),
   ]);
+  // FO-9a (contract §4): the duplicate result for the subject, in this transaction (warn only; nothing linked or merged).
+  // Under a savepoint (review m2): a failed warn-only read never rolls the win back; the event then carries no
+  // `duplicates` (absent = not known, as on older events) and the failure is logged (no ids, the platform card).
+  let duplicates: Awaited<ReturnType<typeof wonDuplicates>> | undefined;
+  await tx.$executeRaw`savepoint fo9a_won_duplicates`;
+  try { duplicates = await wonDuplicates(tx, ctx.firmId, subject); await tx.$executeRaw`release savepoint fo9a_won_duplicates`; }
+  catch (e) { await tx.$executeRaw`rollback to savepoint fo9a_won_duplicates`; logPort.error("fo9a_won_duplicates_failed", e); }
   const rep = retainer?.representativeStaffId ? await tx.platformStaff.findFirst({ where: firmScope(ctx.firmId, { id: retainer.representativeStaffId }), select: { id: true, actorId: true } }) : null;
   return ProspectWonPayload.parse({
     firm_id: ctx.firmId, firm_key: ctx.firmKey, prospect_id: p.id, lead_id: p.lead_id, won_via: via,
@@ -114,7 +123,7 @@ async function wonPayload(tx: Tx, ctx: StaffContext, p: Locked, via: WonVia, sig
     interested_in: lead.interestedIn ? { serviceId: lead.interestedIn.id, label: lead.interestedIn.label, combinationId: lead.interestedIn.combinationId } : null,
     answers: { "person.given_names": person.givenNames, "person.family_name": person.familyName, "person.email": person.email, "person.phone_number": person.phoneE164 ?? person.phone, "person.current_residence_country": null },
     consent_ids: consents.map((c) => c.id), sealed_retainer_sha256: null,
-    type: p.type, fromStageKey: p.key, retainerSigned: signed, subject,
+    type: p.type, fromStageKey: p.key, retainerSigned: signed, subject, duplicates,
   });
 }
 
