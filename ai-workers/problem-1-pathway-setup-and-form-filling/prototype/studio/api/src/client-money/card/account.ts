@@ -173,7 +173,7 @@ export class PaymentAccounts {
       await this.ports.notifications?.notify(tx, { staffId: o.id }, NOTIFICATION_KIND.PAYMENT_ACCOUNT_DISCONNECTED, { kind: "firm", id: firmId });
       // An email refused by the sender never holds back the status and the home item: the pay page must stop offering the
       // card either way (AG-6-49). Logged by the event's id.
-      try { if (this.ports.mail) after.push((await mailIn(this.ports.mail, tx, { firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "money.payment_account_disconnected", idempotencyKey: `payment-account-break:${eventId}:${o.id}`,
+      try { if (this.ports.mail) after.push((await mailIn(this.ports.mail, tx, { firmId, to: o.email, replyTo: SYSTEM_REPLY_TO, class: "SERVICE", person: { kind: "STAFF", id: o.id }, templateKey: "client_money.payment_account_disconnected", idempotencyKey: `payment-account-break:${eventId}:${o.id}`,
         subject: "Payment account disconnected",
         text: `Your firm's payment account stopped taking card payments.\n\nUntil it is reconnected, clients cannot pay by card: they see your offline payment details instead. No payment is sent anywhere else.\n\nTo reconnect, sign in and open Settings, Payments: ${this.ports.appUrl}/settings/payments` })).dispatch); }
       catch (e) { logPort.error("payment_account_break_mail_failed", e, { eventId }); }

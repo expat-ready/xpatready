@@ -7,9 +7,13 @@
 -- Additive (P-600): no table, column, index or row changes. Stamped after main's newest (20261122020000) and after
 -- #2885's 20261122033000_qa644_reserve_staging, queued before this PR (Lead B's first read on #2938).
 -- Rollback: rollback.sql in this folder.
+-- PF-8b F4 (review M1): on RDS the reader may be handed a function only while it holds CREATE on the schema; granted
+-- for this hand-over only and taken back at once.
+GRANT CREATE ON SCHEMA public TO xr_wall_reader;
 CREATE FUNCTION money_firm_of_stripe_account(account text) RETURNS uuid
   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $fn$ SELECT a.firm_id FROM money_payment_account a WHERE a.stripe_account_id = $1 $fn$;
 ALTER FUNCTION money_firm_of_stripe_account(text) OWNER TO xr_wall_reader;
+REVOKE CREATE ON SCHEMA public FROM xr_wall_reader;
 REVOKE ALL ON FUNCTION money_firm_of_stripe_account(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION money_firm_of_stripe_account(text) TO xr_app, xr_staff_bypass;

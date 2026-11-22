@@ -83,7 +83,7 @@ try {
   ok("CS-DL3 M1 fail: the rollback drops the table and both functions and its _prisma_migrations row (read, not run)",
     /DROP TABLE "case_milestone"/.test(readFileSync(join(MIG, NEW, "rollback.sql"), "utf8")) && /case_milestone_refuse_change\(\), case_milestone_check_insert\(\)/.test(readFileSync(join(MIG, NEW, "rollback.sql"), "utf8")) && readFileSync(join(MIG, NEW, "rollback.sql"), "utf8").includes(NEW));
   ok("CS-DL3 kind pass: CASE_MILESTONE_DEADLINE is added after the earlier kinds (add-only), in My deadlines, with item kind case-milestone",
-    NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE === "case-milestone-deadline" && Object.keys(NOTIFICATION_KIND).join() === "PORT_SELF_TEST,CASE_STAGE_DEADLINE,CASE_MILESTONE_DEADLINE"
+    NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE === "case-milestone-deadline" && Object.keys(NOTIFICATION_KIND).slice(0, 3).join() === "PORT_SELF_TEST,CASE_STAGE_DEADLINE,CASE_MILESTONE_DEADLINE" /* add-only: later rows add after these (FO-7c part 1) */
       && NOTIFICATION_GROUP[NOTIFICATION_KIND.CASE_MILESTONE_DEADLINE] === "MY_DEADLINES" && NOTIFICATION_ITEM_KIND.join() === "case,firm,staff,review-round,case-stage,case-milestone");
   ok("CS-DL3 keys pass: the step list is fixed in code and Sample: biometrics, medical, ADR, PPR, procedural fairness, Other",
     MILESTONE_KEYS.join() === "biometrics,medical,adr,ppr,procedural_fairness,other" && (await ms.list(A, newCase())).sample === true);
