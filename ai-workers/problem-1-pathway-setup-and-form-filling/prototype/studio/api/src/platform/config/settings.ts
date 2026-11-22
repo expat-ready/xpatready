@@ -60,6 +60,7 @@ export const SETTINGS: readonly Setting[] = Object.freeze([
   opt("identity", "PLATFORM_LOCAL_SECRET", true, z.string().min(32), "at least 32 characters (unset: a random key per start)"),
   // PF-4 (P-571 (2)): the Sample seed at start-up (identity/sample-seed.ts).
   opt("sample-seed", "PLATFORM_SAMPLE_SEED", false, z.enum(["on", "off"]), "on or off (unset: off)"),
+  opt("files", "PLATFORM_FILES_LINK_KEY", true, z.string().min(32).refine((v) => new Set(v).size >= 10), "at least 32 characters with 10 or more different ones, e.g. openssl rand -base64 32 (unset: no S3 download links; PLATFORM_FILES=s3 then refuses to start, PF-F1b)"),
   // PF-8b F2b: the domain firm addresses live under (`<firm>.<this>`); the deploy sets the stack's domain. `localhost` is
   // always kept as well (web-address/rules.ts).
   opt("web-address", "PLATFORM_ADDRESS_SUFFIX", false, z.string().regex(ADDRESS_SUFFIX_PATTERN), `a lower-case domain of two or more labels such as staging.example.com (unset: ${DEFAULT_ADDRESS_SUFFIX})`),
@@ -92,6 +93,7 @@ export type PlatformConfig = Readonly<{
   addressSuffix: string;
   /** R1.21 follow-up: our own GST/HST registration number (PLATFORM_GST_HST_NUMBER); null: the invoice shows a Sample. */
   billing: Readonly<{ gstHstNumber: string | null }>;
+  /** PF-F1b: the key the S3 download links are signed with (PLATFORM_FILES_LINK_KEY; null: none). */ files: Readonly<{ linkKey: Secret | null }>;
 }>;
 
 /** The configuration cannot start the app. Holds setting names only, never a value. */
@@ -184,6 +186,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     sampleSeed: plain("PLATFORM_SAMPLE_SEED") === "on",
     addressSuffix: plain("PLATFORM_ADDRESS_SUFFIX") ?? DEFAULT_ADDRESS_SUFFIX,
     billing: Object.freeze({ gstHstNumber: plain("PLATFORM_GST_HST_NUMBER") }),
+    files: Object.freeze({ linkKey: secret("PLATFORM_FILES_LINK_KEY") }),
   });
 }
 
