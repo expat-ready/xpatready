@@ -21,7 +21,8 @@ merge_queue:
 # its own lane, never batched with product (P-717 (a)). Path owners (P-785 (2) step 2, founder 22 Nov): each area's own
 # screens (web/src/modules/<area>/**), its tests (tests/check_<area id>*) and its feature files (api/src/features/
 # <area>-*.ts) sit in the area's scope, so two areas' PRs never share a batch; check-mergify-scopes.sh fails a new web
-# module folder, area test or area feature file that no scope owns. A PR still in no scope (the rest of web, the
+# module folder, area test or area feature file that its own scope does not own (on every PR once #2445 lands; until
+# then only guards.yml runs it, on tools and .mergify.yml changes). A PR still in no scope (the rest of web, the
 # unfenced configuration, library, demo and AI api files, the other tests, engine, unscoped schema files) is batched
 # only with other scope-less PRs, untested on top of the module lanes: the design's largest cross-scope risk.
 # barrier_files are the seams every module builds on: a PR touching one conflicts with every scope, so the queue
@@ -55,7 +56,6 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo4*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo5*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo6*"
-          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo7*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo8*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_fo9*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/front-office-*.ts"
@@ -106,6 +106,7 @@ scopes:
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_cs*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/tests/check_case_*"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/case-*.ts"
+          - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/visitor-visa-filings.ts"   # registers case-checklist, case-filings, case-prepare, filing-changes
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/clients.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/earlier-facts.ts"
           - "ai-workers/problem-1-pathway-setup-and-form-filling/prototype/studio/api/src/features/employer-link.ts"
