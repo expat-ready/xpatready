@@ -20,6 +20,8 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 
 **Lead 9 check 02:2x-02:4x IST 23 Nov:** weekly 76%, context 12%, disk 11 GB. #2368 (R1.58) merged. Labelled: #3017 (R1.85, on green ci), #3042 (R1.29, after #2368), #3141 (qa Track A: R1.21 Works, records read). `@mergifyio requeue` #3001 (R1.56). `/run full` on #3041 head b91dc1eb9: label on green. Dispatched walks.yml j_102 on main 884d1a1ec (run 45069874951) for #3136/#3029 (R1.102). Waiting on the founder: R1.92 lane (session_01Ln6TiPzgv1F4fXY7mcuxqb) asks to move to the saved "xpatready" environment (allows www.canada.ca) to read the official licence-number format; a network change, so his call. Next: #3081 label on green; #2999 watch; #3041 label on green.
 
+**Lead 9 check 02:3x IST:** #2602 (nightly fix) merged; j_102 walk run 45069874951 green on main 884d1a1ec. #3001 lost its label to the guard (failed batch 45057519565, shard 6 check_fo7q_reads before #2368's index): `/run full` + covered line posted; label on green. #3081, #3041 full runs going: label on green.
+
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
