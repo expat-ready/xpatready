@@ -2,7 +2,7 @@
 
 current_lead: local_d4609e9d-9e07-4024-8852-83bf61a0cabe Lead 6 · 22 Nov 19:03 IST (took over from Lead 5 (local_fec215ea) at ~428k, ~305k beyond its start read, P-446; Opus 5.5 medium, P-788)
 
-updated: 2026-11-22 19:03 IST: Lead 5 handed over to Lead 6 · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
+updated: 2026-11-22 20:16 IST: Lead 6 checks (Lead 5 handed over 19:03) · milestone: Release 1 proven 43 of 101 on main (11/15 this cycle) · rules: **`RULES.md`** (as of **P-791**; P-792 to P-794 newer) · this branch: `lead/2026-11-07-lead31`
 
 
 
