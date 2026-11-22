@@ -146,9 +146,9 @@ try {
   ok("CS-S1 DW6 fail: \"Zz\", another address (dupont@x.org) and another number (416-555-0109) find nothing", hits(await find(R, "Zz")).length === 0 && hits(await find(R, "dupont@x.org")).length === 0 && hits(await find(R, "416-555-0109")).length === 0);
   ok("CS-S1 DW6 fail: \"upon\" (inside a word, not its start, and too unlike) does not find her; a name with % or _ is read as typed", !ids(await find(R, "upon")).includes(mId) && hits(await find(R, "%%")).length === 0 && hits(await find(R, "D_pont%")).length === 0);
 
-  const zw = await search.find(R, { name: "d\u200b" }), nul = await search.find(R, { name: "Du\u0000pont" }), nulDoor = await find(R, `${c1.number}\u0000`);
+  const zw = await search.find(R, { name: "d\u200b" }), nul = await search.find(R, { name: "Du\u0000pont" }), nulNumber = await search.find(R, { caseNumber: `${c1.number}\u0000` }), nulDoor = await find(R, "Du\u0000pont");
   ok("CS-S1 DW6 fail (breaker m1): a letter with an invisible mark (\"d\" + U+200B) is no 2-character search: no one is named or counted", zw.parties.length === 0 && zw.hidden_count === 0, zw);
-  ok("CS-S1 DW6 pass (breaker m3): a NUL byte in the text is dropped, never a database error: the name and the case number still find", nul.parties.some((p) => p.recordId === mId) && hits(nulDoor, "case")[0]?.id === c1.id && !nulDoor.partial, { nul, nulDoor });
+  ok("CS-S1 DW6 pass (breaker m3): a NUL byte in the text is dropped, never a database error: the name and the case number still find", nul.parties.some((p) => p.recordId === mId) && nulNumber.cases[0]?.caseId === c1.id && !nulDoor.partial, { nul, nulNumber, nulDoor });
 
   // ------------------------------------------------------------------------------------------ DW7: the case number
   const byNumber = await find(R, c2.number.toLowerCase());
