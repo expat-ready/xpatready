@@ -279,3 +279,21 @@ ERROR: PF-18bk stopped, nothing changed: xr_admin cannot see every support row (
   `_prisma_migrations` holds a failed pf18bk row, so after a fix: `migrate resolve --rolled-back 20261119170000_pf18bk_support_keys`, then `migrate deploy`.
 * **Proposed code row (for the Lead): PF-8b-f6:** pf18bk's guard on a runner that is neither superuser nor BYPASSRLS: skip the blind pre-counts (or say so in a
   NOTICE) and let ADD CONSTRAINT's own validation (which bypasses row security) refuse orphans; test like `check_pf8b_f5_pg18_grants.ts`.
+
+## Step 7: Lead 4's R1.5 ruling and the pool half, 16:49 IST 22 Nov
+
+* **Ruling (Lead 4, 16:49 IST):** no password or code is typed here. Wrong code, expired code and lock-out are proven by qa's journey on an
+  isolated local copy with seed test accounts. Staging proves only the AWS half: sign-in page over HTTPS from lab., TOTP required for staff,
+  Secure and HttpOnly session cookies, secrets from the managed store (R1.15). PF-8b-f6 (pf18bk guard) went to the PF-8b builder at 16:48;
+  the founder's CodeBuild OK stands for this proof. Staging stays at 0 tasks until it merges.
+* **Pools, read only (`describe-user-pool`, `get-user-pool-mfa-config`, 16:49:23 IST):**
+
+```
+xr-staging-own-staff  MFA ON, TOTP on, email/SMS off, first factors PASSWORD+WEB_AUTHN, password min 12, deletion protection ACTIVE,
+                      WebAuthn RP staging.lab.expatready.com, user verification required, MULTI_FACTOR_WITH_USER_VERIFICATION
+xr-staging-staff      same as own-staff
+xr-staging-clients    MFA OPTIONAL, TOTP on, first factor PASSWORD, password min 12, deletion protection ACTIVE, WebAuthn SINGLE_FACTOR
+```
+
+* **R1.5 pool half: Pass** for "second step required for staff" (both staff pools MFA ON, TOTP only) and the passkey setting QA-643 asked for
+  (WebAuthn on the real domain, user verification required). Still open until the service runs: page over HTTPS from lab. and cookie flags.
