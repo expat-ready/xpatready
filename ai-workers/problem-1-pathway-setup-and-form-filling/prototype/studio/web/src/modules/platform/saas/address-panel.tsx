@@ -12,10 +12,12 @@ const LABEL: Record<string, string> = { unit: "Unit", street_number: "Street num
 const ORDER = ["unit", "street_number", "street_name", "city", "province_state", "postal_code"];
 const formOf = (a: AddressValue | null): Form => ({ unit: a?.unit ?? "", street_number: a?.street_number ?? "", street_name: a?.street_name ?? "", city: a?.city ?? "", province_state: a?.province_state ?? "", postal_code: a?.postal_code ?? "" });
 
-export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSaved, returnFocus }: {
+export function AddressPanel({ open, onOpenChange, current, beforeStripe, retry = false, onSaved, returnFocus }: {
   open: boolean; onOpenChange: (o: boolean) => void; current: AddressValue | null;
   /** Opened by a button that goes on to Stripe: the panel says why, and its save button says what follows. */
   beforeStripe: boolean;
+  /** Opened again because the last save did not reach Stripe: the panel says so. */
+  retry?: boolean;
   onSaved: (next: string | null) => void; returnFocus: () => HTMLElement | null }) {
   const [f, setF] = React.useState<Form>(() => formOf(current));
   const [busy, setBusy] = React.useState(false);
@@ -48,7 +50,7 @@ export function AddressPanel({ open, onOpenChange, current, beforeStripe, onSave
   const fieldError = (k: string) => error?.field(k) ?? null;
   return (
     <Panel open={open} onOpenChange={onOpenChange} returnFocus={returnFocus} confirmClose={mayClose} title="Business address"
-      description={beforeStripe ? WORDS.beforeCard : WORDS.addressNeeded}
+      description={retry ? WORDS.retryStripe : beforeStripe ? WORDS.beforeCard : WORDS.addressNeeded}
       footer={<><Button type="button" variant="outline" onClick={() => { if (mayClose()) onOpenChange(false); }}>Close</Button><Button type="submit" form="pf5s-address" busy={busy} data-address-save>{beforeStripe ? "Save and continue to Stripe" : "Save address"}</Button></>}>
       <form ref={form} id="pf5s-address" className="flex flex-col gap-3" onSubmit={save} noValidate data-address-form>
         {NAMES.map(([k, label, auto]) => <Field key={k} label={label} error={fieldError(k)}><Input value={f[k]} onChange={set(k)} autoComplete={auto} required={k !== "unit"} data-address-field={k} /></Field>)}

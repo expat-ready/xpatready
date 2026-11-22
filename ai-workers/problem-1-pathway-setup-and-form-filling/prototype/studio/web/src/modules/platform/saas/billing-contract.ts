@@ -48,7 +48,7 @@ export function trialLine(b: Billing, now: number, canCard: boolean): { text: st
   const n = daysLeft(b.trialEndsAt, now), end = day(b.trialEndsAt), past = new Date(b.trialEndsAt).getTime() < now;
   const left = past ? `Free trial: ended on ${end}.` : n === 0 ? `Free trial: ends today (${end}).` : `Free trial: ${n} ${n === 1 ? "day" : "days"} left (ends ${end}).`;
   // Break M3: a trial set to cancel takes no payment and needs no card; it says so instead of asking for one.
-  if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription is set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
+  if (b.cancelAtPeriodEnd) return { text: `${left} Your subscription ${past ? "was" : "is"} set to cancel then, so no payment will be taken.`, next: null, card: b.cardOnFile === true };
   // R2-m1: once the end has passed (the record not yet moved by Stripe's event), nothing is said as if it were ahead.
   if (b.cardOnFile === true) return { text: past ? `Card saved. The trial ended on ${end}; your first payment is being taken.` : `Card saved. Your first payment is on ${end}.`, next: null, card: true };
   const unknown = b.cardOnFile === null && !b.billingAvailable;
@@ -58,7 +58,7 @@ export function trialLine(b: Billing, now: number, canCard: boolean): { text: st
 /** The dates line under the plan (BR-8). */
 export function datesLine(b: Billing, now: number = Date.now()): string | null {
   const endOf = b.status === "TRIAL" ? b.trialEndsAt ?? b.currentPeriodEnd : b.currentPeriodEnd;
-  if (b.cancelAtPeriodEnd && endOf) return `Cancels on ${day(endOf)}`;
+  if (b.cancelAtPeriodEnd && endOf) return new Date(endOf).getTime() < now ? (b.status === "TRIAL" ? `Trial ended ${day(endOf)} (set to cancel)` : `Set to cancel on ${day(endOf)}`) : `Cancels on ${day(endOf)}`;
   if (b.status === "TRIAL") return b.trialEndsAt ? `${new Date(b.trialEndsAt).getTime() < now ? "Trial ended" : "Trial ends"} ${day(b.trialEndsAt)}` : null;
   if ((b.status === "ACTIVE" || b.status === "OVERDUE") && b.currentPeriodEnd) return `Next billing date ${day(b.currentPeriodEnd)}`;
   return null;
@@ -91,6 +91,7 @@ export const WORDS = {
   adminOnly: "Only the Owner can change the plan or cancel.",
   addressNeeded: "Needed before your first invoice: we use it to work out tax.",
   beforeCard: "Before you add a card: your business address. We use it to work out tax.",
+  retryStripe: "We couldn't send your address to Stripe last time. Save it again so Stripe has it for tax.",
   stripeDown: "We couldn't open Stripe. Try again.",
   checking: "Checking for changes from Stripe…",
   slow: "This is taking longer than usual. We haven't seen the change from Stripe yet; refresh in a minute.",
