@@ -60,3 +60,37 @@ I read only `git diff e8cc6fbf..cb6cc6bb -- prototype/studio` (service.ts, case-
 No new findings.
 
 Verdict: Approve cb6cc6bb45e2d9c29430468c30c870d4871f688e
+
+## Re-review, 22 Nov 2026 (diff-only, P-303): head `7b53833466cad3536c90975ad55b70114630d49a` on `claude/runtime-csnt1-notes` (PR #2999)
+Scope: what changed since `cb6cc6bb` in this row's files, and how main's ~1,450 commits interact with them. The net delta against main (`73c4e4dcd`, which is `origin/main` now) is 14 files. **The row's code is unchanged**: `case-notes/`, `features/case-notes.ts`, the `runtime.ts` hook, `case-feed.ts` and `tsconfig.json` match `cb6cc6bb`, apart from the stamp in two comments and the test's `NEW`. The migration folder `20261122110000_csnt1a_case_note` is byte-identical to the approved `20261119150000_…`, and it sorts after main's newest (`20261122033000_qa644_reserve_staging`). The card resolution holds: line 4's glob `{case-notes,case-clients,case-deadlines}/*.ts`, the line 24 invariant beside main's text, and 40 lines.
+
+**What I ran on this head (Linux cloud copy, PG 18 :54329, scratch DBs, live AI off, US$0):** `check_csnt1_notes` **56/56 twice** · `check_case_feed` 42/42 · `check_csc1_close` 55/55 · `check_prisma_schema` 8/8 · `check_pf12b_doors` 33/33 · `check_csw1_firm_id` 47/47 (isolated copy :4437) · `typecheck.mjs` no new errors (15 known) · `module-cards tree` PASS; `pr` flags only api-features, which the PR body answers ("Card unchanged") · **`check_pf12_walls` exit 1 (3 FAIL)** · **`check_csw3_firm_scope` 46/48 (isolated copy :4436), the census FAILs**. A live walk on the real server (:4438, `xr_app`, CS-W3's door) passed 38/38, walls off and with CS-W3's walls fixture on (`journey-test-reviewer-2026-11-22.md`).
+
+**Interactions with main, judged:**
+* *CS-W3's door:* the notes routes declare `@PermissionKeys`, so the door returns early (`case-firm-door.ts:128`) and PF-4's session sets the firm. Live: firm B gets 404 on all five routes, also with a forged `x-actor: user-O`. Firm A's officer with a stray `x-actor: user-S` gets 201: nothing is refused 403 wrongly. The client's `GET cases/:id` is tagged by `case_firm_of_case` and returns only CLIENT_VISIBLE notes; firm B's client gets 404. **Correct.**
+* *CS-W1 part 2:* `caseOf` matches `firm_key` and then the key's `platform_firm.id` against the session's `firmId`, as `case-close.ts:55-66` on main does. The trigger checks `case_lookup.case_firm_id_of_key`, which is granted to `xr_data`. `runtime_case.firm_id` is still nullable. **Correct.**
+* *CS-K1 part 2:* `cases.prisma` is untouched (no relation fields), and `prisma migrate diff` stays empty for this row (DW7, `check_prisma_schema`). **Correct.**
+* *PF-12 walls:* table grants come from PF-12's default privileges, so the live adds work as `xr_app`. **But the walls guard now fails (B1).**
+
+## Findings
+**B1 (Blocker): `check_pf12_walls` is red. `case_note` is a firm_id table with no forced policy, and it is not on the named exceptions.** PF-12b part 5 (QA-703, merged 21 Nov, `tests/check_pf12_walls.ts:37-47`) makes every table with a `firm_id` column fail the guard until it ships its forced policy or is named in `FIRM_ID_ELSEWHERE` on purpose. Three FAILs:
+* "no … table with a firm_id column … is without its forced policy — [case_note]"
+* "the firm tables kept outside the platform policy are exactly the named list"
+* "every trigger function on a firm table runs as xr_wall_reader — case_note_check_insert, case_note_refuse_change"
+
+Live, as `xr_app` with no firm set, every firm's `case_note` rows are readable. A migration makes CI run every suite (`select-suites.mjs`), so this PR's check and the merge queue go red. **Fix (as the sibling case tables do):** add `case_note: "case side (CS-W4): …"` to `FIRM_ID_ELSEWHERE`. That clears all three assertions; then rerun the suite. The file is outside the touch list: say so in the PR body (PF-12's owner, or the Lead's OK), and name `case_note` there for CS-W4. The alternative is to wall it now: a forced `firm_id = platform_session_firm()` policy, the first gate, and the trigger functions as SECURITY DEFINER owned by `xr_wall_reader`. That is a larger change, and it would also need the reset's cascade path proved.
+
+**B2 (Blocker): `check_csw3_firm_scope`'s census is red.** `api/src/case-notes/service.ts` queries a case table, and it is not on the allow-list (`tests/check_csw3_firm_scope.ts:271`, count 47 at `:278`). **Fix:** add `case-notes/service` to `ALLOW`, raise the count to 48 and add it to the comment at `:267-270`, as CS-DL3 part 1 added its files. The routes run in PF-4's firm scope, and the client read runs inside `runtime.ts`, which is already listed. Same touch-list note as B1.
+
+**m1 (Minor): stale stamp in a comment.** `prisma/schema/case-notes.prisma:4` names migration `20261120030000_csnt1a_case_note`; the folder is `20261122110000_…` (`service.ts:6` is right). **Fix:** one-word edit.
+
+**m2 (Minor, evidence):** the PR evidence names only `check_csnt1_notes`. A merge across ~1,450 commits that carries a migration needs the guard suites above too. Add them to the PR's Checks section once B1 and B2 are fixed.
+
+## Not checked
+The full `ci` set (every suite) and `graph.mjs` (it rewrites `qa/GRAPH.md`; I may write only this folder). A browser, axe or keyboard (no screen in part 1). The earlier Minors m3, m5 and m6 are answered in PR #2999's body (read).
+
+**Journey score (reviewer, API level, this head): 8.5 / 10, pass.** The journeys hold; the block comes from the two red guard suites.
+
+**Verdict: Block** `7b53833466cad3536c90975ad55b70114630d49a`. To fix: B1 (`check_pf12_walls` green: `case_note` on `FIRM_ID_ELSEWHERE`, or walled) and B2 (`check_csw3_firm_scope` census green: `case-notes/service` on `ALLOW`, count 48). m1 can go in the same commit. After the fix, a diff-only check: both suites plus `check_csnt1_notes`.
+
+Reviewer: Block 7b53833466cad3536c90975ad55b70114630d49a
