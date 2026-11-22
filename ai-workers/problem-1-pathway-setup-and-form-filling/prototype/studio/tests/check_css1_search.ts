@@ -81,8 +81,8 @@ try {
     const id = randomUUID(), client = randomUUID(), number = `C-2026-${String(++n).padStart(5, "0")}`, firm = firmId(firmKey);
     sql(`set session_replication_role = replica;
       insert into case_client (id, workspace_id, firm_key, firm_id, client_number, display_name, display_kind, fo_person_id, file_owner, created_by) values ('${client}', '${W}', '${firmKey}', '${firm}', ${n}, ${qt(clientName)}, 'PERSON', '${randomUUID()}', ${o.fileOwner ? qt(o.fileOwner) : "null"}, 'css1');
-      insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status)
-        values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', '${number}', '${firmKey}', '${firm}', '${client}', '${o.status ?? "OPEN"}')`);
+      insert into runtime_case (id, workspace_id, combination_id, client_actor_id, created_by, case_number, firm_key, firm_id, client_id, status, closed_at, close_outcome, closed_reason)
+        values ('${id}', '${W}', '${randomUUID()}', 'user-P', 'user-O', '${number}', '${firmKey}', '${firm}', '${client}', ${o.status === "CLOSED" ? "'CLOSED', now(), 'CLOSED_BY_STAFF', 'Sample'" : "'OPEN', null, null, null"})`);
     return { id, number, client };
   };
   const person = (caseId: string, role: string, profileName: string) => {
