@@ -98,3 +98,37 @@ To fix:
 2. **m1-m4:** fix these in this PR if cheap. For m3, either reach the door in the sweep or relabel the 4 lines, and put the question to the tech lead.
 
 Reviewer: Changes eb471eee22837d55191194a2edddeef45cf9e429
+
+## Round 2 (head b23813d1f3b52d855e41c30728cc5ea3a1751ada, diff `eb471eee..b23813d1` only)
+Scope: this round's code and test changes, and the breaker's findings in `break-report-part-3b.md`. I ran a fresh copy, `rev_pf28b` on :4490, and stopped it. I changed no code. Live AI was off; cost US$0.
+
+**Checks**
+- **Suites (my runs):** fo13i_identity 27/27, fo13c_conflict 46/46 and fo2_leads_prospects 116/116, all exit 0. The moved assertions are 422 and still name the field.
+- **Live probes on a live form:**
+  - **Nesting depth:** 3,000 and 4,000 levels give 422 on a real token and 404 on an unknown one. 5,000 and 15,000 levels give 400 BAD_REQUEST for both tokens; the trap field nested 5,000 deep does the same. The API log has no 500 or RangeError.
+  - `attribution.__proto__` gives 422 naming it.
+  - `PATCH people/not-a-uuid {"x":1}` gives 404.
+  - `{value:true}` gives 422 "The value is an amount, like 1500 or 1500.50, or empty."
+- **Allow-list:** it holds 9 code, 93 probe and 15 exception lines, which equals the new ceilings.
+- **Builder's results (not re-run here):** the sweep at 43/43 on b23813d1, and the browser suites.
+
+**Fixes**
+- **M1 closed.** The suite runs above are green.
+- **Breaker M1 closed.** A body too deep to measure is now 400 "We could not read this form…", never 500. It is pinned by the fo2 fail case, and the walls removed nothing else.
+  - An unknown token sent with such a body also gets 400, not the one not-found. I accept this: the 413 too-large answer already comes before the form lookup, and both answers are the same for every token, so they reveal nothing about it.
+- **Breaker m1 and m2 closed.** Attribution values are now capped at 40,000 characters, above what the 32 KB parser can let through. A 32,001-character landing page is cut to 2,000 and kept, and `attribution.__proto__` is refused, both with tests.
+- **m1 (mine) and breaker m4 closed.** Both unions now give plain words.
+- **m2 (mine) and breaker m5 closed.** The phone route checks the id with `idParam` first. Keeping the now-unreachable sentence as a guard is fine.
+- **m3 (mine): I accept the move to the by-design exceptions.**
+  - The reason is true: the sweep cannot reach a live form.
+  - It names the two suites that prove the door on one.
+  - The list does not grow overall: 4 probe lines leave and the exceptions grow by 4.
+  - The tech-lead question goes in the PR. Whether the sweep should switch on a Sample form stays the tech lead's call.
+- **m4 (mine) closed.** `MODULE.md:23` now names 3b's files and the door's order.
+- **Not changed:** a missing `submissionId` or `loadStamp` still gives 422 (breaker m3, and my n1). I accept this: it is the rule's field error, and only a hand-made post gets it.
+
+**Round-2 findings:** no Blocker, no Major, and no new Minor.
+
+**Verdict: Approve** for b23813d1f3b52d855e41c30728cc5ea3a1751ada (no open Blocker or Major).
+
+Reviewer: Approve b23813d1f3b52d855e41c30728cc5ea3a1751ada

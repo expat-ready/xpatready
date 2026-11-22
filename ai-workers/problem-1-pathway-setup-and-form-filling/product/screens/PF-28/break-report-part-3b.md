@@ -69,3 +69,27 @@ Scope: the `*.ts` diff a9fc53bf..eb471eee. That covers the public door (`sales/p
 - A multer field limit answers 400 ("Too many fields", "Field value too long - methodDetail"), not 422.
 
 Breaker: Changes eb471eee22837d55191194a2edddeef45cf9e429
+
+## Round 2 (head b23813d1f)
+Re-checked only the round 1 findings, on a fresh copy `brk_pf28b` on :4491 (same seed and form scripts), stopped afterwards.
+- **M1: fixed.**
+  - A `website` value nested 5,000 or 16,000 deep answers `400 BAD_REQUEST` ("We could not read this form…"), with the real token and with a made-up one. At 3,000 deep: 422 with the real token, 404 with the made-up one.
+  - The API log shows no 5xx.
+  - With a made-up token, the deep body gets 400 rather than 404. That is the same as invalid JSON and the 413 check, which both already ran before the form lookup, and it reveals nothing about the form. It holds.
+- **m1: fixed.** `attribution.landingPage` of 32,001 characters answers 201, and the stored `landing_page` is 2,000 characters.
+- **m2: fixed.**
+  - `attribution:{"utmSource":"real","__proto__":{…}}` answers 422 with `fields["attribution.__proto__"]`, and no rows are stored.
+  - With a made-up token the same body is still the one 404 `FORM_NOT_AVAILABLE`.
+- **m4: fixed for the union fields.**
+  - `PATCH prospects/:id {"value":true}` → "The value is an amount, like 1500 or 1500.50, or empty."
+  - Identity `details:5` → "Each corroborated detail is one of NAME, …".
+  - The screen body `{"value":"1500.50","currency":"CAD"}` still saves.
+  - "This must be a object." (`input.ts:40`, part 1's shared file) is unchanged: Minor, left for a follow-up.
+- **m5: fixed.**
+  - `PATCH people/abc` answers 404 with `{"zz":1}` and with a valid phone.
+  - A real id with `{"zz":1}` answers 422, and an upper-case real id with a valid phone answers 200.
+- **m3: stands as accepted.**
+  - A missing `loadStamp` still answers 422 `fields.loadStamp: "This is required."`.
+  - That follows the PF-28 rule (a field error is 422, named). The page always sends both values, so only a hand-made post reaches it. No finding remains.
+
+Breaker: Approve b23813d1f3b52d855e41c30728cc5ea3a1751ada
