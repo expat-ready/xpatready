@@ -96,3 +96,20 @@ Journey (`journey-test-reviewer-2026-11-22-part2.md`, round 2): **9.5/10**, pass
 **Verdict: Approve.** There is no open Blocker or Major at 5ee13db4.
 
 Reviewer: Approve 5ee13db4ec1c158a23db7962793c4ffcdf3976ee
+
+---
+## Merge of main (diff-only), commit c7615519b22230258249853660306fdd308815ef: Approve
+Scope: `git diff bfe94dfd c7615519` on `routes.tsx` and the web `MODULE.rows/PF-18s.md`, and `git show c7615519 --cc` (the P-270 merge of origin/main, conflict with part 3 #2904).
+
+* **routes.tsx:** both sides kept. Part 2's import (`SupportPage, SupportTicketPage`) and its two routes (`/platform/support`, `/platform/support/:id`) are unchanged. Part 3's import (`NotificationsPage`) and its route (`/account/notifications`) follow them. Nothing else in the file moved.
+* **web MODULE.rows/PF-18s.md:** 4 lines (limit 6): part 1 + part 3 entry line, a tests line with both tests, then part 2's entry and tests lines word for word. The api row (4 lines) and the features row (1 line) are not touched by the merge.
+* **build-notes.md:** part 2's section is kept in full, and part 3's section follows it. Records only.
+* **account-sections.ts** (auto-merged): Notifications (part 3, line 10), Offices (part 1, line 15) and Help & support (part 2, line 17) are all present.
+* **Nothing of part 2 lost:** `git diff bfe94dfd c7615519` on help-button.tsx, support-page.tsx, support-contract.ts, frame.tsx, session.ts, `api/src/platform/support/`, and the check is empty. The only change in those paths is part 3's menu line. `git diff ac456c6b c7615519` (what the PR now brings to main) lists exactly part 2's files, plus product records.
+* **Re-run (mine):** `check_pf18s_notifications_browser.ts` on my own copy `review3_pf18s2` :4733 (fresh database, `AI_LIVE=off PLATFORM_IDENTITY=local`, US$0): **40/40**, exit 0. It shows part 3 works in the merged tree next to part 2. The copy is stopped and the 7 rewritten `pf18s-n*.png` are restored. I take the builder's other runs at c7615519 as reported (help 30/30, offices 28/28, pf1 routes 28/28, pf6a frame 52/52).
+
+No new finding. Round 2's two open Minors stand as follow-ups. The journey score is unchanged (9.5/10): the merge changes no behaviour.
+
+**Verdict: Approve.** There is no open Blocker or Major at c7615519.
+
+Reviewer: Approve c7615519b22230258249853660306fdd308815ef
