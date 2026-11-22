@@ -78,3 +78,50 @@ None.
 Screenshots (breaker's scratch, not committed): `past-trial-billing-1440.png` (M1), `leads-no-banner-1440.png` (m2), and the `a11y-*` set.
 
 Verdict: Changes
+
+---
+
+# Round 2: the diff 05067ca66 → 4bbdc547f only
+
+Set-up: own copy `brk2_pf16b` on :4436, `PLATFORM_IDENTITY=local`, fake BillingPort. The web bundle was rebuilt from 4bbdc547f by `web-fresh.sh`, and it contains the new `here!=="/settings/billing"` code. US$0. The copy is stopped and its database dropped. The same six roles were seeded again. Card, cancel and Stripe-down states were put on screen by rewriting the banner's answer in Playwright; the fake keeps no Stripe subscription that could be set from outside. The API values for those states come from real reads.
+
+## Round 1 findings, re-tested
+* **M1: fixed.**
+  * The end passed 5 days ago: the API gives `daysLeft 0`, amber. Home and Plan and billing both read "Free trial: ended on 17 Nov 2026.", with no "ends today", no "before then" and no link. The banner and the page now say the same thing.
+  * Ended with a card saved: "Card saved. The trial ended on …; your first payment is being taken."
+  * Ended and set to cancel: "…was set to cancel then, so no payment will be taken."
+  * Ended with Stripe down: "Free trial: ended on …" and no card claim.
+* **m3: fixed.** A firm on `PAYMENT_HOLD` with its row still `TRIAL` now gets `{"show":false}`, while Team answers 402. A firm whose status is `TRIAL` still gets the banner.
+* **m6: fixed for the exact path.** There is no link on `/settings/billing` or on `/settings/billing?x=1#a`. One gap remains (r2-m2 below).
+* **cancelAtPeriodEnd:**
+  * With no Stripe subscription it is `false`.
+  * An unknown Stripe id (the fake throws) gives `cardOnFile:null` and `cancelAtPeriodEnd:null`, still 200.
+  * On screen, "set to cancel" with no card reads "…10 days left (ends 2 Dec 2026). Your subscription is set to cancel then, so no payment will be taken." with no link.
+  * A saved card with 2 days left reads "Card saved. Your first payment is on 24 Nov 2026." with no link.
+  * Stripe down reads the days only, with no card claim.
+* **The mount moved above the demo slot:** at 400, 1024, 1440 px and 720 px at 2×, the banner sits at y=113 in every state (amber, ended, neutral). It is above the DEMO intro and the h1 and inside `main`. Nothing scrolls sideways, and **axe finds 0 violations** in all 12 runs.
+  * Keyboard: Tab goes skip link → Sign out → menu, then reaches "Add a card" in DOM order, and Enter opens Plan and billing, where no link is shown.
+  * Pending terms still hide it: terms published mid-session, then moving to Team inside the app, shows the terms page with no banner.
+* **Re-checked (the read changed):**
+  * Owner and Admin get 200. Case Manager, Case Officer, Billing / Finance and Read-only get 403. No token gets 401.
+  * The other firm's Owner reads its own trial only.
+  * Person switch in one tab: Case Officer gets no banner and makes no request; the Owner sees 10 days; the sample-solo Owner sees 2 days. No stale banner.
+* **Accepted by the coordinator, not re-raised:** m1, m2, m4, m5 remain Minors as listed in round 1.
+
+## New in round 2 (all Minor)
+**r2-m1. The words now follow the browser's clock; the tone and `daysLeft` follow the server's.** `trial-banner.tsx:35` calls `bannerWords(b, Date.now(), …)`, so `trialLine` recomputes days from `trialEndsAt`. With the server at 10 days left (neutral):
+* Client clock 11 days ahead: a **neutral** bar reads "Free trial: ended on 2 Dec 2026." with no card ask, and `data-trial-banner-days=10`.
+* Client clock 12 days behind: "Free trial: 22 days left".
+
+Before this round the count came from the server. Plan and billing has the same dependency on the browser's clock, so the two still agree with each other, only not with the server's tone. Only a wrong device clock triggers this. A fix would pass the server's time, or its `daysLeft` and a "past" flag, into the words.
+
+**r2-m2. The self-link check compares the exact path.** On `/settings/billing/` (trailing slash, which the router still serves as Plan and billing), "Add a card" links to the page it is on again (link count 1).
+
+**r2-m3. Plan and billing shows the trial sentence twice.** The banner and the page's own trial line, about 170 px apart, say "Free trial: 10 days left (ends 2 Dec 2026). Add a card before then to keep access." Both are read out by a screen reader. This is by design: the check's B2 expects the banner there. Hiding the banner on that page, as was done for the link, would remove the repeat. Cosmetic.
+
+## Still held
+No write (the read only adds a select on the firm), `@HoldOpen`, 428 on pending terms, the query keyed by token, no Stripe request from the browser, and no page error. Round 2 screenshots are in the breaker's scratch only and not committed: `r2-billing-past-1440.png`, `r2-billing-10d-1440.png`, `r2-{amber,past}-{400,1024,1440,720}x*.png`.
+
+Blockers: none. Majors: none. Minors: r2-m1, r2-m2, r2-m3, plus round 1's m1, m2, m4, m5 as accepted.
+
+Verdict: Approve 4bbdc547fcd0aac379505fc00421f2a02dba2816
