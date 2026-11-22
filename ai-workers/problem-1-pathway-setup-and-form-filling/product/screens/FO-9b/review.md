@@ -107,3 +107,52 @@ Kept as is, per the brief, to be listed in the PR: break m3 / review m2's design
 **Verdict: Changes** on `ae52eabd60b9c22715b5880c46485fb5ea38b5f4`. Fix B1 and M1, each with a case that fails without the fix. Fix the Minors or list them in the PR. Do not add `review: approved` for this commit.
 
 Reviewer: Changes ae52eabd60b9c22715b5880c46485fb5ea38b5f4
+
+## Round 3 (4bcbf9c41)
+
+Diff-only re-review (Opus 5.5, effort high; round 3 allowed by the tech lead on PR #3042), commit `4bcbf9c4119fb844ebf91e6f07628a01995cd586`. I read `git diff ae52eabd6 4bcbf9c41 -- …/prototype/studio` (follow.ts, service.ts, the migration, the check) and the writers it locks against (`calls.ts`, `arrival.ts`, `arrival-port.ts`, `corporate/service.ts`, `people/edit.ts`). **Journey test: not applicable, no score** (still no screen and no route; R1.29's step comes after part 2 and FO-9s).
+
+**What I ran** (Postgres 127.0.0.1:54329, my own scratch databases `xr_rv_*`, all dropped; no app port, never :4400; US$0):
+* `check_fo9b_merge.ts`: **75/75, exit 0**.
+* Regressions, all exit 0: fo9b_port 20, fo9a_duplicates 53, fo9a_won_duplicates 25, fo9b_phone_doors 26, pf12_walls 110, fo2b_corporate 61, fo2p4_calls_timeline 30, fo2_leads_prospects 116, fo1a_sales_schema 124, fo10p2_sharing 37, fo13c_conflict 46, fo2p3_prospects 44, fo1p_person_port 35, fo1b_booking_schema 80, fo9a_phone_edit 37, fo3_booking 133 (run alone).
+* Rollback: every migration, then `rollback.sql`, against a database built without this migration. The catalog hash (constraints, trigger definitions, functions with owner, config and source, columns, policies) is **identical**. Only the `_prisma_migrations` delete fails, because a raw-applied database has no such table.
+* Catalog: `fo_dup_live_party` and `fo_dup_merge_write` are SECURITY DEFINER, owned by `xr_wall_reader`, `search_path=pg_catalog, public, pg_temp`. So the unqualified `format('… %I …', TG_TABLE_NAME)` resolves to `public` and runs past the wall. The seven triggers are DEFERRABLE INITIALLY DEFERRED.
+* **Mutation runs** on a scratch copy: one change at a time, then the 75 cases (race cases 2-3 times).
+* **Probes** (my own script, not committed), quoted below. To check whether a problem is new, I ran the same script on an extracted copy of `ae52eabd6`.
+
+### Round-2 findings: fixed, and does the test fail without the fix?
+| Finding | Fixed | Mutation (fix removed) |
+|---|---|---|
+| B1 (lead flagged as a possible match of the survivor) | Yes: flags between the pair are cleared before the leads move (`service.ts:102-103`), and Undo reverses them in order | Clean-up moved back after the lead move: **red** (DW1 B1). DW5 B1 checks Undo restores flag and lead exactly |
+| M1 (deadlocks, persons) | Yes for persons: `lockRows` (moved rows, `order by id`), then loser, then survivor; Undo locks its moved rows, then loser, then survivor | No `lockRows`: **red 3/3** (15-16 deadlocks). No Undo row locks: **red 3/3**. Undo survivor-before-loser: **red 2/2**. My probe: 12 merges against engage, addNote, logCall and Add-with-personId on the loser, plus 12 Undos against Add and two notes, gave **0 deadlocks** and 0 rows on a tombstone. **But the company side is new Major M1 below** |
+| M1, the deferred guard itself | Present | **Making it NOT DEFERRABLE stays green 3/3**; dropping its `FOR KEY SHARE` stays green. See m2 below |
+| m1 (arrival refused when its possible match is merged meanwhile) | **No.** See m1 below | (no case) |
+| m2 (consent permanence) | Yes: only live copies refuse; the reason now says to withdraw it first; withdrawals are not counted | `withdrawnAt: null` removed: **red** |
+| m3 (clocks) | Yes: `reaching()` compares ids, so no clock is involved. `at` is still `clock_timestamp()`, but it is only compared with other merges' `at` | `present` check disabled: **red** (7 cases, including the port contract) |
+| m4 (test gaps) | Yes: the trigger arguments are tied to MOVE (DW2), and the fo_lead guard is tested alone | Column dropped from the fo_prospect guard: **red**. fo_lead guard removed: **red** (3) |
+| m5 (follow.ts comment) | Yes | n/a |
+| m6 (break m4 remainder) | Partly. The stamp guard is in the DB, and Undo checks `lo.merged_into_id = s` | Stamp guard off: **red**. **Tombstone check removed: stays green** (m3 below) |
+
+Undo stamp order is right: the tombstone ends (`:266`) before the stamp (`:283`), and the stamp guard reads both `fo_person` and `fo_company` past the wall. Cost at commit is fine. A loser and a survivor with 400 leads and 400 notes each: merge 228 ms, Undo 235 ms (`ae52eabd6`: 197 / 160). With 2,000 each: 1.1 s / 1.4 s (`ae52eabd6`: 1.6 s / 1.6 s). The `reaching` snapshot stores 75 KB for 1,607 ids and 366 KB for 8,007 ids (TOASTed jsonb). That is acceptable for one person; note it for part 2's automatic merges. Re-reading the current row (`cur`) is needed and covered: reading `NEW` turns DW1 B1 red, because the merge's own flag-clear UPDATE event names the loser. The same-transaction shape (a note written on L, then L merged in that transaction) commits with the note on the survivor.
+
+### New findings
+**Blocker**: none.
+
+**Major**
+* **M1. Company merges and Undos now deadlock with the corporate contact writers (new in this commit).** `lockRows` takes `fo_company_contact` and `fo_prospect` rows before the company records (`service.ts:172`, the comment at `:29-31`). Undo does the same (`:238-240`). But the corporate writers lock the company row first and the contact rows after it: `changeRole` and `endContact` (`corporate/service.ts:269` then `:275`/`:291`; `:306` then `:310`). The comment's rule "a row it writes, then the record" holds for the person writers, not for these.
+  * Deterministic probe: a third session holds the loser company `FOR KEY SHARE`, so the merge stops after `lockRows`. Then `endContact` on a link of the survivor runs, and the hold is released. Result: **`endContact` gets "deadlock detected" (40P01, a raw 500); the merge commits.** Same with `changeRole(… PRIMARY)`. On `ae52eabd6` the same script gives `writer=ok` both times.
+  * Random race, 12 company merges against an `endContact` and a `changeRole` on the survivor: **3/12 merges lost to 40P01** (0/12 on `ae52eabd6`).
+  * No data was wrong.
+  * Fix: on the company side take the records first (sorted, or loser then survivor), then the rows, as the corporate writers do. Engage and change-type lock a lead or an Individual prospect first, which a company merge never locks, so that order has no cycle that I can find. Keep rows-first for persons. Or map 40P01 through `api/src/busy.ts` to a retryable answer. Either way, add a race case: `endContact`/`changeRole` against a company merge and against its Undo. The Undo half is from reading the code; I did not probe it.
+
+**Minor**
+* **m1. Round-2 m1 is not fixed and not listed in the PR.** Probe: a merge S ← L is held open after the tombstone. Add a lead with `confirmedNew` and L's email. It fails with **`ForeignKeyConstraintViolation`**, now at COMMIT through the deferred guard; no flag lands on either record. `possibleMatch` (`arrival.ts:47`) still reads without a lock. Web and booking arrivals share `arrive()`. Fix: follow the match through a locking read, or list it in the PR as a part-2 item.
+* **m2. The deferred guard has no case that needs the deferral, and its comment's reasoning is off.** Every guarded column also has a foreign key. Its RI check takes `FOR KEY SHARE` on the person or company at the statement, not at commit. So "at commit the writer already holds its own rows, so its locks run row, then record" is not what orders the locks: `lockRows` is. The mutations agree: NOT DEFERRABLE stays green 3/3, and no `FOR KEY SHARE` in the trigger stays green. It is harmless as it stands (errors now come at COMMIT). Either correct the comment, or go back to an immediate check, or add a case that fails without the deferral.
+* **m3. The Undo tombstone check (break m4) has no case of its own.** The crafted-record case copies another pair's `survivorAfter`, so the "edited after the merge" check refuses it first. With `lo.row.merged_into_id !== s` removed the suite stays green. Give the crafted record the target survivor's own `survivorAfter`. Residual for the PR (Minor, as before): a crafted record for a real standing pair, inserted with a later `at`, still passes every check, and its `changes` can name other people's rows that currently hold `to`. It needs INSERT on `fo_dup_merge`.
+* **m4. A writer racing a merge on the loser's lead gets 404 "No such lead in your firm."** Seen several times in my person race; no deadlock. Cause: `calls.ts:56` assumes "a lead's person never changes; moved meanwhile = changed" → 404. The lead exists on the survivor, and a retry works. This is outside the touch list, so list it for part 2 or FO-9s (409 "changed, reload", or follow the lead).
+
+Kept as is, per the brief: size (P-805), the three edits outside the touch list, STAYS, consent, and the flag questions in the PR.
+
+**Verdict: Changes** on `4bcbf9c4119fb844ebf91e6f07628a01995cd586`. Fix M1 (company-side lock order, or retry on 40P01), with a race case that fails without the fix. Fix m1-m4 or list them in the PR. Do not add `review: approved` for this commit.
+
+Reviewer: Changes 4bcbf9c4119fb844ebf91e6f07628a01995cd586
