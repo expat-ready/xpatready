@@ -303,8 +303,7 @@ try {
     const { p } = await pageAs(tok.O, w); await home(p);
     await find(p, `Kit${run}`);
     await p.screenshot({ path: join(SHOTS, `pf30s-05-open-${w}.png`) });
-    const small = await p.evaluate(() => [...document.querySelectorAll("header button, header a")].filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && (r.width < 24 || r.height < 24); }).map((el) => el.getAttribute("aria-label") ?? el.textContent));
-    ok(`PF-30s F10 (WCAG 2.5.8): at ${w} px no control in the top bar is under 24 px (the box never squeezes the help button)`, small.length === 0, small);
+
     ok(`PF-30s F10: no sideways page scroll with the list open at ${w} px, and the list fits the window`,
       !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) && await p.locator("[data-find-popup]").evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; }));
     if (w < 768) {
@@ -325,6 +324,20 @@ try {
   }
   const sorted = [...took].sort((x, y) => x - y), p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
   ok("PF-30s F10 (STANDARDS §9, search under 200 ms): the find door answered the box's requests on this copy's Sample firms with p95 under 200 ms", took.length >= 10 && p95 < 200, { n: took.length, p95: Math.round(p95), max: Math.round(sorted.at(-1) ?? 0) });
+  // Review r4-1/r4-3: with the box closed and a long staff name, every top-bar control is whole, on top (a click on its
+  // centre lands on it) and at least 24 px; axe with WCAG 2.2 AA passes on the top bar. The name gives way, never a control.
+  const LONG = "Second representative of the Sample firm (Sample)";
+  for (const w of [320, 375, 768, 850, 1024]) {
+    const { p } = await pageAs(tok.O, w);
+    await p.route("**/api/platform/me", async (r) => { const res = await r.fetch(); const j = await res.json() as Record<string, unknown>; await r.fulfill({ response: res, json: { ...j, displayName: LONG } }); });
+    await home(p); await p.locator("[data-staff-name], [data-find-open], [data-find-input]").first().waitFor({ state: "attached", timeout: 30_000 });
+    const hidden = await p.evaluate(() => [...document.querySelectorAll("header button, header a, header input")].filter((el) => { const r = el.getBoundingClientRect(); if (r.width === 0 || r.height === 0) return false; const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !(at === el || el.contains(at)) || r.width < 24 || r.height < 24; }).map((el) => el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? (el.textContent ?? "").trim()));
+    ok(`PF-30s F12 (review r4-1): at ${w} px with a long name every top-bar control is whole and on top (help button, Find, Sign out)`, hidden.length === 0, hidden);
+    const axe22 = await new AxeBuilder({ page: p }).include("header").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+    ok(`PF-30s F12: at ${w} px the top bar passes axe with WCAG 2.2 AA (target size)`, axe22.violations.length === 0, axe22.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`));
+    ok(`PF-30s F12 (review r4-2): at ${w} px no sideways page scroll with a long name`, !(await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
+    await p.context().close();
+  }
   ok("PF-30s F10: no page error in any browser", errors.length === 0, errors);
 } finally { await browser.close(); }
 process.exit(summary() ? 1 : 0);

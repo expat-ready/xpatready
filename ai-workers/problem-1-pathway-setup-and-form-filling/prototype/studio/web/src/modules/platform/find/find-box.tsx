@@ -116,7 +116,7 @@ export function FindBox() {
   // "Searching…" is shown, never announced on every key (challenge m11).
   const said = open && state.at !== "searching" ? [answer?.message, line].filter(Boolean).join(". ") : "";
   return (
-    <div className="shrink-0 md:relative md:min-w-0 md:shrink" data-find onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { enterWaits.current = false; setOpen(false); setWide(false); } }}>
+    <div className="shrink-0 md:relative" data-find onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { enterWaits.current = false; setOpen(false); setWide(false); } }}>
       <button ref={opener} type="button" onClick={focusBox} aria-label={WORDS.label} title={`${WORDS.label} (press /)`} data-find-open
         className={cn("inline-flex size-11 items-center justify-center rounded-lg text-text-muted outline-none hover:bg-text/5 focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden", wide && "hidden")}>
         <Search className="size-5" aria-hidden />
