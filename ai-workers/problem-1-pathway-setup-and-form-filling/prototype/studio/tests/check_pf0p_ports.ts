@@ -40,11 +40,12 @@ const entry = (over: Record<string, unknown> = {}) => ({ firmId: FAKE_FIRM_ID, a
 
 // ------------------------------------------------------------------------------------------------- the folder's own rule
 /** The import lines of a ports file that are not zod or one of the folder's own files (case-side contract v0.1 §1 rule 3). */
-const foreignImports = (text: string) => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s*["']([^"']+)["']|\b(?:import|require)\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter((s) => s !== "zod" && !/^\.\/[a-z0-9-]+(\.port)?\.ts$/.test(s));
+const foreignImports = (text: string) => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s*["']([^"']+)["']|\b(?:import|require)\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter((s) => s !== "zod" && !/^\.\/(events\/)?[a-z0-9-]+(\.port)?\.ts$/.test(s));   // events/: the events contract's own folder (P-785 (2))
 const portFiles = readdirSync(PORTS).filter((f) => f.endsWith(".ts"));
 ok("PF-0p pass: the seven ports are in studio/ports/ (audit, staff, clock, jobs, mail, files, render)", ["audit", "staff", "clock", "jobs", "mail", "files", "render"].every((p) => portFiles.includes(`${p}.ts`)), portFiles);
 const bad = portFiles.flatMap((f) => foreignImports(readFileSync(join(PORTS, f), "utf8")).map((s) => `${f}: ${s}`));
 ok("PF-0p pass: every file in studio/ports/ imports only zod and its own files", bad.length === 0, bad);
+ok("PF-0p pass (P-785 (2)): ports/events.ts re-exporting the events folder (./events/<module>.ts) is its own files; a deeper or outside path is not", foreignImports(`import { FIRM_EVENT } from "./events/firms.ts";\nexport * from "./events/person-merge.ts";`).length === 0 && foreignImports(`export * from "./events/x/y.ts";\nimport { a } from "../events/firms.ts";`).length === 2);
 ok("PF-0p fail: the import check catches a Prisma, a Nest, a node, an app, a dynamic, a side-effect and a require import", foreignImports(`import { z } from "zod";\nimport { FirmId } from "./audit.ts";\nimport type { Prisma } from "@prisma/client";\nimport { Injectable } from "@nestjs/common";\nimport { createHash } from "node:crypto";\nexport { x } from "../api/src/core.ts";\nconst e = await import("../engine/runtime/team.ts");\nimport "../api/src/main.ts";\nconst r = require("pg");`).length === 7);
 
 // ------------------------------------------------------------------------------------------------------------- audit
