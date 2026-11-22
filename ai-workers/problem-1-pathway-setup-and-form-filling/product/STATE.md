@@ -22,7 +22,7 @@ Lead 19 and the 18 → 19 hand-over, and Lead 3 check lines 13:2x-13:3x: word fo
 **Habits (Lead 7) and the old AWS waiting line:** `history/STATE-2026-11-22-2358-lead7-lead6-handover-block.md`.
 **Lead 8 (00:00-00:03 IST 23 Nov):** #3001 money read OK + "Lead allows round 3" + labelled (queues after #2368). #2927 `/run full` posted on 1145476e6 + Lead read OK posted: **label it when that run is green** (gate won't, P-423 paths). Waiting: #2368 merge → label #3042; #2913 merge → send #3073 lane its draft; #3104 run 45053508643 going.
 Lead 8 check lines: word for word in `history/STATE-2026-11-23-0021-lead8-check-lines.md`.
-**Lead 8 00:3x-00:51 checks:** #2927 full run 45057495072 running (label on green). #2913 labelled and queued (full run green, Approve on e379f7a9a); when it merges send #3073 lane its draft. Lead B re-read OK on #2368 d251cd34b and #3041 f7ce263ad, Approves on both heads; #2368 `/run full` posted (label on green); #3041 labelled and queued (gate, ci green). #3104 queued. #3001 dequeued: requeue when #2368 is on main.
+**Lead 8 00:3x-01:01 checks:** #3104 merged (R1.92). #2927 labelled (full run green). #3041 rebases after #2927 if needed. #2913 labelled and queued (full run green, Approve on e379f7a9a); when it merges send #3073 lane its draft. Lead B re-read OK on #2368 d251cd34b and #3041 f7ce263ad, Approves on both heads; #2368 `/run full` posted (label on green); #3041 labelled and queued (gate, ci green). #3001 dequeued: requeue when #2368 is on main.
 ## Founder asks (Lead 8, 10 Nov; P-450 (4): stays until ticked)
 Older open items and ask rows (S10-A239, A240-A241, 10 Nov line): `product/history/STATE-2026-11-21-0850-lead10s3-for-founder-open-and-A240-rows.md`.
 | # | Ask (IST) | Status |
