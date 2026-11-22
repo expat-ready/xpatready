@@ -157,7 +157,9 @@ try {
   const firmMe = await call(A.base, "GET", "/api/platform/me", { token: firmToken }), firmFo = await call(A.base, "GET", "/api/front-office/pf4s-probe", { token: firmToken });
   ok("PF-4s DW1 pass: the wall leaves a firm's own session alone (firm token on /api/platform/me and a front-office route → 200)", firmMe.status === 200 && firmMe.body.staffId === firmStaff && firmFo.status === 200, { firmMe, firmFo });
   const upper = await call(A.base, "GET", "/API/System/Me", { token: owner }), upperFirm = await call(A.base, "GET", "/API/System/Me", { token: firmToken }), upperNone = await call(A.base, "GET", "/API/SYSTEM/ME");
-  ok("PF-4s DW1 pass/fail (mixed-case path, a match of its own): /API/System/Me answers as /api/system/me (system 200, firm 403, none 401 NOT_SIGNED_IN)",
+  // The guard's own match (no web catch-all in this app; in main.ts the web pages' case-sensitive catch-all answers an
+// upper-case /API path first, with the web page and no data: PF-4pc's row, main.ts:244).
+ok("PF-4s DW1 pass/fail (mixed-case path, the guard's match of its own): /API/System/Me reaches the guard as /api/system/me (system 200, firm 403, none 401 NOT_SIGNED_IN)",
     upper.status === 200 && upper.body.staffId === OWNER && upperFirm.status === 403 && upperFirm.body.code === "FIRM_SESSION_REFUSED" && upperNone.status === 401 && upperNone.body.code === "NOT_SIGNED_IN", { upper, upperFirm, upperNone });
   const none = await call(A.base, "GET", "/api/system/me"), junk = await call(A.base, "GET", "/api/system/me", { token: "not-a-token" }), header = await call(A.base, "GET", "/api/system/me", { actor: "user-A" });
   ok("PF-4s DW1 fail: no token, a token of nothing and the simulated-person header → 401 on /api/system/me", none.status === 401 && junk.status === 401 && header.status === 401 && header.body.code === "NOT_SIGNED_IN", { none, junk, header });
